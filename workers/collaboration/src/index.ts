@@ -1,0 +1,84 @@
+import { DurableObject } from 'cloudflare:workers';
+
+interface Env {
+	COLLABORATION_ROOMS: DurableObjectNamespace<CollaborationRoom>;
+}
+
+const json = (body: unknown, status = 200) =>
+	Response.json(body, {
+		status,
+		headers: { 'cache-control': 'no-store' }
+	});
+
+export default {
+	async fetch(request, env): Promise<Response> {
+		const url = new URL(request.url);
+
+		if (url.pathname === '/health') {
+			return json({ status: 'ok' });
+		}
+
+		const roomMatch = url.pathname.match(/^\/collab\/([^/]+)$/);
+		if (!roomMatch) {
+			return json({ error: 'Not found' }, 404);
+		}
+
+		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+			return json({ error: 'WebSocket upgrade required' }, 426);
+		}
+
+		const roomId = decodeURIComponent(roomMatch[1]);
+		const room = env.COLLABORATION_ROOMS.getByName(roomId);
+		return room.fetch(request);
+	}
+} satisfies ExportedHandler<Env>;
+
+export class CollaborationRoom extends DurableObject<Env> {
+	async fetch(request: Request): Promise<Response> {
+		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+			return json({ error: 'WebSocket upgrade required' }, 426);
+		}
+
+		const pair = new WebSocketPair();
+		const [client, server] = Object.values(pair);
+
+		this.ctx.acceptWebSocket(server);
+		server.send(JSON.stringify({ type: 'ready' }));
+
+		return new Response(null, { status: 101, webSocket: client });
+	}
+
+	async webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): Promise<void> {
+		if (typeof message === 'string') {
+			try {
+				const payload: unknown = JSON.parse(message);
+				if (
+					typeof payload === 'object' &&
+					payload !== null &&
+					'type' in payload &&
+					payload.type === 'ping'
+				) {
+					socket.send(JSON.stringify({ type: 'pong' }));
+					return;
+				}
+			} catch {
+				// Non-JSON payloads are valid collaboration messages.
+			}
+		}
+
+		for (const peer of this.ctx.getWebSockets()) {
+			if (peer !== socket) {
+				peer.send(message);
+			}
+		}
+	}
+
+	webSocketClose(
+		socket: WebSocket,
+		code: number,
+		reason: string,
+		_wasClean: boolean
+	): void {
+		socket.close(code, reason);
+	}
+}
