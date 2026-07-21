@@ -445,13 +445,13 @@ Forme finale visée :
 
 ```ts
 describe('AI for documentary effort', () => {
-  describe('when the document is opened', () => {
-    it('renders its complete dependency graph', async () => {
-      // Arrange: real example document and application harness
-      // Act: open the document through the application use case
-      // Assert: semantic entities and layout invariants
-    });
-  });
+	describe('when the document is opened', () => {
+		it('renders its complete dependency graph', async () => {
+			// Arrange: real example document and application harness
+			// Act: open the document through the application use case
+			// Assert: semantic entities and layout invariants
+		});
+	});
 });
 ```
 
@@ -568,14 +568,14 @@ Avant de passer à la tranche suivante, toutes les preuves suivantes sont requis
 
 #### Preuves spécifiques par gate
 
-| Gate | Preuve supplémentaire obligatoire |
-| --- | --- |
-| Après la tranche 1 | Le fichier réel traverse parsing syntaxique, mapping et validation ; le `LogicDocument` complet et les diagnostics structurés sont observés ; le domaine ne dépend pas de `smol-toml`. |
-| Après la tranche 2 | Le `yjsLiveDocumentFormat = 1` est relu depuis de vrais `Y.Doc`, le Markdown est préservé exactement et deux modifications métier indépendantes convergent sans réécriture concurrente du document complet. |
-| Après la tranche 3 | Les références inconnues et le cycle perturbé échouent comme prévu ; les 20 relations et les rangs canoniques du scénario sont validés indépendamment de l’ordre des tables. |
+| Gate               | Preuve supplémentaire obligatoire                                                                                                                                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Après la tranche 1 | Le fichier réel traverse parsing syntaxique, mapping et validation ; le `LogicDocument` complet et les diagnostics structurés sont observés ; le domaine ne dépend pas de `smol-toml`.                                                         |
+| Après la tranche 2 | Le `yjsLiveDocumentFormat = 1` est relu depuis de vrais `Y.Doc`, le Markdown est préservé exactement et deux modifications métier indépendantes convergent sans réécriture concurrente du document complet.                                    |
+| Après la tranche 3 | Les références inconnues et le cycle perturbé échouent comme prévu ; les 20 relations et les rangs canoniques du scénario sont validés indépendamment de l’ordre des tables.                                                                   |
 | Après la tranche 4 | La gate isolée qualifie ou écarte ELK sur les rangs et groupes du scénario ; le moteur retenu traite ensuite le scénario complet et satisfait les invariants de bounds, de bandes de rang, de groupes, de routage et de déterminisme qualifié. |
-| Après la tranche 5 | L’application est lancée et conduite dans un navigateur réel ; mesure, fontes, layout, groupes, junction et relations SVG sont inspectés sans donnée de graphe codée en dur. |
-| Après la tranche 6 | Le scénario Playwright passe dans la stack locale réelle, le refactor final est terminé, puis `pnpm check`, toutes les suites et tous les builds passent ensemble. |
+| Après la tranche 5 | L’application est lancée et conduite dans un navigateur réel ; mesure, fontes, layout, groupes, junction et relations SVG sont inspectés sans donnée de graphe codée en dur.                                                                   |
+| Après la tranche 6 | Le scénario Playwright passe dans la stack locale réelle, le refactor final est terminé, puis `pnpm check`, toutes les suites et tous les builds passent ensemble.                                                                             |
 
 La preuve de tranche 4 commence par une gate de compatibilité ELK isolée. Elle configure `org.eclipse.elk.layered`, `UP`, le partitionnement par rang et la gestion hiérarchique, puis exerce d’abord trois rangs minimaux avant le scénario complet. ELK n’est retenu que si les rangs restent dans des bandes distinctes et ordonnées, si les éléments de même rang partagent leur bande, et si `use-cases` ainsi que `data-team` conservent les comportements attendus.
 

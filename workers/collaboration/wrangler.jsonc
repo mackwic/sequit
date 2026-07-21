@@ -7,17 +7,17 @@
 		"bindings": [
 			{
 				"name": "COLLABORATION_ROOMS",
-				"class_name": "CollaborationRoom"
-			}
-		]
+				"class_name": "CollaborationRoom",
+			},
+		],
 	},
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["CollaborationRoom"]
-		}
+			"new_sqlite_classes": ["CollaborationRoom"],
+		},
 	],
 	"observability": {
-		"enabled": true
-	}
+		"enabled": true,
+	},
 }

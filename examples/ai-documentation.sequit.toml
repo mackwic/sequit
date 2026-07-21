@@ -1,0 +1,287 @@
+persistenceFormat = 1
+
+[document]
+id = "ai-documentary-effort"
+title = "AI for documentary effort"
+
+[layout]
+direction = "bottom-to-top"
+bias = "top"
+
+[natures.need]
+label = "Need"
+color = "#f4c400"
+
+[natures.want]
+label = "Want"
+color = "#ed58c7"
+
+[natures.solution]
+label = "Solution"
+color = "#6f70e8"
+
+[natures.goal]
+label = "Goal"
+color = "#12c930"
+
+[natures.precondition]
+label = "Precondition"
+color = "#8981ec"
+
+[natures.desirable-effect]
+label = "Desirable Effect"
+color = "#62c985"
+
+[natures.note]
+label = "Note"
+color = "#f2ea20"
+
+[groups.use-cases]
+label = "Use cases"
+
+[groups.data-team]
+label = "Data team"
+
+[nodes.traceable-edits]
+nature = "need"
+group = "use-cases"
+markdown = '''
+ALCOA+: All edits needs to be tracable
+'''
+
+[nodes.training-roi]
+nature = "need"
+group = "use-cases"
+markdown = '''
+Training on the software must not overcome the ROI
+'''
+
+[nodes.isolated-partner-edits]
+nature = "need"
+group = "use-cases"
+markdown = '''
+Keep Partners (Gov, ReSearch, etc.) edits iso
+'''
+
+[nodes.documents-live-18-months]
+nature = "need"
+group = "use-cases"
+markdown = '''
+Documents live for 18+ months
+'''
+
+[nodes.interdependent-sections]
+nature = "need"
+group = "use-cases"
+markdown = '''
+Sections generation are interdependant
+'''
+
+[nodes.familiar-word-ui]
+nature = "want"
+group = "use-cases"
+markdown = '''
+UI not too foreign from Word
+'''
+
+[nodes.lossless-docx-import]
+nature = "want"
+group = "use-cases"
+markdown = '''
+Ability to import docx without losing history nor style/content
+'''
+
+[nodes.regenerate-on-source-change]
+nature = "want"
+group = "use-cases"
+markdown = '''
+Re-run AI generation when source material changed
+'''
+
+[nodes.ai-generation-orchestration]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+Orchestration of AI generation
+'''
+
+[nodes.docx-oriented-platform]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+Docx-oriented document platform ?
+'''
+
+[nodes.freshness-tracking]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+Fresh / stale tracking
+'''
+
+[nodes.onlyoffice]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+OnlyOffice provides 1:1 Word UI and rendering (at least they claim so)
+'''
+
+[nodes.all-edits-in-word]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+All edits in Word
+'''
+
+[nodes.intuitive-word-ui]
+nature = "solution"
+group = "use-cases"
+markdown = '''
+Design an intuitive UI for Word users
+'''
+
+[nodes.word-alcoa-question]
+nature = "note"
+group = "use-cases"
+markdown = '''
+Does Word provides ALCOA+ garantees ? If not, what remediation are in place ?
+'''
+
+[nodes.conclusion-section-example]
+nature = "note"
+group = "use-cases"
+markdown = '''
+Example: Conclusion section use previous sections as input
+'''
+
+[nodes.reduce-documentary-effort]
+nature = "goal"
+markdown = '''
+Apply AI to reduce the documentary effort on the whole pipeline
+'''
+
+[nodes.ai-content-generation]
+nature = "precondition"
+markdown = '''
+AI tooling for content generation
+'''
+
+[nodes.prompt-management]
+nature = "precondition"
+markdown = '''
+Prompt management solution
+'''
+
+[nodes.docx-word-compatible]
+nature = "precondition"
+markdown = '''
+Fully compatible with docx Word
+'''
+
+[nodes.alcoa-plus]
+nature = "precondition"
+markdown = '''
+ALCOA+
+'''
+
+[nodes.minimal-workflow-disruption]
+nature = "desirable-effect"
+markdown = '''
+with minimal disruption to the current workflow
+'''
+
+[nodes.preserve-documentary-guarantees]
+nature = "desirable-effect"
+markdown = '''
+keep the current documentary guarantees (GxP)
+'''
+
+[nodes.preserve-partner-content]
+nature = "desirable-effect"
+markdown = '''
+Do not lose or tamper any content edited by a partner
+'''
+
+[junctions.word-ui-options]
+operator = "xor"
+group = "use-cases"
+
+[relations.word-alcoa-question-to-traceable-edits]
+from = "word-alcoa-question"
+to = "traceable-edits"
+
+[relations.familiar-word-ui-to-training-roi]
+from = "familiar-word-ui"
+to = "training-roi"
+
+[relations.lossless-docx-import-to-isolated-partner-edits]
+from = "lossless-docx-import"
+to = "isolated-partner-edits"
+
+[relations.docx-oriented-platform-to-lossless-docx-import]
+from = "docx-oriented-platform"
+to = "lossless-docx-import"
+
+[relations.regenerate-on-source-change-to-documents-live-18-months]
+from = "regenerate-on-source-change"
+to = "documents-live-18-months"
+
+[relations.freshness-tracking-to-regenerate-on-source-change]
+from = "freshness-tracking"
+to = "regenerate-on-source-change"
+
+[relations.ai-generation-orchestration-to-interdependent-sections]
+from = "ai-generation-orchestration"
+to = "interdependent-sections"
+
+[relations.conclusion-section-example-to-interdependent-sections]
+from = "conclusion-section-example"
+to = "interdependent-sections"
+
+[relations.onlyoffice-to-word-ui-options]
+from = "onlyoffice"
+to = "word-ui-options"
+
+[relations.all-edits-in-word-to-word-ui-options]
+from = "all-edits-in-word"
+to = "word-ui-options"
+
+[relations.intuitive-word-ui-to-word-ui-options]
+from = "intuitive-word-ui"
+to = "word-ui-options"
+
+[relations.word-ui-options-to-familiar-word-ui]
+from = "word-ui-options"
+to = "familiar-word-ui"
+
+[relations.ai-content-generation-to-reduce-documentary-effort]
+from = "ai-content-generation"
+to = "reduce-documentary-effort"
+
+[relations.minimal-workflow-disruption-to-reduce-documentary-effort]
+from = "minimal-workflow-disruption"
+to = "reduce-documentary-effort"
+
+[relations.preserve-documentary-guarantees-to-reduce-documentary-effort]
+from = "preserve-documentary-guarantees"
+to = "reduce-documentary-effort"
+
+[relations.data-team-to-ai-content-generation]
+from = "data-team"
+to = "ai-content-generation"
+
+[relations.prompt-management-to-ai-content-generation]
+from = "prompt-management"
+to = "ai-content-generation"
+
+[relations.docx-word-compatible-to-minimal-workflow-disruption]
+from = "docx-word-compatible"
+to = "minimal-workflow-disruption"
+
+[relations.alcoa-plus-to-preserve-documentary-guarantees]
+from = "alcoa-plus"
+to = "preserve-documentary-guarantees"
+
+[relations.preserve-partner-content-to-preserve-documentary-guarantees]
+from = "preserve-partner-content"
+to = "preserve-documentary-guarantees"

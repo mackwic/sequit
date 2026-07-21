@@ -1,17 +1,19 @@
 <script lang="ts">
 	import CanvasToolbar from './CanvasToolbar.svelte';
-	import GraphPreview from './GraphPreview.svelte';
+	import LogicCanvas from './LogicCanvas.svelte';
+
+	let { source }: { source: string } = $props();
 </script>
 
 <section class="relative min-h-0 flex-1 overflow-hidden" aria-label="Logic canvas">
-	<GraphPreview />
+	<LogicCanvas {source} />
 	<CanvasToolbar />
 
 	<div class="pointer-events-none absolute top-7 left-1/2 z-20 -translate-x-1/2">
 		<div
 			class="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-500 shadow-sm"
 		>
-			Auto-layout · Left to right
+			Auto-layout · Bottom to top
 		</div>
 	</div>
 

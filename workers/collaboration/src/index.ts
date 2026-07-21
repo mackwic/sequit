@@ -7,18 +7,18 @@ interface Env {
 const json = (body: unknown, status = 200) =>
 	Response.json(body, {
 		status,
-		headers: { 'cache-control': 'no-store' }
+		headers: { 'cache-control': 'no-store' },
 	});
 
 export default {
-	async fetch(request, env): Promise<Response> {
+	fetch(request, env): Response | Promise<Response> {
 		const url = new URL(request.url);
 
 		if (url.pathname === '/health') {
 			return json({ status: 'ok' });
 		}
 
-		const roomMatch = url.pathname.match(/^\/collab\/([^/]+)$/);
+		const roomMatch = /^\/collab\/([^/]+)$/.exec(url.pathname);
 		if (!roomMatch) {
 			return json({ error: 'Not found' }, 404);
 		}
@@ -30,11 +30,11 @@ export default {
 		const roomId = decodeURIComponent(roomMatch[1]);
 		const room = env.COLLABORATION_ROOMS.getByName(roomId);
 		return room.fetch(request);
-	}
+	},
 } satisfies ExportedHandler<Env>;
 
 export class CollaborationRoom extends DurableObject<Env> {
-	async fetch(request: Request): Promise<Response> {
+	fetch(request: Request): Response {
 		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
 			return json({ error: 'WebSocket upgrade required' }, 426);
 		}
@@ -48,7 +48,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	async webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): Promise<void> {
+	webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): void {
 		if (typeof message === 'string') {
 			try {
 				const payload: unknown = JSON.parse(message);
@@ -73,12 +73,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	webSocketClose(
-		socket: WebSocket,
-		code: number,
-		reason: string,
-		_wasClean: boolean
-	): void {
+	webSocketClose(socket: WebSocket, code: number, reason: string): void {
 		socket.close(code, reason);
 	}
 }

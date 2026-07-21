@@ -4,7 +4,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			wrangler: { configPath: './workers/collaboration/wrangler.jsonc' }
-		})
-	]
+			wrangler: { configPath: './workers/collaboration/wrangler.jsonc' },
+		}),
+	],
+	test: {
+		include: ['workers/collaboration/test/**/*.test.ts'],
+	},
 });

@@ -9,7 +9,7 @@
 			? 'Local collaboration ready'
 			: connectionStatus === 'disconnected'
 				? 'Collaboration offline'
-				: 'Connecting'
+				: 'Connecting',
 	);
 
 	onMount(() => {
@@ -43,7 +43,9 @@
 			connectionStatus = 'disconnected';
 		});
 
-		return () => socket.close(1000, 'Page closed');
+		return () => {
+			socket.close(1000, 'Page closed');
+		};
 	});
 </script>
 

@@ -1,25 +1,38 @@
 <script lang="ts">
-	import { PREVIEW_STAGE, type PreviewNode } from '$lib/canvas/preview-graph';
+	import type { RenderedCanvasNode, UnpositionedCanvasNode } from '$lib/canvas/canvas-model';
 
-	let { node }: { node: PreviewNode } = $props();
+	let {
+		node,
+		measuring = false,
+	}: { node: RenderedCanvasNode | UnpositionedCanvasNode; measuring?: boolean } = $props();
+	let bounds = $derived('bounds' in node ? node.bounds : undefined);
 </script>
 
 <article
-	class="node-card absolute overflow-hidden bg-white"
-	data-node-id={node.id}
-	style={`--nature-color: ${node.nature.color}; left: ${node.x}px; top: ${node.y}px; width: ${PREVIEW_STAGE.nodeWidth}px; height: ${PREVIEW_STAGE.nodeHeight}px;`}
+	class="node-card bg-white"
+	class:positioned={bounds !== undefined}
+	data-node-id={measuring ? undefined : node.id}
+	data-measure-node={measuring ? node.id : undefined}
+	style={`--nature-color: ${node.nature.color}; width: ${bounds?.width ?? 220}px; ${bounds ? `left: ${bounds.x}px; top: ${bounds.y}px; height: ${bounds.height}px;` : ''}`}
 >
 	<header>{node.nature.label}</header>
-	<p>{node.content}</p>
+	<p>{node.markdown}</p>
 </article>
 
 <style>
 	.node-card {
+		box-sizing: border-box;
 		border: 1px solid color-mix(in srgb, var(--nature-color) 35%, #d6d3d1);
 		border-radius: 0.75rem;
 		box-shadow:
 			0 1px 2px rgb(28 25 23 / 0.06),
 			0 8px 24px rgb(28 25 23 / 0.06);
+	}
+
+	.positioned {
+		position: absolute;
+		z-index: 20;
+		overflow: hidden;
 	}
 
 	header {
@@ -39,5 +52,6 @@
 		color: #292524;
 		font-size: 0.875rem;
 		line-height: 1.45;
+		white-space: pre-wrap;
 	}
 </style>
