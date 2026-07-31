@@ -38,5 +38,49 @@ describe('AI for documentary effort', () => {
 			expect(canvas.height).toBeGreaterThan(0);
 			opened.close();
 		});
+
+		it('appends isolated nodes after established comparable peers in addition order', async () => {
+			const opened = expectDocument(openDocument(await aiDocumentaryEffortScenario()));
+			const before = await opened.createCanvasModel(
+				layoutMeasurementsForCanvas(opened.measurementModel),
+			);
+			const establishedPeerIds = [
+				'alcoa-plus',
+				'docx-word-compatible',
+				'preserve-partner-content',
+				'prompt-management',
+			];
+			const establishedX = new Map(
+				before.nodes
+					.filter(({ id }) => establishedPeerIds.includes(id))
+					.map(({ id, bounds }) => [id, bounds.x]),
+			);
+
+			opened.addNode({
+				id: 'zz-added-first',
+				natureId: 'goal',
+				markdown: 'Added first',
+			});
+			opened.addNode({
+				id: 'aa-added-second',
+				natureId: 'goal',
+				markdown: 'Added second',
+			});
+			const after = await opened.createCanvasModel(
+				layoutMeasurementsForCanvas(opened.measurementModel),
+			);
+			const first = after.nodes.find(({ id }) => id === 'zz-added-first');
+			const second = after.nodes.find(({ id }) => id === 'aa-added-second');
+			const establishedAfter = after.nodes.filter(({ id }) => establishedPeerIds.includes(id));
+
+			expect(first?.bounds.x).toBeGreaterThan(
+				Math.max(...establishedAfter.map(({ bounds }) => bounds.x)),
+			);
+			expect(first?.bounds.x).toBeLessThan(second?.bounds.x ?? 0);
+			expect(first?.bounds.y).toBe(second?.bounds.y);
+			expect(
+				new Map(establishedAfter.map(({ id, bounds }) => [id, bounds.x])),
+			).toEqual(establishedX);
+		});
 	});
 });

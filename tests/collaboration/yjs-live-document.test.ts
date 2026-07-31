@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import {
+	addNodeToLiveDocument,
 	importLogicDocument,
 	readLogicDocument,
 	replaceNodeMarkdown,
@@ -175,6 +176,80 @@ describe('yjsLiveDocumentFormat', () => {
 
 		expect(replaceNodeMarkdown(ydoc, 'missing-node', 'Ignored')).toBe(false);
 		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+	});
+
+	it('adds a node and its effective endpoint order in one transaction', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const updates: unknown[] = [];
+		ydoc.on('update', (_update, origin) => updates.push(origin));
+
+		const result = addNodeToLiveDocument(ydoc, {
+			id: 'zz-new-node',
+			natureId: 'goal',
+			markdown: 'New goal',
+		});
+
+		expect(result.ok).toBe(true);
+		expect(updates).toEqual(['sequit:add-node']);
+		expect(readDocument(ydoc).nodes).toContainEqual({
+			id: 'zz-new-node',
+			natureId: 'goal',
+			markdown: 'New goal',
+		});
+		expect(readDocument(ydoc).endpointOrder?.at(-1)).toBe('zz-new-node');
+	});
+
+	it('rejects invalid node references without partial writes', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const before = readDocument(ydoc);
+		const stateBefore = Y.encodeStateVector(ydoc);
+
+		const result = addNodeToLiveDocument(ydoc, {
+			id: 'invalid-node',
+			natureId: 'missing-nature',
+			groupId: 'missing-group',
+			markdown: 'Invalid',
+		});
+
+		expect(result.ok).toBe(false);
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		expect(readDocument(ydoc)).toEqual(before);
+	});
+
+	it('seeds legacy order once and preserves sequential node addition order', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+
+		for (const id of ['zz-added-first', 'aa-added-second', 'mm-added-third']) {
+			const result = addNodeToLiveDocument(ydoc, {
+				id,
+				natureId: 'goal',
+				markdown: id,
+			});
+			expect(result.ok).toBe(true);
+		}
+
+		expect(readDocument(ydoc).endpointOrder?.slice(-3)).toEqual([
+			'zz-added-first',
+			'aa-added-second',
+			'mm-added-third',
+		]);
+	});
+
+	it('preserves endpoint order under unrelated Markdown edits', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		addNodeToLiveDocument(ydoc, {
+			id: 'new-node',
+			natureId: 'goal',
+			markdown: 'New',
+		});
+		const order = readDocument(ydoc).endpointOrder;
+
+		expect(replaceNodeMarkdown(ydoc, 'traceable-edits', 'Changed')).toBe(true);
+		expect(readDocument(ydoc).endpointOrder).toEqual(order);
 	});
 
 	it('converges independent fine-grained business operations without replacing collections', async () => {

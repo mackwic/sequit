@@ -114,4 +114,32 @@ describe('openDocument', () => {
 		expect(listener).not.toHaveBeenCalled();
 		result.value.close();
 	});
+
+	it('refreshes the projection and renders added independent peers in operation order', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+
+		result.value.addNode({
+			id: 'zz-added-first',
+			natureId: 'goal',
+			markdown: 'Added first',
+		});
+		result.value.addNode({
+			id: 'aa-added-second',
+			natureId: 'goal',
+			markdown: 'Added second',
+		});
+		const canvas = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		const first = canvas.nodes.find(({ id }) => id === 'zz-added-first');
+		const second = canvas.nodes.find(({ id }) => id === 'aa-added-second');
+
+		expect(result.value.measurementModel.nodes).toHaveLength(26);
+		expect(result.value.measurementModel.nodes.map(({ id }) => id)).toEqual(
+			expect.arrayContaining(['zz-added-first', 'aa-added-second']),
+		);
+		expect(first?.bounds.y).toBe(second?.bounds.y);
+		expect(first?.bounds.x).toBeLessThan(second?.bounds.x ?? 0);
+	});
 });

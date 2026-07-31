@@ -13,6 +13,7 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
 import { validateLogicDocument } from '../document/validate-logic-document';
+import { deriveEffectiveEndpointOrder } from '../layout/endpoint-order';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
 
@@ -366,4 +367,65 @@ export function replaceNodeMarkdown(ydoc: Y.Doc, nodeId: string, markdown: strin
 		text.insert(0, markdown);
 	}, 'sequit:replace-node-markdown');
 	return true;
+}
+
+function validationFailure(
+	diagnostics: readonly { readonly message: string; readonly path: readonly string[] }[],
+): YjsLiveDocumentResult<LogicDocument> {
+	return {
+		ok: false,
+		diagnostics: diagnostics.map(({ message, path }) => ({
+			code: 'invalid-yjs-live-document',
+			message,
+			path,
+		})),
+	};
+}
+
+export function addNodeToLiveDocument(
+	ydoc: Y.Doc,
+	node: LogicNode,
+): YjsLiveDocumentResult<LogicDocument> {
+	const current = readLogicDocument(ydoc);
+	if (!current.ok) return current;
+
+	const endpointIds = [
+		...current.value.groups.map(({ id }) => id),
+		...current.value.nodes.map(({ id }) => id),
+		...current.value.junctions.map(({ id }) => id),
+	];
+	const endpointOrder = [
+		...deriveEffectiveEndpointOrder(current.value.endpointOrder, endpointIds),
+		node.id,
+	];
+	const tentative: LogicDocument = {
+		...current.value,
+		endpointOrder,
+		nodes: [...current.value.nodes, node],
+	};
+	const validated = validateLogicDocument(tentative);
+	if (!validated.ok) return validationFailure(validated.diagnostics);
+
+	ydoc.transact(() => {
+		const markdown = new Y.Text();
+		markdown.insert(0, node.markdown);
+		ydoc.getMap<Y.Map<unknown>>(NODES).set(
+			node.id,
+			entityMap({
+				natureId: node.natureId,
+				...(node.groupId === undefined ? {} : { groupId: node.groupId }),
+				markdown,
+			}),
+		);
+		const meta = ydoc.getMap<unknown>(META);
+		const existingOrder = meta.get('endpointOrder');
+		if (existingOrder instanceof Y.Array) {
+			existingOrder.delete(0, existingOrder.length);
+			existingOrder.insert(0, endpointOrder);
+		} else {
+			meta.set('endpointOrder', endpointOrderArray(endpointOrder));
+		}
+	}, 'sequit:add-node');
+
+	return readLogicDocument(ydoc);
 }
