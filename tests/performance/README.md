@@ -7,6 +7,7 @@ This opt-in suite reports machine-specific snapshot costs for graph creation, to
 - `pnpm benchmark:layout` runs the 60-case layout matrix.
 - `pnpm benchmark:graph` runs the same 60 cases once for graph creation and once for ranking.
 - `pnpm benchmark:performance` runs graph reporting followed by layout reporting.
+- `pnpm test:performance` runs the opt-in calibrated snapshot regression gate.
 
 The normal `pnpm test:web` configuration excludes `tests/performance/**`. The dedicated `vitest.performance.config.ts` uses the Node environment, disables coverage, and runs files serially.
 
@@ -57,9 +58,9 @@ Validation, scenario generation, graph/rank preparation for layout, measurement 
 
 Each registration uses a fixed 250 ms warmup and at least 1000 ms of measured sampling. Sampling duration, rather than a fixed iteration count, allows fast cases to collect many observations without making slow cases unbounded. Vitest's benchmark table is the detailed report; generated machine-specific output is not committed as a golden baseline.
 
-## Draft Snapshot Budgets
+## Calibrated Snapshot Budgets
 
-These uncalibrated median targets come directly from the ticket. They are policy documentation in Phase 2, not an enforced gate. Every cell is explicit so later calibration can adjust a single topology and size without weakening an entire column.
+The gate warms each prepared case three times, records 11 independent public-API durations with `performance.now()`, and compares their median with the strict upper bound below. The complete matrix is materialized in `snapshot-layout-budgets.ts`; 59 cells retain the ticket draft and one locally contradicted cell is calibrated independently.
 
 | Scenario                  |     10 |     19 |     50 |    100 |    1000 |
 | ------------------------- | -----: | -----: | -----: | -----: | ------: |
@@ -68,7 +69,7 @@ These uncalibrated median targets come directly from the ticket. They are policy
 | `unbalanced`              | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `unbalanced-random`       | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `subgroups`               | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
-| `nested-subgroups`        | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
+| `nested-subgroups`        | <10 ms | <10 ms | <30 ms | <50 ms | <205 ms |
 | `wide-bipartite-layers`   | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `repeated-diamonds`       | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `disconnected-components` | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
@@ -89,3 +90,36 @@ sysctl -n machdep.cpu.brand_string  # macOS
 ```
 
 Also note whether the machine was otherwise idle and whether it was using battery or external power. The separate budget command introduced during calibration remains opt-in; local reports from different machines should not be compared as interchangeable baselines.
+
+## Initial Calibration
+
+Calibration ran three consecutive times on 2026-07-31 at 16:56-16:57 +0200 with no other intentional workload. The machine was connected to AC power with its battery charged. The working tree was based on the Phase 2 commit; the Phase 3 gate and policy were uncommitted during measurement.
+
+| Environment | Recorded value                                     |
+| ----------- | -------------------------------------------------- |
+| Base commit | `c42c7fe766698ae8a4b55ba8e802409cd9501b2d`         |
+| Node        | `v22.15.0`                                         |
+| pnpm        | `10.34.1`                                          |
+| OS          | macOS Darwin 25.5.0, arm64 (`RELEASE_ARM64_T6000`) |
+| CPU         | Apple M1 Max                                       |
+| Power       | AC power, battery 100% charged                     |
+| Command     | `pnpm test:performance`                            |
+
+The values below are the worst median in milliseconds from the three calibration runs, not benchmark throughput or whole-test duration.
+
+| Scenario                  |    10 |    19 |    50 |   100 |    1000 |
+| ------------------------- | ----: | ----: | ----: | ----: | ------: |
+| `long-queue`              | 0.028 | 0.046 | 0.114 | 0.239 |   1.621 |
+| `binary-tree`             | 0.016 | 0.030 | 0.075 | 0.149 |   1.562 |
+| `unbalanced`              | 0.017 | 0.027 | 0.071 | 0.121 |   1.441 |
+| `unbalanced-random`       | 0.012 | 0.023 | 0.062 | 0.127 |   1.370 |
+| `subgroups`               | 0.047 | 0.034 | 0.081 | 0.154 |   1.736 |
+| `nested-subgroups`        | 0.045 | 0.117 | 0.463 | 1.740 | 136.079 |
+| `wide-bipartite-layers`   | 0.018 | 0.039 | 0.168 | 0.460 |  15.162 |
+| `repeated-diamonds`       | 0.014 | 0.026 | 0.069 | 0.129 |   1.557 |
+| `disconnected-components` | 0.014 | 0.026 | 0.069 | 0.139 |   1.400 |
+| `junction-heavy`          | 0.026 | 0.051 | 0.144 | 0.303 |   3.556 |
+| `group-relations`         | 0.026 | 0.043 | 0.093 | 0.174 |   1.834 |
+| `shallow-groups`          | 0.014 | 0.026 | 0.105 | 0.137 |   2.355 |
+
+Only `nested-subgroups` at 1000 nodes exceeded its ticket draft in all three runs: 132.863 ms, 136.079 ms, and 132.626 ms. Applying the calibration rule to the 136.079 ms worst median gives `ceil(136.079 * 1.5 / 5) * 5 = 205 ms`. This topology creates 1000 levels of containment and exercises the layout engine's depth-sensitive group-envelope work; no other matrix cell is weakened.
