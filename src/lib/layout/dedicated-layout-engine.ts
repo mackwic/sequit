@@ -126,7 +126,8 @@ function componentContext(
 	const contexts = new Set<string>();
 	for (const id of ids) {
 		const groupId = endpointGroupId(graph, id);
-		contexts.add(groupId === undefined ? '~root' : topLevelGroupId(groupId, groupsById));
+		if (groupId === undefined) contexts.add('~root');
+		else contexts.add(topLevelGroupId(groupId, groupsById));
 	}
 	return [...contexts].sort((left, right) => left.localeCompare(right)).join('|');
 }
@@ -150,15 +151,23 @@ function groupDepth(group: LogicGroup, groupsById: ReadonlyMap<string, LogicGrou
 
 function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection): readonly Point[] {
 	if (direction === 'top-to-bottom' || direction === 'bottom-to-top') {
-		const sourceY = direction === 'top-to-bottom' ? source.y + source.height : source.y;
-		const targetY = direction === 'top-to-bottom' ? target.y : target.y + target.height;
+		let sourceY = source.y;
+		let targetY = target.y + target.height;
+		if (direction === 'top-to-bottom') {
+			sourceY = source.y + source.height;
+			targetY = target.y;
+		}
 		const start = { x: source.x + source.width / 2, y: sourceY };
 		const end = { x: target.x + target.width / 2, y: targetY };
 		const middle = (start.y + end.y) / 2;
 		return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
 	}
-	const sourceX = direction === 'left-to-right' ? source.x + source.width : source.x;
-	const targetX = direction === 'left-to-right' ? target.x : target.x + target.width;
+	let sourceX = source.x;
+	let targetX = target.x + target.width;
+	if (direction === 'left-to-right') {
+		sourceX = source.x + source.width;
+		targetX = target.x;
+	}
 	const start = { x: sourceX, y: source.y + source.height / 2 };
 	const end = { x: targetX, y: target.y + target.height / 2 };
 	const middle = (start.x + end.x) / 2;
@@ -188,25 +197,32 @@ export function layoutWithDedicatedEngine(
 	);
 	let maximumPrimaryLength = 0;
 	for (const component of components) {
-		maximumPrimaryLength = Math.max(
-			maximumPrimaryLength,
-			vertical ? component.layout.height : component.layout.width,
-		);
+		let componentPrimaryLength = component.layout.width;
+		if (vertical) componentPrimaryLength = component.layout.height;
+		maximumPrimaryLength = Math.max(maximumPrimaryLength, componentPrimaryLength);
 	}
 
 	const bounds = new Map<string, Bounds>();
 	let cross = OUTER_MARGIN;
 	for (const component of components) {
-		const primaryLength = vertical ? component.layout.height : component.layout.width;
+		let primaryLength = component.layout.width;
+		if (vertical) primaryLength = component.layout.height;
 		const alignAtStart =
 			graph.document.layout.bias === 'top' || graph.document.layout.bias === 'left';
-		const primary = OUTER_MARGIN + (alignAtStart ? 0 : maximumPrimaryLength - primaryLength);
-		const offsetX = vertical ? cross : primary;
-		const offsetY = vertical ? primary : cross;
+		let primary = OUTER_MARGIN + maximumPrimaryLength - primaryLength;
+		if (alignAtStart) primary = OUTER_MARGIN;
+		let offsetX = primary;
+		let offsetY = cross;
+		if (vertical) {
+			offsetX = cross;
+			offsetY = primary;
+		}
 		for (const [id, value] of component.layout.boundsById) {
 			bounds.set(id, translateBounds(value, offsetX, offsetY));
 		}
-		cross += (vertical ? component.layout.width : component.layout.height) + COMPONENT_GAP;
+		let componentCrossLength = component.layout.height;
+		if (vertical) componentCrossLength = component.layout.width;
+		cross += componentCrossLength + COMPONENT_GAP;
 	}
 
 	const groupsByDescendingDepth = [...graph.document.groups].sort(
@@ -240,17 +256,27 @@ export function layoutWithDedicatedEngine(
 
 		if (memberBounds.length === 0) {
 			if (bounds.has(group.id)) continue;
-			const primaryLength = vertical ? validated.minimumHeight : validated.minimumWidth;
+			let primaryLength = validated.minimumWidth;
+			if (vertical) primaryLength = validated.minimumHeight;
 			const alignAtStart =
 				graph.document.layout.bias === 'top' || graph.document.layout.bias === 'left';
-			const primary = OUTER_MARGIN + (alignAtStart ? 0 : maximumPrimaryLength - primaryLength);
+			let primary = OUTER_MARGIN + maximumPrimaryLength - primaryLength;
+			if (alignAtStart) primary = OUTER_MARGIN;
+			let x = primary;
+			let y = cross;
+			let groupCrossLength = validated.minimumHeight;
+			if (vertical) {
+				x = cross;
+				y = primary;
+				groupCrossLength = validated.minimumWidth;
+			}
 			bounds.set(group.id, {
-				x: vertical ? cross : primary,
-				y: vertical ? primary : cross,
+				x,
+				y,
 				width: validated.minimumWidth,
 				height: validated.minimumHeight,
 			});
-			cross += (vertical ? validated.minimumWidth : validated.minimumHeight) + COMPONENT_GAP;
+			cross += groupCrossLength + COMPONENT_GAP;
 			continue;
 		}
 

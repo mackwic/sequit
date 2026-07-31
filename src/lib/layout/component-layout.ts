@@ -19,11 +19,13 @@ function isForwardDirection(direction: LayoutDirection): boolean {
 }
 
 function primarySize(size: Size, vertical: boolean): number {
-	return vertical ? size.height : size.width;
+	if (vertical) return size.height;
+	return size.width;
 }
 
 function crossSize(size: Size, vertical: boolean): number {
-	return vertical ? size.width : size.height;
+	if (vertical) return size.width;
+	return size.height;
 }
 
 export function layoutComponent(
@@ -76,20 +78,23 @@ export function layoutComponent(
 			const bandStart = primaryBandStarts[rank] ?? 0;
 			const bandSize = primaryBandSizes[rank] ?? primarySize(size, vertical);
 			const forwardPrimary = bandStart + (bandSize - primarySize(size, vertical)) / 2;
-			const primary = isForwardDirection(direction)
-				? forwardPrimary
-				: primaryLength - forwardPrimary - primarySize(size, vertical);
-			boundsById.set(
-				id,
-				vertical ? { x: cross, y: primary, ...size } : { x: primary, y: cross, ...size },
-			);
+			let primary = primaryLength - forwardPrimary - primarySize(size, vertical);
+			if (isForwardDirection(direction)) primary = forwardPrimary;
+			if (vertical) boundsById.set(id, { x: cross, y: primary, ...size });
+			else boundsById.set(id, { x: primary, y: cross, ...size });
 			cross += crossSize(size, vertical) + ITEM_GAP;
 		}
 	}
 
+	let width = primaryLength;
+	let height = crossLength;
+	if (vertical) {
+		width = crossLength;
+		height = primaryLength;
+	}
 	return {
 		boundsById,
-		width: vertical ? crossLength : primaryLength,
-		height: vertical ? primaryLength : crossLength,
+		width,
+		height,
 	};
 }

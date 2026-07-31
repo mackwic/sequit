@@ -7,7 +7,13 @@
 	let { canvas }: { canvas: CanvasModel } = $props();
 
 	function routePath(points: readonly Point[]): string {
-		return points.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ');
+		return points
+			.map(({ x, y }, index) => {
+				let command = 'L';
+				if (index === 0) command = 'M';
+				return `${command} ${x} ${y}`;
+			})
+			.join(' ');
 	}
 </script>
 

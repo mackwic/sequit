@@ -4,16 +4,15 @@
 	type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
 	let connectionStatus = $state<ConnectionStatus>('connecting');
-	let statusLabel = $derived(
-		connectionStatus === 'connected'
-			? 'Local collaboration ready'
-			: connectionStatus === 'disconnected'
-				? 'Collaboration offline'
-				: 'Connecting',
-	);
+	let statusLabel = $derived.by(() => {
+		if (connectionStatus === 'connected') return 'Local collaboration ready';
+		if (connectionStatus === 'disconnected') return 'Collaboration offline';
+		return 'Connecting';
+	});
 
 	onMount(() => {
-		const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+		let protocol = 'ws:';
+		if (window.location.protocol === 'https:') protocol = 'wss:';
 		const socket = new WebSocket(`${protocol}//${window.location.host}/collab/local-demo`);
 
 		socket.addEventListener('message', (event) => {

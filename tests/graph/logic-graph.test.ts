@@ -57,9 +57,10 @@ describe('LogicGraph', () => {
 		const document = await openReferenceLiveDocument();
 		const invalid: LogicDocument = {
 			...document,
-			relations: document.relations.map((relation, index) =>
-				index === 0 ? { ...relation, from: 'missing-endpoint' } : relation,
-			),
+			relations: document.relations.map((relation, index) => {
+				if (index === 0) return { ...relation, from: 'missing-endpoint' };
+				return relation;
+			}),
 		};
 
 		const result = createGraph(invalid);
@@ -164,15 +165,14 @@ describe('topologicallyRank', () => {
 
 		for (const [endpointId, rank] of ranks.byEndpointId) {
 			const endpointPredecessors = predecessors.get(endpointId) ?? [];
-			const expected =
-				endpointPredecessors.length === 0
-					? 0
-					: 1 +
-						Math.max(
-							...endpointPredecessors.map(
-								(predecessor) => ranks.byEndpointId.get(predecessor) ?? -1,
-							),
-						);
+			let expected = 0;
+			if (endpointPredecessors.length > 0) {
+				expected =
+					1 +
+					Math.max(
+						...endpointPredecessors.map((predecessor) => ranks.byEndpointId.get(predecessor) ?? -1),
+					);
+			}
 			expect(rank, endpointId).toBe(expected);
 		}
 		expect(ranks.byEndpointId.get('onlyoffice')).toBe(0);

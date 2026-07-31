@@ -19,9 +19,10 @@
 
 	let { source }: { source: string } = $props();
 	let opened = $derived(openDocument(source));
-	let measurementModel = $derived(
-		opened.ok ? opened.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
-	);
+	let measurementModel = $derived.by(() => {
+		if (opened.ok) return opened.value.measurementModel;
+		return EMPTY_MEASUREMENT_MODEL;
+	});
 	let measurementLayer = $state<HTMLDivElement>();
 	let canvas = $state<CanvasModel>();
 	let error = $state<string>();
@@ -29,7 +30,8 @@
 	let activeLayoutRequest: object | undefined;
 
 	$effect(() => {
-		error = opened.ok ? undefined : opened.diagnostics.map(({ message }) => message).join('\n');
+		error = undefined;
+		if (!opened.ok) error = opened.diagnostics.map(({ message }) => message).join('\n');
 		canvas = undefined;
 		previousMeasurementSignature = '';
 		activeLayoutRequest = undefined;
@@ -49,7 +51,8 @@
 			if (activeLayoutRequest === request) canvas = result;
 		} catch (cause) {
 			if (activeLayoutRequest === request) {
-				error = cause instanceof Error ? cause.message : String(cause);
+				if (cause instanceof Error) error = cause.message;
+				else error = String(cause);
 			}
 		}
 	}
