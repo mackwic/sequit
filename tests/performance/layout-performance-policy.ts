@@ -1,0 +1,16 @@
+export const LAYOUT_PERFORMANCE_NODE_COUNTS = [10, 19, 50, 100, 1000] as const;
+
+export type LayoutPerformanceNodeCount = (typeof LAYOUT_PERFORMANCE_NODE_COUNTS)[number];
+
+export const LAYOUT_PERFORMANCE_BENCHMARK_WARMUP_MS = 250;
+export const LAYOUT_PERFORMANCE_BENCHMARK_SAMPLE_MS = 1000;
+
+export const LAYOUT_PERFORMANCE_BENCHMARK_OPTIONS = Object.freeze({
+	warmupTime: LAYOUT_PERFORMANCE_BENCHMARK_WARMUP_MS,
+	time: LAYOUT_PERFORMANCE_BENCHMARK_SAMPLE_MS,
+});
+
+export const INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS = Object.freeze({
+	synchronousProjection: 16,
+	total: 50,
+});
