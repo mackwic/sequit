@@ -12,6 +12,7 @@ import {
 	type LogicRelation,
 	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
+import { projectRelationAddition } from '../document/topology-edits';
 import { validateLogicDocument } from '../document/validate-logic-document';
 import { deriveEffectiveEndpointOrder } from '../layout/endpoint-order';
 
@@ -61,6 +62,16 @@ function endpointOrderArray(endpointOrder: readonly string[]): Y.Array<string> {
 	const result = new Y.Array<string>();
 	result.insert(0, [...endpointOrder]);
 	return result;
+}
+
+function replaceEndpointOrder(meta: Y.Map<unknown>, endpointOrder: readonly string[]): void {
+	const existingOrder = meta.get('endpointOrder');
+	if (existingOrder instanceof Y.Array) {
+		existingOrder.delete(0, existingOrder.length);
+		existingOrder.insert(0, [...endpointOrder]);
+	} else {
+		meta.set('endpointOrder', endpointOrderArray(endpointOrder));
+	}
 }
 
 export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void {
@@ -417,15 +428,29 @@ export function addNodeToLiveDocument(
 				markdown,
 			}),
 		);
-		const meta = ydoc.getMap<unknown>(META);
-		const existingOrder = meta.get('endpointOrder');
-		if (existingOrder instanceof Y.Array) {
-			existingOrder.delete(0, existingOrder.length);
-			existingOrder.insert(0, endpointOrder);
-		} else {
-			meta.set('endpointOrder', endpointOrderArray(endpointOrder));
-		}
+		replaceEndpointOrder(ydoc.getMap<unknown>(META), endpointOrder);
 	}, 'sequit:add-node');
+
+	return readLogicDocument(ydoc);
+}
+
+export function addRelationToLiveDocument(
+	ydoc: Y.Doc,
+	relation: LogicRelation,
+): YjsLiveDocumentResult<LogicDocument> {
+	const current = readLogicDocument(ydoc);
+	if (!current.ok) return current;
+	const projected = projectRelationAddition(current.value, relation);
+	if (!projected.ok) return validationFailure(projected.diagnostics);
+	const endpointOrder = projected.value.document.endpointOrder;
+	if (endpointOrder === undefined) throw new Error('Relation projection must produce endpoint order');
+
+	ydoc.transact(() => {
+		ydoc
+			.getMap<Y.Map<unknown>>(RELATIONS)
+			.set(relation.id, entityMap({ from: relation.from, to: relation.to }));
+		replaceEndpointOrder(ydoc.getMap<unknown>(META), endpointOrder);
+	}, 'sequit:add-relation');
 
 	return readLogicDocument(ydoc);
 }
