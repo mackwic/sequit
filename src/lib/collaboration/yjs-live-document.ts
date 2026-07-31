@@ -1,7 +1,6 @@
 import * as Y from 'yjs';
 
 import {
-	JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
 	layoutConfiguration,
@@ -11,32 +10,21 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
 import { validateLogicDocument } from '../document/validate-logic-document';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
 
-enum YjsLiveDocumentDiagnosticCode {
-	UnsupportedFormat = 'unsupported-yjs-live-document-format',
-	InvalidDocument = 'invalid-yjs-live-document',
-}
-
-interface YjsLiveDocumentDiagnostic {
-	readonly code: YjsLiveDocumentDiagnosticCode;
+export interface YjsLiveDocumentDiagnostic {
+	readonly code: 'unsupported-yjs-live-document-format' | 'invalid-yjs-live-document';
 	readonly message: string;
 	readonly path: readonly string[];
 }
 
-interface YjsLiveDocumentSuccess<T> {
-	readonly ok: true;
-	readonly value: T;
-}
-interface YjsLiveDocumentFailure {
-	readonly ok: false;
-	readonly diagnostics: readonly YjsLiveDocumentDiagnostic[];
-}
-
-export type YjsLiveDocumentResult<T> = YjsLiveDocumentSuccess<T> | YjsLiveDocumentFailure;
+export type YjsLiveDocumentResult<T> =
+	| { readonly ok: true; readonly value: T }
+	| { readonly ok: false; readonly diagnostics: readonly YjsLiveDocumentDiagnostic[] };
 
 const META = 'sequit.meta';
 const NATURES = 'sequit.natures';
@@ -68,43 +56,50 @@ function replaceEntityCollection<T extends { readonly id: string }>(
 	for (const entity of entities) target.set(entity.id, entityMap(project(entity)));
 }
 
+function endpointOrderArray(endpointOrder: readonly string[]): Y.Array<string> {
+	const result = new Y.Array<string>();
+	result.insert(0, [...endpointOrder]);
+	return result;
+}
+
 export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void {
 	ydoc.transact(() => {
 		replaceMapContents(ydoc.getMap(META), {
 			yjsLiveDocumentFormat: YJS_LIVE_DOCUMENT_FORMAT,
+			persistenceFormat: document.persistenceFormat,
 			id: document.id,
 			title: document.title,
 			layoutDirection: document.layout.direction,
 			layoutBias: document.layout.bias,
+			...(document.endpointOrder === undefined
+				? {}
+				: { endpointOrder: endpointOrderArray(document.endpointOrder) }),
 		});
 		replaceEntityCollection(ydoc.getMap(NATURES), document.natures, ({ label, color }) => ({
 			label,
 			color,
 		}));
-		replaceEntityCollection(ydoc.getMap(GROUPS), document.groups, ({ label, groupId }) => {
-			const values: { label: string; groupId?: string } = { label };
-			if (groupId !== undefined) values.groupId = groupId;
-			return values;
-		});
+		replaceEntityCollection(ydoc.getMap(GROUPS), document.groups, ({ label, groupId }) => ({
+			label,
+			...(groupId === undefined ? {} : { groupId }),
+		}));
 		replaceEntityCollection(
 			ydoc.getMap(NODES),
 			document.nodes,
 			({ natureId, groupId, markdown }) => {
 				const text = new Y.Text();
 				text.insert(0, markdown);
-				const values: { natureId: string; groupId?: string; markdown: Y.Text } = {
-					natureId,
-					markdown: text,
-				};
-				if (groupId !== undefined) values.groupId = groupId;
-				return values;
+				return { natureId, ...(groupId === undefined ? {} : { groupId }), markdown: text };
 			},
 		);
-		replaceEntityCollection(ydoc.getMap(JUNCTIONS), document.junctions, ({ operator, groupId }) => {
-			const values: { operator: string; groupId?: string } = { operator };
-			if (groupId !== undefined) values.groupId = groupId;
-			return values;
-		});
+		replaceEntityCollection(
+			ydoc.getMap(JUNCTIONS),
+			document.junctions,
+			({ operator, groupId }) => ({
+				operator,
+				...(groupId === undefined ? {} : { groupId }),
+			}),
+		);
 		replaceEntityCollection(ydoc.getMap(RELATIONS), document.relations, ({ from, to }) => ({
 			from,
 			to,
@@ -123,7 +118,7 @@ function readString(
 ): string | undefined {
 	if (typeof value === 'string') return value;
 	context.diagnostics.push({
-		code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+		code: 'invalid-yjs-live-document',
 		message: `${path.join('.')} must be a string`,
 		path,
 	});
@@ -135,8 +130,28 @@ function readOptionalString(
 	path: readonly string[],
 	context: ReadContext,
 ): string | undefined {
+	return value === undefined ? undefined : readString(value, path, context);
+}
+
+function readOptionalEndpointOrder(
+	value: unknown,
+	context: ReadContext,
+): readonly string[] | undefined {
 	if (value === undefined) return undefined;
-	return readString(value, path, context);
+	if (!(value instanceof Y.Array)) {
+		context.diagnostics.push({
+			code: 'invalid-yjs-live-document',
+			message: 'layout.endpointOrder must be a Y.Array of strings',
+			path: ['layout', 'endpointOrder'],
+		});
+		return undefined;
+	}
+	const result: string[] = [];
+	for (const [index, item] of value.toArray().entries()) {
+		const mapped = readString(item, ['layout', 'endpointOrder', String(index)], context);
+		if (mapped !== undefined) result.push(mapped);
+	}
+	return result;
 }
 
 function sortedKeys<T>(map: Y.Map<T>): readonly string[] {
@@ -152,7 +167,7 @@ function readEntity(
 	const value = collection.get(id);
 	if (value instanceof Y.Map) return value;
 	context.diagnostics.push({
-		code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+		code: 'invalid-yjs-live-document',
 		message: `${collectionName}.${id} must be a Y.Map`,
 		path: [collectionName, id],
 	});
@@ -183,8 +198,7 @@ function readNature(
 ): LogicNature | undefined {
 	const label = readString(entity.get('label'), ['natures', id, 'label'], context);
 	const color = readString(entity.get('color'), ['natures', id, 'color'], context);
-	if (label === undefined || color === undefined) return undefined;
-	return { id, label, color };
+	return label === undefined || color === undefined ? undefined : { id, label, color };
 }
 
 function readGroup(
@@ -194,10 +208,9 @@ function readGroup(
 ): LogicGroup | undefined {
 	const label = readString(entity.get('label'), ['groups', id, 'label'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['groups', id, 'group'], context);
-	if (label === undefined) return undefined;
-	const group: { id: string; label: string; groupId?: string } = { id, label };
-	if (groupId !== undefined) group.groupId = groupId;
-	return group;
+	return label === undefined
+		? undefined
+		: { id, label, ...(groupId === undefined ? {} : { groupId }) };
 }
 
 function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): LogicNode | undefined {
@@ -206,20 +219,19 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	const markdown = entity.get('markdown');
 	if (!(markdown instanceof Y.Text)) {
 		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+			code: 'invalid-yjs-live-document',
 			message: `nodes.${id}.markdown must be a Y.Text`,
 			path: ['nodes', id, 'markdown'],
 		});
 		return undefined;
 	}
 	if (natureId === undefined) return undefined;
-	const node: { id: string; natureId: string; groupId?: string; markdown: string } = {
+	return {
 		id,
 		natureId,
+		...(groupId === undefined ? {} : { groupId }),
 		markdown: markdown.toJSON(),
 	};
-	if (groupId !== undefined) node.groupId = groupId;
-	return node;
 }
 
 function readJunction(
@@ -229,17 +241,12 @@ function readJunction(
 ): LogicJunction | undefined {
 	const operator = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['junctions', id, 'group'], context);
-	if (operator === JunctionOperator.Xor) {
-		const junction: { id: string; operator: JunctionOperator; groupId?: string } = {
-			id,
-			operator: JunctionOperator.Xor,
-		};
-		if (groupId !== undefined) junction.groupId = groupId;
-		return junction;
+	if (operator === 'xor') {
+		return { id, operator, ...(groupId === undefined ? {} : { groupId }) };
 	}
 	if (operator !== undefined) {
 		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+			code: 'invalid-yjs-live-document',
 			message: `Unsupported junction operator: ${operator}`,
 			path: ['junctions', id, 'operator'],
 		});
@@ -254,8 +261,7 @@ function readRelation(
 ): LogicRelation | undefined {
 	const from = readString(entity.get('from'), ['relations', id, 'from'], context);
 	const to = readString(entity.get('to'), ['relations', id, 'to'], context);
-	if (from === undefined || to === undefined) return undefined;
-	return { id, from, to };
+	return from === undefined || to === undefined ? undefined : { id, from, to };
 }
 
 export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocument> {
@@ -266,7 +272,7 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 			ok: false,
 			diagnostics: [
 				{
-					code: YjsLiveDocumentDiagnosticCode.UnsupportedFormat,
+					code: 'unsupported-yjs-live-document-format',
 					message: `Unsupported yjsLiveDocumentFormat: ${String(version)}`,
 					path: ['yjsLiveDocumentFormat'],
 				},
@@ -279,28 +285,37 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const title = readString(meta.get('title'), ['document', 'title'], context);
 	const layoutDirection = readString(meta.get('layoutDirection'), ['layout', 'direction'], context);
 	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
+	const endpointOrder = readOptionalEndpointOrder(meta.get('endpointOrder'), context);
+	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {
+		context.diagnostics.push({
+			code: 'invalid-yjs-live-document',
+			message: `Unsupported imported persistenceFormat: ${String(meta.get('persistenceFormat'))}`,
+			path: ['persistenceFormat'],
+		});
+	}
 	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === layoutDirection);
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === layoutBias);
 	if (layoutDirection !== undefined && direction === undefined) {
 		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+			code: 'invalid-yjs-live-document',
 			message: `Unsupported layout direction: ${layoutDirection}`,
 			path: ['layout', 'direction'],
 		});
 	}
 	if (layoutBias !== undefined && bias === undefined) {
 		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+			code: 'invalid-yjs-live-document',
 			message: `Unsupported layout bias: ${layoutBias}`,
 			path: ['layout', 'bias'],
 		});
 	}
-	const hasLayoutInputs = direction !== undefined && bias !== undefined;
-	let layout: LogicDocument['layout'] | undefined;
-	if (hasLayoutInputs) layout = layoutConfiguration(direction, bias);
-	if (hasLayoutInputs && layout === undefined) {
+	const layout =
+		direction === undefined || bias === undefined
+			? undefined
+			: layoutConfiguration(direction, bias);
+	if (direction !== undefined && bias !== undefined && layout === undefined) {
 		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
+			code: 'invalid-yjs-live-document',
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
 			path: ['layout', 'bias'],
 		});
@@ -312,16 +327,16 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const junctions = readCollection(ydoc, JUNCTIONS, 'junctions', context, readJunction);
 	const relations = readCollection(ydoc, RELATIONS, 'relations', context, readRelation);
 
-	if (context.diagnostics.length > 0) return { ok: false, diagnostics: context.diagnostics };
-	if (id === undefined || title === undefined) {
+	if (context.diagnostics.length > 0 || id === undefined || title === undefined || !layout) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
-	if (!layout) return { ok: false, diagnostics: context.diagnostics };
 
 	const document: LogicDocument = {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id,
 		title,
 		layout,
+		...(endpointOrder === undefined ? {} : { endpointOrder }),
 		natures,
 		groups,
 		nodes,
@@ -329,15 +344,16 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 		relations,
 	};
 	const validated = validateLogicDocument(document);
-	if (validated.ok) return { ok: true, value: validated.value };
-	return {
-		ok: false,
-		diagnostics: validated.diagnostics.map(({ message, path }) => ({
-			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
-			message,
-			path,
-		})),
-	};
+	return validated.ok
+		? { ok: true, value: validated.value }
+		: {
+				ok: false,
+				diagnostics: validated.diagnostics.map(({ message, path }) => ({
+					code: 'invalid-yjs-live-document',
+					message,
+					path,
+				})),
+			};
 }
 
 export function replaceNodeMarkdown(ydoc: Y.Doc, nodeId: string, markdown: string): boolean {

@@ -1,120 +1,110 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DocumentResult, LogicDocument } from '../../src/lib/document/logic-document';
+import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
 import { mapSequitDocument } from '../../src/lib/text/map-sequit-document';
 
-function expectFailure(result: DocumentResult<LogicDocument>) {
-	expect(result.ok).toBe(false);
-	if (result.ok) throw new Error('Expected mapping to fail');
-	return result.diagnostics;
-}
-
-function validRoot(): Record<string, unknown> {
+function root(): Record<string, unknown> {
 	return {
-		persistenceFormat: 1,
-		document: { id: 'document', title: 'Document' },
+		persistenceFormat: 2,
+		document: { id: 'ordering', title: 'Ordering' },
 		layout: { direction: 'top-to-bottom', bias: 'top' },
 		natures: { goal: { label: 'Goal', color: '#00aa44' } },
-		groups: {
-			parent: { label: 'Parent' },
-			child: { label: 'Child', group: 'parent' },
-		},
+		groups: {},
 		nodes: {
-			source: { nature: 'goal', group: 'child', markdown: 'Source\n' },
-			target: { nature: 'goal', markdown: 'Target\n' },
+			z: { nature: 'goal', markdown: 'Z', layoutOrder: 'a1' },
+			a: { nature: 'goal', markdown: 'A', layoutOrder: 'a0' },
 		},
-		junctions: {
-			choice: { operator: 'xor', group: 'child' },
-			ungrouped: { operator: 'xor' },
-		},
-		relations: { dependency: { from: 'source', to: 'target' } },
+		junctions: {},
+		relations: {},
 	};
 }
 
-describe('mapSequitDocument', () => {
-	it('maps optional parent and membership fields when present', () => {
-		const result = mapSequitDocument(validRoot());
-		expect(result.ok).toBe(true);
-		if (!result.ok) throw new Error('Expected the raw document to map');
+function mapped(value: unknown): LogicDocument {
+	const result = mapSequitDocument(value);
+	expect(result.ok).toBe(true);
+	if (!result.ok) throw new Error('Expected mapping to succeed');
+	return result.value;
+}
 
-		expect(result.value.groups).toContainEqual({ id: 'child', label: 'Child', groupId: 'parent' });
-		expect(result.value.nodes).toContainEqual({
-			id: 'source',
-			natureId: 'goal',
-			groupId: 'child',
-			markdown: 'Source\n',
+describe('mapSequitDocument endpoint order', () => {
+	it('rejects the previous portable format before validating endpoint keys', () => {
+		const value = root();
+		value['persistenceFormat'] = 1;
+
+		expect(mapSequitDocument(value)).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'unsupported-persistence-format',
+					message: 'Unsupported persistenceFormat: 1',
+					path: ['persistenceFormat'],
+				},
+			],
 		});
-		expect(result.value.junctions).toEqual([
-			{ id: 'choice', operator: 'xor', groupId: 'child' },
-			{ id: 'ungrouped', operator: 'xor' },
+	});
+
+	it('is independent of source table declaration order', () => {
+		const original = root();
+		const reordered = Object.fromEntries(Object.entries(original).reverse());
+		expect(mapped(reordered)).toEqual(mapped(original));
+	});
+
+	it('maps node, group, and junction layoutOrder fields with enum kinds', () => {
+		const value = root();
+		value['groups'] = { group: { label: 'Group', layoutOrder: 'a0' } };
+		value['nodes'] = { node: { nature: 'goal', markdown: 'Node', layoutOrder: 'a1' } };
+		value['junctions'] = { choice: { operator: 'xor', layoutOrder: 'a2' } };
+		const document = mapped(value);
+		expect(document.groups).toEqual([
+			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: 'a0' },
+		]);
+		expect(document.nodes).toEqual([
+			{
+				kind: EndpointKind.Node,
+				id: 'node',
+				natureId: 'goal',
+				markdown: 'Node',
+				layoutOrder: 'a1',
+			},
+		]);
+		expect(document.junctions).toEqual([
+			{ kind: EndpointKind.Junction, id: 'choice', operator: 'xor', layoutOrder: 'a2' },
 		]);
 	});
 
-	it('distinguishes a missing root from invalid root container types', () => {
-		expect(expectFailure(mapSequitDocument(undefined))).toContainEqual(
-			expect.objectContaining({ code: 'missing-field', path: [] }),
-		);
-		for (const value of [null, [], 'invalid']) {
-			expect(expectFailure(mapSequitDocument(value))).toContainEqual(
-				expect.objectContaining({ code: 'invalid-type', path: [] }),
-			);
-		}
+	it('diagnoses malformed endpoint-local order keys at the entity path', () => {
+		const value = root();
+		value['nodes'] = {
+			z: { nature: 'goal', markdown: 'Z', layoutOrder: 'not a key' },
+			a: { nature: 'goal', markdown: 'A' },
+		};
+		const result = mapSequitDocument(value);
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error('Expected malformed layout order to fail');
+		expect(result.diagnostics).toContainEqual({
+			code: 'invalid-value',
+			message: 'nodes.z.layoutOrder must be a valid fractional order key',
+			path: ['nodes', 'z', 'layoutOrder'],
+		});
 	});
 
-	it('collects malformed collection entities and scalar fields in one pass', () => {
-		const root = validRoot();
-		root['document'] = { id: 42, title: false };
-		root['layout'] = { direction: 42, bias: 'diagonal' };
-		root['natures'] = {
-			'not-a-table': 'invalid',
-			'missing-label': { color: '#fff' },
-			'missing-color': { label: 'Label' },
-		};
-		root['groups'] = {
-			'not-a-table': 'invalid',
-			'missing-label': { group: 42 },
-		};
-		root['nodes'] = {
-			'not-a-table': 'invalid',
-			'missing-fields': { nature: 42, group: 42, markdown: false },
-		};
-		root['junctions'] = {
-			'not-a-table': 'invalid',
-			'missing-operator': { group: 42 },
-			'unknown-operator': { operator: 'and' },
-		};
-		root['relations'] = {
-			'not-a-table': 'invalid',
-			'missing-fields': { from: 42, to: false },
-		};
-
-		const diagnostics = expectFailure(mapSequitDocument(root));
-		expect(diagnostics).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ path: ['document', 'id'] }),
-				expect.objectContaining({ path: ['layout', 'direction'] }),
-				expect.objectContaining({ path: ['natures', 'not-a-table'] }),
-				expect.objectContaining({ path: ['groups', 'missing-label', 'group'] }),
-				expect.objectContaining({ path: ['nodes', 'missing-fields', 'markdown'] }),
-				expect.objectContaining({ path: ['junctions', 'unknown-operator', 'operator'] }),
-				expect.objectContaining({ path: ['relations', 'missing-fields', 'to'] }),
-			]),
-		);
-	});
-
-	it('reports every missing top-level collection', () => {
-		const root = validRoot();
-		delete root['natures'];
-		delete root['groups'];
-		delete root['nodes'];
-		delete root['junctions'];
-		delete root['relations'];
-
-		const diagnostics = expectFailure(mapSequitDocument(root));
-		for (const name of ['natures', 'groups', 'nodes', 'junctions', 'relations']) {
-			expect(diagnostics).toContainEqual(
-				expect.objectContaining({ code: 'missing-field', path: [name] }),
-			);
-		}
-	});
+	it.each([
+		['groups', 'group', { label: 'Group' }],
+		['nodes', 'node', { nature: 'goal', markdown: 'Node' }],
+		['junctions', 'choice', { operator: 'xor' }],
+	] as const)(
+		'rejects keyless %s data in the current portable format',
+		(collection, id, endpoint) => {
+			const value = root();
+			value[collection] = { [id]: endpoint };
+			const result = mapSequitDocument(value);
+			expect(result.ok).toBe(false);
+			if (result.ok) throw new Error('Expected missing layout order to fail');
+			expect(result.diagnostics).toContainEqual({
+				code: 'missing-field',
+				message: `${collection}.${id}.layoutOrder must be a string`,
+				path: [collection, id, 'layoutOrder'],
+			});
+		},
+	);
 });

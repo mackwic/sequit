@@ -1,15 +1,8 @@
-import { GraphEndpointKind, type LogicGraph } from './create-graph';
+import type { LogicGraph } from './create-graph';
 
 export interface TopologicalRanks {
 	readonly byEndpointId: ReadonlyMap<string, number>;
 	readonly bands: readonly (readonly string[])[];
-}
-
-function rankIncrement(graph: LogicGraph, sourceId: string, targetId: string): number {
-	if (graph.endpointsById.get(targetId)?.kind !== GraphEndpointKind.Junction) return 1;
-	if (graph.endpointsById.get(sourceId)?.kind === GraphEndpointKind.Junction) return 1;
-	if ((graph.outgoingByEndpointId.get(targetId)?.length ?? 0) > 0) return 0;
-	return 1;
 }
 
 export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
@@ -27,11 +20,9 @@ export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 		const nextFrontier: string[] = [];
 		for (const id of frontier) {
 			processed += 1;
-			const sourceRank = ranks.get(id);
-			/* istanbul ignore if -- @preserve: every frontier ID is initialized in the ranks map. */
-			if (sourceRank === undefined) throw new Error(`Missing topological rank: ${id}`);
+			const sourceRank = ranks.get(id) ?? 0;
 			for (const target of graph.outgoingByEndpointId.get(id) ?? []) {
-				const increment = rankIncrement(graph, id, target);
+				const increment = graph.endpointsById.get(target)?.kind === 'junction' ? 0 : 1;
 				ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + increment));
 				const remaining = (indegree.get(target) ?? 0) - 1;
 				indegree.set(target, remaining);

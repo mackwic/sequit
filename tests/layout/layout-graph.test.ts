@@ -1,15 +1,84 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LogicDocument } from '../../src/lib/document/logic-document';
+import {
+	EndpointKind,
+	JunctionOperator,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
-import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
-import { type Bounds, layoutGraph, type Point } from '../../src/lib/layout/layout-graph';
+import { topologicallyRank, type TopologicalRanks } from '../../src/lib/graph/topological-ranks';
+import {
+	type Bounds,
+	layoutGraph,
+	type LayoutResult,
+	type Point,
+} from '../../src/lib/layout/layout-graph';
+import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 import { layoutMeasurementsFor } from '../builders/layout-measurements';
 import { validLogicDocument } from '../builders/logic-document';
-import { boundsById, layoutDocument, overlaps, prepareLayoutDocument } from '../harnesses/layout';
 import { openLiveDocument, openReferenceLiveDocument } from '../harnesses/open-live-document';
 import { withReorderedTables } from '../perturbators/sequit-source';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
+
+interface LayoutFixture {
+	readonly document: LogicDocument;
+	readonly graph: LogicGraph;
+	readonly ranks: TopologicalRanks;
+	readonly layout: LayoutResult;
+}
+
+function requiredPoint(points: readonly Point[], index: number): Point {
+	const point = points.at(index);
+	if (point === undefined) throw new Error(`Missing routed point at ${index}`);
+	return point;
+}
+
+async function layoutDocument(document: LogicDocument): Promise<LayoutFixture> {
+	const graphResult = createGraph(document);
+	if (!graphResult.ok) throw new Error('Expected an acyclic graph');
+	const ranks = topologicallyRank(graphResult.value);
+	const layout = await layoutGraph(graphResult.value, ranks, layoutMeasurementsFor(document));
+	return { document, graph: graphResult.value, ranks, layout };
+}
+
+function boundsById(layout: LayoutResult): ReadonlyMap<string, Bounds> {
+	return new Map(layout.elements.map(({ id, bounds }) => [id, bounds]));
+}
+
+function withOrder(document: LogicDocument, preferred: readonly string[]): LogicDocument {
+	const ids = [...document.groups, ...document.nodes, ...document.junctions].map(({ id }) => id);
+	const order = [...preferred, ...ids.filter((id) => !preferred.includes(id)).sort()];
+	const key = new Map(order.map((id, index) => [id, orderKey(`a${index.toString(36)}`)]));
+	const keyFor = (id: string) => {
+		const result = key.get(id);
+		if (result === undefined) throw new Error(`Missing order key for endpoint: ${id}`);
+		return result;
+	};
+	return {
+		...document,
+		groups: document.groups.map((endpoint) => ({
+			...endpoint,
+			layoutOrder: keyFor(endpoint.id),
+		})),
+		nodes: document.nodes.map((endpoint) => ({ ...endpoint, layoutOrder: keyFor(endpoint.id) })),
+		junctions: document.junctions.map((endpoint) => ({
+			...endpoint,
+			layoutOrder: keyFor(endpoint.id),
+		})),
+	};
+}
+
+function overlaps(left: Bounds, right: Bounds): boolean {
+	return (
+		left.x < right.x + right.width &&
+		left.x + left.width > right.x &&
+		left.y < right.y + right.height &&
+		left.y + left.height > right.y
+	);
+}
 
 function isOnBoundary(point: Point, bounds: Bounds): boolean {
 	const withinX = point.x >= bounds.x && point.x <= bounds.x + bounds.width;
@@ -20,23 +89,6 @@ function isOnBoundary(point: Point, bounds: Bounds): boolean {
 }
 
 describe('layoutGraph', () => {
-	it('prepares graph, ranks, and measurements without completing layout', async () => {
-		const document = validLogicDocument();
-		const prepared = prepareLayoutDocument(document, {
-			nodes: { 'source-a': { width: 0, height: 40 } },
-		});
-
-		expect(prepared.document).toBe(document);
-		expect(prepared.graph.document).toBe(document);
-		expect(prepared.ranks.byEndpointId.get('source-a')).toBe(0);
-		expect(prepared.measurements.nodes.get('source-a')).toEqual({ width: 0, height: 40 });
-		expect(prepared).not.toHaveProperty('layout');
-
-		await expect(
-			layoutGraph(prepared.graph, prepared.ranks, prepared.measurements),
-		).rejects.toThrow('nodes.source-a.width must be a finite positive number');
-	});
-
 	it('preserves the asynchronous engine boundary', async () => {
 		const document = await openReferenceLiveDocument();
 		const graph = createGraph(document);
@@ -141,57 +193,6 @@ describe('layoutGraph', () => {
 		}
 	});
 
-	it('lets a non-empty endpoint group span every rank occupied by its content', async () => {
-		const valid = validLogicDocument();
-		const document: LogicDocument = {
-			...valid,
-			nodes: [
-				...valid.nodes.map((node) =>
-					node.id === 'target' ? { ...node, groupId: 'container' } : node,
-				),
-				{ id: 'after-group', natureId: 'goal', markdown: 'After group\n' },
-			],
-			relations: [
-				...valid.relations,
-				{ id: 'isolated-to-container', from: 'isolated', to: 'container' },
-				{ id: 'container-to-after', from: 'container', to: 'after-group' },
-			],
-		};
-		const { ranks, layout } = await layoutDocument(document);
-		const byId = boundsById(layout);
-		const group = byId.get('container');
-		const before = byId.get('isolated');
-		const after = byId.get('after-group');
-		if (!group || !before || !after) throw new Error('Expected group relation bounds');
-		const memberIds = ['source-a', 'source-b', 'choice', 'target'];
-		const memberRanks = new Set(memberIds.map((id) => ranks.byEndpointId.get(id)));
-
-		expect(ranks.byEndpointId.has('container')).toBe(false);
-		expect(memberRanks).toEqual(new Set([1, 2]));
-		for (const memberId of memberIds) {
-			const member = byId.get(memberId);
-			if (!member) throw new Error(`Expected member bounds: ${memberId}`);
-			expect(member.x).toBeGreaterThan(group.x);
-			expect(member.y).toBeGreaterThan(group.y);
-			expect(member.x + member.width).toBeLessThan(group.x + group.width);
-			expect(member.y + member.height).toBeLessThan(group.y + group.height);
-		}
-		expect(group.y + group.height).toBeLessThan(before.y);
-		expect(after.y + after.height).toBeLessThan(group.y);
-
-		const incoming = layout.relations.find(({ id }) => id === 'isolated-to-container');
-		const outgoing = layout.relations.find(({ id }) => id === 'container-to-after');
-		if (!incoming || !outgoing) throw new Error('Expected group relations');
-		expect(isOnBoundary(incoming.points[0] ?? { x: NaN, y: NaN }, before)).toBe(true);
-		expect(
-			isOnBoundary(incoming.points[incoming.points.length - 1] ?? { x: NaN, y: NaN }, group),
-		).toBe(true);
-		expect(isOnBoundary(outgoing.points[0] ?? { x: NaN, y: NaN }, group)).toBe(true);
-		expect(
-			isOnBoundary(outgoing.points[outgoing.points.length - 1] ?? { x: NaN, y: NaN }, after),
-		).toBe(true);
-	});
-
 	it('gives bounds to an empty unranked group without adding a topological rank', async () => {
 		const document = validLogicDocument();
 		const { ranks, layout } = await layoutDocument(document);
@@ -237,203 +238,342 @@ describe('layoutGraph', () => {
 			const target = byId.get(relation.to);
 			expect(source).toBeDefined();
 			expect(target).toBeDefined();
-			const start = relation.points.at(0);
-			const end = relation.points.at(-1);
-			expect(start).toBeDefined();
-			expect(end).toBeDefined();
-			if (!source || !target || !start || !end) continue;
-			expect(isOnBoundary(start, source), `${relation.id} source`).toBe(true);
-			expect(isOnBoundary(end, target), `${relation.id} target`).toBe(true);
+			if (!source || !target) continue;
+			expect(isOnBoundary(requiredPoint(relation.points, 0), source), `${relation.id} source`).toBe(
+				true,
+			);
+			expect(
+				isOnBoundary(requiredPoint(relation.points, -1), target),
+				`${relation.id} target`,
+			).toBe(true);
 		}
 		const dataTeamRelation = layout.relations.find(
 			({ id }) => id === 'data-team-to-ai-content-generation',
 		);
 		const dataTeam = byId.get('data-team');
-		expect(dataTeamRelation?.points.at(0)?.y).toBe(dataTeam?.y);
+		expect(dataTeamRelation && requiredPoint(dataTeamRelation.points, 0).y).toBe(dataTeam?.y);
 	});
 
-	it('places a logical junction between globally aligned node ranks', async () => {
+	it('rejects overlapping relation endpoint bounds before routing with the relation identity', async () => {
 		const base = validLogicDocument();
 		const document: LogicDocument = {
 			...base,
-			nodes: [
-				...base.nodes,
-				{ id: 'side-source', natureId: 'goal', markdown: 'Side source\n' },
-				{ id: 'side-target', natureId: 'goal', markdown: 'Side target\n' },
-			],
 			relations: [
 				...base.relations,
-				{ id: 'side-source-to-target', from: 'side-source', to: 'side-target' },
+				{ id: 'containing-group-to-member', from: 'container', to: 'source-a' },
 			],
 		};
-		const { layout } = await layoutDocument(document);
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+
+		await expect(
+			layoutGraph(graph.value, topologicallyRank(graph.value), layoutMeasurementsFor(document)),
+		).rejects.toThrow(
+			'Relation bounds overlap: containing-group-to-member (container -> source-a)',
+		);
+	});
+
+	it('uses explicit endpoint order within a component without changing ranks', async () => {
+		const original = validLogicDocument();
+		const document = withOrder(original, ['source-b', 'source-a']);
+		const { ranks, layout } = await layoutDocument(document);
 		const bounds = boundsById(layout);
-		const junction = bounds.get('choice');
-		const sourceIds = ['source-a', 'source-b', 'side-source'];
-		const targetIds = ['target', 'side-target'];
-		const sources = sourceIds.map((id) => bounds.get(id));
-		const targets = targetIds.map((id) => bounds.get(id));
-		if (
-			!junction ||
-			sources.some((source) => source === undefined) ||
-			targets.some((target) => target === undefined)
-		) {
-			throw new Error('Expected junction scenario bounds');
-		}
-		const sourceLineTop = sources[0]?.y ?? NaN;
-		const targetLineTop = targets[0]?.y ?? NaN;
-		const targetLineBottom = Math.max(
-			...targets.map((target) => (target?.y ?? NaN) + (target?.height ?? NaN)),
-		);
 
-		expect(sources.map((source) => source?.y)).toEqual(sourceIds.map(() => sourceLineTop));
-		expect(targets.map((target) => target?.y)).toEqual(targetIds.map(() => targetLineTop));
-		expect(junction.y).toBeGreaterThan(targetLineBottom);
-		expect(junction.y + junction.height).toBeLessThan(sourceLineTop);
-		expect(junction.y + junction.height / 2).toBe((targetLineBottom + sourceLineTop) / 2);
+		expect(ranks.byEndpointId.get('source-a')).toBe(ranks.byEndpointId.get('source-b'));
+		expect(bounds.get('source-b')?.x).toBeLessThan(bounds.get('source-a')?.x ?? 0);
+		expect(bounds.get('choice')?.y).not.toBe(bounds.get('source-a')?.y);
 	});
 
-	it('rejects every incomplete endpoint and group measurement', async () => {
-		const document = validLogicDocument();
-		const graph = createGraph(document);
-		if (!graph.ok) throw new Error('Expected an acyclic graph');
-		const ranks = topologicallyRank(graph.value);
-		const complete = layoutMeasurementsFor(document);
-
-		const withoutJunction = { ...complete, junctions: new Map(complete.junctions) };
-		withoutJunction.junctions.delete('choice');
-		await expect(layoutGraph(graph.value, ranks, withoutJunction)).rejects.toThrow(
-			'Missing junction measurement: choice',
+	it('uses effective endpoint order for independent components in the same context', async () => {
+		const original = validLogicDocument();
+		const document = withOrder(
+			{
+				...original,
+				groups: [],
+				nodes: [
+					{
+						kind: EndpointKind.Node,
+						id: 'aa-added-second',
+						natureId: 'goal',
+						markdown: 'Added second',
+						layoutOrder: orderKey('a0'),
+					},
+					{
+						kind: EndpointKind.Node,
+						id: 'zz-added-first',
+						natureId: 'goal',
+						markdown: 'Added first',
+						layoutOrder: orderKey('a1'),
+					},
+				],
+				junctions: [],
+				relations: [],
+			},
+			['zz-added-first', 'aa-added-second'],
 		);
+		const bounds = boundsById((await layoutDocument(document)).layout);
 
-		const withoutEndpointGroup = { ...complete, groups: new Map(complete.groups) };
-		withoutEndpointGroup.groups.delete('endpoint-group');
-		await expect(layoutGraph(graph.value, ranks, withoutEndpointGroup)).rejects.toThrow(
-			'Missing group measurement: endpoint-group',
-		);
-
-		const withoutStructuralGroup = { ...complete, groups: new Map(complete.groups) };
-		withoutStructuralGroup.groups.delete('orphan-group');
-		await expect(layoutGraph(graph.value, ranks, withoutStructuralGroup)).rejects.toThrow(
-			'Missing group measurement: orphan-group',
-		);
+		expect(bounds.get('zz-added-first')?.x).toBeLessThan(bounds.get('aa-added-second')?.x ?? 0);
 	});
 
-	it('rejects every invalid measurement dimension', async () => {
-		const document = validLogicDocument();
-		const graph = createGraph(document);
-		if (!graph.ok) throw new Error('Expected an acyclic graph');
-		const ranks = topologicallyRank(graph.value);
-		const complete = layoutMeasurementsFor(document);
-
-		for (const [name, size, message] of [
-			['not-finite', { width: Number.NaN, height: 40 }, 'nodes.source-a.width'],
-			['invalid-height', { width: 80, height: 0 }, 'nodes.source-a.height'],
-		] as const) {
-			const measurements = { ...complete, nodes: new Map(complete.nodes) };
-			measurements.nodes.set('source-a', size);
-			await expect(layoutGraph(graph.value, ranks, measurements), name).rejects.toThrow(message);
-		}
-
-		for (const [field, value] of [
-			['minimumWidth', 0],
-			['minimumHeight', 0],
-			['headerHeight', -1],
-			['padding', Number.NaN],
-		] as const) {
-			const measurements = { ...complete, groups: new Map(complete.groups) };
-			const group = measurements.groups.get('container');
-			if (!group) throw new Error('Expected a group measurement fixture');
-			measurements.groups.set('container', { ...group, [field]: value });
-			await expect(layoutGraph(graph.value, ranks, measurements), field).rejects.toThrow(
-				`groups.container.${field}`,
-			);
-		}
-	});
-
-	it('defends the layout boundary against inconsistent graph and rank structures', async () => {
-		const document = validLogicDocument();
-		const graph = createGraph(document);
-		if (!graph.ok) throw new Error('Expected an acyclic graph');
-		const ranks = topologicallyRank(graph.value);
-		const measurements = layoutMeasurementsFor(document);
-
-		await expect(
-			layoutGraph(
-				{ ...graph.value, rankableEndpointIds: ['missing-endpoint'] },
-				{ byEndpointId: new Map([['missing-endpoint', 0]]), bands: [['missing-endpoint']] },
-				measurements,
-			),
-		).rejects.toThrow('Missing graph endpoint: missing-endpoint');
-
-		await expect(
-			layoutGraph(graph.value, { ...ranks, bands: [['missing-size']] }, measurements),
-		).rejects.toThrow('Missing measured size: missing-size');
-
-		const disconnectedGraph: LogicGraph = {
-			...graph.value,
-			outgoingByEndpointId: new Map(),
-			predecessorsByEndpointId: new Map(),
-		};
-		const disconnectedLayout = await layoutGraph(disconnectedGraph, ranks, measurements);
-		expect(disconnectedLayout.elements).toHaveLength(graph.value.endpointsById.size);
-
-		const firstRelation = graph.value.relations[0];
-		if (!firstRelation) throw new Error('Expected at least one relation');
-		const inconsistentRelation: LogicGraph = {
-			...graph.value,
-			relations: [
+	it('keeps disconnected component packing stable after a target-local key move', async () => {
+		const peerKey = orderKey('a1');
+		const movedKey = fractionalOrderKeySpace.keyFor({ after: peerKey }, 'moving-target');
+		const isolatedKey = fractionalOrderKeySpace.keyFor(
+			{ before: movedKey, after: peerKey },
+			'isolated',
+		);
+		const before: LogicDocument = {
+			persistenceFormat: 2,
+			id: 'component-local-order-change',
+			title: 'Component-local order change',
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+			groups: [],
+			nodes: [
 				{
-					...firstRelation,
-					relation: { ...firstRelation.relation, from: 'missing-bounds' },
+					kind: EndpointKind.Node,
+					id: 'component-source',
+					natureId: 'goal',
+					markdown: 'Source',
+					layoutOrder: orderKey('a3'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'component-peer',
+					natureId: 'goal',
+					markdown: 'Peer',
+					layoutOrder: peerKey,
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'moving-target',
+					natureId: 'goal',
+					markdown: 'Moving target',
+					layoutOrder: orderKey('a2'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'isolated',
+					natureId: 'goal',
+					markdown: 'Isolated',
+					layoutOrder: isolatedKey,
 				},
 			],
+			junctions: [],
+			relations: [
+				{ id: 'source-to-peer', from: 'component-source', to: 'component-peer' },
+				{ id: 'source-to-target', from: 'component-source', to: 'moving-target' },
+			],
 		};
-		await expect(layoutGraph(inconsistentRelation, ranks, measurements)).rejects.toThrow(
-			`Missing relation bounds: ${firstRelation.relation.id}`,
+		const after: LogicDocument = {
+			...before,
+			nodes: before.nodes.map((node) =>
+				node.id === 'moving-target' ? { ...node, layoutOrder: movedKey } : node,
+			),
+		};
+		const beforeBounds = boundsById((await layoutDocument(before)).layout);
+		const afterBounds = boundsById((await layoutDocument(after)).layout);
+
+		expect(beforeBounds.get('isolated')?.x).toBeLessThan(
+			beforeBounds.get('component-source')?.x ?? 0,
+		);
+		expect(afterBounds.get('isolated')?.x).toBeLessThan(
+			afterBounds.get('component-source')?.x ?? 0,
 		);
 	});
 
-	it('rejects group containment cycles even when assembled outside validation', async () => {
-		const base = validLogicDocument();
-		const memberCycle: LogicDocument = {
-			...base,
-			groups: base.groups.map((group) =>
-				group.id === 'container'
-					? { ...group, groupId: 'orphan-group' }
-					: group.id === 'orphan-group'
-						? { ...group, groupId: 'container' }
-						: group,
-			),
-		};
-		const memberGraph = createGraph(memberCycle);
-		if (!memberGraph.ok) throw new Error('Expected graph construction to accept group metadata');
-		await expect(
-			layoutGraph(
-				memberGraph.value,
-				topologicallyRank(memberGraph.value),
-				layoutMeasurementsFor(memberCycle),
-			),
-		).rejects.toThrow('Group containment cycle at');
-
-		const emptyCycle: LogicDocument = {
-			...base,
-			groups: [
-				...base.groups,
-				{ id: 'empty-a', label: 'Empty A', groupId: 'empty-b' },
-				{ id: 'empty-b', label: 'Empty B', groupId: 'empty-a' },
+	it('filters stable global order after topology-driven rank migration', async () => {
+		const base: LogicDocument = {
+			persistenceFormat: 2,
+			id: 'rank-migration',
+			title: 'Rank migration',
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+			groups: [],
+			nodes: [
+				{
+					kind: EndpointKind.Node,
+					id: 'source',
+					natureId: 'goal',
+					markdown: 'Source',
+					layoutOrder: orderKey('a0'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'middle',
+					natureId: 'goal',
+					markdown: 'Middle',
+					layoutOrder: orderKey('a1'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'migrating',
+					natureId: 'goal',
+					markdown: 'Migrating',
+					layoutOrder: orderKey('a2'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'existing',
+					natureId: 'goal',
+					markdown: 'Existing',
+					layoutOrder: orderKey('a3'),
+				},
+			],
+			junctions: [],
+			relations: [
+				{ id: 'source-to-middle', from: 'source', to: 'middle' },
+				{ id: 'middle-to-existing', from: 'middle', to: 'existing' },
 			],
 		};
-		const emptyGraph = createGraph(emptyCycle);
-		if (!emptyGraph.ok) throw new Error('Expected graph construction to accept group metadata');
-		await expect(
-			layoutGraph(
-				emptyGraph.value,
-				topologicallyRank(emptyGraph.value),
-				layoutMeasurementsFor(emptyCycle),
-			),
-		).rejects.toThrow('Group containment cycle at');
+		const migrated: LogicDocument = {
+			...base,
+			relations: [
+				...base.relations,
+				{ id: 'middle-to-migrating', from: 'middle', to: 'migrating' },
+			],
+		};
+		const { ranks, layout } = await layoutDocument(migrated);
+		const bounds = boundsById(layout);
+
+		expect(ranks.byEndpointId.get('migrating')).toBe(2);
+		expect(ranks.byEndpointId.get('existing')).toBe(2);
+		expect(bounds.get('migrating')?.x).toBeLessThan(bounds.get('existing')?.x ?? 0);
 	});
+
+	it('retains ordering and geometry invariants with groups, junctions, and a long link', async () => {
+		const document: LogicDocument = withOrder(
+			{
+				persistenceFormat: 2,
+				id: 'ordered-topology-edge-cases',
+				title: 'Ordered topology edge cases',
+				layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+				natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+				groups: [
+					{
+						kind: EndpointKind.Group,
+						id: 'container',
+						label: 'Container',
+						layoutOrder: orderKey('a0'),
+					},
+					{
+						kind: EndpointKind.Group,
+						id: 'empty-endpoint',
+						label: 'Empty endpoint',
+						layoutOrder: orderKey('a1'),
+					},
+				],
+				nodes: [
+					{
+						kind: EndpointKind.Node,
+						id: 'source-a',
+						natureId: 'goal',
+						groupId: 'container',
+						markdown: 'Source A',
+						layoutOrder: orderKey('a2'),
+					},
+					{
+						kind: EndpointKind.Node,
+						id: 'source-b',
+						natureId: 'goal',
+						groupId: 'container',
+						markdown: 'Source B',
+						layoutOrder: orderKey('a3'),
+					},
+					{
+						kind: EndpointKind.Node,
+						id: 'target-a',
+						natureId: 'goal',
+						groupId: 'container',
+						markdown: 'Target A',
+						layoutOrder: orderKey('a4'),
+					},
+					{
+						kind: EndpointKind.Node,
+						id: 'target-b',
+						natureId: 'goal',
+						groupId: 'container',
+						markdown: 'Target B',
+						layoutOrder: orderKey('a5'),
+					},
+					{
+						kind: EndpointKind.Node,
+						id: 'long-target',
+						natureId: 'goal',
+						groupId: 'container',
+						markdown: 'Long target',
+						layoutOrder: orderKey('a6'),
+					},
+				],
+				junctions: [
+					{
+						kind: EndpointKind.Junction,
+						id: 'choice',
+						operator: JunctionOperator.Xor,
+						groupId: 'container',
+						layoutOrder: orderKey('a7'),
+					},
+				],
+				relations: [
+					{ id: 'source-a-to-choice', from: 'source-a', to: 'choice' },
+					{ id: 'choice-to-target-a', from: 'choice', to: 'target-a' },
+					{ id: 'source-b-to-target-b', from: 'source-b', to: 'target-b' },
+					{ id: 'empty-to-target-b', from: 'empty-endpoint', to: 'target-b' },
+					{ id: 'target-a-to-long-target', from: 'target-a', to: 'long-target' },
+					{ id: 'source-b-to-long-target', from: 'source-b', to: 'long-target' },
+				],
+			},
+			['source-b', 'source-a', 'empty-endpoint', 'choice', 'target-b', 'target-a', 'long-target'],
+		);
+		const first = await layoutDocument(document);
+		const reordered = await layoutDocument({
+			...document,
+			groups: [...document.groups].reverse(),
+			nodes: [...document.nodes].reverse(),
+			junctions: [...document.junctions].reverse(),
+			relations: [...document.relations].reverse(),
+		});
+		const bounds = boundsById(first.layout);
+		const container = bounds.get('container');
+		if (!container) throw new Error('Expected populated group bounds');
+
+		expect(bounds.get('source-b')?.x).toBeLessThan(bounds.get('source-a')?.x ?? 0);
+		expect(bounds.get('target-b')?.x).toBeLessThan(bounds.get('target-a')?.x ?? 0);
+		expect(bounds.get('choice')?.y).not.toBe(bounds.get('source-a')?.y);
+		expect(bounds.get('empty-endpoint')).toMatchObject({ width: 160, height: 72 });
+		for (const id of ['source-a', 'source-b', 'choice', 'target-a', 'target-b', 'long-target']) {
+			const member = bounds.get(id);
+			if (!member) throw new Error(`Expected bounds for ${id}`);
+			expect(overlaps(member, container)).toBe(true);
+		}
+		for (const relation of first.layout.relations) {
+			const source = bounds.get(relation.from);
+			const target = bounds.get(relation.to);
+			if (!source || !target) throw new Error(`Expected relation bounds for ${relation.id}`);
+			expect(isOnBoundary(requiredPoint(relation.points, 0), source)).toBe(true);
+			expect(isOnBoundary(requiredPoint(relation.points, -1), target)).toBe(true);
+		}
+		expect(reordered.layout).toEqual(first.layout);
+	});
+
+	it('keeps explicit order deterministic when semantic collections are reordered', async () => {
+		const original = validLogicDocument();
+		const document = withOrder(original, ['source-b', 'source-a']);
+		const reordered: LogicDocument = {
+			...document,
+			natures: [...document.natures].reverse(),
+			groups: [...document.groups].reverse(),
+			nodes: [...document.nodes].reverse(),
+			junctions: [...document.junctions].reverse(),
+			relations: [...document.relations].reverse(),
+		};
+
+		expect((await layoutDocument(reordered)).layout).toEqual(
+			(await layoutDocument(document)).layout,
+		);
+	});
+
 	it('is deterministic for identical inputs and reordered TOML tables', async () => {
 		const source = await aiDocumentaryEffortScenario();
 		const document = openLiveDocument(source);

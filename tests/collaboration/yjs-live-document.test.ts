@@ -48,6 +48,31 @@ describe('yjsLiveDocumentFormat', () => {
 		expect(readDocument(ydoc)).toEqual(expected);
 	});
 
+	it('round trips explicit endpoint order through Y.Array snapshots', async () => {
+		const expected = {
+			...(await referenceDocument()),
+			endpointOrder: ['training-roi', 'onlyoffice'],
+		};
+		const source = new Y.Doc();
+		importLogicDocument(source, expected);
+		expect(source.getMap('sequit.meta').get('endpointOrder')).toBeInstanceOf(Y.Array);
+
+		const snapshot = new Y.Doc();
+		Y.applyUpdate(snapshot, Y.encodeStateAsUpdate(source));
+		expect(readDocument(snapshot)).toEqual(expected);
+	});
+
+	it('preserves absent endpoint order through import and snapshots', async () => {
+		const expected = await referenceDocument();
+		const source = new Y.Doc();
+		importLogicDocument(source, expected);
+		expect(source.getMap('sequit.meta').has('endpointOrder')).toBe(false);
+
+		const snapshot = new Y.Doc();
+		Y.applyUpdate(snapshot, Y.encodeStateAsUpdate(source));
+		expect(readDocument(snapshot)).not.toHaveProperty('endpointOrder');
+	});
+
 	it('stores and preserves each exact Markdown value in Y.Text', async () => {
 		const expected = await referenceDocument();
 		const ydoc = new Y.Doc();

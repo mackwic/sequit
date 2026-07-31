@@ -95,6 +95,7 @@ export interface LogicDocument {
 	readonly id: string;
 	readonly title: string;
 	readonly layout: LayoutConfiguration;
+	readonly endpointOrder?: readonly string[];
 	readonly natures: readonly LogicNature[];
 	readonly groups: readonly LogicGroup[];
 	readonly nodes: readonly LogicNode[];
