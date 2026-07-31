@@ -1,47 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LogicDocument } from '../../src/lib/document/logic-document';
-import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
-import { topologicallyRank, type TopologicalRanks } from '../../src/lib/graph/topological-ranks';
-import {
-	type Bounds,
-	layoutGraph,
-	type LayoutResult,
-	type Point,
-} from '../../src/lib/layout/layout-graph';
+import { createGraph } from '../../src/lib/graph/create-graph';
+import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
+import { type Bounds, layoutGraph, type Point } from '../../src/lib/layout/layout-graph';
 import { layoutMeasurementsFor } from '../builders/layout-measurements';
 import { validLogicDocument } from '../builders/logic-document';
+import { boundsById, layoutDocument, overlaps, prepareLayoutDocument } from '../harnesses/layout';
 import { openLiveDocument, openReferenceLiveDocument } from '../harnesses/open-live-document';
 import { withReorderedTables } from '../perturbators/sequit-source';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
-
-interface LayoutFixture {
-	readonly document: LogicDocument;
-	readonly graph: LogicGraph;
-	readonly ranks: TopologicalRanks;
-	readonly layout: LayoutResult;
-}
-
-async function layoutDocument(document: LogicDocument): Promise<LayoutFixture> {
-	const graphResult = createGraph(document);
-	if (!graphResult.ok) throw new Error('Expected an acyclic graph');
-	const ranks = topologicallyRank(graphResult.value);
-	const layout = await layoutGraph(graphResult.value, ranks, layoutMeasurementsFor(document));
-	return { document, graph: graphResult.value, ranks, layout };
-}
-
-function boundsById(layout: LayoutResult): ReadonlyMap<string, Bounds> {
-	return new Map(layout.elements.map(({ id, bounds }) => [id, bounds]));
-}
-
-function overlaps(left: Bounds, right: Bounds): boolean {
-	return (
-		left.x < right.x + right.width &&
-		left.x + left.width > right.x &&
-		left.y < right.y + right.height &&
-		left.y + left.height > right.y
-	);
-}
 
 function isOnBoundary(point: Point, bounds: Bounds): boolean {
 	const withinX = point.x >= bounds.x && point.x <= bounds.x + bounds.width;
@@ -52,6 +20,23 @@ function isOnBoundary(point: Point, bounds: Bounds): boolean {
 }
 
 describe('layoutGraph', () => {
+	it('prepares graph, ranks, and measurements without completing layout', async () => {
+		const document = validLogicDocument();
+		const prepared = prepareLayoutDocument(document, {
+			nodes: { 'source-a': { width: 0, height: 40 } },
+		});
+
+		expect(prepared.document).toBe(document);
+		expect(prepared.graph.document).toBe(document);
+		expect(prepared.ranks.byEndpointId.get('source-a')).toBe(0);
+		expect(prepared.measurements.nodes.get('source-a')).toEqual({ width: 0, height: 40 });
+		expect(prepared).not.toHaveProperty('layout');
+
+		await expect(
+			layoutGraph(prepared.graph, prepared.ranks, prepared.measurements),
+		).rejects.toThrow('nodes.source-a.width must be a finite positive number');
+	});
+
 	it('preserves the asynchronous engine boundary', async () => {
 		const document = await openReferenceLiveDocument();
 		const graph = createGraph(document);
