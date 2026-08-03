@@ -142,6 +142,13 @@ test.describe('AI for documentary effort', () => {
 			const dataTeam = endpoint('data-team');
 			const aiContent = endpoint('ai-content-generation');
 			const goal = endpoint('reduce-documentary-effort');
+			const firstRankTopEdges = [
+				'alcoa-plus',
+				'preserve-partner-content',
+				'docx-word-compatible',
+				'data-team',
+				'prompt-management',
+			].map((id) => endpoint(id).offsetTop);
 			return {
 				allConnectionsTouchEndpoints: connections.every(Boolean),
 				memberInsideGroup:
@@ -152,6 +159,7 @@ test.describe('AI for documentary effort', () => {
 				emptyGroupHasBounds: dataTeam.offsetWidth > 0 && dataTeam.offsetHeight > 0,
 				bottomToTop:
 					aiContent.offsetTop < dataTeam.offsetTop && goal.offsetTop < aiContent.offsetTop,
+				topBiasedRankAligned: new Set(firstRankTopEdges).size === 1,
 			};
 		});
 
@@ -160,7 +168,141 @@ test.describe('AI for documentary effort', () => {
 			memberInsideGroup: true,
 			emptyGroupHasBounds: true,
 			bottomToTop: true,
+			topBiasedRankAligned: true,
 		});
+	});
+
+	test('renders the persisted reference order with fewer qualifying crossings', async ({
+		page,
+	}) => {
+		await page.goto('/examples/ai-documentary-effort');
+		await expect(page.locator('[data-status="connected"]')).toBeVisible();
+
+		await page.evaluate(async () => {
+			const importModule = (specifier: string): Promise<unknown> =>
+				import(/* @vite-ignore */ specifier);
+			const sourceModule = (await importModule('/src/lib/document/example-document.ts')) as {
+				AI_DOCUMENTARY_EFFORT_SOURCE: string;
+			};
+			const openDocumentModule = (await importModule('/src/lib/document/open-document.ts')) as {
+				openDocument: (source: string) => OpenDocumentResult;
+			};
+			const renderedCanvasModule = (await importModule(
+				'/src/lib/components/canvas/RenderedCanvas.svelte',
+			)) as { default: Component<{ canvas: CanvasModel }> };
+			const svelteModule = (await importModule('/@id/svelte')) as {
+				mount: (
+					component: Component<{ canvas: CanvasModel }>,
+					options: { target: Element; props: { canvas: CanvasModel } },
+				) => unknown;
+			};
+			const legacySource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
+				/endpointOrder = \[[\s\S]*?\]\n/,
+				'',
+			);
+			const fixture = document.createElement('section');
+			fixture.dataset.referenceOrderFixture = '';
+			document.body.replaceChildren(fixture);
+			for (const [state, source] of [
+				['legacy', legacySource],
+				['persisted', sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE],
+			] as const) {
+				const result = openDocumentModule.openDocument(source);
+				if (!result.ok) throw new Error(`Failed to open ${state} reference document`);
+				const opened = result.value;
+				const measurements = {
+					nodes: new Map(
+						opened.measurementModel.nodes.map(({ id }) => [id, { width: 220, height: 96 }]),
+					),
+					groups: new Map(
+						opened.measurementModel.groups.map(({ id }) => [
+							id,
+							{ minimumWidth: 160, minimumHeight: 72, headerHeight: 48, padding: 24 },
+						]),
+					),
+					junctions: new Map(
+						opened.measurementModel.junctions.map(({ id }) => [id, { width: 32, height: 32 }]),
+					),
+				};
+				const canvas = await opened.createCanvasModel(measurements);
+				const host = document.createElement('div');
+				host.dataset.referenceOrderState = state;
+				fixture.appendChild(host);
+				svelteModule.mount(renderedCanvasModule.default, {
+					target: host,
+					props: { canvas },
+				});
+				opened.destroy();
+			}
+		});
+
+		const comparison = await page.evaluate(() => {
+			function state(name: string): HTMLElement {
+				const value = document.querySelector<HTMLElement>(`[data-reference-order-state="${name}"]`);
+				if (!value) throw new Error(`Missing ${name} reference state`);
+				return value;
+			}
+			function endpoint(root: HTMLElement, id: string): HTMLElement {
+				const value = root.querySelector<HTMLElement>(
+					`[data-node-id="${id}"], [data-group-id="${id}"], [data-junction-id="${id}"]`,
+				);
+				if (!value) throw new Error(`Missing endpoint ${id}`);
+				return value;
+			}
+			function inversionCrossings(root: HTMLElement): number {
+				const targetIds = new Set([
+					'preserve-documentary-guarantees',
+					'minimal-workflow-disruption',
+					'ai-content-generation',
+				]);
+				const relations = [...root.querySelectorAll<SVGPathElement>('[data-relation-id]')]
+					.map((path) => ({ from: path.dataset.edgeFrom, to: path.dataset.edgeTo }))
+					.filter(
+						(relation): relation is { from: string; to: string } =>
+							relation.from !== undefined &&
+							relation.to !== undefined &&
+							targetIds.has(relation.to),
+					);
+				let count = 0;
+				for (let leftIndex = 0; leftIndex < relations.length; leftIndex += 1) {
+					for (let rightIndex = leftIndex + 1; rightIndex < relations.length; rightIndex += 1) {
+						const left = relations[leftIndex];
+						const right = relations[rightIndex];
+						if (left.from === right.from || left.to === right.to) continue;
+						const sourceDelta =
+							endpoint(root, left.from).offsetLeft - endpoint(root, right.from).offsetLeft;
+						const targetDelta =
+							endpoint(root, left.to).offsetLeft - endpoint(root, right.to).offsetLeft;
+						if (sourceDelta * targetDelta < 0) count += 1;
+					}
+				}
+				return count;
+			}
+			function improvedOrder(root: HTMLElement): readonly string[] {
+				return [
+					'preserve-documentary-guarantees',
+					'minimal-workflow-disruption',
+					'ai-content-generation',
+				].toSorted(
+					(left, right) => endpoint(root, left).offsetLeft - endpoint(root, right).offsetLeft,
+				);
+			}
+
+			const legacy = state('legacy');
+			const persisted = state('persisted');
+			return {
+				legacyCrossings: inversionCrossings(legacy),
+				persistedCrossings: inversionCrossings(persisted),
+				persistedOrder: improvedOrder(persisted),
+			};
+		});
+
+		expect(comparison.persistedOrder).toEqual([
+			'preserve-documentary-guarantees',
+			'minimal-workflow-disruption',
+			'ai-content-generation',
+		]);
+		expect(comparison.persistedCrossings).toBeLessThan(comparison.legacyCrossings);
 	});
 
 	test('renders a qualifying target move with fewer inversion crossings and unchanged routes', async ({

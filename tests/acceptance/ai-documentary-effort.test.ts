@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 
+import {
+	importLogicDocument,
+	readLogicDocument,
+} from '../../src/lib/collaboration/yjs-live-document';
 import { openDocument } from '../../src/lib/document/open-document';
 import { weightedInversionScore } from '../../src/lib/layout/crossing-aware-order';
+import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
 
@@ -139,6 +145,40 @@ describe('AI for documentary effort', () => {
 			expect(canvas.width).toBeGreaterThan(0);
 			expect(canvas.height).toBeGreaterThan(0);
 			opened.close();
+		});
+
+		it('keeps the improved reference order stable across reopen and Yjs snapshots', async () => {
+			const source = await aiDocumentaryEffortScenario();
+			const firstOpened = expectDocument(openDocument(source));
+			const reopened = expectDocument(openDocument(source));
+			const firstCanvas = await firstOpened.createCanvasModel(
+				layoutMeasurementsForCanvas(firstOpened.measurementModel),
+			);
+			const reopenedCanvas = await reopened.createCanvasModel(
+				layoutMeasurementsForCanvas(reopened.measurementModel),
+			);
+			const improvedLine = [
+				'preserve-documentary-guarantees',
+				'minimal-workflow-disruption',
+				'ai-content-generation',
+			];
+
+			expect(orderedIds(firstCanvas.nodes, improvedLine)).toEqual(improvedLine);
+			expect(orderedIds(reopenedCanvas.nodes, improvedLine)).toEqual(improvedLine);
+
+			const parsed = parseSequitToml(source);
+			if (!parsed.ok) throw new Error('Reference document must parse');
+			const live = new Y.Doc();
+			importLogicDocument(live, parsed.value);
+			const snapshot = new Y.Doc();
+			Y.applyUpdate(snapshot, Y.encodeStateAsUpdate(live));
+			const reconstructed = readLogicDocument(snapshot);
+			expect(reconstructed.ok).toBe(true);
+			if (!reconstructed.ok) throw new Error('Reference snapshot must reconstruct');
+			expect(reconstructed.value.endpointOrder).toEqual(parsed.value.endpointOrder);
+
+			firstOpened.destroy();
+			reopened.destroy();
 		});
 
 		it('appends isolated nodes after established comparable peers in addition order', async () => {

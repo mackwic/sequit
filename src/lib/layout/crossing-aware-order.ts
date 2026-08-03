@@ -43,7 +43,9 @@ export function visualLayerKey(
 	junctionIds: ReadonlySet<string>,
 ): VisualLayerKey | undefined {
 	const rank = ranks.get(endpointId);
-	return rank === undefined ? undefined : `${rank}:${junctionIds.has(endpointId) ? 'junction' : 'ordinary'}`;
+	return rank === undefined
+		? undefined
+		: `${rank}:${junctionIds.has(endpointId) ? 'junction' : 'ordinary'}`;
 }
 
 function indexLinks(metadata: CrossingOrderMetadata): readonly LinkBucket[] {
@@ -187,8 +189,7 @@ export function weightedInversionScore(metadata: CrossingOrderMetadata): number 
 		for (const [index, left] of bucket.links.entries()) {
 			for (const right of bucket.links.slice(index + 1)) {
 				if (
-					(left.sourceOrdinal - right.sourceOrdinal) *
-						(left.targetOrdinal - right.targetOrdinal) <
+					(left.sourceOrdinal - right.sourceOrdinal) * (left.targetOrdinal - right.targetOrdinal) <
 					0
 				) {
 					score += left.weight * right.weight;

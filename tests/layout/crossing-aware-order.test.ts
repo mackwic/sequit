@@ -107,9 +107,9 @@ describe('crossing-aware target insertion', () => {
 			['junction-a', 'junction-b'],
 		);
 
-		expect(selectTargetInsertionSlot(['junction-a', 'junction-b'], 'junction-b', input)).toMatchObject(
-			{ bestSlot: 0, currentScore: 1 },
-		);
+		expect(
+			selectTargetInsertionSlot(['junction-a', 'junction-b'], 'junction-b', input),
+		).toMatchObject({ bestSlot: 0, currentScore: 1 });
 		expect(selectTargetInsertionSlot(['long-a', 'long-b'], 'long-b', input)).toMatchObject({
 			bestSlot: 0,
 			currentScore: 1,
@@ -127,10 +127,12 @@ describe('crossing-aware target insertion', () => {
 			],
 			[link('peer', 'source-b', 'target-a', 0.5), link('target', 'source-a', 'target-b', 0.25)],
 		);
-		expect(selectTargetInsertionSlot(['target-a', 'target-b'], 'target-b', weighted)).toMatchObject({
-			currentScore: 0.125,
-			bestScore: 0,
-		});
+		expect(selectTargetInsertionSlot(['target-a', 'target-b'], 'target-b', weighted)).toMatchObject(
+			{
+				currentScore: 0.125,
+				bestScore: 0,
+			},
+		);
 
 		const tied = metadata(
 			['target-a', 'target-b'],
@@ -173,13 +175,16 @@ describe('crossing-aware target insertion', () => {
 			const targetId = 'target-2';
 			const selected = selectTargetInsertionSlot(row, targetId, input);
 			const peers = row.filter((id) => id !== targetId);
-			const scoreBySlot = peers.map((_, slot) => slot).concat(peers.length).map((slot) => {
-				const candidate = [...peers.slice(0, slot), targetId, ...peers.slice(slot)];
-				return weightedInversionScore({
-					...input,
-					effectiveEndpointOrder: [...sources, ...candidate],
+			const scoreBySlot = peers
+				.map((_, slot) => slot)
+				.concat(peers.length)
+				.map((slot) => {
+					const candidate = [...peers.slice(0, slot), targetId, ...peers.slice(slot)];
+					return weightedInversionScore({
+						...input,
+						effectiveEndpointOrder: [...sources, ...candidate],
+					});
 				});
-			});
 			let bruteSlot = row.indexOf(targetId);
 			let bruteScore = scoreBySlot[bruteSlot] ?? 0;
 			for (const [slot, score] of scoreBySlot.entries()) {

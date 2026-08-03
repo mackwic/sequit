@@ -297,7 +297,7 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const title = readString(meta.get('title'), ['document', 'title'], context);
 	const layoutDirection = readString(meta.get('layoutDirection'), ['layout', 'direction'], context);
 	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
-	const endpointOrder = readOptionalEndpointOrder(meta.get('endpointOrder'), context);
+	const persistedEndpointOrder = readOptionalEndpointOrder(meta.get('endpointOrder'), context);
 	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {
 		context.diagnostics.push({
 			code: 'invalid-yjs-live-document',
@@ -338,6 +338,14 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const nodes = readCollection(ydoc, NODES, 'nodes', context, readNode);
 	const junctions = readCollection(ydoc, JUNCTIONS, 'junctions', context, readJunction);
 	const relations = readCollection(ydoc, RELATIONS, 'relations', context, readRelation);
+	const endpointOrder =
+		persistedEndpointOrder === undefined
+			? undefined
+			: deriveEffectiveEndpointOrder(persistedEndpointOrder, [
+					...groups.map(({ id: endpointId }) => endpointId),
+					...nodes.map(({ id: endpointId }) => endpointId),
+					...junctions.map(({ id: endpointId }) => endpointId),
+				]);
 
 	if (context.diagnostics.length > 0 || id === undefined || title === undefined || !layout) {
 		return { ok: false, diagnostics: context.diagnostics };
@@ -443,7 +451,8 @@ export function addRelationToLiveDocument(
 	const projected = projectRelationAddition(current.value, relation);
 	if (!projected.ok) return validationFailure(projected.diagnostics);
 	const endpointOrder = projected.value.document.endpointOrder;
-	if (endpointOrder === undefined) throw new Error('Relation projection must produce endpoint order');
+	if (endpointOrder === undefined)
+		throw new Error('Relation projection must produce endpoint order');
 
 	ydoc.transact(() => {
 		ydoc

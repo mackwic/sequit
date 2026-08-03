@@ -7,6 +7,35 @@ title = "AI for documentary effort"
 [layout]
 direction = "bottom-to-top"
 bias = "top"
+endpointOrder = [
+  "alcoa-plus",
+  "preserve-partner-content",
+  "docx-word-compatible",
+  "data-team",
+  "prompt-management",
+  "preserve-documentary-guarantees",
+  "minimal-workflow-disruption",
+  "ai-content-generation",
+  "reduce-documentary-effort",
+  "ai-generation-orchestration",
+  "all-edits-in-word",
+  "conclusion-section-example",
+  "documents-live-18-months",
+  "docx-oriented-platform",
+  "familiar-word-ui",
+  "freshness-tracking",
+  "interdependent-sections",
+  "intuitive-word-ui",
+  "isolated-partner-edits",
+  "lossless-docx-import",
+  "onlyoffice",
+  "regenerate-on-source-change",
+  "traceable-edits",
+  "training-roi",
+  "use-cases",
+  "word-alcoa-question",
+  "word-ui-options",
+]
 
 [natures.need]
 label = "Need"
