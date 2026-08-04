@@ -14,7 +14,7 @@ title = "Two by two inversion"
 [layout]
 direction = "top-to-bottom"
 bias = "top"
-endpointOrder = ["source-a", "source-b", "target-a", "target-b", "target-c", "successor"]
+endpointOrder = ["source-a", "source-a", "removed-endpoint", "target-a"]
 
 [natures.goal]
 label = "Goal"
@@ -305,7 +305,7 @@ test.describe('AI for documentary effort', () => {
 		expect(comparison.persistedCrossings).toBeLessThan(comparison.legacyCrossings);
 	});
 
-	test('renders a qualifying target move with fewer inversion crossings and unchanged routes', async ({
+	test('keeps crossing-aware endpoint order through one browser editing lifecycle', async ({
 		page,
 	}) => {
 		await page.goto('/examples/ai-documentary-effort');
@@ -334,25 +334,46 @@ test.describe('AI for documentary effort', () => {
 			const opened = result.value;
 			const measurements = {
 				nodes: new Map(
-					opened.measurementModel.nodes.map(({ id }) => [id, { width: 180, height: 80 }]),
+					opened.measurementModel.nodes.map(({ id }, index) => [
+						id,
+						{ width: 180, height: id === 'source-b' ? 104 : 80 + (index % 2) * 8 },
+					]),
 				),
 				groups: new Map(),
 				junctions: new Map(),
 			};
-			const before = await opened.createCanvasModel(measurements);
+			const renderStates: [string, CanvasModel][] = [];
+			const capture = async (state: string) => {
+				renderStates.push([state, await opened.createCanvasModel(measurements)]);
+			};
+			await capture('legacy');
+			opened.addNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' });
+			measurements.nodes.set('zz-added-first', { width: 180, height: 80 });
+			await capture('first-added');
+			opened.addNode({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' });
+			measurements.nodes.set('aa-added-second', { width: 180, height: 88 });
+			await capture('appended');
+			opened.addRelation({
+				id: 'zz-added-first-to-successor',
+				from: 'zz-added-first',
+				to: 'successor',
+			});
+			opened.addRelation({
+				id: 'aa-added-second-to-successor',
+				from: 'aa-added-second',
+				to: 'successor',
+			});
+			await capture('before');
 			opened.addRelation({
 				id: 'qualifying-source-b-to-target-a',
 				from: 'source-b',
 				to: 'target-a',
 			});
-			const after = await opened.createCanvasModel(measurements);
+			await capture('after');
+			await capture('stable');
 			const fixture = document.createElement('section');
 			fixture.dataset.crossingAwareFixture = '';
 			document.body.replaceChildren(fixture);
-			const renderStates: [string, CanvasModel][] = [
-				['before', before],
-				['after', after],
-			];
 			for (const [state, canvas] of renderStates) {
 				const host = document.createElement('div');
 				host.dataset.renderState = state;
@@ -377,6 +398,11 @@ test.describe('AI for documentary effort', () => {
 			}
 			function orderedTargets(root: HTMLElement): readonly string[] {
 				return ['target-a', 'target-b', 'target-c'].toSorted(
+					(left, right) => endpoint(root, left).offsetLeft - endpoint(root, right).offsetLeft,
+				);
+			}
+			function ordered(root: HTMLElement, ids: readonly string[]): readonly string[] {
+				return ids.toSorted(
 					(left, right) => endpoint(root, left).offsetLeft - endpoint(root, right).offsetLeft,
 				);
 			}
@@ -449,18 +475,44 @@ test.describe('AI for documentary effort', () => {
 
 			const before = state('before');
 			const after = state('after');
+			const stable = state('stable');
+			const peerIds = ['target-b', 'target-c'];
 			return {
+				legacyOrder: ordered(state('legacy'), ['source-a', 'source-b', 'target-a']),
+				firstAddedOrder: ordered(state('first-added'), ['source-a', 'source-b', 'zz-added-first']),
+				appendedOrder: ordered(state('appended'), [
+					'source-a',
+					'source-b',
+					'zz-added-first',
+					'aa-added-second',
+				]),
 				beforeOrder: orderedTargets(before),
 				afterOrder: orderedTargets(after),
+				stableOrder: orderedTargets(stable),
+				peersBefore: ordered(before, peerIds),
+				peersAfter: ordered(after, peerIds),
 				beforeCrossings: inversionCrossings(before),
 				afterCrossings: inversionCrossings(after),
-				routes: [...routeContract(before), ...routeContract(after)],
+				topBiasedRankAligned:
+					new Set(['source-a', 'source-b'].map((id) => endpoint(after, id).offsetTop)).size === 1,
+				routes: [...routeContract(before), ...routeContract(after), ...routeContract(stable)],
 			};
 		});
 
+		expect(rendererContract.legacyOrder).toEqual(['target-a', 'source-a', 'source-b']);
+		expect(rendererContract.firstAddedOrder).toEqual(['source-a', 'source-b', 'zz-added-first']);
+		expect(rendererContract.appendedOrder).toEqual([
+			'source-a',
+			'source-b',
+			'zz-added-first',
+			'aa-added-second',
+		]);
 		expect(rendererContract.beforeOrder).toEqual(['target-a', 'target-b', 'target-c']);
 		expect(rendererContract.afterOrder).toEqual(['target-b', 'target-a', 'target-c']);
+		expect(rendererContract.stableOrder).toEqual(rendererContract.afterOrder);
+		expect(rendererContract.peersAfter).toEqual(rendererContract.peersBefore);
 		expect(rendererContract.afterCrossings).toBeLessThan(rendererContract.beforeCrossings);
+		expect(rendererContract.topBiasedRankAligned).toBe(true);
 		expect(rendererContract.routes).not.toHaveLength(0);
 		expect(rendererContract.routes.every(({ fourPointLinePath }) => fourPointLinePath)).toBe(true);
 		expect(rendererContract.routes.every(({ orthogonal }) => orthogonal)).toBe(true);
