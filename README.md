@@ -31,3 +31,9 @@ Authored code prohibits ternaries. Production TypeScript has global limits of 20
 The web suite requires 94% statements, 80% branches, 99% functions, and 98% lines. The collaboration suite independently requires 43% statements, 36% branches, 40% functions, and 43% lines. Generated declarations, routes, Svelte components, tests, and support files are outside these coverage scopes.
 
 Duplication analysis uses mild token matching with a minimum clone size of 5 lines and 50 tokens. It scans production TypeScript and Svelte, excludes declarations, tests, generated output, builds, and reports, prints results only to the console, and fails when duplicated lines exceed 1%.
+
+### Git hooks
+
+`pnpm install` runs `svelte-kit sync` and installs the tracked Husky hooks. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
+
+The pre-push hook runs `pnpm quality`, blocking the push when lint, either coverage suite, or duplication analysis fails. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
