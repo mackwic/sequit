@@ -4,7 +4,6 @@ test.describe('AI for documentary effort', () => {
 	test('opens the real document and renders its connected dependency graph', async ({ page }) => {
 		await page.goto('/examples/ai-documentary-effort');
 
-		await expect(page.locator('[data-status="connected"]')).toBeVisible();
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		await expect(page.locator('[data-group-id]')).toHaveCount(2);
 		await expect(page.locator('[data-junction-id="word-ui-options"]')).toHaveCount(1);

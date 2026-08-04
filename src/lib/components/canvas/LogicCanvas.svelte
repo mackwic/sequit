@@ -6,7 +6,7 @@
 		collectLayoutMeasurements,
 		layoutMeasurementSignature,
 	} from '$lib/canvas/measure-canvas';
-	import { openDocument } from '$lib/document/open-document';
+	import { openDocument, type OpenDocumentProjectionResult } from '$lib/document/open-document';
 
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
@@ -19,8 +19,9 @@
 
 	let { source }: { source: string } = $props();
 	let opened = $derived(openDocument(source));
+	let projection = $state<OpenDocumentProjectionResult>();
 	let measurementModel = $derived(
-		opened.ok ? opened.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
+		projection?.ok ? projection.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
 	);
 	let measurementLayer = $state<HTMLDivElement>();
 	let canvas = $state<CanvasModel>();
@@ -29,15 +30,38 @@
 	let activeLayoutRequest: object | undefined;
 
 	$effect(() => {
-		error = opened.ok ? undefined : opened.diagnostics.map(({ message }) => message).join('\n');
+		const openedDocument = opened;
 		canvas = undefined;
 		previousMeasurementSignature = '';
 		activeLayoutRequest = undefined;
+		if (!openedDocument.ok) {
+			projection = undefined;
+			error = openedDocument.diagnostics.map(({ message }) => message).join('\n');
+			return;
+		}
+
+		const refresh = () => {
+			const nextProjection = openedDocument.value.read();
+			projection = nextProjection;
+			error = nextProjection.ok
+				? undefined
+				: nextProjection.diagnostics.map(({ message }) => message).join('\n');
+			canvas = undefined;
+			previousMeasurementSignature = '';
+			activeLayoutRequest = undefined;
+		};
+		refresh();
+		const unsubscribe = openedDocument.value.subscribe(refresh);
+		return () => {
+			unsubscribe();
+			openedDocument.value.close();
+		};
 	});
 
 	async function recalculate() {
 		const layer = measurementLayer;
-		if (!opened.ok || !layer) return;
+		const current = projection;
+		if (!current?.ok || !layer) return;
 		const measurements = collectLayoutMeasurements(layer);
 		const signature = layoutMeasurementSignature(measurements);
 		if (signature === previousMeasurementSignature) return;
@@ -45,7 +69,7 @@
 		const request = {};
 		activeLayoutRequest = request;
 		try {
-			const result = await opened.value.createCanvasModel(measurements);
+			const result = await current.value.createCanvasModel(measurements);
 			if (activeLayoutRequest === request) canvas = result;
 		} catch (cause) {
 			if (activeLayoutRequest === request) {
@@ -55,21 +79,35 @@
 	}
 
 	onMount(() => {
-		let observer: ResizeObserver | undefined;
+		let resizeObserver: ResizeObserver | undefined;
+		let mutationObserver: MutationObserver | undefined;
 		void (async () => {
 			await document.fonts.ready;
 			await tick();
 			await recalculate();
 			const layer = measurementLayer;
 			if (!layer) return;
-			observer = new ResizeObserver(() => void recalculate());
-			for (const element of layer.querySelectorAll<HTMLElement>(
-				'[data-measure-node], [data-measure-group], [data-measure-junction]',
-			)) {
-				observer.observe(element);
-			}
+
+			const observeMeasuredElements = () => {
+				resizeObserver?.disconnect();
+				for (const element of layer.querySelectorAll<HTMLElement>(
+					'[data-measure-node], [data-measure-group], [data-measure-junction]',
+				)) {
+					resizeObserver?.observe(element);
+				}
+			};
+			resizeObserver = new ResizeObserver(() => void recalculate());
+			observeMeasuredElements();
+			mutationObserver = new MutationObserver(() => {
+				observeMeasuredElements();
+				void tick().then(recalculate);
+			});
+			mutationObserver.observe(layer, { childList: true, subtree: true, characterData: true });
 		})();
-		return () => observer?.disconnect();
+		return () => {
+			resizeObserver?.disconnect();
+			mutationObserver?.disconnect();
+		};
 	});
 </script>
 

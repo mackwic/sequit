@@ -20,9 +20,12 @@ export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 		const nextFrontier: string[] = [];
 		for (const id of frontier) {
 			processed += 1;
-			const sourceRank = ranks.get(id) ?? 0;
+			const sourceRank = ranks.get(id);
+			/* istanbul ignore if -- @preserve: every frontier ID is initialized in the ranks map. */
+			if (sourceRank === undefined) throw new Error(`Missing topological rank: ${id}`);
 			for (const target of graph.outgoingByEndpointId.get(id) ?? []) {
-				ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + 1));
+				const rankIncrement = graph.endpointsById.get(target)?.kind === 'junction' ? 0 : 1;
+				ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + rankIncrement));
 				const remaining = (indegree.get(target) ?? 0) - 1;
 				indegree.set(target, remaining);
 				if (remaining === 0) nextFrontier.push(target);

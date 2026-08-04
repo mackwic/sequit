@@ -1,8 +1,7 @@
-import { type LogicDocument, PERSISTENCE_FORMAT } from '../../src/lib/document/logic-document';
+import type { LogicDocument } from '../../src/lib/document/logic-document';
 
 export function validLogicDocument(): LogicDocument {
 	return {
-		persistenceFormat: PERSISTENCE_FORMAT,
 		id: 'valid-document',
 		title: 'Valid document',
 		layout: { direction: 'bottom-to-top', bias: 'top' },

@@ -1,5 +1,3 @@
-export const PERSISTENCE_FORMAT = 1 as const;
-
 export const LAYOUT_DIRECTIONS = [
 	'top-to-bottom',
 	'bottom-to-top',
@@ -74,7 +72,6 @@ export interface LogicRelation {
 }
 
 export interface LogicDocument {
-	readonly persistenceFormat: typeof PERSISTENCE_FORMAT;
 	readonly id: string;
 	readonly title: string;
 	readonly layout: LayoutConfiguration;

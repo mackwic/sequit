@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { openDocument } from '../../src/lib/document/open-document';
+import { openDocument, type OpenedDocument } from '../../src/lib/document/open-document';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
+
+function readProjection(opened: OpenedDocument) {
+	const result = opened.read();
+	expect(result.ok).toBe(true);
+	if (!result.ok) throw new Error('Expected the current document to project');
+	return result.value;
+}
 
 describe('openDocument', () => {
 	it('returns normalized parser diagnostics without starting downstream projections', () => {
@@ -39,28 +46,72 @@ describe('openDocument', () => {
 	it('uses the same immutable measurement projection across repeated layouts', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
-		const measurementModel = result.value.measurementModel;
+		const projection = readProjection(result.value);
+		const measurementModel = projection.measurementModel;
 		const measurements = layoutMeasurementsForCanvas(measurementModel);
 
-		const first = await result.value.createCanvasModel(measurements);
-		const second = await result.value.createCanvasModel(measurements);
+		const first = await projection.createCanvasModel(measurements);
+		const second = await projection.createCanvasModel(measurements);
 
-		expect(result.value.measurementModel).toBe(measurementModel);
+		expect(readProjection(result.value)).toBe(projection);
 		expect(second).toEqual(first);
 		expect(first.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
 			'ALCOA+: All edits needs to be tracable\n',
 		);
+		result.value.close();
+	});
+
+	it('reprojects the current Yjs document after a business operation', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const listener = vi.fn();
+		const unsubscribe = result.value.subscribe(listener);
+
+		expect(
+			result.value.replaceNodeMarkdown('traceable-edits', 'Updated through the session\n'),
+		).toBe(true);
+
+		const projection = readProjection(result.value);
+		expect(listener).toHaveBeenCalledTimes(1);
+		expect(
+			projection.measurementModel.nodes.find(({ id }) => id === 'traceable-edits')?.markdown,
+		).toBe('Updated through the session\n');
+		const canvas = await projection.createCanvasModel(
+			layoutMeasurementsForCanvas(projection.measurementModel),
+		);
+		expect(canvas.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Updated through the session\n',
+		);
+
+		unsubscribe();
+		result.value.close();
 	});
 
 	it('rejects layout from the returned application port when measurements are incomplete', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
-		const complete = layoutMeasurementsForCanvas(result.value.measurementModel);
+		const projection = readProjection(result.value);
+		const complete = layoutMeasurementsForCanvas(projection.measurementModel);
 		const incomplete = { ...complete, nodes: new Map(complete.nodes) };
 		incomplete.nodes.delete('traceable-edits');
 
-		await expect(result.value.createCanvasModel(incomplete)).rejects.toThrow(
+		await expect(projection.createCanvasModel(incomplete)).rejects.toThrow(
 			'Missing node measurement: traceable-edits',
 		);
+		result.value.close();
+	});
+
+	it('makes subscriptions and mutations inert after close', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		result.value.close();
+
+		const listener = vi.fn();
+		const unsubscribe = result.value.subscribe(listener);
+		unsubscribe();
+
+		expect(result.value.replaceNodeMarkdown('traceable-edits', 'Ignored\n')).toBe(false);
+		expect(listener).not.toHaveBeenCalled();
+		result.value.close();
 	});
 });

@@ -15,6 +15,7 @@ export default defineConfig(
 			'**/.wrangler/**',
 			'**/*.d.ts',
 			'build/**',
+			'coverage/**',
 			'dist/**',
 			'node_modules/**',
 			'playwright-report/**',

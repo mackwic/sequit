@@ -176,10 +176,29 @@ export function layoutWithDedicatedEngine(
 	}
 	const groupsById = new Map(graph.document.groups.map((group) => [group.id, group]));
 	const vertical = isVerticalDirection(graph.document.layout.direction);
+	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
+	const primaryBandSizes = ranks.bands.map((ids) => {
+		let maximum = 1;
+		for (const id of ids) {
+			if (junctionIds.has(id)) continue;
+			const size = sizes.get(id);
+			if (!size) throw new Error(`Missing measured size: ${id}`);
+			maximum = Math.max(maximum, vertical ? size.height : size.width);
+		}
+		return maximum;
+	});
 	const components: RankedComponent[] = weaklyConnectedComponents(graph).map((ids) => ({
 		ids,
 		context: componentContext(graph, ids, groupsById),
-		layout: layoutComponent(ids, ranks.byEndpointId, sizes, graph.document.layout.direction),
+		layout: layoutComponent(
+			ids,
+			ranks.byEndpointId,
+			sizes,
+			graph.document.layout.direction,
+			graph.document.layout.bias,
+			primaryBandSizes,
+			junctionIds,
+		),
 	}));
 	components.sort(
 		(left, right) =>
@@ -280,12 +299,10 @@ export function layoutWithDedicatedEngine(
 		minimumX = Math.min(minimumX, value.x);
 		minimumY = Math.min(minimumY, value.y);
 	}
-	if (minimumX < OUTER_MARGIN || minimumY < OUTER_MARGIN) {
-		const shiftX = Math.max(0, OUTER_MARGIN - minimumX);
-		const shiftY = Math.max(0, OUTER_MARGIN - minimumY);
-		for (const [id, value] of bounds) {
-			bounds.set(id, translateBounds(value, shiftX, shiftY));
-		}
+	const shiftX = Math.max(0, OUTER_MARGIN - minimumX);
+	const shiftY = Math.max(0, OUTER_MARGIN - minimumY);
+	for (const [id, value] of bounds) {
+		bounds.set(id, translateBounds(value, shiftX, shiftY));
 	}
 
 	const relations: LayoutRelation[] = graph.relations.map(({ relation }) => {

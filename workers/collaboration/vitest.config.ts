@@ -9,5 +9,17 @@ export default defineConfig({
 	],
 	test: {
 		include: ['workers/collaboration/test/**/*.test.ts'],
+		coverage: {
+			provider: 'istanbul',
+			include: ['workers/collaboration/src/**/*.ts'],
+			reportsDirectory: 'coverage/collaboration',
+			reporter: ['text', 'html', 'json-summary'],
+			thresholds: {
+				branches: 98,
+				functions: 98,
+				lines: 98,
+				statements: 98,
+			},
+		},
 	},
 });

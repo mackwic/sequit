@@ -10,7 +10,6 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
-	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
 import { validateLogicDocument } from '../document/validate-logic-document';
 
@@ -60,7 +59,6 @@ export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void 
 	ydoc.transact(() => {
 		replaceMapContents(ydoc.getMap(META), {
 			yjsLiveDocumentFormat: YJS_LIVE_DOCUMENT_FORMAT,
-			persistenceFormat: document.persistenceFormat,
 			id: document.id,
 			title: document.title,
 			layoutDirection: document.layout.direction,
@@ -255,13 +253,6 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const title = readString(meta.get('title'), ['document', 'title'], context);
 	const layoutDirection = readString(meta.get('layoutDirection'), ['layout', 'direction'], context);
 	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
-	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {
-		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
-			message: `Unsupported imported persistenceFormat: ${String(meta.get('persistenceFormat'))}`,
-			path: ['persistenceFormat'],
-		});
-	}
 	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === layoutDirection);
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === layoutBias);
 	if (layoutDirection !== undefined && direction === undefined) {
@@ -301,7 +292,6 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	}
 
 	const document: LogicDocument = {
-		persistenceFormat: PERSISTENCE_FORMAT,
 		id,
 		title,
 		layout,

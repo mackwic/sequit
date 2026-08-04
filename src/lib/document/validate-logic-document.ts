@@ -46,6 +46,7 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 			diagnostics.push({
 				code: 'group-cycle',
 				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
+				/* istanbul ignore next -- @preserve: a visiting group is always the last path entry. */
 				path: ['groups', groupPath.at(-1) ?? groupId, 'group'],
 			});
 			return;

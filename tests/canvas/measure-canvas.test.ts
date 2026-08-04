@@ -37,11 +37,14 @@ describe('canvas measurement boundary', () => {
 	it('ignores measurement elements without stable identifiers', () => {
 		const root = measurementRoot({
 			'[data-measure-node]': [measurable({}, 220, 100)],
-			'[data-measure-junction]': [],
-			'[data-measure-group]': [],
+			'[data-measure-junction]': [measurable({}, 32, 32)],
+			'[data-measure-group]': [measurable({}, 88, 14)],
 		});
 
-		expect(collectLayoutMeasurements(root).nodes.size).toBe(0);
+		const measurements = collectLayoutMeasurements(root);
+		expect(measurements.nodes.size).toBe(0);
+		expect(measurements.junctions.size).toBe(0);
+		expect(measurements.groups.size).toBe(0);
 	});
 
 	it('changes its signature only when a measured collection changes', () => {

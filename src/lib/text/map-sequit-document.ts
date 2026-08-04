@@ -10,9 +10,9 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
-	PERSISTENCE_FORMAT,
 	type SequitDiagnostic,
 } from '../document/logic-document';
+import { PERSISTENCE_FORMAT } from './persistence-format';
 
 interface MappingContext {
 	readonly diagnostics: SequitDiagnostic[];
@@ -216,7 +216,6 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 	return {
 		ok: true,
 		value: {
-			persistenceFormat: PERSISTENCE_FORMAT,
 			id,
 			title,
 			layout,

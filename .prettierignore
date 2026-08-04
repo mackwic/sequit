@@ -1,6 +1,7 @@
 .svelte-kit/
 .wrangler/
 build/
+coverage/
 dist/
 node_modules/
 playwright-report/

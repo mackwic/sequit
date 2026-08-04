@@ -46,7 +46,10 @@ function findCycle(
 	function visit(id: string): readonly string[] | undefined {
 		state.set(id, 'visiting');
 		stack.push(id);
-		for (const target of outgoingByEndpointId.get(id) ?? []) {
+		const targets = outgoingByEndpointId.get(id);
+		/* istanbul ignore if -- @preserve: adjacency is initialized for every canonical endpoint. */
+		if (!targets) throw new Error(`Missing graph adjacency: ${id}`);
+		for (const target of targets) {
 			if (state.get(target) === 'visiting') {
 				const start = stack.lastIndexOf(target);
 				return [...stack.slice(start), target];
@@ -102,19 +105,66 @@ export function createGraph(document: LogicDocument): GraphResult {
 	}
 	if (diagnostics.length > 0) return { ok: false, diagnostics };
 
+	const memberIdsByGroup = new Map(document.groups.map(({ id }) => [id, [] as string[]]));
+	for (const endpoint of endpoints) {
+		const groupId = endpoint.entity.groupId;
+		if (groupId !== undefined) memberIdsByGroup.get(groupId)?.push(endpoint.entity.id);
+	}
+	for (const members of memberIdsByGroup.values()) {
+		members.sort((left, right) => left.localeCompare(right));
+	}
+	const rankingIdsByEndpointId = new Map<string, readonly string[]>();
+	function rankingIdsFor(endpointId: string): readonly string[] {
+		const cached = rankingIdsByEndpointId.get(endpointId);
+		if (cached) return cached;
+		const endpoint = endpointsById.get(endpointId);
+		/* istanbul ignore if -- @preserve: ranking IDs are requested only for known endpoints. */
+		if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
+		let memberIds: readonly string[] = [];
+		if (endpoint.kind === 'group') {
+			const members = memberIdsByGroup.get(endpointId);
+			/* istanbul ignore if -- @preserve: member lists are initialized for every group. */
+			if (!members) throw new Error(`Missing group members: ${endpointId}`);
+			memberIds = members;
+		}
+		const rankingIds =
+			memberIds.length === 0
+				? [endpointId]
+				: [...new Set(memberIds.flatMap((memberId) => rankingIdsFor(memberId)))].sort(
+						(left, right) => left.localeCompare(right),
+					);
+		rankingIdsByEndpointId.set(endpointId, rankingIds);
+		return rankingIds;
+	}
+
 	const rankableEndpointIds = new Set<string>();
 	for (const node of document.nodes) rankableEndpointIds.add(node.id);
 	for (const junction of document.junctions) rankableEndpointIds.add(junction.id);
+	const rankingTargetsBySourceId = new Map<string, Set<string>>();
 	for (const { source, target } of relations) {
-		rankableEndpointIds.add(source.entity.id);
-		rankableEndpointIds.add(target.entity.id);
+		const sourceIds = rankingIdsFor(source.entity.id);
+		const targetIds = rankingIdsFor(target.entity.id);
+		for (const sourceId of sourceIds) {
+			rankableEndpointIds.add(sourceId);
+			let rankingTargets = rankingTargetsBySourceId.get(sourceId);
+			if (!rankingTargets) {
+				rankingTargets = new Set();
+				rankingTargetsBySourceId.set(sourceId, rankingTargets);
+			}
+			for (const targetId of targetIds) {
+				rankableEndpointIds.add(targetId);
+				rankingTargets.add(targetId);
+			}
+		}
 	}
 	const canonicalIds = [...rankableEndpointIds].sort((left, right) => left.localeCompare(right));
 	const outgoingByEndpointId = new Map(canonicalIds.map((id) => [id, [] as string[]]));
 	const predecessorsByEndpointId = new Map(canonicalIds.map((id) => [id, [] as string[]]));
-	for (const { source, target } of relations) {
-		outgoingByEndpointId.get(source.entity.id)?.push(target.entity.id);
-		predecessorsByEndpointId.get(target.entity.id)?.push(source.entity.id);
+	for (const [sourceId, targetIds] of rankingTargetsBySourceId) {
+		for (const targetId of targetIds) {
+			outgoingByEndpointId.get(sourceId)?.push(targetId);
+			predecessorsByEndpointId.get(targetId)?.push(sourceId);
+		}
 	}
 	for (const adjacent of outgoingByEndpointId.values()) {
 		adjacent.sort((left, right) => left.localeCompare(right));

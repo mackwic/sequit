@@ -2,7 +2,7 @@
 
 ## Statut
 
-WIP — plan de travail, 21 juillet 2026.
+Implémenté — tranche verticale opérationnelle, revue architecturale du 22 juillet 2026.
 
 Ce dossier porte la première tranche verticale réelle de Sequit. Le graphe Flying Logic « AI for documentary effort » sert de scénario fil rouge et de spécification exécutable.
 
@@ -17,13 +17,13 @@ Parsing, mapping et validation documentaire
         ↓
 LogicDocument importé
         ↓
-Adaptateur Yjs live document, `yjsLiveDocumentFormat = 1`
+Adaptateur Yjs live document, `yjsLiveDocumentFormat = 2`
         ↓
 LogicDocument courant relu depuis le Y.Doc
         ↓
 Graphe logique validé
         ↓
-Rangs topologiques et layout bottom-to-top, ELK si compatible
+Rangs topologiques et layout déterministe par moteur dédié
         ↓
 Modèle de rendu
         ↓
@@ -53,15 +53,18 @@ La boucle BDD externe couvre progressivement ce parcours. Chaque tranche étend 
 - La tranche initiale implémente la lecture du `persistenceFormat`. Son serializer canonique est une capacité de persistance requise pour la suite, pas une possibilité abandonnée.
 - Le futur round-trip TOML garantira la sémantique, mais pas la préservation des commentaires ni du formatage source.
 - Le nom `persistenceFormat` est volontairement indépendant de TOML : d’autres encodages de persistance pourront partager le modèle logique pour de très grands graphes, sans entrer dans cette tranche.
+- `persistenceFormat` appartient à la frontière textuelle. Il n’est pas porté par `LogicDocument`, qui reste indépendant de l’encodage et de sa version.
 
 ### `yjsLiveDocumentFormat` — schéma live du `Y.Doc`
 
 - Le `yjsLiveDocumentFormat` porte sa propre version, indépendante de `persistenceFormat`.
 - Cette version décrit les structures partagées applicatives live présentes dans le `Y.Doc`, qu’elles soient observées en mémoire, transportées par Yjs ou persistées plus tard sous forme d’updates.
+- Le schéma live ne stocke ni ne valide `persistenceFormat` ; plusieurs versions ou encodages persistants peuvent produire le même `LogicDocument` puis alimenter un même schéma live compatible.
 - `importLogicDocument` initialise un `Y.Doc` depuis un document persistant ; il n’est pas utilisé comme primitive normale de modification collaborative.
-- Après l’import, le graphe et le canvas dérivent toujours du `LogicDocument` courant relu depuis le `Y.Doc`.
+- Une petite `DocumentSession` conserve ensuite le `Y.Doc`, expose les opérations métier et notifie l’application après chaque update.
+- Après l’import et après chaque update, le graphe et le canvas dérivent du `LogicDocument` courant relu depuis le `Y.Doc`.
 - La lecture vérifie le `yjsLiveDocumentFormat` avant de projeter le contenu partagé vers le domaine.
-- Les modifications métier concurrentes utilisent des opérations fines de l’adaptateur, jamais la réécriture concurrente du document complet.
+- Les modifications métier concurrentes utilisent des opérations fines de la session et de l’adaptateur, jamais la réécriture concurrente du document complet.
 - Le Markdown est stocké sans normalisation dans des `Y.Text`. `Y.XmlFragment` reste différé jusqu’au choix d’un éditeur rich text structuré.
 
 ### `wireFormat` — frontière future du protocole réseau
@@ -86,23 +89,21 @@ La boucle BDD externe couvre progressivement ce parcours. Chaque tranche étend 
 
 ### E2E navigateur
 
-- Playwright est la cible pour le sommet de la pyramide.
-- La stack locale Cloudflare est Wrangler + workerd/Miniflare, pas LocalStack.
+- Playwright couvre le sommet de la pyramide pour le canvas.
+- Cet E2E démarre seulement l’application web : le document affiché ne traverse pas encore le Worker collaboratif.
+- Le ping/pong du Durable Object reste couvert séparément par la suite `test:collaboration` sous workerd/Miniflare.
 - Testcontainers et l’isolation parallèle par conteneurs sont différés.
-- La première tranche vise un seul scénario navigateur représentatif. La parallélisation des E2E sera traitée lorsqu’elle sera utile.
+- La première tranche conserve un seul scénario navigateur représentatif.
 
-### Layout initial — candidat ELK
+### Layout initial — moteur dédié retenu
 
-- `elkjs` et l’algorithme ELK layered sont le premier candidat pour fournir le moteur de layout.
-- ELK reste derrière un adaptateur : ni ses types ni ses options ne sortent de la couche layout.
-- L’API de layout est asynchrone dès son introduction pour rester déplaçable dans un Web Worker sans rupture de contrat.
-- La version d’`elkjs` est verrouillée exactement ; les entrées sont ordonnées canoniquement par identifiant et les options, dont toute seed pertinente, sont fixées explicitement.
-- Le déterminisme est garanti à version d’ELK, options, rangs, ordre canonique et mesures identiques ; une mise à jour d’ELK peut modifier la géométrie tout en conservant les invariants.
-- La tranche initiale configure seulement le bottom-to-top, les rangs topologiques, les groupes, les junctions, les dimensions et le routage nécessaires au scénario.
-- Les rangs sont d’abord traduits en partitions ELK avec `org.eclipse.elk.partitioning.activate` et `org.eclipse.elk.partitioning.partition`, sous `org.eclipse.elk.layered` avec une direction `UP`.
-- Cette traduction est une hypothèse d’intégration à vérifier sur ELK réel : l’ordre des partitions est documenté, mais l’alignement de tous les éléments d’un même rang dans une bande unique doit être prouvé par le scénario.
-- Une gate de compatibilité précède l’adoption définitive d’ELK. Si elle échoue, l’adaptateur est conservé mais ELK n’est ni forcé ni forké ; un moteur dédié minimal peut prendre sa place derrière le même contrat.
-- Les réglages avancés, la stabilité incrémentale et la réduction poussée des croisements sont différés.
+- La gate de compatibilité a écarté ELK : ses partitions hiérarchiques ne garantissent pas les bandes globales requises.
+- `elkjs` et sa gate expérimentale ont été retirés après enregistrement de cette décision.
+- `layoutGraph(...)` reste la façade asynchrone stable ; les types et détails du moteur dédié ne sortent pas de la couche layout.
+- Le moteur reçoit les rangs, les mesures et les préférences explicites, puis produit les bounds et routes propres à Sequit.
+- Les entrées sont ordonnées canoniquement par identifiant afin de garantir le déterminisme à options, rangs et mesures identiques.
+- La tranche initiale couvre les directions et biais supportés, les groupes imbriqués, les junctions, les dimensions et le routage nécessaires aux scénarios exécutables.
+- Les réglages avancés, la stabilité incrémentale et la réduction poussée des croisements restent différés.
 
 ## Scénario de référence
 
@@ -312,7 +313,7 @@ topologicallyRank(graph)
     → TopologicalRanks
 ```
 
-Le contrat représente un ordre partiel par rangs : le rang de chaque source est strictement inférieur à celui de sa cible. Il ne retourne pas une liste qui imposerait un ordre total entre deux branches indépendantes.
+Le contrat représente un ordre partiel par rangs : le rang de chaque source atomique est strictement inférieur à celui de sa cible. Il ne retourne pas une liste qui imposerait un ordre total entre deux branches indépendantes.
 
 Les rangs canoniques utilisent la longueur du plus long chemin depuis une source :
 
@@ -323,7 +324,7 @@ rank(v) = 1 + max(rank(u) pour chaque u → v)   sinon
 
 Cette récurrence est calculée après validation de l’acyclicité. Elle produit les rangs minimaux respectant toutes les relations et ne dépend ni de l’ordre des tables TOML ni de l’ordre d’itération interne. Les nœuds et junctions isolés reçoivent le rang `0`.
 
-Un groupe purement structurel ne reçoit pas de rang du seul fait qu’il contient des membres. Un groupe reçoit un rang d’endpoint uniquement lorsqu’il participe lui-même à une relation ; ses membres restent rangés indépendamment. Dans le scénario initial, `use-cases` est seulement un conteneur tandis que `data-team` est un endpoint de rang `0`.
+Un groupe vide utilisé dans une relation est un endpoint atomique et reçoit un rang. Un groupe non vide n’occupe pas une ligne atomique supplémentaire : ses contraintes de relation sont développées vers ses endpoints feuilles. Une relation entrante place tout son contenu après la source ; une relation sortante place sa cible après tout le contenu. Le groupe occupe donc exactement l’intervalle des rangs de son contenu.
 
 ### Layout
 
@@ -332,9 +333,9 @@ layoutGraph(graph, ranks, measurements, preferences)
     → Promise<LayoutResult>
 ```
 
-L’adaptateur de layout traduit le graphe et ses rangs topologiques vers le moteur sélectionné par la gate de compatibilité, impose leur ordre vertical, puis reconvertit la sortie dans les types géométriques de Sequit. ELK layered est essayé en premier. L’adaptateur consomme aussi les dimensions de nœuds, junctions et libellés de groupes, puis produit leurs bounds et les routes des relations. Deux éléments de même rang ne reçoivent aucun ordre relatif métier. Le renderer consomme ces mêmes bounds ; les dimensions ne sont jamais dupliquées dans le modèle métier.
+L’adaptateur de layout traduit le graphe, ses rangs topologiques, les mesures et les préférences vers le moteur dédié, puis reconvertit la sortie dans les types géométriques de Sequit. Il produit les bounds des nœuds, junctions et groupes ainsi que les routes des relations. Deux éléments de même rang ne reçoivent aucun ordre relatif métier. Le renderer consomme ces mêmes bounds ; les dimensions ne sont jamais dupliquées dans le modèle métier.
 
-Une bande de rang désigne l’intervalle vertical englobant les bounds de tous les sommets portant ce rang, exprimés dans le repère global du layout. Pour deux rangs `r < s`, toute la bande de `s` doit être strictement au-dessus de celle de `r` ; aucun alignement exact des centres, des bords ou des hauteurs n’est requis entre éléments de même rang. Les bounds d’un groupe purement structurel sans rang, comme `use-cases`, peuvent traverser plusieurs bandes et sont exclus de cet invariant ; un groupe endpoint rangé, comme `data-team`, y participe.
+Une bande de rang désigne l’intervalle visuel englobant les bounds des endpoints atomiques portant ce rang. Pour deux rangs `r < s`, toute la bande de `s` suit strictement celle de `r` dans la direction choisie. Un groupe non vide enveloppe les bandes occupées par son contenu et est exclu de l’invariant mono-bande ; un groupe vide endpoint y participe comme un sommet atomique.
 
 ### Canvas
 
@@ -344,7 +345,7 @@ LogicDocument courant + LayoutResult
     → composants Svelte
 ```
 
-Le `LogicDocument` courant provient de `readLogicDocument`, jamais directement du résultat initial du parser. Le renderer est une projection pure : il ne parse pas TOML, ne lit pas Yjs, ne calcule pas les rangs topologiques et ne connaît pas ELK.
+Le `LogicDocument` courant provient de la `DocumentSession`, qui le relit depuis Yjs après chaque update. Le renderer est une projection pure : il ne parse pas TOML, ne lit pas Yjs et ne calcule ni graphe, ni rangs, ni layout.
 
 ### Direction architecturale progressive
 
@@ -400,7 +401,7 @@ Organisation cible indicative, à créer seulement lorsque chaque responsabilit�
 ```text
 src/lib/
 ├── text/            # adaptateur TOML, mapping et diagnostics source
-├── document/        # LogicDocument, commandes et éventuelle DocumentSession
+├── document/        # LogicDocument, DocumentSession et orchestration d’ouverture
 ├── collaboration/   # schéma et adaptateur Yjs
 ├── graph/           # résolution, cycles et rangs topologiques
 ├── layout/          # géométrie et placement purs
@@ -416,7 +417,7 @@ Répartition de l’état visée :
 - le viewport, le zoom, l’outil actif, le survol et les caches de géométrie restent locaux ;
 - les positions produites par un layout déterministe ne sont pas synchronisées ; seules leurs éventuelles contraintes persistantes le sont.
 
-Une façade `DocumentSession` n’est introduite que lorsque les premiers use cases montrent son API réelle. Lorsqu’elle existe, elle est l’unique point d’entrée applicatif vers Yjs. Avant cela, l’orchestrateur applicatif appelle l’adaptateur ; les composants Svelte ne manipulent jamais les structures CRDT directement.
+La façade `DocumentSession` est l’unique point d’entrée applicatif vers Yjs. Elle conserve le `Y.Doc`, expose les opérations métier fines, relit le document courant et notifie les projections après chaque update. Les composants Svelte ne manipulent jamais les structures CRDT directement.
 
 ## Stratégie de tests
 
@@ -474,14 +475,16 @@ Le test n’utilise pas un snapshot de pixels et ne fixe pas l’ordre horizonta
 #### Adaptateur Yjs
 
 - importe puis relit le scénario sans perte sémantique ;
-- écrit et vérifie un `yjsLiveDocumentFormat` indépendant de `persistenceFormat` ;
+- écrit et vérifie `yjsLiveDocumentFormat = 2` indépendamment de `persistenceFormat` ;
+- ne stocke ni ne valide `persistenceFormat` dans le schéma live ;
 - rejette un `yjsLiveDocumentFormat` inconnu ;
 - conserve tous les identifiants stables ;
 - stocke chaque Markdown dans un `Y.Text` sans le normaliser ;
 - préserve exactement le Markdown à travers `LogicDocument → Y.Text → LogicDocument` ;
-- fait converger deux vrais `Y.Doc` après deux opérations métier indépendantes appliquées par l’adaptateur ;
+- fait converger deux vrais `Y.Doc` après deux opérations métier indépendantes ;
 - prouve que cette convergence n’utilise pas deux réécritures concurrentes du document complet ;
-- garde la couche Yjs hors du modèle métier.
+- garde la couche Yjs hors du modèle métier ;
+- notifie les projections applicatives via `DocumentSession` après une opération métier.
 
 #### Graphe
 
@@ -489,16 +492,18 @@ Le test n’utilise pas un snapshot de pixels et ne fixe pas l’ordre horizonta
 - rejette une référence d’endpoint inconnue ;
 - représente la junction XOR avec trois entrées et une sortie, sans lui attribuer de sémantique d’évaluation ;
 - accepte le groupe vide adressable `data-team` ;
-- conserve le groupe comme endpoint explicite sans résoudre de membre interne ;
+- développe les contraintes d’un groupe non vide vers ses endpoints feuilles pour le ranking ;
 - détecte un cycle introduit par `withCycle(...)` ;
 - retourne le cycle complet dans le diagnostic.
 
 #### Rangs topologiques
 
-- chaque sommet sans prédécesseur reçoit le rang `0` ;
-- chaque autre sommet reçoit `1 + max(rang de ses prédécesseurs)` ;
+- chaque endpoint atomique sans prédécesseur reçoit le rang `0` ;
+- chaque autre endpoint atomique reçoit `1 + max(rang de ses prédécesseurs)` ;
 - deux branches soumises aux mêmes contraintes peuvent partager un rang sans recevoir d’ordre relatif ;
-- `use-cases` ne reçoit pas de rang en tant que simple conteneur, tandis que `data-team` reçoit son rang d’endpoint ;
+- un groupe non vide occupe l’intervalle des rangs de son contenu sans rang atomique supplémentaire ;
+- une cible d’un groupe non vide est placée après tous ses endpoints feuilles ;
+- `use-cases` ne reçoit pas de rang propre, tandis que le groupe vide `data-team` reçoit son rang d’endpoint ;
 - la sortie est déterministe à graphe sémantiquement identique ;
 - réordonner les tables TOML ne change pas les rangs.
 
@@ -512,6 +517,7 @@ Le test n’utilise pas un snapshot de pixels et ne fixe pas l’ordre horizonta
 - les nœuds ne se chevauchent pas ;
 - les membres de `use-cases` restent dans les bounds du groupe ;
 - `data-team` possède des bounds malgré son contenu vide ;
+- un groupe non vide utilisé comme endpoint enveloppe toutes les bandes de son contenu sans ajouter de ligne propre ;
 - chaque relation commence et termine sur les bounds de ses endpoints ;
 - la relation depuis `data-team` commence précisément sur les bounds du groupe ;
 - deux exécutions du moteur sélectionné produisent le même résultat à version, options, rangs, ordre canonique et mesures identiques ;
@@ -568,16 +574,16 @@ Avant de passer à la tranche suivante, toutes les preuves suivantes sont requis
 
 #### Preuves spécifiques par gate
 
-| Gate               | Preuve supplémentaire obligatoire                                                                                                                                                                                                              |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Après la tranche 1 | Le fichier réel traverse parsing syntaxique, mapping et validation ; le `LogicDocument` complet et les diagnostics structurés sont observés ; le domaine ne dépend pas de `smol-toml`.                                                         |
-| Après la tranche 2 | Le `yjsLiveDocumentFormat = 1` est relu depuis de vrais `Y.Doc`, le Markdown est préservé exactement et deux modifications métier indépendantes convergent sans réécriture concurrente du document complet.                                    |
-| Après la tranche 3 | Les références inconnues et le cycle perturbé échouent comme prévu ; les 20 relations et les rangs canoniques du scénario sont validés indépendamment de l’ordre des tables.                                                                   |
-| Après la tranche 4 | La gate isolée qualifie ou écarte ELK sur les rangs et groupes du scénario ; le moteur retenu traite ensuite le scénario complet et satisfait les invariants de bounds, de bandes de rang, de groupes, de routage et de déterminisme qualifié. |
-| Après la tranche 5 | L’application est lancée et conduite dans un navigateur réel ; mesure, fontes, layout, groupes, junction et relations SVG sont inspectés sans donnée de graphe codée en dur.                                                                   |
-| Après la tranche 6 | Le scénario Playwright passe dans la stack locale réelle, le refactor final est terminé, puis `pnpm check`, toutes les suites et tous les builds passent ensemble.                                                                             |
+| Gate               | Preuve supplémentaire obligatoire                                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Après la tranche 1 | Le fichier réel traverse parsing syntaxique, mapping et validation ; le `LogicDocument` complet et les diagnostics structurés sont observés ; le domaine ne dépend pas de `smol-toml`.          |
+| Après la tranche 2 | Le `yjsLiveDocumentFormat = 2` est relu depuis de vrais `Y.Doc`, reste indépendant de `persistenceFormat`, préserve le Markdown et converge après des modifications fines.                      |
+| Après la tranche 3 | Les références inconnues et le cycle perturbé échouent ; les groupes non vides développent leurs contraintes vers leur contenu ; relations et rangs restent indépendants de l’ordre des tables. |
+| Après la tranche 4 | Le moteur dédié retenu traite le scénario complet et satisfait les invariants de bounds, bandes de rang, groupes multi-rangs, routage et déterminisme.                                          |
+| Après la tranche 5 | L’application est conduite dans un navigateur réel ; mesure, fontes, layout, groupes, junction et relations SVG sont inspectés sans donnée de graphe codée en dur.                              |
+| Après la tranche 6 | Le scénario Playwright passe avec l’application web seule ; le smoke Worker passe séparément ; puis `pnpm check`, toutes les suites et tous les builds passent ensemble.                        |
 
-La preuve de tranche 4 commence par une gate de compatibilité ELK isolée. Elle configure `org.eclipse.elk.layered`, `UP`, le partitionnement par rang et la gestion hiérarchique, puis exerce d’abord trois rangs minimaux avant le scénario complet. ELK n’est retenu que si les rangs restent dans des bandes distinctes et ordonnées, si les éléments de même rang partagent leur bande, et si `use-cases` ainsi que `data-team` conservent les comportements attendus.
+La gate ELK a démontré que les partitions hiérarchiques ne formaient pas les bandes globales requises. ELK a donc été écarté et retiré ; les preuves permanentes portent uniquement sur la façade `layoutGraph(...)` et le moteur dédié retenu.
 
 ### Tranche 1 — TOML, `LogicDocument` et validation
 
@@ -605,11 +611,12 @@ Critère de sortie : le fichier réel traverse le parsing syntaxique, le mapping
 
 ### Tranche 2 — `yjsLiveDocumentFormat`
 
-- définir `yjsLiveDocumentFormat = 1` indépendamment de `persistenceFormat` ;
+- définir `yjsLiveDocumentFormat = 2` indépendamment de `persistenceFormat` ;
+- ne porter aucune version de persistance dans `LogicDocument` ni dans le schéma live ;
 - importer le `LogicDocument`, puis relire le document courant utilisé par la suite de la chaîne ;
 - représenter le Markdown sans normalisation par des `Y.Text` et les entités par des structures partagées fines ;
 - utiliser de vrais `Y.Doc` dans les tests ;
-- introduire les opérations minimales de l’adaptateur nécessaires au scénario de convergence ;
+- introduire les opérations minimales nécessaires au scénario de convergence ;
 - faire converger deux modifications indépendantes sans réécriture concurrente du document complet ;
 - ne pas intégrer encore `wireFormat`, le protocole réseau ni la persistance Durable Object.
 
@@ -618,7 +625,7 @@ Critère de sortie : le round-trip `yjsLiveDocumentFormat` est sémantiquement i
 ### Refactor 2
 
 - placer tout accès Yjs derrière l’adaptateur ;
-- introduire une façade `DocumentSession` uniquement si les use cases en ont besoin ;
+- introduire `DocumentSession` comme façade applicative conservant le `Y.Doc`, relisant le document courant et notifiant ses abonnés ;
 - supprimer les types Yjs des signatures métier.
 
 ### Tranche 3 — Graphe et rangs topologiques
@@ -628,7 +635,8 @@ Critère de sortie : le round-trip `yjsLiveDocumentFormat` est sémantiquement i
 - détecter les références inconnues et cycles ;
 - introduire `withCycle(...)` ;
 - calculer les rangs canoniques par plus long chemin sans produire d’ordre total arbitraire ;
-- distinguer les groupes purement structurels des groupes qui participent comme endpoints ;
+- développer les relations incidentes à un groupe non vide vers ses endpoints feuilles pour le ranking ;
+- conserver les bounds du groupe comme enveloppe multi-rangs pour le routage ;
 - vérifier que l’ordre des tables TOML n’influence ni le graphe ni les rangs.
 
 Critère de sortie : les 20 relations sont résolues, le scénario est acyclique, chaque sommet suit la récurrence canonique des rangs, `use-cases` reste un conteneur sans rang propre, `data-team` possède son rang d’endpoint et le perturbateur de cycle produit le diagnostic attendu.
@@ -639,24 +647,21 @@ Critère de sortie : les 20 relations sont résolues, le scénario est acyclique
 - garder le graphe indépendant de Yjs et du renderer ;
 - vérifier que les diagnostics restent au bon niveau d’abstraction.
 
-### Tranche 4 — Layout pur, candidat ELK
+### Tranche 4 — Layout pur, moteur dédié
 
-- ajouter une version exacte d’`elkjs` derrière un adaptateur de layout ;
 - définir les dimensions d’entrée ;
 - recevoir explicitement les rangs avec le graphe et les mesures ;
-- traduire nœuds, junctions, groupes, relations et contraintes de rang vers ELK layered ;
-- ordonner canoniquement toutes les entrées et fixer les options ELK ainsi que toute seed pertinente ;
-- commencer par la gate de compatibilité sur le vrai `elkjs` : trois rangs, plusieurs éléments de même rang, `use-cases`, `data-team` et relations incidentes ;
-- configurer `org.eclipse.elk.layered`, `elk.direction = UP`, `org.eclipse.elk.partitioning.activate = true`, une partition par rang et la gestion hiérarchique nécessaire ;
-- vérifier avant de poursuivre que les partitions préservent les bandes de rang, pas seulement leur ordre global ;
-- si cette gate échoue, conserver `layoutGraph(...)` et ses tests, écarter ELK sans le forker, puis implémenter le moteur dédié minimal derrière l’adaptateur ;
-- produire des bounds de nœuds, junctions et groupes ;
-- supporter bottom-to-top sans contredire les rangs ;
-- reconvertir les routes du moteur sélectionné dans `LayoutResult` ;
+- ordonner canoniquement toutes les entrées ;
+- produire les bounds des nœuds, junctions et groupes ;
+- faire occuper à un groupe non vide toutes les bandes de son contenu sans ligne propre supplémentaire ;
+- donner des bounds atomiques aux groupes vides ;
+- supporter les directions et biais compatibles sans contredire les rangs ;
+- reconvertir les routes dans `LayoutResult` ;
 - défendre les invariants plutôt que des coordonnées exactes ;
-- exposer dès maintenant une API asynchrone.
+- exposer une API asynchrone ;
+- conserver `layoutGraph(...)` comme façade et masquer le moteur dédié.
 
-Critère de sortie : la gate de compatibilité a sélectionné ELK ou le moteur dédié minimal ; le scénario complet obtient un layout conforme aux rangs, sans chevauchement et conforme aux relations et groupes ; à moteur et version, options, rangs, ordre canonique et mesures identiques, deux exécutions produisent le même résultat.
+Critère de sortie : le moteur dédié obtient un layout conforme aux rangs, sans chevauchement, avec groupes multi-rangs et routage correct ; à options, rangs, ordre canonique et mesures identiques, deux exécutions produisent le même résultat.
 
 ### Refactor 4
 
@@ -668,12 +673,13 @@ Critère de sortie : la gate de compatibilité a sélectionné ELK ou le moteur 
 ### Tranche 5 — Canvas alimenté par le scénario
 
 - supprimer `preview-graph.ts` ;
-- introduire `openDocument(source)` comme use case d’orchestration du parsing, de l’import Yjs, de la relecture et des projections ;
+- introduire `openDocument(source)` comme use case d’orchestration du parsing et de la création de `DocumentSession` ;
+- relire et reprojeter le document courant après chaque update Yjs ;
 - alimenter le canvas avec le résultat de la chaîne réelle ;
 - rendre les natures, groupes, junctions et relations ;
 - conserver le renderer DOM + SVG ;
-- effectuer un premier rendu de mesure hors layout, attendre les fontes nécessaires, puis calculer le layout et rendre les éléments positionnés ;
-- recalculer à travers la même frontière explicite lorsqu’une dimension observée change ;
+- effectuer un premier rendu de mesure hors layout, attendre les fontes nécessaires, puis calculer le layout ;
+- observer les éléments de mesure présents et nouvellement ajoutés, coalescer les recalculs et ignorer les résultats asynchrones périmés ;
 - autoriser une normalisation d’espaces strictement locale à la présentation, sans modifier le Markdown du domaine ni du `Y.Text`.
 
 Critère de sortie : l’application affiche le document TOML de référence après passage effectif par `yjsLiveDocumentFormat`, sans données de graphe codées en dur dans les composants et sans mutation du Markdown stocké.
@@ -687,7 +693,8 @@ Critère de sortie : l’application affiche le document TOML de référence apr
 ### Tranche 6 — Premier E2E navigateur
 
 - ajouter Playwright et le script `test:e2e` ;
-- démarrer la stack locale existante avec le harness E2E ;
+- démarrer uniquement l’application web avec le harness E2E ;
+- couvrir séparément le ping/pong du Worker dans `test:collaboration` ;
 - exposer une route d’exemple dédiée qui charge le fichier de référence et délègue au même `openDocument(source)` que l’application ;
 - ouvrir le scénario de référence ;
 - vérifier les éléments sémantiques et les invariants de connexion ;
@@ -776,15 +783,17 @@ Testcontainers ne sera introduit que si des services externes réellement conten
 - `examples/ai-documentation.sequit.toml` décrit fidèlement le graphe de référence dans `persistenceFormat = 1` ;
 - aucune donnée sémantique de ce graphe n’est dupliquée dans le frontend ;
 - `persistenceFormat` et `yjsLiveDocumentFormat` possèdent des responsabilités et des versions indépendantes ;
-- la tranche implémente `persistenceFormat` en lecture et `yjsLiveDocumentFormat = 1` dans le `Y.Doc` ; `wireFormat` reste une frontière future nommée mais sans version ni artefact de code dans cette tranche ;
+- `LogicDocument` ne porte pas la version de son encodage persistant ;
+- la tranche implémente `persistenceFormat = 1` en lecture et `yjsLiveDocumentFormat = 2` dans le `Y.Doc` ; `wireFormat` reste futur ;
 - le Markdown décodé traverse `LogicDocument`, `Y.Text` et `LogicDocument` sans normalisation ;
-- le document traverse parsing, mapping, validation, `LogicDocument` importé, Yjs live document, `LogicDocument` courant, graphe, rangs topologiques et moteur de layout sélectionné ;
-- les rangs topologiques canoniques sont une entrée obligatoire du layout ;
+- `DocumentSession` conserve le `Y.Doc`, expose les opérations métier et reprojette le document courant après chaque update ;
+- le document traverse parsing, mapping, validation, session Yjs, graphe, rangs topologiques et moteur dédié ;
+- un groupe non vide occupe les bandes de son contenu sans rang atomique supplémentaire ; un groupe vide endpoint conserve son propre rang ;
 - les invariants du scénario sont testés avec Vitest à chaque frontière disponible ;
 - l’ordre des tables TOML n’influence ni le document logique, ni les rangs, ni le layout ;
 - au moins un perturbateur de cycle est couvert ;
-- le canvas rend le résultat de la chaîne réelle après une frontière de mesure explicite ;
-- un E2E Playwright vérifie le scénario dans un navigateur réel via le use case d’ouverture ;
+- le canvas rend le résultat courant après une frontière de mesure explicite et ignore les layouts périmés ;
+- un E2E Playwright vérifie le canvas avec l’application web seule et la suite Worker reste séparée ;
 - les tests n’imposent ni pixel snapshot ni ordre arbitraire des branches indépendantes ;
 - `pnpm check`, les tests et les builds passent ;
 - les refactors intermédiaires et final ont supprimé les données et abstractions devenues obsolètes.
@@ -794,7 +803,17 @@ Testcontainers ne sera introduit que si des services externes réellement conten
 1. `smol-toml` parse l’encodage TOML de `persistenceFormat` derrière un adaptateur ; un CST source-mappé reste différé.
 2. Le document de référence conserve fidèlement les fautes de la capture, dont « ReSearch ».
 3. Le `XOR` est préservé comme opérateur et rendu comme junction, sans sémantique d’évaluation.
-4. Un groupe replié est un endpoint explicite ; une relation commence ou termine sur ses bounds selon son sens, sans membre interne implicite.
+4. Un groupe vide peut être un endpoint atomique. Un groupe non vide utilisé comme endpoint occupe l’intervalle des rangs de son contenu ; ses relations contraignent ses endpoints feuilles et touchent les bounds du groupe.
 5. Le Markdown utilise `Y.Text` dans `yjsLiveDocumentFormat` et reste strictement inchangé aux frontières de format ; une normalisation éventuelle est limitée à la présentation.
 6. Une route d’exemple dédiée sélectionne la ressource, puis appelle le même `openDocument(source)` que le reste de l’application.
-7. `persistenceFormat` et `yjsLiveDocumentFormat` sont versionnés indépendamment ; `wireFormat` nomme la frontière du futur protocole réseau mais n’est ni versionné ni matérialisé dans cette tranche.
+7. `persistenceFormat` et `yjsLiveDocumentFormat` sont versionnés indépendamment ; `LogicDocument` et le schéma live ne portent pas la version persistante.
+8. Le canvas E2E et le smoke Worker sont deux preuves séparées tant que les updates Yjs ne traversent pas le réseau.
+9. ELK est écarté et retiré ; `layoutGraph(...)` délègue au moteur dédié.
+10. `DocumentSession` est la façade applicative unique vers le document Yjs live.
+
+## Questions mises de côté
+
+Ces décisions ne bloquent pas la tranche actuelle et restent volontairement ouvertes :
+
+1. Le format persistant doit-il rejeter les champs inconnus ou préserver une compatibilité ascendante tolérante ?
+2. Le Markdown doit-il être affiché comme texte brut dans le canvas initial ou rendu via un sous-ensemble explicitement assaini ?

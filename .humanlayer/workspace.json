@@ -1,0 +1,20 @@
+{
+	"disabled": false,
+	"pathTemplate": "~/.humanlayer/workspaces/{{ TASKSLUG }}/{{ REPOBASENAME }}",
+	"branchTemplate": "{{ TASKSLUG }}",
+	"sourceRef": "HEAD",
+	"setupCommand": "pnpm install",
+	"copyGlobs": [
+		".env*",
+		".claude/settings.local.json",
+		"CLAUDE.local.md",
+		".humanlayer/workspace.local.json"
+	],
+	"repos": [
+		{
+			"localPath": ".",
+			"description": "Sequit application",
+			"primary": true
+		}
+	]
+}

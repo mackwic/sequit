@@ -48,6 +48,18 @@ describe('CanvasModel projection', () => {
 		expect(model.junctions).toEqual([{ id: 'choice', operator: 'xor' }]);
 	});
 
+	it('rejects a node whose nature is absent from the measurement projection', () => {
+		const document = validLogicDocument();
+		const invalid = {
+			...document,
+			nodes: document.nodes.map((node) =>
+				node.id === 'source-a' ? { ...node, natureId: 'missing-nature' } : node,
+			),
+		};
+
+		expect(() => createCanvasMeasurementModel(invalid)).toThrow('Missing nature: missing-nature');
+	});
+
 	it('combines one measurement projection with layout geometry without changing content', () => {
 		const measurement = createCanvasMeasurementModel(validLogicDocument());
 		const canvas = createCanvasModel(measurement, completeLayout());

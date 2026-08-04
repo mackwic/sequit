@@ -152,7 +152,7 @@ describe('LogicGraph', () => {
 });
 
 describe('topologicallyRank', () => {
-	it('uses the canonical longest-path recurrence without ranking structural groups', async () => {
+	it('uses longest-path ranks without giving structural groups or junctions a node row', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());
 		const ranks = topologicallyRank(graph);
 		const predecessors = new Map<string, string[]>();
@@ -164,13 +164,13 @@ describe('topologicallyRank', () => {
 
 		for (const [endpointId, rank] of ranks.byEndpointId) {
 			const endpointPredecessors = predecessors.get(endpointId) ?? [];
+			const rankIncrement = graph.endpointsById.get(endpointId)?.kind === 'junction' ? 0 : 1;
 			const expected =
 				endpointPredecessors.length === 0
 					? 0
-					: 1 +
-						Math.max(
+					: Math.max(
 							...endpointPredecessors.map(
-								(predecessor) => ranks.byEndpointId.get(predecessor) ?? -1,
+								(predecessor) => (ranks.byEndpointId.get(predecessor) ?? -1) + rankIncrement,
 							),
 						);
 			expect(rank, endpointId).toBe(expected);
@@ -195,11 +195,46 @@ describe('topologicallyRank', () => {
 		const ranks = topologicallyRank(graphFrom(validLogicDocument()));
 
 		expect(ranks.bands).toEqual([
-			['endpoint-group', 'isolated', 'source-a', 'source-b'],
-			['choice'],
+			['choice', 'endpoint-group', 'isolated', 'source-a', 'source-b'],
 			['target'],
 		]);
 		expect(ranks.byEndpointId.has('container')).toBe(false);
 		expect(ranks.byEndpointId.has('orphan-group')).toBe(false);
+	});
+
+	it('uses defensive defaults for an externally assembled graph', () => {
+		const document = validLogicDocument();
+		const source = document.nodes[0];
+		const graph: LogicGraph = {
+			document,
+			endpointsById: new Map([
+				['source', { kind: 'node', entity: source }],
+				['isolated', { kind: 'node', entity: source }],
+			]),
+			relations: [],
+			rankableEndpointIds: ['source', 'isolated'],
+			outgoingByEndpointId: new Map([['source', ['external-target']]]),
+			predecessorsByEndpointId: new Map(),
+		};
+
+		const ranks = topologicallyRank(graph);
+		expect(ranks.byEndpointId.get('source')).toBe(0);
+		expect(ranks.byEndpointId.get('external-target')).toBe(1);
+		expect(ranks.byEndpointId.get('isolated')).toBe(0);
+	});
+
+	it('rejects a cyclic graph assembled outside createGraph', () => {
+		const document = validLogicDocument();
+		const source = document.nodes[0];
+		const graph: LogicGraph = {
+			document,
+			endpointsById: new Map([['source', { kind: 'node', entity: source }]]),
+			relations: [],
+			rankableEndpointIds: ['source'],
+			outgoingByEndpointId: new Map([['source', ['source']]]),
+			predecessorsByEndpointId: new Map([['source', ['source']]]),
+		};
+
+		expect(() => topologicallyRank(graph)).toThrow('LogicGraph must be acyclic before ranking');
 	});
 });

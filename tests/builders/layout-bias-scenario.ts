@@ -1,8 +1,4 @@
-import {
-	type LayoutConfiguration,
-	type LogicDocument,
-	PERSISTENCE_FORMAT,
-} from '../../src/lib/document/logic-document';
+import type { LayoutConfiguration, LogicDocument } from '../../src/lib/document/logic-document';
 
 export type LayoutContext = 'root' | 'group' | 'subgroup';
 
@@ -50,7 +46,6 @@ export function layoutBiasScenario(
 	});
 
 	return {
-		persistenceFormat: PERSISTENCE_FORMAT,
 		id: `layout-bias-${context}`,
 		title: `Layout bias in ${context}`,
 		layout,

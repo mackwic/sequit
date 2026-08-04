@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import CanvasWorkspace from '$lib/components/canvas/CanvasWorkspace.svelte';
-	import CollaborationStatus from '$lib/components/CollaborationStatus.svelte';
 
 	let { source, title }: { source: string; title: string } = $props();
 </script>
@@ -38,8 +37,6 @@
 				{title}
 			</button>
 		</div>
-
-		<CollaborationStatus />
 	</header>
 
 	<CanvasWorkspace {source} />

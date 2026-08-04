@@ -156,6 +156,57 @@ describe('layoutGraph', () => {
 		}
 	});
 
+	it('lets a non-empty endpoint group span every rank occupied by its content', async () => {
+		const valid = validLogicDocument();
+		const document: LogicDocument = {
+			...valid,
+			nodes: [
+				...valid.nodes.map((node) =>
+					node.id === 'target' ? { ...node, groupId: 'container' } : node,
+				),
+				{ id: 'after-group', natureId: 'goal', markdown: 'After group\n' },
+			],
+			relations: [
+				...valid.relations,
+				{ id: 'isolated-to-container', from: 'isolated', to: 'container' },
+				{ id: 'container-to-after', from: 'container', to: 'after-group' },
+			],
+		};
+		const { ranks, layout } = await layoutDocument(document);
+		const byId = boundsById(layout);
+		const group = byId.get('container');
+		const before = byId.get('isolated');
+		const after = byId.get('after-group');
+		if (!group || !before || !after) throw new Error('Expected group relation bounds');
+		const memberIds = ['source-a', 'source-b', 'choice', 'target'];
+		const memberRanks = new Set(memberIds.map((id) => ranks.byEndpointId.get(id)));
+
+		expect(ranks.byEndpointId.has('container')).toBe(false);
+		expect(memberRanks).toEqual(new Set([1, 2]));
+		for (const memberId of memberIds) {
+			const member = byId.get(memberId);
+			if (!member) throw new Error(`Expected member bounds: ${memberId}`);
+			expect(member.x).toBeGreaterThan(group.x);
+			expect(member.y).toBeGreaterThan(group.y);
+			expect(member.x + member.width).toBeLessThan(group.x + group.width);
+			expect(member.y + member.height).toBeLessThan(group.y + group.height);
+		}
+		expect(group.y + group.height).toBeLessThan(before.y);
+		expect(after.y + after.height).toBeLessThan(group.y);
+
+		const incoming = layout.relations.find(({ id }) => id === 'isolated-to-container');
+		const outgoing = layout.relations.find(({ id }) => id === 'container-to-after');
+		if (!incoming || !outgoing) throw new Error('Expected group relations');
+		expect(isOnBoundary(incoming.points[0] ?? { x: NaN, y: NaN }, before)).toBe(true);
+		expect(
+			isOnBoundary(incoming.points[incoming.points.length - 1] ?? { x: NaN, y: NaN }, group),
+		).toBe(true);
+		expect(isOnBoundary(outgoing.points[0] ?? { x: NaN, y: NaN }, group)).toBe(true);
+		expect(
+			isOnBoundary(outgoing.points[outgoing.points.length - 1] ?? { x: NaN, y: NaN }, after),
+		).toBe(true);
+	});
+
 	it('gives bounds to an empty unranked group without adding a topological rank', async () => {
 		const document = validLogicDocument();
 		const { ranks, layout } = await layoutDocument(document);
@@ -215,6 +266,187 @@ describe('layoutGraph', () => {
 		expect(dataTeamRelation?.points[0].y).toBe(dataTeam?.y);
 	});
 
+	it('places a logical junction between globally aligned node ranks', async () => {
+		const base = validLogicDocument();
+		const document: LogicDocument = {
+			...base,
+			nodes: [
+				...base.nodes,
+				{ id: 'side-source', natureId: 'goal', markdown: 'Side source\n' },
+				{ id: 'side-target', natureId: 'goal', markdown: 'Side target\n' },
+			],
+			relations: [
+				...base.relations,
+				{ id: 'side-source-to-target', from: 'side-source', to: 'side-target' },
+			],
+		};
+		const { layout } = await layoutDocument(document);
+		const bounds = boundsById(layout);
+		const junction = bounds.get('choice');
+		const sourceIds = ['source-a', 'source-b', 'side-source'];
+		const targetIds = ['target', 'side-target'];
+		const sources = sourceIds.map((id) => bounds.get(id));
+		const targets = targetIds.map((id) => bounds.get(id));
+		if (
+			!junction ||
+			sources.some((source) => source === undefined) ||
+			targets.some((target) => target === undefined)
+		) {
+			throw new Error('Expected junction scenario bounds');
+		}
+		const sourceLineTop = sources[0]?.y ?? NaN;
+		const targetLineTop = targets[0]?.y ?? NaN;
+		const targetLineBottom = Math.max(
+			...targets.map((target) => (target?.y ?? NaN) + (target?.height ?? NaN)),
+		);
+
+		expect(sources.map((source) => source?.y)).toEqual(sourceIds.map(() => sourceLineTop));
+		expect(targets.map((target) => target?.y)).toEqual(targetIds.map(() => targetLineTop));
+		expect(junction.y).toBeGreaterThan(targetLineBottom);
+		expect(junction.y + junction.height).toBeLessThan(sourceLineTop);
+		expect(junction.y + junction.height / 2).toBe((targetLineBottom + sourceLineTop) / 2);
+	});
+
+	it('rejects every incomplete endpoint and group measurement', async () => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const ranks = topologicallyRank(graph.value);
+		const complete = layoutMeasurementsFor(document);
+
+		const withoutJunction = { ...complete, junctions: new Map(complete.junctions) };
+		withoutJunction.junctions.delete('choice');
+		await expect(layoutGraph(graph.value, ranks, withoutJunction)).rejects.toThrow(
+			'Missing junction measurement: choice',
+		);
+
+		const withoutEndpointGroup = { ...complete, groups: new Map(complete.groups) };
+		withoutEndpointGroup.groups.delete('endpoint-group');
+		await expect(layoutGraph(graph.value, ranks, withoutEndpointGroup)).rejects.toThrow(
+			'Missing group measurement: endpoint-group',
+		);
+
+		const withoutStructuralGroup = { ...complete, groups: new Map(complete.groups) };
+		withoutStructuralGroup.groups.delete('orphan-group');
+		await expect(layoutGraph(graph.value, ranks, withoutStructuralGroup)).rejects.toThrow(
+			'Missing group measurement: orphan-group',
+		);
+	});
+
+	it('rejects every invalid measurement dimension', async () => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const ranks = topologicallyRank(graph.value);
+		const complete = layoutMeasurementsFor(document);
+
+		for (const [name, size, message] of [
+			['not-finite', { width: Number.NaN, height: 40 }, 'nodes.source-a.width'],
+			['invalid-height', { width: 80, height: 0 }, 'nodes.source-a.height'],
+		] as const) {
+			const measurements = { ...complete, nodes: new Map(complete.nodes) };
+			measurements.nodes.set('source-a', size);
+			await expect(layoutGraph(graph.value, ranks, measurements), name).rejects.toThrow(message);
+		}
+
+		for (const [field, value] of [
+			['minimumWidth', 0],
+			['minimumHeight', 0],
+			['headerHeight', -1],
+			['padding', Number.NaN],
+		] as const) {
+			const measurements = { ...complete, groups: new Map(complete.groups) };
+			const group = measurements.groups.get('container');
+			if (!group) throw new Error('Expected a group measurement fixture');
+			measurements.groups.set('container', { ...group, [field]: value });
+			await expect(layoutGraph(graph.value, ranks, measurements), field).rejects.toThrow(
+				`groups.container.${field}`,
+			);
+		}
+	});
+
+	it('defends the layout boundary against inconsistent graph and rank structures', async () => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const ranks = topologicallyRank(graph.value);
+		const measurements = layoutMeasurementsFor(document);
+
+		await expect(
+			layoutGraph(
+				{ ...graph.value, rankableEndpointIds: ['missing-endpoint'] },
+				{ byEndpointId: new Map([['missing-endpoint', 0]]), bands: [['missing-endpoint']] },
+				measurements,
+			),
+		).rejects.toThrow('Missing graph endpoint: missing-endpoint');
+
+		await expect(
+			layoutGraph(graph.value, { ...ranks, bands: [['missing-size']] }, measurements),
+		).rejects.toThrow('Missing measured size: missing-size');
+
+		const disconnectedGraph: LogicGraph = {
+			...graph.value,
+			outgoingByEndpointId: new Map(),
+			predecessorsByEndpointId: new Map(),
+		};
+		const disconnectedLayout = await layoutGraph(disconnectedGraph, ranks, measurements);
+		expect(disconnectedLayout.elements).toHaveLength(graph.value.endpointsById.size);
+
+		const firstRelation = graph.value.relations[0];
+		const inconsistentRelation: LogicGraph = {
+			...graph.value,
+			relations: [
+				{
+					...firstRelation,
+					relation: { ...firstRelation.relation, from: 'missing-bounds' },
+				},
+			],
+		};
+		await expect(layoutGraph(inconsistentRelation, ranks, measurements)).rejects.toThrow(
+			`Missing relation bounds: ${firstRelation.relation.id}`,
+		);
+	});
+
+	it('rejects group containment cycles even when assembled outside validation', async () => {
+		const base = validLogicDocument();
+		const memberCycle: LogicDocument = {
+			...base,
+			groups: base.groups.map((group) =>
+				group.id === 'container'
+					? { ...group, groupId: 'orphan-group' }
+					: group.id === 'orphan-group'
+						? { ...group, groupId: 'container' }
+						: group,
+			),
+		};
+		const memberGraph = createGraph(memberCycle);
+		if (!memberGraph.ok) throw new Error('Expected graph construction to accept group metadata');
+		await expect(
+			layoutGraph(
+				memberGraph.value,
+				topologicallyRank(memberGraph.value),
+				layoutMeasurementsFor(memberCycle),
+			),
+		).rejects.toThrow('Group containment cycle at');
+
+		const emptyCycle: LogicDocument = {
+			...base,
+			groups: [
+				...base.groups,
+				{ id: 'empty-a', label: 'Empty A', groupId: 'empty-b' },
+				{ id: 'empty-b', label: 'Empty B', groupId: 'empty-a' },
+			],
+		};
+		const emptyGraph = createGraph(emptyCycle);
+		if (!emptyGraph.ok) throw new Error('Expected graph construction to accept group metadata');
+		await expect(
+			layoutGraph(
+				emptyGraph.value,
+				topologicallyRank(emptyGraph.value),
+				layoutMeasurementsFor(emptyCycle),
+			),
+		).rejects.toThrow('Group containment cycle at');
+	});
 	it('is deterministic for identical inputs and reordered TOML tables', async () => {
 		const source = await aiDocumentaryEffortScenario();
 		const document = openLiveDocument(source);

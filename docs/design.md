@@ -76,51 +76,21 @@ La signification exacte d'une relation reste à définir : dépendance, contribu
 
 ## Représentation textuelle
 
-La représentation textuelle est la forme lisible et portable du document. Elle est parsée vers un graphe logique normalisé, lui-même projeté sur le canvas.
+La représentation textuelle est la forme lisible et portable du document. Le premier encodage concret est TOML sous `persistenceFormat = 1`.
 
 ```text
-Document textuel
-      ↓ parse / validation
-Graphe logique normalisé
-      ↓ tri topologique / layout
+TOML versionné
+      ↓ parsing, mapping et validation
+LogicDocument sémantique
+      ↓ DocumentSession / Yjs
+LogicDocument courant
+      ↓ graphe, rangs et layout
 Canvas interactif
 ```
 
-Exemple exploratoire, non contractuel :
+`persistenceFormat` appartient à la frontière textuelle. `LogicDocument` ne porte ni l’encodage ni sa version : un futur encodage compatible pourra produire le même modèle sémantique.
 
-```text
-types:
-  Goal         color: "#7c5cff"
-  Precondition color: "#e5a93d"
-  Action       color: "#4caf78"
-  Want         color: "#e2679f"
-
-launch [Goal]:
-  Lancer la première version avant septembre.
-
-market [Precondition]:
-  Confirmer l'intérêt de dix utilisateurs pilotes.
-
-prototype [Action]:
-  Construire un prototype collaboratif.
-
-feedback [Want]:
-  Obtenir des retours sur le modèle d'interaction.
-
-market -> prototype
-prototype -> launch
-prototype -> feedback
-```
-
-Cette syntaxe illustre les propriétés recherchées, sans constituer encore une spécification :
-
-- déclarations compactes ;
-- identifiants explicites et stables ;
-- relations faciles à lire ;
-- contenu multiligne ;
-- bibliothèque de natures locale au document.
-
-Le rich text pourrait être représenté par un sous-ensemble de Markdown.
+Le document contient des identifiants stables, une bibliothèque locale de natures, des groupes, des nœuds, des junctions, des relations et des préférences de layout. Le contenu des nœuds est conservé exactement sous forme de Markdown décodé ; sa présentation visuelle reste une question distincte.
 
 ## Source de vérité et édition
 
@@ -131,6 +101,8 @@ Le modèle cible comporte trois représentations du même document :
 1. **Un modèle structuré collaboratif**, manipulé par l'application.
 2. **Une sérialisation textuelle stable**, destinée à la lecture, l'import, l'export et éventuellement l'édition directe.
 3. **Une projection visuelle**, calculée depuis le modèle structuré.
+
+La `DocumentSession` conserve le `Y.Doc`, applique les opérations métier fines et notifie les projections après chaque update. Le canvas relit alors le document courant au lieu de conserver le résultat initial du parser.
 
 Une action sur le canvas modifie le document structuré :
 
@@ -207,9 +179,9 @@ La collaboration doit porter sur des objets structurés :
 - relations ;
 - options ou contraintes de présentation.
 
-Yjs est retenu comme moteur CRDT. Le schéma exact des données partagées reste à concevoir.
+Yjs est le moteur CRDT. `yjsLiveDocumentFormat = 2` versionne les structures partagées indépendamment du format de persistance. La `DocumentSession` masque Yjs au reste de l’application ; le Markdown est stocké sans normalisation dans des `Y.Text`.
 
-Le format textuel reste la représentation canonique portable. Il ne faut cependant pas synchroniser naïvement le document complet comme une simple chaîne si cela rend les opérations visuelles concurrentes fragiles.
+Le format textuel reste la représentation canonique portable. Le document complet n’est jamais resynchronisé comme une chaîne ou réimporté concurremment : les modifications collaboratives passent par des opérations fines.
 
 ## Architecture technique retenue
 
@@ -238,10 +210,10 @@ Aucune décision n'est encore prise concernant :
 ## Questions ouvertes
 
 1. Quelle est la sémantique précise d'une relation orientée ?
-2. Le graphe est-il toujours acyclique ?
+2. Les champs inconnus du format persistant doivent-ils être rejetés ou tolérés pour la compatibilité ascendante ?
 3. Les natures imposent-elles des règles de connexion ou seulement une apparence ?
 4. La bibliothèque de natures appartient-elle au document, à un espace de travail, ou aux deux ?
-5. Le contenu des boîtes est-il du Markdown, un document rich text structuré, ou un sous-ensemble spécifique ?
+5. Le Markdown doit-il rester du texte brut dans le canvas initial ou être rendu par un sous-ensemble assaini ?
 6. L'éditeur textuel est-il une interface principale, une vue secondaire, ou seulement un format d'import/export ?
 7. Le layout se déclenche-t-il continuellement, à la demande, ou selon un mode choisi ?
 8. Quels ajustements manuels doivent survivre à un nouvel auto-layout ?
@@ -257,8 +229,13 @@ Aucune décision n'est encore prise concernant :
 - Les boîtes sont reliées par des relations orientées.
 - Un tri topologique participe à leur réorganisation automatique.
 - Le canvas est dérivé d'une représentation logique sérialisable sous forme textuelle.
-- Le format textuel exact reste à concevoir ; Mermaid sert d'inspiration, pas encore de dépendance ni de standard retenu.
-- Yjs est retenu comme moteur CRDT ; le périmètre précis du document partagé reste ouvert.
+- TOML est le premier encodage concret, sous `persistenceFormat = 1`.
+- `LogicDocument` reste indépendant de la version et de l’encodage persistants.
+- `yjsLiveDocumentFormat = 2` versionne le schéma partagé indépendamment de `persistenceFormat`.
+- `DocumentSession` est l’unique façade applicative vers le document Yjs live.
+- Les cycles sont rejetés avant le calcul des rangs.
+- Un groupe non vide occupe l’intervalle des rangs de son contenu ; un groupe vide endpoint est atomique.
+- ELK a été écarté après sa gate de compatibilité ; `layoutGraph(...)` utilise un moteur dédié déterministe.
 - Le frontend utilise SvelteKit et TypeScript.
 - L'application est déployée sur Cloudflare.
 - La collaboration passe par un Worker TypeScript et un Durable Object par document.

@@ -9,12 +9,19 @@ import {
 } from '../../src/lib/collaboration/yjs-live-document';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
+import { validLogicDocument } from '../builders/logic-document';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
 
 async function referenceDocument(): Promise<LogicDocument> {
 	const parsed = parseSequitToml(await aiDocumentaryEffortScenario());
 	if (!parsed.ok) throw new Error('Reference document must parse');
 	return parsed.value;
+}
+
+async function importedReferenceDocument(): Promise<Y.Doc> {
+	const ydoc = new Y.Doc();
+	importLogicDocument(ydoc, await referenceDocument());
+	return ydoc;
 }
 
 function readDocument(ydoc: Y.Doc): LogicDocument {
@@ -72,21 +79,15 @@ describe('yjsLiveDocumentFormat', () => {
 		});
 	});
 
-	it('rejects an incompatible imported persistence format independently of the live version', async () => {
+	it('does not couple the live schema to the source persistence format', async () => {
+		const expected = await referenceDocument();
 		const ydoc = new Y.Doc();
-		importLogicDocument(ydoc, await referenceDocument());
-		ydoc.getMap('sequit.meta').set('persistenceFormat', 2);
+		importLogicDocument(ydoc, expected);
+		const meta = ydoc.getMap('sequit.meta');
 
-		expect(readLogicDocument(ydoc)).toEqual({
-			ok: false,
-			diagnostics: [
-				{
-					code: 'invalid-yjs-live-document',
-					message: 'Unsupported imported persistenceFormat: 2',
-					path: ['persistenceFormat'],
-				},
-			],
-		});
+		expect(meta.has('persistenceFormat')).toBe(false);
+		meta.set('persistenceFormat', 999);
+		expect(readDocument(ydoc)).toEqual(expected);
 	});
 	it('rejects incompatible layout preferences stored in shared metadata', async () => {
 		const ydoc = new Y.Doc();
@@ -183,5 +184,97 @@ describe('yjsLiveDocumentFormat', () => {
 		);
 		expect(firstCollectionChanges).toEqual([]);
 		expect(secondCollectionChanges).toEqual([]);
+	});
+
+	it('round-trips nested groups and grouped junctions', () => {
+		const base = validLogicDocument();
+		const document: LogicDocument = {
+			...base,
+			groups: base.groups.map((group) =>
+				group.id === 'container' ? { ...group, groupId: 'orphan-group' } : group,
+			),
+			junctions: [
+				...base.junctions.map((junction) => ({ ...junction, groupId: 'container' })),
+				{ id: 'ungrouped-choice', operator: 'xor' },
+			],
+		};
+		const ydoc = new Y.Doc();
+
+		importLogicDocument(ydoc, document);
+
+		const current = readDocument(ydoc);
+		expect(current.groups).toContainEqual({
+			id: 'container',
+			label: 'Container',
+			groupId: 'orphan-group',
+		});
+		expect(current.junctions).toContainEqual({
+			id: 'choice',
+			operator: 'xor',
+			groupId: 'container',
+		});
+	});
+
+	it('collects every malformed shared scalar and entity projection', async () => {
+		const ydoc = await importedReferenceDocument();
+		const meta = ydoc.getMap('sequit.meta');
+		meta.set('id', 42);
+		meta.set('title', false);
+		meta.set('layoutDirection', 'diagonal');
+		meta.set('layoutBias', 'middle');
+
+		const natures = ydoc.getMap<Y.Map<unknown>>('sequit.natures');
+		const natureIds = [...natures.keys()];
+		natures.get(natureIds[0] ?? '')?.set('label', 42);
+		natures.get(natureIds[1] ?? '')?.set('color', false);
+
+		const groups = ydoc.getMap<Y.Map<unknown>>('sequit.groups');
+		const group = groups.get([...groups.keys()][0] ?? '');
+		group?.set('label', 42);
+		group?.set('groupId', false);
+
+		const nodes = ydoc.getMap<Y.Map<unknown>>('sequit.nodes');
+		const node = nodes.get([...nodes.keys()][0] ?? '');
+		node?.set('natureId', 42);
+		node?.set('groupId', false);
+
+		const junctions = ydoc.getMap<Y.Map<unknown>>('sequit.junctions');
+		const unsupportedJunction = new Y.Map<unknown>();
+		unsupportedJunction.set('operator', 'and');
+		unsupportedJunction.set('groupId', 42);
+		junctions.set('unsupported', unsupportedJunction);
+		junctions.set('missing-operator', new Y.Map());
+
+		const relations = ydoc.getMap<Y.Map<unknown>>('sequit.relations');
+		const invalidFrom = new Y.Map<unknown>();
+		invalidFrom.set('from', 42);
+		invalidFrom.set('to', 'target');
+		relations.set('invalid-from', invalidFrom);
+		const invalidTo = new Y.Map<unknown>();
+		invalidTo.set('from', 'source');
+		invalidTo.set('to', false);
+		relations.set('invalid-to', invalidTo);
+
+		const diagnostics = readFailure(ydoc);
+		expect(diagnostics).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ path: ['document', 'id'] }),
+				expect.objectContaining({ path: ['layout', 'direction'] }),
+				expect.objectContaining({ path: ['natures', natureIds[0], 'label'] }),
+				expect.objectContaining({ path: ['groups', expect.any(String), 'group'] }),
+				expect.objectContaining({ path: ['nodes', expect.any(String), 'nature'] }),
+				expect.objectContaining({ path: ['junctions', 'unsupported', 'operator'] }),
+				expect.objectContaining({ path: ['relations', 'invalid-to', 'to'] }),
+			]),
+		);
+	});
+
+	it('rejects Markdown replacement when the target field is not Y.Text', async () => {
+		const ydoc = await importedReferenceDocument();
+		const nodes = ydoc.getMap<Y.Map<unknown>>('sequit.nodes');
+		const node = nodes.get([...nodes.keys()][0] ?? '');
+		node?.set('markdown', 'invalid');
+
+		expect(replaceNodeMarkdown(ydoc, [...nodes.keys()][0] ?? '', 'Ignored')).toBe(false);
 	});
 });

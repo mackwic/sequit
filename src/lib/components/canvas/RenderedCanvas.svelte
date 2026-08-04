@@ -1,14 +1,12 @@
 <script lang="ts">
 	import type { CanvasModel } from '$lib/canvas/canvas-model';
-	import type { Point } from '$lib/layout/layout-graph';
+	import { renderRelationPaths } from '$lib/canvas/render-relations';
 
 	import LogicNode from './LogicNode.svelte';
 
 	let { canvas }: { canvas: CanvasModel } = $props();
 
-	function routePath(points: readonly Point[]): string {
-		return points.map(({ x, y }, index) => `${index === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ');
-	}
+	let renderedRelations = $derived(renderRelationPaths(canvas.relations));
 </script>
 
 <div class="grid min-h-full min-w-max place-items-center px-16 py-16">
@@ -48,17 +46,17 @@
 					markerUnits="userSpaceOnUse"
 					orient="auto"
 				>
-					<path d="M 0 0 L 10 5 L 0 10 z" fill="#78716c"></path>
+					<path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"></path>
 				</marker>
 			</defs>
-			{#each canvas.relations as relation (relation.id)}
+			{#each renderedRelations as relation (relation.id)}
 				<path
 					data-relation-id={relation.id}
 					data-edge-from={relation.from}
 					data-edge-to={relation.to}
-					d={routePath(relation.points)}
+					d={relation.path}
 					fill="none"
-					stroke="#78716c"
+					stroke={relation.color}
 					stroke-width="2"
 					stroke-linejoin="round"
 					stroke-linecap="round"

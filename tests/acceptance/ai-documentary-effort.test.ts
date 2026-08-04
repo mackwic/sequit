@@ -16,11 +16,12 @@ describe('AI for documentary effort', () => {
 			const source = await aiDocumentaryEffortScenario();
 
 			const opened = expectDocument(openDocument(source));
-			const canvas = await opened.createCanvasModel(
-				layoutMeasurementsForCanvas(opened.measurementModel),
+			const projection = expectDocument(opened.read());
+			const canvas = await projection.createCanvasModel(
+				layoutMeasurementsForCanvas(projection.measurementModel),
 			);
 
-			expect(opened.measurementModel.nodes).toHaveLength(24);
+			expect(projection.measurementModel.nodes).toHaveLength(24);
 			expect(canvas.nodes).toHaveLength(24);
 			expect(canvas.groups).toHaveLength(2);
 			expect(canvas.junctions).toEqual([
@@ -35,6 +36,7 @@ describe('AI for documentary effort', () => {
 			);
 			expect(canvas.width).toBeGreaterThan(0);
 			expect(canvas.height).toBeGreaterThan(0);
+			opened.close();
 		});
 	});
 });

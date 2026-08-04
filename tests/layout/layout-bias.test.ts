@@ -8,6 +8,7 @@ import {
 	LONG_BRANCH,
 	SHORT_BRANCH,
 } from '../builders/layout-bias-scenario';
+import { validLogicDocument } from '../builders/logic-document';
 import {
 	boundsFor,
 	contains,
@@ -26,9 +27,31 @@ const LONG_RELATIONS = [
 ] as const;
 const SHORT_RELATIONS = [['short-0', 'short-1']] as const;
 
+describe.each(LAYOUT_CONFIGURATIONS)(
+	'aligns variable-size boxes within a rank toward $bias with $direction orientation',
+	(configuration) => {
+		it('uses the biased edge instead of centering boxes in the rank band', async () => {
+			const base = validLogicDocument();
+			const document = { ...base, layout: configuration };
+			const layout = (
+				await layoutDocument(document, {
+					nodes: {
+						'source-a': { width: 140, height: 52 },
+						'source-b': { width: 220, height: 116 },
+					},
+				})
+			).layout;
+
+			expect(coordinateAt(boundsFor(layout, 'source-a'), configuration.bias)).toBe(
+				coordinateAt(boundsFor(layout, 'source-b'), configuration.bias),
+			);
+		});
+	},
+);
+
 describe.each(LAYOUT_CONTEXTS)('layout bias in %s', (context) => {
 	it.each(LAYOUT_CONFIGURATIONS)(
-		'places branch-local maximum ranks toward $bias with $direction orientation',
+		'aligns global ranks toward $bias with $direction orientation',
 		async (configuration) => {
 			const fixture = await layoutDocument(layoutBiasScenario(configuration, context));
 			const { layout } = fixture;
@@ -46,16 +69,15 @@ describe.each(LAYOUT_CONTEXTS)('layout bias in %s', (context) => {
 					.toBe(true);
 			}
 
-			const longEnvelope = envelopeFor(layout, LONG_BRANCH);
-			const shortEnvelope = envelopeFor(layout, SHORT_BRANCH);
-			const isolatedEnvelope = envelopeFor(layout, ISOLATED_BRANCH);
-			const biasedCoordinate = coordinateAt(longEnvelope, configuration.bias);
-			expect
-				.soft(coordinateAt(shortEnvelope, configuration.bias), 'short branch bias')
-				.toBe(biasedCoordinate);
-			expect
-				.soft(coordinateAt(isolatedEnvelope, configuration.bias), 'isolated branch bias')
-				.toBe(biasedCoordinate);
+			for (const ids of [
+				['long-0', 'short-0', 'isolated'],
+				['long-1', 'short-1'],
+			]) {
+				const biasedCoordinate = coordinateAt(boundsFor(layout, ids[0] ?? ''), configuration.bias);
+				expect(ids.map((id) => coordinateAt(boundsFor(layout, id), configuration.bias))).toEqual(
+					ids.map(() => biasedCoordinate),
+				);
+			}
 
 			for (let leftIndex = 0; leftIndex < ALL_NODES.length; leftIndex += 1) {
 				for (let rightIndex = leftIndex + 1; rightIndex < ALL_NODES.length; rightIndex += 1) {

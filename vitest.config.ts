@@ -5,5 +5,17 @@ export default defineConfig({
 		environment: 'node',
 		include: ['tests/**/*.test.ts'],
 		exclude: ['tests/e2e/**'],
+		coverage: {
+			provider: 'istanbul',
+			include: ['src/**/*.ts'],
+			reportsDirectory: 'coverage/web',
+			reporter: ['text', 'html', 'json-summary'],
+			thresholds: {
+				branches: 98,
+				functions: 98,
+				lines: 98,
+				statements: 98,
+			},
+		},
 	},
 });
