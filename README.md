@@ -37,3 +37,9 @@ Duplication analysis uses mild token matching with a minimum clone size of 5 lin
 `pnpm install` runs `svelte-kit sync` and installs the tracked Husky hooks. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
 
 The pre-push hook runs `pnpm quality`, blocking the push when lint, either coverage suite, or duplication analysis fails. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
+
+### Continuous integration
+
+GitHub Actions runs the authoritative `pnpm check` gate for every pull request and every push to `main`. The read-only workflow uses the repository's pinned pnpm version with Node.js 22, installs Chromium and its system dependencies, and cancels superseded runs for the same pull request or branch.
+
+Run `pnpm check` locally to reproduce a remote quality failure. Its namespaced output identifies whether formatting, linting, types, coverage, duplication, browser integration, or a production build failed.
