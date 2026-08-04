@@ -31,7 +31,9 @@
 		"benchmark:layout": "vitest bench --run --config vitest.performance.config.ts tests/performance/layout-graph.bench.ts",
 		"benchmark:graph": "vitest bench --run --config vitest.performance.config.ts tests/performance/graph-preparation.bench.ts",
 		"benchmark:performance": "pnpm benchmark:graph && pnpm benchmark:layout",
-		"test:performance": "vitest run --config vitest.performance.config.ts tests/performance/layout-graph-performance.test.ts"
+		"benchmark:incremental": "vitest bench --run --config vitest.performance.config.ts tests/performance/incremental-layout.bench.ts",
+		"test:performance": "vitest run --config vitest.performance.config.ts tests/performance/layout-graph-performance.test.ts",
+		"test:incremental-performance": "vitest run --config vitest.performance.config.ts tests/performance/incremental-layout-performance.test.ts"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.18.6",

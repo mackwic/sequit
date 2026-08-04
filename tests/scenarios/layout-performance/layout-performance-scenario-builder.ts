@@ -32,6 +32,11 @@ export abstract class LayoutPerformanceScenarioBuilder {
 	private document: LogicDocument = initialDocument('long-queue');
 	private readonly ranks: string[][] = [];
 
+	buildInitialDocument(): LogicDocument {
+		this.reset();
+		return this.copyDocument();
+	}
+
 	buildSnapshot(nodeCount: number): LayoutPerformanceSnapshot {
 		this.assertNodeCount(nodeCount);
 		this.reset();
@@ -172,16 +177,20 @@ export abstract class LayoutPerformanceScenarioBuilder {
 		return {
 			name: this.name,
 			nodeCount: this.document.nodes.length,
-			document: {
-				...this.document,
-				natures: [...this.document.natures],
-				groups: [...this.document.groups],
-				nodes: [...this.document.nodes],
-				junctions: [...this.document.junctions],
-				relations: [...this.document.relations],
-			},
+			document: this.copyDocument(),
 			nodeRanks: this.ranks.map((rank) => [...rank]),
 			metadata: { ...this.metadata() },
+		};
+	}
+
+	private copyDocument(): LogicDocument {
+		return {
+			...this.document,
+			natures: [...this.document.natures],
+			groups: [...this.document.groups],
+			nodes: [...this.document.nodes],
+			junctions: [...this.document.junctions],
+			relations: [...this.document.relations],
 		};
 	}
 }

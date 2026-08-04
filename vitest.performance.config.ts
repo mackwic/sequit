@@ -6,6 +6,7 @@ export default defineConfig({
 		include: ['tests/performance/**/*.test.ts'],
 		exclude: [],
 		fileParallelism: false,
+		disableConsoleIntercept: true,
 		coverage: {
 			enabled: false,
 		},
