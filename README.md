@@ -1,1 +1,33 @@
 # sequit
+
+## Local quality gates
+
+Use `pnpm quality` during implementation. It is the fast, fail-fast edit-loop gate and runs:
+
+1. `pnpm lint` for correctness, readability, and production maintainability rules.
+2. `pnpm test:coverage` for the root Node and collaboration-worker Vitest suites.
+3. `pnpm quality:duplicates` for token-aware production clone detection.
+
+The measured coverage chain completes comfortably within the approximately 10-second local budget, so the fast gate enforces coverage rather than running ordinary Vitest. Each command is joined with `&&`; a failure stops later diagnostics from running.
+
+Run `pnpm check` before merging. It is the comprehensive gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, and both production builds around the same lint, coverage, and duplication checks. Coverage replaces the ordinary `pnpm test` step, so Vitest does not run twice.
+
+### Diagnostic commands
+
+| Command                            | Scope                                                                                                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`                        | All authored JavaScript, TypeScript, Svelte, tests, and configuration; production metrics apply only to `src/lib/**/*.ts` and `workers/collaboration/src/**/*.ts` |
+| `pnpm test:coverage:web`           | Root Vitest suite with V8 coverage for `src/lib/**/*.ts`                                                                                                          |
+| `pnpm test:coverage:collaboration` | Cloudflare Vitest suite with Istanbul coverage for `workers/collaboration/src/**/*.ts`                                                                            |
+| `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                           |
+| `pnpm quality:duplicates`          | TypeScript and Svelte under `src` and `workers/collaboration/src`                                                                                                 |
+| `pnpm quality`                     | Fast lint, coverage, and duplication gate                                                                                                                         |
+| `pnpm check`                       | Authoritative format, lint, types, coverage, duplication, browser, and build gate                                                                                 |
+
+### Enforced baselines
+
+Authored code prohibits ternaries. Production TypeScript has global limits of 20 cyclomatic complexity, 15 cognitive complexity, 4 levels of nesting, 325 effective lines per file, 160 effective lines per function, 15 top-level functions, 4 parameters, and 40 statements per function. Narrow file-specific overrides in `eslint.config.js` preserve the measured baseline of existing parser, layout, collaboration, validation, and graph hotspots without relaxing limits for other modules.
+
+The web suite requires 94% statements, 80% branches, 99% functions, and 98% lines. The collaboration suite independently requires 43% statements, 36% branches, 40% functions, and 43% lines. Generated declarations, routes, Svelte components, tests, and support files are outside these coverage scopes.
+
+Duplication analysis uses mild token matching with a minimum clone size of 5 lines and 50 tokens. It scans production TypeScript and Svelte, excludes declarations, tests, generated output, builds, and reports, prints results only to the console, and fails when duplicated lines exceed 1%.
