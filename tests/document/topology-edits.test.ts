@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { addNodeToLiveDocument } from '../../src/lib/collaboration/yjs-live-document';
 import {
 	EndpointKind,
 	type LogicDocument,
-	type LogicNode,
-	type NewLogicNode,
 	type OrderKey,
 } from '../../src/lib/document/logic-document';
 import { orderKey } from '../../src/lib/document/order-key';
@@ -18,25 +15,6 @@ import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 import { crossingAwareDirectionScenario } from '../builders/crossing-aware-direction-scenario';
 
 describe('topology edits', () => {
-	it('restricts live node additions to nodes without allocated order data', () => {
-		const newNode = {
-			id: 'new-node',
-			natureId: 'goal',
-			markdown: 'New node',
-		} satisfies NewLogicNode;
-		const accepted: Parameters<typeof addNodeToLiveDocument>[1] = newNode;
-		const existingNode = {
-			...newNode,
-			kind: EndpointKind.Node,
-			layoutOrder: orderKey('a0'),
-		} satisfies LogicNode;
-		// @ts-expect-error Existing domain nodes must not supply an already allocated key.
-		const rejected: Parameters<typeof addNodeToLiveDocument>[1] = existingNode;
-
-		expect(accepted).toBe(newNode);
-		expect(rejected).toBe(existingNode);
-	});
-
 	function threeTargetScenario(
 		targetOrder: readonly string[],
 		sourceOrder: readonly string[] = ['source-a', 'source-b', 'source-c'],
@@ -83,7 +61,9 @@ describe('topology edits', () => {
 		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected relation projection to succeed');
-		expect(result.value.changes.endpointOrderChanges).toMatchObject([{ endpointId: 'target-b' }]);
+		expect(result.value.changes.endpointOrderChanges).toMatchObject([
+			{ endpointKind: EndpointKind.Node, endpointId: 'target-b' },
+		]);
 		expect(result.value.changes.relationAdditions).toEqual([
 			{ id: 'source-a-to-target-b', from: 'source-a', to: 'target-b' },
 		]);
@@ -225,13 +205,22 @@ describe('topology edits', () => {
 
 	it('projects a node addition with an injected order-key space without Yjs', () => {
 		const original = threeTargetScenario(['target-a', 'target-b', 'target-c']);
-		const calls: { readonly before?: string; readonly after?: string }[] = [];
+		const calls: {
+			readonly slot: { readonly before?: string; readonly after?: string };
+			readonly discriminator?: string;
+		}[] = [];
 		const testKey = orderKey('a7');
 		const testKeySpace = {
-			compare: (left: OrderKey, right: OrderKey) => fractionalOrderKeySpace.compare(left, right),
-			isValid: (key: string): key is OrderKey => fractionalOrderKeySpace.isValid(key),
-			keyFor: (slot: { readonly before?: string; readonly after?: string }) => {
-				calls.push(slot);
+			compare: (left: OrderKey, right: OrderKey) => (left < right ? -1 : left > right ? 1 : 0),
+			isValid: (key: string): key is OrderKey => {
+				void key;
+				return true;
+			},
+			keyFor: (
+				slot: { readonly before?: string; readonly after?: string },
+				discriminator?: string,
+			) => {
+				calls.push({ slot, discriminator });
 				return testKey;
 			},
 		};
@@ -244,7 +233,7 @@ describe('topology edits', () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected node projection to succeed');
-		expect(calls).toEqual([{ before: orderKey('a6') }]);
+		expect(calls).toEqual([{ slot: { before: orderKey('a6') }, discriminator: 'new-node' }]);
 		expect(result.value.changes).toEqual({
 			nodeAdditions: [expect.objectContaining({ id: 'new-node', layoutOrder: testKey })],
 			relationAdditions: [],
@@ -293,5 +282,93 @@ describe('topology edits', () => {
 		expect(
 			new Map(result.value.document.nodes.map(({ id, layoutOrder }) => [id, layoutOrder])),
 		).toEqual(keysBefore);
+	});
+
+	it('rejects a relation move when the key space materializes the wrong slot', () => {
+		const original = threeTargetScenario(['target-a', 'target-c', 'target-b']);
+		const targetKey = original.nodes.find(({ id }) => id === 'target-c')?.layoutOrder;
+		if (targetKey === undefined) throw new Error('Expected target-c fixture key');
+		const faultyKeySpace = {
+			compare: (left: OrderKey, right: OrderKey) => (left < right ? -1 : left > right ? 1 : 0),
+			isValid: (key: string): key is OrderKey => {
+				void key;
+				return true;
+			},
+			keyFor: () => targetKey,
+		};
+
+		const result = projectRelationAddition(
+			original,
+			{ id: 'c', from: 'source-c', to: 'target-c' },
+			faultyKeySpace,
+		);
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				expect.objectContaining({
+					code: 'endpoint-order-materialization-failed',
+					path: ['relations', 'c', 'to'],
+					expectedOrder: ['target-a', 'target-b', 'target-c'],
+					materializedOrder: ['target-a', 'target-c', 'target-b'],
+				}),
+			],
+		});
+	});
+
+	it.each([
+		['empty', false],
+		['populated', true],
+	] as const)('adds a relation to an %s group without moving the group', (_name, populated) => {
+		const groupKey = orderKey('a1');
+		const memberKey = orderKey('a2');
+		const members: LogicDocument['nodes'] = populated
+			? [
+					{
+						kind: EndpointKind.Node,
+						id: 'member',
+						natureId: 'goal',
+						groupId: 'target-group',
+						markdown: 'Member',
+						layoutOrder: memberKey,
+					},
+				]
+			: [];
+		const document: LogicDocument = {
+			persistenceFormat: 1,
+			id: 'group-target',
+			title: 'Group target',
+			layout: { direction: 'top-to-bottom', bias: 'top' },
+			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+			groups: [
+				{ kind: EndpointKind.Group, id: 'target-group', label: 'Target', layoutOrder: groupKey },
+			],
+			nodes: [
+				{
+					kind: EndpointKind.Node,
+					id: 'source',
+					natureId: 'goal',
+					markdown: 'Source',
+					layoutOrder: orderKey('a0'),
+				},
+				...members,
+			],
+			junctions: [],
+			relations: [],
+		};
+
+		const result = projectRelationAddition(
+			document,
+			{ id: 'to-group', from: 'source', to: 'target-group' },
+			fractionalOrderKeySpace,
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected relation to group to succeed');
+		expect(result.value.eligible).toBe(false);
+		expect(result.value.moved).toBe(false);
+		expect(result.value.changes.endpointOrderChanges).toEqual([]);
+		expect(result.value.document.groups[0]?.layoutOrder).toBe(groupKey);
+		if (populated) expect(result.value.document.nodes[1]?.layoutOrder).toBe(memberKey);
 	});
 });

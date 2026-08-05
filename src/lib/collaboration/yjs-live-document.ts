@@ -440,12 +440,14 @@ export function addNodeToLiveDocument(
 	node: NewLogicNode,
 	origin: unknown = ADD_NODE_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
-	const current = readLogicDocument(ydoc);
-	if (!current.ok) return current;
-	const projected = projectNodeAddition(current.value, node, fractionalOrderKeySpace);
-	if (!projected.ok) return validationFailure(projected.diagnostics);
-	applyDocumentChangeSet(ydoc, projected.value.changes, origin);
-	return { ok: true, value: projected.value.document };
+	return ydoc.transact(() => {
+		const current = readLogicDocument(ydoc);
+		if (!current.ok) return current;
+		const projected = projectNodeAddition(current.value, node, fractionalOrderKeySpace);
+		if (!projected.ok) return validationFailure(projected.diagnostics);
+		applyDocumentChangeSet(ydoc, projected.value.changes);
+		return { ok: true, value: projected.value.document };
+	}, origin);
 }
 
 export function addRelationToLiveDocument(
@@ -453,41 +455,65 @@ export function addRelationToLiveDocument(
 	relation: LogicRelation,
 	origin: unknown = ADD_RELATION_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
-	const current = readLogicDocument(ydoc);
-	if (!current.ok) return current;
-	const projected = projectRelationAddition(current.value, relation, fractionalOrderKeySpace);
-	if (!projected.ok) return validationFailure(projected.diagnostics);
-
-	applyDocumentChangeSet(ydoc, projected.value.changes, origin);
-
-	return { ok: true, value: projected.value.document };
+	return ydoc.transact(() => {
+		const current = readLogicDocument(ydoc);
+		if (!current.ok) return current;
+		const projected = projectRelationAddition(current.value, relation, fractionalOrderKeySpace);
+		if (!projected.ok) return validationFailure(projected.diagnostics);
+		applyDocumentChangeSet(ydoc, projected.value.changes);
+		return { ok: true, value: projected.value.document };
+	}, origin);
 }
 
-function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet, origin: unknown): void {
-	ydoc.transact(() => {
-		for (const node of changes.nodeAdditions) {
-			const markdown = new Y.Text();
-			markdown.insert(0, node.markdown);
-			ydoc.getMap<Y.Map<unknown>>(NODES).set(
-				node.id,
-				entityMap({
-					natureId: node.natureId,
-					...(node.groupId === undefined ? {} : { groupId: node.groupId }),
-					layoutOrder: node.layoutOrder,
-					markdown,
-				}),
-			);
+function endpointCollection(kind: EndpointKind): string {
+	switch (kind) {
+		case EndpointKind.Group:
+			return GROUPS;
+		case EndpointKind.Node:
+			return NODES;
+		case EndpointKind.Junction:
+			return JUNCTIONS;
+	}
+}
+
+function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet): void {
+	const nodes = ydoc.getMap<Y.Map<unknown>>(NODES);
+	const relations = ydoc.getMap<Y.Map<unknown>>(RELATIONS);
+	for (const node of changes.nodeAdditions) {
+		if (nodes.has(node.id)) throw new Error(`Node addition conflicts with existing id: ${node.id}`);
+	}
+	for (const relation of changes.relationAdditions) {
+		if (relations.has(relation.id)) {
+			throw new Error(`Relation addition conflicts with existing id: ${relation.id}`);
 		}
-		for (const relation of changes.relationAdditions) {
-			ydoc
-				.getMap<Y.Map<unknown>>(RELATIONS)
-				.set(relation.id, entityMap({ from: relation.from, to: relation.to }));
+	}
+	const resolvedOrderChanges = changes.endpointOrderChanges.map((change) => {
+		const endpoint = ydoc
+			.getMap<Y.Map<unknown>>(endpointCollection(change.endpointKind))
+			.get(change.endpointId);
+		if (!(endpoint instanceof Y.Map)) {
+			throw new Error(`Endpoint order target is missing: ${change.endpointId}`);
 		}
-		for (const change of changes.endpointOrderChanges) {
-			for (const collection of [NODES, GROUPS, JUNCTIONS]) {
-				const endpoint = ydoc.getMap<Y.Map<unknown>>(collection).get(change.endpointId);
-				if (endpoint) endpoint.set('layoutOrder', change.layoutOrder);
-			}
-		}
-	}, origin);
+		return { endpoint, layoutOrder: change.layoutOrder };
+	});
+
+	for (const node of changes.nodeAdditions) {
+		const markdown = new Y.Text();
+		markdown.insert(0, node.markdown);
+		nodes.set(
+			node.id,
+			entityMap({
+				natureId: node.natureId,
+				...(node.groupId === undefined ? {} : { groupId: node.groupId }),
+				layoutOrder: node.layoutOrder,
+				markdown,
+			}),
+		);
+	}
+	for (const relation of changes.relationAdditions) {
+		relations.set(relation.id, entityMap({ from: relation.from, to: relation.to }));
+	}
+	for (const { endpoint, layoutOrder } of resolvedOrderChanges) {
+		endpoint.set('layoutOrder', layoutOrder);
+	}
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { EffectiveGraphLink } from '../../src/lib/graph/create-graph';
 import {
 	type CrossingOrderMetadata,
+	crossingScoreTolerance,
 	scoreTargetInsertionSlots,
 	selectTargetInsertionSlot,
 	weightedInversionScore,
@@ -217,6 +218,31 @@ describe('crossing-aware target insertion', () => {
 		expect(selection.scoreBySlot).toHaveLength(4);
 		expect(selection.scoreBySlot[3]).toBeCloseTo(6e-15, 28);
 		expect(selection.bestSlot).toBe(1);
+
+		const mirrored = metadata(
+			['source-low', 'source-high', 'target', 'peer-a', 'peer-b', 'peer-c'],
+			[
+				['source-low', 0],
+				['source-high', 0],
+				['target', 1],
+				['peer-a', 1],
+				['peer-b', 1],
+				['peer-c', 1],
+			],
+			[
+				link('target', 'source-high', 'target'),
+				link('peer-a', 'source-low', 'peer-a', 2e-15),
+				link('peer-b', 'source-low', 'peer-b', 2e-15),
+				link('peer-c', 'source-low', 'peer-c', 2e-15),
+			],
+		);
+		const mirroredSelection = selectTargetInsertionSlot(
+			['target', 'peer-a', 'peer-b', 'peer-c'],
+			'target',
+			mirrored,
+		);
+		expect(mirroredSelection.scoreBySlot[0]).toBeCloseTo(6e-15, 28);
+		expect(mirroredSelection.bestSlot).toBe(2);
 	});
 
 	it('matches brute-force weighted inversion scoring for generated small rows', () => {
@@ -232,7 +258,17 @@ describe('crossing-aware target insertion', () => {
 			const links: EffectiveGraphLink[] = [];
 			for (const targetId of row) {
 				for (const sourceId of sources) {
-					if (random() < 0.45) links.push(link(`${sourceId}-${targetId}`, sourceId, targetId));
+					if (random() < 0.45) {
+						const weights = [1, 0.5, 0.125, 2e-15] as const;
+						links.push(
+							link(
+								`${sourceId}-${targetId}`,
+								sourceId,
+								targetId,
+								weights[Math.floor(random() * weights.length)] ?? 1,
+							),
+						);
+					}
 				}
 			}
 			const order = [...sources, ...row];
@@ -254,22 +290,23 @@ describe('crossing-aware target insertion', () => {
 						effectiveEndpointOrder: [...sources, ...candidate],
 					});
 				});
-			let bruteSlot = row.indexOf(targetId);
-			let bruteScore = scoreBySlot[bruteSlot] ?? 0;
+			const currentSlot = row.indexOf(targetId);
+			const minimumScore = Math.min(...scoreBySlot);
+			let bruteSlot: number | undefined;
 			for (const [slot, score] of scoreBySlot.entries()) {
+				if (Math.abs(score - minimumScore) > crossingScoreTolerance(score, minimumScore)) continue;
 				if (
-					score < bruteScore ||
-					(score === bruteScore &&
-						(Math.abs(slot - row.indexOf(targetId)) < Math.abs(bruteSlot - row.indexOf(targetId)) ||
-							(Math.abs(slot - row.indexOf(targetId)) ===
-								Math.abs(bruteSlot - row.indexOf(targetId)) &&
-								slot < bruteSlot)))
+					bruteSlot === undefined ||
+					Math.abs(slot - currentSlot) < Math.abs(bruteSlot - currentSlot) ||
+					(Math.abs(slot - currentSlot) === Math.abs(bruteSlot - currentSlot) && slot < bruteSlot)
 				) {
 					bruteSlot = slot;
-					bruteScore = score;
 				}
 			}
 			expect(selected.bestSlot, `iteration ${iteration}`).toBe(bruteSlot);
+			expect(selected.bestScore, `iteration ${iteration}`).toBe(
+				selected.scoreBySlot[selected.bestSlot],
+			);
 		}
 	});
 });

@@ -24,6 +24,10 @@ export interface TargetSlotSelection extends TargetSlotScores {
 	readonly moved: boolean;
 }
 
+export function crossingScoreTolerance(left: number, right: number): number {
+	return Number.EPSILON * 16 * Math.max(1, Math.abs(left), Math.abs(right));
+}
+
 interface IndexedLink extends EffectiveGraphLink {
 	readonly sourceLayer: VisualLayerKey;
 	readonly targetLayer: VisualLayerKey;
@@ -162,28 +166,21 @@ export function selectTargetInsertionSlot(
 	metadata: CrossingOrderMetadata,
 ): TargetSlotSelection {
 	const scores = scoreTargetInsertionSlots(row, targetId, metadata);
-	let bestSlot = scores.currentSlot;
-	let bestScore = scores.scoreBySlot[bestSlot] ?? 0;
-	let minimumScore = bestScore;
+	const minimumScore = Math.min(...scores.scoreBySlot);
+	let bestSlot: number | undefined;
 	for (const [slot, score] of scores.scoreBySlot.entries()) {
-		const tolerance = Number.EPSILON * 16 * Math.max(1, Math.abs(score), Math.abs(minimumScore));
-		if (score < minimumScore - tolerance) {
+		if (Math.abs(score - minimumScore) > crossingScoreTolerance(score, minimumScore)) continue;
+		if (
+			bestSlot === undefined ||
+			Math.abs(slot - scores.currentSlot) < Math.abs(bestSlot - scores.currentSlot) ||
+			(Math.abs(slot - scores.currentSlot) === Math.abs(bestSlot - scores.currentSlot) &&
+				slot < bestSlot)
+		)
 			bestSlot = slot;
-			bestScore = score;
-			minimumScore = score;
-		} else if (
-			Math.abs(score - minimumScore) <= tolerance &&
-			(Math.abs(slot - scores.currentSlot) < Math.abs(bestSlot - scores.currentSlot) ||
-				(Math.abs(slot - scores.currentSlot) === Math.abs(bestSlot - scores.currentSlot) &&
-					slot < bestSlot))
-		) {
-			bestSlot = slot;
-			bestScore = score;
-			minimumScore = Math.min(minimumScore, score);
-		} else {
-			minimumScore = Math.min(minimumScore, score);
-		}
 	}
+	if (bestSlot === undefined)
+		throw new Error('Target insertion scores must contain a finite minimum');
+	const bestScore = scores.scoreBySlot[bestSlot] ?? 0;
 	const peers = row.filter((id) => id !== targetId);
 	const order = [...peers.slice(0, bestSlot), targetId, ...peers.slice(bestSlot)];
 	return {

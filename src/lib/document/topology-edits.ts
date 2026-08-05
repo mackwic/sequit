@@ -1,6 +1,10 @@
 import { createGraph, type GraphDiagnostic } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
-import { selectTargetInsertionSlot } from '../layout/crossing-aware-order';
+import {
+	crossingScoreTolerance,
+	scoreTargetInsertionSlots,
+	selectTargetInsertionSlot,
+} from '../layout/crossing-aware-order';
 import { orderEndpoints } from '../layout/endpoint-order';
 import type { OrderKeySpace } from '../layout/order-key-space';
 import {
@@ -16,10 +20,18 @@ import {
 import { validateLogicDocument } from './validate-logic-document';
 
 export interface TopologyEditDiagnostic {
-	readonly code: 'duplicate-relation-id' | GraphDiagnostic['code'];
+	readonly code:
+		| 'duplicate-relation-id'
+		| 'endpoint-order-materialization-failed'
+		| GraphDiagnostic['code']
+		| SequitDiagnostic['code'];
 	readonly message: string;
 	readonly path: readonly string[];
 	readonly cycle?: readonly string[];
+	readonly expectedOrder?: readonly string[];
+	readonly materializedOrder?: readonly string[];
+	readonly expectedScore?: number;
+	readonly materializedScore?: number;
 }
 
 export interface RelationAdditionProjection {
@@ -37,6 +49,7 @@ export interface NodeAdditionProjection {
 }
 
 export interface EndpointOrderChange {
+	readonly endpointKind: EndpointKind;
 	readonly endpointId: string;
 	readonly layoutOrder: OrderKey;
 }
@@ -49,7 +62,7 @@ export interface DocumentChangeSet {
 
 export type NodeAdditionResult =
 	| { readonly ok: true; readonly value: NodeAdditionProjection }
-	| { readonly ok: false; readonly diagnostics: readonly SequitDiagnostic[] };
+	| { readonly ok: false; readonly diagnostics: readonly TopologyEditDiagnostic[] };
 
 export interface RelationAdditionSuccess {
 	readonly ok: true;
@@ -81,30 +94,81 @@ function weakComponentContaining(
 	return component;
 }
 
+function replaceExactlyOne<T extends LogicEndpoint>(
+	endpoints: readonly T[],
+	replacement: T,
+): readonly T[] {
+	let replacements = 0;
+	const result = endpoints.map((endpoint) => {
+		if (endpoint.id !== replacement.id) return endpoint;
+		replacements += 1;
+		return replacement;
+	});
+	if (replacements !== 1) {
+		throw new Error(`Expected exactly one endpoint replacement for: ${replacement.id}`);
+	}
+	return result;
+}
+
 function replaceEndpoint(document: LogicDocument, replacement: LogicEndpoint): LogicDocument {
 	switch (replacement.kind) {
 		case EndpointKind.Group:
 			return {
 				...document,
-				groups: document.groups.map((endpoint) =>
-					endpoint.id === replacement.id ? replacement : endpoint,
-				),
+				groups: replaceExactlyOne(document.groups, replacement),
 			};
 		case EndpointKind.Node:
 			return {
 				...document,
-				nodes: document.nodes.map((endpoint) =>
-					endpoint.id === replacement.id ? replacement : endpoint,
-				),
+				nodes: replaceExactlyOne(document.nodes, replacement),
 			};
 		case EndpointKind.Junction:
 			return {
 				...document,
-				junctions: document.junctions.map((endpoint) =>
-					endpoint.id === replacement.id ? replacement : endpoint,
-				),
+				junctions: replaceExactlyOne(document.junctions, replacement),
 			};
 	}
+}
+
+function sameOrder(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function visualRow(
+	endpointOrder: readonly string[],
+	component: ReadonlySet<string>,
+	ranks: ReadonlyMap<string, number>,
+	targetRank: number,
+	junctionIds: ReadonlySet<string>,
+	targetIsJunction: boolean,
+): readonly string[] {
+	return endpointOrder.filter(
+		(id) =>
+			component.has(id) && ranks.get(id) === targetRank && junctionIds.has(id) === targetIsJunction,
+	);
+}
+
+function materializationFailure(
+	path: readonly string[],
+	expectedOrder: readonly string[],
+	materializedOrder: readonly string[],
+	expectedScore?: number,
+	materializedScore?: number,
+): { readonly ok: false; readonly diagnostics: readonly TopologyEditDiagnostic[] } {
+	return {
+		ok: false,
+		diagnostics: [
+			{
+				code: 'endpoint-order-materialization-failed',
+				message: `Allocated order key did not materialize the selected endpoint order at ${path.join('.')}`,
+				path,
+				expectedOrder,
+				materializedOrder,
+				expectedScore,
+				materializedScore,
+			},
+		],
+	};
 }
 
 export function projectNodeAddition(
@@ -131,6 +195,18 @@ export function projectNodeAddition(
 	};
 	const validated = validateLogicDocument(tentative);
 	if (!validated.ok) return validated;
+	const materializedOrder = orderEndpoints(
+		[...validated.value.groups, ...validated.value.nodes, ...validated.value.junctions],
+		orderKeySpace,
+	);
+	const expectedOrder = [...orderedIds, node.id];
+	if (!sameOrder(materializedOrder, expectedOrder)) {
+		return materializationFailure(
+			['nodes', node.id, 'layoutOrder'],
+			expectedOrder,
+			materializedOrder,
+		);
+	}
 	return {
 		ok: true,
 		value: {
@@ -166,7 +242,9 @@ export function projectRelationAddition(
 		...document,
 		relations: [...document.relations, relation],
 	};
-	const tentativeGraph = createGraph(tentativeDocument);
+	const validatedTentative = validateLogicDocument(tentativeDocument);
+	if (!validatedTentative.ok) return validatedTentative;
+	const tentativeGraph = createGraph(validatedTentative.value);
 	if (!tentativeGraph.ok) return tentativeGraph;
 	const graph = tentativeGraph.value;
 	const ranks = topologicallyRank(graph);
@@ -179,8 +257,12 @@ export function projectRelationAddition(
 	const endpointOrder = orderEndpoints(endpoints, orderKeySpace);
 	const sourceRank = ranks.byEndpointId.get(relation.from);
 	const targetRank = ranks.byEndpointId.get(relation.to);
+	// TODO: Move group targets as atomic ordered blocks once block ordering is defined.
 	const eligible =
-		sourceRank !== undefined && targetRank !== undefined && sourceRank === targetRank - 1;
+		graph.endpointsById.get(relation.to)?.kind !== EndpointKind.Group &&
+		sourceRank !== undefined &&
+		targetRank !== undefined &&
+		sourceRank === targetRank - 1;
 	if (!eligible) {
 		return {
 			ok: true,
@@ -200,11 +282,13 @@ export function projectRelationAddition(
 		graph.outgoingByEndpointId,
 		graph.predecessorsByEndpointId,
 	);
-	const row = endpointOrder.filter(
-		(id) =>
-			component.has(id) &&
-			ranks.byEndpointId.get(id) === targetRank &&
-			junctionIds.has(id) === targetIsJunction,
+	const row = visualRow(
+		endpointOrder,
+		component,
+		ranks.byEndpointId,
+		targetRank,
+		junctionIds,
+		targetIsJunction,
 	);
 	const selection = selectTargetInsertionSlot(row, relation.to, {
 		effectiveLinks: graph.effectiveLinks,
@@ -251,8 +335,51 @@ export function projectRelationAddition(
 			};
 		}
 		const layoutOrder = orderKeySpace.keyFor({ before, after }, target.id);
-		orderChanges = [{ endpointId: target.id, layoutOrder }];
 		selectedDocument = replaceEndpoint(tentativeDocument, { ...target, layoutOrder });
+		const materializedEndpointOrder = orderEndpoints(
+			[...selectedDocument.groups, ...selectedDocument.nodes, ...selectedDocument.junctions],
+			orderKeySpace,
+		);
+		const materializedRow = visualRow(
+			materializedEndpointOrder,
+			component,
+			ranks.byEndpointId,
+			targetRank,
+			junctionIds,
+			targetIsJunction,
+		);
+		if (!sameOrder(materializedRow, selection.order)) {
+			return materializationFailure(
+				['relations', relation.id, 'to'],
+				selection.order,
+				materializedRow,
+				selection.bestScore,
+			);
+		}
+		const materializedScores = scoreTargetInsertionSlots(materializedRow, relation.to, {
+			effectiveLinks: graph.effectiveLinks,
+			effectiveEndpointOrder: materializedEndpointOrder,
+			ranks: ranks.byEndpointId,
+			junctionIds,
+		});
+		const materializedScore =
+			materializedScores.scoreBySlot[materializedScores.currentSlot] ?? Number.NaN;
+		const scoreMatches =
+			Math.abs(materializedScore - selection.bestScore) <=
+			crossingScoreTolerance(materializedScore, selection.bestScore);
+		const strictlyImproves =
+			materializedScore <
+			selection.currentScore - crossingScoreTolerance(materializedScore, selection.currentScore);
+		if (!scoreMatches || !strictlyImproves) {
+			return materializationFailure(
+				['relations', relation.id, 'to'],
+				selection.order,
+				materializedRow,
+				selection.bestScore,
+				materializedScore,
+			);
+		}
+		orderChanges = [{ endpointKind: target.kind, endpointId: target.id, layoutOrder }];
 	}
 	return {
 		ok: true,
