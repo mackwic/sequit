@@ -7,13 +7,13 @@ import {
 } from '../collaboration/yjs-live-document';
 import type { LogicDocument } from './logic-document';
 
-export interface DocumentSessionDiagnostic {
+interface DocumentSessionDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
 }
 
-export type DocumentSessionResult =
+type DocumentSessionResult =
 	| { readonly ok: true; readonly value: LogicDocument }
 	| { readonly ok: false; readonly diagnostics: readonly DocumentSessionDiagnostic[] };
 

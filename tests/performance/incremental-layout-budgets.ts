@@ -18,7 +18,7 @@ type IncrementalLayoutBudgets = Readonly<
 	Record<LayoutPerformanceScenarioName, Readonly<Record<IncrementalLayoutGrowthBucketName, number>>>
 >;
 
-export const INCREMENTAL_LAYOUT_BUDGETS_MS = {
+const INCREMENTAL_LAYOUT_BUDGETS_MS = {
 	'long-queue': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 5 },
 	'binary-tree': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 5 },
 	unbalanced: { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 5 },

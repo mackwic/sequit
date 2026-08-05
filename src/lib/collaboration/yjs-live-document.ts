@@ -15,7 +15,7 @@ import { validateLogicDocument } from '../document/validate-logic-document';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
 
-export interface YjsLiveDocumentDiagnostic {
+interface YjsLiveDocumentDiagnostic {
 	readonly code: 'unsupported-yjs-live-document-format' | 'invalid-yjs-live-document';
 	readonly message: string;
 	readonly path: readonly string[];

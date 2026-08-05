@@ -18,8 +18,8 @@ export default {
 			return json({ status: 'ok' });
 		}
 
-		const roomMatch = /^\/collab\/([^/]+)$/.exec(url.pathname);
-		if (!roomMatch) {
+		const isCollaborationRoomPath = /^\/collab\/[^/]+$/.test(url.pathname);
+		if (!isCollaborationRoomPath) {
 			return json({ error: 'Not found' }, 404);
 		}
 
@@ -27,9 +27,7 @@ export default {
 			return json({ error: 'WebSocket upgrade required' }, 426);
 		}
 
-		const encodedRoomId = roomMatch[1];
-		if (!encodedRoomId) return json({ error: 'Not found' }, 404);
-		const roomId = decodeURIComponent(encodedRoomId);
+		const roomId = decodeURIComponent(url.pathname.slice('/collab/'.length));
 		const room = env.COLLABORATION_ROOMS.getByName(roomId);
 		return room.fetch(request);
 	},

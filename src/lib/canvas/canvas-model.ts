@@ -1,7 +1,7 @@
 import type { LogicDocument } from '../document/logic-document';
 import type { Bounds, LayoutResult, Point } from '../layout/layout-graph';
 
-export interface CanvasNature {
+interface CanvasNature {
 	readonly id: string;
 	readonly label: string;
 	readonly color: string;
@@ -13,12 +13,12 @@ export interface UnpositionedCanvasNode {
 	readonly markdown: string;
 }
 
-export interface UnpositionedCanvasGroup {
+interface UnpositionedCanvasGroup {
 	readonly id: string;
 	readonly label: string;
 }
 
-export interface UnpositionedCanvasJunction {
+interface UnpositionedCanvasJunction {
 	readonly id: string;
 	readonly operator: 'xor';
 }
@@ -33,15 +33,15 @@ export interface RenderedCanvasNode extends UnpositionedCanvasNode {
 	readonly bounds: Bounds;
 }
 
-export interface RenderedCanvasGroup extends UnpositionedCanvasGroup {
+interface RenderedCanvasGroup extends UnpositionedCanvasGroup {
 	readonly bounds: Bounds;
 }
 
-export interface RenderedCanvasJunction extends UnpositionedCanvasJunction {
+interface RenderedCanvasJunction extends UnpositionedCanvasJunction {
 	readonly bounds: Bounds;
 }
 
-export interface RenderedCanvasRelation {
+interface RenderedCanvasRelation {
 	readonly id: string;
 	readonly from: string;
 	readonly to: string;

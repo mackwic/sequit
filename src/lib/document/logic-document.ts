@@ -82,7 +82,7 @@ export interface LogicDocument {
 	readonly relations: readonly LogicRelation[];
 }
 
-export type DiagnosticPath = readonly string[];
+type DiagnosticPath = readonly string[];
 
 export interface SequitDiagnostic {
 	readonly code:

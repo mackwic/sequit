@@ -11,7 +11,7 @@ type SnapshotLayoutBudgets = Readonly<
 	Record<LayoutPerformanceScenarioName, Readonly<Record<LayoutPerformanceNodeCount, number>>>
 >;
 
-export const SNAPSHOT_LAYOUT_BUDGETS_MS = {
+const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'long-queue': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'binary-tree': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	unbalanced: { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },

@@ -6,7 +6,6 @@ import type { LayoutMeasurements, LayoutResult } from './layout-types';
 export type {
 	Bounds,
 	GroupMeasurement,
-	LayoutElement,
 	LayoutMeasurements,
 	LayoutRelation,
 	LayoutResult,

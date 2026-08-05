@@ -11,8 +11,8 @@ import type { LayoutMeasurements } from '../../../src/lib/layout/layout-graph';
 import type { LayoutPerformanceScenarioBuilder } from './layout-performance-scenario-builder';
 import type { LayoutPerformanceScenarioName } from './scenario-name';
 
-export type NodeRank = readonly string[];
-export type NodeRanks = readonly NodeRank[];
+type NodeRank = readonly string[];
+type NodeRanks = readonly NodeRank[];
 
 export interface LayoutPerformanceSnapshot {
 	readonly name: LayoutPerformanceScenarioName;

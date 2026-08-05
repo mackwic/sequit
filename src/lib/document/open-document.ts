@@ -10,7 +10,7 @@ import { layoutGraph, type LayoutMeasurements } from '../layout/layout-graph';
 import { parseSequitToml } from '../text/parse-sequit-toml';
 import { createDocumentSession, type DocumentSession } from './document-session';
 
-export interface OpenDocumentDiagnostic {
+interface OpenDocumentDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
@@ -18,7 +18,7 @@ export interface OpenDocumentDiagnostic {
 	readonly column?: number;
 }
 
-export interface OpenDocumentProjection {
+interface OpenDocumentProjection {
 	readonly measurementModel: CanvasMeasurementModel;
 	createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel>;
 }

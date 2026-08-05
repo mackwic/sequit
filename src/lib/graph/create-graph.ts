@@ -6,12 +6,12 @@ import type {
 	LogicRelation,
 } from '../document/logic-document';
 
-export type GraphEndpoint =
+type GraphEndpoint =
 	| { readonly kind: 'node'; readonly entity: LogicNode }
 	| { readonly kind: 'group'; readonly entity: LogicGroup }
 	| { readonly kind: 'junction'; readonly entity: LogicJunction };
 
-export interface GraphRelation {
+interface GraphRelation {
 	readonly relation: LogicRelation;
 	readonly source: GraphEndpoint;
 	readonly target: GraphEndpoint;
@@ -26,7 +26,7 @@ export interface LogicGraph {
 	readonly predecessorsByEndpointId: ReadonlyMap<string, readonly string[]>;
 }
 
-export interface GraphDiagnostic {
+interface GraphDiagnostic {
 	readonly code: 'unknown-endpoint' | 'cycle';
 	readonly message: string;
 	readonly path: readonly string[];

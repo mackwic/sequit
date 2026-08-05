@@ -29,7 +29,7 @@ export const INCREMENTAL_LAYOUT_TIMING_STAGES = [
 	'totalMs',
 ] as const satisfies readonly (keyof IncrementalLayoutTiming)[];
 
-export type IncrementalLayoutTimingStage = (typeof INCREMENTAL_LAYOUT_TIMING_STAGES)[number];
+type IncrementalLayoutTimingStage = (typeof INCREMENTAL_LAYOUT_TIMING_STAGES)[number];
 
 export interface IncrementalLayoutReplayInput {
 	readonly scenario: NamedLayoutPerformanceScenario;
@@ -38,7 +38,7 @@ export interface IncrementalLayoutReplayInput {
 	readonly insertions: readonly LayoutPerformanceInsertion[];
 }
 
-export interface IncrementalLayoutInsertionResult {
+interface IncrementalLayoutInsertionResult {
 	readonly nodeIndex: number;
 	readonly timing: IncrementalLayoutTiming;
 }
@@ -49,7 +49,7 @@ export interface IncrementalLayoutReplayResult {
 	readonly insertions: readonly IncrementalLayoutInsertionResult[];
 }
 
-export interface IncrementalLayoutStageSummary {
+interface IncrementalLayoutStageSummary {
 	readonly p50: number;
 	readonly p95: number;
 	readonly maximum: number;

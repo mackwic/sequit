@@ -9,7 +9,7 @@ import {
 	type LayoutPerformanceNodeCount,
 } from './layout-performance-policy';
 
-export interface LayoutPerformanceWorkloadMetadata {
+interface LayoutPerformanceWorkloadMetadata {
 	readonly requestedNodes: number;
 	readonly groups: number;
 	readonly junctions: number;
