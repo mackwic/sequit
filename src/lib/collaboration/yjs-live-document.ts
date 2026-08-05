@@ -1,10 +1,9 @@
 import type * as Y from 'yjs';
 
-import {
-	type DocumentCommandOutcome,
-	LocalDocumentCommandGateway,
-} from '../document/document-command-gateway';
+import type { DocumentCommandOutcome } from '../document/document-command-gateway';
 import type { LogicDocument, LogicRelation, NewLogicNode } from '../document/logic-document';
+import { projectNodeAddition, projectRelationAddition } from '../document/topology-edits';
+import { fractionalOrderKeySpace } from '../layout/order-key-space';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
 import { YjsDocumentRepository } from './yjs-document-repository';
 
@@ -17,32 +16,30 @@ const ADD_RELATION_ORIGIN = Symbol('sequit add relation');
 function legacyResult(outcome: DocumentCommandOutcome): YjsLiveDocumentResult<LogicDocument> {
 	if (outcome.kind === 'accepted') return { ok: true, value: outcome.document };
 	if (outcome.kind === 'failed') throw outcome.error;
-	return {
-		ok: false,
-		diagnostics: outcome.diagnostics.map(({ message, path }) => ({
-			code: 'invalid-yjs-live-document',
-			message,
-			path,
-		})),
-	};
+	return { ok: false, diagnostics: outcome.diagnostics };
 }
 
 function runLegacyCommand(
 	document: Y.Doc,
 	origin: unknown,
-	command: (gateway: LocalDocumentCommandGateway) => DocumentCommandOutcome,
+	project: (current: LogicDocument) => ReturnType<typeof projectNodeAddition>,
 ): YjsLiveDocumentResult<LogicDocument> {
-	return document.transact(() => {
-		const current = readLogicDocument(document);
-		if (!current.ok) return current;
-		const repository = new YjsDocumentRepository(document);
+	const current = readLogicDocument(document);
+	if (!current.ok) return current;
+	const repository = new YjsDocumentRepository(document);
+	try {
+		let projected: ReturnType<typeof projectNodeAddition>;
 		try {
-			const gateway = new LocalDocumentCommandGateway(() => current.value, repository, origin);
-			return legacyResult(command(gateway));
-		} finally {
-			repository.destroy();
+			projected = project(current.value);
+		} catch (error) {
+			return legacyResult({ kind: 'failed', error });
 		}
-	}, origin);
+		if (!projected.ok) return { ok: false, diagnostics: projected.diagnostics };
+		const materialized = repository.persistSync(projected.value.changes, origin);
+		return materialized.ok ? { ok: true, value: materialized.value } : materialized;
+	} finally {
+		repository.destroy();
+	}
 }
 
 export function addNodeToLiveDocument(
@@ -50,7 +47,9 @@ export function addNodeToLiveDocument(
 	node: NewLogicNode,
 	origin: unknown = ADD_NODE_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
-	return runLegacyCommand(document, origin, (gateway) => gateway.addNode(node));
+	return runLegacyCommand(document, origin, (current) =>
+		projectNodeAddition(current, node, fractionalOrderKeySpace),
+	);
 }
 
 export function addRelationToLiveDocument(
@@ -58,5 +57,7 @@ export function addRelationToLiveDocument(
 	relation: LogicRelation,
 	origin: unknown = ADD_RELATION_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
-	return runLegacyCommand(document, origin, (gateway) => gateway.addRelation(relation));
+	return runLegacyCommand(document, origin, (current) =>
+		projectRelationAddition(current, relation, fractionalOrderKeySpace),
+	);
 }

@@ -4,7 +4,7 @@ import * as Y from 'yjs';
 import {
 	importLogicDocument,
 	readLogicDocument,
-} from '../../src/lib/collaboration/yjs-live-document';
+} from '../../src/lib/collaboration/yjs-document-codec';
 import { openDocument } from '../../src/lib/document/open-document';
 import { weightedInversionScore } from '../../src/lib/layout/crossing-aware-order';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
@@ -203,12 +203,12 @@ describe('AI for documentary effort', () => {
 					.map(({ id, bounds }) => [id, bounds.x]),
 			);
 
-			opened.addNode({
+			await opened.addNode({
 				id: 'zz-added-first',
 				natureId: 'goal',
 				markdown: 'Added first',
 			});
-			opened.addNode({
+			await opened.addNode({
 				id: 'aa-added-second',
 				natureId: 'goal',
 				markdown: 'Added second',
@@ -236,7 +236,7 @@ describe('AI for documentary effort', () => {
 				layoutMeasurementsForCanvas(opened.measurementModel),
 			);
 
-			opened.addRelation({
+			await opened.addRelation({
 				id: 'qualifying-source-b-to-target-a',
 				from: 'source-b',
 				to: 'target-a',
@@ -281,7 +281,11 @@ describe('AI for documentary effort', () => {
 			]);
 			const score = (endpointOrder: readonly string[]) =>
 				weightedInversionScore({
-					effectiveLinks: links,
+					effectiveRelations: links.map(({ relationId, sourceId, targetId }) => ({
+						relationId,
+						sourceIds: [sourceId],
+						targetIds: [targetId],
+					})),
 					effectiveEndpointOrder: endpointOrder,
 					ranks,
 					junctionIds: new Set(),

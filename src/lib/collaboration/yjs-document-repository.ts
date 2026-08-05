@@ -3,16 +3,19 @@ import * as Y from 'yjs';
 import { EndpointKind, type LogicDocument } from '../document/logic-document';
 import type { DocumentChangeSet } from '../document/topology-edits';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
+import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
 
 export type YjsDocumentRepositoryObserver = (
 	result: YjsLiveDocumentResult<LogicDocument>,
 	origin: unknown,
 ) => void;
 
-const GROUPS = 'sequit.groups';
-const NODES = 'sequit.nodes';
-const JUNCTIONS = 'sequit.junctions';
-const RELATIONS = 'sequit.relations';
+const {
+	groups: GROUPS,
+	nodes: NODES,
+	junctions: JUNCTIONS,
+	relations: RELATIONS,
+} = YJS_COLLECTIONS;
 const REPLACE_MARKDOWN_ORIGIN = Symbol('sequit replace node markdown');
 
 export function replaceNodeMarkdown(
@@ -30,12 +33,6 @@ export function replaceNodeMarkdown(
 	return true;
 }
 
-function entityMap(values: Readonly<Record<string, unknown>>): Y.Map<unknown> {
-	const result = new Y.Map<unknown>();
-	for (const [key, value] of Object.entries(values)) result.set(key, value);
-	return result;
-}
-
 function endpointCollection(kind: EndpointKind): string {
 	switch (kind) {
 		case EndpointKind.Group:
@@ -49,6 +46,7 @@ function endpointCollection(kind: EndpointKind): string {
 
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
+	#persistenceCapture: { result: YjsLiveDocumentResult<LogicDocument> | undefined } | undefined;
 
 	constructor(readonly document: Y.Doc) {
 		document.on('afterTransaction', this.#afterTransaction);
@@ -58,14 +56,41 @@ export class YjsDocumentRepository {
 		return readLogicDocument(this.document);
 	}
 
-	persist(changes: DocumentChangeSet, origin?: unknown): void {
-		this.document.transact(() => {
-			this.#apply(changes);
-		}, origin);
+	persist(
+		changes: DocumentChangeSet,
+		origin?: unknown,
+	): Promise<YjsLiveDocumentResult<LogicDocument>> {
+		return Promise.resolve(this.persistSync(changes, origin));
 	}
 
-	replaceNodeMarkdown(nodeId: string, markdown: string, origin?: unknown): boolean {
-		return replaceNodeMarkdown(this.document, nodeId, markdown, origin);
+	/** Low-level synchronous compatibility operation for the in-memory Yjs transaction API. */
+	persistSync(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
+		const candidate = new Y.Doc();
+		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.document));
+		const candidateRepository = new YjsDocumentRepository(candidate);
+		try {
+			candidateRepository.#apply(changes);
+			const validation = candidateRepository.read();
+			if (!validation.ok) return validation;
+		} finally {
+			candidateRepository.destroy();
+			candidate.destroy();
+		}
+		const capture = { result: undefined } as {
+			result: YjsLiveDocumentResult<LogicDocument> | undefined;
+		};
+		this.#persistenceCapture = capture;
+		try {
+			this.document.transact(() => {
+				this.#apply(changes);
+			}, origin);
+			const result = capture.result;
+			if (result === undefined)
+				throw new Error('Yjs transaction completed without materialization');
+			return result;
+		} finally {
+			this.#persistenceCapture = undefined;
+		}
 	}
 
 	observe(observer: YjsDocumentRepositoryObserver): () => void {
@@ -103,7 +128,7 @@ export class YjsDocumentRepository {
 			const markdown = new Y.Text(node.markdown);
 			nodes.set(
 				node.id,
-				entityMap({
+				createYjsEntityMap({
 					natureId: node.natureId,
 					...(node.groupId === undefined ? {} : { groupId: node.groupId }),
 					layoutOrder: node.layoutOrder,
@@ -112,13 +137,16 @@ export class YjsDocumentRepository {
 			);
 		}
 		for (const relation of changes.relationAdditions) {
-			relations.set(relation.id, entityMap({ from: relation.from, to: relation.to }));
+			relations.set(relation.id, createYjsEntityMap({ from: relation.from, to: relation.to }));
 		}
 		for (const { endpoint, order } of orderChanges) endpoint.set('layoutOrder', order);
 	}
 
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {
 		const result = this.read();
+		if (this.#persistenceCapture !== undefined && this.#persistenceCapture.result === undefined) {
+			this.#persistenceCapture.result = result;
+		}
 		for (const observer of [...this.#observers]) {
 			try {
 				observer(result, transaction.origin);

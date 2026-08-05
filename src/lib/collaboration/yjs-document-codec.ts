@@ -18,13 +18,19 @@ import {
 import { parseOrderKey } from '../document/order-key';
 import { validateLogicDocument } from '../document/validate-logic-document';
 import { createGraph } from '../graph/create-graph';
+import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
 
 export interface YjsLiveDocumentDiagnostic {
-	readonly code: 'unsupported-yjs-live-document-format' | 'invalid-yjs-live-document';
+	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
+	readonly cycle?: readonly string[];
+	readonly expectedOrder?: readonly string[];
+	readonly materializedOrder?: readonly string[];
+	readonly expectedScore?: number;
+	readonly materializedScore?: number;
 }
 
 export type YjsLiveDocumentResult<T> =
@@ -44,12 +50,14 @@ function validationFailure(
 	};
 }
 
-const META = 'sequit.meta';
-const NATURES = 'sequit.natures';
-const GROUPS = 'sequit.groups';
-const NODES = 'sequit.nodes';
-const JUNCTIONS = 'sequit.junctions';
-const RELATIONS = 'sequit.relations';
+const {
+	meta: META,
+	natures: NATURES,
+	groups: GROUPS,
+	nodes: NODES,
+	junctions: JUNCTIONS,
+	relations: RELATIONS,
+} = YJS_COLLECTIONS;
 
 function replaceMapContents(
 	target: Y.Map<unknown>,
@@ -59,19 +67,13 @@ function replaceMapContents(
 	for (const [key, value] of Object.entries(values)) target.set(key, value);
 }
 
-function entityMap(values: Readonly<Record<string, unknown>>): Y.Map<unknown> {
-	const result = new Y.Map<unknown>();
-	for (const [key, value] of Object.entries(values)) result.set(key, value);
-	return result;
-}
-
 function replaceEntityCollection<T extends { readonly id: string }>(
 	target: Y.Map<Y.Map<unknown>>,
 	entities: readonly T[],
 	project: (entity: T) => Readonly<Record<string, unknown>>,
 ): void {
 	target.clear();
-	for (const entity of entities) target.set(entity.id, entityMap(project(entity)));
+	for (const entity of entities) target.set(entity.id, createYjsEntityMap(project(entity)));
 }
 
 const IMPORT_ORIGIN = Symbol('sequit import');

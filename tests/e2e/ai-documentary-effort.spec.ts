@@ -249,9 +249,7 @@ test.describe('AI for documentary effort', () => {
 		]);
 	});
 
-	test('keeps crossing-aware endpoint order through one browser editing lifecycle', async ({
-		page,
-	}) => {
+	test('renders the crossing-aware editing pipeline in a browser integration', async ({ page }) => {
 		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-status="connected"]')).toBeVisible();
 
@@ -291,24 +289,24 @@ test.describe('AI for documentary effort', () => {
 				renderStates.push([state, await opened.createCanvasModel(measurements)]);
 			};
 			await capture('legacy');
-			opened.addNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' });
+			await opened.addNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' });
 			measurements.nodes.set('zz-added-first', { width: 180, height: 80 });
 			await capture('first-added');
-			opened.addNode({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' });
+			await opened.addNode({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' });
 			measurements.nodes.set('aa-added-second', { width: 180, height: 88 });
 			await capture('appended');
-			opened.addRelation({
+			await opened.addRelation({
 				id: 'zz-added-first-to-successor',
 				from: 'zz-added-first',
 				to: 'successor',
 			});
-			opened.addRelation({
+			await opened.addRelation({
 				id: 'aa-added-second-to-successor',
 				from: 'aa-added-second',
 				to: 'successor',
 			});
 			await capture('before');
-			opened.addRelation({
+			await opened.addRelation({
 				id: 'qualifying-source-b-to-target-a',
 				from: 'source-b',
 				to: 'target-a',

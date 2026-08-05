@@ -7,8 +7,14 @@ import {
 } from './topology-edits';
 
 export interface DocumentCommandDiagnostic {
+	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
+	readonly cycle?: readonly string[];
+	readonly expectedOrder?: readonly string[];
+	readonly materializedOrder?: readonly string[];
+	readonly expectedScore?: number;
+	readonly materializedScore?: number;
 }
 
 export type DocumentCommandOutcome =
@@ -17,16 +23,39 @@ export type DocumentCommandOutcome =
 	| { readonly kind: 'rolled-back'; readonly diagnostics: readonly DocumentCommandDiagnostic[] }
 	| { readonly kind: 'failed'; readonly error: unknown };
 
+export type DocumentCommand =
+	| { readonly kind: 'add-node'; readonly node: NewLogicNode }
+	| { readonly kind: 'add-relation'; readonly relation: LogicRelation };
+
 export interface DocumentCommandGateway {
+	/**
+	 * Publications are authoritative accepted states and must be emitted in authoritative order.
+	 * A dispatch result is only the acknowledgement correlated with that command; callers must not
+	 * treat it as a publication or use it to order independently received snapshots.
+	 */
 	readAccepted(): LogicDocument;
-	addNode(node: NewLogicNode): DocumentCommandOutcome;
-	addRelation(relation: LogicRelation): DocumentCommandOutcome;
+	dispatch(command: DocumentCommand): Promise<DocumentCommandOutcome>;
 	subscribe(subscriber: (outcome: DocumentCommandOutcome) => void): () => void;
 	destroy(): void;
 }
 
 export interface DocumentChangeRepository {
-	persist(changes: DocumentChangeSet, origin?: unknown): void;
+	persist(
+		changes: DocumentChangeSet,
+		origin?: unknown,
+	): Promise<
+		| { readonly ok: true; readonly value: LogicDocument }
+		| { readonly ok: false; readonly diagnostics: readonly DocumentCommandDiagnostic[] }
+	>;
+}
+
+export interface LocalDocumentCommandGatewayOptions {
+	/** Disable when an enclosing gateway owns publication, such as the Yjs observer path. */
+	readonly publishAccepted?: boolean;
+}
+
+function assertNever(value: never): never {
+	throw new TypeError(`Unsupported document command: ${String(value)}`);
 }
 
 export class LocalDocumentCommandGateway implements DocumentCommandGateway {
@@ -36,6 +65,7 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 		private readonly current: () => LogicDocument,
 		private readonly repository: DocumentChangeRepository,
 		private readonly origin?: unknown,
+		private readonly options: LocalDocumentCommandGatewayOptions = {},
 	) {}
 
 	readAccepted(): LogicDocument {
@@ -51,17 +81,22 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 		this.#subscribers.clear();
 	}
 
-	addNode(node: NewLogicNode): DocumentCommandOutcome {
-		return this.#execute(() => projectNodeAddition(this.current(), node, fractionalOrderKeySpace));
+	async dispatch(command: DocumentCommand): Promise<DocumentCommandOutcome> {
+		return this.#execute(() => {
+			switch (command.kind) {
+				case 'add-node':
+					return projectNodeAddition(this.current(), command.node, fractionalOrderKeySpace);
+				case 'add-relation':
+					return projectRelationAddition(this.current(), command.relation, fractionalOrderKeySpace);
+				default:
+					return assertNever(command);
+			}
+		});
 	}
 
-	addRelation(relation: LogicRelation): DocumentCommandOutcome {
-		return this.#execute(() =>
-			projectRelationAddition(this.current(), relation, fractionalOrderKeySpace),
-		);
-	}
-
-	#execute(project: () => ReturnType<typeof projectNodeAddition>): DocumentCommandOutcome {
+	async #execute(
+		project: () => ReturnType<typeof projectNodeAddition>,
+	): Promise<DocumentCommandOutcome> {
 		let projected: ReturnType<typeof projectNodeAddition>;
 		try {
 			projected = project();
@@ -70,18 +105,21 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 		}
 		if (!projected.ok) return { kind: 'rejected', diagnostics: projected.diagnostics };
 		try {
-			this.repository.persist(projected.value.changes, this.origin);
+			const materialized = await this.repository.persist(projected.value.changes, this.origin);
+			if (!materialized.ok) return { kind: 'rejected', diagnostics: materialized.diagnostics };
+			const outcome = { kind: 'accepted', document: materialized.value } as const;
+			if (this.options.publishAccepted !== false) {
+				for (const subscriber of [...this.#subscribers]) {
+					try {
+						subscriber(outcome);
+					} catch {
+						// A command publication must reach every subscriber.
+					}
+				}
+			}
+			return outcome;
 		} catch (error) {
 			return { kind: 'failed', error };
 		}
-		const outcome = { kind: 'accepted', document: projected.value.document } as const;
-		for (const subscriber of [...this.#subscribers]) {
-			try {
-				subscriber(outcome);
-			} catch {
-				// A command publication must reach every subscriber.
-			}
-		}
-		return outcome;
 	}
 }

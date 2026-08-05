@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EffectiveGraphLink } from '../../src/lib/graph/create-graph';
+import type { EffectiveSemanticRelation } from '../../src/lib/graph/create-graph';
 import {
 	type CrossingOrderMetadata,
 	crossingScoreTolerance,
@@ -12,11 +12,11 @@ import {
 function metadata(
 	order: readonly string[],
 	rankEntries: readonly (readonly [string, number])[],
-	effectiveLinks: readonly EffectiveGraphLink[],
+	effectiveRelations: readonly EffectiveSemanticRelation[],
 	junctionIds: readonly string[] = [],
 ): CrossingOrderMetadata {
 	return {
-		effectiveLinks,
+		effectiveRelations,
 		effectiveEndpointOrder: order,
 		ranks: new Map(rankEntries),
 		junctionIds: new Set(junctionIds),
@@ -28,11 +28,157 @@ function link(
 	sourceId: string,
 	targetId: string,
 	weight = 1,
-): EffectiveGraphLink {
-	return { relationId, sourceId, targetId, weight };
+): EffectiveSemanticRelation {
+	if (weight !== 1) {
+		const denominator = Math.round(1 / weight);
+		return {
+			relationId,
+			sourceIds: [
+				sourceId,
+				...Array.from({ length: denominator - 1 }, (_, index) => `${relationId}-unranked-${index}`),
+			],
+			targetIds: [targetId],
+		};
+	}
+	return { relationId, sourceIds: [sourceId], targetIds: [targetId] };
+}
+
+interface OracleLink {
+	readonly relationId: string;
+	readonly sourceId: string;
+	readonly targetId: string;
+	readonly weight: number;
+}
+
+function cartesianOracleRelations(
+	relations: readonly EffectiveSemanticRelation[],
+): readonly OracleLink[] {
+	return relations.flatMap((relation) => {
+		const weight = 1 / (relation.sourceIds.length * relation.targetIds.length);
+		return relation.sourceIds.flatMap((sourceId) =>
+			relation.targetIds.map((targetId) => ({
+				relationId: relation.relationId,
+				sourceId,
+				targetId,
+				weight,
+			})),
+		);
+	});
+}
+
+function cartesianOracleScore(input: CrossingOrderMetadata): number {
+	const links = cartesianOracleRelations(input.effectiveRelations);
+	const layers = new Map<string, string>();
+	const ordinals = new Map<string, number>();
+	const nextOrdinal = new Map<string, number>();
+	for (const id of input.effectiveEndpointOrder) {
+		const rank = input.ranks.get(id);
+		if (rank === undefined) continue;
+		const layer = `${rank}:${input.junctionIds.has(id) ? 'junction' : 'ordinary'}`;
+		layers.set(id, layer);
+		ordinals.set(id, nextOrdinal.get(layer) ?? 0);
+		nextOrdinal.set(layer, (nextOrdinal.get(layer) ?? 0) + 1);
+	}
+	let score = 0;
+	for (const [index, left] of links.entries()) {
+		for (const right of links.slice(index + 1)) {
+			if (left.relationId === right.relationId) continue;
+			if (layers.get(left.sourceId) !== layers.get(right.sourceId)) continue;
+			if (layers.get(left.targetId) !== layers.get(right.targetId)) continue;
+			const sourceDelta = (ordinals.get(left.sourceId) ?? 0) - (ordinals.get(right.sourceId) ?? 0);
+			const targetDelta = (ordinals.get(left.targetId) ?? 0) - (ordinals.get(right.targetId) ?? 0);
+			if (sourceDelta * targetDelta < 0) score += left.weight * right.weight;
+		}
+	}
+	return score;
+}
+
+function bruteForceTargetScore(
+	row: readonly string[],
+	targetId: string,
+	input: CrossingOrderMetadata,
+): number {
+	const order = new Map(input.effectiveEndpointOrder.map((id, index) => [id, index]));
+	const layer = (id: string) => {
+		const rank = input.ranks.get(id);
+		return rank === undefined
+			? undefined
+			: `${rank}:${input.junctionIds.has(id) ? 'junction' : 'ordinary'}`;
+	};
+	const ordinal = (id: string) => {
+		const endpointLayer = layer(id);
+		if (endpointLayer === undefined) return undefined;
+		return input.effectiveEndpointOrder
+			.filter((candidate) => layer(candidate) === endpointLayer)
+			.indexOf(id);
+	};
+	const peers = new Set(row.filter((id) => id !== targetId));
+	let score = 0;
+	const links = cartesianOracleRelations(input.effectiveRelations);
+	for (const targetAtSource of [true, false]) {
+		for (const targetLink of links) {
+			if ((targetAtSource ? targetLink.sourceId : targetLink.targetId) !== targetId) continue;
+			for (const peerLink of links) {
+				if (targetLink.relationId === peerLink.relationId) continue;
+				const peerId = targetAtSource ? peerLink.sourceId : peerLink.targetId;
+				if (!peers.has(peerId)) continue;
+				if (
+					layer(targetLink.sourceId) !== layer(peerLink.sourceId) ||
+					layer(targetLink.targetId) !== layer(peerLink.targetId)
+				)
+					continue;
+				const targetSource = ordinal(targetLink.sourceId);
+				const peerSource = ordinal(peerLink.sourceId);
+				const targetTarget = ordinal(targetLink.targetId);
+				const peerTarget = ordinal(peerLink.targetId);
+				if (
+					targetSource !== undefined &&
+					peerSource !== undefined &&
+					targetTarget !== undefined &&
+					peerTarget !== undefined &&
+					(targetSource - peerSource) * (targetTarget - peerTarget) < 0
+				) {
+					score += targetLink.weight * peerLink.weight;
+				}
+			}
+		}
+	}
+	if (order.size !== input.effectiveEndpointOrder.length)
+		throw new Error('Brute-force input must contain unique endpoint ids');
+	return score;
 }
 
 describe('crossing-aware target insertion', () => {
+	it('matches the Cartesian oracle for group-to-group mass and excludes self-crossings', () => {
+		const grouped = metadata(
+			['source-a', 'source-b', 'target-a', 'target-b'],
+			[
+				['source-a', 0],
+				['source-b', 0],
+				['target-a', 1],
+				['target-b', 1],
+			],
+			[
+				{
+					relationId: 'group-to-group',
+					sourceIds: ['source-a', 'source-b'],
+					targetIds: ['target-a', 'target-b'],
+				},
+			],
+		);
+		expect(weightedInversionScore(grouped)).toBe(0);
+
+		const withPeer = {
+			...grouped,
+			effectiveRelations: [
+				...grouped.effectiveRelations,
+				{ relationId: 'peer', sourceIds: ['source-b'], targetIds: ['target-a'] },
+			],
+		};
+		expect(weightedInversionScore(withPeer)).toBe(0.25);
+		expect(weightedInversionScore(withPeer)).toBe(cartesianOracleScore(withPeer));
+	});
+
 	it('derives hand-calculated before, after, and global-best slot scores', () => {
 		const input = metadata(
 			['source-a', 'source-b', 'target-a', 'target-b'],
@@ -191,7 +337,7 @@ describe('crossing-aware target insertion', () => {
 		).toMatchObject({ scoreBySlot: [2, 1, 2, 1], currentSlot: 2, bestSlot: 1 });
 	});
 
-	it('does not chain floating-point ties beyond the true minimum tolerance', () => {
+	it('selects the true minimum when adjacent scores are distinct', () => {
 		const input = metadata(
 			['source-low', 'source-high', 'peer-a', 'peer-b', 'peer-c', 'target'],
 			[
@@ -204,9 +350,9 @@ describe('crossing-aware target insertion', () => {
 			],
 			[
 				link('target', 'source-low', 'target'),
-				link('peer-a', 'source-high', 'peer-a', 2e-15),
-				link('peer-b', 'source-high', 'peer-b', 2e-15),
-				link('peer-c', 'source-high', 'peer-c', 2e-15),
+				link('peer-a', 'source-high', 'peer-a', 0.25),
+				link('peer-b', 'source-high', 'peer-b', 0.25),
+				link('peer-c', 'source-high', 'peer-c', 0.25),
 			],
 		);
 
@@ -216,8 +362,8 @@ describe('crossing-aware target insertion', () => {
 			input,
 		);
 		expect(selection.scoreBySlot).toHaveLength(4);
-		expect(selection.scoreBySlot[3]).toBeCloseTo(6e-15, 28);
-		expect(selection.bestSlot).toBe(1);
+		expect(selection.scoreBySlot[3]).toBe(0.75);
+		expect(selection.bestSlot).toBe(0);
 
 		const mirrored = metadata(
 			['source-low', 'source-high', 'target', 'peer-a', 'peer-b', 'peer-c'],
@@ -231,9 +377,9 @@ describe('crossing-aware target insertion', () => {
 			],
 			[
 				link('target', 'source-high', 'target'),
-				link('peer-a', 'source-low', 'peer-a', 2e-15),
-				link('peer-b', 'source-low', 'peer-b', 2e-15),
-				link('peer-c', 'source-low', 'peer-c', 2e-15),
+				link('peer-a', 'source-low', 'peer-a', 0.25),
+				link('peer-b', 'source-low', 'peer-b', 0.25),
+				link('peer-c', 'source-low', 'peer-c', 0.25),
 			],
 		);
 		const mirroredSelection = selectTargetInsertionSlot(
@@ -241,11 +387,11 @@ describe('crossing-aware target insertion', () => {
 			'target',
 			mirrored,
 		);
-		expect(mirroredSelection.scoreBySlot[0]).toBeCloseTo(6e-15, 28);
-		expect(mirroredSelection.bestSlot).toBe(2);
+		expect(mirroredSelection.scoreBySlot[0]).toBe(0.75);
+		expect(mirroredSelection.bestSlot).toBe(3);
 	});
 
-	it('matches brute-force weighted inversion scoring for generated small rows', () => {
+	it('matches a brute-force oracle across weighted, outgoing, junction, and long links', () => {
 		let state = 17;
 		function random(): number {
 			state = (state * 48271) % 2147483647;
@@ -254,29 +400,52 @@ describe('crossing-aware target insertion', () => {
 
 		for (let iteration = 0; iteration < 100; iteration += 1) {
 			const sources = ['source-0', 'source-1', 'source-2'];
+			const junctionSources = ['source-junction-0', 'source-junction-1'];
 			const row = ['target-0', 'target-1', 'target-2', 'target-3'];
-			const links: EffectiveGraphLink[] = [];
-			for (const targetId of row) {
-				for (const sourceId of sources) {
-					if (random() < 0.45) {
-						const weights = [1, 0.5, 0.125, 2e-15] as const;
-						links.push(
-							link(
-								`${sourceId}-${targetId}`,
-								sourceId,
-								targetId,
-								weights[Math.floor(random() * weights.length)] ?? 1,
-							),
-						);
+			const successors = ['successor-0', 'successor-1', 'successor-2'];
+			const longSuccessors = ['long-successor-0', 'long-successor-1'];
+			const links: EffectiveSemanticRelation[] = [];
+			const weights = [1, 0.5, 0.25, 0.125] as const;
+			const connect = (fromIds: readonly string[], toIds: readonly string[], prefix: string) => {
+				for (const fromId of fromIds) {
+					for (const toId of toIds) {
+						if (random() < 0.45) {
+							links.push(
+								link(
+									`${prefix}-${fromId}-${toId}`,
+									fromId,
+									toId,
+									weights[Math.floor(random() * weights.length)] ?? 1,
+								),
+							);
+						}
 					}
 				}
-			}
-			const order = [...sources, ...row];
+			};
+			connect(sources, row, 'incoming');
+			connect(junctionSources, row, 'incoming-junction');
+			connect(row, successors, 'outgoing');
+			connect(row, longSuccessors, 'outgoing-long');
+			links.push(
+				link('required-incoming-peer', 'source-2', 'target-0', 0.5),
+				link('required-incoming-target', 'source-0', 'target-2', 0.25),
+				link('required-junction-peer', 'source-junction-1', 'target-0', 0.125),
+				link('required-junction-target', 'source-junction-0', 'target-2', 0.5),
+				link('required-outgoing-peer', 'target-0', 'successor-2', 0.25),
+				link('required-outgoing-target', 'target-2', 'successor-0', 0.5),
+				link('required-long-peer', 'target-0', 'long-successor-1', 0.125),
+				link('required-long-target', 'target-2', 'long-successor-0', 0.5),
+			);
+			const order = [...sources, ...junctionSources, ...row, ...successors, ...longSuccessors];
 			const ranks = [
 				...sources.map((id) => [id, 0] as const),
+				...junctionSources.map((id) => [id, 0] as const),
 				...row.map((id) => [id, 1] as const),
+				...successors.map((id) => [id, 2] as const),
+				...longSuccessors.map((id) => [id, 3] as const),
 			];
-			const input = metadata(order, ranks, links);
+			const junctionIds = iteration % 2 === 0 ? junctionSources : [...junctionSources, ...row];
+			const input = metadata(order, ranks, links, junctionIds);
 			const targetId = 'target-2';
 			const selected = selectTargetInsertionSlot(row, targetId, input);
 			const peers = row.filter((id) => id !== targetId);
@@ -285,9 +454,15 @@ describe('crossing-aware target insertion', () => {
 				.concat(peers.length)
 				.map((slot) => {
 					const candidate = [...peers.slice(0, slot), targetId, ...peers.slice(slot)];
-					return weightedInversionScore({
+					return bruteForceTargetScore(candidate, targetId, {
 						...input,
-						effectiveEndpointOrder: [...sources, ...candidate],
+						effectiveEndpointOrder: [
+							...sources,
+							...junctionSources,
+							...candidate,
+							...successors,
+							...longSuccessors,
+						],
 					});
 				});
 			const currentSlot = row.indexOf(targetId);
@@ -303,10 +478,24 @@ describe('crossing-aware target insertion', () => {
 					bruteSlot = slot;
 				}
 			}
+			for (const [slot, score] of selected.scoreBySlot.entries()) {
+				expect(
+					Math.abs(score - (scoreBySlot[slot] ?? Number.NaN)),
+					`iteration ${iteration}, slot ${slot}`,
+				).toBeLessThanOrEqual(crossingScoreTolerance(score, scoreBySlot[slot] ?? Number.NaN));
+			}
 			expect(selected.bestSlot, `iteration ${iteration}`).toBe(bruteSlot);
-			expect(selected.bestScore, `iteration ${iteration}`).toBe(
-				selected.scoreBySlot[selected.bestSlot],
+			expect(selected.currentScore, `iteration ${iteration}`).toBe(
+				selected.scoreBySlot[currentSlot],
 			);
+			expect(selected.bestScore, `iteration ${iteration}`).toBe(
+				selected.scoreBySlot[bruteSlot ?? 0],
+			);
+			expect(selected.order, `iteration ${iteration}`).toEqual([
+				...peers.slice(0, bruteSlot),
+				targetId,
+				...peers.slice(bruteSlot),
+			]);
 		}
 	});
 });

@@ -248,10 +248,11 @@ export function projectRelationAddition(
 	if (!tentativeGraph.ok) return tentativeGraph;
 	const graph = tentativeGraph.value;
 	const ranks = topologicallyRank(graph);
+	const validatedDocument = validatedTentative.value;
 	const endpoints: readonly LogicEndpoint[] = [
-		...document.groups,
-		...document.nodes,
-		...document.junctions,
+		...validatedDocument.groups,
+		...validatedDocument.nodes,
+		...validatedDocument.junctions,
 	];
 	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint]));
 	const endpointOrder = orderEndpoints(endpoints, orderKeySpace);
@@ -267,7 +268,7 @@ export function projectRelationAddition(
 		return {
 			ok: true,
 			value: {
-				document: tentativeDocument,
+				document: validatedDocument,
 				eligible: false,
 				moved: false,
 				changes: { nodeAdditions: [], relationAdditions: [relation], endpointOrderChanges: [] },
@@ -275,7 +276,7 @@ export function projectRelationAddition(
 		};
 	}
 
-	const junctionIds = new Set(document.junctions.map(({ id }) => id));
+	const junctionIds = new Set(validatedDocument.junctions.map(({ id }) => id));
 	const targetIsJunction = junctionIds.has(relation.to);
 	const component = weakComponentContaining(
 		relation.to,
@@ -291,12 +292,12 @@ export function projectRelationAddition(
 		targetIsJunction,
 	);
 	const selection = selectTargetInsertionSlot(row, relation.to, {
-		effectiveLinks: graph.effectiveLinks,
+		effectiveRelations: graph.effectiveRelations,
 		effectiveEndpointOrder: endpointOrder,
 		ranks: ranks.byEndpointId,
 		junctionIds,
 	});
-	let selectedDocument = tentativeDocument;
+	let selectedDocument = validatedDocument;
 	let orderChanges: EndpointOrderChange[] = [];
 	if (selection.moved) {
 		const targetIndex = selection.bestSlot;
@@ -321,7 +322,7 @@ export function projectRelationAddition(
 			return {
 				ok: true,
 				value: {
-					document: tentativeDocument,
+					document: validatedDocument,
 					eligible: true,
 					moved: false,
 					previousScore: selection.currentScore,
@@ -335,7 +336,7 @@ export function projectRelationAddition(
 			};
 		}
 		const layoutOrder = orderKeySpace.keyFor({ before, after }, target.id);
-		selectedDocument = replaceEndpoint(tentativeDocument, { ...target, layoutOrder });
+		selectedDocument = replaceEndpoint(validatedDocument, { ...target, layoutOrder });
 		const materializedEndpointOrder = orderEndpoints(
 			[...selectedDocument.groups, ...selectedDocument.nodes, ...selectedDocument.junctions],
 			orderKeySpace,
@@ -357,7 +358,7 @@ export function projectRelationAddition(
 			);
 		}
 		const materializedScores = scoreTargetInsertionSlots(materializedRow, relation.to, {
-			effectiveLinks: graph.effectiveLinks,
+			effectiveRelations: graph.effectiveRelations,
 			effectiveEndpointOrder: materializedEndpointOrder,
 			ranks: ranks.byEndpointId,
 			junctionIds,
