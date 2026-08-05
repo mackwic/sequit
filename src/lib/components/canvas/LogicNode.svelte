@@ -5,15 +5,33 @@
 		node,
 		measuring = false,
 	}: { node: RenderedCanvasNode | UnpositionedCanvasNode; measuring?: boolean } = $props();
-	let bounds = $derived('bounds' in node ? node.bounds : undefined);
+	let bounds = $derived.by(() => {
+		if ('bounds' in node) return node.bounds;
+		return undefined;
+	});
+	let nodeId = $derived.by(() => {
+		if (!measuring) return node.id;
+		return undefined;
+	});
+	let measurementId = $derived.by(() => {
+		if (measuring) return node.id;
+		return undefined;
+	});
+	let style = $derived.by(() => {
+		let value = `--nature-color: ${node.nature.color}; width: ${bounds?.width ?? 220}px;`;
+		if (bounds) {
+			value += ` left: ${bounds.x}px; top: ${bounds.y}px; height: ${bounds.height}px;`;
+		}
+		return value;
+	});
 </script>
 
 <article
 	class="node-card bg-white"
 	class:positioned={bounds !== undefined}
-	data-node-id={measuring ? undefined : node.id}
-	data-measure-node={measuring ? node.id : undefined}
-	style={`--nature-color: ${node.nature.color}; width: ${bounds?.width ?? 220}px; ${bounds ? `left: ${bounds.x}px; top: ${bounds.y}px; height: ${bounds.height}px;` : ''}`}
+	data-node-id={nodeId}
+	data-measure-node={measurementId}
+	{style}
 >
 	<header>{node.nature.label}</header>
 	<p>{node.markdown}</p>

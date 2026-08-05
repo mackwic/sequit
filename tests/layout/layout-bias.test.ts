@@ -95,7 +95,8 @@ describe.each(LAYOUT_CONTEXTS)('layout bias in %s', (context) => {
 				return;
 			}
 
-			const immediateContainerId = context === 'group' ? 'container' : 'nested-container';
+			let immediateContainerId = 'nested-container';
+			if (context === 'group') immediateContainerId = 'container';
 			const immediateContainer = boundsFor(layout, immediateContainerId);
 			expect.soft(contains(immediateContainer, nodesEnvelope)).toBe(true);
 			if (context === 'subgroup') {

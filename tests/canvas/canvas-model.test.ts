@@ -14,15 +14,16 @@ function completeLayout(): LayoutResult {
 	return {
 		width: 800,
 		height: 600,
-		elements: endpointIds.map((id, index) => ({
-			id,
-			kind: document.nodes.some((node) => node.id === id)
-				? 'node'
-				: document.junctions.some((junction) => junction.id === id)
-					? 'junction'
-					: 'group',
-			bounds: { x: index * 20, y: index * 10, width: 100, height: 50 },
-		})),
+		elements: endpointIds.map((id, index) => {
+			let kind: 'node' | 'junction' | 'group' = 'group';
+			if (document.nodes.some((node) => node.id === id)) kind = 'node';
+			else if (document.junctions.some((junction) => junction.id === id)) kind = 'junction';
+			return {
+				id,
+				kind,
+				bounds: { x: index * 20, y: index * 10, width: 100, height: 50 },
+			};
+		}),
 		relations: document.relations.map(({ id, from, to }) => ({
 			id,
 			from,

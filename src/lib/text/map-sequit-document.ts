@@ -30,8 +30,10 @@ function table(
 	context: MappingContext,
 ): UnknownTable | undefined {
 	if (isTable(value)) return value;
+	let code: SequitDiagnostic['code'] = 'invalid-type';
+	if (value === undefined) code = 'missing-field';
 	context.diagnostics.push({
-		code: value === undefined ? 'missing-field' : 'invalid-type',
+		code,
 		message: `${path.join('.')} must be a table`,
 		path,
 	});
@@ -44,8 +46,10 @@ function string(
 	context: MappingContext,
 ): string | undefined {
 	if (typeof value === 'string') return value;
+	let code: SequitDiagnostic['code'] = 'invalid-type';
+	if (value === undefined) code = 'missing-field';
 	context.diagnostics.push({
-		code: value === undefined ? 'missing-field' : 'invalid-type',
+		code,
 		message: `${path.join('.')} must be a string`,
 		path,
 	});
@@ -57,7 +61,8 @@ function optionalString(
 	path: readonly string[],
 	context: MappingContext,
 ): string | undefined {
-	return value === undefined ? undefined : string(value, path, context);
+	if (value === undefined) return undefined;
+	return string(value, path, context);
 }
 
 function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
@@ -106,10 +111,10 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			path: ['layout', 'bias'],
 		});
 	}
-	const layout =
-		direction === undefined || bias === undefined
-			? undefined
-			: layoutConfiguration(direction, bias);
+	let layout: LogicDocument['layout'] | undefined;
+	if (direction !== undefined && bias !== undefined) {
+		layout = layoutConfiguration(direction, bias);
+	}
 	if (direction !== undefined && bias !== undefined && layout === undefined) {
 		context.diagnostics.push({
 			code: 'invalid-value',
@@ -139,11 +144,12 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const label = string(entity.label, [...path, 'label'], context);
 			const parentGroupId = optionalString(entity.group, [...path, 'group'], context);
 			if (label !== undefined) {
-				groups.push({
+				const group: { id: string; label: string; groupId?: string } = {
 					id: groupId,
 					label,
-					...(parentGroupId === undefined ? {} : { groupId: parentGroupId }),
-				});
+				};
+				if (parentGroupId !== undefined) group.groupId = parentGroupId;
+				groups.push(group);
 			}
 		}
 	}
@@ -158,12 +164,18 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const groupId = optionalString(entity.group, [...path, 'group'], context);
 			const markdown = string(entity.markdown, [...path, 'markdown'], context);
 			if (natureId !== undefined && markdown !== undefined) {
-				nodes.push({
+				const node: {
+					id: string;
+					natureId: string;
+					groupId?: string;
+					markdown: string;
+				} = {
 					id: nodeId,
 					natureId,
-					...(groupId === undefined ? {} : { groupId }),
 					markdown,
-				});
+				};
+				if (groupId !== undefined) node.groupId = groupId;
+				nodes.push(node);
 			}
 		}
 	}
@@ -188,11 +200,12 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 				}
 			}
 			if (operator !== undefined) {
-				junctions.push({
+				const junction: { id: string; operator: JunctionOperator; groupId?: string } = {
 					id: junctionId,
 					operator,
-					...(groupId === undefined ? {} : { groupId }),
-				});
+				};
+				if (groupId !== undefined) junction.groupId = groupId;
+				junctions.push(junction);
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 .svelte-kit/
 .wrangler/
+.humanlayer/
 build/
 coverage/
 dist/

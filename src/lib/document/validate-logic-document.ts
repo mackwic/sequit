@@ -87,5 +87,6 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 		}
 	}
 
-	return diagnostics.length === 0 ? { ok: true, value: document } : { ok: false, diagnostics };
+	if (diagnostics.length === 0) return { ok: true, value: document };
+	return { ok: false, diagnostics };
 }

@@ -27,23 +27,28 @@ export function layoutBiasScenario(
 	layout: LayoutConfiguration,
 	context: LayoutContext,
 ): LogicDocument {
-	const groups =
-		context === 'root'
-			? []
-			: context === 'group'
-				? [{ id: 'container', label: 'Container' }]
-				: [
-						{ id: 'container', label: 'Container' },
-						{ id: 'nested-container', label: 'Nested container', groupId: 'container' },
-					];
-	const groupId =
-		context === 'root' ? undefined : context === 'group' ? 'container' : 'nested-container';
-	const node = (id: string) => ({
-		id,
-		natureId: 'statement',
-		...(groupId === undefined ? {} : { groupId }),
-		markdown: `${id}\n`,
-	});
+	let groups: LogicDocument['groups'] = [];
+	let groupId: string | undefined;
+	if (context === 'group') {
+		groups = [{ id: 'container', label: 'Container' }];
+		groupId = 'container';
+	}
+	if (context === 'subgroup') {
+		groups = [
+			{ id: 'container', label: 'Container' },
+			{ id: 'nested-container', label: 'Nested container', groupId: 'container' },
+		];
+		groupId = 'nested-container';
+	}
+	const node = (id: string) => {
+		const value: { id: string; natureId: string; groupId?: string; markdown: string } = {
+			id,
+			natureId: 'statement',
+			markdown: `${id}\n`,
+		};
+		if (groupId !== undefined) value.groupId = groupId;
+		return value;
+	};
 
 	return {
 		id: `layout-bias-${context}`,

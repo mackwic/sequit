@@ -1,0 +1,20 @@
+{
+	"minTokens": 50,
+	"minLines": 5,
+	"mode": "mild",
+	"format": ["typescript", "svelte"],
+	"ignorePattern": [
+		"**/*.d.ts",
+		"**/tests/**",
+		"**/test/**",
+		"**/.svelte-kit/**",
+		"**/.wrangler/**",
+		"**/build/**",
+		"**/coverage/**",
+		"**/dist/**",
+		"**/playwright-report/**",
+		"**/test-results/**"
+	],
+	"reporters": ["console"],
+	"threshold": 1
+}
