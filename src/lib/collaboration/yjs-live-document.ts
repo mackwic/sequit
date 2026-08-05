@@ -18,6 +18,7 @@ import {
 } from '../document/logic-document';
 import { type DocumentChangeSet, projectRelationAddition } from '../document/topology-edits';
 import { validateLogicDocument } from '../document/validate-logic-document';
+import { createGraph } from '../graph/create-graph';
 import { orderEndpoints } from '../layout/endpoint-order';
 import { fractionalOrderKeySpace } from '../layout/order-key-space';
 
@@ -373,16 +374,20 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 		relations,
 	};
 	const validated = validateLogicDocument(document);
-	return validated.ok
-		? { ok: true, value: validated.value }
-		: {
-				ok: false,
-				diagnostics: validated.diagnostics.map(({ message, path }) => ({
-					code: 'invalid-yjs-live-document',
-					message,
-					path,
-				})),
-			};
+	if (!validated.ok) {
+		return {
+			ok: false,
+			diagnostics: validated.diagnostics.map(({ message, path }) => ({
+				code: 'invalid-yjs-live-document',
+				message,
+				path,
+			})),
+		};
+	}
+	const graph = createGraph(validated.value);
+	return graph.ok
+		? { ok: true, value: graph.value.document }
+		: validationFailure(graph.diagnostics);
 }
 
 export function replaceNodeMarkdown(ydoc: Y.Doc, nodeId: string, markdown: string): boolean {
@@ -450,7 +455,7 @@ export function addNodeToLiveDocument(
 		);
 	}, 'sequit:add-node');
 
-	return readLogicDocument(ydoc);
+	return { ok: true, value: validated.value };
 }
 
 export function addRelationToLiveDocument(
@@ -464,7 +469,7 @@ export function addRelationToLiveDocument(
 
 	applyDocumentChangeSet(ydoc, projected.value.changes, 'sequit:add-relation');
 
-	return readLogicDocument(ydoc);
+	return { ok: true, value: projected.value.document };
 }
 
 function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet, origin: string): void {

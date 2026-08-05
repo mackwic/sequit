@@ -1,21 +1,16 @@
-import {
-	type DocumentResult,
-	type LogicDocument,
-	type SequitDiagnostic,
-	SequitDiagnosticCode,
-} from './logic-document';
+import type { DocumentResult, LogicDocument, SequitDiagnostic } from './logic-document';
+import { SequitDiagnosticCode } from './logic-document';
 
 enum GroupVisitState {
 	Visiting = 'visiting',
 	Visited = 'visited',
 }
 
-export function validateLogicDocument(document: LogicDocument): DocumentResult<LogicDocument> {
-	const diagnostics: SequitDiagnostic[] = [];
-	const natureIds = new Set(document.natures.map(({ id }) => id));
-	const groupIds = new Set(document.groups.map(({ id }) => id));
+function collectEndpointOwners(
+	document: LogicDocument,
+	diagnostics: SequitDiagnostic[],
+): Map<string, readonly string[]> {
 	const endpointOwners = new Map<string, readonly string[]>();
-
 	for (const [collection, entities] of [
 		['groups', document.groups],
 		['nodes', document.nodes],
@@ -23,17 +18,25 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 	] as const) {
 		for (const entity of entities) {
 			const previousPath = endpointOwners.get(entity.id);
-			if (previousPath) {
-				diagnostics.push({
-					code: SequitDiagnosticCode.DuplicateEndpointId,
-					message: `Endpoint id ${entity.id} is also used at ${previousPath.join('.')}`,
-					path: [collection, entity.id],
-				});
-			} else {
+			if (!previousPath) {
 				endpointOwners.set(entity.id, [collection, entity.id]);
+				continue;
 			}
+			diagnostics.push({
+				code: SequitDiagnosticCode.DuplicateEndpointId,
+				message: `Endpoint id ${entity.id} is also used at ${previousPath.join('.')}`,
+				path: [collection, entity.id],
+			});
 		}
 	}
+	return endpointOwners;
+}
+
+export function validateLogicDocument(document: LogicDocument): DocumentResult<LogicDocument> {
+	const diagnostics: SequitDiagnostic[] = [];
+	const natureIds = new Set(document.natures.map(({ id }) => id));
+	const groupIds = new Set(document.groups.map(({ id }) => id));
+	const endpointOwners = collectEndpointOwners(document, diagnostics);
 
 	for (const group of document.groups) {
 		if (group.groupId !== undefined && !groupIds.has(group.groupId)) {
@@ -56,7 +59,6 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 			diagnostics.push({
 				code: SequitDiagnosticCode.GroupCycle,
 				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
-				/* istanbul ignore next -- @preserve: a visiting group is always the last path entry. */
 				path: ['groups', groupPath.at(-1) ?? groupId, 'group'],
 			});
 			return;
@@ -93,6 +95,24 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 				code: SequitDiagnosticCode.UnknownGroup,
 				message: `Unknown group: ${junction.groupId}`,
 				path: ['junctions', junction.id, 'group'],
+			});
+		}
+	}
+
+	const endpointIds = new Set(endpointOwners.keys());
+	for (const relation of document.relations) {
+		if (!endpointIds.has(relation.from)) {
+			diagnostics.push({
+				code: SequitDiagnosticCode.UnknownEndpoint,
+				message: `Unknown relation source: ${relation.from}`,
+				path: ['relations', relation.id, 'from'],
+			});
+		}
+		if (!endpointIds.has(relation.to)) {
+			diagnostics.push({
+				code: SequitDiagnosticCode.UnknownEndpoint,
+				message: `Unknown relation target: ${relation.to}`,
+				path: ['relations', relation.id, 'to'],
 			});
 		}
 	}
