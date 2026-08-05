@@ -16,6 +16,7 @@ import {
 	type OrderKey,
 	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
+import { parseOrderKey } from '../document/order-key';
 import {
 	type DocumentChangeSet,
 	projectNodeAddition,
@@ -67,7 +68,16 @@ function replaceEntityCollection<T extends { readonly id: string }>(
 	for (const entity of entities) target.set(entity.id, entityMap(project(entity)));
 }
 
-export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void {
+const IMPORT_ORIGIN = Symbol('sequit import');
+const REPLACE_MARKDOWN_ORIGIN = Symbol('sequit replace node markdown');
+const ADD_NODE_ORIGIN = Symbol('sequit add node');
+const ADD_RELATION_ORIGIN = Symbol('sequit add relation');
+
+export function importLogicDocument(
+	ydoc: Y.Doc,
+	document: LogicDocument,
+	origin: unknown = IMPORT_ORIGIN,
+): void {
 	ydoc.transact(() => {
 		replaceMapContents(ydoc.getMap(META), {
 			yjsLiveDocumentFormat: YJS_LIVE_DOCUMENT_FORMAT,
@@ -117,7 +127,7 @@ export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void 
 			from,
 			to,
 		}));
-	}, 'sequit:import');
+	}, origin);
 }
 
 interface ReadContext {
@@ -152,7 +162,9 @@ function readRequiredLayoutOrder(
 	context: ReadContext,
 ): OrderKey | undefined {
 	const key = readString(value, path, context);
-	if (key === undefined || fractionalOrderKeySpace.isValid(key)) return key;
+	if (key === undefined) return undefined;
+	const parsed = parseOrderKey(key);
+	if (parsed !== undefined) return parsed;
 	context.diagnostics.push({
 		code: 'invalid-yjs-live-document',
 		message: `${path.join('.')} must be a valid fractional order key`,
@@ -393,7 +405,12 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 		: validationFailure(graph.diagnostics);
 }
 
-export function replaceNodeMarkdown(ydoc: Y.Doc, nodeId: string, markdown: string): boolean {
+export function replaceNodeMarkdown(
+	ydoc: Y.Doc,
+	nodeId: string,
+	markdown: string,
+	origin: unknown = REPLACE_MARKDOWN_ORIGIN,
+): boolean {
 	const node = ydoc.getMap<Y.Map<unknown>>(NODES).get(nodeId);
 	const text = node?.get('markdown');
 	if (!(text instanceof Y.Text)) return false;
@@ -401,7 +418,7 @@ export function replaceNodeMarkdown(ydoc: Y.Doc, nodeId: string, markdown: strin
 	ydoc.transact(() => {
 		text.delete(0, text.length);
 		text.insert(0, markdown);
-	}, 'sequit:replace-node-markdown');
+	}, origin);
 	return true;
 }
 
@@ -421,30 +438,32 @@ function validationFailure(
 export function addNodeToLiveDocument(
 	ydoc: Y.Doc,
 	node: NewLogicNode,
+	origin: unknown = ADD_NODE_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
 	const current = readLogicDocument(ydoc);
 	if (!current.ok) return current;
 	const projected = projectNodeAddition(current.value, node, fractionalOrderKeySpace);
 	if (!projected.ok) return validationFailure(projected.diagnostics);
-	applyDocumentChangeSet(ydoc, projected.value.changes, 'sequit:add-node');
+	applyDocumentChangeSet(ydoc, projected.value.changes, origin);
 	return { ok: true, value: projected.value.document };
 }
 
 export function addRelationToLiveDocument(
 	ydoc: Y.Doc,
 	relation: LogicRelation,
+	origin: unknown = ADD_RELATION_ORIGIN,
 ): YjsLiveDocumentResult<LogicDocument> {
 	const current = readLogicDocument(ydoc);
 	if (!current.ok) return current;
 	const projected = projectRelationAddition(current.value, relation, fractionalOrderKeySpace);
 	if (!projected.ok) return validationFailure(projected.diagnostics);
 
-	applyDocumentChangeSet(ydoc, projected.value.changes, 'sequit:add-relation');
+	applyDocumentChangeSet(ydoc, projected.value.changes, origin);
 
 	return { ok: true, value: projected.value.document };
 }
 
-function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet, origin: string): void {
+function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet, origin: unknown): void {
 	ydoc.transact(() => {
 		for (const node of changes.nodeAdditions) {
 			const markdown = new Y.Text();
