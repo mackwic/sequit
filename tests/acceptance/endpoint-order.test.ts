@@ -51,14 +51,14 @@ async function render(source: string): Promise<CanvasModel> {
 	return result.value.createCanvasModel(layoutMeasurementsForCanvas(result.value.measurementModel));
 }
 
-describe('persisted endpoint order', () => {
+describe('endpoint-local layout order', () => {
 	it('controls rendered cross-axis order without changing dependency ranks', async () => {
 		const canonicalCanvas = await render(documentBody);
 		const orderedCanvas = await render(
-			documentBody.replace(
-				'bias = "top"',
-				'bias = "top"\nendpointOrder = ["z-source", "a-source", "target"]',
-			),
+			documentBody
+				.replace('markdown = "Z source"', 'markdown = "Z source"\nlayoutOrder = "a0"')
+				.replace('markdown = "A source"', 'markdown = "A source"\nlayoutOrder = "a1"')
+				.replace('markdown = "Target"', 'markdown = "Target"\nlayoutOrder = "a2"'),
 		);
 		const canonicalBounds = new Map(canonicalCanvas.nodes.map(({ id, bounds }) => [id, bounds]));
 		const orderedBounds = new Map(orderedCanvas.nodes.map(({ id, bounds }) => [id, bounds]));

@@ -1,3 +1,4 @@
+import { EndpointKind } from '../document/logic-document';
 import type { LogicGraph } from './create-graph';
 
 export interface TopologicalRanks {
@@ -22,7 +23,7 @@ export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 			processed += 1;
 			const sourceRank = ranks.get(id) ?? 0;
 			for (const target of graph.outgoingByEndpointId.get(id) ?? []) {
-				const increment = graph.endpointsById.get(target)?.kind === 'junction' ? 0 : 1;
+				const increment = graph.endpointsById.get(target)?.kind === EndpointKind.Junction ? 0 : 1;
 				ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + increment));
 				const remaining = (indegree.get(target) ?? 0) - 1;
 				indegree.set(target, remaining);

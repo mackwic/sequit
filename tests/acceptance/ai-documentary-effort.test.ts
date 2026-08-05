@@ -21,7 +21,6 @@ title = "Two by two inversion"
 [layout]
 direction = "top-to-bottom"
 bias = "top"
-endpointOrder = ["source-a", "source-b", "target-a", "target-b", "target-c", "successor"]
 
 [natures.goal]
 label = "Goal"
@@ -32,26 +31,32 @@ color = "#12c930"
 [nodes.source-a]
 nature = "goal"
 markdown = "Source A"
+layoutOrder = "a0"
 
 [nodes.source-b]
 nature = "goal"
 markdown = "Source B"
+layoutOrder = "a1"
 
 [nodes.target-a]
 nature = "goal"
 markdown = "Target A"
+layoutOrder = "a2"
 
 [nodes.target-b]
 nature = "goal"
 markdown = "Target B"
+layoutOrder = "a3"
 
 [nodes.target-c]
 nature = "goal"
 markdown = "Target C"
+layoutOrder = "a4"
 
 [nodes.successor]
 nature = "goal"
 markdown = "Successor"
+layoutOrder = "a5"
 
 [junctions]
 
@@ -175,7 +180,7 @@ describe('AI for documentary effort', () => {
 			const reconstructed = readLogicDocument(snapshot);
 			expect(reconstructed.ok).toBe(true);
 			if (!reconstructed.ok) throw new Error('Reference snapshot must reconstruct');
-			expect(reconstructed.value.endpointOrder).toEqual(parsed.value.endpointOrder);
+			expect(reconstructed.value).toEqual(parsed.value);
 
 			firstOpened.destroy();
 			reopened.destroy();

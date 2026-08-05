@@ -1,9 +1,12 @@
 import {
+	EndpointKind,
 	LayoutBias,
 	type LayoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
+	PERSISTENCE_FORMAT,
 } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 
 export type LayoutContext = 'root' | 'group' | 'subgroup';
 
@@ -39,29 +42,50 @@ export function layoutBiasScenario(
 	context: LayoutContext,
 ): LogicDocument {
 	let groups: LogicDocument['groups'] = [];
-	let groupId: string | undefined;
 	if (context === 'group') {
-		groups = [{ id: 'container', label: 'Container' }];
-		groupId = 'container';
-	}
-	if (context === 'subgroup') {
 		groups = [
-			{ id: 'container', label: 'Container' },
-			{ id: 'nested-container', label: 'Nested container', groupId: 'container' },
+			{
+				kind: EndpointKind.Group as const,
+				id: 'container',
+				label: 'Container',
+				layoutOrder: orderKey('a0'),
+			},
 		];
-		groupId = 'nested-container';
+	} else if (context === 'subgroup') {
+		groups = [
+			{
+				kind: EndpointKind.Group as const,
+				id: 'container',
+				label: 'Container',
+				layoutOrder: orderKey('a0'),
+			},
+			{
+				kind: EndpointKind.Group as const,
+				id: 'nested-container',
+				label: 'Nested container',
+				groupId: 'container',
+				layoutOrder: orderKey('a1'),
+			},
+		];
 	}
-	const node = (id: string) => {
-		const value: { id: string; natureId: string; groupId?: string; markdown: string } = {
+	let groupId: string | undefined;
+	if (context === 'group') groupId = 'container';
+	if (context === 'subgroup') groupId = 'nested-container';
+	const node = (id: string, index: number) => {
+		let group: { readonly groupId?: string } = {};
+		if (groupId !== undefined) group = { groupId };
+		return {
+			kind: EndpointKind.Node as const,
 			id,
 			natureId: 'statement',
+			...group,
 			markdown: `${id}\n`,
+			layoutOrder: orderKey(`a${index + 2}`),
 		};
-		if (groupId !== undefined) value.groupId = groupId;
-		return value;
 	};
 
 	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id: `layout-bias-${context}`,
 		title: `Layout bias in ${context}`,
 		layout,

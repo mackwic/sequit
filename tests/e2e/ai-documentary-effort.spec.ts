@@ -14,7 +14,6 @@ title = "Two by two inversion"
 [layout]
 direction = "top-to-bottom"
 bias = "top"
-endpointOrder = ["source-a", "source-a", "removed-endpoint", "target-a"]
 
 [natures.goal]
 label = "Goal"
@@ -25,26 +24,32 @@ color = "#12c930"
 [nodes.source-a]
 nature = "goal"
 markdown = "Source A"
+layoutOrder = "a0"
 
 [nodes.source-b]
 nature = "goal"
 markdown = "Source B"
+layoutOrder = "a1"
 
 [nodes.target-a]
 nature = "goal"
 markdown = "Target A"
+layoutOrder = "a2"
 
 [nodes.target-b]
 nature = "goal"
 markdown = "Target B"
+layoutOrder = "a3"
 
 [nodes.target-c]
 nature = "goal"
 markdown = "Target C"
+layoutOrder = "a4"
 
 [nodes.successor]
 nature = "goal"
 markdown = "Successor"
+layoutOrder = "a5"
 
 [junctions]
 
@@ -197,7 +202,7 @@ test.describe('AI for documentary effort', () => {
 				) => unknown;
 			};
 			const legacySource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
-				/endpointOrder = \[[\s\S]*?\]\n/,
+				/^layoutOrder = ".*"\n/gm,
 				'',
 			);
 			const fixture = document.createElement('section');

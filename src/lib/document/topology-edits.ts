@@ -1,8 +1,9 @@
 import { createGraph, type GraphDiagnostic } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { selectTargetInsertionSlot } from '../layout/crossing-aware-order';
-import { deriveEffectiveEndpointOrder } from '../layout/endpoint-order';
-import type { LogicDocument, LogicRelation } from './logic-document';
+import { orderEndpoints } from '../layout/endpoint-order';
+import { fractionalOrderKeySpace } from '../layout/order-key-space';
+import type { LogicDocument, LogicEndpoint, LogicRelation, OrderKey } from './logic-document';
 
 export interface TopologyEditDiagnostic {
 	readonly code: 'duplicate-relation-id' | GraphDiagnostic['code'];
@@ -17,11 +18,30 @@ export interface RelationAdditionProjection {
 	readonly moved: boolean;
 	readonly previousScore?: number;
 	readonly selectedScore?: number;
+	readonly changes: DocumentChangeSet;
 }
 
-export type RelationAdditionResult =
-	| { readonly ok: true; readonly value: RelationAdditionProjection }
-	| { readonly ok: false; readonly diagnostics: readonly TopologyEditDiagnostic[] };
+export interface EndpointOrderChange {
+	readonly endpointId: string;
+	readonly layoutOrder: OrderKey;
+}
+
+export interface DocumentChangeSet {
+	readonly relationAdditions: readonly LogicRelation[];
+	readonly endpointOrderChanges: readonly EndpointOrderChange[];
+}
+
+export interface RelationAdditionSuccess {
+	readonly ok: true;
+	readonly value: RelationAdditionProjection;
+}
+
+export interface RelationAdditionFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly TopologyEditDiagnostic[];
+}
+
+export type RelationAdditionResult = RelationAdditionSuccess | RelationAdditionFailure;
 
 function weakComponentContaining(
 	targetId: string,
@@ -41,19 +61,19 @@ function weakComponentContaining(
 	return component;
 }
 
-function reorderVisualRow(
-	effectiveOrder: readonly string[],
-	currentRow: readonly string[],
-	selectedRow: readonly string[],
-): readonly string[] {
-	const rowIds = new Set(currentRow);
-	let selectedIndex = 0;
-	return effectiveOrder.map((id) => {
-		if (!rowIds.has(id)) return id;
-		const selected = selectedRow[selectedIndex];
-		selectedIndex += 1;
-		return selected;
-	});
+function replaceEndpoint(document: LogicDocument, replacement: LogicEndpoint): LogicDocument {
+	return {
+		...document,
+		groups: document.groups.map((endpoint) =>
+			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
+		),
+		nodes: document.nodes.map((endpoint) =>
+			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
+		),
+		junctions: document.junctions.map((endpoint) =>
+			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
+		),
+	};
 }
 
 export function projectRelationAddition(
@@ -81,9 +101,12 @@ export function projectRelationAddition(
 	if (!tentativeGraph.ok) return tentativeGraph;
 	const graph = tentativeGraph.value;
 	const ranks = topologicallyRank(graph);
-	const endpointOrder = deriveEffectiveEndpointOrder(document.endpointOrder, [
-		...graph.endpointsById.keys(),
-	]);
+	const endpoints: readonly LogicEndpoint[] = [
+		...document.groups,
+		...document.nodes,
+		...document.junctions,
+	];
+	const endpointOrder = orderEndpoints(endpoints);
 	const sourceRank = ranks.byEndpointId.get(relation.from);
 	const targetRank = ranks.byEndpointId.get(relation.to);
 	const eligible =
@@ -92,9 +115,10 @@ export function projectRelationAddition(
 		return {
 			ok: true,
 			value: {
-				document: { ...tentativeDocument, endpointOrder },
+				document: tentativeDocument,
 				eligible: false,
 				moved: false,
+				changes: { relationAdditions: [relation], endpointOrderChanges: [] },
 			},
 		};
 	}
@@ -118,17 +142,57 @@ export function projectRelationAddition(
 		ranks: ranks.byEndpointId,
 		junctionIds,
 	});
-	const selectedEndpointOrder = selection.moved
-		? reorderVisualRow(endpointOrder, row, selection.order)
-		: endpointOrder;
+	let selectedDocument = tentativeDocument;
+	let orderChanges: EndpointOrderChange[] = [];
+	if (selection.moved) {
+		const targetIndex = selection.order.indexOf(relation.to);
+		const keys = new Map<string, OrderKey>();
+		let previous: OrderKey | undefined;
+		for (const id of row) {
+			const explicit = endpoints.find((endpoint) => endpoint.id === id)?.layoutOrder;
+			const key =
+				explicit !== undefined && fractionalOrderKeySpace.isValid(explicit)
+					? explicit
+					: fractionalOrderKeySpace.keyFor({ before: previous });
+			keys.set(id, key);
+			previous = key;
+		}
+		const beforeId = selection.order[targetIndex - 1];
+		const afterId = selection.order[targetIndex + 1];
+		const before = keys.get(beforeId);
+		const after = keys.get(afterId);
+		const target = endpoints.find(({ id }) => id === relation.to);
+		if (!target) throw new Error(`Missing relation target: ${relation.to}`);
+		if (before !== undefined && after !== undefined && before === after) {
+			// A scalar key cannot represent a position inside an externally-created
+			// duplicate-key cluster without rewriting a peer. Preserve locality and
+			// leave the established row untouched; newly allocated keys are
+			// discriminated so normal concurrent additions do not create this state.
+			return {
+				ok: true,
+				value: {
+					document: tentativeDocument,
+					eligible: true,
+					moved: false,
+					previousScore: selection.currentScore,
+					selectedScore: selection.currentScore,
+					changes: { relationAdditions: [relation], endpointOrderChanges: [] },
+				},
+			};
+		}
+		const layoutOrder = fractionalOrderKeySpace.keyFor({ before, after }, target.id);
+		orderChanges = [{ endpointId: target.id, layoutOrder }];
+		selectedDocument = replaceEndpoint(tentativeDocument, { ...target, layoutOrder });
+	}
 	return {
 		ok: true,
 		value: {
-			document: { ...tentativeDocument, endpointOrder: selectedEndpointOrder },
+			document: selectedDocument,
 			eligible: true,
 			moved: selection.moved,
 			previousScore: selection.currentScore,
 			selectedScore: selection.bestScore,
+			changes: { relationAdditions: [relation], endpointOrderChanges: orderChanges },
 		},
 	};
 }

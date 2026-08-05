@@ -3,24 +3,20 @@ export interface EndpointRows {
 	readonly junction: readonly (readonly string[])[];
 }
 
-export function deriveEffectiveEndpointOrder(
-	persistedEndpointOrder: readonly string[] | undefined,
-	endpointIds: readonly string[],
+export function orderEndpoints(
+	endpoints: readonly LogicEndpoint[],
+	keySpace: OrderKeySpace = fractionalOrderKeySpace,
 ): readonly string[] {
-	const currentIds = new Set(endpointIds);
-	const included = new Set<string>();
-	const effective: string[] = [];
-	for (const id of persistedEndpointOrder ?? []) {
-		if (!currentIds.has(id) || included.has(id)) continue;
-		included.add(id);
-		effective.push(id);
-	}
-	for (const id of [...currentIds].sort((left, right) => left.localeCompare(right))) {
-		if (included.has(id)) continue;
-		included.add(id);
-		effective.push(id);
-	}
-	return effective;
+	return [...endpoints]
+		.sort((left, right) => {
+			if (left.layoutOrder === undefined)
+				return right.layoutOrder === undefined ? left.id.localeCompare(right.id) : 1;
+			if (right.layoutOrder === undefined) return -1;
+			return (
+				keySpace.compare(left.layoutOrder, right.layoutOrder) || left.id.localeCompare(right.id)
+			);
+		})
+		.map(({ id }) => id);
 }
 
 export function deriveEndpointRows(
@@ -43,3 +39,5 @@ export function deriveEndpointRows(
 	}
 	return { ordinary, junction };
 }
+import type { LogicEndpoint } from '../document/logic-document';
+import { fractionalOrderKeySpace, type OrderKeySpace } from './order-key-space';
