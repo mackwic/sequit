@@ -147,15 +147,11 @@ export function projectRelationAddition(
 	if (selection.moved) {
 		const targetIndex = selection.order.indexOf(relation.to);
 		const keys = new Map<string, OrderKey>();
-		let previous: OrderKey | undefined;
 		for (const id of row) {
-			const explicit = endpoints.find((endpoint) => endpoint.id === id)?.layoutOrder;
-			const key =
-				explicit !== undefined && fractionalOrderKeySpace.isValid(explicit)
-					? explicit
-					: fractionalOrderKeySpace.keyFor({ before: previous });
+			const endpoint = endpoints.find((candidate) => candidate.id === id);
+			if (!endpoint) throw new Error(`Missing ordered endpoint: ${id}`);
+			const key = endpoint.layoutOrder;
 			keys.set(id, key);
-			previous = key;
 		}
 		const beforeId = selection.order[targetIndex - 1];
 		const afterId = selection.order[targetIndex + 1];

@@ -24,14 +24,17 @@ color = "#12c930"
 [nodes.z-source]
 nature = "goal"
 markdown = "Z source"
+layoutOrder = "a1"
 
 [nodes.a-source]
 nature = "goal"
 markdown = "A source"
+layoutOrder = "a0"
 
 [nodes.target]
 nature = "goal"
 markdown = "Target"
+layoutOrder = "a2"
 
 [junctions]
 
@@ -56,9 +59,9 @@ describe('endpoint-local layout order', () => {
 		const canonicalCanvas = await render(documentBody);
 		const orderedCanvas = await render(
 			documentBody
-				.replace('markdown = "Z source"', 'markdown = "Z source"\nlayoutOrder = "a0"')
-				.replace('markdown = "A source"', 'markdown = "A source"\nlayoutOrder = "a1"')
-				.replace('markdown = "Target"', 'markdown = "Target"\nlayoutOrder = "a2"'),
+				.replace('layoutOrder = "a1"', 'layoutOrder = "swap"')
+				.replace('layoutOrder = "a0"', 'layoutOrder = "a1"')
+				.replace('layoutOrder = "swap"', 'layoutOrder = "a0"'),
 		);
 		const canonicalBounds = new Map(canonicalCanvas.nodes.map(({ id, bounds }) => [id, bounds]));
 		const orderedBounds = new Map(orderedCanvas.nodes.map(({ id, bounds }) => [id, bounds]));

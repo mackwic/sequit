@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 import { projectRelationAddition } from '../../src/lib/document/topology-edits';
 import { orderEndpoints } from '../../src/lib/layout/endpoint-order';
 import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
@@ -12,7 +13,7 @@ describe('topology edits', () => {
 		sourceOrder: readonly string[] = ['source-a', 'source-b', 'source-c'],
 	): LogicDocument {
 		const keys = new Map(
-			[...sourceOrder, ...targetOrder, 'successor'].map((id, index) => [id, `a${index}`]),
+			[...sourceOrder, ...targetOrder, 'successor'].map((id, index) => [id, orderKey(`a${index}`)]),
 		);
 		return {
 			persistenceFormat: 1,
@@ -26,7 +27,7 @@ describe('topology edits', () => {
 				id,
 				natureId: 'goal',
 				markdown: id,
-				layoutOrder: keys.get(id),
+				layoutOrder: keys.get(id) ?? orderKey('a0'),
 			})),
 			junctions: [],
 			relations: [
@@ -147,7 +148,9 @@ describe('topology edits', () => {
 		const duplicatePeers = {
 			...original,
 			nodes: original.nodes.map((node) =>
-				node.id === 'source-b' || node.id === 'target-a' ? { ...node, layoutOrder: 'a2' } : node,
+				node.id === 'source-b' || node.id === 'target-a'
+					? { ...node, layoutOrder: orderKey('a2') }
+					: node,
 			),
 		};
 		const result = projectRelationAddition(duplicatePeers, {

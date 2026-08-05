@@ -1,6 +1,7 @@
 import { generateKeyBetween } from 'fractional-indexing';
 
-import type { OrderKey } from '../document/logic-document';
+import { compareCanonicalStrings } from '../canonical-string';
+import { type OrderKey, parseOrderKey } from '../document/order-key';
 
 export interface EndpointSlot {
 	readonly before?: OrderKey;
@@ -30,27 +31,51 @@ function generateDiscriminatedKey(
 ): OrderKey {
 	let lower = before;
 	let upper = after;
-	let candidate = generateKeyBetween(lower ?? null, upper ?? null);
+	let candidate = assertGeneratedKey(generateKeyBetween(lower ?? null, upper ?? null), {
+		before: lower,
+		after: upper,
+	});
 	for (const bit of discriminatorBits(discriminator)) {
 		if (bit === 0) upper = candidate;
 		else lower = candidate;
-		candidate = generateKeyBetween(lower ?? null, upper ?? null);
+		candidate = assertGeneratedKey(generateKeyBetween(lower ?? null, upper ?? null), {
+			before: lower,
+			after: upper,
+		});
 	}
-	return candidate;
+	return assertGeneratedKey(candidate, { before, after });
+}
+
+function assertSlot(slot: EndpointSlot): void {
+	if (slot.before !== undefined && parseOrderKey(slot.before) === undefined)
+		throw new Error(`Invalid order-key slot lower bound: ${slot.before}`);
+	if (slot.after !== undefined && parseOrderKey(slot.after) === undefined)
+		throw new Error(`Invalid order-key slot upper bound: ${slot.after}`);
+	if (
+		slot.before !== undefined &&
+		slot.after !== undefined &&
+		compareCanonicalStrings(slot.before, slot.after) >= 0
+	)
+		throw new Error('Order-key slot lower bound must be strictly less than upper bound');
+}
+
+function assertGeneratedKey(candidate: string, slot: EndpointSlot): OrderKey {
+	const key = parseOrderKey(candidate);
+	if (key === undefined) throw new Error(`Generated invalid fractional order key: ${candidate}`);
+	if (slot.before !== undefined && compareCanonicalStrings(slot.before, key) >= 0)
+		throw new Error('Generated order key is not strictly above its lower bound');
+	if (slot.after !== undefined && compareCanonicalStrings(key, slot.after) >= 0)
+		throw new Error('Generated order key is not strictly below its upper bound');
+	return key;
 }
 
 export const fractionalOrderKeySpace: OrderKeySpace = {
-	compare: (left, right) => (left < right ? -1 : left > right ? 1 : 0),
-	keyFor: ({ before, after }, discriminator) =>
-		discriminator === undefined
-			? generateKeyBetween(before ?? null, after ?? null)
-			: generateDiscriminatedKey(before, after, discriminator),
-	isValid: (key): key is OrderKey => {
-		try {
-			generateKeyBetween(key, null);
-			return key.length > 0;
-		} catch {
-			return false;
-		}
+	compare: compareCanonicalStrings,
+	keyFor: (slot, discriminator) => {
+		assertSlot(slot);
+		return discriminator === undefined
+			? assertGeneratedKey(generateKeyBetween(slot.before ?? null, slot.after ?? null), slot)
+			: generateDiscriminatedKey(slot.before, slot.after, discriminator);
 	},
+	isValid: (key): key is OrderKey => parseOrderKey(key) !== undefined,
 };

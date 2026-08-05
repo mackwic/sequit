@@ -8,14 +8,11 @@ export function orderEndpoints(
 	keySpace: OrderKeySpace = fractionalOrderKeySpace,
 ): readonly string[] {
 	return [...endpoints]
-		.sort((left, right) => {
-			if (left.layoutOrder === undefined)
-				return right.layoutOrder === undefined ? left.id.localeCompare(right.id) : 1;
-			if (right.layoutOrder === undefined) return -1;
-			return (
-				keySpace.compare(left.layoutOrder, right.layoutOrder) || left.id.localeCompare(right.id)
-			);
-		})
+		.sort(
+			(left, right) =>
+				keySpace.compare(left.layoutOrder, right.layoutOrder) ||
+				compareCanonicalStrings(left.id, right.id),
+		)
 		.map(({ id }) => id);
 }
 
@@ -39,5 +36,6 @@ export function deriveEndpointRows(
 	}
 	return { ordinary, junction };
 }
+import { compareCanonicalStrings } from '../canonical-string';
 import type { LogicEndpoint } from '../document/logic-document';
 import { fractionalOrderKeySpace, type OrderKeySpace } from './order-key-space';

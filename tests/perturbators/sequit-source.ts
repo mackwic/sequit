@@ -3,7 +3,7 @@ export function withUnknownNature(source: string): string {
 }
 
 export function withDuplicateEndpoint(source: string): string {
-	return `${source}\n[groups.traceable-edits]\nlabel = "Duplicate endpoint"\n`;
+	return `${source}\n[groups.traceable-edits]\nlabel = "Duplicate endpoint"\nlayoutOrder = "a0"\n`;
 }
 
 export function withReorderedTables(source: string): string {

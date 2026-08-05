@@ -5,6 +5,7 @@ import {
 	type LogicNode,
 	PERSISTENCE_FORMAT,
 } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 
 export function crossingAwareDirectionScenario(layout: LayoutConfiguration): LogicDocument {
 	let order = 0;
@@ -13,7 +14,7 @@ export function crossingAwareDirectionScenario(layout: LayoutConfiguration): Log
 		id,
 		natureId: 'statement',
 		markdown,
-		layoutOrder: `a${order++}`,
+		layoutOrder: orderKey(`a${order++}`),
 	});
 	return {
 		persistenceFormat: PERSISTENCE_FORMAT,

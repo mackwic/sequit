@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from '../canonical-string';
 import { EndpointKind } from '../document/logic-document';
 import type { LogicGraph } from './create-graph';
 
@@ -30,7 +31,7 @@ export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 				if (remaining === 0) nextFrontier.push(target);
 			}
 		}
-		nextFrontier.sort((left, right) => left.localeCompare(right));
+		nextFrontier.sort(compareCanonicalStrings);
 		frontier = nextFrontier;
 	}
 

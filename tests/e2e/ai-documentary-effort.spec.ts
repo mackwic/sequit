@@ -177,13 +177,13 @@ test.describe('AI for documentary effort', () => {
 		});
 	});
 
-	test('renders the persisted reference order with fewer qualifying crossings', async ({
+	test('rejects a keyless source while preserving the persisted endpoint order', async ({
 		page,
 	}) => {
 		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-status="connected"]')).toBeVisible();
 
-		await page.evaluate(async () => {
+		const sourceContract = await page.evaluate(async () => {
 			const importModule = (specifier: string): Promise<unknown> =>
 				import(/* @vite-ignore */ specifier);
 			const sourceModule = (await importModule('/src/lib/document/example-document.ts')) as {
@@ -192,122 +192,61 @@ test.describe('AI for documentary effort', () => {
 			const openDocumentModule = (await importModule('/src/lib/document/open-document.ts')) as {
 				openDocument: (source: string) => OpenDocumentResult;
 			};
-			const renderedCanvasModule = (await importModule(
-				'/src/lib/components/canvas/RenderedCanvas.svelte',
-			)) as { default: Component<{ canvas: CanvasModel }> };
-			const svelteModule = (await importModule('/@id/svelte')) as {
-				mount: (
-					component: Component<{ canvas: CanvasModel }>,
-					options: { target: Element; props: { canvas: CanvasModel } },
-				) => unknown;
-			};
 			const legacySource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
 				/^layoutOrder = ".*"\n/gm,
 				'',
 			);
-			const fixture = document.createElement('section');
-			fixture.dataset.referenceOrderFixture = '';
-			document.body.replaceChildren(fixture);
-			for (const [state, source] of [
-				['legacy', legacySource],
-				['persisted', sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE],
-			] as const) {
-				const result = openDocumentModule.openDocument(source);
-				if (!result.ok) throw new Error(`Failed to open ${state} reference document`);
-				const opened = result.value;
-				const measurements = {
-					nodes: new Map(
-						opened.measurementModel.nodes.map(({ id }) => [id, { width: 220, height: 96 }]),
-					),
-					groups: new Map(
-						opened.measurementModel.groups.map(({ id }) => [
-							id,
-							{ minimumWidth: 160, minimumHeight: 72, headerHeight: 48, padding: 24 },
-						]),
-					),
-					junctions: new Map(
-						opened.measurementModel.junctions.map(({ id }) => [id, { width: 32, height: 32 }]),
-					),
-				};
-				const canvas = await opened.createCanvasModel(measurements);
-				const host = document.createElement('div');
-				host.dataset.referenceOrderState = state;
-				fixture.appendChild(host);
-				svelteModule.mount(renderedCanvasModule.default, {
-					target: host,
-					props: { canvas },
-				});
-				opened.destroy();
-			}
+			const keylessResult = openDocumentModule.openDocument(legacySource);
+			const persistedResult = openDocumentModule.openDocument(
+				sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE,
+			);
+			if (!persistedResult.ok) throw new Error('Failed to open persisted reference document');
+			persistedResult.value.destroy();
+			return {
+				persistedOpened: true,
+				keylessDiagnostics: keylessResult.ok ? [] : keylessResult.diagnostics,
+			};
 		});
 
-		const comparison = await page.evaluate(() => {
-			function state(name: string): HTMLElement {
-				const value = document.querySelector<HTMLElement>(`[data-reference-order-state="${name}"]`);
-				if (!value) throw new Error(`Missing ${name} reference state`);
-				return value;
-			}
-			function endpoint(root: HTMLElement, id: string): HTMLElement {
-				const value = root.querySelector<HTMLElement>(
+		const persistedOrder = await page.evaluate(() => {
+			function endpoint(id: string): HTMLElement {
+				const value = document.querySelector<HTMLElement>(
 					`[data-node-id="${id}"], [data-group-id="${id}"], [data-junction-id="${id}"]`,
 				);
 				if (!value) throw new Error(`Missing endpoint ${id}`);
 				return value;
 			}
-			function inversionCrossings(root: HTMLElement): number {
-				const targetIds = new Set([
-					'preserve-documentary-guarantees',
-					'minimal-workflow-disruption',
-					'ai-content-generation',
-				]);
-				const relations = [...root.querySelectorAll<SVGPathElement>('[data-relation-id]')]
-					.map((path) => ({ from: path.dataset.edgeFrom, to: path.dataset.edgeTo }))
-					.filter(
-						(relation): relation is { from: string; to: string } =>
-							relation.from !== undefined &&
-							relation.to !== undefined &&
-							targetIds.has(relation.to),
-					);
-				let count = 0;
-				for (let leftIndex = 0; leftIndex < relations.length; leftIndex += 1) {
-					for (let rightIndex = leftIndex + 1; rightIndex < relations.length; rightIndex += 1) {
-						const left = relations[leftIndex];
-						const right = relations[rightIndex];
-						if (left.from === right.from || left.to === right.to) continue;
-						const sourceDelta =
-							endpoint(root, left.from).offsetLeft - endpoint(root, right.from).offsetLeft;
-						const targetDelta =
-							endpoint(root, left.to).offsetLeft - endpoint(root, right.to).offsetLeft;
-						if (sourceDelta * targetDelta < 0) count += 1;
-					}
-				}
-				return count;
-			}
-			function improvedOrder(root: HTMLElement): readonly string[] {
-				return [
-					'preserve-documentary-guarantees',
-					'minimal-workflow-disruption',
-					'ai-content-generation',
-				].toSorted(
-					(left, right) => endpoint(root, left).offsetLeft - endpoint(root, right).offsetLeft,
-				);
-			}
-
-			const legacy = state('legacy');
-			const persisted = state('persisted');
-			return {
-				legacyCrossings: inversionCrossings(legacy),
-				persistedCrossings: inversionCrossings(persisted),
-				persistedOrder: improvedOrder(persisted),
-			};
+			return [
+				'preserve-documentary-guarantees',
+				'minimal-workflow-disruption',
+				'ai-content-generation',
+			].toSorted((left, right) => endpoint(left).offsetLeft - endpoint(right).offsetLeft);
 		});
 
-		expect(comparison.persistedOrder).toEqual([
+		expect(sourceContract.persistedOpened).toBe(true);
+		expect(sourceContract.keylessDiagnostics).toHaveLength(27);
+		expect(sourceContract.keylessDiagnostics).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: 'missing-field',
+					message: 'nodes.ai-content-generation.layoutOrder must be a string',
+					path: ['nodes', 'ai-content-generation', 'layoutOrder'],
+				}),
+			]),
+		);
+		expect(
+			sourceContract.keylessDiagnostics.every(
+				(diagnostic) =>
+					diagnostic.code === 'missing-field' &&
+					diagnostic.path.at(-1) === 'layoutOrder' &&
+					diagnostic.message.endsWith('.layoutOrder must be a string'),
+			),
+		).toBe(true);
+		expect(persistedOrder).toEqual([
 			'preserve-documentary-guarantees',
 			'minimal-workflow-disruption',
 			'ai-content-generation',
 		]);
-		expect(comparison.persistedCrossings).toBeLessThan(comparison.legacyCrossings);
 	});
 
 	test('keeps crossing-aware endpoint order through one browser editing lifecycle', async ({

@@ -38,7 +38,18 @@ describe('fractionalOrderKeySpace', () => {
 	});
 
 	it('rejects malformed keys', () => {
-		expect(fractionalOrderKeySpace.isValid('')).toBe(false);
-		expect(fractionalOrderKeySpace.isValid('not a key')).toBe(false);
+		for (const malformed of [
+			'',
+			'a',
+			'!0',
+			'a!',
+			'a0!',
+			'a00',
+			'A00000000000000000000000000',
+			'Z',
+			'a0é',
+		]) {
+			expect(fractionalOrderKeySpace.isValid(malformed), malformed).toBe(false);
+		}
 	});
 });

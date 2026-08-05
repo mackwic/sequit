@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 
+import { compareCanonicalStrings } from '../canonical-string';
 import {
 	EndpointKind,
 	LAYOUT_BIASES,
@@ -12,6 +13,7 @@ import {
 	type LogicNode,
 	type LogicRelation,
 	type NewLogicNode,
+	type OrderKey,
 	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
 import { type DocumentChangeSet, projectRelationAddition } from '../document/topology-edits';
@@ -81,7 +83,7 @@ export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void 
 			({ label, groupId, layoutOrder }) => ({
 				label,
 				...(groupId === undefined ? {} : { groupId }),
-				...(layoutOrder === undefined ? {} : { layoutOrder }),
+				layoutOrder,
 			}),
 		);
 		replaceEntityCollection(
@@ -93,7 +95,7 @@ export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void 
 				return {
 					natureId,
 					...(groupId === undefined ? {} : { groupId }),
-					...(layoutOrder === undefined ? {} : { layoutOrder }),
+					layoutOrder,
 					markdown: text,
 				};
 			},
@@ -104,7 +106,7 @@ export function importLogicDocument(ydoc: Y.Doc, document: LogicDocument): void 
 			({ operator, groupId, layoutOrder }) => ({
 				operator,
 				...(groupId === undefined ? {} : { groupId }),
-				...(layoutOrder === undefined ? {} : { layoutOrder }),
+				layoutOrder,
 			}),
 		);
 		replaceEntityCollection(ydoc.getMap(RELATIONS), document.relations, ({ from, to }) => ({
@@ -140,12 +142,12 @@ function readOptionalString(
 	return value === undefined ? undefined : readString(value, path, context);
 }
 
-function readOptionalLayoutOrder(
+function readRequiredLayoutOrder(
 	value: unknown,
 	path: readonly string[],
 	context: ReadContext,
-): string | undefined {
-	const key = readOptionalString(value, path, context);
+): OrderKey | undefined {
+	const key = readString(value, path, context);
 	if (key === undefined || fractionalOrderKeySpace.isValid(key)) return key;
 	context.diagnostics.push({
 		code: 'invalid-yjs-live-document',
@@ -156,7 +158,7 @@ function readOptionalLayoutOrder(
 }
 
 function sortedKeys<T>(map: Y.Map<T>): readonly string[] {
-	return [...map.keys()].sort((left, right) => left.localeCompare(right));
+	return [...map.keys()].sort(compareCanonicalStrings);
 }
 
 function readEntity(
@@ -209,19 +211,19 @@ function readGroup(
 ): LogicGroup | undefined {
 	const label = readString(entity.get('label'), ['groups', id, 'label'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['groups', id, 'group'], context);
-	const layoutOrder = readOptionalLayoutOrder(
+	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['groups', id, 'layoutOrder'],
 		context,
 	);
-	return label === undefined
+	return label === undefined || layoutOrder === undefined
 		? undefined
 		: {
 				kind: EndpointKind.Group,
 				id,
 				label,
 				...(groupId === undefined ? {} : { groupId }),
-				...(layoutOrder === undefined ? {} : { layoutOrder }),
+				layoutOrder,
 			};
 }
 
@@ -229,7 +231,7 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	const natureId = readString(entity.get('natureId'), ['nodes', id, 'nature'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['nodes', id, 'group'], context);
 	const markdown = entity.get('markdown');
-	const layoutOrder = readOptionalLayoutOrder(
+	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['nodes', id, 'layoutOrder'],
 		context,
@@ -242,14 +244,14 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 		});
 		return undefined;
 	}
-	if (natureId === undefined) return undefined;
+	if (natureId === undefined || layoutOrder === undefined) return undefined;
 	return {
 		kind: EndpointKind.Node,
 		id,
 		natureId,
 		...(groupId === undefined ? {} : { groupId }),
 		markdown: markdown.toJSON(),
-		...(layoutOrder === undefined ? {} : { layoutOrder }),
+		layoutOrder,
 	};
 }
 
@@ -260,21 +262,21 @@ function readJunction(
 ): LogicJunction | undefined {
 	const operator = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['junctions', id, 'group'], context);
-	const layoutOrder = readOptionalLayoutOrder(
+	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['junctions', id, 'layoutOrder'],
 		context,
 	);
-	if (operator === 'xor') {
+	if (operator === 'xor' && layoutOrder !== undefined) {
 		return {
 			kind: EndpointKind.Junction,
 			id,
 			operator,
 			...(groupId === undefined ? {} : { groupId }),
-			...(layoutOrder === undefined ? {} : { layoutOrder }),
+			layoutOrder,
 		};
 	}
-	if (operator !== undefined) {
+	if (operator !== undefined && operator !== 'xor') {
 		context.diagnostics.push({
 			code: 'invalid-yjs-live-document',
 			message: `Unsupported junction operator: ${operator}`,
@@ -410,20 +412,17 @@ function validationFailure(
 
 export function addNodeToLiveDocument(
 	ydoc: Y.Doc,
-	node: NewLogicNode | LogicNode,
+	node: NewLogicNode,
 ): YjsLiveDocumentResult<LogicDocument> {
 	const current = readLogicDocument(ydoc);
 	if (!current.ok) return current;
 
 	const endpoints = [...current.value.groups, ...current.value.nodes, ...current.value.junctions];
 	const orderedIds = orderEndpoints(endpoints);
-	let lastKey: string | undefined;
-	for (const id of orderedIds) {
-		const explicit = endpoints.find((endpoint) => endpoint.id === id)?.layoutOrder;
-		lastKey =
-			explicit !== undefined && fractionalOrderKeySpace.isValid(explicit)
-				? explicit
-				: fractionalOrderKeySpace.keyFor({ before: lastKey });
+	const lastId = orderedIds.at(-1);
+	const lastKey = endpoints.find((endpoint) => endpoint.id === lastId)?.layoutOrder;
+	if (lastId !== undefined && lastKey === undefined) {
+		throw new Error(`Missing ordered endpoint: ${lastId}`);
 	}
 	const keyedNode: LogicNode = {
 		...node,
