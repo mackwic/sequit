@@ -164,11 +164,24 @@ export function selectTargetInsertionSlot(
 	const scores = scoreTargetInsertionSlots(row, targetId, metadata);
 	let bestSlot = scores.currentSlot;
 	let bestScore = scores.scoreBySlot[bestSlot] ?? 0;
+	let minimumScore = bestScore;
 	for (const [slot, score] of scores.scoreBySlot.entries()) {
-		const tolerance = Number.EPSILON * 16 * Math.max(1, Math.abs(score), Math.abs(bestScore));
-		if (score < bestScore - tolerance) {
+		const tolerance = Number.EPSILON * 16 * Math.max(1, Math.abs(score), Math.abs(minimumScore));
+		if (score < minimumScore - tolerance) {
 			bestSlot = slot;
 			bestScore = score;
+			minimumScore = score;
+		} else if (
+			Math.abs(score - minimumScore) <= tolerance &&
+			(Math.abs(slot - scores.currentSlot) < Math.abs(bestSlot - scores.currentSlot) ||
+				(Math.abs(slot - scores.currentSlot) === Math.abs(bestSlot - scores.currentSlot) &&
+					slot < bestSlot))
+		) {
+			bestSlot = slot;
+			bestScore = score;
+			minimumScore = Math.min(minimumScore, score);
+		} else {
+			minimumScore = Math.min(minimumScore, score);
 		}
 	}
 	const peers = row.filter((id) => id !== targetId);

@@ -1,13 +1,42 @@
 import { describe, expect, it } from 'vitest';
 
-import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import type { addNodeToLiveDocument } from '../../src/lib/collaboration/yjs-live-document';
+import {
+	EndpointKind,
+	type LogicDocument,
+	type LogicNode,
+	type NewLogicNode,
+	type OrderKey,
+} from '../../src/lib/document/logic-document';
 import { orderKey } from '../../src/lib/document/order-key';
-import { projectRelationAddition } from '../../src/lib/document/topology-edits';
+import {
+	projectNodeAddition,
+	projectRelationAddition,
+} from '../../src/lib/document/topology-edits';
 import { orderEndpoints } from '../../src/lib/layout/endpoint-order';
 import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 import { crossingAwareDirectionScenario } from '../builders/crossing-aware-direction-scenario';
 
 describe('topology edits', () => {
+	it('restricts live node additions to nodes without allocated order data', () => {
+		const newNode = {
+			id: 'new-node',
+			natureId: 'goal',
+			markdown: 'New node',
+		} satisfies NewLogicNode;
+		const accepted: Parameters<typeof addNodeToLiveDocument>[1] = newNode;
+		const existingNode = {
+			...newNode,
+			kind: EndpointKind.Node,
+			layoutOrder: orderKey('a0'),
+		} satisfies LogicNode;
+		// @ts-expect-error Existing domain nodes must not supply an already allocated key.
+		const rejected: Parameters<typeof addNodeToLiveDocument>[1] = existingNode;
+
+		expect(accepted).toBe(newNode);
+		expect(rejected).toBe(existingNode);
+	});
+
 	function threeTargetScenario(
 		targetOrder: readonly string[],
 		sourceOrder: readonly string[] = ['source-a', 'source-b', 'source-c'],
@@ -43,11 +72,15 @@ describe('topology edits', () => {
 	it('moves only the relation target key into the selected local slot', () => {
 		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
 		const peerKeys = new Map(original.nodes.map(({ id, layoutOrder }) => [id, layoutOrder]));
-		const result = projectRelationAddition(original, {
-			id: 'source-a-to-target-b',
-			from: 'source-a',
-			to: 'target-b',
-		});
+		const result = projectRelationAddition(
+			original,
+			{
+				id: 'source-a-to-target-b',
+				from: 'source-a',
+				to: 'target-b',
+			},
+			fractionalOrderKeySpace,
+		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected relation projection to succeed');
 		expect(result.value.changes.endpointOrderChanges).toMatchObject([{ endpointId: 'target-b' }]);
@@ -68,11 +101,15 @@ describe('topology edits', () => {
 
 	it('returns no endpoint-local change when no strict crossing improvement exists', () => {
 		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
-		const result = projectRelationAddition(original, {
-			id: 'source-b-to-target-b',
-			from: 'source-b',
-			to: 'target-b',
-		});
+		const result = projectRelationAddition(
+			original,
+			{
+				id: 'source-b-to-target-b',
+				from: 'source-b',
+				to: 'target-b',
+			},
+			fractionalOrderKeySpace,
+		);
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected relation projection to succeed');
 		expect(result.value.changes.endpointOrderChanges).toEqual([]);
@@ -103,11 +140,15 @@ describe('topology edits', () => {
 		(_name, sourceOrder, initial, expected) => {
 			const original = threeTargetScenario(initial, sourceOrder);
 			const before = new Map(original.nodes.map((node) => [node.id, node.layoutOrder]));
-			const result = projectRelationAddition(original, {
-				id: 'c',
-				from: 'source-c',
-				to: 'target-c',
-			});
+			const result = projectRelationAddition(
+				original,
+				{
+					id: 'c',
+					from: 'source-c',
+					to: 'target-c',
+				},
+				fractionalOrderKeySpace,
+			);
 
 			expect(result.ok).toBe(true);
 			if (!result.ok) throw new Error('Expected relation projection to succeed');
@@ -129,11 +170,15 @@ describe('topology edits', () => {
 	it('retains every endpoint key when topology changes ranks but no strict move qualifies', () => {
 		const original = threeTargetScenario(['target-a', 'target-b', 'target-c']);
 		const before = new Map(original.nodes.map((node) => [node.id, node.layoutOrder]));
-		const result = projectRelationAddition(original, {
-			id: 'target-c-to-a',
-			from: 'target-c',
-			to: 'target-a',
-		});
+		const result = projectRelationAddition(
+			original,
+			{
+				id: 'target-c-to-a',
+				from: 'target-c',
+				to: 'target-a',
+			},
+			fractionalOrderKeySpace,
+		);
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected rank-changing relation to succeed');
@@ -153,11 +198,15 @@ describe('topology edits', () => {
 					: node,
 			),
 		};
-		const result = projectRelationAddition(duplicatePeers, {
-			id: 'source-a-to-target-b',
-			from: 'source-a',
-			to: 'target-b',
-		});
+		const result = projectRelationAddition(
+			duplicatePeers,
+			{
+				id: 'source-a-to-target-b',
+				from: 'source-a',
+				to: 'target-b',
+			},
+			fractionalOrderKeySpace,
+		);
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw new Error('Expected duplicate-key relation addition to succeed');
@@ -172,5 +221,77 @@ describe('topology edits', () => {
 			}
 		}
 		expect(result.value.changes.relationAdditions).toHaveLength(1);
+	});
+
+	it('projects a node addition with an injected order-key space without Yjs', () => {
+		const original = threeTargetScenario(['target-a', 'target-b', 'target-c']);
+		const calls: { readonly before?: string; readonly after?: string }[] = [];
+		const testKey = orderKey('a7');
+		const testKeySpace = {
+			compare: (left: OrderKey, right: OrderKey) => fractionalOrderKeySpace.compare(left, right),
+			isValid: (key: string): key is OrderKey => fractionalOrderKeySpace.isValid(key),
+			keyFor: (slot: { readonly before?: string; readonly after?: string }) => {
+				calls.push(slot);
+				return testKey;
+			},
+		};
+
+		const result = projectNodeAddition(
+			original,
+			{ id: 'new-node', natureId: 'goal', markdown: 'New node' },
+			testKeySpace,
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected node projection to succeed');
+		expect(calls).toEqual([{ before: orderKey('a6') }]);
+		expect(result.value.changes).toEqual({
+			nodeAdditions: [expect.objectContaining({ id: 'new-node', layoutOrder: testKey })],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+		});
+		expect(result.value.document.nodes.at(-1)).toMatchObject({
+			id: 'new-node',
+			kind: EndpointKind.Node,
+			layoutOrder: testKey,
+		});
+	});
+
+	it('keeps the row unchanged when the selected slot has duplicate-key neighbors', () => {
+		const original = threeTargetScenario(
+			['target-c', 'target-a', 'target-b'],
+			['source-a', 'source-c', 'source-b'],
+		);
+		const duplicateKey = orderKey('a4');
+		const duplicateNeighbors = {
+			...original,
+			nodes: original.nodes.map((node) =>
+				node.id === 'target-a' || node.id === 'target-b'
+					? { ...node, layoutOrder: duplicateKey }
+					: node,
+			),
+		};
+		const keysBefore = new Map(
+			duplicateNeighbors.nodes.map(({ id, layoutOrder }) => [id, layoutOrder]),
+		);
+
+		const result = projectRelationAddition(
+			duplicateNeighbors,
+			{ id: 'c', from: 'source-c', to: 'target-c' },
+			fractionalOrderKeySpace,
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected duplicate-neighbor addition to succeed');
+		expect(result.value.eligible).toBe(true);
+		expect(result.value.moved).toBe(false);
+		expect(result.value.selectedScore).toBe(result.value.previousScore);
+		expect(result.value.changes.endpointOrderChanges).toEqual([]);
+		expect(result.value.changes.relationAdditions).toEqual([
+			{ id: 'c', from: 'source-c', to: 'target-c' },
+		]);
+		expect(
+			new Map(result.value.document.nodes.map(({ id, layoutOrder }) => [id, layoutOrder])),
+		).toEqual(keysBefore);
 	});
 });

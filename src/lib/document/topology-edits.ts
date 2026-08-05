@@ -2,8 +2,18 @@ import { createGraph, type GraphDiagnostic } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { selectTargetInsertionSlot } from '../layout/crossing-aware-order';
 import { orderEndpoints } from '../layout/endpoint-order';
-import { fractionalOrderKeySpace } from '../layout/order-key-space';
-import type { LogicDocument, LogicEndpoint, LogicRelation, OrderKey } from './logic-document';
+import type { OrderKeySpace } from '../layout/order-key-space';
+import {
+	EndpointKind,
+	type LogicDocument,
+	type LogicEndpoint,
+	type LogicNode,
+	type LogicRelation,
+	type NewLogicNode,
+	type OrderKey,
+	type SequitDiagnostic,
+} from './logic-document';
+import { validateLogicDocument } from './validate-logic-document';
 
 export interface TopologyEditDiagnostic {
 	readonly code: 'duplicate-relation-id' | GraphDiagnostic['code'];
@@ -21,15 +31,25 @@ export interface RelationAdditionProjection {
 	readonly changes: DocumentChangeSet;
 }
 
+export interface NodeAdditionProjection {
+	readonly document: LogicDocument;
+	readonly changes: DocumentChangeSet;
+}
+
 export interface EndpointOrderChange {
 	readonly endpointId: string;
 	readonly layoutOrder: OrderKey;
 }
 
 export interface DocumentChangeSet {
+	readonly nodeAdditions: readonly LogicNode[];
 	readonly relationAdditions: readonly LogicRelation[];
 	readonly endpointOrderChanges: readonly EndpointOrderChange[];
 }
+
+export type NodeAdditionResult =
+	| { readonly ok: true; readonly value: NodeAdditionProjection }
+	| { readonly ok: false; readonly diagnostics: readonly SequitDiagnostic[] };
 
 export interface RelationAdditionSuccess {
 	readonly ok: true;
@@ -62,23 +82,72 @@ function weakComponentContaining(
 }
 
 function replaceEndpoint(document: LogicDocument, replacement: LogicEndpoint): LogicDocument {
-	return {
+	switch (replacement.kind) {
+		case EndpointKind.Group:
+			return {
+				...document,
+				groups: document.groups.map((endpoint) =>
+					endpoint.id === replacement.id ? replacement : endpoint,
+				),
+			};
+		case EndpointKind.Node:
+			return {
+				...document,
+				nodes: document.nodes.map((endpoint) =>
+					endpoint.id === replacement.id ? replacement : endpoint,
+				),
+			};
+		case EndpointKind.Junction:
+			return {
+				...document,
+				junctions: document.junctions.map((endpoint) =>
+					endpoint.id === replacement.id ? replacement : endpoint,
+				),
+			};
+	}
+}
+
+export function projectNodeAddition(
+	document: LogicDocument,
+	node: NewLogicNode,
+	orderKeySpace: OrderKeySpace,
+): NodeAdditionResult {
+	const endpoints = [...document.groups, ...document.nodes, ...document.junctions];
+	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint]));
+	const orderedIds = orderEndpoints(endpoints, orderKeySpace);
+	const lastId = orderedIds.at(-1);
+	const lastKey = lastId === undefined ? undefined : endpointsById.get(lastId)?.layoutOrder;
+	if (lastId !== undefined && lastKey === undefined) {
+		throw new Error(`Missing ordered endpoint: ${lastId}`);
+	}
+	const keyedNode: LogicNode = {
+		...node,
+		kind: EndpointKind.Node,
+		layoutOrder: orderKeySpace.keyFor({ before: lastKey }, node.id),
+	};
+	const tentative: LogicDocument = {
 		...document,
-		groups: document.groups.map((endpoint) =>
-			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
-		),
-		nodes: document.nodes.map((endpoint) =>
-			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
-		),
-		junctions: document.junctions.map((endpoint) =>
-			endpoint.id === replacement.id ? (replacement as typeof endpoint) : endpoint,
-		),
+		nodes: [...document.nodes, keyedNode],
+	};
+	const validated = validateLogicDocument(tentative);
+	if (!validated.ok) return validated;
+	return {
+		ok: true,
+		value: {
+			document: validated.value,
+			changes: {
+				nodeAdditions: [keyedNode],
+				relationAdditions: [],
+				endpointOrderChanges: [],
+			},
+		},
 	};
 }
 
 export function projectRelationAddition(
 	document: LogicDocument,
 	relation: LogicRelation,
+	orderKeySpace: OrderKeySpace,
 ): RelationAdditionResult {
 	if (document.relations.some(({ id }) => id === relation.id)) {
 		return {
@@ -106,7 +175,8 @@ export function projectRelationAddition(
 		...document.nodes,
 		...document.junctions,
 	];
-	const endpointOrder = orderEndpoints(endpoints);
+	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint]));
+	const endpointOrder = orderEndpoints(endpoints, orderKeySpace);
 	const sourceRank = ranks.byEndpointId.get(relation.from);
 	const targetRank = ranks.byEndpointId.get(relation.to);
 	const eligible =
@@ -118,7 +188,7 @@ export function projectRelationAddition(
 				document: tentativeDocument,
 				eligible: false,
 				moved: false,
-				changes: { relationAdditions: [relation], endpointOrderChanges: [] },
+				changes: { nodeAdditions: [], relationAdditions: [relation], endpointOrderChanges: [] },
 			},
 		};
 	}
@@ -145,10 +215,10 @@ export function projectRelationAddition(
 	let selectedDocument = tentativeDocument;
 	let orderChanges: EndpointOrderChange[] = [];
 	if (selection.moved) {
-		const targetIndex = selection.order.indexOf(relation.to);
+		const targetIndex = selection.bestSlot;
 		const keys = new Map<string, OrderKey>();
 		for (const id of row) {
-			const endpoint = endpoints.find((candidate) => candidate.id === id);
+			const endpoint = endpointsById.get(id);
 			if (!endpoint) throw new Error(`Missing ordered endpoint: ${id}`);
 			const key = endpoint.layoutOrder;
 			keys.set(id, key);
@@ -157,7 +227,7 @@ export function projectRelationAddition(
 		const afterId = selection.order[targetIndex + 1];
 		const before = keys.get(beforeId);
 		const after = keys.get(afterId);
-		const target = endpoints.find(({ id }) => id === relation.to);
+		const target = endpointsById.get(relation.to);
 		if (!target) throw new Error(`Missing relation target: ${relation.to}`);
 		if (before !== undefined && after !== undefined && before === after) {
 			// A scalar key cannot represent a position inside an externally-created
@@ -172,11 +242,15 @@ export function projectRelationAddition(
 					moved: false,
 					previousScore: selection.currentScore,
 					selectedScore: selection.currentScore,
-					changes: { relationAdditions: [relation], endpointOrderChanges: [] },
+					changes: {
+						nodeAdditions: [],
+						relationAdditions: [relation],
+						endpointOrderChanges: [],
+					},
 				},
 			};
 		}
-		const layoutOrder = fractionalOrderKeySpace.keyFor({ before, after }, target.id);
+		const layoutOrder = orderKeySpace.keyFor({ before, after }, target.id);
 		orderChanges = [{ endpointId: target.id, layoutOrder }];
 		selectedDocument = replaceEndpoint(tentativeDocument, { ...target, layoutOrder });
 	}
@@ -188,7 +262,11 @@ export function projectRelationAddition(
 			moved: selection.moved,
 			previousScore: selection.currentScore,
 			selectedScore: selection.bestScore,
-			changes: { relationAdditions: [relation], endpointOrderChanges: orderChanges },
+			changes: {
+				nodeAdditions: [],
+				relationAdditions: [relation],
+				endpointOrderChanges: orderChanges,
+			},
 		},
 	};
 }

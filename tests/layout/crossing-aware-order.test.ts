@@ -150,6 +150,75 @@ describe('crossing-aware target insertion', () => {
 		});
 	});
 
+	it('chooses the closest best slot, then the lower index', () => {
+		const ranks = [
+			['source-low', 0],
+			['source-middle', 0],
+			['source-high', 0],
+			['peer-a', 1],
+			['peer-b', 1],
+			['peer-c', 1],
+			['target', 1],
+		] as const;
+		const links = [
+			link('target', 'source-middle', 'target'),
+			link('peer-a', 'source-low', 'peer-a'),
+			link('peer-b', 'source-middle', 'peer-b'),
+			link('peer-c', 'source-high', 'peer-c'),
+		];
+		const closest = metadata(
+			['source-low', 'source-middle', 'source-high', 'peer-a', 'peer-b', 'peer-c', 'target'],
+			ranks,
+			links,
+		);
+		expect(
+			selectTargetInsertionSlot(['peer-a', 'peer-b', 'peer-c', 'target'], 'target', closest),
+		).toMatchObject({ scoreBySlot: [1, 0, 0, 1], currentSlot: 3, bestSlot: 2 });
+
+		const lowerIndex = metadata(
+			['source-low', 'source-middle', 'source-high', 'peer-a', 'peer-b', 'target', 'peer-c'],
+			ranks,
+			[
+				link('target', 'source-middle', 'target'),
+				link('peer-a', 'source-low', 'peer-a'),
+				link('peer-b', 'source-high', 'peer-b'),
+				link('peer-c', 'source-low', 'peer-c'),
+			],
+		);
+		expect(
+			selectTargetInsertionSlot(['peer-a', 'peer-b', 'target', 'peer-c'], 'target', lowerIndex),
+		).toMatchObject({ scoreBySlot: [2, 1, 2, 1], currentSlot: 2, bestSlot: 1 });
+	});
+
+	it('does not chain floating-point ties beyond the true minimum tolerance', () => {
+		const input = metadata(
+			['source-low', 'source-high', 'peer-a', 'peer-b', 'peer-c', 'target'],
+			[
+				['source-low', 0],
+				['source-high', 0],
+				['peer-a', 1],
+				['peer-b', 1],
+				['peer-c', 1],
+				['target', 1],
+			],
+			[
+				link('target', 'source-low', 'target'),
+				link('peer-a', 'source-high', 'peer-a', 2e-15),
+				link('peer-b', 'source-high', 'peer-b', 2e-15),
+				link('peer-c', 'source-high', 'peer-c', 2e-15),
+			],
+		);
+
+		const selection = selectTargetInsertionSlot(
+			['peer-a', 'peer-b', 'peer-c', 'target'],
+			'target',
+			input,
+		);
+		expect(selection.scoreBySlot).toHaveLength(4);
+		expect(selection.scoreBySlot[3]).toBeCloseTo(6e-15, 28);
+		expect(selection.bestSlot).toBe(1);
+	});
+
 	it('matches brute-force weighted inversion scoring for generated small rows', () => {
 		let state = 17;
 		function random(): number {
@@ -188,7 +257,14 @@ describe('crossing-aware target insertion', () => {
 			let bruteSlot = row.indexOf(targetId);
 			let bruteScore = scoreBySlot[bruteSlot] ?? 0;
 			for (const [slot, score] of scoreBySlot.entries()) {
-				if (score < bruteScore) {
+				if (
+					score < bruteScore ||
+					(score === bruteScore &&
+						(Math.abs(slot - row.indexOf(targetId)) < Math.abs(bruteSlot - row.indexOf(targetId)) ||
+							(Math.abs(slot - row.indexOf(targetId)) ===
+								Math.abs(bruteSlot - row.indexOf(targetId)) &&
+								slot < bruteSlot)))
+				) {
 					bruteSlot = slot;
 					bruteScore = score;
 				}

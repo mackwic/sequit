@@ -16,10 +16,13 @@ import {
 	type OrderKey,
 	PERSISTENCE_FORMAT,
 } from '../document/logic-document';
-import { type DocumentChangeSet, projectRelationAddition } from '../document/topology-edits';
+import {
+	type DocumentChangeSet,
+	projectNodeAddition,
+	projectRelationAddition,
+} from '../document/topology-edits';
 import { validateLogicDocument } from '../document/validate-logic-document';
 import { createGraph } from '../graph/create-graph';
-import { orderEndpoints } from '../layout/endpoint-order';
 import { fractionalOrderKeySpace } from '../layout/order-key-space';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
@@ -421,41 +424,10 @@ export function addNodeToLiveDocument(
 ): YjsLiveDocumentResult<LogicDocument> {
 	const current = readLogicDocument(ydoc);
 	if (!current.ok) return current;
-
-	const endpoints = [...current.value.groups, ...current.value.nodes, ...current.value.junctions];
-	const orderedIds = orderEndpoints(endpoints);
-	const lastId = orderedIds.at(-1);
-	const lastKey = endpoints.find((endpoint) => endpoint.id === lastId)?.layoutOrder;
-	if (lastId !== undefined && lastKey === undefined) {
-		throw new Error(`Missing ordered endpoint: ${lastId}`);
-	}
-	const keyedNode: LogicNode = {
-		...node,
-		kind: EndpointKind.Node,
-		layoutOrder: fractionalOrderKeySpace.keyFor({ before: lastKey }, node.id),
-	};
-	const tentative: LogicDocument = {
-		...current.value,
-		nodes: [...current.value.nodes, keyedNode],
-	};
-	const validated = validateLogicDocument(tentative);
-	if (!validated.ok) return validationFailure(validated.diagnostics);
-
-	ydoc.transact(() => {
-		const markdown = new Y.Text();
-		markdown.insert(0, node.markdown);
-		ydoc.getMap<Y.Map<unknown>>(NODES).set(
-			node.id,
-			entityMap({
-				natureId: node.natureId,
-				...(keyedNode.groupId === undefined ? {} : { groupId: keyedNode.groupId }),
-				layoutOrder: keyedNode.layoutOrder,
-				markdown,
-			}),
-		);
-	}, 'sequit:add-node');
-
-	return { ok: true, value: validated.value };
+	const projected = projectNodeAddition(current.value, node, fractionalOrderKeySpace);
+	if (!projected.ok) return validationFailure(projected.diagnostics);
+	applyDocumentChangeSet(ydoc, projected.value.changes, 'sequit:add-node');
+	return { ok: true, value: projected.value.document };
 }
 
 export function addRelationToLiveDocument(
@@ -464,7 +436,7 @@ export function addRelationToLiveDocument(
 ): YjsLiveDocumentResult<LogicDocument> {
 	const current = readLogicDocument(ydoc);
 	if (!current.ok) return current;
-	const projected = projectRelationAddition(current.value, relation);
+	const projected = projectRelationAddition(current.value, relation, fractionalOrderKeySpace);
 	if (!projected.ok) return validationFailure(projected.diagnostics);
 
 	applyDocumentChangeSet(ydoc, projected.value.changes, 'sequit:add-relation');
@@ -474,6 +446,19 @@ export function addRelationToLiveDocument(
 
 function applyDocumentChangeSet(ydoc: Y.Doc, changes: DocumentChangeSet, origin: string): void {
 	ydoc.transact(() => {
+		for (const node of changes.nodeAdditions) {
+			const markdown = new Y.Text();
+			markdown.insert(0, node.markdown);
+			ydoc.getMap<Y.Map<unknown>>(NODES).set(
+				node.id,
+				entityMap({
+					natureId: node.natureId,
+					...(node.groupId === undefined ? {} : { groupId: node.groupId }),
+					layoutOrder: node.layoutOrder,
+					markdown,
+				}),
+			);
+		}
 		for (const relation of changes.relationAdditions) {
 			ydoc
 				.getMap<Y.Map<unknown>>(RELATIONS)
