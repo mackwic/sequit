@@ -43,6 +43,7 @@ export default defineConfig(
 				projectService: {
 					allowDefaultProject: [
 						'playwright.config.ts',
+						'vitest.performance.config.ts',
 						'vitest.config.ts',
 						'workers/*/vitest.config.ts',
 					],

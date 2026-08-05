@@ -4,7 +4,7 @@ export default defineConfig({
 	test: {
 		environment: 'node',
 		include: ['tests/**/*.test.ts'],
-		exclude: ['tests/e2e/**'],
+		exclude: ['tests/e2e/**', 'tests/performance/**'],
 		coverage: {
 			provider: 'istanbul',
 			include: ['src/**/*.ts'],

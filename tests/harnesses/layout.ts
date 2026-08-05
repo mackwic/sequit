@@ -25,18 +25,29 @@ export interface LayoutFixture {
 	readonly layout: LayoutResult;
 }
 
-export async function layoutDocument(
+export type PreparedLayoutDocument = Omit<LayoutFixture, 'layout'>;
+
+export function prepareLayoutDocument(
 	document: LogicDocument,
 	overrides: LayoutMeasurementOverrides = {},
-): Promise<LayoutFixture> {
+): PreparedLayoutDocument {
 	const validation = validateLogicDocument(document);
 	if (!validation.ok) throw new Error('Expected a valid layout scenario');
 	const graphResult = createGraph(document);
 	if (!graphResult.ok) throw new Error('Expected an acyclic layout scenario');
 	const ranks = topologicallyRank(graphResult.value);
 	const measurements = layoutMeasurementsFor(document, overrides);
-	const layout = await layoutGraph(graphResult.value, ranks, measurements);
-	return { document, graph: graphResult.value, ranks, measurements, layout };
+	return { document, graph: graphResult.value, ranks, measurements };
+}
+
+export async function layoutDocument(
+	document: LogicDocument,
+	overrides: LayoutMeasurementOverrides = {},
+): Promise<LayoutFixture> {
+	const prepared = prepareLayoutDocument(document, overrides);
+	const { graph, ranks, measurements } = prepared;
+	const layout = await layoutGraph(graph, ranks, measurements);
+	return { ...prepared, layout };
 }
 
 export function boundsById(layout: LayoutResult): ReadonlyMap<string, Bounds> {
