@@ -27,20 +27,23 @@ export default {
 			return json({ error: 'WebSocket upgrade required' }, 426);
 		}
 
-		const roomId = decodeURIComponent(roomMatch[1]);
+		const encodedRoomId = roomMatch[1];
+		if (!encodedRoomId) return json({ error: 'Not found' }, 404);
+		const roomId = decodeURIComponent(encodedRoomId);
 		const room = env.COLLABORATION_ROOMS.getByName(roomId);
 		return room.fetch(request);
 	},
 } satisfies ExportedHandler<Env>;
 
 export class CollaborationRoom extends DurableObject<Env> {
-	fetch(request: Request): Response {
+	override fetch(request: Request): Response {
 		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
 			return json({ error: 'WebSocket upgrade required' }, 426);
 		}
 
 		const pair = new WebSocketPair();
-		const [client, server] = Object.values(pair);
+		const client = pair[0];
+		const server = pair[1];
 
 		this.ctx.acceptWebSocket(server);
 		server.send(JSON.stringify({ type: 'ready' }));
@@ -48,7 +51,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): void {
+	override webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): void {
 		if (typeof message === 'string') {
 			try {
 				const payload: unknown = JSON.parse(message);
@@ -73,7 +76,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	webSocketClose(socket: WebSocket, code: number, reason: string): void {
+	override webSocketClose(socket: WebSocket, code: number, reason: string): void {
 		socket.close(code, reason);
 	}
 }

@@ -63,27 +63,27 @@ describe('mapSequitDocument', () => {
 
 	it('collects malformed collection entities and scalar fields in one pass', () => {
 		const root = validRoot();
-		root.document = { id: 42, title: false };
-		root.layout = { direction: 42, bias: 'diagonal' };
-		root.natures = {
+		root['document'] = { id: 42, title: false };
+		root['layout'] = { direction: 42, bias: 'diagonal' };
+		root['natures'] = {
 			'not-a-table': 'invalid',
 			'missing-label': { color: '#fff' },
 			'missing-color': { label: 'Label' },
 		};
-		root.groups = {
+		root['groups'] = {
 			'not-a-table': 'invalid',
 			'missing-label': { group: 42 },
 		};
-		root.nodes = {
+		root['nodes'] = {
 			'not-a-table': 'invalid',
 			'missing-fields': { nature: 42, group: 42, markdown: false },
 		};
-		root.junctions = {
+		root['junctions'] = {
 			'not-a-table': 'invalid',
 			'missing-operator': { group: 42 },
 			'unknown-operator': { operator: 'and' },
 		};
-		root.relations = {
+		root['relations'] = {
 			'not-a-table': 'invalid',
 			'missing-fields': { from: 42, to: false },
 		};
@@ -104,11 +104,11 @@ describe('mapSequitDocument', () => {
 
 	it('reports every missing top-level collection', () => {
 		const root = validRoot();
-		delete root.natures;
-		delete root.groups;
-		delete root.nodes;
-		delete root.junctions;
-		delete root.relations;
+		delete root['natures'];
+		delete root['groups'];
+		delete root['nodes'];
+		delete root['junctions'];
+		delete root['relations'];
 
 		const diagnostics = expectFailure(mapSequitDocument(root));
 		for (const name of ['natures', 'groups', 'nodes', 'junctions', 'relations']) {

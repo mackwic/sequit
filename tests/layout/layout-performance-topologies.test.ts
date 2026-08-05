@@ -91,8 +91,8 @@ describe('layout performance topologies', () => {
 		const first = scenario('unbalanced-random', 50);
 		const second = scenario('unbalanced-random', 50);
 		expect(first.metadata).toEqual(second.metadata);
-		expect(first.metadata.seed).toBe(DEFAULT_UNBALANCED_RANDOM_SEED);
-		const owners = first.metadata.dominantOwnerIds as Record<string, string>;
+		expect(first.metadata['seed']).toBe(DEFAULT_UNBALANCED_RANDOM_SEED);
+		const owners = first.metadata['dominantOwnerIds'] as Record<string, string>;
 		expect(Object.keys(owners).length).toBe(first.nodeRanks.length - 1);
 		expect(Object.values(owners)).toEqual([
 			'node-0000000000000000',

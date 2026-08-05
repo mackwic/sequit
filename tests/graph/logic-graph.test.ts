@@ -205,6 +205,7 @@ describe('topologicallyRank', () => {
 	it('uses defensive defaults for an externally assembled graph', () => {
 		const document = validLogicDocument();
 		const source = document.nodes[0];
+		if (!source) throw new Error('Expected at least one node');
 		const graph: LogicGraph = {
 			document,
 			endpointsById: new Map([
@@ -226,6 +227,7 @@ describe('topologicallyRank', () => {
 	it('rejects a cyclic graph assembled outside createGraph', () => {
 		const document = validLogicDocument();
 		const source = document.nodes[0];
+		if (!source) throw new Error('Expected at least one node');
 		const graph: LogicGraph = {
 			document,
 			endpointsById: new Map([['source', { kind: 'node', entity: source }]]),

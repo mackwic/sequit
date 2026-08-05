@@ -74,27 +74,27 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 	const root = table(rootValue, [], context);
 	if (!root) return { ok: false, diagnostics: context.diagnostics };
 
-	if (root.persistenceFormat !== PERSISTENCE_FORMAT) {
+	if (root['persistenceFormat'] !== PERSISTENCE_FORMAT) {
 		context.diagnostics.push({
 			code: 'unsupported-persistence-format',
-			message: `Unsupported persistenceFormat: ${String(root.persistenceFormat)}`,
+			message: `Unsupported persistenceFormat: ${String(root['persistenceFormat'])}`,
 			path: ['persistenceFormat'],
 		});
 	}
 
-	const documentTable = table(root.document, ['document'], context);
-	const layoutTable = table(root.layout, ['layout'], context);
-	const natureTable = table(root.natures, ['natures'], context);
-	const groupTable = table(root.groups, ['groups'], context);
-	const nodeTable = table(root.nodes, ['nodes'], context);
-	const junctionTable = table(root.junctions, ['junctions'], context);
-	const relationTable = table(root.relations, ['relations'], context);
+	const documentTable = table(root['document'], ['document'], context);
+	const layoutTable = table(root['layout'], ['layout'], context);
+	const natureTable = table(root['natures'], ['natures'], context);
+	const groupTable = table(root['groups'], ['groups'], context);
+	const nodeTable = table(root['nodes'], ['nodes'], context);
+	const junctionTable = table(root['junctions'], ['junctions'], context);
+	const relationTable = table(root['relations'], ['relations'], context);
 
-	const id = documentTable && string(documentTable.id, ['document', 'id'], context);
-	const title = documentTable && string(documentTable.title, ['document', 'title'], context);
+	const id = documentTable && string(documentTable['id'], ['document', 'id'], context);
+	const title = documentTable && string(documentTable['title'], ['document', 'title'], context);
 	const directionValue =
-		layoutTable && string(layoutTable.direction, ['layout', 'direction'], context);
-	const biasValue = layoutTable && string(layoutTable.bias, ['layout', 'bias'], context);
+		layoutTable && string(layoutTable['direction'], ['layout', 'direction'], context);
+	const biasValue = layoutTable && string(layoutTable['bias'], ['layout', 'bias'], context);
 	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === directionValue);
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === biasValue);
 	if (directionValue !== undefined && direction === undefined) {
@@ -129,8 +129,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['natures', natureId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const label = string(entity.label, [...path, 'label'], context);
-			const color = string(entity.color, [...path, 'color'], context);
+			const label = string(entity['label'], [...path, 'label'], context);
+			const color = string(entity['color'], [...path, 'color'], context);
 			if (label !== undefined && color !== undefined) natures.push({ id: natureId, label, color });
 		}
 	}
@@ -141,8 +141,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['groups', groupId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const label = string(entity.label, [...path, 'label'], context);
-			const parentGroupId = optionalString(entity.group, [...path, 'group'], context);
+			const label = string(entity['label'], [...path, 'label'], context);
+			const parentGroupId = optionalString(entity['group'], [...path, 'group'], context);
 			if (label !== undefined) {
 				const group: { id: string; label: string; groupId?: string } = {
 					id: groupId,
@@ -160,9 +160,9 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['nodes', nodeId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const natureId = string(entity.nature, [...path, 'nature'], context);
-			const groupId = optionalString(entity.group, [...path, 'group'], context);
-			const markdown = string(entity.markdown, [...path, 'markdown'], context);
+			const natureId = string(entity['nature'], [...path, 'nature'], context);
+			const groupId = optionalString(entity['group'], [...path, 'group'], context);
+			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
 			if (natureId !== undefined && markdown !== undefined) {
 				const node: {
 					id: string;
@@ -186,8 +186,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['junctions', junctionId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const operatorValue = string(entity.operator, [...path, 'operator'], context);
-			const groupId = optionalString(entity.group, [...path, 'group'], context);
+			const operatorValue = string(entity['operator'], [...path, 'operator'], context);
+			const groupId = optionalString(entity['group'], [...path, 'group'], context);
 			let operator: JunctionOperator | undefined;
 			if (operatorValue !== undefined) {
 				if (operatorValue === 'xor') operator = operatorValue;
@@ -216,8 +216,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['relations', relationId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const from = string(entity.from, [...path, 'from'], context);
-			const to = string(entity.to, [...path, 'to'], context);
+			const from = string(entity['from'], [...path, 'from'], context);
+			const to = string(entity['to'], [...path, 'to'], context);
 			if (from !== undefined && to !== undefined) relations.push({ id: relationId, from, to });
 		}
 	}

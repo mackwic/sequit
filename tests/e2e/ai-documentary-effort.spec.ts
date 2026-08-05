@@ -47,8 +47,8 @@ test.describe('AI for documentary effort', () => {
 
 			const connections = [...document.querySelectorAll<SVGPathElement>('[data-relation-id]')].map(
 				(path) => {
-					const from = path.dataset.edgeFrom;
-					const to = path.dataset.edgeTo;
+					const from = path.dataset['edgeFrom'];
+					const to = path.dataset['edgeTo'];
 					const points = (path.getAttribute('d')?.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
 					if (!from || !to || points.length < 4) return false;
 					return (

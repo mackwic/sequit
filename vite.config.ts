@@ -3,7 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
-const collaborationPort = process.env.COLLABORATION_PORT ?? '8787';
+const collaborationPort = process.env['COLLABORATION_PORT'] ?? '8787';
 
 export default defineConfig({
 	plugins: [

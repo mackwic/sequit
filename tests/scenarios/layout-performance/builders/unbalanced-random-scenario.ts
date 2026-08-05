@@ -16,11 +16,11 @@ export class UnbalancedRandomScenarioBuilder extends LayoutPerformanceScenarioBu
 	readonly name = 'unbalanced-random' as const;
 	private readonly dominantOwnerIds = new Map<number, string>();
 
-	protected resetTopology(): void {
+	protected override resetTopology(): void {
 		this.dominantOwnerIds.clear();
 	}
 
-	protected metadata(): Readonly<Record<string, unknown>> {
+	protected override metadata(): Readonly<Record<string, unknown>> {
 		return {
 			seed: DEFAULT_UNBALANCED_RANDOM_SEED,
 			dominantOwnerIds: Object.fromEntries(this.dominantOwnerIds),

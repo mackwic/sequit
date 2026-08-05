@@ -79,10 +79,9 @@ describe.each(LAYOUT_CONTEXTS)('layout bias in %s', (context) => {
 				);
 			}
 
-			for (let leftIndex = 0; leftIndex < ALL_NODES.length; leftIndex += 1) {
-				for (let rightIndex = leftIndex + 1; rightIndex < ALL_NODES.length; rightIndex += 1) {
-					const leftId = ALL_NODES[leftIndex];
-					const rightId = ALL_NODES[rightIndex];
+			for (const [leftIndex, leftId] of ALL_NODES.entries()) {
+				for (const [rightIndex, rightId] of ALL_NODES.entries()) {
+					if (rightIndex <= leftIndex) continue;
 					expect.soft(overlaps(boundsFor(layout, leftId), boundsFor(layout, rightId))).toBe(false);
 				}
 			}

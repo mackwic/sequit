@@ -237,18 +237,19 @@ describe('layoutGraph', () => {
 			const target = byId.get(relation.to);
 			expect(source).toBeDefined();
 			expect(target).toBeDefined();
-			if (!source || !target) continue;
-			expect(isOnBoundary(relation.points[0], source), `${relation.id} source`).toBe(true);
-			expect(
-				isOnBoundary(relation.points[relation.points.length - 1], target),
-				`${relation.id} target`,
-			).toBe(true);
+			const start = relation.points.at(0);
+			const end = relation.points.at(-1);
+			expect(start).toBeDefined();
+			expect(end).toBeDefined();
+			if (!source || !target || !start || !end) continue;
+			expect(isOnBoundary(start, source), `${relation.id} source`).toBe(true);
+			expect(isOnBoundary(end, target), `${relation.id} target`).toBe(true);
 		}
 		const dataTeamRelation = layout.relations.find(
 			({ id }) => id === 'data-team-to-ai-content-generation',
 		);
 		const dataTeam = byId.get('data-team');
-		expect(dataTeamRelation?.points[0].y).toBe(dataTeam?.y);
+		expect(dataTeamRelation?.points.at(0)?.y).toBe(dataTeam?.y);
 	});
 
 	it('places a logical junction between globally aligned node ranks', async () => {
@@ -378,6 +379,7 @@ describe('layoutGraph', () => {
 		expect(disconnectedLayout.elements).toHaveLength(graph.value.endpointsById.size);
 
 		const firstRelation = graph.value.relations[0];
+		if (!firstRelation) throw new Error('Expected at least one relation');
 		const inconsistentRelation: LogicGraph = {
 			...graph.value,
 			relations: [

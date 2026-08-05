@@ -6,7 +6,7 @@
 	let {
 		model,
 		element = $bindable(),
-	}: { model: CanvasMeasurementModel; element?: HTMLDivElement } = $props();
+	}: { model: CanvasMeasurementModel; element?: HTMLDivElement | undefined } = $props();
 </script>
 
 <div class="measurement-layer" bind:this={element} aria-hidden="true">

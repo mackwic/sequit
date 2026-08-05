@@ -30,7 +30,7 @@ export function collectLayoutMeasurements(layer: HTMLDivElement): LayoutMeasurem
 	);
 	const groups = new Map<string, GroupMeasurement>();
 	for (const element of layer.querySelectorAll<HTMLElement>('[data-measure-group]')) {
-		const id = element.dataset.measureGroup;
+		const id = element.dataset['measureGroup'];
 		if (!id) continue;
 		const { width, height } = element.getBoundingClientRect();
 		groups.set(id, {

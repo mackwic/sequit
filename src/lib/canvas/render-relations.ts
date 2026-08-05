@@ -24,9 +24,14 @@ function segmentBetween(start: Point, end: Point): Segment | undefined {
 
 function segmentsFor(relation: LayoutRelation): readonly Segment[] {
 	const segments: Segment[] = [];
+	let start = relation.points.at(0);
+	if (!start) return segments;
 	for (let index = 1; index < relation.points.length; index += 1) {
-		const segment = segmentBetween(relation.points[index - 1], relation.points[index]);
+		const end = relation.points[index];
+		if (!end) break;
+		const segment = segmentBetween(start, end);
 		if (segment) segments.push(segment);
+		start = end;
 	}
 	return segments;
 }
@@ -120,7 +125,7 @@ export function renderRelationPaths(
 			}
 		}
 		previousSegments.push(...segments);
-		const color = RELATION_COLORS[relationIndex % RELATION_COLORS.length];
+		const color = RELATION_COLORS[relationIndex % RELATION_COLORS.length] ?? '#78716c';
 		return {
 			...relation,
 			path: pathFor(segments, crossings),
