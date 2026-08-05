@@ -1,0 +1,27 @@
+{
+	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+	"testRunner": "vitest",
+	"plugins": ["@stryker-mutator/vitest-runner"],
+	"buildCommand": "pnpm exec svelte-kit sync",
+	"cleanTempDir": "always",
+	"ignorePatterns": [".humanlayer"],
+	"vitest": {
+		"configFile": "vitest.config.ts",
+		"related": true
+	},
+	"mutate": [
+		"src/lib/document/validate-logic-document.ts",
+		"src/lib/collaboration/yjs-live-document.ts:58-100",
+		"src/lib/collaboration/yjs-live-document.ts:326-336",
+		"src/lib/text/map-sequit-document.ts",
+		"src/lib/graph/create-graph.ts",
+		"src/lib/graph/topological-ranks.ts",
+		"src/lib/layout/layout-graph.ts"
+	],
+	"thresholds": {
+		"high": 90,
+		"low": 80,
+		"break": 80
+	},
+	"reporters": ["clear-text", "progress"]
+}

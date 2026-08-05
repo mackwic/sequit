@@ -6,7 +6,7 @@ import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/sc
 const equivalenceNodeCounts = [
 	1, 2, 3, 9, 10, 11, 18, 19, 20, 49, 50, 51, 99, 100, 101, 999, 1000,
 ] as const;
-const checkpointNodeCounts = new Set(equivalenceNodeCounts);
+const checkpointNodeCounts: ReadonlySet<number> = new Set(equivalenceNodeCounts);
 
 describe.each(LAYOUT_PERFORMANCE_SCENARIOS)('$name incremental replay', (scenario) => {
 	it('adds one auditable node per transaction and matches every snapshot prefix', () => {
@@ -37,7 +37,7 @@ describe.each(LAYOUT_PERFORMANCE_SCENARIOS)('$name incremental replay', (scenari
 			expect(document.nodes.slice(0, -1)).toEqual(previousNodes);
 
 			const nodeCount = nodeIndex + 1;
-			if (checkpointNodeCounts.has(nodeCount as (typeof equivalenceNodeCounts)[number])) {
+			if (checkpointNodeCounts.has(nodeCount)) {
 				expect(document).toEqual(scenario.createBuilder().buildSnapshot(nodeCount).document);
 			}
 		}

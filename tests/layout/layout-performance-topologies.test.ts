@@ -22,6 +22,17 @@ function itemAt<T>(items: readonly T[], index: number, name: string): T {
 	if (item === undefined) throw new Error(`Missing ${name} at index ${index}`);
 	return item;
 }
+function stringRecord(value: unknown, name: string): Readonly<Record<string, string>> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+		throw new TypeError(`Expected ${name} to be a record`);
+	}
+	const record: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry !== 'string') throw new TypeError(`Expected ${name}.${key} to be a string`);
+		record[key] = entry;
+	}
+	return record;
+}
 
 function weakComponentCount(graph: LogicGraph): number {
 	const visited = new Set<string>();
@@ -33,7 +44,7 @@ function weakComponentCount(graph: LogicGraph): number {
 		visited.add(start);
 		while (pending.length > 0) {
 			const id = pending.pop();
-			if (!id) continue;
+			if (id === undefined) continue;
 			for (const next of [
 				...(graph.outgoingByEndpointId.get(id) ?? []),
 				...(graph.predecessorsByEndpointId.get(id) ?? []),
@@ -92,7 +103,7 @@ describe('layout performance topologies', () => {
 		const second = scenario('unbalanced-random', 50);
 		expect(first.metadata).toEqual(second.metadata);
 		expect(first.metadata['seed']).toBe(DEFAULT_UNBALANCED_RANDOM_SEED);
-		const owners = first.metadata['dominantOwnerIds'] as Record<string, string>;
+		const owners = stringRecord(first.metadata['dominantOwnerIds'], 'dominantOwnerIds');
 		expect(Object.keys(owners).length).toBe(first.nodeRanks.length - 1);
 		expect(Object.values(owners)).toEqual([
 			'node-0000000000000000',

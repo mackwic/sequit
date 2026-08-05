@@ -12,7 +12,7 @@ function measuredSizes(
 	const result = new Map<string, Size>();
 	for (const element of elements) {
 		const id = element.dataset[dataKey];
-		if (!id) continue;
+		if (id === undefined || id.length === 0) continue;
 		const { width, height } = element.getBoundingClientRect();
 		result.set(id, { width, height });
 	}
@@ -31,7 +31,7 @@ export function collectLayoutMeasurements(layer: HTMLDivElement): LayoutMeasurem
 	const groups = new Map<string, GroupMeasurement>();
 	for (const element of layer.querySelectorAll<HTMLElement>('[data-measure-group]')) {
 		const id = element.dataset['measureGroup'];
-		if (!id) continue;
+		if (id === undefined || id.length === 0) continue;
 		const { width, height } = element.getBoundingClientRect();
 		groups.set(id, {
 			minimumWidth: Math.max(GROUP_MINIMUM_WIDTH, width + GROUP_HORIZONTAL_PADDING * 2),

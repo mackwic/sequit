@@ -17,13 +17,10 @@
 		if (measuring) return node.id;
 		return undefined;
 	});
-	let style = $derived.by(() => {
-		let value = `--nature-color: ${node.nature.color}; width: ${bounds?.width ?? 220}px;`;
-		if (bounds) {
-			value += ` left: ${bounds.x}px; top: ${bounds.y}px; height: ${bounds.height}px;`;
-		}
-		return value;
-	});
+	function pixels(value: number | undefined): string | undefined {
+		if (value === undefined) return undefined;
+		return `${value}px`;
+	}
 </script>
 
 <article
@@ -31,7 +28,11 @@
 	class:positioned={bounds !== undefined}
 	data-node-id={nodeId}
 	data-measure-node={measurementId}
-	{style}
+	style:--nature-color={node.nature.color}
+	style:width={pixels(bounds?.width) ?? '220px'}
+	style:left={pixels(bounds?.x)}
+	style:top={pixels(bounds?.y)}
+	style:height={pixels(bounds?.height)}
 >
 	<header>{node.nature.label}</header>
 	<p>{node.markdown}</p>

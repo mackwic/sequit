@@ -50,7 +50,14 @@ test.describe('AI for documentary effort', () => {
 					const from = path.dataset['edgeFrom'];
 					const to = path.dataset['edgeTo'];
 					const points = (path.getAttribute('d')?.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
-					if (!from || !to || points.length < 4) return false;
+					if (
+						from === undefined ||
+						from.length === 0 ||
+						to === undefined ||
+						to.length === 0 ||
+						points.length < 4
+					)
+						return false;
 					return (
 						onBoundary(points[0] ?? 0, points[1] ?? 0, endpoint(from)) &&
 						onBoundary(points[points.length - 2] ?? 0, points[points.length - 1] ?? 0, endpoint(to))

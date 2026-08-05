@@ -21,7 +21,7 @@
 	let opened = $derived(openDocument(source));
 	let projection = $state<OpenDocumentProjectionResult>();
 	let measurementModel = $derived(
-		projection?.ok ? projection.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
+		projection?.ok === true ? projection.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
 	);
 	let measurementLayer = $state<HTMLDivElement>();
 	let canvas = $state<CanvasModel>();
@@ -61,7 +61,7 @@
 	async function recalculate() {
 		const layer = measurementLayer;
 		const current = projection;
-		if (!current?.ok || !layer) return;
+		if (current?.ok !== true || layer === undefined) return;
 		const measurements = collectLayoutMeasurements(layer);
 		const signature = layoutMeasurementSignature(measurements);
 		if (signature === previousMeasurementSignature) return;

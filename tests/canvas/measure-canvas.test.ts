@@ -6,12 +6,14 @@ import {
 } from '../../src/lib/canvas/measure-canvas';
 
 function measurable(data: Record<string, string>, width: number, height: number): HTMLElement {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Minimal DOM boundary stub.
 	return {
 		dataset: data,
 		getBoundingClientRect: () => ({ width, height }),
 	} as unknown as HTMLElement;
 }
 function measurementRoot(elements: Record<string, readonly HTMLElement[]>): HTMLDivElement {
+	// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- Minimal DOM boundary stub.
 	return {
 		querySelectorAll: (selector: string) => elements[selector] ?? [],
 	} as unknown as HTMLDivElement;

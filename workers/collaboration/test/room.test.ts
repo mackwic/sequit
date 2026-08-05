@@ -100,9 +100,9 @@ it('broadcasts every collaboration payload except ping control messages', async 
 	const binary = new Uint8Array([1, 2, 3]).buffer;
 	const receivedBinary = nextMessage(receiver);
 	sender.send(binary);
-	expect(new Uint8Array((await receivedBinary).data as ArrayBuffer)).toEqual(
-		new Uint8Array(binary),
-	);
+	const receivedData: unknown = (await receivedBinary).data;
+	if (!(receivedData instanceof ArrayBuffer)) throw new TypeError('Expected binary message data');
+	expect(new Uint8Array(receivedData)).toEqual(new Uint8Array(binary));
 
 	sender.close(1000, 'Test complete');
 	receiver.close(1000, 'Test complete');

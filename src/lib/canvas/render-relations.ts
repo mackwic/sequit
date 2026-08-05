@@ -2,6 +2,18 @@ import type { LayoutRelation, Point } from '../layout/layout-graph';
 
 const BRIDGE_RADIUS = 6;
 const RELATION_COLORS = ['#78716c', '#817a75', '#6f6a65', '#89817c'] as const;
+function relationColor(index: number): (typeof RELATION_COLORS)[number] {
+	switch (index % RELATION_COLORS.length) {
+		case 0:
+			return RELATION_COLORS[0];
+		case 1:
+			return RELATION_COLORS[1];
+		case 2:
+			return RELATION_COLORS[2];
+		default:
+			return RELATION_COLORS[3];
+	}
+}
 
 type Orientation = 'horizontal' | 'vertical';
 
@@ -124,7 +136,7 @@ export function renderRelationPaths(
 			}
 		}
 		previousSegments.push(...segments);
-		const color = RELATION_COLORS[(relationIndex % RELATION_COLORS.length) as 0 | 1 | 2 | 3];
+		const color = relationColor(relationIndex);
 		return {
 			...relation,
 			path: pathFor(segments, crossings),

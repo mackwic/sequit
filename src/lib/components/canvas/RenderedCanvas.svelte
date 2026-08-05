@@ -15,14 +15,18 @@
 		data-graph-stage
 		data-stage-width={canvas.width}
 		data-stage-height={canvas.height}
-		style={`width: ${canvas.width}px; height: ${canvas.height}px;`}
+		style:width={`${canvas.width}px`}
+		style:height={`${canvas.height}px`}
 	>
 		{#each canvas.groups as group (group.id)}
 			<section
 				class="canvas-group"
 				data-group-id={group.id}
 				data-endpoint-id={group.id}
-				style={`left: ${group.bounds.x}px; top: ${group.bounds.y}px; width: ${group.bounds.width}px; height: ${group.bounds.height}px;`}
+				style:left={`${group.bounds.x}px`}
+				style:top={`${group.bounds.y}px`}
+				style:width={`${group.bounds.width}px`}
+				style:height={`${group.bounds.height}px`}
 			>
 				<header>{group.label}</header>
 			</section>
@@ -74,7 +78,10 @@
 				class="junction"
 				data-junction-id={junction.id}
 				data-endpoint-id={junction.id}
-				style={`left: ${junction.bounds.x}px; top: ${junction.bounds.y}px; width: ${junction.bounds.width}px; height: ${junction.bounds.height}px;`}
+				style:left={`${junction.bounds.x}px`}
+				style:top={`${junction.bounds.y}px`}
+				style:width={`${junction.bounds.width}px`}
+				style:height={`${junction.bounds.height}px`}
 				title={`Junction ${junction.operator.toUpperCase()}`}
 			>
 				{junction.operator.toUpperCase()}

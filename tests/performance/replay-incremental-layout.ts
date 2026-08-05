@@ -113,9 +113,17 @@ function summarizeSamples(samples: readonly IncrementalLayoutInsertionResult[]):
 		if (insertion.timing.totalMs > slowest.timing.totalMs) return insertion;
 		return slowest;
 	});
-	const stages = Object.fromEntries(
-		INCREMENTAL_LAYOUT_TIMING_STAGES.map((stage) => [stage, stageSummary(samples, stage)]),
-	) as Readonly<Record<IncrementalLayoutTimingStage, IncrementalLayoutStageSummary>>;
+	const stages = {
+		documentUpdateMs: stageSummary(samples, 'documentUpdateMs'),
+		validationMs: stageSummary(samples, 'validationMs'),
+		graphCreationMs: stageSummary(samples, 'graphCreationMs'),
+		rankingMs: stageSummary(samples, 'rankingMs'),
+		measurementProjectionMs: stageSummary(samples, 'measurementProjectionMs'),
+		syntheticMeasurementsMs: stageSummary(samples, 'syntheticMeasurementsMs'),
+		synchronousProjectionMs: stageSummary(samples, 'synchronousProjectionMs'),
+		layoutMs: stageSummary(samples, 'layoutMs'),
+		totalMs: stageSummary(samples, 'totalMs'),
+	};
 	return { sampleCount: samples.length, stages, slowestInsertion };
 }
 
