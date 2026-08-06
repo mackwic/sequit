@@ -6,7 +6,7 @@ import {
 	readLogicDocument,
 } from '../../src/lib/collaboration/yjs-live-document';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
-import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
+import { createGraph, GraphEndpointKind, type LogicGraph } from '../../src/lib/graph/create-graph';
 import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { validLogicDocument } from '../builders/logic-document';
@@ -46,10 +46,10 @@ describe('LogicGraph', () => {
 		);
 
 		expect(graph.relations).toHaveLength(20);
-		expect(graph.endpointsById.get('word-ui-options')?.kind).toBe('junction');
+		expect(graph.endpointsById.get('word-ui-options')?.kind).toBe(GraphEndpointKind.Junction);
 		expect(xorInputs).toHaveLength(3);
 		expect(xorOutputs).toHaveLength(1);
-		expect(graph.endpointsById.get('data-team')).toMatchObject({ kind: 'group' });
+		expect(graph.endpointsById.get('data-team')).toMatchObject({ kind: GraphEndpointKind.Group });
 		expect(dataTeamRelation?.source).toBe(graph.endpointsById.get('data-team'));
 	});
 
@@ -164,7 +164,8 @@ describe('topologicallyRank', () => {
 
 		for (const [endpointId, rank] of ranks.byEndpointId) {
 			const endpointPredecessors = predecessors.get(endpointId) ?? [];
-			const rankIncrement = graph.endpointsById.get(endpointId)?.kind === 'junction' ? 0 : 1;
+			const rankIncrement =
+				graph.endpointsById.get(endpointId)?.kind === GraphEndpointKind.Junction ? 0 : 1;
 			const expected =
 				endpointPredecessors.length === 0
 					? 0
@@ -209,8 +210,8 @@ describe('topologicallyRank', () => {
 		const graph: LogicGraph = {
 			document,
 			endpointsById: new Map([
-				['source', { kind: 'node', entity: source }],
-				['isolated', { kind: 'node', entity: source }],
+				['source', { kind: GraphEndpointKind.Node, entity: source }],
+				['isolated', { kind: GraphEndpointKind.Node, entity: source }],
 			]),
 			relations: [],
 			rankableEndpointIds: ['source', 'isolated'],
@@ -230,7 +231,7 @@ describe('topologicallyRank', () => {
 		if (!source) throw new Error('Expected at least one node');
 		const graph: LogicGraph = {
 			document,
-			endpointsById: new Map([['source', { kind: 'node', entity: source }]]),
+			endpointsById: new Map([['source', { kind: GraphEndpointKind.Node, entity: source }]]),
 			relations: [],
 			rankableEndpointIds: ['source'],
 			outgoingByEndpointId: new Map([['source', ['source']]]),

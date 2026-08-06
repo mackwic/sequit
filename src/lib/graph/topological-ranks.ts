@@ -1,4 +1,4 @@
-import type { LogicGraph } from './create-graph';
+import { GraphEndpointKind, type LogicGraph } from './create-graph';
 
 export interface TopologicalRanks {
 	readonly byEndpointId: ReadonlyMap<string, number>;
@@ -6,8 +6,8 @@ export interface TopologicalRanks {
 }
 
 function rankIncrement(graph: LogicGraph, sourceId: string, targetId: string): number {
-	if (graph.endpointsById.get(targetId)?.kind !== 'junction') return 1;
-	if (graph.endpointsById.get(sourceId)?.kind === 'junction') return 1;
+	if (graph.endpointsById.get(targetId)?.kind !== GraphEndpointKind.Junction) return 1;
+	if (graph.endpointsById.get(sourceId)?.kind === GraphEndpointKind.Junction) return 1;
 	if ((graph.outgoingByEndpointId.get(targetId)?.length ?? 0) > 0) return 0;
 	return 1;
 }

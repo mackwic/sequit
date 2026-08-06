@@ -1,10 +1,15 @@
-import type { LogicDocument } from '../../src/lib/document/logic-document';
+import {
+	JunctionOperator,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../src/lib/document/logic-document';
 
 export function validLogicDocument(): LogicDocument {
 	return {
 		id: 'valid-document',
 		title: 'Valid document',
-		layout: { direction: 'bottom-to-top', bias: 'top' },
+		layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
 		natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
 		groups: [
 			{ id: 'container', label: 'Container' },
@@ -17,7 +22,7 @@ export function validLogicDocument(): LogicDocument {
 			{ id: 'target', natureId: 'goal', markdown: 'Target\n' },
 			{ id: 'isolated', natureId: 'goal', markdown: 'Isolated\n' },
 		],
-		junctions: [{ id: 'choice', operator: 'xor', groupId: 'container' }],
+		junctions: [{ id: 'choice', operator: JunctionOperator.Xor, groupId: 'container' }],
 		relations: [
 			{ id: 'a-to-choice', from: 'source-a', to: 'choice' },
 			{ id: 'b-to-choice', from: 'source-b', to: 'choice' },

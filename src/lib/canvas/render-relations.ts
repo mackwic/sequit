@@ -15,7 +15,10 @@ function relationColor(index: number): (typeof RELATION_COLORS)[number] {
 	}
 }
 
-type Orientation = 'horizontal' | 'vertical';
+enum Orientation {
+	Horizontal = 'horizontal',
+	Vertical = 'vertical',
+}
 
 interface Segment {
 	readonly start: Point;
@@ -29,8 +32,12 @@ export interface RenderedRelation extends LayoutRelation {
 }
 
 function segmentBetween(start: Point, end: Point): Segment | undefined {
-	if (start.x === end.x && start.y !== end.y) return { start, end, orientation: 'vertical' };
-	if (start.y === end.y && start.x !== end.x) return { start, end, orientation: 'horizontal' };
+	if (start.x === end.x && start.y !== end.y) {
+		return { start, end, orientation: Orientation.Vertical };
+	}
+	if (start.y === end.y && start.x !== end.x) {
+		return { start, end, orientation: Orientation.Horizontal };
+	}
 	return undefined;
 }
 
@@ -53,8 +60,8 @@ function strictlyBetween(value: number, first: number, second: number): boolean 
 
 function intersection(current: Segment, other: Segment): Point | undefined {
 	if (current.orientation === other.orientation) return undefined;
-	const horizontal = current.orientation === 'horizontal' ? current : other;
-	const vertical = current.orientation === 'vertical' ? current : other;
+	const horizontal = current.orientation === Orientation.Horizontal ? current : other;
+	const vertical = current.orientation === Orientation.Vertical ? current : other;
 	const point = { x: vertical.start.x, y: horizontal.start.y };
 	return strictlyBetween(point.x, horizontal.start.x, horizontal.end.x) &&
 		strictlyBetween(point.y, vertical.start.y, vertical.end.y)
@@ -63,13 +70,13 @@ function intersection(current: Segment, other: Segment): Point | undefined {
 }
 
 function distanceAlong(segment: Segment, point: Point): number {
-	return segment.orientation === 'horizontal'
+	return segment.orientation === Orientation.Horizontal
 		? Math.abs(point.x - segment.start.x)
 		: Math.abs(point.y - segment.start.y);
 }
 
 function pointAlong(segment: Segment, distance: number): Point {
-	if (segment.orientation === 'horizontal') {
+	if (segment.orientation === Orientation.Horizontal) {
 		return {
 			x: segment.start.x + Math.sign(segment.end.x - segment.start.x) * distance,
 			y: segment.start.y,
@@ -81,7 +88,12 @@ function pointAlong(segment: Segment, distance: number): Point {
 	};
 }
 
-function pointCommand(command: 'M' | 'L', point: Point): string {
+enum PathCommand {
+	Move = 'M',
+	Line = 'L',
+}
+
+function pointCommand(command: PathCommand, point: Point): string {
 	return `${command} ${point.x} ${point.y}`;
 }
 
@@ -91,11 +103,11 @@ function pathFor(
 ): string {
 	const first = segments.at(0);
 	if (!first) return '';
-	const commands = [pointCommand('M', first.start)];
+	const commands = [pointCommand(PathCommand.Move, first.start)];
 	let cursor = first.start;
 	for (const segment of segments) {
 		if (cursor.x !== segment.start.x || cursor.y !== segment.start.y) {
-			commands.push(pointCommand('L', segment.start));
+			commands.push(pointCommand(PathCommand.Line, segment.start));
 		}
 		const length = distanceAlong(segment, segment.end);
 		const distances = [...(crossings.get(segment) ?? [])]
@@ -107,11 +119,11 @@ function pathFor(
 			if (distance - BRIDGE_RADIUS < coveredUntil) continue;
 			const before = pointAlong(segment, distance - BRIDGE_RADIUS);
 			const after = pointAlong(segment, distance + BRIDGE_RADIUS);
-			commands.push(pointCommand('L', before));
+			commands.push(pointCommand(PathCommand.Line, before));
 			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${after.x} ${after.y}`);
 			coveredUntil = distance + BRIDGE_RADIUS;
 		}
-		commands.push(pointCommand('L', segment.end));
+		commands.push(pointCommand(PathCommand.Line, segment.end));
 		cursor = segment.end;
 	}
 	return commands.join(' ');

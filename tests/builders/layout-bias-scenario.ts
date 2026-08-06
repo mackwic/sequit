@@ -1,16 +1,21 @@
-import type { LayoutConfiguration, LogicDocument } from '../../src/lib/document/logic-document';
+import {
+	LayoutBias,
+	type LayoutConfiguration,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../src/lib/document/logic-document';
 
 export type LayoutContext = 'root' | 'group' | 'subgroup';
 
 export const LAYOUT_CONFIGURATIONS = [
-	{ direction: 'top-to-bottom', bias: 'top' },
-	{ direction: 'top-to-bottom', bias: 'bottom' },
-	{ direction: 'bottom-to-top', bias: 'top' },
-	{ direction: 'bottom-to-top', bias: 'bottom' },
-	{ direction: 'left-to-right', bias: 'left' },
-	{ direction: 'left-to-right', bias: 'right' },
-	{ direction: 'right-to-left', bias: 'left' },
-	{ direction: 'right-to-left', bias: 'right' },
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Right },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
 ] as const satisfies readonly LayoutConfiguration[];
 
 export const LONG_BRANCH = ['long-0', 'long-1', 'long-2', 'long-3'] as const;

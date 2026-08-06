@@ -6,10 +6,25 @@ import type {
 	LogicRelation,
 } from '../document/logic-document';
 
-type GraphEndpoint =
-	| { readonly kind: 'node'; readonly entity: LogicNode }
-	| { readonly kind: 'group'; readonly entity: LogicGroup }
-	| { readonly kind: 'junction'; readonly entity: LogicJunction };
+export enum GraphEndpointKind {
+	Node = 'node',
+	Group = 'group',
+	Junction = 'junction',
+}
+
+interface GraphNodeEndpoint {
+	readonly kind: GraphEndpointKind.Node;
+	readonly entity: LogicNode;
+}
+interface GraphGroupEndpoint {
+	readonly kind: GraphEndpointKind.Group;
+	readonly entity: LogicGroup;
+}
+interface GraphJunctionEndpoint {
+	readonly kind: GraphEndpointKind.Junction;
+	readonly entity: LogicJunction;
+}
+type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
 
 interface GraphRelation {
 	readonly relation: LogicRelation;
@@ -26,42 +41,58 @@ export interface LogicGraph {
 	readonly predecessorsByEndpointId: ReadonlyMap<string, readonly string[]>;
 }
 
+enum GraphDiagnosticCode {
+	UnknownEndpoint = 'unknown-endpoint',
+	Cycle = 'cycle',
+}
+
 interface GraphDiagnostic {
-	readonly code: 'unknown-endpoint' | 'cycle';
+	readonly code: GraphDiagnosticCode;
 	readonly message: string;
 	readonly path: readonly string[];
 	readonly cycle?: readonly string[];
 }
 
-export type GraphResult =
-	| { readonly ok: true; readonly value: LogicGraph }
-	| { readonly ok: false; readonly diagnostics: readonly GraphDiagnostic[] };
+interface GraphSuccess {
+	readonly ok: true;
+	readonly value: LogicGraph;
+}
+interface GraphFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly GraphDiagnostic[];
+}
+export type GraphResult = GraphSuccess | GraphFailure;
+
+enum GraphVisitState {
+	Visiting = 'visiting',
+	Visited = 'visited',
+}
 
 function findCycle(
 	endpointIds: readonly string[],
 	outgoingByEndpointId: ReadonlyMap<string, readonly string[]>,
 ): readonly string[] | undefined {
-	const state = new Map<string, 'visiting' | 'visited'>();
+	const state = new Map<string, GraphVisitState>();
 	const stack: string[] = [];
 	function visit(id: string): readonly string[] | undefined {
-		state.set(id, 'visiting');
+		state.set(id, GraphVisitState.Visiting);
 		stack.push(id);
 		const targets = outgoingByEndpointId.get(id);
 		/* istanbul ignore if -- @preserve: adjacency is initialized for every canonical endpoint. */
 		if (!targets) throw new Error(`Missing graph adjacency: ${id}`);
 		for (const target of targets) {
 			const targetState = state.get(target);
-			if (targetState === 'visiting') {
+			if (targetState === GraphVisitState.Visiting) {
 				const start = stack.lastIndexOf(target);
 				return [...stack.slice(start), target];
 			}
-			if (targetState !== 'visited') {
+			if (targetState !== GraphVisitState.Visited) {
 				const cycle = visit(target);
 				if (cycle) return cycle;
 			}
 		}
 		stack.pop();
-		state.set(id, 'visited');
+		state.set(id, GraphVisitState.Visited);
 		return undefined;
 	}
 
@@ -91,14 +122,14 @@ function resolveRelations(
 		const target = endpointsById.get(relation.to);
 		if (!source) {
 			diagnostics.push({
-				code: 'unknown-endpoint',
+				code: GraphDiagnosticCode.UnknownEndpoint,
 				message: `Unknown relation source: ${relation.from}`,
 				path: ['relations', relation.id, 'from'],
 			});
 		}
 		if (!target) {
 			diagnostics.push({
-				code: 'unknown-endpoint',
+				code: GraphDiagnosticCode.UnknownEndpoint,
 				message: `Unknown relation target: ${relation.to}`,
 				path: ['relations', relation.id, 'to'],
 			});
@@ -121,14 +152,17 @@ function rankingIdsFor(context: RankingIdsContext, endpointId: string): readonly
 	/* istanbul ignore if -- @preserve: ranking IDs are requested only for known endpoints. */
 	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
 	let rankingIds: readonly string[] = [endpointId];
-	if (endpoint.kind === 'group') {
+	if (endpoint.kind === GraphEndpointKind.Group) {
 		const members = context.memberIdsByGroup.get(endpointId);
 		/* istanbul ignore if -- @preserve: member lists are initialized for every group. */
 		if (!members) throw new Error(`Missing group members: ${endpointId}`);
 		let expandsNestedGroup = false;
 		for (const memberId of members) {
 			const member = context.endpointsById.get(memberId);
-			if (member?.kind === 'group' && (context.memberIdsByGroup.get(memberId)?.length ?? 0) > 0) {
+			if (
+				member?.kind === GraphEndpointKind.Group &&
+				(context.memberIdsByGroup.get(memberId)?.length ?? 0) > 0
+			) {
 				expandsNestedGroup = true;
 				break;
 			}
@@ -146,10 +180,19 @@ function rankingIdsFor(context: RankingIdsContext, endpointId: string): readonly
 }
 
 export function createGraph(document: LogicDocument): GraphResult {
-	const endpoints = [
-		...document.groups.map((entity) => ({ kind: 'group' as const, entity })),
-		...document.nodes.map((entity) => ({ kind: 'node' as const, entity })),
-		...document.junctions.map((entity) => ({ kind: 'junction' as const, entity })),
+	const endpoints: GraphEndpoint[] = [
+		...document.groups.map<GraphGroupEndpoint>((entity) => ({
+			kind: GraphEndpointKind.Group,
+			entity,
+		})),
+		...document.nodes.map<GraphNodeEndpoint>((entity) => ({
+			kind: GraphEndpointKind.Node,
+			entity,
+		})),
+		...document.junctions.map<GraphJunctionEndpoint>((entity) => ({
+			kind: GraphEndpointKind.Junction,
+			entity,
+		})),
 	].sort((left, right) => left.entity.id.localeCompare(right.entity.id));
 	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.entity.id, endpoint]));
 	const { relations, diagnostics } = resolveRelations(document, endpointsById);
@@ -213,7 +256,7 @@ export function createGraph(document: LogicDocument): GraphResult {
 			ok: false,
 			diagnostics: [
 				{
-					code: 'cycle',
+					code: GraphDiagnosticCode.Cycle,
 					message: `Cycle detected: ${cycle.join(' -> ')}`,
 					path: ['relations'],
 					cycle,

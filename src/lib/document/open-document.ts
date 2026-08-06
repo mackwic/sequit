@@ -23,9 +23,15 @@ interface OpenDocumentProjection {
 	createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel>;
 }
 
-export type OpenDocumentProjectionResult =
-	| { readonly ok: true; readonly value: OpenDocumentProjection }
-	| { readonly ok: false; readonly diagnostics: readonly OpenDocumentDiagnostic[] };
+interface OpenDocumentProjectionSuccess {
+	readonly ok: true;
+	readonly value: OpenDocumentProjection;
+}
+interface OpenDocumentFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly OpenDocumentDiagnostic[];
+}
+export type OpenDocumentProjectionResult = OpenDocumentProjectionSuccess | OpenDocumentFailure;
 
 export interface OpenedDocument {
 	read(): OpenDocumentProjectionResult;
@@ -34,9 +40,11 @@ export interface OpenedDocument {
 	close(): void;
 }
 
-export type OpenDocumentResult =
-	| { readonly ok: true; readonly value: OpenedDocument }
-	| { readonly ok: false; readonly diagnostics: readonly OpenDocumentDiagnostic[] };
+interface OpenDocumentSuccess {
+	readonly ok: true;
+	readonly value: OpenedDocument;
+}
+export type OpenDocumentResult = OpenDocumentSuccess | OpenDocumentFailure;
 
 function projectDocument(session: DocumentSession): OpenDocumentProjectionResult {
 	const current = session.read();

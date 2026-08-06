@@ -1,4 +1,4 @@
-import type { LogicDocument } from '../document/logic-document';
+import type { JunctionOperator, LogicDocument } from '../document/logic-document';
 import type { Bounds, LayoutResult, Point } from '../layout/layout-graph';
 
 interface CanvasNature {
@@ -20,7 +20,7 @@ interface UnpositionedCanvasGroup {
 
 interface UnpositionedCanvasJunction {
 	readonly id: string;
-	readonly operator: 'xor';
+	readonly operator: JunctionOperator;
 }
 
 export interface CanvasMeasurementModel {

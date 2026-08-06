@@ -1,44 +1,64 @@
+export enum LayoutDirection {
+	TopToBottom = 'top-to-bottom',
+	BottomToTop = 'bottom-to-top',
+	LeftToRight = 'left-to-right',
+	RightToLeft = 'right-to-left',
+}
+
 export const LAYOUT_DIRECTIONS = [
-	'top-to-bottom',
-	'bottom-to-top',
-	'left-to-right',
-	'right-to-left',
+	LayoutDirection.TopToBottom,
+	LayoutDirection.BottomToTop,
+	LayoutDirection.LeftToRight,
+	LayoutDirection.RightToLeft,
 ] as const;
-export type LayoutDirection = (typeof LAYOUT_DIRECTIONS)[number];
 
-export const LAYOUT_BIASES = ['top', 'bottom', 'left', 'right'] as const;
-export type LayoutBias = (typeof LAYOUT_BIASES)[number];
+export enum LayoutBias {
+	Top = 'top',
+	Bottom = 'bottom',
+	Left = 'left',
+	Right = 'right',
+}
 
-export type LayoutConfiguration =
-	| {
-			readonly direction: 'top-to-bottom' | 'bottom-to-top';
-			readonly bias: 'top' | 'bottom';
-	  }
-	| {
-			readonly direction: 'left-to-right' | 'right-to-left';
-			readonly bias: 'left' | 'right';
-	  };
+export const LAYOUT_BIASES = [
+	LayoutBias.Top,
+	LayoutBias.Bottom,
+	LayoutBias.Left,
+	LayoutBias.Right,
+] as const;
+
+interface VerticalLayoutConfiguration {
+	readonly direction: LayoutDirection.TopToBottom | LayoutDirection.BottomToTop;
+	readonly bias: LayoutBias.Top | LayoutBias.Bottom;
+}
+interface HorizontalLayoutConfiguration {
+	readonly direction: LayoutDirection.LeftToRight | LayoutDirection.RightToLeft;
+	readonly bias: LayoutBias.Left | LayoutBias.Right;
+}
+export type LayoutConfiguration = VerticalLayoutConfiguration | HorizontalLayoutConfiguration;
 
 export function layoutConfiguration(
 	direction: LayoutDirection,
 	bias: LayoutBias,
 ): LayoutConfiguration | undefined {
 	if (
-		(direction === 'top-to-bottom' || direction === 'bottom-to-top') &&
-		(bias === 'top' || bias === 'bottom')
+		(direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) &&
+		(bias === LayoutBias.Top || bias === LayoutBias.Bottom)
 	) {
 		return { direction, bias };
 	}
 	if (
-		(direction === 'left-to-right' || direction === 'right-to-left') &&
-		(bias === 'left' || bias === 'right')
+		(direction === LayoutDirection.LeftToRight || direction === LayoutDirection.RightToLeft) &&
+		(bias === LayoutBias.Left || bias === LayoutBias.Right)
 	) {
 		return { direction, bias };
 	}
 	return undefined;
 }
 
-export type JunctionOperator = 'xor';
+export enum JunctionOperator {
+	Xor = 'xor',
+}
+export const JUNCTION_OPERATORS = [JunctionOperator.Xor] as const;
 
 export interface LogicNature {
 	readonly id: string;
@@ -84,23 +104,32 @@ export interface LogicDocument {
 
 type DiagnosticPath = readonly string[];
 
+export enum SequitDiagnosticCode {
+	TomlSyntax = 'toml-syntax',
+	UnsupportedPersistenceFormat = 'unsupported-persistence-format',
+	InvalidType = 'invalid-type',
+	MissingField = 'missing-field',
+	InvalidValue = 'invalid-value',
+	DuplicateEndpointId = 'duplicate-endpoint-id',
+	UnknownNature = 'unknown-nature',
+	UnknownGroup = 'unknown-group',
+	GroupCycle = 'group-cycle',
+}
+
 export interface SequitDiagnostic {
-	readonly code:
-		| 'toml-syntax'
-		| 'unsupported-persistence-format'
-		| 'invalid-type'
-		| 'missing-field'
-		| 'invalid-value'
-		| 'duplicate-endpoint-id'
-		| 'unknown-nature'
-		| 'unknown-group'
-		| 'group-cycle';
+	readonly code: SequitDiagnosticCode;
 	readonly message: string;
 	readonly path: DiagnosticPath;
 	readonly line?: number;
 	readonly column?: number;
 }
 
-export type DocumentResult<T> =
-	| { readonly ok: true; readonly value: T }
-	| { readonly ok: false; readonly diagnostics: readonly SequitDiagnostic[] };
+interface DocumentSuccess<T> {
+	readonly ok: true;
+	readonly value: T;
+}
+interface DocumentFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly SequitDiagnostic[];
+}
+export type DocumentResult<T> = DocumentSuccess<T> | DocumentFailure;

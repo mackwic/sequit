@@ -1,5 +1,6 @@
 import {
 	type DocumentResult,
+	JUNCTION_OPERATORS,
 	type JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
@@ -11,6 +12,7 @@ import {
 	type LogicNode,
 	type LogicRelation,
 	type SequitDiagnostic,
+	SequitDiagnosticCode,
 } from '../document/logic-document';
 import { PERSISTENCE_FORMAT } from './persistence-format';
 
@@ -30,8 +32,8 @@ function table(
 	context: MappingContext,
 ): UnknownTable | undefined {
 	if (isTable(value)) return value;
-	let code: SequitDiagnostic['code'] = 'invalid-type';
-	if (value === undefined) code = 'missing-field';
+	let code = SequitDiagnosticCode.InvalidType;
+	if (value === undefined) code = SequitDiagnosticCode.MissingField;
 	context.diagnostics.push({
 		code,
 		message: `${path.join('.')} must be a table`,
@@ -46,8 +48,8 @@ function string(
 	context: MappingContext,
 ): string | undefined {
 	if (typeof value === 'string') return value;
-	let code: SequitDiagnostic['code'] = 'invalid-type';
-	if (value === undefined) code = 'missing-field';
+	let code = SequitDiagnosticCode.InvalidType;
+	if (value === undefined) code = SequitDiagnosticCode.MissingField;
 	context.diagnostics.push({
 		code,
 		message: `${path.join('.')} must be a string`,
@@ -76,7 +78,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 
 	if (root['persistenceFormat'] !== PERSISTENCE_FORMAT) {
 		context.diagnostics.push({
-			code: 'unsupported-persistence-format',
+			code: SequitDiagnosticCode.UnsupportedPersistenceFormat,
 			message: `Unsupported persistenceFormat: ${String(root['persistenceFormat'])}`,
 			path: ['persistenceFormat'],
 		});
@@ -99,14 +101,14 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === biasValue);
 	if (directionValue !== undefined && direction === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-value',
+			code: SequitDiagnosticCode.InvalidValue,
 			message: `Unsupported layout direction: ${directionValue}`,
 			path: ['layout', 'direction'],
 		});
 	}
 	if (biasValue !== undefined && bias === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-value',
+			code: SequitDiagnosticCode.InvalidValue,
 			message: `Unsupported layout bias: ${biasValue}`,
 			path: ['layout', 'bias'],
 		});
@@ -117,7 +119,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 	}
 	if (direction !== undefined && bias !== undefined && layout === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-value',
+			code: SequitDiagnosticCode.InvalidValue,
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
 			path: ['layout', 'bias'],
 		});
@@ -188,16 +190,13 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			if (!entity) continue;
 			const operatorValue = string(entity['operator'], [...path, 'operator'], context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
-			let operator: JunctionOperator | undefined;
-			if (operatorValue !== undefined) {
-				if (operatorValue === 'xor') operator = operatorValue;
-				else {
-					context.diagnostics.push({
-						code: 'invalid-value',
-						message: `Unsupported junction operator: ${operatorValue}`,
-						path: [...path, 'operator'],
-					});
-				}
+			const operator = JUNCTION_OPERATORS.find((candidate) => candidate === operatorValue);
+			if (operatorValue !== undefined && operator === undefined) {
+				context.diagnostics.push({
+					code: SequitDiagnosticCode.InvalidValue,
+					message: `Unsupported junction operator: ${operatorValue}`,
+					path: [...path, 'operator'],
+				});
 			}
 			if (operator !== undefined) {
 				const junction: { id: string; operator: JunctionOperator; groupId?: string } = {

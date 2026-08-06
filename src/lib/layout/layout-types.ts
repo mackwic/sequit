@@ -1,3 +1,5 @@
+import type { GraphEndpointKind } from '../graph/create-graph';
+
 export interface Size {
 	readonly width: number;
 	readonly height: number;
@@ -28,7 +30,7 @@ export interface Point {
 
 export interface LayoutElement {
 	readonly id: string;
-	readonly kind: 'node' | 'junction' | 'group';
+	readonly kind: GraphEndpointKind;
 	readonly bounds: Bounds;
 }
 

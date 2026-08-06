@@ -1,12 +1,15 @@
 import fc from 'fast-check';
 
-import type {
-	LayoutConfiguration,
-	LogicDocument,
-	LogicGroup,
-	LogicJunction,
-	LogicNode,
-	LogicRelation,
+import {
+	JunctionOperator,
+	LayoutBias,
+	type LayoutConfiguration,
+	LayoutDirection,
+	type LogicDocument,
+	type LogicGroup,
+	type LogicJunction,
+	type LogicNode,
+	type LogicRelation,
 } from '../../src/lib/document/logic-document';
 
 interface DocumentArbitraryOptions {
@@ -22,14 +25,14 @@ interface EdgeIndexes {
 }
 
 const DEFAULT_LAYOUT = {
-	direction: 'top-to-bottom',
-	bias: 'top',
+	direction: LayoutDirection.TopToBottom,
+	bias: LayoutBias.Top,
 } as const satisfies LayoutConfiguration;
 const LAYOUTS: readonly LayoutConfiguration[] = [
 	DEFAULT_LAYOUT,
-	{ direction: 'bottom-to-top', bias: 'bottom' },
-	{ direction: 'left-to-right', bias: 'left' },
-	{ direction: 'right-to-left', bias: 'right' },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
 ];
 
 export function nodeId(index: number): string {
@@ -358,9 +361,9 @@ function richDocumentArbitraryForCounts(
 				const junctions: readonly LogicJunction[] = Array.from(
 					{ length: junctionCount },
 					(_, index) => {
-						const junction: { id: string; operator: 'xor'; groupId?: string } = {
+						const junction: { id: string; operator: JunctionOperator.Xor; groupId?: string } = {
 							id: junctionId(index),
-							operator: 'xor',
+							operator: JunctionOperator.Xor,
 						};
 						if (index > 0) {
 							const generatedGroupIndex = requiredAt(junctionGroupIndexes, index, 'junction group');

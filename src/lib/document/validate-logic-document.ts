@@ -1,4 +1,14 @@
-import type { DocumentResult, LogicDocument, SequitDiagnostic } from './logic-document';
+import {
+	type DocumentResult,
+	type LogicDocument,
+	type SequitDiagnostic,
+	SequitDiagnosticCode,
+} from './logic-document';
+
+enum GroupVisitState {
+	Visiting = 'visiting',
+	Visited = 'visited',
+}
 
 export function validateLogicDocument(document: LogicDocument): DocumentResult<LogicDocument> {
 	const diagnostics: SequitDiagnostic[] = [];
@@ -15,7 +25,7 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 			const previousPath = endpointOwners.get(entity.id);
 			if (previousPath) {
 				diagnostics.push({
-					code: 'duplicate-endpoint-id',
+					code: SequitDiagnosticCode.DuplicateEndpointId,
 					message: `Endpoint id ${entity.id} is also used at ${previousPath.join('.')}`,
 					path: [collection, entity.id],
 				});
@@ -28,7 +38,7 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 	for (const group of document.groups) {
 		if (group.groupId !== undefined && !groupIds.has(group.groupId)) {
 			diagnostics.push({
-				code: 'unknown-group',
+				code: SequitDiagnosticCode.UnknownGroup,
 				message: `Unknown group: ${group.groupId}`,
 				path: ['groups', group.id, 'group'],
 			});
@@ -36,41 +46,41 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 	}
 
 	const groupsById = new Map(document.groups.map((group) => [group.id, group]));
-	const groupVisitState = new Map<string, 'visiting' | 'visited'>();
+	const groupVisitState = new Map<string, GroupVisitState>();
 	const groupPath: string[] = [];
 	function visitGroup(groupId: string): void {
-		if (groupVisitState.get(groupId) === 'visited') return;
-		if (groupVisitState.get(groupId) === 'visiting') {
+		if (groupVisitState.get(groupId) === GroupVisitState.Visited) return;
+		if (groupVisitState.get(groupId) === GroupVisitState.Visiting) {
 			const cycleStart = groupPath.indexOf(groupId);
 			const cycle = [...groupPath.slice(cycleStart), groupId];
 			diagnostics.push({
-				code: 'group-cycle',
+				code: SequitDiagnosticCode.GroupCycle,
 				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
 				/* istanbul ignore next -- @preserve: a visiting group is always the last path entry. */
 				path: ['groups', groupPath.at(-1) ?? groupId, 'group'],
 			});
 			return;
 		}
-		groupVisitState.set(groupId, 'visiting');
+		groupVisitState.set(groupId, GroupVisitState.Visiting);
 		groupPath.push(groupId);
 		const parentGroupId = groupsById.get(groupId)?.groupId;
 		if (parentGroupId !== undefined && groupsById.has(parentGroupId)) visitGroup(parentGroupId);
 		groupPath.pop();
-		groupVisitState.set(groupId, 'visited');
+		groupVisitState.set(groupId, GroupVisitState.Visited);
 	}
 	for (const group of document.groups) visitGroup(group.id);
 
 	for (const node of document.nodes) {
 		if (!natureIds.has(node.natureId)) {
 			diagnostics.push({
-				code: 'unknown-nature',
+				code: SequitDiagnosticCode.UnknownNature,
 				message: `Unknown nature: ${node.natureId}`,
 				path: ['nodes', node.id, 'nature'],
 			});
 		}
 		if (node.groupId !== undefined && !groupIds.has(node.groupId)) {
 			diagnostics.push({
-				code: 'unknown-group',
+				code: SequitDiagnosticCode.UnknownGroup,
 				message: `Unknown group: ${node.groupId}`,
 				path: ['nodes', node.id, 'group'],
 			});
@@ -80,7 +90,7 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 	for (const junction of document.junctions) {
 		if (junction.groupId !== undefined && !groupIds.has(junction.groupId)) {
 			diagnostics.push({
-				code: 'unknown-group',
+				code: SequitDiagnosticCode.UnknownGroup,
 				message: `Unknown group: ${junction.groupId}`,
 				path: ['junctions', junction.id, 'group'],
 			});

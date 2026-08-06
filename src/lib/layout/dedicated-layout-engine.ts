@@ -1,4 +1,4 @@
-import type { LayoutDirection } from '../document/logic-document';
+import { LayoutBias, LayoutDirection } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { type ComponentLayout, layoutComponent } from './component-layout';
@@ -65,10 +65,10 @@ function translateBounds(bounds: Bounds, x: number, y: number): Bounds {
 }
 
 function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection): readonly Point[] {
-	if (direction === 'top-to-bottom' || direction === 'bottom-to-top') {
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
 		let sourceY = source.y;
 		let targetY = target.y + target.height;
-		if (direction === 'top-to-bottom') {
+		if (direction === LayoutDirection.TopToBottom) {
 			sourceY = source.y + source.height;
 			targetY = target.y;
 		}
@@ -79,7 +79,7 @@ function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection)
 	}
 	let sourceX = source.x;
 	let targetX = target.x + target.width;
-	if (direction === 'left-to-right') {
+	if (direction === LayoutDirection.LeftToRight) {
 		sourceX = source.x + source.width;
 		targetX = target.x;
 	}
@@ -208,7 +208,8 @@ export function layoutWithDedicatedEngine(
 			let primaryLength = validated.minimumWidth;
 			if (vertical) primaryLength = validated.minimumHeight;
 			const alignAtStart =
-				graph.document.layout.bias === 'top' || graph.document.layout.bias === 'left';
+				graph.document.layout.bias === LayoutBias.Top ||
+				graph.document.layout.bias === LayoutBias.Left;
 			let primary = OUTER_MARGIN + maximumPrimaryLength - primaryLength;
 			if (alignAtStart) primary = OUTER_MARGIN;
 			let x = primary;

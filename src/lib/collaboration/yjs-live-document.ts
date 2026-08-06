@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 
 import {
+	JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
 	layoutConfiguration,
@@ -15,15 +16,27 @@ import { validateLogicDocument } from '../document/validate-logic-document';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
 
+enum YjsLiveDocumentDiagnosticCode {
+	UnsupportedFormat = 'unsupported-yjs-live-document-format',
+	InvalidDocument = 'invalid-yjs-live-document',
+}
+
 interface YjsLiveDocumentDiagnostic {
-	readonly code: 'unsupported-yjs-live-document-format' | 'invalid-yjs-live-document';
+	readonly code: YjsLiveDocumentDiagnosticCode;
 	readonly message: string;
 	readonly path: readonly string[];
 }
 
-export type YjsLiveDocumentResult<T> =
-	| { readonly ok: true; readonly value: T }
-	| { readonly ok: false; readonly diagnostics: readonly YjsLiveDocumentDiagnostic[] };
+interface YjsLiveDocumentSuccess<T> {
+	readonly ok: true;
+	readonly value: T;
+}
+interface YjsLiveDocumentFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly YjsLiveDocumentDiagnostic[];
+}
+
+export type YjsLiveDocumentResult<T> = YjsLiveDocumentSuccess<T> | YjsLiveDocumentFailure;
 
 const META = 'sequit.meta';
 const NATURES = 'sequit.natures';
@@ -110,7 +123,7 @@ function readString(
 ): string | undefined {
 	if (typeof value === 'string') return value;
 	context.diagnostics.push({
-		code: 'invalid-yjs-live-document',
+		code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 		message: `${path.join('.')} must be a string`,
 		path,
 	});
@@ -139,7 +152,7 @@ function readEntity(
 	const value = collection.get(id);
 	if (value instanceof Y.Map) return value;
 	context.diagnostics.push({
-		code: 'invalid-yjs-live-document',
+		code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 		message: `${collectionName}.${id} must be a Y.Map`,
 		path: [collectionName, id],
 	});
@@ -193,7 +206,7 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	const markdown = entity.get('markdown');
 	if (!(markdown instanceof Y.Text)) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `nodes.${id}.markdown must be a Y.Text`,
 			path: ['nodes', id, 'markdown'],
 		});
@@ -216,14 +229,17 @@ function readJunction(
 ): LogicJunction | undefined {
 	const operator = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['junctions', id, 'group'], context);
-	if (operator === 'xor') {
-		const junction: { id: string; operator: 'xor'; groupId?: string } = { id, operator };
+	if (operator === JunctionOperator.Xor) {
+		const junction: { id: string; operator: JunctionOperator; groupId?: string } = {
+			id,
+			operator: JunctionOperator.Xor,
+		};
 		if (groupId !== undefined) junction.groupId = groupId;
 		return junction;
 	}
 	if (operator !== undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `Unsupported junction operator: ${operator}`,
 			path: ['junctions', id, 'operator'],
 		});
@@ -250,7 +266,7 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 			ok: false,
 			diagnostics: [
 				{
-					code: 'unsupported-yjs-live-document-format',
+					code: YjsLiveDocumentDiagnosticCode.UnsupportedFormat,
 					message: `Unsupported yjsLiveDocumentFormat: ${String(version)}`,
 					path: ['yjsLiveDocumentFormat'],
 				},
@@ -267,14 +283,14 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === layoutBias);
 	if (layoutDirection !== undefined && direction === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `Unsupported layout direction: ${layoutDirection}`,
 			path: ['layout', 'direction'],
 		});
 	}
 	if (layoutBias !== undefined && bias === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `Unsupported layout bias: ${layoutBias}`,
 			path: ['layout', 'bias'],
 		});
@@ -285,7 +301,7 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	}
 	if (direction !== undefined && bias !== undefined && layout === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
 			path: ['layout', 'bias'],
 		});
@@ -316,7 +332,7 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	return {
 		ok: false,
 		diagnostics: validated.diagnostics.map(({ message, path }) => ({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message,
 			path,
 		})),

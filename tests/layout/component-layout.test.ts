@@ -1,7 +1,11 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type { LayoutConfiguration } from '../../src/lib/document/logic-document';
+import {
+	LayoutBias,
+	type LayoutConfiguration,
+	LayoutDirection,
+} from '../../src/lib/document/logic-document';
 import { layoutComponent } from '../../src/lib/layout/component-layout';
 import type { Bounds, Size } from '../../src/lib/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
@@ -11,10 +15,10 @@ const sizeArbitrary: fc.Arbitrary<Size> = fc.record({
 	height: fc.integer({ min: 1, max: 10_000 }),
 });
 const layoutConfigurationArbitrary: fc.Arbitrary<LayoutConfiguration> = fc.constantFrom(
-	{ direction: 'top-to-bottom', bias: 'top' },
-	{ direction: 'bottom-to-top', bias: 'bottom' },
-	{ direction: 'left-to-right', bias: 'left' },
-	{ direction: 'right-to-left', bias: 'right' },
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
 );
 
 function crossStart(bounds: Bounds, vertical: boolean): number {
@@ -34,7 +38,7 @@ function requiredAt<T>(values: readonly T[], index: number): T {
 }
 
 function isVertical(direction: LayoutConfiguration['direction']): boolean {
-	return direction === 'top-to-bottom' || direction === 'bottom-to-top';
+	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
 }
 
 function primarySize(size: Size, vertical: boolean): number {
@@ -62,19 +66,19 @@ function expectBetween(
 	direction: LayoutConfiguration['direction'],
 ): void {
 	switch (direction) {
-		case 'top-to-bottom':
+		case LayoutDirection.TopToBottom:
 			expect(source.y + source.height).toBeLessThan(middle.y);
 			expect(middle.y + middle.height).toBeLessThan(target.y);
 			break;
-		case 'bottom-to-top':
+		case LayoutDirection.BottomToTop:
 			expect(target.y + target.height).toBeLessThan(middle.y);
 			expect(middle.y + middle.height).toBeLessThan(source.y);
 			break;
-		case 'left-to-right':
+		case LayoutDirection.LeftToRight:
 			expect(source.x + source.width).toBeLessThan(middle.x);
 			expect(middle.x + middle.width).toBeLessThan(target.x);
 			break;
-		case 'right-to-left':
+		case LayoutDirection.RightToLeft:
 			expect(target.x + target.width).toBeLessThan(middle.x);
 			expect(middle.x + middle.width).toBeLessThan(source.x);
 			break;
@@ -89,13 +93,13 @@ function primaryGap(
 	direction: LayoutConfiguration['direction'],
 ): number {
 	switch (direction) {
-		case 'top-to-bottom':
+		case LayoutDirection.TopToBottom:
 			return target.y - source.y - source.height;
-		case 'bottom-to-top':
+		case LayoutDirection.BottomToTop:
 			return source.y - target.y - target.height;
-		case 'left-to-right':
+		case LayoutDirection.LeftToRight:
 			return target.x - source.x - source.width;
-		case 'right-to-left':
+		case LayoutDirection.RightToLeft:
 			return source.x - target.x - target.width;
 		default:
 			throw new Error(`Unsupported layout direction: ${String(direction)}`);
@@ -105,7 +109,15 @@ function primaryGap(
 describe('layoutComponent invariants', () => {
 	it('produces a finite empty component without rank bands', () => {
 		expect(
-			layoutComponent([], new Map(), new Map(), 'top-to-bottom', 'top', [], new Set()),
+			layoutComponent(
+				[],
+				new Map(),
+				new Map(),
+				LayoutDirection.TopToBottom,
+				LayoutBias.Top,
+				[],
+				new Set(),
+			),
 		).toEqual({ boundsById: new Map(), width: 1, height: 0 });
 	});
 
@@ -114,8 +126,8 @@ describe('layoutComponent invariants', () => {
 			['node'],
 			new Map(),
 			new Map([['node', { width: 80, height: 40 }]]),
-			'top-to-bottom',
-			'top',
+			LayoutDirection.TopToBottom,
+			LayoutBias.Top,
 			[40],
 			new Set(),
 		);
@@ -129,8 +141,8 @@ describe('layoutComponent invariants', () => {
 				['node'],
 				new Map([['node', 0]]),
 				new Map(),
-				'top-to-bottom',
-				'top',
+				LayoutDirection.TopToBottom,
+				LayoutBias.Top,
 				[40],
 				new Set(),
 			),
@@ -141,8 +153,8 @@ describe('layoutComponent invariants', () => {
 				['node'],
 				new Map([['node', 2]]),
 				new Map([['node', { width: 80, height: 40 }]]),
-				'top-to-bottom',
-				'top',
+				LayoutDirection.TopToBottom,
+				LayoutBias.Top,
 				[40],
 				new Set(),
 			),
@@ -158,8 +170,8 @@ describe('layoutComponent invariants', () => {
 			['junction'],
 			new Map([['junction', 0]]),
 			sizes,
-			'top-to-bottom',
-			'top',
+			LayoutDirection.TopToBottom,
+			LayoutBias.Top,
 			[40, 40],
 			new Set(['junction']),
 		);
@@ -170,8 +182,8 @@ describe('layoutComponent invariants', () => {
 				['second-junction', 0],
 			]),
 			sizes,
-			'top-to-bottom',
-			'top',
+			LayoutDirection.TopToBottom,
+			LayoutBias.Top,
 			[40],
 			new Set(['junction', 'second-junction']),
 		);
@@ -192,8 +204,8 @@ describe('layoutComponent invariants', () => {
 					ids,
 					ranks,
 					sizes,
-					'top-to-bottom',
-					'top',
+					LayoutDirection.TopToBottom,
+					LayoutBias.Top,
 					[bandHeight],
 					new Set(),
 				);

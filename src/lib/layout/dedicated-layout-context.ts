@@ -1,5 +1,5 @@
 import type { LogicGroup } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { GraphEndpointKind, type LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { isVerticalDirection } from './component-layout';
 import type { GroupMeasurement, LayoutMeasurements, Size } from './layout-types';
@@ -82,12 +82,12 @@ function endpointSize(
 ): Size {
 	const endpoint = graph.endpointsById.get(endpointId);
 	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
-	if (endpoint.kind === 'node') {
+	if (endpoint.kind === GraphEndpointKind.Node) {
 		const size = measurements.nodes.get(endpointId);
 		if (!size) throw new Error(`Missing node measurement: ${endpointId}`);
 		return validateSize(size, `nodes.${endpointId}`);
 	}
-	if (endpoint.kind === 'junction') {
+	if (endpoint.kind === GraphEndpointKind.Junction) {
 		const size = measurements.junctions.get(endpointId);
 		if (!size) throw new Error(`Missing junction measurement: ${endpointId}`);
 		return validateSize(size, `junctions.${endpointId}`);
@@ -233,7 +233,9 @@ function normalizeReservation(
 		offsetX: margins.left,
 		offsetY: margins.top,
 	};
-	if (context.graph.endpointsById.get(endpointId)?.kind !== 'junction') return reservation;
+	if (context.graph.endpointsById.get(endpointId)?.kind !== GraphEndpointKind.Junction) {
+		return reservation;
+	}
 	if (context.vertical) {
 		const margin = Math.max(margins.top, margins.bottom);
 		reservation.size.height = size.height + margin * 2;

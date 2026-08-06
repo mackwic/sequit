@@ -1,4 +1,4 @@
-import type { LayoutBias, LayoutDirection } from '../document/logic-document';
+import { LayoutBias, LayoutDirection } from '../document/logic-document';
 import type { Bounds, Size } from './layout-types';
 
 const ITEM_GAP = 36;
@@ -11,11 +11,11 @@ export interface ComponentLayout {
 }
 
 export function isVerticalDirection(direction: LayoutDirection): boolean {
-	return direction === 'top-to-bottom' || direction === 'bottom-to-top';
+	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
 }
 
 function isForwardDirection(direction: LayoutDirection): boolean {
-	return direction === 'top-to-bottom' || direction === 'left-to-right';
+	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.LeftToRight;
 }
 
 function primarySize(size: Size, vertical: boolean): number {
@@ -137,7 +137,7 @@ function placeRegularRows(rows: readonly (readonly string[])[], context: Placeme
 			const absoluteBandStart = isForwardDirection(context.direction)
 				? bandStart
 				: primaryLength - bandStart - bandSize;
-			const alignAtStart = context.bias === 'top' || context.bias === 'left';
+			const alignAtStart = context.bias === LayoutBias.Top || context.bias === LayoutBias.Left;
 			const primary =
 				absoluteBandStart + (alignAtStart ? 0 : bandSize - primarySize(size, context.vertical));
 			setBounds(context, id, primary);

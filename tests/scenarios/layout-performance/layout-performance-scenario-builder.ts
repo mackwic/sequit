@@ -1,9 +1,12 @@
-import type {
-	LogicDocument,
-	LogicGroup,
-	LogicJunction,
-	LogicNode,
-	LogicRelation,
+import {
+	JunctionOperator,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
+	type LogicGroup,
+	type LogicJunction,
+	type LogicNode,
+	type LogicRelation,
 } from '../../../src/lib/document/logic-document';
 import { applyLayoutPerformanceInsertion } from './apply-layout-performance-insertion';
 import type { LayoutPerformanceScenarioName } from './scenario-name';
@@ -15,7 +18,7 @@ function initialDocument(name: LayoutPerformanceScenarioName): LogicDocument {
 	return {
 		id: `layout-performance-${name}`,
 		title: `Layout performance: ${name}`,
-		layout: { direction: 'top-to-bottom', bias: 'top' },
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 		natures: [{ id: 'performance-node', label: 'Performance node', color: '#2f6b4f' }],
 		groups: [],
 		nodes: [],
@@ -94,7 +97,7 @@ export abstract class LayoutPerformanceScenarioBuilder {
 	}
 
 	protected junction(index: number): LogicJunction {
-		return { id: this.junctionId(index), operator: 'xor' };
+		return { id: this.junctionId(index), operator: JunctionOperator.Xor };
 	}
 
 	protected relation(from: string, to: string): LogicRelation {

@@ -1,7 +1,7 @@
-import type {
+import {
 	LayoutBias,
 	LayoutDirection,
-	LogicDocument,
+	type LogicDocument,
 } from '../../src/lib/document/logic-document';
 import { validateLogicDocument } from '../../src/lib/document/validate-logic-document';
 import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
@@ -72,13 +72,13 @@ export function envelopeFor(layout: LayoutResult, ids: readonly string[]): Bound
 
 export function coordinateAt(bounds: Bounds, side: LayoutBias): number {
 	switch (side) {
-		case 'top':
+		case LayoutBias.Top:
 			return bounds.y;
-		case 'bottom':
+		case LayoutBias.Bottom:
 			return bounds.y + bounds.height;
-		case 'left':
+		case LayoutBias.Left:
 			return bounds.x;
-		case 'right':
+		case LayoutBias.Right:
 			return bounds.x + bounds.width;
 		default:
 			throw new Error(`Unsupported layout side: ${String(side)}`);
@@ -91,13 +91,13 @@ export function progressesFromTo(
 	direction: LayoutDirection,
 ): boolean {
 	switch (direction) {
-		case 'top-to-bottom':
+		case LayoutDirection.TopToBottom:
 			return source.y + source.height < target.y;
-		case 'bottom-to-top':
+		case LayoutDirection.BottomToTop:
 			return target.y + target.height < source.y;
-		case 'left-to-right':
+		case LayoutDirection.LeftToRight:
 			return source.x + source.width < target.x;
-		case 'right-to-left':
+		case LayoutDirection.RightToLeft:
 			return target.x + target.width < source.x;
 		default:
 			throw new Error(`Unsupported layout direction: ${String(direction)}`);

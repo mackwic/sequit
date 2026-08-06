@@ -13,9 +13,15 @@ interface DocumentSessionDiagnostic {
 	readonly path: readonly string[];
 }
 
-type DocumentSessionResult =
-	| { readonly ok: true; readonly value: LogicDocument }
-	| { readonly ok: false; readonly diagnostics: readonly DocumentSessionDiagnostic[] };
+interface DocumentSessionSuccess {
+	readonly ok: true;
+	readonly value: LogicDocument;
+}
+interface DocumentSessionFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly DocumentSessionDiagnostic[];
+}
+type DocumentSessionResult = DocumentSessionSuccess | DocumentSessionFailure;
 
 export interface DocumentSession {
 	read(): DocumentSessionResult;

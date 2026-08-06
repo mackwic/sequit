@@ -1,5 +1,5 @@
-import type { LayoutDirection } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { LayoutDirection } from '../document/logic-document';
+import { GraphEndpointKind, type LogicGraph } from '../graph/create-graph';
 import { isVerticalDirection } from './component-layout';
 import type { Bounds } from './layout-types';
 
@@ -10,7 +10,7 @@ function directRegularBounds(
 ): readonly Bounds[] | undefined {
 	const result: Bounds[] = [];
 	for (const id of ids) {
-		if (graph.endpointsById.get(id)?.kind === 'junction') return undefined;
+		if (graph.endpointsById.get(id)?.kind === GraphEndpointKind.Junction) return undefined;
 		const bounds = boundsById.get(id);
 		if (!bounds) return undefined;
 		result.push(bounds);
@@ -25,16 +25,16 @@ function primaryRelationBoundary(
 	source: boolean,
 ): number {
 	switch (direction) {
-		case 'top-to-bottom':
+		case LayoutDirection.TopToBottom:
 			if (source) return bounds.y + bounds.height;
 			return bounds.y;
-		case 'bottom-to-top':
+		case LayoutDirection.BottomToTop:
 			if (source) return bounds.y;
 			return bounds.y + bounds.height;
-		case 'left-to-right':
+		case LayoutDirection.LeftToRight:
 			if (source) return bounds.x + bounds.width;
 			return bounds.x;
-		case 'right-to-left':
+		case LayoutDirection.RightToLeft:
 			if (source) return bounds.x;
 			return bounds.x + bounds.width;
 		default:
@@ -74,7 +74,8 @@ export function centerDirectJunctions(
 			graph.outgoingByEndpointId.get(id) ?? [],
 		);
 		if (!sources || !targets) continue;
-		const forward = direction === 'top-to-bottom' || direction === 'left-to-right';
+		const forward =
+			direction === LayoutDirection.TopToBottom || direction === LayoutDirection.LeftToRight;
 		const sourceCoordinates = sources.map((bounds) =>
 			primaryRelationBoundary(bounds, direction, true),
 		);

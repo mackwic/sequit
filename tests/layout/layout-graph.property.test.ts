@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type { LogicDocument } from '../../src/lib/document/logic-document';
+import { LayoutDirection, type LogicDocument } from '../../src/lib/document/logic-document';
 import type {
 	Bounds,
 	GroupMeasurement,
@@ -123,20 +123,20 @@ function expectedBoundaryPoint(
 	source: boolean,
 ): Point {
 	switch (direction) {
-		case 'top-to-bottom':
+		case LayoutDirection.TopToBottom:
 			if (source) {
 				return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
 			}
 			return { x: bounds.x + bounds.width / 2, y: bounds.y };
-		case 'bottom-to-top':
+		case LayoutDirection.BottomToTop:
 			if (source) return { x: bounds.x + bounds.width / 2, y: bounds.y };
 			return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
-		case 'left-to-right':
+		case LayoutDirection.LeftToRight:
 			if (source) {
 				return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
 			}
 			return { x: bounds.x, y: bounds.y + bounds.height / 2 };
-		case 'right-to-left':
+		case LayoutDirection.RightToLeft:
 			if (source) return { x: bounds.x, y: bounds.y + bounds.height / 2 };
 			return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
 		default:
@@ -151,7 +151,7 @@ function expectedRoutePoints(
 ): readonly Point[] {
 	const start = expectedBoundaryPoint(source, direction, true);
 	const end = expectedBoundaryPoint(target, direction, false);
-	if (direction === 'top-to-bottom' || direction === 'bottom-to-top') {
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
 		const middle = (start.y + end.y) / 2;
 		return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
 	}

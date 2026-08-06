@@ -1,13 +1,16 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type {
-	LayoutConfiguration,
-	LogicDocument,
-	LogicGroup,
-	LogicJunction,
-	LogicNode,
-	LogicRelation,
+import {
+	JunctionOperator,
+	LayoutBias,
+	type LayoutConfiguration,
+	LayoutDirection,
+	type LogicDocument,
+	type LogicGroup,
+	type LogicJunction,
+	type LogicNode,
+	type LogicRelation,
 } from '../../src/lib/document/logic-document';
 import type {
 	Bounds,
@@ -43,10 +46,10 @@ const groupMeasurementArbitrary: fc.Arbitrary<GroupMeasurement> = fc.record({
 	padding: fc.integer({ min: 1, max: 60 }),
 });
 const layoutConfigurationArbitrary: fc.Arbitrary<LayoutConfiguration> = fc.constantFrom(
-	{ direction: 'top-to-bottom', bias: 'top' },
-	{ direction: 'bottom-to-top', bias: 'bottom' },
-	{ direction: 'left-to-right', bias: 'left' },
-	{ direction: 'right-to-left', bias: 'right' },
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
 );
 
 const MULTI_COMPONENT_IDS = ['a-source', 'a-target', 'b-isolated', 'c-source', 'c-target'] as const;
@@ -76,7 +79,7 @@ function generatedNode(id: string, groupId?: string): LogicNode {
 }
 
 function generatedJunction(id: string): LogicJunction {
-	return { id, operator: 'xor' };
+	return { id, operator: JunctionOperator.Xor };
 }
 
 function generatedDocument(
@@ -219,7 +222,7 @@ function crossPrecedes(
 	right: Bounds,
 	direction: LayoutConfiguration['direction'],
 ): boolean {
-	if (direction === 'top-to-bottom' || direction === 'bottom-to-top') {
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
 		return left.x + left.width < right.x;
 	}
 	return left.y + left.height < right.y;

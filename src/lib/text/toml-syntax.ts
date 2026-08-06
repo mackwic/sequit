@@ -1,6 +1,6 @@
 import { parse, TomlError, type TomlTable } from 'smol-toml';
 
-import type { DocumentResult } from '../document/logic-document';
+import { type DocumentResult, SequitDiagnosticCode } from '../document/logic-document';
 
 export function parseTomlSyntax(source: string): DocumentResult<TomlTable> {
 	try {
@@ -11,7 +11,7 @@ export function parseTomlSyntax(source: string): DocumentResult<TomlTable> {
 				ok: false,
 				diagnostics: [
 					{
-						code: 'toml-syntax',
+						code: SequitDiagnosticCode.TomlSyntax,
 						message: error.message,
 						path: [],
 						line: error.line,

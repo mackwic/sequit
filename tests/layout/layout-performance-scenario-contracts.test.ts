@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LogicDocument } from '../../src/lib/document/logic-document';
+import { GraphEndpointKind } from '../../src/lib/graph/create-graph';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
@@ -49,7 +50,9 @@ describe('layout performance scenario contracts', () => {
 				const layout = await layoutPreparedScenario(first);
 				expect(Number.isFinite(layout.width)).toBe(true);
 				expect(Number.isFinite(layout.height)).toBe(true);
-				expect(layout.elements.filter(({ kind }) => kind === 'node')).toHaveLength(nodeCount);
+				expect(layout.elements.filter(({ kind }) => kind === GraphEndpointKind.Node)).toHaveLength(
+					nodeCount,
+				);
 			});
 
 			it.each(nodeCounts)(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createCanvasMeasurementModel, createCanvasModel } from '../../src/lib/canvas/canvas-model';
+import { GraphEndpointKind } from '../../src/lib/graph/create-graph';
 import type { LayoutResult } from '../../src/lib/layout/layout-graph';
 import { validLogicDocument } from '../builders/logic-document';
 
@@ -15,9 +16,11 @@ function completeLayout(): LayoutResult {
 		width: 800,
 		height: 600,
 		elements: endpointIds.map((id, index) => {
-			let kind: 'node' | 'junction' | 'group' = 'group';
-			if (document.nodes.some((node) => node.id === id)) kind = 'node';
-			else if (document.junctions.some((junction) => junction.id === id)) kind = 'junction';
+			let kind: GraphEndpointKind.Node | GraphEndpointKind.Junction | GraphEndpointKind.Group =
+				GraphEndpointKind.Group;
+			if (document.nodes.some((node) => node.id === id)) kind = GraphEndpointKind.Node;
+			else if (document.junctions.some((junction) => junction.id === id))
+				kind = GraphEndpointKind.Junction;
 			return {
 				id,
 				kind,

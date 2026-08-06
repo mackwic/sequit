@@ -7,7 +7,7 @@ import {
 	replaceNodeMarkdown,
 	YJS_LIVE_DOCUMENT_FORMAT,
 } from '../../src/lib/collaboration/yjs-live-document';
-import type { LogicDocument } from '../../src/lib/document/logic-document';
+import { JunctionOperator, type LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { validLogicDocument } from '../builders/logic-document';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
@@ -195,7 +195,7 @@ describe('yjsLiveDocumentFormat', () => {
 			),
 			junctions: [
 				...base.junctions.map((junction) => ({ ...junction, groupId: 'container' })),
-				{ id: 'ungrouped-choice', operator: 'xor' },
+				{ id: 'ungrouped-choice', operator: JunctionOperator.Xor },
 			],
 		};
 		const ydoc = new Y.Doc();
@@ -210,7 +210,7 @@ describe('yjsLiveDocumentFormat', () => {
 		});
 		expect(current.junctions).toContainEqual({
 			id: 'choice',
-			operator: 'xor',
+			operator: JunctionOperator.Xor,
 			groupId: 'container',
 		});
 	});
