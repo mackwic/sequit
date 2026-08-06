@@ -7,7 +7,12 @@ import {
 	layoutContext,
 	validateGroupMeasurement,
 } from './dedicated-layout-context';
-import { componentContext, endpointLayoutContext, groupDepth } from './group-layout-context';
+import {
+	componentContext,
+	endpointLayoutContext,
+	groupMemberIds,
+	groupsByDescendingDepth as orderGroupsByDescendingDepth,
+} from './group-layout-context';
 import { centerDirectJunctions } from './junction-layout';
 import type {
 	Bounds,
@@ -175,31 +180,17 @@ export function layoutWithDedicatedEngine(
 	const { bounds, maximumPrimaryLength, nextCross } = positionEndpoints(graph, ranks, context);
 	let cross = nextCross;
 
-	const groupsByDescendingDepth = [...graph.document.groups].sort(
-		(left, right) =>
-			groupDepth(right, groupsById) - groupDepth(left, groupsById) ||
-			left.id.localeCompare(right.id),
-	);
+	const groupsByDescendingDepth = orderGroupsByDescendingDepth(graph.document.groups, groupsById);
+	const memberIdsByGroupId = groupMemberIds(graph);
 	for (const group of groupsByDescendingDepth) {
 		const measurement = measurements.groups.get(group.id);
 		if (!measurement) throw new Error(`Missing group measurement: ${group.id}`);
 		const validated = validateGroupMeasurement(measurement, group.id);
 		const memberBounds: Bounds[] = [];
-		for (const node of graph.document.nodes) {
-			if (node.groupId === group.id) {
-				const value = bounds.get(node.id);
-				if (value) memberBounds.push(value);
-			}
-		}
-		for (const junction of graph.document.junctions) {
-			if (junction.groupId === group.id) {
-				const value = bounds.get(junction.id);
-				if (value) memberBounds.push(value);
-			}
-		}
-		for (const child of graph.document.groups) {
-			if (child.groupId === group.id) {
-				const value = bounds.get(child.id);
+		const memberIds = memberIdsByGroupId.get(group.id);
+		if (memberIds !== undefined) {
+			for (const memberId of memberIds) {
+				const value = bounds.get(memberId);
 				if (value) memberBounds.push(value);
 			}
 		}

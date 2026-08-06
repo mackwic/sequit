@@ -19,10 +19,17 @@ interface ReservationMargins {
 	bottom: number;
 }
 
-interface ReservationContext {
-	readonly graph: LogicGraph;
-	readonly groupsById: ReadonlyMap<string, LogicGroup>;
-	readonly measurements: LayoutMeasurements;
+interface GroupReservation {
+	readonly widthIncrease: number;
+	readonly heightIncrease: number;
+	readonly minimumWidth: number;
+	readonly minimumHeight: number;
+	readonly offsetX: number;
+	readonly offsetY: number;
+}
+interface GroupReservationPath {
+	readonly groups: readonly LogicGroup[];
+	readonly parent: GroupReservation;
 }
 
 interface NormalizationContext {
@@ -91,37 +98,107 @@ function endpointSize(
 	return { width: validated.minimumWidth, height: validated.minimumHeight };
 }
 
+const EMPTY_GROUP_RESERVATION: GroupReservation = {
+	widthIncrease: 0,
+	heightIncrease: 0,
+	minimumWidth: 0,
+	minimumHeight: 0,
+	offsetX: 0,
+	offsetY: 0,
+};
+
+function combineGroupReservation(
+	group: LogicGroup,
+	parent: GroupReservation,
+	measurements: LayoutMeasurements,
+): GroupReservation {
+	const measurement = measurements.groups.get(group.id);
+	if (!measurement) throw new Error(`Missing group measurement: ${group.id}`);
+	const validated = validateGroupMeasurement(measurement, group.id);
+	return {
+		widthIncrease: validated.padding * 2 + parent.widthIncrease,
+		heightIncrease: validated.headerHeight + validated.padding * 2 + parent.heightIncrease,
+		minimumWidth: Math.max(parent.minimumWidth, validated.minimumWidth + parent.widthIncrease),
+		minimumHeight: Math.max(parent.minimumHeight, validated.minimumHeight + parent.heightIncrease),
+		offsetX: validated.padding + parent.offsetX,
+		offsetY: validated.headerHeight + validated.padding + parent.offsetY,
+	};
+}
+
+function groupReservationPath(
+	start: LogicGroup,
+	groupsById: ReadonlyMap<string, LogicGroup>,
+	cached: ReadonlyMap<string, GroupReservation>,
+): GroupReservationPath {
+	const groups: LogicGroup[] = [];
+	const groupIds = new Set<string>();
+	let current: LogicGroup | undefined = start;
+	while (current !== undefined && !cached.has(current.id)) {
+		if (groupIds.has(current.id)) throw new Error(`Group containment cycle at: ${current.id}`);
+		groupIds.add(current.id);
+		groups.push(current);
+		const parentId = current.groupId;
+		if (parentId === undefined) {
+			current = undefined;
+			continue;
+		}
+		const parent = groupsById.get(parentId);
+		if (!parent) throw new Error(`Missing group: ${parentId}`);
+		current = parent;
+	}
+	if (current === undefined) return { groups, parent: EMPTY_GROUP_RESERVATION };
+	const parent = cached.get(current.id);
+	if (!parent) throw new Error(`Missing group reservation: ${current.id}`);
+	return { groups, parent };
+}
+
+function cacheGroupReservationPath(
+	path: GroupReservationPath,
+	measurements: LayoutMeasurements,
+	result: Map<string, GroupReservation>,
+): void {
+	let parent = path.parent;
+	for (let index = path.groups.length - 1; index >= 0; index -= 1) {
+		const group = path.groups[index];
+		if (!group) throw new Error(`Missing group reservation path at: ${index}`);
+		parent = combineGroupReservation(group, parent, measurements);
+		result.set(group.id, parent);
+	}
+}
+
+function groupReservations(
+	groupsById: ReadonlyMap<string, LogicGroup>,
+	measurements: LayoutMeasurements,
+): ReadonlyMap<string, GroupReservation> {
+	const result = new Map<string, GroupReservation>();
+	for (const group of groupsById.values()) {
+		if (result.has(group.id)) continue;
+		const path = groupReservationPath(group, groupsById, result);
+		cacheGroupReservationPath(path, measurements, result);
+	}
+	return result;
+}
+
 function endpointReservation(
-	context: ReservationContext,
+	graph: LogicGraph,
+	reservationsByGroupId: ReadonlyMap<string, GroupReservation>,
 	endpointId: string,
 	size: Size,
 ): EndpointReservation {
-	const endpoint = context.graph.endpointsById.get(endpointId);
+	const endpoint = graph.endpointsById.get(endpointId);
 	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
-	let groupId = endpoint.entity.groupId;
-	let width = size.width;
-	let height = size.height;
-	let offsetX = 0;
-	let offsetY = 0;
-	const visited = new Set<string>();
-	while (groupId !== undefined) {
-		if (visited.has(groupId)) throw new Error(`Group containment cycle at: ${groupId}`);
-		visited.add(groupId);
-		const group = context.groupsById.get(groupId);
-		if (!group) throw new Error(`Missing group: ${groupId}`);
-		const measurement = context.measurements.groups.get(groupId);
-		if (!measurement) throw new Error(`Missing group measurement: ${groupId}`);
-		const validated = validateGroupMeasurement(measurement, groupId);
-		offsetX += validated.padding;
-		offsetY += validated.headerHeight + validated.padding;
-		width = Math.max(validated.minimumWidth, width + validated.padding * 2);
-		height = Math.max(
-			validated.minimumHeight,
-			height + validated.headerHeight + validated.padding * 2,
-		);
-		groupId = group.groupId;
-	}
-	return { size: { width, height }, offsetX, offsetY };
+	const groupId = endpoint.entity.groupId;
+	if (groupId === undefined) return { size, offsetX: 0, offsetY: 0 };
+	const reservation = reservationsByGroupId.get(groupId);
+	if (!reservation) throw new Error(`Missing group reservation: ${groupId}`);
+	return {
+		size: {
+			width: Math.max(reservation.minimumWidth, size.width + reservation.widthIncrease),
+			height: Math.max(reservation.minimumHeight, size.height + reservation.heightIncrease),
+		},
+		offsetX: reservation.offsetX,
+		offsetY: reservation.offsetY,
+	};
 }
 
 function rankCount(ranks: TopologicalRanks): number {
@@ -131,30 +208,14 @@ function rankCount(ranks: TopologicalRanks): number {
 }
 
 function maximumGroupCrossOverhead(
-	groups: readonly LogicGroup[],
-	measurements: LayoutMeasurements,
+	reservationsByGroupId: ReadonlyMap<string, GroupReservation>,
 	vertical: boolean,
 ): number {
-	const groupsById = new Map(groups.map((group) => [group.id, group]));
 	let maximum = 0;
-	for (const group of groups) {
-		let overhead = 0;
-		let current: LogicGroup | undefined = group;
-		const visited = new Set<string>();
-		while (current !== undefined) {
-			if (visited.has(current.id)) throw new Error(`Group containment cycle at: ${current.id}`);
-			visited.add(current.id);
-			const measurement = measurements.groups.get(current.id);
-			if (!measurement) throw new Error(`Missing group measurement: ${current.id}`);
-			const validated = validateGroupMeasurement(measurement, current.id);
-			if (vertical) {
-				overhead += validated.padding * 2;
-			} else {
-				overhead += validated.headerHeight + validated.padding * 2;
-			}
-			maximum = Math.max(maximum, overhead);
-			current = groupsById.get(current.groupId ?? '');
-		}
+	for (const reservation of reservationsByGroupId.values()) {
+		let overhead = reservation.heightIncrease;
+		if (vertical) overhead = reservation.widthIncrease;
+		maximum = Math.max(maximum, overhead);
 	}
 	return maximum;
 }
@@ -191,6 +252,7 @@ export function layoutContext(
 	measurements: LayoutMeasurements,
 ): DedicatedLayoutContext {
 	const groupsById = new Map(graph.document.groups.map((group) => [group.id, group]));
+	const groupReservationsById = groupReservations(groupsById, measurements);
 	const vertical = isVerticalDirection(graph.document.layout.direction);
 	const sizes = new Map<string, Size>();
 	const marginsByRank = Array.from({ length: rankCount(ranks) }, (): ReservationMargins => ({
@@ -199,10 +261,9 @@ export function layoutContext(
 		top: 0,
 		bottom: 0,
 	}));
-	const context = { graph, groupsById, measurements };
 	for (const id of graph.rankableEndpointIds) {
 		const size = endpointSize(graph, measurements, id);
-		const reservation = endpointReservation(context, id, size);
+		const reservation = endpointReservation(graph, groupReservationsById, id, size);
 		const rank = ranks.byEndpointId.get(id) ?? 0;
 		const margins = marginsByRank[rank];
 		if (!margins) throw new Error(`Missing reservation margins for rank: ${rank}`);
@@ -229,7 +290,6 @@ export function layoutContext(
 		layoutSizes.set(id, reservation.size);
 		reservations.set(id, reservation);
 	}
-	const componentGap =
-		COMPONENT_GAP + maximumGroupCrossOverhead(graph.document.groups, measurements, vertical);
+	const componentGap = COMPONENT_GAP + maximumGroupCrossOverhead(groupReservationsById, vertical);
 	return { groupsById, sizes, layoutSizes, reservations, vertical, componentGap };
 }
