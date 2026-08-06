@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EffectiveSemanticRelation } from '../../src/lib/graph/create-graph';
+import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
+import { createGraph, type EffectiveSemanticRelation } from '../../src/lib/graph/create-graph';
+import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import {
 	type CrossingOrderMetadata,
 	crossingScoreTolerance,
@@ -8,6 +11,7 @@ import {
 	selectTargetInsertionSlot,
 	weightedInversionScore,
 } from '../../src/lib/layout/crossing-aware-order';
+import { orderEndpoints } from '../../src/lib/layout/endpoint-order';
 
 function metadata(
 	order: readonly string[],
@@ -148,6 +152,88 @@ function bruteForceTargetScore(
 	return score;
 }
 
+function nestedEmptyGroupCrossingDocument(includeEmptySubgroup: boolean): LogicDocument {
+	return {
+		persistenceFormat: 2,
+		id: 'nested-empty-group-crossing',
+		title: 'Nested empty group crossing',
+		layout: { direction: 'top-to-bottom', bias: 'top' },
+		natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+		groups: [
+			{
+				kind: EndpointKind.Group,
+				id: 'source-group',
+				label: 'Sources',
+				layoutOrder: orderKey('a0'),
+			},
+			...(includeEmptySubgroup
+				? [
+						{
+							kind: EndpointKind.Group as const,
+							id: 'empty-subgroup',
+							label: 'Empty',
+							groupId: 'source-group',
+							layoutOrder: orderKey('a1'),
+						},
+					]
+				: []),
+		],
+		nodes: [
+			{
+				kind: EndpointKind.Node,
+				id: 'source-left',
+				natureId: 'goal',
+				groupId: 'source-group',
+				markdown: '',
+				layoutOrder: orderKey('a2'),
+			},
+			{
+				kind: EndpointKind.Node,
+				id: 'source-right',
+				natureId: 'goal',
+				markdown: '',
+				layoutOrder: orderKey('a3'),
+			},
+			{
+				kind: EndpointKind.Node,
+				id: 'target-left',
+				natureId: 'goal',
+				markdown: '',
+				layoutOrder: orderKey('a4'),
+			},
+			{
+				kind: EndpointKind.Node,
+				id: 'target-right',
+				natureId: 'goal',
+				markdown: '',
+				layoutOrder: orderKey('a5'),
+			},
+		],
+		junctions: [],
+		relations: [
+			{ id: 'grouped', from: 'source-group', to: 'target-right' },
+			{ id: 'peer', from: 'source-right', to: 'target-left' },
+		],
+	};
+}
+
+function scoreDocument(document: LogicDocument): number {
+	const graph = createGraph(document);
+	expect(graph.ok).toBe(true);
+	if (!graph.ok) throw new Error('Expected an acyclic graph');
+	const ranks = topologicallyRank(graph.value);
+	return weightedInversionScore({
+		effectiveRelations: graph.value.effectiveRelations,
+		effectiveEndpointOrder: orderEndpoints([
+			...document.groups,
+			...document.nodes,
+			...document.junctions,
+		]),
+		ranks: ranks.byEndpointId,
+		junctionIds: new Set(document.junctions.map(({ id }) => id)),
+	});
+}
+
 describe('crossing-aware target insertion', () => {
 	it('matches the Cartesian oracle for group-to-group mass and excludes self-crossings', () => {
 		const grouped = metadata(
@@ -177,6 +263,14 @@ describe('crossing-aware target insertion', () => {
 		};
 		expect(weightedInversionScore(withPeer)).toBe(0.25);
 		expect(weightedInversionScore(withPeer)).toBe(cartesianOracleScore(withPeer));
+	});
+
+	it('preserves semantic relation mass when a populated group contains an empty subgroup', () => {
+		const baseline = scoreDocument(nestedEmptyGroupCrossingDocument(false));
+		const withEmptySubgroup = scoreDocument(nestedEmptyGroupCrossingDocument(true));
+
+		expect(baseline).toBe(1);
+		expect(withEmptySubgroup).toBe(baseline);
 	});
 
 	it('derives hand-calculated before, after, and global-best slot scores', () => {
@@ -426,6 +520,18 @@ describe('crossing-aware target insertion', () => {
 			connect(junctionSources, row, 'incoming-junction');
 			connect(row, successors, 'outgoing');
 			connect(row, longSuccessors, 'outgoing-long');
+			links.push(
+				{
+					relationId: `ranked-multi-incoming-${iteration}`,
+					sourceIds: random() < 0.5 ? sources.slice(0, 2) : sources.slice(1),
+					targetIds: ['target-0', 'target-2', 'target-3'],
+				},
+				{
+					relationId: `ranked-multi-outgoing-${iteration}`,
+					sourceIds: ['target-0', 'target-2'],
+					targetIds: random() < 0.5 ? successors.slice(0, 2) : successors.slice(1),
+				},
+			);
 			links.push(
 				link('required-incoming-peer', 'source-2', 'target-0', 0.5),
 				link('required-incoming-target', 'source-0', 'target-2', 0.25),

@@ -19,6 +19,7 @@ class YjsSessionGateway implements DocumentCommandGateway {
 	readonly #commands: LocalDocumentCommandGateway;
 	readonly #observers = new Set<(outcome: DocumentCommandOutcome) => void>();
 	readonly #stopRepository: () => void;
+	readonly #localCommandOrigin = Symbol('sequit local document command');
 	#current: LogicDocument;
 	#destroyed = false;
 
@@ -34,12 +35,13 @@ class YjsSessionGateway implements DocumentCommandGateway {
 		this.#commands = new LocalDocumentCommandGateway(
 			() => this.#current,
 			this.#repository,
-			undefined,
+			this.#localCommandOrigin,
 			{
 				publishAccepted: false,
 			},
 		);
-		this.#stopRepository = this.#repository.observe((result) => {
+		this.#stopRepository = this.#repository.observe((result, origin) => {
+			if (!result.ok && origin === this.#localCommandOrigin) return;
 			const outcome: DocumentCommandOutcome = result.ok
 				? { kind: 'accepted', document: result.value }
 				: { kind: 'rejected', diagnostics: result.diagnostics };

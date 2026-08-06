@@ -52,6 +52,8 @@ export interface DocumentChangeRepository {
 export interface LocalDocumentCommandGatewayOptions {
 	/** Disable when an enclosing gateway owns publication, such as the Yjs observer path. */
 	readonly publishAccepted?: boolean;
+	/** Receives subscriber exceptions without affecting publication or command acceptance. */
+	readonly reportSubscriberError?: (error: unknown) => void;
 }
 
 function assertNever(value: never): never {
@@ -60,6 +62,8 @@ function assertNever(value: never): never {
 
 export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 	readonly #subscribers = new Set<(outcome: DocumentCommandOutcome) => void>();
+	#dispatchQueue: Promise<void> = Promise.resolve();
+	#destroyed = false;
 
 	constructor(
 		private readonly current: () => LogicDocument,
@@ -73,25 +77,45 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 	}
 
 	subscribe(subscriber: (outcome: DocumentCommandOutcome) => void): () => void {
+		if (this.#destroyed) throw new Error('Document command gateway has been destroyed');
 		this.#subscribers.add(subscriber);
 		return () => this.#subscribers.delete(subscriber);
 	}
 
 	destroy(): void {
+		if (this.#destroyed) return;
+		this.#destroyed = true;
 		this.#subscribers.clear();
 	}
 
-	async dispatch(command: DocumentCommand): Promise<DocumentCommandOutcome> {
-		return this.#execute(() => {
-			switch (command.kind) {
-				case 'add-node':
-					return projectNodeAddition(this.current(), command.node, fractionalOrderKeySpace);
-				case 'add-relation':
-					return projectRelationAddition(this.current(), command.relation, fractionalOrderKeySpace);
-				default:
-					return assertNever(command);
+	dispatch(command: DocumentCommand): Promise<DocumentCommandOutcome> {
+		const execution = this.#dispatchQueue.then(() => {
+			if (this.#destroyed) {
+				return {
+					kind: 'failed' as const,
+					error: new Error('Document command gateway has been destroyed'),
+				};
 			}
+			return this.#execute(() => {
+				switch (command.kind) {
+					case 'add-node':
+						return projectNodeAddition(this.current(), command.node, fractionalOrderKeySpace);
+					case 'add-relation':
+						return projectRelationAddition(
+							this.current(),
+							command.relation,
+							fractionalOrderKeySpace,
+						);
+					default:
+						return assertNever(command);
+				}
+			});
 		});
+		this.#dispatchQueue = execution.then(
+			() => undefined,
+			() => undefined,
+		);
+		return execution;
 	}
 
 	async #execute(
@@ -108,12 +132,16 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 			const materialized = await this.repository.persist(projected.value.changes, this.origin);
 			if (!materialized.ok) return { kind: 'rejected', diagnostics: materialized.diagnostics };
 			const outcome = { kind: 'accepted', document: materialized.value } as const;
-			if (this.options.publishAccepted !== false) {
+			if (!this.#destroyed && this.options.publishAccepted !== false) {
 				for (const subscriber of [...this.#subscribers]) {
 					try {
 						subscriber(outcome);
-					} catch {
-						// A command publication must reach every subscriber.
+					} catch (error) {
+						try {
+							this.options.reportSubscriberError?.(error);
+						} catch {
+							// Reporting must not affect publication or command acceptance.
+						}
 					}
 				}
 			}

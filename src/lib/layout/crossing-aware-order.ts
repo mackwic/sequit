@@ -124,18 +124,18 @@ function accumulateSideCosts(
 		for (const [oppositeLayer, targetOpposites] of movingOpposite) {
 			const peerOpposites = otherOpposite.get(oppositeLayer);
 			if (!peerOpposites) continue;
+			let lower = 0;
+			let higher = 0;
+			for (const targetOpposite of targetOpposites) {
+				for (const peerOpposite of peerOpposites) {
+					if (targetOpposite.ordinal < peerOpposite.ordinal) lower += 1;
+					if (targetOpposite.ordinal > peerOpposite.ordinal) higher += 1;
+				}
+			}
+			const weight = moving.pairWeight * other.pairWeight;
 			for (const peer of peers) {
 				const index = peerIndex.get(peer.id);
 				if (index === undefined) continue;
-				let lower = 0;
-				let higher = 0;
-				for (const targetOpposite of targetOpposites) {
-					for (const peerOpposite of peerOpposites) {
-						if (targetOpposite.ordinal < peerOpposite.ordinal) lower += 1;
-						if (targetOpposite.ordinal > peerOpposite.ordinal) higher += 1;
-					}
-				}
-				const weight = moving.pairWeight * other.pairWeight;
 				beforeByPeer[index] = (beforeByPeer[index] ?? 0) + higher * weight;
 				afterByPeer[index] = (afterByPeer[index] ?? 0) + lower * weight;
 			}

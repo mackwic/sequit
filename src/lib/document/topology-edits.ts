@@ -148,6 +148,14 @@ function visualRow(
 	);
 }
 
+function isImmediatelyBeforeTargetLayer(
+	sourceRank: number,
+	targetRank: number,
+	targetIsJunction: boolean,
+): boolean {
+	return targetIsJunction ? sourceRank === targetRank : sourceRank === targetRank - 1;
+}
+
 function materializationFailure(
 	path: readonly string[],
 	expectedOrder: readonly string[],
@@ -258,12 +266,13 @@ export function projectRelationAddition(
 	const endpointOrder = orderEndpoints(endpoints, orderKeySpace);
 	const sourceRank = ranks.byEndpointId.get(relation.from);
 	const targetRank = ranks.byEndpointId.get(relation.to);
+	const targetIsJunction = graph.endpointsById.get(relation.to)?.kind === EndpointKind.Junction;
 	// TODO: Move group targets as atomic ordered blocks once block ordering is defined.
 	const eligible =
 		graph.endpointsById.get(relation.to)?.kind !== EndpointKind.Group &&
 		sourceRank !== undefined &&
 		targetRank !== undefined &&
-		sourceRank === targetRank - 1;
+		isImmediatelyBeforeTargetLayer(sourceRank, targetRank, targetIsJunction);
 	if (!eligible) {
 		return {
 			ok: true,
@@ -277,7 +286,6 @@ export function projectRelationAddition(
 	}
 
 	const junctionIds = new Set(validatedDocument.junctions.map(({ id }) => id));
-	const targetIsJunction = junctionIds.has(relation.to);
 	const component = weakComponentContaining(
 		relation.to,
 		graph.outgoingByEndpointId,

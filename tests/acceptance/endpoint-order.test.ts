@@ -5,7 +5,7 @@ import { openDocument } from '../../src/lib/document/open-document';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 
 const documentBody = `
-persistenceFormat = 1
+persistenceFormat = 2
 
 [document]
 id = "endpoint-order"

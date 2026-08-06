@@ -60,36 +60,43 @@ export class YjsDocumentRepository {
 		changes: DocumentChangeSet,
 		origin?: unknown,
 	): Promise<YjsLiveDocumentResult<LogicDocument>> {
-		return Promise.resolve(this.persistSync(changes, origin));
+		return Promise.resolve(this.#persist(changes, origin));
 	}
 
-	/** Low-level synchronous compatibility operation for the in-memory Yjs transaction API. */
-	persistSync(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
-		const candidate = new Y.Doc();
-		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.document));
-		const candidateRepository = new YjsDocumentRepository(candidate);
-		try {
-			candidateRepository.#apply(changes);
-			const validation = candidateRepository.read();
-			if (!validation.ok) return validation;
-		} finally {
-			candidateRepository.destroy();
-			candidate.destroy();
-		}
+	#persist(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
+		const preflight = this.#validate(changes);
+		if (!preflight.ok) return preflight;
 		const capture = { result: undefined } as {
 			result: YjsLiveDocumentResult<LogicDocument> | undefined;
 		};
+		let guardedValidation: YjsLiveDocumentResult<LogicDocument> | undefined;
 		this.#persistenceCapture = capture;
 		try {
 			this.document.transact(() => {
+				guardedValidation = this.#validate(changes);
+				if (!guardedValidation.ok) return;
 				this.#apply(changes);
 			}, origin);
+			if (guardedValidation !== undefined && !guardedValidation.ok) return guardedValidation;
 			const result = capture.result;
 			if (result === undefined)
 				throw new Error('Yjs transaction completed without materialization');
 			return result;
 		} finally {
 			this.#persistenceCapture = undefined;
+		}
+	}
+
+	#validate(changes: DocumentChangeSet): YjsLiveDocumentResult<LogicDocument> {
+		const candidate = new Y.Doc();
+		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.document));
+		const candidateRepository = new YjsDocumentRepository(candidate);
+		try {
+			candidateRepository.#apply(changes);
+			return candidateRepository.read();
+		} finally {
+			candidateRepository.destroy();
+			candidate.destroy();
 		}
 	}
 

@@ -20,7 +20,7 @@ import { validateLogicDocument } from '../document/validate-logic-document';
 import { createGraph } from '../graph/create-graph';
 import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
 
-export const YJS_LIVE_DOCUMENT_FORMAT = 2 as const;
+export const YJS_LIVE_DOCUMENT_FORMAT = 3 as const;
 
 export interface YjsLiveDocumentDiagnostic {
 	readonly code: string;

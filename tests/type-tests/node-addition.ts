@@ -1,4 +1,4 @@
-import type { addNodeToLiveDocument } from '../../src/lib/collaboration/yjs-live-document';
+import type { DocumentCommand } from '../../src/lib/document/document-command-gateway';
 import {
 	EndpointKind,
 	type LogicNode,
@@ -11,7 +11,8 @@ const newNode = {
 	natureId: 'goal',
 	markdown: 'New node',
 } satisfies NewLogicNode;
-const accepted: Parameters<typeof addNodeToLiveDocument>[1] = newNode;
+type AddNodeCommand = Extract<DocumentCommand, { readonly kind: 'add-node' }>;
+const accepted: AddNodeCommand['node'] = newNode;
 
 const existingNode = {
 	...newNode,
@@ -19,7 +20,7 @@ const existingNode = {
 	layoutOrder: orderKey('a0'),
 } satisfies LogicNode;
 // @ts-expect-error Existing domain nodes must not supply an already allocated key.
-const rejected: Parameters<typeof addNodeToLiveDocument>[1] = existingNode;
+const rejected: AddNodeCommand['node'] = existingNode;
 
 void accepted;
 void rejected;

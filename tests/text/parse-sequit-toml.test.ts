@@ -34,8 +34,8 @@ describe('parseSequitToml', () => {
 		expect(diagnostics[0]?.column).toBeTypeOf('number');
 	});
 
-	it('rejects an unknown persistenceFormat at its logical path', async () => {
-		const invalid = (await source()).replace('persistenceFormat = 1', 'persistenceFormat = 2');
+	it('rejects the previous persistenceFormat at its logical path', async () => {
+		const invalid = (await source()).replace('persistenceFormat = 2', 'persistenceFormat = 1');
 
 		expect(expectFailure(parseSequitToml(invalid))).toContainEqual(
 			expect.objectContaining({

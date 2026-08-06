@@ -5,7 +5,7 @@ import type { CanvasModel } from '../../src/lib/canvas/canvas-model';
 import type { OpenDocumentResult } from '../../src/lib/document/open-document';
 
 const twoByTwoInversionDocument = `
-persistenceFormat = 1
+persistenceFormat = 2
 
 [document]
 id = "two-by-two-inversion"
@@ -192,11 +192,11 @@ test.describe('AI for documentary effort', () => {
 			const openDocumentModule = (await importModule('/src/lib/document/open-document.ts')) as {
 				openDocument: (source: string) => OpenDocumentResult;
 			};
-			const legacySource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
+			const keylessSource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
 				/^layoutOrder = ".*"\n/gm,
 				'',
 			);
-			const keylessResult = openDocumentModule.openDocument(legacySource);
+			const keylessResult = openDocumentModule.openDocument(keylessSource);
 			const persistedResult = openDocumentModule.openDocument(
 				sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE,
 			);
@@ -288,7 +288,7 @@ test.describe('AI for documentary effort', () => {
 			const capture = async (state: string) => {
 				renderStates.push([state, await opened.createCanvasModel(measurements)]);
 			};
-			await capture('legacy');
+			await capture('initial');
 			await opened.addNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' });
 			measurements.nodes.set('zz-added-first', { width: 180, height: 80 });
 			await capture('first-added');
@@ -420,7 +420,7 @@ test.describe('AI for documentary effort', () => {
 			const stable = state('stable');
 			const peerIds = ['target-b', 'target-c'];
 			return {
-				legacyOrder: ordered(state('legacy'), ['source-a', 'source-b', 'target-a']),
+				initialOrder: ordered(state('initial'), ['source-a', 'source-b', 'target-a']),
 				firstAddedOrder: ordered(state('first-added'), ['source-a', 'source-b', 'zz-added-first']),
 				appendedOrder: ordered(state('appended'), [
 					'source-a',
@@ -441,7 +441,7 @@ test.describe('AI for documentary effort', () => {
 			};
 		});
 
-		expect(rendererContract.legacyOrder).toEqual(['target-a', 'source-a', 'source-b']);
+		expect(rendererContract.initialOrder).toEqual(['target-a', 'source-a', 'source-b']);
 		expect(rendererContract.firstAddedOrder).toEqual(['source-a', 'source-b', 'zz-added-first']);
 		expect(rendererContract.appendedOrder).toEqual([
 			'source-a',

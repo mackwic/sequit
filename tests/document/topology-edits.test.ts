@@ -23,7 +23,7 @@ describe('topology edits', () => {
 			[...sourceOrder, ...targetOrder, 'successor'].map((id, index) => [id, orderKey(`a${index}`)]),
 		);
 		return {
-			persistenceFormat: 1,
+			persistenceFormat: 2,
 			id: 'three-targets',
 			title: 'Three targets',
 			layout: { direction: 'top-to-bottom', bias: 'top' },
@@ -46,6 +46,108 @@ describe('topology edits', () => {
 			],
 		};
 	}
+
+	function threeJunctionTargetScenario(): LogicDocument {
+		const ids = [
+			'source-a',
+			'source-b',
+			'source-c',
+			'junction-c',
+			'junction-a',
+			'junction-b',
+			'successor',
+		];
+		const keys = new Map(ids.map((id, index) => [id, orderKey(`a${index}`)]));
+		return {
+			persistenceFormat: 2,
+			id: 'three-junction-targets',
+			title: 'Three junction targets',
+			layout: { direction: 'top-to-bottom', bias: 'top' },
+			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
+			groups: [],
+			nodes: ['source-a', 'source-b', 'source-c', 'successor'].map((id) => ({
+				kind: EndpointKind.Node,
+				id,
+				natureId: 'goal',
+				markdown: id,
+				layoutOrder: keys.get(id) ?? orderKey('a0'),
+			})),
+			junctions: ['junction-a', 'junction-b', 'junction-c'].map((id) => ({
+				kind: EndpointKind.Junction,
+				id,
+				operator: 'xor' as const,
+				layoutOrder: keys.get(id) ?? orderKey('a0'),
+			})),
+			relations: [
+				{ id: 'a', from: 'source-a', to: 'junction-a' },
+				{ id: 'b', from: 'source-b', to: 'junction-b' },
+				{ id: 'junction-a-out', from: 'junction-a', to: 'successor' },
+				{ id: 'junction-b-out', from: 'junction-b', to: 'successor' },
+				{ id: 'junction-c-out', from: 'junction-c', to: 'successor' },
+			],
+		};
+	}
+
+	it('moves a same-rank junction target without rewriting its peers', () => {
+		const original = threeJunctionTargetScenario();
+		const before = new Map(original.junctions.map(({ id, layoutOrder }) => [id, layoutOrder]));
+		const result = projectRelationAddition(
+			original,
+			{ id: 'c', from: 'source-c', to: 'junction-c' },
+			fractionalOrderKeySpace,
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected same-rank junction relation to succeed');
+		expect(result.value.eligible).toBe(true);
+		expect(result.value.moved).toBe(true);
+		expect(result.value.selectedScore).toBeLessThan(result.value.previousScore ?? 0);
+		expect(orderEndpoints(result.value.document.junctions)).toEqual([
+			'junction-a',
+			'junction-b',
+			'junction-c',
+		]);
+		expect(result.value.changes.endpointOrderChanges.map(({ endpointId }) => endpointId)).toEqual([
+			'junction-c',
+		]);
+		for (const junction of result.value.document.junctions) {
+			if (junction.id !== 'junction-c') expect(junction.layoutOrder).toBe(before.get(junction.id));
+		}
+	});
+
+	it('leaves a junction-to-ordinary target unchanged when placement layers are not adjacent', () => {
+		const original = threeJunctionTargetScenario();
+		const document: LogicDocument = {
+			...original,
+			nodes: [
+				...original.nodes,
+				{
+					kind: EndpointKind.Node,
+					id: 'later-target',
+					natureId: 'goal',
+					markdown: 'Later target',
+					layoutOrder: orderKey('a8'),
+				},
+			],
+			relations: [
+				...original.relations,
+				{ id: 'successor-to-later', from: 'successor', to: 'later-target' },
+			],
+		};
+		const before = document.nodes.map(({ layoutOrder }) => layoutOrder);
+		const result = projectRelationAddition(
+			document,
+			{ id: 'non-adjacent', from: 'junction-c', to: 'later-target' },
+			fractionalOrderKeySpace,
+		);
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected non-adjacent relation to succeed');
+		expect(result.value.eligible).toBe(false);
+		expect(result.value.moved).toBe(false);
+		expect(result.value.changes.endpointOrderChanges).toEqual([]);
+		expect(result.value.document.nodes.map(({ layoutOrder }) => layoutOrder)).toEqual(before);
+	});
 
 	it('moves only the relation target key into the selected local slot', () => {
 		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
@@ -335,7 +437,7 @@ describe('topology edits', () => {
 				]
 			: [];
 		const document: LogicDocument = {
-			persistenceFormat: 1,
+			persistenceFormat: 2,
 			id: 'group-target',
 			title: 'Group target',
 			layout: { direction: 'top-to-bottom', bias: 'top' },

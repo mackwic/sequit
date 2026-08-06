@@ -12,7 +12,7 @@ import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
 
 const twoByTwoInversionDocument = `
-persistenceFormat = 1
+persistenceFormat = 2
 
 [document]
 id = "two-by-two-inversion"
