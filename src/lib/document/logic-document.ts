@@ -1,3 +1,8 @@
+export function defined<T>(value: T | undefined, message = 'Expected value to be defined'): T {
+	if (value === undefined) throw new Error(message);
+	return value;
+}
+
 export const PERSISTENCE_FORMAT = 2 as const;
 
 export enum LayoutDirection {
@@ -48,8 +53,6 @@ export function layoutConfiguration(
 export enum JunctionOperator {
 	Xor = 'xor',
 }
-export const JUNCTION_OPERATORS = [JunctionOperator.Xor] as const;
-
 export enum EndpointKind {
 	Node = 'node',
 	Group = 'group',
@@ -120,7 +123,7 @@ export interface LogicDocument {
 	readonly relations: readonly LogicRelation[];
 }
 
-export type DiagnosticPath = readonly string[];
+type DiagnosticPath = readonly string[];
 
 export enum SequitDiagnosticCode {
 	TomlSyntax = 'toml-syntax',
@@ -143,12 +146,12 @@ export interface SequitDiagnostic {
 	readonly column?: number;
 }
 
-export interface DocumentSuccess<T> {
+interface DocumentSuccess<T> {
 	readonly ok: true;
 	readonly value: T;
 }
 
-export interface DocumentFailure {
+interface DocumentFailure {
 	readonly ok: false;
 	readonly diagnostics: readonly SequitDiagnostic[];
 }

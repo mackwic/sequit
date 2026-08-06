@@ -4,6 +4,8 @@ import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 
 describe('fractionalOrderKeySpace', () => {
 	it('uses a discriminator to avoid same-interval allocation collisions', () => {
+		const unbounded = fractionalOrderKeySpace.keyFor({}, 'unbounded');
+		expect(fractionalOrderKeySpace.isValid(unbounded)).toBe(true);
 		const left = fractionalOrderKeySpace.keyFor({});
 		const right = fractionalOrderKeySpace.keyFor({ before: left });
 		const first = fractionalOrderKeySpace.keyFor({ before: left, after: right }, 'first');
@@ -51,5 +53,18 @@ describe('fractionalOrderKeySpace', () => {
 		]) {
 			expect(fractionalOrderKeySpace.isValid(malformed), malformed).toBe(false);
 		}
+	});
+
+	it('rejects malformed and reversed slot bounds', () => {
+		expect(() => fractionalOrderKeySpace.keyFor({ before: 'invalid' })).toThrow(
+			'Invalid order-key slot lower bound: invalid',
+		);
+		expect(() => fractionalOrderKeySpace.keyFor({ after: 'invalid' })).toThrow(
+			'Invalid order-key slot upper bound: invalid',
+		);
+		const key = fractionalOrderKeySpace.keyFor({});
+		expect(() => fractionalOrderKeySpace.keyFor({ before: key, after: key })).toThrow(
+			'Order-key slot lower bound must be strictly less than upper bound',
+		);
 	});
 });

@@ -1,4 +1,5 @@
 import { compareCanonicalStrings } from '../canonical-string';
+import { defined } from '../document/logic-document';
 /* eslint-disable max-lines */
 import {
 	EndpointKind,
@@ -70,8 +71,7 @@ function endpointSize(
 	measurements: LayoutMeasurements,
 	endpointId: string,
 ): Size {
-	const endpoint = graph.endpointsById.get(endpointId);
-	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
+	const endpoint = defined(graph.endpointsById.get(endpointId));
 	if (endpoint.kind === EndpointKind.Node) {
 		const size = measurements.nodes.get(endpointId);
 		if (!size) throw new Error(`Missing node measurement: ${endpointId}`);
@@ -97,12 +97,11 @@ function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string
 		const component: string[] = [];
 		visited.add(start);
 		while (pending.length > 0) {
-			const id = pending.pop();
-			if (id === undefined) break;
+			const id = defined(pending.pop());
 			component.push(id);
 			const adjacent = [
-				...(graph.outgoingByEndpointId.get(id) ?? []),
-				...(graph.predecessorsByEndpointId.get(id) ?? []),
+				...defined(graph.outgoingByEndpointId.get(id)),
+				...defined(graph.predecessorsByEndpointId.get(id)),
 			].sort((left, right) => compareCanonicalStrings(right, left));
 			for (const next of adjacent) {
 				if (visited.has(next)) continue;
@@ -122,10 +121,7 @@ function endpointGroupId(graph: LogicGraph, endpointId: string): string | undefi
 
 function topLevelGroupId(groupId: string, groupsById: ReadonlyMap<string, LogicGroup>): string {
 	let current = groupId;
-	const visited = new Set<string>();
 	for (;;) {
-		if (visited.has(current)) throw new Error(`Group containment cycle at: ${current}`);
-		visited.add(current);
 		const parent = groupsById.get(current)?.groupId;
 		if (parent === undefined) return current;
 		current = parent;
@@ -148,10 +144,7 @@ function componentContext(
 function groupDepth(group: LogicGroup, groupsById: ReadonlyMap<string, LogicGroup>): number {
 	let depth = 0;
 	let parentId = group.groupId;
-	const visited = new Set([group.id]);
 	while (parentId !== undefined) {
-		if (visited.has(parentId)) throw new Error(`Group containment cycle at: ${parentId}`);
-		visited.add(parentId);
 		depth += 1;
 		parentId = groupsById.get(parentId)?.groupId;
 	}
@@ -203,9 +196,8 @@ function relationGroupRankGap(
 
 function createLayoutResult(graph: LogicGraph, bounds: Map<string, Bounds>): LayoutResult {
 	const relations: LayoutRelation[] = graph.relations.map(({ relation }) => {
-		const source = bounds.get(relation.from);
-		const target = bounds.get(relation.to);
-		if (!source || !target) throw new Error(`Missing relation bounds: ${relation.id}`);
+		const source = defined(bounds.get(relation.from));
+		const target = defined(bounds.get(relation.to));
 		assertRelationBoundsAreDisjoint({
 			relationId: relation.id,
 			from: relation.from,
@@ -224,8 +216,7 @@ function createLayoutResult(graph: LogicGraph, bounds: Map<string, Bounds>): Lay
 	let width = OUTER_MARGIN * 2;
 	let height = OUTER_MARGIN * 2;
 	for (const [id, value] of bounds) {
-		const endpoint = graph.endpointsById.get(id);
-		if (!endpoint) throw new Error(`Missing graph endpoint: ${id}`);
+		const endpoint = defined(graph.endpointsById.get(id));
 		elements.push({ id, kind: endpoint.kind, bounds: value });
 		width = Math.max(width, value.x + value.width + OUTER_MARGIN);
 		height = Math.max(height, value.y + value.height + OUTER_MARGIN);
@@ -244,8 +235,7 @@ function groupMemberBounds(
 	const members = [...graph.document.nodes, ...graph.document.junctions, ...graph.document.groups];
 	for (const member of members) {
 		if (member.groupId !== groupId) continue;
-		const value = bounds.get(member.id);
-		if (value) result.push(value);
+		result.push(defined(bounds.get(member.id)));
 	}
 	return result;
 }
@@ -259,8 +249,8 @@ function repackContainmentComponents(
 	const connect = (left: string, right: string): void => {
 		if (!adjacency.has(left)) adjacency.set(left, new Set());
 		if (!adjacency.has(right)) adjacency.set(right, new Set());
-		adjacency.get(left)?.add(right);
-		adjacency.get(right)?.add(left);
+		defined(adjacency.get(left)).add(right);
+		defined(adjacency.get(right)).add(left);
 	};
 	for (const { relation } of graph.relations) connect(relation.from, relation.to);
 	for (const endpoint of graph.endpointsById.values()) {
@@ -275,8 +265,7 @@ function repackContainmentComponents(
 		const pending = [start];
 		visited.add(start);
 		while (pending.length > 0) {
-			const id = pending.pop();
-			if (id === undefined) continue;
+			const id = defined(pending.pop());
 			ids.push(id);
 			for (const adjacent of adjacency.get(id) ?? []) {
 				if (visited.has(adjacent)) continue;
@@ -301,8 +290,8 @@ function repackContainmentComponents(
 		const extent = crossExtent(ids);
 		const shift = cross - extent.minimum;
 		for (const id of ids) {
-			const value = bounds.get(id);
-			if (value) bounds.set(id, translateBounds(value, vertical ? shift : 0, vertical ? 0 : shift));
+			const value = defined(bounds.get(id));
+			bounds.set(id, translateBounds(value, vertical ? shift : 0, vertical ? 0 : shift));
 		}
 		cross += extent.maximum - extent.minimum + COMPONENT_GAP;
 	}
@@ -324,12 +313,10 @@ export function layoutWithDedicatedEngine(
 	const primaryBandSizes = Array.from({ length: maximumRank + 1 }, () => 1);
 	for (const id of graph.rankableEndpointIds) {
 		if (junctionIds.has(id)) continue;
-		const rank = ranks.byEndpointId.get(id);
-		const size = sizes.get(id);
-		if (rank === undefined) throw new Error(`Missing layout rank: ${id}`);
-		if (!size) throw new Error(`Missing measured size: ${id}`);
+		const rank = defined(ranks.byEndpointId.get(id));
+		const size = defined(sizes.get(id));
 		primaryBandSizes[rank] = Math.max(
-			primaryBandSizes[rank] ?? 1,
+			defined(primaryBandSizes[rank]),
 			vertical ? size.height : size.width,
 		);
 	}
@@ -349,8 +336,8 @@ export function layoutWithDedicatedEngine(
 			context: componentContext(graph, ids, groupsById),
 			effectiveOrder: Math.min(
 				...ids
-					.filter((id) => (ranks.byEndpointId.get(id) ?? 0) === 0)
-					.map((id) => effectiveOrderById.get(id) ?? Number.POSITIVE_INFINITY),
+					.filter((id) => ranks.byEndpointId.get(id) === 0)
+					.map((id) => defined(effectiveOrderById.get(id))),
 			),
 			layout: layoutComponent(
 				deriveEndpointRows({
@@ -371,8 +358,7 @@ export function layoutWithDedicatedEngine(
 	components.sort((left, right) => {
 		const contextOrder = compareCanonicalStrings(left.context, right.context);
 		const effectiveOrder = left.effectiveOrder - right.effectiveOrder;
-		const idOrder = compareCanonicalStrings(left.ids[0] ?? '', right.ids[0] ?? '');
-		return contextOrder || effectiveOrder || idOrder;
+		return contextOrder || effectiveOrder;
 	});
 	let maximumPrimaryLength = 0;
 	for (const component of components) {
@@ -452,12 +438,10 @@ export function layoutWithDedicatedEngine(
 		minimumX = Math.min(minimumX, value.x);
 		minimumY = Math.min(minimumY, value.y);
 	}
-	if (minimumX < OUTER_MARGIN || minimumY < OUTER_MARGIN) {
-		const shiftX = Math.max(0, OUTER_MARGIN - minimumX);
-		const shiftY = Math.max(0, OUTER_MARGIN - minimumY);
-		for (const [id, value] of bounds) {
-			bounds.set(id, translateBounds(value, shiftX, shiftY));
-		}
+	const shiftX = Math.max(0, OUTER_MARGIN - minimumX);
+	const shiftY = Math.max(0, OUTER_MARGIN - minimumY);
+	for (const [id, value] of bounds) {
+		bounds.set(id, translateBounds(value, shiftX, shiftY));
 	}
 
 	return createLayoutResult(graph, bounds);

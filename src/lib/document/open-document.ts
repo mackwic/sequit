@@ -12,7 +12,7 @@ import { parseSequitToml } from '../text/parse-sequit-toml';
 import type { DocumentSession } from './document-session';
 import type { LogicDocument, LogicRelation, NewLogicNode } from './logic-document';
 
-export interface OpenDocumentDiagnostic {
+interface OpenDocumentDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
@@ -27,7 +27,7 @@ interface DocumentProjection {
 	readonly measurementModel: CanvasMeasurementModel;
 }
 
-export class OpenedDocument {
+class OpenedDocument {
 	#projection: DocumentProjection;
 	readonly #unsubscribe: () => void;
 

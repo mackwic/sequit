@@ -79,6 +79,32 @@ class FakeDocumentCommandGateway implements DocumentCommandGateway {
 }
 
 describe('document session', () => {
+	it('rejects invalid session construction arguments and tolerates repeated destruction', async () => {
+		const document = await referenceForDelayedTest();
+		expect(() => {
+			Reflect.apply(createDocumentSession, undefined, [document, {}]);
+		}).toThrow('createDocumentSession reporter must be a function');
+		const invalid = new Y.Doc();
+		expect(() => attachDocumentSession(invalid)).toThrow('Unsupported yjsLiveDocumentFormat');
+		const session = createDocumentSession(document);
+		session.destroy();
+		expect(() => {
+			session.destroy();
+		}).not.toThrow();
+	});
+
+	it('stops Yjs observer delivery when an observer destroys the session', async () => {
+		const { session, ydoc } = await createObservableSession();
+		const skipped = vi.fn();
+		session.subscribe(() => {
+			session.destroy();
+		});
+		session.subscribe(skipped);
+
+		ydoc.getMap<unknown>('sequit.meta').set('title', 'Destroyed during delivery');
+		expect(skipped).not.toHaveBeenCalled();
+	});
+
 	it('handles every command outcome through the application gateway port', async () => {
 		const parsed = parseSequitToml(await aiDocumentaryEffortScenario());
 		if (!parsed.ok) throw new Error('Reference document must parse');
@@ -112,6 +138,8 @@ describe('document session', () => {
 		await expect(session.addNode(node)).rejects.toThrow('failed');
 		expect(session.read()).toBe(accepted);
 		expect(subscriber).not.toHaveBeenCalled();
+		gateway.next = { kind: 'failed', error: 'non-error failure' };
+		await expect(session.addNode(node)).rejects.toThrow('non-error failure');
 	});
 
 	it('waits for delayed acceptance before publishing and returning its document', async () => {

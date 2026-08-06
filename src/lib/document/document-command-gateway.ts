@@ -119,7 +119,6 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 	}
 
 	destroy(): void {
-		if (this.#destroyed) return;
 		this.#destroyed = true;
 		this.#subscribers.clear();
 	}

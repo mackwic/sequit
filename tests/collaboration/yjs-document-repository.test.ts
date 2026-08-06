@@ -12,6 +12,7 @@ import {
 } from '../../src/lib/collaboration/yjs-document-repository';
 import { attachDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
 import { LocalDocumentCommandGateway } from '../../src/lib/document/document-command-gateway';
+import { defined } from '../../src/lib/document/logic-document';
 import {
 	EndpointKind,
 	LayoutBias,
@@ -243,6 +244,48 @@ describe('yjsLiveDocumentFormat', () => {
 			code: 'invalid-yjs-live-document',
 			message: `${path}.${id}.layoutOrder must be a valid fractional order key`,
 			path: [path, id, 'layoutOrder'],
+		});
+	});
+
+	it('reports invalid scalar values across all decoded entity kinds', async () => {
+		const invalid = new Y.Doc();
+		importLogicDocument(invalid, await referenceDocument());
+		const meta = invalid.getMap<unknown>('sequit.meta');
+		meta.set('layoutDirection', 'diagonal');
+		meta.set('layoutBias', 'diagonal');
+		const natures = invalid.getMap<Y.Map<unknown>>('sequit.natures');
+		const natureId = defined([...natures.keys()][0]);
+		defined(natures.get(natureId)).delete('color');
+		const junctions = invalid.getMap<Y.Map<unknown>>('sequit.junctions');
+		const junctionId = defined([...junctions.keys()][0]);
+		defined(junctions.get(junctionId)).set('operator', 'and');
+		const relations = invalid.getMap<Y.Map<unknown>>('sequit.relations');
+		const relationId = defined([...relations.keys()][0]);
+		defined(relations.get(relationId)).delete('to');
+
+		const diagnostics = readFailure(invalid);
+		expect(diagnostics.map(({ path }) => path)).toEqual(
+			expect.arrayContaining([
+				['layout', 'direction'],
+				['layout', 'bias'],
+				['natures', natureId, 'color'],
+				['junctions', junctionId, 'operator'],
+				['relations', relationId, 'to'],
+			]),
+		);
+	});
+
+	it('reports a direction-incompatible decoded layout bias', async () => {
+		const invalid = new Y.Doc();
+		importLogicDocument(invalid, await referenceDocument());
+		const meta = invalid.getMap<unknown>('sequit.meta');
+		meta.set('layoutDirection', LayoutDirection.TopToBottom);
+		meta.set('layoutBias', LayoutBias.Left);
+
+		expect(readFailure(invalid)).toContainEqual({
+			code: 'invalid-yjs-live-document',
+			message: 'Layout bias left is incompatible with direction top-to-bottom',
+			path: ['layout', 'bias'],
 		});
 	});
 
@@ -523,6 +566,44 @@ describe('yjsLiveDocumentFormat', () => {
 
 		const persisted = readDocument(ydoc).relations.find(({ id }) => id === 'contested');
 		expect(persisted).toEqual({ id: 'contested', from: 'source-b', to: 'target-a' });
+	});
+
+	it('rejects a node addition that conflicts during its guarded transaction', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, crossingDocument());
+		const origin = {};
+		ydoc.on('beforeTransaction', (transaction) => {
+			if (transaction.origin !== origin) return;
+			insertYjsNode(ydoc, 'contested-node', orderKey('a8'));
+		});
+
+		await expect(
+			addNodeThroughGateway(
+				ydoc,
+				{ id: 'contested-node', natureId: 'goal', markdown: 'Command' },
+				origin,
+			),
+		).rejects.toThrow('Node addition conflicts with existing id: contested-node');
+	});
+
+	it('persists the optional group on a newly added node', async () => {
+		const ydoc = new Y.Doc();
+		const document: LogicDocument = {
+			...crossingDocument(),
+			groups: [
+				{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a8') },
+			],
+		};
+		importLogicDocument(ydoc, document);
+
+		const result = await addNodeThroughGateway(ydoc, {
+			id: 'grouped-node',
+			natureId: 'goal',
+			groupId: 'group',
+			markdown: 'Grouped',
+		});
+		expect(result.ok).toBe(true);
+		expect(readDocument(ydoc).nodes.find(({ id }) => id === 'grouped-node')?.groupId).toBe('group');
 	});
 
 	it('rolls back a command when a reactive observer invalidates its materialized state', async () => {

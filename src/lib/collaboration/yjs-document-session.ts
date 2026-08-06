@@ -22,7 +22,6 @@ class YjsSessionGateway implements DocumentCommandGateway {
 	readonly #stopRepository: () => void;
 	readonly #localCommandOrigin = Symbol('sequit local document command');
 	#current: LogicDocument;
-	#destroyed = false;
 
 	constructor(
 		document: Y.Doc,
@@ -53,7 +52,6 @@ class YjsSessionGateway implements DocumentCommandGateway {
 				outcome = { kind: DocumentCommandOutcomeKind.Rejected, diagnostics: result.diagnostics };
 			}
 			for (const observer of [...this.#observers]) {
-				if (this.#destroyed) break;
 				try {
 					observer(outcome);
 				} catch {
@@ -72,8 +70,6 @@ class YjsSessionGateway implements DocumentCommandGateway {
 		return () => this.#observers.delete(observer);
 	}
 	destroy(): void {
-		if (this.#destroyed) return;
-		this.#destroyed = true;
 		this.#stopRepository();
 		this.#commands.destroy();
 		this.#repository.destroy();

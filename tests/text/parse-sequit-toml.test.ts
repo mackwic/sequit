@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { DocumentResult, LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
+import { tomlSyntaxFailure } from '../../src/lib/text/toml-syntax';
 import {
 	withDuplicateEndpoint,
 	withReorderedTables,
@@ -12,6 +13,11 @@ import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort'
 async function source(): Promise<string> {
 	return aiDocumentaryEffortScenario();
 }
+
+it('does not misclassify non-TOML parser failures', () => {
+	const failure = new Error('Unexpected parser failure');
+	expect(() => tomlSyntaxFailure(failure)).toThrow(failure);
+});
 
 function expectFailure(result: DocumentResult<LogicDocument>) {
 	expect(result.ok).toBe(false);

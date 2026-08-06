@@ -130,6 +130,109 @@ describe('layoutGraph', () => {
 		);
 	});
 
+	it.each([
+		[
+			'node height',
+			'nodes',
+			'source-a',
+			{ width: 80, height: Number.NaN },
+			'nodes.source-a.height',
+		],
+		['junction width', 'junctions', 'choice', { width: 0, height: 20 }, 'junctions.choice.width'],
+		[
+			'junction height',
+			'junctions',
+			'choice',
+			{ width: 20, height: -1 },
+			'junctions.choice.height',
+		],
+	] as const)('rejects an invalid %s measurement', async (_name, collection, id, size, path) => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const original = layoutMeasurementsFor(document);
+		const measurements = { ...original };
+		if (collection === 'nodes') {
+			const nodes = new Map(original.nodes);
+			nodes.set(id, size);
+			measurements.nodes = nodes;
+		} else {
+			const junctions = new Map(original.junctions);
+			junctions.set(id, size);
+			measurements.junctions = junctions;
+		}
+
+		await expect(
+			layoutGraph(graph.value, topologicallyRank(graph.value), measurements),
+		).rejects.toThrow(`${path} must be a finite positive number`);
+	});
+
+	it.each([
+		['minimumWidth', 0, 'finite positive'],
+		['minimumHeight', Number.POSITIVE_INFINITY, 'finite positive'],
+		['headerHeight', -1, 'finite non-negative'],
+		['padding', Number.NaN, 'finite non-negative'],
+	] as const)('rejects an invalid group %s measurement', async (field, value, requirement) => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const original = layoutMeasurementsFor(document);
+		const groups = new Map(original.groups);
+		const measurement = groups.get('endpoint-group');
+		if (!measurement) throw new Error('Expected endpoint-group measurement');
+		groups.set('endpoint-group', { ...measurement, [field]: value });
+
+		await expect(
+			layoutGraph(graph.value, topologicallyRank(graph.value), { ...original, groups }),
+		).rejects.toThrow(`groups.endpoint-group.${field} must be a ${requirement} number`);
+	});
+
+	it.each([
+		['junctions', 'choice', 'Missing junction measurement: choice'],
+		['groups', 'container', 'Missing group measurement: container'],
+		['groups', 'endpoint-group', 'Missing group measurement: endpoint-group'],
+		['groups', 'orphan-group', 'Missing group measurement: orphan-group'],
+	] as const)('rejects a missing %s measurement', async (collection, id, message) => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const original = layoutMeasurementsFor(document);
+		const measurements = { ...original };
+		if (collection === 'junctions') {
+			const junctions = new Map(original.junctions);
+			junctions.delete(id);
+			measurements.junctions = junctions;
+		} else {
+			const groups = new Map(original.groups);
+			groups.delete(id);
+			measurements.groups = groups;
+		}
+
+		await expect(
+			layoutGraph(graph.value, topologicallyRank(graph.value), measurements),
+		).rejects.toThrow(message);
+	});
+
+	it('normalizes containment expanded above the outer margin', async () => {
+		const document = validLogicDocument();
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected an acyclic graph');
+		const original = layoutMeasurementsFor(document);
+		const groups = new Map(original.groups);
+		groups.set('container', {
+			minimumWidth: 160,
+			minimumHeight: 72,
+			headerHeight: 500,
+			padding: 12,
+		});
+
+		const layout = await layoutGraph(graph.value, topologicallyRank(graph.value), {
+			...original,
+			groups,
+		});
+		expect(Math.min(...layout.elements.map(({ bounds }) => bounds.y))).toBeGreaterThanOrEqual(40);
+	});
+
 	it('produces a finite empty stage for an empty semantic document', async () => {
 		const valid = validLogicDocument();
 		const document: LogicDocument = {

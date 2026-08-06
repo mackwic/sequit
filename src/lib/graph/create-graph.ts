@@ -6,23 +6,24 @@ import type {
 	LogicNode,
 	LogicRelation,
 } from '../document/logic-document';
+import { defined } from '../document/logic-document';
 import { EndpointKind } from '../document/logic-document';
 
-export interface GraphNodeEndpoint {
+interface GraphNodeEndpoint {
 	readonly kind: EndpointKind.Node;
 	readonly entity: LogicNode;
 }
-export interface GraphGroupEndpoint {
+interface GraphGroupEndpoint {
 	readonly kind: EndpointKind.Group;
 	readonly entity: LogicGroup;
 }
-export interface GraphJunctionEndpoint {
+interface GraphJunctionEndpoint {
 	readonly kind: EndpointKind.Junction;
 	readonly entity: LogicJunction;
 }
-export type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
+type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
 
-export interface GraphRelation {
+interface GraphRelation {
 	readonly relation: LogicRelation;
 	readonly source: GraphEndpoint;
 	readonly target: GraphEndpoint;
@@ -51,12 +52,12 @@ export interface GraphDiagnostic {
 	readonly cycle?: readonly string[];
 }
 
-export const GraphDiagnosticCode = {
+const GraphDiagnosticCode = {
 	UnknownEndpoint: 'unknown-endpoint',
 	Cycle: 'cycle',
 	GroupCycle: 'group-cycle',
 } as const;
-export type GraphDiagnosticCode = (typeof GraphDiagnosticCode)[keyof typeof GraphDiagnosticCode];
+type GraphDiagnosticCode = (typeof GraphDiagnosticCode)[keyof typeof GraphDiagnosticCode];
 
 interface GraphSuccess {
 	readonly ok: true;
@@ -86,7 +87,7 @@ function findCycle(
 	function visit(id: string): readonly string[] | undefined {
 		state.set(id, VisitState.Visiting);
 		stack.push(id);
-		for (const target of outgoingByEndpointId.get(id) ?? []) {
+		for (const target of defined(outgoingByEndpointId.get(id))) {
 			if (state.get(target) === VisitState.Visiting) {
 				const start = stack.lastIndexOf(target);
 				return [...stack.slice(start), target];
@@ -173,20 +174,17 @@ function createAdjacency(
 	const outgoing = new Map(endpointIds.map((id) => [id, [] as string[]]));
 	const predecessors = new Map(endpointIds.map((id) => [id, [] as string[]]));
 	for (let index = 0; index < effectiveRelations.length; index += 1) {
-		const effectiveRelation = effectiveRelations[index];
-		const graphRelation = relations[index];
-		if (effectiveRelation === undefined || graphRelation === undefined) continue;
+		const effectiveRelation = defined(effectiveRelations[index]);
+		const graphRelation = defined(relations[index]);
 		const { sourceIds, targetIds } = adjacencyEndpointIds(graphRelation, effectiveRelation);
 		for (const sourceId of sourceIds) {
-			const adjacent = outgoing.get(sourceId);
-			if (adjacent === undefined) continue;
+			const adjacent = defined(outgoing.get(sourceId));
 			for (const targetId of targetIds) {
 				if (!adjacent.includes(targetId)) adjacent.push(targetId);
 			}
 		}
 		for (const targetId of targetIds) {
-			const adjacent = predecessors.get(targetId);
-			if (adjacent === undefined) continue;
+			const adjacent = defined(predecessors.get(targetId));
 			for (const sourceId of sourceIds) {
 				if (!adjacent.includes(sourceId)) adjacent.push(sourceId);
 			}
@@ -231,15 +229,15 @@ export function createGraph(document: LogicDocument): GraphResult {
 			diagnostics.push({
 				code: GraphDiagnosticCode.GroupCycle,
 				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
-				path: ['groups', expandingGroups.at(-1) ?? endpointId, 'group'],
+				path: ['groups', defined(expandingGroups.at(-1)), 'group'],
 				cycle,
 			});
 			return [];
 		}
-		const directMembers = directMembersByGroupId.get(endpointId) ?? [];
+		const directMembers = defined(directMembersByGroupId.get(endpointId));
 		if (directMembers.length === 0) {
 			expandedGroupMembers.set(endpointId, []);
-			return preserveDirectEmptyGroup ? [endpointId] : [];
+			return [];
 		}
 		expandingGroups.push(endpointId);
 		const expanded = [

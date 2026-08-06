@@ -12,16 +12,13 @@
 	},
 	"mutate": [
 		"src/lib/document/validate-logic-document.ts",
-		"src/lib/collaboration/yjs-live-document.ts:58-100",
-		"src/lib/collaboration/yjs-live-document.ts:326-336",
+		"src/lib/collaboration/yjs-document-reader.ts",
 		"src/lib/text/map-sequit-document.ts",
 		"src/lib/graph/create-graph.ts",
 		"src/lib/graph/topological-ranks.ts",
 		"src/lib/layout/layout-graph.ts",
 		"src/lib/layout/component-layout.ts:35-93",
 		"src/lib/layout/component-layout.ts:105-214",
-		"src/lib/layout/dedicated-layout-context.ts:94-125",
-		"src/lib/layout/junction-layout.ts:42-88",
 		"src/lib/layout/dedicated-layout-engine.ts:92-172",
 		"src/lib/text/serialize-sequit-toml.ts"
 	],

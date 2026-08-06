@@ -1,16 +1,12 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../document/logic-document';
-import {
-	readYjsLogicDocument,
-	type YjsLiveDocumentDiagnostic,
-	type YjsLiveDocumentResult,
-} from './yjs-document-reader';
+import { readYjsLogicDocument, type YjsLiveDocumentResult } from './yjs-document-reader';
 import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 3 as const;
 
-export type { YjsLiveDocumentDiagnostic, YjsLiveDocumentResult };
+export type { YjsLiveDocumentResult };
 
 const {
 	meta: META,

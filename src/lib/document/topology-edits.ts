@@ -2,6 +2,7 @@ import { createGraph, type GraphDiagnostic } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { orderEndpoints } from '../layout/endpoint-order';
 import type { OrderKeySpace } from '../layout/order-key-space';
+import { defined } from './logic-document';
 import {
 	EndpointKind,
 	type LogicDocument,
@@ -17,9 +18,7 @@ import {
 } from './topology-edit-ordering';
 import { validateLogicDocument } from './validate-logic-document';
 
-export { TopologyEditDiagnosticCode } from './topology-edit-ordering';
-
-export interface TopologyEditDiagnostic {
+interface TopologyEditDiagnostic {
 	readonly code: TopologyEditDiagnosticCode | GraphDiagnostic['code'] | SequitDiagnostic['code'];
 	readonly message: string;
 	readonly path: readonly string[];
@@ -30,7 +29,7 @@ export interface TopologyEditDiagnostic {
 	readonly materializedScore?: number;
 }
 
-export interface RelationAdditionProjection {
+interface RelationAdditionProjection {
 	readonly document: LogicDocument;
 	readonly eligible: boolean;
 	readonly moved: boolean;
@@ -39,12 +38,12 @@ export interface RelationAdditionProjection {
 	readonly changes: DocumentChangeSet;
 }
 
-export interface NodeAdditionProjection {
+interface NodeAdditionProjection {
 	readonly document: LogicDocument;
 	readonly changes: DocumentChangeSet;
 }
 
-export interface EndpointOrderChange {
+interface EndpointOrderChange {
 	readonly endpointKind: EndpointKind;
 	readonly endpointId: string;
 	readonly layoutOrder: OrderKey;
@@ -56,24 +55,24 @@ export interface DocumentChangeSet {
 	readonly endpointOrderChanges: readonly EndpointOrderChange[];
 }
 
-export interface NodeAdditionSuccess {
+interface NodeAdditionSuccess {
 	readonly ok: true;
 	readonly value: NodeAdditionProjection;
 }
 
-export interface NodeAdditionFailure {
+interface NodeAdditionFailure {
 	readonly ok: false;
 	readonly diagnostics: readonly TopologyEditDiagnostic[];
 }
 
 export type NodeAdditionResult = NodeAdditionSuccess | NodeAdditionFailure;
 
-export interface RelationAdditionSuccess {
+interface RelationAdditionSuccess {
 	readonly ok: true;
 	readonly value: RelationAdditionProjection;
 }
 
-export interface RelationAdditionFailure {
+interface RelationAdditionFailure {
 	readonly ok: false;
 	readonly diagnostics: readonly TopologyEditDiagnostic[];
 }
@@ -122,10 +121,7 @@ export function projectNodeAddition(
 	const orderedIds = orderEndpoints(endpoints, orderKeySpace);
 	const lastId = orderedIds.at(-1);
 	let lastKey: OrderKey | undefined;
-	if (lastId !== undefined) lastKey = endpointsById.get(lastId)?.layoutOrder;
-	if (lastId !== undefined && lastKey === undefined) {
-		throw new Error(`Missing ordered endpoint: ${lastId}`);
-	}
+	if (lastId !== undefined) lastKey = defined(endpointsById.get(lastId)).layoutOrder;
 	const slot: { before?: OrderKey } = {};
 	if (lastKey !== undefined) slot.before = lastKey;
 	const keyedNode: LogicNode = {

@@ -7,23 +7,61 @@ import {
 } from '../layout/crossing-aware-order';
 import { orderEndpoints } from '../layout/endpoint-order';
 import type { EndpointSlot, OrderKeySpace } from '../layout/order-key-space';
+import { defined } from './logic-document';
 import {
 	EndpointKind,
 	type LogicDocument,
 	type LogicEndpoint,
 	type LogicRelation,
 	type OrderKey,
+	type SequitDiagnostic,
 } from './logic-document';
-import type {
-	EndpointOrderChange,
-	RelationAdditionResult,
-	TopologyEditDiagnostic,
-} from './topology-edits';
 
 export enum TopologyEditDiagnosticCode {
 	DuplicateRelationId = 'duplicate-relation-id',
 	EndpointOrderMaterializationFailed = 'endpoint-order-materialization-failed',
 }
+
+interface EndpointOrderChange {
+	readonly endpointKind: EndpointKind;
+	readonly endpointId: string;
+	readonly layoutOrder: OrderKey;
+}
+
+interface RelationAdditionProjection {
+	readonly document: LogicDocument;
+	readonly eligible: boolean;
+	readonly moved: boolean;
+	readonly previousScore?: number;
+	readonly selectedScore?: number;
+	readonly changes: {
+		readonly nodeAdditions: readonly never[];
+		readonly relationAdditions: readonly LogicRelation[];
+		readonly endpointOrderChanges: readonly EndpointOrderChange[];
+	};
+}
+
+interface TopologyEditDiagnostic {
+	readonly code: TopologyEditDiagnosticCode | SequitDiagnostic['code'];
+	readonly message: string;
+	readonly path: readonly string[];
+	readonly expectedOrder?: readonly string[];
+	readonly materializedOrder?: readonly string[];
+	readonly expectedScore?: number;
+	readonly materializedScore?: number;
+}
+
+interface RelationAdditionSuccess {
+	readonly ok: true;
+	readonly value: RelationAdditionProjection;
+}
+
+interface RelationAdditionFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly TopologyEditDiagnostic[];
+}
+
+type RelationAdditionResult = RelationAdditionSuccess | RelationAdditionFailure;
 
 interface VisualRowOptions {
 	readonly endpointOrder: readonly string[];
@@ -68,10 +106,10 @@ function weakComponentContaining(
 	const component = new Set<string>();
 	const pending = [targetId];
 	while (pending.length > 0) {
-		const id = pending.pop();
-		if (id === undefined || component.has(id)) continue;
+		const id = defined(pending.pop());
+		if (component.has(id)) continue;
 		component.add(id);
-		for (const adjacent of [...(outgoing.get(id) ?? []), ...(predecessors.get(id) ?? [])]) {
+		for (const adjacent of [...defined(outgoing.get(id)), ...defined(predecessors.get(id))]) {
 			if (!component.has(adjacent)) pending.push(adjacent);
 		}
 	}
@@ -82,15 +120,10 @@ function replaceExactlyOne<T extends LogicEndpoint>(
 	endpoints: readonly T[],
 	replacement: T,
 ): readonly T[] {
-	let replacements = 0;
-	const result = endpoints.map((endpoint) => {
+	return endpoints.map((endpoint) => {
 		if (endpoint.id !== replacement.id) return endpoint;
-		replacements += 1;
 		return replacement;
 	});
-	if (replacements !== 1)
-		throw new Error(`Expected exactly one endpoint replacement for: ${replacement.id}`);
-	return result;
 }
 
 function replaceEndpoint(document: LogicDocument, replacement: LogicEndpoint): LogicDocument {
@@ -204,8 +237,7 @@ export function projectEligibleRelationAddition(
 
 	const keys = new Map<string, OrderKey>();
 	for (const id of row) {
-		const endpoint = endpointsById.get(id);
-		if (!endpoint) throw new Error(`Missing ordered endpoint: ${id}`);
+		const endpoint = defined(endpointsById.get(id));
 		keys.set(id, endpoint.layoutOrder);
 	}
 	const beforeId = selection.order[selection.bestSlot - 1];
@@ -214,8 +246,7 @@ export function projectEligibleRelationAddition(
 	let after: OrderKey | undefined;
 	if (beforeId !== undefined) before = keys.get(beforeId);
 	if (afterId !== undefined) after = keys.get(afterId);
-	const target = endpointsById.get(relation.to);
-	if (!target) throw new Error(`Missing relation target: ${relation.to}`);
+	const target = defined(endpointsById.get(relation.to));
 	if (isDuplicateBoundedKey(before, after)) {
 		return duplicateKeyResult(document, relation, selection.currentScore);
 	}
@@ -238,7 +269,7 @@ export function projectEligibleRelationAddition(
 		...scoringContext,
 		effectiveEndpointOrder: materializedEndpointOrder,
 	});
-	const materializedScore = scores.scoreBySlot[scores.currentSlot] ?? Number.NaN;
+	const materializedScore = defined(scores.scoreBySlot[scores.currentSlot]);
 	const scoreMatches =
 		Math.abs(materializedScore - selection.bestScore) <=
 		crossingScoreTolerance(materializedScore, selection.bestScore);

@@ -46,7 +46,7 @@ export function nodeId(index: number): string {
 	return `node-${index.toString().padStart(2, '0')}`;
 }
 
-export function documentWith(
+function documentWith(
 	nodeMarkdown: readonly string[],
 	relations: readonly LogicRelation[],
 	layout: LayoutConfiguration = DEFAULT_LAYOUT,
@@ -133,7 +133,7 @@ export function groupId(index: number): string {
 	return `group-${index.toString().padStart(2, '0')}`;
 }
 
-export function junctionId(index: number): string {
+function junctionId(index: number): string {
 	return `junction-${index.toString().padStart(2, '0')}`;
 }
 

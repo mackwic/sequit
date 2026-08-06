@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 
+import { defined } from '../document/logic-document';
 import { EndpointKind, type LogicDocument } from '../document/logic-document';
 import type { DocumentChangeSet } from '../document/topology-edits';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
@@ -33,18 +34,11 @@ export function replaceNodeMarkdown(
 	return true;
 }
 
-function endpointCollection(kind: EndpointKind): string {
-	switch (kind) {
-		case EndpointKind.Group:
-			return GROUPS;
-		case EndpointKind.Node:
-			return NODES;
-		case EndpointKind.Junction:
-			return JUNCTIONS;
-		default:
-			throw new TypeError(`Unsupported endpoint kind: ${String(kind)}`);
-	}
-}
+const COLLECTION_BY_ENDPOINT_KIND: Readonly<Record<EndpointKind, string>> = {
+	[EndpointKind.Group]: GROUPS,
+	[EndpointKind.Node]: NODES,
+	[EndpointKind.Junction]: JUNCTIONS,
+};
 
 interface PersistenceCapture {
 	result: YjsLiveDocumentResult<LogicDocument> | undefined;
@@ -105,9 +99,7 @@ export class YjsDocumentRepository {
 				this.#apply(changes);
 			}, origin);
 			if (guardedValidation !== undefined && !guardedValidation.ok) return guardedValidation;
-			const result = capture.result;
-			if (result === undefined)
-				throw new Error('Yjs transaction completed without materialization');
+			const result = defined(capture.result);
 			if (!result.ok) {
 				undo.undo();
 				this.#discardRolledBackStructs(stateBefore);
@@ -180,12 +172,9 @@ export class YjsDocumentRepository {
 		}
 		const orderChanges = changes.endpointOrderChanges.map((change) => {
 			const endpoint = this.document
-				.getMap<Y.Map<unknown>>(endpointCollection(change.endpointKind))
+				.getMap<Y.Map<unknown>>(COLLECTION_BY_ENDPOINT_KIND[change.endpointKind])
 				.get(change.endpointId);
-			if (!(endpoint instanceof Y.Map)) {
-				throw new Error(`Endpoint order target is missing: ${change.endpointId}`);
-			}
-			return { endpoint, order: change.layoutOrder };
+			return { endpoint: defined(endpoint), order: change.layoutOrder };
 		});
 		for (const node of changes.nodeAdditions) {
 			const markdown = new Y.Text(node.markdown);

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { serializeSequitToml } from '../../src/lib/text/serialize-sequit-toml';
+import { validLogicDocument } from '../builders/logic-document';
 import { richAcyclicLogicDocumentArbitrary } from '../builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
 
@@ -36,6 +37,12 @@ function reversedCollections(document: LogicDocument): LogicDocument {
 }
 
 describe('generated persistent documents', () => {
+	it('serializes optional group membership for junctions', () => {
+		const source = serializeSequitToml(validLogicDocument());
+		expect(source).toContain('group = "container"');
+		expect(parseSequitToml(source)).toMatchObject({ ok: true });
+	});
+
 	it('preserves every generated document through TOML serialization and parsing', () => {
 		fc.assert(
 			fc.property(richAcyclicLogicDocumentArbitrary(), (document) => {

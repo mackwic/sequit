@@ -5,6 +5,7 @@ import type {
 } from './document-command-gateway';
 import { DocumentCommandKind, DocumentCommandOutcomeKind } from './document-command-gateway';
 import type { LogicDocument, LogicRelation, NewLogicNode } from './logic-document';
+import { defined } from './logic-document';
 
 export class DocumentSessionError extends Error {
 	constructor(
@@ -118,8 +119,7 @@ export class DocumentSession {
 					this.#publicationQueue.length = 0;
 					break;
 				}
-				const next = this.#publicationQueue.shift();
-				if (next !== undefined) this.#publishOne(next);
+				this.#publishOne(defined(this.#publicationQueue.shift()));
 			}
 		} finally {
 			this.#publishing = false;

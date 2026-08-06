@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import { LayoutBias, LayoutDirection } from '../document/logic-document';
 import type { EndpointRows } from './endpoint-order';
 import type { Bounds, Size } from './layout-types';
@@ -72,8 +73,9 @@ function totalPrimaryLength(
 	primaryBandSizes: readonly number[],
 	junctionSpans: readonly number[],
 ): number {
-	const lastBandEnd = (primaryBandStarts[maximumRank] ?? 0) + (primaryBandSizes[maximumRank] ?? 1);
-	return lastBandEnd + (junctionSpans[maximumRank] ?? 0);
+	const lastBandEnd =
+		defined(primaryBandStarts[maximumRank]) + defined(primaryBandSizes[maximumRank]);
+	return lastBandEnd + defined(junctionSpans[maximumRank]);
 }
 
 export function layoutComponent(
@@ -99,9 +101,9 @@ export function layoutComponent(
 	});
 	const primaryBandStarts = Array.from({ length: primaryBandSizes.length }, () => 0);
 	for (let rank = 1; rank < primaryBandSizes.length; rank += 1) {
-		const previousBandStart = primaryBandStarts[rank - 1] ?? 0;
-		const previousBandSize = primaryBandSizes[rank - 1] ?? 0;
-		const previousJunctionSpan = junctionSpans[rank - 1] ?? rankGap;
+		const previousBandStart = defined(primaryBandStarts[rank - 1]);
+		const previousBandSize = defined(primaryBandSizes[rank - 1]);
+		const previousJunctionSpan = defined(junctionSpans[rank - 1]);
 		primaryBandStarts[rank] = previousBandStart + previousBandSize + previousJunctionSpan;
 	}
 	const primaryLength = totalPrimaryLength(
@@ -116,8 +118,7 @@ export function layoutComponent(
 	const boundsById = new Map<string, Bounds>();
 
 	const place = (id: string, cross: number, forwardPrimary: number): void => {
-		const size = sizes.get(id);
-		if (!size) throw new Error(`Missing measured size: ${id}`);
+		const size = defined(sizes.get(id));
 		const itemPrimarySize = primarySize(size, vertical);
 		const primary = isForwardDirection(direction)
 			? forwardPrimary
@@ -129,15 +130,14 @@ export function layoutComponent(
 	};
 
 	for (const [rank, row] of rows.ordinary.entries()) {
-		let cross = (crossLength - (ordinaryCrossSizes[rank] ?? 0)) / 2;
+		let cross = (crossLength - defined(ordinaryCrossSizes[rank])) / 2;
 		for (const id of row) {
-			const size = sizes.get(id);
-			if (!size) throw new Error(`Missing measured size: ${id}`);
-			const bandSize = primaryBandSizes[rank] ?? primarySize(size, vertical);
+			const size = defined(sizes.get(id));
+			const bandSize = defined(primaryBandSizes[rank]);
 			place(
 				id,
 				cross,
-				(primaryBandStarts[rank] ?? 0) +
+				defined(primaryBandStarts[rank]) +
 					alignedForwardPrimaryOffset(bandSize, primarySize(size, vertical), direction, bias),
 			);
 			cross += crossSize(size, vertical) + ITEM_GAP;
@@ -145,14 +145,13 @@ export function layoutComponent(
 	}
 
 	for (const [rank, row] of rows.junction.entries()) {
-		let cross = (crossLength - (junctionCrossSizes[rank] ?? 0)) / 2;
+		let cross = (crossLength - defined(junctionCrossSizes[rank])) / 2;
 		for (const id of row) {
-			const size = sizes.get(id);
-			if (!size) throw new Error(`Missing measured size: ${id}`);
+			const size = defined(sizes.get(id));
 			const itemPrimarySize = primarySize(size, vertical);
-			const bandStart = primaryBandStarts[rank] ?? 0;
-			const bandSize = primaryBandSizes[rank] ?? itemPrimarySize;
-			const junctionSpan = junctionSpans[rank] ?? 0;
+			const bandStart = defined(primaryBandStarts[rank]);
+			const bandSize = defined(primaryBandSizes[rank]);
+			const junctionSpan = defined(junctionSpans[rank]);
 			const centeredJunctionOffset = (junctionSpan - itemPrimarySize) / 2;
 			const forwardPrimary = bandStart + bandSize + centeredJunctionOffset;
 			place(id, cross, forwardPrimary);

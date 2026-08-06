@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import type { EffectiveSemanticRelation } from '../graph/create-graph';
 
 enum VisualLayerKind {
@@ -5,7 +6,7 @@ enum VisualLayerKind {
 	Junction = 'junction',
 }
 
-export type VisualLayerKey = `${number}:${VisualLayerKind}`;
+type VisualLayerKey = `${number}:${VisualLayerKind}`;
 
 export interface CrossingOrderMetadata {
 	readonly effectiveRelations: readonly EffectiveSemanticRelation[];
@@ -45,7 +46,7 @@ interface IndexedRelation {
 	readonly pairWeight: number;
 }
 
-export function visualLayerKey(
+function visualLayerKey(
 	endpointId: string,
 	ranks: ReadonlyMap<string, number>,
 	junctionIds: ReadonlySet<string>,
@@ -161,8 +162,8 @@ function addPeerCosts(
 		if (index === undefined) continue;
 		const higherCost = higher * weight;
 		const lowerCost = lower * weight;
-		context.beforeByPeer[index] = (context.beforeByPeer[index] ?? 0) + higherCost;
-		context.afterByPeer[index] = (context.afterByPeer[index] ?? 0) + lowerCost;
+		context.beforeByPeer[index] = defined(context.beforeByPeer[index]) + higherCost;
+		context.afterByPeer[index] = defined(context.afterByPeer[index]) + lowerCost;
 	}
 }
 
@@ -218,7 +219,7 @@ export function scoreTargetInsertionSlots(
 	for (let slot = 0; slot <= peers.length; slot += 1) {
 		scoreBySlot.push(score);
 		if (slot < peers.length) {
-			const peerDelta = (afterByPeer[slot] ?? 0) - (beforeByPeer[slot] ?? 0);
+			const peerDelta = defined(afterByPeer[slot]) - defined(beforeByPeer[slot]);
 			score += peerDelta;
 		}
 	}
@@ -249,18 +250,17 @@ export function selectTargetInsertionSlot(
 		if (Math.abs(score - minimumScore) > crossingScoreTolerance(score, minimumScore)) continue;
 		if (preferCandidateSlot(slot, bestSlot, scores.currentSlot)) bestSlot = slot;
 	}
-	if (bestSlot === undefined)
-		throw new Error('Target insertion scores must contain a finite minimum');
-	const bestScore = scores.scoreBySlot[bestSlot] ?? 0;
+	const selectedSlot = defined(bestSlot);
+	const bestScore = defined(scores.scoreBySlot[selectedSlot]);
 	const peers = row.filter((id) => id !== targetId);
-	const order = [...peers.slice(0, bestSlot), targetId, ...peers.slice(bestSlot)];
+	const order = [...peers.slice(0, selectedSlot), targetId, ...peers.slice(selectedSlot)];
 	return {
 		...scores,
-		bestSlot,
+		bestSlot: selectedSlot,
 		bestScore,
-		currentScore: scores.scoreBySlot[scores.currentSlot] ?? 0,
+		currentScore: defined(scores.scoreBySlot[scores.currentSlot]),
 		order,
-		moved: bestSlot !== scores.currentSlot,
+		moved: selectedSlot !== scores.currentSlot,
 	};
 }
 
@@ -287,9 +287,8 @@ export function weightedInversionScore(metadata: CrossingOrderMetadata): number 
 	let score = 0;
 	const relations = indexRelations(metadata);
 	for (const [index, left] of relations.entries()) {
-		for (const right of relations.slice(index + 1)) {
-			if (left.relationId !== right.relationId) score += relationPairInversionScore(left, right);
-		}
+		for (const right of relations.slice(index + 1))
+			score += relationPairInversionScore(left, right);
 	}
 	return score;
 }

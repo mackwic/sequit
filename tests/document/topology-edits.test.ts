@@ -18,6 +18,19 @@ import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 import { crossingAwareDirectionScenario } from '../builders/crossing-aware-direction-scenario';
 
 describe('topology edits', () => {
+	it('allocates the first endpoint order key in an empty document', () => {
+		const base = threeTargetScenario([]);
+		const empty = { ...base, nodes: [], relations: [] };
+		const result = projectNodeAddition(
+			empty,
+			{ id: 'first', natureId: 'goal', markdown: 'First' },
+			fractionalOrderKeySpace,
+		);
+		expect(result.ok).toBe(true);
+		if (!result.ok) throw new Error('Expected first node addition to succeed');
+		expect(result.value.document.nodes[0]?.id).toBe('first');
+	});
+
 	function threeTargetScenario(
 		targetOrder: readonly string[],
 		sourceOrder: readonly string[] = ['source-a', 'source-b', 'source-c'],

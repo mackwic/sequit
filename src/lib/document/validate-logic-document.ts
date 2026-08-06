@@ -1,4 +1,5 @@
 import type { DocumentResult, LogicDocument, SequitDiagnostic } from './logic-document';
+import { defined } from './logic-document';
 import { SequitDiagnosticCode } from './logic-document';
 
 enum GroupVisitState {
@@ -59,7 +60,7 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 			diagnostics.push({
 				code: SequitDiagnosticCode.GroupCycle,
 				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
-				path: ['groups', groupPath.at(-1) ?? groupId, 'group'],
+				path: ['groups', defined(groupPath.at(-1)), 'group'],
 			});
 			return;
 		}

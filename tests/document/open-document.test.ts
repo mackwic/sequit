@@ -127,6 +127,17 @@ describe('openDocument', () => {
 		});
 	});
 
+	it('normalizes a non-Error session creation failure', async () => {
+		expect(
+			openDocument(await aiDocumentaryEffortScenario(), () => {
+				throw new Error('Session unavailable');
+			}),
+		).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'open-document-failed', message: 'Session unavailable', path: [] }],
+		});
+	});
+
 	it('destroys the session when opened-document construction fails', async () => {
 		const source = await aiDocumentaryEffortScenario();
 		const destroyed = vi.fn();

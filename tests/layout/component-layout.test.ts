@@ -21,6 +21,12 @@ const ranks = new Map<string, number>([
 const junctionIds = new Set(['junction']);
 const sizes = new Map<string, Size>(ids.map((id) => [id, { width: 20, height: 20 }]));
 
+it('rejects a component endpoint without a valid rank', () => {
+	expect(() => deriveEndpointRows(['missing'], ['missing'], new Map(), new Set(), 0)).toThrow(
+		'Invalid layout rank: missing',
+	);
+});
+
 function bounds(
 	direction: LayoutDirection.TopToBottom | LayoutDirection.BottomToTop,
 ): ReadonlyMap<string, Bounds> {
@@ -147,6 +153,28 @@ function layoutJunctionFixture(
 }
 
 describe('component layout endpoint order', () => {
+	it('rejects rows that do not align with the primary rank bands', () => {
+		expect(() =>
+			layoutComponent(
+				{ ordinary: [[]], junction: [] },
+				new Map(),
+				LayoutDirection.TopToBottom,
+				LayoutBias.Top,
+				[20],
+			),
+		).toThrow('Component rows must align with primary rank bands');
+	});
+
+	it('rejects ordinary and junction endpoints without measured sizes', () => {
+		const configuration = [LayoutDirection.TopToBottom, LayoutBias.Top, [20]] as const;
+		expect(() =>
+			layoutComponent({ ordinary: [['missing']], junction: [[]] }, new Map(), ...configuration),
+		).toThrow('Missing measured size: missing');
+		expect(() =>
+			layoutComponent({ ordinary: [[]], junction: [['missing']] }, new Map(), ...configuration),
+		).toThrow('Missing measured size: missing');
+	});
+
 	it('uses the supplied endpoint order', () => {
 		expect(bounds(LayoutDirection.TopToBottom).get('z')?.x).toBeLessThan(
 			bounds(LayoutDirection.TopToBottom).get('a')?.x ?? 0,

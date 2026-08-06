@@ -52,6 +52,16 @@ function link(
 	return { relationId, sourceIds: [sourceId], targetIds: [targetId] };
 }
 
+it('rejects a target missing from or duplicated in its visual row', () => {
+	const emptyMetadata = metadata([], [], []);
+	expect(() => scoreTargetInsertionSlots([], 'target', emptyMetadata)).toThrow(
+		'Target must occur exactly once in its visual row: target',
+	);
+	expect(() => scoreTargetInsertionSlots(['target', 'target'], 'target', emptyMetadata)).toThrow(
+		'Target must occur exactly once in its visual row: target',
+	);
+});
+
 interface OracleLink {
 	readonly relationId: string;
 	readonly sourceId: string;

@@ -33,6 +33,24 @@ function currentDocumentFrom(source: string): LogicDocument {
 	return current.value;
 }
 
+it('rejects a cyclic graph passed directly to the ranker', () => {
+	const graph = graphFrom(validLogicDocument());
+	const outgoing = new Map(graph.outgoingByEndpointId);
+	const predecessors = new Map(graph.predecessorsByEndpointId);
+	outgoing.set('source-a', ['source-b']);
+	outgoing.set('source-b', ['source-a']);
+	predecessors.set('source-a', ['source-b']);
+	predecessors.set('source-b', ['source-a']);
+	const cyclic = {
+		...graph,
+		rankableEndpointIds: ['source-a', 'source-b'],
+		outgoingByEndpointId: outgoing,
+		predecessorsByEndpointId: predecessors,
+	};
+
+	expect(() => topologicallyRank(cyclic)).toThrow('LogicGraph must be acyclic before ranking');
+});
+
 describe('LogicGraph', () => {
 	it('resolves all relations including nodes, a junction, and the empty group endpoint', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());

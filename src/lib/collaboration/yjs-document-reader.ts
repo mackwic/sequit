@@ -23,7 +23,7 @@ import { YJS_COLLECTIONS } from './yjs-document-schema';
 
 const XOR_OPERATOR: string = JunctionOperator.Xor;
 
-export interface YjsLiveDocumentDiagnostic {
+interface YjsLiveDocumentDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
