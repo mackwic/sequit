@@ -43,11 +43,12 @@ function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string
 			const id = pending.pop();
 			if (id === undefined) break;
 			component.push(id);
-			const adjacent = [
-				...(graph.outgoingByEndpointId.get(id) ?? []),
-				...(graph.predecessorsByEndpointId.get(id) ?? []),
-			].sort((left, right) => right.localeCompare(left));
-			for (const next of adjacent) {
+			for (const next of graph.outgoingByEndpointId.get(id) ?? []) {
+				if (visited.has(next)) continue;
+				visited.add(next);
+				pending.push(next);
+			}
+			for (const next of graph.predecessorsByEndpointId.get(id) ?? []) {
 				if (visited.has(next)) continue;
 				visited.add(next);
 				pending.push(next);
@@ -101,6 +102,9 @@ function positionEndpoints(
 ): PositionedEndpoints {
 	const { groupsById, sizes, layoutSizes, reservations, vertical, componentGap } = context;
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
+	const layoutContextByEndpointId = new Map(
+		graph.rankableEndpointIds.map((id) => [id, endpointLayoutContext(graph, id, groupsById)]),
+	);
 	const primaryBandSizes = ranks.bands.map((ids) => {
 		let maximum = 1;
 		for (const id of ids) {
@@ -112,12 +116,16 @@ function positionEndpoints(
 		return maximum;
 	});
 	const components: RankedComponent[] = weaklyConnectedComponents(graph).map((ids) => {
-		const orderedIds = [...ids].sort(
-			(left, right) =>
-				endpointLayoutContext(graph, left, groupsById).localeCompare(
-					endpointLayoutContext(graph, right, groupsById),
-				) || left.localeCompare(right),
-		);
+		const orderedIds = [...ids].sort((left, right) => {
+			const leftContext = layoutContextByEndpointId.get(left);
+			const rightContext = layoutContextByEndpointId.get(right);
+			if (leftContext === undefined || rightContext === undefined) {
+				throw new Error(
+					`Missing endpoint layout context: ${leftContext === undefined ? left : right}`,
+				);
+			}
+			return leftContext.localeCompare(rightContext) || left.localeCompare(right);
+		});
 		return {
 			ids: orderedIds,
 			context: componentContext(graph, orderedIds, groupsById),

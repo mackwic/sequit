@@ -50,11 +50,12 @@ function findCycle(
 		/* istanbul ignore if -- @preserve: adjacency is initialized for every canonical endpoint. */
 		if (!targets) throw new Error(`Missing graph adjacency: ${id}`);
 		for (const target of targets) {
-			if (state.get(target) === 'visiting') {
+			const targetState = state.get(target);
+			if (targetState === 'visiting') {
 				const start = stack.lastIndexOf(target);
 				return [...stack.slice(start), target];
 			}
-			if (state.get(target) !== 'visited') {
+			if (targetState !== 'visited') {
 				const cycle = visit(target);
 				if (cycle) return cycle;
 			}
@@ -72,16 +73,17 @@ function findCycle(
 	return undefined;
 }
 
-export function createGraph(document: LogicDocument): GraphResult {
-	const endpoints = [
-		...document.groups.map((entity) => ({ kind: 'group' as const, entity })),
-		...document.nodes.map((entity) => ({ kind: 'node' as const, entity })),
-		...document.junctions.map((entity) => ({ kind: 'junction' as const, entity })),
-	].sort((left, right) => left.entity.id.localeCompare(right.entity.id));
-	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.entity.id, endpoint]));
+interface ResolvedRelations {
+	readonly relations: GraphRelation[];
+	readonly diagnostics: GraphDiagnostic[];
+}
+
+function resolveRelations(
+	document: LogicDocument,
+	endpointsById: ReadonlyMap<string, GraphEndpoint>,
+): ResolvedRelations {
 	const diagnostics: GraphDiagnostic[] = [];
 	const relations: GraphRelation[] = [];
-
 	for (const relation of [...document.relations].sort((left, right) =>
 		left.id.localeCompare(right.id),
 	)) {
@@ -103,6 +105,54 @@ export function createGraph(document: LogicDocument): GraphResult {
 		}
 		if (source && target) relations.push({ relation, source, target });
 	}
+	return { relations, diagnostics };
+}
+
+interface RankingIdsContext {
+	readonly endpointsById: ReadonlyMap<string, GraphEndpoint>;
+	readonly memberIdsByGroup: ReadonlyMap<string, readonly string[]>;
+	readonly cache: Map<string, readonly string[]>;
+}
+
+function rankingIdsFor(context: RankingIdsContext, endpointId: string): readonly string[] {
+	const cached = context.cache.get(endpointId);
+	if (cached) return cached;
+	const endpoint = context.endpointsById.get(endpointId);
+	/* istanbul ignore if -- @preserve: ranking IDs are requested only for known endpoints. */
+	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
+	let rankingIds: readonly string[] = [endpointId];
+	if (endpoint.kind === 'group') {
+		const members = context.memberIdsByGroup.get(endpointId);
+		/* istanbul ignore if -- @preserve: member lists are initialized for every group. */
+		if (!members) throw new Error(`Missing group members: ${endpointId}`);
+		let expandsNestedGroup = false;
+		for (const memberId of members) {
+			const member = context.endpointsById.get(memberId);
+			if (member?.kind === 'group' && (context.memberIdsByGroup.get(memberId)?.length ?? 0) > 0) {
+				expandsNestedGroup = true;
+				break;
+			}
+		}
+		if (members.length > 0 && !expandsNestedGroup) {
+			rankingIds = members;
+		} else if (members.length > 0) {
+			rankingIds = [
+				...new Set(members.flatMap((memberId) => rankingIdsFor(context, memberId))),
+			].sort((left, right) => left.localeCompare(right));
+		}
+	}
+	context.cache.set(endpointId, rankingIds);
+	return rankingIds;
+}
+
+export function createGraph(document: LogicDocument): GraphResult {
+	const endpoints = [
+		...document.groups.map((entity) => ({ kind: 'group' as const, entity })),
+		...document.nodes.map((entity) => ({ kind: 'node' as const, entity })),
+		...document.junctions.map((entity) => ({ kind: 'junction' as const, entity })),
+	].sort((left, right) => left.entity.id.localeCompare(right.entity.id));
+	const endpointsById = new Map(endpoints.map((endpoint) => [endpoint.entity.id, endpoint]));
+	const { relations, diagnostics } = resolveRelations(document, endpointsById);
 	if (diagnostics.length > 0) return { ok: false, diagnostics };
 
 	const memberIdsByGroup = new Map(document.groups.map(({ id }) => [id, [] as string[]]));
@@ -113,37 +163,19 @@ export function createGraph(document: LogicDocument): GraphResult {
 	for (const members of memberIdsByGroup.values()) {
 		members.sort((left, right) => left.localeCompare(right));
 	}
-	const rankingIdsByEndpointId = new Map<string, readonly string[]>();
-	function rankingIdsFor(endpointId: string): readonly string[] {
-		const cached = rankingIdsByEndpointId.get(endpointId);
-		if (cached) return cached;
-		const endpoint = endpointsById.get(endpointId);
-		/* istanbul ignore if -- @preserve: ranking IDs are requested only for known endpoints. */
-		if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
-		let memberIds: readonly string[] = [];
-		if (endpoint.kind === 'group') {
-			const members = memberIdsByGroup.get(endpointId);
-			/* istanbul ignore if -- @preserve: member lists are initialized for every group. */
-			if (!members) throw new Error(`Missing group members: ${endpointId}`);
-			memberIds = members;
-		}
-		const rankingIds =
-			memberIds.length === 0
-				? [endpointId]
-				: [...new Set(memberIds.flatMap((memberId) => rankingIdsFor(memberId)))].sort(
-						(left, right) => left.localeCompare(right),
-					);
-		rankingIdsByEndpointId.set(endpointId, rankingIds);
-		return rankingIds;
-	}
+	const rankingContext: RankingIdsContext = {
+		endpointsById,
+		memberIdsByGroup,
+		cache: new Map(),
+	};
 
 	const rankableEndpointIds = new Set<string>();
 	for (const node of document.nodes) rankableEndpointIds.add(node.id);
 	for (const junction of document.junctions) rankableEndpointIds.add(junction.id);
 	const rankingTargetsBySourceId = new Map<string, Set<string>>();
 	for (const { source, target } of relations) {
-		const sourceIds = rankingIdsFor(source.entity.id);
-		const targetIds = rankingIdsFor(target.entity.id);
+		const sourceIds = rankingIdsFor(rankingContext, source.entity.id);
+		const targetIds = rankingIdsFor(rankingContext, target.entity.id);
 		for (const sourceId of sourceIds) {
 			rankableEndpointIds.add(sourceId);
 			let rankingTargets = rankingTargetsBySourceId.get(sourceId);
@@ -160,16 +192,18 @@ export function createGraph(document: LogicDocument): GraphResult {
 	const canonicalIds = [...rankableEndpointIds].sort((left, right) => left.localeCompare(right));
 	const outgoingByEndpointId = new Map(canonicalIds.map((id) => [id, [] as string[]]));
 	const predecessorsByEndpointId = new Map(canonicalIds.map((id) => [id, [] as string[]]));
-	for (const [sourceId, targetIds] of rankingTargetsBySourceId) {
+	for (const sourceId of canonicalIds) {
+		const targetIds = rankingTargetsBySourceId.get(sourceId);
+		if (targetIds === undefined) continue;
+		const outgoing = outgoingByEndpointId.get(sourceId);
+		/* istanbul ignore if -- @preserve: adjacency is initialized for every canonical endpoint. */
+		if (outgoing === undefined) throw new Error(`Missing graph adjacency: ${sourceId}`);
 		for (const targetId of targetIds) {
-			outgoingByEndpointId.get(sourceId)?.push(targetId);
+			outgoing.push(targetId);
 			predecessorsByEndpointId.get(targetId)?.push(sourceId);
 		}
 	}
 	for (const adjacent of outgoingByEndpointId.values()) {
-		adjacent.sort((left, right) => left.localeCompare(right));
-	}
-	for (const adjacent of predecessorsByEndpointId.values()) {
 		adjacent.sort((left, right) => left.localeCompare(right));
 	}
 

@@ -42,17 +42,25 @@ function primaryRelationBoundary(
 	}
 }
 
+function groupRelatedEndpointIds(graph: LogicGraph): ReadonlySet<string> {
+	const groupIds = new Set(graph.document.groups.map(({ id }) => id));
+	const result = new Set<string>();
+	if (groupIds.size === 0) return result;
+	for (const { from, to } of graph.document.relations) {
+		if (groupIds.has(from)) result.add(to);
+		if (groupIds.has(to)) result.add(from);
+	}
+	return result;
+}
+
 export function centerDirectJunctions(
 	graph: LogicGraph,
 	boundsById: Map<string, Bounds>,
 	direction: LayoutDirection,
 ): void {
-	const groupIds = new Set(graph.document.groups.map(({ id }) => id));
+	const groupRelatedIds = groupRelatedEndpointIds(graph);
 	for (const { id } of graph.document.junctions) {
-		const hasGroupRelation = graph.document.relations.some(
-			({ from, to }) => (from === id && groupIds.has(to)) || (to === id && groupIds.has(from)),
-		);
-		if (hasGroupRelation) continue;
+		if (groupRelatedIds.has(id)) continue;
 		const junctionBounds = boundsById.get(id);
 		if (!junctionBounds) continue;
 		const sources = directRegularBounds(

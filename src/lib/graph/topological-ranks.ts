@@ -6,10 +6,9 @@ export interface TopologicalRanks {
 }
 
 function rankIncrement(graph: LogicGraph, sourceId: string, targetId: string): number {
-	const sourceIsJunction = graph.endpointsById.get(sourceId)?.kind === 'junction';
-	const targetIsJunction = graph.endpointsById.get(targetId)?.kind === 'junction';
-	const targetHasOutgoingRelations = (graph.outgoingByEndpointId.get(targetId)?.length ?? 0) > 0;
-	if (targetIsJunction && !sourceIsJunction && targetHasOutgoingRelations) return 0;
+	if (graph.endpointsById.get(targetId)?.kind !== 'junction') return 1;
+	if (graph.endpointsById.get(sourceId)?.kind === 'junction') return 1;
+	if ((graph.outgoingByEndpointId.get(targetId)?.length ?? 0) > 0) return 0;
 	return 1;
 }
 
