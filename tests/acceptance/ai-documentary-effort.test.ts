@@ -6,7 +6,11 @@ import {
 	readLogicDocument,
 } from '../../src/lib/collaboration/yjs-document-codec';
 import { openDocument } from '../../src/lib/document/open-document';
+import { orderKey } from '../../src/lib/document/order-key';
+import { createGraph } from '../../src/lib/graph/create-graph';
+import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import { weightedInversionScore } from '../../src/lib/layout/crossing-aware-order';
+import { orderEndpoints } from '../../src/lib/layout/endpoint-order';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
@@ -184,6 +188,41 @@ describe('AI for documentary effort', () => {
 
 			firstOpened.destroy();
 			reopened.destroy();
+		});
+
+		it('strictly reduces weighted inversions on the reported third line', async () => {
+			const parsed = parseSequitToml(await aiDocumentaryEffortScenario());
+			if (!parsed.ok) throw new Error('Reference document must parse');
+			const current = parsed.value;
+			const legacyOrder = new Map([
+				['ai-content-generation', orderKey('a5')],
+				['minimal-workflow-disruption', orderKey('a6')],
+				['preserve-documentary-guarantees', orderKey('a7')],
+			]);
+			const before = {
+				...current,
+				nodes: current.nodes.map((node) => ({
+					...node,
+					layoutOrder: legacyOrder.get(node.id) ?? node.layoutOrder,
+				})),
+			};
+			const score = (document: typeof current) => {
+				const graph = createGraph(document);
+				if (!graph.ok) throw new Error('Reference graph must be valid');
+				const ranks = topologicallyRank(graph.value);
+				return weightedInversionScore({
+					effectiveRelations: graph.value.effectiveRelations,
+					effectiveEndpointOrder: orderEndpoints([
+						...document.groups,
+						...document.nodes,
+						...document.junctions,
+					]),
+					ranks: ranks.byEndpointId,
+					junctionIds: new Set(document.junctions.map(({ id }) => id)),
+				});
+			};
+
+			expect(score(current)).toBeLessThan(score(before));
 		});
 
 		it('appends isolated nodes after established comparable peers in addition order', async () => {

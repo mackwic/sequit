@@ -126,6 +126,8 @@ function accumulateSideCosts(
 			if (!peerOpposites) continue;
 			let lower = 0;
 			let higher = 0;
+			// FIXME: The compact graph avoids retained Cartesian memory, but this still does
+			// Cartesian CPU work. Derive both counts with a linear scan of sorted ordinals.
 			for (const targetOpposite of targetOpposites) {
 				for (const peerOpposite of peerOpposites) {
 					if (targetOpposite.ordinal < peerOpposite.ordinal) lower += 1;

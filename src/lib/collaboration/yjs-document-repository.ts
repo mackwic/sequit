@@ -64,6 +64,8 @@ export class YjsDocumentRepository {
 	}
 
 	#persist(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
+		// TODO: Avoid cloning and fully decoding the Y.Doc twice per accepted command while
+		// preserving the guarded validation against synchronous transaction hooks.
 		const preflight = this.#validate(changes);
 		if (!preflight.ok) return preflight;
 		const capture = { result: undefined } as {
@@ -72,6 +74,8 @@ export class YjsDocumentRepository {
 		let guardedValidation: YjsLiveDocumentResult<LogicDocument> | undefined;
 		this.#persistenceCapture = capture;
 		try {
+			// FIXME: A reactive Yjs observer can invalidate this transaction after #apply().
+			// Returning that rejection does not currently roll back the already committed writes.
 			this.document.transact(() => {
 				guardedValidation = this.#validate(changes);
 				if (!guardedValidation.ok) return;
@@ -159,6 +163,7 @@ export class YjsDocumentRepository {
 				observer(result, transaction.origin);
 			} catch {
 				// Repository observers cannot interrupt Yjs transaction delivery.
+				// TODO: Report observer failures through an isolated diagnostics channel.
 			}
 		}
 	};

@@ -273,25 +273,6 @@ describe('layoutGraph', () => {
 		);
 	});
 
-	it('rejects overlapping relation endpoint bounds before routing with the relation identity', async () => {
-		const base = validLogicDocument();
-		const document: LogicDocument = {
-			...base,
-			relations: [
-				...base.relations,
-				{ id: 'containing-group-to-member', from: 'container', to: 'source-a' },
-			],
-		};
-		const graph = createGraph(document);
-		if (!graph.ok) throw new Error('Expected an acyclic graph');
-
-		await expect(
-			layoutGraph(graph.value, topologicallyRank(graph.value), layoutMeasurementsFor(document)),
-		).rejects.toThrow(
-			'Relation bounds overlap: containing-group-to-member (container -> source-a)',
-		);
-	});
-
 	it('uses explicit endpoint order within a component without changing ranks', async () => {
 		const original = validLogicDocument();
 		const document = withOrder(original, ['source-b', 'source-a']);

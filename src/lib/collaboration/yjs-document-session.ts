@@ -42,6 +42,8 @@ class YjsSessionGateway implements DocumentCommandGateway {
 		);
 		this.#stopRepository = this.#repository.observe((result, origin) => {
 			if (!result.ok && origin === this.#localCommandOrigin) return;
+			// FIXME: An invalid remote merge remains in the physical Y.Doc. Although #current
+			// stays valid, subsequent commands still persist against the invalid CRDT state.
 			const outcome: DocumentCommandOutcome = result.ok
 				? { kind: 'accepted', document: result.value }
 				: { kind: 'rejected', diagnostics: result.diagnostics };
