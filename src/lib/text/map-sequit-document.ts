@@ -4,7 +4,10 @@ import {
 	type JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
+	type LayoutBias,
+	type LayoutConfiguration,
 	layoutConfiguration,
+	type LayoutDirection,
 	type LogicDocument,
 	type LogicGroup,
 	type LogicJunction,
@@ -23,7 +26,9 @@ interface MappingContext {
 type UnknownTable = Record<string, unknown>;
 
 function isTable(value: unknown): value is UnknownTable {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
+	if (typeof value !== 'object') return false;
+	if (value === null) return false;
+	return !Array.isArray(value);
 }
 
 function table(
@@ -71,6 +76,22 @@ function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
 	return Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
 }
 
+function mapLayoutConfiguration(
+	direction: LayoutDirection | undefined,
+	bias: LayoutBias | undefined,
+	context: MappingContext,
+): LayoutConfiguration | undefined {
+	if (direction === undefined || bias === undefined) return undefined;
+	const layout = layoutConfiguration(direction, bias);
+	if (layout) return layout;
+	context.diagnostics.push({
+		code: SequitDiagnosticCode.InvalidValue,
+		message: `Layout bias ${bias} is incompatible with direction ${direction}`,
+		path: ['layout', 'bias'],
+	});
+	return undefined;
+}
+
 export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocument> {
 	const context: MappingContext = { diagnostics: [] };
 	const root = table(rootValue, [], context);
@@ -113,17 +134,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			path: ['layout', 'bias'],
 		});
 	}
-	let layout: LogicDocument['layout'] | undefined;
-	if (direction !== undefined && bias !== undefined) {
-		layout = layoutConfiguration(direction, bias);
-	}
-	if (direction !== undefined && bias !== undefined && layout === undefined) {
-		context.diagnostics.push({
-			code: SequitDiagnosticCode.InvalidValue,
-			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
-			path: ['layout', 'bias'],
-		});
-	}
+	const layout = mapLayoutConfiguration(direction, bias, context);
 
 	const natures: LogicNature[] = [];
 	if (natureTable) {
@@ -221,9 +232,11 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 		}
 	}
 
-	if (context.diagnostics.length > 0 || id === undefined || title === undefined || !layout) {
+	if (context.diagnostics.length > 0) return { ok: false, diagnostics: context.diagnostics };
+	if (id === undefined || title === undefined) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
+	if (!layout) return { ok: false, diagnostics: context.diagnostics };
 
 	return {
 		ok: true,

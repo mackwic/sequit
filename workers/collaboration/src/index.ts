@@ -10,6 +10,13 @@ const json = (body: unknown, status = 200) =>
 		headers: { 'cache-control': 'no-store' },
 	});
 
+function isPingPayload(value: unknown): boolean {
+	if (typeof value !== 'object') return false;
+	if (value === null) return false;
+	if (!('type' in value)) return false;
+	return value.type === 'ping';
+}
+
 export default {
 	fetch(request, env): Response | Promise<Response> {
 		const url = new URL(request.url);
@@ -53,12 +60,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		if (typeof message === 'string') {
 			try {
 				const payload: unknown = JSON.parse(message);
-				if (
-					typeof payload === 'object' &&
-					payload !== null &&
-					'type' in payload &&
-					payload.type === 'ping'
-				) {
+				if (isPingPayload(payload)) {
 					socket.send(JSON.stringify({ type: 'pong' }));
 					return;
 				}

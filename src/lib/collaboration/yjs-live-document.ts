@@ -295,11 +295,10 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 			path: ['layout', 'bias'],
 		});
 	}
+	const hasLayoutInputs = direction !== undefined && bias !== undefined;
 	let layout: LogicDocument['layout'] | undefined;
-	if (direction !== undefined && bias !== undefined) {
-		layout = layoutConfiguration(direction, bias);
-	}
-	if (direction !== undefined && bias !== undefined && layout === undefined) {
+	if (hasLayoutInputs) layout = layoutConfiguration(direction, bias);
+	if (hasLayoutInputs && layout === undefined) {
 		context.diagnostics.push({
 			code: YjsLiveDocumentDiagnosticCode.InvalidDocument,
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
@@ -313,9 +312,11 @@ export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocum
 	const junctions = readCollection(ydoc, JUNCTIONS, 'junctions', context, readJunction);
 	const relations = readCollection(ydoc, RELATIONS, 'relations', context, readRelation);
 
-	if (context.diagnostics.length > 0 || id === undefined || title === undefined || !layout) {
+	if (context.diagnostics.length > 0) return { ok: false, diagnostics: context.diagnostics };
+	if (id === undefined || title === undefined) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
+	if (!layout) return { ok: false, diagnostics: context.diagnostics };
 
 	const document: LogicDocument = {
 		id,

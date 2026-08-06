@@ -70,9 +70,10 @@ function intersection(current: Segment, other: Segment): Point | undefined {
 }
 
 function distanceAlong(segment: Segment, point: Point): number {
-	return segment.orientation === Orientation.Horizontal
-		? Math.abs(point.x - segment.start.x)
-		: Math.abs(point.y - segment.start.y);
+	if (segment.orientation === Orientation.Horizontal) {
+		return Math.abs(point.x - segment.start.x);
+	}
+	return Math.abs(point.y - segment.start.y);
 }
 
 function pointAlong(segment: Segment, distance: number): Point {
@@ -110,9 +111,10 @@ function pathFor(
 			commands.push(pointCommand(PathCommand.Line, segment.start));
 		}
 		const length = distanceAlong(segment, segment.end);
+		const maximumBridgeCenter = length - BRIDGE_RADIUS;
 		const distances = [...(crossings.get(segment) ?? [])]
 			.map((point) => distanceAlong(segment, point))
-			.filter((distance) => distance >= BRIDGE_RADIUS && distance <= length - BRIDGE_RADIUS)
+			.filter((distance) => distance >= BRIDGE_RADIUS && distance <= maximumBridgeCenter)
 			.sort((left, right) => left - right);
 		let coveredUntil = 0;
 		for (const distance of distances) {

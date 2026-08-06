@@ -159,10 +159,9 @@ function rankingIdsFor(context: RankingIdsContext, endpointId: string): readonly
 		let expandsNestedGroup = false;
 		for (const memberId of members) {
 			const member = context.endpointsById.get(memberId);
-			if (
-				member?.kind === GraphEndpointKind.Group &&
-				(context.memberIdsByGroup.get(memberId)?.length ?? 0) > 0
-			) {
+			const isGroup = member?.kind === GraphEndpointKind.Group;
+			const hasMembers = (context.memberIdsByGroup.get(memberId)?.length ?? 0) > 0;
+			if (isGroup && hasMembers) {
 				expandsNestedGroup = true;
 				break;
 			}

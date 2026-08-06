@@ -93,6 +93,7 @@ export default defineConfig(
 		},
 		rules: {
 			complexity: ['error', 20],
+			'local/max-operators-per-expression': ['error', 3],
 			'local/max-top-level-functions': ['error', 15],
 			'local/no-anonymous-object-union-members': 'error',
 			'local/prefer-string-enum': 'error',

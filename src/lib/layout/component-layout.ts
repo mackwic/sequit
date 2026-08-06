@@ -72,10 +72,11 @@ function primaryBandGeometry(
 	);
 	const primaryBandStarts = effectiveBandSizes.map(() => 0);
 	for (let rank = 1; rank < effectiveBandSizes.length; rank += 1) {
-		primaryBandStarts[rank] =
-			requiredAt(primaryBandStarts, rank - 1, 'primary band start') +
-			requiredAt(effectiveBandSizes, rank - 1, 'primary band size') +
-			requiredAt(interBandGaps, rank - 1, 'inter-band gap');
+		const previousRank = rank - 1;
+		const previousStart = requiredAt(primaryBandStarts, previousRank, 'primary band start');
+		const previousSize = requiredAt(effectiveBandSizes, previousRank, 'primary band size');
+		const previousGap = requiredAt(interBandGaps, previousRank, 'inter-band gap');
+		primaryBandStarts[rank] = previousStart + previousSize + previousGap;
 	}
 	let primaryLength = 0;
 	if (maximumRank >= 0) {
@@ -154,12 +155,12 @@ function placeJunctionRows(rows: readonly (readonly string[])[], context: Placem
 			const bandStart = requiredAt(primaryBandStarts, rank, 'primary band start');
 			const bandSize = requiredAt(effectiveBandSizes, rank, 'primary band size');
 			const sizeOnPrimaryAxis = primarySize(size, context.vertical);
-			const forwardPrimary =
-				rank < maximumRank
-					? bandStart +
-						bandSize +
-						(requiredAt(interBandGaps, rank, 'inter-band gap') - sizeOnPrimaryAxis) / 2
-					: bandStart + (bandSize - sizeOnPrimaryAxis) / 2;
+			let forwardPrimary = bandStart + (bandSize - sizeOnPrimaryAxis) / 2;
+			if (rank < maximumRank) {
+				const gap = requiredAt(interBandGaps, rank, 'inter-band gap');
+				const centeredGap = (gap - sizeOnPrimaryAxis) / 2;
+				forwardPrimary = bandStart + bandSize + centeredGap;
+			}
 			const primary = isForwardDirection(context.direction)
 				? forwardPrimary
 				: primaryLength - forwardPrimary - sizeOnPrimaryAxis;
