@@ -6,7 +6,7 @@
 		collectLayoutMeasurements,
 		layoutMeasurementSignature,
 	} from '$lib/canvas/measure-canvas';
-	import { openDocument, type OpenDocumentProjectionResult } from '$lib/document/open-document';
+	import { openDocument } from '$lib/document/open-document';
 
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
@@ -19,9 +19,8 @@
 
 	let { source }: { source: string } = $props();
 	let opened = $derived(openDocument(source));
-	let projection = $state<OpenDocumentProjectionResult>();
 	let measurementModel = $derived(
-		projection?.ok === true ? projection.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
+		opened.ok ? opened.value.measurementModel : EMPTY_MEASUREMENT_MODEL,
 	);
 	let measurementLayer = $state<HTMLDivElement>();
 	let canvas = $state<CanvasModel>();
@@ -35,33 +34,19 @@
 		previousMeasurementSignature = '';
 		activeLayoutRequest = undefined;
 		if (!openedDocument.ok) {
-			projection = undefined;
 			error = openedDocument.diagnostics.map(({ message }) => message).join('\n');
 			return;
 		}
-
-		const refresh = () => {
-			const nextProjection = openedDocument.value.read();
-			projection = nextProjection;
-			error = nextProjection.ok
-				? undefined
-				: nextProjection.diagnostics.map(({ message }) => message).join('\n');
-			canvas = undefined;
-			previousMeasurementSignature = '';
-			activeLayoutRequest = undefined;
-		};
-		refresh();
-		const unsubscribe = openedDocument.value.subscribe(refresh);
+		error = undefined;
 		return () => {
-			unsubscribe();
-			openedDocument.value.close();
+			openedDocument.value.destroy();
 		};
 	});
 
 	async function recalculate() {
 		const layer = measurementLayer;
-		const current = projection;
-		if (current?.ok !== true || layer === undefined) return;
+		const current = opened;
+		if (!current.ok || layer === undefined) return;
 		const measurements = collectLayoutMeasurements(layer);
 		const signature = layoutMeasurementSignature(measurements);
 		if (signature === previousMeasurementSignature) return;

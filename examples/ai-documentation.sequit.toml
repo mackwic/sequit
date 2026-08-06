@@ -1,4 +1,4 @@
-persistenceFormat = 1
+persistenceFormat = 2
 
 [document]
 id = "ai-documentary-effort"
@@ -38,13 +38,16 @@ color = "#f2ea20"
 
 [groups.use-cases]
 label = "Use cases"
+layoutOrder = "aO"
 
 [groups.data-team]
 label = "Data team"
+layoutOrder = "a3"
 
 [nodes.traceable-edits]
 nature = "need"
 group = "use-cases"
+layoutOrder = "aM"
 markdown = '''
 ALCOA+: All edits needs to be tracable
 '''
@@ -52,6 +55,7 @@ ALCOA+: All edits needs to be tracable
 [nodes.training-roi]
 nature = "need"
 group = "use-cases"
+layoutOrder = "aN"
 markdown = '''
 Training on the software must not overcome the ROI
 '''
@@ -59,6 +63,7 @@ Training on the software must not overcome the ROI
 [nodes.isolated-partner-edits]
 nature = "need"
 group = "use-cases"
+layoutOrder = "aI"
 markdown = '''
 Keep Partners (Gov, ReSearch, etc.) edits iso
 '''
@@ -66,6 +71,7 @@ Keep Partners (Gov, ReSearch, etc.) edits iso
 [nodes.documents-live-18-months]
 nature = "need"
 group = "use-cases"
+layoutOrder = "aC"
 markdown = '''
 Documents live for 18+ months
 '''
@@ -73,6 +79,7 @@ Documents live for 18+ months
 [nodes.interdependent-sections]
 nature = "need"
 group = "use-cases"
+layoutOrder = "aG"
 markdown = '''
 Sections generation are interdependant
 '''
@@ -80,6 +87,7 @@ Sections generation are interdependant
 [nodes.familiar-word-ui]
 nature = "want"
 group = "use-cases"
+layoutOrder = "aE"
 markdown = '''
 UI not too foreign from Word
 '''
@@ -87,6 +95,7 @@ UI not too foreign from Word
 [nodes.lossless-docx-import]
 nature = "want"
 group = "use-cases"
+layoutOrder = "aJ"
 markdown = '''
 Ability to import docx without losing history nor style/content
 '''
@@ -94,6 +103,7 @@ Ability to import docx without losing history nor style/content
 [nodes.regenerate-on-source-change]
 nature = "want"
 group = "use-cases"
+layoutOrder = "aL"
 markdown = '''
 Re-run AI generation when source material changed
 '''
@@ -101,6 +111,7 @@ Re-run AI generation when source material changed
 [nodes.ai-generation-orchestration]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "a9"
 markdown = '''
 Orchestration of AI generation
 '''
@@ -108,6 +119,7 @@ Orchestration of AI generation
 [nodes.docx-oriented-platform]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "aD"
 markdown = '''
 Docx-oriented document platform ?
 '''
@@ -115,6 +127,7 @@ Docx-oriented document platform ?
 [nodes.freshness-tracking]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "aF"
 markdown = '''
 Fresh / stale tracking
 '''
@@ -122,6 +135,7 @@ Fresh / stale tracking
 [nodes.onlyoffice]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "aK"
 markdown = '''
 OnlyOffice provides 1:1 Word UI and rendering (at least they claim so)
 '''
@@ -129,6 +143,7 @@ OnlyOffice provides 1:1 Word UI and rendering (at least they claim so)
 [nodes.all-edits-in-word]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "aA"
 markdown = '''
 All edits in Word
 '''
@@ -136,6 +151,7 @@ All edits in Word
 [nodes.intuitive-word-ui]
 nature = "solution"
 group = "use-cases"
+layoutOrder = "aH"
 markdown = '''
 Design an intuitive UI for Word users
 '''
@@ -143,6 +159,7 @@ Design an intuitive UI for Word users
 [nodes.word-alcoa-question]
 nature = "note"
 group = "use-cases"
+layoutOrder = "aP"
 markdown = '''
 Does Word provides ALCOA+ garantees ? If not, what remediation are in place ?
 '''
@@ -150,54 +167,63 @@ Does Word provides ALCOA+ garantees ? If not, what remediation are in place ?
 [nodes.conclusion-section-example]
 nature = "note"
 group = "use-cases"
+layoutOrder = "aB"
 markdown = '''
 Example: Conclusion section use previous sections as input
 '''
 
 [nodes.reduce-documentary-effort]
 nature = "goal"
+layoutOrder = "a8"
 markdown = '''
 Apply AI to reduce the documentary effort on the whole pipeline
 '''
 
 [nodes.ai-content-generation]
 nature = "precondition"
+layoutOrder = "a7"
 markdown = '''
 AI tooling for content generation
 '''
 
 [nodes.prompt-management]
 nature = "precondition"
+layoutOrder = "a4"
 markdown = '''
 Prompt management solution
 '''
 
 [nodes.docx-word-compatible]
 nature = "precondition"
+layoutOrder = "a2"
 markdown = '''
 Fully compatible with docx Word
 '''
 
 [nodes.alcoa-plus]
 nature = "precondition"
+layoutOrder = "a0"
 markdown = '''
 ALCOA+
 '''
 
 [nodes.minimal-workflow-disruption]
 nature = "desirable-effect"
+layoutOrder = "a6"
 markdown = '''
 with minimal disruption to the current workflow
 '''
 
 [nodes.preserve-documentary-guarantees]
 nature = "desirable-effect"
+layoutOrder = "a5"
 markdown = '''
 keep the current documentary guarantees (GxP)
 '''
 
 [nodes.preserve-partner-content]
 nature = "desirable-effect"
+layoutOrder = "a1"
 markdown = '''
 Do not lose or tamper any content edited by a partner
 '''
@@ -205,6 +231,7 @@ Do not lose or tamper any content edited by a partner
 [junctions.word-ui-options]
 operator = "xor"
 group = "use-cases"
+layoutOrder = "aQ"
 
 [relations.word-alcoa-question-to-traceable-edits]
 from = "word-alcoa-question"

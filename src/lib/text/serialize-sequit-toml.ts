@@ -1,7 +1,6 @@
 import { stringify, type TomlTable } from 'smol-toml';
 
-import type { LogicDocument } from '../document/logic-document';
-import { PERSISTENCE_FORMAT } from './persistence-format';
+import { type LogicDocument, PERSISTENCE_FORMAT } from '../document/logic-document';
 
 function entityTable<T extends { readonly id: string }>(
 	entities: readonly T[],
@@ -20,18 +19,18 @@ export function serializeSequitToml(document: LogicDocument): string {
 		document: { id: document.id, title: document.title },
 		layout: { direction: document.layout.direction, bias: document.layout.bias },
 		natures: entityTable(document.natures, ({ label, color }) => ({ label, color })),
-		groups: entityTable(document.groups, ({ label, groupId }) => {
-			const group: TomlTable = { label };
+		groups: entityTable(document.groups, ({ label, groupId, layoutOrder }) => {
+			const group: TomlTable = { label, layoutOrder };
 			if (groupId !== undefined) group['group'] = groupId;
 			return group;
 		}),
-		nodes: entityTable(document.nodes, ({ natureId, groupId, markdown }) => {
-			const node: TomlTable = { nature: natureId, markdown };
+		nodes: entityTable(document.nodes, ({ natureId, groupId, markdown, layoutOrder }) => {
+			const node: TomlTable = { nature: natureId, markdown, layoutOrder };
 			if (groupId !== undefined) node['group'] = groupId;
 			return node;
 		}),
-		junctions: entityTable(document.junctions, ({ operator, groupId }) => {
-			const junction: TomlTable = { operator };
+		junctions: entityTable(document.junctions, ({ operator, groupId, layoutOrder }) => {
+			const junction: TomlTable = { operator, layoutOrder };
 			if (groupId !== undefined) junction['group'] = groupId;
 			return junction;
 		}),

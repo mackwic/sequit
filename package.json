@@ -94,6 +94,7 @@
 	},
 	"packageManager": "pnpm@10.34.1",
 	"dependencies": {
+		"fractional-indexing": "4.0.0",
 		"smol-toml": "^1.7.0",
 		"yjs": "^13.6.31"
 	}

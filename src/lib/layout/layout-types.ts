@@ -1,4 +1,4 @@
-import type { GraphEndpointKind } from '../graph/create-graph';
+import type { EndpointKind } from '../document/logic-document';
 
 export interface Size {
 	readonly width: number;
@@ -30,7 +30,7 @@ export interface Point {
 
 export interface LayoutElement {
 	readonly id: string;
-	readonly kind: GraphEndpointKind;
+	readonly kind: EndpointKind;
 	readonly bounds: Bounds;
 }
 

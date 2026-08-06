@@ -5,12 +5,10 @@ node_modules
 .vercel
 .netlify
 .wrangler
-/.svelte-kit/
+/.svelte-kit
 /build
-/coverage
 /playwright-report
 /test-results
-/package
 
 # OS
 .DS_Store
@@ -28,4 +26,3 @@ vite.config.ts.timestamp-*
 
 # Riptide artifacts (cloud-synced)
 .humanlayer/tasks/
-.humanlayer/workspace.local.json

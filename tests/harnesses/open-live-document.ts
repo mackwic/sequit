@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import {
 	importLogicDocument,
 	readLogicDocument,
-} from '../../src/lib/collaboration/yjs-live-document';
+} from '../../src/lib/collaboration/yjs-document-codec';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';

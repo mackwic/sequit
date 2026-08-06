@@ -1,9 +1,12 @@
 import {
+	EndpointKind,
 	LayoutBias,
 	type LayoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
+	PERSISTENCE_FORMAT,
 } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 
 export type LayoutContext = 'root' | 'group' | 'subgroup';
 
@@ -21,6 +24,12 @@ export const LAYOUT_CONFIGURATIONS = [
 export const LONG_BRANCH = ['long-0', 'long-1', 'long-2', 'long-3'] as const;
 export const SHORT_BRANCH = ['short-0', 'short-1'] as const;
 export const ISOLATED_BRANCH = ['isolated'] as const;
+export const LONG_BRANCH_RELATIONS = [
+	['long-0', 'long-1'],
+	['long-1', 'long-2'],
+	['long-2', 'long-3'],
+] as const;
+export const SHORT_BRANCH_RELATIONS = [['short-0', 'short-1']] as const;
 
 export const LAYOUT_CONTEXTS = [
 	'root',
@@ -33,29 +42,50 @@ export function layoutBiasScenario(
 	context: LayoutContext,
 ): LogicDocument {
 	let groups: LogicDocument['groups'] = [];
-	let groupId: string | undefined;
 	if (context === 'group') {
-		groups = [{ id: 'container', label: 'Container' }];
-		groupId = 'container';
-	}
-	if (context === 'subgroup') {
 		groups = [
-			{ id: 'container', label: 'Container' },
-			{ id: 'nested-container', label: 'Nested container', groupId: 'container' },
+			{
+				kind: EndpointKind.Group as const,
+				id: 'container',
+				label: 'Container',
+				layoutOrder: orderKey('a0'),
+			},
 		];
-		groupId = 'nested-container';
+	} else if (context === 'subgroup') {
+		groups = [
+			{
+				kind: EndpointKind.Group as const,
+				id: 'container',
+				label: 'Container',
+				layoutOrder: orderKey('a0'),
+			},
+			{
+				kind: EndpointKind.Group as const,
+				id: 'nested-container',
+				label: 'Nested container',
+				groupId: 'container',
+				layoutOrder: orderKey('a1'),
+			},
+		];
 	}
-	const node = (id: string) => {
-		const value: { id: string; natureId: string; groupId?: string; markdown: string } = {
+	let groupId: string | undefined;
+	if (context === 'group') groupId = 'container';
+	if (context === 'subgroup') groupId = 'nested-container';
+	const node = (id: string, index: number) => {
+		let group: { readonly groupId?: string } = {};
+		if (groupId !== undefined) group = { groupId };
+		return {
+			kind: EndpointKind.Node as const,
 			id,
 			natureId: 'statement',
+			...group,
 			markdown: `${id}\n`,
+			layoutOrder: orderKey(`a${index + 2}`),
 		};
-		if (groupId !== undefined) value.groupId = groupId;
-		return value;
 	};
 
 	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id: `layout-bias-${context}`,
 		title: `Layout bias in ${context}`,
 		layout,
@@ -63,11 +93,10 @@ export function layoutBiasScenario(
 		groups,
 		nodes: [...LONG_BRANCH, ...SHORT_BRANCH, ...ISOLATED_BRANCH].map(node),
 		junctions: [],
-		relations: [
-			{ id: 'long-0-to-long-1', from: 'long-0', to: 'long-1' },
-			{ id: 'long-1-to-long-2', from: 'long-1', to: 'long-2' },
-			{ id: 'long-2-to-long-3', from: 'long-2', to: 'long-3' },
-			{ id: 'short-0-to-short-1', from: 'short-0', to: 'short-1' },
-		],
+		relations: [...LONG_BRANCH_RELATIONS, ...SHORT_BRANCH_RELATIONS].map(([from, to]) => ({
+			id: `${from}-to-${to}`,
+			from,
+			to,
+		})),
 	};
 }
