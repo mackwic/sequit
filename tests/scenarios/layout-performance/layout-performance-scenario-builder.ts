@@ -1,4 +1,5 @@
 import {
+	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
 	LayoutDirection,
@@ -7,7 +8,9 @@ import {
 	type LogicJunction,
 	type LogicNode,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../../../src/lib/document/logic-document';
+import { orderKey } from '../../../src/lib/document/order-key';
 import { applyLayoutPerformanceInsertion } from './apply-layout-performance-insertion';
 import type { LayoutPerformanceScenarioName } from './scenario-name';
 import type { LayoutPerformanceInsertion, LayoutPerformanceSnapshot } from './scenario-types';
@@ -16,6 +19,7 @@ const ID_WIDTH = 16;
 
 function initialDocument(name: LayoutPerformanceScenarioName): LogicDocument {
 	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id: `layout-performance-${name}`,
 		title: `Layout performance: ${name}`,
 		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
@@ -79,6 +83,8 @@ export abstract class LayoutPerformanceScenarioBuilder {
 
 	protected node(index: number, groupId?: string): LogicNode {
 		const node: LogicNode = {
+			kind: EndpointKind.Node,
+			layoutOrder: orderKey(`a${index.toString().padStart(ID_WIDTH, '0')}1`),
 			id: this.nodeId(index),
 			natureId: 'performance-node',
 			markdown: `Node ${index}`,
@@ -89,6 +95,8 @@ export abstract class LayoutPerformanceScenarioBuilder {
 
 	protected group(index: number, parentGroupId?: string): LogicGroup {
 		const group: LogicGroup = {
+			kind: EndpointKind.Group,
+			layoutOrder: orderKey(`b${index.toString().padStart(ID_WIDTH, '0')}1`),
 			id: this.groupId(index),
 			label: `Group ${index}`,
 		};
@@ -97,7 +105,12 @@ export abstract class LayoutPerformanceScenarioBuilder {
 	}
 
 	protected junction(index: number): LogicJunction {
-		return { id: this.junctionId(index), operator: JunctionOperator.Xor };
+		return {
+			kind: EndpointKind.Junction,
+			id: this.junctionId(index),
+			operator: JunctionOperator.Xor,
+			layoutOrder: orderKey(`c${index.toString().padStart(ID_WIDTH, '0')}1`),
+		};
 	}
 
 	protected relation(from: string, to: string): LogicRelation {

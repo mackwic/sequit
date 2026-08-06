@@ -17,15 +17,57 @@ export interface DocumentCommandDiagnostic {
 	readonly materializedScore?: number;
 }
 
+export const DocumentCommandOutcomeKind = {
+	Accepted: 'accepted',
+	Rejected: 'rejected',
+	RolledBack: 'rolled-back',
+	Failed: 'failed',
+} as const;
+export type DocumentCommandOutcomeKind =
+	(typeof DocumentCommandOutcomeKind)[keyof typeof DocumentCommandOutcomeKind];
+interface AcceptedCommandOutcome {
+	readonly kind: typeof DocumentCommandOutcomeKind.Accepted;
+	readonly document: LogicDocument;
+}
+interface RejectedCommandOutcome {
+	readonly kind: typeof DocumentCommandOutcomeKind.Rejected;
+	readonly diagnostics: readonly DocumentCommandDiagnostic[];
+}
+interface RolledBackCommandOutcome {
+	readonly kind: typeof DocumentCommandOutcomeKind.RolledBack;
+	readonly diagnostics: readonly DocumentCommandDiagnostic[];
+}
+interface FailedCommandOutcome {
+	readonly kind: typeof DocumentCommandOutcomeKind.Failed;
+	readonly error: unknown;
+}
 export type DocumentCommandOutcome =
-	| { readonly kind: 'accepted'; readonly document: LogicDocument }
-	| { readonly kind: 'rejected'; readonly diagnostics: readonly DocumentCommandDiagnostic[] }
-	| { readonly kind: 'rolled-back'; readonly diagnostics: readonly DocumentCommandDiagnostic[] }
-	| { readonly kind: 'failed'; readonly error: unknown };
+	AcceptedCommandOutcome | RejectedCommandOutcome | RolledBackCommandOutcome | FailedCommandOutcome;
 
-export type DocumentCommand =
-	| { readonly kind: 'add-node'; readonly node: NewLogicNode }
-	| { readonly kind: 'add-relation'; readonly relation: LogicRelation };
+export const DocumentCommandKind = {
+	AddNode: 'add-node',
+	AddRelation: 'add-relation',
+} as const;
+export type DocumentCommandKind = (typeof DocumentCommandKind)[keyof typeof DocumentCommandKind];
+interface AddNodeCommand {
+	readonly kind: typeof DocumentCommandKind.AddNode;
+	readonly node: NewLogicNode;
+}
+interface AddRelationCommand {
+	readonly kind: typeof DocumentCommandKind.AddRelation;
+	readonly relation: LogicRelation;
+}
+export type DocumentCommand = AddNodeCommand | AddRelationCommand;
+
+interface DocumentChangeSuccess {
+	readonly ok: true;
+	readonly value: LogicDocument;
+}
+interface DocumentChangeFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly DocumentCommandDiagnostic[];
+}
+type DocumentChangeResult = DocumentChangeSuccess | DocumentChangeFailure;
 
 export interface DocumentCommandGateway {
 	/**
@@ -40,13 +82,7 @@ export interface DocumentCommandGateway {
 }
 
 export interface DocumentChangeRepository {
-	persist(
-		changes: DocumentChangeSet,
-		origin?: unknown,
-	): Promise<
-		| { readonly ok: true; readonly value: LogicDocument }
-		| { readonly ok: false; readonly diagnostics: readonly DocumentCommandDiagnostic[] }
-	>;
+	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult>;
 }
 
 export interface LocalDocumentCommandGatewayOptions {
@@ -91,16 +127,17 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 	dispatch(command: DocumentCommand): Promise<DocumentCommandOutcome> {
 		const execution = this.#dispatchQueue.then(() => {
 			if (this.#destroyed) {
-				return {
-					kind: 'failed' as const,
+				const failure: FailedCommandOutcome = {
+					kind: DocumentCommandOutcomeKind.Failed,
 					error: new Error('Document command gateway has been destroyed'),
 				};
+				return failure;
 			}
 			return this.#execute(() => {
 				switch (command.kind) {
-					case 'add-node':
+					case DocumentCommandKind.AddNode:
 						return projectNodeAddition(this.current(), command.node, fractionalOrderKeySpace);
-					case 'add-relation':
+					case DocumentCommandKind.AddRelation:
 						return projectRelationAddition(
 							this.current(),
 							command.relation,
@@ -125,29 +162,40 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 		try {
 			projected = project();
 		} catch (error) {
-			return { kind: 'failed', error };
+			return { kind: DocumentCommandOutcomeKind.Failed, error };
 		}
-		if (!projected.ok) return { kind: 'rejected', diagnostics: projected.diagnostics };
+		if (!projected.ok)
+			return { kind: DocumentCommandOutcomeKind.Rejected, diagnostics: projected.diagnostics };
 		try {
 			const materialized = await this.repository.persist(projected.value.changes, this.origin);
-			if (!materialized.ok) return { kind: 'rejected', diagnostics: materialized.diagnostics };
-			const outcome = { kind: 'accepted', document: materialized.value } as const;
-			if (!this.#destroyed && this.options.publishAccepted !== false) {
-				for (const subscriber of [...this.#subscribers]) {
-					try {
-						subscriber(outcome);
-					} catch (error) {
-						try {
-							this.options.reportSubscriberError?.(error);
-						} catch {
-							// Reporting must not affect publication or command acceptance.
-						}
-					}
-				}
-			}
+			if (!materialized.ok)
+				return { kind: DocumentCommandOutcomeKind.Rejected, diagnostics: materialized.diagnostics };
+			const outcome: AcceptedCommandOutcome = {
+				kind: DocumentCommandOutcomeKind.Accepted,
+				document: materialized.value,
+			};
+			if (!this.#destroyed && this.options.publishAccepted !== false) this.#publish(outcome);
 			return outcome;
 		} catch (error) {
-			return { kind: 'failed', error };
+			return { kind: DocumentCommandOutcomeKind.Failed, error };
+		}
+	}
+
+	#publish(outcome: AcceptedCommandOutcome): void {
+		for (const subscriber of [...this.#subscribers]) {
+			try {
+				subscriber(outcome);
+			} catch (error) {
+				this.#reportSubscriberError(error);
+			}
+		}
+	}
+
+	#reportSubscriberError(error: unknown): void {
+		try {
+			this.options.reportSubscriberError?.(error);
+		} catch {
+			// Reporting must not affect publication or command acceptance.
 		}
 	}
 }

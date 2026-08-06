@@ -31,7 +31,8 @@ const junctionOperatorByValue: Readonly<Record<string, JunctionOperator>> = {
 };
 
 function isTable(value: unknown): value is UnknownTable {
-	return typeof value === 'object' && value !== null && !Array.isArray(value);
+	if (typeof value !== 'object') return false;
+	return value !== null && !Array.isArray(value);
 }
 
 function table(
@@ -126,7 +127,8 @@ function mapLayout(
 	}
 	let layout: LayoutConfiguration | undefined;
 	if (direction !== undefined && bias !== undefined) layout = layoutConfiguration(direction, bias);
-	if (direction !== undefined && bias !== undefined && layout === undefined) {
+	const recognizedLayoutValues = direction !== undefined && bias !== undefined;
+	if (recognizedLayoutValues && layout === undefined) {
 		context.diagnostics.push({
 			code: SequitDiagnosticCode.InvalidValue,
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
@@ -212,7 +214,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 				[...path, 'layoutOrder'],
 				context,
 			);
-			if (natureId !== undefined && markdown !== undefined && layoutOrder !== undefined) {
+			const requiredNodeValues = natureId !== undefined && markdown !== undefined;
+			if (requiredNodeValues && layoutOrder !== undefined) {
 				nodes.push({
 					kind: EndpointKind.Node,
 					id: nodeId,
@@ -273,7 +276,9 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 		}
 	}
 
-	if (context.diagnostics.length > 0 || id === undefined || title === undefined || !layout) {
+	const hasDiagnostics = context.diagnostics.length > 0;
+	const missingDocumentIdentity = id === undefined || title === undefined;
+	if (hasDiagnostics || missingDocumentIdentity || !layout) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
 	return {

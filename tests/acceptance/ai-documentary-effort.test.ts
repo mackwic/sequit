@@ -132,8 +132,7 @@ describe('AI for documentary effort', () => {
 		it('renders its complete dependency graph through the application use case', async () => {
 			const source = await aiDocumentaryEffortScenario();
 
-			const opened = expectDocument(openDocument(source));
-			const projection = expectDocument(opened.read());
+			const projection = expectDocument(openDocument(source));
 			const canvas = await projection.createCanvasModel(
 				layoutMeasurementsForCanvas(projection.measurementModel),
 			);
@@ -153,7 +152,7 @@ describe('AI for documentary effort', () => {
 			);
 			expect(canvas.width).toBeGreaterThan(0);
 			expect(canvas.height).toBeGreaterThan(0);
-			opened.close();
+			projection.destroy();
 		});
 
 		it('keeps the improved reference order stable across reopen and Yjs snapshots', async () => {
@@ -366,13 +365,17 @@ describe('AI for documentary effort', () => {
 					for (let index = 1; index < relation.points.length; index += 1) {
 						const previous = relation.points[index - 1];
 						const current = relation.points[index];
+						if (previous === undefined || current === undefined)
+							throw new Error(`Missing routed point for ${relation.id}`);
 						expect(previous.x === current.x || previous.y === current.y).toBe(true);
 					}
 					const fromBounds = bounds.get(relation.from);
 					const toBounds = bounds.get(relation.to);
 					const firstPoint = relation.points[0];
 					const lastPoint = relation.points.at(-1);
-					if (!fromBounds || !toBounds || !lastPoint) {
+					if (firstPoint === undefined || lastPoint === undefined)
+						throw new Error(`Missing boundary point for ${relation.id}`);
+					if (!fromBounds || !toBounds) {
 						throw new Error(`Missing geometry for relation ${relation.id}`);
 					}
 					expect(pointTouchesBoundary(firstPoint, fromBounds)).toBe(true);

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	EndpointKind,
+	JunctionOperator,
+	LayoutBias,
+	LayoutDirection,
 	type LogicDocument,
 	type OrderKey,
 } from '../../src/lib/document/logic-document';
@@ -26,7 +29,7 @@ describe('topology edits', () => {
 			persistenceFormat: 2,
 			id: 'three-targets',
 			title: 'Three targets',
-			layout: { direction: 'top-to-bottom', bias: 'top' },
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
 			groups: [],
 			nodes: [...sourceOrder, 'target-a', 'target-b', 'target-c', 'successor'].map((id) => ({
@@ -62,7 +65,7 @@ describe('topology edits', () => {
 			persistenceFormat: 2,
 			id: 'three-junction-targets',
 			title: 'Three junction targets',
-			layout: { direction: 'top-to-bottom', bias: 'top' },
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
 			groups: [],
 			nodes: ['source-a', 'source-b', 'source-c', 'successor'].map((id) => ({
@@ -75,7 +78,7 @@ describe('topology edits', () => {
 			junctions: ['junction-a', 'junction-b', 'junction-c'].map((id) => ({
 				kind: EndpointKind.Junction,
 				id,
-				operator: 'xor' as const,
+				operator: JunctionOperator.Xor,
 				layoutOrder: keys.get(id) ?? orderKey('a0'),
 			})),
 			relations: [
@@ -150,7 +153,10 @@ describe('topology edits', () => {
 	});
 
 	it('moves only the relation target key into the selected local slot', () => {
-		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
+		const original = crossingAwareDirectionScenario({
+			direction: LayoutDirection.TopToBottom,
+			bias: LayoutBias.Top,
+		});
 		const peerKeys = new Map(original.nodes.map(({ id, layoutOrder }) => [id, layoutOrder]));
 		const result = projectRelationAddition(
 			original,
@@ -182,7 +188,10 @@ describe('topology edits', () => {
 	});
 
 	it('returns no endpoint-local change when no strict crossing improvement exists', () => {
-		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
+		const original = crossingAwareDirectionScenario({
+			direction: LayoutDirection.TopToBottom,
+			bias: LayoutBias.Top,
+		});
 		const result = projectRelationAddition(
 			original,
 			{
@@ -245,7 +254,7 @@ describe('topology edits', () => {
 				if (node.id !== 'target-c') expect(node.layoutOrder).toBe(before.get(node.id));
 			}
 			const movedKey = targets.find(({ id }) => id === 'target-c')?.layoutOrder;
-			expect(movedKey && fractionalOrderKeySpace.isValid(movedKey)).toBe(true);
+			expect(movedKey !== undefined && fractionalOrderKeySpace.isValid(movedKey)).toBe(true);
 		},
 	);
 
@@ -271,14 +280,18 @@ describe('topology edits', () => {
 	});
 
 	it('does not rewrite peers when duplicate endpoint keys are present', () => {
-		const original = crossingAwareDirectionScenario({ direction: 'top-to-bottom', bias: 'top' });
+		const original = crossingAwareDirectionScenario({
+			direction: LayoutDirection.TopToBottom,
+			bias: LayoutBias.Top,
+		});
 		const duplicatePeers = {
 			...original,
-			nodes: original.nodes.map((node) =>
-				node.id === 'source-b' || node.id === 'target-a'
-					? { ...node, layoutOrder: orderKey('a2') }
-					: node,
-			),
+			nodes: original.nodes.map((node) => {
+				if (node.id === 'source-b' || node.id === 'target-a') {
+					return { ...node, layoutOrder: orderKey('a2') };
+				}
+				return node;
+			}),
 		};
 		const result = projectRelationAddition(
 			duplicatePeers,
@@ -313,7 +326,11 @@ describe('topology edits', () => {
 		}[] = [];
 		const testKey = orderKey('a7');
 		const testKeySpace = {
-			compare: (left: OrderKey, right: OrderKey) => (left < right ? -1 : left > right ? 1 : 0),
+			compare: (left: OrderKey, right: OrderKey) => {
+				if (left < right) return -1;
+				if (left > right) return 1;
+				return 0;
+			},
 			isValid: (key: string): key is OrderKey => {
 				void key;
 				return true;
@@ -322,7 +339,8 @@ describe('topology edits', () => {
 				slot: { readonly before?: string; readonly after?: string },
 				discriminator?: string,
 			) => {
-				calls.push({ slot, discriminator });
+				if (discriminator === undefined) calls.push({ slot });
+				else calls.push({ slot, discriminator });
 				return testKey;
 			},
 		};
@@ -356,11 +374,12 @@ describe('topology edits', () => {
 		const duplicateKey = orderKey('a4');
 		const duplicateNeighbors = {
 			...original,
-			nodes: original.nodes.map((node) =>
-				node.id === 'target-a' || node.id === 'target-b'
-					? { ...node, layoutOrder: duplicateKey }
-					: node,
-			),
+			nodes: original.nodes.map((node) => {
+				if (node.id === 'target-a' || node.id === 'target-b') {
+					return { ...node, layoutOrder: duplicateKey };
+				}
+				return node;
+			}),
 		};
 		const keysBefore = new Map(
 			duplicateNeighbors.nodes.map(({ id, layoutOrder }) => [id, layoutOrder]),
@@ -391,7 +410,11 @@ describe('topology edits', () => {
 		const targetKey = original.nodes.find(({ id }) => id === 'target-c')?.layoutOrder;
 		if (targetKey === undefined) throw new Error('Expected target-c fixture key');
 		const faultyKeySpace = {
-			compare: (left: OrderKey, right: OrderKey) => (left < right ? -1 : left > right ? 1 : 0),
+			compare: (left: OrderKey, right: OrderKey) => {
+				if (left < right) return -1;
+				if (left > right) return 1;
+				return 0;
+			},
 			isValid: (key: string): key is OrderKey => {
 				void key;
 				return true;
@@ -424,23 +447,24 @@ describe('topology edits', () => {
 	] as const)('adds a relation to an %s group without moving the group', (_name, populated) => {
 		const groupKey = orderKey('a1');
 		const memberKey = orderKey('a2');
-		const members: LogicDocument['nodes'] = populated
-			? [
-					{
-						kind: EndpointKind.Node,
-						id: 'member',
-						natureId: 'goal',
-						groupId: 'target-group',
-						markdown: 'Member',
-						layoutOrder: memberKey,
-					},
-				]
-			: [];
+		let members: LogicDocument['nodes'] = [];
+		if (populated) {
+			members = [
+				{
+					kind: EndpointKind.Node,
+					id: 'member',
+					natureId: 'goal',
+					groupId: 'target-group',
+					markdown: 'Member',
+					layoutOrder: memberKey,
+				},
+			];
+		}
 		const document: LogicDocument = {
 			persistenceFormat: 2,
 			id: 'group-target',
 			title: 'Group target',
-			layout: { direction: 'top-to-bottom', bias: 'top' },
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 			natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
 			groups: [
 				{ kind: EndpointKind.Group, id: 'target-group', label: 'Target', layoutOrder: groupKey },

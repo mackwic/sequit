@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import {
 	type DocumentCommandGateway,
 	type DocumentCommandOutcome,
+	DocumentCommandOutcomeKind,
 	LocalDocumentCommandGateway,
 } from '../document/document-command-gateway';
 import {
@@ -44,10 +45,13 @@ class YjsSessionGateway implements DocumentCommandGateway {
 			if (!result.ok && origin === this.#localCommandOrigin) return;
 			// FIXME: An invalid remote merge remains in the physical Y.Doc. Although #current
 			// stays valid, subsequent commands still persist against the invalid CRDT state.
-			const outcome: DocumentCommandOutcome = result.ok
-				? { kind: 'accepted', document: result.value }
-				: { kind: 'rejected', diagnostics: result.diagnostics };
-			if (outcome.kind === 'accepted') this.#current = outcome.document;
+			let outcome: DocumentCommandOutcome;
+			if (result.ok) {
+				this.#current = result.value;
+				outcome = { kind: DocumentCommandOutcomeKind.Accepted, document: result.value };
+			} else {
+				outcome = { kind: DocumentCommandOutcomeKind.Rejected, diagnostics: result.diagnostics };
+			}
 			for (const observer of [...this.#observers]) {
 				if (this.#destroyed) break;
 				try {
@@ -94,7 +98,9 @@ export function createDocumentSession(
 			'createDocumentSession no longer accepts a Y.Doc as its second argument; use attachDocumentSession',
 		);
 	}
-	if (reportError !== undefined && typeof reportError !== 'function') {
+	let invalidReporter = typeof reportError !== 'function';
+	if (reportError === undefined) invalidReporter = false;
+	if (invalidReporter) {
 		throw new TypeError('createDocumentSession reporter must be a function');
 	}
 	const document = new Y.Doc();

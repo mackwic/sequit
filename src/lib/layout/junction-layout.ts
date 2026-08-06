@@ -1,5 +1,5 @@
-import { LayoutDirection } from '../document/logic-document';
-import { GraphEndpointKind, type LogicGraph } from '../graph/create-graph';
+import { EndpointKind, LayoutDirection } from '../document/logic-document';
+import type { LogicGraph } from '../graph/create-graph';
 import { isVerticalDirection } from './component-layout';
 import type { Bounds } from './layout-types';
 
@@ -10,7 +10,7 @@ function directRegularBounds(
 ): readonly Bounds[] | undefined {
 	const result: Bounds[] = [];
 	for (const id of ids) {
-		if (graph.endpointsById.get(id)?.kind === GraphEndpointKind.Junction) return undefined;
+		if (graph.endpointsById.get(id)?.kind === EndpointKind.Junction) return undefined;
 		const bounds = boundsById.get(id);
 		if (!bounds) return undefined;
 		result.push(bounds);

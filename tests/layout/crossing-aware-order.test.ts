@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import {
+	EndpointKind,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../src/lib/document/logic-document';
 import { orderKey } from '../../src/lib/document/order-key';
 import { createGraph, type EffectiveSemanticRelation } from '../../src/lib/graph/create-graph';
 import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
@@ -78,7 +83,9 @@ function cartesianOracleScore(input: CrossingOrderMetadata): number {
 	for (const id of input.effectiveEndpointOrder) {
 		const rank = input.ranks.get(id);
 		if (rank === undefined) continue;
-		const layer = `${rank}:${input.junctionIds.has(id) ? 'junction' : 'ordinary'}`;
+		let endpointType = 'ordinary';
+		if (input.junctionIds.has(id)) endpointType = 'junction';
+		const layer = `${rank}:${endpointType}`;
 		layers.set(id, layer);
 		ordinals.set(id, nextOrdinal.get(layer) ?? 0);
 		nextOrdinal.set(layer, (nextOrdinal.get(layer) ?? 0) + 1);
@@ -105,9 +112,10 @@ function bruteForceTargetScore(
 	const order = new Map(input.effectiveEndpointOrder.map((id, index) => [id, index]));
 	const layer = (id: string) => {
 		const rank = input.ranks.get(id);
-		return rank === undefined
-			? undefined
-			: `${rank}:${input.junctionIds.has(id) ? 'junction' : 'ordinary'}`;
+		if (rank === undefined) return undefined;
+		let endpointType = 'ordinary';
+		if (input.junctionIds.has(id)) endpointType = 'junction';
+		return `${rank}:${endpointType}`;
 	};
 	const ordinal = (id: string) => {
 		const endpointLayer = layer(id);
@@ -121,10 +129,13 @@ function bruteForceTargetScore(
 	const links = cartesianOracleRelations(input.effectiveRelations);
 	for (const targetAtSource of [true, false]) {
 		for (const targetLink of links) {
-			if ((targetAtSource ? targetLink.sourceId : targetLink.targetId) !== targetId) continue;
+			let targetEndpointId = targetLink.targetId;
+			if (targetAtSource) targetEndpointId = targetLink.sourceId;
+			if (targetEndpointId !== targetId) continue;
 			for (const peerLink of links) {
 				if (targetLink.relationId === peerLink.relationId) continue;
-				const peerId = targetAtSource ? peerLink.sourceId : peerLink.targetId;
+				let peerId = peerLink.targetId;
+				if (targetAtSource) peerId = peerLink.sourceId;
 				if (!peers.has(peerId)) continue;
 				if (
 					layer(targetLink.sourceId) !== layer(peerLink.sourceId) ||
@@ -157,27 +168,28 @@ function nestedEmptyGroupCrossingDocument(includeEmptySubgroup: boolean): LogicD
 		persistenceFormat: 2,
 		id: 'nested-empty-group-crossing',
 		title: 'Nested empty group crossing',
-		layout: { direction: 'top-to-bottom', bias: 'top' },
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 		natures: [{ id: 'goal', label: 'Goal', color: '#00aa44' }],
-		groups: [
-			{
-				kind: EndpointKind.Group,
-				id: 'source-group',
-				label: 'Sources',
-				layoutOrder: orderKey('a0'),
-			},
-			...(includeEmptySubgroup
-				? [
-						{
-							kind: EndpointKind.Group as const,
-							id: 'empty-subgroup',
-							label: 'Empty',
-							groupId: 'source-group',
-							layoutOrder: orderKey('a1'),
-						},
-					]
-				: []),
-		],
+		groups: (() => {
+			const groups: LogicDocument['groups'][number][] = [
+				{
+					kind: EndpointKind.Group,
+					id: 'source-group',
+					label: 'Sources',
+					layoutOrder: orderKey('a0'),
+				},
+			];
+			if (includeEmptySubgroup) {
+				groups.push({
+					kind: EndpointKind.Group,
+					id: 'empty-subgroup',
+					label: 'Empty',
+					groupId: 'source-group',
+					layoutOrder: orderKey('a1'),
+				});
+			}
+			return groups;
+		})(),
 		nodes: [
 			{
 				kind: EndpointKind.Node,
@@ -520,16 +532,20 @@ describe('crossing-aware target insertion', () => {
 			connect(junctionSources, row, 'incoming-junction');
 			connect(row, successors, 'outgoing');
 			connect(row, longSuccessors, 'outgoing-long');
+			let incomingSources = sources.slice(1);
+			if (random() < 0.5) incomingSources = sources.slice(0, 2);
+			let outgoingTargets = successors.slice(1);
+			if (random() < 0.5) outgoingTargets = successors.slice(0, 2);
 			links.push(
 				{
 					relationId: `ranked-multi-incoming-${iteration}`,
-					sourceIds: random() < 0.5 ? sources.slice(0, 2) : sources.slice(1),
+					sourceIds: incomingSources,
 					targetIds: ['target-0', 'target-2', 'target-3'],
 				},
 				{
 					relationId: `ranked-multi-outgoing-${iteration}`,
 					sourceIds: ['target-0', 'target-2'],
-					targetIds: random() < 0.5 ? successors.slice(0, 2) : successors.slice(1),
+					targetIds: outgoingTargets,
 				},
 			);
 			links.push(
@@ -550,7 +566,8 @@ describe('crossing-aware target insertion', () => {
 				...successors.map((id) => [id, 2] as const),
 				...longSuccessors.map((id) => [id, 3] as const),
 			];
-			const junctionIds = iteration % 2 === 0 ? junctionSources : [...junctionSources, ...row];
+			let junctionIds = [...junctionSources, ...row];
+			if (iteration % 2 === 0) junctionIds = junctionSources;
 			const input = metadata(order, ranks, links, junctionIds);
 			const targetId = 'target-2';
 			const selected = selectTargetInsertionSlot(row, targetId, input);

@@ -31,19 +31,26 @@ function generateDiscriminatedKey(
 ): OrderKey {
 	let lower = before;
 	let upper = after;
-	let candidate = assertGeneratedKey(generateKeyBetween(lower ?? null, upper ?? null), {
-		before: lower,
-		after: upper,
-	});
+	let candidate = assertGeneratedKey(
+		generateKeyBetween(lower ?? null, upper ?? null),
+		endpointSlot(lower, upper),
+	);
 	for (const bit of discriminatorBits(discriminator)) {
 		if (bit === 0) upper = candidate;
 		else lower = candidate;
-		candidate = assertGeneratedKey(generateKeyBetween(lower ?? null, upper ?? null), {
-			before: lower,
-			after: upper,
-		});
+		candidate = assertGeneratedKey(
+			generateKeyBetween(lower ?? null, upper ?? null),
+			endpointSlot(lower, upper),
+		);
 	}
-	return assertGeneratedKey(candidate, { before, after });
+	return assertGeneratedKey(candidate, endpointSlot(before, after));
+}
+
+function endpointSlot(before: OrderKey | undefined, after: OrderKey | undefined): EndpointSlot {
+	let slot: EndpointSlot = {};
+	if (before !== undefined) slot = { ...slot, before };
+	if (after !== undefined) slot = { ...slot, after };
+	return slot;
 }
 
 function assertSlot(slot: EndpointSlot): void {
@@ -51,11 +58,9 @@ function assertSlot(slot: EndpointSlot): void {
 		throw new Error(`Invalid order-key slot lower bound: ${slot.before}`);
 	if (slot.after !== undefined && parseOrderKey(slot.after) === undefined)
 		throw new Error(`Invalid order-key slot upper bound: ${slot.after}`);
-	if (
-		slot.before !== undefined &&
-		slot.after !== undefined &&
-		compareCanonicalStrings(slot.before, slot.after) >= 0
-	)
+	const hasBothBounds = slot.before !== undefined && slot.after !== undefined;
+	const reversedBounds = hasBothBounds && compareCanonicalStrings(slot.before, slot.after) >= 0;
+	if (reversedBounds)
 		throw new Error('Order-key slot lower bound must be strictly less than upper bound');
 }
 
@@ -73,9 +78,10 @@ export const fractionalOrderKeySpace: OrderKeySpace = {
 	compare: compareCanonicalStrings,
 	keyFor: (slot, discriminator) => {
 		assertSlot(slot);
-		return discriminator === undefined
-			? assertGeneratedKey(generateKeyBetween(slot.before ?? null, slot.after ?? null), slot)
-			: generateDiscriminatedKey(slot.before, slot.after, discriminator);
+		if (discriminator !== undefined) {
+			return generateDiscriminatedKey(slot.before, slot.after, discriminator);
+		}
+		return assertGeneratedKey(generateKeyBetween(slot.before ?? null, slot.after ?? null), slot);
 	},
 	isValid: (key): key is OrderKey => parseOrderKey(key) !== undefined,
 };

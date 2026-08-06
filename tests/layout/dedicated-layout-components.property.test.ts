@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
 	type LayoutConfiguration,
@@ -11,7 +12,9 @@ import {
 	type LogicJunction,
 	type LogicNode,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 import type {
 	Bounds,
 	GroupMeasurement,
@@ -69,7 +72,9 @@ function requiredAt<T>(values: readonly T[], index: number, description: string)
 }
 
 function generatedNode(id: string, groupId?: string): LogicNode {
-	const node: { id: string; natureId: string; markdown: string; groupId?: string } = {
+	const node: LogicNode & { groupId?: string } = {
+		kind: EndpointKind.Node,
+		layoutOrder: orderKey(`a00${id.charCodeAt(0)}1`),
 		id,
 		natureId: 'generated',
 		markdown: id,
@@ -79,7 +84,25 @@ function generatedNode(id: string, groupId?: string): LogicNode {
 }
 
 function generatedJunction(id: string): LogicJunction {
-	return { id, operator: JunctionOperator.Xor };
+	return {
+		kind: EndpointKind.Junction,
+		id,
+		operator: JunctionOperator.Xor,
+		layoutOrder: orderKey(`b00${id.length}1`),
+	};
+}
+
+function generatedGroup(id: string, label: string, groupId?: string): LogicGroup {
+	let order = 2;
+	if (id.includes('branch-a')) order = 1;
+	const group: LogicGroup & { groupId?: string } = {
+		kind: EndpointKind.Group,
+		id,
+		label,
+		layoutOrder: orderKey(`c00${order}1`),
+	};
+	if (groupId !== undefined) group.groupId = groupId;
+	return group;
 }
 
 function generatedDocument(
@@ -90,6 +113,7 @@ function generatedDocument(
 	groups: readonly LogicGroup[] = [],
 ): LogicDocument {
 	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id: 'generated-component-document',
 		title: 'Generated component document',
 		layout,
@@ -161,10 +185,10 @@ const groupBranchCaseArbitrary: fc.Arbitrary<ComponentCase> = fc
 			[],
 			[],
 			[
-				{ id: 'branch-a', label: 'Branch A' },
-				{ id: 'branch-a-child', label: 'Branch A child', groupId: 'branch-a' },
-				{ id: 'branch-b', label: 'Branch B' },
-				{ id: 'branch-b-child', label: 'Branch B child', groupId: 'branch-b' },
+				generatedGroup('branch-a', 'Branch A'),
+				generatedGroup('branch-a-child', 'Branch A child', 'branch-a'),
+				generatedGroup('branch-b', 'Branch B'),
+				generatedGroup('branch-b-child', 'Branch B child', 'branch-b'),
 			],
 		),
 		nodes: valuesById(['z-branch-a-node', 'a-branch-b-node'], nodeSizes, 'node size'),

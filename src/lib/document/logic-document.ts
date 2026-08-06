@@ -30,16 +30,16 @@ export function layoutConfiguration(
 	direction: LayoutDirection,
 	bias: LayoutBias,
 ): LayoutConfiguration | undefined {
-	if (
-		(direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) &&
-		(bias === LayoutBias.Top || bias === LayoutBias.Bottom)
-	) {
+	const verticalDirection =
+		direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+	const verticalBias = bias === LayoutBias.Top || bias === LayoutBias.Bottom;
+	if (verticalDirection && verticalBias) {
 		return { direction, bias };
 	}
-	if (
-		(direction === LayoutDirection.LeftToRight || direction === LayoutDirection.RightToLeft) &&
-		(bias === LayoutBias.Left || bias === LayoutBias.Right)
-	) {
+	const horizontalDirection =
+		direction === LayoutDirection.LeftToRight || direction === LayoutDirection.RightToLeft;
+	const horizontalBias = bias === LayoutBias.Left || bias === LayoutBias.Right;
+	if (horizontalDirection && horizontalBias) {
 		return { direction, bias };
 	}
 	return undefined;

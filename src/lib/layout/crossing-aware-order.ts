@@ -1,6 +1,11 @@
 import type { EffectiveSemanticRelation } from '../graph/create-graph';
 
-export type VisualLayerKey = `${number}:${'ordinary' | 'junction'}`;
+enum VisualLayerKind {
+	Ordinary = 'ordinary',
+	Junction = 'junction',
+}
+
+export type VisualLayerKey = `${number}:${VisualLayerKind}`;
 
 export interface CrossingOrderMetadata {
 	readonly effectiveRelations: readonly EffectiveSemanticRelation[];
@@ -46,9 +51,10 @@ export function visualLayerKey(
 	junctionIds: ReadonlySet<string>,
 ): VisualLayerKey | undefined {
 	const rank = ranks.get(endpointId);
-	return rank === undefined
-		? undefined
-		: `${rank}:${junctionIds.has(endpointId) ? 'junction' : 'ordinary'}`;
+	if (rank === undefined) return undefined;
+	let kind = VisualLayerKind.Ordinary;
+	if (junctionIds.has(endpointId)) kind = VisualLayerKind.Junction;
+	return `${rank}:${kind}`;
 }
 
 function indexRelations(metadata: CrossingOrderMetadata): readonly IndexedRelation[] {
@@ -66,7 +72,8 @@ function indexRelations(metadata: CrossingOrderMetadata): readonly IndexedRelati
 		const result = new Map<VisualLayerKey, IndexedEndpoint[]>();
 		for (const id of ids) {
 			const layer = visualLayerKey(id, metadata.ranks, metadata.junctionIds);
-			const ordinal = layer === undefined ? undefined : ordinalsByLayer.get(layer)?.get(id);
+			let ordinal: number | undefined;
+			if (layer !== undefined) ordinal = ordinalsByLayer.get(layer)?.get(id);
 			if (layer === undefined || ordinal === undefined) continue;
 			const endpoints = result.get(layer) ?? [];
 			endpoints.push({ id, ordinal });
@@ -93,54 +100,92 @@ function inversionCounts(
 	let rightBelow = 0;
 	let rightAtOrBelow = 0;
 	for (const leftEndpoint of left) {
-		while (rightBelow < right.length && right[rightBelow].ordinal < leftEndpoint.ordinal)
+		while (rightBelow < right.length) {
+			const rightEndpoint = right[rightBelow];
+			if (rightEndpoint === undefined || rightEndpoint.ordinal >= leftEndpoint.ordinal) break;
 			rightBelow += 1;
+		}
 		if (rightAtOrBelow < rightBelow) rightAtOrBelow = rightBelow;
-		while (rightAtOrBelow < right.length && right[rightAtOrBelow].ordinal <= leftEndpoint.ordinal)
+		while (rightAtOrBelow < right.length) {
+			const rightEndpoint = right[rightAtOrBelow];
+			if (rightEndpoint === undefined || rightEndpoint.ordinal > leftEndpoint.ordinal) break;
 			rightAtOrBelow += 1;
+		}
 		greater += rightBelow;
 		less += right.length - rightAtOrBelow;
 	}
 	return [less, greater];
 }
 
+interface SideCostContext {
+	readonly targetId: string;
+	readonly peerIndex: ReadonlyMap<string, number>;
+	readonly beforeByPeer: number[];
+	readonly afterByPeer: number[];
+}
+
+interface RelationSides {
+	readonly side: ReadonlyMap<VisualLayerKey, readonly IndexedEndpoint[]>;
+	readonly opposite: ReadonlyMap<VisualLayerKey, readonly IndexedEndpoint[]>;
+}
+
+function relationSides(relation: IndexedRelation, source: boolean): RelationSides {
+	if (source) return { side: relation.sourceByLayer, opposite: relation.targetByLayer };
+	return { side: relation.targetByLayer, opposite: relation.sourceByLayer };
+}
+
+function oppositeOrdinalCounts(
+	targetOpposites: readonly IndexedEndpoint[],
+	peerOpposites: readonly IndexedEndpoint[],
+): readonly [lower: number, higher: number] {
+	let lower = 0;
+	let higher = 0;
+	for (const targetOpposite of targetOpposites) {
+		for (const peerOpposite of peerOpposites) {
+			if (targetOpposite.ordinal < peerOpposite.ordinal) lower += 1;
+			if (targetOpposite.ordinal > peerOpposite.ordinal) higher += 1;
+		}
+	}
+	return [lower, higher];
+}
+
+function addPeerCosts(
+	peers: readonly IndexedEndpoint[],
+	counts: readonly [lower: number, higher: number],
+	weight: number,
+	context: SideCostContext,
+): void {
+	const [lower, higher] = counts;
+	for (const peer of peers) {
+		const index = context.peerIndex.get(peer.id);
+		if (index === undefined) continue;
+		const higherCost = higher * weight;
+		const lowerCost = lower * weight;
+		context.beforeByPeer[index] = (context.beforeByPeer[index] ?? 0) + higherCost;
+		context.afterByPeer[index] = (context.afterByPeer[index] ?? 0) + lowerCost;
+	}
+}
+
 function accumulateSideCosts(
 	moving: IndexedRelation,
 	other: IndexedRelation,
-	targetId: string,
 	targetAtSource: boolean,
-	peerIndex: ReadonlyMap<string, number>,
-	beforeByPeer: number[],
-	afterByPeer: number[],
+	context: SideCostContext,
 ): void {
-	const movingSide = targetAtSource ? moving.sourceByLayer : moving.targetByLayer;
-	const movingOpposite = targetAtSource ? moving.targetByLayer : moving.sourceByLayer;
-	const otherSide = targetAtSource ? other.sourceByLayer : other.targetByLayer;
-	const otherOpposite = targetAtSource ? other.targetByLayer : other.sourceByLayer;
-	for (const [layer, movingEndpoints] of movingSide) {
-		if (!movingEndpoints.some(({ id }) => id === targetId)) continue;
-		const peers = otherSide.get(layer);
+	const movingSides = relationSides(moving, targetAtSource);
+	const otherSides = relationSides(other, targetAtSource);
+	for (const [layer, movingEndpoints] of movingSides.side) {
+		if (!movingEndpoints.some(({ id }) => id === context.targetId)) continue;
+		const peers = otherSides.side.get(layer);
 		if (!peers) continue;
-		for (const [oppositeLayer, targetOpposites] of movingOpposite) {
-			const peerOpposites = otherOpposite.get(oppositeLayer);
+		for (const [oppositeLayer, targetOpposites] of movingSides.opposite) {
+			const peerOpposites = otherSides.opposite.get(oppositeLayer);
 			if (!peerOpposites) continue;
-			let lower = 0;
-			let higher = 0;
 			// FIXME: The compact graph avoids retained Cartesian memory, but this still does
 			// Cartesian CPU work. Derive both counts with a linear scan of sorted ordinals.
-			for (const targetOpposite of targetOpposites) {
-				for (const peerOpposite of peerOpposites) {
-					if (targetOpposite.ordinal < peerOpposite.ordinal) lower += 1;
-					if (targetOpposite.ordinal > peerOpposite.ordinal) higher += 1;
-				}
-			}
+			const [lower, higher] = oppositeOrdinalCounts(targetOpposites, peerOpposites);
 			const weight = moving.pairWeight * other.pairWeight;
-			for (const peer of peers) {
-				const index = peerIndex.get(peer.id);
-				if (index === undefined) continue;
-				beforeByPeer[index] = (beforeByPeer[index] ?? 0) + higher * weight;
-				afterByPeer[index] = (afterByPeer[index] ?? 0) + lower * weight;
-			}
+			addPeerCosts(peers, [lower, higher], weight, context);
 		}
 	}
 }
@@ -158,12 +203,13 @@ export function scoreTargetInsertionSlots(
 	const peerIndex = new Map(peers.map((id, index) => [id, index]));
 	const beforeByPeer = peers.map(() => 0);
 	const afterByPeer = peers.map(() => 0);
+	const context = { targetId, peerIndex, beforeByPeer, afterByPeer };
 	const relations = indexRelations(metadata);
 	for (const moving of relations) {
 		for (const other of relations) {
 			if (moving.relationId === other.relationId) continue;
-			accumulateSideCosts(moving, other, targetId, true, peerIndex, beforeByPeer, afterByPeer);
-			accumulateSideCosts(moving, other, targetId, false, peerIndex, beforeByPeer, afterByPeer);
+			accumulateSideCosts(moving, other, true, context);
+			accumulateSideCosts(moving, other, false, context);
 		}
 	}
 
@@ -171,9 +217,24 @@ export function scoreTargetInsertionSlots(
 	let score = beforeByPeer.reduce((total, value) => total + value, 0);
 	for (let slot = 0; slot <= peers.length; slot += 1) {
 		scoreBySlot.push(score);
-		if (slot < peers.length) score += (afterByPeer[slot] ?? 0) - (beforeByPeer[slot] ?? 0);
+		if (slot < peers.length) {
+			const peerDelta = (afterByPeer[slot] ?? 0) - (beforeByPeer[slot] ?? 0);
+			score += peerDelta;
+		}
 	}
 	return { currentSlot, beforeByPeer, afterByPeer, scoreBySlot };
+}
+
+function preferCandidateSlot(
+	slot: number,
+	bestSlot: number | undefined,
+	currentSlot: number,
+): boolean {
+	if (bestSlot === undefined) return true;
+	const slotDistance = Math.abs(slot - currentSlot);
+	const bestDistance = Math.abs(bestSlot - currentSlot);
+	if (slotDistance < bestDistance) return true;
+	return slotDistance === bestDistance && slot < bestSlot;
 }
 
 export function selectTargetInsertionSlot(
@@ -186,13 +247,7 @@ export function selectTargetInsertionSlot(
 	let bestSlot: number | undefined;
 	for (const [slot, score] of scores.scoreBySlot.entries()) {
 		if (Math.abs(score - minimumScore) > crossingScoreTolerance(score, minimumScore)) continue;
-		if (
-			bestSlot === undefined ||
-			Math.abs(slot - scores.currentSlot) < Math.abs(bestSlot - scores.currentSlot) ||
-			(Math.abs(slot - scores.currentSlot) === Math.abs(bestSlot - scores.currentSlot) &&
-				slot < bestSlot)
-		)
-			bestSlot = slot;
+		if (preferCandidateSlot(slot, bestSlot, scores.currentSlot)) bestSlot = slot;
 	}
 	if (bestSlot === undefined)
 		throw new Error('Target insertion scores must contain a finite minimum');
@@ -209,26 +264,31 @@ export function selectTargetInsertionSlot(
 	};
 }
 
+function relationPairInversionScore(left: IndexedRelation, right: IndexedRelation): number {
+	let score = 0;
+	for (const [sourceLayer, leftSources] of left.sourceByLayer) {
+		const rightSources = right.sourceByLayer.get(sourceLayer);
+		if (!rightSources) continue;
+		const [sourceLess, sourceGreater] = inversionCounts(leftSources, rightSources);
+		for (const [targetLayer, leftTargets] of left.targetByLayer) {
+			const rightTargets = right.targetByLayer.get(targetLayer);
+			if (!rightTargets) continue;
+			const [targetLess, targetGreater] = inversionCounts(leftTargets, rightTargets);
+			const forwardInversions = sourceLess * targetGreater;
+			const reverseInversions = sourceGreater * targetLess;
+			score += forwardInversions + reverseInversions;
+		}
+	}
+	const weightedLeftScore = score * left.pairWeight;
+	return weightedLeftScore * right.pairWeight;
+}
+
 export function weightedInversionScore(metadata: CrossingOrderMetadata): number {
 	let score = 0;
 	const relations = indexRelations(metadata);
 	for (const [index, left] of relations.entries()) {
 		for (const right of relations.slice(index + 1)) {
-			if (left.relationId === right.relationId) continue;
-			for (const [sourceLayer, leftSources] of left.sourceByLayer) {
-				const rightSources = right.sourceByLayer.get(sourceLayer);
-				if (!rightSources) continue;
-				const [sourceLess, sourceGreater] = inversionCounts(leftSources, rightSources);
-				for (const [targetLayer, leftTargets] of left.targetByLayer) {
-					const rightTargets = right.targetByLayer.get(targetLayer);
-					if (!rightTargets) continue;
-					const [targetLess, targetGreater] = inversionCounts(leftTargets, rightTargets);
-					score +=
-						(sourceLess * targetGreater + sourceGreater * targetLess) *
-						left.pairWeight *
-						right.pairWeight;
-				}
-			}
+			if (left.relationId !== right.relationId) score += relationPairInversionScore(left, right);
 		}
 	}
 	return score;

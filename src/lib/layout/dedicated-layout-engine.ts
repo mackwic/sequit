@@ -173,10 +173,9 @@ function relationGroupRankGap(
 		if (!measurement) throw new Error(`Missing group measurement: ${groupId}`);
 		const validated = validateGroupMeasurement(measurement, groupId);
 		const parentId = groupsById.get(groupId)?.groupId;
-		const extent =
-			validated.padding +
-			(vertical && forwardLeading ? validated.headerHeight : 0) +
-			(parentId === undefined ? 0 : groupShellExtent(parentId, forwardLeading));
+		const headerExtent = vertical && forwardLeading ? validated.headerHeight : 0;
+		const parentExtent = parentId === undefined ? 0 : groupShellExtent(parentId, forwardLeading);
+		const extent = validated.padding + headerExtent + parentExtent;
 		groupShellExtents.set(key, extent);
 		return extent;
 	};
@@ -369,12 +368,12 @@ export function layoutWithDedicatedEngine(
 			),
 		};
 	});
-	components.sort(
-		(left, right) =>
-			compareCanonicalStrings(left.context, right.context) ||
-			left.effectiveOrder - right.effectiveOrder ||
-			compareCanonicalStrings(left.ids[0] ?? '', right.ids[0] ?? ''),
-	);
+	components.sort((left, right) => {
+		const contextOrder = compareCanonicalStrings(left.context, right.context);
+		const effectiveOrder = left.effectiveOrder - right.effectiveOrder;
+		const idOrder = compareCanonicalStrings(left.ids[0] ?? '', right.ids[0] ?? '');
+		return contextOrder || effectiveOrder || idOrder;
+	});
 	let maximumPrimaryLength = 0;
 	for (const component of components) {
 		maximumPrimaryLength = Math.max(

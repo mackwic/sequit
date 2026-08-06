@@ -66,6 +66,16 @@ function alignedForwardPrimaryOffset(
 	return offsetAtForwardStart ? 0 : bandSize - itemSize;
 }
 
+function totalPrimaryLength(
+	maximumRank: number,
+	primaryBandStarts: readonly number[],
+	primaryBandSizes: readonly number[],
+	junctionSpans: readonly number[],
+): number {
+	const lastBandEnd = (primaryBandStarts[maximumRank] ?? 0) + (primaryBandSizes[maximumRank] ?? 1);
+	return lastBandEnd + (junctionSpans[maximumRank] ?? 0);
+}
+
 export function layoutComponent(
 	rows: EndpointRows,
 	sizes: ReadonlyMap<string, Size>,
@@ -89,15 +99,17 @@ export function layoutComponent(
 	});
 	const primaryBandStarts = Array.from({ length: primaryBandSizes.length }, () => 0);
 	for (let rank = 1; rank < primaryBandSizes.length; rank += 1) {
-		primaryBandStarts[rank] =
-			(primaryBandStarts[rank - 1] ?? 0) +
-			(primaryBandSizes[rank - 1] ?? 0) +
-			(junctionSpans[rank - 1] ?? rankGap);
+		const previousBandStart = primaryBandStarts[rank - 1] ?? 0;
+		const previousBandSize = primaryBandSizes[rank - 1] ?? 0;
+		const previousJunctionSpan = junctionSpans[rank - 1] ?? rankGap;
+		primaryBandStarts[rank] = previousBandStart + previousBandSize + previousJunctionSpan;
 	}
-	const primaryLength =
-		(primaryBandStarts[maximumRank] ?? 0) +
-		(primaryBandSizes[maximumRank] ?? 1) +
-		(junctionSpans[maximumRank] ?? 0);
+	const primaryLength = totalPrimaryLength(
+		maximumRank,
+		primaryBandStarts,
+		primaryBandSizes,
+		junctionSpans,
+	);
 	const ordinaryCrossSizes = rows.ordinary.map((row) => rowCrossSize(row, sizes, vertical));
 	const junctionCrossSizes = rows.junction.map((row) => rowCrossSize(row, sizes, vertical));
 	const crossLength = Math.max(1, ...ordinaryCrossSizes, ...junctionCrossSizes);
@@ -141,7 +153,8 @@ export function layoutComponent(
 			const bandStart = primaryBandStarts[rank] ?? 0;
 			const bandSize = primaryBandSizes[rank] ?? itemPrimarySize;
 			const junctionSpan = junctionSpans[rank] ?? 0;
-			const forwardPrimary = bandStart + bandSize + (junctionSpan - itemPrimarySize) / 2;
+			const centeredJunctionOffset = (junctionSpan - itemPrimarySize) / 2;
+			const forwardPrimary = bandStart + bandSize + centeredJunctionOffset;
 			place(id, cross, forwardPrimary);
 			cross += crossSize(size, vertical) + ITEM_GAP;
 		}

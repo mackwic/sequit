@@ -5,8 +5,8 @@ import * as Y from 'yjs';
 import {
 	importLogicDocument,
 	readLogicDocument,
-	replaceNodeMarkdown,
-} from '../../src/lib/collaboration/yjs-live-document';
+} from '../../src/lib/collaboration/yjs-document-codec';
+import { replaceNodeMarkdown } from '../../src/lib/collaboration/yjs-document-repository';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { nodeId, richAcyclicLogicDocumentArbitrary } from '../builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../builders/property-test-options';

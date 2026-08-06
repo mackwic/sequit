@@ -184,14 +184,29 @@ test.describe('AI for documentary effort', () => {
 		await expect(page.locator('[data-status="connected"]')).toBeVisible();
 
 		const sourceContract = await page.evaluate(async () => {
+			function isOpenDocumentModule(
+				value: unknown,
+			): value is { openDocument: (source: string) => OpenDocumentResult } {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'openDocument' in value &&
+					typeof value.openDocument === 'function'
+				);
+			}
 			const importModule = (specifier: string): Promise<unknown> =>
 				import(/* @vite-ignore */ specifier);
-			const sourceModule = (await importModule('/src/lib/document/example-document.ts')) as {
-				AI_DOCUMENTARY_EFFORT_SOURCE: string;
-			};
-			const openDocumentModule = (await importModule('/src/lib/document/open-document.ts')) as {
-				openDocument: (source: string) => OpenDocumentResult;
-			};
+			const sourceModule: unknown = await importModule('/src/lib/document/example-document.ts');
+			const openDocumentModule: unknown = await importModule('/src/lib/document/open-document.ts');
+			if (
+				typeof sourceModule !== 'object' ||
+				sourceModule === null ||
+				!('AI_DOCUMENTARY_EFFORT_SOURCE' in sourceModule) ||
+				typeof sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE !== 'string'
+			)
+				throw new Error('Invalid example document module');
+			if (!isOpenDocumentModule(openDocumentModule))
+				throw new Error('Invalid open document module');
 			const keylessSource = sourceModule.AI_DOCUMENTARY_EFFORT_SOURCE.replace(
 				/^layoutOrder = ".*"\n/gm,
 				'',
@@ -202,9 +217,15 @@ test.describe('AI for documentary effort', () => {
 			);
 			if (!persistedResult.ok) throw new Error('Failed to open persisted reference document');
 			persistedResult.value.destroy();
+			let keylessDiagnostics: readonly {
+				code: string;
+				message: string;
+				path: readonly string[];
+			}[] = [];
+			if (!keylessResult.ok) keylessDiagnostics = keylessResult.diagnostics;
 			return {
 				persistedOpened: true,
-				keylessDiagnostics: keylessResult.ok ? [] : keylessResult.diagnostics,
+				keylessDiagnostics,
 			};
 		});
 
@@ -254,20 +275,50 @@ test.describe('AI for documentary effort', () => {
 		await expect(page.locator('[data-status="connected"]')).toBeVisible();
 
 		await page.evaluate(async (source) => {
-			const importModule = (specifier: string): Promise<unknown> =>
-				import(/* @vite-ignore */ specifier);
-			const openDocumentModule = (await importModule('/src/lib/document/open-document.ts')) as {
-				openDocument: (source: string) => OpenDocumentResult;
-			};
-			const renderedCanvasModule = (await importModule(
-				'/src/lib/components/canvas/RenderedCanvas.svelte',
-			)) as { default: Component<{ canvas: CanvasModel }> };
-			const svelteModule = (await importModule('/@id/svelte')) as {
+			function isOpenDocumentModule(
+				value: unknown,
+			): value is { openDocument: (source: string) => OpenDocumentResult } {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'openDocument' in value &&
+					typeof value.openDocument === 'function'
+				);
+			}
+			function isRenderedCanvasModule(
+				value: unknown,
+			): value is { default: Component<{ canvas: CanvasModel }> } {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'default' in value &&
+					typeof value.default === 'function'
+				);
+			}
+			function isSvelteModule(value: unknown): value is {
 				mount: (
 					component: Component<{ canvas: CanvasModel }>,
 					options: { target: Element; props: { canvas: CanvasModel } },
 				) => unknown;
-			};
+			} {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'mount' in value &&
+					typeof value.mount === 'function'
+				);
+			}
+			const importModule = (specifier: string): Promise<unknown> =>
+				import(/* @vite-ignore */ specifier);
+			const openDocumentModule = await importModule('/src/lib/document/open-document.ts');
+			const renderedCanvasModule = await importModule(
+				'/src/lib/components/canvas/RenderedCanvas.svelte',
+			);
+			const svelteModule = await importModule('/@id/svelte');
+			if (!isOpenDocumentModule(openDocumentModule))
+				throw new Error('Invalid open document module');
+			if (!isRenderedCanvasModule(renderedCanvasModule)) throw new Error('Invalid canvas module');
+			if (!isSvelteModule(svelteModule)) throw new Error('Invalid Svelte module');
 			const { openDocument } = openDocumentModule;
 			const { default: RenderedCanvas } = renderedCanvasModule;
 			const { mount } = svelteModule;
@@ -278,7 +329,13 @@ test.describe('AI for documentary effort', () => {
 				nodes: new Map(
 					opened.measurementModel.nodes.map(({ id }, index) => [
 						id,
-						{ width: 180, height: id === 'source-b' ? 104 : 80 + (index % 2) * 8 },
+						{
+							width: 180,
+							height: (() => {
+								if (id === 'source-b') return 104;
+								return 80 + (index % 2) * 8;
+							})(),
+						},
 					]),
 				),
 				groups: new Map(),
@@ -314,11 +371,11 @@ test.describe('AI for documentary effort', () => {
 			await capture('after');
 			await capture('stable');
 			const fixture = document.createElement('section');
-			fixture.dataset.crossingAwareFixture = '';
+			fixture.dataset['crossingAwareFixture'] = '';
 			document.body.replaceChildren(fixture);
 			for (const [state, canvas] of renderStates) {
 				const host = document.createElement('div');
-				host.dataset.renderState = state;
+				host.dataset['renderState'] = state;
 				fixture.appendChild(host);
 				mount(RenderedCanvas, { target: host, props: { canvas } });
 			}
@@ -350,15 +407,17 @@ test.describe('AI for documentary effort', () => {
 			}
 			function inversionCrossings(root: HTMLElement): number {
 				const relations = [...root.querySelectorAll<SVGPathElement>('[data-relation-id]')]
-					.map((path) => ({ from: path.dataset.edgeFrom, to: path.dataset.edgeTo }))
-					.filter((relation): relation is { from: string; to: string } =>
-						Boolean(relation.from?.startsWith('source-') && relation.to?.startsWith('target-')),
-					);
+					.map((path) => ({ from: path.dataset['edgeFrom'], to: path.dataset['edgeTo'] }))
+					.filter((relation): relation is { from: string; to: string } => {
+						if (relation.from === undefined || relation.to === undefined) return false;
+						return relation.from.startsWith('source-') && relation.to.startsWith('target-');
+					});
 				let crossings = 0;
 				for (let left = 0; left < relations.length; left += 1) {
 					for (let right = left + 1; right < relations.length; right += 1) {
 						const first = relations[left];
 						const second = relations[right];
+						if (first === undefined || second === undefined) throw new Error('Missing relation');
 						if (first.from === second.from || first.to === second.to) continue;
 						const sourceDelta =
 							endpoint(root, first.from).offsetLeft - endpoint(root, second.from).offsetLeft;
@@ -371,14 +430,17 @@ test.describe('AI for documentary effort', () => {
 			}
 			function routeContract(root: HTMLElement) {
 				return [...root.querySelectorAll<SVGPathElement>('[data-relation-id]')].map((path) => {
-					const from = path.dataset.edgeFrom;
-					const to = path.dataset.edgeTo;
+					const from = path.dataset['edgeFrom'];
+					const to = path.dataset['edgeTo'];
 					const d = path.getAttribute('d') ?? '';
 					const coordinates = (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
-					const points = Array.from({ length: coordinates.length / 2 }, (_, index) => ({
-						x: coordinates[index * 2],
-						y: coordinates[index * 2 + 1],
-					}));
+					const points: { x: number; y: number }[] = [];
+					for (let index = 0; index < coordinates.length; index += 2) {
+						const x = coordinates[index];
+						const y = coordinates[index + 1];
+						if (x === undefined || y === undefined) throw new Error('Incomplete route coordinate');
+						points.push({ x, y });
+					}
 					function touchesBoundary(point: { x: number; y: number }, element: HTMLElement) {
 						const left = Number.parseFloat(element.style.left);
 						const top = Number.parseFloat(element.style.top);
@@ -399,6 +461,7 @@ test.describe('AI for documentary effort', () => {
 					const endpointContact =
 						from !== undefined &&
 						to !== undefined &&
+						firstPoint !== undefined &&
 						lastPoint !== undefined &&
 						touchesBoundary(firstPoint, endpoint(root, from)) &&
 						touchesBoundary(lastPoint, endpoint(root, to));
@@ -408,6 +471,7 @@ test.describe('AI for documentary effort', () => {
 						),
 						orthogonal: points.slice(1).every((point, index) => {
 							const previous = points[index];
+							if (previous === undefined) throw new Error(`Missing route point ${index}`);
 							return previous.x === point.x || previous.y === point.y;
 						}),
 						endpointContact,

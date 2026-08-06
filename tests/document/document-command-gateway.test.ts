@@ -67,12 +67,14 @@ describe('local document command gateway', () => {
 		await vi.waitFor(() => {
 			expect(events).toEqual(['persist']);
 		});
+		const firstPersistCall = persist.mock.calls[0];
+		if (firstPersistCall === undefined) throw new Error('Expected persistence to start');
 		expect(events).not.toContain('publish');
 		completePersistence({
 			ok: true,
 			value: {
 				...document,
-				nodes: [...document.nodes, ...persist.mock.calls[0][0].nodeAdditions],
+				nodes: [...document.nodes, ...firstPersistCall[0].nodeAdditions],
 			},
 		});
 		const outcome = await pending;
@@ -120,24 +122,35 @@ describe('local document command gateway', () => {
 			expect(persist).toHaveBeenCalledOnce();
 		});
 		const persistCallsBeforeFirstCompletion = persist.mock.calls.length;
-		const firstChanges = persist.mock.calls[0][0];
+		const firstCall = persist.mock.calls[0];
+		const firstCompletion = completions[0];
+		if (firstCall === undefined || firstCompletion === undefined) {
+			throw new Error('Expected first persistence call');
+		}
+		const firstChanges = firstCall[0];
 		const firstDocument = {
 			...current,
 			nodes: [...current.nodes, ...firstChanges.nodeAdditions],
 		};
 		current = firstDocument;
-		completions[0]({ ok: true, value: firstDocument });
+		firstCompletion({ ok: true, value: firstDocument });
 		await expect(firstPending).resolves.toEqual({ kind: 'accepted', document: firstDocument });
 
 		await vi.waitFor(() => {
 			expect(persist).toHaveBeenCalledTimes(2);
 		});
-		const secondChanges = persist.mock.calls[1][0];
+		const secondCall = persist.mock.calls[1];
+		const secondCompletion = completions[1];
+		if (secondCall === undefined || secondCompletion === undefined) {
+			throw new Error('Expected second persistence call');
+		}
+		const secondChanges = secondCall[0];
 		expect(secondChanges.nodeAdditions).toHaveLength(1);
 		const firstOrder = firstChanges.nodeAdditions[0]?.layoutOrder;
 		const secondOrder = secondChanges.nodeAdditions[0]?.layoutOrder;
-		expect(firstOrder).toBeDefined();
-		expect(secondOrder).toBeDefined();
+		if (firstOrder === undefined || secondOrder === undefined) {
+			throw new Error('Expected generated endpoint order keys');
+		}
 		expect(secondOrder).not.toBe(firstOrder);
 		expect(fractionalOrderKeySpace.compare(firstOrder, secondOrder)).toBeLessThan(0);
 		const secondDocument = {
@@ -145,7 +158,7 @@ describe('local document command gateway', () => {
 			nodes: [...current.nodes, ...secondChanges.nodeAdditions],
 		};
 		current = secondDocument;
-		completions[1]({ ok: true, value: secondDocument });
+		secondCompletion({ ok: true, value: secondDocument });
 
 		await expect(secondPending).resolves.toEqual({ kind: 'accepted', document: secondDocument });
 		expect(persistCallsBeforeFirstCompletion).toBe(1);
@@ -179,7 +192,9 @@ describe('local document command gateway', () => {
 			expect(persist).toHaveBeenCalledOnce();
 		});
 		gateway.destroy();
-		const changes = persist.mock.calls[0][0];
+		const firstCall = persist.mock.calls[0];
+		if (firstCall === undefined) throw new Error('Expected persistence call');
+		const changes = firstCall[0];
 		const accepted = {
 			...document,
 			nodes: [...document.nodes, ...changes.nodeAdditions],
@@ -290,7 +305,8 @@ describe('local document command gateway', () => {
 			persist: vi.fn(() => Promise.resolve({ ok: true, value: document } as const)),
 		});
 
-		const pending = gateway.dispatch({ kind: 'future-command' } as never);
+		// @ts-expect-error Deliberately exercise malformed runtime input.
+		const pending = gateway.dispatch({ kind: 'future-command' });
 
 		expect(pending).toBeInstanceOf(Promise);
 		const outcome = await pending;

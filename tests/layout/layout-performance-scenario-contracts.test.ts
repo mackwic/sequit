@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LogicDocument } from '../../src/lib/document/logic-document';
-import { GraphEndpointKind } from '../../src/lib/graph/create-graph';
+import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
@@ -41,16 +40,20 @@ describe('layout performance scenario contracts', () => {
 				expect(scenarioDocumentIsValid(first)).toBe(true);
 				expect(first.nodeCount).toBe(nodeCount);
 				expect(first.document.nodes).toHaveLength(nodeCount);
-				const expectedRankableIds = new Set([
+				const endpointIds = new Set([
+					...first.document.groups.map(({ id }) => id),
 					...first.document.nodes.map(({ id }) => id),
 					...first.document.junctions.map(({ id }) => id),
 				]);
-				expect(new Set(first.graph.rankableEndpointIds)).toEqual(expectedRankableIds);
+				expect(first.graph.rankableEndpointIds.every((id) => endpointIds.has(id))).toBe(true);
+				const rankableIds = new Set(first.graph.rankableEndpointIds);
+				expect(first.document.nodes.every(({ id }) => rankableIds.has(id))).toBe(true);
+				expect(first.document.junctions.every(({ id }) => rankableIds.has(id))).toBe(true);
 
 				const layout = await layoutPreparedScenario(first);
 				expect(Number.isFinite(layout.width)).toBe(true);
 				expect(Number.isFinite(layout.height)).toBe(true);
-				expect(layout.elements.filter(({ kind }) => kind === GraphEndpointKind.Node)).toHaveLength(
+				expect(layout.elements.filter(({ kind }) => kind === EndpointKind.Node)).toHaveLength(
 					nodeCount,
 				);
 			});

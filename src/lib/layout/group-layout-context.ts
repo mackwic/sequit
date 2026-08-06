@@ -76,9 +76,7 @@ export function groupsByDescendingDepth(
 	const depthById = new Map<string, number>();
 	for (const group of groups) cacheGroupDepth(group, groupsById, depthById);
 	return [...groups].sort((left, right) => {
-		const rightDepth = depthById.get(right.id) ?? 0;
-		const leftDepth = depthById.get(left.id) ?? 0;
-		const depthOrder = rightDepth - leftDepth;
+		const depthOrder = (depthById.get(right.id) ?? 0) - (depthById.get(left.id) ?? 0);
 		return depthOrder || left.id.localeCompare(right.id);
 	});
 }

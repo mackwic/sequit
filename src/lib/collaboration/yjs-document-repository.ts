@@ -41,18 +41,27 @@ function endpointCollection(kind: EndpointKind): string {
 			return NODES;
 		case EndpointKind.Junction:
 			return JUNCTIONS;
+		default:
+			throw new TypeError(`Unsupported endpoint kind: ${String(kind)}`);
 	}
+}
+
+interface PersistenceCapture {
+	result: YjsLiveDocumentResult<LogicDocument> | undefined;
 }
 
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
-	#persistenceCapture: { result: YjsLiveDocumentResult<LogicDocument> | undefined } | undefined;
+	#persistenceCapture: PersistenceCapture | undefined;
+	#lastValidDocument: Y.Doc | undefined;
+	#canRecoverFromLastValid = false;
 
 	constructor(readonly document: Y.Doc) {
 		document.on('afterTransaction', this.#afterTransaction);
+		if (readLogicDocument(document).ok) this.#lastValidDocument = this.#clone(document);
 	}
 
-	read() {
+	read(): YjsLiveDocumentResult<LogicDocument> {
 		return readLogicDocument(this.document);
 	}
 
@@ -64,18 +73,32 @@ export class YjsDocumentRepository {
 	}
 
 	#persist(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
+		const invalidDocument = !this.read().ok;
+		const lastValidDocument = this.#lastValidDocument;
+		const recoveryAvailable = this.#canRecoverFromLastValid && lastValidDocument !== undefined;
+		if (invalidDocument && recoveryAvailable) {
+			const recovery = new YjsDocumentRepository(lastValidDocument);
+			try {
+				const result = recovery.#persist(changes, origin);
+				if (result.ok) this.#lastValidDocument = this.#clone(recovery.document);
+				return result;
+			} finally {
+				recovery.destroy();
+			}
+		}
 		// TODO: Avoid cloning and fully decoding the Y.Doc twice per accepted command while
 		// preserving the guarded validation against synchronous transaction hooks.
 		const preflight = this.#validate(changes);
 		if (!preflight.ok) return preflight;
-		const capture = { result: undefined } as {
-			result: YjsLiveDocumentResult<LogicDocument> | undefined;
-		};
+		const capture: PersistenceCapture = { result: undefined };
 		let guardedValidation: YjsLiveDocumentResult<LogicDocument> | undefined;
+		const stateBefore = Y.decodeStateVector(Y.encodeStateVector(this.document));
+		const undo = new Y.UndoManager(
+			Object.values(YJS_COLLECTIONS).map((collection) => this.document.getMap(collection)),
+			{ trackedOrigins: new Set([origin ?? null]) },
+		);
 		this.#persistenceCapture = capture;
 		try {
-			// FIXME: A reactive Yjs observer can invalidate this transaction after #apply().
-			// Returning that rejection does not currently roll back the already committed writes.
 			this.document.transact(() => {
 				guardedValidation = this.#validate(changes);
 				if (!guardedValidation.ok) return;
@@ -85,9 +108,36 @@ export class YjsDocumentRepository {
 			const result = capture.result;
 			if (result === undefined)
 				throw new Error('Yjs transaction completed without materialization');
+			if (!result.ok) {
+				undo.undo();
+				this.#discardRolledBackStructs(stateBefore);
+				return result;
+			}
 			return result;
 		} finally {
+			undo.destroy();
 			this.#persistenceCapture = undefined;
+		}
+	}
+
+	#clone(source: Y.Doc): Y.Doc {
+		const clone = new Y.Doc();
+		Y.applyUpdate(clone, Y.encodeStateAsUpdate(source));
+		return clone;
+	}
+
+	#discardRolledBackStructs(stateBefore: Map<number, number>): void {
+		// Undo restores the shared types, but its tombstones would still advance this
+		// replica's state vector. No update escaped a rejected synchronous command, so
+		// discard precisely those unobservable local structs as part of the rollback.
+		const store = this.document.store;
+		for (const [client, structs] of store.clients) {
+			const clock = stateBefore.get(client) ?? 0;
+			const firstRolledBack = structs.findIndex(
+				(struct) => struct.id.clock + struct.length > clock,
+			);
+			if (firstRolledBack >= 0) structs.splice(firstRolledBack);
+			if (structs.length === 0) store.clients.delete(client);
 		}
 	}
 
@@ -112,6 +162,8 @@ export class YjsDocumentRepository {
 	destroy(): void {
 		this.document.off('afterTransaction', this.#afterTransaction);
 		this.#observers.clear();
+		this.#lastValidDocument?.destroy();
+		this.#lastValidDocument = undefined;
 	}
 
 	#apply(changes: DocumentChangeSet): void {
@@ -137,15 +189,13 @@ export class YjsDocumentRepository {
 		});
 		for (const node of changes.nodeAdditions) {
 			const markdown = new Y.Text(node.markdown);
-			nodes.set(
-				node.id,
-				createYjsEntityMap({
-					natureId: node.natureId,
-					...(node.groupId === undefined ? {} : { groupId: node.groupId }),
-					layoutOrder: node.layoutOrder,
-					markdown,
-				}),
-			);
+			const values: Record<string, unknown> = {
+				natureId: node.natureId,
+				layoutOrder: node.layoutOrder,
+				markdown,
+			};
+			if (node.groupId !== undefined) values['groupId'] = node.groupId;
+			nodes.set(node.id, createYjsEntityMap(values));
 		}
 		for (const relation of changes.relationAdditions) {
 			relations.set(relation.id, createYjsEntityMap({ from: relation.from, to: relation.to }));
@@ -155,6 +205,16 @@ export class YjsDocumentRepository {
 
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {
 		const result = this.read();
+		if (result.ok && this.#persistenceCapture === undefined) {
+			this.#canRecoverFromLastValid = false;
+			this.#lastValidDocument?.destroy();
+			this.#lastValidDocument = this.#clone(this.document);
+		} else if (!result.ok) {
+			// Recovery is only valid after observing a rejected remote merge. A document
+			// invalidated locally is an invalid command base and must not be bypassed.
+			const remoteTransaction = !transaction.local;
+			this.#canRecoverFromLastValid = remoteTransaction && this.#persistenceCapture === undefined;
+		}
 		if (this.#persistenceCapture !== undefined && this.#persistenceCapture.result === undefined) {
 			this.#persistenceCapture.result = result;
 		}

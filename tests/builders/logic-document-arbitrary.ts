@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 
 import {
+	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
 	type LayoutConfiguration,
@@ -10,7 +11,9 @@ import {
 	type LogicJunction,
 	type LogicNode,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
 
 interface DocumentArbitraryOptions {
 	readonly minNodes?: number;
@@ -35,6 +38,10 @@ const LAYOUTS: readonly LayoutConfiguration[] = [
 	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
 ];
 
+function generatedOrderKey(namespace: string, index: number): string {
+	return orderKey(`a${namespace}${index.toString().padStart(4, '0')}1`);
+}
+
 export function nodeId(index: number): string {
 	return `node-${index.toString().padStart(2, '0')}`;
 }
@@ -46,12 +53,15 @@ export function documentWith(
 	title = 'Generated document',
 ): LogicDocument {
 	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
 		id: 'generated-document',
 		title,
 		layout,
 		natures: [{ id: 'generated', label: 'Generated', color: '#000000' }],
 		groups: [],
 		nodes: nodeMarkdown.map((markdown, index) => ({
+			kind: EndpointKind.Node,
+			layoutOrder: generatedOrderKey('N', index),
 			id: nodeId(index),
 			natureId: 'generated',
 			markdown,
@@ -191,10 +201,17 @@ function generatedRelations(
 	options: DocumentArbitraryOptions,
 ): readonly LogicRelation[] {
 	const positionsByEndpoint = rankingPositionsByEndpoint(document, positionByEndpointId);
+	const containerIds = new Set(
+		[...document.groups, ...document.nodes, ...document.junctions]
+			.map(({ groupId }) => groupId)
+			.filter((id) => id !== undefined),
+	);
 	const endpointIds = [
-		...document.groups.map(({ id }) => id),
-		...document.nodes.map(({ id }) => id),
-		...document.junctions.map(({ id }) => id),
+		...document.groups
+			.filter(({ id, groupId }) => groupId === undefined && !containerIds.has(id))
+			.map(({ id }) => id),
+		...document.nodes.filter(({ groupId }) => groupId === undefined).map(({ id }) => id),
+		...document.junctions.filter(({ id }) => id === junctionId(0)).map(({ id }) => id),
 	].sort((left, right) => left.localeCompare(right));
 	const candidates: RelationEndpoints[] = [];
 	for (const from of endpointIds) {
@@ -209,8 +226,7 @@ function generatedRelations(
 	const mandatory: readonly RelationEndpoints[] = [
 		{ from: nodeId(0), to: junctionId(0) },
 		{ from: junctionId(0), to: groupId(2) },
-		{ from: groupId(2), to: groupId(0) },
-		{ from: groupId(0), to: nodeId(1) },
+		{ from: groupId(2), to: nodeId(1) },
 	];
 	const maximumEdges = Math.max(
 		mandatory.length,
@@ -292,118 +308,119 @@ function richDocumentArbitraryForCounts(
 				maxLength: options.maxEdges ?? 40,
 			}),
 		)
-		.map(
-			([
-				layout,
-				title,
-				markdown,
-				natureLabels,
-				natureIndexes,
-				nodeGroupIndexes,
-				junctionGroupIndexes,
-				relationSelectors,
-			]) => {
-				const natures = natureLabels.map((label, index) => ({
-					id: `nature-${index.toString().padStart(2, '0')}`,
-					label,
-					color: `#${(index + 1).toString(16).padStart(6, '0')}`,
-				}));
-				const hierarchyGroups = hierarchyGroupIds.map((id, index): LogicGroup => {
-					if (index === 0) return { id, label: 'Root group' };
+		.map(([layout, title, markdown, natureLabels, natureIndexes, , , relationSelectors]) => {
+			const natures = natureLabels.map((label, index) => ({
+				id: `nature-${index.toString().padStart(2, '0')}`,
+				label,
+				color: `#${(index + 1).toString(16).padStart(6, '0')}`,
+			}));
+			const hierarchyGroups = hierarchyGroupIds.map((id, index): LogicGroup => {
+				if (index === 0)
 					return {
+						kind: EndpointKind.Group,
 						id,
-						label: `Nested group ${index}`,
-						groupId: requiredAt(hierarchyGroupIds, index - 1, 'parent group'),
+						label: 'Root group',
+						layoutOrder: generatedOrderKey('H', index),
 					};
-				});
-				const emptyHierarchyGroups = emptyHierarchyGroupIds.map((id, index): LogicGroup => {
-					let parentGroupId = groupId(3);
-					if (index > 0) {
-						parentGroupId = requiredAt(emptyHierarchyGroupIds, index - 1, 'empty parent group');
-					}
-					return {
-						id,
-						label: `Nested empty group ${index + 1}`,
-						groupId: parentGroupId,
-					};
-				});
-				const groups: readonly LogicGroup[] = [
-					...hierarchyGroups,
-					{ id: groupId(2), label: 'Empty endpoint group' },
-					{ id: groupId(3), label: 'Empty group root' },
-					...emptyHierarchyGroups,
-				];
-				const nodes: readonly LogicNode[] = markdown.map((value, index) => {
-					const node: {
-						id: string;
-						natureId: string;
-						markdown: string;
-						groupId?: string;
-					} = {
-						id: nodeId(index),
-						natureId: requiredAt(natures, requiredAt(natureIndexes, index, 'nature'), 'nature').id,
-						markdown: value,
-					};
-					if (index === 2) {
-						node.groupId = requiredAt(
-							hierarchyGroupIds,
-							hierarchyGroupIds.length - 1,
-							'deepest group',
-						);
-					} else if (index > 2) {
-						const generatedGroupIndex = requiredAt(nodeGroupIndexes, index, 'node group');
-						if (generatedGroupIndex >= 0) {
-							node.groupId = requiredAt(hierarchyGroupIds, generatedGroupIndex, 'node group');
-						}
-					}
-					return node;
-				});
-				const junctions: readonly LogicJunction[] = Array.from(
-					{ length: junctionCount },
-					(_, index) => {
-						const junction: { id: string; operator: JunctionOperator.Xor; groupId?: string } = {
-							id: junctionId(index),
-							operator: JunctionOperator.Xor,
-						};
-						if (index > 0) {
-							const generatedGroupIndex = requiredAt(junctionGroupIndexes, index, 'junction group');
-							if (generatedGroupIndex >= 0) {
-								junction.groupId = requiredAt(
-									hierarchyGroupIds,
-									generatedGroupIndex,
-									'junction group',
-								);
-							}
-						}
-						return junction;
-					},
-				);
-				const orderedEndpointIds = [
-					nodeId(0),
-					junctionId(0),
-					groupId(2),
-					groupId(3),
-					...emptyHierarchyGroupIds,
-					...nodes.slice(2).map(({ id }) => id),
-					...junctions.slice(1).map(({ id }) => id),
-					nodeId(1),
-				];
-				const positionByEndpointId = new Map(orderedEndpointIds.map((id, index) => [id, index]));
-				const document = {
-					id: 'generated-rich-document',
-					title,
-					layout,
-					natures,
-					groups,
-					nodes,
-					junctions,
-				};
 				return {
-					...document,
-					relations: generatedRelations(document, positionByEndpointId, relationSelectors, options),
+					kind: EndpointKind.Group,
+					layoutOrder: generatedOrderKey('H', index),
+					id,
+					label: `Nested group ${index}`,
+					groupId: requiredAt(hierarchyGroupIds, index - 1, 'parent group'),
 				};
-			},
-		);
+			});
+			const emptyHierarchyGroups = emptyHierarchyGroupIds.map((id, index): LogicGroup => {
+				let parentGroupId = groupId(3);
+				if (index > 0) {
+					parentGroupId = requiredAt(emptyHierarchyGroupIds, index - 1, 'empty parent group');
+				}
+				return {
+					kind: EndpointKind.Group,
+					layoutOrder: generatedOrderKey('E', index),
+					id,
+					label: `Nested empty group ${index + 1}`,
+					groupId: parentGroupId,
+				};
+			});
+			const groups: readonly LogicGroup[] = [
+				...hierarchyGroups,
+				{
+					kind: EndpointKind.Group,
+					id: groupId(2),
+					label: 'Empty endpoint group',
+					layoutOrder: generatedOrderKey('G', 2),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: groupId(3),
+					label: 'Empty group root',
+					layoutOrder: generatedOrderKey('G', 3),
+				},
+				...emptyHierarchyGroups,
+			];
+			const nodes: readonly LogicNode[] = markdown.map((value, index) => {
+				const node: {
+					kind: EndpointKind.Node;
+					layoutOrder: string;
+					id: string;
+					natureId: string;
+					markdown: string;
+					groupId?: string;
+				} = {
+					kind: EndpointKind.Node,
+					layoutOrder: generatedOrderKey('N', index),
+					id: nodeId(index),
+					natureId: requiredAt(natures, requiredAt(natureIndexes, index, 'nature'), 'nature').id,
+					markdown: value,
+				};
+				if (index === 2) {
+					node.groupId = requiredAt(
+						hierarchyGroupIds,
+						hierarchyGroupIds.length - 1,
+						'deepest group',
+					);
+				}
+				return node;
+			});
+			const junctions: readonly LogicJunction[] = Array.from(
+				{ length: junctionCount },
+				(_, index) => {
+					const junction: LogicJunction & { groupId?: string } = {
+						kind: EndpointKind.Junction,
+						layoutOrder: generatedOrderKey('J', index),
+						id: junctionId(index),
+						operator: JunctionOperator.Xor,
+					};
+					return junction;
+				},
+			);
+			const orderedEndpointIds = [
+				nodeId(0),
+				junctionId(0),
+				groupId(2),
+				groupId(3),
+				...emptyHierarchyGroupIds,
+				...nodes.slice(2).map(({ id }) => id),
+				...junctions.slice(1).map(({ id }) => id),
+				nodeId(1),
+			];
+			const positionByEndpointId = new Map(orderedEndpointIds.map((id, index) => [id, index]));
+			const document = {
+				persistenceFormat: PERSISTENCE_FORMAT,
+				id: 'generated-rich-document',
+				title,
+				layout,
+				natures,
+				groups,
+				nodes,
+				junctions,
+			};
+			return {
+				...document,
+				relations: generatedRelations(document, positionByEndpointId, relationSelectors, options),
+			};
+		});
 }
 
 export function richAcyclicLogicDocumentArbitrary(
