@@ -1,7 +1,11 @@
 import { defineConfig } from 'vitest/config';
 
+let testTimeout = 5_000;
+if (process.env['SEQUIT_PROPERTY_MODE'] === 'fuzz') testTimeout = 60_000;
+
 export default defineConfig({
 	test: {
+		testTimeout,
 		environment: 'node',
 		include: ['tests/**/*.test.ts'],
 		exclude: ['tests/e2e/**', 'tests/performance/**'],

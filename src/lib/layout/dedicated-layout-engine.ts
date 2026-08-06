@@ -1,77 +1,29 @@
-import type { LayoutDirection, LogicGroup } from '../document/logic-document';
+import type { LayoutDirection } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import { type ComponentLayout, isVerticalDirection, layoutComponent } from './component-layout';
+import { type ComponentLayout, layoutComponent } from './component-layout';
+import {
+	type DedicatedLayoutContext,
+	layoutContext,
+	validateGroupMeasurement,
+} from './dedicated-layout-context';
+import { componentContext, endpointLayoutContext, groupDepth } from './group-layout-context';
+import { centerDirectJunctions } from './junction-layout';
 import type {
 	Bounds,
-	GroupMeasurement,
 	LayoutElement,
 	LayoutMeasurements,
 	LayoutRelation,
 	LayoutResult,
 	Point,
-	Size,
 } from './layout-types';
 
 const OUTER_MARGIN = 40;
-const COMPONENT_GAP = 96;
 
 interface RankedComponent {
 	readonly ids: readonly string[];
 	readonly context: string;
 	readonly layout: ComponentLayout;
-}
-
-function assertPositive(value: number, name: string): void {
-	if (!Number.isFinite(value) || value <= 0) {
-		throw new Error(`${name} must be a finite positive number`);
-	}
-}
-
-function assertNonNegative(value: number, name: string): void {
-	if (!Number.isFinite(value) || value < 0) {
-		throw new Error(`${name} must be a finite non-negative number`);
-	}
-}
-
-function validateSize(size: Size, name: string): Size {
-	assertPositive(size.width, `${name}.width`);
-	assertPositive(size.height, `${name}.height`);
-	return size;
-}
-
-function validateGroupMeasurement(
-	measurement: GroupMeasurement,
-	groupId: string,
-): GroupMeasurement {
-	assertPositive(measurement.minimumWidth, `groups.${groupId}.minimumWidth`);
-	assertPositive(measurement.minimumHeight, `groups.${groupId}.minimumHeight`);
-	assertNonNegative(measurement.headerHeight, `groups.${groupId}.headerHeight`);
-	assertNonNegative(measurement.padding, `groups.${groupId}.padding`);
-	return measurement;
-}
-
-function endpointSize(
-	graph: LogicGraph,
-	measurements: LayoutMeasurements,
-	endpointId: string,
-): Size {
-	const endpoint = graph.endpointsById.get(endpointId);
-	if (!endpoint) throw new Error(`Missing graph endpoint: ${endpointId}`);
-	if (endpoint.kind === 'node') {
-		const size = measurements.nodes.get(endpointId);
-		if (!size) throw new Error(`Missing node measurement: ${endpointId}`);
-		return validateSize(size, `nodes.${endpointId}`);
-	}
-	if (endpoint.kind === 'junction') {
-		const size = measurements.junctions.get(endpointId);
-		if (!size) throw new Error(`Missing junction measurement: ${endpointId}`);
-		return validateSize(size, `junctions.${endpointId}`);
-	}
-	const measurement = measurements.groups.get(endpointId);
-	if (!measurement) throw new Error(`Missing group measurement: ${endpointId}`);
-	const validated = validateGroupMeasurement(measurement, endpointId);
-	return { width: validated.minimumWidth, height: validated.minimumHeight };
 }
 
 function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string[])[] {
@@ -102,51 +54,8 @@ function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string
 	return result;
 }
 
-function endpointGroupId(graph: LogicGraph, endpointId: string): string | undefined {
-	return graph.endpointsById.get(endpointId)?.entity.groupId;
-}
-
-function topLevelGroupId(groupId: string, groupsById: ReadonlyMap<string, LogicGroup>): string {
-	let current = groupId;
-	const visited = new Set<string>();
-	for (;;) {
-		if (visited.has(current)) throw new Error(`Group containment cycle at: ${current}`);
-		visited.add(current);
-		const parent = groupsById.get(current)?.groupId;
-		if (parent === undefined) return current;
-		current = parent;
-	}
-}
-
-function componentContext(
-	graph: LogicGraph,
-	ids: readonly string[],
-	groupsById: ReadonlyMap<string, LogicGroup>,
-): string {
-	const contexts = new Set<string>();
-	for (const id of ids) {
-		const groupId = endpointGroupId(graph, id);
-		if (groupId === undefined) contexts.add('~root');
-		else contexts.add(topLevelGroupId(groupId, groupsById));
-	}
-	return [...contexts].sort((left, right) => left.localeCompare(right)).join('|');
-}
-
 function translateBounds(bounds: Bounds, x: number, y: number): Bounds {
 	return { ...bounds, x: bounds.x + x, y: bounds.y + y };
-}
-
-function groupDepth(group: LogicGroup, groupsById: ReadonlyMap<string, LogicGroup>): number {
-	let depth = 0;
-	let parentId = group.groupId;
-	const visited = new Set([group.id]);
-	while (parentId !== undefined) {
-		if (visited.has(parentId)) throw new Error(`Group containment cycle at: ${parentId}`);
-		visited.add(parentId);
-		depth += 1;
-		parentId = groupsById.get(parentId)?.groupId;
-	}
-	return depth;
 }
 
 function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection): readonly Point[] {
@@ -174,75 +83,97 @@ function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection)
 	return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end];
 }
 
-export function layoutWithDedicatedEngine(
+interface PositionedEndpoints {
+	readonly bounds: Map<string, Bounds>;
+	readonly maximumPrimaryLength: number;
+	readonly nextCross: number;
+}
+
+function positionEndpoints(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
-	measurements: LayoutMeasurements,
-): LayoutResult {
-	const sizes = new Map<string, Size>();
-	for (const id of graph.rankableEndpointIds) {
-		sizes.set(id, endpointSize(graph, measurements, id));
-	}
-	const groupsById = new Map(graph.document.groups.map((group) => [group.id, group]));
-	const vertical = isVerticalDirection(graph.document.layout.direction);
+	context: DedicatedLayoutContext,
+): PositionedEndpoints {
+	const { groupsById, sizes, layoutSizes, reservations, vertical, componentGap } = context;
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
 	const primaryBandSizes = ranks.bands.map((ids) => {
 		let maximum = 1;
 		for (const id of ids) {
 			if (junctionIds.has(id)) continue;
-			const size = sizes.get(id);
+			const size = layoutSizes.get(id);
 			if (!size) throw new Error(`Missing measured size: ${id}`);
 			maximum = Math.max(maximum, vertical ? size.height : size.width);
 		}
 		return maximum;
 	});
-	const components: RankedComponent[] = weaklyConnectedComponents(graph).map((ids) => ({
-		ids,
-		context: componentContext(graph, ids, groupsById),
-		layout: layoutComponent(
-			ids,
-			ranks.byEndpointId,
-			sizes,
-			graph.document.layout.direction,
-			graph.document.layout.bias,
-			primaryBandSizes,
-			junctionIds,
-		),
-	}));
+	const components: RankedComponent[] = weaklyConnectedComponents(graph).map((ids) => {
+		const orderedIds = [...ids].sort(
+			(left, right) =>
+				endpointLayoutContext(graph, left, groupsById).localeCompare(
+					endpointLayoutContext(graph, right, groupsById),
+				) || left.localeCompare(right),
+		);
+		return {
+			ids: orderedIds,
+			context: componentContext(graph, orderedIds, groupsById),
+			layout: layoutComponent(
+				orderedIds,
+				ranks.byEndpointId,
+				layoutSizes,
+				graph.document.layout.direction,
+				graph.document.layout.bias,
+				primaryBandSizes,
+				junctionIds,
+			),
+		};
+	});
 	components.sort(
 		(left, right) =>
 			left.context.localeCompare(right.context) ||
 			(left.ids[0] ?? '').localeCompare(right.ids[0] ?? ''),
 	);
 	let maximumPrimaryLength = 0;
-	for (const component of components) {
-		let componentPrimaryLength = component.layout.width;
-		if (vertical) componentPrimaryLength = component.layout.height;
-		maximumPrimaryLength = Math.max(maximumPrimaryLength, componentPrimaryLength);
+	const firstComponent = components[0];
+	if (firstComponent !== undefined) {
+		maximumPrimaryLength = firstComponent.layout.width;
+		if (vertical) maximumPrimaryLength = firstComponent.layout.height;
 	}
-
 	const bounds = new Map<string, Bounds>();
 	let cross = OUTER_MARGIN;
 	for (const component of components) {
-		let primaryLength = component.layout.width;
-		if (vertical) primaryLength = component.layout.height;
-		const alignAtStart =
-			graph.document.layout.bias === 'top' || graph.document.layout.bias === 'left';
-		let primary = OUTER_MARGIN + maximumPrimaryLength - primaryLength;
-		if (alignAtStart) primary = OUTER_MARGIN;
-		let offsetX = primary;
+		let offsetX = OUTER_MARGIN;
 		let offsetY = cross;
 		if (vertical) {
 			offsetX = cross;
-			offsetY = primary;
+			offsetY = OUTER_MARGIN;
 		}
 		for (const [id, value] of component.layout.boundsById) {
-			bounds.set(id, translateBounds(value, offsetX, offsetY));
+			const size = sizes.get(id);
+			const reservation = reservations.get(id);
+			if (!size || !reservation) throw new Error(`Missing endpoint reservation: ${id}`);
+			bounds.set(id, {
+				x: value.x + offsetX + reservation.offsetX,
+				y: value.y + offsetY + reservation.offsetY,
+				...size,
+			});
 		}
 		let componentCrossLength = component.layout.height;
 		if (vertical) componentCrossLength = component.layout.width;
-		cross += componentCrossLength + COMPONENT_GAP;
+		cross += componentCrossLength + componentGap;
 	}
+	centerDirectJunctions(graph, bounds, graph.document.layout.direction);
+	return { bounds, maximumPrimaryLength, nextCross: cross };
+}
+
+export function layoutWithDedicatedEngine(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements: LayoutMeasurements,
+): LayoutResult {
+	const context = layoutContext(graph, ranks, measurements);
+	const { groupsById, vertical, componentGap } = context;
+	const { bounds, maximumPrimaryLength, nextCross } = positionEndpoints(graph, ranks, context);
+	let cross = nextCross;
 
 	const groupsByDescendingDepth = [...graph.document.groups].sort(
 		(left, right) =>
@@ -295,7 +226,7 @@ export function layoutWithDedicatedEngine(
 				width: validated.minimumWidth,
 				height: validated.minimumHeight,
 			});
-			cross += groupCrossLength + COMPONENT_GAP;
+			cross += groupCrossLength + componentGap;
 			continue;
 		}
 

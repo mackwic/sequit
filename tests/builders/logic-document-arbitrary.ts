@@ -3,6 +3,9 @@ import fc from 'fast-check';
 import type {
 	LayoutConfiguration,
 	LogicDocument,
+	LogicGroup,
+	LogicJunction,
+	LogicNode,
 	LogicRelation,
 } from '../../src/lib/document/logic-document';
 
@@ -112,3 +115,376 @@ export const cyclicLogicDocumentArbitrary: fc.Arbitrary<LogicDocument> = fc
 			})),
 		),
 	);
+
+export function groupId(index: number): string {
+	return `group-${index.toString().padStart(2, '0')}`;
+}
+
+export function junctionId(index: number): string {
+	return `junction-${index.toString().padStart(2, '0')}`;
+}
+
+function requiredAt<T>(values: readonly T[], index: number, description: string): T {
+	const value = values[index];
+	if (value === undefined) throw new Error(`Missing generated ${description} at index ${index}`);
+	return value;
+}
+
+interface RelationEndpoints {
+	readonly from: string;
+	readonly to: string;
+}
+
+function rankingPositionsByEndpoint(
+	document: Omit<LogicDocument, 'relations'>,
+	positionByEndpointId: ReadonlyMap<string, number>,
+): ReadonlyMap<string, readonly number[]> {
+	const groupsById = new Map(document.groups.map((group) => [group.id, group]));
+	const memberIdsByGroup = new Map(document.groups.map(({ id }) => [id, [] as string[]]));
+	for (const endpoint of [...document.groups, ...document.nodes, ...document.junctions]) {
+		if (endpoint.groupId === undefined) continue;
+		const members = memberIdsByGroup.get(endpoint.groupId);
+		if (!members) throw new Error(`Missing generated parent group: ${endpoint.groupId}`);
+		members.push(endpoint.id);
+	}
+	const cache = new Map<string, readonly number[]>();
+	function positionsFor(id: string, visiting: ReadonlySet<string>): readonly number[] {
+		const cached = cache.get(id);
+		if (cached) return cached;
+		const group = groupsById.get(id);
+		if (!group) {
+			const position = positionByEndpointId.get(id);
+			if (position === undefined) throw new Error(`Missing generated endpoint position: ${id}`);
+			const positions = [position];
+			cache.set(id, positions);
+			return positions;
+		}
+		if (visiting.has(id)) throw new Error(`Generated group containment cycle: ${id}`);
+		const nextVisiting = new Set(visiting).add(id);
+		const members = memberIdsByGroup.get(id) ?? [];
+		let positions: readonly number[];
+		if (members.length === 0) {
+			const position = positionByEndpointId.get(id);
+			if (position === undefined) throw new Error(`Missing generated empty group position: ${id}`);
+			positions = [position];
+		} else {
+			positions = [
+				...new Set(members.flatMap((memberId) => positionsFor(memberId, nextVisiting))),
+			].sort((left, right) => left - right);
+		}
+		cache.set(id, positions);
+		return positions;
+	}
+	for (const endpoint of [...document.groups, ...document.nodes, ...document.junctions]) {
+		positionsFor(endpoint.id, new Set());
+	}
+	return cache;
+}
+
+function generatedRelations(
+	document: Omit<LogicDocument, 'relations'>,
+	positionByEndpointId: ReadonlyMap<string, number>,
+	selectors: readonly number[],
+	options: DocumentArbitraryOptions,
+): readonly LogicRelation[] {
+	const positionsByEndpoint = rankingPositionsByEndpoint(document, positionByEndpointId);
+	const endpointIds = [
+		...document.groups.map(({ id }) => id),
+		...document.nodes.map(({ id }) => id),
+		...document.junctions.map(({ id }) => id),
+	].sort((left, right) => left.localeCompare(right));
+	const candidates: RelationEndpoints[] = [];
+	for (const from of endpointIds) {
+		const fromPositions = positionsByEndpoint.get(from) ?? [];
+		for (const to of endpointIds) {
+			const toPositions = positionsByEndpoint.get(to) ?? [];
+			if (from !== to && Math.max(...fromPositions) < Math.min(...toPositions)) {
+				candidates.push({ from, to });
+			}
+		}
+	}
+	const mandatory: readonly RelationEndpoints[] = [
+		{ from: nodeId(0), to: junctionId(0) },
+		{ from: junctionId(0), to: groupId(2) },
+		{ from: groupId(2), to: groupId(0) },
+		{ from: groupId(0), to: nodeId(1) },
+	];
+	const maximumEdges = Math.max(
+		mandatory.length,
+		Math.min(candidates.length, options.maxEdges ?? 40),
+	);
+	const minimumEdges = Math.min(
+		maximumEdges,
+		Math.max(mandatory.length, options.minEdges ?? mandatory.length),
+	);
+	const selected = new Map<string, RelationEndpoints>();
+	for (const relation of mandatory) selected.set(`${relation.from}:${relation.to}`, relation);
+	for (const candidate of candidates) {
+		if (selected.size >= minimumEdges) break;
+		selected.set(`${candidate.from}:${candidate.to}`, candidate);
+	}
+	for (const selector of selectors) {
+		if (selected.size >= maximumEdges || candidates.length === 0) break;
+		const candidate = requiredAt(candidates, selector % candidates.length, 'relation candidate');
+		selected.set(`${candidate.from}:${candidate.to}`, candidate);
+	}
+	return [...selected.values()]
+		.sort((left, right) => {
+			const leftPosition = Math.max(...(positionsByEndpoint.get(left.from) ?? []));
+			const rightPosition = Math.max(...(positionsByEndpoint.get(right.from) ?? []));
+			return (
+				leftPosition - rightPosition ||
+				left.from.localeCompare(right.from) ||
+				left.to.localeCompare(right.to)
+			);
+		})
+		.map(({ from, to }, index) => ({
+			id: `relation-${index.toString().padStart(3, '0')}`,
+			from,
+			to,
+		}));
+}
+
+function richDocumentArbitraryForCounts(
+	nodeCount: number,
+	junctionCount: number,
+	natureCount: number,
+	hierarchyDepth: number,
+	options: DocumentArbitraryOptions,
+): fc.Arbitrary<LogicDocument> {
+	const hierarchyGroupIds = [
+		groupId(0),
+		groupId(1),
+		...Array.from({ length: hierarchyDepth - 1 }, (_, index) => groupId(index + 4)),
+	];
+	const emptyHierarchyGroupIds = Array.from(
+		{ length: hierarchyDepth },
+		(_, index) => `empty-group-${index.toString().padStart(2, '0')}`,
+	);
+	return fc
+		.tuple(
+			fc.constantFrom(...LAYOUTS),
+			fc.string({ maxLength: 80, unit: 'grapheme' }),
+			fc.array(fc.string({ maxLength: 160, unit: 'grapheme' }), {
+				minLength: nodeCount,
+				maxLength: nodeCount,
+			}),
+			fc.array(fc.string({ minLength: 1, maxLength: 40, unit: 'grapheme' }), {
+				minLength: natureCount,
+				maxLength: natureCount,
+			}),
+			fc.array(fc.integer({ min: 0, max: natureCount - 1 }), {
+				minLength: nodeCount,
+				maxLength: nodeCount,
+			}),
+			fc.array(fc.integer({ min: -1, max: hierarchyGroupIds.length - 1 }), {
+				minLength: nodeCount,
+				maxLength: nodeCount,
+			}),
+			fc.array(fc.integer({ min: -1, max: hierarchyGroupIds.length - 1 }), {
+				minLength: junctionCount,
+				maxLength: junctionCount,
+			}),
+			fc.array(fc.integer({ min: 0, max: 10_000 }), {
+				maxLength: options.maxEdges ?? 40,
+			}),
+		)
+		.map(
+			([
+				layout,
+				title,
+				markdown,
+				natureLabels,
+				natureIndexes,
+				nodeGroupIndexes,
+				junctionGroupIndexes,
+				relationSelectors,
+			]) => {
+				const natures = natureLabels.map((label, index) => ({
+					id: `nature-${index.toString().padStart(2, '0')}`,
+					label,
+					color: `#${(index + 1).toString(16).padStart(6, '0')}`,
+				}));
+				const hierarchyGroups = hierarchyGroupIds.map((id, index): LogicGroup => {
+					if (index === 0) return { id, label: 'Root group' };
+					return {
+						id,
+						label: `Nested group ${index}`,
+						groupId: requiredAt(hierarchyGroupIds, index - 1, 'parent group'),
+					};
+				});
+				const emptyHierarchyGroups = emptyHierarchyGroupIds.map((id, index): LogicGroup => {
+					let parentGroupId = groupId(3);
+					if (index > 0) {
+						parentGroupId = requiredAt(emptyHierarchyGroupIds, index - 1, 'empty parent group');
+					}
+					return {
+						id,
+						label: `Nested empty group ${index + 1}`,
+						groupId: parentGroupId,
+					};
+				});
+				const groups: readonly LogicGroup[] = [
+					...hierarchyGroups,
+					{ id: groupId(2), label: 'Empty endpoint group' },
+					{ id: groupId(3), label: 'Empty group root' },
+					...emptyHierarchyGroups,
+				];
+				const nodes: readonly LogicNode[] = markdown.map((value, index) => {
+					const node: {
+						id: string;
+						natureId: string;
+						markdown: string;
+						groupId?: string;
+					} = {
+						id: nodeId(index),
+						natureId: requiredAt(natures, requiredAt(natureIndexes, index, 'nature'), 'nature').id,
+						markdown: value,
+					};
+					if (index === 2) {
+						node.groupId = requiredAt(
+							hierarchyGroupIds,
+							hierarchyGroupIds.length - 1,
+							'deepest group',
+						);
+					} else if (index > 2) {
+						const generatedGroupIndex = requiredAt(nodeGroupIndexes, index, 'node group');
+						if (generatedGroupIndex >= 0) {
+							node.groupId = requiredAt(hierarchyGroupIds, generatedGroupIndex, 'node group');
+						}
+					}
+					return node;
+				});
+				const junctions: readonly LogicJunction[] = Array.from(
+					{ length: junctionCount },
+					(_, index) => {
+						const junction: { id: string; operator: 'xor'; groupId?: string } = {
+							id: junctionId(index),
+							operator: 'xor',
+						};
+						if (index > 0) {
+							const generatedGroupIndex = requiredAt(junctionGroupIndexes, index, 'junction group');
+							if (generatedGroupIndex >= 0) {
+								junction.groupId = requiredAt(
+									hierarchyGroupIds,
+									generatedGroupIndex,
+									'junction group',
+								);
+							}
+						}
+						return junction;
+					},
+				);
+				const orderedEndpointIds = [
+					nodeId(0),
+					junctionId(0),
+					groupId(2),
+					groupId(3),
+					...emptyHierarchyGroupIds,
+					...nodes.slice(2).map(({ id }) => id),
+					...junctions.slice(1).map(({ id }) => id),
+					nodeId(1),
+				];
+				const positionByEndpointId = new Map(orderedEndpointIds.map((id, index) => [id, index]));
+				const document = {
+					id: 'generated-rich-document',
+					title,
+					layout,
+					natures,
+					groups,
+					nodes,
+					junctions,
+				};
+				return {
+					...document,
+					relations: generatedRelations(document, positionByEndpointId, relationSelectors, options),
+				};
+			},
+		);
+}
+
+export function richAcyclicLogicDocumentArbitrary(
+	options: DocumentArbitraryOptions = {},
+): fc.Arbitrary<LogicDocument> {
+	const minimumNodes = Math.max(3, options.minNodes ?? 3);
+	const maximumNodes = Math.max(minimumNodes, options.maxNodes ?? 12);
+	return fc
+		.tuple(
+			fc.integer({ min: minimumNodes, max: maximumNodes }),
+			fc.integer({ min: 1, max: 3 }),
+			fc.integer({ min: 1, max: 3 }),
+			fc.integer({ min: 1, max: 4 }),
+		)
+		.chain(([nodeCount, junctionCount, natureCount, hierarchyDepth]) =>
+			richDocumentArbitraryForCounts(
+				nodeCount,
+				junctionCount,
+				natureCount,
+				hierarchyDepth,
+				options,
+			),
+		);
+}
+
+export const duplicateEndpointLogicDocumentArbitrary: fc.Arbitrary<LogicDocument> =
+	richAcyclicLogicDocumentArbitrary().map((document) => {
+		const firstGroup = requiredAt(document.groups, 0, 'group');
+		const firstJunction = requiredAt(document.junctions, 0, 'junction');
+		return {
+			...document,
+			junctions: [{ ...firstJunction, id: firstGroup.id }, ...document.junctions.slice(1)],
+		};
+	});
+
+export const unknownNatureLogicDocumentArbitrary: fc.Arbitrary<LogicDocument> =
+	richAcyclicLogicDocumentArbitrary().map((document) => ({
+		...document,
+		nodes: [
+			{ ...requiredAt(document.nodes, 0, 'node'), natureId: 'missing-nature' },
+			...document.nodes.slice(1),
+		],
+	}));
+
+export const unknownGroupLogicDocumentArbitrary: fc.Arbitrary<LogicDocument> = fc
+	.tuple(richAcyclicLogicDocumentArbitrary(), fc.constantFrom('group', 'node', 'junction'))
+	.map(([document, owner]) => {
+		if (owner === 'group') {
+			return {
+				...document,
+				groups: [
+					{ ...requiredAt(document.groups, 0, 'group'), groupId: 'missing-group' },
+					...document.groups.slice(1),
+				],
+			};
+		}
+		if (owner === 'node') {
+			return {
+				...document,
+				nodes: [
+					{ ...requiredAt(document.nodes, 0, 'node'), groupId: 'missing-group' },
+					...document.nodes.slice(1),
+				],
+			};
+		}
+		return {
+			...document,
+			junctions: [
+				{ ...requiredAt(document.junctions, 0, 'junction'), groupId: 'missing-group' },
+				...document.junctions.slice(1),
+			],
+		};
+	});
+
+export const cyclicGroupLogicDocumentArbitrary: fc.Arbitrary<LogicDocument> =
+	richAcyclicLogicDocumentArbitrary().map((document) => {
+		const first = requiredAt(document.groups, 0, 'group');
+		const second = requiredAt(document.groups, 1, 'group');
+		return {
+			...document,
+			groups: [
+				{ ...first, groupId: second.id },
+				{ ...second, groupId: first.id },
+				...document.groups.slice(2),
+			],
+		};
+	});

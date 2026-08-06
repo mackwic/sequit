@@ -8,6 +8,7 @@ import {
 	cyclicLogicDocumentArbitrary,
 	nodeId,
 } from '../builders/logic-document-arbitrary';
+import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
 
 function graphFor(document: Parameters<typeof createGraph>[0]): LogicGraph {
 	const graph = createGraph(document);
@@ -54,7 +55,7 @@ describe('generated logic graphs', () => {
 				expect(rankedIds).toHaveLength(document.nodes.length);
 				expect(new Set(rankedIds).size).toBe(document.nodes.length);
 			}),
-			{ numRuns: 200 },
+			PROPERTY_PARAMETERS,
 		);
 	});
 
@@ -73,7 +74,7 @@ describe('generated logic graphs', () => {
 					expect(rankFor(ranks, id)).toBe(expected);
 				}
 			}),
-			{ numRuns: 200 },
+			PROPERTY_PARAMETERS,
 		);
 	});
 
@@ -106,7 +107,7 @@ describe('generated logic graphs', () => {
 					}),
 				);
 			}),
-			{ numRuns: 100 },
+			PROPERTY_PARAMETERS,
 		);
 	});
 
@@ -122,7 +123,7 @@ describe('generated logic graphs', () => {
 					expect(topologicallyRank(second)).toEqual(topologicallyRank(first));
 				},
 			),
-			{ numRuns: 100 },
+			PROPERTY_PARAMETERS,
 		);
 	});
 
@@ -136,7 +137,7 @@ describe('generated logic graphs', () => {
 					expect.objectContaining({ code: 'cycle', path: ['relations'] }),
 				]);
 			}),
-			{ numRuns: 100 },
+			PROPERTY_PARAMETERS,
 		);
 	});
 });

@@ -38,6 +38,136 @@ function requiredSize(sizes: ReadonlyMap<string, Size>, id: string): Size {
 	return size;
 }
 
+interface PrimaryBandGeometry {
+	readonly maximumRank: number;
+	readonly effectiveBandSizes: readonly number[];
+	readonly interBandGaps: readonly number[];
+	readonly primaryBandStarts: readonly number[];
+	readonly primaryLength: number;
+}
+
+function primaryBandGeometry(
+	primaryBandSizes: readonly number[],
+	junctionIds: ReadonlySet<string>,
+	ranks: ReadonlyMap<string, number>,
+	sizes: ReadonlyMap<string, Size>,
+	vertical: boolean,
+): PrimaryBandGeometry {
+	const maximumRank = primaryBandSizes.length - 1;
+	const junctionPrimarySizes = primaryBandSizes.map(() => 0);
+	for (const id of junctionIds) {
+		const rank = ranks.get(id) ?? 0;
+		const current = requiredAt(junctionPrimarySizes, rank, 'junction primary size');
+		junctionPrimarySizes[rank] = Math.max(current, primarySize(requiredSize(sizes, id), vertical));
+	}
+	const effectiveBandSizes = primaryBandSizes.map((size, rank) =>
+		rank === maximumRank
+			? Math.max(size, requiredAt(junctionPrimarySizes, rank, 'junction primary size'))
+			: size,
+	);
+	const interBandGaps = primaryBandSizes.map((_, rank) =>
+		rank < maximumRank
+			? RANK_GAP + requiredAt(junctionPrimarySizes, rank, 'junction primary size')
+			: 0,
+	);
+	const primaryBandStarts = effectiveBandSizes.map(() => 0);
+	for (let rank = 1; rank < effectiveBandSizes.length; rank += 1) {
+		primaryBandStarts[rank] =
+			requiredAt(primaryBandStarts, rank - 1, 'primary band start') +
+			requiredAt(effectiveBandSizes, rank - 1, 'primary band size') +
+			requiredAt(interBandGaps, rank - 1, 'inter-band gap');
+	}
+	let primaryLength = 0;
+	if (maximumRank >= 0) {
+		primaryLength =
+			requiredAt(primaryBandStarts, maximumRank, 'primary band start') +
+			requiredAt(effectiveBandSizes, maximumRank, 'primary band size');
+	}
+	return {
+		maximumRank,
+		effectiveBandSizes,
+		interBandGaps,
+		primaryBandStarts,
+		primaryLength,
+	};
+}
+
+interface PlacementContext {
+	readonly sizes: ReadonlyMap<string, Size>;
+	readonly direction: LayoutDirection;
+	readonly bias: LayoutBias;
+	readonly vertical: boolean;
+	readonly crossById: ReadonlyMap<string, number>;
+	readonly geometry: PrimaryBandGeometry;
+	readonly boundsById: Map<string, Bounds>;
+}
+
+function crossGeometry(
+	ids: readonly string[],
+	sizes: ReadonlyMap<string, Size>,
+	vertical: boolean,
+): { readonly byId: ReadonlyMap<string, number>; readonly length: number } {
+	const byId = new Map<string, number>();
+	let length = 0;
+	for (const [index, id] of ids.entries()) {
+		if (index > 0) length += ITEM_GAP;
+		byId.set(id, length);
+		length += crossSize(requiredSize(sizes, id), vertical);
+	}
+	return { byId, length: Math.max(1, length) };
+}
+
+function setBounds(context: PlacementContext, id: string, primary: number): void {
+	const cross = context.crossById.get(id);
+	if (cross === undefined) throw new Error(`Missing cross position: ${id}`);
+	const size = requiredSize(context.sizes, id);
+	context.boundsById.set(
+		id,
+		context.vertical ? { x: cross, y: primary, ...size } : { x: primary, y: cross, ...size },
+	);
+}
+
+function placeRegularRows(rows: readonly (readonly string[])[], context: PlacementContext): void {
+	const { effectiveBandSizes, primaryBandStarts, primaryLength } = context.geometry;
+	for (const [rank, row] of rows.entries()) {
+		for (const id of row) {
+			const size = requiredSize(context.sizes, id);
+			const bandStart = requiredAt(primaryBandStarts, rank, 'primary band start');
+			const bandSize = requiredAt(effectiveBandSizes, rank, 'primary band size');
+			const absoluteBandStart = isForwardDirection(context.direction)
+				? bandStart
+				: primaryLength - bandStart - bandSize;
+			const alignAtStart = context.bias === 'top' || context.bias === 'left';
+			const primary =
+				absoluteBandStart + (alignAtStart ? 0 : bandSize - primarySize(size, context.vertical));
+			setBounds(context, id, primary);
+		}
+	}
+}
+
+function placeJunctionRows(rows: readonly (readonly string[])[], context: PlacementContext): void {
+	const { maximumRank, effectiveBandSizes, interBandGaps, primaryBandStarts, primaryLength } =
+		context.geometry;
+	for (const [rank, row] of rows.entries()) {
+		for (const id of row) {
+			const size = requiredSize(context.sizes, id);
+			const bandStart = requiredAt(primaryBandStarts, rank, 'primary band start');
+			const bandSize = requiredAt(effectiveBandSizes, rank, 'primary band size');
+			const sizeOnPrimaryAxis = primarySize(size, context.vertical);
+			const forwardPrimary =
+				rank < maximumRank
+					? bandStart +
+						bandSize +
+						(requiredAt(interBandGaps, rank, 'inter-band gap') - sizeOnPrimaryAxis) / 2
+					: bandStart + (bandSize - sizeOnPrimaryAxis) / 2;
+			const primary = isForwardDirection(context.direction)
+				? forwardPrimary
+				: primaryLength - forwardPrimary - sizeOnPrimaryAxis;
+			setBounds(context, id, primary);
+		}
+	}
+}
+
 export function layoutComponent(
 	ids: readonly string[],
 	ranks: ReadonlyMap<string, number>,
@@ -54,88 +184,23 @@ export function layoutComponent(
 		const row = junctionIds.has(id) ? junctionRows : rows;
 		requiredAt(row, ranks.get(id) ?? 0, 'layout rank').push(id);
 	}
-	for (const row of [...rows, ...junctionRows]) {
-		row.sort((left, right) => left.localeCompare(right));
-	}
-
-	const primaryBandStarts = primaryBandSizes.map(() => 0);
-	for (let rank = 1; rank < primaryBandSizes.length; rank += 1) {
-		primaryBandStarts[rank] =
-			requiredAt(primaryBandStarts, rank - 1, 'primary band start') +
-			requiredAt(primaryBandSizes, rank - 1, 'primary band size') +
-			RANK_GAP;
-	}
-	const maximumRank = primaryBandSizes.length - 1;
-	const primaryLength =
-		maximumRank < 0
-			? 0
-			: requiredAt(primaryBandStarts, maximumRank, 'primary band start') +
-				requiredAt(primaryBandSizes, maximumRank, 'primary band size');
-	const rowCrossSizes = rows.map((row) => {
-		let total = 0;
-		for (const id of row) {
-			if (total > 0) total += ITEM_GAP;
-			total += crossSize(requiredSize(sizes, id), vertical);
-		}
-		return total;
-	});
-	const junctionRowCrossSizes = junctionRows.map((row) => {
-		let total = 0;
-		for (const id of row) {
-			if (total > 0) total += ITEM_GAP;
-			total += crossSize(requiredSize(sizes, id), vertical);
-		}
-		return total;
-	});
-	const crossLength = Math.max(1, ...rowCrossSizes, ...junctionRowCrossSizes);
-
+	const geometry = primaryBandGeometry(primaryBandSizes, junctionIds, ranks, sizes, vertical);
+	const cross = crossGeometry(ids, sizes, vertical);
 	const boundsById = new Map<string, Bounds>();
-	for (const [rank, row] of rows.entries()) {
-		let cross = (crossLength - requiredAt(rowCrossSizes, rank, 'row cross size')) / 2;
-		for (const id of row) {
-			const size = requiredSize(sizes, id);
-			const bandStart = requiredAt(primaryBandStarts, rank, 'primary band start');
-			const bandSize = requiredAt(primaryBandSizes, rank, 'primary band size');
-			const absoluteBandStart = isForwardDirection(direction)
-				? bandStart
-				: primaryLength - bandStart - bandSize;
-			const alignAtStart = bias === 'top' || bias === 'left';
-			const primary =
-				absoluteBandStart + (alignAtStart ? 0 : bandSize - primarySize(size, vertical));
-			boundsById.set(
-				id,
-				vertical ? { x: cross, y: primary, ...size } : { x: primary, y: cross, ...size },
-			);
-			cross += crossSize(size, vertical) + ITEM_GAP;
-		}
-	}
-
-	for (const [rank, row] of junctionRows.entries()) {
-		let cross =
-			(crossLength - requiredAt(junctionRowCrossSizes, rank, 'junction row cross size')) / 2;
-		for (const id of row) {
-			const size = requiredSize(sizes, id);
-			const bandStart = requiredAt(primaryBandStarts, rank, 'primary band start');
-			const bandSize = requiredAt(primaryBandSizes, rank, 'primary band size');
-			const sizeOnPrimaryAxis = primarySize(size, vertical);
-			const forwardPrimary =
-				rank < maximumRank
-					? bandStart + bandSize + (RANK_GAP - sizeOnPrimaryAxis) / 2
-					: bandStart + (bandSize - sizeOnPrimaryAxis) / 2;
-			const primary = isForwardDirection(direction)
-				? forwardPrimary
-				: primaryLength - forwardPrimary - sizeOnPrimaryAxis;
-			boundsById.set(
-				id,
-				vertical ? { x: cross, y: primary, ...size } : { x: primary, y: cross, ...size },
-			);
-			cross += crossSize(size, vertical) + ITEM_GAP;
-		}
-	}
-
+	const context: PlacementContext = {
+		sizes,
+		direction,
+		bias,
+		vertical,
+		crossById: cross.byId,
+		geometry,
+		boundsById,
+	};
+	placeRegularRows(rows, context);
+	placeJunctionRows(junctionRows, context);
 	return {
 		boundsById,
-		width: vertical ? crossLength : primaryLength,
-		height: vertical ? primaryLength : crossLength,
+		width: vertical ? cross.length : geometry.primaryLength,
+		height: vertical ? geometry.primaryLength : cross.length,
 	};
 }

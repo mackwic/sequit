@@ -1,55 +1,62 @@
 import fc from 'fast-check';
-import { stringify, type TomlTable } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
-import { PERSISTENCE_FORMAT } from '../../src/lib/text/persistence-format';
-import { acyclicLogicDocumentArbitrary } from '../builders/logic-document-arbitrary';
+import { serializeSequitToml } from '../../src/lib/text/serialize-sequit-toml';
+import { richAcyclicLogicDocumentArbitrary } from '../builders/logic-document-arbitrary';
+import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
 
-function entityTable<T extends { readonly id: string }>(
+function canonicalEntities<T extends { readonly id: string }>(
 	entities: readonly T[],
-	project: (entity: T) => TomlTable,
-): TomlTable {
-	const table: TomlTable = {};
-	for (const entity of entities) table[entity.id] = project(entity);
-	return table;
+): readonly T[] {
+	return [...entities].sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function persistedDocument(document: LogicDocument): TomlTable {
+function canonicalDocument(document: LogicDocument): LogicDocument {
 	return {
-		persistenceFormat: PERSISTENCE_FORMAT,
-		document: { id: document.id, title: document.title },
-		layout: { direction: document.layout.direction, bias: document.layout.bias },
-		natures: entityTable(document.natures, ({ label, color }) => ({ label, color })),
-		groups: entityTable(document.groups, ({ label, groupId }) => {
-			const group: TomlTable = { label };
-			if (groupId !== undefined) group['group'] = groupId;
-			return group;
-		}),
-		nodes: entityTable(document.nodes, ({ natureId, groupId, markdown }) => {
-			const node: TomlTable = { nature: natureId, markdown };
-			if (groupId !== undefined) node['group'] = groupId;
-			return node;
-		}),
-		junctions: entityTable(document.junctions, ({ operator, groupId }) => {
-			const junction: TomlTable = { operator };
-			if (groupId !== undefined) junction['group'] = groupId;
-			return junction;
-		}),
-		relations: entityTable(document.relations, ({ from, to }) => ({ from, to })),
+		...document,
+		natures: canonicalEntities(document.natures),
+		groups: canonicalEntities(document.groups),
+		nodes: canonicalEntities(document.nodes),
+		junctions: canonicalEntities(document.junctions),
+		relations: canonicalEntities(document.relations),
+	};
+}
+
+function reversedCollections(document: LogicDocument): LogicDocument {
+	return {
+		...document,
+		natures: [...document.natures].reverse(),
+		groups: [...document.groups].reverse(),
+		nodes: [...document.nodes].reverse(),
+		junctions: [...document.junctions].reverse(),
+		relations: [...document.relations].reverse(),
 	};
 }
 
 describe('generated persistent documents', () => {
 	it('preserves every generated document through TOML serialization and parsing', () => {
 		fc.assert(
-			fc.property(acyclicLogicDocumentArbitrary(), (document) => {
-				const source = stringify(persistedDocument(document));
+			fc.property(richAcyclicLogicDocumentArbitrary(), (document) => {
+				const source = serializeSequitToml(document);
 				const parsed = parseSequitToml(source);
-				expect(parsed).toEqual({ ok: true, value: document });
+				expect(parsed).toEqual({ ok: true, value: canonicalDocument(document) });
+				if (!parsed.ok) throw new Error('Expected generated TOML to parse');
+				expect(serializeSequitToml(parsed.value)).toBe(source);
 			}),
-			{ numRuns: 200 },
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('is independent of every document collection order', () => {
+		fc.assert(
+			fc.property(richAcyclicLogicDocumentArbitrary(), (document) => {
+				expect(serializeSequitToml(reversedCollections(document))).toBe(
+					serializeSequitToml(document),
+				);
+			}),
+			PROPERTY_PARAMETERS,
 		);
 	});
 });
