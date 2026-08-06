@@ -31,6 +31,26 @@ interface RankedComponent {
 	readonly layout: ComponentLayout;
 }
 
+function enqueueUnvisited(ids: readonly string[], visited: Set<string>, pending: string[]): void {
+	for (const id of ids) {
+		if (visited.has(id)) continue;
+		visited.add(id);
+		pending.push(id);
+	}
+}
+
+function existingMemberBounds(
+	memberIds: readonly string[] | undefined,
+	bounds: ReadonlyMap<string, Bounds>,
+): Bounds[] {
+	const result: Bounds[] = [];
+	for (const memberId of memberIds ?? []) {
+		const value = bounds.get(memberId);
+		if (value) result.push(value);
+	}
+	return result;
+}
+
 function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string[])[] {
 	const visited = new Set<string>();
 	const result: string[][] = [];
@@ -43,16 +63,8 @@ function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string
 			const id = pending.pop();
 			if (id === undefined) break;
 			component.push(id);
-			for (const next of graph.outgoingByEndpointId.get(id) ?? []) {
-				if (visited.has(next)) continue;
-				visited.add(next);
-				pending.push(next);
-			}
-			for (const next of graph.predecessorsByEndpointId.get(id) ?? []) {
-				if (visited.has(next)) continue;
-				visited.add(next);
-				pending.push(next);
-			}
+			enqueueUnvisited(graph.outgoingByEndpointId.get(id) ?? [], visited, pending);
+			enqueueUnvisited(graph.predecessorsByEndpointId.get(id) ?? [], visited, pending);
 		}
 		component.sort((left, right) => left.localeCompare(right));
 		result.push(component);
@@ -194,14 +206,8 @@ export function layoutWithDedicatedEngine(
 		const measurement = measurements.groups.get(group.id);
 		if (!measurement) throw new Error(`Missing group measurement: ${group.id}`);
 		const validated = validateGroupMeasurement(measurement, group.id);
-		const memberBounds: Bounds[] = [];
 		const memberIds = memberIdsByGroupId.get(group.id);
-		if (memberIds !== undefined) {
-			for (const memberId of memberIds) {
-				const value = bounds.get(memberId);
-				if (value) memberBounds.push(value);
-			}
-		}
+		const memberBounds = existingMemberBounds(memberIds, bounds);
 
 		if (memberBounds.length === 0) {
 			if (bounds.has(group.id)) continue;

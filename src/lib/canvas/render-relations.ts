@@ -131,6 +131,19 @@ function pathFor(
 	return commands.join(' ');
 }
 
+function recordIntersection(
+	crossings: Map<Segment, Point[]>,
+	segment: Segment,
+	previous: Segment,
+): void {
+	const point = intersection(segment, previous);
+	if (!point) return;
+	const points = crossings.get(segment) ?? [];
+	if (points.some((candidate) => candidate.x === point.x && candidate.y === point.y)) return;
+	points.push(point);
+	crossings.set(segment, points);
+}
+
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
 ): readonly RenderedRelation[] {
@@ -140,13 +153,7 @@ export function renderRelationPaths(
 		const crossings = new Map<Segment, Point[]>();
 		for (const segment of segments) {
 			for (const previous of previousSegments) {
-				const point = intersection(segment, previous);
-				if (!point) continue;
-				const points = crossings.get(segment) ?? [];
-				if (!points.some((candidate) => candidate.x === point.x && candidate.y === point.y)) {
-					points.push(point);
-					crossings.set(segment, points);
-				}
+				recordIntersection(crossings, segment, previous);
 			}
 		}
 		previousSegments.push(...segments);

@@ -1,7 +1,6 @@
 import {
 	type DocumentResult,
 	JUNCTION_OPERATORS,
-	type JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
 	type LayoutBias,
@@ -21,6 +20,10 @@ import { PERSISTENCE_FORMAT } from './persistence-format';
 
 interface MappingContext {
 	readonly diagnostics: SequitDiagnostic[];
+}
+
+interface GroupMembership {
+	readonly groupId: string;
 }
 
 type UnknownTable = Record<string, unknown>;
@@ -74,6 +77,11 @@ function optionalString(
 
 function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
 	return Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+}
+
+function optionalGroupMembership(groupId: string | undefined): Partial<GroupMembership> {
+	if (groupId === undefined) return {};
+	return { groupId };
 }
 
 function mapLayoutConfiguration(
@@ -157,12 +165,11 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const label = string(entity['label'], [...path, 'label'], context);
 			const parentGroupId = optionalString(entity['group'], [...path, 'group'], context);
 			if (label !== undefined) {
-				const group: { id: string; label: string; groupId?: string } = {
+				groups.push({
 					id: groupId,
 					label,
-				};
-				if (parentGroupId !== undefined) group.groupId = parentGroupId;
-				groups.push(group);
+					...optionalGroupMembership(parentGroupId),
+				});
 			}
 		}
 	}
@@ -177,18 +184,12 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
 			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
 			if (natureId !== undefined && markdown !== undefined) {
-				const node: {
-					id: string;
-					natureId: string;
-					groupId?: string;
-					markdown: string;
-				} = {
+				nodes.push({
 					id: nodeId,
 					natureId,
 					markdown,
-				};
-				if (groupId !== undefined) node.groupId = groupId;
-				nodes.push(node);
+					...optionalGroupMembership(groupId),
+				});
 			}
 		}
 	}
@@ -210,12 +211,11 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 				});
 			}
 			if (operator !== undefined) {
-				const junction: { id: string; operator: JunctionOperator; groupId?: string } = {
+				junctions.push({
 					id: junctionId,
 					operator,
-				};
-				if (groupId !== undefined) junction.groupId = groupId;
-				junctions.push(junction);
+					...optionalGroupMembership(groupId),
+				});
 			}
 		}
 	}

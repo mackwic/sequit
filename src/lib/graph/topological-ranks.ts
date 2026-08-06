@@ -12,6 +12,26 @@ function rankIncrement(graph: LogicGraph, sourceId: string, targetId: string): n
 	return 1;
 }
 
+function rankTargets(
+	graph: LogicGraph,
+	sourceId: string,
+	ranks: Map<string, number>,
+	indegree: Map<string, number>,
+): readonly string[] {
+	const sourceRank = ranks.get(sourceId);
+	/* istanbul ignore if -- @preserve: every frontier ID is initialized in the ranks map. */
+	if (sourceRank === undefined) throw new Error(`Missing topological rank: ${sourceId}`);
+	const readyTargets: string[] = [];
+	for (const target of graph.outgoingByEndpointId.get(sourceId) ?? []) {
+		const increment = rankIncrement(graph, sourceId, target);
+		ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + increment));
+		const remaining = (indegree.get(target) ?? 0) - 1;
+		indegree.set(target, remaining);
+		if (remaining === 0) readyTargets.push(target);
+	}
+	return readyTargets;
+}
+
 export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 	const indegree = new Map(
 		graph.rankableEndpointIds.map((id) => [
@@ -27,16 +47,7 @@ export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
 		const nextFrontier: string[] = [];
 		for (const id of frontier) {
 			processed += 1;
-			const sourceRank = ranks.get(id);
-			/* istanbul ignore if -- @preserve: every frontier ID is initialized in the ranks map. */
-			if (sourceRank === undefined) throw new Error(`Missing topological rank: ${id}`);
-			for (const target of graph.outgoingByEndpointId.get(id) ?? []) {
-				const increment = rankIncrement(graph, id, target);
-				ranks.set(target, Math.max(ranks.get(target) ?? 0, sourceRank + increment));
-				const remaining = (indegree.get(target) ?? 0) - 1;
-				indegree.set(target, remaining);
-				if (remaining === 0) nextFrontier.push(target);
-			}
+			nextFrontier.push(...rankTargets(graph, id, ranks, indegree));
 		}
 		nextFrontier.sort((left, right) => left.localeCompare(right));
 		frontier = nextFrontier;

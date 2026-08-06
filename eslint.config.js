@@ -93,11 +93,11 @@ export default defineConfig(
 		},
 		rules: {
 			complexity: ['error', 20],
+			'local/max-body-nesting': ['error', 4],
 			'local/max-operators-per-expression': ['error', 3],
 			'local/max-top-level-functions': ['error', 15],
 			'local/no-anonymous-object-union-members': 'error',
 			'local/prefer-string-enum': 'error',
-			'max-depth': ['error', 4],
 			'max-lines': ['error', { max: 325, skipBlankLines: true, skipComments: true }],
 			'max-lines-per-function': [
 				'error',

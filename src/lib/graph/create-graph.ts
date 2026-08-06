@@ -86,10 +86,9 @@ function findCycle(
 				const start = stack.lastIndexOf(target);
 				return [...stack.slice(start), target];
 			}
-			if (targetState !== GraphVisitState.Visited) {
-				const cycle = visit(target);
-				if (cycle) return cycle;
-			}
+			if (targetState === GraphVisitState.Visited) continue;
+			const cycle = visit(target);
+			if (cycle) return cycle;
 		}
 		stack.pop();
 		state.set(id, GraphVisitState.Visited);
