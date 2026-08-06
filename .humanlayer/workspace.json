@@ -6,6 +6,9 @@
 	"setupCommand": "pnpm install",
 	"copyGlobs": [
 		".env*",
+		".npmrc",
+		".nvmrc",
+		".tool-versions",
 		".claude/settings.local.json",
 		"CLAUDE.local.md",
 		".humanlayer/workspace.local.json"
