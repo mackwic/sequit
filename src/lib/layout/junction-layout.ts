@@ -37,6 +37,8 @@ function primaryRelationBoundary(
 		case 'right-to-left':
 			if (source) return bounds.x;
 			return bounds.x + bounds.width;
+		default:
+			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
 }
 

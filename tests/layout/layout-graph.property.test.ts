@@ -139,6 +139,8 @@ function expectedBoundaryPoint(
 		case 'right-to-left':
 			if (source) return { x: bounds.x, y: bounds.y + bounds.height / 2 };
 			return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
+		default:
+			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
 }
 

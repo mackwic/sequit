@@ -80,6 +80,8 @@ export function coordinateAt(bounds: Bounds, side: LayoutBias): number {
 			return bounds.x;
 		case 'right':
 			return bounds.x + bounds.width;
+		default:
+			throw new Error(`Unsupported layout side: ${String(side)}`);
 	}
 }
 
@@ -97,6 +99,8 @@ export function progressesFromTo(
 			return source.x + source.width < target.x;
 		case 'right-to-left':
 			return target.x + target.width < source.x;
+		default:
+			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
 }
 

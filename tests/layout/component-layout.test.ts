@@ -78,6 +78,8 @@ function expectBetween(
 			expect(target.x + target.width).toBeLessThan(middle.x);
 			expect(middle.x + middle.width).toBeLessThan(source.x);
 			break;
+		default:
+			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
 }
 
@@ -95,6 +97,8 @@ function primaryGap(
 			return target.x - source.x - source.width;
 		case 'right-to-left':
 			return source.x - target.x - target.width;
+		default:
+			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
 }
 

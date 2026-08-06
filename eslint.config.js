@@ -55,6 +55,7 @@ export default defineConfig(
 		},
 		rules: {
 			'default-case-last': 'error',
+			'default-case': 'error',
 			eqeqeq: ['error', 'always', { null: 'ignore' }],
 			'logical-assignment-operators': ['error', 'always'],
 			'no-console': 'error',
