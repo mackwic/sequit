@@ -11,6 +11,7 @@ node_modules
 /test-results
 /coverage
 /.swamp
+/.stryker-tmp
 
 # OS
 .DS_Store
