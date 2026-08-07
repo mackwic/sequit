@@ -22,9 +22,9 @@ Use `pnpm quality:fast` during implementation. It is the fast, fail-fast edit-lo
 4. `pnpm test:coverage` for the root Node and collaboration-worker Vitest suites.
 5. `pnpm quality:duplicates` for token-aware production clone detection.
 
-The measured coverage chain completes comfortably within the approximately 10-second local budget, so the fast gate enforces coverage rather than running ordinary Vitest. Each command is joined with `&&`; a failure stops later diagnostics from running.
+The fast gate enforces coverage rather than running ordinary Vitest twice. Each command is joined with `&&`; a failure stops later diagnostics from running.
 
-Run `pnpm quality` to add mutation testing for the selected critical modules. Run `pnpm check` before merging; it is the authoritative gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, and both production builds. Coverage replaces the ordinary `pnpm test` step, so Vitest does not run twice.
+Run `pnpm quality` to add mutation testing for the selected critical modules. Run `pnpm check` before merging; it is the authoritative local gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, both production builds, and mutation testing.
 
 ### Diagnostic commands
 
@@ -40,7 +40,8 @@ Run `pnpm quality` to add mutation testing for the selected critical modules. Ru
 | `pnpm quality:fast`                | Lint, unused-code, architecture, coverage, and duplication gate                                                                                                   |
 | `pnpm test:mutation`               | Stryker mutation testing for selected critical modules                                                                                                            |
 | `pnpm quality`                     | Fast gate followed by mutation testing                                                                                                                            |
-| `pnpm check`                       | Authoritative format, types, quality, browser, and build gate                                                                                                     |
+| `pnpm check:core`                  | Format, types, fast quality gate, browser tests, and production builds                                                                                            |
+| `pnpm check`                       | Authoritative local gate: core checks followed by mutation testing                                                                                                |
 
 ### Enforced baselines
 
@@ -54,10 +55,10 @@ Duplication analysis uses mild token matching with a minimum clone size of 5 lin
 
 `pnpm install` runs `svelte-kit sync` and installs the tracked Husky hooks. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
 
-The pre-push hook runs `pnpm quality`, blocking the push when the fast gate or mutation testing fails. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
+The pre-push hook runs `pnpm quality:fast`; mutation testing is left to the parallel CI job or an explicit local `pnpm test:mutation`. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
 
 ### Continuous integration
 
-GitHub Actions runs the authoritative `pnpm check` gate for every pull request and every push to `main`. The read-only workflow uses the repository's pinned pnpm version with Node.js 24, installs Chromium and its system dependencies, and cancels superseded runs for the same pull request or branch.
+For every pull request and push to `main`, GitHub Actions runs `pnpm check:core` and `pnpm test:mutation` as independent parallel jobs. Only the core job installs Chromium. The read-only workflow uses the repository's pinned pnpm version with Node.js 24 and cancels superseded runs for the same pull request or branch.
 
-Run `pnpm check` locally to reproduce a remote quality failure. Its namespaced output identifies whether formatting, types, linting, unused code, architecture, coverage, mutation testing, duplication, browser integration, or a production build failed.
+Run `pnpm check` locally to reproduce both CI jobs in fail-fast order. Its namespaced output identifies whether formatting, types, linting, unused code, architecture, coverage, duplication, browser integration, a production build, or mutation testing failed.
