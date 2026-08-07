@@ -1,16 +1,17 @@
+export function defined<T>(value: T | undefined, message = 'Expected value to be defined'): T {
+	if (value === undefined) throw new Error(message);
+	return value;
+}
+
+export const PERSISTENCE_FORMAT = 2 as const;
+
 export enum LayoutDirection {
 	TopToBottom = 'top-to-bottom',
 	BottomToTop = 'bottom-to-top',
 	LeftToRight = 'left-to-right',
 	RightToLeft = 'right-to-left',
 }
-
-export const LAYOUT_DIRECTIONS = [
-	LayoutDirection.TopToBottom,
-	LayoutDirection.BottomToTop,
-	LayoutDirection.LeftToRight,
-	LayoutDirection.RightToLeft,
-] as const;
+export const LAYOUT_DIRECTIONS = Object.values(LayoutDirection);
 
 export enum LayoutBias {
 	Top = 'top',
@@ -18,13 +19,7 @@ export enum LayoutBias {
 	Left = 'left',
 	Right = 'right',
 }
-
-export const LAYOUT_BIASES = [
-	LayoutBias.Top,
-	LayoutBias.Bottom,
-	LayoutBias.Left,
-	LayoutBias.Right,
-] as const;
+export const LAYOUT_BIASES = Object.values(LayoutBias);
 
 interface VerticalLayoutConfiguration {
 	readonly direction: LayoutDirection.TopToBottom | LayoutDirection.BottomToTop;
@@ -58,7 +53,14 @@ export function layoutConfiguration(
 export enum JunctionOperator {
 	Xor = 'xor',
 }
-export const JUNCTION_OPERATORS = [JunctionOperator.Xor] as const;
+export enum EndpointKind {
+	Node = 'node',
+	Group = 'group',
+	Junction = 'junction',
+}
+
+export type { OrderKey } from './order-key';
+import type { OrderKey } from './order-key';
 
 export interface LogicNature {
 	readonly id: string;
@@ -67,23 +69,41 @@ export interface LogicNature {
 }
 
 export interface LogicGroup {
+	readonly kind: EndpointKind.Group;
 	readonly id: string;
 	readonly label: string;
 	readonly groupId?: string;
+	readonly layoutOrder: OrderKey;
 }
 
 export interface LogicNode {
+	readonly kind: EndpointKind.Node;
 	readonly id: string;
 	readonly natureId: string;
 	readonly groupId?: string;
 	readonly markdown: string;
+	readonly layoutOrder: OrderKey;
+}
+
+export interface NewLogicNode extends Omit<LogicNode, keyof NewLogicNodeExcludedFields> {
+	readonly kind?: never;
+	readonly layoutOrder?: never;
+}
+
+interface NewLogicNodeExcludedFields {
+	readonly kind: unknown;
+	readonly layoutOrder: unknown;
 }
 
 export interface LogicJunction {
+	readonly kind: EndpointKind.Junction;
 	readonly id: string;
 	readonly operator: JunctionOperator;
 	readonly groupId?: string;
+	readonly layoutOrder: OrderKey;
 }
+
+export type LogicEndpoint = LogicNode | LogicGroup | LogicJunction;
 
 export interface LogicRelation {
 	readonly id: string;
@@ -92,6 +112,7 @@ export interface LogicRelation {
 }
 
 export interface LogicDocument {
+	readonly persistenceFormat: typeof PERSISTENCE_FORMAT;
 	readonly id: string;
 	readonly title: string;
 	readonly layout: LayoutConfiguration;
@@ -114,6 +135,7 @@ export enum SequitDiagnosticCode {
 	UnknownNature = 'unknown-nature',
 	UnknownGroup = 'unknown-group',
 	GroupCycle = 'group-cycle',
+	UnknownEndpoint = 'unknown-endpoint',
 }
 
 export interface SequitDiagnostic {
@@ -128,8 +150,10 @@ interface DocumentSuccess<T> {
 	readonly ok: true;
 	readonly value: T;
 }
+
 interface DocumentFailure {
 	readonly ok: false;
 	readonly diagnostics: readonly SequitDiagnostic[];
 }
+
 export type DocumentResult<T> = DocumentSuccess<T> | DocumentFailure;

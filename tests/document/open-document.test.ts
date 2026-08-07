@@ -1,15 +1,85 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { openDocument, type OpenedDocument } from '../../src/lib/document/open-document';
+import { createDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
+import type { LogicDocument } from '../../src/lib/document/logic-document';
+import { openDocument } from '../../src/lib/document/open-document';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
 
-function readProjection(opened: OpenedDocument) {
-	const result = opened.read();
-	expect(result.ok).toBe(true);
-	if (!result.ok) throw new Error('Expected the current document to project');
-	return result.value;
-}
+const crossingDocument = `
+persistenceFormat = 2
+
+[document]
+id = "crossing-document"
+title = "Crossing document"
+
+[layout]
+direction = "top-to-bottom"
+bias = "top"
+
+[natures.goal]
+label = "Goal"
+color = "#12c930"
+
+[groups]
+
+[nodes.source-a]
+nature = "goal"
+markdown = "Source A"
+layoutOrder = "a0"
+
+[nodes.source-b]
+nature = "goal"
+markdown = "Source B"
+layoutOrder = "a1"
+
+[nodes.target-a]
+nature = "goal"
+markdown = "Target A"
+layoutOrder = "a2"
+
+[nodes.target-b]
+nature = "goal"
+markdown = "Target B"
+layoutOrder = "a3"
+
+[nodes.helper]
+nature = "goal"
+markdown = "Helper"
+layoutOrder = "a4"
+
+[nodes.successor]
+nature = "goal"
+markdown = "Successor"
+layoutOrder = "a5"
+
+[nodes.isolated]
+nature = "goal"
+markdown = "Isolated"
+layoutOrder = "a6"
+
+[junctions]
+
+[relations.source-b-to-target-a]
+from = "source-b"
+to = "target-a"
+
+[relations.source-a-to-helper]
+from = "source-a"
+to = "helper"
+
+[relations.target-a-to-successor]
+from = "target-a"
+to = "successor"
+
+[relations.target-b-to-successor]
+from = "target-b"
+to = "successor"
+
+[relations.helper-to-successor]
+from = "helper"
+to = "successor"
+`;
 
 describe('openDocument', () => {
 	it('returns normalized parser diagnostics without starting downstream projections', () => {
@@ -30,8 +100,9 @@ describe('openDocument', () => {
 			'from = "word-alcoa-question"',
 			'from = "missing-endpoint"',
 		);
+		const sessionFactory = vi.fn(createDocumentSession);
 
-		expect(openDocument(source)).toEqual({
+		expect(openDocument(source, sessionFactory)).toEqual({
 			ok: false,
 			diagnostics: [
 				{
@@ -41,77 +112,151 @@ describe('openDocument', () => {
 				},
 			],
 		});
+		expect(sessionFactory).not.toHaveBeenCalled();
+	});
+
+	it('returns a diagnostic when session creation fails', async () => {
+		const failure = new Error('Session unavailable');
+		const result = openDocument(await aiDocumentaryEffortScenario(), () => {
+			throw failure;
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [{ code: 'open-document-failed', message: failure.message, path: [] }],
+		});
+	});
+
+	it('normalizes a non-Error session creation failure', async () => {
+		expect(
+			openDocument(await aiDocumentaryEffortScenario(), () => {
+				throw new Error('Session unavailable');
+			}),
+		).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'open-document-failed', message: 'Session unavailable', path: [] }],
+		});
+	});
+
+	it('destroys the session when opened-document construction fails', async () => {
+		const source = await aiDocumentaryEffortScenario();
+		const destroyed = vi.fn();
+		const sessionFactory = vi.fn((document: LogicDocument) => {
+			const session = createDocumentSession(document);
+			vi.spyOn(session, 'subscribe').mockImplementation(() => {
+				throw new Error('Subscription unavailable');
+			});
+			vi.spyOn(session, 'destroy').mockImplementation(destroyed);
+			return session;
+		});
+
+		const result = openDocument(source, sessionFactory);
+
+		expect(result).toMatchObject({ ok: false });
+		expect(destroyed).toHaveBeenCalledOnce();
+	});
+
+	it('preserves result diagnostics when failed construction cleanup also fails', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario(), (document) => {
+			const session = createDocumentSession(document);
+			vi.spyOn(session, 'subscribe').mockImplementation(() => {
+				throw new Error('Subscription unavailable');
+			});
+			vi.spyOn(session, 'destroy').mockImplementation(() => {
+				throw new Error('Cleanup unavailable');
+			});
+			return session;
+		});
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{ code: 'open-document-failed', message: 'Subscription unavailable', path: [] },
+				{ code: 'open-document-cleanup-failed', message: 'Cleanup unavailable', path: [] },
+			],
+		});
 	});
 
 	it('uses the same immutable measurement projection across repeated layouts', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
-		const projection = readProjection(result.value);
-		const measurementModel = projection.measurementModel;
+		const measurementModel = result.value.measurementModel;
 		const measurements = layoutMeasurementsForCanvas(measurementModel);
 
-		const first = await projection.createCanvasModel(measurements);
-		const second = await projection.createCanvasModel(measurements);
+		const first = await result.value.createCanvasModel(measurements);
+		const second = await result.value.createCanvasModel(measurements);
 
-		expect(readProjection(result.value)).toBe(projection);
+		expect(result.value.measurementModel).toBe(measurementModel);
 		expect(second).toEqual(first);
 		expect(first.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
 			'ALCOA+: All edits needs to be tracable\n',
 		);
-		result.value.close();
-	});
-
-	it('reprojects the current Yjs document after a business operation', async () => {
-		const result = openDocument(await aiDocumentaryEffortScenario());
-		if (!result.ok) throw new Error('Expected the reference document to open');
-		const listener = vi.fn();
-		const unsubscribe = result.value.subscribe(listener);
-
-		expect(
-			result.value.replaceNodeMarkdown('traceable-edits', 'Updated through the session\n'),
-		).toBe(true);
-
-		const projection = readProjection(result.value);
-		expect(listener).toHaveBeenCalledTimes(1);
-		expect(
-			projection.measurementModel.nodes.find(({ id }) => id === 'traceable-edits')?.markdown,
-		).toBe('Updated through the session\n');
-		const canvas = await projection.createCanvasModel(
-			layoutMeasurementsForCanvas(projection.measurementModel),
-		);
-		expect(canvas.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
-			'Updated through the session\n',
-		);
-
-		unsubscribe();
-		result.value.close();
 	});
 
 	it('rejects layout from the returned application port when measurements are incomplete', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
-		const projection = readProjection(result.value);
-		const complete = layoutMeasurementsForCanvas(projection.measurementModel);
+		const complete = layoutMeasurementsForCanvas(result.value.measurementModel);
 		const incomplete = { ...complete, nodes: new Map(complete.nodes) };
 		incomplete.nodes.delete('traceable-edits');
 
-		await expect(projection.createCanvasModel(incomplete)).rejects.toThrow(
+		await expect(result.value.createCanvasModel(incomplete)).rejects.toThrow(
 			'Missing node measurement: traceable-edits',
 		);
-		result.value.close();
 	});
 
-	it('makes subscriptions and mutations inert after close', async () => {
+	it('refreshes the projection and renders added independent peers in operation order', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
-		result.value.close();
 
-		const listener = vi.fn();
-		const unsubscribe = result.value.subscribe(listener);
-		unsubscribe();
+		await result.value.addNode({
+			id: 'zz-added-first',
+			natureId: 'goal',
+			markdown: 'Added first',
+		});
+		await result.value.addNode({
+			id: 'aa-added-second',
+			natureId: 'goal',
+			markdown: 'Added second',
+		});
+		const canvas = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		const first = canvas.nodes.find(({ id }) => id === 'zz-added-first');
+		const second = canvas.nodes.find(({ id }) => id === 'aa-added-second');
 
-		expect(result.value.replaceNodeMarkdown('traceable-edits', 'Ignored\n')).toBe(false);
-		expect(listener).not.toHaveBeenCalled();
-		result.value.close();
+		expect(result.value.measurementModel.nodes).toHaveLength(26);
+		expect(result.value.measurementModel.nodes.map(({ id }) => id)).toEqual(
+			expect.arrayContaining(['zz-added-first', 'aa-added-second']),
+		);
+		expect(first?.bounds.y).toBe(second?.bounds.y);
+		expect(first?.bounds.x).toBeLessThan(second?.bounds.x ?? 0);
+	});
+
+	it('moves only an eligible relation target to its strict-improvement rendered slot', async () => {
+		const result = openDocument(crossingDocument);
+		if (!result.ok) throw new Error('Expected the crossing document to open');
+		const before = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		const successorBefore = before.nodes.find(({ id }) => id === 'successor')?.bounds;
+
+		await result.value.addRelation({
+			id: 'source-a-to-target-b',
+			from: 'source-a',
+			to: 'target-b',
+		});
+		const after = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		const bounds = new Map(after.nodes.map(({ id, bounds: nodeBounds }) => [id, nodeBounds]));
+
+		expect(bounds.get('target-b')?.x).toBeLessThan(bounds.get('target-a')?.x ?? 0);
+		expect(bounds.get('target-a')?.x).toBeLessThan(bounds.get('helper')?.x ?? 0);
+		expect(bounds.get('target-a')?.y).toBe(bounds.get('target-b')?.y);
+		expect(bounds.get('source-a')?.x).toBeLessThan(bounds.get('source-b')?.x ?? 0);
+		expect(bounds.get('source-a')?.y).toBe(bounds.get('source-b')?.y);
+		expect(bounds.get('successor')).toEqual(successorBefore);
+		expect(bounds.get('isolated')?.x).toBeGreaterThan(bounds.get('successor')?.x ?? 0);
 	});
 });

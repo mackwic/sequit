@@ -1,5 +1,11 @@
 import { DurableObject } from 'cloudflare:workers';
 
+function isPingPayload(payload: unknown): boolean {
+	if (typeof payload !== 'object') return false;
+	if (payload === null) return false;
+	return 'type' in payload && payload.type === 'ping';
+}
+
 interface Env {
 	COLLABORATION_ROOMS: DurableObjectNamespace<CollaborationRoom>;
 }
@@ -9,13 +15,6 @@ const json = (body: unknown, status = 200) =>
 		status,
 		headers: { 'cache-control': 'no-store' },
 	});
-
-function isPingPayload(value: unknown): boolean {
-	if (typeof value !== 'object') return false;
-	if (value === null) return false;
-	if (!('type' in value)) return false;
-	return value.type === 'ping';
-}
 
 export default {
 	fetch(request, env): Response | Promise<Response> {

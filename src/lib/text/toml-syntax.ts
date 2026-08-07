@@ -6,21 +6,22 @@ export function parseTomlSyntax(source: string): DocumentResult<TomlTable> {
 	try {
 		return { ok: true, value: parse(source) };
 	} catch (error) {
-		if (error instanceof TomlError) {
-			return {
-				ok: false,
-				diagnostics: [
-					{
-						code: SequitDiagnosticCode.TomlSyntax,
-						message: error.message,
-						path: [],
-						line: error.line,
-						column: error.column,
-					},
-				],
-			};
-		}
-
-		throw error;
+		return tomlSyntaxFailure(error);
 	}
+}
+
+export function tomlSyntaxFailure(error: unknown): DocumentResult<TomlTable> {
+	if (!(error instanceof TomlError)) throw error;
+	return {
+		ok: false,
+		diagnostics: [
+			{
+				code: SequitDiagnosticCode.TomlSyntax,
+				message: error.message,
+				path: [],
+				line: error.line,
+				column: error.column,
+			},
+		],
+	};
 }

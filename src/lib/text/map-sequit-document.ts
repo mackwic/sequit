@@ -1,37 +1,38 @@
+import { compareCanonicalStrings } from '../canonical-string';
 import {
 	type DocumentResult,
-	JUNCTION_OPERATORS,
+	EndpointKind,
+	JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
-	type LayoutBias,
 	type LayoutConfiguration,
 	layoutConfiguration,
-	type LayoutDirection,
 	type LogicDocument,
 	type LogicGroup,
 	type LogicJunction,
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	type OrderKey,
+	PERSISTENCE_FORMAT,
 	type SequitDiagnostic,
 	SequitDiagnosticCode,
 } from '../document/logic-document';
-import { PERSISTENCE_FORMAT } from './persistence-format';
+import { parseOrderKey } from '../document/order-key';
 
 interface MappingContext {
 	readonly diagnostics: SequitDiagnostic[];
 }
 
-interface GroupMembership {
-	readonly groupId: string;
-}
-
 type UnknownTable = Record<string, unknown>;
+
+const junctionOperatorByValue: Readonly<Record<string, JunctionOperator>> = {
+	[JunctionOperator.Xor]: JunctionOperator.Xor,
+};
 
 function isTable(value: unknown): value is UnknownTable {
 	if (typeof value !== 'object') return false;
-	if (value === null) return false;
-	return !Array.isArray(value);
+	return value !== null && !Array.isArray(value);
 }
 
 function table(
@@ -40,10 +41,8 @@ function table(
 	context: MappingContext,
 ): UnknownTable | undefined {
 	if (isTable(value)) return value;
-	let code = SequitDiagnosticCode.InvalidType;
-	if (value === undefined) code = SequitDiagnosticCode.MissingField;
 	context.diagnostics.push({
-		code,
+		code: diagnosticCode(value),
 		message: `${path.join('.')} must be a table`,
 		path,
 	});
@@ -56,10 +55,8 @@ function string(
 	context: MappingContext,
 ): string | undefined {
 	if (typeof value === 'string') return value;
-	let code = SequitDiagnosticCode.InvalidType;
-	if (value === undefined) code = SequitDiagnosticCode.MissingField;
 	context.diagnostics.push({
-		code,
+		code: diagnosticCode(value),
 		message: `${path.join('.')} must be a string`,
 		path,
 	});
@@ -75,29 +72,87 @@ function optionalString(
 	return string(value, path, context);
 }
 
-function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
-	return Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+function diagnosticCode(value: unknown): SequitDiagnostic['code'] {
+	if (value === undefined) return SequitDiagnosticCode.MissingField;
+	return SequitDiagnosticCode.InvalidType;
 }
 
-function optionalGroupMembership(groupId: string | undefined): Partial<GroupMembership> {
+function optionalGroupId(groupId: string | undefined): { readonly groupId?: string } {
 	if (groupId === undefined) return {};
 	return { groupId };
 }
 
-function mapLayoutConfiguration(
-	direction: LayoutDirection | undefined,
-	bias: LayoutBias | undefined,
+function requiredLayoutOrder(
+	value: unknown,
+	path: readonly string[],
 	context: MappingContext,
-): LayoutConfiguration | undefined {
-	if (direction === undefined || bias === undefined) return undefined;
-	const layout = layoutConfiguration(direction, bias);
-	if (layout) return layout;
+): OrderKey | undefined {
+	const key = string(value, path, context);
+	if (key === undefined) return undefined;
+	const parsed = parseOrderKey(key);
+	if (parsed !== undefined) return parsed;
 	context.diagnostics.push({
 		code: SequitDiagnosticCode.InvalidValue,
-		message: `Layout bias ${bias} is incompatible with direction ${direction}`,
-		path: ['layout', 'bias'],
+		message: `${path.join('.')} must be a valid fractional order key`,
+		path,
 	});
 	return undefined;
+}
+
+function mapJunctionOperator(
+	value: unknown,
+	path: readonly string[],
+	context: MappingContext,
+): JunctionOperator | undefined {
+	const operatorValue = string(value, path, context);
+	if (operatorValue === undefined) return undefined;
+	const operator = junctionOperatorByValue[operatorValue];
+	if (operator !== undefined) return operator;
+	context.diagnostics.push({
+		code: SequitDiagnosticCode.InvalidValue,
+		message: `Unsupported junction operator: ${operatorValue}`,
+		path,
+	});
+	return undefined;
+}
+
+function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
+	return Object.entries(value).sort(([left], [right]) => compareCanonicalStrings(left, right));
+}
+
+function mapLayout(
+	value: UnknownTable | undefined,
+	context: MappingContext,
+): LayoutConfiguration | undefined {
+	const directionValue = value && string(value['direction'], ['layout', 'direction'], context);
+	const biasValue = value && string(value['bias'], ['layout', 'bias'], context);
+	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === directionValue);
+	const bias = LAYOUT_BIASES.find((candidate) => candidate === biasValue);
+	if (directionValue !== undefined && direction === undefined) {
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: `Unsupported layout direction: ${directionValue}`,
+			path: ['layout', 'direction'],
+		});
+	}
+	if (biasValue !== undefined && bias === undefined) {
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: `Unsupported layout bias: ${biasValue}`,
+			path: ['layout', 'bias'],
+		});
+	}
+	let layout: LayoutConfiguration | undefined;
+	if (direction !== undefined && bias !== undefined) layout = layoutConfiguration(direction, bias);
+	const recognizedLayoutValues = direction !== undefined && bias !== undefined;
+	if (recognizedLayoutValues && layout === undefined) {
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
+			path: ['layout', 'bias'],
+		});
+	}
+	return layout;
 }
 
 export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocument> {
@@ -123,26 +178,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 
 	const id = documentTable && string(documentTable['id'], ['document', 'id'], context);
 	const title = documentTable && string(documentTable['title'], ['document', 'title'], context);
-	const directionValue =
-		layoutTable && string(layoutTable['direction'], ['layout', 'direction'], context);
-	const biasValue = layoutTable && string(layoutTable['bias'], ['layout', 'bias'], context);
-	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === directionValue);
-	const bias = LAYOUT_BIASES.find((candidate) => candidate === biasValue);
-	if (directionValue !== undefined && direction === undefined) {
-		context.diagnostics.push({
-			code: SequitDiagnosticCode.InvalidValue,
-			message: `Unsupported layout direction: ${directionValue}`,
-			path: ['layout', 'direction'],
-		});
-	}
-	if (biasValue !== undefined && bias === undefined) {
-		context.diagnostics.push({
-			code: SequitDiagnosticCode.InvalidValue,
-			message: `Unsupported layout bias: ${biasValue}`,
-			path: ['layout', 'bias'],
-		});
-	}
-	const layout = mapLayoutConfiguration(direction, bias, context);
+	const layout = mapLayout(layoutTable, context);
 
 	const natures: LogicNature[] = [];
 	if (natureTable) {
@@ -164,11 +200,18 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			if (!entity) continue;
 			const label = string(entity['label'], [...path, 'label'], context);
 			const parentGroupId = optionalString(entity['group'], [...path, 'group'], context);
-			if (label !== undefined) {
+			const layoutOrder = requiredLayoutOrder(
+				entity['layoutOrder'],
+				[...path, 'layoutOrder'],
+				context,
+			);
+			if (label !== undefined && layoutOrder !== undefined) {
 				groups.push({
+					kind: EndpointKind.Group,
 					id: groupId,
 					label,
-					...optionalGroupMembership(parentGroupId),
+					...optionalGroupId(parentGroupId),
+					layoutOrder,
 				});
 			}
 		}
@@ -183,12 +226,20 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const natureId = string(entity['nature'], [...path, 'nature'], context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
 			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
-			if (natureId !== undefined && markdown !== undefined) {
+			const layoutOrder = requiredLayoutOrder(
+				entity['layoutOrder'],
+				[...path, 'layoutOrder'],
+				context,
+			);
+			const requiredNodeValues = natureId !== undefined && markdown !== undefined;
+			if (requiredNodeValues && layoutOrder !== undefined) {
 				nodes.push({
+					kind: EndpointKind.Node,
 					id: nodeId,
 					natureId,
+					...optionalGroupId(groupId),
 					markdown,
-					...optionalGroupMembership(groupId),
+					layoutOrder,
 				});
 			}
 		}
@@ -200,21 +251,20 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const path = ['junctions', junctionId] as const;
 			const entity = table(value, path, context);
 			if (!entity) continue;
-			const operatorValue = string(entity['operator'], [...path, 'operator'], context);
+			const operator = mapJunctionOperator(entity['operator'], [...path, 'operator'], context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
-			const operator = JUNCTION_OPERATORS.find((candidate) => candidate === operatorValue);
-			if (operatorValue !== undefined && operator === undefined) {
-				context.diagnostics.push({
-					code: SequitDiagnosticCode.InvalidValue,
-					message: `Unsupported junction operator: ${operatorValue}`,
-					path: [...path, 'operator'],
-				});
-			}
-			if (operator !== undefined) {
+			const layoutOrder = requiredLayoutOrder(
+				entity['layoutOrder'],
+				[...path, 'layoutOrder'],
+				context,
+			);
+			if (operator !== undefined && layoutOrder !== undefined) {
 				junctions.push({
+					kind: EndpointKind.Junction,
 					id: junctionId,
 					operator,
-					...optionalGroupMembership(groupId),
+					...optionalGroupId(groupId),
+					layoutOrder,
 				});
 			}
 		}
@@ -232,15 +282,15 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 		}
 	}
 
-	if (context.diagnostics.length > 0) return { ok: false, diagnostics: context.diagnostics };
-	if (id === undefined || title === undefined) {
+	const hasDiagnostics = context.diagnostics.length > 0;
+	const missingDocumentIdentity = id === undefined || title === undefined;
+	if (hasDiagnostics || missingDocumentIdentity || !layout) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
-	if (!layout) return { ok: false, diagnostics: context.diagnostics };
-
 	return {
 		ok: true,
 		value: {
+			persistenceFormat: PERSISTENCE_FORMAT,
 			id,
 			title,
 			layout,

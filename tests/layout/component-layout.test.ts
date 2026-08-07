@@ -1,4 +1,3 @@
-import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,302 +6,231 @@ import {
 	LayoutDirection,
 } from '../../src/lib/document/logic-document';
 import { layoutComponent } from '../../src/lib/layout/component-layout';
+import { deriveEndpointRows } from '../../src/lib/layout/endpoint-order';
 import type { Bounds, Size } from '../../src/lib/layout/layout-types';
-import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
+import { LAYOUT_CONFIGURATIONS } from '../builders/layout-bias-scenario';
 
-const sizeArbitrary: fc.Arbitrary<Size> = fc.record({
-	width: fc.integer({ min: 1, max: 10_000 }),
-	height: fc.integer({ min: 1, max: 10_000 }),
+const MINIMUM_JUNCTION_CLEARANCE = 18;
+
+const ids = ['a', 'z', 'junction'] as const;
+const ranks = new Map<string, number>([
+	['a', 0],
+	['z', 0],
+	['junction', 0],
+]);
+const junctionIds = new Set(['junction']);
+const sizes = new Map<string, Size>(ids.map((id) => [id, { width: 20, height: 20 }]));
+
+it('rejects a component endpoint without a valid rank', () => {
+	expect(() => deriveEndpointRows(['missing'], ['missing'], new Map(), new Set(), 0)).toThrow(
+		'Invalid layout rank: missing',
+	);
 });
-const layoutConfigurationArbitrary: fc.Arbitrary<LayoutConfiguration> = fc.constantFrom(
-	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
-	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
-	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
-);
 
-function crossStart(bounds: Bounds, vertical: boolean): number {
-	if (vertical) return bounds.x;
-	return bounds.y;
+function bounds(
+	direction: LayoutDirection.TopToBottom | LayoutDirection.BottomToTop,
+): ReadonlyMap<string, Bounds> {
+	const rows = deriveEndpointRows(['z', 'a', 'junction'], ids, ranks, junctionIds, 0);
+	return layoutComponent(rows, sizes, direction, LayoutBias.Top, [20]).boundsById;
 }
 
-function crossLength(bounds: Bounds, vertical: boolean): number {
-	if (vertical) return bounds.width;
-	return bounds.height;
-}
-
-function requiredAt<T>(values: readonly T[], index: number): T {
-	const value = values[index];
-	if (value === undefined) throw new Error(`Missing generated value: ${index}`);
-	return value;
+interface JunctionLayoutFixture {
+	readonly bounds: ReadonlyMap<string, Bounds>;
+	readonly width: number;
+	readonly height: number;
 }
 
 function isVertical(direction: LayoutConfiguration['direction']): boolean {
 	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
 }
 
-function primarySize(size: Size, vertical: boolean): number {
-	if (vertical) return size.height;
-	return size.width;
+function isForward(direction: LayoutConfiguration['direction']): boolean {
+	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.LeftToRight;
 }
 
-function primaryLayoutLength(
-	layout: { readonly width: number; readonly height: number },
-	vertical: boolean,
+function physicalPrimaryStart(bounds: Bounds, direction: LayoutConfiguration['direction']): number {
+	if (isVertical(direction)) return bounds.y;
+	return bounds.x;
+}
+
+function physicalPrimaryEnd(bounds: Bounds, direction: LayoutConfiguration['direction']): number {
+	let size = bounds.width;
+	if (isVertical(direction)) size = bounds.height;
+	return physicalPrimaryStart(bounds, direction) + size;
+}
+
+function forwardPrimaryStart(bounds: Bounds, direction: LayoutConfiguration['direction']): number {
+	if (isForward(direction)) return physicalPrimaryStart(bounds, direction);
+	return -physicalPrimaryEnd(bounds, direction);
+}
+
+function forwardPrimaryEnd(bounds: Bounds, direction: LayoutConfiguration['direction']): number {
+	if (isForward(direction)) return physicalPrimaryEnd(bounds, direction);
+	return -physicalPrimaryStart(bounds, direction);
+}
+
+function componentPrimarySize(
+	layout: JunctionLayoutFixture,
+	direction: LayoutConfiguration['direction'],
 ): number {
-	if (vertical) return layout.height;
+	if (isVertical(direction)) return layout.height;
 	return layout.width;
 }
 
-function generatedRank(id: string): number {
-	if (id === 'target') return 1;
-	return 0;
-}
-
-function expectBetween(
-	source: Bounds,
-	middle: Bounds,
-	target: Bounds,
+function expectPrimaryClearance(
+	before: Bounds,
+	after: Bounds,
 	direction: LayoutConfiguration['direction'],
 ): void {
-	switch (direction) {
-		case LayoutDirection.TopToBottom:
-			expect(source.y + source.height).toBeLessThan(middle.y);
-			expect(middle.y + middle.height).toBeLessThan(target.y);
-			break;
-		case LayoutDirection.BottomToTop:
-			expect(target.y + target.height).toBeLessThan(middle.y);
-			expect(middle.y + middle.height).toBeLessThan(source.y);
-			break;
-		case LayoutDirection.LeftToRight:
-			expect(source.x + source.width).toBeLessThan(middle.x);
-			expect(middle.x + middle.width).toBeLessThan(target.x);
-			break;
-		case LayoutDirection.RightToLeft:
-			expect(target.x + target.width).toBeLessThan(middle.x);
-			expect(middle.x + middle.width).toBeLessThan(source.x);
-			break;
-		default:
-			throw new Error(`Unsupported layout direction: ${String(direction)}`);
-	}
+	expect(
+		forwardPrimaryStart(after, direction) - forwardPrimaryEnd(before, direction),
+	).toBeGreaterThanOrEqual(MINIMUM_JUNCTION_CLEARANCE);
 }
 
-function primaryGap(
-	source: Bounds,
-	target: Bounds,
+function expectContainedOnPrimaryAxis(
+	bounds: Bounds,
+	layout: JunctionLayoutFixture,
 	direction: LayoutConfiguration['direction'],
-): number {
-	switch (direction) {
-		case LayoutDirection.TopToBottom:
-			return target.y - source.y - source.height;
-		case LayoutDirection.BottomToTop:
-			return source.y - target.y - target.height;
-		case LayoutDirection.LeftToRight:
-			return target.x - source.x - source.width;
-		case LayoutDirection.RightToLeft:
-			return source.x - target.x - target.width;
-		default:
-			throw new Error(`Unsupported layout direction: ${String(direction)}`);
-	}
+): void {
+	expect(physicalPrimaryStart(bounds, direction)).toBeGreaterThanOrEqual(0);
+	expect(physicalPrimaryEnd(bounds, direction)).toBeLessThanOrEqual(
+		componentPrimarySize(layout, direction),
+	);
 }
 
-describe('layoutComponent invariants', () => {
-	it('produces a finite empty component without rank bands', () => {
-		expect(
-			layoutComponent(
-				[],
-				new Map(),
-				new Map(),
-				LayoutDirection.TopToBottom,
-				LayoutBias.Top,
-				[],
-				new Set(),
-			),
-		).toEqual({ boundsById: new Map(), width: 1, height: 0 });
+function expectTrailingClearance(
+	bounds: Bounds,
+	layout: JunctionLayoutFixture,
+	direction: LayoutConfiguration['direction'],
+): void {
+	let clearance = physicalPrimaryStart(bounds, direction);
+	if (isForward(direction)) {
+		clearance = componentPrimarySize(layout, direction) - physicalPrimaryEnd(bounds, direction);
+	}
+	expect(clearance).toBeGreaterThanOrEqual(MINIMUM_JUNCTION_CLEARANCE);
+}
+
+const junctionFixtureSizes = [
+	{ width: 108, height: 24 },
+	{ width: 24, height: 108 },
+] as const satisfies readonly Size[];
+
+function layoutJunctionFixture(
+	configuration: LayoutConfiguration,
+	terminal: boolean,
+): JunctionLayoutFixture {
+	const startSize = { width: 80, height: 40 } as const;
+	const endSize = { width: 120, height: 56 } as const;
+	const junctionFixtureIds = junctionFixtureSizes.map((_, index) => `junction-${index}`);
+	const sizeEntries: [string, Size][] = [['start', startSize]];
+	if (!terminal) sizeEntries.push(['end', endSize]);
+	junctionFixtureIds.forEach((id, index) => {
+		const size = junctionFixtureSizes[index];
+		if (size === undefined) throw new Error(`Missing junction size ${index}`);
+		sizeEntries.push([id, size]);
 	});
+	const fixtureSizes = new Map<string, Size>(sizeEntries);
+	const primarySize = (size: Size): number => {
+		if (isVertical(configuration.direction)) return size.height;
+		return size.width;
+	};
+	let ordinary = [['start'], ['end']];
+	let junction = [junctionFixtureIds, []] as readonly (readonly string[])[];
+	let primarySizes = [primarySize(startSize), primarySize(endSize)];
+	if (terminal) {
+		ordinary = [['start']];
+		junction = [junctionFixtureIds];
+		primarySizes = [primarySize(startSize)];
+	}
+	const result = layoutComponent(
+		{ ordinary, junction },
+		fixtureSizes,
+		configuration.direction,
+		configuration.bias,
+		primarySizes,
+	);
+	return { bounds: result.boundsById, width: result.width, height: result.height };
+}
 
-	it('defaults an unranked endpoint to the first rank', () => {
-		const layout = layoutComponent(
-			['node'],
-			new Map(),
-			new Map([['node', { width: 80, height: 40 }]]),
-			LayoutDirection.TopToBottom,
-			LayoutBias.Top,
-			[40],
-			new Set(),
-		);
-
-		expect(layout.boundsById.get('node')).toEqual({ x: 0, y: 0, width: 80, height: 40 });
-	});
-
-	it('rejects missing measurements and ranks outside the configured bands', () => {
+describe('component layout endpoint order', () => {
+	it('rejects rows that do not align with the primary rank bands', () => {
 		expect(() =>
 			layoutComponent(
-				['node'],
-				new Map([['node', 0]]),
+				{ ordinary: [[]], junction: [] },
 				new Map(),
 				LayoutDirection.TopToBottom,
 				LayoutBias.Top,
-				[40],
-				new Set(),
+				[20],
 			),
-		).toThrow('Missing measured size: node');
+		).toThrow('Component rows must align with primary rank bands');
+	});
 
+	it('rejects ordinary and junction endpoints without measured sizes', () => {
+		const configuration = [LayoutDirection.TopToBottom, LayoutBias.Top, [20]] as const;
 		expect(() =>
-			layoutComponent(
-				['node'],
-				new Map([['node', 2]]),
-				new Map([['node', { width: 80, height: 40 }]]),
-				LayoutDirection.TopToBottom,
-				LayoutBias.Top,
-				[40],
-				new Set(),
-			),
-		).toThrow('Missing layout rank: 2');
+			layoutComponent({ ordinary: [['missing']], junction: [[]] }, new Map(), ...configuration),
+		).toThrow('Missing measured size: missing');
+		expect(() =>
+			layoutComponent({ ordinary: [[]], junction: [['missing']] }, new Map(), ...configuration),
+		).toThrow('Missing measured size: missing');
 	});
 
-	it('places a junction between bands and at the final band', () => {
-		const sizes = new Map([
-			['junction', { width: 32, height: 32 }],
-			['second-junction', { width: 32, height: 64 }],
-		]);
-		const between = layoutComponent(
-			['junction'],
-			new Map([['junction', 0]]),
-			sizes,
-			LayoutDirection.TopToBottom,
-			LayoutBias.Top,
-			[40, 40],
-			new Set(['junction']),
-		);
-		const final = layoutComponent(
-			['junction', 'second-junction'],
-			new Map([
-				['junction', 0],
-				['second-junction', 0],
-			]),
-			sizes,
-			LayoutDirection.TopToBottom,
-			LayoutBias.Top,
-			[40],
-			new Set(['junction', 'second-junction']),
-		);
-
-		expect(between.boundsById.get('junction')?.y).toBeGreaterThan(40);
-		expect(final.boundsById.get('junction')?.y).toBe(16);
-		expect(final.boundsById.get('second-junction')?.y).toBe(0);
-		expect(final.height).toBe(64);
-	});
-	it('keeps arbitrarily many same-rank nodes in ordered lanes with an exact item gap', () => {
-		fc.assert(
-			fc.property(fc.array(sizeArbitrary, { minLength: 2, maxLength: 12 }), (generatedSizes) => {
-				const ids = generatedSizes.map((_, index) => `node-${index}`);
-				const sizes = new Map(ids.map((id, index) => [id, requiredAt(generatedSizes, index)]));
-				const ranks = new Map(ids.map((id) => [id, 0]));
-				const bandHeight = Math.max(...generatedSizes.map(({ height }) => height));
-				const layout = layoutComponent(
-					ids,
-					ranks,
-					sizes,
-					LayoutDirection.TopToBottom,
-					LayoutBias.Top,
-					[bandHeight],
-					new Set(),
-				);
-
-				for (let index = 1; index < ids.length; index += 1) {
-					const previous = layout.boundsById.get(requiredAt(ids, index - 1));
-					const current = layout.boundsById.get(requiredAt(ids, index));
-					expect(previous).toBeDefined();
-					expect(current).toBeDefined();
-					if (!previous || !current) throw new Error('Missing generated same-rank bounds');
-					expect(current.x - previous.x - previous.width).toBe(36);
-				}
-			}),
-			PROPERTY_PARAMETERS,
+	it('uses the supplied endpoint order', () => {
+		expect(bounds(LayoutDirection.TopToBottom).get('z')?.x).toBeLessThan(
+			bounds(LayoutDirection.TopToBottom).get('a')?.x ?? 0,
 		);
 	});
 
-	it('separates mixed regular and junction endpoints for every direction and bias', () => {
-		fc.assert(
-			fc.property(
-				layoutConfigurationArbitrary,
-				fc.array(sizeArbitrary, { minLength: 5, maxLength: 5 }),
-				(configuration, generatedSizes) => {
-					const ids = ['source-a', 'junction-a', 'source-b', 'junction-b', 'target'];
-					const sizes = new Map(ids.map((id, index) => [id, requiredAt(generatedSizes, index)]));
-					const ranks = new Map(ids.map((id) => [id, generatedRank(id)]));
-					const vertical = isVertical(configuration.direction);
-					const firstBand = Math.max(
-						primarySize(requiredAt(generatedSizes, 0), vertical),
-						primarySize(requiredAt(generatedSizes, 2), vertical),
-					);
-					const layout = layoutComponent(
-						ids,
-						ranks,
-						sizes,
-						configuration.direction,
-						configuration.bias,
-						[firstBand, primarySize(requiredAt(generatedSizes, 4), vertical)],
-						new Set(['junction-a', 'junction-b']),
-					);
-
-					for (let index = 1; index < ids.length; index += 1) {
-						const previous = layout.boundsById.get(requiredAt(ids, index - 1));
-						const current = layout.boundsById.get(requiredAt(ids, index));
-						expect(previous).toBeDefined();
-						expect(current).toBeDefined();
-						if (!previous || !current) throw new Error('Missing generated mixed-rank bounds');
-						expect(
-							crossStart(current, vertical) -
-								crossStart(previous, vertical) -
-								crossLength(previous, vertical),
-						).toBe(36);
-					}
-					const source = layout.boundsById.get('source-a');
-					const junction = layout.boundsById.get('junction-a');
-					const target = layout.boundsById.get('target');
-					if (!source || !junction || !target) throw new Error('Missing generated relation bounds');
-					expectBetween(source, junction, target, configuration.direction);
-				},
-			),
-			PROPERTY_PARAMETERS,
-		);
+	it('keeps ordinary and junction rows separate at the same rank', () => {
+		const rows = deriveEndpointRows(['junction', 'z', 'a'], ids, ranks, junctionIds, 0);
+		expect(rows.ordinary).toEqual([['z', 'a']]);
+		expect(rows.junction).toEqual([['junction']]);
+		const result = layoutComponent(rows, sizes, LayoutDirection.TopToBottom, LayoutBias.Top, [20]);
+		const ordinary = result.boundsById.get('z');
+		const junction = result.boundsById.get('junction');
+		expect(junction?.x).toBe(28);
+		if (!ordinary || !junction) throw new Error('Expected ordinary and junction bounds');
+		expectPrimaryClearance(ordinary, junction, LayoutDirection.TopToBottom);
 	});
 
-	it('keeps the exact rank gap under extreme sizes and opposite directions', () => {
-		fc.assert(
-			fc.property(
-				layoutConfigurationArbitrary,
-				sizeArbitrary,
-				sizeArbitrary,
-				(configuration, sourceSize, targetSize) => {
-					const vertical = isVertical(configuration.direction);
-					const layout = layoutComponent(
-						['source', 'target'],
-						new Map([
-							['source', 0],
-							['target', 1],
-						]),
-						new Map([
-							['source', sourceSize],
-							['target', targetSize],
-						]),
-						configuration.direction,
-						configuration.bias,
-						[primarySize(sourceSize, vertical), primarySize(targetSize, vertical)],
-						new Set(),
-					);
-					const source = layout.boundsById.get('source');
-					const target = layout.boundsById.get('target');
-					if (!source || !target) throw new Error('Missing generated rank bounds');
-					expect(primaryGap(source, target, configuration.direction)).toBe(72);
-					const expectedPrimaryLength =
-						primarySize(sourceSize, vertical) + 72 + primarySize(targetSize, vertical);
-					expect(primaryLayoutLength(layout, vertical)).toBe(expectedPrimaryLength);
-				},
-			),
-			PROPERTY_PARAMETERS,
-		);
+	it('does not reverse cross-axis order for a reverse rank direction', () => {
+		const forward = bounds(LayoutDirection.TopToBottom);
+		const reverse = bounds(LayoutDirection.BottomToTop);
+		expect(forward.get('z')?.x).toBeLessThan(forward.get('a')?.x ?? 0);
+		expect(reverse.get('z')?.x).toBeLessThan(reverse.get('a')?.x ?? 0);
 	});
 });
+
+describe.each(LAYOUT_CONFIGURATIONS)(
+	'junction primary bands with $direction and $bias bias',
+	(configuration) => {
+		it('uses the direction-specific junction size between ordinary ranks with minimum clearance', () => {
+			const layout = layoutJunctionFixture(configuration, false);
+			const start = layout.bounds.get('start');
+			const end = layout.bounds.get('end');
+			const small = layout.bounds.get('junction-0');
+			const oversized = layout.bounds.get('junction-1');
+			if (!start || !end || !small || !oversized) throw new Error('Expected all fixture bounds');
+
+			for (const junction of [small, oversized]) {
+				expectPrimaryClearance(start, junction, configuration.direction);
+				expectPrimaryClearance(junction, end, configuration.direction);
+				expectContainedOnPrimaryAxis(junction, layout, configuration.direction);
+			}
+		});
+
+		it('places terminal junctions after the final ordinary band and includes them in dimensions', () => {
+			const layout = layoutJunctionFixture(configuration, true);
+			const start = layout.bounds.get('start');
+			const small = layout.bounds.get('junction-0');
+			const oversized = layout.bounds.get('junction-1');
+			if (!start || !small || !oversized) throw new Error('Expected all fixture bounds');
+
+			for (const junction of [small, oversized]) {
+				expectPrimaryClearance(start, junction, configuration.direction);
+				expectContainedOnPrimaryAxis(junction, layout, configuration.direction);
+				expectTrailingClearance(junction, layout, configuration.direction);
+			}
+		});
+	},
+);

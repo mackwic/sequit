@@ -4,9 +4,10 @@ import * as Y from 'yjs';
 import {
 	importLogicDocument,
 	readLogicDocument,
-} from '../../src/lib/collaboration/yjs-live-document';
-import type { LogicDocument } from '../../src/lib/document/logic-document';
-import { createGraph, GraphEndpointKind, type LogicGraph } from '../../src/lib/graph/create-graph';
+} from '../../src/lib/collaboration/yjs-document-codec';
+import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import { orderKey } from '../../src/lib/document/order-key';
+import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
 import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { validLogicDocument } from '../builders/logic-document';
@@ -32,6 +33,24 @@ function currentDocumentFrom(source: string): LogicDocument {
 	return current.value;
 }
 
+it('rejects a cyclic graph passed directly to the ranker', () => {
+	const graph = graphFrom(validLogicDocument());
+	const outgoing = new Map(graph.outgoingByEndpointId);
+	const predecessors = new Map(graph.predecessorsByEndpointId);
+	outgoing.set('source-a', ['source-b']);
+	outgoing.set('source-b', ['source-a']);
+	predecessors.set('source-a', ['source-b']);
+	predecessors.set('source-b', ['source-a']);
+	const cyclic = {
+		...graph,
+		rankableEndpointIds: ['source-a', 'source-b'],
+		outgoingByEndpointId: outgoing,
+		predecessorsByEndpointId: predecessors,
+	};
+
+	expect(() => topologicallyRank(cyclic)).toThrow('LogicGraph must be acyclic before ranking');
+});
+
 describe('LogicGraph', () => {
 	it('resolves all relations including nodes, a junction, and the empty group endpoint', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());
@@ -46,10 +65,10 @@ describe('LogicGraph', () => {
 		);
 
 		expect(graph.relations).toHaveLength(20);
-		expect(graph.endpointsById.get('word-ui-options')?.kind).toBe(GraphEndpointKind.Junction);
+		expect(graph.endpointsById.get('word-ui-options')?.kind).toBe('junction');
 		expect(xorInputs).toHaveLength(3);
 		expect(xorOutputs).toHaveLength(1);
-		expect(graph.endpointsById.get('data-team')).toMatchObject({ kind: GraphEndpointKind.Group });
+		expect(graph.endpointsById.get('data-team')).toMatchObject({ kind: 'group' });
 		expect(dataTeamRelation?.source).toBe(graph.endpointsById.get('data-team'));
 	});
 
@@ -132,6 +151,56 @@ describe('LogicGraph', () => {
 		});
 	});
 
+	it.each([
+		[
+			'direct',
+			[
+				{
+					kind: EndpointKind.Group as const,
+					id: 'group-a',
+					label: 'A',
+					groupId: 'group-a',
+					layoutOrder: orderKey('a0'),
+				},
+			],
+			['group-a', 'group-a'],
+		],
+		[
+			'indirect',
+			[
+				{
+					kind: EndpointKind.Group as const,
+					id: 'group-a',
+					label: 'A',
+					groupId: 'group-b',
+					layoutOrder: orderKey('a0'),
+				},
+				{
+					kind: EndpointKind.Group as const,
+					id: 'group-b',
+					label: 'B',
+					groupId: 'group-a',
+					layoutOrder: orderKey('a1'),
+				},
+			],
+			['group-a', 'group-b', 'group-a'],
+		],
+	] as const)('rejects a %s group containment cycle before expansion', (_kind, groups, cycle) => {
+		const result = createGraph({ ...validLogicDocument(), groups, nodes: [], relations: [] });
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'group-cycle',
+					message: `Group nesting cycle: ${cycle.join(' -> ')}`,
+					path: ['groups', cycle.at(-2), 'group'],
+					cycle,
+				},
+			],
+		});
+	});
+
 	it('canonicalizes relations and adjacency independently of input array order', () => {
 		const document = validLogicDocument();
 		const original = graphFrom(document);
@@ -149,10 +218,175 @@ describe('LogicGraph', () => {
 		expect([...reordered.outgoingByEndpointId]).toEqual([...original.outgoingByEndpointId]);
 		expect([...reordered.predecessorsByEndpointId]).toEqual([...original.predecessorsByEndpointId]);
 	});
+
+	it('retains canonical deduplicated endpoints without expanding group relations', () => {
+		const base = validLogicDocument();
+		const document: LogicDocument = {
+			...base,
+			groups: [
+				{
+					kind: EndpointKind.Group,
+					id: 'source-group',
+					label: 'Sources',
+					layoutOrder: orderKey('a0'),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: 'nested-source-group',
+					label: 'Nested sources',
+					groupId: 'source-group',
+					layoutOrder: orderKey('a1'),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: 'target-group',
+					label: 'Targets',
+					layoutOrder: orderKey('a2'),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: 'empty-group',
+					label: 'Empty',
+					layoutOrder: orderKey('a3'),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: 'nested-empty-group',
+					label: 'Nested empty',
+					groupId: 'source-group',
+					layoutOrder: orderKey('a3'),
+				},
+			],
+			nodes: [
+				{
+					kind: EndpointKind.Node,
+					id: 'source-a',
+					natureId: 'goal',
+					groupId: 'source-group',
+					markdown: 'A',
+					layoutOrder: orderKey('a4'),
+				},
+				{
+					id: 'source-b',
+					kind: EndpointKind.Node,
+					natureId: 'goal',
+					groupId: 'nested-source-group',
+					markdown: 'B',
+					layoutOrder: orderKey('a5'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'target-a',
+					natureId: 'goal',
+					groupId: 'target-group',
+					markdown: 'A',
+					layoutOrder: orderKey('a6'),
+				},
+				{
+					kind: EndpointKind.Node,
+					id: 'target-b',
+					natureId: 'goal',
+					groupId: 'target-group',
+					markdown: 'B',
+					layoutOrder: orderKey('a7'),
+				},
+			],
+			junctions: [],
+			relations: [
+				{ id: 'expanded', from: 'source-group', to: 'target-group' },
+				{ id: 'empty', from: 'empty-group', to: 'target-a' },
+				{ id: 'direct', from: 'source-a', to: 'target-a' },
+			],
+		};
+
+		const graph = graphFrom(document);
+		const expanded = graph.effectiveRelations.find(({ relationId }) => relationId === 'expanded');
+
+		expect(expanded).toEqual({
+			relationId: 'expanded',
+			sourceIds: ['source-a', 'source-b'],
+			targetIds: ['target-a', 'target-b'],
+		});
+		expect(expanded?.sourceIds).not.toContain('nested-empty-group');
+		expect(graph.effectiveRelations).toContainEqual({
+			relationId: 'direct',
+			sourceIds: ['source-a'],
+			targetIds: ['target-a'],
+		});
+		expect(graph.rankableEndpointIds).toContain('empty-group');
+		expect(graph.rankableEndpointIds).not.toContain('nested-empty-group');
+		expect(topologicallyRank(graph).byEndpointId.has('nested-empty-group')).toBe(false);
+		expect(graph.effectiveRelations).toContainEqual({
+			relationId: 'empty',
+			sourceIds: ['empty-group'],
+			targetIds: ['target-a'],
+		});
+		expect(
+			graphFrom({
+				...document,
+				groups: [...document.groups].reverse(),
+				nodes: [...document.nodes].reverse(),
+				relations: [...document.relations].reverse(),
+			}).effectiveRelations,
+		).toEqual(graph.effectiveRelations);
+	});
+
+	it('stores group-to-group relation membership in linear structural space', () => {
+		const sizes = [20, 40];
+		const retainedSizes = sizes.map((size) => {
+			const base = validLogicDocument();
+			const groups = [
+				{
+					kind: EndpointKind.Group as const,
+					id: 'sources',
+					label: 'Sources',
+					layoutOrder: orderKey('a0'),
+				},
+				{
+					kind: EndpointKind.Group as const,
+					id: 'targets',
+					label: 'Targets',
+					layoutOrder: orderKey('a1'),
+				},
+			];
+			const nodes = Array.from({ length: size }, (_, index) => [
+				{
+					kind: EndpointKind.Node as const,
+					id: `source-${index}`,
+					natureId: 'goal',
+					markdown: '',
+					groupId: 'sources',
+					layoutOrder: orderKey('a2'),
+				},
+				{
+					kind: EndpointKind.Node as const,
+					id: `target-${index}`,
+					natureId: 'goal',
+					markdown: '',
+					groupId: 'targets',
+					layoutOrder: orderKey('a3'),
+				},
+			]).flat();
+			const graph = graphFrom({
+				...base,
+				groups,
+				nodes,
+				junctions: [],
+				relations: [{ id: 'groups', from: 'sources', to: 'targets' }],
+			});
+			const relation = graph.effectiveRelations[0];
+			expect(graph.effectiveRelations).toHaveLength(1);
+			if (relation === undefined) throw new Error('Expected one effective relation');
+			expect(relation.sourceIds).toHaveLength(size);
+			expect(relation.targetIds).toHaveLength(size);
+			return relation.sourceIds.length + relation.targetIds.length;
+		});
+		expect(retainedSizes).toEqual([40, 80]);
+	});
 });
 
 describe('topologicallyRank', () => {
-	it('uses longest-path ranks without giving structural groups or junctions a node row', async () => {
+	it('uses the canonical junction-aware longest-path recurrence without structural groups', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());
 		const ranks = topologicallyRank(graph);
 		const predecessors = new Map<string, string[]>();
@@ -164,14 +398,14 @@ describe('topologicallyRank', () => {
 
 		for (const [endpointId, rank] of ranks.byEndpointId) {
 			const endpointPredecessors = predecessors.get(endpointId) ?? [];
-			const rankIncrement =
-				graph.endpointsById.get(endpointId)?.kind === GraphEndpointKind.Junction ? 0 : 1;
+			const increment = graph.endpointsById.get(endpointId)?.kind === EndpointKind.Junction ? 0 : 1;
 			const expected =
 				endpointPredecessors.length === 0
 					? 0
-					: Math.max(
+					: increment +
+						Math.max(
 							...endpointPredecessors.map(
-								(predecessor) => (ranks.byEndpointId.get(predecessor) ?? -1) + rankIncrement,
+								(predecessor) => ranks.byEndpointId.get(predecessor) ?? -1,
 							),
 						);
 			expect(rank, endpointId).toBe(expected);
@@ -201,43 +435,5 @@ describe('topologicallyRank', () => {
 		]);
 		expect(ranks.byEndpointId.has('container')).toBe(false);
 		expect(ranks.byEndpointId.has('orphan-group')).toBe(false);
-	});
-
-	it('uses defensive defaults for an externally assembled graph', () => {
-		const document = validLogicDocument();
-		const source = document.nodes[0];
-		if (!source) throw new Error('Expected at least one node');
-		const graph: LogicGraph = {
-			document,
-			endpointsById: new Map([
-				['source', { kind: GraphEndpointKind.Node, entity: source }],
-				['isolated', { kind: GraphEndpointKind.Node, entity: source }],
-			]),
-			relations: [],
-			rankableEndpointIds: ['source', 'isolated'],
-			outgoingByEndpointId: new Map([['source', ['external-target']]]),
-			predecessorsByEndpointId: new Map(),
-		};
-
-		const ranks = topologicallyRank(graph);
-		expect(ranks.byEndpointId.get('source')).toBe(0);
-		expect(ranks.byEndpointId.get('external-target')).toBe(1);
-		expect(ranks.byEndpointId.get('isolated')).toBe(0);
-	});
-
-	it('rejects a cyclic graph assembled outside createGraph', () => {
-		const document = validLogicDocument();
-		const source = document.nodes[0];
-		if (!source) throw new Error('Expected at least one node');
-		const graph: LogicGraph = {
-			document,
-			endpointsById: new Map([['source', { kind: GraphEndpointKind.Node, entity: source }]]),
-			relations: [],
-			rankableEndpointIds: ['source'],
-			outgoingByEndpointId: new Map([['source', ['source']]]),
-			predecessorsByEndpointId: new Map([['source', ['source']]]),
-		};
-
-		expect(() => topologicallyRank(graph)).toThrow('LogicGraph must be acyclic before ranking');
 	});
 });

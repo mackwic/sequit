@@ -33,7 +33,8 @@ module.exports = {
 			},
 			to: {
 				path: '^src/lib/',
-				pathNot: '^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+				pathNot:
+					'^src/lib/(canonical-string|document/(logic-document|order-key|validate-logic-document))[.]ts$',
 			},
 		},
 		{
@@ -44,7 +45,8 @@ module.exports = {
 				path: '^src/lib/',
 				pathNot: [
 					'^src/lib/graph/',
-					'^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+					'^src/lib/canonical-string[.]ts$',
+					'^src/lib/document/(logic-document|order-key|validate-logic-document)[.]ts$',
 				],
 			},
 		},
@@ -56,7 +58,8 @@ module.exports = {
 				path: '^src/lib/',
 				pathNot: [
 					'^src/lib/text/',
-					'^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+					'^src/lib/canonical-string[.]ts$',
+					'^src/lib/document/(logic-document|order-key|validate-logic-document)[.]ts$',
 				],
 			},
 		},
@@ -68,7 +71,9 @@ module.exports = {
 				path: '^src/lib/',
 				pathNot: [
 					'^src/lib/collaboration/',
-					'^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+					'^src/lib/canonical-string[.]ts$',
+					'^src/lib/graph/create-graph[.]ts$',
+					'^src/lib/document/(document-command-gateway|document-session|logic-document|order-key|topology-edits|validate-logic-document)[.]ts$',
 				],
 			},
 		},
@@ -81,7 +86,8 @@ module.exports = {
 				pathNot: [
 					'^src/lib/layout/',
 					'^src/lib/graph/',
-					'^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+					'^src/lib/canonical-string[.]ts$',
+					'^src/lib/document/(logic-document|order-key|validate-logic-document)[.]ts$',
 				],
 			},
 		},
