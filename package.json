@@ -7,9 +7,10 @@
 		"node": "24.x"
 	},
 	"scripts": {
-		"dev": "concurrently --kill-others-on-fail --names web,collaboration \"pnpm dev:web\" \"pnpm dev:collaboration\"",
+		"dev": "portless run --name sequit pnpm run dev:stack",
+		"dev:stack": "node scripts/dev.mjs",
 		"dev:web": "vite dev",
-		"dev:collaboration": "wrangler dev --config workers/collaboration/wrangler.jsonc --port 8787",
+		"dev:collaboration": "wrangler dev --config workers/collaboration/wrangler.jsonc",
 		"dev:e2e": "pnpm dev:web --port 4174",
 		"build": "pnpm build:web && pnpm build:collaboration",
 		"build:web": "vite build",
@@ -80,6 +81,7 @@
 		"jscpd": "^5.0.14",
 		"knip": "^6.31.0",
 		"lint-staged": "^16.4.0",
+		"portless": "^0.15.5",
 		"prettier": "^3.9.6",
 		"prettier-plugin-svelte": "^4.1.1",
 		"prettier-plugin-tailwindcss": "^0.8.1",
