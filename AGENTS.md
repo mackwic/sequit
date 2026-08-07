@@ -3,6 +3,7 @@
 ## Sources of truth
 
 - `package.json` defines the supported commands and quality gates.
+- `mise.toml` defines the Node.js and pnpm versions used locally and in CI.
 - `docs/design.md` records product intent and domain decisions.
 - `.dependency-cruiser.cjs` defines allowed dependency directions.
 - `eslint.config.js` defines code constraints. Do not weaken rules or add overrides merely to make a change pass.
@@ -16,7 +17,7 @@
 
 ## Changes
 
-- Use Node.js 24 and the pnpm version pinned in `package.json`.
+- Install and run Node.js and pnpm through the versions pinned in `mise.toml`.
 - Reuse the nearest existing pattern; do not introduce a parallel convention.
 - Fix causes rather than suppressing errors or special-casing tests.
 - Keep changes scoped. Do not format or refactor unrelated files.

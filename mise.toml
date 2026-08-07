@@ -1,0 +1,11 @@
+[tools]
+pnpm = "10.34.1"
+node = "24.15.0"
+
+[tasks.install]
+description = "Install project dependencies"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.dev]
+description = "Run the local web and collaboration stack"
+run = "pnpm dev"

@@ -1,1 +1,1 @@
-pnpm quality:fast
+mise exec -- pnpm quality:fast

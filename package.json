@@ -3,9 +3,6 @@
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
-	"engines": {
-		"node": "24.x"
-	},
 	"scripts": {
 		"dev": "portless run --name sequit pnpm run dev:stack",
 		"dev:stack": "node scripts/dev.mjs",
@@ -95,7 +92,6 @@
 		"vitest": "^4.1.0",
 		"wrangler": "^4.97.0"
 	},
-	"packageManager": "pnpm@10.34.1",
 	"dependencies": {
 		"fractional-indexing": "4.0.0",
 		"smol-toml": "^1.7.0",

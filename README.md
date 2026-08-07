@@ -2,15 +2,22 @@
 
 ## Local development
 
+With [mise](https://mise.jdx.dev/) activated in your shell, install the pinned toolchain and project dependencies:
+
+```bash
+mise install
+mise run install
+```
+
 Run the complete web and collaboration stack with:
 
 ```bash
-pnpm dev
+mise run dev
 ```
 
 Portless assigns free ports to Vite and Wrangler and exposes the web app over local HTTPS. The main checkout uses `https://sequit.localhost`; a linked Git worktree on branch `fix-canvas` uses `https://fix-canvas.sequit.localhost`. The `/collab` HTTP and WebSocket traffic stays behind the Vite proxy and targets the Wrangler instance belonging to the same worktree.
 
-The first run can request administrator access to trust the local certificate authority and bind the HTTPS proxy. Stop `pnpm dev` to remove its temporary route. Use `pnpm exec portless prune` to clean up an orphaned route after an interrupted process.
+The first run can request administrator access to trust the local certificate authority and bind the HTTPS proxy. Stop `mise run dev` to remove its temporary route. Use `pnpm exec portless prune` to clean up an orphaned route after an interrupted process.
 
 ## Local quality gates
 
@@ -53,12 +60,12 @@ Duplication analysis uses mild token matching with a minimum clone size of 5 lin
 
 ### Git hooks
 
-`pnpm install` runs `svelte-kit sync` and installs the tracked Husky hooks. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
+`mise run install` runs `pnpm install`, which synchronizes SvelteKit and installs the tracked Husky hooks. Both hooks invoke pnpm through `mise exec`, so they use the toolchain pinned in `mise.toml`. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
 
 The pre-push hook runs `pnpm quality:fast`; mutation testing is left to the parallel CI job or an explicit local `pnpm test:mutation`. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
 
 ### Continuous integration
 
-For every pull request and push to `main`, GitHub Actions runs `pnpm check:core` and `pnpm test:mutation` as independent parallel jobs. Only the core job installs Chromium. The read-only workflow uses the repository's pinned pnpm version with Node.js 24 and cancels superseded runs for the same pull request or branch.
+For every pull request and push to `main`, GitHub Actions uses `mise.toml` to install the pinned toolchain, then runs `pnpm check:core` and `pnpm test:mutation` as independent parallel jobs. Only the core job installs Chromium. The read-only workflow cancels superseded runs for the same pull request or branch.
 
 Run `pnpm check` locally to reproduce both CI jobs in fail-fast order. Its namespaced output identifies whether formatting, types, linting, unused code, architecture, coverage, duplication, browser integration, a production build, or mutation testing failed.
