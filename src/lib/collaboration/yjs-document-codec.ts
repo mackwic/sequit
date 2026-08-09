@@ -1,10 +1,19 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../document/logic-document';
-import { readYjsLogicDocument, type YjsLiveDocumentResult } from './yjs-document-reader';
-import { createYjsEntityMap, YjsCollection } from './yjs-document-schema';
+import { createGraph } from '../graph/create-graph';
+import {
+	readStructuralLogicDocument,
+	YjsLiveDocumentDiagnosticCode,
+	type YjsLiveDocumentResult,
+} from './yjs-document-reader';
+import {
+	createYjsEntityMap,
+	YJS_LIVE_DOCUMENT_FORMAT,
+	YjsCollection,
+} from './yjs-document-schema';
 
-export const YJS_LIVE_DOCUMENT_FORMAT = 3 as const;
+export { YJS_LIVE_DOCUMENT_FORMAT };
 
 export type { YjsLiveDocumentResult };
 
@@ -90,5 +99,16 @@ export function importLogicDocument(
 }
 
 export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocument> {
-	return readYjsLogicDocument(ydoc, YJS_LIVE_DOCUMENT_FORMAT);
+	const document = readStructuralLogicDocument(ydoc, YJS_LIVE_DOCUMENT_FORMAT);
+	if (!document.ok) return document;
+	const graph = createGraph(document.value);
+	if (graph.ok) return { ok: true, value: graph.value.document };
+	return {
+		ok: false,
+		diagnostics: graph.diagnostics.map(({ message, path }) => ({
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
+			message,
+			path,
+		})),
+	};
 }

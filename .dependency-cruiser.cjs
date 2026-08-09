@@ -66,14 +66,33 @@ module.exports = {
 		{
 			name: 'collaboration-only-depends-on-domain-core',
 			severity: 'error',
-			from: { path: '^src/lib/collaboration/' },
+			from: {
+				path: '^src/lib/collaboration/',
+				pathNot:
+					'^src/lib/collaboration/(authorize-proposal|update-guards|yjs-document-codec)[.]ts$',
+			},
 			to: {
 				path: '^src/lib/',
 				pathNot: [
 					'^src/lib/collaboration/',
 					'^src/lib/canonical-string[.]ts$',
-					'^src/lib/graph/create-graph[.]ts$',
 					'^src/lib/document/(document-command-gateway|document-session|logic-document|order-key|topology-edits|validate-logic-document)[.]ts$',
+				],
+			},
+		},
+		{
+			name: 'collaboration-graph-aware-modules-depend-on-graph-and-core',
+			severity: 'error',
+			from: {
+				path: '^src/lib/collaboration/(authorize-proposal|update-guards|yjs-document-codec)[.]ts$',
+			},
+			to: {
+				path: '^src/lib/',
+				pathNot: [
+					'^src/lib/collaboration/',
+					'^src/lib/canonical-string[.]ts$',
+					'^src/lib/graph/',
+					'^src/lib/document/(logic-document|order-key|validate-logic-document)[.]ts$',
 				],
 			},
 		},

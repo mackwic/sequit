@@ -12,7 +12,9 @@
 	},
 	"mutate": [
 		"src/lib/document/validate-logic-document.ts",
+		"src/lib/collaboration/authorize-proposal.ts",
 		"src/lib/collaboration/protocol.ts",
+		"src/lib/collaboration/update-guards.ts",
 		"src/lib/collaboration/yjs-document-reader.ts",
 		"src/lib/text/map-sequit-document.ts",
 		"src/lib/graph/create-graph.ts",

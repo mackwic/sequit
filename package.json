@@ -43,6 +43,7 @@
 		"test:e2e": "playwright test",
 		"benchmark:layout": "vitest bench --run --config vitest.performance.config.ts tests/performance/layout-graph.bench.ts",
 		"benchmark:graph": "vitest bench --run --config vitest.performance.config.ts tests/performance/graph-preparation.bench.ts",
+		"benchmark:authorization": "vitest bench --run --config vitest.performance.config.ts tests/performance/authorize-proposal.bench.ts",
 		"benchmark:performance": "pnpm benchmark:graph && pnpm benchmark:layout",
 		"benchmark:incremental": "vitest bench --run --config vitest.performance.config.ts tests/performance/incremental-layout.bench.ts",
 		"test:performance": "vitest run --config vitest.performance.config.ts tests/performance/layout-graph-performance.test.ts",

@@ -18,10 +18,10 @@ import {
 } from '../document/logic-document';
 import { parseOrderKey } from '../document/order-key';
 import { validateLogicDocument } from '../document/validate-logic-document';
-import { createGraph, type GraphDiagnosticCode } from '../graph/create-graph';
+import type { GraphDiagnosticCode } from '../graph/create-graph';
 import { YjsCollection } from './yjs-document-schema';
 
-enum YjsLiveDocumentDiagnosticCode {
+export enum YjsLiveDocumentDiagnosticCode {
 	Invalid = 'invalid-yjs-live-document',
 	UnsupportedFormat = 'unsupported-yjs-live-document-format',
 }
@@ -233,7 +233,7 @@ function validationFailure(
 	};
 }
 
-export function readYjsLogicDocument(
+export function readStructuralLogicDocument(
 	ydoc: Y.Doc,
 	liveDocumentFormat: number,
 ): YjsLiveDocumentResult<LogicDocument> {
@@ -332,7 +332,5 @@ export function readYjsLogicDocument(
 	};
 	const validated = validateLogicDocument(document);
 	if (!validated.ok) return validationFailure(validated.diagnostics);
-	const graph = createGraph(validated.value);
-	if (!graph.ok) return validationFailure(graph.diagnostics);
-	return { ok: true, value: graph.value.document };
+	return { ok: true, value: validated.value };
 }
