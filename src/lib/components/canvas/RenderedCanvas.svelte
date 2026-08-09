@@ -1,15 +1,22 @@
 <script lang="ts">
 	import type { CanvasModel } from '$lib/canvas/canvas-model';
+	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '$lib/canvas/canvas-viewport';
 	import { renderRelationPaths } from '$lib/canvas/render-relations';
 
 	import LogicNode from './LogicNode.svelte';
 
-	let { canvas }: { canvas: CanvasModel } = $props();
+	let { canvas, zoom }: { canvas: CanvasModel; zoom: number } = $props();
 
 	let renderedRelations = $derived(renderRelationPaths(canvas.relations));
+	let extent = $derived(scaledStageExtent(canvas, zoom));
 </script>
 
-<div class="grid min-h-full min-w-max place-items-center px-16 py-16">
+<div
+	class="relative min-h-full min-w-full"
+	data-canvas-sizing-wrapper
+	style:width={`${extent.width}px`}
+	style:height={`${extent.height}px`}
+>
 	<div
 		class="relative shrink-0"
 		data-graph-stage
@@ -17,6 +24,10 @@
 		data-stage-height={canvas.height}
 		style:width={`${canvas.width}px`}
 		style:height={`${canvas.height}px`}
+		style:left={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.width * zoom}px) / 2))`}
+		style:top={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.height * zoom}px) / 2))`}
+		style:transform={`scale(${zoom})`}
+		style:transform-origin="top left"
 	>
 		{#each canvas.groups as group (group.id)}
 			<section

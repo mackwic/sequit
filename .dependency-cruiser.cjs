@@ -124,6 +124,21 @@ module.exports = {
 			},
 		},
 		{
+			name: 'session-only-depends-inward',
+			severity: 'error',
+			from: { path: '^src/lib/session/' },
+			to: {
+				path: '^src/lib/',
+				pathNot: [
+					'^src/lib/session/',
+					'^src/lib/canvas/',
+					'^src/lib/document/',
+					'^src/lib/graph/',
+					'^src/lib/layout/',
+				],
+			},
+		},
+		{
 			name: 'worker-only-depends-on-shared-core',
 			severity: 'error',
 			from: { path: '^workers/collaboration/src/' },
