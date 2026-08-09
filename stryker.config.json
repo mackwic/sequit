@@ -11,6 +11,9 @@
 		"related": true
 	},
 	"mutate": [
+		"src/lib/document/collaborative-document-session.ts",
+		"src/lib/document/collaborative-session.ts",
+		"src/lib/document/pending-operations.ts",
 		"src/lib/document/validate-logic-document.ts",
 		"src/lib/collaboration/authorize-proposal.ts",
 		"src/lib/collaboration/protocol.ts",
