@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 
+	import { createCanvasEntityIndex } from '$lib/canvas/canvas-entity';
 	import type { CanvasModel } from '$lib/canvas/canvas-model';
 	import {
 		anchorPreservingScroll,
@@ -29,6 +30,8 @@
 	let error = $state<string>();
 	let spacePressed = $state(false);
 	let panning = $state(false);
+	let panMoved = false;
+	let suppressBackgroundActivation = false;
 	let previousMeasurementSignature = '';
 	let activeLayoutRequest: object | undefined;
 	let pendingZoomAnchor: CanvasPoint | undefined;
@@ -59,7 +62,10 @@
 		activeLayoutRequest = request;
 		try {
 			const result = await current.createCanvasModel(measurements);
-			if (activeLayoutRequest === request) canvas = result;
+			if (activeLayoutRequest === request) {
+				canvas = result;
+				session.reconcile(createCanvasEntityIndex(result));
+			}
 		} catch (cause) {
 			if (activeLayoutRequest === request) {
 				error = cause instanceof Error ? cause.message : String(cause);
@@ -94,7 +100,17 @@
 	}
 
 	function handleKeyDown(event: KeyboardEvent) {
-		if (event.code !== 'Space' || event.repeat || isNativeControl(event.target)) return;
+		if (event.code === 'Escape') {
+			session.cancel();
+			return;
+		}
+		if (
+			event.code !== 'Space' ||
+			event.repeat ||
+			isNativeControl(event.target) ||
+			isCanvasEntity(event.target)
+		)
+			return;
 		spacePressed = true;
 		event.preventDefault();
 	}
@@ -120,6 +136,10 @@
 		);
 	}
 
+	function isCanvasEntity(target: EventTarget | null): boolean {
+		return target instanceof Element && !isCanvasBackground(target);
+	}
+
 	function startPanning(event: PointerEvent) {
 		if (!spacePressed || event.button !== 0 || !viewport || !isCanvasBackground(event.target))
 			return;
@@ -130,11 +150,14 @@
 			scroll: { left: viewport.scrollLeft, top: viewport.scrollTop },
 			pointerId: event.pointerId,
 		};
+		panMoved = false;
 		panning = true;
 	}
 
 	function continuePanning(event: PointerEvent) {
 		if (!viewport || panStart?.pointerId !== event.pointerId) return;
+		if (event.clientX !== panStart.pointer.x || event.clientY !== panStart.pointer.y)
+			panMoved = true;
 		const next = panScrollPosition({
 			startScroll: panStart.scroll,
 			startPointer: panStart.pointer,
@@ -148,8 +171,18 @@
 	}
 
 	function finishPanning() {
+		if (panning && panMoved) suppressBackgroundActivation = true;
 		panStart = undefined;
+		panMoved = false;
 		panning = false;
+	}
+
+	function handleBackgroundClick(event: MouseEvent) {
+		if (suppressBackgroundActivation) {
+			suppressBackgroundActivation = false;
+			return;
+		}
+		if (isCanvasBackground(event.target)) session.clearSelection();
 	}
 
 	$effect(() => {
@@ -197,6 +230,8 @@
 
 <CanvasMeasurementLayer model={measurementModel} bind:element={measurementLayer} />
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
 	class:cursor-grab={spacePressed && !panning}
 	class:cursor-grabbing={panning}
@@ -210,11 +245,12 @@
 	onpointermove={continuePanning}
 	onpointerup={finishPanning}
 	onpointercancel={finishPanning}
+	onclick={handleBackgroundClick}
 >
 	{#if error}
 		<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
 	{:else if canvas}
-		<RenderedCanvas {canvas} zoom={session.zoom} />
+		<RenderedCanvas {canvas} zoom={session.zoom} {session} />
 	{:else}
 		<p class="m-8 text-sm text-stone-500">Measuring document…</p>
 	{/if}

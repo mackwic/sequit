@@ -1,14 +1,10 @@
 {
 	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
 	"testRunner": "vitest",
-	"plugins": [
-		"@stryker-mutator/vitest-runner"
-	],
+	"plugins": ["@stryker-mutator/vitest-runner"],
 	"buildCommand": "pnpm exec svelte-kit sync",
 	"cleanTempDir": "always",
-	"ignorePatterns": [
-		".humanlayer"
-	],
+	"ignorePatterns": [".humanlayer"],
 	"timeoutMS": 20000,
 	"vitest": {
 		"configFile": "vitest.config.ts",
@@ -36,6 +32,7 @@
 		"src/lib/layout/layout-graph.ts",
 		"src/lib/layout/component-layout.ts",
 		"src/lib/layout/dedicated-layout-engine.ts",
+		"src/lib/canvas/canvas-entity.ts",
 		"src/lib/canvas/canvas-viewport.ts",
 		"src/lib/session/canvas-session.svelte.ts",
 		"src/lib/text/serialize-sequit-toml.ts"
@@ -45,11 +42,7 @@
 		"low": 80,
 		"break": 80
 	},
-	"reporters": [
-		"progress",
-		"html",
-		"json"
-	],
+	"reporters": ["progress", "html", "json"],
 	"htmlReporter": {
 		"fileName": "coverage/mutation/index.html"
 	},

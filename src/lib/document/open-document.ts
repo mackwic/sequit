@@ -52,7 +52,10 @@ class OpenedDocument {
 			currentProjection.ranks,
 			measurements,
 		);
-		return projectCanvasModel(currentProjection.measurementModel, layout);
+		return projectCanvasModel(currentProjection.measurementModel, layout, {
+			document: currentProjection.document,
+			ranks: currentProjection.ranks,
+		});
 	}
 
 	addNode(node: NewLogicNode): Promise<LogicDocument> {

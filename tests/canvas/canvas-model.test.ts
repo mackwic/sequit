@@ -65,7 +65,8 @@ describe('CanvasModel projection', () => {
 
 	it('combines one measurement projection with layout geometry without changing content', () => {
 		const measurement = createCanvasMeasurementModel(validLogicDocument());
-		const canvas = createCanvasModel(measurement, completeLayout());
+		const layout = completeLayout();
+		const canvas = createCanvasModel(measurement, layout);
 
 		expect(canvas).toMatchObject({ width: 800, height: 600 });
 		expect(canvas.nodes).toHaveLength(4);
@@ -75,6 +76,40 @@ describe('CanvasModel projection', () => {
 		expect(canvas.nodes.find(({ id }) => id === 'source-a')).toMatchObject({
 			markdown: 'Source A\n',
 			bounds: { x: 0, y: 0, width: 100, height: 50 },
+		});
+		expect(canvas.nodes[0]?.bounds).toBe(layout.elements[0]?.bounds);
+		expect(canvas.relations[0]?.points).toBe(layout.relations[0]?.points);
+	});
+
+	it('projects readonly navigation metadata from semantic order and accepted ranks', () => {
+		const document = validLogicDocument();
+		const measurement = createCanvasMeasurementModel(document);
+		const ranks = new Map(document.nodes.map(({ id }, rank) => [id, rank]));
+		const canvas = createCanvasModel(measurement, completeLayout(), {
+			document: {
+				...document,
+				groups: document.groups.map((group) =>
+					group.id === 'container' ? { ...group, groupId: 'endpoint-group' } : group,
+				),
+			},
+			ranks: { byEndpointId: ranks },
+		});
+
+		expect(canvas.nodes.find(({ id }) => id === 'source-a')?.navigation).toEqual({
+			groupId: 'container',
+			layoutOrder: 'a3',
+			rank: 0,
+		});
+		expect(canvas.nodes.find(({ id }) => id === 'target')?.navigation).toEqual({
+			layoutOrder: 'a5',
+			rank: 2,
+		});
+		expect(canvas.groups.find(({ id }) => id === 'container')?.navigation).toEqual({
+			groupId: 'endpoint-group',
+			layoutOrder: 'a0',
+		});
+		expect(canvas.groups.find(({ id }) => id === 'endpoint-group')?.navigation).toEqual({
+			layoutOrder: 'a1',
 		});
 	});
 

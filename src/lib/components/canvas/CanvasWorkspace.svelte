@@ -2,6 +2,7 @@
 	import { openDocument } from '$lib/document/open-document';
 	import { CanvasSession } from '$lib/session/canvas-session.svelte';
 
+	import CanvasInteractionStatus from './CanvasInteractionStatus.svelte';
 	import CanvasToolbar from './CanvasToolbar.svelte';
 	import CanvasViewportControls from './CanvasViewportControls.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
@@ -25,8 +26,9 @@
 <section class="relative min-h-0 flex-1 overflow-hidden" aria-label="Logic canvas">
 	{#if opened.ok && session}
 		<LogicCanvas document={opened.value} {session} />
-		<CanvasToolbar />
+		<CanvasToolbar {session} />
 		<CanvasViewportControls {session} />
+		<CanvasInteractionStatus {session} />
 	{:else if !opened.ok}
 		<div class="canvas-grid absolute inset-0 overflow-auto">
 			<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">

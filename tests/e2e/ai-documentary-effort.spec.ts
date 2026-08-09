@@ -205,7 +205,7 @@ test.describe('AI for documentary effort', () => {
 			}
 			function isRenderedCanvasModule(
 				value: unknown,
-			): value is { default: Component<{ canvas: CanvasModel }> } {
+			): value is { default: Component<{ canvas: CanvasModel; zoom: number; session: object }> } {
 				return (
 					typeof value === 'object' &&
 					value !== null &&
@@ -215,8 +215,11 @@ test.describe('AI for documentary effort', () => {
 			}
 			function isSvelteModule(value: unknown): value is {
 				mount: (
-					component: Component<{ canvas: CanvasModel }>,
-					options: { target: Element; props: { canvas: CanvasModel } },
+					component: Component<{ canvas: CanvasModel; zoom: number; session: object }>,
+					options: {
+						target: Element;
+						props: { canvas: CanvasModel; zoom: number; session: object };
+					},
 				) => unknown;
 			} {
 				return (
@@ -226,19 +229,31 @@ test.describe('AI for documentary effort', () => {
 					typeof value.mount === 'function'
 				);
 			}
+			function isCanvasSessionModule(value: unknown): value is { CanvasSession: new () => object } {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'CanvasSession' in value &&
+					typeof value.CanvasSession === 'function'
+				);
+			}
 			const importModule = (specifier: string): Promise<unknown> =>
 				import(/* @vite-ignore */ specifier);
 			const openDocumentModule = await importModule('/src/lib/document/open-document.ts');
 			const renderedCanvasModule = await importModule(
 				'/src/lib/components/canvas/RenderedCanvas.svelte',
 			);
+			const canvasSessionModule = await importModule('/src/lib/session/canvas-session.svelte.ts');
 			const svelteModule = await importModule('/@id/svelte');
 			if (!isOpenDocumentModule(openDocumentModule))
 				throw new Error('Invalid open document module');
 			if (!isRenderedCanvasModule(renderedCanvasModule)) throw new Error('Invalid canvas module');
+			if (!isCanvasSessionModule(canvasSessionModule))
+				throw new Error('Invalid canvas session module');
 			if (!isSvelteModule(svelteModule)) throw new Error('Invalid Svelte module');
 			const { openDocument } = openDocumentModule;
 			const { default: RenderedCanvas } = renderedCanvasModule;
+			const { CanvasSession } = canvasSessionModule;
 			const { mount } = svelteModule;
 			const result = openDocument(source);
 			if (!result.ok) throw new Error('Failed to open crossing-aware E2E fixture');
@@ -295,7 +310,10 @@ test.describe('AI for documentary effort', () => {
 				const host = document.createElement('div');
 				host.dataset['renderState'] = state;
 				fixture.appendChild(host);
-				mount(RenderedCanvas, { target: host, props: { canvas } });
+				mount(RenderedCanvas, {
+					target: host,
+					props: { canvas, zoom: 1, session: new CanvasSession() },
+				});
 			}
 			opened.destroy();
 		}, twoByTwoInversionDocument);
