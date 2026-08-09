@@ -2,26 +2,32 @@ import { DurableObject } from 'cloudflare:workers';
 import * as Y from 'yjs';
 
 import {
+	type AuthorizationResult,
+	authorizeProposal,
+} from '../../../src/lib/collaboration/authorize-proposal';
+import {
 	type CollabMessage,
 	CollabMessageKind,
 	decodeCollabMessage,
 	encodeCollabMessage,
+	type ProposalMessage,
+	type ProtocolDiagnostic,
 } from '../../../src/lib/collaboration/protocol';
 import {
-	chunkKeys,
-	concatChunks,
-	type DocumentMeta,
-	MAX_CHUNKS,
-	META_KEY,
+	GateDecisionKind,
+	postAuthorizationGate,
+	preAuthorizationGate,
+	type RoomSnapshot,
+} from '../../../src/lib/collaboration/room-decision';
+import {
 	type PersistencePlan,
+	planPersistence,
 } from '../../../src/lib/collaboration/room-persistence';
-
-interface RoomState {
-	readonly doc: Y.Doc;
-	readonly commit: number;
-	readonly chunkCount: number;
-	readonly acceptedProposals: ReadonlyMap<string, number>;
-}
+import { defaultUpdateGuards } from '../../../src/lib/collaboration/update-guards';
+import { readStructuralLogicDocument } from '../../../src/lib/collaboration/yjs-document-reader';
+import { YJS_LIVE_DOCUMENT_FORMAT } from '../../../src/lib/collaboration/yjs-document-schema';
+import type { LogicDocument } from '../../../src/lib/document/logic-document';
+import { persistRoomState, restoreRoomState, type RoomState } from './room-storage';
 
 function emptyRoomState(): RoomState {
 	return {
@@ -32,62 +38,15 @@ function emptyRoomState(): RoomState {
 	};
 }
 
-function isNonNegativeSafeInteger(value: unknown): value is number {
-	if (typeof value !== 'number') return false;
-	return Number.isSafeInteger(value) && value >= 0;
-}
-
-function isAcceptedProposals(value: unknown): value is Readonly<Record<string, number>> {
-	if (typeof value !== 'object') return false;
-	if (value === null || Array.isArray(value)) return false;
-	return Object.values(value).every(isNonNegativeSafeInteger);
-}
-
-function isDocumentMeta(value: unknown): value is DocumentMeta {
-	if (typeof value !== 'object') return false;
-	if (value === null || Array.isArray(value)) return false;
-	if (!('commit' in value)) return false;
-	if (!isNonNegativeSafeInteger(value.commit)) return false;
-	if (!('chunkCount' in value)) return false;
-	if (!isNonNegativeSafeInteger(value.chunkCount)) return false;
-	if (value.chunkCount > MAX_CHUNKS) return false;
-	if (!('acceptedProposals' in value)) return false;
-	return isAcceptedProposals(value.acceptedProposals);
-}
-
 function isPingPayload(payload: unknown): boolean {
 	if (typeof payload !== 'object') return false;
 	if (payload === null) return false;
 	return 'type' in payload && payload.type === 'ping';
 }
 
-function storedChunk(value: unknown): Uint8Array | undefined {
-	if (value instanceof Uint8Array) return value;
-	return undefined;
-}
-
 /* istanbul ignore next -- exhaustive switch guards are unreachable after type checking */
 function assertNever(value: never): never {
 	throw new TypeError(`Unexpected client message: ${String(value)}`);
-}
-
-export async function persistRoomState(
-	storage: DurableObjectStorage,
-	plan: PersistencePlan,
-): Promise<void> {
-	const entries: Record<string, DocumentMeta | Uint8Array> = { [META_KEY]: plan.meta };
-	const keys = chunkKeys(plan.chunks.length);
-	for (const [index, chunk] of plan.chunks.entries()) {
-		const key = keys[index];
-		/* istanbul ignore else -- persistence plans always pair every chunk with a key */
-		if (key !== undefined) entries[key] = chunk;
-	}
-	await storage.transaction(async (transaction) => {
-		await transaction.put(entries);
-		if (plan.staleChunkKeys.length > 0) {
-			await transaction.delete([...plan.staleChunkKeys]);
-		}
-	});
 }
 
 export class CollaborationRoom extends DurableObject<Env> {
@@ -102,26 +61,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 	}
 
 	private async restore(): Promise<RoomState> {
-		const storedMeta = await this.ctx.storage.get(META_KEY);
-		if (storedMeta === undefined) return this.roomState;
-		if (!isDocumentMeta(storedMeta)) throw new Error('Stored document metadata is invalid');
-
-		const keys = [...chunkKeys(storedMeta.chunkCount)];
-		const storedChunks = await this.ctx.storage.get(keys);
-		const fullUpdate = concatChunks(keys.map((key) => storedChunk(storedChunks.get(key))));
-		const doc = new Y.Doc();
-		try {
-			Y.applyUpdate(doc, fullUpdate);
-		} catch (error) {
-			doc.destroy();
-			throw new Error('Stored document update is invalid', { cause: error });
-		}
-		return {
-			doc,
-			commit: storedMeta.commit,
-			chunkCount: storedMeta.chunkCount,
-			acceptedProposals: new Map(Object.entries(storedMeta.acceptedProposals)),
-		};
+		return restoreRoomState(this.ctx.storage, this.roomState);
 	}
 
 	override fetch(request: Request): Response {
@@ -188,8 +128,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				});
 				return Promise.resolve();
 			case CollabMessageKind.Proposal:
-				this.sendProtocolError(socket, 'proposals-not-supported');
-				return Promise.resolve();
+				return this.handleProposal(socket, message);
 			case CollabMessageKind.SyncResponse:
 			case CollabMessageKind.Accepted:
 			case CollabMessageKind.Rejected:
@@ -202,12 +141,173 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
+	private roomSnapshot(): RoomSnapshot {
+		return {
+			roomId: this.ctx.id.name,
+			commit: this.roomState.commit,
+			acceptedProposals: this.roomState.acceptedProposals,
+		};
+	}
+
+	private acceptedDocument(): LogicDocument | undefined {
+		if (this.roomState.commit === 0) return undefined;
+		const result = readStructuralLogicDocument(this.roomState.doc, YJS_LIVE_DOCUMENT_FORMAT);
+		if (!result.ok) throw new Error('Authoritative document is invalid');
+		return result.value;
+	}
+
+	private handlePreAuthorizationDecision(socket: WebSocket, message: ProposalMessage): boolean {
+		const decision = preAuthorizationGate(this.roomSnapshot(), message);
+		switch (decision.kind) {
+			case GateDecisionKind.Proceed:
+				return false;
+			case GateDecisionKind.ReAcknowledge:
+				this.send(socket, {
+					type: CollabMessageKind.Accepted,
+					proposalId: message.proposalId,
+					commit: decision.commit,
+					update: new Uint8Array(),
+					stateVector: Y.encodeStateVector(this.roomState.doc),
+				});
+				return true;
+			case GateDecisionKind.Reject:
+				this.reject(socket, message.proposalId, decision.diagnostics);
+				return true;
+			/* istanbul ignore next -- exhaustive switch guard */
+			default:
+				return assertNever(decision);
+		}
+	}
+
+	private async authorize(message: ProposalMessage): Promise<AuthorizationResult | undefined> {
+		try {
+			return await authorizeProposal({
+				proposalId: message.proposalId,
+				authoritative: this.roomState.doc,
+				acceptedDocument: this.acceptedDocument(),
+				proposedUpdate: message.update,
+				guards: defaultUpdateGuards,
+			});
+		} catch {
+			return undefined;
+		}
+	}
+
+	private handlePostAuthorizationDecision(
+		socket: WebSocket,
+		message: ProposalMessage,
+		candidateDocument: LogicDocument,
+		fullUpdateByteLength: number,
+	): boolean {
+		const decision = postAuthorizationGate(
+			this.roomSnapshot(),
+			message,
+			candidateDocument,
+			fullUpdateByteLength,
+		);
+		switch (decision.kind) {
+			case GateDecisionKind.Proceed:
+				return false;
+			case GateDecisionKind.Reject:
+				this.reject(socket, message.proposalId, decision.diagnostics);
+				return true;
+			/* istanbul ignore next -- post-authorization gates never produce this decision */
+			case GateDecisionKind.ReAcknowledge:
+				throw new Error('Post-authorization gate cannot re-acknowledge a proposal');
+			/* istanbul ignore next -- exhaustive switch guard */
+			default:
+				return assertNever(decision);
+		}
+	}
+
+	private async handleProposal(socket: WebSocket, message: ProposalMessage): Promise<void> {
+		if (this.handlePreAuthorizationDecision(socket, message)) return;
+
+		const result = await this.authorize(message);
+		if (result === undefined) {
+			this.sendProtocolError(socket, 'Internal authorization failure');
+			return;
+		}
+		if (!result.ok) {
+			this.reject(socket, message.proposalId, result.diagnostics);
+			return;
+		}
+
+		const fullUpdate = Y.encodeStateAsUpdate(result.value.candidate);
+		const rejected = this.handlePostAuthorizationDecision(
+			socket,
+			message,
+			result.value.candidateDocument,
+			fullUpdate.byteLength,
+		);
+		if (rejected) {
+			result.value.candidate.destroy();
+			return;
+		}
+
+		await this.commitProposal(socket, message, result, fullUpdate);
+	}
+
+	private async commitProposal(
+		socket: WebSocket,
+		message: ProposalMessage,
+		result: Extract<AuthorizationResult, { readonly ok: true }>,
+		fullUpdate: Uint8Array,
+	): Promise<void> {
+		const commit = this.roomState.commit + 1;
+		const acceptedProposals = new Map(this.roomState.acceptedProposals);
+		acceptedProposals.set(message.proposalId, commit);
+		const plan = planPersistence({
+			fullUpdate,
+			commit,
+			currentChunkCount: this.roomState.chunkCount,
+			acceptedProposals,
+		});
+		try {
+			await this.persist(plan);
+		} catch {
+			result.value.candidate.destroy();
+			this.sendProtocolError(socket, 'Internal persistence failure');
+			return;
+		}
+
+		const previous = this.roomState;
+		const delta = Y.encodeStateAsUpdate(result.value.candidate, Y.encodeStateVector(previous.doc));
+		this.roomState = {
+			doc: result.value.candidate,
+			commit,
+			chunkCount: plan.chunks.length,
+			acceptedProposals: plan.acceptedProposals,
+		};
+		previous.doc.destroy();
+		const frame = encodeCollabMessage({
+			type: CollabMessageKind.Accepted,
+			proposalId: message.proposalId,
+			commit,
+			update: delta,
+			stateVector: Y.encodeStateVector(this.roomState.doc),
+		});
+		for (const peer of this.ctx.getWebSockets()) peer.send(frame);
+	}
+
+	private persist(plan: PersistencePlan): Promise<void> {
+		return persistRoomState(this.ctx.storage, plan);
+	}
+
 	private send(socket: WebSocket, message: CollabMessage): void {
 		socket.send(encodeCollabMessage(message));
 	}
 
 	private sendProtocolError(socket: WebSocket, message: string): void {
 		this.send(socket, { type: CollabMessageKind.ProtocolError, message });
+	}
+
+	private reject(
+		socket: WebSocket,
+		proposalId: string,
+		diagnostics: readonly ProtocolDiagnostic[],
+	): void {
+		this.send(socket, { type: CollabMessageKind.Rejected, proposalId, diagnostics });
 	}
 
 	override webSocketClose(socket: WebSocket, code: number, reason: string): void {

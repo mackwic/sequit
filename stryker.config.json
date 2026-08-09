@@ -14,6 +14,7 @@
 		"src/lib/document/validate-logic-document.ts",
 		"src/lib/collaboration/authorize-proposal.ts",
 		"src/lib/collaboration/protocol.ts",
+		"src/lib/collaboration/room-decision.ts",
 		"src/lib/collaboration/room-persistence.ts",
 		"src/lib/collaboration/update-guards.ts",
 		"src/lib/collaboration/yjs-document-reader.ts",

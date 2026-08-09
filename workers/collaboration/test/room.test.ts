@@ -19,8 +19,8 @@ import {
 	splitChunks,
 } from '../../../src/lib/collaboration/room-persistence';
 import { collaborativeDocument, encodeFullUpdate } from '../../../tests/builders/collaboration';
-import { persistRoomState } from '../src/collaboration-room';
 import worker from '../src/index';
+import { persistRoomState } from '../src/room-storage';
 
 function nextMessage(socket: WebSocket): Promise<MessageEvent> {
 	const { promise, resolve } = Promise.withResolvers<MessageEvent>();
@@ -184,18 +184,19 @@ it('undecodable binary answers a binary protocol error', async () => {
 	socket.close(1000, 'Test complete');
 });
 
-it('a valid proposal answers proposals-not-supported', async () => {
-	const socket = await connect('proposal-not-supported');
+it('a change before initialization is rejected', async () => {
+	const socket = await connect('change-before-init');
 	send(socket, {
 		type: CollabMessageKind.Proposal,
 		proposalId: 'proposal-1',
-		intent: ProposalIntent.Initialize,
+		intent: ProposalIntent.Change,
 		update: new Uint8Array(),
 	});
 
-	expect(await nextFrame(socket)).toEqual({
-		type: CollabMessageKind.ProtocolError,
-		message: 'proposals-not-supported',
+	expect(await nextFrame(socket)).toMatchObject({
+		type: CollabMessageKind.Rejected,
+		proposalId: 'proposal-1',
+		diagnostics: [{ code: 'room-not-initialized' }],
 	});
 	socket.close(1000, 'Test complete');
 });
