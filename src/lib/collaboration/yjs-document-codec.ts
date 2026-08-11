@@ -7,11 +7,7 @@ import {
 	YjsLiveDocumentDiagnosticCode,
 	type YjsLiveDocumentResult,
 } from './yjs-document-reader';
-import {
-	createYjsEntityMap,
-	YJS_LIVE_DOCUMENT_FORMAT,
-	YjsCollection,
-} from './yjs-document-schema';
+import { createYjsEntityMap, YJS_LIVE_DOCUMENT_FORMAT, YjsCollection } from './yjs-document-schema';
 
 export { YJS_LIVE_DOCUMENT_FORMAT };
 

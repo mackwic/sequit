@@ -6,6 +6,7 @@ import {
 	CollabMessageKind,
 	decodeCollabMessage,
 	encodeCollabMessage,
+	MAX_PROPOSAL_ID_BYTES,
 	ProposalIntent,
 } from '../../src/lib/collaboration/protocol';
 
@@ -16,6 +17,9 @@ const diagnosticArbitrary = fc.record({
 	message: fc.string(),
 	path: fc.array(fc.string(), { maxLength: 8 }),
 });
+const proposalIdArbitrary = fc
+	.string({ minLength: 1, maxLength: MAX_PROPOSAL_ID_BYTES })
+	.filter((value) => new TextEncoder().encode(value).byteLength <= MAX_PROPOSAL_ID_BYTES);
 
 const messageArbitrary: fc.Arbitrary<CollabMessage> = fc.oneof(
 	fc.record({
@@ -31,14 +35,14 @@ const messageArbitrary: fc.Arbitrary<CollabMessage> = fc.oneof(
 	}),
 	fc.record({
 		type: fc.constant(CollabMessageKind.Proposal),
-		proposalId: fc.string(),
+		proposalId: proposalIdArbitrary,
 		intent: fc.constantFrom(ProposalIntent.Initialize, ProposalIntent.Change),
 		update: bytesArbitrary,
 	}),
 	fc
 		.record({
 			type: fc.constant(CollabMessageKind.Accepted),
-			proposalId: fc.option(fc.string({ minLength: 1 }), { nil: undefined }),
+			proposalId: fc.option(proposalIdArbitrary, { nil: undefined }),
 			commit: commitArbitrary,
 			update: bytesArbitrary,
 			stateVector: bytesArbitrary,
@@ -49,7 +53,7 @@ const messageArbitrary: fc.Arbitrary<CollabMessage> = fc.oneof(
 		}),
 	fc.record({
 		type: fc.constant(CollabMessageKind.Rejected),
-		proposalId: fc.string(),
+		proposalId: proposalIdArbitrary,
 		diagnostics: fc.array(diagnosticArbitrary, { maxLength: 8 }),
 	}),
 	fc.record({

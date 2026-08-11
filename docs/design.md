@@ -185,15 +185,15 @@ Le format textuel reste la représentation canonique portable. Le document compl
 
 ### Protocole d'autorisation
 
-Le protocole binaire de collaboration, actuellement en version `1`, distingue explicitement les demandes et réponses de synchronisation, les propositions d'initialisation ou de changement, les acceptations, les refus et les erreurs de protocole. Les mises à jour et vecteurs d'état Yjs restent binaires. Chaque proposition porte un identifiant stable qui corrèle sa décision et rend sa retransmission idempotente.
+Le protocole binaire de collaboration, actuellement en version `1`, distingue explicitement les demandes et réponses de synchronisation, les propositions d'initialisation ou de changement, les acceptations, les refus et les erreurs de protocole. Les mises à jour et vecteurs d'état Yjs restent binaires. Chaque proposition porte un identifiant stable, non vide et limité à 128 octets, qui corrèle sa décision et rend sa retransmission idempotente. Une frame est limitée à 1 Mio avant décodage.
 
 Le Durable Object est l'autorité d'une room. Il évalue chaque proposition dans un `Y.Doc` candidat jetable, sans modifier l'état accepté, selon trois étapes ordonnées :
 
 1. lecture et validation structurelle du document Yjs, puis validation du domaine ;
-2. construction du graphe, résolution des relations et rejet des cycles ;
+2. construction du graphe, résolution des relations, rejet des cycles et des expansions dépassant 100 000 appartenances de groupes ou dépendances effectives ;
 3. exécution ordonnée des gardes de transition sur des projections immuables.
 
-Un refus ne modifie ni l'état autoritaire, ni son numéro de commit, et n'est envoyé qu'au proposant. Une acceptation est persistée avant d'être diffusée à tous les participants, proposant compris. Les commits sont strictement croissants dans une room. Les 128 identifiants de propositions acceptées les plus récents sont conservés afin qu'une retransmission soit acquittée avec son commit d'origine sans être appliquée une seconde fois.
+Un refus ne modifie ni l'état autoritaire, ni son numéro de commit, et n'est envoyé qu'au proposant. Une acceptation est persistée avant d'être diffusée à tous les participants, proposant compris. Les commits sont strictement croissants dans une room. Les 128 identifiants de propositions acceptées les plus récents sont conservés afin qu'une retransmission soit acquittée avec son commit d'origine sans être appliquée une seconde fois. Après éviction de cet historique borné, la retransmission exacte d'une mise à jour Yjs déjà intégrée est acquittée au commit courant sans créer, persister ni diffuser un nouveau commit.
 
 ### État navigateur et convergence
 
@@ -216,7 +216,7 @@ stateDiagram-v2
     Disconnected --> IncrementalResync : reconnexion
 ```
 
-Une synchronisation initiale utilise le vecteur d'un document vide : l'import local ne peut donc jamais se mélanger à une room déjà initialisée. Un trou de commits déclenche une synchronisation incrémentale depuis le vecteur accepté. Une divergence de vecteur, une course d'initialisation perdue ou une erreur binaire de protocole déclenche une reconstruction complète dans un nouveau `Y.Doc`, car une mise à jour Yjs ne peut pas retirer un historique local étranger.
+Une synchronisation initiale utilise le vecteur d'un document vide : l'import local ne peut donc jamais se mélanger à une room déjà initialisée. Un trou de commits déclenche une synchronisation incrémentale depuis le vecteur accepté. Chaque réponse ou commit est d'abord appliqué et validé dans un document jetable ; l'état accepté n'est remplacé qu'après égalité du vecteur d'état et projection valide. Une divergence de vecteur, une course d'initialisation perdue ou une erreur binaire de protocole déclenche une reconstruction complète dans un nouveau `Y.Doc`, car une mise à jour Yjs ne peut pas retirer un historique local étranger.
 
 ### Persistance et canaux d'erreur
 

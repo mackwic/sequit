@@ -9,6 +9,7 @@ import {
 	ProposalIntent,
 } from '../../src/lib/collaboration/protocol';
 import { RoomDecisionDiagnosticCode } from '../../src/lib/collaboration/room-decision';
+import { YjsCollection } from '../../src/lib/collaboration/yjs-document-schema';
 import {
 	CollaborationStatus,
 	CommitApplication,
@@ -29,7 +30,7 @@ import {
 	initializationWasLost,
 } from '../../src/lib/document/collaborative-session-model';
 import { PendingOperationKind } from '../../src/lib/document/pending-operations';
-import { collaborativeDocument, encodeFullUpdate } from '../builders/collaboration';
+import { collaborativeDocument, encodeFullUpdate, proposeChange } from '../builders/collaboration';
 import { CollaborationAuthority } from '../harnesses/collaboration-authority';
 import { createMemoryTransportPair } from '../harnesses/memory-transport';
 
@@ -58,6 +59,19 @@ async function initializeAuthority(authority: CollaborationAuthority): Promise<v
 	});
 	await client.nextFrame();
 	client.close();
+}
+
+function emptyRoomSyncPayload(): {
+	readonly update: Uint8Array;
+	readonly stateVector: Uint8Array;
+} {
+	const empty = new Y.Doc();
+	const payload = {
+		update: Y.encodeStateAsUpdate(empty),
+		stateVector: Y.encodeStateVector(empty),
+	};
+	empty.destroy();
+	return payload;
 }
 
 describe('collaborative document session commit planning', () => {
@@ -173,6 +187,40 @@ describe('collaborative document session', () => {
 		session.destroy();
 	});
 
+	it('retries a malformed empty-room response before initialization', () => {
+		const pair = createMemoryTransportPair();
+		const sent: Uint8Array[] = [];
+		pair.server.subscribeToFrames((frame) => sent.push(frame));
+		const session = createCollaborativeDocumentSession(
+			collaborativeDocument('empty-room-repair'),
+			pair.client,
+		);
+		pair.server.send(
+			encodeCollabMessage({
+				type: CollabMessageKind.SyncResponse,
+				commit: 0,
+				update: new Uint8Array([255]),
+				stateVector: new Uint8Array([0]),
+			}),
+		);
+		expect(decodeCollabMessage(sent.at(-1) ?? new Uint8Array())).toMatchObject({
+			ok: true,
+			value: { type: CollabMessageKind.SyncRequest },
+		});
+		pair.server.send(
+			encodeCollabMessage({
+				type: CollabMessageKind.SyncResponse,
+				commit: 0,
+				...emptyRoomSyncPayload(),
+			}),
+		);
+		expect(decodeCollabMessage(sent.at(-1) ?? new Uint8Array())).toMatchObject({
+			ok: true,
+			value: { type: CollabMessageKind.Proposal, intent: ProposalIntent.Initialize },
+		});
+		session.destroy();
+	});
+
 	it('joining an initialized room discards the local import', async () => {
 		const authority = new CollaborationAuthority('join');
 		await initializeAuthority(authority);
@@ -200,8 +248,10 @@ describe('collaborative document session', () => {
 		second.destroy();
 	});
 
-	it('a state-vector mismatch recovers through a full resync', async () => {
+	it('a malformed accepted update recovers before settling the proposal', async () => {
 		const { authority, session, transport } = await readySession('vector-repair');
+		const decisions = vi.fn();
+		session.subscribeToDecisions(decisions);
 		transport.setAutoDeliver(false);
 		session.replaceNodeMarkdown('source-a', 'Pending repair');
 		await authority.settle();
@@ -211,11 +261,11 @@ describe('collaborative document session', () => {
 		if (!decoded.ok || decoded.value.type !== CollabMessageKind.Accepted)
 			throw new Error('Expected acceptance');
 		transport.setAutoDeliver(true);
-		transport.injectFrame(
-			encodeCollabMessage({ ...decoded.value, stateVector: new Uint8Array([0]) }),
-		);
+		transport.injectFrame(encodeCollabMessage({ ...decoded.value, update: new Uint8Array([255]) }));
 		await authority.settle();
 		expect(session.connectionStatus()).toBe(CollaborationStatus.Ready);
+		expect(decisions).toHaveBeenCalledTimes(1);
+		expect(markdown(session, 'source-a')).toBe('Pending repair');
 		session.destroy();
 	});
 
@@ -323,9 +373,62 @@ describe('collaborative document session', () => {
 		session.destroy();
 	});
 
-	it('a stale operation is dropped with a decision', async () => {
-		const { session } = await readySession('stale');
-		expect(session.replaceNodeMarkdown('missing', 'No target')).toBe(false);
+	it('drops an in-flight operation when a remote commit removes its target', async () => {
+		const { authority, session, transport } = await readySession('stale');
+		const decisions: ProposalDecision[] = [];
+		session.subscribeToDecisions((decision) => decisions.push(decision));
+		transport.setAutoDeliver(false);
+		expect(session.replaceNodeMarkdown('source-b', 'First operation')).toBe(true);
+		expect(session.replaceNodeMarkdown('source-a', 'Stale operation')).toBe(true);
+		await authority.settle();
+
+		const remote = authority.scenarioClient();
+		const remoteDocument = new Y.Doc();
+		remote.send({
+			type: CollabMessageKind.SyncRequest,
+			lastCommit: 0,
+			stateVector: Y.encodeStateVector(remoteDocument),
+		});
+		const sync = await remote.nextFrame();
+		if (sync.type !== CollabMessageKind.SyncResponse) throw new TypeError('Expected sync response');
+		Y.applyUpdate(remoteDocument, sync.update);
+		const removal = proposeChange(remoteDocument, (candidate) => {
+			candidate.getMap(YjsCollection.Nodes).delete('source-a');
+			const relations = candidate.getMap<Y.Map<unknown>>(YjsCollection.Relations);
+			for (const [id, relation] of relations) {
+				if (!(relation instanceof Y.Map)) continue;
+				if (relation.get('from') === 'source-a' || relation.get('to') === 'source-a') {
+					relations.delete(id);
+				}
+			}
+		});
+		remote.send({
+			type: CollabMessageKind.Proposal,
+			proposalId: 'remove-source-a',
+			intent: ProposalIntent.Change,
+			update: removal,
+		});
+		expect(await remote.nextFrame()).toMatchObject({ type: CollabMessageKind.Accepted, commit: 3 });
+
+		transport.deliverAll();
+		await authority.settle();
+		transport.deliverAll();
+		expect(decisions).toContainEqual(
+			expect.objectContaining({
+				type: ProposalDecisionKind.OperationDropped,
+				reason: 'stale-target',
+				diagnostics: [
+					{
+						code: 'stale-operation-target',
+						message: 'Node no longer exists: source-a',
+						path: ['nodes', 'source-a'],
+					},
+				],
+			}),
+		);
+		expect(session.read().nodes.some(({ id }) => id === 'source-a')).toBe(false);
+		remoteDocument.destroy();
+		remote.close();
 		session.destroy();
 	});
 
@@ -440,8 +543,7 @@ describe('collaborative document session', () => {
 			encodeCollabMessage({
 				type: CollabMessageKind.SyncResponse,
 				commit: 0,
-				update: new Uint8Array(),
-				stateVector: new Uint8Array([0]),
+				...emptyRoomSyncPayload(),
 			}),
 		);
 		const proposalFrame = sent.at(-1);
@@ -470,7 +572,54 @@ describe('collaborative document session', () => {
 				stateVector: new Uint8Array([0]),
 			}),
 		);
-		expect(session.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+		const validUpdate = encodeFullUpdate(collaborativeDocument('initialization-repair'));
+		const valid = new Y.Doc();
+		Y.applyUpdate(valid, validUpdate);
+		pair.server.send(
+			encodeCollabMessage({
+				type: CollabMessageKind.SyncResponse,
+				commit: 1,
+				update: validUpdate,
+				stateVector: Y.encodeStateVector(valid),
+			}),
+		);
+		valid.destroy();
+		expect(session.connectionStatus()).toBe(CollaborationStatus.Ready);
+		session.destroy();
+	});
+
+	it('disconnects after a matching non-race initialization rejection', () => {
+		const pair = createMemoryTransportPair();
+		const sent: Uint8Array[] = [];
+		pair.server.subscribeToFrames((frame) => sent.push(frame));
+		const session = createCollaborativeDocumentSession(
+			collaborativeDocument('init-reject'),
+			pair.client,
+		);
+		const decisions = vi.fn();
+		session.subscribeToDecisions(decisions);
+		pair.server.send(
+			encodeCollabMessage({
+				type: CollabMessageKind.SyncResponse,
+				commit: 0,
+				...emptyRoomSyncPayload(),
+			}),
+		);
+		const proposal = decodeCollabMessage(sent.at(-1) ?? new Uint8Array());
+		if (!proposal.ok || proposal.value.type !== CollabMessageKind.Proposal)
+			throw new Error('Expected proposal');
+		pair.server.send(
+			encodeCollabMessage({
+				type: CollabMessageKind.Rejected,
+				proposalId: proposal.value.proposalId,
+				diagnostics: [{ code: 'invalid-document', message: 'Invalid', path: [] }],
+			}),
+		);
+		expect(decisions).toHaveBeenCalledWith(
+			expect.objectContaining({ type: ProposalDecisionKind.Rejected }),
+		);
+		expect(session.connectionStatus()).toBe(CollaborationStatus.Disconnected);
+		expect(session.read().id).toBe('init-reject');
 		session.destroy();
 	});
 
@@ -489,6 +638,9 @@ describe('collaborative document session', () => {
 			encodeCollabMessage({ ...decoded.value, stateVector: new Uint8Array([9]) }),
 		);
 		expect(session.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+		await authority.settle();
+		transport.deliverAll();
+		expect(session.connectionStatus()).toBe(CollaborationStatus.Ready);
 		session.destroy();
 	});
 

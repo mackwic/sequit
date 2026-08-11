@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { MAX_PROPOSAL_ID_BYTES } from '../../src/lib/collaboration/protocol';
 import {
 	CHUNK_BYTES,
 	CHUNK_KEY_PREFIX,
@@ -38,6 +39,7 @@ describe('room persistence planning', () => {
 		]);
 		expect(() => chunkKeys(-1)).toThrow(RangeError);
 		expect(() => chunkKeys(MAX_CHUNKS + 1)).toThrow(RangeError);
+		expect(() => chunkKeys(Number.NaN)).toThrow(RangeError);
 	});
 
 	it('planning leaves its inputs untouched', () => {
@@ -101,5 +103,36 @@ describe('room persistence planning', () => {
 		});
 
 		expect(plan.staleChunkKeys).toEqual([`${CHUNK_KEY_PREFIX}1`, `${CHUNK_KEY_PREFIX}2`]);
+	});
+
+	it('rejects invalid commits and idempotency metadata before persistence', () => {
+		const input = {
+			fullUpdate: new Uint8Array(),
+			commit: 2,
+			currentChunkCount: 0,
+			acceptedProposals: new Map([['valid', 1]]),
+		};
+		const invalidInputs = [
+			{ ...input, commit: 0 },
+			{ ...input, commit: Number.MAX_SAFE_INTEGER + 1 },
+			{ ...input, acceptedProposals: new Map([['', 1]]) },
+			{
+				...input,
+				acceptedProposals: new Map([['x'.repeat(MAX_PROPOSAL_ID_BYTES + 1), 1]]),
+			},
+			{ ...input, acceptedProposals: new Map([['invalid-commit', 0]]) },
+			{ ...input, acceptedProposals: new Map([['unsafe-commit', Number.NaN]]) },
+			{ ...input, acceptedProposals: new Map([['future-commit', 3]]) },
+		];
+		for (const invalid of invalidInputs) expect(() => planPersistence(invalid)).toThrow(RangeError);
+
+		const tied = planPersistence({
+			...input,
+			acceptedProposals: new Map([
+				['z-proposal', 1],
+				['a-proposal', 1],
+			]),
+		});
+		expect([...tied.acceptedProposals.keys()]).toEqual(['a-proposal', 'z-proposal']);
 	});
 });

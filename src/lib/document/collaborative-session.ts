@@ -4,13 +4,10 @@ import {
 	type CollaborationTransport,
 	TransportStatus,
 } from '../collaboration/collaboration-transport';
-import {
-	type AcceptedMessage,
-	CollabMessageKind,
-	encodeCollabMessage,
-	ProposalIntent,
-	type RejectedMessage,
-	type SyncResponseMessage,
+import type {
+	AcceptedMessage,
+	RejectedMessage,
+	SyncResponseMessage,
 } from '../collaboration/protocol';
 import { replaceNodeMarkdown as applyMarkdown } from '../collaboration/yjs-document-repository';
 import {
@@ -20,6 +17,7 @@ import {
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
 import {
+	applyAuthoritativeUpdate,
 	cloneCollaborativeYDoc,
 	createCollaborativeYDoc,
 	readCollaborativeYDoc,
@@ -37,6 +35,8 @@ import {
 	type SessionPhase,
 	SessionPhaseKind,
 } from './collaborative-session-model';
+import { prepareProposal } from './collaborative-session-proposal';
+import { resolveSyncResponse, SyncResolutionKind } from './collaborative-session-sync';
 import type { DocumentSessionSubscriber } from './document-session';
 import { DocumentSessionError } from './document-session';
 import type { LogicDocument } from './logic-document';
@@ -76,27 +76,23 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#assertActive();
 		return readCollaborativeYDoc(this.#overlay);
 	}
-
 	subscribe(listener: DocumentSessionSubscriber): () => void {
 		this.#assertActive();
 		this.#subscribers.add(listener);
 		return () => this.#subscribers.delete(listener);
 	}
-
 	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void {
 		this.#assertActive();
 		this.#decisionListeners.add(listener);
 		return () => this.#decisionListeners.delete(listener);
 	}
-
 	connectionStatus(): CollaborationStatus {
-		if (this.#phase.kind === SessionPhaseKind.Disconnected) return CollaborationStatus.Disconnected;
-		if (this.#phase.kind === SessionPhaseKind.Ready) return CollaborationStatus.Ready;
 		if (this.transport.status() === TransportStatus.Connecting)
 			return CollaborationStatus.Connecting;
+		if (this.#phase.kind === SessionPhaseKind.Disconnected) return CollaborationStatus.Disconnected;
+		if (this.#phase.kind === SessionPhaseKind.Ready) return CollaborationStatus.Ready;
 		return CollaborationStatus.Synchronizing;
 	}
-
 	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
 		if (this.#destroyed) return false;
 		const validation = cloneCollaborativeYDoc(this.#overlay);
@@ -112,7 +108,6 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#tryPropose();
 		return true;
 	}
-
 	destroy(): void {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
@@ -125,7 +120,6 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#decisionListeners.clear();
 		this.#pending = [];
 	}
-
 	readonly #receiveStatus = (status: TransportStatus): void => {
 		/* istanbul ignore next -- destroy removes the transport status listener */
 		if (this.#destroyed) return;
@@ -136,7 +130,6 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		}
 		if (status === TransportStatus.Disconnected) this.#disconnect();
 	};
-
 	readonly #receiveFrame = (frame: Uint8Array): void => {
 		/* istanbul ignore next -- destroy removes the transport frame listener */
 		if (this.#destroyed) return;
@@ -158,18 +151,15 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 			},
 		});
 	};
-
 	#startFirstSync(): void {
 		this.#phase = { kind: SessionPhaseKind.FirstSync };
 		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, true));
 	}
-
 	#startIncrementalResync(): void {
 		this.#restoreInFlight();
 		this.#phase = { kind: SessionPhaseKind.IncrementalResync };
 		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, false));
 	}
-
 	#startFullResync(): void {
 		if (this.transport.status() !== TransportStatus.Connected) {
 			this.#disconnect();
@@ -179,87 +169,72 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#phase = { kind: SessionPhaseKind.FullResync };
 		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, true));
 	}
-
 	#disconnect(): void {
 		this.#restoreInFlight();
 		this.#phase = { kind: SessionPhaseKind.Disconnected };
 	}
-
 	#restoreInFlight(): void {
 		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
 		if (this.#phase.inFlight === undefined) return;
 		this.#pending = [this.#phase.inFlight.operation, ...this.#pending];
 	}
-
 	#handleSyncResponse(message: SyncResponseMessage): void {
-		if (this.#phase.kind === SessionPhaseKind.FirstSync && message.commit === 0) {
+		const resolution = resolveSyncResponse(this.#phase, this.#accepted, this.#lastCommit, message);
+		if (resolution.kind === SyncResolutionKind.Ignore) return;
+		if (resolution.kind === SyncResolutionKind.Initialize) {
 			this.#initializeRoom();
 			return;
 		}
-		if (this.#phase.kind === SessionPhaseKind.IncrementalResync) {
-			Y.applyUpdate(this.#accepted, message.update);
-			if (!stateVectorsEqual(Y.encodeStateVector(this.#accepted), message.stateVector)) {
-				this.#startFullResync();
-				return;
-			}
-			this.#lastCommit = message.commit;
-			this.#becomeReady();
+		if (resolution.kind === SyncResolutionKind.Repair) {
+			this.#startFullResync();
 			return;
 		}
-		if (
-			this.#phase.kind !== SessionPhaseKind.FirstSync &&
-			this.#phase.kind !== SessionPhaseKind.FullResync
-		)
-			return;
-		const fresh = new Y.Doc();
-		try {
-			Y.applyUpdate(fresh, message.update);
-			if (!stateVectorsEqual(Y.encodeStateVector(fresh), message.stateVector)) return;
-		} catch {
-			fresh.destroy();
-			return;
-		}
-		this.#accepted.destroy();
-		this.#accepted = fresh;
-		this.#lastCommit = message.commit;
+		this.#replaceAccepted(resolution.document);
+		this.#lastCommit = resolution.commit;
 		this.#becomeReady();
 	}
-
 	#initializeRoom(): void {
 		const proposalId = crypto.randomUUID();
 		this.#phase = { kind: SessionPhaseKind.Initializing, proposalId };
 		this.transport.send(encodeInitializationProposal(this.#accepted, proposalId));
 	}
-
 	#handleAccepted(message: AcceptedMessage): void {
 		if (this.#phase.kind === SessionPhaseKind.Initializing) {
 			if (message.proposalId !== this.#phase.proposalId) {
 				this.#startFullResync();
 				return;
 			}
-			this.#emitDecision(acceptedDecision(message.proposalId, message.commit));
 		}
-		let settled = false;
-		if (this.#phase.kind === SessionPhaseKind.Ready) settled = this.#settleInFlight(message);
 		const application = planCommitApplication(this.#lastCommit, message.commit);
 		if (application === CommitApplication.IncrementalResync) {
 			this.#startIncrementalResync();
 			return;
 		}
 		if (application === CommitApplication.Apply) {
-			Y.applyUpdate(this.#accepted, message.update);
-			this.#lastCommit = message.commit;
-			if (!stateVectorsEqual(Y.encodeStateVector(this.#accepted), message.stateVector)) {
+			const candidate = applyAuthoritativeUpdate(cloneCollaborativeYDoc(this.#accepted), message);
+			if (candidate === undefined) {
 				this.#startFullResync();
 				return;
 			}
+			this.#replaceAccepted(candidate);
+			this.#lastCommit = message.commit;
 		}
-		if (this.#phase.kind === SessionPhaseKind.Initializing)
+		const ignoredVectorMismatch =
+			application === CommitApplication.Ignore &&
+			!stateVectorsEqual(Y.encodeStateVector(this.#accepted), message.stateVector);
+		if (ignoredVectorMismatch) {
+			this.#startFullResync();
+			return;
+		}
+		let settled = false;
+		if (this.#phase.kind === SessionPhaseKind.Ready) settled = this.#settleInFlight(message);
+		if (this.#phase.kind === SessionPhaseKind.Initializing) {
+			this.#emitDecision(acceptedDecision(message.proposalId, message.commit));
 			this.#phase = { kind: SessionPhaseKind.Ready };
+		}
 		if (settled || application === CommitApplication.Apply) this.#rebuildOverlay();
 		this.#tryPropose();
 	}
-
 	#settleInFlight(message: AcceptedMessage): boolean {
 		/* istanbul ignore next -- callers invoke this only from the Ready branch */
 		if (this.#phase.kind !== SessionPhaseKind.Ready) return false;
@@ -268,13 +243,25 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#emitDecision(acceptedDecision(message.proposalId, message.commit));
 		return true;
 	}
-
 	#handleRejected(message: RejectedMessage): void {
 		const lostInitialization =
 			this.#phase.kind === SessionPhaseKind.Initializing &&
 			initializationWasLost(message.diagnostics);
 		if (lostInitialization) {
 			this.#startFullResync();
+			return;
+		}
+		const matchingInitialization =
+			this.#phase.kind === SessionPhaseKind.Initializing &&
+			message.proposalId === this.#phase.proposalId;
+		if (matchingInitialization) {
+			this.#emitDecision({
+				type: ProposalDecisionKind.Rejected,
+				proposalId: message.proposalId,
+				diagnostics: message.diagnostics,
+			});
+			this.#phase = { kind: SessionPhaseKind.Disconnected };
+			this.transport.close();
 			return;
 		}
 		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
@@ -288,13 +275,16 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#rebuildOverlay();
 		this.#tryPropose();
 	}
-
 	#becomeReady(): void {
 		this.#phase = { kind: SessionPhaseKind.Ready };
 		this.#rebuildOverlay();
 		this.#tryPropose();
 	}
-
+	#replaceAccepted(document: Y.Doc): void {
+		const previous = this.#accepted;
+		this.#accepted = document;
+		previous.destroy();
+	}
 	#tryPropose(): void {
 		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
 		if (this.#phase.inFlight !== undefined) return;
@@ -302,24 +292,14 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		if (this.transport.status() !== TransportStatus.Connected) return;
 		const operation = this.#pending[0];
 		if (operation === undefined) return;
-		const proposalId = operation.proposalId ?? crypto.randomUUID();
-		const assigned = { ...operation, proposalId };
-		const candidate = cloneCollaborativeYDoc(this.#accepted);
-		applyMarkdown(candidate, assigned.nodeId, assigned.markdown);
-		const update = Y.encodeStateAsUpdate(candidate, Y.encodeStateVector(this.#accepted));
-		candidate.destroy();
-		this.transport.send(
-			encodeCollabMessage({
-				type: CollabMessageKind.Proposal,
-				proposalId,
-				intent: ProposalIntent.Change,
-				update,
-			}),
-		);
+		const proposal = prepareProposal(this.#accepted, operation);
+		this.transport.send(proposal.frame);
 		this.#pending = this.#pending.slice(1);
-		this.#phase = { kind: SessionPhaseKind.Ready, inFlight: { operation: assigned, proposalId } };
+		this.#phase = {
+			kind: SessionPhaseKind.Ready,
+			inFlight: { operation: proposal.operation, proposalId: proposal.proposalId },
+		};
 	}
-
 	#rebuildOverlay(): void {
 		const previous = this.#overlay;
 		const next = cloneCollaborativeYDoc(this.#accepted);
@@ -342,11 +322,9 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		const overlayDocument = readCollaborativeYDoc(this.#overlay);
 		for (const listener of [...this.#subscribers]) listener(overlayDocument);
 	}
-
 	#emitDecision(decision: ProposalDecision): void {
 		for (const listener of [...this.#decisionListeners]) listener(decision);
 	}
-
 	#assertActive(): void {
 		if (this.#destroyed) throw new DocumentSessionError('Document session has been destroyed');
 	}

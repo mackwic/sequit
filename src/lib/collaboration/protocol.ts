@@ -2,6 +2,8 @@ import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
 
 export const COLLAB_PROTOCOL_VERSION = 1 as const;
+export const MAX_PROPOSAL_ID_BYTES = 128;
+export const MAX_COLLAB_FRAME_BYTES = 1024 * 1024;
 
 export enum CollabMessageKind {
 	SyncRequest = 'sync-request',
@@ -103,6 +105,12 @@ function assertNever(value: never): never {
 }
 
 export function encodeCollabMessage(message: CollabMessage): Uint8Array {
+	if (message.type === CollabMessageKind.Proposal || message.type === CollabMessageKind.Rejected) {
+		assertProposalId(message.proposalId);
+	}
+	if (message.type === CollabMessageKind.Accepted && message.proposalId !== undefined) {
+		assertProposalId(message.proposalId);
+	}
 	const encoder = encoding.createEncoder();
 	encoding.writeVarUint(encoder, COLLAB_PROTOCOL_VERSION);
 	encoding.writeVarUint(encoder, MESSAGE_KINDS.indexOf(message.type));
@@ -139,7 +147,24 @@ export function encodeCollabMessage(message: CollabMessage): Uint8Array {
 		default:
 			return assertNever(message);
 	}
-	return encoding.toUint8Array(encoder);
+	const frame = encoding.toUint8Array(encoder);
+	if (frame.byteLength > MAX_COLLAB_FRAME_BYTES) {
+		throw new RangeError('Collaboration protocol frame exceeds the maximum size');
+	}
+	return frame;
+}
+
+function assertProposalId(proposalId: string): void {
+	const byteLength = new TextEncoder().encode(proposalId).byteLength;
+	if (byteLength === 0 || byteLength > MAX_PROPOSAL_ID_BYTES) {
+		throw new RangeError(`Proposal id must contain between 1 and ${MAX_PROPOSAL_ID_BYTES} bytes`);
+	}
+}
+
+function readProposalId(decoder: decoding.Decoder): string {
+	const proposalId = decoding.readVarString(decoder);
+	assertProposalId(proposalId);
+	return proposalId;
 }
 
 function malformedDiagnostic(message: string): DecodeFailure {
@@ -201,12 +226,13 @@ function decodeMessage(decoder: decoding.Decoder, kind: CollabMessageKind): Coll
 		case CollabMessageKind.Proposal:
 			return {
 				type: kind,
-				proposalId: decoding.readVarString(decoder),
+				proposalId: readProposalId(decoder),
 				intent: readProposalIntent(decoder),
 				update: decoding.readVarUint8Array(decoder),
 			};
 		case CollabMessageKind.Accepted: {
 			const proposalId = decoding.readVarString(decoder);
+			if (proposalId !== '') assertProposalId(proposalId);
 			const message: AcceptedMessage = {
 				type: kind,
 				commit: decoding.readVarUint(decoder),
@@ -219,7 +245,7 @@ function decodeMessage(decoder: decoding.Decoder, kind: CollabMessageKind): Coll
 		case CollabMessageKind.Rejected:
 			return {
 				type: kind,
-				proposalId: decoding.readVarString(decoder),
+				proposalId: readProposalId(decoder),
 				diagnostics: readDiagnostics(decoder),
 			};
 		case CollabMessageKind.ProtocolError:
@@ -231,6 +257,9 @@ function decodeMessage(decoder: decoding.Decoder, kind: CollabMessageKind): Coll
 }
 
 export function decodeCollabMessage(frame: Uint8Array): DecodeResult {
+	if (frame.byteLength > MAX_COLLAB_FRAME_BYTES) {
+		return malformedDiagnostic('Collaboration protocol frame exceeds the maximum size');
+	}
 	try {
 		const decoder = decoding.createDecoder(frame);
 		const version = decoding.readVarUint(decoder);

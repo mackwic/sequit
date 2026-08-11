@@ -53,44 +53,43 @@ function malformedUpdateFailure(): AuthorizationFailure {
 export async function authorizeProposal(input: AuthorizationInput): Promise<AuthorizationResult> {
 	const candidate = new Y.Doc();
 	try {
-		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(input.authoritative));
-		Y.applyUpdate(candidate, input.proposedUpdate);
-	} catch {
-		candidate.destroy();
-		return malformedUpdateFailure();
-	}
+		try {
+			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(input.authoritative));
+			Y.applyUpdate(candidate, input.proposedUpdate);
+		} catch {
+			candidate.destroy();
+			return malformedUpdateFailure();
+		}
 
-	const document = readStructuralLogicDocument(candidate, YJS_LIVE_DOCUMENT_FORMAT);
-	if (!document.ok) {
-		candidate.destroy();
-		return { ok: false, diagnostics: document.diagnostics };
-	}
+		const document = readStructuralLogicDocument(candidate, YJS_LIVE_DOCUMENT_FORMAT);
+		if (!document.ok) {
+			candidate.destroy();
+			return { ok: false, diagnostics: document.diagnostics };
+		}
 
-	const graph = createGraph(document.value);
-	if (!graph.ok) {
-		candidate.destroy();
-		return { ok: false, diagnostics: graph.diagnostics };
-	}
+		const graph = createGraph(document.value);
+		if (!graph.ok) {
+			candidate.destroy();
+			return { ok: false, diagnostics: graph.diagnostics };
+		}
 
-	let guardResult;
-	try {
-		guardResult = await runUpdateGuards(input.guards, {
+		const guardResult = await runUpdateGuards(input.guards, {
 			proposalId: input.proposalId,
 			acceptedDocument: input.acceptedDocument ?? document.value,
 			candidateDocument: document.value,
 			candidateGraph: graph.value,
 		});
+		if (!guardResult.ok) {
+			candidate.destroy();
+			return { ok: false, diagnostics: guardResult.diagnostics };
+		}
+
+		return {
+			ok: true,
+			value: { candidate, candidateDocument: document.value, candidateGraph: graph.value },
+		};
 	} catch (error) {
 		candidate.destroy();
 		throw error;
 	}
-	if (!guardResult.ok) {
-		candidate.destroy();
-		return { ok: false, diagnostics: guardResult.diagnostics };
-	}
-
-	return {
-		ok: true,
-		value: { candidate, candidateDocument: document.value, candidateGraph: graph.value },
-	};
 }

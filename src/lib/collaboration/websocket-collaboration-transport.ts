@@ -62,32 +62,50 @@ export function createWebSocketCollaborationTransport(
 	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let reconnectDelay = INITIAL_RECONNECT_DELAY;
 	let closed = false;
+	let removeSocketListeners: (() => void) | undefined;
 
 	const publishStatus = (status: TransportStatus): void => {
 		if (currentStatus === status) return;
 		currentStatus = status;
 		for (const listener of [...statusListeners]) listener(status);
 	};
-
-	const onMessage = (event: SocketMessageEvent | SocketCloseEvent | Event): void => {
-		if (!('data' in event)) return;
-		if (event.data instanceof ArrayBuffer) {
-			for (const listener of [...frameListeners]) listener(new Uint8Array(event.data));
-			return;
-		}
-		if (controlType(event.data) !== 'ready') return;
-		reconnectDelay = INITIAL_RECONNECT_DELAY;
-		publishStatus(TransportStatus.Connected);
+	const publishFrame = (frame: Uint8Array): void => {
+		for (const listener of [...frameListeners]) listener(frame);
 	};
 
 	const connect = (): void => {
 		/* istanbul ignore next -- close clears the only timer that can call connect */
 		if (closed) return;
 		publishStatus(TransportStatus.Connecting);
-		socket = webSocketFactory(collaborationUrl(roomId, baseUrl));
-		socket.binaryType = 'arraybuffer';
-		socket.addEventListener('message', onMessage);
-		socket.addEventListener('close', onClose);
+		const connection = webSocketFactory(collaborationUrl(roomId, baseUrl));
+		socket = connection;
+		connection.binaryType = 'arraybuffer';
+		const onMessage: SocketListener = (event): void => {
+			if (socket !== connection) return;
+			if (!('data' in event)) return;
+			if (event.data instanceof ArrayBuffer) {
+				publishFrame(new Uint8Array(event.data));
+				return;
+			}
+			if (controlType(event.data) !== 'ready') return;
+			reconnectDelay = INITIAL_RECONNECT_DELAY;
+			publishStatus(TransportStatus.Connected);
+		};
+		const onClose: SocketListener = (): void => {
+			removeListeners();
+			if (closed || socket !== connection) return;
+			socket = undefined;
+			removeSocketListeners = undefined;
+			publishStatus(TransportStatus.Disconnected);
+			scheduleReconnect();
+		};
+		connection.addEventListener('message', onMessage);
+		connection.addEventListener('close', onClose);
+		const removeListeners = (): void => {
+			connection.removeEventListener('message', onMessage);
+			connection.removeEventListener('close', onClose);
+		};
+		removeSocketListeners = removeListeners;
 	};
 
 	const scheduleReconnect = (): void => {
@@ -98,18 +116,6 @@ export function createWebSocketCollaborationTransport(
 		}, reconnectDelay);
 		reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
 	};
-
-	function onClose(): void {
-		/* istanbul ignore else -- listeners are installed only after assigning the socket */
-		if (socket !== undefined) {
-			socket.removeEventListener('message', onMessage);
-			socket.removeEventListener('close', onClose);
-		}
-		/* istanbul ignore next -- close removes this listener before closing the socket */
-		if (closed) return;
-		publishStatus(TransportStatus.Disconnected);
-		scheduleReconnect();
-	}
 
 	connect();
 
@@ -137,12 +143,9 @@ export function createWebSocketCollaborationTransport(
 			reconnectTimer = undefined;
 			frameListeners.clear();
 			statusListeners.clear();
-			/* istanbul ignore else -- connect assigns the socket before returning the transport */
-			if (socket !== undefined) {
-				socket.removeEventListener('message', onMessage);
-				socket.removeEventListener('close', onClose);
-				socket.close(1000);
-			}
+			removeSocketListeners?.();
+			removeSocketListeners = undefined;
+			if (socket !== undefined) socket.close(1000);
 			currentStatus = TransportStatus.Disconnected;
 		},
 	};

@@ -1,3 +1,5 @@
+import { MAX_PROPOSAL_ID_BYTES } from './protocol';
+
 export const META_KEY = 'document-meta';
 export const CHUNK_KEY_PREFIX = 'document-chunk:';
 export const CHUNK_BYTES = 64 * 1024;
@@ -62,6 +64,15 @@ export function concatChunks(parts: readonly (Uint8Array | undefined)[]): Uint8A
 function boundedAcceptedProposals(
 	acceptedProposals: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, number> {
+	for (const [id, commit] of acceptedProposals) {
+		const idByteLength = new TextEncoder().encode(id).byteLength;
+		if (idByteLength === 0 || idByteLength > MAX_PROPOSAL_ID_BYTES) {
+			throw new RangeError('Accepted proposal id is outside protocol bounds');
+		}
+		if (!Number.isSafeInteger(commit) || commit <= 0) {
+			throw new RangeError('Accepted proposal commit must be a positive safe integer');
+		}
+	}
 	const ordered = [...acceptedProposals].sort(([leftId, leftCommit], [rightId, rightCommit]) => {
 		const commitOrder = rightCommit - leftCommit;
 		if (commitOrder !== 0) return commitOrder;
@@ -71,8 +82,14 @@ function boundedAcceptedProposals(
 }
 
 export function planPersistence(input: PersistenceInput): PersistencePlan {
+	if (!Number.isSafeInteger(input.commit) || input.commit <= 0) {
+		throw new RangeError('Document commit must be a positive safe integer');
+	}
 	const chunks = splitChunks(input.fullUpdate);
 	const acceptedProposals = boundedAcceptedProposals(input.acceptedProposals);
+	if ([...acceptedProposals.values()].some((acceptedCommit) => acceptedCommit > input.commit)) {
+		throw new RangeError('Accepted proposal commit cannot exceed document commit');
+	}
 	const meta: DocumentMeta = {
 		commit: input.commit,
 		chunkCount: chunks.length,

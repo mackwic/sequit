@@ -8,6 +8,8 @@ import {
 	CollabMessageKind,
 	decodeCollabMessage,
 	encodeCollabMessage,
+	MAX_COLLAB_FRAME_BYTES,
+	MAX_PROPOSAL_ID_BYTES,
 	ProposalIntent,
 	type ProposalMessage,
 	type ProtocolDiagnostic,
@@ -170,6 +172,70 @@ describe('collaboration protocol codec', () => {
 				},
 			],
 		});
+	});
+
+	it('accepts proposal ids at the byte limit and rejects empty or oversized ids', () => {
+		const boundary = 'x'.repeat(MAX_PROPOSAL_ID_BYTES);
+		const proposal: ProposalMessage = {
+			type: CollabMessageKind.Proposal,
+			proposalId: boundary,
+			intent: ProposalIntent.Change,
+			update: new Uint8Array(),
+		};
+		expect(decodeCollabMessage(encodeCollabMessage(proposal))).toMatchObject({ ok: true });
+		for (const proposalId of ['', `${boundary}x`, 'é'.repeat(MAX_PROPOSAL_ID_BYTES)]) {
+			expect(() => encodeCollabMessage({ ...proposal, proposalId })).toThrow(RangeError);
+		}
+		expect(() =>
+			encodeCollabMessage({
+				type: CollabMessageKind.Rejected,
+				proposalId: '',
+				diagnostics: [],
+			}),
+		).toThrow(RangeError);
+		expect(() =>
+			encodeCollabMessage({
+				type: CollabMessageKind.Accepted,
+				proposalId: '',
+				commit: 1,
+				update: new Uint8Array(),
+				stateVector: new Uint8Array(),
+			}),
+		).toThrow(RangeError);
+	});
+
+	it('rejects invalid encoded ids and oversized frames before decoding', () => {
+		const emptyProposal = encoding.createEncoder();
+		encoding.writeVarUint(emptyProposal, COLLAB_PROTOCOL_VERSION);
+		encoding.writeVarUint(emptyProposal, 2);
+		encoding.writeVarString(emptyProposal, '');
+		encoding.writeUint8(emptyProposal, 1);
+		encoding.writeVarUint8Array(emptyProposal, new Uint8Array());
+		expectFailure(
+			encoding.toUint8Array(emptyProposal),
+			ProtocolDiagnosticCode.MalformedProtocolFrame,
+		);
+		expectFailure(
+			new Uint8Array(MAX_COLLAB_FRAME_BYTES + 1),
+			ProtocolDiagnosticCode.MalformedProtocolFrame,
+		);
+		expect(() =>
+			encodeCollabMessage({
+				type: CollabMessageKind.ProtocolError,
+				message: 'x'.repeat(MAX_COLLAB_FRAME_BYTES),
+			}),
+		).toThrow('exceeds the maximum size');
+
+		const invalidIntent = encoding.createEncoder();
+		encoding.writeVarUint(invalidIntent, COLLAB_PROTOCOL_VERSION);
+		encoding.writeVarUint(invalidIntent, 2);
+		encoding.writeVarString(invalidIntent, 'proposal');
+		encoding.writeUint8(invalidIntent, 2);
+		encoding.writeVarUint8Array(invalidIntent, new Uint8Array());
+		expectFailure(
+			encoding.toUint8Array(invalidIntent),
+			ProtocolDiagnosticCode.MalformedProtocolFrame,
+		);
 	});
 
 	it('wrong-shape rejected-diagnostics JSON is malformed', () => {

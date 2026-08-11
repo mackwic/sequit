@@ -5,10 +5,7 @@ import { authorizeProposal } from '../../src/lib/collaboration/authorize-proposa
 import { defaultUpdateGuards } from '../../src/lib/collaboration/update-guards';
 import { importLogicDocument } from '../../src/lib/collaboration/yjs-document-codec';
 import { replaceNodeMarkdown } from '../../src/lib/collaboration/yjs-document-repository';
-import {
-	createYjsEntityMap,
-	YJS_COLLECTIONS,
-} from '../../src/lib/collaboration/yjs-document-schema';
+import { createYjsEntityMap, YjsCollection } from '../../src/lib/collaboration/yjs-document-schema';
 import { proposeChange } from '../builders/collaboration';
 import { validLogicDocument } from '../builders/logic-document';
 import { LAYOUT_PERFORMANCE_BENCHMARK_OPTIONS } from './layout-performance-policy';
@@ -22,7 +19,7 @@ const markdownUpdate = proposeChange(authoritative, (candidate) => {
 });
 const relationUpdate = proposeChange(authoritative, (candidate) => {
 	candidate
-		.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.relations)
+		.getMap<Y.Map<unknown>>(YjsCollection.Relations)
 		.set('isolated-to-target', createYjsEntityMap({ from: 'isolated', to: 'target' }));
 });
 

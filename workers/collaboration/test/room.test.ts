@@ -1,6 +1,6 @@
 import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import {
@@ -18,9 +18,19 @@ import {
 	planPersistence,
 	splitChunks,
 } from '../../../src/lib/collaboration/room-persistence';
-import { collaborativeDocument, encodeFullUpdate } from '../../../tests/builders/collaboration';
+import { replaceNodeMarkdown } from '../../../src/lib/collaboration/yjs-document-repository';
+import {
+	collaborativeDocument,
+	encodeFullUpdate,
+	proposeChange,
+} from '../../../tests/builders/collaboration';
 import worker from '../src/index';
-import { persistRoomState } from '../src/room-storage';
+import {
+	decodeStoredRoomState,
+	parseDocumentMeta,
+	persistRoomState,
+	restoreRoomState,
+} from '../src/room-storage';
 
 function nextMessage(socket: WebSocket): Promise<MessageEvent> {
 	const { promise, resolve } = Promise.withResolvers<MessageEvent>();
@@ -113,6 +123,13 @@ it('serves health, routing, and upgrade errors through the worker handler', asyn
 	const noUpgrade = await worker.fetch(new Request('https://sequit.local/collab/no-upgrade'), env);
 	expect(noUpgrade.status).toBe(426);
 	expect(await noUpgrade.json()).toEqual({ error: 'WebSocket upgrade required' });
+
+	const malformed = await worker.fetch(
+		new Request('https://sequit.local/collab/%ZZ', { headers: { upgrade: 'websocket' } }),
+		env,
+	);
+	expect(malformed.status).toBe(400);
+	expect(await malformed.json()).toEqual({ error: 'Malformed room id' });
 
 	const response = await worker.fetch(
 		new Request('https://sequit.local/collab/routed', { headers: { upgrade: 'websocket' } }),
@@ -264,6 +281,47 @@ it('restoration from seeded multi-chunk storage survives instance replacement', 
 	socket.close(1000, 'Test complete');
 });
 
+it('acknowledges an evicted exact replay without creating another commit', async () => {
+	const roomName = 'evicted-replay';
+	const authoritative = new Y.Doc();
+	Y.applyUpdate(authoritative, encodeFullUpdate(collaborativeDocument(roomName)));
+	const replayedUpdate = proposeChange(authoritative, (candidate) => {
+		replaceNodeMarkdown(candidate, 'source-a', 'State with deletion tombstones');
+	});
+	Y.applyUpdate(authoritative, replayedUpdate);
+	const fullUpdate = Y.encodeStateAsUpdate(authoritative);
+	authoritative.destroy();
+	const acceptedProposals = Object.fromEntries(
+		Array.from({ length: 128 }, (_, index) => [`recent-${index}`, 129 - index]),
+	);
+	await seedStorage(roomName, { commit: 129, chunkCount: 1, acceptedProposals }, [fullUpdate]);
+	const socket = await connect(roomName);
+	send(socket, {
+		type: CollabMessageKind.Proposal,
+		proposalId: 'evicted-original',
+		intent: ProposalIntent.Change,
+		update: replayedUpdate,
+	});
+	const replay = await nextFrame(socket);
+	expect(replay).toMatchObject({
+		type: CollabMessageKind.Accepted,
+		proposalId: 'evicted-original',
+		commit: 129,
+	});
+	if (replay.type !== CollabMessageKind.Accepted) throw new TypeError('Expected acceptance');
+	const unchanged = new Y.Doc();
+	Y.applyUpdate(unchanged, fullUpdate);
+	const stateBeforeReplay = Y.encodeStateAsUpdate(unchanged);
+	Y.applyUpdate(unchanged, replay.update);
+	expect(Y.encodeStateAsUpdate(unchanged)).toEqual(stateBeforeReplay);
+	const empty = new Y.Doc();
+	send(socket, syncRequest(Y.encodeStateVector(empty)));
+	expect(await nextFrame(socket)).toMatchObject({ commit: 129 });
+	unchanged.destroy();
+	empty.destroy();
+	socket.close(1000, 'Test complete');
+});
+
 it('persists metadata and chunks atomically and removes stale chunks', async () => {
 	const roomName = 'persisted-room';
 	const room = env.COLLABORATION_ROOMS.getByName(roomName);
@@ -289,32 +347,79 @@ it('persists metadata and chunks atomically and removes stale chunks', async () 
 	});
 });
 
-it('corrupted storage fails explicitly without resetting state', async () => {
-	const corruptions: readonly [string, unknown, readonly Uint8Array[]][] = [
-		['primitive-meta', 1, []],
-		['null-meta', null, []],
-		['array-meta', [], []],
-		['missing-commit', { chunkCount: 0, acceptedProposals: {} }, []],
-		['bad-meta', { commit: 'one', chunkCount: 0, acceptedProposals: {} }, []],
-		['fractional-commit', { commit: 1.5, chunkCount: 0, acceptedProposals: {} }, []],
-		['negative-commit', { commit: -1, chunkCount: 0, acceptedProposals: {} }, []],
-		['missing-count', { commit: 1, acceptedProposals: {} }, []],
-		['bad-count-type', { commit: 1, chunkCount: 'one', acceptedProposals: {} }, []],
-		['negative-count', { commit: 1, chunkCount: -1, acceptedProposals: {} }, []],
-		['bad-count', { commit: 1, chunkCount: 16, acceptedProposals: {} }, []],
-		['missing-proposals', { commit: 1, chunkCount: 0 }, []],
-		['primitive-proposals', { commit: 1, chunkCount: 0, acceptedProposals: 1 }, []],
-		['null-proposals', { commit: 1, chunkCount: 0, acceptedProposals: null }, []],
-		['array-proposals', { commit: 1, chunkCount: 0, acceptedProposals: [] }, []],
-		['bad-proposal-commit', { commit: 1, chunkCount: 0, acceptedProposals: { p: -1 } }, []],
+it('rejects malformed stored document metadata', () => {
+	const tooManyProposals = Object.fromEntries(
+		Array.from({ length: 129 }, (_, index) => [`proposal-${index}`, 1]),
+	);
+	const invalidMetadata: readonly unknown[] = [
+		1,
+		null,
+		[],
+		{ chunkCount: 0, acceptedProposals: {} },
+		{ commit: 'one', chunkCount: 0, acceptedProposals: {} },
+		{ commit: 1.5, chunkCount: 0, acceptedProposals: {} },
+		{ commit: -1, chunkCount: 0, acceptedProposals: {} },
+		{ commit: 1, acceptedProposals: {} },
+		{ commit: 1, chunkCount: 'one', acceptedProposals: {} },
+		{ commit: 1, chunkCount: -1, acceptedProposals: {} },
+		{ commit: 1, chunkCount: 16, acceptedProposals: {} },
+		{ commit: 0, chunkCount: 1, acceptedProposals: {} },
+		{ commit: 1, chunkCount: 0, acceptedProposals: {} },
+		{ commit: 1, chunkCount: 1 },
+		{ commit: 1, chunkCount: 1, acceptedProposals: 1 },
+		{ commit: 1, chunkCount: 1, acceptedProposals: null },
+		{ commit: 1, chunkCount: 1, acceptedProposals: [] },
+		{ commit: 1, chunkCount: 1, acceptedProposals: { p: -1 } },
+		{ commit: 1, chunkCount: 1, acceptedProposals: { p: 0 } },
+		{ commit: 1, chunkCount: 1, acceptedProposals: { p: 2 } },
+		{ commit: 1, chunkCount: 1, acceptedProposals: { '': 1 } },
+		{ commit: 1, chunkCount: 1, acceptedProposals: { ['x'.repeat(129)]: 1 } },
+		{ commit: 1, chunkCount: 1, acceptedProposals: tooManyProposals },
+	];
+	for (const metadata of invalidMetadata) {
+		expect(() => parseDocumentMeta(metadata)).toThrow('Stored document metadata is invalid');
+	}
+});
+
+it('rejects corrupted stored document chunks and semantic state', () => {
+	const emptyDocument = new Y.Doc();
+	const emptyUpdate = Y.encodeStateAsUpdate(emptyDocument);
+	emptyDocument.destroy();
+	const corruptions: readonly [string, DocumentMeta, readonly Uint8Array[]][] = [
 		['missing-chunk', { commit: 1, chunkCount: 1, acceptedProposals: {} }, []],
 		['bad-update', { commit: 1, chunkCount: 1, acceptedProposals: {} }, [new Uint8Array([255])]],
+		['invalid-document', { commit: 1, chunkCount: 1, acceptedProposals: {} }, [emptyUpdate]],
+		[
+			'wrong-document-id',
+			{ commit: 1, chunkCount: 1, acceptedProposals: {} },
+			[encodeFullUpdate(collaborativeDocument('another-room'))],
+		],
 	];
 
 	for (const [roomName, meta, chunks] of corruptions) {
-		await seedStorage(roomName, meta, chunks);
-		await expect(connect(roomName)).rejects.toThrow();
+		const keys = chunkKeys(chunks.length);
+		const storedChunks = new Map(keys.map((key, index) => [key, chunks[index]]));
+		expect(() => decodeStoredRoomState(meta, storedChunks, roomName)).toThrow();
 	}
+});
+
+it('destroys the provisional document when storage metadata cannot be read', async () => {
+	const room = env.COLLABORATION_ROOMS.getByName('restore-read-failure');
+	await runInDurableObject(room, async (_instance, state) => {
+		const get = vi
+			.spyOn(state.storage, 'get')
+			.mockRejectedValueOnce(new Error('Storage unavailable'));
+		const emptyState = {
+			doc: new Y.Doc(),
+			commit: 0,
+			chunkCount: 0,
+			acceptedProposals: new Map<string, number>(),
+		};
+		await expect(
+			restoreRoomState(state.storage, emptyState, 'restore-read-failure'),
+		).rejects.toThrow('Storage unavailable');
+		get.mockRestore();
+	});
 });
 
 it('rejects server-only protocol messages from a client', async () => {

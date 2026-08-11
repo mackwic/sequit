@@ -44,6 +44,11 @@ function isPingPayload(payload: unknown): boolean {
 	return 'type' in payload && payload.type === 'ping';
 }
 
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+	if (left.byteLength !== right.byteLength) return false;
+	return left.every((byte, index) => byte === right[index]);
+}
+
 /* istanbul ignore next -- exhaustive switch guards are unreachable after type checking */
 function assertNever(value: never): never {
 	throw new TypeError(`Unexpected client message: ${String(value)}`);
@@ -61,7 +66,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 	}
 
 	private async restore(): Promise<RoomState> {
-		return restoreRoomState(this.ctx.storage, this.roomState);
+		return restoreRoomState(this.ctx.storage, this.roomState, this.ctx.id.name);
 	}
 
 	override fetch(request: Request): Response {
@@ -76,45 +81,47 @@ export class CollaborationRoom extends DurableObject<Env> {
 		const client = pair[0];
 		const server = pair[1];
 		this.ctx.acceptWebSocket(server);
-		server.send(JSON.stringify({ type: 'ready' }));
+		this.sendText(server, JSON.stringify({ type: 'ready' }));
 		return new Response(null, { status: 101, webSocket: client });
 	}
 
-	override webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): void {
+	override webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): Promise<void> {
 		if (typeof message === 'string') {
 			this.handleControlMessage(socket, message);
-			return;
+			return Promise.resolve();
 		}
 		const decoded = decodeCollabMessage(new Uint8Array(message));
 		if (!decoded.ok) {
 			const diagnosticMessage = decoded.diagnostics.map(({ message }) => message).join('; ');
 			this.sendProtocolError(socket, diagnosticMessage);
-			return;
+			return Promise.resolve();
 		}
-		this.enqueue(socket, () => this.handleProtocolMessage(socket, decoded.value));
+		return this.enqueue(socket, () => this.handleProtocolMessage(socket, decoded.value));
 	}
 
 	private handleControlMessage(socket: WebSocket, message: string): void {
 		try {
 			const payload: unknown = JSON.parse(message);
 			if (isPingPayload(payload)) {
-				socket.send(JSON.stringify({ type: 'pong' }));
+				this.sendText(socket, JSON.stringify({ type: 'pong' }));
 				return;
 			}
 		} catch {
 			// Invalid JSON is answered on the text control channel like every non-ping message.
 		}
-		socket.send(JSON.stringify({ type: CollabMessageKind.ProtocolError }));
+		this.sendText(socket, JSON.stringify({ type: CollabMessageKind.ProtocolError }));
 	}
 
-	private enqueue(socket: WebSocket, task: () => Promise<void>): void {
-		this.processing = this.processing.then(async () => {
+	private enqueue(socket: WebSocket, task: () => Promise<void>): Promise<void> {
+		const run = async (): Promise<void> => {
 			try {
 				await task();
 			} catch {
 				this.sendProtocolError(socket, 'Protocol message could not be processed');
 			}
-		});
+		};
+		this.processing = this.processing.then(run, run);
+		return this.processing;
 	}
 
 	private handleProtocolMessage(socket: WebSocket, message: CollabMessage): Promise<void> {
@@ -152,6 +159,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 	private acceptedDocument(): LogicDocument | undefined {
 		if (this.roomState.commit === 0) return undefined;
 		const result = readStructuralLogicDocument(this.roomState.doc, YJS_LIVE_DOCUMENT_FORMAT);
+		/* istanbul ignore next -- restored and committed authoritative documents are validated */
 		if (!result.ok) throw new Error('Authoritative document is invalid');
 		return result.value;
 	}
@@ -166,7 +174,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 					type: CollabMessageKind.Accepted,
 					proposalId: message.proposalId,
 					commit: decision.commit,
-					update: new Uint8Array(),
+					update: this.authoritativeNoopUpdate(),
 					stateVector: Y.encodeStateVector(this.roomState.doc),
 				});
 				return true;
@@ -254,6 +262,22 @@ export class CollaborationRoom extends DurableObject<Env> {
 		result: Extract<AuthorizationResult, { readonly ok: true }>,
 		fullUpdate: Uint8Array,
 	): Promise<void> {
+		const authoritativeUpdate = Y.encodeStateAsUpdate(this.roomState.doc);
+		if (bytesEqual(fullUpdate, authoritativeUpdate)) {
+			result.value.candidate.destroy();
+			this.send(socket, {
+				type: CollabMessageKind.Accepted,
+				proposalId: message.proposalId,
+				commit: this.roomState.commit,
+				update: this.authoritativeNoopUpdate(),
+				stateVector: Y.encodeStateVector(this.roomState.doc),
+			});
+			return;
+		}
+		const delta = Y.encodeStateAsUpdate(
+			result.value.candidate,
+			Y.encodeStateVector(this.roomState.doc),
+		);
 		const commit = this.roomState.commit + 1;
 		const acceptedProposals = new Map(this.roomState.acceptedProposals);
 		acceptedProposals.set(message.proposalId, commit);
@@ -272,7 +296,6 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 
 		const previous = this.roomState;
-		const delta = Y.encodeStateAsUpdate(result.value.candidate, Y.encodeStateVector(previous.doc));
 		this.roomState = {
 			doc: result.value.candidate,
 			commit,
@@ -287,15 +310,35 @@ export class CollaborationRoom extends DurableObject<Env> {
 			update: delta,
 			stateVector: Y.encodeStateVector(this.roomState.doc),
 		});
-		for (const peer of this.ctx.getWebSockets()) peer.send(frame);
+		for (const peer of this.ctx.getWebSockets()) this.sendFrame(peer, frame);
 	}
 
 	private persist(plan: PersistencePlan): Promise<void> {
 		return persistRoomState(this.ctx.storage, plan);
 	}
 
+	private authoritativeNoopUpdate(): Uint8Array {
+		return Y.encodeStateAsUpdate(this.roomState.doc, Y.encodeStateVector(this.roomState.doc));
+	}
+
 	private send(socket: WebSocket, message: CollabMessage): void {
-		socket.send(encodeCollabMessage(message));
+		this.sendFrame(socket, encodeCollabMessage(message));
+	}
+
+	private sendFrame(socket: WebSocket, frame: Uint8Array): void {
+		try {
+			socket.send(frame);
+		} catch {
+			// A failed peer must not interrupt room processing or delivery to other peers.
+		}
+	}
+
+	private sendText(socket: WebSocket, message: string): void {
+		try {
+			socket.send(message);
+		} catch {
+			// A closed peer cannot affect the room or other peers.
+		}
 	}
 
 	private sendProtocolError(socket: WebSocket, message: string): void {

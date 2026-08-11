@@ -125,7 +125,7 @@ export class CollaborationAuthority {
 				type: CollabMessageKind.Accepted,
 				proposalId: message.proposalId,
 				commit: pre.commit,
-				update: new Uint8Array(),
+				update: Y.encodeStateAsUpdate(this.#doc, Y.encodeStateVector(this.#doc)),
 				stateVector: Y.encodeStateVector(this.#doc),
 			});
 			return;

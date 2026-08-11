@@ -8,10 +8,7 @@ import {
 	ProposalIntent,
 	type RejectedMessage,
 } from '../../src/lib/collaboration/protocol';
-import {
-	createYjsEntityMap,
-	YJS_COLLECTIONS,
-} from '../../src/lib/collaboration/yjs-document-schema';
+import { createYjsEntityMap, YjsCollection } from '../../src/lib/collaboration/yjs-document-schema';
 import { collaborativeDocument, encodeFullUpdate, proposeChange } from '../builders/collaboration';
 
 export interface CollaborationScenarioClient {
@@ -72,7 +69,7 @@ async function initialize(
 
 function replaceMarkdown(doc: Y.Doc, nodeId: string, markdown: string): Uint8Array {
 	return proposeChange(doc, (candidate) => {
-		const node = candidate.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.nodes).get(nodeId);
+		const node = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get(nodeId);
 		const text = node?.get('markdown');
 		if (!(text instanceof Y.Text)) throw new TypeError(`Expected node ${nodeId}`);
 		text.delete(0, text.length);
@@ -83,7 +80,7 @@ function replaceMarkdown(doc: Y.Doc, nodeId: string, markdown: string): Uint8Arr
 function closeCycle(doc: Y.Doc): Uint8Array {
 	return proposeChange(doc, (candidate) => {
 		candidate
-			.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.relations)
+			.getMap<Y.Map<unknown>>(YjsCollection.Relations)
 			.set('cycle', createYjsEntityMap({ from: 'target', to: 'source-a' }));
 	});
 }
@@ -197,10 +194,13 @@ async function duplicateDelivery(driver: CollaborationScenarioDriver): Promise<v
 	proposer.send(message);
 	const original = accepted(await proposer.nextFrame());
 	await peer.nextFrame();
+	Y.applyUpdate(doc, original.update);
+	const stateBeforeDuplicate = Y.encodeStateAsUpdate(doc);
 	proposer.send(message);
 	const duplicate = accepted(await proposer.nextFrame());
 	expect(duplicate).toMatchObject({ proposalId: 'duplicate-1', commit: original.commit });
-	expect(duplicate.update).toEqual(new Uint8Array());
+	Y.applyUpdate(doc, duplicate.update);
+	expect(Y.encodeStateAsUpdate(doc)).toEqual(stateBeforeDuplicate);
 	await peer.expectNoFrame();
 	doc.destroy();
 	proposer.close();
@@ -281,7 +281,7 @@ async function guardRejection(driver: CollaborationScenarioDriver): Promise<void
 	const peer = await driver.connect();
 	const { doc } = await initialize(driver, [proposer, peer]);
 	const update = proposeChange(doc, (candidate) => {
-		candidate.getMap(YJS_COLLECTIONS.meta).set('id', 'changed-id');
+		candidate.getMap(YjsCollection.Meta).set('id', 'changed-id');
 	});
 	proposer.send(proposal('guard-1', ProposalIntent.Change, update));
 	expect(rejected(await proposer.nextFrame())).toMatchObject({

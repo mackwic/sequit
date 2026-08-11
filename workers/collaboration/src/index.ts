@@ -23,7 +23,12 @@ export default {
 			return json({ error: 'WebSocket upgrade required' }, 426);
 		}
 
-		const roomId = decodeURIComponent(url.pathname.slice('/collab/'.length));
+		let roomId: string;
+		try {
+			roomId = decodeURIComponent(url.pathname.slice('/collab/'.length));
+		} catch {
+			return json({ error: 'Malformed room id' }, 400);
+		}
 		const room = env.COLLABORATION_ROOMS.getByName(roomId);
 		return room.fetch(request);
 	},

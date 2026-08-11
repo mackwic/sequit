@@ -11,7 +11,7 @@ import {
 	ProposalIntent,
 } from '../../../src/lib/collaboration/protocol';
 import { CHUNK_BYTES } from '../../../src/lib/collaboration/room-persistence';
-import { YJS_COLLECTIONS } from '../../../src/lib/collaboration/yjs-document-schema';
+import { YjsCollection } from '../../../src/lib/collaboration/yjs-document-schema';
 import {
 	collaborativeDocument,
 	encodeFullUpdate,
@@ -71,7 +71,7 @@ async function initialize(roomId: string, client: RoomClient): Promise<Y.Doc> {
 
 function markdownChange(doc: Y.Doc, markdown: string): Uint8Array {
 	return proposeChange(doc, (candidate) => {
-		const node = candidate.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.nodes).get('source-a');
+		const node = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-a');
 		const text = node?.get('markdown');
 		if (!(text instanceof Y.Text)) throw new TypeError('Expected source node text');
 		text.delete(0, text.length);

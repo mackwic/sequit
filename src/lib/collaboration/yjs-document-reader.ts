@@ -18,7 +18,6 @@ import {
 } from '../document/logic-document';
 import { parseOrderKey } from '../document/order-key';
 import { validateLogicDocument } from '../document/validate-logic-document';
-import type { GraphDiagnosticCode } from '../graph/create-graph';
 import { YjsCollection } from './yjs-document-schema';
 
 export enum YjsLiveDocumentDiagnosticCode {
@@ -27,7 +26,7 @@ export enum YjsLiveDocumentDiagnosticCode {
 }
 
 interface YjsLiveDocumentDiagnostic {
-	readonly code: YjsLiveDocumentDiagnosticCode | GraphDiagnosticCode;
+	readonly code: YjsLiveDocumentDiagnosticCode;
 	readonly message: string;
 	readonly path: readonly string[];
 	readonly cycle?: readonly string[];

@@ -143,10 +143,38 @@ describe('websocket collaboration transport', () => {
 		}
 		expect(fake.sockets).toHaveLength(8);
 		expect(statuses).toContain(TransportStatus.Disconnected);
+		expect(statuses).toContain(TransportStatus.Connecting);
 		transport.close();
 	});
 
-	it('close stops reconnection and closes with code 1000', () => {
+	it('ignores callbacks retained from a replaced socket', () => {
+		vi.useFakeTimers();
+		const fake = createFakeWebSocketFactory();
+		const transport = createWebSocketCollaborationTransport(
+			'room',
+			'https://example.test',
+			fake.factory,
+		);
+		const frames = vi.fn();
+		transport.subscribeToFrames(frames);
+		const oldSocket = firstSocket(fake.sockets);
+		const oldMessage = [...(oldSocket.listeners.get('message') ?? [])][0];
+		oldSocket.emitClose();
+		if (oldMessage === undefined) throw new Error('Expected the old socket message listener');
+		oldMessage({ data: JSON.stringify({ type: 'ready' }) });
+		expect(transport.status()).toBe(TransportStatus.Disconnected);
+		vi.runAllTimers();
+		const currentSocket = fake.sockets.at(-1);
+		if (currentSocket === undefined) throw new Error('Expected a replacement socket');
+		currentSocket.emitMessage(JSON.stringify({ type: 'ready' }));
+		oldMessage({ data: new Uint8Array([1]).buffer });
+		oldMessage({ data: JSON.stringify({ type: 'ready' }) });
+		expect(frames).not.toHaveBeenCalled();
+		expect(transport.status()).toBe(TransportStatus.Connected);
+		transport.close();
+	});
+
+	it('close stops a scheduled reconnection after the socket closes', () => {
 		vi.useFakeTimers();
 		const fake = createFakeWebSocketFactory();
 		const transport = createWebSocketCollaborationTransport(
@@ -160,7 +188,7 @@ describe('websocket collaboration transport', () => {
 		transport.close();
 		vi.runAllTimers();
 		expect(fake.sockets).toHaveLength(1);
-		expect(socket.closeCodes).toEqual([1000]);
+		expect(socket.closeCodes).toEqual([]);
 	});
 
 	it('closing removes every listener', () => {
@@ -177,6 +205,7 @@ describe('websocket collaboration transport', () => {
 		unsubscribeStatus();
 		transport.close();
 		expect([...socket.listeners.values()].every((listeners) => listeners.size === 0)).toBe(true);
+		expect(socket.closeCodes).toEqual([1000]);
 	});
 
 	it('ignores non-message events and duplicate close scheduling', () => {

@@ -16,7 +16,7 @@ import type {
 import { createWebSocketCollaborationTransport } from '../../../src/lib/collaboration/websocket-collaboration-transport';
 import {
 	createYjsEntityMap,
-	YJS_COLLECTIONS,
+	YjsCollection,
 } from '../../../src/lib/collaboration/yjs-document-schema';
 import {
 	CollaborationStatus,
@@ -217,7 +217,7 @@ describe('real session and collaboration room', () => {
 		Y.applyUpdate(authoritative, sync.update);
 		const cyclicUpdate = proposeChange(authoritative, (candidate) => {
 			candidate
-				.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.relations)
+				.getMap<Y.Map<unknown>>(YjsCollection.Relations)
 				.set('cycle', createYjsEntityMap({ from: 'target', to: 'source-a' }));
 		});
 		proposer.send(

@@ -11,10 +11,7 @@ import {
 	readLogicDocument,
 } from '../../src/lib/collaboration/yjs-document-codec';
 import { replaceNodeMarkdown } from '../../src/lib/collaboration/yjs-document-repository';
-import {
-	createYjsEntityMap,
-	YJS_COLLECTIONS,
-} from '../../src/lib/collaboration/yjs-document-schema';
+import { createYjsEntityMap, YjsCollection } from '../../src/lib/collaboration/yjs-document-schema';
 import { GraphDiagnosticCode } from '../../src/lib/graph/create-graph';
 import { proposeChange } from '../builders/collaboration';
 import { validLogicDocument } from '../builders/logic-document';
@@ -84,7 +81,7 @@ describe('authorizeProposal', () => {
 		const authoritative = authoritativeDocument();
 		const proposedUpdate = proposeChange(authoritative, (candidate) => {
 			candidate
-				.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.relations)
+				.getMap<Y.Map<unknown>>(YjsCollection.Relations)
 				.set('target-to-source', createYjsEntityMap({ from: 'target', to: 'source-a' }));
 		});
 
@@ -107,7 +104,7 @@ describe('authorizeProposal', () => {
 		const authoritative = authoritativeDocument();
 		const proposedUpdate = proposeChange(authoritative, (candidate) => {
 			candidate
-				.getMap<Y.Map<unknown>>(YJS_COLLECTIONS.nodes)
+				.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
 				.get('source-a')
 				?.set('markdown', 'not collaborative text');
 		});
@@ -176,7 +173,7 @@ describe('authorizeProposal', () => {
 	it('an id-changing update is rejected by the identity guard', async () => {
 		const authoritative = authoritativeDocument();
 		const proposedUpdate = proposeChange(authoritative, (candidate) => {
-			candidate.getMap(YJS_COLLECTIONS.meta).set('id', 'changed-document');
+			candidate.getMap(YjsCollection.Meta).set('id', 'changed-document');
 		});
 
 		const result = await authorizeProposal({
@@ -191,6 +188,29 @@ describe('authorizeProposal', () => {
 			ok: false,
 			diagnostics: [{ code: 'document-identity-changed', path: ['document', 'id'] }],
 		});
+		authoritative.destroy();
+	});
+
+	it('destroys its candidate and propagates an unexpected guard failure', async () => {
+		const authoritative = authoritativeDocument();
+		const proposedUpdate = proposeChange(authoritative, () => undefined);
+
+		await expect(
+			authorizeProposal({
+				proposalId: 'throwing-guard',
+				authoritative,
+				acceptedDocument: readAuthoritative(authoritative),
+				proposedUpdate,
+				guards: [
+					{
+						name: 'throwing',
+						evaluate(): never {
+							throw new Error('Unexpected guard failure');
+						},
+					},
+				],
+			}),
+		).rejects.toThrow('Unexpected guard failure');
 		authoritative.destroy();
 	});
 });
