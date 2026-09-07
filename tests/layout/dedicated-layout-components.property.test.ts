@@ -330,6 +330,48 @@ describe('dedicated layout components', () => {
 		);
 	});
 
+	it.each([
+		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	] satisfies readonly LayoutConfiguration[])(
+		'preserves branch order despite large group insets in $direction',
+		async (configuration) => {
+			const document = generatedDocument(
+				configuration,
+				[
+					generatedNode('z-branch-a-node', 'branch-a-child'),
+					generatedNode('a-branch-b-node', 'branch-b-child'),
+				],
+				[],
+				[],
+				[
+					generatedGroup('branch-a', 'Branch A'),
+					generatedGroup('branch-a-child', 'Branch A child', 'branch-a'),
+					generatedGroup('branch-b', 'Branch B'),
+					generatedGroup('branch-b-child', 'Branch B child', 'branch-b'),
+				],
+			);
+			const smallGroup = { minimumWidth: 40, minimumHeight: 40, headerHeight: 1, padding: 1 };
+			const largeInsets = { ...smallGroup, headerHeight: 38, padding: 60 };
+			const { layout } = await layoutDocument(document, {
+				nodes: {
+					'z-branch-a-node': { width: 1, height: 1 },
+					'a-branch-b-node': { width: 1, height: 1 },
+				},
+				groups: {
+					'branch-a': smallGroup,
+					'branch-a-child': smallGroup,
+					'branch-b': largeInsets,
+					'branch-b-child': largeInsets,
+				},
+			});
+			expectOrderedComponents(layout, configuration.direction, [
+				['branch-a', 'branch-a-child', 'z-branch-a-node'],
+				['branch-b', 'branch-b-child', 'a-branch-b-node'],
+			]);
+		},
+	);
+
 	it('orders and contains disconnected branches of the group hierarchy', async () => {
 		await fc.assert(
 			fc.asyncProperty(groupBranchCaseArbitrary, async (generated) => {

@@ -35,7 +35,7 @@ Use `pnpm quality:fast` during implementation. It is the fast, fail-fast edit-lo
 
 The fast gate enforces coverage rather than running ordinary Vitest twice. Each command is joined with `&&`; a failure stops later diagnostics from running.
 
-Run `pnpm quality` to add mutation testing for the selected critical modules. Run `pnpm check` before merging; it is the authoritative local gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, both production builds, and mutation testing.
+Run `pnpm check` before merging; it is the authoritative local gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, and both production builds. Mutation testing is separate: run `pnpm test:mutation` explicitly, or `pnpm test:mutation:weekly` to reproduce the intensive scheduled campaign.
 
 ### Diagnostic commands
 
@@ -49,10 +49,9 @@ Run `pnpm quality` to add mutation testing for the selected critical modules. Ru
 | `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                           |
 | `pnpm quality:duplicates`          | TypeScript and Svelte under `src` and `workers/collaboration/src`                                                                                                 |
 | `pnpm quality:fast`                | Lint, unused-code, architecture, coverage, and duplication gate                                                                                                   |
-| `pnpm test:mutation`               | Stryker mutation testing for selected critical modules                                                                                                            |
-| `pnpm quality`                     | Fast gate followed by mutation testing                                                                                                                            |
-| `pnpm check:core`                  | Format, types, fast quality gate, browser tests, and production builds                                                                                            |
-| `pnpm check`                       | Authoritative local gate: core checks followed by mutation testing                                                                                                |
+| `pnpm test:mutation`               | Stryker mutation testing for the complete selected critical modules                                                                                               |
+| `pnpm test:mutation:weekly`        | Intensive mutation campaign using the 5,000-case property-test fuzzing profile                                                                                    |
+| `pnpm check`                       | Authoritative local gate: format, types, fast quality gate, browser tests, and production builds                                                                  |
 
 ### Enforced baselines
 
@@ -66,12 +65,16 @@ Duplication analysis uses mild token matching with a minimum clone size of 5 lin
 
 ### Git hooks
 
-`mise run install` runs `pnpm install`, which synchronizes SvelteKit and installs the tracked Husky hooks. Both hooks invoke pnpm through `mise exec`, so they use the toolchain pinned in `mise.toml`. The pre-commit hook runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
+`mise run install` runs `pnpm install`, which synchronizes SvelteKit and installs the tracked Husky hook. The pre-commit hook invokes pnpm through `mise exec`, so it uses the toolchain pinned in `mise.toml`. It runs lint-staged: staged JavaScript, TypeScript, and Svelte files must pass Prettier and ESLint, while other supported authored formats are checked with Prettier only. Commands receive only matching staged paths, so unrelated worktree files are not checked.
 
-The pre-push hook runs `pnpm quality:fast`; mutation testing is left to the parallel CI job or an explicit local `pnpm test:mutation`. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
+There is no pre-push quality gate: pushes do not repeat checks already run locally. Run the local quality gates explicitly and let CI validate pushed changes. Set `HUSKY=0` for non-developer or CI dependency installations that should skip hook installation; SvelteKit synchronization still runs before Husky observes that setting.
 
 ### Continuous integration
 
-For every pull request and push to `main`, GitHub Actions uses `mise.toml` to install the pinned toolchain, then runs `pnpm check:core` and `pnpm test:mutation` as independent parallel jobs. Only the core job installs Chromium. The read-only workflow cancels superseded runs for the same pull request or branch.
+For every pull request and push to `main`, GitHub Actions uses `mise.toml` to install the pinned toolchain, then runs `pnpm check`. Mutation testing is not part of this workflow or any Git hook. The read-only check workflow cancels superseded runs for the same pull request or branch. The existing property-fuzzing job runs separately on Sundays.
 
-Run `pnpm check` locally to reproduce both CI jobs in fail-fast order. Its namespaced output identifies whether formatting, types, linting, unused code, architecture, coverage, duplication, browser integration, a production build, or mutation testing failed.
+The **Mutation testing** workflow runs every Friday at **03:17 UTC** on the default branch and can also be started manually with `workflow_dispatch`. It runs `pnpm test:mutation:weekly`: all nine selected critical files are mutated in full, including the previously restricted layout regions, and property tests use 5,000 cases instead of the normal 200. The initial test run may take up to ten minutes, the extra per-mutant timeout allowance is sixty seconds, and the job has a two-hour limit. The global mutation break threshold remains 80%.
+
+HTML and JSON mutation reports are written to `coverage/mutation/` and uploaded as a GitHub Actions artifact retained for thirty days, including when the mutation threshold fails. The HTML entry point is `index.html`. A failed or interrupted initial run may not produce a report; the job log remains available. Scheduled runs do not cancel an ongoing campaign.
+
+Run `pnpm check` locally to reproduce the PR/push gate in fail-fast order. For a focused mutation investigation, use `pnpm test:mutation --mutate src/lib/document/validate-logic-document.ts`; its score applies to the selected file, not the whole campaign. Fuzzing failures include a replay seed and path; set `SEQUIT_PROPERTY_SEED` when rerunning the weekly command to reproduce the seed.

@@ -17,9 +17,8 @@
 		"src/lib/graph/create-graph.ts",
 		"src/lib/graph/topological-ranks.ts",
 		"src/lib/layout/layout-graph.ts",
-		"src/lib/layout/component-layout.ts:35-93",
-		"src/lib/layout/component-layout.ts:105-214",
-		"src/lib/layout/dedicated-layout-engine.ts:92-172",
+		"src/lib/layout/component-layout.ts",
+		"src/lib/layout/dedicated-layout-engine.ts",
 		"src/lib/text/serialize-sequit-toml.ts"
 	],
 	"thresholds": {
@@ -27,5 +26,11 @@
 		"low": 80,
 		"break": 80
 	},
-	"reporters": ["clear-text", "progress"]
+	"reporters": ["progress", "html", "json"],
+	"htmlReporter": {
+		"fileName": "coverage/mutation/index.html"
+	},
+	"jsonReporter": {
+		"fileName": "coverage/mutation/mutation.json"
+	}
 }

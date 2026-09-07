@@ -256,7 +256,8 @@ function repackContainmentComponents(
 	for (const endpoint of graph.endpointsById.values()) {
 		if (endpoint.entity.groupId !== undefined) connect(endpoint.entity.id, endpoint.entity.groupId);
 	}
-	const pendingIds = [...bounds.keys()].sort(compareCanonicalStrings);
+	// Rankable bounds were inserted in packing order before group insets expanded them.
+	const pendingIds = [...bounds.keys()];
 	const visited = new Set<string>();
 	const components: string[][] = [];
 	for (const start of pendingIds) {
@@ -280,7 +281,6 @@ function repackContainmentComponents(
 			),
 		};
 	};
-	components.sort((left, right) => crossExtent(left).minimum - crossExtent(right).minimum);
 	let cross = OUTER_MARGIN;
 	for (const ids of components) {
 		const extent = crossExtent(ids);

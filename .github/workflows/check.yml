@@ -33,25 +33,8 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run core quality gate
-        run: pnpm check:core
-
-  mutation:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Install tools with mise
-        uses: jdx/mise-action@v4
-
-      - name: Install dependencies
-        run: HUSKY=0 pnpm install --frozen-lockfile
-
-      - name: Run mutation testing
-        run: pnpm test:mutation
+      - name: Run quality gate
+        run: pnpm check
 
   property-fuzz:
     if: github.event_name == 'schedule'

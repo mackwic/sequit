@@ -16,6 +16,7 @@ export default defineConfig(
 	{
 		ignores: [
 			'**/.svelte-kit/**',
+			'**/.stryker-tmp/**',
 			'**/.wrangler/**',
 			'**/*.d.ts',
 			'build/**',
