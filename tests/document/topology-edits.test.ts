@@ -344,10 +344,7 @@ describe('topology edits', () => {
 				if (left > right) return 1;
 				return 0;
 			},
-			isValid: (key: string): key is OrderKey => {
-				void key;
-				return true;
-			},
+			isValid: (key: string): key is OrderKey => fractionalOrderKeySpace.isValid(key),
 			keyFor: (
 				slot: { readonly before?: string; readonly after?: string },
 				discriminator?: string,
@@ -428,10 +425,7 @@ describe('topology edits', () => {
 				if (left > right) return 1;
 				return 0;
 			},
-			isValid: (key: string): key is OrderKey => {
-				void key;
-				return true;
-			},
+			isValid: (key: string): key is OrderKey => fractionalOrderKeySpace.isValid(key),
 			keyFor: () => targetKey,
 		};
 

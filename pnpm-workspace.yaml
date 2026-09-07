@@ -1,5 +1,11 @@
-onlyBuiltDependencies:
-  - '@tailwindcss/oxide'
-  - workerd
-  - sharp
-  - esbuild
+allowBuilds:
+  '@tailwindcss/oxide': true
+  workerd: true
+  sharp: true
+  esbuild: true
+
+overrides:
+  # SvelteKit still requires cookie ^0.6.0 (GHSA-pxg6-pf52-xh8x).
+  '@sveltejs/kit>cookie@<0.7.0': ^0.7.2
+  # typed-rest-client pins qs 6.15.1 (GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g).
+  'typed-rest-client>qs@<6.16.0': ^6.16.0

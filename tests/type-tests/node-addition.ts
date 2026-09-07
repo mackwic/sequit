@@ -1,3 +1,5 @@
+import { assertType } from 'vitest';
+
 import type {
 	DocumentCommand,
 	DocumentCommandKind,
@@ -15,7 +17,7 @@ const newNode = {
 	markdown: 'New node',
 } satisfies NewLogicNode;
 type AddNodeCommand = Extract<DocumentCommand, { readonly kind: DocumentCommandKind.AddNode }>;
-const accepted: AddNodeCommand['node'] = newNode;
+assertType<AddNodeCommand['node']>(newNode);
 
 const existingNode = {
 	...newNode,
@@ -23,7 +25,4 @@ const existingNode = {
 	layoutOrder: orderKey('a0'),
 } satisfies LogicNode;
 // @ts-expect-error Existing domain nodes must not supply an already allocated key.
-const rejected: AddNodeCommand['node'] = existingNode;
-
-void accepted;
-void rejected;
+assertType<AddNodeCommand['node']>(existingNode);

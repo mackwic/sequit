@@ -9,6 +9,10 @@ mise install
 mise run install
 ```
 
+`mise.toml` pins Node.js 24 LTS and pnpm 12. Dependency build permissions use `allowBuilds` in `pnpm-workspace.yaml`.
+
+Keep `@types/node` on the Node.js 24 line. Vitest and its Istanbul coverage provider stay on 4.1 while `@cloudflare/vitest-pool-workers` requires Vitest 4; TypeScript stays on 6.0 while `typescript-eslint` requires TypeScript below 6.1. Recheck those peer dependency ranges before upgrading either major version.
+
 Run the complete web and collaboration stack with:
 
 ```bash
