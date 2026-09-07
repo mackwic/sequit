@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer';
+
 import { describe, expect, it } from 'vitest';
 
 import { MAX_PROPOSAL_ID_BYTES } from '../../src/lib/collaboration/protocol';
@@ -20,7 +22,7 @@ describe('room persistence planning', () => {
 	it('split and concat round-trip at boundary sizes (empty, one byte, exactly one chunk, at the ceiling)', () => {
 		for (const length of [0, 1, CHUNK_BYTES, CHUNK_BYTES * MAX_CHUNKS]) {
 			const update = bytes(length);
-			expect(concatChunks(splitChunks(update))).toEqual(update);
+			expect(Buffer.compare(concatChunks(splitChunks(update)), update)).toBe(0);
 		}
 		expect(() => splitChunks(bytes(CHUNK_BYTES * MAX_CHUNKS + 1))).toThrow(RangeError);
 	});
