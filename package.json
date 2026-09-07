@@ -35,13 +35,14 @@
 		"test:coverage:collaboration": "vitest run --config workers/collaboration/vitest.config.ts --coverage",
 		"test:web": "vitest run --config vitest.config.ts",
 		"test:collaboration": "vitest run --config workers/collaboration/vitest.config.ts",
-		"test:property": "vitest run --config vitest.config.ts tests/document/validate-logic-document.property.test.ts tests/graph/logic-graph.property.test.ts tests/text/document-roundtrip.property.test.ts tests/layout/layout-graph.property.test.ts tests/layout/dedicated-layout-components.property.test.ts tests/collaboration/yjs-live-document.property.test.ts",
+		"test:property": "vitest run --config vitest.config.ts tests/document/validate-logic-document.property.test.ts tests/graph/logic-graph.property.test.ts tests/text/document-roundtrip.property.test.ts tests/layout/layout-graph.property.test.ts tests/layout/dedicated-layout-components.property.test.ts tests/collaboration/yjs-live-document.property.test.ts tests/collaboration/protocol.property.test.ts tests/collaboration/room-persistence.property.test.ts",
 		"test:property:fuzz": "SEQUIT_PROPERTY_MODE=fuzz pnpm test:property",
 		"test:mutation": "stryker run",
 		"test:mutation:weekly": "SEQUIT_PROPERTY_MODE=fuzz pnpm test:mutation --timeoutMS 60000 --dryRunTimeoutMinutes 10",
 		"test:e2e": "playwright test",
 		"benchmark:layout": "vitest bench --run --config vitest.performance.config.ts tests/performance/layout-graph.bench.ts",
 		"benchmark:graph": "vitest bench --run --config vitest.performance.config.ts tests/performance/graph-preparation.bench.ts",
+		"benchmark:authorization": "vitest bench --run --config vitest.performance.config.ts tests/performance/authorize-proposal.bench.ts",
 		"benchmark:performance": "pnpm benchmark:graph && pnpm benchmark:layout",
 		"benchmark:incremental": "vitest bench --run --config vitest.performance.config.ts tests/performance/incremental-layout.bench.ts",
 		"test:performance": "vitest run --config vitest.performance.config.ts tests/performance/layout-graph-performance.test.ts",
@@ -94,6 +95,7 @@
 	},
 	"dependencies": {
 		"fractional-indexing": "4.0.0",
+		"lib0": "^0.2.99",
 		"smol-toml": "^1.8.0",
 		"yjs": "^13.6.32"
 	}

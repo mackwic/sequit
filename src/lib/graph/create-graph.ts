@@ -8,19 +8,24 @@ import type {
 } from '../document/logic-document';
 import { defined } from '../document/logic-document';
 import { EndpointKind } from '../document/logic-document';
+import { createAdjacency } from './create-adjacency';
+import { findCycle } from './find-cycle';
 
 interface GraphNodeEndpoint {
 	readonly kind: EndpointKind.Node;
 	readonly entity: LogicNode;
 }
+
 interface GraphGroupEndpoint {
 	readonly kind: EndpointKind.Group;
 	readonly entity: LogicGroup;
 }
+
 interface GraphJunctionEndpoint {
 	readonly kind: EndpointKind.Junction;
 	readonly entity: LogicJunction;
 }
+
 type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
 
 interface GraphRelation {
@@ -56,7 +61,11 @@ export enum GraphDiagnosticCode {
 	UnknownEndpoint = 'unknown-endpoint',
 	Cycle = 'cycle',
 	GroupCycle = 'group-cycle',
+	GraphTooComplex = 'graph-too-complex',
 }
+
+export const MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS = 100_000;
+export const MAX_EFFECTIVE_DEPENDENCY_PAIRS = 100_000;
 
 interface GraphSuccess {
 	readonly ok: true;
@@ -70,44 +79,6 @@ interface GraphFailure {
 
 export type GraphResult = GraphSuccess | GraphFailure;
 
-enum VisitState {
-	Visiting = 'visiting',
-	Visited = 'visited',
-}
-
-function findCycle(
-	endpointIds: readonly string[],
-	outgoingByEndpointId: ReadonlyMap<string, readonly string[]>,
-): readonly string[] | undefined {
-	// FIXME: Persisted input can contain a valid chain deep enough to exhaust the call stack.
-	// Use an explicit DFS frame stack while preserving the deterministic cycle path.
-	const state = new Map<string, VisitState>();
-	const stack: string[] = [];
-	function visit(id: string): readonly string[] | undefined {
-		state.set(id, VisitState.Visiting);
-		stack.push(id);
-		for (const target of defined(outgoingByEndpointId.get(id))) {
-			if (state.get(target) === VisitState.Visiting) {
-				const start = stack.lastIndexOf(target);
-				return [...stack.slice(start), target];
-			}
-			if (state.get(target) === VisitState.Visited) continue;
-			const cycle = visit(target);
-			if (cycle) return cycle;
-		}
-		stack.pop();
-		state.set(id, VisitState.Visited);
-		return undefined;
-	}
-
-	for (const id of endpointIds) {
-		if (state.has(id)) continue;
-		const cycle = visit(id);
-		if (cycle) return cycle;
-	}
-	return undefined;
-}
-
 function collectRelations(
 	document: LogicDocument,
 	endpointsById: ReadonlyMap<string, GraphEndpoint>,
@@ -119,23 +90,23 @@ function collectRelations(
 	)) {
 		const source = endpointsById.get(relation.from);
 		const target = endpointsById.get(relation.to);
-		if (!source) {
-			diagnostics.push({
-				code: GraphDiagnosticCode.UnknownEndpoint,
-				message: `Unknown relation source: ${relation.from}`,
-				path: ['relations', relation.id, 'from'],
-			});
-		}
-		if (!target) {
-			diagnostics.push({
-				code: GraphDiagnosticCode.UnknownEndpoint,
-				message: `Unknown relation target: ${relation.to}`,
-				path: ['relations', relation.id, 'to'],
-			});
-		}
+		if (!source) diagnostics.push(unknownEndpointDiagnostic(relation, 'from'));
+		if (!target) diagnostics.push(unknownEndpointDiagnostic(relation, 'to'));
 		if (source && target) relations.push({ relation, source, target });
 	}
 	return relations;
+}
+
+function unknownEndpointDiagnostic(
+	relation: LogicRelation,
+	field: keyof { from: unknown; to: unknown },
+): GraphDiagnostic {
+	const role = field === 'from' ? 'source' : 'target';
+	return {
+		code: GraphDiagnosticCode.UnknownEndpoint,
+		message: `Unknown relation ${role}: ${relation[field]}`,
+		path: ['relations', relation.id, field],
+	};
 }
 
 function collectDirectGroupMembers(document: LogicDocument): Map<string, string[]> {
@@ -148,53 +119,128 @@ function collectDirectGroupMembers(document: LogicDocument): Map<string, string[
 	return membersByGroupId;
 }
 
-function adjacencyEndpointIds(
-	relation: GraphRelation,
-	effectiveRelation: EffectiveSemanticRelation,
-): { readonly sourceIds: readonly string[]; readonly targetIds: readonly string[] } {
-	const { sourceIds, targetIds } = effectiveRelation;
-	const groupEndpoint =
-		relation.source.kind === EndpointKind.Group || relation.target.kind === EndpointKind.Group;
-	if (!groupEndpoint || !sourceIds.some((id) => targetIds.includes(id))) {
-		return effectiveRelation;
-	}
-	return { sourceIds: [relation.source.entity.id], targetIds: [relation.target.entity.id] };
+interface GroupExpansionFrame {
+	readonly groupId: string;
+	readonly expanded: Set<string>;
+	nextMember: number;
 }
 
-function appendUniqueAdjacency(
-	keys: readonly string[],
-	adjacentIds: readonly string[],
-	adjacency: Map<string, string[]>,
+interface GroupExpansionContext {
+	readonly endpointsById: ReadonlyMap<string, GraphEndpoint>;
+	readonly directMembersByGroupId: ReadonlyMap<string, readonly string[]>;
+	readonly cache: Map<string, readonly string[]>;
+	readonly diagnostics: GraphDiagnostic[];
+	cachedMemberships: number;
+}
+
+type GroupExpansionTraversal = readonly [
+	frames: GroupExpansionFrame[],
+	path: string[],
+	pathIndex: Map<string, number>,
+];
+
+function visitGroupMember(
+	frame: GroupExpansionFrame,
+	traversal: GroupExpansionTraversal,
+	context: GroupExpansionContext,
 ): void {
-	for (const key of keys) {
-		const values = defined(adjacency.get(key));
-		for (const adjacentId of adjacentIds) {
-			if (!values.includes(adjacentId)) values.push(adjacentId);
-		}
+	const directMembers = defined(context.directMembersByGroupId.get(frame.groupId));
+	const memberId = defined(directMembers[frame.nextMember]);
+	frame.nextMember += 1;
+	const member = context.endpointsById.get(memberId);
+	if (member?.kind !== EndpointKind.Group) {
+		frame.expanded.add(memberId);
+		return;
 	}
+	const cachedMembers = context.cache.get(memberId);
+	if (cachedMembers !== undefined) {
+		for (const id of cachedMembers) frame.expanded.add(id);
+		return;
+	}
+	const [, path, pathIndex] = traversal;
+	const cycleStart = pathIndex.get(memberId);
+	if (cycleStart !== undefined) {
+		const cycle = [...path.slice(cycleStart), memberId];
+		context.diagnostics.push({
+			code: GraphDiagnosticCode.GroupCycle,
+			message: `Group nesting cycle: ${cycle.join(' -> ')}`,
+			path: ['groups', frame.groupId, 'group'],
+			cycle,
+		});
+		return;
+	}
+	pathIndex.set(memberId, path.length);
+	path.push(memberId);
+	traversal[0].push({ groupId: memberId, expanded: new Set(), nextMember: 0 });
 }
 
-function createAdjacency(
-	endpointIds: readonly string[],
+function expandGroup(
+	groupId: string,
+	context: GroupExpansionContext,
+): readonly string[] | undefined {
+	const cached = context.cache.get(groupId);
+	if (cached !== undefined) return cached;
+	const traversal: GroupExpansionTraversal = [
+		[{ groupId, expanded: new Set<string>(), nextMember: 0 }],
+		[groupId],
+		new Map([[groupId, 0]]),
+	];
+	const [frames, path, pathIndex] = traversal;
+	while (frames.length > 0 && context.diagnostics.length === 0) {
+		const frame = defined(frames.at(-1));
+		const directMembers = defined(context.directMembersByGroupId.get(frame.groupId));
+		if (frame.nextMember < directMembers.length) {
+			visitGroupMember(frame, traversal, context);
+			continue;
+		}
+		const expanded = [...frame.expanded].sort(compareCanonicalStrings);
+		if (context.cachedMemberships + expanded.length > MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS) {
+			context.diagnostics.push({
+				code: GraphDiagnosticCode.GraphTooComplex,
+				message: `Expanded group memberships exceed ${MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS}`,
+				path: ['groups', frame.groupId],
+			});
+			break;
+		}
+		context.cachedMemberships += expanded.length;
+		context.cache.set(frame.groupId, expanded);
+		frames.pop();
+		path.pop();
+		pathIndex.delete(frame.groupId);
+		const parentFrame = frames.at(-1);
+		if (!parentFrame) continue;
+		for (const id of expanded) parentFrame.expanded.add(id);
+	}
+	return context.cache.get(groupId);
+}
+
+function collectEffectiveRelations(
 	relations: readonly GraphRelation[],
-	effectiveRelations: readonly EffectiveSemanticRelation[],
-): {
-	readonly outgoing: Map<string, string[]>;
-	readonly predecessors: Map<string, string[]>;
-} {
-	const outgoing = new Map(endpointIds.map((id) => [id, [] as string[]]));
-	const predecessors = new Map(endpointIds.map((id) => [id, [] as string[]]));
-	for (let index = 0; index < effectiveRelations.length; index += 1) {
-		const effectiveRelation = defined(effectiveRelations[index]);
-		const graphRelation = defined(relations[index]);
-		const { sourceIds, targetIds } = adjacencyEndpointIds(graphRelation, effectiveRelation);
-		appendUniqueAdjacency(sourceIds, targetIds, outgoing);
-		appendUniqueAdjacency(targetIds, sourceIds, predecessors);
+	effectiveEndpointIds: (
+		endpointId: string,
+		preserveDirectEmptyGroup?: boolean,
+	) => readonly string[],
+): EffectiveSemanticRelation[] | GraphDiagnostic {
+	const effectiveRelations: EffectiveSemanticRelation[] = [];
+	let dependencyPairs = 0;
+	for (const { relation, source, target } of relations) {
+		const sourceIds = [...new Set(effectiveEndpointIds(source.entity.id, true))].sort(
+			compareCanonicalStrings,
+		);
+		const targetIds = [...new Set(effectiveEndpointIds(target.entity.id, true))].sort(
+			compareCanonicalStrings,
+		);
+		dependencyPairs += sourceIds.length * targetIds.length;
+		if (dependencyPairs > MAX_EFFECTIVE_DEPENDENCY_PAIRS) {
+			return {
+				code: GraphDiagnosticCode.GraphTooComplex,
+				message: `Effective dependency pairs exceed ${MAX_EFFECTIVE_DEPENDENCY_PAIRS}`,
+				path: ['relations', relation.id],
+			};
+		}
+		effectiveRelations.push({ relationId: relation.id, sourceIds, targetIds });
 	}
-	for (const adjacent of [...outgoing.values(), ...predecessors.values()]) {
-		adjacent.sort(compareCanonicalStrings);
-	}
-	return { outgoing, predecessors };
+	return effectiveRelations;
 }
 
 export function createGraph(document: LogicDocument): GraphResult {
@@ -213,64 +259,37 @@ export function createGraph(document: LogicDocument): GraphResult {
 
 	const directMembersByGroupId = collectDirectGroupMembers(document);
 	const expandedGroupMembers = new Map<string, readonly string[]>();
-	const expandingGroups: string[] = [];
-	// FIXME: Deep but acyclic untrusted group nesting can exhaust the call stack. Replace
-	// this recursion with iterative post-order expansion and retain group-cycle diagnostics.
+	const expansionContext: GroupExpansionContext = {
+		endpointsById,
+		directMembersByGroupId,
+		cache: expandedGroupMembers,
+		diagnostics,
+		cachedMemberships: 0,
+	};
 	function effectiveEndpointIds(
 		endpointId: string,
 		preserveDirectEmptyGroup = false,
 	): readonly string[] {
 		const endpoint = endpointsById.get(endpointId);
 		if (endpoint?.kind !== EndpointKind.Group) return [endpointId];
-		const cached = expandedGroupMembers.get(endpointId);
-		if (cached) return cached.length === 0 && preserveDirectEmptyGroup ? [endpointId] : cached;
-		const cycleStart = expandingGroups.indexOf(endpointId);
-		if (cycleStart >= 0) {
-			const cycle = [...expandingGroups.slice(cycleStart), endpointId];
-			diagnostics.push({
-				code: GraphDiagnosticCode.GroupCycle,
-				message: `Group nesting cycle: ${cycle.join(' -> ')}`,
-				path: ['groups', defined(expandingGroups.at(-1)), 'group'],
-				cycle,
-			});
-			return [];
-		}
-		const directMembers = defined(directMembersByGroupId.get(endpointId));
-		if (directMembers.length === 0) {
-			expandedGroupMembers.set(endpointId, []);
-			return [];
-		}
-		expandingGroups.push(endpointId);
-		const expanded = [
-			...new Set(directMembers.flatMap((memberId) => effectiveEndpointIds(memberId))),
-		].sort(compareCanonicalStrings);
-		expandingGroups.pop();
-		expandedGroupMembers.set(endpointId, expanded);
+		const expanded = expandGroup(endpointId, expansionContext) ?? [];
+		if (expanded.length === 0 && preserveDirectEmptyGroup) return [endpointId];
 		return expanded;
 	}
-	for (const group of document.groups) effectiveEndpointIds(group.id);
+	for (const group of [...document.groups].sort((left, right) =>
+		compareCanonicalStrings(left.id, right.id),
+	)) {
+		effectiveEndpointIds(group.id);
+		if (diagnostics.length > 0) break;
+	}
 	if (diagnostics.length > 0) return { ok: false, diagnostics };
-	const effectiveRelations: EffectiveSemanticRelation[] = [];
-	for (const { relation, source, target } of relations) {
-		const sourceIds = [...new Set(effectiveEndpointIds(source.entity.id, true))].sort(
-			compareCanonicalStrings,
-		);
-		const targetIds = [...new Set(effectiveEndpointIds(target.entity.id, true))].sort(
-			compareCanonicalStrings,
-		);
-		effectiveRelations.push({ relationId: relation.id, sourceIds, targetIds });
-	}
-	const rankableEndpointIds = new Set<string>();
-	for (const node of document.nodes) rankableEndpointIds.add(node.id);
-	for (const junction of document.junctions) rankableEndpointIds.add(junction.id);
-	for (const { sourceIds, targetIds } of effectiveRelations) {
-		for (const id of sourceIds) rankableEndpointIds.add(id);
-		for (const id of targetIds) rankableEndpointIds.add(id);
-	}
-	for (const { source, target } of relations) {
-		rankableEndpointIds.add(source.entity.id);
-		rankableEndpointIds.add(target.entity.id);
-	}
+	const effectiveRelations = collectEffectiveRelations(relations, effectiveEndpointIds);
+	if (!Array.isArray(effectiveRelations)) return { ok: false, diagnostics: [effectiveRelations] };
+	const rankableEndpointIds = new Set([
+		...[...document.nodes, ...document.junctions].map(({ id }) => id),
+		...effectiveRelations.flatMap(({ sourceIds, targetIds }) => [...sourceIds, ...targetIds]),
+		...relations.flatMap(({ source, target }) => [source.entity.id, target.entity.id]),
+	]);
 	const canonicalIds = [...rankableEndpointIds].sort(compareCanonicalStrings);
 	const { outgoing: outgoingByEndpointId, predecessors: predecessorsByEndpointId } =
 		createAdjacency(canonicalIds, relations, effectiveRelations);

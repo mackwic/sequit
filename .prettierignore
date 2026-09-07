@@ -1,6 +1,7 @@
 .svelte-kit/
 .stryker-tmp/
 .wrangler/
+.claude/
 .humanlayer/
 build/
 coverage/

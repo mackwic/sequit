@@ -7,7 +7,12 @@ import {
 } from '../../src/lib/collaboration/yjs-document-codec';
 import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
 import { orderKey } from '../../src/lib/document/order-key';
-import { createGraph, type LogicGraph } from '../../src/lib/graph/create-graph';
+import {
+	createGraph,
+	type LogicGraph,
+	MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS,
+	MAX_EFFECTIVE_DEPENDENCY_PAIRS,
+} from '../../src/lib/graph/create-graph';
 import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
 import { validLogicDocument } from '../builders/logic-document';
@@ -52,6 +57,144 @@ it('rejects a cyclic graph passed directly to the ranker', () => {
 });
 
 describe('LogicGraph', () => {
+	it('builds a deeply nested acyclic graph without exhausting the call stack', () => {
+		const depth = 15_000;
+		const base = validLogicDocument();
+		const nodes = Array.from({ length: depth }, (_, index) => ({
+			kind: EndpointKind.Node as const,
+			id: `node-${String(index).padStart(5, '0')}`,
+			natureId: 'goal',
+			markdown: '',
+			layoutOrder: orderKey('a0'),
+		}));
+		const relations = nodes.slice(1).map((node, index) => ({
+			id: `relation-${String(index).padStart(5, '0')}`,
+			from: nodes[index]?.id ?? '',
+			to: node.id,
+		}));
+
+		const graph = graphFrom({ ...base, groups: [], nodes, junctions: [], relations });
+
+		expect(graph.rankableEndpointIds).toHaveLength(depth);
+	});
+
+	it('reports a cycle closing a deeply nested graph path without exhausting the call stack', () => {
+		const depth = 15_000;
+		const base = validLogicDocument();
+		const nodes = Array.from({ length: depth }, (_, index) => ({
+			kind: EndpointKind.Node as const,
+			id: `node-${String(index).padStart(5, '0')}`,
+			natureId: 'goal',
+			markdown: '',
+			layoutOrder: orderKey('a0'),
+		}));
+		const relations = nodes.slice(1).map((node, index) => ({
+			id: `relation-${String(index).padStart(5, '0')}`,
+			from: nodes[index]?.id ?? '',
+			to: node.id,
+		}));
+		relations.push({ id: 'relation-cycle', from: nodes.at(-1)?.id ?? '', to: nodes[0]?.id ?? '' });
+
+		const result = createGraph({ ...base, groups: [], nodes, junctions: [], relations });
+
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error('Expected a cycle');
+		expect(result.diagnostics[0]?.cycle).toHaveLength(depth + 1);
+		expect(result.diagnostics[0]?.cycle?.at(0)).toBe('node-00000');
+		expect(result.diagnostics[0]?.cycle?.at(-1)).toBe('node-00000');
+	});
+
+	it('expands deeply nested groups without exhausting the call stack', () => {
+		const depth = 15_000;
+		const base = validLogicDocument();
+		const groups = Array.from({ length: depth }, (_, index) => ({
+			kind: EndpointKind.Group as const,
+			id: `group-${String(index).padStart(5, '0')}`,
+			label: '',
+			...(index > 0 ? { groupId: `group-${String(index - 1).padStart(5, '0')}` } : {}),
+			layoutOrder: orderKey('a0'),
+		}));
+
+		const graph = graphFrom({ ...base, groups, nodes: [], junctions: [], relations: [] });
+
+		expect(graph.rankableEndpointIds).toEqual([]);
+	});
+
+	it('rejects deterministically when cached expanded group memberships exceed the limit', () => {
+		const depth = Math.ceil(Math.sqrt(MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS * 2));
+		const base = validLogicDocument();
+		const groups = Array.from({ length: depth }, (_, index) => ({
+			kind: EndpointKind.Group as const,
+			id: `group-${String(index).padStart(4, '0')}`,
+			label: '',
+			...(index > 0 ? { groupId: `group-${String(index - 1).padStart(4, '0')}` } : {}),
+			layoutOrder: orderKey('a0'),
+		}));
+		const nodes = groups.map((group, index) => ({
+			kind: EndpointKind.Node as const,
+			id: `node-${String(index).padStart(4, '0')}`,
+			natureId: 'goal',
+			groupId: group.id,
+			markdown: '',
+			layoutOrder: orderKey('a0'),
+		}));
+		const document = { ...base, groups, nodes, junctions: [], relations: [] };
+
+		const first = createGraph(document);
+		const reordered = createGraph({ ...document, groups: [...groups].reverse() });
+
+		expect(first).toEqual(reordered);
+		expect(first).toEqual({
+			ok: false,
+			diagnostics: [
+				expect.objectContaining({
+					code: 'graph-too-complex',
+					path: ['groups', expect.any(String)],
+				}),
+			],
+		});
+	});
+
+	it('rejects a relation whose effective Cartesian dependencies exceed the limit', () => {
+		const sourceCount = Math.floor(Math.sqrt(MAX_EFFECTIVE_DEPENDENCY_PAIRS)) + 1;
+		const targetCount = Math.ceil((MAX_EFFECTIVE_DEPENDENCY_PAIRS + 1) / sourceCount);
+		const base = validLogicDocument();
+		const groups = ['sources', 'targets'].map((id) => ({
+			kind: EndpointKind.Group as const,
+			id,
+			label: id,
+			layoutOrder: orderKey('a0'),
+		}));
+		const groupedNodes = (groupId: string, count: number) =>
+			Array.from({ length: count }, (_, index) => ({
+				kind: EndpointKind.Node as const,
+				id: `${groupId}-${String(index).padStart(3, '0')}`,
+				natureId: 'goal',
+				groupId,
+				markdown: '',
+				layoutOrder: orderKey('a0'),
+			}));
+		const result = createGraph({
+			...base,
+			groups,
+			nodes: [...groupedNodes('sources', sourceCount), ...groupedNodes('targets', targetCount)],
+			junctions: [],
+			relations: [{ id: 'oversized', from: 'sources', to: 'targets' }],
+		});
+
+		expect(sourceCount * targetCount).toBeGreaterThan(MAX_EFFECTIVE_DEPENDENCY_PAIRS);
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'graph-too-complex',
+					message: `Effective dependency pairs exceed ${MAX_EFFECTIVE_DEPENDENCY_PAIRS}`,
+					path: ['relations', 'oversized'],
+				},
+			],
+		});
+	});
+
 	it('resolves all relations including nodes, a junction, and the empty group endpoint', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());
 		const xorInputs = graph.relations.filter(
