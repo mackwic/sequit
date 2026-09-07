@@ -4,19 +4,17 @@ import { defined } from '../document/logic-document';
 import { EndpointKind, type LogicDocument } from '../document/logic-document';
 import type { DocumentChangeSet } from '../document/topology-edits';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
-import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
+import { createYjsEntityMap, YjsCollection } from './yjs-document-schema';
 
 export type YjsDocumentRepositoryObserver = (
 	result: YjsLiveDocumentResult<LogicDocument>,
 	origin: unknown,
 ) => void;
 
-const {
-	groups: GROUPS,
-	nodes: NODES,
-	junctions: JUNCTIONS,
-	relations: RELATIONS,
-} = YJS_COLLECTIONS;
+const GROUPS = YjsCollection.Groups;
+const JUNCTIONS = YjsCollection.Junctions;
+const NODES = YjsCollection.Nodes;
+const RELATIONS = YjsCollection.Relations;
 const REPLACE_MARKDOWN_ORIGIN = Symbol('sequit replace node markdown');
 
 export function replaceNodeMarkdown(
@@ -34,7 +32,7 @@ export function replaceNodeMarkdown(
 	return true;
 }
 
-const COLLECTION_BY_ENDPOINT_KIND: Readonly<Record<EndpointKind, string>> = {
+const COLLECTION_BY_ENDPOINT_KIND: Readonly<Record<EndpointKind, YjsCollection>> = {
 	[EndpointKind.Group]: GROUPS,
 	[EndpointKind.Node]: NODES,
 	[EndpointKind.Junction]: JUNCTIONS,
@@ -88,7 +86,7 @@ export class YjsDocumentRepository {
 		let guardedValidation: YjsLiveDocumentResult<LogicDocument> | undefined;
 		const stateBefore = Y.decodeStateVector(Y.encodeStateVector(this.document));
 		const undo = new Y.UndoManager(
-			Object.values(YJS_COLLECTIONS).map((collection) => this.document.getMap(collection)),
+			Object.values(YjsCollection).map((collection) => this.document.getMap(collection)),
 			{ trackedOrigins: new Set([origin ?? null]) },
 		);
 		this.#persistenceCapture = capture;

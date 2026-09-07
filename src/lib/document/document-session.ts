@@ -32,7 +32,7 @@ interface RejectedExternalTransactionReport {
 	readonly diagnostics: readonly DocumentCommandDiagnostic[];
 }
 interface AcceptedOutcome {
-	readonly kind: typeof DocumentCommandOutcomeKind.Accepted;
+	readonly kind: DocumentCommandOutcomeKind.Accepted;
 }
 interface AsynchronousCommandOutcomeReport {
 	readonly kind: DocumentSessionErrorKind.AsynchronousCommandOutcome;

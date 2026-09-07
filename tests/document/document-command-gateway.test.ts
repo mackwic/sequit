@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
 	type DocumentChangeRepository,
+	DocumentCommandKind,
+	DocumentCommandOutcomeKind,
 	LocalDocumentCommandGateway,
 } from '../../src/lib/document/document-command-gateway';
 import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
@@ -29,11 +31,11 @@ describe('local document command gateway', () => {
 
 		expect(
 			await gateway.dispatch({
-				kind: 'add-node',
+				kind: DocumentCommandKind.AddNode,
 				node: { id: 'new-node', natureId: 'goal', markdown: 'New node' },
 			}),
 		).toEqual({
-			kind: 'failed',
+			kind: DocumentCommandOutcomeKind.Failed,
 			error,
 		});
 		expect(subscriber).not.toHaveBeenCalled();
@@ -61,7 +63,7 @@ describe('local document command gateway', () => {
 		});
 
 		const pending = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'new-node', natureId: 'goal', markdown: 'New node' },
 		});
 		await vi.waitFor(() => {
@@ -79,7 +81,7 @@ describe('local document command gateway', () => {
 		});
 		const outcome = await pending;
 
-		expect(outcome.kind).toBe('accepted');
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Accepted);
 		expect(events).toEqual(['persist', 'publish']);
 		expect(persist).toHaveBeenCalledOnce();
 		expect(persist.mock.calls[0]?.[0]).toMatchObject({
@@ -89,7 +91,8 @@ describe('local document command gateway', () => {
 			relationAdditions: [],
 			endpointOrderChanges: [],
 		});
-		if (outcome.kind !== 'accepted') throw new Error('Expected accepted command outcome');
+		if (outcome.kind !== DocumentCommandOutcomeKind.Accepted)
+			throw new Error('Expected accepted command outcome');
 		expect(outcome.document.nodes).toContainEqual(expect.objectContaining({ id: 'new-node' }));
 	});
 
@@ -107,15 +110,15 @@ describe('local document command gateway', () => {
 		const gateway = new LocalDocumentCommandGateway(() => current, { persist });
 		const publications: (typeof initial)[] = [];
 		gateway.subscribe((outcome) => {
-			if (outcome.kind === 'accepted') publications.push(outcome.document);
+			if (outcome.kind === DocumentCommandOutcomeKind.Accepted) publications.push(outcome.document);
 		});
 
 		const firstPending = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'concurrent-first', natureId: 'goal', markdown: 'First' },
 		});
 		const secondPending = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'concurrent-second', natureId: 'goal', markdown: 'Second' },
 		});
 		await vi.waitFor(() => {
@@ -134,7 +137,10 @@ describe('local document command gateway', () => {
 		};
 		current = firstDocument;
 		firstCompletion({ ok: true, value: firstDocument });
-		await expect(firstPending).resolves.toEqual({ kind: 'accepted', document: firstDocument });
+		await expect(firstPending).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Accepted,
+			document: firstDocument,
+		});
 
 		await vi.waitFor(() => {
 			expect(persist).toHaveBeenCalledTimes(2);
@@ -160,7 +166,10 @@ describe('local document command gateway', () => {
 		current = secondDocument;
 		secondCompletion({ ok: true, value: secondDocument });
 
-		await expect(secondPending).resolves.toEqual({ kind: 'accepted', document: secondDocument });
+		await expect(secondPending).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Accepted,
+			document: secondDocument,
+		});
 		expect(persistCallsBeforeFirstCompletion).toBe(1);
 		expect(publications).toEqual([firstDocument, secondDocument]);
 		expect(
@@ -185,7 +194,7 @@ describe('local document command gateway', () => {
 		gateway.subscribe(existingSubscriber);
 
 		const pending = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'in-flight', natureId: 'goal', markdown: 'In flight' },
 		});
 		await vi.waitFor(() => {
@@ -201,7 +210,10 @@ describe('local document command gateway', () => {
 		};
 		completePersistence({ ok: true, value: accepted });
 
-		await expect(pending).resolves.toEqual({ kind: 'accepted', document: accepted });
+		await expect(pending).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Accepted,
+			document: accepted,
+		});
 		expect(existingSubscriber).not.toHaveBeenCalled();
 	});
 
@@ -222,12 +234,13 @@ describe('local document command gateway', () => {
 		gateway.destroy();
 
 		const outcome = await gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'after-destroy', natureId: 'goal', markdown: 'After destroy' },
 		});
 
-		expect(outcome.kind).toBe('failed');
-		if (outcome.kind !== 'failed') throw new Error('Expected failed command outcome');
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Failed);
+		if (outcome.kind !== DocumentCommandOutcomeKind.Failed)
+			throw new Error('Expected failed command outcome');
 		expect(outcome.error).toEqual(new Error('Document command gateway has been destroyed'));
 		expect(persist).not.toHaveBeenCalled();
 	});
@@ -246,11 +259,11 @@ describe('local document command gateway', () => {
 		);
 		const gateway = new LocalDocumentCommandGateway(() => document, { persist });
 		const inFlight = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'in-flight', natureId: 'goal', markdown: 'In flight' },
 		});
 		const queued = gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'queued', natureId: 'goal', markdown: 'Queued' },
 		});
 		await vi.waitFor(() => {
@@ -260,8 +273,11 @@ describe('local document command gateway', () => {
 		gateway.destroy();
 		completePersistence({ ok: true, value: document });
 
-		await expect(inFlight).resolves.toEqual({ kind: 'accepted', document });
-		await expect(queued).resolves.toMatchObject({ kind: 'failed' });
+		await expect(inFlight).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Accepted,
+			document,
+		});
+		await expect(queued).resolves.toMatchObject({ kind: DocumentCommandOutcomeKind.Failed });
 		expect(persist).toHaveBeenCalledOnce();
 	});
 
@@ -288,11 +304,11 @@ describe('local document command gateway', () => {
 		});
 
 		const outcome = await gateway.dispatch({
-			kind: 'add-node',
+			kind: DocumentCommandKind.AddNode,
 			node: { id: 'new-node', natureId: 'goal', markdown: 'New node' },
 		});
 
-		expect(outcome).toEqual({ kind: 'accepted', document });
+		expect(outcome).toEqual({ kind: DocumentCommandOutcomeKind.Accepted, document });
 		expect(later).toHaveBeenCalledOnce();
 		expect(later).toHaveBeenCalledWith(outcome);
 		expect(reportSubscriberError).toHaveBeenNthCalledWith(1, firstError);
@@ -310,8 +326,9 @@ describe('local document command gateway', () => {
 
 		expect(pending).toBeInstanceOf(Promise);
 		const outcome = await pending;
-		expect(outcome.kind).toBe('failed');
-		if (outcome.kind !== 'failed') throw new Error('Expected failed command outcome');
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Failed);
+		if (outcome.kind !== DocumentCommandOutcomeKind.Failed)
+			throw new Error('Expected failed command outcome');
 		expect(outcome.error).toBeInstanceOf(TypeError);
 	});
 });

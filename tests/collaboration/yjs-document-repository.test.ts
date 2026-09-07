@@ -11,7 +11,11 @@ import {
 	YjsDocumentRepository,
 } from '../../src/lib/collaboration/yjs-document-repository';
 import { attachDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
-import { LocalDocumentCommandGateway } from '../../src/lib/document/document-command-gateway';
+import {
+	DocumentCommandKind,
+	DocumentCommandOutcomeKind,
+	LocalDocumentCommandGateway,
+} from '../../src/lib/document/document-command-gateway';
 import { defined } from '../../src/lib/document/logic-document';
 import {
 	EndpointKind,
@@ -169,8 +173,8 @@ function insertYjsNode(
 async function dispatchCommand(
 	document: Y.Doc,
 	command:
-		| { readonly kind: 'add-node'; readonly node: NewLogicNode }
-		| { readonly kind: 'add-relation'; readonly relation: LogicRelation },
+		| { readonly kind: DocumentCommandKind.AddNode; readonly node: NewLogicNode }
+		| { readonly kind: DocumentCommandKind.AddRelation; readonly relation: LogicRelation },
 	origin?: unknown,
 ) {
 	const repository = new YjsDocumentRepository(document);
@@ -185,8 +189,9 @@ async function dispatchCommand(
 	);
 	try {
 		const outcome = await gateway.dispatch(command);
-		if (outcome.kind === 'failed') throw outcome.error;
-		if (outcome.kind === 'accepted') return { ok: true as const, value: outcome.document };
+		if (outcome.kind === DocumentCommandOutcomeKind.Failed) throw outcome.error;
+		if (outcome.kind === DocumentCommandOutcomeKind.Accepted)
+			return { ok: true as const, value: outcome.document };
 		return { ok: false as const, diagnostics: outcome.diagnostics };
 	} finally {
 		gateway.destroy();
@@ -195,9 +200,9 @@ async function dispatchCommand(
 }
 
 const addNodeThroughGateway = (document: Y.Doc, node: NewLogicNode, origin?: unknown) =>
-	dispatchCommand(document, { kind: 'add-node', node }, origin);
+	dispatchCommand(document, { kind: DocumentCommandKind.AddNode, node }, origin);
 const addRelationThroughGateway = (document: Y.Doc, relation: LogicRelation, origin?: unknown) =>
-	dispatchCommand(document, { kind: 'add-relation', relation }, origin);
+	dispatchCommand(document, { kind: DocumentCommandKind.AddRelation, relation }, origin);
 
 describe('yjsLiveDocumentFormat', () => {
 	it('imports and reads the complete document without semantic loss', async () => {

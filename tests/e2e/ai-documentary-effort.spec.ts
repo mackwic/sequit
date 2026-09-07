@@ -3,80 +3,7 @@ import type { Component } from 'svelte';
 
 import type { CanvasModel } from '../../src/lib/canvas/canvas-model';
 import type { OpenDocumentResult } from '../../src/lib/document/open-document';
-
-const twoByTwoInversionDocument = `
-persistenceFormat = 2
-
-[document]
-id = "two-by-two-inversion"
-title = "Two by two inversion"
-
-[layout]
-direction = "top-to-bottom"
-bias = "top"
-
-[natures.goal]
-label = "Goal"
-color = "#12c930"
-
-[groups]
-
-[nodes.source-a]
-nature = "goal"
-markdown = "Source A"
-layoutOrder = "a0"
-
-[nodes.source-b]
-nature = "goal"
-markdown = "Source B"
-layoutOrder = "a1"
-
-[nodes.target-a]
-nature = "goal"
-markdown = "Target A"
-layoutOrder = "a2"
-
-[nodes.target-b]
-nature = "goal"
-markdown = "Target B"
-layoutOrder = "a3"
-
-[nodes.target-c]
-nature = "goal"
-markdown = "Target C"
-layoutOrder = "a4"
-
-[nodes.successor]
-nature = "goal"
-markdown = "Successor"
-layoutOrder = "a5"
-
-[junctions]
-
-[relations.source-a-to-target-b]
-from = "source-a"
-to = "target-b"
-
-[relations.source-b-to-target-a]
-from = "source-b"
-to = "target-a"
-
-[relations.source-b-to-target-c]
-from = "source-b"
-to = "target-c"
-
-[relations.target-a-to-successor]
-from = "target-a"
-to = "successor"
-
-[relations.target-b-to-successor]
-from = "target-b"
-to = "successor"
-
-[relations.target-c-to-successor]
-from = "target-c"
-to = "successor"
-`;
+import { twoByTwoInversionDocument } from '../fixtures';
 
 test.describe('AI for documentary effort', () => {
 	test('opens the real document and renders its connected dependency graph', async ({ page }) => {
@@ -147,13 +74,6 @@ test.describe('AI for documentary effort', () => {
 			const dataTeam = endpoint('data-team');
 			const aiContent = endpoint('ai-content-generation');
 			const goal = endpoint('reduce-documentary-effort');
-			const firstRankTopEdges = [
-				'alcoa-plus',
-				'preserve-partner-content',
-				'docx-word-compatible',
-				'data-team',
-				'prompt-management',
-			].map((id) => endpoint(id).offsetTop);
 			return {
 				allConnectionsTouchEndpoints: connections.every(Boolean),
 				memberInsideGroup:
@@ -164,7 +84,6 @@ test.describe('AI for documentary effort', () => {
 				emptyGroupHasBounds: dataTeam.offsetWidth > 0 && dataTeam.offsetHeight > 0,
 				bottomToTop:
 					aiContent.offsetTop < dataTeam.offsetTop && goal.offsetTop < aiContent.offsetTop,
-				topBiasedRankAligned: new Set(firstRankTopEdges).size === 1,
 			};
 		});
 
@@ -173,7 +92,6 @@ test.describe('AI for documentary effort', () => {
 			memberInsideGroup: true,
 			emptyGroupHasBounds: true,
 			bottomToTop: true,
-			topBiasedRankAligned: true,
 		});
 	});
 

@@ -3,7 +3,7 @@ import * as Y from 'yjs';
 import { compareCanonicalStrings } from '../canonical-string';
 import {
 	EndpointKind,
-	JunctionOperator,
+	JUNCTION_OPERATORS,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
 	layoutConfiguration,
@@ -18,13 +18,16 @@ import {
 } from '../document/logic-document';
 import { parseOrderKey } from '../document/order-key';
 import { validateLogicDocument } from '../document/validate-logic-document';
-import { createGraph } from '../graph/create-graph';
-import { YJS_COLLECTIONS } from './yjs-document-schema';
+import { createGraph, type GraphDiagnosticCode } from '../graph/create-graph';
+import { YjsCollection } from './yjs-document-schema';
 
-const XOR_OPERATOR: string = JunctionOperator.Xor;
+enum YjsLiveDocumentDiagnosticCode {
+	Invalid = 'invalid-yjs-live-document',
+	UnsupportedFormat = 'unsupported-yjs-live-document-format',
+}
 
 interface YjsLiveDocumentDiagnostic {
-	readonly code: string;
+	readonly code: YjsLiveDocumentDiagnosticCode | GraphDiagnosticCode;
 	readonly message: string;
 	readonly path: readonly string[];
 	readonly cycle?: readonly string[];
@@ -63,7 +66,7 @@ function readString(
 ): string | undefined {
 	if (typeof value === 'string') return value;
 	context.diagnostics.push({
-		code: 'invalid-yjs-live-document',
+		code: YjsLiveDocumentDiagnosticCode.Invalid,
 		message: `${path.join('.')} must be a string`,
 		path,
 	});
@@ -89,7 +92,7 @@ function readRequiredLayoutOrder(
 	const parsed = parseOrderKey(key);
 	if (parsed !== undefined) return parsed;
 	context.diagnostics.push({
-		code: 'invalid-yjs-live-document',
+		code: YjsLiveDocumentDiagnosticCode.Invalid,
 		message: `${path.join('.')} must be a valid fractional order key`,
 		path,
 	});
@@ -103,7 +106,7 @@ function readCollection<T>(ydoc: Y.Doc, context: ReadContext, options: Collectio
 		const entity = collection.get(id);
 		if (!(entity instanceof Y.Map)) {
 			context.diagnostics.push({
-				code: 'invalid-yjs-live-document',
+				code: YjsLiveDocumentDiagnosticCode.Invalid,
 				message: `${options.collectionName}.${id} must be a Y.Map`,
 				path: [options.collectionName, id],
 			});
@@ -155,7 +158,7 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	);
 	if (!(markdown instanceof Y.Text)) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message: `nodes.${id}.markdown must be a Y.Text`,
 			path: ['nodes', id, 'markdown'],
 		});
@@ -178,27 +181,28 @@ function readJunction(
 	id: string,
 	context: ReadContext,
 ): LogicJunction | undefined {
-	const operator = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
+	const operatorValue = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
+	const operator = JUNCTION_OPERATORS.find((candidate: string) => candidate === operatorValue);
 	const groupId = readOptionalString(entity.get('groupId'), ['junctions', id, 'group'], context);
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['junctions', id, 'layoutOrder'],
 		context,
 	);
-	if (operator === XOR_OPERATOR && layoutOrder !== undefined) {
+	if (operator !== undefined && layoutOrder !== undefined) {
 		const junction: LogicJunction = {
 			kind: EndpointKind.Junction,
 			id,
-			operator: JunctionOperator.Xor,
+			operator,
 			layoutOrder,
 		};
 		if (groupId === undefined) return junction;
 		return { ...junction, groupId };
 	}
-	if (operator !== undefined && operator !== XOR_OPERATOR) {
+	if (operatorValue !== undefined && operator === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
-			message: `Unsupported junction operator: ${operator}`,
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
+			message: `Unsupported junction operator: ${operatorValue}`,
 			path: ['junctions', id, 'operator'],
 		});
 	}
@@ -222,7 +226,7 @@ function validationFailure(
 	return {
 		ok: false,
 		diagnostics: diagnostics.map(({ message, path }) => ({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message,
 			path,
 		})),
@@ -233,14 +237,14 @@ export function readYjsLogicDocument(
 	ydoc: Y.Doc,
 	liveDocumentFormat: number,
 ): YjsLiveDocumentResult<LogicDocument> {
-	const meta = ydoc.getMap<unknown>(YJS_COLLECTIONS.meta);
+	const meta = ydoc.getMap<unknown>(YjsCollection.Meta);
 	const version = meta.get('yjsLiveDocumentFormat');
 	if (version !== liveDocumentFormat) {
 		return {
 			ok: false,
 			diagnostics: [
 				{
-					code: 'unsupported-yjs-live-document-format',
+					code: YjsLiveDocumentDiagnosticCode.UnsupportedFormat,
 					message: `Unsupported yjsLiveDocumentFormat: ${String(version)}`,
 					path: ['yjsLiveDocumentFormat'],
 				},
@@ -254,7 +258,7 @@ export function readYjsLogicDocument(
 	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
 	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message: `Unsupported imported persistenceFormat: ${String(meta.get('persistenceFormat'))}`,
 			path: ['persistenceFormat'],
 		});
@@ -263,14 +267,14 @@ export function readYjsLogicDocument(
 	const bias = LAYOUT_BIASES.find((candidate) => candidate === layoutBias);
 	if (layoutDirection !== undefined && direction === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message: `Unsupported layout direction: ${layoutDirection}`,
 			path: ['layout', 'direction'],
 		});
 	}
 	if (layoutBias !== undefined && bias === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message: `Unsupported layout bias: ${layoutBias}`,
 			path: ['layout', 'bias'],
 		});
@@ -280,33 +284,33 @@ export function readYjsLogicDocument(
 	const recognizedLayoutValues = direction !== undefined && bias !== undefined;
 	if (recognizedLayoutValues && layout === undefined) {
 		context.diagnostics.push({
-			code: 'invalid-yjs-live-document',
+			code: YjsLiveDocumentDiagnosticCode.Invalid,
 			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
 			path: ['layout', 'bias'],
 		});
 	}
 	const natures = readCollection(ydoc, context, {
-		sharedName: YJS_COLLECTIONS.natures,
+		sharedName: YjsCollection.Natures,
 		collectionName: 'natures',
 		project: readNature,
 	});
 	const groups = readCollection(ydoc, context, {
-		sharedName: YJS_COLLECTIONS.groups,
+		sharedName: YjsCollection.Groups,
 		collectionName: 'groups',
 		project: readGroup,
 	});
 	const nodes = readCollection(ydoc, context, {
-		sharedName: YJS_COLLECTIONS.nodes,
+		sharedName: YjsCollection.Nodes,
 		collectionName: 'nodes',
 		project: readNode,
 	});
 	const junctions = readCollection(ydoc, context, {
-		sharedName: YJS_COLLECTIONS.junctions,
+		sharedName: YjsCollection.Junctions,
 		collectionName: 'junctions',
 		project: readJunction,
 	});
 	const relations = readCollection(ydoc, context, {
-		sharedName: YJS_COLLECTIONS.relations,
+		sharedName: YjsCollection.Relations,
 		collectionName: 'relations',
 		project: readRelation,
 	});

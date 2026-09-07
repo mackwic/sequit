@@ -54,6 +54,8 @@ Run `pnpm quality` to add mutation testing for the selected critical modules. Ru
 
 Authored code prohibits ternaries by default. Production TypeScript has global limits of 20 cyclomatic complexity, 15 cognitive complexity, 4 levels of nesting, 325 effective lines per file, 160 effective lines per function, 15 top-level functions, 4 parameters, and 40 statements per function. Narrow file-specific overrides in `eslint.config.js` preserve the measured baseline of existing parser, layout, collaboration, validation, graph, and document-pipeline hotspots without relaxing limits for other modules.
 
+Closed string domains use native string enums. ESLint rejects string literal types and `as const` string objects paired with a derived value-union alias (`typeof Values[keyof typeof Values]`); ordinary string configuration maps remain allowed.
+
 The web and collaboration suites independently require 98% statements, branches, functions, and lines. Generated declarations, Svelte components, tests, and support files are outside these coverage scopes.
 
 Duplication analysis uses mild token matching with a minimum clone size of 5 lines and 50 tokens. It scans production TypeScript and Svelte, excludes declarations, tests, generated output, builds, and reports, prints results only to the console, and fails when duplicated lines exceed 1%.

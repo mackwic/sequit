@@ -53,6 +53,7 @@ export function layoutConfiguration(
 export enum JunctionOperator {
 	Xor = 'xor',
 }
+export const JUNCTION_OPERATORS = Object.values(JunctionOperator);
 export enum EndpointKind {
 	Node = 'node',
 	Group = 'group',

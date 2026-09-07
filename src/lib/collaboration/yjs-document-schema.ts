@@ -1,13 +1,13 @@
 import * as Y from 'yjs';
 
-export const YJS_COLLECTIONS = {
-	meta: 'sequit.meta',
-	natures: 'sequit.natures',
-	groups: 'sequit.groups',
-	nodes: 'sequit.nodes',
-	junctions: 'sequit.junctions',
-	relations: 'sequit.relations',
-} as const;
+export enum YjsCollection {
+	Meta = 'sequit.meta',
+	Natures = 'sequit.natures',
+	Groups = 'sequit.groups',
+	Nodes = 'sequit.nodes',
+	Junctions = 'sequit.junctions',
+	Relations = 'sequit.relations',
+}
 
 export function createYjsEntityMap(values: Readonly<Record<string, unknown>>): Y.Map<unknown> {
 	const result = new Y.Map<unknown>();

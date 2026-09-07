@@ -97,6 +97,7 @@ export default defineConfig(
 			'local/max-operators-per-expression': ['error', 3],
 			'local/max-top-level-functions': ['error', 15],
 			'local/no-anonymous-object-union-members': 'error',
+			'local/prefer-native-string-enum': 'error',
 			'local/prefer-string-enum': 'error',
 			'max-lines': ['error', { max: 325, skipBlankLines: true, skipComments: true }],
 			'max-lines-per-function': [

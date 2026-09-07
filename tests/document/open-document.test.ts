@@ -4,82 +4,8 @@ import { createDocumentSession } from '../../src/lib/collaboration/yjs-document-
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { openDocument } from '../../src/lib/document/open-document';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
+import { crossingDocument } from '../fixtures';
 import { aiDocumentaryEffortScenario } from '../scenarios/ai-documentary-effort';
-
-const crossingDocument = `
-persistenceFormat = 2
-
-[document]
-id = "crossing-document"
-title = "Crossing document"
-
-[layout]
-direction = "top-to-bottom"
-bias = "top"
-
-[natures.goal]
-label = "Goal"
-color = "#12c930"
-
-[groups]
-
-[nodes.source-a]
-nature = "goal"
-markdown = "Source A"
-layoutOrder = "a0"
-
-[nodes.source-b]
-nature = "goal"
-markdown = "Source B"
-layoutOrder = "a1"
-
-[nodes.target-a]
-nature = "goal"
-markdown = "Target A"
-layoutOrder = "a2"
-
-[nodes.target-b]
-nature = "goal"
-markdown = "Target B"
-layoutOrder = "a3"
-
-[nodes.helper]
-nature = "goal"
-markdown = "Helper"
-layoutOrder = "a4"
-
-[nodes.successor]
-nature = "goal"
-markdown = "Successor"
-layoutOrder = "a5"
-
-[nodes.isolated]
-nature = "goal"
-markdown = "Isolated"
-layoutOrder = "a6"
-
-[junctions]
-
-[relations.source-b-to-target-a]
-from = "source-b"
-to = "target-a"
-
-[relations.source-a-to-helper]
-from = "source-a"
-to = "helper"
-
-[relations.target-a-to-successor]
-from = "target-a"
-to = "successor"
-
-[relations.target-b-to-successor]
-from = "target-b"
-to = "successor"
-
-[relations.helper-to-successor]
-from = "helper"
-to = "successor"
-`;
 
 describe('openDocument', () => {
 	it('returns normalized parser diagnostics without starting downstream projections', () => {

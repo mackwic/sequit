@@ -52,12 +52,11 @@ export interface GraphDiagnostic {
 	readonly cycle?: readonly string[];
 }
 
-const GraphDiagnosticCode = {
-	UnknownEndpoint: 'unknown-endpoint',
-	Cycle: 'cycle',
-	GroupCycle: 'group-cycle',
-} as const;
-type GraphDiagnosticCode = (typeof GraphDiagnosticCode)[keyof typeof GraphDiagnosticCode];
+export enum GraphDiagnosticCode {
+	UnknownEndpoint = 'unknown-endpoint',
+	Cycle = 'cycle',
+	GroupCycle = 'group-cycle',
+}
 
 interface GraphSuccess {
 	readonly ok: true;

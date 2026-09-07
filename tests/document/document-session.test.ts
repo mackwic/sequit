@@ -6,9 +6,10 @@ import {
 	attachDocumentSession,
 	createDocumentSession,
 } from '../../src/lib/collaboration/yjs-document-session';
-import type {
-	DocumentCommandGateway,
-	DocumentCommandOutcome,
+import {
+	type DocumentCommandGateway,
+	type DocumentCommandOutcome,
+	DocumentCommandOutcomeKind,
 } from '../../src/lib/document/document-command-gateway';
 import {
 	DocumentSession,
@@ -50,7 +51,7 @@ class FakeDocumentCommandGateway implements DocumentCommandGateway {
 	destroyCalls = 0;
 
 	constructor(readonly document: ReturnType<DocumentSession['read']>) {
-		this.next = { kind: 'accepted', document };
+		this.next = { kind: DocumentCommandOutcomeKind.Accepted, document };
 	}
 
 	readAccepted() {
@@ -115,30 +116,30 @@ describe('document session', () => {
 		const node = { id: 'test', natureId: 'goal', markdown: 'Test' };
 		const accepted = { ...parsed.value, title: 'Last accepted' };
 
-		gateway.next = { kind: 'accepted', document: accepted };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: accepted };
 		expect(await session.addNode(node)).toBe(accepted);
 		expect(session.read()).toBe(accepted);
 		expect(subscriber).toHaveBeenCalledOnce();
 		subscriber.mockClear();
 		gateway.next = {
-			kind: 'rejected',
+			kind: DocumentCommandOutcomeKind.Rejected,
 			diagnostics: [{ code: 'test-rejected', message: 'rejected', path: [] }],
 		};
 		await expect(session.addNode(node)).rejects.toThrow('rejected');
 		expect(session.read()).toBe(accepted);
 		expect(subscriber).not.toHaveBeenCalled();
 		gateway.next = {
-			kind: 'rolled-back',
+			kind: DocumentCommandOutcomeKind.RolledBack,
 			diagnostics: [{ code: 'test-rolled-back', message: 'rolled back', path: [] }],
 		};
 		await expect(session.addNode(node)).rejects.toThrow('rolled back');
 		expect(session.read()).toBe(accepted);
 		expect(subscriber).not.toHaveBeenCalled();
-		gateway.next = { kind: 'failed', error: new Error('failed') };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Failed, error: new Error('failed') };
 		await expect(session.addNode(node)).rejects.toThrow('failed');
 		expect(session.read()).toBe(accepted);
 		expect(subscriber).not.toHaveBeenCalled();
-		gateway.next = { kind: 'failed', error: 'non-error failure' };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Failed, error: 'non-error failure' };
 		await expect(session.addNode(node)).rejects.toThrow('non-error failure');
 	});
 
@@ -147,7 +148,7 @@ describe('document session', () => {
 		if (!parsed.ok) throw new Error('Reference document must parse');
 		const gateway = new FakeDocumentCommandGateway(parsed.value);
 		const accepted = { ...parsed.value, title: 'Accepted before completion' };
-		gateway.next = { kind: 'accepted', document: accepted };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: accepted };
 		let complete!: () => void;
 		gateway.completion = new Promise((resolve) => {
 			complete = resolve;
@@ -172,18 +173,18 @@ describe('document session', () => {
 		[
 			'accepted',
 			(document: Awaited<ReturnType<typeof referenceForDelayedTest>>) => ({
-				kind: 'accepted',
+				kind: DocumentCommandOutcomeKind.Accepted,
 				document,
 			}),
 		],
 		[
 			'rejected',
 			() => ({
-				kind: 'rejected',
+				kind: DocumentCommandOutcomeKind.Rejected,
 				diagnostics: [{ code: 'delayed-rejection', message: 'rejected', path: [] }],
 			}),
 		],
-		['failed', () => ({ kind: 'failed', error: new Error('failed') })],
+		['failed', () => ({ kind: DocumentCommandOutcomeKind.Failed, error: new Error('failed') })],
 	] satisfies readonly (readonly [
 		string,
 		(document: Awaited<ReturnType<typeof referenceForDelayedTest>>) => DocumentCommandOutcome,
@@ -210,7 +211,7 @@ describe('document session', () => {
 		gateway.publishOnDispatch = false;
 		const acknowledged = { ...document, title: 'Correlated command result' };
 		const authoritative = { ...document, title: 'Published first' };
-		gateway.next = { kind: 'accepted', document: acknowledged };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: acknowledged };
 		let complete!: () => void;
 		gateway.completion = new Promise((resolve) => {
 			complete = resolve;
@@ -218,7 +219,7 @@ describe('document session', () => {
 		const session = new DocumentSession(gateway);
 		const pending = session.addNode({ id: 'pending', natureId: 'goal', markdown: 'Pending' });
 
-		gateway.publish({ kind: 'accepted', document: authoritative });
+		gateway.publish({ kind: DocumentCommandOutcomeKind.Accepted, document: authoritative });
 		expect(session.read()).toBe(authoritative);
 		complete();
 
@@ -231,7 +232,7 @@ describe('document session', () => {
 		const gateway = new FakeDocumentCommandGateway(document);
 		gateway.publishOnDispatch = false;
 		const accepted = { ...document, title: 'Accepted but not published' };
-		gateway.next = { kind: 'accepted', document: accepted };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: accepted };
 		const session = new DocumentSession(gateway);
 
 		await expect(
@@ -297,13 +298,13 @@ describe('document session', () => {
 		const observed: string[] = [];
 		session.subscribe((document) => {
 			if (document !== first) return;
-			gateway.next = { kind: 'accepted', document: second };
+			gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: second };
 			void session
 				.addNode({ id: 'nested', natureId: 'goal', markdown: 'Nested' })
 				.catch(() => undefined);
 		});
 		session.subscribe((document) => observed.push(document.title));
-		gateway.next = { kind: 'accepted', document: first };
+		gateway.next = { kind: DocumentCommandOutcomeKind.Accepted, document: first };
 
 		await session.addNode({ id: 'outer', natureId: 'goal', markdown: 'Outer' });
 

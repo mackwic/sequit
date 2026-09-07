@@ -1,4 +1,7 @@
-import type { DocumentCommand } from '../../src/lib/document/document-command-gateway';
+import type {
+	DocumentCommand,
+	DocumentCommandKind,
+} from '../../src/lib/document/document-command-gateway';
 import {
 	EndpointKind,
 	type LogicNode,
@@ -11,7 +14,7 @@ const newNode = {
 	natureId: 'goal',
 	markdown: 'New node',
 } satisfies NewLogicNode;
-type AddNodeCommand = Extract<DocumentCommand, { readonly kind: 'add-node' }>;
+type AddNodeCommand = Extract<DocumentCommand, { readonly kind: DocumentCommandKind.AddNode }>;
 const accepted: AddNodeCommand['node'] = newNode;
 
 const existingNode = {

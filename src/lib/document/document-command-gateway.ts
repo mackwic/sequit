@@ -17,44 +17,41 @@ export interface DocumentCommandDiagnostic {
 	readonly materializedScore?: number;
 }
 
-export const DocumentCommandOutcomeKind = {
-	Accepted: 'accepted',
-	Rejected: 'rejected',
-	RolledBack: 'rolled-back',
-	Failed: 'failed',
-} as const;
-export type DocumentCommandOutcomeKind =
-	(typeof DocumentCommandOutcomeKind)[keyof typeof DocumentCommandOutcomeKind];
+export enum DocumentCommandOutcomeKind {
+	Accepted = 'accepted',
+	Rejected = 'rejected',
+	RolledBack = 'rolled-back',
+	Failed = 'failed',
+}
 interface AcceptedCommandOutcome {
-	readonly kind: typeof DocumentCommandOutcomeKind.Accepted;
+	readonly kind: DocumentCommandOutcomeKind.Accepted;
 	readonly document: LogicDocument;
 }
 interface RejectedCommandOutcome {
-	readonly kind: typeof DocumentCommandOutcomeKind.Rejected;
+	readonly kind: DocumentCommandOutcomeKind.Rejected;
 	readonly diagnostics: readonly DocumentCommandDiagnostic[];
 }
 interface RolledBackCommandOutcome {
-	readonly kind: typeof DocumentCommandOutcomeKind.RolledBack;
+	readonly kind: DocumentCommandOutcomeKind.RolledBack;
 	readonly diagnostics: readonly DocumentCommandDiagnostic[];
 }
 interface FailedCommandOutcome {
-	readonly kind: typeof DocumentCommandOutcomeKind.Failed;
+	readonly kind: DocumentCommandOutcomeKind.Failed;
 	readonly error: unknown;
 }
 export type DocumentCommandOutcome =
 	AcceptedCommandOutcome | RejectedCommandOutcome | RolledBackCommandOutcome | FailedCommandOutcome;
 
-export const DocumentCommandKind = {
-	AddNode: 'add-node',
-	AddRelation: 'add-relation',
-} as const;
-export type DocumentCommandKind = (typeof DocumentCommandKind)[keyof typeof DocumentCommandKind];
+export enum DocumentCommandKind {
+	AddNode = 'add-node',
+	AddRelation = 'add-relation',
+}
 interface AddNodeCommand {
-	readonly kind: typeof DocumentCommandKind.AddNode;
+	readonly kind: DocumentCommandKind.AddNode;
 	readonly node: NewLogicNode;
 }
 interface AddRelationCommand {
-	readonly kind: typeof DocumentCommandKind.AddRelation;
+	readonly kind: DocumentCommandKind.AddRelation;
 	readonly relation: LogicRelation;
 }
 export type DocumentCommand = AddNodeCommand | AddRelationCommand;
@@ -86,10 +83,14 @@ export interface DocumentChangeRepository {
 }
 
 export interface LocalDocumentCommandGatewayOptions {
-	/** Disable when an enclosing gateway owns publication, such as the Yjs observer path. */
-	readonly publishAccepted?: boolean;
+	readonly publicationMode?: DocumentCommandPublicationMode;
 	/** Receives subscriber exceptions without affecting publication or command acceptance. */
 	readonly reportSubscriberError?: (error: unknown) => void;
+}
+
+export enum DocumentCommandPublicationMode {
+	Local = 'local',
+	ObserverOwned = 'observer-owned',
 }
 
 function assertNever(value: never): never {
@@ -173,7 +174,9 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 				kind: DocumentCommandOutcomeKind.Accepted,
 				document: materialized.value,
 			};
-			if (!this.#destroyed && this.options.publishAccepted !== false) this.#publish(outcome);
+			const publicationMode = this.options.publicationMode ?? DocumentCommandPublicationMode.Local;
+			if (!this.#destroyed && publicationMode === DocumentCommandPublicationMode.Local)
+				this.#publish(outcome);
 			return outcome;
 		} catch (error) {
 			return { kind: DocumentCommandOutcomeKind.Failed, error };

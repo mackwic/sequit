@@ -64,7 +64,7 @@ describe('topology edits', () => {
 	}
 
 	function threeJunctionTargetScenario(): LogicDocument {
-		const ids = [
+		const persistedEndpointOrder = [
 			'source-a',
 			'source-b',
 			'source-c',
@@ -73,7 +73,7 @@ describe('topology edits', () => {
 			'junction-b',
 			'successor',
 		];
-		const keys = new Map(ids.map((id, index) => [id, orderKey(`a${index}`)]));
+		const keys = new Map(persistedEndpointOrder.map((id, index) => [id, orderKey(`a${index}`)]));
 		return {
 			persistenceFormat: 2,
 			id: 'three-junction-targets',

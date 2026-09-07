@@ -2,20 +2,11 @@ import * as Y from 'yjs';
 
 import type { LogicDocument } from '../document/logic-document';
 import { readYjsLogicDocument, type YjsLiveDocumentResult } from './yjs-document-reader';
-import { createYjsEntityMap, YJS_COLLECTIONS } from './yjs-document-schema';
+import { createYjsEntityMap, YjsCollection } from './yjs-document-schema';
 
 export const YJS_LIVE_DOCUMENT_FORMAT = 3 as const;
 
 export type { YjsLiveDocumentResult };
-
-const {
-	meta: META,
-	natures: NATURES,
-	groups: GROUPS,
-	nodes: NODES,
-	junctions: JUNCTIONS,
-	relations: RELATIONS,
-} = YJS_COLLECTIONS;
 
 function replaceMapContents(
 	target: Y.Map<unknown>,
@@ -42,7 +33,7 @@ export function importLogicDocument(
 	origin: unknown = IMPORT_ORIGIN,
 ): void {
 	ydoc.transact(() => {
-		replaceMapContents(ydoc.getMap(META), {
+		replaceMapContents(ydoc.getMap(YjsCollection.Meta), {
 			yjsLiveDocumentFormat: YJS_LIVE_DOCUMENT_FORMAT,
 			persistenceFormat: document.persistenceFormat,
 			id: document.id,
@@ -50,12 +41,16 @@ export function importLogicDocument(
 			layoutDirection: document.layout.direction,
 			layoutBias: document.layout.bias,
 		});
-		replaceEntityCollection(ydoc.getMap(NATURES), document.natures, ({ label, color }) => ({
-			label,
-			color,
-		}));
 		replaceEntityCollection(
-			ydoc.getMap(GROUPS),
+			ydoc.getMap(YjsCollection.Natures),
+			document.natures,
+			({ label, color }) => ({
+				label,
+				color,
+			}),
+		);
+		replaceEntityCollection(
+			ydoc.getMap(YjsCollection.Groups),
 			document.groups,
 			({ label, groupId, layoutOrder }) => {
 				const values: Record<string, unknown> = { label, layoutOrder };
@@ -64,7 +59,7 @@ export function importLogicDocument(
 			},
 		);
 		replaceEntityCollection(
-			ydoc.getMap(NODES),
+			ydoc.getMap(YjsCollection.Nodes),
 			document.nodes,
 			({ natureId, groupId, markdown, layoutOrder }) => {
 				const text = new Y.Text();
@@ -75,7 +70,7 @@ export function importLogicDocument(
 			},
 		);
 		replaceEntityCollection(
-			ydoc.getMap(JUNCTIONS),
+			ydoc.getMap(YjsCollection.Junctions),
 			document.junctions,
 			({ operator, groupId, layoutOrder }) => {
 				const values: Record<string, unknown> = { operator, layoutOrder };
@@ -83,10 +78,14 @@ export function importLogicDocument(
 				return values;
 			},
 		);
-		replaceEntityCollection(ydoc.getMap(RELATIONS), document.relations, ({ from, to }) => ({
-			from,
-			to,
-		}));
+		replaceEntityCollection(
+			ydoc.getMap(YjsCollection.Relations),
+			document.relations,
+			({ from, to }) => ({
+				from,
+				to,
+			}),
+		);
 	}, origin);
 }
 

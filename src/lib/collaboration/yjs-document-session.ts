@@ -4,6 +4,7 @@ import {
 	type DocumentCommandGateway,
 	type DocumentCommandOutcome,
 	DocumentCommandOutcomeKind,
+	DocumentCommandPublicationMode,
 	LocalDocumentCommandGateway,
 } from '../document/document-command-gateway';
 import {
@@ -37,7 +38,7 @@ class YjsSessionGateway implements DocumentCommandGateway {
 			this.#repository,
 			this.#localCommandOrigin,
 			{
-				publishAccepted: false,
+				publicationMode: DocumentCommandPublicationMode.ObserverOwned,
 			},
 		);
 		this.#stopRepository = this.#repository.observe((result, origin) => {

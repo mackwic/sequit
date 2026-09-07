@@ -1,1 +1,1 @@
-mise exec -- pnpm exec lint-staged
+mise exec -- pnpm lint:staged
