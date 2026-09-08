@@ -1,10 +1,8 @@
 import { validateLogicDocument } from '../../src/lib/document/validate-logic-document';
+import type { NamedLayoutPerformanceScenario } from '../../src/lib/fixtures/layout-performance/scenario-types';
 import { layoutGraph, type LayoutResult } from '../../src/lib/layout/layout-graph';
 import { prepareLayoutPerformanceScenario } from '../scenarios/layout-performance/prepare-layout-performance-scenario';
-import type {
-	NamedLayoutPerformanceScenario,
-	PreparedLayoutPerformanceScenario,
-} from '../scenarios/layout-performance/scenario-types';
+import type { PreparedLayoutPerformanceScenario } from '../scenarios/layout-performance/scenario-types';
 
 export function buildPreparedScenarioTwice(
 	scenario: NamedLayoutPerformanceScenario,

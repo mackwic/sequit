@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { type Snippet, tick } from 'svelte';
 
 	import { createCanvasEntityIndex } from '$lib/canvas/canvas-entity';
-	import type { CanvasModel } from '$lib/canvas/canvas-model';
+	import type { CanvasMeasurementModel, CanvasModel } from '$lib/canvas/canvas-model';
 	import {
 		anchorPreservingScroll,
 		type CanvasPoint,
@@ -14,19 +14,35 @@
 		layoutMeasurementSignature,
 	} from '$lib/canvas/measure-canvas';
 	import type { OpenDocumentResult } from '$lib/document/open-document';
-	import type { CanvasSession } from '$lib/session/canvas-session.svelte';
+	import type { CanvasSession, EditingCanvasActivity } from '$lib/session/canvas-session.svelte';
 
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
+	import CanvasOverlay from './CanvasOverlay.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
 
-	type OpenedDocument = Extract<OpenDocumentResult, { readonly ok: true }>['value'];
+	type OpenedDocument = Pick<
+		Extract<OpenDocumentResult, { readonly ok: true }>['value'],
+		'measurementModel' | 'subscribe' | 'createCanvasModel'
+	>;
 
-	let { document: openedDocument, session }: { document: OpenedDocument; session: CanvasSession } =
-		$props();
-	let measurementModel = $derived(openedDocument.measurementModel);
+	let {
+		document: openedDocument,
+		session,
+		editor,
+		hideToolbar = false,
+		oncanvas,
+	}: {
+		document: OpenedDocument;
+		session: CanvasSession;
+		hideToolbar?: boolean;
+		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
+		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
+	} = $props();
+	let measurementModel = $state<CanvasMeasurementModel>();
 	let measurementLayer = $state<HTMLDivElement>();
 	let viewport = $state<HTMLDivElement>();
 	let canvas = $state<CanvasModel>();
+	let lastAcceptedCanvas = $state<CanvasModel>();
 	let error = $state<string>();
 	let spacePressed = $state(false);
 	let panning = $state(false);
@@ -51,6 +67,14 @@
 		});
 	});
 
+	$effect(() => {
+		const current = openedDocument;
+		measurementModel = current.measurementModel;
+		return current.subscribe(() => {
+			measurementModel = current.measurementModel;
+		});
+	});
+
 	async function recalculate(current: OpenedDocument = openedDocument) {
 		const layer = measurementLayer;
 		if (layer === undefined) return;
@@ -64,6 +88,8 @@
 			const result = await current.createCanvasModel(measurements);
 			if (activeLayoutRequest === request) {
 				canvas = result;
+				lastAcceptedCanvas = result;
+				error = undefined;
 				session.reconcile(createCanvasEntityIndex(result));
 			}
 		} catch (cause) {
@@ -99,14 +125,25 @@
 		else if (event.deltaY > 0) session.zoomOut();
 	}
 
+	let scope = $state<HTMLDivElement>();
 	function handleKeyDown(event: KeyboardEvent) {
+		if (event.defaultPrevented || !(event.target instanceof Node)) return;
+		const focusedHere = scope?.contains(event.target) === true;
 		if (event.code === 'Escape') {
-			session.cancel();
+			if (focusedHere && session.cancel()) event.preventDefault();
 			return;
 		}
+		const hoveredWithoutControlFocus =
+			event.target === document.body && viewport?.matches(':hover') === true;
 		if (
 			event.code !== 'Space' ||
 			event.repeat ||
+			event.isComposing ||
+			event.ctrlKey ||
+			event.metaKey ||
+			event.altKey ||
+			event.shiftKey ||
+			(!focusedHere && !hoveredWithoutControlFocus) ||
 			isNativeControl(event.target) ||
 			isCanvasEntity(event.target)
 		)
@@ -141,6 +178,8 @@
 	}
 
 	function startPanning(event: PointerEvent) {
+		if (isCanvasBackground(event.target) && !isNativeControl(event.target))
+			viewport?.focus({ preventScroll: true });
 		if (!spacePressed || event.button !== 0 || !viewport || !isCanvasBackground(event.target))
 			return;
 		event.preventDefault();
@@ -186,13 +225,37 @@
 	}
 
 	$effect(() => {
+		const target = session.focusRestorationTarget;
+		const currentViewport = viewport;
+		const currentCanvas = canvas;
+		if (target === undefined || currentViewport === undefined || currentCanvas === undefined)
+			return;
+		void tick().then(() => {
+			for (const candidate of currentViewport.querySelectorAll<HTMLElement | SVGElement>(
+				'[data-canvas-entity-key]',
+			)) {
+				if (candidate.getAttribute('data-canvas-entity-key') !== target) continue;
+				candidate.focus();
+				session.completeFocusRestoration(target);
+				return;
+			}
+		});
+	});
+
+	$effect(() => {
 		const layer = measurementLayer;
 		const current = openedDocument;
+		const currentMeasurementModel = measurementModel;
 		canvas = undefined;
 		previousMeasurementSignature = '';
 		activeLayoutRequest = undefined;
 		error = undefined;
-		if (!layer) return;
+		if (
+			!layer ||
+			currentMeasurementModel === undefined ||
+			currentMeasurementModel !== measurementModel
+		)
+			return;
 
 		let cancelled = false;
 		const resizeObserver = new ResizeObserver(() => void scheduleRecalculation());
@@ -224,36 +287,52 @@
 			mutationObserver.disconnect();
 		};
 	});
+	$effect(() => {
+		if (canvas && viewport) oncanvas?.(canvas, viewport);
+	});
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} onblur={finishPanning} />
 
-<CanvasMeasurementLayer model={measurementModel} bind:element={measurementLayer} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div
-	class:cursor-grab={spacePressed && !panning}
-	class:cursor-grabbing={panning}
-	class="canvas-grid absolute inset-0 overflow-auto overscroll-contain"
-	role="region"
-	aria-label="Canvas viewport"
-	data-canvas-viewport
-	bind:this={viewport}
-	onwheel={handleWheel}
-	onpointerdown={startPanning}
-	onpointermove={continuePanning}
-	onpointerup={finishPanning}
-	onpointercancel={finishPanning}
-	onclick={handleBackgroundClick}
->
-	{#if error}
-		<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
-	{:else if canvas}
-		<RenderedCanvas {canvas} zoom={session.zoom} {session} />
-	{:else}
-		<p class="m-8 text-sm text-stone-500">Measuring document…</p>
+<div class="contents" bind:this={scope}>
+	{#if measurementModel}
+		<CanvasMeasurementLayer model={measurementModel} bind:element={measurementLayer} />
 	{/if}
+
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+	<div
+		class:cursor-grab={spacePressed && !panning}
+		class:cursor-grabbing={panning}
+		class="canvas-grid absolute inset-0 overflow-auto overscroll-contain"
+		role="region"
+		aria-label="Canvas viewport"
+		data-canvas-viewport
+		tabindex="-1"
+		bind:this={viewport}
+		onwheel={handleWheel}
+		onpointerdown={startPanning}
+		onpointermove={continuePanning}
+		onpointerup={finishPanning}
+		onpointercancel={finishPanning}
+		onclick={handleBackgroundClick}
+	>
+		{#if error}
+			<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
+		{:else if canvas}
+			<RenderedCanvas {canvas} zoom={session.zoom} {session} />
+		{:else}
+			<p class="m-8 text-sm text-stone-500">Measuring document…</p>
+		{/if}
+	</div>
+
+	<CanvasOverlay
+		canvas={lastAcceptedCanvas}
+		viewportElement={viewport}
+		{session}
+		{editor}
+		{hideToolbar}
+	/>
 </div>
 
 <style>

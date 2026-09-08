@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyLayoutPerformanceInsertion } from '../scenarios/layout-performance/apply-layout-performance-insertion';
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
+import { applyLayoutPerformanceInsertion } from '../../src/lib/fixtures/layout-performance/apply-layout-performance-insertion';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
 
 const equivalenceNodeCounts = [
 	1, 2, 3, 9, 10, 11, 18, 19, 20, 49, 50, 51, 99, 100, 101, 999, 1000,

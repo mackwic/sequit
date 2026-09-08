@@ -91,6 +91,12 @@ function overridesFor(generated: LayoutCase) {
 	};
 }
 
+function groupMeasurementFor(generated: LayoutCase, groupId: string): GroupMeasurement {
+	const measurement = generated.groups[groupId];
+	if (measurement === undefined) throw new Error(`Missing generated group measurement: ${groupId}`);
+	return measurement;
+}
+
 function expectFinite(value: number): void {
 	expect(Number.isFinite(value)).toBe(true);
 }
@@ -157,6 +163,14 @@ function expectedRoutePoints(
 	}
 	const middle = (start.x + end.x) / 2;
 	return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end];
+}
+
+function isOnBoundary(point: Point, bounds: Bounds): boolean {
+	const withinX = point.x >= bounds.x && point.x <= bounds.x + bounds.width;
+	const withinY = point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+	const onVertical = point.x === bounds.x || point.x === bounds.x + bounds.width;
+	const onHorizontal = point.y === bounds.y || point.y === bounds.y + bounds.height;
+	return (withinY && onVertical) || (withinX && onHorizontal);
 }
 
 function reversedCollections(document: LogicDocument): LogicDocument {
@@ -288,21 +302,47 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('routes every relation from and to endpoint boundaries through an orthogonal midpoint', async () => {
+	it('routes every relation orthogonally and keeps group attachments below their headers', async () => {
 		await fc.assert(
 			fc.asyncProperty(layoutCaseArbitrary, async (generated) => {
 				const { document, layout } = await layoutDocument(
 					generated.document,
 					overridesFor(generated),
 				);
+				const groupsById = new Map(document.groups.map((group) => [group.id, group]));
 				for (const relation of layout.relations) {
-					expect(relation.points).toEqual(
-						expectedRoutePoints(
-							boundsFor(layout, relation.from),
-							boundsFor(layout, relation.to),
-							document.layout.direction,
-						),
-					);
+					const sourceBounds = boundsFor(layout, relation.from);
+					const targetBounds = boundsFor(layout, relation.to);
+					const sourceGroup = groupsById.get(relation.from);
+					const targetGroup = groupsById.get(relation.to);
+					const first = relation.points[0];
+					const last = relation.points.at(-1);
+					expect(first).toBeDefined();
+					expect(last).toBeDefined();
+					if (first === undefined || last === undefined) continue;
+					expect(isOnBoundary(first, sourceBounds)).toBe(true);
+					expect(isOnBoundary(last, targetBounds)).toBe(true);
+					expect(
+						relation.points.slice(1).every((point, index) => {
+							const previous = relation.points[index];
+							return previous !== undefined && (previous.x === point.x || previous.y === point.y);
+						}),
+					).toBe(true);
+					if (sourceGroup !== undefined) {
+						expect(first.y).toBeGreaterThan(
+							sourceBounds.y + groupMeasurementFor(generated, sourceGroup.id).headerHeight,
+						);
+					}
+					if (targetGroup !== undefined) {
+						expect(last.y).toBeGreaterThan(
+							targetBounds.y + groupMeasurementFor(generated, targetGroup.id).headerHeight,
+						);
+					}
+					if (sourceGroup === undefined && targetGroup === undefined) {
+						expect(relation.points).toEqual(
+							expectedRoutePoints(sourceBounds, targetBounds, document.layout.direction),
+						);
+					}
 				}
 			}),
 			PROPERTY_PARAMETERS,

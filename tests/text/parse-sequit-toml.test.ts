@@ -154,7 +154,7 @@ describe('parseSequitToml', () => {
 	it('rejects unsupported layout directions and junction operators', async () => {
 		const original = await source();
 		const invalidDirection = original.replace(
-			'direction = "bottom-to-top"',
+			'direction = "top-to-bottom"',
 			'direction = "sideways"',
 		);
 		const invalidOperator = original.replace('operator = "xor"', 'operator = "and"');
@@ -173,7 +173,7 @@ describe('parseSequitToml', () => {
 		const original = await source();
 		const missingBias = original.replace('bias = "top"\n', '');
 		const incompatibleBias = original.replace(
-			'direction = "bottom-to-top"',
+			'direction = "top-to-bottom"',
 			'direction = "left-to-right"',
 		);
 		const horizontal = incompatibleBias.replace('bias = "top"', 'bias = "left"');

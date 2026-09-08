@@ -15,7 +15,9 @@ export class UnbalancedScenarioBuilder extends LayoutPerformanceScenarioBuilder 
 		const dominantTargetCount = Math.ceil(squareShellWidth(rank) * 0.8);
 		let sourceOffset = 0;
 		if (targetOffset >= dominantTargetCount && sourceWidth > 1) {
-			sourceOffset = 1 + ((targetOffset - dominantTargetCount) % (sourceWidth - 1));
+			const remainder = targetOffset - dominantTargetCount;
+			const otherSources = sourceWidth - 1;
+			sourceOffset = 1 + (remainder % otherSources);
 		}
 		const sourceId = this.nodeId(sourceStart + sourceOffset);
 		return this.insertion(nodeIndex, rank, {

@@ -66,7 +66,7 @@
 	}
 
 	.relation-visual.selected {
-		stroke: #0c0a09;
+		stroke: var(--ui-accent);
 		stroke-width: 4;
 	}
 
@@ -76,7 +76,7 @@
 	}
 
 	.relation-hit-target:focus-visible {
-		stroke: rgb(12 10 9 / 0.28);
+		stroke: color-mix(in srgb, var(--ui-accent) 28%, transparent);
 		outline: none;
 	}
 </style>

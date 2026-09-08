@@ -3,12 +3,12 @@ import { performance } from 'node:perf_hooks';
 import { createCanvasMeasurementModel } from '../../src/lib/canvas/canvas-model';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { validateLogicDocument } from '../../src/lib/document/validate-logic-document';
+import { applyLayoutPerformanceInsertion } from '../../src/lib/fixtures/layout-performance/apply-layout-performance-insertion';
+import type { LayoutPerformanceInsertion } from '../../src/lib/fixtures/layout-performance/scenario-types';
 import { createGraph } from '../../src/lib/graph/create-graph';
 import { topologicallyRank } from '../../src/lib/graph/topological-ranks';
 import { layoutGraph } from '../../src/lib/layout/layout-graph';
 import { layoutMeasurementsFor } from '../builders/layout-measurements';
-import { applyLayoutPerformanceInsertion } from '../scenarios/layout-performance/apply-layout-performance-insertion';
-import type { LayoutPerformanceInsertion } from '../scenarios/layout-performance/scenario-types';
 
 export interface IncrementalLayoutTiming {
 	readonly documentUpdateMs: number;

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { EndpointKind, type LogicDocument } from '../../src/lib/document/logic-document';
+import { applyLayoutPerformanceInsertion } from '../../src/lib/fixtures/layout-performance/apply-layout-performance-insertion';
+import { LAYOUT_PERFORMANCE_SCENARIO_NAMES } from '../../src/lib/fixtures/layout-performance/scenario-name';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
 	scenarioDocumentIsValid,
 } from '../harnesses/layout-performance-scenario';
-import { applyLayoutPerformanceInsertion } from '../scenarios/layout-performance/apply-layout-performance-insertion';
-import { LAYOUT_PERFORMANCE_SCENARIO_NAMES } from '../scenarios/layout-performance/scenario-name';
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
 
 const nodeCounts = [1, 10, 19, 50] as const;
 

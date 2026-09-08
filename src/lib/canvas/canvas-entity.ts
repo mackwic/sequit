@@ -1,3 +1,4 @@
+import { LayoutDirection } from '../document/logic-document';
 import type { Bounds } from '../layout/layout-types';
 import type {
 	CanvasModel,
@@ -175,8 +176,15 @@ interface TabNode {
 	readonly navigationPoint: EntityNavigationPoint;
 }
 
-function compareTabNodes(left: TabNode, right: TabNode): number {
-	const rankDifference = right.rank - left.rank;
+function compareTabNodes(
+	left: TabNode,
+	right: TabNode,
+	direction: LayoutDirection | undefined,
+): number {
+	const reverse =
+		direction === LayoutDirection.BottomToTop || direction === LayoutDirection.RightToLeft;
+	let rankDifference = left.rank - right.rank;
+	if (reverse) rankDifference = right.rank - left.rank;
 	if (rankDifference !== 0) return rankDifference;
 	const orderDifference = compareCanonicalStrings(left.layoutOrder, right.layoutOrder);
 	if (orderDifference !== 0) return orderDifference;
@@ -199,7 +207,7 @@ function rootGroupId(canvas: CanvasModel, groupId: string | undefined): string |
 
 /**
  * Produces the wrapping Tab sequence. Group containers are represented by one
- * contiguous node segment whose entry target is its highest-ranked node, with
+ * contiguous node segment whose entry target follows the visual flow direction, with
  * fractional layout order and canonical ID as deterministic tie-breakers.
  */
 export function canvasNodeTabOrder(
@@ -246,8 +254,10 @@ export function canvasNodeTabOrder(
 		else segment.push(node);
 	}
 	const orderedSegments = [...segments.values()];
-	for (const segment of orderedSegments) segment.sort(compareTabNodes);
-	orderedSegments.sort((left, right) => compareTabNodes(left[0], right[0]));
+	for (const segment of orderedSegments) {
+		segment.sort((left, right) => compareTabNodes(left, right, canvas.direction));
+	}
+	orderedSegments.sort((left, right) => compareTabNodes(left[0], right[0], canvas.direction));
 	return orderedSegments.flat().map(({ ref }) => ref);
 }
 

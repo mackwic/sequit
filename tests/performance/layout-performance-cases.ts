@@ -1,13 +1,11 @@
-import { prepareLayoutPerformanceScenario } from '../scenarios/layout-performance/prepare-layout-performance-scenario';
-import type {
-	NamedLayoutPerformanceScenario,
-	PreparedLayoutPerformanceScenario,
-} from '../scenarios/layout-performance/scenario-types';
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
 import {
 	LAYOUT_PERFORMANCE_NODE_COUNTS,
 	type LayoutPerformanceNodeCount,
-} from './layout-performance-policy';
+} from '../../src/lib/fixtures/layout-performance/node-counts';
+import type { NamedLayoutPerformanceScenario } from '../../src/lib/fixtures/layout-performance/scenario-types';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
+import { prepareLayoutPerformanceScenario } from '../scenarios/layout-performance/prepare-layout-performance-scenario';
+import type { PreparedLayoutPerformanceScenario } from '../scenarios/layout-performance/scenario-types';
 
 interface LayoutPerformanceWorkloadMetadata {
 	readonly requestedNodes: number;

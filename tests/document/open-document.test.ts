@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
+import { DocumentCommandOutcomeKind } from '../../src/lib/document/document-command-gateway';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { openDocument } from '../../src/lib/document/open-document';
 import { layoutMeasurementsForCanvas } from '../builders/layout-measurements';
@@ -157,6 +158,73 @@ describe('openDocument', () => {
 		);
 		expect(first?.bounds.y).toBe(second?.bounds.y);
 		expect(first?.bounds.x).toBeLessThan(second?.bounds.x ?? 0);
+	});
+
+	it('forwards typed Markdown replacement and reprojects through the narrow opened port', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const updates = vi.fn();
+		result.value.subscribe(updates);
+
+		const outcome = await result.value.replaceNodeMarkdown(
+			'traceable-edits',
+			'Opened-document replacement',
+		);
+		const canvas = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		expect(
+			result.value.measurementModel.nodes.find(({ id }) => id === 'traceable-edits')?.markdown,
+		).toBe('Opened-document replacement');
+		expect(canvas.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Opened-document replacement',
+		);
+		expect(updates).toHaveBeenCalledOnce();
+	});
+
+	it('isolates opened-document subscribers and supports explicit unsubscription', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const isolated = vi.fn(() => {
+			throw new Error('Isolated opened subscriber');
+		});
+		const skipped = vi.fn();
+		result.value.subscribe(isolated);
+		const unsubscribe = result.value.subscribe(skipped);
+		unsubscribe();
+		const later = vi.fn();
+		result.value.subscribe(later);
+
+		await result.value.replaceNodeMarkdown('traceable-edits', 'Subscriber isolation');
+
+		expect(isolated).toHaveBeenCalledOnce();
+		expect(skipped).not.toHaveBeenCalled();
+		expect(later).toHaveBeenCalledOnce();
+	});
+
+	it('returns typed missing and closed rejections without widening opened-document access', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+
+		await expect(result.value.replaceNodeMarkdown('missing', 'Ignored')).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [{ code: 'node-not-found' }],
+		});
+		result.value.destroy();
+		await expect(
+			result.value.replaceNodeMarkdown('traceable-edits', 'Ignored after close'),
+		).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [{ code: 'document-session-closed' }],
+		});
+		const inertUnsubscribe = result.value.subscribe(vi.fn());
+		expect(inertUnsubscribe).toBeTypeOf('function');
+		inertUnsubscribe();
+		expect(() => {
+			result.value.destroy();
+		}).not.toThrow();
 	});
 
 	it('moves only an eligible relation target to its strict-improvement rendered slot', async () => {

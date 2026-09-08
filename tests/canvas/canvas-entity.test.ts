@@ -12,7 +12,7 @@ import {
 	entityRefFromKey,
 } from '../../src/lib/canvas/canvas-entity';
 import type { CanvasModel } from '../../src/lib/canvas/canvas-model';
-import { JunctionOperator } from '../../src/lib/document/logic-document';
+import { JunctionOperator, LayoutDirection } from '../../src/lib/document/logic-document';
 
 function canvasModel(): CanvasModel {
 	return {
@@ -112,7 +112,7 @@ describe('canvas entity identity', () => {
 		});
 	});
 
-	it('orders only nodes for Tab and enters a group at its highest rank then fractional ID', () => {
+	it('orders only nodes for Tab in top-to-bottom flow and keeps each group contiguous', () => {
 		const nature = { id: 'goal', label: 'Goal', color: '#00aa44' };
 		function node(id: string, x: number, rank: number, layoutOrder: string, groupId?: string) {
 			const value = {
@@ -128,6 +128,7 @@ describe('canvas entity identity', () => {
 		const canvas: CanvasModel = {
 			width: 500,
 			height: 400,
+			direction: LayoutDirection.TopToBottom,
 			nodes: [
 				node('outside-high', 10, 4, 'a5'),
 				node('group-low', 50, 1, 'a0', 'container'),
@@ -164,11 +165,11 @@ describe('canvas entity identity', () => {
 		};
 
 		expect(canvasNodeTabOrder(canvas)).toEqual([
-			entityRef(EntityKind.Node, 'outside-high'),
+			entityRef(EntityKind.Node, 'outside-low'),
+			entityRef(EntityKind.Node, 'group-low'),
 			entityRef(EntityKind.Node, 'group-first'),
 			entityRef(EntityKind.Node, 'group-second'),
-			entityRef(EntityKind.Node, 'group-low'),
-			entityRef(EntityKind.Node, 'outside-low'),
+			entityRef(EntityKind.Node, 'outside-high'),
 		]);
 	});
 
@@ -295,8 +296,8 @@ describe('canvas entity identity', () => {
 		};
 
 		expect(canvasNodeTabOrder(canvas)).toEqual([
-			entityRef(EntityKind.Node, 'nested'),
 			entityRef(EntityKind.Node, 'cycle'),
+			entityRef(EntityKind.Node, 'nested'),
 		]);
 	});
 

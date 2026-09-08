@@ -1,6 +1,11 @@
 import * as Y from 'yjs';
 
-import { defined } from '../document/logic-document';
+import {
+	type DocumentChangeResult,
+	type DocumentCommandDiagnostic,
+	DocumentCommandDiagnosticCode,
+} from '../document/document-command-gateway';
+import { contentStyleFields, defined } from '../document/logic-document';
 import { EndpointKind, type LogicDocument } from '../document/logic-document';
 import type { DocumentChangeSet } from '../document/topology-edits';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
@@ -42,6 +47,38 @@ interface PersistenceCapture {
 	result: YjsLiveDocumentResult<LogicDocument> | undefined;
 }
 
+class YjsDocumentRepositoryRejection extends Error {
+	constructor(readonly diagnostics: readonly DocumentCommandDiagnostic[]) {
+		super(diagnostics.map(({ message }) => message).join('; '));
+		this.name = 'YjsDocumentRepositoryRejection';
+	}
+}
+
+function markdownTarget(document: Y.Doc, nodeId: string): Y.Text {
+	const node = document.getMap<Y.Map<unknown>>(NODES).get(nodeId);
+	if (node === undefined) {
+		throw new YjsDocumentRepositoryRejection([
+			{
+				code: DocumentCommandDiagnosticCode.NodeNotFound,
+				message: `Node no longer exists: ${nodeId}`,
+				path: ['nodes', nodeId],
+			},
+		]);
+	}
+	let markdown: unknown;
+	if (node instanceof Y.Map) markdown = node.get('markdown');
+	if (!(markdown instanceof Y.Text)) {
+		throw new YjsDocumentRepositoryRejection([
+			{
+				code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
+				message: `Node Markdown is unavailable: ${nodeId}`,
+				path: ['nodes', nodeId, 'markdown'],
+			},
+		]);
+	}
+	return markdown;
+}
+
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
 	#persistenceCapture: PersistenceCapture | undefined;
@@ -57,14 +94,11 @@ export class YjsDocumentRepository {
 		return readLogicDocument(this.document);
 	}
 
-	persist(
-		changes: DocumentChangeSet,
-		origin?: unknown,
-	): Promise<YjsLiveDocumentResult<LogicDocument>> {
+	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult> {
 		return Promise.resolve(this.#persist(changes, origin));
 	}
 
-	#persist(changes: DocumentChangeSet, origin?: unknown): YjsLiveDocumentResult<LogicDocument> {
+	#persist(changes: DocumentChangeSet, origin?: unknown): DocumentChangeResult {
 		const invalidDocument = !this.read().ok;
 		const lastValidDocument = this.#lastValidDocument;
 		const recoveryAvailable = this.#canRecoverFromLastValid && lastValidDocument !== undefined;
@@ -83,7 +117,7 @@ export class YjsDocumentRepository {
 		const preflight = this.#validate(changes);
 		if (!preflight.ok) return preflight;
 		const capture: PersistenceCapture = { result: undefined };
-		let guardedValidation: YjsLiveDocumentResult<LogicDocument> | undefined;
+		let guardedValidation: DocumentChangeResult | undefined;
 		const stateBefore = Y.decodeStateVector(Y.encodeStateVector(this.document));
 		const undo = new Y.UndoManager(
 			Object.values(YjsCollection).map((collection) => this.document.getMap(collection)),
@@ -131,12 +165,19 @@ export class YjsDocumentRepository {
 		}
 	}
 
-	#validate(changes: DocumentChangeSet): YjsLiveDocumentResult<LogicDocument> {
+	#validate(changes: DocumentChangeSet): DocumentChangeResult {
 		const candidate = new Y.Doc();
 		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.document));
 		const candidateRepository = new YjsDocumentRepository(candidate);
 		try {
-			candidateRepository.#apply(changes);
+			try {
+				candidateRepository.#apply(changes);
+			} catch (error) {
+				if (error instanceof YjsDocumentRepositoryRejection) {
+					return { ok: false, diagnostics: error.diagnostics };
+				}
+				throw error;
+			}
 			return candidateRepository.read();
 		} finally {
 			candidateRepository.destroy();
@@ -174,10 +215,15 @@ export class YjsDocumentRepository {
 				.get(change.endpointId);
 			return { endpoint: defined(endpoint), order: change.layoutOrder };
 		});
+		const markdownReplacements = changes.nodeMarkdownReplacements.map((replacement) => ({
+			...replacement,
+			text: markdownTarget(this.document, replacement.nodeId),
+		}));
 		for (const node of changes.nodeAdditions) {
 			const markdown = new Y.Text(node.markdown);
 			const values: Record<string, unknown> = {
 				natureId: node.natureId,
+				...contentStyleFields(node.color, node.icon),
 				layoutOrder: node.layoutOrder,
 				markdown,
 			};
@@ -188,6 +234,10 @@ export class YjsDocumentRepository {
 			relations.set(relation.id, createYjsEntityMap({ from: relation.from, to: relation.to }));
 		}
 		for (const { endpoint, order } of orderChanges) endpoint.set('layoutOrder', order);
+		for (const { text, markdown } of markdownReplacements) {
+			text.delete(0, text.length);
+			text.insert(0, markdown);
+		}
 	}
 
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {

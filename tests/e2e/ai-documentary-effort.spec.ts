@@ -74,6 +74,20 @@ test.describe('AI for documentary effort', () => {
 			const dataTeam = endpoint('data-team');
 			const aiContent = endpoint('ai-content-generation');
 			const goal = endpoint('reduce-documentary-effort');
+			const groupHeader = dataTeam.querySelector<HTMLElement>('.group-header');
+			const groupRelation = document.querySelector<SVGPathElement>(
+				'[data-relation-id="data-team-to-ai-content-generation"]',
+			);
+			const groupRelationPoints = (
+				groupRelation?.getAttribute('d')?.match(/-?\d+(?:\.\d+)?/g) ?? []
+			).map(Number);
+			const groupAttachment = {
+				x: groupRelationPoints[0] ?? Number.NaN,
+				y: groupRelationPoints[1] ?? Number.NaN,
+			};
+			const dataTeamLeft = Number.parseFloat(dataTeam.style.left);
+			const dataTeamTop = Number.parseFloat(dataTeam.style.top);
+			const dataTeamRight = dataTeamLeft + Number.parseFloat(dataTeam.style.width);
 			return {
 				allConnectionsTouchEndpoints: connections.every(Boolean),
 				memberInsideGroup:
@@ -82,8 +96,18 @@ test.describe('AI for documentary effort', () => {
 					member.top > useCases.top &&
 					member.bottom < useCases.bottom,
 				emptyGroupHasBounds: dataTeam.offsetWidth > 0 && dataTeam.offsetHeight > 0,
-				bottomToTop:
-					aiContent.offsetTop < dataTeam.offsetTop && goal.offsetTop < aiContent.offsetTop,
+				topToBottom:
+					dataTeam.offsetTop + dataTeam.offsetHeight < aiContent.offsetTop &&
+					aiContent.offsetTop + aiContent.offsetHeight < goal.offsetTop,
+				groupTitleAtVisualTop:
+					groupHeader !== null &&
+					Math.abs(
+						groupHeader.getBoundingClientRect().top - dataTeam.getBoundingClientRect().top,
+					) <= 2,
+				groupAttachmentBelowHeader:
+					groupHeader !== null &&
+					groupAttachment.y > dataTeamTop + groupHeader.offsetHeight &&
+					(groupAttachment.x === dataTeamLeft || groupAttachment.x === dataTeamRight),
 			};
 		});
 
@@ -91,7 +115,9 @@ test.describe('AI for documentary effort', () => {
 			allConnectionsTouchEndpoints: true,
 			memberInsideGroup: true,
 			emptyGroupHasBounds: true,
-			bottomToTop: true,
+			topToBottom: true,
+			groupTitleAtVisualTop: true,
+			groupAttachmentBelowHeader: true,
 		});
 	});
 

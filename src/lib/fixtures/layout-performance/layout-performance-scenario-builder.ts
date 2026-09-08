@@ -9,8 +9,8 @@ import {
 	type LogicNode,
 	type LogicRelation,
 	PERSISTENCE_FORMAT,
-} from '../../../src/lib/document/logic-document';
-import { orderKey } from '../../../src/lib/document/order-key';
+} from '../../document/logic-document';
+import { orderKey } from '../../document/order-key';
 import { applyLayoutPerformanceInsertion } from './apply-layout-performance-insertion';
 import type { LayoutPerformanceScenarioName } from './scenario-name';
 import type { LayoutPerformanceInsertion, LayoutPerformanceSnapshot } from './scenario-types';

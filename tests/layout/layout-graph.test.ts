@@ -251,14 +251,14 @@ describe('layoutGraph', () => {
 		).resolves.toEqual({ width: 80, height: 80, elements: [], relations: [] });
 	});
 
-	it('places every dependency bottom-to-top without overlapping endpoints', async () => {
+	it('places every dependency top-to-bottom without overlapping endpoints', async () => {
 		const { graph, ranks, layout } = await layoutDocument(await openReferenceLiveDocument());
 		const byId = boundsById(layout);
 		for (const { source, target } of graph.relations) {
 			const sourceBounds = byId.get(source.entity.id);
 			const targetBounds = byId.get(target.entity.id);
 			if (!sourceBounds || !targetBounds) throw new Error('Expected relation endpoint bounds');
-			expect(targetBounds.y + targetBounds.height).toBeLessThan(sourceBounds.y);
+			expect(sourceBounds.y + sourceBounds.height).toBeLessThan(targetBounds.y);
 		}
 
 		const rankedIds = [...ranks.byEndpointId.keys()];
@@ -278,7 +278,7 @@ describe('layoutGraph', () => {
 		const useCases = byId.get('use-cases');
 		const dataTeam = byId.get('data-team');
 		expect(useCases).toBeDefined();
-		expect(dataTeam).toMatchObject({ width: 160, height: 72 });
+		expect(dataTeam).toMatchObject({ width: 160, height: 84 });
 		if (!useCases) throw new Error('Expected use-cases bounds');
 
 		const memberIds = [
@@ -304,7 +304,7 @@ describe('layoutGraph', () => {
 		expect(ranks.byEndpointId.has('orphan-group')).toBe(false);
 		expect(orphan).toMatchObject({
 			width: 160,
-			height: 72,
+			height: 84,
 		});
 		expect(Number.isFinite(orphan?.x)).toBe(true);
 		expect(Number.isFinite(orphan?.y)).toBe(true);
@@ -354,7 +354,12 @@ describe('layoutGraph', () => {
 			({ id }) => id === 'data-team-to-ai-content-generation',
 		);
 		const dataTeam = byId.get('data-team');
-		expect(dataTeamRelation && requiredPoint(dataTeamRelation.points, 0).y).toBe(dataTeam?.y);
+		const dataTeamHeader = layoutMeasurementsFor(await openReferenceLiveDocument()).groups.get(
+			'data-team',
+		)?.headerHeight;
+		const attachment = dataTeamRelation && requiredPoint(dataTeamRelation.points, 0);
+		expect(attachment?.y).toBeGreaterThan((dataTeam?.y ?? 0) + (dataTeamHeader ?? 0));
+		expect([dataTeam?.x, (dataTeam?.x ?? 0) + (dataTeam?.width ?? 0)]).toContain(attachment?.x);
 	});
 
 	it('rejects overlapping relation endpoint bounds before routing with the relation identity', async () => {
@@ -644,7 +649,7 @@ describe('layoutGraph', () => {
 		expect(bounds.get('source-b')?.x).toBeLessThan(bounds.get('source-a')?.x ?? 0);
 		expect(bounds.get('target-b')?.x).toBeLessThan(bounds.get('target-a')?.x ?? 0);
 		expect(bounds.get('choice')?.y).not.toBe(bounds.get('source-a')?.y);
-		expect(bounds.get('empty-endpoint')).toMatchObject({ width: 160, height: 72 });
+		expect(bounds.get('empty-endpoint')).toMatchObject({ width: 160, height: 84 });
 		for (const id of ['source-a', 'source-b', 'choice', 'target-a', 'target-b', 'long-target']) {
 			const member = bounds.get(id);
 			if (!member) throw new Error(`Expected bounds for ${id}`);

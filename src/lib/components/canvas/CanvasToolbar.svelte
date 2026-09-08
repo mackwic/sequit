@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import type { CanvasSession } from '$lib/session/canvas-session.svelte';
 
 	let { session }: { session: CanvasSession } = $props();
@@ -9,14 +10,12 @@
 	aria-label="Canvas tools"
 >
 	<button
-		class="grid size-9 place-items-center rounded-lg bg-stone-950 text-white"
+		class="grid size-9 place-items-center rounded-lg bg-[var(--ui-accent)] text-white"
 		type="button"
 		aria-label="Select"
 		aria-pressed={session.selectModeActive}
 		title="Select"
 	>
-		<svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="1.8">
-			<path d="m5 3 13 8-6 2-3 6L5 3Z"></path>
-		</svg>
+		<Icon name="phosphor:cursor" />
 	</button>
 </nav>

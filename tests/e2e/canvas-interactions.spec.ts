@@ -271,13 +271,10 @@ test.describe('accessible canvas selection', () => {
 		}
 	});
 
-	test('tabs through nodes only, enters groups by rank and fractional ID, and wraps', async ({
-		page,
-	}) => {
-		const first = page.locator('[data-node-id="reduce-documentary-effort"]');
-		const groupedEntry = page.locator('[data-node-id="documents-live-18-months"]');
+	test('tabs through nodes in top-to-bottom flow and wraps', async ({ page }) => {
+		const first = page.locator('[data-node-id="alcoa-plus"]');
+		const second = page.locator('[data-node-id="preserve-partner-content"]');
 		await first.focus();
-		await page.keyboard.press('Enter');
 
 		const order: string[] = [];
 		for (let index = 0; index < 24; index += 1) {
@@ -289,13 +286,13 @@ test.describe('accessible canvas selection', () => {
 
 		expect(new Set(order).size).toBe(24);
 		expect(order.every((key) => key.startsWith('node:'))).toBe(true);
-		expect(order[0]).toBe('node:reduce-documentary-effort');
-		expect(order[1]).toBe('node:documents-live-18-months');
+		expect(order[0]).toBe('node:alcoa-plus');
+		expect(order[1]).toBe('node:preserve-partner-content');
 		await expect(first).toBeFocused();
 		await expect(first).toHaveAttribute('aria-pressed', 'true');
 
 		await page.keyboard.press('Tab');
-		await expect(groupedEntry).toBeFocused();
+		await expect(second).toBeFocused();
 		await page.keyboard.press('Shift+Tab');
 		await expect(first).toBeFocused();
 		await page.keyboard.press('Shift+Tab');
@@ -323,8 +320,8 @@ test.describe('accessible canvas selection', () => {
 			);
 			if (edge === undefined) throw new Error(`No ${code} edge found`);
 			const edgeEntity = entityByKey(page, edge.source);
+			await edgeEntity.click({ force: true });
 			await edgeEntity.focus();
-			await page.keyboard.press('Enter');
 			await page.keyboard.press(code);
 			await expect(edgeEntity).toBeFocused();
 			await expect(edgeEntity).toHaveAttribute('aria-pressed', 'true');
@@ -358,5 +355,132 @@ test.describe('accessible canvas selection', () => {
 		await expect(measuredNodes.first()).not.toHaveAttribute('tabindex', /.+/);
 		await expect(measuredNodes.first()).not.toHaveAttribute('aria-pressed', /.+/);
 		await expect(page.locator('.measurement-layer')).toHaveAttribute('aria-hidden', 'true');
+	});
+});
+
+test.describe('resilient modal Markdown editing', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/examples/ai-documentary-effort');
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	});
+
+	test('opens an accessible modal, keeps draft changes local, and restores focus on Cancel', async ({
+		page,
+	}) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		const measured = page.locator('[data-measure-node="traceable-edits"]');
+		await node.click();
+		const edit = page.getByRole('button', { name: 'Edit Markdown for node traceable-edits' });
+		await expect(edit).toBeVisible();
+		const nodeBounds = await node.boundingBox();
+		if (!nodeBounds) throw new Error('Selected node has no bounds');
+
+		await edit.click();
+		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog).toHaveAttribute('aria-modal', 'true');
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(textarea).toBeFocused();
+		await expect(textarea).toHaveValue('ALCOA+: All edits needs to be tracable\n');
+		await expect(dialog).toContainText('Editing node traceable-edits.');
+
+		await textarea.fill('A much longer local draft that must not remeasure the graph.\n'.repeat(8));
+		await expect(measured).toContainText('ALCOA+: All edits needs to be tracable');
+		await expect(measured).not.toContainText('A much longer local draft');
+		expect(await node.boundingBox()).toEqual(nodeBounds);
+		await page.keyboard.press('Tab');
+		await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+		await page.keyboard.press('Tab');
+		await expect(page.getByRole('button', { name: 'Save' })).toBeFocused();
+		await page.keyboard.press('Tab');
+		expect(
+			await dialog.evaluate(
+				(element) => element === document.activeElement || element.contains(document.activeElement),
+			),
+		).toBe(true);
+		await page.getByRole('button', { name: 'Cancel' }).click();
+
+		await expect(dialog).toHaveCount(0);
+		await expect(node).toBeFocused();
+		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
+		await expect(edit).toBeVisible();
+	});
+
+	test('saves through reprojection and keeps the Floating UI bar stable during rapid scroll and zoom', async ({
+		page,
+	}) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.dblclick();
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(textarea).toBeFocused();
+		const replacement = [
+			'Saved through the typed document command.',
+			'This longer value changes intrinsic layout.',
+			'The accepted overlay must follow the node.',
+		].join('\n');
+		await textarea.fill(replacement);
+		await page.getByRole('button', { name: 'Save' }).click();
+
+		await expect(page.locator('[data-node-markdown-editor="traceable-edits"]')).toHaveCount(0);
+		await expect(node).toContainText('Saved through the typed document command.');
+		await expect(node).toBeFocused();
+		const edit = page.getByRole('button', { name: 'Edit Markdown for node traceable-edits' });
+		await expect(edit).toBeVisible();
+		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
+		await viewport.evaluate((element) => {
+			for (let index = 0; index < 30; index += 1) {
+				element.scrollTo(index * 17, index * 23);
+			}
+		});
+		for (let index = 0; index < 4; index += 1) {
+			await page.getByRole('button', { name: 'Zoom in' }).click();
+		}
+		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('140%');
+		await node.scrollIntoViewIfNeeded();
+		await expect
+			.poll(async () => {
+				const nodeBounds = await node.boundingBox();
+				const barBounds = await page.getByRole('group', { name: 'Node actions' }).boundingBox();
+				if (!nodeBounds || !barBounds) return Number.POSITIVE_INFINITY;
+				const verticalGap = Math.min(
+					Math.abs(nodeBounds.y - (barBounds.y + barBounds.height)),
+					Math.abs(barBounds.y - (nodeBounds.y + nodeBounds.height)),
+				);
+				return verticalGap;
+			})
+			.toBeLessThanOrEqual(12);
+	});
+
+	test('starts from Enter and Escape preserves the unchanged document value', async ({ page }) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.focus();
+		await page.keyboard.press('Enter');
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(textarea).toBeFocused();
+		await textarea.fill('Draft cancelled from Escape');
+
+		await page.keyboard.press('Escape');
+
+		await expect(textarea).toHaveCount(0);
+		await expect(node).toBeFocused();
+		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
+	});
+
+	test('contains keyboard focus and remains usable at a narrow viewport', async ({ page }) => {
+		await page.setViewportSize({ width: 360, height: 640 });
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.dblclick();
+		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(dialog).toBeVisible();
+		await expect(textarea).toBeFocused();
+		const bounds = await dialog.boundingBox();
+		if (!bounds) throw new Error('Narrow Markdown dialog has no bounds');
+		expect(bounds.x).toBeGreaterThanOrEqual(15);
+		expect(bounds.x + bounds.width).toBeLessThanOrEqual(345);
+
+		await page.keyboard.press('Escape');
+		await expect(dialog).toHaveCount(0);
+		await expect(node).toBeFocused();
 	});
 });

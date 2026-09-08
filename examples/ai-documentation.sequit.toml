@@ -5,34 +5,41 @@ id = "ai-documentary-effort"
 title = "AI for documentary effort"
 
 [layout]
-direction = "bottom-to-top"
+direction = "top-to-bottom"
 bias = "top"
 
 [natures.need]
+icon = "phosphor:flag"
 label = "Need"
 color = "#f4c400"
 
 [natures.want]
+icon = "phosphor:heart"
 label = "Want"
 color = "#ed58c7"
 
 [natures.solution]
+icon = "phosphor:lightbulb"
 label = "Solution"
 color = "#6f70e8"
 
 [natures.goal]
+icon = "phosphor:target"
 label = "Goal"
 color = "#12c930"
 
 [natures.precondition]
+icon = "phosphor:key"
 label = "Precondition"
 color = "#8981ec"
 
 [natures.desirable-effect]
+icon = "phosphor:sparkle"
 label = "Desirable Effect"
 color = "#62c985"
 
 [natures.note]
+icon = "phosphor:note"
 label = "Note"
 color = "#f2ea20"
 

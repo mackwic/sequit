@@ -11,7 +11,7 @@
 	let opened = $derived(openDocument(source));
 	let session = $derived.by(() => {
 		if (!opened.ok) return undefined;
-		return new CanvasSession();
+		return new CanvasSession(opened.value);
 	});
 
 	$effect(() => {
@@ -41,7 +41,7 @@
 		<div
 			class="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-500 shadow-sm"
 		>
-			Auto-layout · Bottom to top
+			Auto-layout · Top to bottom
 		</div>
 	</div>
 </section>

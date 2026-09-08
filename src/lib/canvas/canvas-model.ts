@@ -1,13 +1,20 @@
-import type { JunctionOperator, LogicDocument, OrderKey } from '../document/logic-document';
+import type {
+	ContentStyle,
+	JunctionOperator,
+	LayoutDirection,
+	LogicDocument,
+	OrderKey,
+} from '../document/logic-document';
+import { contentStyleFields } from '../document/logic-document';
 import type { Bounds, LayoutResult, Point } from '../layout/layout-graph';
 
-interface CanvasNature {
+interface CanvasNature extends ContentStyle {
 	readonly id: string;
 	readonly label: string;
 	readonly color: string;
 }
 
-export interface UnpositionedCanvasNode {
+export interface UnpositionedCanvasNode extends ContentStyle {
 	readonly id: string;
 	readonly nature: CanvasNature;
 	readonly markdown: string;
@@ -60,6 +67,7 @@ export interface RenderedCanvasRelation {
 export interface CanvasModel {
 	readonly width: number;
 	readonly height: number;
+	readonly direction?: LayoutDirection;
 	readonly nodes: readonly RenderedCanvasNode[];
 	readonly groups: readonly RenderedCanvasGroup[];
 	readonly junctions: readonly RenderedCanvasJunction[];
@@ -81,7 +89,8 @@ export function createCanvasMeasurementModel(document: LogicDocument): CanvasMea
 			if (!nature) throw new Error(`Missing nature: ${node.natureId}`);
 			return {
 				id: node.id,
-				nature: { id: nature.id, label: nature.label, color: nature.color },
+				nature,
+				...contentStyleFields(node.color, node.icon),
 				markdown: node.markdown,
 			};
 		}),
@@ -104,9 +113,13 @@ export function createCanvasModel(
 		return value;
 	}
 
+	const direction = navigation?.document.layout.direction;
+	let directionProjection: { readonly direction?: LayoutDirection } = {};
+	if (direction !== undefined) directionProjection = { direction };
 	return {
 		width: layout.width,
 		height: layout.height,
+		...directionProjection,
 		nodes: measurement.nodes.map((node) => {
 			const semanticNode = nodes.get(node.id);
 			const rank = navigation?.ranks.byEndpointId.get(node.id);

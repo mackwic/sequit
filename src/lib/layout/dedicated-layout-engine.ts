@@ -12,7 +12,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { type ComponentLayout, isVerticalDirection, layoutComponent } from './component-layout';
 import {
 	assertRelationBoundsAreDisjoint,
-	routePoints,
+	routePointsWithGroupHeaders,
 	translateBounds,
 } from './dedicated-layout-geometry';
 import { deriveEndpointRows, orderEndpoints } from './endpoint-order';
@@ -63,7 +63,13 @@ function validateGroupMeasurement(
 	assertPositive(measurement.minimumHeight, `groups.${groupId}.minimumHeight`);
 	assertNonNegative(measurement.headerHeight, `groups.${groupId}.headerHeight`);
 	assertNonNegative(measurement.padding, `groups.${groupId}.padding`);
-	return measurement;
+	return {
+		...measurement,
+		minimumHeight: Math.max(
+			measurement.minimumHeight,
+			measurement.headerHeight + measurement.padding * 2,
+		),
+	};
 }
 
 function endpointSize(
@@ -194,7 +200,11 @@ function relationGroupRankGap(
 	return rankGap;
 }
 
-function createLayoutResult(graph: LogicGraph, bounds: Map<string, Bounds>): LayoutResult {
+function createLayoutResult(
+	graph: LogicGraph,
+	bounds: Map<string, Bounds>,
+	measurements: LayoutMeasurements,
+): LayoutResult {
 	const relations: LayoutRelation[] = graph.relations.map(({ relation }) => {
 		const source = defined(bounds.get(relation.from));
 		const target = defined(bounds.get(relation.to));
@@ -205,11 +215,25 @@ function createLayoutResult(graph: LogicGraph, bounds: Map<string, Bounds>): Lay
 			source,
 			target,
 		});
+		const sourceEndpoint = defined(graph.endpointsById.get(relation.from));
+		const targetEndpoint = defined(graph.endpointsById.get(relation.to));
 		return {
 			id: relation.id,
 			from: relation.from,
 			to: relation.to,
-			points: routePoints(source, target, graph.document.layout.direction),
+			points: routePointsWithGroupHeaders({
+				source,
+				target,
+				direction: graph.document.layout.direction,
+				sourceGroup:
+					sourceEndpoint.kind === EndpointKind.Group
+						? measurements.groups.get(relation.from)
+						: undefined,
+				targetGroup:
+					targetEndpoint.kind === EndpointKind.Group
+						? measurements.groups.get(relation.to)
+						: undefined,
+			}),
 		};
 	});
 	const elements: LayoutElement[] = [];
@@ -440,5 +464,5 @@ export function layoutWithDedicatedEngine(
 		bounds.set(id, translateBounds(value, shiftX, shiftY));
 	}
 
-	return createLayoutResult(graph, bounds);
+	return createLayoutResult(graph, bounds, measurements);
 }

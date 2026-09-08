@@ -220,7 +220,7 @@
 <style>
 	.canvas-group {
 		position: absolute;
-		z-index: 0;
+		display: block;
 		box-sizing: border-box;
 		border: 1px solid #a8a29e;
 		border-radius: 0.75rem;
@@ -231,9 +231,16 @@
 	}
 
 	.canvas-group .group-header {
+		position: absolute;
+		top: 0;
+		right: 0;
+		left: 0;
+		z-index: 11;
 		display: block;
+		border-radius: 0.7rem 0.7rem 0 0;
 		padding: 0.65rem 0.9rem;
 		border-bottom: 1px solid #d6d3d1;
+		background: #e7e5e4;
 		color: #44403c;
 		font-size: 0.75rem;
 		font-weight: 700;
@@ -241,14 +248,14 @@
 
 	.canvas-group.selected,
 	.junction.selected {
-		outline: 3px solid #0c0a09;
+		outline: 3px solid var(--ui-accent);
 		outline-offset: 2px;
 	}
 
 	.canvas-group:focus-visible,
 	.junction:focus-visible {
-		outline: 3px solid #0c0a09;
-		outline-offset: 4px;
+		outline: 2px dashed var(--ui-accent);
+		outline-offset: 7px;
 	}
 
 	.junction {

@@ -17,6 +17,8 @@ The normal `pnpm test:web` configuration excludes `tests/performance/**`. The de
 
 Every topology runs at 10, 19, 50, 100, and 1000 requested semantic nodes. Requested node count never includes supporting groups or junctions. Case labels report requested nodes, groups, junctions, rankable endpoints, semantic relations, and current graph adjacency edges so differently sized supporting structures remain visible.
 
+The pure generators and node-count matrix are shared with the UI workshop in `src/lib/fixtures/layout-performance/`. Browser rendering and interactive feedback can be explored at `/atelier`; benchmark timing still covers only the boundaries below.
+
 The authoritative topology contracts and diagrams live in `tests/scenarios/layout-performance/README.md`. In brief:
 
 - `long-queue`: one semantic node per rank in a single chain.

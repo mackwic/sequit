@@ -3,6 +3,8 @@
 	import type { RenderedCanvasNode, UnpositionedCanvasNode } from '$lib/canvas/canvas-model';
 	import type { CanvasSession } from '$lib/session/canvas-session.svelte';
 
+	import NodeContent from './NodeContent.svelte';
+
 	let {
 		node,
 		measuring = false,
@@ -14,6 +16,8 @@
 		session?: CanvasSession;
 		tabbable?: boolean;
 	} = $props();
+	let color = $derived(node.color ?? node.nature.color);
+	let icon = $derived(node.icon ?? node.nature.icon ?? 'none');
 	let bounds = $derived.by(() => {
 		if ('bounds' in node) return node.bounds;
 		return undefined;
@@ -57,7 +61,16 @@
 			event.preventDefault();
 			event.stopPropagation();
 			session.selectEntity(ref);
+			if ('bounds' in node) session.beginNodeMarkdownEdit(node);
 		}
+	}
+
+	function handleDoubleClick(event: MouseEvent) {
+		if (!session || !ref || !('bounds' in node)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		session.selectEntity(ref);
+		session.beginNodeMarkdownEdit(node);
 	}
 	function pixels(value: number | undefined): string | undefined {
 		if (value === undefined) return undefined;
@@ -67,23 +80,24 @@
 
 {#if measuring}
 	<article
-		class="node-card bg-white"
+		class="node-card"
 		data-measure-node={measurementId}
-		style:--nature-color={node.nature.color}
+		style:--content-color={color}
 		style:width="220px"
 	>
-		<span class="node-header">{node.nature.label}</span>
-		<span class="node-body">{node.markdown}</span>
+		<NodeContent label={node.nature.label} markdown={node.markdown} {icon} />
 	</article>
 {:else}
 	<button
-		class="node-card positioned bg-white"
+		class="node-card positioned"
 		class:selected
 		type="button"
 		tabindex={tabIndex}
 		data-node-id={nodeId}
+		data-content-icon={icon}
+		data-content-color={color}
 		data-canvas-entity-key={canvasEntityKey}
-		style:--nature-color={node.nature.color}
+		style:--content-color={color}
 		style:width={pixels(bounds?.width)}
 		style:left={pixels(bounds?.x)}
 		style:top={pixels(bounds?.y)}
@@ -91,10 +105,10 @@
 		aria-label={`${node.nature.label}: ${node.markdown}`}
 		aria-pressed={selected}
 		onclick={handleClick}
+		ondblclick={handleDoubleClick}
 		onkeydown={handleKeyDown}
 	>
-		<span class="node-header">{node.nature.label}</span>
-		<span class="node-body">{node.markdown}</span>
+		<NodeContent label={node.nature.label} markdown={node.markdown} {icon} />
 	</button>
 {/if}
 
@@ -102,10 +116,11 @@
 	.node-card {
 		display: block;
 		box-sizing: border-box;
-		border: 1px solid color-mix(in srgb, var(--nature-color) 35%, #d6d3d1);
+		border: 1px solid color-mix(in srgb, var(--content-color) 35%, #d6d3d1);
 		border-radius: 0.75rem;
 		padding: 0;
 		text-align: left;
+		background: var(--content-surface);
 		box-shadow:
 			0 1px 2px rgb(28 25 23 / 0.06),
 			0 8px 24px rgb(28 25 23 / 0.06);
@@ -118,33 +133,23 @@
 	}
 
 	.positioned.selected {
-		outline: 3px solid #0c0a09;
+		outline: 3px solid var(--ui-accent);
 		outline-offset: 2px;
 	}
 
 	.positioned:focus-visible {
-		outline: 3px solid #0c0a09;
-		outline-offset: 4px;
+		outline: 2px dashed var(--ui-accent);
+		outline-offset: 7px;
 	}
 
-	.node-header {
-		display: block;
-		border-bottom: 1px solid color-mix(in srgb, var(--nature-color) 25%, white);
-		background: color-mix(in srgb, var(--nature-color) 13%, white);
-		padding: 0.55rem 0.75rem;
-		color: color-mix(in srgb, var(--nature-color) 82%, black);
-		font-size: 0.7rem;
-		font-weight: 700;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-	}
-
-	.node-body {
-		display: block;
-		padding: 0.9rem 0.75rem 1rem;
-		color: #292524;
-		font-size: 0.875rem;
-		line-height: 1.45;
-		white-space: pre-wrap;
+	@media print {
+		.node-card {
+			box-shadow: none;
+			border-color: #666;
+		}
+		.positioned.selected,
+		.positioned:focus-visible {
+			outline: none;
+		}
 	}
 </style>

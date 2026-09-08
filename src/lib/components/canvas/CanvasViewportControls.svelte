@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Icon from '$lib/components/ui/Icon.svelte';
 	import type { CanvasSession } from '$lib/session/canvas-session.svelte';
 
 	let { session }: { session: CanvasSession } = $props();
@@ -15,7 +16,7 @@
 		disabled={!session.canZoomOut}
 		onclick={() => session.zoomOut()}
 	>
-		−
+		<Icon name="phosphor:minus" />
 	</button>
 	<button
 		class="w-12 rounded-md py-2 text-center text-xs font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950"
@@ -33,6 +34,6 @@
 		disabled={!session.canZoomIn}
 		onclick={() => session.zoomIn()}
 	>
-		+
+		<Icon name="phosphor:plus" />
 	</button>
 </div>

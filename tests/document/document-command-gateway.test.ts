@@ -41,6 +41,61 @@ describe('local document command gateway', () => {
 		expect(subscriber).not.toHaveBeenCalled();
 	});
 
+	it('dispatches Markdown replacement through typed persistence and rejects missing nodes first', async () => {
+		const document = await referenceDocument();
+		const persist = vi.fn<DocumentChangeRepository['persist']>((changes) => {
+			const replacement = changes.nodeMarkdownReplacements[0];
+			if (replacement === undefined) throw new Error('Expected Markdown replacement');
+			return Promise.resolve({
+				ok: true,
+				value: {
+					...document,
+					nodes: document.nodes.map((node) => {
+						if (node.id !== replacement.nodeId) return node;
+						return { ...node, markdown: replacement.markdown };
+					}),
+				},
+			});
+		});
+		const gateway = new LocalDocumentCommandGateway(() => document, { persist });
+
+		const accepted = await gateway.dispatch({
+			kind: DocumentCommandKind.ReplaceNodeMarkdown,
+			nodeId: 'traceable-edits',
+			markdown: 'Typed replacement',
+		});
+		expect(accepted.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		if (accepted.kind !== DocumentCommandOutcomeKind.Accepted)
+			throw new Error('Expected accepted replacement');
+		expect(accepted.document.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Typed replacement',
+		);
+		expect(persist).toHaveBeenCalledWith(
+			expect.objectContaining({
+				nodeMarkdownReplacements: [{ nodeId: 'traceable-edits', markdown: 'Typed replacement' }],
+			}),
+			undefined,
+		);
+
+		await expect(
+			gateway.dispatch({
+				kind: DocumentCommandKind.ReplaceNodeMarkdown,
+				nodeId: 'missing',
+				markdown: 'Ignored',
+			}),
+		).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: 'node-not-found',
+					message: 'Node no longer exists: missing',
+					path: ['nodes', 'missing'],
+				},
+			],
+		});
+		expect(persist).toHaveBeenCalledOnce();
+	});
+
 	it('persists the complete change set before publishing its acceptance', async () => {
 		const document = await referenceDocument();
 		const events: string[] = [];

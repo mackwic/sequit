@@ -46,11 +46,11 @@ Une nature définit au minimum :
 
 - un identifiant stable ;
 - un libellé, par exemple `Goal`, `Precondition`, `Action` ou `Want` ;
-- une couleur constante dans le document.
+- une couleur de base dans le document ;
+- une icône optionnelle, référencée par bibliothèque et nom.
 
 Extensions possibles, encore non décidées :
 
-- une icône ;
 - une description ;
 - des règles sur les relations autorisées ;
 - un style visuel complémentaire.
@@ -64,7 +64,21 @@ Une boîte possède :
 - un contenu rich text ;
 - éventuellement des métadonnées.
 
-Le titre visible correspond à la nature de la boîte. La couleur du titre est déterminée par cette nature.
+Le titre visible correspond à la nature de la boîte. Sa couleur et son icône sont héritées de la nature ; un nœud peut personnaliser ces deux propriétés séparément, puis revenir à leur héritage. Le texte conserve une encre sombre sur un fond teinté clair, y compris pour les couleurs très claires.
+
+### UI et content
+
+Le **content** est le graphe construit par les utilisateurs ; l’**UI** est l’interface de Sequit. Un seul thème principal est actuellement pris en charge, avec deux espaces de variables distincts.
+
+- UI : surfaces neutres, accent indigo pour activation/sélection, vert pour réussite, ambre pour attention et rouge pour erreur ou confirmation destructive. Les actions utilisent Phosphor avec leurs libellés et raccourcis. Une icône ou un libellé accompagne les états colorés.
+- Content : 54 couleurs proposées dans 18 familles, couleurs RGB personnalisées et catalogue Phosphor Regular complet. Aucune signification logique n’est imposée aux couleurs ni aux icônes. Les icônes des documents d’exemple sont des choix éditoriaux explicites.
+- La sélection est un contour UI indépendant de la couleur du nœud. Le focus clavier utilise un contour décalé en pointillés. Modifier la présentation ne change ni nature logique, ni identifiants, ni relations, ni ordre.
+
+Les propriétés optionnelles `color` et `icon` des nœuds sont conservées dans le TOML et dans les champs Yjs correspondants. Les natures possèdent leur couleur de base et une icône optionnelle. `icon = "none"` supprime explicitement une icône héritée ; supprimer le champ restaure l’héritage. Une référence telle que `phosphor:scales` identifie une ressource sans incorporer de SVG ou d’URL distante. Une référence d’une bibliothèque indisponible reste conservée, avec un indicateur de remplacement dans le rendu.
+
+Les couleurs acceptées sont `#RGB` ou `#RRGGBB`. Les fonds, bordures et encres du thème sont séparés de la teinte choisie. Les règles d’impression retirent ombres, teintes et sélection des cartes et conservent libellés et pictogrammes en noir ; la pagination et l’export visuel complet restent à concevoir.
+
+Les composants d’inspection sont partagés dans `src/lib/components/content`. Leur accès expérimental est disponible dans l’atelier ; les commandes de style du produit collaboratif restent à intégrer comme les autres commandes expérimentales. Les codecs partagés préservent déjà ces propriétés.
 
 ### Relation
 

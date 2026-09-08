@@ -2,6 +2,8 @@ import * as Y from 'yjs';
 
 import { compareCanonicalStrings } from '../canonical-string';
 import {
+	type ContentStyle,
+	contentStyleFields,
 	EndpointKind,
 	JUNCTION_OPERATORS,
 	LAYOUT_BIASES,
@@ -20,37 +22,13 @@ import { parseOrderKey } from '../document/order-key';
 import { validateLogicDocument } from '../document/validate-logic-document';
 import { YjsCollection } from './yjs-document-schema';
 
-export enum YjsLiveDocumentDiagnosticCode {
-	Invalid = 'invalid-yjs-live-document',
-	UnsupportedFormat = 'unsupported-yjs-live-document-format',
-}
-
-interface YjsLiveDocumentDiagnostic {
-	readonly code: YjsLiveDocumentDiagnosticCode;
-	readonly message: string;
-	readonly path: readonly string[];
-	readonly cycle?: readonly string[];
-	readonly expectedOrder?: readonly string[];
-	readonly materializedOrder?: readonly string[];
-	readonly expectedScore?: number;
-	readonly materializedScore?: number;
-}
-
-interface YjsLiveDocumentSuccess<T> {
-	readonly ok: true;
-	readonly value: T;
-}
-
-interface YjsLiveDocumentFailure {
-	readonly ok: false;
-	readonly diagnostics: readonly YjsLiveDocumentDiagnostic[];
-}
-
-export type YjsLiveDocumentResult<T> = YjsLiveDocumentSuccess<T> | YjsLiveDocumentFailure;
-
-interface ReadContext {
-	readonly diagnostics: YjsLiveDocumentDiagnostic[];
-}
+export { YjsLiveDocumentDiagnosticCode, type YjsLiveDocumentResult } from './yjs-document-result';
+import {
+	type ReadContext,
+	YjsLiveDocumentDiagnosticCode,
+	type YjsLiveDocumentFailure,
+	type YjsLiveDocumentResult,
+} from './yjs-document-result';
 
 interface CollectionOptions<T> {
 	readonly sharedName: string;
@@ -117,6 +95,17 @@ function readCollection<T>(ydoc: Y.Doc, context: ReadContext, options: Collectio
 	return result;
 }
 
+function readContentStyle(
+	entity: Y.Map<unknown>,
+	path: readonly string[],
+	context: ReadContext,
+): ContentStyle {
+	return contentStyleFields(
+		readOptionalString(entity.get('color'), [...path, 'color'], context),
+		readOptionalString(entity.get('icon'), [...path, 'icon'], context),
+	);
+}
+
 function readNature(
 	entity: Y.Map<unknown>,
 	id: string,
@@ -124,8 +113,9 @@ function readNature(
 ): LogicNature | undefined {
 	const label = readString(entity.get('label'), ['natures', id, 'label'], context);
 	const color = readString(entity.get('color'), ['natures', id, 'color'], context);
+	const style = readContentStyle(entity, ['natures', id], context);
 	if (label === undefined || color === undefined) return undefined;
-	return { id, label, color };
+	return { id, label, ...style, color };
 }
 
 function readGroup(
@@ -148,6 +138,7 @@ function readGroup(
 
 function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): LogicNode | undefined {
 	const natureId = readString(entity.get('natureId'), ['nodes', id, 'nature'], context);
+	const style = readContentStyle(entity, ['nodes', id], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['nodes', id, 'group'], context);
 	const markdown = entity.get('markdown');
 	const layoutOrder = readRequiredLayoutOrder(
@@ -165,6 +156,7 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	}
 	if (natureId === undefined || layoutOrder === undefined) return undefined;
 	const node: LogicNode = {
+		...style,
 		kind: EndpointKind.Node,
 		id,
 		natureId,

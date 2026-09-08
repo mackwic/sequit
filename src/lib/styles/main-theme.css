@@ -1,0 +1,77 @@
+:root {
+	/* UI: application roles. Content does not inherit these colors. */
+	--ui-bg: #faf9f6;
+	--ui-surface: #ffffff;
+	--ui-subtle: #f1f0ec;
+	--ui-hover: #e9e7e1;
+	--ui-border: #d8d5cd;
+	--ui-text: #292524;
+	--ui-muted: #68615b;
+	--ui-accent: #5145cd;
+	--ui-accent-soft: #eeecff;
+	--ui-on-accent: #ffffff;
+	--ui-success: #216543;
+	--ui-success-soft: #edf8f1;
+	--ui-warning: #865308;
+	--ui-warning-soft: #fff5d6;
+	--ui-danger: #b42336;
+	--ui-danger-soft: #fff0f2;
+	--ui-shadow: 0 5px 20px #29252412;
+	/* Content: the main presentation theme; natures and nodes provide the hue. */
+	--content-surface: #ffffff;
+	--content-text: #292524;
+	--content-default-color: #6366f1;
+	--content-header-ink: #292524;
+}
+.ui-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.45em;
+	min-height: 32px;
+	border: 1px solid var(--ui-border);
+	border-radius: 7px;
+	padding: 7px 10px;
+	background: var(--ui-surface);
+	color: var(--ui-text);
+	font-size: 12px;
+	font-weight: 550;
+	cursor: pointer;
+}
+.ui-action:hover:not(:disabled) {
+	background: var(--ui-hover);
+}
+.ui-action.primary {
+	background: var(--ui-accent);
+	color: var(--ui-on-accent);
+	border-color: var(--ui-accent);
+}
+.ui-action.danger {
+	color: var(--ui-danger);
+	background: var(--ui-danger-soft);
+}
+.ui-action:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+.ui-action:focus-visible {
+	outline: 2px solid var(--ui-accent);
+	outline-offset: 3px;
+}
+.ui-notice {
+	display: flex;
+	align-items: start;
+	gap: 8px;
+	padding: 10px;
+	border-radius: 8px;
+	color: var(--ui-success);
+	background: var(--ui-success-soft);
+}
+.ui-notice.error {
+	color: var(--ui-danger);
+	background: var(--ui-danger-soft);
+}
+.ui-notice.warning {
+	color: var(--ui-warning);
+	background: var(--ui-warning-soft);
+}

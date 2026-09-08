@@ -17,6 +17,12 @@ export interface DocumentCommandDiagnostic {
 	readonly materializedScore?: number;
 }
 
+export enum DocumentCommandDiagnosticCode {
+	NodeNotFound = 'node-not-found',
+	NodeMarkdownUnavailable = 'node-markdown-unavailable',
+	SessionClosed = 'document-session-closed',
+}
+
 export enum DocumentCommandOutcomeKind {
 	Accepted = 'accepted',
 	Rejected = 'rejected',
@@ -45,6 +51,7 @@ export type DocumentCommandOutcome =
 export enum DocumentCommandKind {
 	AddNode = 'add-node',
 	AddRelation = 'add-relation',
+	ReplaceNodeMarkdown = 'replace-node-markdown',
 }
 interface AddNodeCommand {
 	readonly kind: DocumentCommandKind.AddNode;
@@ -54,7 +61,12 @@ interface AddRelationCommand {
 	readonly kind: DocumentCommandKind.AddRelation;
 	readonly relation: LogicRelation;
 }
-export type DocumentCommand = AddNodeCommand | AddRelationCommand;
+interface ReplaceNodeMarkdownCommand {
+	readonly kind: DocumentCommandKind.ReplaceNodeMarkdown;
+	readonly nodeId: string;
+	readonly markdown: string;
+}
+export type DocumentCommand = AddNodeCommand | AddRelationCommand | ReplaceNodeMarkdownCommand;
 
 interface DocumentChangeSuccess {
 	readonly ok: true;
@@ -64,7 +76,21 @@ interface DocumentChangeFailure {
 	readonly ok: false;
 	readonly diagnostics: readonly DocumentCommandDiagnostic[];
 }
-type DocumentChangeResult = DocumentChangeSuccess | DocumentChangeFailure;
+export type DocumentChangeResult = DocumentChangeSuccess | DocumentChangeFailure;
+
+interface DocumentCommandProjection {
+	readonly ok: true;
+	readonly value: {
+		readonly changes: DocumentChangeSet;
+	};
+}
+
+interface DocumentCommandProjectionFailure {
+	readonly ok: false;
+	readonly diagnostics: readonly DocumentCommandDiagnostic[];
+}
+
+type DocumentCommandProjectionResult = DocumentCommandProjection | DocumentCommandProjectionFailure;
 
 export interface DocumentCommandGateway {
 	/**
@@ -95,6 +121,37 @@ export enum DocumentCommandPublicationMode {
 
 function assertNever(value: never): never {
 	throw new TypeError(`Unsupported document command: ${String(value)}`);
+}
+
+function projectNodeMarkdownReplacement(
+	document: LogicDocument,
+	nodeId: string,
+	markdown: string,
+): DocumentCommandProjectionResult {
+	const node = document.nodes.find(({ id }) => id === nodeId);
+	if (node === undefined) {
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.NodeNotFound,
+					message: `Node no longer exists: ${nodeId}`,
+					path: ['nodes', nodeId],
+				},
+			],
+		};
+	}
+	return {
+		ok: true,
+		value: {
+			changes: {
+				nodeAdditions: [],
+				relationAdditions: [],
+				endpointOrderChanges: [],
+				nodeMarkdownReplacements: [{ nodeId, markdown }],
+			},
+		},
+	};
 }
 
 export class LocalDocumentCommandGateway implements DocumentCommandGateway {
@@ -143,6 +200,8 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 							command.relation,
 							fractionalOrderKeySpace,
 						);
+					case DocumentCommandKind.ReplaceNodeMarkdown:
+						return projectNodeMarkdownReplacement(this.current(), command.nodeId, command.markdown);
 					default:
 						return assertNever(command);
 				}
@@ -155,10 +214,8 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 		return execution;
 	}
 
-	async #execute(
-		project: () => ReturnType<typeof projectNodeAddition>,
-	): Promise<DocumentCommandOutcome> {
-		let projected: ReturnType<typeof projectNodeAddition>;
+	async #execute(project: () => DocumentCommandProjectionResult): Promise<DocumentCommandOutcome> {
+		let projected: DocumentCommandProjectionResult;
 		try {
 			projected = project();
 		} catch (error) {

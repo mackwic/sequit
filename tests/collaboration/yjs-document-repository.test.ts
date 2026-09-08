@@ -6,10 +6,7 @@ import {
 	readLogicDocument,
 	YJS_LIVE_DOCUMENT_FORMAT,
 } from '../../src/lib/collaboration/yjs-document-codec';
-import {
-	replaceNodeMarkdown,
-	YjsDocumentRepository,
-} from '../../src/lib/collaboration/yjs-document-repository';
+import { YjsDocumentRepository } from '../../src/lib/collaboration/yjs-document-repository';
 import { attachDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
 import {
 	DocumentCommandKind,
@@ -26,6 +23,7 @@ import {
 	type NewLogicNode,
 } from '../../src/lib/document/logic-document';
 import { orderKey } from '../../src/lib/document/order-key';
+import type { DocumentChangeSet } from '../../src/lib/document/topology-edits';
 import { orderEndpoints } from '../../src/lib/layout/endpoint-order';
 import { fractionalOrderKeySpace } from '../../src/lib/layout/order-key-space';
 import { parseSequitToml } from '../../src/lib/text/parse-sequit-toml';
@@ -174,7 +172,12 @@ async function dispatchCommand(
 	document: Y.Doc,
 	command:
 		| { readonly kind: DocumentCommandKind.AddNode; readonly node: NewLogicNode }
-		| { readonly kind: DocumentCommandKind.AddRelation; readonly relation: LogicRelation },
+		| { readonly kind: DocumentCommandKind.AddRelation; readonly relation: LogicRelation }
+		| {
+				readonly kind: DocumentCommandKind.ReplaceNodeMarkdown;
+				readonly nodeId: string;
+				readonly markdown: string;
+		  },
 	origin?: unknown,
 ) {
 	const repository = new YjsDocumentRepository(document);
@@ -203,6 +206,26 @@ const addNodeThroughGateway = (document: Y.Doc, node: NewLogicNode, origin?: unk
 	dispatchCommand(document, { kind: DocumentCommandKind.AddNode, node }, origin);
 const addRelationThroughGateway = (document: Y.Doc, relation: LogicRelation, origin?: unknown) =>
 	dispatchCommand(document, { kind: DocumentCommandKind.AddRelation, relation }, origin);
+const replaceMarkdownThroughGateway = (
+	document: Y.Doc,
+	nodeId: string,
+	markdown: string,
+	origin?: unknown,
+) =>
+	dispatchCommand(
+		document,
+		{ kind: DocumentCommandKind.ReplaceNodeMarkdown, nodeId, markdown },
+		origin,
+	);
+
+function markdownChanges(nodeId: string, markdown: string): DocumentChangeSet {
+	return {
+		nodeAdditions: [],
+		relationAdditions: [],
+		endpointOrderChanges: [],
+		nodeMarkdownReplacements: [{ nodeId, markdown }],
+	};
+}
 
 describe('yjsLiveDocumentFormat', () => {
 	it('imports and reads the complete document without semantic loss', async () => {
@@ -348,7 +371,7 @@ describe('yjsLiveDocumentFormat', () => {
 
 		expect(readFailure(ydoc)).toContainEqual({
 			code: 'invalid-yjs-live-document',
-			message: 'Layout bias right is incompatible with direction bottom-to-top',
+			message: 'Layout bias right is incompatible with direction top-to-bottom',
 			path: ['layout', 'bias'],
 		});
 	});
@@ -400,8 +423,150 @@ describe('yjsLiveDocumentFormat', () => {
 		importLogicDocument(ydoc, await referenceDocument());
 		const stateBefore = Y.encodeStateVector(ydoc);
 
-		expect(replaceNodeMarkdown(ydoc, 'missing-node', 'Ignored')).toBe(false);
+		const result = await replaceMarkdownThroughGateway(ydoc, 'missing-node', 'Ignored');
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'node-not-found',
+					message: 'Node no longer exists: missing-node',
+					path: ['nodes', 'missing-node'],
+				},
+			],
+		});
 		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+	});
+
+	it('replaces Markdown in one named transaction without replacing the node collection entry', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const nodes = ydoc.getMap<Y.Map<unknown>>('sequit.nodes');
+		const node = nodes.get('traceable-edits');
+		const collectionChanges: string[] = [];
+		const updates: unknown[] = [];
+		const origin = {};
+		nodes.observe((event) => collectionChanges.push(...event.keysChanged));
+		ydoc.on('update', (_update, updateOrigin) => updates.push(updateOrigin));
+
+		const result = await replaceMarkdownThroughGateway(
+			ydoc,
+			'traceable-edits',
+			'Typed repository replacement',
+			origin,
+		);
+
+		expect(result.ok).toBe(true);
+		expect(updates).toEqual([origin]);
+		expect(collectionChanges).toEqual([]);
+		expect(nodes.get('traceable-edits')).toBe(node);
+		expect(readDocument(ydoc).nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Typed repository replacement',
+		);
+	});
+
+	it('returns a typed malformed-target diagnostic without a command update', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const repository = new YjsDocumentRepository(ydoc);
+		ydoc
+			.getMap<Y.Map<unknown>>('sequit.nodes')
+			.get('traceable-edits')
+			?.set('markdown', 'malformed');
+		const stateBefore = Y.encodeStateVector(ydoc);
+
+		const result = await repository.persist(
+			markdownChanges('traceable-edits', 'Ignored replacement'),
+		);
+
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'node-markdown-unavailable',
+					message: 'Node Markdown is unavailable: traceable-edits',
+					path: ['nodes', 'traceable-edits', 'markdown'],
+				},
+			],
+		});
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		repository.destroy();
+	});
+
+	it('rejects a non-map Markdown target through the same typed repository diagnostic', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const repository = new YjsDocumentRepository(ydoc);
+		ydoc.getMap<unknown>('sequit.nodes').set('traceable-edits', 'malformed-node');
+		const stateBefore = Y.encodeStateVector(ydoc);
+
+		const result = await repository.persist(markdownChanges('traceable-edits', 'Ignored'));
+
+		expect(result).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'node-markdown-unavailable' }],
+		});
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		repository.destroy();
+	});
+
+	it('rejects a Markdown save when the target disappears at guarded transaction time', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const origin = {};
+		let removeTarget = true;
+		ydoc.on('beforeTransaction', (transaction) => {
+			if (transaction.origin !== origin || !removeTarget) return;
+			removeTarget = false;
+			ydoc.getMap('sequit.nodes').delete('traceable-edits');
+		});
+
+		const result = await replaceMarkdownThroughGateway(
+			ydoc,
+			'traceable-edits',
+			'Racing replacement',
+			origin,
+		);
+
+		expect(result).toMatchObject({
+			ok: false,
+			diagnostics: [
+				{
+					code: 'node-not-found',
+					message: 'Node no longer exists: traceable-edits',
+					path: ['nodes', 'traceable-edits'],
+				},
+			],
+		});
+		expect(ydoc.getMap('sequit.nodes').has('traceable-edits')).toBe(false);
+	});
+
+	it('rolls back a Markdown transaction invalidated by a synchronous observer', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const repository = new YjsDocumentRepository(ydoc);
+		const node = defined(ydoc.getMap<Y.Map<unknown>>('sequit.nodes').get('traceable-edits'));
+		const markdown = node.get('markdown');
+		if (!(markdown instanceof Y.Text)) throw new Error('Expected shared Markdown');
+		const before = markdown.toJSON();
+		const natureBefore = node.get('natureId');
+		const stateBefore = Y.encodeStateVector(ydoc);
+		let poison = true;
+		markdown.observe(() => {
+			if (!poison) return;
+			poison = false;
+			node.set('natureId', 'missing-nature');
+		});
+
+		const result = await repository.persist(
+			markdownChanges('traceable-edits', 'Rolled back replacement'),
+		);
+
+		expect(result.ok).toBe(false);
+		expect(markdown.toJSON()).toBe(before);
+		expect(node.get('natureId')).toBe(natureBefore);
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		repository.destroy();
 	});
 
 	it('adds a node and its effective endpoint order in one transaction', async () => {
@@ -485,7 +650,7 @@ describe('yjsLiveDocumentFormat', () => {
 		});
 		const keys = readDocument(ydoc).nodes.map(({ id, layoutOrder }) => [id, layoutOrder]);
 
-		expect(replaceNodeMarkdown(ydoc, 'traceable-edits', 'Changed')).toBe(true);
+		expect((await replaceMarkdownThroughGateway(ydoc, 'traceable-edits', 'Changed')).ok).toBe(true);
 		expect(readDocument(ydoc).nodes.map(({ id, layoutOrder }) => [id, layoutOrder])).toEqual(keys);
 	});
 
@@ -729,8 +894,13 @@ describe('yjsLiveDocumentFormat', () => {
 			.getMap('sequit.nodes')
 			.observe((event) => secondCollectionChanges.push(...event.keysChanged));
 
-		expect(replaceNodeMarkdown(first, 'traceable-edits', 'First independent edit\n')).toBe(true);
-		expect(replaceNodeMarkdown(second, 'training-roi', 'Second independent edit\n')).toBe(true);
+		expect(
+			(await replaceMarkdownThroughGateway(first, 'traceable-edits', 'First independent edit\n'))
+				.ok,
+		).toBe(true);
+		expect(
+			(await replaceMarkdownThroughGateway(second, 'training-roi', 'Second independent edit\n')).ok,
+		).toBe(true);
 		const firstUpdate = Y.encodeStateAsUpdate(first, firstState);
 		const secondUpdate = Y.encodeStateAsUpdate(second, secondState);
 		Y.applyUpdate(first, secondUpdate);

@@ -1,8 +1,12 @@
 import type { LogicDocument } from '../../src/lib/document/logic-document';
+import {
+	LAYOUT_PERFORMANCE_NODE_COUNTS,
+	type LayoutPerformanceNodeCount,
+} from '../../src/lib/fixtures/layout-performance/node-counts';
 import type {
 	LayoutPerformanceInsertion,
 	NamedLayoutPerformanceScenario,
-} from '../scenarios/layout-performance/scenario-types';
+} from '../../src/lib/fixtures/layout-performance/scenario-types';
 import {
 	INCREMENTAL_LAYOUT_GROWTH_BUCKETS,
 	type IncrementalLayoutGrowthBucketName,
@@ -11,10 +15,6 @@ import {
 	type IncrementalLayoutTiming,
 	timeLayoutPerformanceInsertion,
 } from './incremental-layout-timing';
-import {
-	LAYOUT_PERFORMANCE_NODE_COUNTS,
-	type LayoutPerformanceNodeCount,
-} from './layout-performance-policy';
 import { maximum, median, percentile } from './performance-statistics';
 
 export const INCREMENTAL_LAYOUT_TIMING_STAGES = [

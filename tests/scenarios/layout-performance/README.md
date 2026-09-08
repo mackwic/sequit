@@ -194,3 +194,9 @@ flowchart TB
 ## Governance
 
 Changing a topology requires updating this README, its concrete builder, and its focused contract test together. Adding a topology requires a tuple member, one implementation, one catalog entry, one README heading, and focused assertions.
+
+## Shared generators and interactive use
+
+Pure builders, their deterministic IDs/seeds, topology registry and node-count matrix now live in `src/lib/fixtures/layout-performance/`. Tests import them directly. Preparation with synthetic layout measurements stays in this directory. The `/atelier` document picker consumes the same builders with real browser rendering; it does not import this test harness.
+
+The current production graph limit rejects `nested-subgroups` at 1000 nodes (more than 100000 expanded group memberships). The workshop reports that rejection and allows a smaller document. Historical benchmark budgets do not establish support for this case under the current graph limits.

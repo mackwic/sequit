@@ -1,0 +1,84 @@
+persistenceFormat = 2
+[document]
+id = "interaction-workshop"
+title = "Préparer une décision"
+[layout]
+direction = "top-to-bottom"
+bias = "top"
+[natures.action]
+icon = "phosphor:lightning"
+label = "Action"
+color = "#6f70e8"
+[natures.goal]
+icon = "phosphor:target"
+label = "Objectif"
+color = "#16866c"
+[nodes.collecter]
+nature = "action"
+layoutOrder = "a0"
+markdown = "Rassembler les observations"
+[nodes.explorer]
+nature = "action"
+layoutOrder = "a3"
+markdown = "Explorer une alternative"
+[nodes.comparer]
+nature = "action"
+layoutOrder = "a1"
+markdown = "Comparer les options"
+[nodes.decider]
+nature = "goal"
+layoutOrder = "a2"
+markdown = "Prendre une décision éclairée"
+[relations.collecter-comparer]
+from = "collecter"
+to = "comparer"
+[relations.comparer-decider]
+from = "comparer"
+to = "decider"
+
+[groups]
+[junctions]
+
+[relations.explorer-comparer]
+from = "explorer"
+to = "comparer"
+
+[nodes.etape-0]
+nature = "action"
+layoutOrder = "b00"
+markdown = "Recueillir les contraintes"
+[relations.suite-0]
+from = "collecter"
+to = "etape-0"
+
+[nodes.etape-1]
+nature = "action"
+layoutOrder = "b01"
+markdown = "Interroger les usages"
+[relations.suite-1]
+from = "collecter"
+to = "etape-1"
+
+[nodes.etape-2]
+nature = "action"
+layoutOrder = "b02"
+markdown = "Vérifier les hypothèses"
+[relations.suite-2]
+from = "explorer"
+to = "etape-2"
+
+[nodes.etape-3]
+nature = "action"
+layoutOrder = "b03"
+markdown = "Tester la proposition"
+[relations.suite-3]
+from = "explorer"
+to = "etape-3"
+
+[nodes.etape-4]
+nature = "action"
+layoutOrder = "b04"
+markdown = "Présenter la décision"
+[relations.suite-4]
+from = "decider"
+to = "etape-4"
