@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
 import { incrementalLayoutBudgetMs } from './incremental-layout-budgets';
 import { INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS } from './layout-performance-policy';
 import {

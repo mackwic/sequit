@@ -49,10 +49,16 @@ interface EndpointOrderChange {
 	readonly layoutOrder: OrderKey;
 }
 
+interface NodeMarkdownReplacement {
+	readonly nodeId: string;
+	readonly markdown: string;
+}
+
 export interface DocumentChangeSet {
 	readonly nodeAdditions: readonly LogicNode[];
 	readonly relationAdditions: readonly LogicRelation[];
 	readonly endpointOrderChanges: readonly EndpointOrderChange[];
+	readonly nodeMarkdownReplacements: readonly NodeMarkdownReplacement[];
 }
 
 interface NodeAdditionSuccess {
@@ -155,6 +161,7 @@ export function projectNodeAddition(
 				nodeAdditions: [keyedNode],
 				relationAdditions: [],
 				endpointOrderChanges: [],
+				nodeMarkdownReplacements: [],
 			},
 		},
 	};
@@ -205,7 +212,12 @@ export function projectRelationAddition(
 				document: validatedDocument,
 				eligible: false,
 				moved: false,
-				changes: { nodeAdditions: [], relationAdditions: [relation], endpointOrderChanges: [] },
+				changes: {
+					nodeAdditions: [],
+					relationAdditions: [relation],
+					endpointOrderChanges: [],
+					nodeMarkdownReplacements: [],
+				},
 			},
 		};
 	}

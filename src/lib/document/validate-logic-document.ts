@@ -1,4 +1,9 @@
-import type { DocumentResult, LogicDocument, SequitDiagnostic } from './logic-document';
+import type {
+	ContentStyle,
+	DocumentResult,
+	LogicDocument,
+	SequitDiagnostic,
+} from './logic-document';
 import { defined } from './logic-document';
 import { SequitDiagnosticCode } from './logic-document';
 
@@ -101,8 +106,36 @@ function collectGroupCycles(document: LogicDocument, diagnostics: SequitDiagnost
 	}
 }
 
+function validateContentStyle(
+	style: ContentStyle,
+	path: readonly string[],
+	diagnostics: SequitDiagnostic[],
+): void {
+	if (style.color !== undefined && !/^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(style.color)) {
+		diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: 'Content color must be a hexadecimal RGB color (#RGB or #RRGGBB)',
+			path: [...path, 'color'],
+		});
+	}
+	if (style.icon === undefined || style.icon === 'none') return;
+	if (style.icon.length <= 128 && /^[a-z][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/.test(style.icon)) return;
+	diagnostics.push({
+		code: SequitDiagnosticCode.InvalidValue,
+		message: 'Content icon must be a namespaced reference (provider:name) or none',
+		path: [...path, 'icon'],
+	});
+}
+
+function validateContent(document: LogicDocument, diagnostics: SequitDiagnostic[]): void {
+	for (const nature of document.natures)
+		validateContentStyle(nature, ['natures', nature.id], diagnostics);
+	for (const node of document.nodes) validateContentStyle(node, ['nodes', node.id], diagnostics);
+}
+
 export function validateLogicDocument(document: LogicDocument): DocumentResult<LogicDocument> {
 	const diagnostics: SequitDiagnostic[] = [];
+	validateContent(document, diagnostics);
 	const natureIds = new Set(document.natures.map(({ id }) => id));
 	const groupIds = new Set(document.groups.map(({ id }) => id));
 	const endpointOwners = collectEndpointOwners(document, diagnostics);

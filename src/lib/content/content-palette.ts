@@ -1,0 +1,21 @@
+/** Content choices have no application status semantics. Custom RGB remains available. */
+export const contentPalette = [
+	{ label: 'Gris', colors: ['#d6d3d1', '#78716c', '#292524'] },
+	{ label: 'Ardoise', colors: ['#cbd5e1', '#64748b', '#334155'] },
+	{ label: 'Brun', colors: ['#d6b89c', '#a16b45', '#6b4226'] },
+	{ label: 'Rouge', colors: ['#fca5a5', '#ef4444', '#b91c1c'] },
+	{ label: 'Corail', colors: ['#fdb4a0', '#f47761', '#b94735'] },
+	{ label: 'Orange', colors: ['#fdba74', '#f97316', '#c2410c'] },
+	{ label: 'Ambre', colors: ['#fcd34d', '#f59e0b', '#b45309'] },
+	{ label: 'Jaune', colors: ['#fef08a', '#eab308', '#a16207'] },
+	{ label: 'Citron vert', colors: ['#d9f99d', '#84cc16', '#4d7c0f'] },
+	{ label: 'Vert', colors: ['#86efac', '#22c55e', '#15803d'] },
+	{ label: 'Menthe', colors: ['#a7f3d0', '#34d399', '#047857'] },
+	{ label: 'Turquoise', colors: ['#99f6e4', '#14b8a6', '#0f766e'] },
+	{ label: 'Cyan', colors: ['#a5f3fc', '#06b6d4', '#0e7490'] },
+	{ label: 'Bleu', colors: ['#93c5fd', '#3b82f6', '#1d4ed8'] },
+	{ label: 'Indigo', colors: ['#a5b4fc', '#6366f1', '#4338ca'] },
+	{ label: 'Violet', colors: ['#c4b5fd', '#8b5cf6', '#6d28d9'] },
+	{ label: 'Prune', colors: ['#e9b6ee', '#ba60c8', '#7f308a'] },
+	{ label: 'Rose', colors: ['#f9a8d4', '#ec4899', '#be185d'] },
+] as const;

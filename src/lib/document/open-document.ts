@@ -9,6 +9,7 @@ import { createGraph } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { layoutGraph, type LayoutMeasurements } from '../layout/layout-graph';
 import { parseSequitToml } from '../text/parse-sequit-toml';
+import type { DocumentCommandOutcome } from './document-command-gateway';
 import type { DocumentSession } from './document-session';
 import type { LogicDocument, LogicRelation, NewLogicNode } from './logic-document';
 
@@ -30,6 +31,8 @@ interface DocumentProjection {
 class OpenedDocument {
 	#projection: DocumentProjection;
 	readonly #unsubscribe: () => void;
+	readonly #subscribers = new Set<() => void>();
+	#destroyed = false;
 
 	constructor(
 		private readonly session: DocumentSession,
@@ -38,6 +41,13 @@ class OpenedDocument {
 		this.#projection = projection;
 		this.#unsubscribe = this.session.subscribe((document) => {
 			this.#projection = projectDocument(document);
+			for (const subscriber of [...this.#subscribers]) {
+				try {
+					subscriber();
+				} catch {
+					// Projection publication must reach every opened-document subscriber.
+				}
+			}
 		});
 	}
 
@@ -52,7 +62,10 @@ class OpenedDocument {
 			currentProjection.ranks,
 			measurements,
 		);
-		return projectCanvasModel(currentProjection.measurementModel, layout);
+		return projectCanvasModel(currentProjection.measurementModel, layout, {
+			document: currentProjection.document,
+			ranks: currentProjection.ranks,
+		});
 	}
 
 	addNode(node: NewLogicNode): Promise<LogicDocument> {
@@ -63,8 +76,21 @@ class OpenedDocument {
 		return this.session.addRelation(relation);
 	}
 
+	replaceNodeMarkdown(nodeId: string, markdown: string): Promise<DocumentCommandOutcome> {
+		return this.session.replaceNodeMarkdown(nodeId, markdown);
+	}
+
+	subscribe(subscriber: () => void): () => void {
+		if (this.#destroyed) return () => undefined;
+		this.#subscribers.add(subscriber);
+		return () => this.#subscribers.delete(subscriber);
+	}
+
 	destroy(): void {
+		if (this.#destroyed) return;
+		this.#destroyed = true;
 		this.#unsubscribe();
+		this.#subscribers.clear();
 		this.session.destroy();
 	}
 }

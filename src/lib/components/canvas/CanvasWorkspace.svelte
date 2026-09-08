@@ -1,39 +1,55 @@
 <script lang="ts">
+	import { openDocument } from '$lib/document/open-document';
+	import { CanvasSession } from '$lib/session/canvas-session.svelte';
+
+	import CanvasInteractionStatus from './CanvasInteractionStatus.svelte';
 	import CanvasToolbar from './CanvasToolbar.svelte';
+	import CanvasViewportControls from './CanvasViewportControls.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
 
 	let { source }: { source: string } = $props();
+	let opened = $derived(openDocument(source));
+	let session = $derived.by(() => {
+		if (!opened.ok) return undefined;
+		return new CanvasSession(opened.value);
+	});
+
+	$effect(() => {
+		const current = opened;
+		if (!current.ok) return;
+		return () => {
+			current.value.destroy();
+		};
+	});
 </script>
 
 <section class="relative min-h-0 flex-1 overflow-hidden" aria-label="Logic canvas">
-	<LogicCanvas {source} />
-	<CanvasToolbar />
+	{#if opened.ok && session}
+		<LogicCanvas document={opened.value} {session} />
+		<CanvasToolbar {session} />
+		<CanvasViewportControls {session} />
+		<CanvasInteractionStatus {session} />
+	{:else if !opened.ok}
+		<div class="canvas-grid absolute inset-0 overflow-auto">
+			<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+				{opened.diagnostics.map(({ message }) => message).join('\n')}
+			</p>
+		</div>
+	{/if}
 
 	<div class="pointer-events-none absolute top-7 left-1/2 z-20 -translate-x-1/2">
 		<div
 			class="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-500 shadow-sm"
 		>
-			Auto-layout · Bottom to top
+			Auto-layout · Top to bottom
 		</div>
 	</div>
-
-	<div
-		class="absolute right-4 bottom-4 z-20 flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-1 shadow-sm"
-	>
-		<button
-			class="grid size-8 place-items-center rounded-md text-stone-500 hover:bg-stone-100"
-			type="button"
-			aria-label="Zoom out"
-		>
-			−
-		</button>
-		<span class="w-12 text-center text-xs font-medium text-stone-600">100%</span>
-		<button
-			class="grid size-8 place-items-center rounded-md text-stone-500 hover:bg-stone-100"
-			type="button"
-			aria-label="Zoom in"
-		>
-			+
-		</button>
-	</div>
 </section>
+
+<style>
+	.canvas-grid {
+		background-color: #f5f5f4;
+		background-image: radial-gradient(#d6d3d1 0.8px, transparent 0.8px);
+		background-size: 20px 20px;
+	}
+</style>

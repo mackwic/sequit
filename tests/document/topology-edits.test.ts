@@ -368,6 +368,7 @@ describe('topology edits', () => {
 			nodeAdditions: [expect.objectContaining({ id: 'new-node', layoutOrder: testKey })],
 			relationAdditions: [],
 			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
 		});
 		expect(result.value.document.nodes.at(-1)).toMatchObject({
 			id: 'new-node',

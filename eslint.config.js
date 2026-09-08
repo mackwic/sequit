@@ -219,4 +219,10 @@ export default defineConfig(
 	},
 	...svelte.configs.prettier,
 	prettier,
+	{
+		files: ['**/*.svelte.ts'],
+		languageOptions: {
+			parser: ts.parser,
+		},
+	},
 );

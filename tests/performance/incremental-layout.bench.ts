@@ -1,6 +1,6 @@
 import { bench, describe } from 'vitest';
 
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
 import {
 	formatIncrementalLayoutCheckpointSummaries,
 	formatIncrementalLayoutSummaries,

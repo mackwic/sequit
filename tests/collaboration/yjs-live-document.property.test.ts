@@ -6,7 +6,8 @@ import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../src/lib/collaboration/yjs-document-codec';
-import { replaceNodeMarkdown } from '../../src/lib/collaboration/yjs-document-repository';
+import { attachDocumentSession } from '../../src/lib/collaboration/yjs-document-session';
+import { DocumentCommandOutcomeKind } from '../../src/lib/document/document-command-gateway';
 import type { LogicDocument } from '../../src/lib/document/logic-document';
 import { nodeId, richAcyclicLogicDocumentArbitrary } from '../builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../builders/property-test-options';
@@ -49,17 +50,24 @@ function baselineFor(document: LogicDocument): Uint8Array {
 	return Y.encodeStateAsUpdate(origin);
 }
 
-function applyMarkdown(ydoc: Y.Doc, index: number, markdown: string): void {
-	expect(replaceNodeMarkdown(ydoc, nodeId(index), markdown)).toBe(true);
+async function applyMarkdown(ydoc: Y.Doc, index: number, markdown: string): Promise<void> {
+	const session = attachDocumentSession(ydoc);
+	try {
+		expect((await session.replaceNodeMarkdown(nodeId(index), markdown)).kind).toBe(
+			DocumentCommandOutcomeKind.Accepted,
+		);
+	} finally {
+		session.destroy();
+	}
 }
 
-function localUpdate(
+async function localUpdate(
 	baseline: Uint8Array,
 	operations: readonly (readonly [number, string])[],
-): Uint8Array {
+): Promise<Uint8Array> {
 	const replica = replicaFrom(baseline);
 	const baselineState = Y.encodeStateVector(replica);
-	for (const [index, markdown] of operations) applyMarkdown(replica, index, markdown);
+	for (const [index, markdown] of operations) await applyMarkdown(replica, index, markdown);
 	return Y.encodeStateAsUpdate(replica, baselineState);
 }
 
@@ -127,14 +135,14 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('converges two generated updates independently of their delivery order', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('converges two generated updates independently of their delivery order', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const firstUpdate = localUpdate(baseline, [
+				const firstUpdate = await localUpdate(baseline, [
 					[generated.nodeIndexes[0], generated.markdown[0]],
 				]);
-				const secondUpdate = localUpdate(baseline, [
+				const secondUpdate = await localUpdate(baseline, [
 					[generated.nodeIndexes[1], generated.markdown[1]],
 				]);
 				expectConverged([
@@ -146,11 +154,13 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('is idempotent when the same update is delivered twice', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('is idempotent when the same update is delivered twice', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const update = localUpdate(baseline, [[generated.nodeIndexes[0], generated.markdown[0]]]);
+				const update = await localUpdate(baseline, [
+					[generated.nodeIndexes[0], generated.markdown[0]],
+				]);
 				expectConverged([
 					replicaWithUpdates(baseline, [update]),
 					replicaWithUpdates(baseline, [update, update]),
@@ -160,12 +170,16 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('is associative and commutative for every delivery order of three updates', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('is associative and commutative for every delivery order of three updates', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const updates = generated.nodeIndexes.map((index, updateIndex) =>
-					localUpdate(baseline, [[index, requiredAt(generated.markdown, updateIndex, 'markdown')]]),
+				const updates = await Promise.all(
+					generated.nodeIndexes.map((index, updateIndex) =>
+						localUpdate(baseline, [
+							[index, requiredAt(generated.markdown, updateIndex, 'markdown')],
+						]),
+					),
 				);
 				const replicas = updateOrders.map((order) =>
 					replicaWithUpdates(
@@ -179,12 +193,16 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('converges three replicas after isolated edits and partition healing', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('converges three replicas after isolated edits and partition healing', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const updates = generated.nodeIndexes.map((index, updateIndex) =>
-					localUpdate(baseline, [[index, requiredAt(generated.markdown, updateIndex, 'markdown')]]),
+				const updates = await Promise.all(
+					generated.nodeIndexes.map((index, updateIndex) =>
+						localUpdate(baseline, [
+							[index, requiredAt(generated.markdown, updateIndex, 'markdown')],
+						]),
+					),
 				);
 				const first = replicaWithUpdates(baseline, [requiredAt(updates, 0, 'update')]);
 				const second = replicaWithUpdates(baseline, [requiredAt(updates, 1, 'update')]);
@@ -201,11 +219,11 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('converges mixed operation sequences spanning several nodes', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('converges mixed operation sequences spanning several nodes', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const updates = [
+				const updates = await Promise.all([
 					localUpdate(baseline, [
 						[0, generated.markdown[0]],
 						[1, generated.markdown[1]],
@@ -218,7 +236,7 @@ describe('generated Yjs live documents', () => {
 						[2, generated.markdown[4]],
 						[0, generated.markdown[5]],
 					]),
-				];
+				]);
 				expectConverged([
 					replicaWithUpdates(baseline, updates),
 					replicaWithUpdates(baseline, [
@@ -235,16 +253,18 @@ describe('generated Yjs live documents', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
-	});
+	}, 10_000);
 
-	it('converges concurrent replacements of the same Markdown value', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('converges concurrent replacements of the same Markdown value', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
 				const nodeIndex = generated.nodeIndexes[0];
-				const updates = generated.markdown
-					.slice(0, 3)
-					.map((markdown) => localUpdate(baseline, [[nodeIndex, markdown]]));
+				const updates = await Promise.all(
+					generated.markdown
+						.slice(0, 3)
+						.map((markdown) => localUpdate(baseline, [[nodeIndex, markdown]])),
+				);
 				expectConverged([
 					replicaWithUpdates(baseline, updates),
 					replicaWithUpdates(baseline, [...updates].reverse()),
@@ -254,12 +274,16 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('produces identical state vectors after complete synchronization', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('produces identical state vectors after complete synchronization', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const updates = generated.nodeIndexes.map((index, updateIndex) =>
-					localUpdate(baseline, [[index, requiredAt(generated.markdown, updateIndex, 'markdown')]]),
+				const updates = await Promise.all(
+					generated.nodeIndexes.map((index, updateIndex) =>
+						localUpdate(baseline, [
+							[index, requiredAt(generated.markdown, updateIndex, 'markdown')],
+						]),
+					),
 				);
 				const replicas = updateOrders.slice(0, 3).map((order) =>
 					replicaWithUpdates(
@@ -275,22 +299,22 @@ describe('generated Yjs live documents', () => {
 		);
 	});
 
-	it('restores a snapshot, continues editing and reconverges with active replicas', () => {
-		fc.assert(
-			fc.property(collaborationCaseArbitrary, (generated) => {
+	it('restores a snapshot, continues editing and reconverges with active replicas', async () => {
+		await fc.assert(
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
-				const firstUpdate = localUpdate(baseline, [[0, generated.markdown[0]]]);
-				const secondUpdate = localUpdate(baseline, [[1, generated.markdown[1]]]);
+				const firstUpdate = await localUpdate(baseline, [[0, generated.markdown[0]]]);
+				const secondUpdate = await localUpdate(baseline, [[1, generated.markdown[1]]]);
 				const combined = replicaWithUpdates(baseline, [firstUpdate, secondUpdate]);
 				const restored = replicaFrom(Y.encodeStateAsUpdate(combined));
 				const restoredState = Y.encodeStateVector(restored);
-				applyMarkdown(restored, 2, generated.markdown[2]);
+				await applyMarkdown(restored, 2, generated.markdown[2]);
 				const restoredUpdate = Y.encodeStateAsUpdate(restored, restoredState);
 
 				const first = replicaWithUpdates(baseline, [firstUpdate, secondUpdate, restoredUpdate]);
 				const second = replicaWithUpdates(baseline, [secondUpdate, restoredUpdate, firstUpdate]);
 				const firstState = Y.encodeStateVector(first);
-				applyMarkdown(first, generated.nodeIndexes[0], generated.markdown[3]);
+				await applyMarkdown(first, generated.nodeIndexes[0], generated.markdown[3]);
 				const continuation = Y.encodeStateAsUpdate(first, firstState);
 				Y.applyUpdate(second, continuation);
 				Y.applyUpdate(restored, continuation);

@@ -1,5 +1,7 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import {
+	type ContentStyle,
+	contentStyleFields,
 	type DocumentResult,
 	EndpointKind,
 	JunctionOperator,
@@ -75,6 +77,17 @@ function optionalString(
 function diagnosticCode(value: unknown): SequitDiagnostic['code'] {
 	if (value === undefined) return SequitDiagnosticCode.MissingField;
 	return SequitDiagnosticCode.InvalidType;
+}
+
+function mapContentStyle(
+	entity: UnknownTable,
+	path: readonly string[],
+	context: MappingContext,
+): ContentStyle {
+	return contentStyleFields(
+		optionalString(entity['color'], [...path, 'color'], context),
+		optionalString(entity['icon'], [...path, 'icon'], context),
+	);
 }
 
 function optionalGroupId(groupId: string | undefined): { readonly groupId?: string } {
@@ -188,7 +201,9 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			if (!entity) continue;
 			const label = string(entity['label'], [...path, 'label'], context);
 			const color = string(entity['color'], [...path, 'color'], context);
-			if (label !== undefined && color !== undefined) natures.push({ id: natureId, label, color });
+			const style = mapContentStyle(entity, path, context);
+			if (label !== undefined && color !== undefined)
+				natures.push({ id: natureId, label, ...style, color });
 		}
 	}
 
@@ -224,6 +239,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const entity = table(value, path, context);
 			if (!entity) continue;
 			const natureId = string(entity['nature'], [...path, 'nature'], context);
+			const style = mapContentStyle(entity, path, context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
 			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
 			const layoutOrder = requiredLayoutOrder(
@@ -235,6 +251,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			if (requiredNodeValues && layoutOrder !== undefined) {
 				nodes.push({
 					kind: EndpointKind.Node,
+					...style,
 					id: nodeId,
 					natureId,
 					...optionalGroupId(groupId),

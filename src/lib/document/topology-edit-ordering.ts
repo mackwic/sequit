@@ -38,6 +38,7 @@ interface RelationAdditionProjection {
 		readonly nodeAdditions: readonly never[];
 		readonly relationAdditions: readonly LogicRelation[];
 		readonly endpointOrderChanges: readonly EndpointOrderChange[];
+		readonly nodeMarkdownReplacements: readonly never[];
 	};
 }
 
@@ -182,7 +183,12 @@ function duplicateKeyResult(
 			moved: false,
 			previousScore: currentScore,
 			selectedScore: currentScore,
-			changes: { nodeAdditions: [], relationAdditions: [relation], endpointOrderChanges: [] },
+			changes: {
+				nodeAdditions: [],
+				relationAdditions: [relation],
+				endpointOrderChanges: [],
+				nodeMarkdownReplacements: [],
+			},
 		},
 	};
 }
@@ -311,6 +317,7 @@ function successfulProjection(options: SuccessfulProjectionOptions): RelationAdd
 				nodeAdditions: [],
 				relationAdditions: [options.relation],
 				endpointOrderChanges: options.orderChanges,
+				nodeMarkdownReplacements: [],
 			},
 		},
 	};

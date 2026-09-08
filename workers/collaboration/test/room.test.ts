@@ -466,3 +466,20 @@ it('closes a server-side WebSocket with the supplied details', async () => {
 	expect(event.code).toBe(4100);
 	expect(event.reason).toBe('Server close');
 });
+
+it.each([1005, 1006, 1015])(
+	'acknowledges reserved close notification %s without echoing it',
+	async (code) => {
+		const id = `reserved-close-${code}`;
+		const room = env.COLLABORATION_ROOMS.getByName(id);
+		const client = await connect(id);
+		const { promise: closed, resolve } = Promise.withResolvers<CloseEvent>();
+		client.addEventListener('close', resolve, { once: true });
+		await runInDurableObject(room, (instance, state) => {
+			const server = state.getWebSockets().at(0);
+			if (!server) throw new Error('Expected server socket');
+			instance.webSocketClose(server, code, 'Connection ended');
+		});
+		expect((await closed).code).toBe(1000);
+	},
+);

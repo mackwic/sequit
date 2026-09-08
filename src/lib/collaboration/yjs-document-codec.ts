@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 
-import type { LogicDocument } from '../document/logic-document';
+import { contentStyleFields, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import {
 	readStructuralLogicDocument,
@@ -49,9 +49,9 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Natures),
 			document.natures,
-			({ label, color }) => ({
+			({ label, color, icon }) => ({
 				label,
-				color,
+				...contentStyleFields(color, icon),
 			}),
 		);
 		replaceEntityCollection(
@@ -66,10 +66,15 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Nodes),
 			document.nodes,
-			({ natureId, groupId, markdown, layoutOrder }) => {
+			({ natureId, groupId, markdown, layoutOrder, color, icon }) => {
 				const text = new Y.Text();
 				text.insert(0, markdown);
-				const values: Record<string, unknown> = { natureId, layoutOrder, markdown: text };
+				const values: Record<string, unknown> = {
+					natureId,
+					layoutOrder,
+					markdown: text,
+					...contentStyleFields(color, icon),
+				};
 				if (groupId !== undefined) values['groupId'] = groupId;
 				return values;
 			},

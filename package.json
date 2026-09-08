@@ -94,6 +94,8 @@
 		"wrangler": "^4.129.0"
 	},
 	"dependencies": {
+		"@floating-ui/dom": "^1.8.0",
+		"@phosphor-icons/core": "^2.1.1",
 		"fractional-indexing": "4.0.0",
 		"lib0": "^0.2.99",
 		"smol-toml": "^1.8.0",

@@ -1,4 +1,4 @@
-import type { LogicDocument } from '../../../src/lib/document/logic-document';
+import type { LogicDocument } from '../../document/logic-document';
 import type { LayoutPerformanceInsertion } from './scenario-types';
 
 export function applyLayoutPerformanceInsertion(

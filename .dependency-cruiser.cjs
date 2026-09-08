@@ -2,6 +2,15 @@
 module.exports = {
 	forbidden: [
 		{
+			name: 'fixtures-only-depend-on-domain-core',
+			severity: 'error',
+			from: { path: '^src/lib/fixtures/' },
+			to: {
+				path: '^src/lib/',
+				pathNot: ['^src/lib/fixtures/', '^src/lib/document/(logic-document|order-key)[.]ts$'],
+			},
+		},
+		{
 			name: 'no-circular-dependencies',
 			severity: 'error',
 			from: { path: '^(src|workers/collaboration/src)/' },
@@ -120,6 +129,21 @@ module.exports = {
 					'^src/lib/canvas/',
 					'^src/lib/layout/',
 					'^src/lib/document/(logic-document|validate-logic-document)[.]ts$',
+				],
+			},
+		},
+		{
+			name: 'session-only-depends-inward',
+			severity: 'error',
+			from: { path: '^src/lib/session/' },
+			to: {
+				path: '^src/lib/',
+				pathNot: [
+					'^src/lib/session/',
+					'^src/lib/canvas/',
+					'^src/lib/document/',
+					'^src/lib/graph/',
+					'^src/lib/layout/',
 				],
 			},
 		},

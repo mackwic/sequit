@@ -63,7 +63,24 @@ export enum EndpointKind {
 export type { OrderKey } from './order-key';
 import type { OrderKey } from './order-key';
 
-export interface LogicNature {
+/** Presentation only. Missing properties inherit; `none` explicitly hides an icon.
+ * Icon references are namespaced so documents are not tied to one provider. */
+export interface ContentStyle {
+	readonly color?: string;
+	readonly icon?: string;
+}
+
+export function contentStyleFields(
+	color: string | undefined,
+	icon: string | undefined,
+): ContentStyle {
+	const style: { color?: string; icon?: string } = {};
+	if (color !== undefined) style.color = color;
+	if (icon !== undefined) style.icon = icon;
+	return style;
+}
+
+export interface LogicNature extends ContentStyle {
 	readonly id: string;
 	readonly label: string;
 	readonly color: string;
@@ -77,7 +94,7 @@ export interface LogicGroup {
 	readonly layoutOrder: OrderKey;
 }
 
-export interface LogicNode {
+export interface LogicNode extends ContentStyle {
 	readonly kind: EndpointKind.Node;
 	readonly id: string;
 	readonly natureId: string;

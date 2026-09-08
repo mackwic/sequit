@@ -3,7 +3,11 @@ import type {
 	DocumentCommandGateway,
 	DocumentCommandOutcome,
 } from './document-command-gateway';
-import { DocumentCommandKind, DocumentCommandOutcomeKind } from './document-command-gateway';
+import {
+	DocumentCommandDiagnosticCode,
+	DocumentCommandKind,
+	DocumentCommandOutcomeKind,
+} from './document-command-gateway';
 import type { LogicDocument, LogicRelation, NewLogicNode } from './logic-document';
 import { defined } from './logic-document';
 
@@ -82,6 +86,22 @@ export class DocumentSession {
 		return this.#unwrap(outcome);
 	}
 
+	async replaceNodeMarkdown(nodeId: string, markdown: string): Promise<DocumentCommandOutcome> {
+		if (this.#isDestroyed()) return this.#closedOutcome();
+		let outcome: DocumentCommandOutcome;
+		try {
+			outcome = await this.gateway.dispatch({
+				kind: DocumentCommandKind.ReplaceNodeMarkdown,
+				nodeId,
+				markdown,
+			});
+		} catch (error) {
+			outcome = { kind: DocumentCommandOutcomeKind.Failed, error };
+		}
+		if (this.#isDestroyed()) return this.#closedOutcome();
+		return outcome;
+	}
+
 	subscribe(subscriber: DocumentSessionSubscriber): () => void {
 		this.#assertActive();
 		this.#subscribers.add(subscriber);
@@ -156,6 +176,19 @@ export class DocumentSession {
 		} catch {
 			// Reporting is isolated from publication.
 		}
+	}
+
+	#closedOutcome(): DocumentCommandOutcome {
+		return {
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.SessionClosed,
+					message: 'Document session has been destroyed',
+					path: [],
+				},
+			],
+		};
 	}
 
 	#assertActive(): void {

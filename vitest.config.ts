@@ -1,9 +1,11 @@
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 
 let testTimeout = 5_000;
 if (process.env['SEQUIT_PROPERTY_MODE'] === 'fuzz') testTimeout = 60_000;
 
 export default defineConfig({
+	plugins: [svelte()],
 	test: {
 		testTimeout,
 		environment: 'node',

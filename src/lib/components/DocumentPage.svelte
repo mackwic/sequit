@@ -30,12 +30,9 @@
 				<span>Sequit</span>
 			</a>
 			<div class="h-5 w-px bg-stone-200"></div>
-			<button
-				class="truncate rounded-md px-2 py-1 text-sm font-medium text-stone-700 hover:bg-stone-100"
-				type="button"
-			>
+			<span class="truncate px-2 py-1 text-sm font-medium text-stone-700">
 				{title}
-			</button>
+			</span>
 		</div>
 	</header>
 

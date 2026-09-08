@@ -354,6 +354,8 @@ export class CollaborationRoom extends DurableObject<Env> {
 	}
 
 	override webSocketClose(socket: WebSocket, code: number, reason: string): void {
-		socket.close(code, reason);
+		let outgoingCode = code;
+		if ([1005, 1006, 1015].includes(code)) outgoingCode = 1000;
+		socket.close(outgoingCode, reason);
 	}
 }

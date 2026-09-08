@@ -1,11 +1,11 @@
 import {
-	LAYOUT_PERFORMANCE_SCENARIO_NAMES,
-	type LayoutPerformanceScenarioName,
-} from '../scenarios/layout-performance/scenario-name';
-import {
 	LAYOUT_PERFORMANCE_NODE_COUNTS,
 	type LayoutPerformanceNodeCount,
-} from './layout-performance-policy';
+} from '../../src/lib/fixtures/layout-performance/node-counts';
+import {
+	LAYOUT_PERFORMANCE_SCENARIO_NAMES,
+	type LayoutPerformanceScenarioName,
+} from '../../src/lib/fixtures/layout-performance/scenario-name';
 
 type SnapshotLayoutBudgets = Readonly<
 	Record<LayoutPerformanceScenarioName, Readonly<Record<LayoutPerformanceNodeCount, number>>>

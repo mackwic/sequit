@@ -24,6 +24,12 @@
 		"src/lib/collaboration/room-persistence.ts",
 		"src/lib/collaboration/update-guards.ts",
 		"src/lib/collaboration/yjs-document-reader.ts",
+		"src/lib/collaboration/yjs-document-repository.ts:57-80",
+		"src/lib/collaboration/yjs-document-repository.ts:218-221",
+		"src/lib/collaboration/yjs-document-repository.ts:236-239",
+		"src/lib/document/document-command-gateway.ts:20-24",
+		"src/lib/document/document-command-gateway.ts:126-155",
+		"src/lib/document/document-command-gateway.ts:203-204",
 		"src/lib/text/map-sequit-document.ts",
 		"src/lib/graph/create-adjacency.ts",
 		"src/lib/graph/create-graph.ts",
@@ -32,6 +38,9 @@
 		"src/lib/layout/layout-graph.ts",
 		"src/lib/layout/component-layout.ts",
 		"src/lib/layout/dedicated-layout-engine.ts",
+		"src/lib/canvas/canvas-entity.ts",
+		"src/lib/canvas/canvas-viewport.ts",
+		"src/lib/session/canvas-session.svelte.ts",
 		"src/lib/text/serialize-sequit-toml.ts"
 	],
 	"thresholds": {

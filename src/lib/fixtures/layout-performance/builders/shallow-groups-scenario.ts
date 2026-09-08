@@ -8,7 +8,8 @@ export class ShallowGroupsScenarioBuilder extends LayoutPerformanceScenarioBuild
 		const atRoot = nodeIndex % 10 === 0;
 		const groupIndex = Math.floor(nodeIndex / 10);
 		const groups = [];
-		if (!atRoot && nodeIndex % 10 === 1) groups.push(this.group(groupIndex));
+		const startsGroup = nodeIndex % 10 === 1;
+		if (startsGroup) groups.push(this.group(groupIndex));
 		const parentIndex = Math.floor((nodeIndex - 1) / 2);
 		let groupId: string | undefined;
 		if (!atRoot) groupId = this.groupId(groupIndex);

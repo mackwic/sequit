@@ -355,6 +355,76 @@ describe('document session', () => {
 		expect(subscriber).toHaveBeenCalledWith(added);
 	});
 
+	it('returns typed Markdown outcomes while authoritative publication notifies subscribers', async () => {
+		const session = await createSession();
+		const subscriber = vi.fn();
+		session.subscribe(subscriber);
+
+		const outcome = await session.replaceNodeMarkdown('traceable-edits', 'Replacement Markdown');
+
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		expect(session.read().nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Replacement Markdown',
+		);
+		expect(subscriber).toHaveBeenCalledOnce();
+	});
+
+	it('preserves accepted state and notifications for typed missing-node rejection', async () => {
+		const session = await createSession();
+		const accepted = session.read();
+		const subscriber = vi.fn();
+		session.subscribe(subscriber);
+
+		await expect(session.replaceNodeMarkdown('missing', 'Ignored')).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: 'node-not-found',
+					message: 'Node no longer exists: missing',
+					path: ['nodes', 'missing'],
+				},
+			],
+		});
+		expect(session.read()).toBe(accepted);
+		expect(subscriber).not.toHaveBeenCalled();
+	});
+
+	it('returns a typed closed-session rejection before and after delayed dispatch', async () => {
+		const document = await referenceForDelayedTest();
+		const gateway = new FakeDocumentCommandGateway(document);
+		let complete!: () => void;
+		gateway.completion = new Promise((resolve) => {
+			complete = resolve;
+		});
+		const session = new DocumentSession(gateway);
+		const pending = session.replaceNodeMarkdown('traceable-edits', 'Delayed');
+		session.destroy();
+		complete();
+
+		await expect(pending).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [{ code: 'document-session-closed' }],
+		});
+		await expect(session.replaceNodeMarkdown('traceable-edits', 'Late')).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [{ code: 'document-session-closed' }],
+		});
+	});
+
+	it('normalizes asynchronous Markdown protocol exceptions as typed failures', async () => {
+		const document = await referenceForDelayedTest();
+		const gateway = new FakeDocumentCommandGateway(document);
+		const error = new Error('Markdown protocol failed');
+		gateway.dispatchError = error;
+		const session = new DocumentSession(gateway);
+
+		await expect(session.replaceNodeMarkdown('traceable-edits', 'Ignored')).resolves.toEqual({
+			kind: DocumentCommandOutcomeKind.Failed,
+			error,
+		});
+		expect(session.read()).toBe(document);
+	});
+
 	it('does not notify subscribers when node addition is rejected', async () => {
 		const session = await createSession();
 		const subscriber = vi.fn();

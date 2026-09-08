@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LogicDocument } from '../../src/lib/document/logic-document';
+import { DEFAULT_UNBALANCED_RANDOM_SEED } from '../../src/lib/fixtures/layout-performance/builders/unbalanced-random-scenario';
+import type { LayoutPerformanceScenarioName } from '../../src/lib/fixtures/layout-performance/scenario-name';
+import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../src/lib/fixtures/layout-performance/scenarios';
 import type { LogicGraph } from '../../src/lib/graph/create-graph';
-import { DEFAULT_UNBALANCED_RANDOM_SEED } from '../scenarios/layout-performance/builders/unbalanced-random-scenario';
 import { prepareLayoutPerformanceScenario } from '../scenarios/layout-performance/prepare-layout-performance-scenario';
-import type { LayoutPerformanceScenarioName } from '../scenarios/layout-performance/scenario-name';
-import { LAYOUT_PERFORMANCE_SCENARIOS } from '../scenarios/layout-performance/scenarios';
 
 function scenario(name: LayoutPerformanceScenarioName, nodeCount = 50) {
 	const named = LAYOUT_PERFORMANCE_SCENARIOS.find((candidate) => candidate.name === name);

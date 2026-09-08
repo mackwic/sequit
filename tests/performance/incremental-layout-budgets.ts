@@ -1,7 +1,7 @@
 import {
 	LAYOUT_PERFORMANCE_SCENARIO_NAMES,
 	type LayoutPerformanceScenarioName,
-} from '../scenarios/layout-performance/scenario-name';
+} from '../../src/lib/fixtures/layout-performance/scenario-name';
 
 export const INCREMENTAL_LAYOUT_GROWTH_BUCKETS = [
 	{ name: '1-9', minimumNodeIndex: 1, maximumNodeIndex: 9 },

@@ -1,0 +1,36 @@
+persistenceFormat = 2
+[document]
+id = "interaction-workshop"
+title = "Préparer une décision"
+[layout]
+direction = "top-to-bottom"
+bias = "top"
+[natures.action]
+icon = "phosphor:lightning"
+label = "Action"
+color = "#6f70e8"
+[natures.goal]
+icon = "phosphor:target"
+label = "Objectif"
+color = "#16866c"
+[nodes.collecter]
+nature = "action"
+layoutOrder = "a0"
+markdown = "Rassembler les observations"
+[nodes.comparer]
+nature = "action"
+layoutOrder = "a1"
+markdown = "Comparer les options"
+[nodes.decider]
+nature = "goal"
+layoutOrder = "a2"
+markdown = "Prendre une décision éclairée"
+[relations.collecter-comparer]
+from = "collecter"
+to = "comparer"
+[relations.comparer-decider]
+from = "comparer"
+to = "decider"
+
+[groups]
+[junctions]

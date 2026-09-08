@@ -1,8 +1,6 @@
+import type { NamedLayoutPerformanceScenario } from '../../../src/lib/fixtures/layout-performance/scenario-types';
 import { prepareLayoutDocument } from '../../harnesses/layout';
-import type {
-	NamedLayoutPerformanceScenario,
-	PreparedLayoutPerformanceScenario,
-} from './scenario-types';
+import type { PreparedLayoutPerformanceScenario } from './scenario-types';
 
 export function prepareLayoutPerformanceScenario(
 	scenario: NamedLayoutPerformanceScenario,
