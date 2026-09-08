@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	test: {
 		environment: 'node',
-		include: ['tests/performance/**/*.test.ts'],
+		include: ['tests/**/performance/**/*.test.ts'],
 		exclude: [],
 		fileParallelism: false,
 		disableConsoleIntercept: true,
@@ -11,7 +11,7 @@ export default defineConfig({
 			enabled: false,
 		},
 		benchmark: {
-			include: ['tests/performance/**/*.bench.ts'],
+			include: ['tests/**/performance/**/*.bench.ts'],
 		},
 	},
 });

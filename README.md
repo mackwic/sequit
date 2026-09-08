@@ -1,5 +1,11 @@
 # sequit
 
+## Source organisation
+
+`src/app/web` contains the product's application layer and UI. `src/app/workshop` contains development-only experiments that reuse the editor. `src/lib/core` contains pure document and graph operations; `src/lib/infrastructure` contains technical implementations and shared session contracts. Worker entry points and their runtime-specific configuration live under `src/workers`, starting with `collaboration-worker`.
+
+The workshop uses the same SvelteKit application at `/atelier` during development. Production builds exclude its modules and return 404 on that route. See [module boundaries](docs/architecture.md) for dependency rules and ownership.
+
 ## Local development
 
 With [mise](https://mise.jdx.dev/) activated in your shell, install the pinned toolchain and project dependencies:
@@ -43,19 +49,19 @@ Run `pnpm check` before merging; it is the authoritative local gate and adds for
 
 ### Diagnostic commands
 
-| Command                            | Scope                                                                                                                                                             |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm lint`                        | All authored JavaScript, TypeScript, Svelte, tests, and configuration; production metrics apply only to `src/lib/**/*.ts` and `workers/collaboration/src/**/*.ts` |
-| `pnpm quality:unused`              | Unused files, exports, and dependencies reported by Knip                                                                                                          |
-| `pnpm quality:architecture`        | Dependency boundaries and circular dependencies reported by dependency-cruiser                                                                                    |
-| `pnpm test:coverage:web`           | Root Vitest suite with Istanbul coverage for `src/**/*.ts`                                                                                                        |
-| `pnpm test:coverage:collaboration` | Cloudflare Vitest suite with Istanbul coverage for `workers/collaboration/src/**/*.ts`                                                                            |
-| `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                           |
-| `pnpm quality:duplicates`          | TypeScript and Svelte under `src` and `workers/collaboration/src`                                                                                                 |
-| `pnpm quality:fast`                | Lint, unused-code, architecture, coverage, and duplication gate                                                                                                   |
-| `pnpm test:mutation`               | Stryker mutation testing for the complete selected critical modules                                                                                               |
-| `pnpm test:mutation:weekly`        | Intensive mutation campaign using the 5,000-case property-test fuzzing profile                                                                                    |
-| `pnpm check`                       | Authoritative local gate: format, types, fast quality gate, browser tests, and production builds                                                                  |
+| Command                            | Scope                                                                                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`                        | All authored JavaScript, TypeScript, Svelte, tests, and configuration; production metrics cover `src/lib`, `src/app/web`, workshop fixture generators, and Worker sources |
+| `pnpm quality:unused`              | Unused files, exports, and dependencies reported by Knip                                                                                                                  |
+| `pnpm quality:architecture`        | Dependency boundaries and circular dependencies reported by dependency-cruiser                                                                                            |
+| `pnpm test:coverage:web`           | Root Vitest suite with Istanbul coverage for `src/**/*.ts`, excluding Worker sources                                                                                      |
+| `pnpm test:coverage:collaboration` | Cloudflare Vitest suite with Istanbul coverage for `src/workers/collaboration-worker/**/*.ts`                                                                             |
+| `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                                   |
+| `pnpm quality:duplicates`          | TypeScript and Svelte under `src`, excluding tests and generated output                                                                                                   |
+| `pnpm quality:fast`                | Lint, unused-code, architecture, coverage, and duplication gate                                                                                                           |
+| `pnpm test:mutation`               | Stryker mutation testing for the complete selected critical modules                                                                                                       |
+| `pnpm test:mutation:weekly`        | Intensive mutation campaign using the 5,000-case property-test fuzzing profile                                                                                            |
+| `pnpm check`                       | Authoritative local gate: format, types, fast quality gate, browser tests, and production builds                                                                          |
 
 ### Enforced baselines
 
@@ -81,4 +87,4 @@ The **Mutation testing** workflow runs every Friday at **03:17 UTC** on the defa
 
 HTML and JSON mutation reports are written to `coverage/mutation/` and uploaded as a GitHub Actions artifact retained for thirty days, including when the mutation threshold fails. The HTML entry point is `index.html`. A failed or interrupted initial run may not produce a report; the job log remains available. Scheduled runs do not cancel an ongoing campaign.
 
-Run `pnpm check` locally to reproduce the PR/push gate in fail-fast order. For a focused mutation investigation, use `pnpm test:mutation --mutate src/lib/document/validate-logic-document.ts`; its score applies to the selected file, not the whole campaign. Fuzzing failures include a replay seed and path; set `SEQUIT_PROPERTY_SEED` when rerunning the weekly command to reproduce the seed.
+Run `pnpm check` locally to reproduce the PR/push gate in fail-fast order. For a focused mutation investigation, use `pnpm test:mutation --mutate src/lib/core/document/validate-logic-document.ts`; its score applies to the selected file, not the whole campaign. Fuzzing failures include a replay seed and path; set `SEQUIT_PROPERTY_SEED` when rerunning the weekly command to reproduce the seed.

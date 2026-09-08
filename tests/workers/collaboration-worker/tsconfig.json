@@ -1,0 +1,8 @@
+{
+	"extends": "../../../src/workers/collaboration-worker/tsconfig.json",
+	"compilerOptions": {
+		"lib": ["ES2024"],
+		"types": ["@cloudflare/vitest-pool-workers/types"]
+	},
+	"include": ["./**/*.ts", "../../../src/workers/collaboration-worker/worker-configuration.d.ts"]
+}

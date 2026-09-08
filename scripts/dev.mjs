@@ -64,7 +64,7 @@ const { result } = concurrently(
 			name: 'web',
 		},
 		{
-			command: `pnpm exec wrangler dev --config workers/collaboration/wrangler.jsonc --port ${collaborationPort}`,
+			command: `pnpm exec wrangler dev --config src/workers/collaboration-worker/wrangler.jsonc --port ${collaborationPort}`,
 			env: sharedEnvironment,
 			name: 'collaboration',
 		},

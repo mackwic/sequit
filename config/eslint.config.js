@@ -10,7 +10,12 @@ import ts from 'typescript-eslint';
 import localRules from './eslint/rules/index.js';
 
 const sourceFiles = ['**/*.{js,mjs,cjs,ts,svelte}'];
-const productionFiles = ['src/lib/**/*.ts', 'workers/collaboration/src/**/*.ts'];
+const productionFiles = [
+	'src/lib/**/*.ts',
+	'src/app/web/**/*.ts',
+	'src/app/workshop/fixtures/**/*.ts',
+	'src/workers/**/*.ts',
+];
 
 export default defineConfig(
 	{
@@ -46,7 +51,8 @@ export default defineConfig(
 						'playwright.config.ts',
 						'vitest.performance.config.ts',
 						'vitest.config.ts',
-						'../workers/*/vitest.config.ts',
+						'production-boundaries.ts',
+						'../src/workers/*/vitest.config.ts',
 					],
 				},
 			},
@@ -93,7 +99,13 @@ export default defineConfig(
 		},
 	},
 	{
+		files: ['src/**/*.{ts,js,svelte}'],
+		plugins: { local: localRules },
+		rules: { 'local/allowed-import-directions': 'error' },
+	},
+	{
 		files: productionFiles,
+		ignores: ['src/workers/**/vitest.config.ts'],
 		plugins: {
 			local: localRules,
 			sonarjs,
@@ -123,7 +135,34 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/lib/text/map-sequit-document.ts'],
+		files: ['src/lib/core/**/*.ts'],
+		rules: {
+			'no-restricted-globals': [
+				'error',
+				'window',
+				'document',
+				'fetch',
+				'WebSocket',
+				'localStorage',
+				'sessionStorage',
+				'crypto',
+				'Date',
+				'performance',
+				'setTimeout',
+				'setInterval',
+			],
+			'no-restricted-properties': [
+				'error',
+				{
+					object: 'Math',
+					property: 'random',
+					message: 'Pass deterministic inputs into core operations.',
+				},
+			],
+		},
+	},
+	{
+		files: ['src/lib/infrastructure/toml/map-sequit-document.ts'],
 		rules: {
 			complexity: ['error', 48],
 			'max-lines-per-function': [
@@ -135,7 +174,7 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/lib/layout/dedicated-layout-engine.ts'],
+		files: ['src/lib/core/layout/dedicated-layout-engine.ts'],
 		rules: {
 			complexity: ['error', 38],
 			'max-lines': ['error', { max: 337, skipBlankLines: true, skipComments: true }],
@@ -149,7 +188,7 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/lib/layout/component-layout.ts'],
+		files: ['src/lib/core/layout/component-layout.ts'],
 		rules: {
 			complexity: ['error', 32],
 			'max-params': ['error', 7],
@@ -158,20 +197,20 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/lib/collaboration/yjs-live-document.ts'],
+		files: ['src/lib/infrastructure/collaboration/yjs-live-document.ts'],
 		rules: {
 			'local/max-top-level-functions': ['error', 16],
 			'max-params': ['error', 5],
 		},
 	},
 	{
-		files: ['src/lib/document/validate-logic-document.ts'],
+		files: ['src/lib/core/document/validate-logic-document.ts'],
 		rules: {
 			'sonarjs/cognitive-complexity': ['error', 23],
 		},
 	},
 	{
-		files: ['src/lib/graph/create-graph.ts'],
+		files: ['src/lib/core/graph/create-graph.ts'],
 		rules: {
 			complexity: ['error', 24],
 			'max-statements': ['error', 52],
@@ -180,7 +219,7 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/lib/graph/topological-ranks.ts'],
+		files: ['src/lib/core/graph/topological-ranks.ts'],
 		rules: {
 			'no-ternary': 'off',
 			'sonarjs/cognitive-complexity': ['error', 19],
@@ -188,12 +227,12 @@ export default defineConfig(
 	},
 	{
 		files: [
-			'src/lib/canvas/render-relations.ts',
-			'src/lib/components/canvas/LogicCanvas.svelte',
-			'tests/canvas/canvas-model.test.ts',
-			'tests/collaboration/yjs-live-document.test.ts',
-			'tests/graph/logic-graph.test.ts',
-			'tests/layout/layout-graph.test.ts',
+			'src/app/web/ui/canvas/render-relations.ts',
+			'src/app/web/ui/components/canvas/LogicCanvas.svelte',
+			'tests/app/web/ui/canvas/canvas-model.test.ts',
+			'tests/lib/infrastructure/collaboration/yjs-live-document.test.ts',
+			'tests/lib/core/graph/logic-graph.test.ts',
+			'tests/app/web/projection/layout-graph.test.ts',
 		],
 		rules: {
 			'no-ternary': 'off',

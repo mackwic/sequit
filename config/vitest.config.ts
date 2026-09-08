@@ -9,11 +9,12 @@ export default defineConfig({
 	test: {
 		testTimeout,
 		environment: 'node',
-		include: ['tests/**/*.test.ts', 'config/eslint/rules/**/*.test.ts'],
-		exclude: ['tests/e2e/**', 'tests/performance/**'],
+		include: ['tests/**/*.test.ts'],
+		exclude: ['tests/**/e2e/**', 'tests/**/performance/**', 'tests/workers/**'],
 		coverage: {
 			provider: 'istanbul',
 			include: ['src/**/*.ts'],
+			exclude: ['src/workers/**'],
 			reportsDirectory: 'coverage/web',
 			reporter: ['text', 'html', 'json-summary'],
 			thresholds: {

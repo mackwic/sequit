@@ -20,6 +20,8 @@ Le canvas n'est pas la source de vérité. Il est une projection interactive d'u
 
 ## Principes de conception
 
+L'organisation du code et ses frontières sont décrites dans [architecture.md](architecture.md).
+
 1. **La logique avant la géométrie.** Le document décrit d'abord des éléments et leurs relations, pas des formes positionnées à des coordonnées arbitraires.
 2. **Une seule source de vérité.** Le canvas et l'éditeur textuel modifient le même document structuré.
 3. **Manipulation visuelle en premier.** La syntaxe textuelle ne doit pas être un prérequis pour utiliser le produit.
@@ -78,7 +80,7 @@ Les propriétés optionnelles `color` et `icon` des nœuds sont conservées dans
 
 Les couleurs acceptées sont `#RGB` ou `#RRGGBB`. Les fonds, bordures et encres du thème sont séparés de la teinte choisie. Les règles d’impression retirent ombres, teintes et sélection des cartes et conservent libellés et pictogrammes en noir ; la pagination et l’export visuel complet restent à concevoir.
 
-Les composants d’inspection sont partagés dans `src/lib/components/content`. Leur accès expérimental est disponible dans l’atelier ; les commandes de style du produit collaboratif restent à intégrer comme les autres commandes expérimentales. Les codecs partagés préservent déjà ces propriétés.
+Les composants d’inspection sont partagés dans `src/app/web/ui/components/content`. Leur accès expérimental est disponible dans l’atelier ; les commandes de style du produit collaboratif restent à intégrer comme les autres commandes expérimentales. Les codecs partagés préservent déjà ces propriétés.
 
 ### Relation
 

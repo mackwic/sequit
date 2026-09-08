@@ -3,10 +3,16 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+import { productionBoundaries } from './config/production-boundaries.ts';
+
 const collaborationPort = process.env['COLLABORATION_PORT'] ?? '8787';
 
 export default defineConfig({
+	// The catalogue is loaded on demand. Discover its dependency before a user opens it,
+	// so Vite does not reload the page and discard the workshop's local document.
+	optimizeDeps: { include: ['@phosphor-icons/core'] },
 	plugins: [
+		productionBoundaries(),
 		tailwindcss(),
 		sveltekit({
 			compilerOptions: {

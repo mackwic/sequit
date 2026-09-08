@@ -10,5 +10,5 @@ playwright-report/
 test-results/
 static/
 worker-configuration.d.ts
-workers/**/worker-configuration.d.ts
+src/workers/**/worker-configuration.d.ts
 pnpm-lock.yaml

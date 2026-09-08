@@ -1,3 +1,4 @@
+import allowedImportDirections from './allowed-import-directions.js';
 import maxBodyNesting from './max-body-nesting.js';
 import maxOperatorsPerExpression from './max-operators-per-expression.js';
 import maxTopLevelFunctions from './max-top-level-functions.js';
@@ -7,6 +8,7 @@ import preferStringEnum from './prefer-string-enum.js';
 
 export default {
 	rules: {
+		'allowed-import-directions': allowedImportDirections,
 		'max-body-nesting': maxBodyNesting,
 		'max-operators-per-expression': maxOperatorsPerExpression,
 		'max-top-level-functions': maxTopLevelFunctions,

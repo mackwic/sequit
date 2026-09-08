@@ -1,0 +1,23 @@
+{
+	"$schema": "../../../node_modules/wrangler/config-schema.json",
+	"name": "sequit-collaboration",
+	"main": "index.ts",
+	"compatibility_date": "2026-07-21",
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "COLLABORATION_ROOMS",
+				"class_name": "CollaborationRoom",
+			},
+		],
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["CollaborationRoom"],
+		},
+	],
+	"observability": {
+		"enabled": true,
+	},
+}

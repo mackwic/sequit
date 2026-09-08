@@ -1,0 +1,25 @@
+import { layoutGraph, type LayoutResult } from '../../../src/app/web/projection/layout-graph';
+import type { NamedLayoutPerformanceScenario } from '../../../src/app/workshop/fixtures/layout-performance/scenario-types';
+import { validateLogicDocument } from '../../../src/lib/core/document/validate-logic-document';
+import { prepareLayoutPerformanceScenario } from '../scenarios/layout-performance/prepare-layout-performance-scenario';
+import type { PreparedLayoutPerformanceScenario } from '../scenarios/layout-performance/scenario-types';
+
+export function buildPreparedScenarioTwice(
+	scenario: NamedLayoutPerformanceScenario,
+	nodeCount: number,
+): readonly [PreparedLayoutPerformanceScenario, PreparedLayoutPerformanceScenario] {
+	return [
+		prepareLayoutPerformanceScenario(scenario, nodeCount),
+		prepareLayoutPerformanceScenario(scenario, nodeCount),
+	];
+}
+
+export function scenarioDocumentIsValid(prepared: PreparedLayoutPerformanceScenario): boolean {
+	return validateLogicDocument(prepared.document).ok;
+}
+
+export async function layoutPreparedScenario(
+	prepared: PreparedLayoutPerformanceScenario,
+): Promise<LayoutResult> {
+	return layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+}

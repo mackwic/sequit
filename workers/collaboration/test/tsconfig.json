@@ -1,8 +1,0 @@
-{
-	"extends": "../tsconfig.json",
-	"compilerOptions": {
-		"lib": ["ES2024"],
-		"types": ["@cloudflare/vitest-pool-workers/types"]
-	},
-	"include": ["./**/*.ts", "../worker-configuration.d.ts"]
-}

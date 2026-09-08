@@ -1,6 +1,6 @@
 # Atelier d’interactions
 
-Route locale : `/atelier`. Le catalogue est dans `src/routes/atelier/catalogue.ts`.
+Route locale : `/atelier`. Le catalogue est dans `src/app/workshop/catalogue.ts`. L'atelier reste dans la même application SvelteKit, mais son code est exclu des builds de production ; la route y renvoie 404. Voir [les frontières de modules](architecture.md).
 L’atelier expose 15 parcours et 33 variantes sous 11 thèmes. Chaque variante est accessible par `/atelier?scenario=SC-…&variant=…` ; l’URL suit les changements, le rechargement et les boutons précédent/suivant du navigateur. Le lien sous le canvas permet de retrouver la variante.
 
 La majorité des essais manipulent un document local réinitialisable. `SC-COL-WORK` ouvre deux sessions indépendantes reliées au vrai serveur WebSocket local. Lancer la pile avec `mise exec -- pnpm dev:stack` ou lancer `dev:web` et `dev:collaboration` séparément. Vite relaie `/collab` vers `COLLABORATION_PORT` (8787 par défaut). Les tests E2E démarrent leur propre serveur sur 8788.
@@ -37,7 +37,7 @@ Le sélecteur **Document d’essai** se trouve dans le cadre global, au-dessus d
 
 **Charger le document** démarre un nouvel essai. Le choix est conservé entre variantes et scénarios, dans l’URL (par exemple `fixture=binary-tree&nodes=100`), au rechargement et dans les liens directs. Les exemples n’ajoutent aucun paramètre de taille artificiel. Un lien incomplet ou inconnu revient au document simple.
 
-Les générateurs purs et tailles partagés vivent dans `src/lib/fixtures/layout-performance/`. Les tests et l’atelier consomment la même définition ; la génération, les identifiants et les graines restent déterministes. Les mesures synthétiques, budgets et harnais de benchmark restent dans `tests/`. Une règle d’architecture interdit aux générateurs de dépendre de couches autres que le domaine. Aucun import de test depuis la route.
+Les générateurs purs et tailles partagés vivent dans `src/app/workshop/fixtures/layout-performance/`. Les tests et l’atelier consomment la même définition ; la génération, les identifiants et les graines restent déterministes. Les mesures synthétiques, budgets et harnais de benchmark restent dans `tests/`. Une règle d’architecture interdit aux générateurs de dépendre de couches autres que le domaine. Aucun import de test depuis la route.
 
 `runtime/workshop-fixture.ts` ne construit que le document demandé, le sérialise avec le code du produit et vérifie les limites du graphe. Le navigateur mesure et rend ensuite les vrais composants. Le cas `nested-subgroups / 1000` dépasse actuellement le plafond de 100 000 appartenances de groupes développées : la page présente ce résultat sans instancier une scène invalide. Les seuils du moteur restent inchangés. Cela révèle aussi un écart avec l’ancienne matrice de benchmark documentée ; cette passe ne recalibre pas ses budgets.
 
@@ -49,11 +49,11 @@ Dans le bilan, **Noter cet essai** ajoute le couple variante/document/taille à 
 
 `SC-NAT-STYLE` propose deux entrées dans le même inspecteur partagé : `node` part des propriétés de la boîte ; `nature` part du style commun. L’onglet de portée permet de passer de l’un à l’autre pendant un essai. Chaque propriété indique son héritage ou sa personnalisation et dispose de son propre retour à l’héritage. Le document peut être exporté directement depuis ce parcours avant de changer de variante.
 
-- `src/lib/styles/main-theme.css` : thème principal, rôles `--ui-*` distincts des bases `--content-*`.
-- `src/lib/icons/phosphor.ts` : assets Phosphor Regular livrés avec l’application. `phosphor-catalogue.ts` est chargé à l’ouverture du sélecteur pour rechercher par noms, tags et catégories. Le rendu ne charge aucun SVG depuis une référence fournie par le document.
-- `src/lib/components/ui/Icon.svelte` : pictogramme décoratif partagé ; le contrôle parent porte son nom accessible. Les assets conservent leur rendu noir à l’impression.
-- `src/lib/components/content/` : palette RGB, recherche d’icône, éditeur de propriétés héritées et inspecteur. Les contrôles sont réutilisés dans le gestionnaire de natures existant.
-- `src/lib/document/content-style.ts` : transformations pures, identité et logique conservées. L’adaptateur de l’atelier les applique au document courant avec validation et historique.
+- `src/app/web/ui/styles/main-theme.css` : thème principal, rôles `--ui-*` distincts des bases `--content-*`.
+- `src/app/web/ui/icons/phosphor.ts` : assets Phosphor Regular livrés avec l’application. `phosphor-catalogue.ts` est chargé à l’ouverture du sélecteur pour rechercher par noms, tags et catégories. Le rendu ne charge aucun SVG depuis une référence fournie par le document.
+- `src/app/web/ui/components/ui/Icon.svelte` : pictogramme décoratif partagé ; le contrôle parent porte son nom accessible. Les assets conservent leur rendu noir à l’impression.
+- `src/app/web/ui/components/content/` : palette RGB, recherche d’icône, éditeur de propriétés héritées et inspecteur. Les contrôles sont réutilisés dans le gestionnaire de natures existant.
+- `src/lib/core/document/content-style.ts` : transformations pures, identité et logique conservées. L’adaptateur de l’atelier les applique au document courant avec validation et historique.
 - `NodeContent.svelte` : contenu commun à la mesure DOM et à la carte visible ; ajouter une icône ne crée pas deux calculs de taille divergents.
 
 Les nouveaux champs optionnels traversent parseur, sérialiseur, validation, Yjs, duplication et projection canvas. La palette est un ensemble de propositions, les couleurs RGB restent libres. L’absence d’override et `icon = "none"` ont des sens distincts. Les styles de natures ne changent pas les overrides des boîtes.

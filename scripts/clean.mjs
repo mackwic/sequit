@@ -12,7 +12,7 @@ const GENERATED_PATHS = [
 	'dist',
 	'playwright-report',
 	'test-results',
-	'workers/collaboration/.wrangler',
+	'src/workers/collaboration-worker/.wrangler',
 ];
 
 await Promise.all(

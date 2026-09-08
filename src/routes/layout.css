@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import '../lib/styles/main-theme.css';
+@import '../app/web/ui/styles/main-theme.css';
 
 @layer base {
 	* {

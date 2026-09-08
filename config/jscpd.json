@@ -3,7 +3,7 @@
 	"minLines": 5,
 	"mode": "mild",
 	"format": ["typescript", "svelte"],
-	"ignorePattern": [
+	"ignore": [
 		"**/*.d.ts",
 		"**/tests/**",
 		"**/test/**",
