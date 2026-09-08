@@ -2,7 +2,7 @@ import { RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
 import { describe, it } from 'vitest';
 
-import rule from '../../eslint-rules/max-body-nesting.js';
+import rule from './max-body-nesting.js';
 
 RuleTester.describe = describe;
 RuleTester.it = it;

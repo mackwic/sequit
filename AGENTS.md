@@ -5,8 +5,8 @@
 - `package.json` defines the supported commands and quality gates.
 - `mise.toml` defines the Node.js and pnpm versions used locally and in CI.
 - `docs/design.md` records product intent and domain decisions.
-- `.dependency-cruiser.cjs` defines allowed dependency directions.
-- `eslint.config.js` defines code constraints. Do not weaken rules or add overrides merely to make a change pass.
+- `config/dependency-cruiser.cjs` defines allowed dependency directions.
+- `config/eslint.config.js` defines code constraints. Do not weaken rules or add overrides merely to make a change pass.
 
 ## Repository invariants
 

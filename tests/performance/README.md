@@ -11,7 +11,7 @@ This opt-in suite reports machine-specific snapshot costs for graph creation, to
 - `pnpm benchmark:incremental` reports stage p50, p95, and maximum insertion latency.
 - `pnpm test:incremental-performance` runs calibrated incremental gates and reports fixed UX goals.
 
-The normal `pnpm test:web` configuration excludes `tests/performance/**`. The dedicated `vitest.performance.config.ts` uses the Node environment, disables coverage, and runs files serially.
+The normal `pnpm test:web` configuration excludes `tests/performance/**`. The dedicated `config/vitest.performance.config.ts` uses the Node environment, disables coverage, and runs files serially.
 
 ## Workload Matrix
 

@@ -6,7 +6,6 @@
 	"setupCommand": "mise install && mise run install",
 	"copyGlobs": [
 		".env*",
-		".claude/settings.local.json",
 		"CLAUDE.local.md",
 		".humanlayer/workspace.local.json"
 	],

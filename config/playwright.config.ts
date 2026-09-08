@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-	testDir: 'tests/e2e',
+	testDir: '../tests/e2e',
 	fullyParallel: false,
 	workers: 1,
 	reporter: 'line',
@@ -12,13 +12,15 @@ export default defineConfig({
 	},
 	webServer: [
 		{
-			command: 'pnpm dev:collaboration --port 8788',
+			command: 'pnpm run dev:collaboration --port 8788',
+			cwd: '..',
 			url: 'http://127.0.0.1:8788/health',
 			reuseExistingServer: false,
 			timeout: 120_000,
 		},
 		{
-			command: 'pnpm dev:e2e',
+			command: 'pnpm run dev:e2e',
+			cwd: '..',
 			env: { COLLABORATION_PORT: '8788' },
 			url: 'http://127.0.0.1:4174',
 			reuseExistingServer: false,

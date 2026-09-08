@@ -6,6 +6,10 @@ node = "24.20.0"
 description = "Install project dependencies"
 run = "pnpm install --frozen-lockfile"
 
+[tasks.clean]
+description = "Remove generated project output"
+run = "pnpm run clean"
+
 [tasks.dev]
 description = "Run the local web and collaboration stack"
 run = "pnpm dev"

@@ -9,7 +9,7 @@ export default defineConfig({
 	test: {
 		testTimeout,
 		environment: 'node',
-		include: ['tests/**/*.test.ts'],
+		include: ['tests/**/*.test.ts', 'config/eslint/rules/**/*.test.ts'],
 		exclude: ['tests/e2e/**', 'tests/performance/**'],
 		coverage: {
 			provider: 'istanbul',

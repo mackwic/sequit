@@ -2,7 +2,7 @@ import { RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
 import { describe, it } from 'vitest';
 
-import rule from '../../eslint-rules/no-anonymous-object-union-members.js';
+import rule from './no-anonymous-object-union-members.js';
 
 RuleTester.describe = describe;
 RuleTester.it = it;

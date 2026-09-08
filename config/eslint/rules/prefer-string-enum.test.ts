@@ -2,7 +2,7 @@ import { RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
 import { describe, it } from 'vitest';
 
-import rule from '../../eslint-rules/prefer-string-enum.js';
+import rule from './prefer-string-enum.js';
 
 RuleTester.describe = describe;
 RuleTester.it = it;

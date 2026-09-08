@@ -23,6 +23,10 @@ Portless assigns free ports to Vite and Wrangler and exposes the web app over lo
 
 The first run can request administrator access to trust the local certificate authority and bind the HTTPS proxy. Stop `mise run dev` to remove its temporary route. Use `pnpm exec portless prune` to clean up an orphaned route after an interrupted process.
 
+Run `mise run clean` (or `pnpm clean`) to remove generated builds, framework caches, coverage,
+browser-test output, and mutation-test sandboxes. Installed dependencies and local environment files
+are preserved.
+
 ## Local quality gates
 
 Use `pnpm quality:fast` during implementation. It is the fast, fail-fast edit-loop gate and runs:
@@ -55,7 +59,7 @@ Run `pnpm check` before merging; it is the authoritative local gate and adds for
 
 ### Enforced baselines
 
-Authored code prohibits ternaries by default. Production TypeScript has global limits of 20 cyclomatic complexity, 15 cognitive complexity, 4 levels of nesting, 325 effective lines per file, 160 effective lines per function, 15 top-level functions, 4 parameters, and 40 statements per function. Narrow file-specific overrides in `eslint.config.js` preserve the measured baseline of existing parser, layout, collaboration, validation, graph, and document-pipeline hotspots without relaxing limits for other modules.
+Authored code prohibits ternaries by default. Production TypeScript has global limits of 20 cyclomatic complexity, 15 cognitive complexity, 4 levels of nesting, 325 effective lines per file, 160 effective lines per function, 15 top-level functions, 4 parameters, and 40 statements per function. Narrow file-specific overrides in `config/eslint.config.js` preserve the measured baseline of existing parser, layout, collaboration, validation, graph, and document-pipeline hotspots without relaxing limits for other modules. Local rule implementations and their tests are colocated under `config/eslint/rules`.
 
 Closed string domains use native string enums. ESLint rejects string literal types and `as const` string objects paired with a derived value-union alias (`typeof Values[keyof typeof Values]`); ordinary string configuration maps remain allowed.
 

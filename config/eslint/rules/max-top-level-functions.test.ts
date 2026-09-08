@@ -2,7 +2,7 @@ import { RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
 import { describe, it } from 'vitest';
 
-import rule from '../../eslint-rules/max-top-level-functions.js';
+import rule from './max-top-level-functions.js';
 
 RuleTester.describe = describe;
 RuleTester.it = it;
