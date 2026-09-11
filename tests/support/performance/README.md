@@ -34,7 +34,7 @@ The authoritative topology contracts and diagrams live in `tests/support/scenari
 - `group-relations`: square-shell sibling groups connected directly by semantic group relations.
 - `shallow-groups`: binary-tree edges with non-nested sibling groups of at most nine nodes.
 
-`group-relations` measures current production behavior: groups are direct rankable relation endpoints and their member nodes remain independent rank-zero endpoints. Its adjacency metadata is not descendant-expanded Cartesian adjacency. `junction-heavy` likewise reflects current production ranking, where both edges around a junction advance rank.
+`group-relations` expands relations between populated groups across their descendant members. Its adjacency metadata includes these effective Cartesian dependencies. The initial calibration below predates this behavior: its 5 ms incremental budget measured direct group endpoints with independent rank-zero members, so that historical workload is not equivalent to the current one. `junction-heavy` likewise reflects current production ranking, where both edges around a junction advance rank.
 
 ## Fixed Inputs
 

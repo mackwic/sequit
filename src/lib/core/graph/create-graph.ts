@@ -133,15 +133,9 @@ interface GroupExpansionContext {
 	cachedMemberships: number;
 }
 
-type GroupExpansionTraversal = readonly [
-	frames: GroupExpansionFrame[],
-	path: string[],
-	pathIndex: Map<string, number>,
-];
-
 function visitGroupMember(
 	frame: GroupExpansionFrame,
-	traversal: GroupExpansionTraversal,
+	frames: GroupExpansionFrame[],
 	context: GroupExpansionContext,
 ): void {
 	const directMembers = defined(context.directMembersByGroupId.get(frame.groupId));
@@ -157,21 +151,7 @@ function visitGroupMember(
 		for (const id of cachedMembers) frame.expanded.add(id);
 		return;
 	}
-	const [, path, pathIndex] = traversal;
-	const cycleStart = pathIndex.get(memberId);
-	if (cycleStart !== undefined) {
-		const cycle = [...path.slice(cycleStart), memberId];
-		context.diagnostics.push({
-			code: GraphDiagnosticCode.GroupCycle,
-			message: `Group nesting cycle: ${cycle.join(' -> ')}`,
-			path: ['groups', frame.groupId, 'group'],
-			cycle,
-		});
-		return;
-	}
-	pathIndex.set(memberId, path.length);
-	path.push(memberId);
-	traversal[0].push({ groupId: memberId, expanded: new Set(), nextMember: 0 });
+	frames.push({ groupId: memberId, expanded: new Set(), nextMember: 0 });
 }
 
 function expandGroup(
@@ -180,17 +160,12 @@ function expandGroup(
 ): readonly string[] | undefined {
 	const cached = context.cache.get(groupId);
 	if (cached !== undefined) return cached;
-	const traversal: GroupExpansionTraversal = [
-		[{ groupId, expanded: new Set<string>(), nextMember: 0 }],
-		[groupId],
-		new Map([[groupId, 0]]),
-	];
-	const [frames, path, pathIndex] = traversal;
+	const frames: GroupExpansionFrame[] = [{ groupId, expanded: new Set(), nextMember: 0 }];
 	while (frames.length > 0 && context.diagnostics.length === 0) {
 		const frame = defined(frames.at(-1));
 		const directMembers = defined(context.directMembersByGroupId.get(frame.groupId));
 		if (frame.nextMember < directMembers.length) {
-			visitGroupMember(frame, traversal, context);
+			visitGroupMember(frame, frames, context);
 			continue;
 		}
 		const expanded = [...frame.expanded].sort(compareCanonicalStrings);
@@ -205,8 +180,6 @@ function expandGroup(
 		context.cachedMemberships += expanded.length;
 		context.cache.set(frame.groupId, expanded);
 		frames.pop();
-		path.pop();
-		pathIndex.delete(frame.groupId);
 		const parentFrame = frames.at(-1);
 		if (!parentFrame) continue;
 		for (const id of expanded) parentFrame.expanded.add(id);
@@ -216,20 +189,13 @@ function expandGroup(
 
 function collectEffectiveRelations(
 	relations: readonly GraphRelation[],
-	effectiveEndpointIds: (
-		endpointId: string,
-		preserveDirectEmptyGroup?: boolean,
-	) => readonly string[],
+	effectiveEndpointIds: (endpointId: string) => readonly string[],
 ): EffectiveSemanticRelation[] | GraphDiagnostic {
 	const effectiveRelations: EffectiveSemanticRelation[] = [];
 	let dependencyPairs = 0;
 	for (const { relation, source, target } of relations) {
-		const sourceIds = [...new Set(effectiveEndpointIds(source.entity.id, true))].sort(
-			compareCanonicalStrings,
-		);
-		const targetIds = [...new Set(effectiveEndpointIds(target.entity.id, true))].sort(
-			compareCanonicalStrings,
-		);
+		const sourceIds = effectiveEndpointIds(source.entity.id);
+		const targetIds = effectiveEndpointIds(target.entity.id);
 		dependencyPairs += sourceIds.length * targetIds.length;
 		if (dependencyPairs > MAX_EFFECTIVE_DEPENDENCY_PAIRS) {
 			return {
@@ -259,6 +225,27 @@ export function createGraph(document: LogicDocument): GraphResult {
 
 	const directMembersByGroupId = collectDirectGroupMembers(document);
 	const expandedGroupMembers = new Map<string, readonly string[]>();
+	const groupCycle =
+		document.groups.length === 0
+			? undefined
+			: findCycle(
+					[...endpointsById.keys()],
+					new Map(
+						[...endpointsById.keys()].map((id) => [id, directMembersByGroupId.get(id) ?? []]),
+					),
+				);
+	if (groupCycle)
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					code: GraphDiagnosticCode.GroupCycle,
+					message: `Group nesting cycle: ${groupCycle.join(' -> ')}`,
+					path: ['groups', defined(groupCycle.at(-2)), 'group'],
+					cycle: groupCycle,
+				},
+			],
+		};
 	const expansionContext: GroupExpansionContext = {
 		endpointsById,
 		directMembersByGroupId,
@@ -266,28 +253,18 @@ export function createGraph(document: LogicDocument): GraphResult {
 		diagnostics,
 		cachedMemberships: 0,
 	};
-	function effectiveEndpointIds(
-		endpointId: string,
-		preserveDirectEmptyGroup = false,
-	): readonly string[] {
+	function effectiveEndpointIds(endpointId: string): readonly string[] {
 		const endpoint = endpointsById.get(endpointId);
 		if (endpoint?.kind !== EndpointKind.Group) return [endpointId];
 		const expanded = expandGroup(endpointId, expansionContext) ?? [];
-		if (expanded.length === 0 && preserveDirectEmptyGroup) return [endpointId];
+		if (expanded.length === 0) return [endpointId];
 		return expanded;
 	}
-	for (const group of [...document.groups].sort((left, right) =>
-		compareCanonicalStrings(left.id, right.id),
-	)) {
-		effectiveEndpointIds(group.id);
-		if (diagnostics.length > 0) break;
-	}
-	if (diagnostics.length > 0) return { ok: false, diagnostics };
 	const effectiveRelations = collectEffectiveRelations(relations, effectiveEndpointIds);
+	if (diagnostics.length > 0) return { ok: false, diagnostics };
 	if (!Array.isArray(effectiveRelations)) return { ok: false, diagnostics: [effectiveRelations] };
 	const rankableEndpointIds = new Set([
 		...[...document.nodes, ...document.junctions].map(({ id }) => id),
-		...effectiveRelations.flatMap(({ sourceIds, targetIds }) => [...sourceIds, ...targetIds]),
 		...relations.flatMap(({ source, target }) => [source.entity.id, target.entity.id]),
 	]);
 	const canonicalIds = [...rankableEndpointIds].sort(compareCanonicalStrings);

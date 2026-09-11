@@ -1,0 +1,19 @@
+<script>
+ import { directedChain } from './scenarios/directed-chain.scenario';
+ import source from './scenarios/directed-chain.scenario.ts?raw';
+ import VisualTest from './VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# A puis B, dans le bon sens.
+
+Une seule relation **A → B**, entre deux boîtes de **100 × 60**.
+A est au **rang 1**, B au **rang 2**. Dans cette chaîne de deux nœuds, B occupe la rangée suivante :
+**en dessous** en haut-bas, **au-dessus** en bas-haut, **à droite** en gauche-droite,
+**à gauche** en droite-gauche. Un espace positif sépare les bords des deux boîtes.
+
+Ce cas vérifie séparément les rangs logiques et l’ordre des boîtes dans l’espace.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-311 · Rangée](/atelier/lexique#VL-311), [VL-204 · Direction de layout](/atelier/lexique#VL-204).
+
+<VisualTest scenario={directedChain} {source} bind:settings />

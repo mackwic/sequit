@@ -1,0 +1,16 @@
+<script>
+ import { singleNode } from './scenarios/single-node.scenario';
+ import source from './scenarios/single-node.scenario.ts?raw';
+ import VisualTest from './VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Un nœud, au centre.
+
+Une boîte **A de 100 × 60**, sans relation. Elle est au **rang 1** et son centre
+coïncide avec celui du rectangle du layout, sur **X et Y**, dans les quatre directions.
+Le repère est celui du résultat calculé, avant zoom et déplacement de la vue.
+
+Références : [VL-506 · Centré sur](/atelier/lexique#VL-506), [VL-220 · Repère du layout](/atelier/lexique#VL-220).
+
+<VisualTest scenario={singleNode} {source} bind:settings />

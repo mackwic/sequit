@@ -4,7 +4,7 @@ This directory contains repository-wide tool configuration that can be selected 
 the corresponding package script.
 
 Configuration stays at the repository root when its tool requires or strongly benefits from
-conventional discovery. This includes `package.json`, `pnpm-workspace.yaml`, `mise.toml`, `knip.json`,
+conventional discovery. This includes `package.json`, `pnpm-workspace.yaml`, `mise.toml`, `knip.js`,
 and the root `tsconfig.json`. Worker-specific configuration remains beside the collaboration worker
 so its scope and relative paths stay local.
 

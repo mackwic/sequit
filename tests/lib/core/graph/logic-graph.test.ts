@@ -115,9 +115,55 @@ describe('LogicGraph', () => {
 			layoutOrder: orderKey('a0'),
 		}));
 
-		const graph = graphFrom({ ...base, groups, nodes: [], junctions: [], relations: [] });
+		const graph = graphFrom({
+			...base,
+			groups,
+			nodes: [],
+			junctions: [],
+			relations: [{ id: 'nested', from: 'group-00000', to: 'group-14999' }],
+		});
 
-		expect(graph.rankableEndpointIds).toEqual([]);
+		expect(graph.rankableEndpointIds).toEqual(['group-00000', 'group-14999']);
+	});
+
+	it('reuses expanded descendants when a child group is referenced before its parent', () => {
+		const base = validLogicDocument();
+		const groups = [
+			{ kind: EndpointKind.Group as const, id: 'parent', label: '', layoutOrder: orderKey('a0') },
+			{
+				kind: EndpointKind.Group as const,
+				id: 'child',
+				groupId: 'parent',
+				label: '',
+				layoutOrder: orderKey('a1'),
+			},
+		];
+		const document = {
+			...base,
+			groups,
+			junctions: [],
+			nodes: base.nodes.map(({ id, kind, markdown, natureId, layoutOrder }) => ({
+				id,
+				kind,
+				markdown,
+				natureId,
+				layoutOrder,
+				...(id === 'source-a' ? { groupId: 'child' } : {}),
+			})),
+			relations: [
+				{ id: 'first', from: 'child', to: 'source-b' },
+				{ id: 'second', from: 'parent', to: 'source-b' },
+			],
+		};
+		const graph = graphFrom(document);
+		expect(graph.effectiveRelations).toEqual([
+			{ relationId: 'first', sourceIds: ['source-a'], targetIds: ['source-b'] },
+			{ relationId: 'second', sourceIds: ['source-a'], targetIds: ['source-b'] },
+		]);
+		expect(graph.outgoingByEndpointId.get('source-a')).toEqual(['source-b']);
+		expect(
+			graphFrom({ ...document, relations: [...document.relations].reverse() }).effectiveRelations,
+		).toEqual(graph.effectiveRelations);
 	});
 
 	it('rejects deterministically when cached expanded group memberships exceed the limit', () => {
@@ -138,7 +184,16 @@ describe('LogicGraph', () => {
 			markdown: '',
 			layoutOrder: orderKey('a0'),
 		}));
-		const document = { ...base, groups, nodes, junctions: [], relations: [] };
+		const document = {
+			...base,
+			groups,
+			nodes,
+			junctions: [],
+			relations: [{ id: 'expand', from: groups[0]?.id ?? '', to: nodes.at(-1)?.id ?? '' }],
+		};
+
+		const unreferenced = graphFrom({ ...document, relations: [] });
+		expect(unreferenced.rankableEndpointIds).toHaveLength(depth);
 
 		const first = createGraph(document);
 		const reordered = createGraph({ ...document, groups: [...groups].reverse() });

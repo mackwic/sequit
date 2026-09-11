@@ -116,7 +116,7 @@ function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string
 			const adjacent = [
 				...defined(graph.outgoingByEndpointId.get(id)),
 				...defined(graph.predecessorsByEndpointId.get(id)),
-			].sort((left, right) => compareCanonicalStrings(right, left));
+			];
 			enqueueUnvisited(adjacent, visited, pending);
 		}
 		component.sort(compareCanonicalStrings);
@@ -361,7 +361,10 @@ export function layoutWithDedicatedEngine(
 			),
 			layout: layoutComponent(
 				deriveEndpointRows({
-					effectiveEndpointOrder,
+					effectiveEndpointOrder: [...ids].sort(
+						(left, right) =>
+							defined(effectiveOrderById.get(left)) - defined(effectiveOrderById.get(right)),
+					),
 					componentIds: ids,
 					ranks: ranks.byEndpointId,
 					junctionIds,
@@ -452,8 +455,8 @@ export function layoutWithDedicatedEngine(
 	}
 	repackContainmentComponents(graph, bounds, vertical);
 
-	let minimumX = 0;
-	let minimumY = 0;
+	let minimumX = Number.POSITIVE_INFINITY;
+	let minimumY = Number.POSITIVE_INFINITY;
 	for (const value of bounds.values()) {
 		minimumX = Math.min(minimumX, value.x);
 		minimumY = Math.min(minimumY, value.y);

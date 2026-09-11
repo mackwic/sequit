@@ -47,8 +47,9 @@ function adjacencyEndpointIds(
 	const { sourceIds, targetIds } = effectiveRelation;
 	const includesGroup =
 		relation.source.kind === EndpointKind.Group || relation.target.kind === EndpointKind.Group;
+	if (!includesGroup) return effectiveRelation;
 	const targets = new Set(targetIds);
-	if (!includesGroup || !sourceIds.some((id) => targets.has(id))) return effectiveRelation;
+	if (!sourceIds.some((id) => targets.has(id))) return effectiveRelation;
 	return { sourceIds: [relation.source.entity.id], targetIds: [relation.target.entity.id] };
 }
 

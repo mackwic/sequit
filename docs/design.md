@@ -22,6 +22,8 @@ Le canvas n'est pas la source de vérité. Il est une projection interactive d'u
 
 L'organisation du code et ses frontières sont décrites dans [architecture.md](architecture.md).
 
+Le [langage du document, du layout et des assertions visuelles](visual-language.md) est inventorié dans un document de travail à compléter et valider.
+
 1. **La logique avant la géométrie.** Le document décrit d'abord des éléments et leurs relations, pas des formes positionnées à des coordonnées arbitraires.
 2. **Une seule source de vérité.** Le canvas et l'éditeur textuel modifient le même document structuré.
 3. **Manipulation visuelle en premier.** La syntaxe textuelle ne doit pas être un prérequis pour utiliser le produit.
@@ -206,7 +208,7 @@ Le protocole binaire de collaboration, actuellement en version `1`, distingue ex
 Le Durable Object est l'autorité d'une room. Il évalue chaque proposition dans un `Y.Doc` candidat jetable, sans modifier l'état accepté, selon trois étapes ordonnées :
 
 1. lecture et validation structurelle du document Yjs, puis validation du domaine ;
-2. construction du graphe, résolution des relations, rejet des cycles et des expansions dépassant 100 000 appartenances de groupes ou dépendances effectives ;
+2. construction du graphe, résolution des relations, rejet des cycles et des expansions dépassant 100 000 appartenances de groupes ou dépendances effectives. Les descendants sont développés uniquement pour les groupes utilisés comme extrémités de relations ; la détection des cycles de groupes reste systématique ;
 3. exécution ordonnée des gardes de transition sur des projections immuables.
 
 Un refus ne modifie ni l'état autoritaire, ni son numéro de commit, et n'est envoyé qu'au proposant. Une acceptation est persistée avant d'être diffusée à tous les participants, proposant compris. Les commits sont strictement croissants dans une room. Les 128 identifiants de propositions acceptées les plus récents sont conservés afin qu'une retransmission soit acquittée avec son commit d'origine sans être appliquée une seconde fois. Après éviction de cet historique borné, la retransmission exacte d'une mise à jour Yjs déjà intégrée est acquittée au commit courant sans créer, persister ni diffuser un nouveau commit.

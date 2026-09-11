@@ -1,0 +1,16 @@
+<script>
+ import { centeredChain } from './scenarios/centered-chain.scenario';
+ import source from './scenarios/centered-chain.scenario.ts?raw';
+ import VisualTest from './VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Deux largeurs, un même axe.
+
+Une chaîne **A → B**. La boîte A mesure **100 × 60**, la boîte B **200 × 120**.
+Leurs centres partagent l’axe de progression : une verticale en haut-bas ou bas-haut,
+une horizontale en gauche-droite ou droite-gauche. Les bords n’ont donc pas à être alignés.
+
+Référence : [VL-505 · Alignés](/atelier/lexique#VL-505).
+
+<VisualTest scenario={centeredChain} {source} bind:settings />

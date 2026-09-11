@@ -1,8 +1,0 @@
-{
-	"$schema": "https://unpkg.com/knip@6/schema.json",
-	"entry": ["src/workers/collaboration-worker/index.ts", "tests/**/*.type-test.ts"],
-	"ignoreDependencies": ["cloudflare"],
-	"wrangler": {
-		"config": ["src/workers/collaboration-worker/wrangler.jsonc"]
-	}
-}

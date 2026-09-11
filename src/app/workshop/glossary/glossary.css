@@ -1,0 +1,240 @@
+.lexicon {
+	min-height: 100vh;
+	background: #f6f5f0;
+	color: #232d2b;
+	font-family: system-ui, sans-serif;
+}
+.lex-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 2rem;
+	padding: 2.4rem 3rem 1.8rem;
+	border-bottom: 1px solid #d9ddd5;
+}
+.lexicon a {
+	color: #42695b;
+	text-underline-offset: 4px;
+}
+.lexicon h1 {
+	font-size: clamp(1.7rem, 3vw, 2.6rem);
+	letter-spacing: -0.05em;
+	font-weight: 650;
+	margin: 0.4rem 0;
+}
+.lexicon p {
+	line-height: 1.6;
+}
+.lexicon .eyebrow {
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	color: #64786d;
+	margin-top: 1.4rem;
+}
+.lex-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.65rem;
+	align-items: center;
+	justify-content: end;
+	max-width: 32rem;
+}
+.lex-actions span {
+	width: 100%;
+	text-align: right;
+	font-size: 0.85rem;
+	color: #64786d;
+}
+.lexicon button {
+	border: 1px solid #c9d1c7;
+	border-radius: 7px;
+	padding: 0.7rem 1rem;
+	background: #fff;
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.85rem;
+}
+.lexicon button.primary {
+	background: #285448;
+	color: white;
+	border-color: #285448;
+}
+.lexicon button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.lexicon :is(button, input, textarea, select, a):focus-visible {
+	outline: 3px solid #bc9562;
+	outline-offset: 3px;
+}
+.lex-notice {
+	padding: 0.7rem 3rem;
+	display: flex;
+	gap: 1.5rem;
+	justify-content: space-between;
+	font-size: 0.8rem;
+	background: #eaf0e8;
+	min-height: 2.8rem;
+}
+.lex-notice strong {
+	color: #855320;
+}
+.lex-workspace {
+	display: grid;
+	grid-template-columns: 320px minmax(0, 1fr);
+	max-width: 1440px;
+	margin: auto;
+}
+.lex-sidebar {
+	padding: 1.7rem 1.2rem;
+	border-right: 1px solid #d9ddd5;
+}
+.lexicon label {
+	display: grid;
+	gap: 0.5rem;
+	font-size: 0.8rem;
+	font-weight: 600;
+	margin-bottom: 1.1rem;
+}
+.lexicon :is(input, select, textarea) {
+	width: 100%;
+	min-width: 0;
+	background: #fff;
+	color: #232d2b;
+	border: 1px solid #ccd3ca;
+	border-radius: 6px;
+	padding: 0.7rem;
+	font: inherit;
+	font-size: 0.95rem;
+	font-weight: 400;
+	line-height: 1.55;
+}
+.lexicon textarea {
+	resize: vertical;
+}
+.lex-count {
+	font-size: 0.75rem;
+	color: #617269;
+}
+.lex-sidebar nav {
+	display: grid;
+	gap: 0.4rem;
+	max-height: 65vh;
+	overflow: auto;
+	padding: 3px;
+}
+.lex-sidebar nav button {
+	display: grid;
+	gap: 0.25rem;
+	text-align: left;
+	background: transparent;
+	border-color: transparent;
+}
+.lex-sidebar nav button.chosen {
+	background: #fff;
+	border-color: #acc3b2;
+	box-shadow: 0 2px 7px #223b2910;
+}
+.lex-sidebar nav button > span:last-child {
+	color: #65766c;
+	font-size: 0.8rem;
+}
+.term-top {
+	display: flex;
+	justify-content: space-between;
+	color: #788277;
+	gap: 0.5rem;
+}
+.term-top .approved {
+	color: #207650;
+}
+.lex-editor {
+	padding: 2rem 3rem;
+	max-width: 950px;
+	width: 100%;
+}
+.entry-heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 1rem;
+}
+.entry-heading h2 {
+	font-size: 1.8rem;
+	font-weight: 650;
+	letter-spacing: -0.03em;
+	margin: 0.4rem 0;
+}
+.entry-heading a {
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+.lex-hint,
+.lex-discussion p,
+.lex-editor footer {
+	font-size: 0.8rem;
+	color: #6d796e;
+	margin: 1rem 0 1.8rem;
+}
+.lexicon fieldset {
+	padding: 0;
+	border: 0;
+	min-width: 0;
+}
+.lex-names {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+}
+.lex-discussion {
+	margin-top: 1.8rem;
+	padding: 1.5rem;
+	background: #eeeee4;
+	border-radius: 10px;
+}
+.lex-discussion h3 {
+	font-size: 1rem;
+	font-weight: 650;
+}
+.lex-discussion p {
+	margin: 0.4rem 0 1rem;
+}
+.lex-editor footer {
+	margin-top: 1.5rem;
+}
+@media (max-width: 760px) {
+	.lex-header {
+		padding: 1.5rem;
+		flex-direction: column;
+		align-items: start;
+	}
+	.lex-actions {
+		justify-content: start;
+	}
+	.lex-actions span {
+		text-align: left;
+	}
+	.lex-notice {
+		padding: 0.7rem 1.5rem;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	.lex-workspace {
+		grid-template-columns: 1fr;
+	}
+	.lex-sidebar {
+		border-right: 0;
+		border-bottom: 1px solid #d9ddd5;
+	}
+	.lex-sidebar nav {
+		max-height: 230px;
+	}
+	.lex-editor {
+		padding: 1.5rem;
+	}
+	.lex-names {
+		grid-template-columns: 1fr;
+		gap: 0;
+	}
+}

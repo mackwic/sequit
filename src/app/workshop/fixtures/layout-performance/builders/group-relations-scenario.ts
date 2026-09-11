@@ -9,7 +9,7 @@ export class GroupRelationsScenarioBuilder extends LayoutPerformanceScenarioBuil
 		const rank = squareShellRank(nodeIndex);
 		const startsGroup = nodeIndex === squareShellStart(rank);
 		const group = this.group(rank);
-		// Production currently ranks group endpoints directly; descendant Cartesian expansion is future work.
+		// Production expands each group relation across its descendant members.
 		const addedRelations = [];
 		if (startsGroup && rank > 0) {
 			addedRelations.push(this.relation(this.groupId(rank - 1), this.groupId(rank)));
