@@ -12,3 +12,8 @@ The root `eslint.config.js` is a discovery adapter: it only re-exports the confi
 here, preserving root-relative file matching.
 
 Custom ESLint rules live in `eslint/rules`. Each test is colocated with the rule it exercises.
+
+The Vitest configuration gives each Stryker worker its own Vite cache using
+`STRYKER_MUTATOR_WORKER`. Mutation runners share a sandbox, so a shared optimizer cache can fail
+with `ENOTEMPTY` when concurrent runners publish their optimized dependencies. Ordinary Vitest
+runs keep the default cache. Keep mutation concurrency and quality thresholds unchanged.
