@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { ESLint, RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import rule from '../../../../config/eslint/rules/allowed-import-directions.js';
 
@@ -19,17 +19,26 @@ const worker = filename('src/workers/collaboration-worker/example.ts');
 const infra = filename('src/lib/infrastructure/example.ts');
 const errors = [{ messageId: 'forbidden' }];
 
-it('enforces the shared policy in Svelte through the repository ESLint configuration', async () => {
+describe('repository ESLint configuration', () => {
 	const eslint = new ESLint();
-	const results = await eslint.lintText(
-		'<script lang="ts">import Workshop from "/src/app/workshop/WorkshopPage.svelte";</script>',
-		{ filePath: filename('src/app/web/ui/components/canvas/LogicCanvas.svelte') },
-	);
-	expect(results.flatMap((result) => result.messages)).toEqual(
-		expect.arrayContaining([
-			expect.objectContaining({ ruleId: 'local/allowed-import-directions', severity: 2 }),
-		]),
-	);
+	const filePath = filename('src/app/web/ui/components/canvas/LogicCanvas.svelte');
+
+	beforeAll(async () => {
+		// Load the repository config and plugins as setup, outside the behavior test's budget.
+		await eslint.calculateConfigForFile(filePath);
+	});
+
+	it('enforces the shared policy in Svelte', async () => {
+		const results = await eslint.lintText(
+			'<script lang="ts">import Workshop from "/src/app/workshop/WorkshopPage.svelte";</script>',
+			{ filePath },
+		);
+		expect(results.flatMap((result) => result.messages)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ ruleId: 'local/allowed-import-directions', severity: 2 }),
+			]),
+		);
+	});
 });
 
 tester.run('allowed-import-directions', rule, {
