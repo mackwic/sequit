@@ -587,31 +587,27 @@ describe('topologicallyRank', () => {
 	it('uses the canonical junction-aware longest-path recurrence without structural groups', async () => {
 		const graph = graphFrom(await openReferenceLiveDocument());
 		const ranks = topologicallyRank(graph);
-		const predecessors = new Map<string, string[]>();
+		const parents = new Map<string, string[]>();
 		for (const { source, target } of graph.relations) {
-			const values = predecessors.get(target.entity.id) ?? [];
-			values.push(source.entity.id);
-			predecessors.set(target.entity.id, values);
+			const values = parents.get(source.entity.id) ?? [];
+			values.push(target.entity.id);
+			parents.set(source.entity.id, values);
 		}
 
 		for (const [endpointId, rank] of ranks.byEndpointId) {
-			const endpointPredecessors = predecessors.get(endpointId) ?? [];
+			const endpointPredecessors = parents.get(endpointId) ?? [];
 			const increment = graph.endpointsById.get(endpointId)?.kind === EndpointKind.Junction ? 0 : 1;
 			const expected =
 				endpointPredecessors.length === 0
 					? 0
 					: increment +
-						Math.max(
-							...endpointPredecessors.map(
-								(predecessor) => ranks.byEndpointId.get(predecessor) ?? -1,
-							),
-						);
+						Math.max(...endpointPredecessors.map((parent) => ranks.byEndpointId.get(parent) ?? -1));
 			expect(rank, endpointId).toBe(expected);
 		}
-		expect(ranks.byEndpointId.get('onlyoffice')).toBe(0);
-		expect(ranks.byEndpointId.get('all-edits-in-word')).toBe(0);
+		expect(ranks.byEndpointId.get('onlyoffice')).toBeGreaterThan(0);
+		expect(ranks.byEndpointId.get('all-edits-in-word')).toBeGreaterThan(0);
 		expect(ranks.byEndpointId.has('use-cases')).toBe(false);
-		expect(ranks.byEndpointId.get('data-team')).toBe(0);
+		expect(ranks.byEndpointId.get('data-team')).toBe(2);
 	});
 
 	it('is deterministic when TOML tables are reordered', async () => {
@@ -628,8 +624,8 @@ describe('topologicallyRank', () => {
 		const ranks = topologicallyRank(graphFrom(validLogicDocument()));
 
 		expect(ranks.bands).toEqual([
-			['choice', 'endpoint-group', 'isolated', 'source-a', 'source-b'],
-			['target'],
+			['choice', 'isolated', 'target'],
+			['endpoint-group', 'source-a', 'source-b'],
 		]);
 		expect(ranks.byEndpointId.has('container')).toBe(false);
 		expect(ranks.byEndpointId.has('orphan-group')).toBe(false);

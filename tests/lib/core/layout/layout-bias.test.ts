@@ -85,7 +85,7 @@ function terminalJunctionScenario(layout: LayoutConfiguration): LogicDocument {
 				layoutOrder: orderKey('a1'),
 			},
 		],
-		relations: [{ id: 'source-to-terminal-junction', from: 'source', to: 'terminal-junction' }],
+		relations: [{ id: 'source-to-terminal-junction', from: 'terminal-junction', to: 'source' }],
 	};
 }
 
@@ -182,7 +182,15 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 	'rank-band edge alignment with $direction and $bias bias',
 	(configuration) => {
 		it('aligns different-sized ordinary nodes to the selected physical edge', async () => {
-			const document = crossingAwareDirectionScenario(configuration);
+			const original = crossingAwareDirectionScenario(configuration);
+			const document = {
+				...original,
+				relations: original.relations.map(({ from, to, ...relation }) => ({
+					...relation,
+					from: to,
+					to: from,
+				})),
+			};
 			const { layout } = await layoutDocument(document, {
 				nodes: {
 					'source-b': { width: 140, height: 60 },
@@ -202,7 +210,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 describe.each(LAYOUT_CONFIGURATIONS)(
 	'terminal junction integration with $direction and $bias bias',
 	(configuration) => {
-		it('keeps an oversized terminal junction disjoint and routes forward', async () => {
+		it('keeps an oversized terminal junction disjoint and routes toward its parent', async () => {
 			const { layout } = await layoutDocument(terminalJunctionScenario(configuration), {
 				nodes: { source: { width: 80, height: 40 } },
 				junctions: { 'terminal-junction': { width: 108, height: 108 } },
@@ -226,8 +234,8 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			const lastPoint = relation.points.at(-1);
 			if (firstPoint === undefined || lastPoint === undefined)
 				throw new Error('Missing boundary points');
-			expect(touchesBoundary(firstPoint, source)).toBe(true);
-			expect(touchesBoundary(lastPoint, junction)).toBe(true);
+			expect(touchesBoundary(firstPoint, junction)).toBe(true);
+			expect(touchesBoundary(lastPoint, source)).toBe(true);
 		});
 	},
 );

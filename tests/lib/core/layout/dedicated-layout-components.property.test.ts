@@ -307,7 +307,7 @@ describe('dedicated layout components', () => {
 					generated.document,
 					overridesFor(generated),
 				);
-				const coordinates = ['a-source', 'b-isolated', 'c-source'].map((id) =>
+				const coordinates = ['a-target', 'b-isolated', 'c-target'].map((id) =>
 					coordinateAt(boundsFor(layout, id), document.layout.bias),
 				);
 				expect(new Set(coordinates).size).toBe(1);
@@ -406,11 +406,11 @@ describe('dedicated layout components', () => {
 				for (const relation of layout.relations) {
 					expect(
 						progressesFromTo(
-							boundsFor(layout, relation.from),
 							boundsFor(layout, relation.to),
+							boundsFor(layout, relation.from),
 							document.layout.direction,
 						),
-						`${relation.from} does not precede ${relation.to}`,
+						`${relation.to} does not precede its child ${relation.from}`,
 					).toBe(true);
 				}
 			}),

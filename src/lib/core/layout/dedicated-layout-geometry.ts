@@ -9,7 +9,7 @@ function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection)
 	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
 		let sourceY = source.y;
 		let targetY = target.y + target.height;
-		if (direction === LayoutDirection.TopToBottom) {
+		if (direction === LayoutDirection.BottomToTop) {
 			sourceY += source.height;
 			targetY = target.y;
 		}
@@ -20,7 +20,7 @@ function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection)
 	}
 	let sourceX = source.x;
 	let targetX = target.x + target.width;
-	if (direction === LayoutDirection.LeftToRight) {
+	if (direction === LayoutDirection.RightToLeft) {
 		sourceX += source.width;
 		targetX = target.x;
 	}
@@ -120,11 +120,11 @@ export function routePointsWithGroupHeaders({
 }): readonly Point[] {
 	if (sourceGroup === undefined && targetGroup === undefined)
 		return routePoints(source, target, direction);
-	let sourcePort = ordinaryPort(source, direction, true);
+	let sourcePort = ordinaryPort(source, direction, false);
 	if (sourceGroup !== undefined) {
 		sourcePort = groupPort(source, sourceGroup, endpointCenter(target));
 	}
-	let targetPort = ordinaryPort(target, direction, false);
+	let targetPort = ordinaryPort(target, direction, true);
 	if (targetGroup !== undefined) {
 		targetPort = groupPort(target, targetGroup, endpointCenter(source));
 	}

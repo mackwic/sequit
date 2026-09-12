@@ -12,7 +12,7 @@ export class GroupRelationsScenarioBuilder extends LayoutPerformanceScenarioBuil
 		// Production expands each group relation across its descendant members.
 		const addedRelations = [];
 		if (startsGroup && rank > 0) {
-			addedRelations.push(this.relation(this.groupId(rank - 1), this.groupId(rank)));
+			addedRelations.push(this.childToParent(this.groupId(rank - 1), this.groupId(rank)));
 		}
 		const groups = [];
 		if (startsGroup) groups.push(group);

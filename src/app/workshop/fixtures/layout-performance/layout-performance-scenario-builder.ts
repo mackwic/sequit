@@ -113,8 +113,9 @@ export abstract class LayoutPerformanceScenarioBuilder {
 		};
 	}
 
-	protected relation(from: string, to: string): LogicRelation {
-		return { id: this.relationId(from, to), from, to };
+	/** Parent-first construction; retain the historical stable relation identifiers. */
+	protected childToParent(parent: string, child: string): LogicRelation {
+		return { id: this.relationId(parent, child), from: child, to: parent };
 	}
 
 	protected insertion(

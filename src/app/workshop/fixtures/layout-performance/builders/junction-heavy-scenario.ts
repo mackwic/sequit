@@ -11,8 +11,8 @@ export class JunctionHeavyScenarioBuilder extends LayoutPerformanceScenarioBuild
 		return this.insertion(nodeIndex, nodeIndex, {
 			junctions: [junction],
 			addedRelations: [
-				this.relation(this.nodeId(nodeIndex - 1), junction.id),
-				this.relation(junction.id, this.nodeId(nodeIndex)),
+				this.childToParent(this.nodeId(nodeIndex - 1), junction.id),
+				this.childToParent(junction.id, this.nodeId(nodeIndex)),
 			],
 		});
 	}

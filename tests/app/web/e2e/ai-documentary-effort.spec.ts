@@ -96,9 +96,9 @@ test.describe('AI for documentary effort', () => {
 					member.top > useCases.top &&
 					member.bottom < useCases.bottom,
 				emptyGroupHasBounds: dataTeam.offsetWidth > 0 && dataTeam.offsetHeight > 0,
-				topToBottom:
-					dataTeam.offsetTop + dataTeam.offsetHeight < aiContent.offsetTop &&
-					aiContent.offsetTop + aiContent.offsetHeight < goal.offsetTop,
+				rootsBeforeChildren:
+					goal.offsetTop + goal.offsetHeight < aiContent.offsetTop &&
+					aiContent.offsetTop + aiContent.offsetHeight < dataTeam.offsetTop,
 				groupTitleAtVisualTop:
 					groupHeader !== null &&
 					Math.abs(
@@ -115,7 +115,7 @@ test.describe('AI for documentary effort', () => {
 			allConnectionsTouchEndpoints: true,
 			memberInsideGroup: true,
 			emptyGroupHasBounds: true,
-			topToBottom: true,
+			rootsBeforeChildren: true,
 			groupTitleAtVisualTop: true,
 			groupAttachmentBelowHeader: true,
 		});

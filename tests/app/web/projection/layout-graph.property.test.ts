@@ -133,39 +133,24 @@ function expectedBoundaryPoint(
 ): Point {
 	switch (direction) {
 		case LayoutDirection.TopToBottom:
-			if (source) {
+			if (!source) {
 				return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
 			}
 			return { x: bounds.x + bounds.width / 2, y: bounds.y };
 		case LayoutDirection.BottomToTop:
-			if (source) return { x: bounds.x + bounds.width / 2, y: bounds.y };
+			if (!source) return { x: bounds.x + bounds.width / 2, y: bounds.y };
 			return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height };
 		case LayoutDirection.LeftToRight:
-			if (source) {
+			if (!source) {
 				return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
 			}
 			return { x: bounds.x, y: bounds.y + bounds.height / 2 };
 		case LayoutDirection.RightToLeft:
-			if (source) return { x: bounds.x, y: bounds.y + bounds.height / 2 };
+			if (!source) return { x: bounds.x, y: bounds.y + bounds.height / 2 };
 			return { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 };
 		default:
 			throw new Error(`Unsupported layout direction: ${String(direction)}`);
 	}
-}
-
-function expectedRoutePoints(
-	source: Bounds,
-	target: Bounds,
-	direction: LogicDocument['layout']['direction'],
-): readonly Point[] {
-	const start = expectedBoundaryPoint(source, direction, true);
-	const end = expectedBoundaryPoint(target, direction, false);
-	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
-		const middle = (start.y + end.y) / 2;
-		return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
-	}
-	const middle = (start.x + end.x) / 2;
-	return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end];
 }
 
 function isOnBoundary(point: Point, bounds: Bounds): boolean {
@@ -342,9 +327,22 @@ describe('generated layouts', () => {
 						);
 					}
 					if (sourceGroup === undefined && targetGroup === undefined) {
-						expect(relation.points).toEqual(
-							expectedRoutePoints(sourceBounds, targetBounds, document.layout.direction),
-						);
+						// Crossing separation may offset ports transversely and choose a noncentral lane.
+						// Both ports must still face the parent/child corridor, and no leg may backtrack.
+						const direction = document.layout.direction;
+						let axis: 'x' | 'y' = 'x';
+						if (
+							direction === LayoutDirection.TopToBottom ||
+							direction === LayoutDirection.BottomToTop
+						)
+							axis = 'y';
+						expect(first[axis]).toBe(expectedBoundaryPoint(sourceBounds, direction, true)[axis]);
+						expect(last[axis]).toBe(expectedBoundaryPoint(targetBounds, direction, false)[axis]);
+						const sign = Math.sign(last[axis] - first[axis]);
+						for (const [index, point] of relation.points.slice(1).entries()) {
+							const previous = requiredAt(relation.points, index, 'route point');
+							expect((point[axis] - previous[axis]) * sign).toBeGreaterThanOrEqual(0);
+						}
 					}
 				}
 			}),
@@ -352,7 +350,7 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('progresses every relation strictly in the configured direction', async () => {
+	it('places every child after its parent in the configured direction', async () => {
 		await fc.assert(
 			fc.asyncProperty(layoutCaseArbitrary, async (generated) => {
 				const { document, layout } = await layoutDocument(
@@ -362,11 +360,11 @@ describe('generated layouts', () => {
 				for (const relation of layout.relations) {
 					expect(
 						progressesFromTo(
-							boundsFor(layout, relation.from),
 							boundsFor(layout, relation.to),
+							boundsFor(layout, relation.from),
 							document.layout.direction,
 						),
-						`${relation.from} does not precede ${relation.to}`,
+						`${relation.to} does not precede its child ${relation.from}`,
 					).toBe(true);
 				}
 			}),
@@ -432,11 +430,11 @@ describe('generated layouts', () => {
 					for (const relation of scaled.layout.relations) {
 						expect(
 							progressesFromTo(
-								boundsFor(scaled.layout, relation.from),
 								boundsFor(scaled.layout, relation.to),
+								boundsFor(scaled.layout, relation.from),
 								generated.document.layout.direction,
 							),
-							`${relation.from} does not precede ${relation.to} after scaling`,
+							`${relation.to} does not precede its child ${relation.from} after scaling`,
 						).toBe(true);
 					}
 				},

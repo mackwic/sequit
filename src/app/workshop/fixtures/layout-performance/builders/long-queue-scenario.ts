@@ -7,7 +7,7 @@ export class LongQueueScenarioBuilder extends LayoutPerformanceScenarioBuilder {
 	protected insertNode(nodeIndex: number): LayoutPerformanceInsertion {
 		const addedRelations = [];
 		if (nodeIndex > 0) {
-			addedRelations.push(this.relation(this.nodeId(nodeIndex - 1), this.nodeId(nodeIndex)));
+			addedRelations.push(this.childToParent(this.nodeId(nodeIndex - 1), this.nodeId(nodeIndex)));
 		}
 		return this.insertion(nodeIndex, nodeIndex, { addedRelations });
 	}

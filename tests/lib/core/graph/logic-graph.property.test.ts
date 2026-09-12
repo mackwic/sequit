@@ -36,7 +36,7 @@ function canonicalGraph(graph: LogicGraph) {
 const dagDocumentArbitrary = acyclicLogicDocumentArbitrary({ minNodes: 2, maxNodes: 20 });
 
 describe('generated logic graphs', () => {
-	it('ranks every generated DAG after all of its predecessors deterministically', () => {
+	it('ranks every generated DAG after all of its parents deterministically', () => {
 		fc.assert(
 			fc.property(dagDocumentArbitrary, (document) => {
 				const graph = graphFor(document);
@@ -46,8 +46,8 @@ describe('generated logic graphs', () => {
 				expect(second.bands).toEqual(first.bands);
 
 				for (const relation of document.relations) {
-					expect(rankFor(first.byEndpointId, relation.to)).toBeGreaterThan(
-						rankFor(first.byEndpointId, relation.from),
+					expect(rankFor(first.byEndpointId, relation.from)).toBeGreaterThan(
+						rankFor(first.byEndpointId, relation.to),
 					);
 				}
 
@@ -65,11 +65,10 @@ describe('generated logic graphs', () => {
 				const graph = graphFor(document);
 				const ranks = topologicallyRank(graph).byEndpointId;
 				for (const id of graph.rankableEndpointIds) {
-					const predecessors = graph.predecessorsByEndpointId.get(id) ?? [];
+					const parents = graph.outgoingByEndpointId.get(id) ?? [];
 					let expected = 0;
-					if (predecessors.length > 0) {
-						expected =
-							Math.max(...predecessors.map((predecessor) => rankFor(ranks, predecessor))) + 1;
+					if (parents.length > 0) {
+						expected = Math.max(...parents.map((parent) => rankFor(ranks, parent))) + 1;
 					}
 					expect(rankFor(ranks, id)).toBe(expected);
 				}

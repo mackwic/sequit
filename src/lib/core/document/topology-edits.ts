@@ -108,13 +108,13 @@ function nodeMaterializationFailure(
 	};
 }
 
-function isImmediatelyBeforeTargetLayer(
+function isAdjacentToParentLayer(
 	sourceRank: number,
 	targetRank: number,
-	targetIsJunction: boolean,
+	sourceIsJunction: boolean,
 ): boolean {
-	if (targetIsJunction) return sourceRank === targetRank;
-	return sourceRank === targetRank - 1;
+	if (sourceIsJunction) return sourceRank === targetRank;
+	return sourceRank === targetRank + 1;
 }
 
 export function projectNodeAddition(
@@ -203,7 +203,12 @@ export function projectRelationAddition(
 	const targetIsNotGroup = graph.endpointsById.get(relation.to)?.kind !== EndpointKind.Group;
 	const ranksExist = sourceRank !== undefined && targetRank !== undefined;
 	const ranksAreAdjacent =
-		ranksExist && isImmediatelyBeforeTargetLayer(sourceRank, targetRank, targetIsJunction);
+		ranksExist &&
+		isAdjacentToParentLayer(
+			sourceRank,
+			targetRank,
+			graph.endpointsById.get(relation.from)?.kind === EndpointKind.Junction,
+		);
 	const eligible = targetIsNotGroup && ranksAreAdjacent;
 	if (!eligible) {
 		return {

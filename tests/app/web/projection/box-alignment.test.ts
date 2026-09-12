@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 
 import { AssertBox } from '../../../../src/app/workshop/visual-tests/assert-box';
-import { centeredChain } from '../../../../src/app/workshop/visual-tests/scenarios/centered-chain.scenario';
+import { scenario as centeredChain } from '../../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario';
 import {
 	EndpointKind,
 	LayoutBias,

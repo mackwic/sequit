@@ -58,3 +58,45 @@ it('centers a single node for varied dimensions in every direction without doubl
 		PROPERTY_PARAMETERS,
 	);
 });
+
+it.each(Object.values(LayoutDirection))(
+	'keeps roots first and points child-to-parent arrows against %s, including a short branch',
+	async (direction) => {
+		const size = { width: 100, height: 60 };
+		const relations = [
+			{ id: 'b-a', from: 'b', to: 'a' },
+			{ id: 'c-b', from: 'c', to: 'b' },
+			{ id: 'c-a', from: 'c', to: 'a' },
+			{ id: 'd-a', from: 'd', to: 'a' },
+		];
+		const layout = await layoutNodes({
+			direction,
+			nodes: { a: size, b: size, c: size, d: size, isolated: size },
+			relations,
+		});
+		expect(['a', 'b', 'c', 'd', 'isolated'].map((id) => layout.getNodeById(id).rank)).toEqual([
+			1, 2, 3, 2, 1,
+		]);
+		for (const relation of layout.relations) {
+			expect(relations).toContainEqual({ id: relation.id, from: relation.from, to: relation.to });
+			const child = layout.getNodeById(relation.from);
+			const parent = layout.getNodeById(relation.to);
+			AssertBox(child).isAfter(parent, { direction });
+			const start = relation.points.at(0);
+			const tip = relation.points.at(-1);
+			if (direction === LayoutDirection.TopToBottom) {
+				expect(start?.y).toBe(child.bounds.y);
+				expect(tip?.y).toBe(parent.bounds.y + parent.bounds.height);
+			} else if (direction === LayoutDirection.BottomToTop) {
+				expect(start?.y).toBe(child.bounds.y + child.bounds.height);
+				expect(tip?.y).toBe(parent.bounds.y);
+			} else if (direction === LayoutDirection.LeftToRight) {
+				expect(start?.x).toBe(child.bounds.x);
+				expect(tip?.x).toBe(parent.bounds.x + parent.bounds.width);
+			} else {
+				expect(start?.x).toBe(child.bounds.x + child.bounds.width);
+				expect(tip?.x).toBe(parent.bounds.x);
+			}
+		}
+	},
+);

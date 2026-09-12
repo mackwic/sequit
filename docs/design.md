@@ -86,7 +86,9 @@ Les composants d’inspection sont partagés dans `src/app/web/ui/components/con
 
 ### Relation
 
-Une relation est orientée et relie une boîte source à une boîte cible.
+Une relation est orientée de l’enfant (source, `from`) vers son parent (cible, `to`). Si A est la racine et B son enfant, la relation est `B → A`.
+
+Les racines sans parent sont au rang 1. Le rang d’un enfant vaut 1 + le plus grand rang de ses parents ; les jonctions ne comptent pas comme étapes de nœuds supplémentaires. Les rangs progressent depuis l’origine de la direction du layout : haut en `top-to-bottom`, bas en `bottom-to-top`, gauche en `left-to-right`, droite en `right-to-left`. Les flèches remontent vers les parents, dans le sens opposé. Le calcul utilise des indices de rang à partir de 0 ; le vocabulaire et les rangs affichés commencent à 1.
 
 Le modèle visuel pourra ressembler à un arbre, mais le modèle logique visé est un graphe orienté acyclique (DAG). Cela autorise notamment plusieurs antécédents pour une même boîte et la convergence de plusieurs branches.
 

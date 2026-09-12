@@ -13,8 +13,8 @@ function scenario(name: LayoutPerformanceScenarioName, nodeCount = 50) {
 	return prepareLayoutPerformanceScenario(named, nodeCount);
 }
 
-function predecessors(document: LogicDocument, id: string): readonly string[] {
-	return document.relations.filter(({ to }) => to === id).map(({ from }) => from);
+function parents(document: LogicDocument, id: string): readonly string[] {
+	return document.relations.filter(({ from }) => from === id).map(({ to }) => to);
 }
 
 function itemAt<T>(items: readonly T[], index: number, name: string): T {
@@ -46,8 +46,8 @@ function weakComponentCount(graph: LogicGraph): number {
 			const id = pending.pop();
 			if (id === undefined) continue;
 			for (const next of [
-				...(graph.outgoingByEndpointId.get(id) ?? []),
 				...(graph.predecessorsByEndpointId.get(id) ?? []),
+				...(graph.outgoingByEndpointId.get(id) ?? []),
 			]) {
 				if (!visited.has(next)) {
 					visited.add(next);
@@ -64,35 +64,33 @@ describe('layout performance topologies', () => {
 		const prepared = scenario('long-queue', 19);
 		expect(prepared.nodeRanks.every((rank) => rank.length === 1)).toBe(true);
 		for (let index = 1; index < prepared.document.nodes.length; index += 1) {
-			expect(
-				predecessors(prepared.document, itemAt(prepared.document.nodes, index, 'node').id),
-			).toEqual([itemAt(prepared.document.nodes, index - 1, 'node').id]);
+			expect(parents(prepared.document, itemAt(prepared.document.nodes, index, 'node').id)).toEqual(
+				[itemAt(prepared.document.nodes, index - 1, 'node').id],
+			);
 		}
 	});
 
 	it('builds a breadth-first binary tree', () => {
 		const { document } = scenario('binary-tree');
 		for (let index = 1; index < document.nodes.length; index += 1) {
-			expect(predecessors(document, itemAt(document.nodes, index, 'node').id)).toEqual([
+			expect(parents(document, itemAt(document.nodes, index, 'node').id)).toEqual([
 				itemAt(document.nodes, Math.floor((index - 1) / 2), 'parent node').id,
 			]);
 		}
 		for (const node of document.nodes) {
-			expect(document.relations.filter(({ from }) => from === node.id).length).toBeLessThanOrEqual(
-				2,
-			);
+			expect(document.relations.filter(({ to }) => to === node.id).length).toBeLessThanOrEqual(2);
 		}
 	});
 
 	it('builds prefix-stable 80-percent unbalanced ownership', () => {
 		const prepared = scenario('unbalanced', 50);
 		for (const node of prepared.document.nodes.slice(1)) {
-			expect(predecessors(prepared.document, node.id)).toHaveLength(1);
+			expect(parents(prepared.document, node.id)).toHaveLength(1);
 		}
 		for (let rank = 1; rank < prepared.nodeRanks.length - 1; rank += 1) {
 			const source = itemAt(itemAt(prepared.nodeRanks, rank - 1, 'source rank'), 0, 'source');
 			const target = itemAt(prepared.nodeRanks, rank, 'target rank');
-			expect(target.filter((id) => predecessors(prepared.document, id)[0] === source)).toHaveLength(
+			expect(target.filter((id) => parents(prepared.document, id)[0] === source)).toHaveLength(
 				Math.ceil(target.length * 0.8),
 			);
 		}
@@ -119,10 +117,10 @@ describe('layout performance topologies', () => {
 			const targets = itemAt(first.nodeRanks, rankIndex, 'target rank');
 			expect(first.nodeRanks[rankIndex - 1]).toContain(owner);
 			expect(
-				targets.filter((target) => first.graph.predecessorsByEndpointId.get(target)?.[0] === owner),
+				targets.filter((target) => first.graph.outgoingByEndpointId.get(target)?.[0] === owner),
 			).toHaveLength(Math.min(targets.length, Math.ceil((rankIndex * 2 + 1) * 0.8)));
 			for (const target of targets) {
-				expect(first.graph.predecessorsByEndpointId.get(target)).toHaveLength(1);
+				expect(first.graph.outgoingByEndpointId.get(target)).toHaveLength(1);
 				expect(first.ranks.byEndpointId.get(target)).toBe(rankIndex);
 			}
 		}
@@ -170,11 +168,11 @@ describe('layout performance topologies', () => {
 			const targets = itemAt(prepared.nodeRanks, rank, 'target rank');
 			expectedRelationCount += sources.length * targets.length;
 			for (const source of sources) {
-				expect(prepared.graph.outgoingByEndpointId.get(source)).toEqual(targets);
+				expect(prepared.graph.predecessorsByEndpointId.get(source)).toEqual(targets);
 			}
 			for (const target of targets) {
-				expect(predecessors(prepared.document, target)).toEqual(sources);
-				expect(prepared.graph.predecessorsByEndpointId.get(target)).toEqual(sources);
+				expect(parents(prepared.document, target)).toEqual(sources);
+				expect(prepared.graph.outgoingByEndpointId.get(target)).toEqual(sources);
 				expect(prepared.ranks.byEndpointId.get(target)).toBe(rank);
 			}
 		}
@@ -187,7 +185,7 @@ describe('layout performance topologies', () => {
 		for (let index = 1; index < document.nodes.length; index += 1) {
 			let predecessorCount = 1;
 			if (index % 3 === 0) predecessorCount = 2;
-			expect(predecessors(document, itemAt(document.nodes, index, 'node').id)).toHaveLength(
+			expect(parents(document, itemAt(document.nodes, index, 'node').id)).toHaveLength(
 				predecessorCount,
 			);
 		}
@@ -199,7 +197,7 @@ describe('layout performance topologies', () => {
 		expect(prepared.document.relations).toHaveLength(Math.floor(prepared.nodeCount / 2));
 	});
 
-	it('keeps junctions in their source rank', () => {
+	it('keeps junctions in their parent rank', () => {
 		const prepared = scenario('junction-heavy', 19);
 		expect(prepared.document.junctions).toHaveLength(prepared.nodeCount - 1);
 		expect(prepared.document.relations).toHaveLength((prepared.nodeCount - 1) * 2);
@@ -211,8 +209,8 @@ describe('layout performance topologies', () => {
 				const nodeId = itemAt(prepared.document.nodes, index, 'node').id;
 				const junctionId = itemAt(prepared.document.junctions, index, 'junction').id;
 				const nextNodeId = itemAt(prepared.document.nodes, index + 1, 'next node').id;
-				expect(prepared.graph.outgoingByEndpointId.get(nodeId)).toEqual([junctionId]);
-				expect(prepared.graph.outgoingByEndpointId.get(junctionId)).toEqual([nextNodeId]);
+				expect(prepared.graph.predecessorsByEndpointId.get(nodeId)).toEqual([junctionId]);
+				expect(prepared.graph.predecessorsByEndpointId.get(junctionId)).toEqual([nextNodeId]);
 				expect(prepared.measurements.junctions.has(junctionId)).toBe(true);
 				expect(prepared.ranks.byEndpointId.get(junctionId)).toBe(index);
 			}
@@ -242,10 +240,8 @@ describe('layout performance topologies', () => {
 			expect(prepared.measurements.groups.has(group.id)).toBe(true);
 			for (const member of members) {
 				expect(prepared.graph.endpointsById.get(member.id)?.entity).toEqual(member);
-				expect(prepared.graph.outgoingByEndpointId.get(member.id)).toEqual(expectedOutgoing);
-				expect(prepared.graph.predecessorsByEndpointId.get(member.id)).toEqual(
-					expectedPredecessors,
-				);
+				expect(prepared.graph.predecessorsByEndpointId.get(member.id)).toEqual(expectedOutgoing);
+				expect(prepared.graph.outgoingByEndpointId.get(member.id)).toEqual(expectedPredecessors);
 				expect(prepared.ranks.byEndpointId.get(member.id)).toBe(index);
 			}
 		}

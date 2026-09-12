@@ -189,11 +189,11 @@ function relationGroupRankGap(
 	for (const relation of graph.effectiveRelations) {
 		const sourceExtent = Math.max(
 			0,
-			...relation.sourceIds.map((id) => shellExtent(id, !forwardIsPhysicalStart)),
+			...relation.sourceIds.map((id) => shellExtent(id, forwardIsPhysicalStart)),
 		);
 		const targetExtent = Math.max(
 			0,
-			...relation.targetIds.map((id) => shellExtent(id, forwardIsPhysicalStart)),
+			...relation.targetIds.map((id) => shellExtent(id, !forwardIsPhysicalStart)),
 		);
 		rankGap = Math.max(rankGap, sourceExtent + targetExtent);
 	}

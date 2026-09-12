@@ -257,14 +257,14 @@ describe('layoutGraph', () => {
 		).resolves.toEqual({ width: 80, height: 80, elements: [], relations: [] });
 	});
 
-	it('places every dependency top-to-bottom without overlapping endpoints', async () => {
+	it('places every child below its parent without overlapping endpoints', async () => {
 		const { graph, ranks, layout } = await layoutDocument(await openReferenceLiveDocument());
 		const byId = boundsById(layout);
 		for (const { source, target } of graph.relations) {
 			const sourceBounds = byId.get(source.entity.id);
 			const targetBounds = byId.get(target.entity.id);
 			if (!sourceBounds || !targetBounds) throw new Error('Expected relation endpoint bounds');
-			expect(sourceBounds.y + sourceBounds.height).toBeLessThan(targetBounds.y);
+			expect(targetBounds.y + targetBounds.height).toBeLessThan(sourceBounds.y);
 		}
 
 		const rankedIds = [...ranks.byEndpointId.keys()];
@@ -430,7 +430,7 @@ describe('layoutGraph', () => {
 		expect(bounds.get('zz-added-first')?.x).toBeLessThan(bounds.get('aa-added-second')?.x ?? 0);
 	});
 
-	it('keeps disconnected component packing stable after a target-local key move', async () => {
+	it('keeps disconnected component packing stable after a child-local key move', async () => {
 		const peerKey = orderKey('a1');
 		const movedKey = fractionalOrderKeySpace.keyFor({ after: peerKey }, 'moving-target');
 		const isolatedKey = fractionalOrderKeySpace.keyFor(
@@ -476,8 +476,8 @@ describe('layoutGraph', () => {
 			],
 			junctions: [],
 			relations: [
-				{ id: 'source-to-peer', from: 'component-source', to: 'component-peer' },
-				{ id: 'source-to-target', from: 'component-source', to: 'moving-target' },
+				{ id: 'source-to-peer', from: 'component-peer', to: 'component-source' },
+				{ id: 'source-to-target', from: 'moving-target', to: 'component-source' },
 			],
 		};
 		const after: LogicDocument = {
@@ -537,15 +537,15 @@ describe('layoutGraph', () => {
 			],
 			junctions: [],
 			relations: [
-				{ id: 'source-to-middle', from: 'source', to: 'middle' },
-				{ id: 'middle-to-existing', from: 'middle', to: 'existing' },
+				{ id: 'source-to-middle', from: 'middle', to: 'source' },
+				{ id: 'middle-to-existing', from: 'existing', to: 'middle' },
 			],
 		};
 		const migrated: LogicDocument = {
 			...base,
 			relations: [
 				...base.relations,
-				{ id: 'middle-to-migrating', from: 'middle', to: 'migrating' },
+				{ id: 'middle-to-migrating', from: 'migrating', to: 'middle' },
 			],
 		};
 		const { ranks, layout } = await layoutDocument(migrated);

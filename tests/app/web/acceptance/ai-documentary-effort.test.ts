@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { openDocument } from '../../../../src/app/web/projection/open-document';
+import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/assert-routes';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
@@ -309,9 +310,9 @@ describe('AI for documentary effort', () => {
 					expect(pointTouchesBoundary(lastPoint, toBounds)).toBe(true);
 				}
 			}
-			expect(after.relations.find(({ id }) => id === 'source-b-to-target-c')?.points).toEqual(
-				before.relations.find(({ id }) => id === 'source-b-to-target-c')?.points,
-			);
+			// Port positions may change when the shared corridor no longer has an inversion.
+			AssertRoutes(before.relations).haveCrossing();
+			AssertRoutes(after.relations).haveNoCrossing();
 			expect(afterBounds.get('source-a')).toEqual(beforeBounds.get('source-a'));
 			expect(afterBounds.get('source-b')).toEqual(beforeBounds.get('source-b'));
 		});

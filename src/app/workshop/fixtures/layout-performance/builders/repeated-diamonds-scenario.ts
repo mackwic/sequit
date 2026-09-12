@@ -18,7 +18,7 @@ export class RepeatedDiamondsScenarioBuilder extends LayoutPerformanceScenarioBu
 		const nodeRank = motif * 2 + rankOffset;
 		return this.insertion(nodeIndex, nodeRank, {
 			addedRelations: fromIndices.map((fromIndex) =>
-				this.relation(this.nodeId(fromIndex), this.nodeId(nodeIndex)),
+				this.childToParent(this.nodeId(fromIndex), this.nodeId(nodeIndex)),
 			),
 		});
 	}

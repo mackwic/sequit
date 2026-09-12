@@ -68,7 +68,7 @@ describe('endpoint-local layout order', () => {
 
 		expect(orderedBounds.get('z-source')?.x).toBeLessThan(orderedBounds.get('a-source')?.x ?? 0);
 		expect(orderedBounds.get('z-source')?.y).toBe(orderedBounds.get('a-source')?.y);
-		expect(orderedBounds.get('target')?.y).toBeGreaterThan(
+		expect(orderedBounds.get('target')?.y).toBeLessThan(
 			orderedBounds.get('z-source')?.y ?? Number.POSITIVE_INFINITY,
 		);
 		for (const id of ['z-source', 'a-source', 'target']) {

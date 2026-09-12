@@ -93,10 +93,10 @@ export function layoutBiasScenario(
 		groups,
 		nodes: [...LONG_BRANCH, ...SHORT_BRANCH, ...ISOLATED_BRANCH].map(node),
 		junctions: [],
-		relations: [...LONG_BRANCH_RELATIONS, ...SHORT_BRANCH_RELATIONS].map(([from, to]) => ({
-			id: `${from}-to-${to}`,
-			from,
-			to,
+		relations: [...LONG_BRANCH_RELATIONS, ...SHORT_BRANCH_RELATIONS].map(([parent, child]) => ({
+			id: `${child}-to-${parent}`,
+			from: child,
+			to: parent,
 		})),
 	};
 }

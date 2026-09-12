@@ -12,7 +12,7 @@ export class WideBipartiteLayersScenarioBuilder extends LayoutPerformanceScenari
 			const sourceStart = squareShellStart(rank - 1);
 			for (let offset = 0; offset < squareShellWidth(rank - 1); offset += 1) {
 				addedRelations.push(
-					this.relation(this.nodeId(sourceStart + offset), this.nodeId(nodeIndex)),
+					this.childToParent(this.nodeId(sourceStart + offset), this.nodeId(nodeIndex)),
 				);
 			}
 		}

@@ -21,7 +21,7 @@ export class UnbalancedScenarioBuilder extends LayoutPerformanceScenarioBuilder 
 		}
 		const sourceId = this.nodeId(sourceStart + sourceOffset);
 		return this.insertion(nodeIndex, rank, {
-			addedRelations: [this.relation(sourceId, this.nodeId(nodeIndex))],
+			addedRelations: [this.childToParent(sourceId, this.nodeId(nodeIndex))],
 		});
 	}
 }

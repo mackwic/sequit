@@ -8,39 +8,39 @@ export interface TopologicalRanks {
 	readonly bands: readonly (readonly string[])[];
 }
 
-function rankTargets(
+function rankChildren(
 	graph: LogicGraph,
-	sourceId: string,
+	parentId: string,
 	ranks: Map<string, number>,
-	indegree: Map<string, number>,
+	remainingParents: Map<string, number>,
 ): readonly string[] {
-	const sourceRank = defined(ranks.get(sourceId));
-	const readyTargets: string[] = [];
-	for (const target of defined(graph.outgoingByEndpointId.get(sourceId))) {
-		const increment = graph.endpointsById.get(target)?.kind === EndpointKind.Junction ? 0 : 1;
-		ranks.set(target, Math.max(defined(ranks.get(target)), sourceRank + increment));
-		const remaining = defined(indegree.get(target)) - 1;
-		indegree.set(target, remaining);
-		if (remaining === 0) readyTargets.push(target);
+	const parentRank = defined(ranks.get(parentId));
+	const readyChildren: string[] = [];
+	for (const child of defined(graph.predecessorsByEndpointId.get(parentId))) {
+		const increment = graph.endpointsById.get(child)?.kind === EndpointKind.Junction ? 0 : 1;
+		ranks.set(child, Math.max(defined(ranks.get(child)), parentRank + increment));
+		const remaining = defined(remainingParents.get(child)) - 1;
+		remainingParents.set(child, remaining);
+		if (remaining === 0) readyChildren.push(child);
 	}
-	return readyTargets;
+	return readyChildren;
 }
+/** Zero-based longest-path ranks from roots, traversing child → parent relations in reverse.
+ * Junctions occupy the interval after their parent rank without adding a node rank.
+ */
 export function topologicallyRank(graph: LogicGraph): TopologicalRanks {
-	const indegree = new Map(
-		graph.rankableEndpointIds.map((id) => [
-			id,
-			defined(graph.predecessorsByEndpointId.get(id)).length,
-		]),
+	const remainingParents = new Map(
+		graph.rankableEndpointIds.map((id) => [id, defined(graph.outgoingByEndpointId.get(id)).length]),
 	);
 	const ranks = new Map(graph.rankableEndpointIds.map((id) => [id, 0]));
-	let frontier = graph.rankableEndpointIds.filter((id) => indegree.get(id) === 0);
+	let frontier = graph.rankableEndpointIds.filter((id) => remainingParents.get(id) === 0);
 	let processed = 0;
 
 	while (frontier.length > 0) {
 		const nextFrontier: string[] = [];
 		for (const id of frontier) {
 			processed += 1;
-			nextFrontier.push(...rankTargets(graph, id, ranks, indegree));
+			nextFrontier.push(...rankChildren(graph, id, ranks, remainingParents));
 		}
 		nextFrontier.sort(compareCanonicalStrings);
 		frontier = nextFrontier;

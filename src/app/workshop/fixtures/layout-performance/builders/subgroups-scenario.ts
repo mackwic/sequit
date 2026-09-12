@@ -12,7 +12,7 @@ export class SubgroupsScenarioBuilder extends LayoutPerformanceScenarioBuilder {
 		const parentIndex = Math.floor((nodeIndex - 1) / 2);
 		const addedRelations = [];
 		if (nodeIndex > 0) {
-			addedRelations.push(this.relation(this.nodeId(parentIndex), this.nodeId(nodeIndex)));
+			addedRelations.push(this.childToParent(this.nodeId(parentIndex), this.nodeId(nodeIndex)));
 		}
 		return this.insertion(nodeIndex, Math.floor(Math.log2(nodeIndex + 1)), {
 			node: this.node(nodeIndex, groupId),

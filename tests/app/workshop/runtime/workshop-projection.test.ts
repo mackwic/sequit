@@ -87,7 +87,7 @@ describe('workshop canvas projections', () => {
 		expect(airy.nodes.map((node) => node.bounds.width)).toEqual([220, 220, 220, 220]);
 		for (const relation of airy.relations) {
 			const from = defined(airy.nodes.find((node) => node.id === relation.from));
-			expect(relation.points[0]?.y).toBe(from.bounds.y + from.bounds.height);
+			expect(relation.points[0]?.y).toBe(from.bounds.y);
 		}
 	});
 	it('projects a collapsed group using the shared group measurements', async () => {
