@@ -9,9 +9,9 @@ export type QuaySide = 'incoming' | 'outgoing';
 interface QuayAssertions {
 	haveCount(count: number): QuayAssertions;
 	areCentered(): QuayAssertions;
-	haveClearance(spacing: number, inset: number): QuayAssertions;
+	haveClearance(options: { readonly spacing: number; readonly inset: number }): QuayAssertions;
 }
-interface QuaySizeOptions {
+export interface QuaySizeOptions {
 	readonly content: number;
 	readonly incoming: number;
 	readonly outgoing: number;
@@ -66,7 +66,7 @@ export function AssertQuays(layout: VisualLayout, nodeId: string, side: QuaySide
 			});
 			return assertions;
 		},
-		haveClearance(spacing: number, inset: number) {
+		haveClearance({ spacing, inset }: { readonly spacing: number; readonly inset: number }) {
 			minimumMetric(`Marge initiale ${nodeId}/${side}`, defined(coordinates[0]) - start, inset, {
 				boxes: [nodeId],
 			});

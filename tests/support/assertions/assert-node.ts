@@ -1,4 +1,5 @@
 import type { VisualNode } from '../harnesses/visual-layout';
+import { VisualAssertionError } from './assertion-error';
 
 interface NodeAssertions {
 	hasRank(expected: number): NodeAssertions;
@@ -11,7 +12,17 @@ export function AssertNode(node: VisualNode): NodeAssertions {
 			if (!Number.isInteger(expected) || expected < 1)
 				throw new Error('Expected rank must be a positive integer.');
 			if (node.rank !== expected)
-				throw new Error(`Node "${node.id}": expected rank=${expected}, actual=${node.rank}.`);
+				throw new VisualAssertionError(
+					`Rang du nœud ${node.id}`,
+					expected,
+					node.rank,
+					{ boxes: [node.id] },
+					{
+						code: 'node.rank',
+						context: { subject: { kind: 'box', ids: [node.id] } },
+						message: `Node "${node.id}": expected rank=${expected}, actual=${node.rank}.`,
+					},
+				);
 			return assertions;
 		},
 	};

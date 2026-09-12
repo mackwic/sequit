@@ -1,18 +1,13 @@
 import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { rowGap } from '../../../support/assertions/assert-rails';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
-import {
-	checkDistinctPaths,
-	checkQuays,
-	checkSize,
-	railPolicy,
-} from '../../../support/assertions/routing';
 import {
 	equalMetric,
 	extent,
 	minimumMetric,
 } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { quayPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
@@ -40,13 +35,17 @@ export const scenario: LayoutScenario = {
 		return after.withReference('Avant : quatre relations et un croisement obligé', before);
 	},
 	assert(layout) {
+		const check = AssertLayout(layout);
 		const before = defined(layout.reference).layout;
-		checkDistinctPaths(layout);
-		AssertRoutes(layout.relations).haveNoCrossing();
-		for (const id of ['a', 'b']) checkQuays(layout, id, 'outgoing', 1);
-		for (const id of ['c', 'd']) checkQuays(layout, id, 'incoming', 1);
+		check.routes().areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+		check.renderedPaths().haveBridgeAtEveryCrossing();
+		check.routes().haveNoCrossing();
+		for (const id of ['a', 'b'])
+			check.quays(id, { side: 'outgoing' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+		for (const id of ['c', 'd'])
+			check.quays(id, { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
 		for (const id of ['a', 'b', 'c', 'd']) {
-			checkSize(layout, id, [1, 1]);
+			check.node(id).hasSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
 			const axis = axesFor(layout.direction).transverse;
 			minimumMetric(
 				`Réduction du nœud ${id}`,

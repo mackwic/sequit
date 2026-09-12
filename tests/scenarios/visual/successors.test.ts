@@ -6,6 +6,15 @@ import { scenario as threeSuccessors } from './nodes/three-successors.scenario';
 import { scenario as withIsolatedNode } from './nodes/three-successors-and-isolated-node.scenario';
 import { scenario as twoSuccessors } from './nodes/two-successors.scenario';
 
+function capturedError(assert: () => void): unknown {
+	try {
+		assert();
+	} catch (error) {
+		return error;
+	}
+	throw new Error('Expected the changed layout to fail.');
+}
+
 describe.each([twoSuccessors, threeSuccessors, withIsolatedNode])(
 	'$id regression detection',
 	(scenario) => {
@@ -20,9 +29,10 @@ describe.each([twoSuccessors, threeSuccessors, withIsolatedNode])(
 						return { ...box, bounds: { ...box.bounds, [axis]: box.bounds[axis] + 10 } };
 					}),
 				);
-				expect(() => {
+				const error = capturedError(() => {
 					scenario.assert(displaced);
-				}).toThrow('difference=10');
+				});
+				expect(error).toMatchObject({ code: 'box.centering', context: { difference: 10, axis } });
 				scenario.assert(layout);
 			},
 		);
@@ -44,6 +54,12 @@ describe.each(Object.values(LayoutDirection))('isolated node separation in %s', 
 		);
 		expect(() => {
 			withIsolatedNode.assert(overlapping);
-		}).toThrow('Box "e" must be after "envelope(b,c,d)"');
+		}).toThrow(
+			expect.objectContaining({
+				code: 'box.order',
+				actual: gap,
+				targets: { boxes: ['e'], referenceBoxes: ['b', 'c', 'd'] },
+			}),
+		);
 	});
 });

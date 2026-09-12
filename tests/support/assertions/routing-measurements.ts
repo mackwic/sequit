@@ -15,6 +15,7 @@ export function equalMetric(
 	expected: number,
 	targets: AssertionTargets = {},
 ): void {
+	if (!Number.isFinite(expected)) throw new Error('Expected metric must be finite.');
 	if (!Number.isFinite(actual) || Math.abs(actual - expected) > PRECISION)
 		throw new VisualAssertionError(label, expected, actual, targets);
 }
@@ -25,6 +26,7 @@ export function minimumMetric(
 	minimum: number,
 	targets: AssertionTargets = {},
 ): void {
+	if (!Number.isFinite(minimum)) throw new Error('Minimum metric must be finite.');
 	if (!Number.isFinite(actual) || actual + PRECISION < minimum)
 		throw new VisualAssertionError(label, `minimum=${minimum}`, actual, targets);
 }

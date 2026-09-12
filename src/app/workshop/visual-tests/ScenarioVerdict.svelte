@@ -28,6 +28,11 @@
 					<dd>{error.actual}</dd>
 				</div>
 			</dl>
+			{#if error.context?.axis}<p>Axe : {error.context.axis.toUpperCase()}</p>{/if}
+			{#if error.context?.difference !== undefined}<p>Écart : {error.context.difference}</p>{/if}
+			{#if error.context?.tolerance !== undefined}<p>
+					Tolérance : {error.context.tolerance} unité de layout
+				</p>{/if}
 		{:else}
 			<p class="failure-subject">
 				{#if error instanceof Error}{error.message}{:else}{String(error)}{/if}

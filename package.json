@@ -21,7 +21,7 @@
 		"lint:staged": "lint-staged",
 		"quality:fast": "pnpm run lint && pnpm run quality:unused && pnpm run quality:architecture && pnpm run test:coverage && pnpm run quality:duplicates",
 		"quality:architecture": "depcruise src tests/scenarios/visual tests/support --config config/dependency-cruiser.cjs --output-type err",
-		"quality:duplicates": "jscpd src tests/scenarios/visual tests/support/assertions tests/support/builders/visual-graph-builder.ts tests/support/fixtures/graph-fixtures.ts tests/support/fixtures/routing-fixtures.ts tests/support/harnesses/layout-nodes.ts tests/support/harnesses/visual-layout.ts tests/support/harnesses/visual-directions.ts --config config/jscpd.json",
+		"quality:duplicates": "jscpd src tests/scenarios/visual tests/support/assertions tests/support/builders/visual-graph-builder.ts tests/support/fixtures/graph-fixtures.ts tests/support/fixtures/routing-fixtures.ts tests/support/harnesses/box-geometry.ts tests/support/harnesses/layout-nodes.ts tests/support/harnesses/visual-layout.ts tests/support/harnesses/visual-directions.ts --config config/jscpd.json",
 		"quality:unused": "knip",
 		"prepare": "svelte-kit sync && husky",
 		"check": "pnpm run format:check && pnpm run check:types && pnpm run quality:fast && pnpm run test:e2e && pnpm run build",

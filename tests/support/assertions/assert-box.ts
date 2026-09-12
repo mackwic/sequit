@@ -1,11 +1,7 @@
-import { LayoutDirection } from '../../../src/lib/core/document/logic-document';
-import type { Bounds } from '../../../src/lib/core/layout/layout-types';
-
-/** A box observation in layout space (VL-302, VL-220 in docs/visual-language.md). */
-export interface BoxGeometry {
-	readonly id: string;
-	readonly bounds: Bounds;
-}
+import type { LayoutDirection } from '../../../src/lib/core/document/logic-document';
+import { type BoxGeometry, coordinate, gapAfter, identityOf } from '../harnesses/box-geometry';
+import { VisualAssertionError } from './assertion-error';
+export type { BoxGeometry } from '../harnesses/box-geometry';
 
 interface BoxAlignmentOptions {
 	readonly by: 'top' | 'centerX' | 'centerY';
@@ -22,75 +18,79 @@ export interface BoxAssertions {
 	isAfter(other: BoxGeometry, options: { readonly direction: LayoutDirection }): BoxAssertions;
 }
 
-function validateBox(box: BoxGeometry): void {
-	const { x, y, width, height } = box.bounds;
-	if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-		throw new Error(`Box "${box.id}" must have finite coordinates and positive dimensions.`);
+function assertAlignment(
+	subject: BoxGeometry,
+	other: BoxGeometry,
+	{ by, tolerance = 0.001 }: BoxAlignmentOptions,
+	operation: 'box.alignment' | 'box.centering',
+): void {
+	if (!Number.isFinite(tolerance) || tolerance < 0) {
+		throw new Error('Box alignment tolerance must be finite and non-negative.');
+	}
+	const actual = coordinate(subject, by);
+	const expected = coordinate(other, by);
+	const difference = Math.abs(actual - expected);
+	// Require a comparable distance within tolerance; NaN must also fail the assertion.
+	if (!(difference <= tolerance)) {
+		let measuredAxis: 'x' | 'y' = 'x';
+		if (by !== 'centerX') measuredAxis = 'y';
+		throw new VisualAssertionError(
+			`Alignement de ${subject.id} sur ${other.id}`,
+			expected,
+			actual,
+			{ boxes: identityOf(subject).ids, referenceBoxes: identityOf(other).ids },
+			{
+				code: operation,
+				context: {
+					subject: identityOf(subject),
+					reference: identityOf(other),
+					axis: measuredAxis,
+					tolerance,
+					difference,
+				},
+				message: `Box "${subject.id}" is not aligned with box "${other.id}" by ${by}: actual=${actual}, expected=${expected}, difference=${difference}, tolerance=${tolerance} (layout units).`,
+			},
+		);
 	}
 }
 
-function coordinate(box: BoxGeometry, by: BoxAlignmentOptions['by']): number {
-	validateBox(box);
-	switch (by) {
-		case 'top':
-			return box.bounds.y;
-		case 'centerX':
-			return box.bounds.x + box.bounds.width / 2;
-		case 'centerY':
-			return box.bounds.y + box.bounds.height / 2;
-		default:
-			throw new Error(`Unsupported box alignment: ${String(by)}`);
-	}
-}
-
-/** Alignment of explicit reference points (VL-505). Every link keeps the original subject. */
+/** Every link keeps the original subject. Centering compares centers, without implying containment. */
 export function AssertBox(subject: BoxGeometry): BoxAssertions {
 	const assertions: BoxAssertions = {
-		isAlignedWith(other, { by, tolerance = 0.001 }) {
-			if (!Number.isFinite(tolerance) || tolerance < 0) {
-				throw new Error('Box alignment tolerance must be finite and non-negative.');
-			}
-			const actual = coordinate(subject, by);
-			const expected = coordinate(other, by);
-			const difference = Math.abs(actual - expected);
-			// Require a comparable distance within tolerance; NaN must also fail the assertion.
-			if (!(difference <= tolerance)) {
-				throw new Error(
-					`Box "${subject.id}" is not aligned with box "${other.id}" by ${by}: ` +
-						`actual=${actual}, expected=${expected}, difference=${difference}, tolerance=${tolerance} (layout units).`,
-				);
-			}
+		isAlignedWith(other, options) {
+			assertAlignment(subject, other, options, 'box.alignment');
 			return assertions;
 		},
 		isCenteredIn(container, { axis }) {
 			switch (axis) {
 				case 'x':
-					return assertions.isAlignedWith(container, { by: 'centerX' });
+					assertAlignment(subject, container, { by: 'centerX' }, 'box.centering');
+					break;
 				case 'y':
-					return assertions.isAlignedWith(container, { by: 'centerY' });
+					assertAlignment(subject, container, { by: 'centerY' }, 'box.centering');
+					break;
 				case 'both':
-					return assertions
-						.isAlignedWith(container, { by: 'centerX' })
-						.isAlignedWith(container, { by: 'centerY' });
+					assertAlignment(subject, container, { by: 'centerX' }, 'box.centering');
+					assertAlignment(subject, container, { by: 'centerY' }, 'box.centering');
+					break;
 				default:
 					throw new Error(`Unsupported centering axis: ${String(axis)}`);
 			}
+			return assertions;
 		},
 		isAfter(other, { direction }) {
-			validateBox(subject);
-			validateBox(other);
-			const a = other.bounds;
-			const b = subject.bounds;
-			const gaps = {
-				[LayoutDirection.TopToBottom]: b.y - (a.y + a.height),
-				[LayoutDirection.BottomToTop]: a.y - (b.y + b.height),
-				[LayoutDirection.LeftToRight]: b.x - (a.x + a.width),
-				[LayoutDirection.RightToLeft]: a.x - (b.x + b.width),
-			};
-			const gap = gaps[direction];
+			const gap = gapAfter(subject, other, direction);
 			if (!(gap > 0))
-				throw new Error(
-					`Box "${subject.id}" must be after "${other.id}" in ${direction}: gap=${gap}.`,
+				throw new VisualAssertionError(
+					`Position de ${subject.id} après ${other.id}`,
+					'espace strictement positif',
+					gap,
+					{ boxes: identityOf(subject).ids, referenceBoxes: identityOf(other).ids },
+					{
+						code: 'box.order',
+						context: { subject: identityOf(subject), reference: identityOf(other), direction },
+						message: `Box "${subject.id}" must be after "${other.id}" in ${direction}: gap=${gap}.`,
+					},
 				);
 			return assertions;
 		},

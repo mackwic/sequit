@@ -1,6 +1,6 @@
 import { EndpointKind, LayoutDirection } from '../../../src/lib/core/document/logic-document';
 import type { LayoutElement, LayoutResult } from '../../../src/lib/core/layout/layout-types';
-import type { BoxGeometry } from '../assertions/assert-box';
+import { type BoxGeometry, validateBox } from './box-geometry';
 
 export interface VisualNode extends LayoutElement {
 	/** Human-facing ordinal; the first logical rank is 1. */
@@ -48,16 +48,26 @@ export class VisualLayout implements LayoutResult {
 	}
 
 	get frame(): BoxGeometry {
-		return { id: 'layout', bounds: { x: 0, y: 0, width: this.width, height: this.height } };
+		return {
+			id: 'layout',
+			identity: { kind: 'frame', ids: [] },
+			bounds: { x: 0, y: 0, width: this.width, height: this.height },
+		};
 	}
 
 	envelopeOf(ids: readonly string[]): BoxGeometry {
 		if (ids.length === 0) throw new Error('Cannot measure an empty envelope.');
-		const bounds = ids.map((id) => this.getById(id).bounds);
+		if (new Set(ids).size !== ids.length) throw new Error('Envelope identifiers must be unique.');
+		const bounds = ids.map((id) => {
+			const box = this.getById(id);
+			validateBox(box);
+			return box.bounds;
+		});
 		const x = Math.min(...bounds.map((box) => box.x));
 		const y = Math.min(...bounds.map((box) => box.y));
 		return {
 			id: `envelope(${ids.join(',')})`,
+			identity: { kind: 'envelope', ids: [...ids] },
 			bounds: {
 				x,
 				y,

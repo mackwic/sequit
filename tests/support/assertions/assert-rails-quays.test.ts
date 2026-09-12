@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EndpointKind, LayoutDirection } from '../../../src/lib/core/document/logic-document';
 import type { Bounds, LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
 import { VisualLayout } from '../harnesses/visual-layout';
+import { AssertLayout } from './assert-layout';
 import { AssertQuays, AssertQuaySize } from './assert-quays';
 import { AssertRails } from './assert-rails';
 import { AssertTrunks } from './assert-trunks';
@@ -59,8 +60,14 @@ const rows = [['a'], ['b']] as const;
 describe.each(Object.values(LayoutDirection))('rails and quays in %s', (direction) => {
 	it('counts distinct anchors and checks centered, spaced incoming and outgoing quays', () => {
 		const layout = fixture(direction);
-		AssertQuays(layout, 'a', 'outgoing').haveCount(2).areCentered().haveClearance(48, 24);
-		AssertQuays(layout, 'b', 'incoming').haveCount(2).areCentered().haveClearance(48, 24);
+		AssertQuays(layout, 'a', 'outgoing')
+			.haveCount(2)
+			.areCentered()
+			.haveClearance({ spacing: 48, inset: 24 });
+		AssertQuays(layout, 'b', 'incoming')
+			.haveCount(2)
+			.areCentered()
+			.haveClearance({ spacing: 48, inset: 24 });
 		AssertRails(layout, rows).haveCount(2).haveAtLeast(2).haveRoom(room);
 	});
 	it('does not count two coincident anchors as two quays', () => {
@@ -82,10 +89,16 @@ it('rejects off-center, crowded and edge-adjacent quays independently', () => {
 		'Centre',
 	);
 	expect(() =>
-		AssertQuays(fixture(undefined, [40, 56]), 'a', 'outgoing').haveClearance(48, 24),
+		AssertQuays(fixture(undefined, [40, 56]), 'a', 'outgoing').haveClearance({
+			spacing: 48,
+			inset: 24,
+		}),
 	).toThrow('Espacement');
 	expect(() =>
-		AssertQuays(fixture(undefined, [12, 84]), 'a', 'outgoing').haveClearance(48, 24),
+		AssertQuays(fixture(undefined, [12, 84]), 'a', 'outgoing').haveClearance({
+			spacing: 48,
+			inset: 24,
+		}),
 	).toThrow('Marge');
 });
 
@@ -147,4 +160,36 @@ it('retains the reference while changing the observed elements', () => {
 	const after = fixture().withReference('Avant', before);
 	expect(after.withElements(after.elements).reference).toEqual({ label: 'Avant', layout: before });
 	expect(before.reference).toBeUndefined();
+});
+
+describe.each(Object.values(LayoutDirection))('fluent routing context in %s', (direction) => {
+	it('keeps quay, node and rail subjects throughout their chains', () => {
+		const layout = fixture(direction);
+		const check = AssertLayout(layout);
+		const outgoing = check.quays('a', { side: 'outgoing' });
+		expect(outgoing.haveCount(2).areCentered().haveClearance({ spacing: 48, inset: 24 })).toBe(
+			outgoing,
+		);
+		check
+			.quays('b', { side: 'incoming' })
+			.haveCount(2)
+			.areCentered()
+			.haveClearance({ spacing: 48, inset: 24 });
+		const size = { content: 80, incoming: 2, outgoing: 2, spacing: 48, inset: 24 };
+		const a = check.node('a');
+		expect(a.hasSizeForQuays(size).hasRank(1)).toBe(a);
+		const nodes = check.nodes(['a', 'b']);
+		expect(nodes.haveSizeForQuays(size)).toBe(nodes);
+		const rails = check.rails({ between: rows });
+		expect(rails.haveCount(2).haveAtLeast(2).haveRoom(room)).toBe(rails);
+		expect(() => check.node('a').hasSizeForQuays({ ...size, outgoing: 3 })).toThrow('Dimension');
+		expect(() => check.nodes(['a', 'b']).haveSizeForQuays({ ...size, content: 200 })).toThrow(
+			'Dimension',
+		);
+	});
+	it('retains a deliberately failing quay expectation instead of masking it in the facade', () => {
+		const check = AssertLayout(fixture(direction, [48, 48]));
+		expect(() => check.quays('a', { side: 'outgoing' }).haveCount(2)).toThrow('Nombre de quais');
+		expect(() => check.quays('a', { side: 'incoming' })).toThrow('Aucun quai');
+	});
 });

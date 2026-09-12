@@ -19,7 +19,7 @@ export default defineConfig({
 				'tests/support/assertions/**/*.ts',
 				'tests/support/builders/visual-graph-builder.ts',
 				'tests/support/fixtures/{graph-fixtures,routing-fixtures}.ts',
-				'tests/support/harnesses/{layout-nodes,visual-layout,visual-directions}.ts',
+				'tests/support/harnesses/{box-geometry,layout-nodes,visual-layout,visual-directions}.ts',
 			],
 			exclude: ['src/workers/**', 'tests/**/*.test.ts'],
 			reportsDirectory: 'coverage/web',

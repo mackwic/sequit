@@ -1,10 +1,9 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertRails, rowGap } from '../../../support/assertions/assert-rails';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
-import { AssertTrunks } from '../../../support/assertions/assert-trunks';
-import { checkQuays, checkSize, railPolicy } from '../../../support/assertions/routing';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { rowGap } from '../../../support/assertions/assert-rails';
 import { equalMetric } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { quayPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
@@ -25,19 +24,22 @@ export const scenario: LayoutScenario = {
 		});
 	},
 	assert(layout) {
-		checkQuays(layout, 'a', 'outgoing', 1);
-		checkSize(layout, 'a', [0, 1]);
-		for (const id of ['b', 'c', 'd', 'e']) checkQuays(layout, id, 'incoming', 1);
+		const check = AssertLayout(layout);
+		check.quays('a', { side: 'outgoing' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+		check.node('a').hasSizeForQuays({ content: 80, incoming: 0, outgoing: 1, ...quayPolicy });
+		for (const id of ['b', 'c', 'd', 'e'])
+			check.quays(id, { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
 		const axes = axesFor(layout.direction);
-		AssertTrunks(layout.relations).haveSharedSegment(axes.primary, 1);
+		check.trunks().haveSharedSegment(axes.primary, 1);
 		const ordered = [...layout.relations].sort(
 			(a, b) =>
 				layout.getById(a.to).bounds[axes.transverse] - layout.getById(b.to).bounds[axes.transverse],
 		);
-		AssertTrunks(ordered.slice(0, 2)).haveSharedSegment(axes.transverse, 1);
-		AssertTrunks(ordered.slice(2)).haveSharedSegment(axes.transverse, 1);
-		AssertRoutes(layout.relations).haveNoCrossing();
-		AssertRails(layout, [['a'], ['b', 'c', 'd', 'e']])
+		check.trunks(ordered.slice(0, 2)).haveSharedSegment(axes.transverse, 1);
+		check.trunks(ordered.slice(2)).haveSharedSegment(axes.transverse, 1);
+		check.routes().haveNoCrossing();
+		check
+			.rails({ between: [['a'], ['b', 'c', 'd', 'e']] })
 			.haveCount(1)
 			.haveRoom(railPolicy);
 		equalMetric(

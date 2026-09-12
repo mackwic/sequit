@@ -1,7 +1,7 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
-import { checkQuays, checkSize } from '../../../support/assertions/routing';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { quayPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
@@ -22,9 +22,12 @@ export const scenario: LayoutScenario = {
 		});
 	},
 	assert(layout) {
-		checkQuays(layout, 'b', 'incoming', 1);
-		checkQuays(layout, 'b', 'outgoing', 1);
-		for (const id of ['a', 'b', 'c']) checkSize(layout, id, [1, 1]);
-		AssertRoutes(layout.relations).haveNoCrossing();
+		const check = AssertLayout(layout);
+		check.quays('b', { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+		check.quays('b', { side: 'outgoing' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+		check
+			.nodes(['a', 'b', 'c'])
+			.haveSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
+		check.routes().haveNoCrossing();
 	},
 };

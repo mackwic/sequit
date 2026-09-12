@@ -1,6 +1,7 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { checkDistinctPaths, checkQuays, checkSize } from '../../../support/assertions/routing';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { quayPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
@@ -22,11 +23,13 @@ export const scenario: LayoutScenario = {
 		});
 	},
 	assert(layout) {
+		const check = AssertLayout(layout);
 		for (const id of ['c', 'd']) {
-			checkQuays(layout, id, 'incoming', 2);
-			checkQuays(layout, id, 'outgoing', 3);
-			checkSize(layout, id, [2, 3]);
+			check.quays(id, { side: 'incoming' }).haveCount(2).areCentered().haveClearance(quayPolicy);
+			check.quays(id, { side: 'outgoing' }).haveCount(3).areCentered().haveClearance(quayPolicy);
+			check.node(id).hasSizeForQuays({ content: 80, incoming: 2, outgoing: 3, ...quayPolicy });
 		}
-		checkDistinctPaths(layout);
+		check.routes().areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+		check.renderedPaths().haveBridgeAtEveryCrossing();
 	},
 };

@@ -1,9 +1,9 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertRails, rowGap } from '../../../support/assertions/assert-rails';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
-import { railPolicy } from '../../../support/assertions/routing';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { rowGap } from '../../../support/assertions/assert-rails';
 import { equalMetric } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
@@ -24,16 +24,20 @@ export const scenario: LayoutScenario = {
 		});
 	},
 	assert(layout) {
+		const check = AssertLayout(layout);
 		const first = layout.relations.filter((route) => route.from === 'a');
 		const second = layout.relations.filter((route) => route.from === 'd');
-		AssertRoutes(first).haveNoOverlapWith(second);
-		AssertRoutes(first).haveNoCrossingWith(second);
-		AssertRails(layout, [['a'], ['b', 'c']]).haveCount(1);
-		AssertRails(layout, [['d'], ['e', 'f']]).haveCount(1);
-		AssertRails(layout, [
-			['a', 'd'],
-			['b', 'c', 'e', 'f'],
-		])
+		check.routes(first).haveNoOverlapWith(second);
+		check.routes(first).haveNoCrossingWith(second);
+		check.rails({ between: [['a'], ['b', 'c']] }).haveCount(1);
+		check.rails({ between: [['d'], ['e', 'f']] }).haveCount(1);
+		check
+			.rails({
+				between: [
+					['a', 'd'],
+					['b', 'c', 'e', 'f'],
+				],
+			})
 			.haveCount(1)
 			.haveRoom(railPolicy);
 		equalMetric(

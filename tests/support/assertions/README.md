@@ -4,7 +4,83 @@ Les assertions partagées sont dans [ce dossier](assert-box.ts), importées à l
 
 Cette version vérifie l’alignement, le centrage, l’ordre spatial des boîtes et les rangs logiques des nœuds. Les concepts de référence sont **boîte** (VL-302), **repère du layout** (VL-220), **alignement** (VL-505) et **rang** (VL-117) dans le [lexique](../../../docs/visual-language.md).
 
-## API implémentée
+## Scénarios avec `AssertLayout`
+
+La façade [AssertLayout](assert-layout.ts) connaît la direction du layout et conserve les sujets
+sélectionnés pendant le chaînage. Elle réutilise les assertions spécialisées ci-dessous.
+
+```ts
+const check = AssertLayout(layout);
+const successors = ['b', 'c'];
+
+check.node('a').hasRank(1);
+check.nodes(successors).haveRank(2).areAfter('a');
+check.envelope(successors).isCenteredOn('a', { axis: 'transverse' });
+check.routes().haveNoCrossing();
+```
+
+- `node(id)` vérifie un nœud ; `nodes(ids)` vérifie chaque membre, dans l'ordre demandé.
+- `envelope(ids)` vérifie la boîte englobante collective. Centrer une enveloppe ne centre pas
+  chacun de ses membres. Le centrage compare des centres sans imposer de inclusion géométrique.
+- `isAfter` et `areAfter` exigent un espace strictement positif entre les bords. La direction
+  par défaut est celle du layout. `{ direction: 'transverse-positive' }` signifie vers la droite
+  pour un layout vertical, vers le bas pour un layout horizontal, même si sa progression est inversée.
+- Les références sont des identifiants de boîtes ou des observations comme `layout.frame` et
+  `layout.envelopeOf(ids)`. Les observations ne déclenchent pas d'assertions métier.
+- `routes()` sélectionne toutes les routes ; `routes(ids)` sélectionne des identifiants exacts ;
+  `routes(observations)` accepte une collection explicite. Les comparaisons internes nécessitent
+  deux routes ; les comparaisons `...With(other)` acceptent une route de chaque côté.
+- Les sélections vides, les doublons et les identifiants absents sont rejetés. Chaque assertion
+  s'exécute immédiatement ; le premier échec interrompt la suite. Dans une chaîne collective,
+  une propriété est vérifiée sur tous les membres avant de passer à la propriété suivante.
+- Les rangs logiques restent indépendants de l'alignement et de l'ordre géométrique.
+
+Les échecs de rang, d'alignement, de centrage, d'ordre et d'interaction entre routes sont des
+`VisualAssertionError` avec un `code` stable (`node.rank`, `box.alignment`, `box.centering`,
+`box.order`, `routes.crossing`, `routes.overlap`), un attendu et un observé.
+Le `context` des boîtes conserve le sujet et la référence, ainsi que l'axe, la tolérance et l'écart
+lorsqu'ils s'appliquent. Les enveloppes portent leurs identifiants membres ; aucun identifiant
+n'est déduit du texte du message. `targets.boxes` désigne le sujet et `targets.referenceBoxes`
+sa référence. La galerie distingue le sujet rouge de la référence bleue pointillée.
+Les préconditions invalides restent des erreurs d'utilisation, distinctes d'une propriété fausse.
+
+## Routage avec la même façade
+
+```ts
+const check = AssertLayout(layout);
+check.quays('b', { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+check
+	.nodes(['a', 'b', 'c'])
+	.haveSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
+check.routes().areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+check.renderedPaths().haveBridgeAtEveryCrossing();
+check
+	.rails({ between: [['a'], ['b', 'c']] })
+	.haveCount(1)
+	.haveRoom(railPolicy);
+```
+
+`quays` utilise le sens des flèches pour `incoming` et `outgoing`. `haveClearance` prend un objet
+`{ spacing, inset }`, sans valeur cachée. `hasSizeForQuays` et `haveSizeForQuays` vérifient la
+**dimension transversale** requise par le contenu et les capacités des deux faces, selon leur maximum.
+Ces méthodes ne vérifient pas les nombres de quais observés : `quays(...).haveCount(...)` le fait
+séparément. Les valeurs de calibration sont dans [routing-fixtures.ts](../fixtures/routing-fixtures.ts)
+et restent indépendantes des paramètres du moteur.
+
+`route(id)` expose les assertions d'une route individuelle. `routes(selection)` conserve sa
+sélection pendant toute la chaîne, y compris après `haveNoOverlap` ou `haveCrossing`. Les méthodes
+`...With(other)` acceptent des identifiants ou des observations explicites et ne vérifient que les
+interactions entre les deux collections.
+
+`renderedPaths(selection)` applique le vrai rendu du canvas aux routes sélectionnées ; vérifier
+leurs ponts est une assertion distincte de leur géométrie calculée. `trunks(selection)` vérifie
+uniquement la famille explicitement sélectionnée. Les mesures et différences entre l'état courant
+et un état de référence restent exprimées directement dans les scénarios comparatifs.
+
+Les neuf scénarios de routage utilisent cette façade. Les anciens helpers `checkQuays`, `checkSize`,
+`checkDistinctPaths` et `checkCompleteQuays` sont remplacés par les attentes explicites ci-dessus.
+
+## Assertions spécialisées
 
 ```ts
 AssertBox(a).isAlignedWith(b, { by: 'top' }).isAlignedWith(c, { by: 'centerX', tolerance: 0.001 });

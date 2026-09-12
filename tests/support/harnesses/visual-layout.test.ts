@@ -64,6 +64,7 @@ describe('VisualLayout observations', () => {
 		expect(simulated.getNodeById('b').rank).toBe(2);
 		expect(simulated.frame).toEqual({
 			id: 'layout',
+			identity: { kind: 'frame', ids: [] },
 			bounds: { x: 0, y: 0, width: 400, height: 300 },
 		});
 		expect(simulated.relations).toBe(layout.relations);
@@ -93,4 +94,21 @@ describe('VisualLayout observations', () => {
 		expect(() => layout.envelopeOf([])).toThrow('Cannot measure an empty envelope.');
 		expect(() => layout.envelopeOf(['missing'])).toThrow('Missing layout element');
 	});
+});
+
+it('keeps envelope membership independent of the input selection and rejects invalid observed geometry', () => {
+	const layout = new VisualLayout(result);
+	const ids = ['b', 'a'];
+	const envelope = layout.envelopeOf(ids);
+	ids.pop();
+	expect(envelope.identity).toEqual({ kind: 'envelope', ids: ['b', 'a'] });
+	expect(() => layout.envelopeOf(['a', 'a'])).toThrow('unique');
+	for (const width of [NaN, Infinity, 0, -1]) {
+		const invalid = layout.withElements([
+			{ id: 'invalid', kind: EndpointKind.Node, bounds: { x: 0, y: 0, width, height: 10 } },
+		]);
+		expect(() => invalid.envelopeOf(['invalid'])).toThrow(
+			'finite coordinates and positive dimensions',
+		);
+	}
 });

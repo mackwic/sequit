@@ -14,6 +14,9 @@
 </script>
 
 <div class="layout-preview">
+	{#if (targets.referenceBoxes?.length ?? 0) > 0}
+		<p class="assertion-legend">Rouge : sujet en échec · Bleu pointillé : référence</p>
+	{/if}
 	<svg
 		role="img"
 		aria-label="Géométrie du scénario"
@@ -36,11 +39,16 @@
 			<g
 				data-box-id={box.id}
 				data-rank={node !== false && node.rank}
+				class:assertion-reference={targets.referenceBoxes?.includes(box.id)}
+				data-reference-box={targets.referenceBoxes?.includes(box.id)}
 				class:assertion-target={targets.boxes?.includes(box.id)}
 				data-failed-box={targets.boxes?.includes(box.id)}
 			>
 				{#if targets.boxes?.includes(box.id)}<title
 						>Élément {box.id} concerné par l’assertion en échec</title
+					>{/if}
+				{#if (targets.referenceBoxes?.includes(box.id) ?? false) && !(targets.boxes?.includes(box.id) ?? false)}<title
+						>Élément {box.id} de référence pour la comparaison</title
 					>{/if}
 				<rect
 					x={box.bounds.x}
@@ -96,6 +104,14 @@
 </div>
 
 <style>
+	.assertion-reference > rect {
+		stroke: #175cd3;
+		stroke-width: 3;
+		stroke-dasharray: 6 3;
+	}
+	.assertion-target > rect {
+		stroke-dasharray: none;
+	}
 	.assertion-target :global(.relation-visual),
 	.assertion-target > rect {
 		stroke: #b42318;

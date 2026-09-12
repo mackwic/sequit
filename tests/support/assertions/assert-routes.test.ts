@@ -98,7 +98,7 @@ describe('route collection assertions', () => {
 		}).toThrow();
 	});
 	it('refuses a vacuous check', () => {
-		expect(() => AssertRoutes([horizontal])).toThrow('at least 2');
+		expect(() => AssertRoutes([horizontal]).haveNoCrossing()).toThrow('at least 2');
 	});
 });
 

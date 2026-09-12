@@ -1,8 +1,9 @@
 import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertRails, rowGap } from '../../../support/assertions/assert-rails';
-import { checkDistinctPaths, railPolicy } from '../../../support/assertions/routing';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { rowGap } from '../../../support/assertions/assert-rails';
 import { equalMetric, minimumMetric } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
@@ -37,6 +38,7 @@ export const scenario: LayoutScenario = {
 		return layout.withReference('Référence : mêmes nœuds, sans les deux diagonales', reference);
 	},
 	assert(layout) {
+		const check = AssertLayout(layout);
 		const reference = defined(layout.reference).layout;
 		for (const rows of [
 			[['x'], ['y']],
@@ -56,14 +58,18 @@ export const scenario: LayoutScenario = {
 				]),
 			railPolicy.spacing,
 		);
-		AssertRails(layout, [
-			['a', 'b'],
-			['c', 'd'],
-		])
+		check
+			.rails({
+				between: [
+					['a', 'b'],
+					['c', 'd'],
+				],
+			})
 			.haveAtLeast(2)
 			.haveRoom(railPolicy);
 		// Shared trunks remain permitted in the upstream fork.
 		const crossing = layout.relations.filter((route) => ['a', 'b'].includes(route.from));
-		checkDistinctPaths(layout, crossing);
+		check.routes(crossing).areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+		check.renderedPaths(crossing).haveBridgeAtEveryCrossing();
 	},
 };

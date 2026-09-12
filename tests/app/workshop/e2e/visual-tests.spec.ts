@@ -317,16 +317,14 @@ test('keeps the descendant centering failure visible with its four-node drawing'
 	await expect(
 		page.getByRole('heading', { name: 'Deux successeurs et un descendant.' }),
 	).toBeVisible();
-	await expect(page.getByRole('status')).toContainText(
-		'Box "envelope(d)" is not aligned with box "b"',
-	);
-	await expect(page.getByRole('status')).toContainText('difference=68');
+	await expect(page.getByRole('status')).toContainText('Alignement de envelope(d) sur b');
+	await expect(page.getByRole('status')).toContainText('Écart : 68');
 	await expect(page.locator('[data-box-id]')).toHaveCount(4);
 	await expect(page.locator('[data-box-id="d"]')).toHaveAttribute('data-rank', '3');
 	await page
 		.getByRole('combobox', { name: 'Direction', exact: true })
 		.selectOption('left-to-right');
-	await expect(page.getByRole('status')).toContainText('difference=48');
+	await expect(page.getByRole('status')).toContainText('Écart : 48');
 	await expect(page.locator('path[data-rendered-relation-id]')).toHaveCount(3);
 });
 
@@ -413,4 +411,27 @@ test('keeps the checked result when toggling geometry guides', async ({ page }) 
 	await expect(box).toHaveAttribute('y', y ?? '');
 	await page.getByRole('button', { name: 'Réexécuter le scénario' }).click();
 	await expect(status).toContainText('Réussi');
+});
+
+test('distinguishes the failed subject from its reference in the drawing and diagnostic', async ({
+	page,
+}) => {
+	await page.goto('/atelier/tests-visuels/two-successors-with-descendant');
+	const status = page.getByRole('status');
+	await expect(status).toContainText('Écart : 68');
+	await expect(status).toContainText('Tolérance : 0.001');
+	await expect(status).toContainText('Axe : X');
+	await expect(page.locator('[data-failed-box="true"]')).toHaveAttribute('data-box-id', 'd');
+	await expect(page.locator('[data-reference-box="true"]')).toHaveAttribute('data-box-id', 'b');
+	await expect(page.locator('.assertion-legend')).toContainText('Bleu pointillé : référence');
+	await page
+		.getByRole('combobox', { name: 'Direction', exact: true })
+		.selectOption('left-to-right');
+	await expect(status).toContainText('Axe : Y');
+	await expect(status).toContainText('Écart : 48');
+	await page.getByRole('button', { name: 'Deux successeurs', exact: true }).click();
+	await expect(status).toContainText('Réussi');
+	await expect(page.locator('[data-failed-box="true"]')).toHaveCount(0);
+	await expect(page.locator('[data-reference-box="true"]')).toHaveCount(0);
+	await expect(page.locator('.assertion-legend')).toHaveCount(0);
 });
