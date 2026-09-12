@@ -1,0 +1,30 @@
+<script>
+ import { scenario } from './narrow-quays.scenario';
+ import source from './narrow-quays.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Deux quais agrandissent le nœud
+
+Quatre nœuds. Flèches : **A → C, A → D, B → C, B → D**.
+
+## Attendu
+
+Chaque source possède deux quais sortants ; chaque destination, deux quais entrants. Les ancres sont espacées d’au moins **48**, avec des marges de **24**, et leur ensemble est centré. La dimension transversale passe de **80 à 96**. Les chemins restent distincts.
+
+Les flèches **A → C** et **B → D** forment chacune un unique segment rectiligne sur l’axe principal : vertical dans la vue verticale, horizontal dans la vue horizontale. Aucun détour transversal ; les quais aux deux extrémités doivent donc être alignés.
+
+## Conventions de ce cahier
+
+Ces valeurs sont **une proposition de calibration des tests**, pas des paramètres déjà pris en charge par le moteur :
+quais espacés de **48**, marge de **24** à chaque bord ; intervalle normal de **72**, augmenté de **24** par rail supplémentaire, avec au moins **12** de marge près des rangées.
+La dimension du contenu est une mesure fournie au moteur ; aucun texte long n’est simulé dans la boîte.
+
+Les quais entrants/sortants suivent **le sens des flèches**. Un rail est observé à partir d’un segment transversal de longueur positive ; un trajet droit ne suffit pas à prouver sa réutilisation.
+Le nom « 0 » désigne le quai ou rail par défaut : les assertions observent la géométrie, car le moteur n’expose pas encore d’identifiants de rails ou de quais.
+
+Les quatre directions et leurs biais compatibles sont exécutables. L’axe transversal est X en disposition verticale, Y en disposition horizontale : l’agrandissement concerne donc la largeur ou la hauteur.
+**Un résultat rouge documente un comportement attendu encore absent ; le moteur n’est pas corrigé par ce scénario.**
+
+<VisualTest {scenario} {source} bind:settings />

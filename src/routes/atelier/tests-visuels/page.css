@@ -175,6 +175,9 @@ body:has(.visual-doc) {
 	padding: 1.4rem;
 	font-family: ui-monospace, monospace;
 }
+.visual-settings {
+	border-top: 1px solid #d8ded2;
+}
 .execution-bar {
 	display: flex;
 	align-items: end;
@@ -213,7 +216,41 @@ body:has(.visual-doc) {
 	overflow-wrap: anywhere;
 }
 .scenario-verdict.failure {
-	color: #a13725;
+	border-block: 1px solid #b42318;
+	color: #292524;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.82rem;
+}
+.failure-heading {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6rem;
+	color: #b42318;
+}
+.failure-heading > span {
+	font-weight: 700;
+}
+.failure-subject {
+	margin: 0.45rem 0 0 1.2rem;
+	white-space: pre-wrap;
+}
+.failure-comparison {
+	margin: 0.8rem 0 0 1.2rem;
+}
+.failure-comparison > div {
+	display: grid;
+	grid-template-columns: 5.5rem minmax(0, 1fr);
+	gap: 0.5rem;
+}
+.failure-comparison dt {
+	color: #66756b;
+}
+.failure-comparison dd {
+	margin: 0;
+	white-space: pre-wrap;
+}
+.failure-comparison > div:last-child dd {
+	color: #b42318;
 }
 .visual-control {
 	border-top: 1px solid #d8ded2;

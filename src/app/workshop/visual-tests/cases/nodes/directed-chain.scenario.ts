@@ -1,0 +1,31 @@
+import { defined, LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertBox } from '../../assert-box';
+import { AssertNode } from '../../assert-node';
+import { AssertRoute } from '../../assert-route';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
+
+export const scenario: LayoutScenario = {
+	id: 'directed-chain',
+	label: 'B → A · A racine',
+	group: 'Rangs et progression',
+	order: 40,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			nodes: { a: { width: 100, height: 60 }, b: { width: 100, height: 60 } },
+			relations: [{ id: 'a-to-b', from: 'b', to: 'a' }],
+		});
+	},
+	assert(layout) {
+		const a = layout.getNodeById('a');
+		const b = layout.getNodeById('b');
+		AssertNode(a).hasRank(1);
+		AssertNode(b).hasRank(2);
+		AssertBox(b).isAfter(a, { direction: layout.direction });
+		AssertRoute(defined(layout.relations.find(({ id }) => id === 'a-to-b')))
+			.isOrthogonal()
+			.isAttachedTo(b, a);
+	},
+};

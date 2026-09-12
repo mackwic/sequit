@@ -1,0 +1,28 @@
+<script>
+ import { scenario } from './shared-quay.scenario';
+ import source from './shared-quay.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Un quai partagé et des troncs communs
+
+Une fourche à quatre branches : **A → B, C, D et E**. Quatre destinations permettent d’observer un partage transversal de chaque côté du centre.
+
+## Attendu
+
+Un seul quai sortant centré sur A, un quai entrant par destination. A reste à **80**. Les quatre routes partagent un tronc sur l’axe principal au départ de A. Les deux branches de chaque côté partagent aussi un tronçon transversal. Elles utilisent le même rail 0, sans croisement ni agrandissement de l’intervalle.
+
+## Conventions de ce cahier
+
+Ces valeurs sont **une proposition de calibration des tests**, pas des paramètres déjà pris en charge par le moteur :
+quais espacés de **48**, marge de **24** à chaque bord ; intervalle normal de **72**, augmenté de **24** par rail supplémentaire, avec au moins **12** de marge près des rangées.
+La dimension du contenu est une mesure fournie au moteur ; aucun texte long n’est simulé dans la boîte.
+
+Les quais entrants/sortants suivent **le sens des flèches**. Un rail est observé à partir d’un segment transversal de longueur positive ; un trajet droit ne suffit pas à prouver sa réutilisation.
+Le nom « 0 » désigne le quai ou rail par défaut : les assertions observent la géométrie, car le moteur n’expose pas encore d’identifiants de rails ou de quais.
+
+Les quatre directions et leurs biais compatibles sont exécutables. L’axe transversal est X en disposition verticale, Y en disposition horizontale : l’agrandissement concerne donc la largeur ou la hauteur.
+**Un résultat rouge documente un comportement attendu encore absent ; le moteur n’est pas corrigé par ce scénario.**
+
+<VisualTest {scenario} {source} bind:settings />

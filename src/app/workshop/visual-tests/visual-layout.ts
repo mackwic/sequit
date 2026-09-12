@@ -18,6 +18,7 @@ export class VisualLayout implements LayoutResult {
 		result: LayoutResult,
 		private readonly ranks: ReadonlyMap<string, number> = new Map(),
 		readonly direction: LayoutDirection = LayoutDirection.TopToBottom,
+		readonly reference?: { readonly label: string; readonly layout: VisualLayout },
 	) {
 		this.width = result.width;
 		this.height = result.height;
@@ -38,7 +39,12 @@ export class VisualLayout implements LayoutResult {
 			{ width: this.width, height: this.height, elements, relations: this.relations },
 			this.ranks,
 			this.direction,
+			this.reference,
 		);
+	}
+
+	withReference(label: string, layout: VisualLayout): VisualLayout {
+		return new VisualLayout(this, this.ranks, this.direction, { label, layout });
 	}
 
 	get frame(): BoxGeometry {

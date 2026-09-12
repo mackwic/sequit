@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { centeredChain } from '../../../../src/app/workshop/visual-tests/scenarios/centered-chain.scenario';
+import { scenario as centeredChain } from '../../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario';
 import { VisualLayout } from '../../../../src/app/workshop/visual-tests/visual-layout';
 
 describe('centered-chain shared scenario', () => {

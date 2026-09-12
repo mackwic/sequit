@@ -1,7 +1,7 @@
 <script>
- import { singleNode } from './scenarios/single-node.scenario';
- import source from './scenarios/single-node.scenario.ts?raw';
- import VisualTest from './VisualTest.svelte';
+ import { scenario } from './single-node.scenario';
+ import source from './single-node.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
  let { settings = $bindable() } = $props();
 </script>
 
@@ -13,4 +13,4 @@ Le repère est celui du résultat calculé, avant zoom et déplacement de la vue
 
 Références : [VL-506 · Centré sur](/atelier/lexique#VL-506), [VL-220 · Repère du layout](/atelier/lexique#VL-220).
 
-<VisualTest scenario={singleNode} {source} bind:settings />
+<VisualTest {scenario} {source} bind:settings />

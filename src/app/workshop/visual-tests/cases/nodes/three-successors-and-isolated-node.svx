@@ -1,0 +1,28 @@
+<script>
+ import { scenario } from './three-successors-and-isolated-node.scenario';
+ import source from './three-successors-and-isolated-node.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Trois successeurs et un nœud isolé.
+
+Le document contient les nœuds **A, B, C, D, E**, tous de **100 × 60**.
+Les relations sont **B → A et C → A et D → A** : B, C, D sont les successeurs de A.
+Le scénario prépare ce document complet en une fois.
+
+A est au **rang 1**, ses successeurs au **rang 2**, après A dans le sens de progression.
+L’**enveloppe de B, C, D est centrée par rapport à A sur l’axe transversal** :
+leurs centres ont le même **X** dans les directions verticales et le même **Y** dans les directions horizontales.
+
+E n’a aucune relation entrante ou sortante : il reste au **rang 1**.
+Dans les directions verticales, le bord droit de l’enveloppe B, C, D est **strictement à gauche du bord gauche de E**.
+Dans les directions horizontales, cette séparation est transposée sur l’axe transversal Y :
+le bord inférieur de l’enveloppe est **strictement au-dessus du bord supérieur de E**.
+Un espace positif sépare les deux ; un simple contact entre les bords échoue.
+
+Ces règles sont vérifiées dans les quatre directions et avec les deux biais compatibles de chaque direction.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-506 · Centré sur](/atelier/lexique#VL-506).
+
+<VisualTest {scenario} {source} bind:settings />

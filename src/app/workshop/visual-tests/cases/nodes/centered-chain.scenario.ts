@@ -1,17 +1,20 @@
-import { LayoutDirection } from '../../../../lib/core/document/logic-document';
-import { AssertBox } from '../assert-box';
-import { axesFor } from '../directions';
-import { layoutNodes } from '../layout-nodes';
-import type { LayoutScenario } from '../scenario';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertBox } from '../../assert-box';
+import { axesFor } from '../../directions';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const centeredChain: LayoutScenario = {
+export const scenario: LayoutScenario = {
 	id: 'centered-chain',
+	label: 'Tailles différentes',
+	group: 'Centrage et alignement',
+	order: 20,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
 			direction,
 			bias,
 			nodes: { a: { width: 100, height: 60 }, b: { width: 200, height: 120 } },
-			relations: [{ id: 'a-to-b', from: 'a', to: 'b' }],
+			relations: [{ id: 'a-to-b', from: 'b', to: 'a' }],
 		});
 	},
 	assert(layout) {

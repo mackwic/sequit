@@ -1,0 +1,28 @@
+<script>
+ import { scenario } from './forced-crossing-rails.scenario';
+ import source from './forced-crossing-rails.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Croisement obligé : rails, quais et pont
+
+Le motif complet **A → C, A → D, B → C, B → D**, avec un contenu de **80** par nœud.
+
+## Attendu
+
+A → D et B → C se croisent. Chaque croisement possède un pont sur l’un des deux chemins concernés. Aucun recouvrement de longueur positive, aucun tronc commun. Au moins deux rails sont utilisés, suffisamment espacés ; le corridor grandit selon leur nombre. Deux quais par face concernée portent la dimension transversale à **96**.
+
+## Conventions de ce cahier
+
+Ces valeurs sont **une proposition de calibration des tests**, pas des paramètres déjà pris en charge par le moteur :
+quais espacés de **48**, marge de **24** à chaque bord ; intervalle normal de **72**, augmenté de **24** par rail supplémentaire, avec au moins **12** de marge près des rangées.
+La dimension du contenu est une mesure fournie au moteur ; aucun texte long n’est simulé dans la boîte.
+
+Les quais entrants/sortants suivent **le sens des flèches**. Un rail est observé à partir d’un segment transversal de longueur positive ; un trajet droit ne suffit pas à prouver sa réutilisation.
+Le nom « 0 » désigne le quai ou rail par défaut : les assertions observent la géométrie, car le moteur n’expose pas encore d’identifiants de rails ou de quais.
+
+Les quatre directions et leurs biais compatibles sont exécutables. L’axe transversal est X en disposition verticale, Y en disposition horizontale : l’agrandissement concerne donc la largeur ou la hauteur.
+**Un résultat rouge documente un comportement attendu encore absent ; le moteur n’est pas corrigé par ce scénario.**
+
+<VisualTest {scenario} {source} bind:settings />

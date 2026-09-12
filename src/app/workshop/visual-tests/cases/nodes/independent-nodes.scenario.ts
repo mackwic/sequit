@@ -1,12 +1,15 @@
-import { LayoutDirection } from '../../../../lib/core/document/logic-document';
-import { AssertBox } from '../assert-box';
-import { AssertNode } from '../assert-node';
-import { axesFor } from '../directions';
-import { layoutNodes } from '../layout-nodes';
-import type { LayoutScenario } from '../scenario';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertBox } from '../../assert-box';
+import { AssertNode } from '../../assert-node';
+import { axesFor } from '../../directions';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const independentNodes: LayoutScenario = {
+export const scenario: LayoutScenario = {
 	id: 'independent-nodes',
+	label: 'Deux nœuds sans lien',
+	group: 'Rangs et progression',
+	order: 30,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
 			direction,

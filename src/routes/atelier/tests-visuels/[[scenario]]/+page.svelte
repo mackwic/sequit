@@ -1,5 +1,5 @@
 <script lang="ts">
-	import './page.css';
+	import '../page.css';
 
 	import { resolve } from '$app/paths';
 </script>
@@ -13,7 +13,7 @@
 		<header>
 			<a href={resolve('/atelier')}>← Atelier Sequit</a><span>ASSERTIONS VISUELLES</span>
 		</header>
-		{#await import('../../../app/workshop/visual-tests/ScenarioGallery.svelte') then page}
+		{#await import('../../../../app/workshop/visual-tests/ScenarioGallery.svelte') then page}
 			<page.default />
 		{/await}
 	</main>

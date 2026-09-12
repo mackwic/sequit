@@ -1,0 +1,24 @@
+<script>
+ import { scenario } from './two-successors-with-descendant.scenario';
+ import source from './two-successors-with-descendant.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Deux successeurs et un descendant.
+
+Quatre nœuds **A, B, C, D**, tous de **100 × 60**.
+Les relations sont **B → A, C → A et D → B**. Le document est préparé en une fois.
+
+- A est au **rang 1**, B et C au **rang 2**, D au **rang 3**.
+- L’**enveloppe B, C est centrée sur A sur l’axe transversal**.
+- L’**enveloppe de D seul est centrée sur B sur ce même axe**.
+
+Le centrage concerne **X** dans les directions verticales et **Y** dans les directions horizontales.
+B et C sont après A, et D après B, dans le sens de progression.
+
+Ces règles sont vérifiées dans les quatre directions et avec les deux biais compatibles de chaque direction.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-506 · Centré sur](/atelier/lexique#VL-506).
+
+<VisualTest {scenario} {source} bind:settings />

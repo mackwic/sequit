@@ -2,7 +2,7 @@ import type { Bounds } from '../../../lib/core/layout/layout-types';
 import { type AssertionTargets, VisualAssertionError } from './assertion-error';
 
 export type Axis = 'x' | 'y';
-export const PRECISION = 0.001;
+const PRECISION = 0.001;
 
 export function extent(bounds: Bounds, axis: Axis): number {
 	if (axis === 'x') return bounds.width;

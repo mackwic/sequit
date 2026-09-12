@@ -1,7 +1,7 @@
 <script>
- import { independentNodes } from './scenarios/independent-nodes.scenario';
- import source from './scenarios/independent-nodes.scenario.ts?raw';
- import VisualTest from './VisualTest.svelte';
+ import { scenario } from './independent-nodes.scenario';
+ import source from './independent-nodes.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
  let { settings = $bindable() } = $props();
 </script>
 
@@ -17,4 +17,4 @@ au sein d’une même rangée fera l’objet d’un scénario distinct.
 
 Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-311 · Rangée](/atelier/lexique#VL-311), [VL-506 · Centré sur](/atelier/lexique#VL-506).
 
-<VisualTest scenario={independentNodes} {source} bind:settings />
+<VisualTest {scenario} {source} bind:settings />

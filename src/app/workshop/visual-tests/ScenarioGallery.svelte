@@ -1,30 +1,44 @@
 <script lang="ts">
-	import { LayoutBias, LayoutDirection } from '../../../lib/core/document/logic-document';
-	import CenteredChain from './centered-chain.svx';
-	import DirectedChain from './directed-chain.svx';
-	import type { VisualTestSettings } from './directions';
-	import IndependentNodes from './independent-nodes.svx';
-	import SingleNode from './single-node.svx';
+	import { onMount } from 'svelte';
 
-	const initial = {
-		id: 'centered-chain',
-		label: 'Tailles différentes',
-		group: 'Centrage et alignement',
-		page: CenteredChain,
-	};
-	const cases = [
-		{ id: 'single-node', label: 'Un nœud', group: 'Centrage et alignement', page: SingleNode },
-		initial,
-		{
-			id: 'independent-nodes',
-			label: 'Deux nœuds sans lien',
-			group: 'Rangs et progression',
-			page: IndependentNodes,
-		},
-		{ id: 'directed-chain', label: 'A → B', group: 'Rangs et progression', page: DirectedChain },
-	];
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+
+	import { defined } from '../../../lib/core/document/logic-document';
+	import { catalogue } from './catalogue';
+	import {
+		defaultVisualTestSettings,
+		parseVisualTestSettings,
+		type VisualTestSettings,
+	} from './directions';
+	import { scenarioPages } from './scenario-pages';
+
+	const storageKey = 'sequit-visual-test-settings-v1';
+
+	const cases = catalogue.map(({ scenario, documentPath }) => ({
+		...scenario,
+		loadPage: defined(
+			scenarioPages[documentPath],
+			`Missing scenario documentation: ${documentPath}`,
+		),
+	}));
+	const initial = defined(cases.find(({ id }) => id === 'centered-chain') ?? cases[0]);
 	const groups = [...new Set(cases.map((item) => item.group))];
-	let selected = $state(initial);
+	let selected = $derived(cases.find(({ id }) => id === page.params.scenario) ?? initial);
+
+	function selectScenario(id: string, replaceState = false): void {
+		if (page.params.scenario === id) return;
+		void goto(resolve('/atelier/tests-visuels/[[scenario]]', { scenario: id }), {
+			replaceState,
+			noScroll: true,
+			keepFocus: true,
+		});
+	}
+
+	$effect(() => {
+		if (page.params.scenario !== selected.id) selectScenario(selected.id, true);
+	});
 	let search = $state('');
 	let matches = $derived(
 		cases.filter((item) =>
@@ -33,9 +47,26 @@
 				.includes(search.trim().toLocaleLowerCase('fr')),
 		),
 	);
-	let settings = $state<VisualTestSettings>({
-		direction: LayoutDirection.TopToBottom,
-		bias: LayoutBias.Top,
+	let settings = $state<VisualTestSettings>(defaultVisualTestSettings);
+	let settingsLoaded = $state(false);
+
+	onMount(() => {
+		try {
+			settings = parseVisualTestSettings(localStorage.getItem(storageKey));
+		} catch {
+			settings = defaultVisualTestSettings;
+		} finally {
+			settingsLoaded = true;
+		}
+	});
+
+	$effect(() => {
+		if (!settingsLoaded) return;
+		try {
+			localStorage.setItem(storageKey, JSON.stringify(settings));
+		} catch {
+			// The controls remain usable when browser storage is unavailable.
+		}
 	});
 </script>
 
@@ -60,7 +91,7 @@
 									aria-pressed={selected.id === item.id}
 									aria-label={item.label}
 									onclick={() => {
-										selected = item;
+										selectScenario(item.id);
 									}}
 								>
 									<span>{item.label}</span><code>{item.id}</code>
@@ -78,6 +109,14 @@
 			<span>Test <code>{selected.id}</code></span>
 			<span>Groupe · {selected.group}</span>
 		</div>
-		{#key selected.id}<selected.page bind:settings />{/key}
+		{#key selected.id}
+			{#await selected.loadPage()}
+				<p>Chargement du scénario…</p>
+			{:then page}
+				<page.default bind:settings />
+			{:catch error}
+				<p role="alert">Impossible de charger le scénario : {String(error)}</p>
+			{/await}
+		{/key}
 	</article>
 </div>

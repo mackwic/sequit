@@ -1,0 +1,21 @@
+<script>
+ import { scenario } from './two-predecessors.scenario';
+ import source from './two-predecessors.scenario.ts?raw';
+ import VisualTest from '../../VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Un enfant et deux parents.
+
+Le document contient **A, B, C**, avec des boîtes de **100 × 60**.
+Relations : **C → A et C → B**. Le document est préparé en une fois.
+
+C est au rang 2 et centré transversalement sur l’enveloppe A, B, au rang 1. Les routes ne se croisent pas. Un tronc commun au départ du même enfant C est autorisé.
+
+Le centrage et l’ordre transversaux concernent **X** en layout vertical et **Y** en layout horizontal.
+Chaque enfant (source) est après son parent (cible) dans le sens de progression des rangs. Les flèches pointent vers les parents.
+Ces règles sont vérifiées dans les quatre directions et avec leurs biais compatibles.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-505 · Alignés](/atelier/lexique#VL-505), [VL-506 · Centré sur](/atelier/lexique#VL-506), [VL-401 · Route](/atelier/lexique#VL-401), [VL-413 · Tronc commun](/atelier/lexique#VL-413), [VL-415 · Croisement](/atelier/lexique#VL-415).
+
+<VisualTest {scenario} {source} bind:settings />

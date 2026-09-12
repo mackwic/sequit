@@ -8,7 +8,14 @@ import {
 export interface VisualTestSettings {
 	direction: LayoutDirection;
 	bias: LayoutBias;
+	guides: boolean;
 }
+
+export const defaultVisualTestSettings: VisualTestSettings = {
+	direction: LayoutDirection.TopToBottom,
+	bias: LayoutBias.Top,
+	guides: true,
+};
 
 export const directionOptions = [
 	{ value: LayoutDirection.TopToBottom, label: 'Top to bottom' },
@@ -37,6 +44,31 @@ export function defaultBiasFor(direction: LayoutDirection): LayoutBias {
 
 export function biasOptionsFor(direction: LayoutDirection): typeof biasOptions {
 	return biasOptions.filter(({ value }) => layoutConfiguration(direction, value) !== undefined);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+export function parseVisualTestSettings(value: string | null): VisualTestSettings {
+	if (value === null) return defaultVisualTestSettings;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!isRecord(parsed)) return defaultVisualTestSettings;
+		const direction = directionOptions.find(({ value }) => value === parsed['direction'])?.value;
+		const bias = biasOptions.find(({ value }) => value === parsed['bias'])?.value;
+		if (
+			direction === undefined ||
+			bias === undefined ||
+			typeof parsed['guides'] !== 'boolean' ||
+			layoutConfiguration(direction, bias) === undefined
+		) {
+			return defaultVisualTestSettings;
+		}
+		return { direction, bias, guides: parsed['guides'] };
+	} catch {
+		return defaultVisualTestSettings;
+	}
 }
 
 const axes = {

@@ -1,7 +1,15 @@
 <script lang="ts">
 	import { EndpointKind } from '../../../lib/core/document/logic-document';
+	import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
+	import RelationArrow from '../../web/ui/components/canvas/RelationArrow.svelte';
+	import RelationPath from '../../web/ui/components/canvas/RelationPath.svelte';
+	import type { AssertionTargets } from './assertion-error';
 	import type { VisualLayout } from './visual-layout';
-	let { layout, guides }: { layout: VisualLayout; guides: boolean } = $props();
+	let {
+		layout,
+		guides,
+		targets = {},
+	}: { layout: VisualLayout; guides: boolean; targets?: AssertionTargets } = $props();
 	const markerId = $props.id();
 </script>
 
@@ -11,23 +19,29 @@
 		aria-label="Géométrie du scénario"
 		viewBox={`0 0 ${layout.width} ${layout.height}`}
 	>
-		<defs
-			><marker id={markerId} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"
-				><path d="M 0 0 L 8 4 L 0 8 Z" fill="#456858" /></marker
-			></defs
-		>
-		{#each layout.relations as relation (relation.id)}
-			<polyline
-				points={relation.points.map((point) => `${point.x},${point.y}`).join(' ')}
-				fill="none"
-				stroke="#456858"
-				stroke-width="2"
-				marker-end={`url(#${markerId})`}
-			/>
+		<RelationArrow id={markerId} />
+		{#each renderRelationPaths(layout.relations) as relation (relation.id)}
+			<g
+				class:assertion-target={targets.routes?.includes(relation.id)}
+				data-failed-route={targets.routes?.includes(relation.id)}
+			>
+				{#if targets.routes?.includes(relation.id)}<title
+						>Route {relation.id} concernée par l’assertion en échec</title
+					>{/if}
+				<RelationPath {relation} {markerId} />
+			</g>
 		{/each}
 		{#each layout.elements as box (box.id)}
 			{@const node = box.kind === EndpointKind.Node && layout.getNodeById(box.id)}
-			<g data-box-id={box.id} data-rank={node !== false && node.rank}>
+			<g
+				data-box-id={box.id}
+				data-rank={node !== false && node.rank}
+				class:assertion-target={targets.boxes?.includes(box.id)}
+				data-failed-box={targets.boxes?.includes(box.id)}
+			>
+				{#if targets.boxes?.includes(box.id)}<title
+						>Élément {box.id} concerné par l’assertion en échec</title
+					>{/if}
 				<rect
 					x={box.bounds.x}
 					y={box.bounds.y}
@@ -80,3 +94,14 @@
 		{/each}
 	</svg>
 </div>
+
+<style>
+	.assertion-target :global(.relation-visual),
+	.assertion-target > rect {
+		stroke: #b42318;
+		stroke-width: 3;
+	}
+	.assertion-target > text {
+		fill: #b42318;
+	}
+</style>
