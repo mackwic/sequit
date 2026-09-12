@@ -15,8 +15,9 @@ Les enveloppes **A, B** et **C, D** ont le même centre **sur l’axe transversa
 (X en layout vertical, Y en layout horizontal).
 
 Les relations diagonales **D → A et C → B se croisent avec un petit pont**.
-Les quatre relations restent distinctes : **aucun segment de longueur positive n’est partagé**.
-Un point d’attache commun à une boîte est autorisé ; il ne constitue pas un tronc commun.
+Les relations de même source peuvent partager un **tronc continu au départ de C ou de D**, sur les deux axes.
+Les deux diagonales sont considérées comme croisées, quelle que soit celle qui porte le pont. **Chacune doit avoir un tronc d’arrivée et un quai entrant exclusifs** : elle ne peut pas partager son arrivée avec l’autre flèche visant la même destination.
+Un recouvrement ailleurs que dans un tronc autorisé reste interdit. Les attaches occupent uniquement les deux faces principales opposées ; les trajets ne reviennent jamais en arrière.
 
 Le contrôle visuel utilise le même calcul de chemins et de ponts que le canvas du produit.
 

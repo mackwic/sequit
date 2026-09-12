@@ -34,6 +34,9 @@
 	function setGuides(guides: boolean) {
 		settings = { ...settings, guides };
 	}
+	function setReservations(reservations: boolean) {
+		settings = { ...settings, reservations };
+	}
 </script>
 
 <div class="visual-settings" role="group" aria-label="Réglages du contrôle visuel">
@@ -58,6 +61,10 @@
 	</div>
 	{#if hasLayout}
 		<div class="preview-controls">
+			<label
+				><input type="checkbox" bind:checked={() => settings.reservations, setReservations} /> Afficher
+				les rails et les quais</label
+			>
 			<label
 				><input type="checkbox" bind:checked={() => settings.guides, setGuides} /> Afficher les centres
 				et coordonnées</label

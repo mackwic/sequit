@@ -1,12 +1,7 @@
-import { renderRelationPaths } from '../../../../src/app/web/ui/canvas/render-relations';
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertBox } from '../../../support/assertions/assert-box';
-import { AssertNode } from '../../../support/assertions/assert-node';
-import { AssertRenderedPaths } from '../../../support/assertions/assert-rendered-paths';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
-import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
@@ -16,21 +11,18 @@ export const scenario: LayoutScenario = {
 	order: 90,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
+			...graphFixtures.sharedSuccessors().build(),
 			direction,
 			bias,
-			...graphFixtures.sharedSuccessors().build(),
 		});
 	},
 	assert(layout) {
-		for (const id of ['a', 'b']) AssertNode(layout.getNodeById(id)).hasRank(1);
-		for (const id of ['c', 'd']) AssertNode(layout.getNodeById(id)).hasRank(2);
-		AssertBox(layout.envelopeOf(['c', 'd'])).isCenteredIn(layout.envelopeOf(['a', 'b']), {
-			axis: axesFor(layout.direction).transverse,
-		});
-		AssertRoutes(layout.relations).haveNoOverlap();
-		AssertRoutes(
-			layout.relations.filter(({ id }) => ['a-to-d', 'b-to-c'].includes(id)),
-		).haveCrossing();
-		AssertRenderedPaths(renderRelationPaths(layout.relations)).haveBridgeAtEveryCrossing();
+		const check = AssertLayout(layout);
+		check.nodes(['a', 'b']).haveRank(1);
+		check.nodes(['c', 'd']).haveRank(2);
+		check.envelope(['c', 'd']).isCenteredOn(layout.envelopeOf(['a', 'b']), { axis: 'transverse' });
+		check.routes().followLayoutFlow().haveOnlyAllowedSharedTrunks();
+		check.routes(['a-to-d', 'b-to-c']).haveCrossing();
+		check.renderedPaths().haveBridgeAtEveryCrossing();
 	},
 };

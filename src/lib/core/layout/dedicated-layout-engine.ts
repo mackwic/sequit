@@ -9,8 +9,8 @@ import {
 } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import { deriveEndpointRows, orderEndpoints } from '../ordering/endpoint-order';
-import { type ComponentLayout, isVerticalDirection, layoutComponent } from './component-layout';
+import { deriveEndpointRows, type EndpointRows, orderEndpoints } from '../ordering/endpoint-order';
+import { isVerticalDirection, layoutComponent } from './component-layout';
 import {
 	assertRelationBoundsAreDisjoint,
 	routePointsWithGroupHeaders,
@@ -18,14 +18,19 @@ import {
 } from './dedicated-layout-geometry';
 import type {
 	Bounds,
-	GroupMeasurement,
 	LayoutElement,
 	LayoutMeasurements,
+	LayoutOptions,
 	LayoutRelation,
 	LayoutResult,
+	Point,
 	Size,
 } from './layout-types';
-import { separateCrossingRoutes } from './separate-crossing-routes';
+import { applyNodeRouting, type NodeRouting } from './node-routing';
+import { prepareNodeLayout } from './prepare-node-layout';
+import { anchorRouteToQuays } from './route-quay-anchors';
+import { inspectRouting } from './routing-inspection';
+import { validateGroupMeasurement, validateSize } from './validate-layout-measurements';
 
 const OUTER_MARGIN = 40;
 const COMPONENT_GAP = 96;
@@ -35,42 +40,7 @@ interface RankedComponent {
 	readonly ids: readonly string[];
 	readonly context: string;
 	readonly effectiveOrder: number;
-	readonly layout: ComponentLayout;
-}
-
-function assertPositive(value: number, name: string): void {
-	if (!Number.isFinite(value) || value <= 0) {
-		throw new Error(`${name} must be a finite positive number`);
-	}
-}
-
-function assertNonNegative(value: number, name: string): void {
-	if (!Number.isFinite(value) || value < 0) {
-		throw new Error(`${name} must be a finite non-negative number`);
-	}
-}
-
-function validateSize(size: Size, name: string): Size {
-	assertPositive(size.width, `${name}.width`);
-	assertPositive(size.height, `${name}.height`);
-	return size;
-}
-
-function validateGroupMeasurement(
-	measurement: GroupMeasurement,
-	groupId: string,
-): GroupMeasurement {
-	assertPositive(measurement.minimumWidth, `groups.${groupId}.minimumWidth`);
-	assertPositive(measurement.minimumHeight, `groups.${groupId}.minimumHeight`);
-	assertNonNegative(measurement.headerHeight, `groups.${groupId}.headerHeight`);
-	assertNonNegative(measurement.padding, `groups.${groupId}.padding`);
-	return {
-		...measurement,
-		minimumHeight: Math.max(
-			measurement.minimumHeight,
-			measurement.headerHeight + measurement.padding * 2,
-		),
-	};
+	readonly rows: EndpointRows;
 }
 
 function endpointSize(
@@ -164,6 +134,7 @@ function relationGroupRankGap(
 	groupsById: ReadonlyMap<string, LogicGroup>,
 	vertical: boolean,
 ): number {
+	if (groupsById.size === 0) return DEFAULT_RANK_GAP;
 	const groupShellExtents = new Map<string, number>();
 	const groupShellExtent = (groupId: string, forwardLeading: boolean): number => {
 		const key = `${forwardLeading ? 'leading' : 'trailing'}:${groupId}`;
@@ -205,8 +176,15 @@ function createLayoutResult(
 	graph: LogicGraph,
 	bounds: Map<string, Bounds>,
 	measurements: LayoutMeasurements,
-	ranks: TopologicalRanks,
+	routing: NodeRouting | undefined,
 ): LayoutResult {
+	let planned: ReadonlyMap<string, readonly Point[]> = new Map();
+	if (routing !== undefined)
+		planned = applyNodeRouting({
+			plan: routing,
+			bounds,
+			direction: graph.document.layout.direction,
+		});
 	const relations: LayoutRelation[] = graph.relations.map(({ relation }) => {
 		const source = defined(bounds.get(relation.from));
 		const target = defined(bounds.get(relation.to));
@@ -223,19 +201,26 @@ function createLayoutResult(
 			id: relation.id,
 			from: relation.from,
 			to: relation.to,
-			points: routePointsWithGroupHeaders({
-				source,
-				target,
-				direction: graph.document.layout.direction,
-				sourceGroup:
-					sourceEndpoint.kind === EndpointKind.Group
-						? measurements.groups.get(relation.from)
-						: undefined,
-				targetGroup:
-					targetEndpoint.kind === EndpointKind.Group
-						? measurements.groups.get(relation.to)
-						: undefined,
-			}),
+			points:
+				planned.get(relation.id) ??
+				anchorRouteToQuays(
+					routePointsWithGroupHeaders({
+						source,
+						target,
+						direction: graph.document.layout.direction,
+						sourceGroup:
+							sourceEndpoint.kind === EndpointKind.Group
+								? measurements.groups.get(relation.from)
+								: undefined,
+						targetGroup:
+							targetEndpoint.kind === EndpointKind.Group
+								? measurements.groups.get(relation.to)
+								: undefined,
+					}),
+					routing?.quays.sourceOffsets.get(relation.id) ?? 0,
+					routing?.quays.targetOffsets.get(relation.id) ?? 0,
+					isVerticalDirection(graph.document.layout.direction),
+				),
 		};
 	});
 	const elements: LayoutElement[] = [];
@@ -249,21 +234,7 @@ function createLayoutResult(
 	}
 	elements.sort((left, right) => compareCanonicalStrings(left.id, right.id));
 	relations.sort((left, right) => compareCanonicalStrings(left.id, right.id));
-	const excludedEndpoints = new Set(
-		elements.filter(({ kind }) => kind !== EndpointKind.Node).map(({ id }) => id),
-	);
-	return {
-		width,
-		height,
-		elements,
-		relations: separateCrossingRoutes({
-			relations,
-			bounds,
-			direction: graph.document.layout.direction,
-			excludedEndpoints,
-			ranks: ranks.byEndpointId,
-		}),
-	};
+	return { width, height, elements, relations };
 }
 
 function groupMemberBounds(
@@ -333,36 +304,17 @@ function repackContainmentComponents(
 	}
 }
 
-export function layoutWithDedicatedEngine(
-	graph: LogicGraph,
-	ranks: TopologicalRanks,
-	measurements: LayoutMeasurements,
-): LayoutResult {
-	const sizes = new Map<string, Size>();
-	for (const id of graph.rankableEndpointIds) {
-		sizes.set(id, endpointSize(graph, measurements, id));
-	}
+function preparePlacement(graph: LogicGraph, ranks: TopologicalRanks) {
 	const groupsById = new Map(graph.document.groups.map((group) => [group.id, group]));
 	const vertical = isVerticalDirection(graph.document.layout.direction);
 	const maximumRank = Math.max(0, ...ranks.byEndpointId.values());
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
-	const primaryBandSizes = Array.from({ length: maximumRank + 1 }, () => 1);
-	for (const id of graph.rankableEndpointIds) {
-		if (junctionIds.has(id)) continue;
-		const rank = defined(ranks.byEndpointId.get(id));
-		const size = defined(sizes.get(id));
-		primaryBandSizes[rank] = Math.max(
-			defined(primaryBandSizes[rank]),
-			vertical ? size.height : size.width,
-		);
-	}
 	const effectiveEndpointOrder = orderEndpoints([
 		...graph.document.groups,
 		...graph.document.nodes,
 		...graph.document.junctions,
 	]);
 	const effectiveOrderById = new Map(effectiveEndpointOrder.map((id, index) => [id, index]));
-	const rankGap = relationGroupRankGap(graph, measurements, groupsById, vertical);
 	// FIXME: A target-local key move can change a component's minimum ordinal and swap the
 	// entire component with an unrelated disconnected component. Component packing needs a
 	// stable intent distinct from mutable within-row endpoint keys.
@@ -375,23 +327,16 @@ export function layoutWithDedicatedEngine(
 					.filter((id) => ranks.byEndpointId.get(id) === 0)
 					.map((id) => defined(effectiveOrderById.get(id))),
 			),
-			layout: layoutComponent(
-				deriveEndpointRows({
-					effectiveEndpointOrder: [...ids].sort(
-						(left, right) =>
-							defined(effectiveOrderById.get(left)) - defined(effectiveOrderById.get(right)),
-					),
-					componentIds: ids,
-					ranks: ranks.byEndpointId,
-					junctionIds,
-					maximumRank,
-				}),
-				sizes,
-				graph.document.layout.direction,
-				graph.document.layout.bias,
-				primaryBandSizes,
-				rankGap,
-			),
+			rows: deriveEndpointRows({
+				effectiveEndpointOrder: [...ids].sort(
+					(left, right) =>
+						defined(effectiveOrderById.get(left)) - defined(effectiveOrderById.get(right)),
+				),
+				componentIds: ids,
+				ranks: ranks.byEndpointId,
+				junctionIds,
+				maximumRank,
+			}),
 		};
 	});
 	components.sort((left, right) => {
@@ -399,6 +344,56 @@ export function layoutWithDedicatedEngine(
 		const effectiveOrder = left.effectiveOrder - right.effectiveOrder;
 		return contextOrder || effectiveOrder;
 	});
+	const groupsByDescendingDepth = [...graph.document.groups].sort(
+		(left, right) =>
+			groupDepth(right, groupsById) - groupDepth(left, groupsById) ||
+			compareCanonicalStrings(left.id, right.id),
+	);
+	return {
+		graph,
+		ranks,
+		groupsById,
+		vertical,
+		maximumRank,
+		junctionIds,
+		components,
+		groupsByDescendingDepth,
+	};
+}
+
+function placeGraph(
+	placement: ReturnType<typeof preparePlacement>,
+	measurements: LayoutMeasurements,
+	gaps: ReadonlyMap<number, number>,
+): Map<string, Bounds> {
+	const { graph, ranks, groupsById, vertical, maximumRank, junctionIds } = placement;
+	const sizes = new Map<string, Size>();
+	for (const id of graph.rankableEndpointIds) {
+		sizes.set(id, endpointSize(graph, measurements, id));
+	}
+	const primaryBandSizes = Array.from({ length: maximumRank + 1 }, () => 1);
+	for (const id of graph.rankableEndpointIds) {
+		if (junctionIds.has(id)) continue;
+		const rank = defined(ranks.byEndpointId.get(id));
+		const size = defined(sizes.get(id));
+		primaryBandSizes[rank] = Math.max(
+			defined(primaryBandSizes[rank]),
+			vertical ? size.height : size.width,
+		);
+	}
+	const rankGap = relationGroupRankGap(graph, measurements, groupsById, vertical);
+	const components = placement.components.map((component) => ({
+		...component,
+		layout: layoutComponent(
+			component.rows,
+			sizes,
+			graph.document.layout.direction,
+			graph.document.layout.bias,
+			primaryBandSizes,
+			rankGap,
+			{ rankGaps: gaps, parents: graph.outgoingByEndpointId },
+		),
+	}));
 	let maximumPrimaryLength = 0;
 	for (const component of components) {
 		maximumPrimaryLength = Math.max(
@@ -423,12 +418,7 @@ export function layoutWithDedicatedEngine(
 		cross += (vertical ? component.layout.width : component.layout.height) + COMPONENT_GAP;
 	}
 
-	const groupsByDescendingDepth = [...graph.document.groups].sort(
-		(left, right) =>
-			groupDepth(right, groupsById) - groupDepth(left, groupsById) ||
-			compareCanonicalStrings(left.id, right.id),
-	);
-	for (const group of groupsByDescendingDepth) {
+	for (const group of placement.groupsByDescendingDepth) {
 		const measurement = measurements.groups.get(group.id);
 		if (!measurement) throw new Error(`Missing group measurement: ${group.id}`);
 		const validated = validateGroupMeasurement(measurement, group.id);
@@ -469,7 +459,7 @@ export function layoutWithDedicatedEngine(
 			height: Math.max(validated.minimumHeight, bottom - y + validated.padding),
 		});
 	}
-	repackContainmentComponents(graph, bounds, vertical);
+	if (graph.document.groups.length > 0) repackContainmentComponents(graph, bounds, vertical);
 
 	let minimumX = Number.POSITIVE_INFINITY;
 	let minimumY = Number.POSITIVE_INFINITY;
@@ -479,9 +469,34 @@ export function layoutWithDedicatedEngine(
 	}
 	const shiftX = Math.max(0, OUTER_MARGIN - minimumX);
 	const shiftY = Math.max(0, OUTER_MARGIN - minimumY);
+	if (shiftX === 0 && shiftY === 0) return bounds;
 	for (const [id, value] of bounds) {
 		bounds.set(id, translateBounds(value, shiftX, shiftY));
 	}
 
-	return createLayoutResult(graph, bounds, measurements, ranks);
+	return bounds;
+}
+
+export function layoutWithDedicatedEngine(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions = {},
+): LayoutResult {
+	const placement = preparePlacement(graph, ranks);
+	const prepared = prepareNodeLayout(graph, ranks, measurements, (sizes, gaps) =>
+		placeGraph(placement, sizes, gaps),
+	);
+	const result = createLayoutResult(graph, prepared.bounds, measurements, prepared.routing);
+	if (options.inspectRouting !== true) return result;
+	return {
+		...result,
+		routingInspection: inspectRouting({
+			layout: result,
+			measurements,
+			ranks: ranks.byEndpointId,
+			direction: graph.document.layout.direction,
+			plan: prepared.routing,
+		}),
+	};
 }

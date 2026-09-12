@@ -5,11 +5,19 @@
 	import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
 	import RelationArrow from '../../web/ui/components/canvas/RelationArrow.svelte';
 	import RelationPath from '../../web/ui/components/canvas/RelationPath.svelte';
+	import RoutingReservationDetails from './RoutingReservationDetails.svelte';
+	import RoutingReservations from './RoutingReservations.svelte';
 	let {
 		layout,
 		guides,
+		reservations = false,
 		targets = {},
-	}: { layout: VisualLayout; guides: boolean; targets?: AssertionTargets } = $props();
+	}: {
+		layout: VisualLayout;
+		guides: boolean;
+		reservations?: boolean;
+		targets?: AssertionTargets;
+	} = $props();
 	const markerId = $props.id();
 </script>
 
@@ -100,7 +108,17 @@
 				{/if}
 			</g>
 		{/each}
+		{#if reservations && layout.routingInspection}<RoutingReservations
+				inspection={layout.routingInspection}
+			/>{/if}
 	</svg>
+	{#if reservations}
+		{#if layout.routingInspection}<RoutingReservationDetails
+				{layout}
+				inspection={layout.routingInspection}
+			/>
+		{:else}<p>Les réservations ne sont pas disponibles pour ce dessin.</p>{/if}
+	{/if}
 </div>
 
 <style>

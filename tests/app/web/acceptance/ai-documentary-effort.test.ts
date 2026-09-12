@@ -310,11 +310,21 @@ describe('AI for documentary effort', () => {
 					expect(pointTouchesBoundary(lastPoint, toBounds)).toBe(true);
 				}
 			}
-			// Port positions may change when the shared corridor no longer has an inversion.
+			// Removing the inversion releases one rail: sources keep their transverse positions and move up by its spacing.
 			AssertRoutes(before.relations).haveCrossing();
 			AssertRoutes(after.relations).haveNoCrossing();
-			expect(afterBounds.get('source-a')).toEqual(beforeBounds.get('source-a'));
-			expect(afterBounds.get('source-b')).toEqual(beforeBounds.get('source-b'));
+			for (const id of ['source-a', 'source-b']) {
+				const previous = beforeBounds.get(id);
+				const current = afterBounds.get(id);
+				if (previous === undefined || current === undefined)
+					throw new Error(`Missing source ${id}`);
+				expect(current).toMatchObject({
+					x: previous.x,
+					width: previous.width,
+					height: previous.height,
+				});
+				expect(previous.y - current.y).toBe(24);
+			}
 		});
 	});
 });

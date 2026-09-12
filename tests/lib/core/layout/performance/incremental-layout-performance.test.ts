@@ -4,12 +4,17 @@ import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../../../../src/app/workshop/fi
 import { incrementalLayoutBudgetMs } from '../../../../support/performance/incremental-layout-budgets';
 import { INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS } from '../../../../support/performance/layout-performance-policy';
 import {
+	type PerformanceMeasurement,
+	recordPerformanceMeasurements,
+} from '../../../../support/performance/record-performance-measurements';
+import {
 	INCREMENTAL_LAYOUT_TIMING_STAGES,
 	prepareIncrementalLayoutReplay,
 	replayIncrementalLayout,
 	summarizeIncrementalLayoutReplays,
 } from '../../../../support/performance/replay-incremental-layout';
 
+const measurements: PerformanceMeasurement[] = [];
 const inputs = LAYOUT_PERFORMANCE_SCENARIOS.map((scenario) =>
 	prepareIncrementalLayoutReplay(scenario, 1000),
 );
@@ -37,6 +42,14 @@ describe('incremental layout performance', { concurrent: false }, () => {
 					const totalP95 = summary.stages.totalMs.p95;
 					const synchronousP95 = summary.stages.synchronousProjectionMs.p95;
 					const budget = incrementalLayoutBudgetMs(input.scenario.name, summary.bucket);
+					measurements.push({
+						scenario: input.scenario.name,
+						size: summary.bucket,
+						metric: 'totalP95Ms',
+						observedMs: totalP95,
+						budgetMs: budget,
+						details: summary,
+					});
 					calibrationRows.push(
 						`${input.scenario.name},${summary.bucket},${totalP95.toFixed(3)},${budget}`,
 					);
@@ -47,10 +60,12 @@ describe('incremental layout performance', { concurrent: false }, () => {
 						`${input.scenario.name},${summary.bucket},sync=${synchronousP95.toFixed(3)}ms:${uxStatus(synchronousP95, INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS.synchronousProjection)},total=${totalP95.toFixed(3)}ms:${uxStatus(totalP95, INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS.total)},slowestNodeIndex=${summary.slowestInsertion.nodeIndex} ${slowestStages}`,
 					);
 
-					expect(
-						totalP95,
-						`${input.scenario.name}/${summary.bucket}: total p95 ${totalP95.toFixed(2)} ms, calibrated budget <${budget} ms; slowest insertion ${summary.slowestInsertion.nodeIndex}`,
-					).toBeLessThan(budget);
+					expect
+						.soft(
+							totalP95,
+							`${input.scenario.name}/${summary.bucket}: total p95 ${totalP95.toFixed(2)} ms, calibrated budget <${budget} ms; slowest insertion ${summary.slowestInsertion.nodeIndex}`,
+						)
+						.toBeLessThan(budget);
 				}
 			},
 			1_200_000,
@@ -59,6 +74,7 @@ describe('incremental layout performance', { concurrent: false }, () => {
 });
 
 afterAll(() => {
+	recordPerformanceMeasurements(measurements);
 	process.stderr.write(
 		`\nIncremental calibration results (scenario,bucket,totalP95Ms,budgetMs)\n${calibrationRows.join('\n')}\n\nFixed UX goals (PASS or GAP; goals do not alter calibrated gates)\n${uxRows.join('\n')}\n`,
 	);

@@ -25,7 +25,7 @@ for (const { id, boxes, previews } of cases) {
 			await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption(direction);
 			await expect(page.getByRole('img', { name: 'Géométrie du scénario' })).toHaveCount(previews);
 			await expect(page.locator('[data-box-id]')).toHaveCount(boxes * previews);
-			await expect(page.getByRole('status')).toContainText(/Réussi|Échec du scénario/);
+			await expect(page.getByRole('status')).toContainText('Réussi');
 			await expect(page.getByRole('status')).not.toContainText(/TypeError|undefined|NaN/);
 		}
 		if (id === 'released-rails-quays') {
@@ -45,13 +45,26 @@ for (const { id, boxes, previews } of cases) {
 
 test('presents structured assertion failures on a narrow viewport', async ({ page }) => {
 	await page.setViewportSize({ width: 375, height: 900 });
+	// Deliberately fail a real route assertion to test diagnostic rendering, independently of engine defects.
+	await page.route(
+		/\/tests\/scenarios\/visual\/routing\/narrow-quays\.scenario\.ts(?:\?|$)/,
+		async (route) => {
+			const response = await route.fetch();
+			let body = await response.text();
+			if (!new URL(route.request().url()).searchParams.has('raw')) {
+				body +=
+					"\nscenario.assert = (layout) => { AssertLayout(layout).route('a-to-c').isStraightAlong('x'); };\n";
+			}
+			await route.fulfill({ response, body });
+		},
+	);
 	await page.goto('/atelier/tests-visuels/narrow-quays');
 	const verdict = page.getByRole('status');
 	await expect(verdict).toContainText('Échec du scénario');
 	await expect(verdict).toContainText('Route "a-to-c"');
 	await expect(verdict.locator('dt')).toHaveText(['Attendu', 'Observé']);
-	await expect(verdict.locator('dd').first()).toHaveText('un segment rectiligne sur y');
-	await expect(verdict.locator('dd').last()).toContainText('3 segments');
+	await expect(verdict.locator('dd').first()).toHaveText('un segment rectiligne sur x');
+	await expect(verdict.locator('dd').last()).toContainText('1 segments');
 	await page.getByRole('button', { name: 'Réexécuter le scénario' }).click();
 	await expect(verdict.locator('dt')).toHaveText(['Attendu', 'Observé']);
 	const failedRoute = page.locator('[data-failed-route="true"]');
@@ -77,4 +90,44 @@ test('groups visual settings below the rendered canvas', async ({ page }) => {
 	expect(settingsBounds?.y).toBeGreaterThan((canvasBounds?.y ?? 0) + (canvasBounds?.height ?? 0));
 	await guides.check();
 	await expect(page.locator('[data-center-guide]')).toHaveCount(4);
+});
+
+test('inspects reservations without changing geometry and preserves the preference', async ({
+	page,
+}) => {
+	await page.goto('/atelier/tests-visuels/narrow-quays');
+	await expect(page.getByRole('status')).toContainText('Réussi');
+	const paths = page.locator('[data-rendered-relation-id]');
+	const original = await paths.evaluateAll((elements) =>
+		elements.map((element) => element.getAttribute('d')),
+	);
+	const toggle = page.getByRole('checkbox', { name: 'Afficher les rails et les quais' });
+	await expect(page.locator('[data-quay-node]')).toHaveCount(0);
+	await toggle.check();
+	for (const direction of ['top-to-bottom', 'bottom-to-top', 'left-to-right', 'right-to-left']) {
+		await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption(direction);
+		await expect(page.locator('[data-quay-node]')).toHaveCount(8);
+		await expect(page.locator('[data-reserved-rail]')).toHaveCount(3);
+		await expect(page.locator('[data-content-outline]')).toHaveCount(4);
+		await expect(page.locator('[data-reservation-node="a"]')).toContainText('+16');
+		await expect(page.getByRole('status')).toContainText('Réussi');
+	}
+	await page
+		.getByRole('combobox', { name: 'Direction', exact: true })
+		.selectOption('top-to-bottom');
+	expect(
+		await paths.evaluateAll((elements) => elements.map((element) => element.getAttribute('d'))),
+	).toEqual(original);
+	await page.reload();
+	await expect(toggle).toBeChecked();
+	await page.setViewportSize({ width: 375, height: 900 });
+	await expect(page.getByRole('region', { name: 'Réservations de routage' })).toBeVisible();
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+	await page.locator('.visual-test').screenshot({ path: '/tmp/sequit-reservations-mobile.png' });
+	await page.goto('/atelier/tests-visuels/wide-quays');
+	await expect(page.locator('[data-reservation-node="a"]')).toContainText('+0');
+	await page.goto('/atelier/tests-visuels/released-rails-quays');
+	await expect(page.getByRole('region', { name: 'Réservations de routage' })).toHaveCount(2);
+	await toggle.uncheck();
+	await expect(page.locator('[data-quay-node]')).toHaveCount(0);
 });

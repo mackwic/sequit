@@ -2,6 +2,25 @@
 module.exports = {
 	forbidden: [
 		{
+			name: 'visual-scenarios-use-the-layout-harness',
+			severity: 'error',
+			from: { path: '^tests/scenarios/visual/.*[.]scenario[.]ts$' },
+			to: {
+				path: '^(src/(lib/core/(graph/(create-graph|topological-ranks)|layout/)|app/web/(projection/layout-graph|ui/canvas/render-relations))|tests/support/assertions/assert-layout-routing)',
+			},
+		},
+		{
+			name: 'visual-scenarios-and-support-are-runner-and-ui-independent',
+			severity: 'error',
+			from: {
+				path: '^tests/(scenarios/visual/|support/(assertions|builders|fixtures|harnesses)/)',
+				pathNot: '\\.(test|spec)\\.ts$',
+			},
+			to: {
+				path: '(node_modules/(@vitest/|vitest/|@playwright/|playwright(-core)?/)|\\.(test|spec)\\.ts$|\\.svelte$)',
+			},
+		},
+		{
 			name: 'no-circular-dependencies',
 			severity: 'error',
 			from: { path: '^(src/|tests/(support|scenarios)/)' },

@@ -99,9 +99,42 @@ export default defineConfig(
 		},
 	},
 	{
-		files: ['src/**/*.{ts,js,svelte}'],
+		files: ['src/**/*.{ts,js,svelte}', 'tests/scenarios/visual/**/*.ts', 'tests/support/**/*.ts'],
 		plugins: { local: localRules },
 		rules: { 'local/allowed-import-directions': 'error' },
+	},
+	{
+		files: ['tests/scenarios/visual/**/*.scenario.ts'],
+		plugins: { local: localRules },
+		rules: {
+			'local/no-abandoned-visual-selection': 'error',
+			'local/no-swallowed-visual-assertion': 'error',
+			'local/require-visual-assertion': 'error',
+			'local/visual-scenario-phases': 'error',
+			'local/forward-visual-layout-configuration': 'error',
+			'no-restricted-imports': [
+				'error',
+				{
+					patterns: [
+						{
+							regex: '/assertions/(?!assert-layout(?:[.]ts)?$)',
+							importNamePattern: '^(Assert(?!Layout$)|assert[A-Z])',
+							message:
+								'Use AssertLayout in visual scenarios. Specialized assertions belong behind the facade and in its unit tests.',
+						},
+					],
+				},
+			],
+		},
+	},
+	{
+		files: [
+			'tests/scenarios/visual/**/*.ts',
+			'tests/support/{assertions,builders,fixtures,harnesses}/**/*.ts',
+		],
+		ignores: ['**/*.test.ts', '**/*.spec.ts'],
+		plugins: { local: localRules },
+		rules: { 'local/no-uncontrolled-visual-input': 'error' },
 	},
 	{
 		files: productionFiles,

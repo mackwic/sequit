@@ -7,6 +7,7 @@ import { AssertRenderedPaths } from './assert-rendered-paths';
 import { AssertRoute } from './assert-route';
 import { AssertRoutes } from './assert-routes';
 import { AssertTrunks } from './assert-trunks';
+import { assertRouteFlow } from './route-flow';
 
 type RouteSelection = readonly string[] | readonly LayoutRelation[];
 
@@ -42,6 +43,14 @@ class LayoutRoutes {
 				this.layout.getById(route.from),
 				this.layout.getById(route.to),
 			);
+		return this;
+	}
+	followLayoutFlow(): this {
+		for (const route of this.routes) assertRouteFlow(this.layout, route);
+		return this;
+	}
+	haveOnlyAllowedSharedTrunks(): this {
+		this.geometry.haveOnlyAllowedSharedTrunks(this.layout.relations);
 		return this;
 	}
 	haveNoOverlap(): this {

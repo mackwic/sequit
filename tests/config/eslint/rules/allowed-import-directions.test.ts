@@ -37,8 +37,97 @@ it('enforces the shared policy in Svelte through the repository ESLint configura
 	);
 });
 
+it('enforces visual conventions through the repository configuration', async () => {
+	const results = await eslint.lintText(
+		`
+ import { expect } from 'vitest';
+ import { AssertLayout as verify } from '../../../support/assertions/assert-layout';
+ export const scenario = {
+ assert(layout) { const check = verify(layout); check.node('a'); try { check.routes().haveNoCrossing(); } catch {} }
+ };
+ `,
+		{ filePath: filename('tests/scenarios/visual/routing/default-quays.scenario.ts') },
+	);
+	expect(results.flatMap((result) => result.messages.map((message) => message.ruleId))).toEqual(
+		expect.arrayContaining([
+			'local/allowed-import-directions',
+			'local/no-abandoned-visual-selection',
+			'local/no-swallowed-visual-assertion',
+		]),
+	);
+});
+
+it('activates facade, phase, configuration and deterministic-input guards', async () => {
+	const results = await eslint.lintText(
+		`
+ import { AssertNode } from '../../../support/assertions/assert-node';
+ import { AssertLayout as verify } from '../../../support/assertions/assert-layout';
+ import { layoutNodes } from '../../../support/harnesses/layout-nodes';
+ export const scenario = {
+ arrange(direction, bias) { verify(layout).node('a').hasRank(1); Math.random(); return layoutNodes({ direction }); },
+ assert(layout) { AssertNode(layout.getNodeById('a')).hasRank(1); }
+ };
+ `,
+		{ filePath: filename('tests/scenarios/visual/nodes/single-node.scenario.ts') },
+	);
+	expect(results.flatMap((result) => result.messages.map((message) => message.ruleId))).toEqual(
+		expect.arrayContaining([
+			'no-restricted-imports',
+			'local/require-visual-assertion',
+			'local/visual-scenario-phases',
+			'local/forward-visual-layout-configuration',
+			'local/no-uncontrolled-visual-input',
+		]),
+	);
+});
+
+it('allows specialized assertions and generated counterexamples in unit tests', async () => {
+	const results = await eslint.lintText(
+		`
+ import { AssertNode } from './assert-node';
+ const rank = Math.random();
+ AssertNode(node).hasRank(rank);
+ `,
+		{ filePath: filename('tests/support/assertions/assert-layout.test.ts') },
+	);
+	const ids = results.flatMap((result) => result.messages.map((message) => message.ruleId));
+	expect(ids).not.toContain('no-restricted-imports');
+	expect(ids).not.toContain('local/require-visual-assertion');
+	expect(ids).not.toContain('local/no-uncontrolled-visual-input');
+});
+
+it('keeps scenario-only rules out of assertion counterexample tests', async () => {
+	const config: unknown = await eslint.calculateConfigForFile(
+		filename('tests/support/assertions/assert-layout.test.ts'),
+	);
+	expect(config).toHaveProperty('rules');
+	expect(config).not.toHaveProperty(['rules', 'local/no-abandoned-visual-selection']);
+	expect(config).not.toHaveProperty(['rules', 'local/no-swallowed-visual-assertion']);
+});
+
 tester.run('allowed-import-directions', rule, {
 	valid: [
+		{
+			filename: filename('tests/support/scenarios/collaboration.ts'),
+			code: "import { expect } from 'vitest';",
+		},
+		{
+			filename: filename('tests/support/assertions/assert-layout.test.ts'),
+			code: "import { expect } from 'vitest';",
+		},
+		{
+			filename: filename('tests/scenarios/visual/scenarios.test.ts'),
+			code: "import { expect } from 'vitest';",
+		},
+		{
+			filename: filename('tests/scenarios/visual/routing/default-quays.scenario.ts'),
+			code: "import { AssertLayout } from '../../../support/assertions/assert-layout';",
+		},
+		{
+			filename: filename('tests/support/assertions/assert-layout-routing.ts'),
+			code: "import { renderRelationPaths } from '../../../src/app/web/ui/canvas/render-relations';",
+		},
+
 		{
 			filename: filename('src/app/workshop/visual-tests/ScenarioGallery.svelte'),
 			code: "import { catalogue } from '../../../../tests/scenarios/visual/catalogue';",
@@ -72,6 +161,49 @@ tester.run('allowed-import-directions', rule, {
 		},
 	],
 	invalid: [
+		...[
+			'../../../../src/lib/core/graph/create-graph',
+			'../../../../src/app/web/projection/layout-graph',
+			'../../../../src/app/web/ui/canvas/render-relations',
+			'../../../support/assertions/assert-layout-routing',
+		].map((source) => ({
+			filename: filename('tests/scenarios/visual/nodes/single-node.scenario.ts'),
+			code: `import * as bypass from '${source}';`,
+			errors,
+		})),
+		...[
+			'vitest',
+			'vitest/config',
+			'@vitest/expect',
+			'@playwright/test',
+			'playwright',
+			'playwright-core',
+		].map((runner) => ({
+			filename: filename('tests/scenarios/visual/routing/default-quays.scenario.ts'),
+			code: `import runner from '${runner}';`,
+			errors,
+		})),
+		{
+			filename: filename('tests/support/assertions/example.ts'),
+			code: "export { expect } from 'vitest';",
+			errors,
+		},
+		{
+			filename: filename('tests/support/fixtures/example.ts'),
+			code: "const runner = import('@playwright/test');",
+			errors,
+		},
+		{
+			filename: filename('tests/support/builders/example.ts'),
+			code: "import '../assertions/assert-layout.test';",
+			errors,
+		},
+		{
+			filename: filename('tests/support/harnesses/example.ts'),
+			code: "import Canvas from '../../../src/app/web/ui/components/canvas/LogicCanvas.svelte';",
+			errors,
+		},
+
 		{
 			filename: workshop,
 			code: "import { graphFixtures } from '../../../tests/support/fixtures/graph-fixtures';",

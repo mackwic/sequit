@@ -1,6 +1,7 @@
 import { defined } from '../document/logic-document';
 import { LayoutBias, LayoutDirection } from '../document/logic-document';
 import type { EndpointRows } from '../ordering/endpoint-order';
+import { alignRowBranches } from './align-row-branches';
 import type { Bounds, Size } from './layout-types';
 
 const ITEM_GAP = 36;
@@ -85,6 +86,10 @@ export function layoutComponent(
 	bias: LayoutBias,
 	primaryBandSizes: readonly number[],
 	rankGap = RANK_GAP,
+	constraints: {
+		readonly rankGaps?: ReadonlyMap<number, number>;
+		readonly parents?: ReadonlyMap<string, readonly string[]>;
+	} = {},
 ): ComponentLayout {
 	const vertical = isVerticalDirection(direction);
 	const maximumRank = Math.max(0, primaryBandSizes.length - 1);
@@ -96,8 +101,9 @@ export function layoutComponent(
 	}
 	const junctionPrimarySizes = rows.junction.map((row) => rowPrimarySize(row, sizes, vertical));
 	const junctionSpans = junctionPrimarySizes.map((size, rank) => {
-		if (size > 0) return Math.max(rankGap, size + JUNCTION_CLEARANCE * 2);
-		return rank < maximumRank ? rankGap : 0;
+		const gap = Math.max(rankGap, constraints.rankGaps?.get(rank) ?? 0);
+		if (size > 0) return Math.max(gap, size + JUNCTION_CLEARANCE * 2);
+		return rank < maximumRank ? gap : 0;
 	});
 	const primaryBandStarts = Array.from({ length: primaryBandSizes.length }, () => 0);
 	for (let rank = 1; rank < primaryBandSizes.length; rank += 1) {
@@ -114,7 +120,7 @@ export function layoutComponent(
 	);
 	const ordinaryCrossSizes = rows.ordinary.map((row) => rowCrossSize(row, sizes, vertical));
 	const junctionCrossSizes = rows.junction.map((row) => rowCrossSize(row, sizes, vertical));
-	const crossLength = Math.max(1, ...ordinaryCrossSizes, ...junctionCrossSizes);
+	let crossLength = Math.max(1, ...ordinaryCrossSizes, ...junctionCrossSizes);
 	const boundsById = new Map<string, Bounds>();
 
 	const place = (id: string, cross: number, forwardPrimary: number): void => {
@@ -159,6 +165,13 @@ export function layoutComponent(
 		}
 	}
 
+	if (constraints.parents !== undefined)
+		crossLength = alignRowBranches({
+			rows: rows.ordinary,
+			parents: constraints.parents,
+			bounds: boundsById,
+			vertical,
+		});
 	return {
 		boundsById,
 		width: vertical ? crossLength : primaryLength,

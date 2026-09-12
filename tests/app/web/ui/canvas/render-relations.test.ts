@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { LayoutRelation } from '../../../../../src/app/web/projection/layout-graph';
 import { renderRelationPaths } from '../../../../../src/app/web/ui/canvas/render-relations';
+import { AssertRenderedPaths } from '../../../../support/assertions/assert-rendered-paths';
 
 function relation(id: string, points: LayoutRelation['points']): LayoutRelation {
 	return { id, from: `${id}-source`, to: `${id}-target`, points };
@@ -91,8 +92,28 @@ describe('renderRelationPaths', () => {
 			'L 110 60',
 		);
 		expect(rendered.find(({ id }) => id === 'reversed-horizontal')?.path).toContain(
-			'A 6 6 0 0 1 6 75',
+			'A 6 6 0 0 1 4 75',
 		);
+	});
+
+	it('moves a crowded bridge to the other arrow instead of losing the crossing', () => {
+		const paths = renderRelationPaths([
+			relation('left', [
+				{ x: 10, y: 0 },
+				{ x: 10, y: 100 },
+			]),
+			relation('right', [
+				{ x: 12, y: 0 },
+				{ x: 12, y: 100 },
+			]),
+			relation('horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+		]);
+		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
+		expect(paths[1]?.path).toContain('A 6 6 0 0 1 12 56');
+		expect(paths[2]?.path).toContain('A 6 6 0 0 1 16 50');
 	});
 
 	it('uses stable, subtly different arrow colors', () => {

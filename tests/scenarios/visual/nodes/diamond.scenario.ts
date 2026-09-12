@@ -1,10 +1,7 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertBox } from '../../../support/assertions/assert-box';
-import { AssertNode } from '../../../support/assertions/assert-node';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
-import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
@@ -14,29 +11,26 @@ export const scenario: LayoutScenario = {
 	order: 130,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
-			direction,
-			bias,
 			...graphFixtures
 				.twoSuccessors()
 				.nodes(['d'])
 				.successorsOf('b', ['d'])
 				.successorsOf('c', ['d'])
 				.build(),
+			direction,
+			bias,
 		});
 	},
 	assert(layout) {
-		for (const id of ['a']) AssertNode(layout.getNodeById(id)).hasRank(1);
-		for (const id of ['b', 'c']) AssertNode(layout.getNodeById(id)).hasRank(2);
-		const axis = axesFor(layout.direction).transverse;
-		AssertNode(layout.getNodeById('d')).hasRank(3);
-		const middle = layout.envelopeOf(['b', 'c']);
-		AssertBox(middle).isCenteredIn(layout.getById('a'), { axis });
-		AssertBox(middle).isCenteredIn(layout.getById('d'), { axis });
-		for (const relation of layout.relations) {
-			AssertBox(layout.getById(relation.from)).isAfter(layout.getById(relation.to), {
-				direction: layout.direction,
-			});
-		}
-		AssertRoutes(layout.relations).haveNoCrossing();
+		const check = AssertLayout(layout);
+		check.node('a').hasRank(1);
+		check.nodes(['b', 'c']).haveRank(2);
+		check.node('d').hasRank(3);
+		check
+			.envelope(['b', 'c'])
+			.isCenteredOn('a', { axis: 'transverse' })
+			.isCenteredOn('d', { axis: 'transverse' });
+		for (const relation of layout.relations) check.node(relation.from).isAfter(relation.to);
+		check.routes().haveNoCrossing();
 	},
 };

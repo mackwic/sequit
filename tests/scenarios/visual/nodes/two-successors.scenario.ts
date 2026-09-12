@@ -11,9 +11,9 @@ export const scenario: LayoutScenario = {
 	order: 50,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
+			...graphFixtures.twoSuccessors().build(),
 			direction,
 			bias,
-			...graphFixtures.twoSuccessors().build(),
 		});
 	},
 	assert(layout) {

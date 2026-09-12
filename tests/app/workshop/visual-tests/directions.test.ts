@@ -20,6 +20,7 @@ describe('stored visual test settings', () => {
 			direction: LayoutDirection.LeftToRight,
 			bias: LayoutBias.Right,
 			guides: false,
+			reservations: false,
 		});
 	});
 
@@ -34,4 +35,12 @@ describe('stored visual test settings', () => {
 	])('uses defaults when the stored value is unusable', (stored) => {
 		expect(parseVisualTestSettings(stored)).toEqual(defaultVisualTestSettings);
 	});
+});
+
+it('restores the opt-in reservation preference without requiring it in older saved settings', () => {
+	const settings = { ...defaultVisualTestSettings, reservations: true };
+	expect(parseVisualTestSettings(JSON.stringify(settings))).toEqual(settings);
+	expect(
+		parseVisualTestSettings(JSON.stringify({ ...settings, reservations: 'true' })).reservations,
+	).toBe(false);
 });

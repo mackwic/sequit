@@ -234,3 +234,33 @@ it('selects routes strictly by IDs or explicit observations and supports one-to-
 	expect(() => check.routes(['h']).haveCrossing()).toThrow('at least 2');
 	expect(() => check.routes(['h']).haveNoOverlap()).toThrow('at least 2');
 });
+
+it.each(Object.values(LayoutDirection))(
+	'aligns rows and chains through the facade in %s',
+	async (direction) => {
+		const layout = await layoutNodes({
+			...graphFixtures.independentNodes(['a', 'b']).build(),
+			direction,
+		});
+		const check = AssertLayout(layout);
+		const a = check.node('a');
+		expect(a.isAlignedWith('b', { by: 'row' })).toBe(a);
+		const envelope = check.envelope(['a']);
+		expect(envelope.isAlignedWith('a', { by: 'top', tolerance: 0 })).toBe(envelope);
+		const chain = await layoutNodes({ ...graphFixtures.directedChain().build(), direction });
+		AssertLayout(chain).node('a').isAlignedWith('b', { by: 'chain' });
+		const axis = axesFor(direction).primary;
+		const shifted = layout.withElements(
+			layout.elements.map((element) => {
+				if (element.id !== 'b') return element;
+				return { ...element, bounds: { ...element.bounds, [axis]: element.bounds[axis] + 10 } };
+			}),
+		);
+		const failure = diagnostic(() =>
+			AssertLayout(shifted).node('a').isAlignedWith('b', { by: 'row' }),
+		);
+		expect(failure.code).toBe('box.alignment');
+		expect(failure.context?.difference).toBe(10);
+		expect(failure.targets).toEqual({ boxes: ['a'], referenceBoxes: ['b'] });
+	},
+);

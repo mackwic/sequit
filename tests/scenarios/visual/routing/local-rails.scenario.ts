@@ -14,8 +14,6 @@ export const scenario: LayoutScenario = {
 	order: 190,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const reference = await layoutNodes({
-			direction,
-			bias,
 			...graphFixtures
 				.routingNodes(['x', 'y', 'a', 'b', 'c', 'd'], direction)
 				.arrowsFrom('x', ['y'])
@@ -23,10 +21,10 @@ export const scenario: LayoutScenario = {
 				.arrowsFrom('a', ['c'])
 				.arrowsFrom('b', ['d'])
 				.build(),
-		});
-		const layout = await layoutNodes({
 			direction,
 			bias,
+		});
+		const layout = await layoutNodes({
 			...graphFixtures
 				.routingNodes(['x', 'y', 'a', 'b', 'c', 'd'], direction)
 				.arrowsFrom('x', ['y'])
@@ -34,6 +32,8 @@ export const scenario: LayoutScenario = {
 				.arrowsFrom('a', ['c', 'd'])
 				.arrowsFrom('b', ['c', 'd'])
 				.build(),
+			direction,
+			bias,
 		});
 		return layout.withReference('Référence : mêmes nœuds, sans les deux diagonales', reference);
 	},
@@ -69,7 +69,7 @@ export const scenario: LayoutScenario = {
 			.haveRoom(railPolicy);
 		// Shared trunks remain permitted in the upstream fork.
 		const crossing = layout.relations.filter((route) => ['a', 'b'].includes(route.from));
-		check.routes(crossing).areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+		check.routes(crossing).areOrthogonal().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths(crossing).haveBridgeAtEveryCrossing();
 	},
 };

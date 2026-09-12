@@ -1,10 +1,7 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { AssertBox } from '../../../support/assertions/assert-box';
-import { AssertNode } from '../../../support/assertions/assert-node';
-import { AssertRoutes } from '../../../support/assertions/assert-routes';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
-import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
@@ -14,22 +11,17 @@ export const scenario: LayoutScenario = {
 	order: 60,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
+			...graphFixtures.threeSuccessors().build(),
 			direction,
 			bias,
-			...graphFixtures.threeSuccessors().build(),
 		});
 	},
 	assert(layout) {
-		const a = layout.getNodeById('a');
+		const check = AssertLayout(layout);
 		const successors = ['b', 'c', 'd'];
-		AssertNode(a).hasRank(1);
-		for (const id of successors) {
-			const successor = layout.getNodeById(id);
-			AssertNode(successor).hasRank(2);
-			AssertBox(successor).isAfter(a, { direction: layout.direction });
-		}
-		const envelope = layout.envelopeOf(successors);
-		AssertBox(envelope).isCenteredIn(a, { axis: axesFor(layout.direction).transverse });
-		AssertRoutes(layout.relations).haveNoCrossing();
+		check.node('a').hasRank(1);
+		for (const id of successors) check.node(id).hasRank(2).isAfter('a');
+		check.envelope(successors).isCenteredOn('a', { axis: 'transverse' });
+		check.routes().haveNoCrossing();
 	},
 };

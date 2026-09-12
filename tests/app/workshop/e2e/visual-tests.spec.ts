@@ -92,7 +92,7 @@ test('opens the preview on screen load and preserves the result when reopened', 
 }) => {
 	await page.goto('/atelier/tests-visuels');
 	await expect(page.getByRole('heading', { name: 'Deux largeurs, un même axe.' })).toBeVisible();
-	await expect(page.locator('pre')).toContainText('AssertBox(a).isAlignedWith(b');
+	await expect(page.locator('pre')).toContainText("check.node('a').isAlignedWith('b'");
 	const source = readFileSync(
 		new URL('../../../scenarios/visual/nodes/centered-chain.scenario.ts', import.meta.url),
 		'utf8',
@@ -112,7 +112,7 @@ test('opens the preview on screen load and preserves the result when reopened', 
 	await expect(page.locator('[data-center-guide]')).toHaveCount(2);
 	await expect(page.getByRole('status')).toContainText('Réussi');
 	await expect(page.locator('[data-box-id]')).toHaveCount(2);
-	await page.getByRole('checkbox').uncheck();
+	await page.getByRole('checkbox', { name: 'Afficher les centres et coordonnées' }).uncheck();
 	await expect(page.locator('[data-center-guide]')).toHaveCount(0);
 	// Reopening only reveals the current checked result.
 	await page.getByText('02 / Contrôle visuel', { exact: true }).click();
@@ -307,9 +307,7 @@ test('draws distinct shared-successor routes with a bridge in every layout confi
 	}
 });
 
-test('keeps the descendant centering failure visible with its four-node drawing', async ({
-	page,
-}) => {
+test('centers the descendant on its parent with its four-node drawing', async ({ page }) => {
 	await page.goto('/atelier/tests-visuels');
 	await page
 		.getByRole('button', { name: 'Deux successeurs et un descendant', exact: true })
@@ -317,14 +315,13 @@ test('keeps the descendant centering failure visible with its four-node drawing'
 	await expect(
 		page.getByRole('heading', { name: 'Deux successeurs et un descendant.' }),
 	).toBeVisible();
-	await expect(page.getByRole('status')).toContainText('Alignement de envelope(d) sur b');
-	await expect(page.getByRole('status')).toContainText('Écart : 68');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await expect(page.locator('[data-box-id]')).toHaveCount(4);
 	await expect(page.locator('[data-box-id="d"]')).toHaveAttribute('data-rank', '3');
 	await page
 		.getByRole('combobox', { name: 'Direction', exact: true })
 		.selectOption('left-to-right');
-	await expect(page.getByRole('status')).toContainText('Écart : 48');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await expect(page.locator('path[data-rendered-relation-id]')).toHaveCount(3);
 });
 
@@ -416,6 +413,25 @@ test('keeps the checked result when toggling geometry guides', async ({ page }) 
 test('distinguishes the failed subject from its reference in the drawing and diagnostic', async ({
 	page,
 }) => {
+	// Inject a deliberate geometry error into this UI fixture; the engine's centering is now correct.
+	await page.route(
+		/\/tests\/scenarios\/visual\/nodes\/two-successors-with-descendant\.scenario\.ts(?:\?|$)/,
+		async (route) => {
+			const response = await route.fetch();
+			let body = await response.text();
+			if (!new URL(route.request().url()).searchParams.has('raw')) {
+				body += `
+const arrangeOriginal = scenario.arrange;
+scenario.arrange = async (...args) => {
+ const layout = await arrangeOriginal(...args);
+ const vertical = ['top-to-bottom', 'bottom-to-top'].includes(layout.direction);
+ return layout.withElements(layout.elements.map(element => element.id === 'd' ? {...element, bounds: {...element.bounds, x: element.bounds.x + (vertical ? 68 : 0), y: element.bounds.y + (vertical ? 0 : 48)}} : element));
+};
+`;
+			}
+			await route.fulfill({ response, body });
+		},
+	);
 	await page.goto('/atelier/tests-visuels/two-successors-with-descendant');
 	const status = page.getByRole('status');
 	await expect(status).toContainText('Écart : 68');

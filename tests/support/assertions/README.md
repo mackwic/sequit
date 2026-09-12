@@ -196,9 +196,9 @@ Le catalogue commun découvre automatiquement les exports `scenario`. La galerie
 ## Relations et composants indépendants
 
 - `successors-and-independent-chain` vérifie la séparation stricte des enveloppes A–B–C–D et E–F, et le centrage transversal de F sur E.
-- `shared-successors` spécifie A → C, A → D, B → C et B → D : centrage transversal des deux enveloppes, absence de tout tronc commun entre les quatre routes, croisement avec pont entre A → D et B → C.
+- `shared-successors` spécifie A → C, A → D, B → C et B → D : centrage transversal des deux enveloppes, partage continu autorisé au départ, arrivées exclusives pour les flèches croisées, croisement avec pont entre A → D et B → C.
 
-Ce second cas est désormais satisfait : dans les couloirs de nœuds ordinaires où l’ordre source/cible est inversé, le routage coordonne les ancrages et les passages transversaux. Les routes sont distinctes et le rendu dessine les ponts. Les éventails et convergences sans inversion conservent leurs routes et leurs troncs communs.
+Ce second cas est désormais satisfait : dans les couloirs de nœuds ordinaires où l’ordre source/cible est inversé, le routage coordonne les ancrages et les passages transversaux. Le rendu dessine les ponts ; le partage éventuel des routes suit les règles de troncs au départ et d’exclusivité à l’arrivée. Les éventails et convergences sans inversion conservent leurs routes et leurs troncs communs.
 
 Les assertions distinguent les niveaux du lexique :
 
@@ -208,7 +208,7 @@ Les assertions distinguent les niveaux du lexique :
 - `haveNoCrossingWith(other)` et `haveNoOverlapWith(other)` comparent deux collections disjointes, sans imposer ces contraintes à l’intérieur de chacune.
 - `AssertRenderedPaths(paths).haveBridgeAtEveryCrossing()` vérifie un pont à chaque croisement sur l’un des deux chemins concernés (VL-403/416). Elle lit les commandes absolues M/L/A actuellement émises par le canvas et repère les arcs semi-circulaires ; une autre syntaxe échoue explicitement. Pour exiger aussi l’existence d’un croisement, appeler `AssertRoutes(...).haveCrossing()`.
 
-Les troncs communs restent autorisés dans les scénarios de deux et trois successeurs ; seule l’absence de croisements y est ajoutée. Le cas des deux parents et deux successeurs conserve son interdiction explicite de tout recouvrement. Le contrôle visuel utilise le rendu des chemins du produit.
+Les troncs communs restent autorisés dans les scénarios de deux et trois successeurs. Dans le cas des deux parents et deux successeurs, les troncs continus en sortie sont également autorisés ; les deux flèches croisées ont chacune une arrivée et un quai exclusifs. Le contrôle visuel utilise le rendu des chemins du produit.
 
 ## Convergences et croisements
 
@@ -225,22 +225,22 @@ Pour les scénarios dont toutes les boîtes ont la même taille, `uniformNodeSce
 
 ## Rails et quais : spécifications à examiner
 
-Neuf fiches dans `cases/routing/` utilisent le moteur réel, sans lui ajouter d’allocateur.
+Neuf fiches dans `tests/scenarios/visual/routing/` vérifient l’allocation réelle des rails et des quais.
 Chaque fiche est rejouée par le lanceur commun dans les quatre directions et les biais compatibles.
 
-| Identifiant             | Comportement attendu                                                            |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| `default-quays`         | Quai entrant et sortant uniques, centrés, sans agrandissement.                  |
-| `narrow-quays`          | Deux quais distincts : le besoin des quais agrandit le nœud.                    |
-| `wide-quays`            | Le contenu suffit : aucun agrandissement supplémentaire.                        |
-| `asymmetric-quays`      | Deux quais entrants et trois sortants : maximum des besoins des faces.          |
-| `local-rails`           | Le corridor concerné grandit ; les autres intervalles restent identiques.       |
-| `shared-quay`           | Une fourche partage un quai et des tronçons sur les deux axes.                  |
-| `forced-crossing-rails` | Chemins distincts, pont, quais espacés et corridor agrandi.                     |
-| `reused-rail`           | Deux fourches indépendantes utilisent des portions disjointes du rail 0.        |
-| `released-rails-quays`  | Après retrait des diagonales : retour aux dimensions et à l’intervalle simples. |
+| Identifiant             | Comportement attendu                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------- |
+| `default-quays`         | Quai entrant et sortant uniques, centrés, sans agrandissement.                          |
+| `narrow-quays`          | Deux quais distincts : le besoin des quais agrandit le nœud.                            |
+| `wide-quays`            | Le contenu suffit : aucun agrandissement supplémentaire.                                |
+| `asymmetric-quays`      | Deux arrivées exclusives et trois départs partageables : maximum des besoins des faces. |
+| `local-rails`           | Le corridor concerné grandit ; les autres intervalles restent identiques.               |
+| `shared-quay`           | Une fourche partage un quai et des tronçons sur les deux axes.                          |
+| `forced-crossing-rails` | Chemins distincts, pont, quais espacés et corridor agrandi.                             |
+| `reused-rail`           | Deux fourches indépendantes utilisent des portions disjointes du rail 0.                |
+| `released-rails-quays`  | Après retrait des diagonales : retour aux dimensions et à l’intervalle simples.         |
 
-Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-fixtures.ts` et indiquées dans chaque fiche : pas des quais 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ce sont des attentes de test, pas des paramètres transmis au moteur. Leur calibration reste ouverte.
+Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-fixtures.ts` et indiquées dans chaque fiche : pas des quais 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ces attentes sont indépendantes des constantes du moteur pour détecter les régressions. Leur calibration reste ajustable.
 
 - `AssertQuays` observe les ancres distinctes sur une même face principale : nombre, centrage, espacement et marges.
 - `AssertQuaySize` vérifie le maximum du besoin du contenu et de chaque face, sans additionner les deux faces.
@@ -248,6 +248,57 @@ Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-
 - `AssertTrunks` exige un segment de longueur positive partagé par tous les chemins d’une famille explicitement autorisée. Il ne décide pas quelles familles peuvent fusionner.
 - `VisualLayout.withReference` conserve un dessin de référence pour une comparaison dans la même page. La suppression est spécifiée par les états avant/après ; le geste d’édition et l’undo ne sont pas couverts par cette comparaison.
 
-Lors de l’ajout, `default-quays`, `shared-quay` et `reused-rail` passent. Les six autres échouent sur les espacements ou dimensions encore absents. Les assertions restent actives, sans `skip` ni inversion de verdict.
+Les neuf scénarios passent désormais dans les quatre directions et leurs biais compatibles. Les assertions restent actives, sans `skip` ni inversion de verdict. Le cas du descendant D centré sur B passe également.
 
-Les règles de partage dans un motif mixte (A vers B/C, E vers C) et la séparation d’un tronc pour franchir un autre chemin restent à préciser. Les scénarios présents utilisent les familles déjà convenues : fourche partagée, graphe biparti aux chemins distincts.
+Le partage est autorisé continûment depuis une même source. Une arrivée commune est autorisée seulement si aucune flèche concernée ne participe à un croisement. Les deux participants sont concernés, indépendamment du porteur du pont ; un croisement sur un tronc partagé concerne toutes ses flèches. Le motif mixte A vers B/C, E vers C suit cette règle générale.
+
+`check.routes().haveOnlyAllowedSharedTrunks()` contrôle ces partages, les quais entrants exclusifs (même un simple point commun est interdit après croisement) et les recouvrements hors des troncs autorisés. Une sélection utilise le layout complet pour détecter ses croisements. `followLayoutFlow()` exige des attaches sur les faces principales opposées, des segments d’attache sur l’axe principal et aucun retour en arrière. Les contacts en T sans partage restent à spécifier séparément.
+
+Les sources du motif biparti peuvent utiliser un ou plusieurs quais. `haveCountBetween` observe cette latitude ; `hasSizeForUsedQuays` vérifie le maximum du contenu et des besoins des quais effectivement utilisés, sans imposer un quai par flèche. Les capacités inutilisées ne sont pas encore exposées par le moteur.
+
+Priorités convenues : contraintes documentaires et séparations nécessaires, réduction des croisements, centrages, trajets droits, puis réduction des rails et des coudes. Examiner une permutation à partir de deux flèches contournant la même boîte reste une hypothèse à illustrer ; aucun nouveau mécanisme de permutation n’est ajouté ici.
+
+## Conventions contrôlées automatiquement
+
+La politique d’import de `config/dependency-cruiser.cjs` est partagée par ESLint et le contrôle
+d’architecture. Les scénarios visuels et les dossiers `assertions`, `builders`, `fixtures` et
+`harnesses` de `tests/support` ne peuvent importer ni Vitest/Playwright, ni un fichier `.test.ts`/`.spec.ts`, ni un composant `.svelte`. Leurs propres tests sont exemptés
+de cette restriction. Les observations du rendu réel restent autorisées.
+
+Les règles suivantes encadrent les fichiers `*.scenario.ts` :
+
+- `local/no-abandoned-visual-selection` refuse une sélection abandonnée telle que
+  `check.node('a');`. Il faut chaîner une assertion ou conserver la sélection pour un usage ultérieur.
+  La règle suit les imports de `AssertLayout` (y compris les alias et namespaces) et les alias
+  locaux `const`. Elle ne cherche pas à prouver l’usage final d’une sélection transmise à une fonction.
+- `local/no-swallowed-visual-assertion` refuse un `catch` dans le callback `assert` qui pourrait
+  masquer l’échec. Un `catch` composé d’instructions simples et terminé par un `throw` est accepté,
+  notamment pour enrichir le diagnostic. Les callbacks inline et les fonctions locales directement
+  référencées par la propriété `assert` sont reconnus ; l’analyse ne traverse pas les appels de helpers.
+
+Les tests des assertions peuvent toujours capturer un échec et construire des contre-exemples.
+Les imports directs des assertions spécialisées sont interdits dans les scénarios ; ces fonctions
+restent les implémentations internes de la façade, avec leurs tests unitaires. Les mesures explicites
+avant/après (`rowGap`, `extent`, `equalMetric`, `minimumMetric`) restent autorisées.
+
+- `local/require-visual-assertion` exige au moins un appel d’assertion via `AssertLayout` dans
+  chaque callback `assert`. Un nom local `check` n’est pas imposé et une simple sélection ne suffit pas.
+- `local/visual-scenario-phases` réserve les appels aux fixtures/builders et au harness à la
+  préparation, et les assertions à la vérification. La construction directe de `VisualLayout` et
+  le remplacement de sa géométrie sont interdits dans les scénarios. Les imports directs du pipeline
+  et du rendu sont aussi bloqués : passer par le harness et `check.renderedPaths()`.
+- `local/forward-visual-layout-configuration` vérifie que chaque appel de `layoutNodes` reçoit
+  les paramètres `direction` et `bias` de `arrange`, même renommés. Les options doivent être un objet
+  analysable (éventuellement via des alias `const`). Placer les paramètres après les spreads de fixture
+  évite leur écrasement. Le même contrôle s’applique au layout de référence.
+- `local/no-uncontrolled-visual-input` interdit l’aléatoire et les horloges non contrôlés dans les
+  scénarios et le support partagé. Les dates construites à partir de valeurs fixes restent permises.
+  Si une source aléatoire ou temporelle devient nécessaire, discuter avec un humain de la mise en place
+  d’une source instrumentée et reproductible avant de l’introduire.
+
+L’analyse suit les imports, namespaces et alias `const` locaux ; elle ne prouve pas l’exécution
+de chaque branche ni le comportement de helpers arbitraires. Les tests fonctionnels restent nécessaires.
+La façade expose maintenant `isAlignedWith(reference, { by: 'row' | 'chain' | 'top' | 'centerX' | 'centerY' })` :
+`row` et `chain` suivent la direction du layout, les trois autres décrivent un alignement physique.
+Les règles sont testées dans `tests/config/eslint/rules`, avec des cas valides, des cas invalides
+et une vérification de leur activation par la configuration réelle du dépôt.

@@ -60,10 +60,19 @@
 				{#await import('./LayoutPreview.svelte') then preview}<div>
 						{#if layout.reference}
 							<h3>{layout.reference.label}</h3>
-							<preview.default layout={layout.reference.layout} guides={settings.guides} />
+							<preview.default
+								layout={layout.reference.layout}
+								guides={settings.guides}
+								reservations={settings.reservations}
+							/>
 							<h3>Situation à vérifier</h3>
 						{/if}
-						<preview.default {layout} guides={settings.guides} targets={presentation.targets} />
+						<preview.default
+							{layout}
+							guides={settings.guides}
+							reservations={settings.reservations}
+							targets={presentation.targets}
+						/>
 					</div>{/await}
 			{:else if running}<p class="preview-empty">Calcul du layout…</p>{/if}
 			<VisualTestSettings

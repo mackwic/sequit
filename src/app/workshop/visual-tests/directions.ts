@@ -9,12 +9,14 @@ export interface VisualTestSettings {
 	direction: LayoutDirection;
 	bias: LayoutBias;
 	guides: boolean;
+	reservations: boolean;
 }
 
 export const defaultVisualTestSettings: VisualTestSettings = {
 	direction: LayoutDirection.TopToBottom,
 	bias: LayoutBias.Top,
 	guides: true,
+	reservations: false,
 };
 
 export const directionOptions = [
@@ -54,7 +56,12 @@ export function parseVisualTestSettings(value: string | null): VisualTestSetting
 		) {
 			return defaultVisualTestSettings;
 		}
-		return { direction, bias, guides: parsed['guides'] };
+		return {
+			direction,
+			bias,
+			guides: parsed['guides'],
+			reservations: parsed['reservations'] === true,
+		};
 	} catch {
 		return defaultVisualTestSettings;
 	}

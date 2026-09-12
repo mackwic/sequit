@@ -7,29 +7,34 @@ import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
 	id: 'asymmetric-quays',
-	label: 'Deux quais entrants, trois sortants',
+	label: 'Deux arrivées exclusives, trois départs partageables',
 	group: 'Rails et quais',
 	order: 180,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
-			direction,
-			bias,
 			...graphFixtures
 				.crossingRoutes(direction)
 				.nodes(['e', 'f', 'g'])
 				.arrowsFrom('c', ['e', 'f', 'g'])
 				.arrowsFrom('d', ['e', 'f', 'g'])
 				.build(),
+			direction,
+			bias,
 		});
 	},
 	assert(layout) {
 		const check = AssertLayout(layout);
+		check.routes(['a-to-d', 'b-to-c']).haveCrossing();
 		for (const id of ['c', 'd']) {
 			check.quays(id, { side: 'incoming' }).haveCount(2).areCentered().haveClearance(quayPolicy);
-			check.quays(id, { side: 'outgoing' }).haveCount(3).areCentered().haveClearance(quayPolicy);
-			check.node(id).hasSizeForQuays({ content: 80, incoming: 2, outgoing: 3, ...quayPolicy });
+			check
+				.quays(id, { side: 'outgoing' })
+				.haveCountBetween(1, 3)
+				.areCentered()
+				.haveClearance(quayPolicy);
+			check.node(id).hasSizeForUsedQuays({ content: 80, ...quayPolicy });
 		}
-		check.routes().areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
+		check.routes().areOrthogonal().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths().haveBridgeAtEveryCrossing();
 	},
 };

@@ -147,6 +147,8 @@ Le placement visuel nécessite un moteur de layout qui décide notamment :
 - le routage des relations ;
 - la réduction des croisements.
 
+L’[allocation des rails et des quais](layout-routing.md) décrit le calcul actuel, ses contraintes et les extensions de routage restant à spécifier.
+
 ### Cycles
 
 Un cycle empêche le tri topologique. La première hypothèse est donc de les interdire et de signaler immédiatement la relation qui créerait un cycle.

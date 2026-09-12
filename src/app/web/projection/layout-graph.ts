@@ -1,7 +1,11 @@
 import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import type { TopologicalRanks } from '../../../lib/core/graph/topological-ranks';
 import { layoutWithDedicatedEngine } from '../../../lib/core/layout/dedicated-layout-engine';
-import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
+import type {
+	LayoutMeasurements,
+	LayoutOptions,
+	LayoutResult,
+} from '../../../lib/core/layout/layout-types';
 
 export type {
 	Bounds,
@@ -17,6 +21,9 @@ export function layoutGraph(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
+	options: LayoutOptions = {},
 ): Promise<LayoutResult> {
-	return Promise.resolve().then(() => layoutWithDedicatedEngine(graph, ranks, measurements));
+	return Promise.resolve().then(() =>
+		layoutWithDedicatedEngine(graph, ranks, measurements, options),
+	);
 }

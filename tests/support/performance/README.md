@@ -208,3 +208,31 @@ The fixed goals are synchronous projection p95 below 16 ms and total computation
 All other topology/bucket goal results pass in these runs. The gate emits `PASS` or `GAP` for every topology and bucket and reports the slowest insertion index with all stage durations. Goal gaps remain visible but do not fail the machine-specific regression gate.
 
 This synthetic Node replay is a main-thread computational proxy, not proof that the browser UI stays responsive. True interaction validation requires a public add-node operation and browser instrumentation around that action, including event-loop delay or long tasks, real DOM measurement, Svelte updates, and paint. Those facilities do not exist yet and are not invented by this suite.
+
+## Reproducible before/after reports
+
+Use the pinned runtime (`mise exec -- pnpm ...`) and finish other validation runs first. The recorder uses the existing snapshot or incremental tests, their workloads, warmups, samples and strict budgets. It does not recalibrate thresholds. It saves precise measurements, snapshot samples or incremental stage summaries, the Vitest report and a log next to the requested JSON file.
+
+```sh
+mise exec -- pnpm performance:record snapshot /tmp/layout-before.json 'wide-bipartite-layers/nodes=1000'
+# Make the engine change, then finish correctness checks before measuring again.
+mise exec -- pnpm performance:record snapshot /tmp/layout-after.json 'wide-bipartite-layers/nodes=1000'
+mise exec -- pnpm performance:compare /tmp/layout-before.json /tmp/layout-after.json
+```
+
+Omit the last argument for the full snapshot matrix. Use `incremental` for one-node-at-a-time replay, optionally filtering by scenario name. The equivalent mise tasks are `mise run performance:record snapshot /tmp/layout-before.json 'wide-bipartite-layers/nodes=1000'` and `mise run performance:compare /tmp/layout-before.json /tmp/layout-after.json`.
+
+Each report identifies the machine, runtime, measurement protocol and source fingerprint, including uncommitted and untracked source files. A changed source fingerprint during the run invalidates the report. Comparison rejects different machines, runtimes, protocols, filters, budgets or case sets, as well as incomplete reports. Keep output outside the source tree. Existing report files are never overwritten.
+
+Record power and load conditions with `SEQUIT_PERFORMANCE_NOTE='AC power; other applications idle'`. A shared worktree lock prevents two recorders running on the same repository. The recorder refuses to start alongside known heavy validation tools and checks for competing validation processes every two seconds during execution. This is a best-effort check: it cannot guarantee an idle machine or detect every short-lived process. After an interrupted recorder, remove the `sequit-performance.lock` directory under the Git common directory only after checking that the original run has stopped.
+
+The recorder keeps the test exit code: an over-budget run still exits unsuccessfully and produces a usable report. Incremental assertions collect all growth buckets even if an earlier bucket exceeds its budget. The comparison classifies each measured case as:
+
+- **Nouveau dépassement**: within budget before, over budget after. Comparison exits unsuccessfully.
+- **Dépassement déjà présent**: over budget in both reports. The measured delta remains visible; this label does not excuse an additional slowdown.
+- **Retour dans le budget**: over budget before, within budget after.
+- **Dans le budget**: within budget in both reports.
+
+A comparison with only existing failures exits successfully; that means no _new budget failure_, not that the performance suite is green. Small differences from a single pair are not evidence of a speedup: repeat the pair under the same conditions when a result is close to its budget or a decision depends on the delta.
+
+The previous engine investigation observed existing incremental overruns in `wide-bipartite-layers/100-999` and `group-relations/100-999`. They remain subject to their unchanged budgets. A fresh baseline, rather than an allowlist, determines whether a failure is already present.

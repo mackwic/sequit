@@ -7,6 +7,7 @@ import { distinctCoordinates, equalMetric, extent, minimumMetric } from './routi
 export type QuaySide = 'incoming' | 'outgoing';
 
 interface QuayAssertions {
+	haveCountBetween(minimum: number, maximum: number): QuayAssertions;
 	haveCount(count: number): QuayAssertions;
 	areCentered(): QuayAssertions;
 	haveClearance(options: { readonly spacing: number; readonly inset: number }): QuayAssertions;
@@ -53,6 +54,15 @@ export function AssertQuays(layout: VisualLayout, nodeId: string, side: QuaySide
 	const start = node.bounds[axis];
 	const size = extent(node.bounds, axis);
 	const assertions = {
+		haveCountBetween(minimum: number, maximum: number) {
+			minimumMetric(`Nombre minimal de quais ${nodeId}/${side}`, coordinates.length, minimum, {
+				boxes: [nodeId],
+			});
+			minimumMetric(`Nombre maximal de quais ${nodeId}/${side}`, maximum, coordinates.length, {
+				boxes: [nodeId],
+			});
+			return assertions;
+		},
 		haveCount(count: number) {
 			equalMetric(`Nombre de quais ${nodeId}/${side}`, coordinates.length, count, {
 				boxes: [nodeId],
@@ -101,4 +111,17 @@ export function AssertQuaySize(layout: VisualLayout, nodeId: string): QuaySizeAs
 			});
 		},
 	};
+}
+
+/** Used anchors only; unused quay capacity is not exposed by the engine. */
+export function usedQuayCount(layout: VisualLayout, nodeId: string, side: QuaySide): number {
+	const axis = axesFor(layout.direction).transverse;
+	const coordinates: number[] = [];
+	for (const route of layout.relations) {
+		if (side === 'incoming' && route.to === nodeId)
+			coordinates.push(defined(route.points.at(-1))[axis]);
+		if (side === 'outgoing' && route.from === nodeId)
+			coordinates.push(defined(route.points.at(0))[axis]);
+	}
+	return distinctCoordinates(coordinates).length;
 }

@@ -19,18 +19,18 @@ export const scenario: LayoutScenario = {
 	order: 230,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const before = await layoutNodes({
+			...graphFixtures.crossingRoutes(direction).build(),
 			direction,
 			bias,
-			...graphFixtures.crossingRoutes(direction).build(),
 		});
 		const after = await layoutNodes({
-			direction,
-			bias,
 			...graphFixtures
 				.routingNodes(['a', 'b', 'c', 'd'], direction)
 				.arrowsFrom('a', ['c'])
 				.arrowsFrom('b', ['d'])
 				.build(),
+			direction,
+			bias,
 		});
 		return after.withReference('Avant : quatre relations et un croisement obligé', before);
 	},
@@ -46,6 +46,8 @@ export const scenario: LayoutScenario = {
 			check.quays(id, { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
 		for (const id of ['a', 'b', 'c', 'd']) {
 			check.node(id).hasSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
+		}
+		for (const id of ['c', 'd']) {
 			const axis = axesFor(layout.direction).transverse;
 			minimumMetric(
 				`Réduction du nœud ${id}`,

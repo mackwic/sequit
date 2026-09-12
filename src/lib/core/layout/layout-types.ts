@@ -42,8 +42,48 @@ export interface LayoutRelation {
 }
 
 export interface LayoutResult {
+	readonly routingInspection?: RoutingInspection | undefined;
 	readonly width: number;
 	readonly height: number;
 	readonly elements: readonly LayoutElement[];
 	readonly relations: readonly LayoutRelation[];
+}
+
+export interface LayoutOptions {
+	readonly inspectRouting?: boolean;
+}
+
+export enum RoutingQuaySide {
+	Incoming = 'incoming',
+	Outgoing = 'outgoing',
+}
+
+export interface InspectedQuay {
+	readonly side: RoutingQuaySide;
+	readonly point: Point;
+	readonly relations: string[];
+}
+export interface InspectedNode {
+	readonly id: string;
+	readonly content: Bounds;
+	readonly incomingMinimum: number;
+	readonly outgoingMinimum: number;
+	readonly quays: readonly InspectedQuay[];
+}
+export interface InspectedRail {
+	readonly coordinate: number;
+	readonly relations: string[];
+}
+export interface InspectedCorridor {
+	/** Zero-based target rank, as in the graph. */
+	readonly rank: number;
+	readonly bounds: Bounds;
+	readonly requiredGap: number;
+	readonly allocated: boolean;
+	readonly rails: readonly InspectedRail[];
+}
+export interface RoutingInspection {
+	readonly vertical: boolean;
+	readonly nodes: readonly InspectedNode[];
+	readonly corridors: readonly InspectedCorridor[];
 }

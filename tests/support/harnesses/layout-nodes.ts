@@ -50,10 +50,15 @@ export async function layoutNodes({
 	const graph = createGraph(document);
 	if (!graph.ok) throw new Error('The visual node fixture must form an acyclic graph.');
 	const ranks = topologicallyRank(graph.value);
-	const result = await layoutGraph(graph.value, ranks, {
-		nodes: new Map(Object.entries(nodes)),
-		groups: new Map(),
-		junctions: new Map(),
-	});
+	const result = await layoutGraph(
+		graph.value,
+		ranks,
+		{
+			nodes: new Map(Object.entries(nodes)),
+			groups: new Map(),
+			junctions: new Map(),
+		},
+		{ inspectRouting: true },
+	);
 	return new VisualLayout(result, ranks.byEndpointId, direction);
 }

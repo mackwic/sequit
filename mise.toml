@@ -13,3 +13,20 @@ run = "pnpm run clean"
 [tasks.dev]
 description = "Run the local web and collaboration stack"
 run = "pnpm dev"
+
+[tasks."performance:record"]
+description = "Record reproducible layout performance measurements"
+usage = """
+arg "<suite>" help="snapshot or incremental"
+arg "<output>" help="New JSON report path"
+arg "[filter]" help="Optional Vitest test-name pattern"
+"""
+run = 'pnpm run performance:record "$usage_suite" "$usage_output" "${usage_filter:-}"'
+
+[tasks."performance:compare"]
+description = "Compare two compatible layout performance reports"
+usage = """
+arg "<before>" help="Baseline JSON report"
+arg "<after>" help="Current JSON report"
+"""
+run = 'pnpm run performance:compare "$usage_before" "$usage_after"'

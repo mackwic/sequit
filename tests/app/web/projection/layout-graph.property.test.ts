@@ -208,6 +208,41 @@ function canonicalIds(layout: LayoutResult): object {
 	};
 }
 
+function expectMeasuredNode(
+	layout: LayoutResult,
+	id: string,
+	measured: Size,
+	direction: LayoutDirection,
+): void {
+	const box = boundsFor(layout, id);
+	const vertical = [LayoutDirection.TopToBottom, LayoutDirection.BottomToTop].includes(direction);
+	const coordinate = (point: Point): number => {
+		if (vertical) return point.x;
+		return point.y;
+	};
+	const incoming = new Set<number>();
+	const outgoing = new Set<number>();
+	for (const route of layout.relations) {
+		const start = route.points.at(0);
+		const end = route.points.at(-1);
+		if (route.from === id && start !== undefined) outgoing.add(coordinate(start));
+		if (route.to === id && end !== undefined) incoming.add(coordinate(end));
+	}
+	const count = Math.max(incoming.size, outgoing.size, 1);
+	let content = measured.height;
+	let actual = box.height;
+	if (vertical) {
+		content = measured.width;
+		actual = box.width;
+	}
+	const reserved = Math.max(content, count * 48);
+	if (vertical) expect(box.height).toBe(measured.height);
+	else expect(box.width).toBe(measured.width);
+	// The default central quay may remain unreserved; additional quays require their full space.
+	if (count === 1) expect([content, reserved]).toContain(actual);
+	else expect(actual).toBe(reserved);
+}
+
 describe('generated layouts', () => {
 	it('produces only finite coordinates and dimensions for every generated rich DAG', async () => {
 		await fc.assert(
@@ -386,7 +421,7 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('preserves topology and scales measured endpoint dimensions uniformly', async () => {
+	it('scales content while preserving topology and fixed quay clearances', async () => {
 		await fc.assert(
 			fc.asyncProperty(
 				layoutCaseArbitrary,
@@ -400,7 +435,23 @@ describe('generated layouts', () => {
 					});
 					expect(canonicalIds(scaled.layout)).toEqual(canonicalIds(original.layout));
 					const originalBounds = boundsById(original.layout);
-					for (const endpoint of [...generated.document.nodes, ...generated.document.junctions]) {
+					for (const node of generated.document.nodes) {
+						const measured = generated.nodes[node.id];
+						if (measured === undefined) throw new Error(`Missing node measurement: ${node.id}`);
+						expectMeasuredNode(
+							original.layout,
+							node.id,
+							measured,
+							generated.document.layout.direction,
+						);
+						expectMeasuredNode(
+							scaled.layout,
+							node.id,
+							{ width: measured.width * factor, height: measured.height * factor },
+							generated.document.layout.direction,
+						);
+					}
+					for (const endpoint of generated.document.junctions) {
 						const before = originalBounds.get(endpoint.id);
 						const after = boundsFor(scaled.layout, endpoint.id);
 						expect(before).toBeDefined();

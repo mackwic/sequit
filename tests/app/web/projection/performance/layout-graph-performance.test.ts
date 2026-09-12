@@ -9,8 +9,13 @@ import {
 	LAYOUT_PERFORMANCE_GATE_WARMUP_RUNS,
 } from '../../../../support/performance/layout-performance-policy';
 import { median } from '../../../../support/performance/performance-statistics';
+import {
+	type PerformanceMeasurement,
+	recordPerformanceMeasurements,
+} from '../../../../support/performance/record-performance-measurements';
 import { layoutPerformanceBudgetMs } from '../../../../support/performance/snapshot-layout-budgets';
 
+const measurements: PerformanceMeasurement[] = [];
 const cases = layoutPerformanceCases();
 const observations: string[] = [];
 
@@ -30,6 +35,14 @@ describe('layoutGraph snapshot performance', { concurrent: false }, () => {
 
 			const observed = median(durations);
 			const budget = layoutPerformanceBudgetMs(scenario.name, nodeCount);
+			measurements.push({
+				scenario: scenario.name,
+				size: nodeCount,
+				metric: 'medianMs',
+				observedMs: observed,
+				budgetMs: budget,
+				details: { samples: durations },
+			});
 			observations.push(`${scenario.name},${nodeCount},${observed.toFixed(3)},${budget}`);
 
 			expect(
@@ -41,6 +54,7 @@ describe('layoutGraph snapshot performance', { concurrent: false }, () => {
 });
 
 afterAll(() => {
+	recordPerformanceMeasurements(measurements);
 	process.stdout.write(
 		`\nSnapshot calibration results (scenario,nodeCount,medianMs,budgetMs)\n${observations.join('\n')}\n`,
 	);

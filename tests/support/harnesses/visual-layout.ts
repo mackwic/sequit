@@ -13,6 +13,7 @@ export class VisualLayout implements LayoutResult {
 	readonly height: LayoutResult['height'];
 	readonly elements: LayoutResult['elements'];
 	readonly relations: LayoutResult['relations'];
+	readonly routingInspection: LayoutResult['routingInspection'];
 
 	constructor(
 		result: LayoutResult,
@@ -24,6 +25,7 @@ export class VisualLayout implements LayoutResult {
 		this.height = result.height;
 		this.elements = result.elements;
 		this.relations = result.relations;
+		this.routingInspection = result.routingInspection;
 	}
 
 	getNodeById(id: string): VisualNode {

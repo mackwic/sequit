@@ -1,8 +1,10 @@
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
+import { assertAllowedRouteSharing } from './allowed-route-sharing';
 import { VisualAssertionError } from './assertion-error';
 import { routeCrossings, routeSegments } from './route-geometry';
 
 interface RoutesAssertions {
+	haveOnlyAllowedSharedTrunks(context?: readonly LayoutRelation[]): RoutesAssertions;
 	haveNoOverlap(): RoutesAssertions;
 	haveNoCrossing(): RoutesAssertions;
 	haveCrossing(): RoutesAssertions;
@@ -41,6 +43,11 @@ function validate(routes: readonly LayoutRelation[], minimum: number): void {
 export function AssertRoutes(routes: readonly LayoutRelation[]): RoutesAssertions {
 	validate(routes, 1);
 	const assertions: RoutesAssertions = {
+		haveOnlyAllowedSharedTrunks(context = routes) {
+			validate(context, 1);
+			assertAllowedRouteSharing(routes, context);
+			return assertions;
+		},
 		haveNoOverlap() {
 			validate(routes, 2);
 			noOverlap(routes, routes);

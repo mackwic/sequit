@@ -46,6 +46,8 @@
 		"benchmark:authorization": "vitest bench --run --config config/vitest.performance.config.ts tests/lib/infrastructure/collaboration/performance/authorize-proposal.bench.ts",
 		"benchmark:performance": "pnpm run benchmark:graph && pnpm run benchmark:layout",
 		"benchmark:incremental": "vitest bench --run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/incremental-layout.bench.ts",
+		"performance:record": "node scripts/performance-record.mjs",
+		"performance:compare": "node scripts/performance-compare.mjs",
 		"test:performance": "vitest run --config config/vitest.performance.config.ts tests/app/web/projection/performance/layout-graph-performance.test.ts",
 		"test:incremental-performance": "vitest run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/incremental-layout-performance.test.ts"
 	},

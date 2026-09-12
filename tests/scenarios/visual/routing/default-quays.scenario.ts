@@ -12,13 +12,13 @@ export const scenario: LayoutScenario = {
 	order: 150,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
-			direction,
-			bias,
 			...graphFixtures
 				.routingNodes(['a', 'b', 'c'], direction)
 				.arrowsFrom('a', ['b'])
 				.arrowsFrom('b', ['c'])
 				.build(),
+			direction,
+			bias,
 		});
 	},
 	assert(layout) {

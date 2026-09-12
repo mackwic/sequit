@@ -157,6 +157,20 @@ function hasBridgeSpace(segment: Segment, point: Point): boolean {
 	return distance >= BRIDGE_RADIUS && remaining >= BRIDGE_RADIUS;
 }
 
+function canCarryBridge(
+	segment: Segment,
+	point: Point,
+	crossings: ReadonlyMap<Segment, readonly Point[]>,
+): boolean {
+	if (!hasBridgeSpace(segment, point)) return false;
+	const distance = distanceAlong(segment, point);
+	return (crossings.get(segment) ?? []).every((previous) => {
+		const separation = Math.abs(distanceAlong(segment, previous) - distance);
+		const diameter = BRIDGE_RADIUS * 2;
+		return separation === 0 || separation >= diameter;
+	});
+}
+
 function recordIntersection(
 	crossings: Map<Segment, Point[]>,
 	segment: Segment,
@@ -165,8 +179,8 @@ function recordIntersection(
 	const point = intersection(segment, previous);
 	if (!point) return;
 	let carrier = segment;
-	if (!hasBridgeSpace(carrier, point)) {
-		if (!hasBridgeSpace(previous, point)) return;
+	if (!canCarryBridge(carrier, point, crossings)) {
+		if (!canCarryBridge(previous, point, crossings)) return;
 		carrier = previous;
 	}
 	const points = crossings.get(carrier) ?? [];
