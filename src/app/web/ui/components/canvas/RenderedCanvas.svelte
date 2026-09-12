@@ -17,6 +17,9 @@
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import CanvasRelation from './CanvasRelation.svelte';
 	import LogicNode from './LogicNode.svelte';
+	import RelationArrow from './RelationArrow.svelte';
+
+	const markerId = $props.id();
 
 	let { canvas, zoom, session }: { canvas: CanvasModel; zoom: number; session: CanvasSession } =
 		$props();
@@ -164,22 +167,9 @@
 			viewBox={`0 0 ${canvas.width} ${canvas.height}`}
 			aria-label="Canvas relations"
 		>
-			<defs aria-hidden="true">
-				<marker
-					id="logic-arrow"
-					viewBox="0 0 10 10"
-					refX="9"
-					refY="5"
-					markerWidth="9"
-					markerHeight="9"
-					markerUnits="userSpaceOnUse"
-					orient="auto"
-				>
-					<path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke"></path>
-				</marker>
-			</defs>
+			<RelationArrow id={markerId} />
 			{#each renderedRelations as relation (relation.id)}
-				<CanvasRelation {relation} {session} />
+				<CanvasRelation {relation} {session} {markerId} />
 			{/each}
 		</svg>
 

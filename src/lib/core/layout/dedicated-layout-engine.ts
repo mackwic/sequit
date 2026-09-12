@@ -25,6 +25,7 @@ import type {
 	LayoutResult,
 	Size,
 } from './layout-types';
+import { separateCrossingRoutes } from './separate-crossing-routes';
 
 const OUTER_MARGIN = 40;
 const COMPONENT_GAP = 96;
@@ -204,6 +205,7 @@ function createLayoutResult(
 	graph: LogicGraph,
 	bounds: Map<string, Bounds>,
 	measurements: LayoutMeasurements,
+	ranks: TopologicalRanks,
 ): LayoutResult {
 	const relations: LayoutRelation[] = graph.relations.map(({ relation }) => {
 		const source = defined(bounds.get(relation.from));
@@ -247,7 +249,21 @@ function createLayoutResult(
 	}
 	elements.sort((left, right) => compareCanonicalStrings(left.id, right.id));
 	relations.sort((left, right) => compareCanonicalStrings(left.id, right.id));
-	return { width, height, elements, relations };
+	const excludedEndpoints = new Set(
+		elements.filter(({ kind }) => kind !== EndpointKind.Node).map(({ id }) => id),
+	);
+	return {
+		width,
+		height,
+		elements,
+		relations: separateCrossingRoutes({
+			relations,
+			bounds,
+			direction: graph.document.layout.direction,
+			excludedEndpoints,
+			ranks: ranks.byEndpointId,
+		}),
+	};
 }
 
 function groupMemberBounds(
@@ -467,5 +483,5 @@ export function layoutWithDedicatedEngine(
 		bounds.set(id, translateBounds(value, shiftX, shiftY));
 	}
 
-	return createLayoutResult(graph, bounds, measurements);
+	return createLayoutResult(graph, bounds, measurements, ranks);
 }

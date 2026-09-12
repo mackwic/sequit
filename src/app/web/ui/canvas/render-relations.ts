@@ -41,13 +41,34 @@ function segmentBetween(start: Point, end: Point): Segment | undefined {
 	return undefined;
 }
 
+function appendSegment(segments: Segment[], segment: Segment): void {
+	const last = segments.at(-1);
+	if (last === undefined) {
+		segments.push(segment);
+		return;
+	}
+	const contiguous = last.end.x === segment.start.x && last.end.y === segment.start.y;
+	const previousDirection =
+		Math.sign(last.end.x - last.start.x) + Math.sign(last.end.y - last.start.y);
+	const nextDirection =
+		Math.sign(segment.end.x - segment.start.x) + Math.sign(segment.end.y - segment.start.y);
+	const sameOrientation = last.orientation === segment.orientation;
+	const merge = contiguous && sameOrientation && previousDirection === nextDirection;
+	if (merge) {
+		segments.pop();
+		segments.push({ ...segment, start: last.start });
+		return;
+	}
+	segments.push(segment);
+}
+
 function segmentsFor(relation: LayoutRelation): readonly Segment[] {
 	const segments: Segment[] = [];
 	let start: Point | undefined;
 	for (const end of relation.points) {
 		if (start) {
 			const segment = segmentBetween(start, end);
-			if (segment) segments.push(segment);
+			if (segment) appendSegment(segments, segment);
 		}
 		start = end;
 	}
@@ -130,6 +151,12 @@ function pathFor(
 	return commands.join(' ');
 }
 
+function hasBridgeSpace(segment: Segment, point: Point): boolean {
+	const distance = distanceAlong(segment, point);
+	const remaining = distanceAlong(segment, segment.end) - distance;
+	return distance >= BRIDGE_RADIUS && remaining >= BRIDGE_RADIUS;
+}
+
 function recordIntersection(
 	crossings: Map<Segment, Point[]>,
 	segment: Segment,
@@ -137,30 +164,35 @@ function recordIntersection(
 ): void {
 	const point = intersection(segment, previous);
 	if (!point) return;
-	const points = crossings.get(segment) ?? [];
+	let carrier = segment;
+	if (!hasBridgeSpace(carrier, point)) {
+		if (!hasBridgeSpace(previous, point)) return;
+		carrier = previous;
+	}
+	const points = crossings.get(carrier) ?? [];
 	if (points.some((candidate) => candidate.x === point.x && candidate.y === point.y)) return;
 	points.push(point);
-	crossings.set(segment, points);
+	crossings.set(carrier, points);
 }
 
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
 ): readonly RenderedRelation[] {
 	const previousSegments: Segment[] = [];
-	return relations.map((relation, relationIndex) => {
-		const segments = segmentsFor(relation);
-		const crossings = new Map<Segment, Point[]>();
+	const crossings = new Map<Segment, Point[]>();
+	const byRelation = relations.map(segmentsFor);
+	for (const segments of byRelation) {
 		for (const segment of segments) {
-			for (const previous of previousSegments) {
-				recordIntersection(crossings, segment, previous);
-			}
+			for (const previous of previousSegments) recordIntersection(crossings, segment, previous);
 		}
 		previousSegments.push(...segments);
-		const color = relationColor(relationIndex);
+	}
+	return relations.map((relation, relationIndex) => {
+		const segments = byRelation[relationIndex] ?? [];
 		return {
 			...relation,
 			path: pathFor(segments, crossings),
-			color,
+			color: relationColor(relationIndex),
 		};
 	});
 }

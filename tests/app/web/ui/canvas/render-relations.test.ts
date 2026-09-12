@@ -24,6 +24,37 @@ describe('renderRelationPaths', () => {
 		expect(rendered[1]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 100');
 	});
 
+	it('puts the bridge on the earlier path when the later crossing is near a bend', () => {
+		const rendered = renderRelationPaths([
+			relation('vertical', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 100 },
+			]),
+			relation('bent', [
+				{ x: 45, y: 0 },
+				{ x: 45, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+		]);
+		expect(rendered[0]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 100');
+		expect(rendered[1]?.path).not.toContain(' A ');
+	});
+
+	it('does not mistake a collinear intermediate point for an elbow', () => {
+		const rendered = renderRelationPaths([
+			relation('horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+			relation('vertical', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 50 },
+				{ x: 50, y: 100 },
+			]),
+		]);
+		expect(rendered[1]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 100');
+	});
+
 	it('handles invalid, discontinuous, reversed, and overlapping crossing segments', () => {
 		const rendered = renderRelationPaths([
 			relation('duplicate-vertical', [

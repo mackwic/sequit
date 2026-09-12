@@ -42,21 +42,25 @@ export function biasOptionsFor(direction: LayoutDirection): typeof biasOptions {
 const axes = {
 	[LayoutDirection.TopToBottom]: {
 		transverse: 'x',
+		primary: 'y',
 		rowAlignment: 'centerY',
 		chainAlignment: 'centerX',
 	},
 	[LayoutDirection.BottomToTop]: {
 		transverse: 'x',
+		primary: 'y',
 		rowAlignment: 'centerY',
 		chainAlignment: 'centerX',
 	},
 	[LayoutDirection.LeftToRight]: {
 		transverse: 'y',
+		primary: 'x',
 		rowAlignment: 'centerX',
 		chainAlignment: 'centerY',
 	},
 	[LayoutDirection.RightToLeft]: {
 		transverse: 'y',
+		primary: 'x',
 		rowAlignment: 'centerX',
 		chainAlignment: 'centerY',
 	},

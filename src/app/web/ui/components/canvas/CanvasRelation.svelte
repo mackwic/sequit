@@ -2,8 +2,13 @@
 	import { entityKey, EntityKind, entityRef } from '../../canvas/canvas-entity';
 	import type { RenderedRelation } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
+	import RelationPath from './RelationPath.svelte';
 
-	let { relation, session }: { relation: RenderedRelation; session: CanvasSession } = $props();
+	let {
+		relation,
+		session,
+		markerId,
+	}: { relation: RenderedRelation; session: CanvasSession; markerId: string } = $props();
 	let ref = $derived(entityRef(EntityKind.Relation, relation.id));
 	let selected = $derived(session.isSelected(ref));
 
@@ -26,19 +31,7 @@
 	}
 </script>
 
-<path
-	class:selected
-	class="relation-visual"
-	d={relation.path}
-	fill="none"
-	stroke={relation.color}
-	stroke-width="2"
-	stroke-linejoin="round"
-	stroke-linecap="round"
-	marker-end="url(#logic-arrow)"
-	vector-effect="non-scaling-stroke"
-	aria-hidden="true"
-></path>
+<RelationPath {relation} {selected} {markerId} />
 <path
 	class="relation-hit-target"
 	data-relation-id={relation.id}
@@ -61,15 +54,6 @@
 ></path>
 
 <style>
-	.relation-visual {
-		pointer-events: none;
-	}
-
-	.relation-visual.selected {
-		stroke: var(--ui-accent);
-		stroke-width: 4;
-	}
-
 	.relation-hit-target {
 		cursor: pointer;
 		pointer-events: stroke;
