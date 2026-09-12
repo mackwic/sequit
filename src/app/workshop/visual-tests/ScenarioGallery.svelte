@@ -5,8 +5,8 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 
+	import { catalogue } from '../../../../tests/scenarios/visual/catalogue';
 	import { defined } from '../../../lib/core/document/logic-document';
-	import { catalogue } from './catalogue';
 	import {
 		defaultVisualTestSettings,
 		parseVisualTestSettings,
@@ -19,7 +19,7 @@
 	const cases = catalogue.map(({ scenario, documentPath }) => ({
 		...scenario,
 		loadPage: defined(
-			scenarioPages[documentPath],
+			scenarioPages[`/tests/scenarios/visual/${documentPath.slice(2)}`],
 			`Missing scenario documentation: ${documentPath}`,
 		),
 	}));

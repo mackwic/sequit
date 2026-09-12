@@ -1,10 +1,10 @@
 <script lang="ts">
+	import type { AssertionTargets } from '../../../../tests/support/assertions/assertion-error';
+	import type { VisualLayout } from '../../../../tests/support/harnesses/visual-layout';
 	import { EndpointKind } from '../../../lib/core/document/logic-document';
 	import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
 	import RelationArrow from '../../web/ui/components/canvas/RelationArrow.svelte';
 	import RelationPath from '../../web/ui/components/canvas/RelationPath.svelte';
-	import type { AssertionTargets } from './asserts/assertion-error';
-	import type { VisualLayout } from './visual-layout';
 	let {
 		layout,
 		guides,

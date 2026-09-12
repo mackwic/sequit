@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { ESLint, RuleTester } from 'eslint';
 import ts from 'typescript-eslint';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import rule from '../../../../config/eslint/rules/allowed-import-directions.js';
 
@@ -18,12 +18,17 @@ const workshop = filename('src/app/workshop/example.ts');
 const worker = filename('src/workers/collaboration-worker/example.ts');
 const infra = filename('src/lib/infrastructure/example.ts');
 const errors = [{ messageId: 'forbidden' }];
+const eslint = new ESLint();
+const component = filename('src/app/web/ui/components/canvas/LogicCanvas.svelte');
+
+beforeAll(async () => {
+	await eslint.calculateConfigForFile(component);
+});
 
 it('enforces the shared policy in Svelte through the repository ESLint configuration', async () => {
-	const eslint = new ESLint();
 	const results = await eslint.lintText(
 		'<script lang="ts">import Workshop from "/src/app/workshop/WorkshopPage.svelte";</script>',
-		{ filePath: filename('src/app/web/ui/components/canvas/LogicCanvas.svelte') },
+		{ filePath: component },
 	);
 	expect(results.flatMap((result) => result.messages)).toEqual(
 		expect.arrayContaining([
@@ -34,6 +39,14 @@ it('enforces the shared policy in Svelte through the repository ESLint configura
 
 tester.run('allowed-import-directions', rule, {
 	valid: [
+		{
+			filename: filename('src/app/workshop/visual-tests/ScenarioGallery.svelte'),
+			code: "import { catalogue } from '../../../../tests/scenarios/visual/catalogue';",
+		},
+		{
+			filename: filename('src/app/workshop/visual-tests/example.ts'),
+			code: "import { AssertBox } from '../../../../tests/support/assertions/assert-box';",
+		},
 		{ filename: core, code: "import { generateKeyBetween } from 'fractional-indexing';" },
 		{
 			filename: core,
@@ -59,6 +72,31 @@ tester.run('allowed-import-directions', rule, {
 		},
 	],
 	invalid: [
+		{
+			filename: workshop,
+			code: "import { graphFixtures } from '../../../tests/support/fixtures/graph-fixtures';",
+			errors,
+		},
+		{
+			filename: core,
+			code: "import { graphFixtures } from '../../../tests/support/fixtures/graph-fixtures';",
+			errors,
+		},
+		{
+			filename: worker,
+			code: "import { catalogue } from '../../../tests/scenarios/visual/catalogue';",
+			errors,
+		},
+		{
+			filename: filename('src/app/workshop/visual-tests/example.ts'),
+			code: "import '../../../../tests/scenarios/visual/scenarios.test';",
+			errors,
+		},
+		{
+			filename: filename('src/app/workshop/visual-tests/example.ts'),
+			code: "import '../../../../tests/app/workshop/visual-tests/directions.test';",
+			errors,
+		},
 		{ filename: core, code: "import * as Y from 'yjs';", errors },
 		{ filename: core, code: "import fs from 'node:fs';", errors },
 		{

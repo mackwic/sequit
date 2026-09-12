@@ -30,6 +30,7 @@ export default defineConfig({
 	],
 	server: {
 		host: '127.0.0.1',
+		fs: { allow: ['tests/support', 'tests/scenarios'] },
 		proxy: {
 			'/collab': {
 				target: `http://127.0.0.1:${collaborationPort}`,

@@ -94,10 +94,7 @@ test('opens the preview on screen load and preserves the result when reopened', 
 	await expect(page.getByRole('heading', { name: 'Deux largeurs, un même axe.' })).toBeVisible();
 	await expect(page.locator('pre')).toContainText('AssertBox(a).isAlignedWith(b');
 	const source = readFileSync(
-		new URL(
-			'../../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario.ts',
-			import.meta.url,
-		),
+		new URL('../../../scenarios/visual/nodes/centered-chain.scenario.ts', import.meta.url),
 		'utf8',
 	);
 	expect(await page.locator('pre code').textContent()).toBe(source);

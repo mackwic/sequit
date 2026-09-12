@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { readGlossary } from '../../../../src/app/workshop/glossary/glossary';
 
-const documents = globSync('src/app/workshop/visual-tests/**/*.svx').sort();
+const documents = globSync('tests/scenarios/visual/**/*.svx').sort();
 const glossaryIds = new Set(
 	readGlossary(readFileSync('docs/visual-language.md', 'utf8')).map(({ id }) => id),
 );

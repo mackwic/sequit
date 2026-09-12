@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { AssertNode } from '../../../src/app/workshop/visual-tests/asserts/assert-node';
 import { EndpointKind } from '../../../src/lib/core/document/logic-document';
+import { AssertNode } from './assert-node';
 
 const node = {
 	id: 'a',

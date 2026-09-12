@@ -1,6 +1,6 @@
 # Assertions visuelles
 
-Le module partagé est désormais [dans l’atelier](../../../src/app/workshop/visual-tests/asserts/assert-box.ts), pour être importé à la fois par les tests et par le contrôle visuel.
+Les assertions partagées sont dans [ce dossier](assert-box.ts), importées à la fois par Vitest et par le contrôle visuel.
 
 Cette version vérifie l’alignement, le centrage, l’ordre spatial des boîtes et les rangs logiques des nœuds. Les concepts de référence sont **boîte** (VL-302), **repère du layout** (VL-220), **alignement** (VL-505) et **rang** (VL-117) dans le [lexique](../../../docs/visual-language.md).
 
@@ -54,7 +54,7 @@ Les coordonnées attendues des petits cas sont calculées à la main. Ces tests 
 
 Les dimensions de référence sont définies dans [layout-reference.ts](../fixtures/layout-reference.ts).
 
-[Scénarios partagés](../../app/workshop/visual-tests/scenarios.test.ts), chacun exécuté dans les quatre directions :
+[Scénarios partagés](../../scenarios/visual/scenarios.test.ts), chacun exécuté dans les quatre directions :
 
 | Scénario                        | Assertions                                                                                 |
 | ------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -76,7 +76,7 @@ Les contre-exemples déplacent les boîtes, décentrent l’enveloppe, inversent
 ## Exécution ciblée
 
 ```sh
-mise exec -- pnpm run test:web tests/support/assertions tests/app/workshop/visual-tests tests/app/web/projection/box-alignment.test.ts
+mise exec -- pnpm run test:web tests/support/assertions tests/scenarios/visual tests/app/workshop/visual-tests tests/app/web/projection/box-alignment.test.ts
 ```
 
 ## Suites possibles, à discuter
@@ -92,8 +92,8 @@ Aucune règle générale de centrage des convergences n'est introduite ici. Les 
 
 Page locale : `/atelier/tests-visuels`.
 
-- [Document Markdown + Svelte](../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.svx) : explication, code source importé, exécution et contrôle visuel optionnel.
-- [Scénario TypeScript partagé](../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario.ts) : préparation des entrées et assertion, sans dépendance au DOM ou au Markdown.
+- [Document Markdown + Svelte](../../scenarios/visual/nodes/centered-chain.svx) : explication, code source importé, exécution et contrôle visuel optionnel.
+- [Scénario TypeScript partagé](../../scenarios/visual/nodes/centered-chain.scenario.ts) : préparation des entrées et assertion, sans dépendance au DOM ou au Markdown.
 - Le test automatique importe uniquement le scénario TypeScript et appelle `arrange()` puis `assert(layout)`. Il n’importe aucun composant Svelte, fichier `.svx` ou compilateur Markdown.
 - Le contrôle visuel affiche les coordonnées du résultat testé. La simulation de décalage est locale à la page et ne modifie pas le scénario enregistré.
 - La galerie exécute automatiquement chaque scénario à son affichage, puis à chaque changement de direction et à l’ouverture du contrôle visuel. Les commandes sont regroupées dans ce panneau ; le verdict reste visible sous le code. La direction est conservée entre les scénarios tant que la galerie reste ouverte. Une exécution déjà en cours n’est pas lancée en double à l’ouverture du panneau. Le dessin reste chargé uniquement lorsque le panneau est ouvert.
@@ -106,12 +106,12 @@ Le support mdsvex est configuré dans Vite pour les pages de l’atelier. La con
 
 ## Ajouter un cas au cahier
 
-Créer deux fichiers voisins dans `src/app/workshop/visual-tests/cases/<famille>/` :
+Créer deux fichiers voisins dans `tests/scenarios/visual/<famille>/` :
 
 - `<nom>.scenario.ts` exporte `scenario: LayoutScenario`, avec `id`, `label`, `group`, `order`, puis `arrange()` et `assert()` ;
 - `<nom>.svx` importe ce scénario et son code avec `?raw`, explique la règle et affiche `VisualTest`.
 
-Prendre `cases/nodes/single-node.scenario.ts` et `single-node.svx` comme exemple. `id` reste stable ; `label` et `group` définissent les libellés du cahier, `order` son ordre de lecture. Le dossier sert à ranger les fichiers ; le groupe affiché est défini uniquement dans le scénario.
+Prendre `tests/scenarios/visual/nodes/single-node.scenario.ts` et `single-node.svx` comme exemple. `id` reste stable ; `label` et `group` définissent les libellés du cahier, `order` son ordre de lecture. Le dossier sert à ranger les fichiers ; le groupe affiché est défini uniquement dans le scénario.
 
 Le catalogue commun découvre automatiquement les exports `scenario`. La galerie charge la fiche `.svx` correspondante à la demande et la suite `scenarios.test.ts` exécute chaque scénario dans les huit configurations direction/biais, ainsi qu’avec les paramètres par défaut. Aucun ajout à une liste de tests ou de navigation n’est nécessaire. Les tests de régression propres à une règle restent dans leurs fichiers dédiés.
 

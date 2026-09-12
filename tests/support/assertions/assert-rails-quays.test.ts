@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-	AssertQuays,
-	AssertQuaySize,
-} from '../../../src/app/workshop/visual-tests/asserts/assert-quays';
-import { AssertRails } from '../../../src/app/workshop/visual-tests/asserts/assert-rails';
-import { AssertTrunks } from '../../../src/app/workshop/visual-tests/asserts/assert-trunks';
-import { VisualLayout } from '../../../src/app/workshop/visual-tests/visual-layout';
 import { EndpointKind, LayoutDirection } from '../../../src/lib/core/document/logic-document';
 import type { Bounds, LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
+import { VisualLayout } from '../harnesses/visual-layout';
+import { AssertQuays, AssertQuaySize } from './assert-quays';
+import { AssertRails } from './assert-rails';
+import { AssertTrunks } from './assert-trunks';
 
 function fixture(
 	direction = LayoutDirection.TopToBottom,

@@ -1,0 +1,31 @@
+<script>
+ import { scenario } from './shared-successors.scenario';
+ import source from './shared-successors.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Deux parents et deux successeurs communs.
+
+Quatre nœuds **A, B, C, D**, tous de **100 × 60**.
+Relations : **C → A, D → A, C → B et D → B**.
+
+A et B sont au rang 1 ; C et D au rang 2.
+Les enveloppes **A, B** et **C, D** ont le même centre **sur l’axe transversal**
+(X en layout vertical, Y en layout horizontal).
+
+Les relations diagonales **D → A et C → B se croisent avec un petit pont**.
+Les quatre relations restent distinctes : **aucun segment de longueur positive n’est partagé**.
+Un point d’attache commun à une boîte est autorisé ; il ne constitue pas un tronc commun.
+
+Le contrôle visuel utilise le même calcul de chemins et de ponts que le canvas du produit.
+
+Le document est préparé en une fois. Les règles s’appliquent aux quatre directions et à leurs biais compatibles.
+
+Le croisement des routes D → A et C → B est vérifié dans la géométrie calculée. Chaque croisement doit ensuite porter un pont, au même emplacement sur l’un des deux chemins rendus concernés. Une simple présence de pont ailleurs ne suffit pas.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-506 · Centré sur](/atelier/lexique#VL-506).
+
+Vocabulaire du routage : [VL-401 · Route](/atelier/lexique#VL-401), [VL-403 · Chemin rendu](/atelier/lexique#VL-403), [VL-415 · Croisement](/atelier/lexique#VL-415), [VL-417 · Recouvrement de segments](/atelier/lexique#VL-417).
+
+<VisualTest {scenario} {source} bind:settings />

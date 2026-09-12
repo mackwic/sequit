@@ -9,7 +9,7 @@ export function productionBoundaries(): Plugin {
 			for (const output of Object.values(bundle)) {
 				if (output.type !== 'chunk') continue;
 				for (const id of Object.keys(output.modules)) {
-					if (id.replaceAll('\\', '/').includes('/src/app/workshop/')) {
+					if (/\/(src\/app\/workshop|tests)\//.test(id.replaceAll('\\', '/'))) {
 						this.error(`Development workshop module included in production: ${id}`);
 					}
 				}

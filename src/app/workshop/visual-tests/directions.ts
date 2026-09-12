@@ -31,17 +31,6 @@ const biasOptions = [
 	{ value: LayoutBias.Right, label: 'Right' },
 ];
 
-const defaultBias = {
-	[LayoutDirection.TopToBottom]: LayoutBias.Top,
-	[LayoutDirection.BottomToTop]: LayoutBias.Bottom,
-	[LayoutDirection.LeftToRight]: LayoutBias.Left,
-	[LayoutDirection.RightToLeft]: LayoutBias.Right,
-};
-
-export function defaultBiasFor(direction: LayoutDirection): LayoutBias {
-	return defaultBias[direction];
-}
-
 export function biasOptionsFor(direction: LayoutDirection): typeof biasOptions {
 	return biasOptions.filter(({ value }) => layoutConfiguration(direction, value) !== undefined);
 }
@@ -69,35 +58,4 @@ export function parseVisualTestSettings(value: string | null): VisualTestSetting
 	} catch {
 		return defaultVisualTestSettings;
 	}
-}
-
-const axes = {
-	[LayoutDirection.TopToBottom]: {
-		transverse: 'x',
-		primary: 'y',
-		rowAlignment: 'centerY',
-		chainAlignment: 'centerX',
-	},
-	[LayoutDirection.BottomToTop]: {
-		transverse: 'x',
-		primary: 'y',
-		rowAlignment: 'centerY',
-		chainAlignment: 'centerX',
-	},
-	[LayoutDirection.LeftToRight]: {
-		transverse: 'y',
-		primary: 'x',
-		rowAlignment: 'centerX',
-		chainAlignment: 'centerY',
-	},
-	[LayoutDirection.RightToLeft]: {
-		transverse: 'y',
-		primary: 'x',
-		rowAlignment: 'centerX',
-		chainAlignment: 'centerY',
-	},
-} as const;
-
-export function axesFor(direction: LayoutDirection): (typeof axes)[LayoutDirection] {
-	return axes[direction];
 }

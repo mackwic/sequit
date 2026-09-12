@@ -1,6 +1,6 @@
+import type { LayoutScenario } from '../../../../../tests/scenarios/visual/scenario';
+import type { VisualLayout } from '../../../../../tests/support/harnesses/visual-layout';
 import type { LayoutBias, LayoutDirection } from '../../../../lib/core/document/logic-document';
-import type { LayoutScenario } from '../scenario';
-import type { VisualLayout } from '../visual-layout';
 
 export enum ExecutionStatus {
 	Idle = 'idle',

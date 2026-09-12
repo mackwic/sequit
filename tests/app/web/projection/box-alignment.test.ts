@@ -1,7 +1,5 @@
 import { describe, it } from 'vitest';
 
-import { AssertBox } from '../../../../src/app/workshop/visual-tests/asserts/assert-box';
-import { scenario as centeredChain } from '../../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario';
 import {
 	EndpointKind,
 	LayoutBias,
@@ -9,6 +7,8 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { scenario as centeredChain } from '../../../scenarios/visual/nodes/centered-chain.scenario';
+import { AssertBox } from '../../../support/assertions/assert-box';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { boundsFor, layoutDocument } from '../../../support/harnesses/layout';
 

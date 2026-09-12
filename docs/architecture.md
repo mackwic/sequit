@@ -59,10 +59,20 @@ tests/
     collaboration-worker/   Tests dans le runtime Cloudflare et contexte de types dédié
   routes/             Points d'entrée SvelteKit
   config/eslint/rules/ Tests des règles locales
-  support/            Builders, fixtures, scénarios et utilitaires partagés
+  scenarios/visual/   Scénarios exécutables et fiches explicatives de tests visuels
+  support/            Builders, fixtures, assertions et harnais partagés
 ```
 
 Les sous-dossiers `e2e/` et `performance/` restent proches du module concerné, mais sont exclus de la suite web standard et exécutés par leurs commandes dédiées. Les tests Worker sont eux aussi isolés de la suite web. Les tests de types sont nommés `*.type-test.ts` et vérifiés par TypeScript.
+
+Les scénarios visuels, leurs assertions et leurs fixtures appartiennent à `tests/`. Vitest et
+`src/app/workshop/visual-tests` exécutent les mêmes scénarios. L’atelier conserve la galerie, les
+réglages et les composants de présentation ; lui seul peut importer `tests/support` et
+`tests/scenarios`, jamais les fichiers de lancement `*.test.ts` ou `*.spec.ts`. Cette permission
+ne s’étend pas au produit, au core, aux workers ou aux autres modules de l’atelier.
+
+Les fiches `.svx` restent voisines des scénarios et utilisent les composants de l’atelier. Le
+catalogue TypeScript ne charge pas ces fiches, ce qui permet à Vitest de fonctionner sans UI.
 
 ## Frontières applicatives
 
@@ -78,7 +88,7 @@ Le moteur de layout est synchrone et pur ; l'enveloppe asynchrone est dans `app/
 
 Il y a une seule application SvelteKit. En développement, `/atelier` charge dynamiquement les modules de `app/workshop`.
 
-En production, `import.meta.env.DEV` élimine ces imports lors de la compilation et la route renvoie une erreur 404. Une petite entrée de route subsiste, sans le code de l'atelier. Le plugin `config/production-boundaries.ts` fait échouer le build si un module de `app/workshop` entre dans un chunk serveur ou navigateur.
+En production, `import.meta.env.DEV` élimine ces imports lors de la compilation et la route renvoie une erreur 404. Une petite entrée de route subsiste, sans le code de l'atelier. Le plugin `config/production-boundaries.ts` fait échouer le build si un module de `app/workshop` ou de `tests/` entre dans un chunk serveur ou navigateur.
 
 Le changement des chemins du Worker ne change ni son nom Cloudflare, ni le nom de son binding, ni sa classe Durable Object, ni ses migrations.
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 
+	import type { LayoutScenario } from '../../../../tests/scenarios/visual/scenario';
 	import { defaultVisualTestSettings, type VisualTestSettings as Settings } from './directions';
 	import { presentExecution } from './execution/present-execution';
 	import {
@@ -8,7 +9,6 @@
 		initialExecutionState,
 		ScenarioExecution,
 	} from './execution/scenario-execution';
-	import type { LayoutScenario } from './scenario';
 	import ScenarioVerdict from './ScenarioVerdict.svelte';
 	import SourceCode from './SourceCode.svelte';
 	import VisualTestSettings from './VisualTestSettings.svelte';

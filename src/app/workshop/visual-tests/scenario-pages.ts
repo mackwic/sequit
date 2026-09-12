@@ -5,4 +5,4 @@ import type { VisualTestSettings } from './directions';
 // UI-only loaders: keep Markdown and Svelte outside the executable catalogue.
 export const scenarioPages = import.meta.glob<{
 	default: Component<{ settings: VisualTestSettings }>;
-}>('./cases/**/*.svx');
+}>('/tests/scenarios/visual/**/*.svx');

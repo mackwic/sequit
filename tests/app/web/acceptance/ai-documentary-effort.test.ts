@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { openDocument } from '../../../../src/app/web/projection/open-document';
-import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/asserts/assert-routes';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
@@ -13,6 +12,7 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
+import { AssertRoutes } from '../../../support/assertions/assert-routes';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { twoByTwoInversionDocument } from '../../../support/fixtures';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';

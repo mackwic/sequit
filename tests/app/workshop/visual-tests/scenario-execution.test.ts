@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { scenario as centeredChain } from '../../../../src/app/workshop/visual-tests/cases/nodes/centered-chain.scenario';
 import { defaultVisualTestSettings } from '../../../../src/app/workshop/visual-tests/directions';
 import {
 	type ExecutionState,
 	ExecutionStatus,
 	ScenarioExecution,
 } from '../../../../src/app/workshop/visual-tests/execution/scenario-execution';
-import { VisualLayout } from '../../../../src/app/workshop/visual-tests/visual-layout';
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { scenario as centeredChain } from '../../../scenarios/visual/nodes/centered-chain.scenario';
+import { VisualLayout } from '../../../support/harnesses/visual-layout';
 
 const settings = defaultVisualTestSettings;
 const empty = new VisualLayout({ width: 100, height: 100, elements: [], relations: [] });

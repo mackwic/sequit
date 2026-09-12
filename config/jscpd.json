@@ -5,7 +5,7 @@
 	"format": ["typescript", "svelte"],
 	"ignore": [
 		"**/*.d.ts",
-		"**/tests/**",
+		"**/*.test.ts",
 		"**/test/**",
 		"**/.svelte-kit/**",
 		"**/.wrangler/**",

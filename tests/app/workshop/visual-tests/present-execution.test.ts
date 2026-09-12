@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { VisualAssertionError } from '../../../../src/app/workshop/visual-tests/asserts/assertion-error';
 import { presentExecution } from '../../../../src/app/workshop/visual-tests/execution/present-execution';
 import {
 	ExecutionStatus,
 	initialExecutionState,
 } from '../../../../src/app/workshop/visual-tests/execution/scenario-execution';
+import { VisualAssertionError } from '../../../support/assertions/assertion-error';
 
 describe('execution presentation', () => {
 	it.each([ExecutionStatus.Idle, ExecutionStatus.Running, ExecutionStatus.Passed])(

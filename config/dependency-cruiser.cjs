@@ -4,14 +4,29 @@ module.exports = {
 		{
 			name: 'no-circular-dependencies',
 			severity: 'error',
-			from: { path: '^src/' },
+			from: { path: '^(src/|tests/(support|scenarios)/)' },
 			to: { circular: true },
 		},
 		{
 			name: 'production-does-not-depend-on-tests',
 			severity: 'error',
-			from: { path: '^src/' },
+			from: { path: '^src/', pathNot: '^src/app/workshop/visual-tests/' },
 			to: { path: '(^tests/|/test/)' },
+		},
+		{
+			name: 'visual-workshop-only-depends-on-test-support-and-scenarios',
+			severity: 'error',
+			from: { path: '^src/app/workshop/visual-tests/' },
+			to: {
+				path: '^tests/',
+				pathNot: '^tests/(support|scenarios)/',
+			},
+		},
+		{
+			name: 'visual-workshop-does-not-import-test-runners',
+			severity: 'error',
+			from: { path: '^src/app/workshop/visual-tests/' },
+			to: { path: '\\.(test|spec)\\.ts$' },
 		},
 		{
 			name: 'library-does-not-depend-on-applications',
@@ -204,7 +219,7 @@ module.exports = {
 	],
 	options: {
 		doNotFollow: { path: 'node_modules' },
-		includeOnly: ['^src/'],
+		includeOnly: ['^src/', '^tests/(support|scenarios)/'],
 		exclude: { path: '(^src/workers/.*/vitest[.]config[.]ts|/[.](wrangler|svelte-kit)/)' },
 		tsConfig: { fileName: 'tsconfig.json' },
 		tsPreCompilationDeps: true,

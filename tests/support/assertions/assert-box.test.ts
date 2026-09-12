@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-	AssertBox,
-	type BoxGeometry,
-} from '../../../src/app/workshop/visual-tests/asserts/assert-box';
 import { LARGE_BOX_WIDTH } from '../fixtures/layout-reference';
+import { AssertBox, type BoxGeometry } from './assert-box';
 
 const a: BoxGeometry = { id: 'a', bounds: { x: 20, y: 40, width: 100, height: 60 } };
 const b: BoxGeometry = { id: 'b', bounds: { x: -30, y: 40, width: 200, height: 120 } };

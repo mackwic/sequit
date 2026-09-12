@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { renderRelationPaths } from '../../../src/app/web/ui/canvas/render-relations';
-import { AssertRenderedPaths } from '../../../src/app/workshop/visual-tests/asserts/assert-rendered-paths';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
+import { AssertRenderedPaths } from './assert-rendered-paths';
 
 const routes: readonly LayoutRelation[] = [
 	{

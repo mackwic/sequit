@@ -13,8 +13,15 @@ export default defineConfig({
 		exclude: ['tests/**/e2e/**', 'tests/**/performance/**', 'tests/workers/**'],
 		coverage: {
 			provider: 'istanbul',
-			include: ['src/**/*.ts'],
-			exclude: ['src/workers/**'],
+			include: [
+				'src/**/*.ts',
+				'tests/scenarios/visual/**/*.ts',
+				'tests/support/assertions/**/*.ts',
+				'tests/support/builders/visual-graph-builder.ts',
+				'tests/support/fixtures/{graph-fixtures,routing-fixtures}.ts',
+				'tests/support/harnesses/{layout-nodes,visual-layout,visual-directions}.ts',
+			],
+			exclude: ['src/workers/**', 'tests/**/*.test.ts'],
 			reportsDirectory: 'coverage/web',
 			reporter: ['text', 'html', 'json-summary'],
 			thresholds: {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { AssertRoutes } from '../../../src/app/workshop/visual-tests/asserts/assert-routes';
 import type { LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
+import { AssertRoutes } from './assert-routes';
 
 function route(id: string, points: readonly Point[]): LayoutRelation {
 	return { id, from: `${id}-source`, to: `${id}-target`, points };

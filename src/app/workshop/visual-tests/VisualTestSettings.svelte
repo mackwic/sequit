@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { defaultBiasFor } from '../../../../tests/support/harnesses/visual-directions';
 	import {
 		type LayoutBias,
 		layoutConfiguration,
@@ -6,7 +7,6 @@
 	} from '../../../lib/core/document/logic-document';
 	import {
 		biasOptionsFor,
-		defaultBiasFor,
 		defaultVisualTestSettings,
 		directionOptions,
 		type VisualTestSettings,
