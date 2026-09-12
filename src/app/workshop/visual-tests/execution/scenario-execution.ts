@@ -12,21 +12,17 @@ export enum ExecutionStatus {
 export interface ExecutionState {
 	readonly status: ExecutionStatus;
 	readonly layout: VisualLayout | null;
-	readonly simulated: boolean;
 	readonly diagnostic?: unknown;
 }
 
 export const initialExecutionState: ExecutionState = {
 	status: ExecutionStatus.Idle,
 	layout: null,
-	simulated: false,
 };
 
 /** Framework-independent execution. Only the latest request may publish a result. */
 export class ScenarioExecution {
 	private revision = 0;
-	private state = initialExecutionState;
-	private scenario: LayoutScenario | undefined;
 
 	constructor(private readonly publish: (state: ExecutionState) => void) {}
 
@@ -35,18 +31,16 @@ export class ScenarioExecution {
 		{ direction, bias }: { readonly direction: LayoutDirection; readonly bias: LayoutBias },
 	): Promise<void> {
 		const revision = ++this.revision;
-		this.scenario = scenario;
-		this.update({ status: ExecutionStatus.Running, layout: null, simulated: false });
+		this.publish({ status: ExecutionStatus.Running, layout: null });
 		try {
 			const layout = await scenario.arrange(direction, bias);
 			if (revision !== this.revision) return;
-			this.check(scenario, layout, false);
+			this.check(scenario, layout);
 		} catch (error) {
 			if (revision !== this.revision) return;
-			this.update({
+			this.publish({
 				status: ExecutionStatus.Failed,
 				layout: null,
-				simulated: false,
 				diagnostic: error,
 			});
 		}
@@ -57,37 +51,16 @@ export class ScenarioExecution {
 		this.revision += 1;
 	}
 
-	simulate(): void {
-		const { layout, simulated } = this.state;
-		const scenario = this.scenario;
-		if (layout === null || simulated || scenario?.simulation === undefined) return;
-		try {
-			this.check(scenario, scenario.simulation.apply(layout), true);
-		} catch (error) {
-			this.update({
-				...this.state,
-				status: ExecutionStatus.Failed,
-				diagnostic: error,
-			});
-		}
-	}
-
-	private check(scenario: LayoutScenario, layout: VisualLayout, simulated: boolean): void {
+	private check(scenario: LayoutScenario, layout: VisualLayout): void {
 		try {
 			scenario.assert(layout);
-			this.update({ status: ExecutionStatus.Passed, layout, simulated });
+			this.publish({ status: ExecutionStatus.Passed, layout });
 		} catch (error) {
-			this.update({
+			this.publish({
 				status: ExecutionStatus.Failed,
 				layout,
-				simulated,
 				diagnostic: error,
 			});
 		}
-	}
-
-	private update(state: ExecutionState): void {
-		this.state = state;
-		this.publish(state);
 	}
 }

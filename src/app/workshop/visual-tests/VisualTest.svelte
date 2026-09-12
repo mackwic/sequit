@@ -29,7 +29,6 @@
 	let layout = $derived(executionState.layout);
 	let running = $derived(executionState.status === ExecutionStatus.Running);
 	let presentation = $derived(presentExecution(executionState));
-	let simulated = $derived(executionState.simulated);
 	let layoutDirection = $derived(settings.direction);
 	let layoutBias = $derived(settings.bias);
 	let open = $state(true);
@@ -58,10 +57,6 @@
 		<summary>02 / Contrôle visuel</summary>
 		{#if open}
 			{#if layout !== null}
-				{#if simulated}<p class="simulation-note">
-						Simulation de diagnostic : le résultat a été modifié localement. Le scénario enregistré
-						reste intact. Réexécute-le pour retrouver le résultat du moteur.
-					</p>{/if}
 				{#await import('./LayoutPreview.svelte') then preview}<div>
 						{#if layout.reference}
 							<h3>{layout.reference.label}</h3>
@@ -74,14 +69,9 @@
 			<VisualTestSettings
 				bind:settings
 				{running}
-				{simulated}
 				hasLayout={layout !== null}
-				simulationLabel={scenario.simulation?.label}
 				onrun={() => {
 					void execution.run(scenario, settings);
-				}}
-				onsimulate={() => {
-					execution.simulate();
 				}}
 			/>
 		{/if}

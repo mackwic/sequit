@@ -9,8 +9,4 @@ export interface LayoutScenario {
 	readonly order: number;
 	arrange(direction?: LayoutDirection, bias?: LayoutBias): Promise<VisualLayout>;
 	assert(layout: VisualLayout): void;
-	readonly simulation?: {
-		readonly label: string;
-		apply(layout: VisualLayout): VisualLayout;
-	};
 }

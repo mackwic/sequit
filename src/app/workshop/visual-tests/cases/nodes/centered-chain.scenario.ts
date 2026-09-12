@@ -26,16 +26,4 @@ export const scenario: LayoutScenario = {
 		const b = layout.getById('b');
 		AssertBox(a).isAlignedWith(b, { by: axesFor(layout.direction).chainAlignment });
 	},
-	simulation: {
-		label: 'Décaler B de 10 · simulation',
-		apply(layout) {
-			const axis = axesFor(layout.direction).transverse;
-			return layout.withElements(
-				layout.elements.map((element) => {
-					if (element.id !== 'b') return element;
-					return { ...element, bounds: { ...element.bounds, [axis]: element.bounds[axis] + 10 } };
-				}),
-			);
-		},
-	},
 };

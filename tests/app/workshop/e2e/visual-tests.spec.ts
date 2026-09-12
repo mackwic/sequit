@@ -16,11 +16,9 @@ test('uses English direction labels and reruns with a compatible bias kept betwe
 	]);
 	await expect(bias.locator('option')).toHaveText(['Top', 'Bottom']);
 	await expect(bias).toHaveValue('top');
-	await page.getByRole('button', { name: 'Décaler B de 10 · simulation' }).click();
-	await expect(page.getByRole('status')).toContainText('difference=10');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await bias.selectOption('bottom');
 	await expect(page.getByRole('status')).toContainText('Réussi');
-	await expect(page.locator('.simulation-note')).toHaveCount(0);
 	await direction.selectOption('bottom-to-top');
 	await expect(bias).toHaveValue('bottom');
 	await page.getByRole('button', { name: 'B → A · A racine', exact: true }).click();
@@ -115,19 +113,17 @@ test('opens the preview on screen load and preserves the result when reopened', 
 	await expect(panel.getByRole('combobox', { name: 'Direction', exact: true })).toBeVisible();
 	await expect(panel.getByRole('button', { name: 'Réexécuter le scénario' })).toBeVisible();
 	await expect(page.locator('[data-center-guide]')).toHaveCount(2);
-	await page.getByRole('button', { name: 'Décaler B de 10 · simulation' }).click();
-	await expect(page.getByRole('status')).toContainText('difference=10');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await expect(page.locator('[data-box-id]')).toHaveCount(2);
 	await page.getByRole('checkbox').uncheck();
 	await expect(page.locator('[data-center-guide]')).toHaveCount(0);
-	// Reopening only reveals the current result, including a failed simulation.
+	// Reopening only reveals the current checked result.
 	await page.getByText('02 / Contrôle visuel', { exact: true }).click();
 	await expect(page.getByRole('img')).toHaveCount(0);
-	await expect(page.getByRole('status')).toContainText('difference=10');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await page.getByText('02 / Contrôle visuel', { exact: true }).click();
-	await expect(page.getByRole('status')).toContainText('difference=10');
+	await expect(page.getByRole('status')).toContainText('Réussi');
 	await expect(page.getByRole('img')).toBeVisible();
-	await expect(page.locator('.simulation-note')).toBeVisible();
 	await page.getByRole('button', { name: 'Réexécuter le scénario' }).click();
 	await expect(page.getByRole('status')).toContainText('Réussi');
 	await page.getByText('02 / Contrôle visuel', { exact: true }).click();
@@ -394,12 +390,10 @@ test('navigates scenarios through shareable URLs and browser history', async ({ 
 	);
 });
 
-test('keeps the simulated result when toggling geometry guides', async ({ page }) => {
+test('keeps the checked result when toggling geometry guides', async ({ page }) => {
 	await page.goto('/atelier/tests-visuels/centered-chain');
 	await expect(page.getByRole('status')).toContainText('Réussi');
-	await page.getByRole('button', { name: 'Décaler B de 10 · simulation' }).click();
 	const status = page.getByRole('status');
-	await expect(page.locator('.simulation-note')).toBeVisible();
 	const verdict = await status.textContent();
 	const box = page.locator('[data-box-id="b"] rect');
 	const x = await box.getAttribute('x');
@@ -407,11 +401,9 @@ test('keeps the simulated result when toggling geometry guides', async ({ page }
 	const guides = page.getByRole('checkbox', { name: 'Afficher les centres et coordonnées' });
 	await guides.uncheck();
 	await expect(page.locator('[data-center-guide]')).toHaveCount(0);
-	await expect(page.locator('.simulation-note')).toBeVisible();
 	await expect(status).toHaveText(verdict ?? '');
 	await guides.check();
 	await expect(page.locator('[data-center-guide]').first()).toBeVisible();
-	await expect(page.locator('.simulation-note')).toBeVisible();
 	await expect(box).toHaveAttribute('x', x ?? '');
 	await expect(box).toHaveAttribute('y', y ?? '');
 
@@ -419,11 +411,9 @@ test('keeps the simulated result when toggling geometry guides', async ({ page }
 	await panel.locator('summary').click();
 	await expect(page.locator('.layout-preview')).toHaveCount(0);
 	await panel.locator('summary').click();
-	await expect(page.locator('.simulation-note')).toBeVisible();
 	await expect(status).toHaveText(verdict ?? '');
 	await expect(box).toHaveAttribute('x', x ?? '');
 	await expect(box).toHaveAttribute('y', y ?? '');
 	await page.getByRole('button', { name: 'Réexécuter le scénario' }).click();
 	await expect(status).toContainText('Réussi');
-	await expect(page.locator('.simulation-note')).toHaveCount(0);
 });

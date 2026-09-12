@@ -4,8 +4,9 @@ import { scenario as centeredChain } from '../../../../src/app/workshop/visual-t
 import { scenario as directedChain } from '../../../../src/app/workshop/visual-tests/cases/nodes/directed-chain.scenario';
 import { scenario as independentNodes } from '../../../../src/app/workshop/visual-tests/cases/nodes/independent-nodes.scenario';
 import { scenario as singleNode } from '../../../../src/app/workshop/visual-tests/cases/nodes/single-node.scenario';
+import { axesFor } from '../../../../src/app/workshop/visual-tests/directions';
 import { VisualLayout } from '../../../../src/app/workshop/visual-tests/visual-layout';
-import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 
 describe('single node regression detection', () => {
 	it.each(['x', 'y'] as const)('fails when the node is displaced on %s', async (axis) => {
@@ -65,9 +66,15 @@ describe.each([
 			directedChain.assert(swapped);
 		}).toThrow(`must be after "a" in ${direction}`);
 	});
-	it('the visual debug simulation detects transverse drift and preserves the original', async () => {
+	it('detects transverse drift and preserves the original', async () => {
 		const layout = await centeredChain.arrange(direction);
-		const displaced = defined(centeredChain.simulation).apply(layout);
+		const displaced = layout.withElements(
+			layout.elements.map((element) => {
+				if (element.id !== 'b') return element;
+				const axis = axesFor(direction).transverse;
+				return { ...element, bounds: { ...element.bounds, [axis]: element.bounds[axis] + 10 } };
+			}),
+		);
 		expect(() => {
 			centeredChain.assert(displaced);
 		}).toThrow('difference=10');

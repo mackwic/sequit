@@ -275,7 +275,6 @@ body:has(.visual-doc) {
 	align-items: center;
 	gap: 0.5rem;
 }
-.simulation-note,
 .preview-empty {
 	margin: 0 1.2rem 1rem;
 	font-size: 0.8rem;

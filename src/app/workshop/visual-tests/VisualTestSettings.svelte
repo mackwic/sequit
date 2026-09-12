@@ -15,19 +15,13 @@
 	let {
 		settings = $bindable(defaultVisualTestSettings),
 		running,
-		simulated,
 		hasLayout,
-		simulationLabel,
 		onrun,
-		onsimulate,
 	}: {
 		settings?: VisualTestSettings;
 		running: boolean;
-		simulated: boolean;
 		hasLayout: boolean;
-		simulationLabel: string | undefined;
 		onrun: () => void;
-		onsimulate: () => void;
 	} = $props();
 	function setDirection(direction: LayoutDirection) {
 		let bias = settings.bias;
@@ -68,11 +62,6 @@
 				><input type="checkbox" bind:checked={() => settings.guides, setGuides} /> Afficher les centres
 				et coordonnées</label
 			>
-			{#if simulationLabel}<button
-					type="button"
-					onclick={onsimulate}
-					disabled={running || simulated}>{simulationLabel}</button
-				>{/if}
 		</div>
 	{/if}
 </div>
