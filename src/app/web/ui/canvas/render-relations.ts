@@ -240,18 +240,28 @@ function recordIntersection(
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
 ): readonly RenderedRelation[] {
-	const colors = relationColors(relations);
+	const colorCrossings: [string, string][] = [];
 	const previousSegments: Segment[] = [];
 	const crossings = new Map<Segment, Point[]>();
 	const byRelation = relations.map(segmentsFor);
 	const allSegments = byRelation.flat();
+	const owners = new Map(
+		byRelation.flatMap((segments, index) =>
+			segments.map((segment) => [segment, relations[index]?.id ?? ''] as const),
+		),
+	);
 	for (const segments of byRelation) {
 		for (const segment of segments) {
-			for (const previous of previousSegments)
+			for (const previous of previousSegments) {
+				const pair: [string, string] = [owners.get(segment) ?? '', owners.get(previous) ?? ''];
+				const intersects = intersection(segment, previous) !== undefined;
+				colorCrossings.push(...(intersects ? [pair] : []));
 				recordIntersection(crossings, segment, previous, allSegments);
+			}
 		}
 		previousSegments.push(...segments);
 	}
+	const colors = relationColors(relations, colorCrossings);
 	return relations.map((relation, relationIndex) => {
 		const segments = byRelation[relationIndex] ?? [];
 		return {

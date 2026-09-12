@@ -30,19 +30,25 @@ export function layerLinks(
 			(box) => transverseStart(box, vertical) + transverseSize(box, vertical),
 		),
 	);
+	const arrivals = new Map<string, number>();
 	return graph.relations
 		.filter(
 			({ source, target }) =>
 				source.kind !== EndpointKind.Group && target.kind !== EndpointKind.Group,
 		)
-		.map(({ relation }) => {
+		.map(({ relation, target }) => {
 			const sourceLayer = defined(layers.byId.get(relation.from));
 			const targetLayer = defined(layers.byId.get(relation.to));
 			let passage;
 			if (sourceLayer > targetLayer + 1) {
-				outside += RAIL_SPACING;
-				passage = outside;
+				passage = arrivals.get(relation.to);
+				if (passage === undefined) {
+					outside += RAIL_SPACING;
+					passage = outside;
+				}
 			}
+			if (passage !== undefined && target.kind === EndpointKind.Junction)
+				arrivals.set(relation.to, passage);
 			return { relation, sourceLayer, targetLayer, passage };
 		});
 }

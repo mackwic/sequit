@@ -50,8 +50,7 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 			let sharedTarget: string | undefined;
 			let sharedSource: string | undefined;
 			if (link.sourceLayer === layer + 1) sharedSource = sourceQuays.get(link.relation.id);
-			if (link.targetLayer === layer && input.junctionIds.has(link.relation.to))
-				sharedTarget = link.relation.to;
+			if (input.junctionIds.has(link.relation.to)) sharedTarget = link.relation.to;
 			return {
 				id: link.relation.id,
 				sharedTarget,

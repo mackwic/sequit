@@ -21,6 +21,7 @@ describe('renderRelationPaths', () => {
 			]),
 		]);
 
+		expect(rendered[0]?.color).not.toBe(rendered[1]?.color);
 		expect(rendered[0]?.path).toBe('M 0 50 L 100 50');
 		expect(rendered[1]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 100');
 	});
@@ -239,7 +240,7 @@ describe('renderRelationPaths', () => {
 		},
 	);
 
-	it('uses stable, subtly different arrow colors', () => {
+	it('uses stable, uniform arrow colors without crossings', () => {
 		const rendered = renderRelationPaths([
 			relation('first', [
 				{ x: 0, y: 0 },
@@ -253,12 +254,12 @@ describe('renderRelationPaths', () => {
 
 		expect(rendered.map(({ color }) => color)).toEqual([
 			'var(--content-relation-1)',
-			'var(--content-relation-2)',
+			'var(--content-relation-1)',
 		]);
 		expect(
 			renderRelationPaths([...rendered].reverse().map(({ id, points }) => relation(id, points))),
 		).toEqual([
-			expect.objectContaining({ id: 'second', color: 'var(--content-relation-2)' }),
+			expect.objectContaining({ id: 'second', color: 'var(--content-relation-1)' }),
 			expect.objectContaining({ id: 'first', color: 'var(--content-relation-1)' }),
 		]);
 	});
