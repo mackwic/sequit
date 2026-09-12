@@ -94,6 +94,23 @@ describe('permitted shared trunks', () => {
 		];
 		expect(() => AssertRoutes(paths).haveOnlyAllowedSharedTrunks()).toThrow('Quai entrant');
 	});
+	it('allows crossed junction arrivals while keeping unrelated overlap forbidden', () => {
+		const paths = [
+			...convergence,
+			route('cross', 'e', 'f', [
+				[5, 15],
+				[15, 15],
+			]),
+		];
+		AssertRoutes(paths).haveOnlyAllowedSharedTrunks(paths, new Set(['a']));
+		const unrelated = paths.map((path) => ({ ...path, to: path.id }));
+		expect(() =>
+			AssertRoutes(unrelated).haveOnlyAllowedSharedTrunks(
+				unrelated,
+				new Set(unrelated.map(({ to }) => to)),
+			),
+		).toThrow('Tronc commun interdit');
+	});
 	it('marks every arrow using a crossed shared trunk', () => {
 		const context = [
 			...fork,

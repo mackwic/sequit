@@ -1,5 +1,5 @@
 import { defined, EndpointKind, type LayoutDirection } from '../../document/logic-document';
-import { isVerticalDirection } from '../geometry/layout-frame';
+import { isVerticalDirection, mainSize, transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP } from '../layout-settings';
 import {
 	type Bounds,
@@ -7,6 +7,7 @@ import {
 	type InspectedNode,
 	type InspectedQuay,
 	type InspectedRail,
+	type LayoutElement,
 	type LayoutMeasurements,
 	type LayoutRelation,
 	type LayoutResult,
@@ -34,17 +35,23 @@ function usedQuays(id: string, routes: readonly LayoutRelation[]): InspectedQuay
 	return [...quays.values()];
 }
 
-function minimum(quays: readonly InspectedQuay[], offsets: ReadonlyMap<string, number>): number {
+function minimum(
+	quays: readonly InspectedQuay[],
+	offsets: ReadonlyMap<string, number>,
+	kind: EndpointKind,
+): number {
 	const reserved = quays.filter((quay) => quay.relations.some((id) => offsets.has(id)));
 	if (reserved.length === 0) return 0;
-	return quayExtent(reserved.length);
+	return quayExtent(reserved.length, kind);
 }
 
 function nodesFor(input: InspectionInput): InspectedNode[] {
 	return input.layout.elements
-		.filter((element) => element.kind === EndpointKind.Node)
+		.filter((element) => element.kind !== EndpointKind.Group)
 		.map((node) => {
-			const measured = defined(input.measurements.nodes.get(node.id));
+			let measurements = input.measurements.nodes;
+			if (node.kind === EndpointKind.Junction) measurements = input.measurements.junctions;
+			const measured = defined(measurements.get(node.id));
 			const quays = usedQuays(node.id, input.layout.relations);
 			const content = {
 				...measured,
@@ -59,10 +66,12 @@ function nodesFor(input: InspectionInput): InspectedNode[] {
 				incomingMinimum: minimum(
 					quays.filter((quay) => quay.side === RoutingQuaySide.Incoming),
 					input.plan?.quays.targetOffsets ?? new Map(),
+					node.kind,
 				),
 				outgoingMinimum: minimum(
 					quays.filter((quay) => quay.side === RoutingQuaySide.Outgoing),
 					input.plan?.quays.sourceOffsets ?? new Map(),
+					node.kind,
 				),
 			};
 		});
@@ -111,6 +120,40 @@ function railsFor(routes: readonly LayoutRelation[], vertical: boolean): Inspect
 	return [...rails.values()].sort((a, b) => a.coordinate - b.coordinate);
 }
 
+function junctionsInBand(
+	elements: readonly LayoutElement[],
+	bounds: Bounds,
+	vertical: boolean,
+): readonly LayoutElement[] {
+	const center = transverseCenter(bounds, !vertical);
+	const half = mainSize(bounds, vertical) / 2;
+	return elements.filter((element) => {
+		if (element.kind !== EndpointKind.Junction) return false;
+		return Math.abs(transverseCenter(element.bounds, !vertical) - center) < half;
+	});
+}
+
+function occupiedRails(
+	routes: readonly LayoutRelation[],
+	junctions: readonly LayoutElement[],
+	bounds: Bounds,
+	vertical: boolean,
+): InspectedRail[] {
+	const center = transverseCenter(bounds, !vertical);
+	const half = mainSize(bounds, vertical) / 2;
+	const rails = new Map(
+		railsFor(routes, vertical)
+			.filter((rail) => Math.abs(rail.coordinate - center) < half)
+			.map((rail) => [rail.coordinate, rail]),
+	);
+	for (const junction of junctions) {
+		const coordinate = transverseCenter(junction.bounds, !vertical);
+		const rail = rails.get(coordinate) ?? { coordinate, relations: [] };
+		rails.set(coordinate, { ...rail, junctions: [...(rail.junctions ?? []), junction.id] });
+	}
+	return [...rails.values()].sort((a, b) => a.coordinate - b.coordinate);
+}
+
 function corridorsFor(input: InspectionInput, vertical: boolean): InspectedCorridor[] {
 	const rows = new Map<number, Bounds[]>();
 	const nodeIds = new Set<string>();
@@ -126,20 +169,29 @@ function corridorsFor(input: InspectionInput, vertical: boolean): InspectedCorri
 	for (const [rank, row] of rows) {
 		const next = rows.get(rank + 1);
 		if (next === undefined) continue;
-		const routes = input.layout.relations.filter((route) => {
+		const bounds = band(envelope(row), envelope(next), vertical);
+		const junctions = junctionsInBand(input.layout.elements, bounds, vertical);
+		let routes: readonly LayoutRelation[] = input.layout.relations.filter((route) => {
 			const nodes = nodeIds.has(route.from) && nodeIds.has(route.to);
 			const sourceRank = rank + 1;
 			const adjacent =
 				input.ranks.get(route.to) === rank && input.ranks.get(route.from) === sourceRank;
 			return nodes && adjacent;
 		});
+		let requiredGap = input.plan?.gaps.get(rank) ?? BASE_RANK_GAP;
+		let allocated = input.plan?.gaps.has(rank) ?? false;
+		if (junctions.length > 0) {
+			routes = input.layout.relations;
+			requiredGap = mainSize(bounds, vertical);
+			allocated = true;
+		}
 		if (routes.length === 0) continue;
 		corridors.push({
 			rank,
-			bounds: band(envelope(row), envelope(next), vertical),
-			requiredGap: input.plan?.gaps.get(rank) ?? BASE_RANK_GAP,
-			allocated: input.plan?.gaps.has(rank) ?? false,
-			rails: railsFor(routes, vertical),
+			bounds,
+			requiredGap,
+			allocated,
+			rails: occupiedRails(routes, junctions, bounds, vertical),
 		});
 	}
 	return corridors.sort((a, b) => a.rank - b.rank);

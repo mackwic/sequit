@@ -6,10 +6,12 @@ import {
 	type MutableBounds,
 	transverseSize,
 } from '../geometry/layout-frame';
-import { ITEM_GAP } from '../layout-settings';
+import { ITEM_GAP, JUNCTION_CLEARANCE } from '../layout-settings';
 import type { Size } from '../layout-types';
+import type { JunctionPlacement } from '../structure/junction-structure';
 import type { PlacementRows } from '../structure/placement-rows';
 import { centerRelatedRows } from './center-related-rows';
+import { junctionCrossPositions, railSpan } from './junction-rails';
 import { measureRows, type RowMetrics } from './row-metrics';
 
 export interface ComponentLayout {
@@ -26,6 +28,8 @@ export interface ComponentPlacementInput {
 	readonly rankGap: number;
 	readonly rankGaps: ReadonlyMap<number, number>;
 	readonly parents: ReadonlyMap<string, readonly string[]> | undefined;
+	readonly junctions?: ReadonlyMap<string, JunctionPlacement>;
+	readonly channelGaps?: ReadonlyMap<number, readonly number[]> | undefined;
 }
 
 interface RowPlacement {
@@ -69,15 +73,33 @@ function placeOrdinaryRows(placement: RowPlacement): void {
 function placeJunctionRows(placement: RowPlacement): void {
 	const { input, metrics } = placement;
 	const { vertical } = input.frame;
-	for (const [rank, row] of input.rows.junction.entries()) {
-		let cross = (metrics.crossLength - defined(metrics.junctionCrossSizes[rank])) / 2;
-		for (const id of row) {
-			const size = defined(input.sizes.get(id));
-			const junctionOffset = (defined(metrics.junctionSpans[rank]) - mainSize(size, vertical)) / 2;
-			const bandEnd =
-				defined(metrics.primaryBandStarts[rank]) + defined(input.primaryBandSizes[rank]);
-			place(id, cross, bandEnd + junctionOffset, placement);
-			cross += transverseSize(size, vertical) + ITEM_GAP;
+	for (const [rank, rails] of metrics.rails.entries()) {
+		const bandEnd =
+			defined(metrics.primaryBandStarts[rank]) + defined(input.primaryBandSizes[rank]);
+		const gaps = input.channelGaps?.get(rank);
+		const extra = (defined(metrics.junctionSpans[rank]) - railSpan(rails, gaps)) / 2;
+		const leading = gaps?.[0] ?? JUNCTION_CLEARANCE;
+		let primary = bandEnd + extra + leading;
+		for (const [depth, rail] of rails.entries()) {
+			const positions = junctionCrossPositions({
+				rail,
+				bounds: placement.bounds,
+				junctions: input.junctions,
+				vertical,
+				crossLength: metrics.crossLength,
+				sizes: input.sizes,
+			});
+			for (const id of rail.ids) {
+				const size = defined(input.sizes.get(id));
+				place(
+					id,
+					defined(positions.get(id)),
+					primary + (rail.thickness - mainSize(size, vertical)) / 2,
+					placement,
+				);
+			}
+			const trailing = gaps?.[depth + 1] ?? JUNCTION_CLEARANCE;
+			primary += rail.thickness + trailing;
 		}
 	}
 }

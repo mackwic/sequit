@@ -16,6 +16,10 @@ const selections = new Set([
 	'quays',
 	'rails',
 	'trunks',
+	'junction',
+	'junctions',
+	'document',
+	'obstacles',
 ]);
 
 export function unwrap(node) {

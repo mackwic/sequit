@@ -1,0 +1,21 @@
+<script>
+ import { scenario } from './junction-shared-rails.scenario';
+ import source from './junction-shared-rails.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Partage et épaisseur des rails
+
+Choisissez une variante pour examiner sa géométrie et son verdict. Chaque variante conserve ses assertions et s’exécute indépendamment dans les quatre directions et avec leurs biais compatibles.
+
+- Deux jonctions indépendantes sur le même rail
+- Une jonction partage son rail avec une traverse
+- Une grosse jonction épaissit le rail et écarte toute la rangée
+- Deux tailles de jonctions sur un même rail
+
+Les rangs logiques restent indépendants des jonctions. Les mesures et les dégagements reprennent la calibration existante de l’atelier. Les groupes et les arbitrages asymétriques restent hors de ce lot.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-422 · Quai](/atelier/lexique#VL-422), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
+
+<VisualTest {scenario} {source} bind:settings />

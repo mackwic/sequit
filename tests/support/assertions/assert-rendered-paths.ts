@@ -1,5 +1,6 @@
 import type { RenderedRelation } from '../../../src/app/web/ui/canvas/render-relations';
 import type { Point } from '../../../src/lib/core/layout/layout-types';
+import { VisualAssertionError } from './assertion-error';
 import { routeCrossings } from './route-geometry';
 
 interface Bridge extends Point {
@@ -46,11 +47,23 @@ function bridgesIn(rendered: RenderedRelation): readonly Bridge[] {
 
 interface RenderedPathsAssertions {
 	haveBridgeAtEveryCrossing(): void;
+	haveBridgeCount(expected: number): void;
 }
 
 /** VL-403/416: locate a bridge on one of the two actual paths at each calculated crossing. */
 export function AssertRenderedPaths(paths: readonly RenderedRelation[]): RenderedPathsAssertions {
 	return {
+		haveBridgeCount(expected) {
+			const positions = new Set(paths.flatMap(bridgesIn).map(({ x, y }) => `${x},${y}`));
+			if (positions.size !== expected)
+				throw new VisualAssertionError(
+					'Nombre de ponts',
+					expected,
+					positions.size,
+					{ routes: paths.map(({ id }) => id) },
+					{ code: 'routes.bridge-count' },
+				);
+		},
 		haveBridgeAtEveryCrossing() {
 			if (paths.length < 2) throw new Error('Expected at least two rendered paths.');
 			if (new Set(paths.map(({ id }) => id)).size !== paths.length)

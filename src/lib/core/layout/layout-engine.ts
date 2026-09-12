@@ -3,15 +3,72 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { buildLayoutResult } from './build-layout-result';
 import { createLayoutFrame } from './geometry/layout-frame';
 import { inspectRouting } from './inspection/routing-inspection';
-import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
+import type { LayoutMeasurements, LayoutOptions, LayoutResult, Point } from './layout-types';
 import type { LayoutWorkspace } from './layout-workspace';
 import { expandRowGaps } from './placement/expand-row-gaps';
 import { placeElements } from './placement/place-elements';
 import { prepareMeasurements } from './placement/prepare-measurements';
+import { alignJunctionQuays } from './routing/align-junction-quays';
+import {
+	allocateLayerQuays,
+	materializeLayers,
+	planLayeredRouting,
+} from './routing/layered-routing';
 import { allocateQuays } from './routing/quay-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
+import { improvesRoutes } from './routing/route-cost';
 import { crossingCorridors } from './routing/routing-corridors';
 import { prepareLayout } from './structure/prepare-layout';
+import { routingLayers } from './structure/routing-layers';
+
+function reserveLayeredRouting(
+	workspace: LayoutWorkspace,
+): ReadonlyMap<string, readonly Point[]> | undefined {
+	const { structure, measurements, placement, frame } = workspace;
+	if (structure.junctionIds.size === 0) return undefined;
+	const input = {
+		graph: structure.graph,
+		layers: routingLayers(structure),
+		bounds: placement.bounds,
+		frame,
+		ranks: structure.ranks.byEndpointId,
+		junctionIds: structure.junctionIds,
+		sizes: measurements.sizes,
+	};
+	let quays = allocateLayerQuays(input);
+	if (quays === undefined) return undefined;
+	for (const [id, size] of quays.sizes) measurements.sizes.set(id, size);
+	placeElements(workspace, new Map());
+	let plan = planLayeredRouting(input, quays);
+	placeElements(workspace, plan.gaps, plan.channelGaps);
+	const originalQuays = quays;
+	const originalPlan = plan;
+	const originalPaths = materializeLayers(input, plan);
+	const proposal = alignJunctionQuays({ ...input, vertical: frame.vertical, quays });
+	for (const [id, size] of proposal.sizes) measurements.sizes.set(id, size);
+	placeElements(workspace, plan.gaps, plan.channelGaps);
+	quays = alignJunctionQuays({ ...input, vertical: frame.vertical, quays: originalQuays });
+	plan = planLayeredRouting(input, quays);
+	placeElements(workspace, plan.gaps, plan.channelGaps);
+	const fits = [...quays.sizes].every(([id, size]) => {
+		const placed = proposal.sizes.get(id);
+		return placed?.width === size.width && placed.height === size.height;
+	});
+	if (!fits || !improvesRoutes(originalPaths, materializeLayers(input, plan))) {
+		quays = originalQuays;
+		plan = originalPlan;
+		for (const [id, size] of quays.sizes) measurements.sizes.set(id, size);
+		placeElements(workspace, plan.gaps, plan.channelGaps);
+	}
+	workspace.routing = {
+		quays,
+		gaps: plan.gaps,
+		ranks: structure.ranks.byEndpointId,
+		corridors: [],
+		railCounts: new Map(),
+	};
+	return materializeLayers(input, plan);
+}
 
 function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number, number>): void {
 	const { structure, measurements, frame, placement } = workspace;
@@ -70,13 +127,15 @@ export function layoutWithDedicatedEngine(
 	};
 	const baseGaps = new Map<number, number>();
 	placeElements(workspace, baseGaps);
-	reserveRouting(workspace, baseGaps);
+	const routes = reserveLayeredRouting(workspace);
+	if (routes === undefined) reserveRouting(workspace, baseGaps);
 	const result = buildLayoutResult({
 		graph,
 		measurements,
 		bounds: workspace.placement.bounds,
 		routing: workspace.routing,
 		frame,
+		routes,
 	});
 	if (options.inspectRouting !== true) return result;
 	return {

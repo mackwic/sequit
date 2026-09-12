@@ -14,3 +14,8 @@ export const catalogue = Object.entries(scenarios)
 	.sort(
 		(a, b) => a.scenario.order - b.scenario.order || a.scenario.id.localeCompare(b.scenario.id),
 	);
+
+/** Every variant is a test in its own right; the gallery family is not run a second time. */
+export const executableScenarios = catalogue.flatMap(
+	({ scenario }) => scenario.variants ?? [scenario],
+);

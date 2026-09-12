@@ -2,7 +2,7 @@ import { globSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { catalogue } from './catalogue';
+import { catalogue, executableScenarios } from './catalogue';
 
 const root = 'tests/scenarios/visual/';
 
@@ -15,6 +15,17 @@ describe('visual scenario catalogue', () => {
 			documents,
 		);
 		expect(documents.map((path) => path.replace(/\.svx$/, '.scenario.ts'))).toEqual(sources);
+	});
+	it('retains all 27 independently executable junction variants in nine pages', () => {
+		const junctions = catalogue.filter(({ scenario }) => scenario.group === 'Jonctions et rails');
+		expect(junctions).toHaveLength(9);
+		const variants = junctions.flatMap(({ scenario }) => scenario.variants ?? [scenario]);
+		expect(variants).toHaveLength(27);
+		expect(new Set(executableScenarios.map(({ id }) => id)).size).toBe(executableScenarios.length);
+		for (const variant of variants) {
+			expect(variant.variants).toBeUndefined();
+			expect(executableScenarios).toContain(variant);
+		}
 	});
 	it('uses unique stable identifiers', () => {
 		const ids = catalogue.map(({ scenario }) => scenario.id);

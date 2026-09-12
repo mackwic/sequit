@@ -1,4 +1,5 @@
 import { renderRelationPaths } from '../../../src/app/web/ui/canvas/render-relations';
+import { EndpointKind } from '../../../src/lib/core/document/logic-document';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 import type { VisualLayout } from '../harnesses/visual-layout';
 import { AssertQuays, type QuaySide } from './assert-quays';
@@ -50,7 +51,12 @@ class LayoutRoutes {
 		return this;
 	}
 	haveOnlyAllowedSharedTrunks(): this {
-		this.geometry.haveOnlyAllowedSharedTrunks(this.layout.relations);
+		const junctionIds = new Set(
+			this.layout.elements
+				.filter((element) => element.kind === EndpointKind.Junction)
+				.map(({ id }) => id),
+		);
+		this.geometry.haveOnlyAllowedSharedTrunks(this.layout.relations, junctionIds);
 		return this;
 	}
 	haveNoOverlap(): this {

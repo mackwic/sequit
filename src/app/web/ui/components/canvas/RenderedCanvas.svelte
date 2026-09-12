@@ -16,6 +16,7 @@
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import CanvasRelation from './CanvasRelation.svelte';
+	import JunctionSymbol from './JunctionSymbol.svelte';
 	import LogicNode from './LogicNode.svelte';
 	import RelationArrow from './RelationArrow.svelte';
 
@@ -200,7 +201,11 @@
 					handleKeyDown(event, ref);
 				}}
 			>
-				{junction.operator.toUpperCase()}
+				<JunctionSymbol
+					width={junction.bounds.width}
+					height={junction.bounds.height}
+					operator={junction.operator}
+				/>
 			</button>
 		{/each}
 	</div>
@@ -253,9 +258,9 @@
 		display: grid;
 		box-sizing: border-box;
 		place-items: center;
-		border: 2px solid #57534e;
+		border: 0;
 		border-radius: 9999px;
-		background: #facc15;
+		background: transparent;
 		color: #292524;
 		font-size: 0.55rem;
 		font-weight: 800;

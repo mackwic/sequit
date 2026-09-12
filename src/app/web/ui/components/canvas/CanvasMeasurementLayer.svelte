@@ -40,8 +40,8 @@
 
 	.measure-junction {
 		display: grid;
-		width: 32px;
-		height: 32px;
+		width: 28px;
+		height: 20px;
 		place-items: center;
 	}
 </style>

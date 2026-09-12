@@ -4,12 +4,14 @@ import type { Size } from '../../../src/lib/core/layout/layout-types';
 /** Input data only: ranks, geometry and expectations belong to the real pipeline and scenarios. */
 export interface VisualGraphData {
 	readonly nodes: Readonly<Record<string, Size>>;
+	readonly junctions?: Readonly<Record<string, Size>>;
 	readonly relations: LogicDocument['relations'];
 }
 
 /** Each build returns independent data; explicit IDs are preserved. */
 export class VisualGraphBuilder {
 	private readonly sizes = new Map<string, Size>();
+	private readonly junctionSizes = new Map<string, Size>();
 	private readonly links = new Map<string, LogicDocument['relations'][number]>();
 	private readonly defaultSize: Size;
 
@@ -22,10 +24,24 @@ export class VisualGraphBuilder {
 			throw new Error('Visual nodes must have finite positive dimensions.');
 		}
 		for (const id of ids) {
-			if (id.trim() === '' || this.sizes.has(id) || this.links.has(id)) {
+			if (
+				id.trim() === '' ||
+				this.sizes.has(id) ||
+				this.junctionSizes.has(id) ||
+				this.links.has(id)
+			) {
 				throw new Error(`Invalid or duplicate visual node ID: ${id}`);
 			}
 			this.sizes.set(id, { ...size });
+		}
+		return this;
+	}
+
+	junctions(ids: readonly string[], size: Size = { width: 28, height: 20 }): this {
+		this.nodes(ids, size);
+		for (const id of ids) {
+			this.junctionSizes.set(id, { ...size });
+			this.sizes.delete(id);
 		}
 		return this;
 	}
@@ -39,7 +55,12 @@ export class VisualGraphBuilder {
 
 	/** Document arrow direction, independent of logical succession. */
 	relation(relation: LogicDocument['relations'][number]): this {
-		if (relation.id.trim() === '' || this.links.has(relation.id) || this.sizes.has(relation.id)) {
+		if (
+			relation.id.trim() === '' ||
+			this.links.has(relation.id) ||
+			this.sizes.has(relation.id) ||
+			this.junctionSizes.has(relation.id)
+		) {
 			throw new Error(`Invalid or duplicate visual relation ID: ${relation.id}`);
 		}
 		this.links.set(relation.id, { ...relation });
@@ -64,11 +85,17 @@ export class VisualGraphBuilder {
 
 	build(): VisualGraphData {
 		for (const { id, from, to } of this.links.values()) {
-			if (!this.sizes.has(from) || !this.sizes.has(to)) {
+			if (![from, to].every((id) => this.sizes.has(id) || this.junctionSizes.has(id))) {
 				throw new Error(`Visual relation ${id} references a missing node: ${from} → ${to}`);
 			}
 		}
+		const junctions = Object.fromEntries(
+			[...this.junctionSizes].map(([id, size]) => [id, { ...size }]),
+		);
+		let optionalJunctions = {};
+		if (this.junctionSizes.size > 0) optionalJunctions = { junctions };
 		return {
+			...optionalJunctions,
 			nodes: Object.fromEntries([...this.sizes].map(([id, size]) => [id, { ...size }])),
 			relations: [...this.links.values()].map((relation) => ({ ...relation })),
 		};

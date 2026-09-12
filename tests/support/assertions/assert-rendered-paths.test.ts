@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { renderRelationPaths } from '../../../src/app/web/ui/canvas/render-relations';
+import { defined } from '../../../src/lib/core/document/logic-document';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 import { AssertRenderedPaths } from './assert-rendered-paths';
 
@@ -43,6 +44,15 @@ describe('bridges on rendered paths', () => {
 		]) {
 			AssertRenderedPaths(renderRelationPaths(input)).haveBridgeAtEveryCrossing();
 		}
+	});
+	it('counts visible bridge positions once even when several relations share the carrier', () => {
+		const duplicate = { ...defined(routes[1]), id: 'shared', from: 'g' };
+		const paths = renderRelationPaths([...routes, duplicate]);
+		const check = AssertRenderedPaths(paths);
+		check.haveBridgeCount(2);
+		expect(() => {
+			check.haveBridgeCount(3);
+		}).toThrow('Nombre de ponts');
 	});
 	it('rejects a missing bridge even when another crossing has its bridge', () => {
 		const paths = renderRelationPaths(routes).map((path) => {

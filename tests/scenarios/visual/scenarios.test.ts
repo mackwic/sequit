@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutDirection } from '../../../src/lib/core/document/logic-document';
 import { LAYOUT_CONFIGURATIONS } from '../../support/builders/layout-bias-scenario';
-import { catalogue } from './catalogue';
+import { executableScenarios } from './catalogue';
 
-describe.each(catalogue.map(({ scenario }) => scenario))('$id shared scenario', (scenario) => {
+describe.each(executableScenarios)('$id shared scenario', (scenario) => {
 	it.each(LAYOUT_CONFIGURATIONS)(
 		'passes with $direction and $bias bias',
 		async ({ direction, bias }) => {

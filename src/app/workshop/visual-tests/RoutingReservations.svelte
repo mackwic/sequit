@@ -32,6 +32,7 @@
 			{#each corridor.rails as rail (rail.coordinate)}
 				<line
 					data-reserved-rail={rail.coordinate}
+					data-rail-junctions={rail.junctions?.join(' ')}
 					{...railLine(corridor.bounds, rail.coordinate)}
 					stroke="#2764a5"
 					stroke-width="1"

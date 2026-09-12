@@ -3,9 +3,12 @@ import type { BoxGeometry } from '../harnesses/box-geometry';
 import { axesFor } from '../harnesses/visual-directions';
 import type { VisualLayout } from '../harnesses/visual-layout';
 import { AssertBox } from './assert-box';
+import { JunctionAssertions } from './assert-junctions';
+import { assertLayoutObstacles } from './assert-layout-obstacles';
 import { layoutRoutingAssertions } from './assert-layout-routing';
 import { AssertNode } from './assert-node';
 import { AssertQuaySize, type QuaySizeOptions, usedQuayCount } from './assert-quays';
+import { VisualDocumentAssertions } from './assert-visual-document';
 
 type BoxReference = string | BoxGeometry;
 interface OrderOptions {
@@ -38,6 +41,10 @@ interface NodesCheck {
 }
 interface LayoutAssertions extends ReturnType<typeof layoutRoutingAssertions> {
 	node(id: string): NodeCheck;
+	junction(id: string): BoxCheck;
+	junctions(ids: readonly string[]): JunctionAssertions;
+	document(): VisualDocumentAssertions;
+	obstacles(): { haveClearance(clearance: number): void };
 	nodes(ids: readonly string[]): NodesCheck;
 	envelope(ids: readonly string[]): BoxCheck;
 }
@@ -144,6 +151,24 @@ function nodesCheck(layout: VisualLayout, ids: readonly string[]): NodesCheck {
 export function AssertLayout(layout: VisualLayout): LayoutAssertions {
 	return {
 		...layoutRoutingAssertions(layout),
+		junction(id) {
+			if (layout.getById(id).kind !== EndpointKind.Junction)
+				throw new Error(`Expected a junction: ${id}`);
+			return boxCheck(layout, layout.getById(id));
+		},
+		junctions(ids) {
+			return new JunctionAssertions(layout, ids);
+		},
+		document() {
+			return new VisualDocumentAssertions(layout);
+		},
+		obstacles() {
+			return {
+				haveClearance(clearance) {
+					assertLayoutObstacles(layout, clearance);
+				},
+			};
+		},
 		node(id) {
 			return nodeCheck(layout, id);
 		},

@@ -140,3 +140,20 @@ it.each([
 		);
 	},
 );
+
+it('keeps junction measurements independent and rejects endpoint identity collisions', () => {
+	const builder = new VisualGraphBuilder(size)
+		.nodes(['a', 'b'])
+		.junctions(['j'])
+		.successorsOf('a', ['j'])
+		.successorsOf('j', ['b']);
+	const first = builder.build();
+	expect(first.junctions).toEqual({ j: { width: 28, height: 20 } });
+	expect(Object.keys(first.nodes)).toEqual(['a', 'b']);
+	Object.assign(defined(first.junctions?.['j']), { width: 999 });
+	expect(builder.build().junctions?.['j']?.width).toBe(28);
+	expect(() => builder.nodes(['j'])).toThrow('ID');
+	expect(() => builder.junctions(['a'])).toThrow('ID');
+	expect(() => builder.junctions(['j'])).toThrow('ID');
+	expect(() => builder.relation({ id: 'j', from: 'a', to: 'b' })).toThrow('ID');
+});

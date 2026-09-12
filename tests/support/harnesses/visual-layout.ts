@@ -1,4 +1,8 @@
-import { EndpointKind, LayoutDirection } from '../../../src/lib/core/document/logic-document';
+import {
+	EndpointKind,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../../src/lib/core/document/logic-document';
 import type { LayoutElement, LayoutResult } from '../../../src/lib/core/layout/layout-types';
 import { type BoxGeometry, validateBox } from './box-geometry';
 
@@ -20,6 +24,7 @@ export class VisualLayout implements LayoutResult {
 		private readonly ranks: ReadonlyMap<string, number> = new Map(),
 		readonly direction: LayoutDirection = LayoutDirection.TopToBottom,
 		readonly reference?: { readonly label: string; readonly layout: VisualLayout },
+		readonly document?: LogicDocument,
 	) {
 		this.width = result.width;
 		this.height = result.height;
@@ -42,11 +47,12 @@ export class VisualLayout implements LayoutResult {
 			this.ranks,
 			this.direction,
 			this.reference,
+			this.document,
 		);
 	}
 
 	withReference(label: string, layout: VisualLayout): VisualLayout {
-		return new VisualLayout(this, this.ranks, this.direction, { label, layout });
+		return new VisualLayout(this, this.ranks, this.direction, { label, layout }, this.document);
 	}
 
 	get frame(): BoxGeometry {

@@ -1,24 +1,15 @@
+import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
-import { packRails, type RailRun } from './rail-packing';
+import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
+import { packRails } from './rail-packing';
 
-export interface ChannelEndpoint {
-	readonly id: string;
-	readonly source: number;
-	readonly target: number;
+enum RunSide {
+	First = 'first',
+	Last = 'last',
 }
-export interface ChannelWire extends ChannelEndpoint {
-	first: ChannelRun | undefined;
-	last: ChannelRun | undefined;
-	middle: number | undefined;
-}
-interface ChannelRun extends RailRun {
-	readonly next: ChannelRun[];
-	remaining: number;
-	depth: number;
-}
-export interface ChannelRouting {
-	readonly wires: readonly ChannelWire[];
-	readonly railCount: number;
+
+function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
+	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
 }
 
 /** A coincident departure must leave its column before another wire arrives there. */
@@ -58,7 +49,14 @@ function precedes(first: ChannelRun, last: ChannelRun): void {
 }
 
 function makeRuns(wires: readonly ChannelWire[]): ChannelRun[] {
-	const breaks = cycleBreaks(wires);
+	const moving = wires.filter((wire) => wire.source !== wire.target);
+	let breaks = cycleBreaks(moving);
+	if (wires.some(hasSharedEndpoint)) {
+		// Shared endpoint families can turn independent column dependencies into a cycle.
+		// Leave coincident columns first, then join the shared arrival traverse.
+		const targets = new Set(wires.map((wire) => wire.target));
+		breaks = new Set(moving.filter((wire) => targets.has(wire.source)));
+	}
 	const distinct = new Set<number>();
 	if (breaks.size > 0)
 		for (const wire of wires) {
@@ -88,6 +86,69 @@ function makeRuns(wires: readonly ChannelWire[]): ChannelRun[] {
 	return runs;
 }
 
+function runOwners(wires: readonly ChannelWire[]): ReadonlyMap<ChannelRun, ReadonlySet<string>> {
+	const owners = new Map<ChannelRun, Set<string>>();
+	for (const wire of wires) {
+		for (const segment of [defined(wire.first), defined(wire.last)]) {
+			const sources = owners.get(segment) ?? new Set<string>();
+			sources.add(wire.sharedSource ?? wire.id);
+			owners.set(segment, sources);
+		}
+	}
+	return owners;
+}
+
+function runFamilies(wires: readonly ChannelWire[], side: RunSide): readonly ChannelWire[][] {
+	const owners = runOwners(wires);
+	const families = new Map<string, ChannelWire[]>();
+	for (const wire of wires) {
+		let key = wire.sharedTarget;
+		if (side === RunSide.First) key = wire.sharedSource;
+		if (key === undefined) continue;
+		if (side === RunSide.First) {
+			// Preserve distinct arrival nets; merge shared detours before they can reunite.
+			if (defined(owners.get(defined(wire.first))).size > 1) continue;
+		}
+		const family = families.get(key) ?? [];
+		family.push(wire);
+		families.set(key, family);
+	}
+	return [...families.values()].filter((family) => family.length > 1);
+}
+
+function mergeRuns(wires: readonly ChannelWire[], runs: ChannelRun[], side: RunSide): ChannelRun[] {
+	if (!wires.some(hasSharedEndpoint)) return runs;
+	const replaced = new Map<ChannelRun, ChannelRun>();
+	for (const family of runFamilies(wires, side)) {
+		const shared = defined(defined(family[0])[side]);
+		for (const wire of family.slice(1)) {
+			const segment = defined(wire[side]);
+			if (segment === shared) continue;
+			shared.start = Math.min(shared.start, segment.start);
+			shared.end = Math.max(shared.end, segment.end);
+			replaced.set(segment, shared);
+		}
+	}
+	if (replaced.size === 0) return runs;
+	for (const wire of wires) {
+		wire.first = replaced.get(defined(wire.first)) ?? wire.first;
+		wire.last = replaced.get(defined(wire.last)) ?? wire.last;
+	}
+	const constraints = runs.flatMap((segment) =>
+		segment.next.map((following) => ({
+			first: replaced.get(segment) ?? segment,
+			last: replaced.get(following) ?? following,
+		})),
+	);
+	const retained = runs.filter((segment) => !replaced.has(segment));
+	for (const segment of retained) {
+		segment.remaining = 0;
+		segment.next.length = 0;
+	}
+	for (const { first, last } of constraints) if (first !== last) precedes(first, last);
+	return retained;
+}
+
 function assignRails(runs: readonly ChannelRun[]): number {
 	const ready = runs.filter((segment) => segment.remaining === 0);
 	const layers: ChannelRun[][] = [];
@@ -107,25 +168,32 @@ function assignRails(runs: readonly ChannelRun[]): number {
 	return count;
 }
 
-/** Exclusive source and target quays: break column cycles, then color transverse runs. */
+/** Share traverses at a common quay, preserve distinct nets, then color transverse runs. */
 export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting {
-	const wires: ChannelWire[] = input.map(({ id, source, target }) => ({
-		id,
-		source,
-		target,
+	const wires: ChannelWire[] = input.map((endpoint) => ({
+		...endpoint,
 		first: undefined,
 		last: undefined,
 		middle: undefined,
 	}));
 	const moving = wires
-		.filter((wire) => wire.source !== wire.target)
-		.sort((a, b) => a.source - b.source);
-	const runs = makeRuns(moving);
-	const bySource = new Map<number, ChannelWire>();
-	for (const wire of moving) bySource.set(wire.source, wire);
+		.filter((wire) => wire.source !== wire.target || hasSharedEndpoint(wire))
+		.sort((a, b) => {
+			const difference = a.source - b.source || a.target - b.target;
+			return difference || compareCanonicalStrings(a.id, b.id);
+		});
+	const arrivals = mergeRuns(moving, makeRuns(moving), RunSide.Last);
+	const runs = mergeRuns(moving, arrivals, RunSide.First);
+	const bySource = new Map<number, ChannelWire[]>();
 	for (const wire of moving) {
-		const departure = bySource.get(wire.target);
-		if (departure !== undefined) precedes(defined(departure.first), defined(wire.last));
+		const departures = bySource.get(wire.source) ?? [];
+		departures.push(wire);
+		bySource.set(wire.source, departures);
+	}
+	for (const wire of moving) {
+		for (const departure of bySource.get(wire.target) ?? []) {
+			if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
+		}
 	}
 	return { wires, railCount: assignRails(runs) };
 }

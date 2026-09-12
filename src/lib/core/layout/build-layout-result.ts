@@ -25,6 +25,7 @@ interface ResultInput {
 	readonly measurements: LayoutMeasurements;
 	readonly routing: NodeRouting | undefined;
 	readonly frame: LayoutFrame;
+	readonly routes?: ReadonlyMap<string, readonly Point[]> | undefined;
 }
 
 function layoutRelation(
@@ -42,7 +43,7 @@ function layoutRelation(
 		source,
 		target,
 	});
-	let points = planned?.get(relation.id);
+	let points = input.routes?.get(relation.id) ?? planned?.get(relation.id);
 	if (points === undefined) {
 		let sourceGroup;
 		let targetGroup;
@@ -85,6 +86,11 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 		height = Math.max(height, bounds.y + bounds.height + OUTER_MARGIN);
 	}
 	elements.sort((left, right) => compareCanonicalStrings(left.id, right.id));
+	for (const route of relations)
+		for (const point of route.points) {
+			width = Math.max(width, point.x + OUTER_MARGIN);
+			height = Math.max(height, point.y + OUTER_MARGIN);
+		}
 	relations.sort((left, right) => compareCanonicalStrings(left.id, right.id));
 	return { width, height, elements, relations };
 }

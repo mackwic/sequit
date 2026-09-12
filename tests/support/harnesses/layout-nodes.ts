@@ -2,31 +2,47 @@ import { layoutGraph } from '../../../src/app/web/projection/layout-graph';
 import {
 	defined,
 	EndpointKind,
+	JunctionOperator,
 	type LayoutBias,
 	layoutConfiguration,
 	type LayoutDirection,
 	type LogicDocument,
 	PERSISTENCE_FORMAT,
 } from '../../../src/lib/core/document/logic-document';
-import { orderKey } from '../../../src/lib/core/document/order-key';
+import type { OrderKey } from '../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../src/lib/core/graph/topological-ranks';
+import { fractionalOrderKeySpace } from '../../../src/lib/core/ordering/order-key-space';
 import type { VisualGraphData } from '../builders/visual-graph-builder';
 import { defaultBiasFor } from './visual-directions';
+import { editVisualDocument, type VisualDocumentEdit } from './visual-document-edit';
 import { VisualLayout } from './visual-layout';
 
 interface NodeFixture extends VisualGraphData {
 	readonly direction: LayoutDirection;
 	readonly bias?: LayoutBias | undefined;
+	readonly edit?: VisualDocumentEdit;
+	readonly reference?: VisualGraphData | true;
 }
 
-/** Small node-only fixture using the actual graph, rank and layout pipelines. */
+/** Measured endpoint fixture using the actual graph, rank and layout pipelines. */
 export async function layoutNodes({
 	direction,
 	bias = defaultBiasFor(direction),
 	nodes,
+	junctions = {},
 	relations,
+	edit,
+	reference,
 }: NodeFixture): Promise<VisualLayout> {
+	const orders = new Map<string, OrderKey>();
+	let previous: OrderKey | undefined;
+	for (const id of [...Object.keys(nodes), ...Object.keys(junctions)]) {
+		let slot = {};
+		if (previous !== undefined) slot = { before: previous };
+		previous = fractionalOrderKeySpace.keyFor(slot);
+		orders.set(id, previous);
+	}
 	const document: LogicDocument = {
 		persistenceFormat: PERSISTENCE_FORMAT,
 		id: 'visual-node-fixture',
@@ -37,17 +53,23 @@ export async function layoutNodes({
 		),
 		natures: [{ id: 'goal', label: 'Goal', color: '#285448' }],
 		groups: [],
-		junctions: [],
-		nodes: Object.keys(nodes).map((id, index) => ({
+		junctions: Object.keys(junctions).map((id) => ({
+			id,
+			kind: EndpointKind.Junction,
+			operator: JunctionOperator.Xor,
+			layoutOrder: defined(orders.get(id)),
+		})),
+		nodes: Object.keys(nodes).map((id) => ({
 			id,
 			kind: EndpointKind.Node,
 			natureId: 'goal',
 			markdown: id.toUpperCase(),
-			layoutOrder: orderKey(`a${index}`),
+			layoutOrder: defined(orders.get(id)),
 		})),
 		relations,
 	};
-	const graph = createGraph(document);
+	const editedDocument = editVisualDocument(document, edit);
+	const graph = createGraph(editedDocument);
 	if (!graph.ok) throw new Error('The visual node fixture must form an acyclic graph.');
 	const ranks = topologicallyRank(graph.value);
 	const result = await layoutGraph(
@@ -56,9 +78,22 @@ export async function layoutNodes({
 		{
 			nodes: new Map(Object.entries(nodes)),
 			groups: new Map(),
-			junctions: new Map(),
+			junctions: new Map(Object.entries(junctions)),
 		},
 		{ inspectRouting: true },
 	);
-	return new VisualLayout(result, ranks.byEndpointId, direction);
+	let observedDocument: LogicDocument | undefined;
+	if (edit !== undefined) observedDocument = editedDocument;
+	const layout = new VisualLayout(
+		result,
+		ranks.byEndpointId,
+		direction,
+		undefined,
+		observedDocument,
+	);
+	if (reference === undefined) return layout;
+	let referenceData: VisualGraphData = { nodes, junctions, relations };
+	if (reference !== true) referenceData = reference;
+	const before = await layoutNodes({ ...referenceData, direction, bias });
+	return layout.withReference('Avant / référence', before);
 }

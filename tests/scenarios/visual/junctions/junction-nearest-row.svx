@@ -1,0 +1,20 @@
+<script>
+ import { scenario } from './junction-nearest-row.scenario';
+ import source from './junction-nearest-row.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Choix de l’intervalle
+
+Choisissez une variante pour examiner sa géométrie et son verdict. Chaque variante conserve ses assertions et s’exécute indépendamment dans les quatre directions et avec leurs biais compatibles.
+
+- Des voisins aux rangs 2, 3 et 4
+- Chercher la rangée à travers une autre jonction
+- L’intervalle suit la rangée effective du voisin
+
+Les rangs logiques restent indépendants des jonctions. Les mesures et les dégagements reprennent la calibration existante de l’atelier. Les groupes et les arbitrages asymétriques restent hors de ce lot.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-422 · Quai](/atelier/lexique#VL-422), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
+
+<VisualTest {scenario} {source} bind:settings />

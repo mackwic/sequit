@@ -5,10 +5,36 @@ import { defined, LayoutDirection } from '../../../../src/lib/core/document/logi
 import { RoutingQuaySide } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
+import { junctionFixtures } from '../../../support/fixtures/junction-fixtures';
 import { layoutDocument } from '../../../support/harnesses/layout';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 
 describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direction) => {
+	it('exposes occupied junction rails and the original content behind enlarged quays', async () => {
+		const chain = await layoutNodes({
+			...junctionFixtures.chain(direction, ['j1', 'j2', 'j3']).build(),
+			direction,
+		});
+		const inspection = defined(chain.routingInspection);
+		expect(inspection.corridors).toHaveLength(1);
+		expect(inspection.corridors[0]?.rails.flatMap((rail) => rail.junctions ?? []).sort()).toEqual([
+			'j1',
+			'j2',
+			'j3',
+		]);
+		const crossing = await layoutNodes({
+			...junctionFixtures.crossing(direction).build(),
+			direction,
+		});
+		for (const id of ['j1', 'j2']) {
+			const node = defined(crossing.routingInspection?.nodes.find((node) => node.id === id));
+			expect(node.content).toMatchObject({ width: 28, height: 20 });
+			expect(node.incomingMinimum).toBe(16);
+			expect(node.outgoingMinimum).toBe(16);
+			expect(node.quays.filter((quay) => quay.side === RoutingQuaySide.Incoming)).toHaveLength(1);
+			expect(node.quays.filter((quay) => quay.side === RoutingQuaySide.Outgoing)).toHaveLength(1);
+		}
+	});
 	it.each([80, 200])('explains real quays, rails and content size %i', async (content) => {
 		const layout = await layoutNodes({
 			...graphFixtures.crossingRoutes(direction, content).build(),
@@ -73,5 +99,9 @@ it('keeps diagnostics opt-in without altering production geometry, including gro
 		{ inspectRouting: true },
 	);
 	expect(geometry).toEqual(fixture.layout);
-	expect(routingInspection?.nodes.length).toBe(fixture.graph.document.nodes.length);
+	expect(routingInspection?.nodes.map(({ id }) => id)).toEqual(
+		[...fixture.graph.document.nodes, ...fixture.graph.document.junctions]
+			.map(({ id }) => id)
+			.sort(),
+	);
 });

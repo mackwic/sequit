@@ -9,6 +9,7 @@ import type {
 	Size,
 } from '../../../../src/app/web/projection/layout-graph';
 import {
+	EndpointKind,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -235,7 +236,12 @@ function expectMeasuredNode(
 		content = measured.width;
 		actual = box.width;
 	}
-	const reserved = Math.max(content, count * 48);
+	let required = count * 48;
+	if (
+		layout.elements.some((element) => element.id === id && element.kind === EndpointKind.Junction)
+	)
+		required = 16 + (count - 1) * 12;
+	const reserved = Math.max(content, required);
 	if (vertical) expect(box.height).toBe(measured.height);
 	else expect(box.width).toBe(measured.width);
 	// The default central quay may remain unreserved; additional quays require their full space.
@@ -435,8 +441,8 @@ describe('generated layouts', () => {
 					});
 					expect(canonicalIds(scaled.layout)).toEqual(canonicalIds(original.layout));
 					const originalBounds = boundsById(original.layout);
-					for (const node of generated.document.nodes) {
-						const measured = generated.nodes[node.id];
+					for (const node of [...generated.document.nodes, ...generated.document.junctions]) {
+						const measured = generated.nodes[node.id] ?? generated.junctions[node.id];
 						if (measured === undefined) throw new Error(`Missing node measurement: ${node.id}`);
 						expectMeasuredNode(
 							original.layout,
@@ -450,14 +456,6 @@ describe('generated layouts', () => {
 							{ width: measured.width * factor, height: measured.height * factor },
 							generated.document.layout.direction,
 						);
-					}
-					for (const endpoint of generated.document.junctions) {
-						const before = originalBounds.get(endpoint.id);
-						const after = boundsFor(scaled.layout, endpoint.id);
-						expect(before).toBeDefined();
-						if (!before) throw new Error(`Missing original endpoint bounds: ${endpoint.id}`);
-						expect(after.width).toBe(before.width * factor);
-						expect(after.height).toBe(before.height * factor);
 					}
 					const parentGroupIds = new Set(
 						[

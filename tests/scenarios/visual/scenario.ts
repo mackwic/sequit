@@ -5,6 +5,9 @@ import type { VisualLayout } from '../../support/harnesses/visual-layout';
 export interface LayoutScenario {
 	readonly id: string;
 	readonly label: string;
+	readonly description?: string;
+	/** Optional, independently executable cases belonging to one gallery page. */
+	readonly variants?: readonly LayoutScenario[];
 	readonly group: string;
 	readonly order: number;
 	arrange(direction?: LayoutDirection, bias?: LayoutBias): Promise<VisualLayout>;

@@ -37,10 +37,10 @@
 	</p>
 	<div class="table-scroll">
 		<table>
-			<caption>Dimensionnement des nœuds</caption>
+			<caption>Dimensionnement des nœuds et jonctions</caption>
 			<thead
 				><tr
-					><th>Nœud</th><th>Contenu</th><th>Minimum entrant</th><th>Minimum sortant</th><th
+					><th>Objet</th><th>Contenu</th><th>Minimum entrant</th><th>Minimum sortant</th><th
 						>Final</th
 					><th>Ajout</th></tr
 				></thead
@@ -72,8 +72,8 @@
 	{/each}
 	<p class="note">
 		Les points montrent les quais utilisés. Le contour du contenu indique sa dimension mesurée, sans
-		simuler la position du texte. Les rails sont affichés pour les liens entre nœuds de rangées
-		voisines.
+		simuler la position du texte. Les rails montrent les traverses et les centres des jonctions dans
+		chaque intervalle entre rangées.
 	</p>
 </section>
 

@@ -21,7 +21,7 @@ function measurementsForIds(
 	return {
 		nodes: new Map(nodeIds.map((id) => [id, overrides.nodes?.[id] ?? { width: 220, height: 116 }])),
 		junctions: new Map(
-			junctionIds.map((id) => [id, overrides.junctions?.[id] ?? { width: 32, height: 32 }]),
+			junctionIds.map((id) => [id, overrides.junctions?.[id] ?? { width: 28, height: 20 }]),
 		),
 		groups: new Map(
 			groupIds.map((id) => [

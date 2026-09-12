@@ -42,11 +42,12 @@ function permittedTrunks(
 	a: LayoutRelation,
 	b: LayoutRelation,
 	crossed: ReadonlySet<string>,
+	sharedTargets: ReadonlySet<string>,
 ): RouteSegment[] {
 	const allowed: RouteSegment[] = [];
 	if (a.from === b.from) allowed.push(...commonTrunk(a, b));
 	if (a.to !== b.to) return allowed;
-	if (!crossed.has(a.id) && !crossed.has(b.id)) {
+	if (sharedTargets.has(a.to) || (!crossed.has(a.id) && !crossed.has(b.id))) {
 		allowed.push(...commonTrunk(a, b, true));
 		return allowed;
 	}
@@ -62,8 +63,13 @@ function permittedTrunks(
 	return allowed;
 }
 
-function checkPair(a: LayoutRelation, b: LayoutRelation, crossed: ReadonlySet<string>): void {
-	const allowed = permittedTrunks(a, b, crossed);
+function checkPair(
+	a: LayoutRelation,
+	b: LayoutRelation,
+	crossed: ReadonlySet<string>,
+	sharedTargets: ReadonlySet<string>,
+): void {
+	const allowed = permittedTrunks(a, b, crossed, sharedTargets);
 	for (const first of routeSegments(a)) {
 		for (const second of routeSegments(b)) {
 			const shared = overlap(first, second);
@@ -88,11 +94,12 @@ function checkPair(a: LayoutRelation, b: LayoutRelation, crossed: ReadonlySet<st
 export function assertAllowedRouteSharing(
 	routes: readonly LayoutRelation[],
 	context: readonly LayoutRelation[] = routes,
+	sharedTargets: ReadonlySet<string> = new Set(),
 ): void {
 	const crossed = new Set(
 		routeCrossings(context).flatMap(({ horizontalId, verticalId }) => [horizontalId, verticalId]),
 	);
 	for (const [index, route] of routes.entries()) {
-		for (const other of routes.slice(index + 1)) checkPair(route, other, crossed);
+		for (const other of routes.slice(index + 1)) checkPair(route, other, crossed, sharedTargets);
 	}
 }

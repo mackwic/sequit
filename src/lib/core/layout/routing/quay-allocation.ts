@@ -1,14 +1,26 @@
 import { compareCanonicalStrings } from '../../canonical-string';
-import { defined } from '../../document/logic-document';
+import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
-import { QUAY_INSET, QUAY_SPACING } from '../layout-settings';
+import {
+	JUNCTION_QUAY_INSET,
+	JUNCTION_QUAY_SPACING,
+	QUAY_INSET,
+	QUAY_SPACING,
+} from '../layout-settings';
 import type { Bounds, Size } from '../layout-types';
 import type { CorridorLink, RoutingCorridor } from './routing-corridors';
 
-export function quayExtent(count: number): number {
-	const span = (count - 1) * QUAY_SPACING;
-	return 2 * QUAY_INSET + span;
+function quaySpacing(kind: EndpointKind): number {
+	if (kind === EndpointKind.Junction) return JUNCTION_QUAY_SPACING;
+	return QUAY_SPACING;
+}
+
+export function quayExtent(count: number, kind: EndpointKind): number {
+	let inset = QUAY_INSET;
+	if (kind === EndpointKind.Junction) inset = JUNCTION_QUAY_INSET;
+	const span = (count - 1) * quaySpacing(kind);
+	return 2 * inset + span;
 }
 
 export interface QuayAllocation {
@@ -22,15 +34,22 @@ function allocateFace(input: {
 	readonly outgoing: boolean;
 	readonly vertical: boolean;
 	readonly sizes: Map<string, Size>;
+	readonly graph: LogicGraph;
+	readonly shared?: ReadonlySet<string>;
 }): Map<string, number> {
 	const offsets = new Map<string, number>();
 	for (const [id, links] of input.faces) {
+		if (input.shared?.has(id) === true) {
+			for (const { relation } of links) offsets.set(relation.id, 0);
+			continue;
+		}
 		links.sort((a, b) => {
 			let difference = a.source - b.source;
 			if (input.outgoing) difference = a.target - b.target;
 			return difference || compareCanonicalStrings(a.relation.id, b.relation.id);
 		});
-		const required = quayExtent(links.length);
+		const kind = defined(input.graph.endpointsById.get(id)).kind;
+		const required = quayExtent(links.length, kind);
 		const size = defined(input.sizes.get(id));
 		let grown: Size;
 		if (input.vertical) grown = { ...size, width: Math.max(size.width, required) };
@@ -38,7 +57,7 @@ function allocateFace(input: {
 		input.sizes.set(id, grown);
 		const centerIndex = (links.length - 1) / 2;
 		for (const [index, link] of links.entries())
-			offsets.set(link.relation.id, (index - centerIndex) * QUAY_SPACING);
+			offsets.set(link.relation.id, (index - centerIndex) * quaySpacing(kind));
 	}
 	return offsets;
 }
@@ -50,6 +69,8 @@ export function allocateQuays(input: {
 	readonly vertical: boolean;
 	readonly graph: LogicGraph;
 	readonly bounds: ReadonlyMap<string, Bounds>;
+	readonly sharedSources?: ReadonlySet<string>;
+	readonly sharedTargets?: ReadonlySet<string>;
 }): QuayAllocation {
 	const enlarged = new Map(input.sizes);
 	const outgoing = new Map<string, CorridorLink[]>();
@@ -74,10 +95,37 @@ export function allocateQuays(input: {
 		source?.push(link);
 		target?.push(link);
 	}
-	const face = { sizes: enlarged, vertical: input.vertical };
+	const face = { sizes: enlarged, vertical: input.vertical, graph: input.graph };
+	const shared = input.sharedSources ?? new Set<string>();
+	const sourceOffsets = allocateFace({ ...face, faces: outgoing, outgoing: true, shared });
 	return {
-		sourceOffsets: allocateFace({ ...face, faces: outgoing, outgoing: true }),
-		targetOffsets: allocateFace({ ...face, faces: incoming, outgoing: false }),
+		sourceOffsets,
+		targetOffsets: allocateFace({
+			...face,
+			faces: incoming,
+			outgoing: false,
+			shared: input.sharedTargets ?? new Set<string>(),
+		}),
 		sizes: enlarged,
 	};
+}
+
+/** Shared faces are identified by endpoint and actual quay offset, independently of endpoint kind. */
+export function sharedSourceQuays(
+	relations: readonly LogicRelation[],
+	offsets: ReadonlyMap<string, number>,
+): ReadonlyMap<string, string> {
+	const families = new Map<string, string[]>();
+	for (const { id, from } of relations) {
+		const key = JSON.stringify([from, offsets.get(id) ?? 0]);
+		const ids = families.get(key) ?? [];
+		ids.push(id);
+		families.set(key, ids);
+	}
+	const shared = new Map<string, string>();
+	for (const [key, ids] of families) {
+		if (ids.length < 2) continue;
+		for (const id of ids) shared.set(id, key);
+	}
+	return shared;
 }

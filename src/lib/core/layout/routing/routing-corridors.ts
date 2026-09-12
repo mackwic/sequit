@@ -71,10 +71,21 @@ export function crossingCorridors(input: {
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
+	readonly includeJunctions?: boolean;
 }): RoutingCorridor[] {
+	// Straight relations cannot invert their transverse order; no corridor needs allocation.
+	const aligned = input.graph.relations.every(({ relation }) => {
+		const source = defined(input.bounds.get(relation.from));
+		const target = defined(input.bounds.get(relation.to));
+		return transverseCenter(source, input.vertical) === transverseCenter(target, input.vertical);
+	});
+	if (aligned) return [];
 	const byRank = new Map<number, CorridorLink[]>();
 	for (const { relation, source, target } of input.graph.relations) {
-		if (source.kind !== EndpointKind.Node || target.kind !== EndpointKind.Node) continue;
+		if (source.kind === EndpointKind.Group || target.kind === EndpointKind.Group) continue;
+		const hasJunction =
+			source.kind === EndpointKind.Junction || target.kind === EndpointKind.Junction;
+		if (hasJunction && input.includeJunctions !== true) continue;
 		const rank = defined(input.ranks.get(relation.to));
 		if (input.ranks.get(relation.from) !== rank + 1) continue;
 		const links = byRank.get(rank) ?? [];

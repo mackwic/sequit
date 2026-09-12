@@ -11,7 +11,7 @@ import { placeComponent } from '../../../../src/lib/core/layout/placement/place-
 import { deriveEndpointRows } from '../../../../src/lib/core/ordering/endpoint-order';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 
-const MINIMUM_JUNCTION_CLEARANCE = 18;
+const MINIMUM_JUNCTION_CLEARANCE = 12;
 
 const ids = ['a', 'z', 'junction'] as const;
 const ranks = new Map<string, number>([

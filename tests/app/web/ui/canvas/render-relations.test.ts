@@ -92,7 +92,7 @@ describe('renderRelationPaths', () => {
 			'L 110 60',
 		);
 		expect(rendered.find(({ id }) => id === 'reversed-horizontal')?.path).toContain(
-			'A 6 6 0 0 1 4 75',
+			'A 6 6 0 0 1 6 75',
 		);
 	});
 
@@ -112,9 +112,132 @@ describe('renderRelationPaths', () => {
 			]),
 		]);
 		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
-		expect(paths[1]?.path).toContain('A 6 6 0 0 1 12 56');
-		expect(paths[2]?.path).toContain('A 6 6 0 0 1 16 50');
+		expect(paths[0]?.path).toContain('A 6 6 0 0 0 10 56');
+		expect(paths[2]?.path).toContain('A 6 6 0 0 1 18 50');
 	});
+
+	it('draws the same bridge on every branch of a shared trunk', () => {
+		const paths = renderRelationPaths([
+			relation('crossing', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+			{
+				...relation('first-branch', [
+					{ x: 50, y: 0 },
+					{ x: 50, y: 100 },
+				]),
+				from: 'junction',
+			},
+			{
+				...relation('second-branch', [
+					{ x: 50, y: 0 },
+					{ x: 50, y: 120 },
+					{ x: 100, y: 120 },
+				]),
+				from: 'junction',
+			},
+		]);
+		expect(paths[1]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 100');
+		expect(paths[2]?.path).toBe('M 50 0 L 50 44 A 6 6 0 0 1 50 56 L 50 120 L 100 120');
+		expect(paths[0]?.path).not.toContain(' A ');
+	});
+
+	it('moves the bridge when a shared branch has insufficient space before its bend', () => {
+		const paths = renderRelationPaths([
+			relation('crossing', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+			relation('long', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 100 },
+			]),
+			relation('short', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 53 },
+				{ x: 100, y: 53 },
+			]),
+		]);
+		expect(paths[0]?.path).toBe('M 0 50 L 44 50 A 6 6 0 0 1 56 50 L 100 50');
+		expect(paths[1]?.path).not.toContain(' A ');
+		expect(paths[2]?.path).not.toContain(' A ');
+	});
+
+	it('leaves six pixels between an arc and a bend, even when the radius alone fits', () => {
+		const paths = renderRelationPaths([
+			relation('vertical', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 100 },
+			]),
+			relation('bent', [
+				{ x: 40, y: 0 },
+				{ x: 40, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+		]);
+		expect(paths[0]?.path).toContain('A 6 6 0 0 1 50 56');
+		expect(paths[1]?.path).not.toContain(' A ');
+	});
+
+	it('leaves six pixels between successive bridges', () => {
+		const paths = renderRelationPaths([
+			relation('left', [
+				{ x: 30, y: 0 },
+				{ x: 30, y: 100 },
+			]),
+			relation('right', [
+				{ x: 44, y: 0 },
+				{ x: 44, y: 100 },
+			]),
+			relation('horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+		]);
+		expect(paths[2]?.path).toBe('M 0 50 L 24 50 A 6 6 0 0 1 36 50 L 100 50');
+		expect(paths[1]?.path).toContain('A 6 6 0 0 1 44 56');
+		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
+	});
+
+	it.each([0, 1, 2, 3])(
+		'turns a bridge away from a nearby parallel trunk after %s quarter turns',
+		(turns) => {
+			function rotate(points: LayoutRelation['points']): LayoutRelation['points'] {
+				return points.map((point) => {
+					let { x, y } = point;
+					for (let turn = 0; turn < turns; turn += 1) [x, y] = [-y, x];
+					return { x, y };
+				});
+			}
+			const paths = renderRelationPaths([
+				relation(
+					'crossing',
+					rotate([
+						{ x: 0, y: 50 },
+						{ x: 100, y: 50 },
+					]),
+				),
+				relation(
+					'bridge',
+					rotate([
+						{ x: 50, y: 0 },
+						{ x: 50, y: 100 },
+					]),
+				),
+				relation(
+					'nearby',
+					rotate([
+						{ x: 60, y: 50 },
+						{ x: 60, y: 100 },
+					]),
+				),
+			]);
+			// The usual bulge leaves only 4px; the opposite side is clear.
+			expect(paths[1]?.path).toContain('A 6 6 0 0 0 ');
+			AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
+		},
+	);
 
 	it('uses stable, subtly different arrow colors', () => {
 		const rendered = renderRelationPaths([
@@ -128,12 +251,15 @@ describe('renderRelationPaths', () => {
 			]),
 		]);
 
-		expect(rendered.map(({ color }) => color)).toEqual(['#78716c', '#817a75']);
+		expect(rendered.map(({ color }) => color)).toEqual([
+			'var(--content-relation-1)',
+			'var(--content-relation-2)',
+		]);
 		expect(
 			renderRelationPaths([...rendered].reverse().map(({ id, points }) => relation(id, points))),
 		).toEqual([
-			expect.objectContaining({ id: 'second', color: '#78716c' }),
-			expect.objectContaining({ id: 'first', color: '#817a75' }),
+			expect.objectContaining({ id: 'second', color: 'var(--content-relation-2)' }),
+			expect.objectContaining({ id: 'first', color: 'var(--content-relation-1)' }),
 		]);
 	});
 });

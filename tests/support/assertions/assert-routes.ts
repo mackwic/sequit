@@ -4,7 +4,10 @@ import { VisualAssertionError } from './assertion-error';
 import { routeCrossings, routeSegments } from './route-geometry';
 
 interface RoutesAssertions {
-	haveOnlyAllowedSharedTrunks(context?: readonly LayoutRelation[]): RoutesAssertions;
+	haveOnlyAllowedSharedTrunks(
+		context?: readonly LayoutRelation[],
+		sharedTargets?: ReadonlySet<string>,
+	): RoutesAssertions;
 	haveNoOverlap(): RoutesAssertions;
 	haveNoCrossing(): RoutesAssertions;
 	haveCrossing(): RoutesAssertions;
@@ -43,9 +46,9 @@ function validate(routes: readonly LayoutRelation[], minimum: number): void {
 export function AssertRoutes(routes: readonly LayoutRelation[]): RoutesAssertions {
 	validate(routes, 1);
 	const assertions: RoutesAssertions = {
-		haveOnlyAllowedSharedTrunks(context = routes) {
+		haveOnlyAllowedSharedTrunks(context = routes, sharedTargets) {
 			validate(context, 1);
-			assertAllowedRouteSharing(routes, context);
+			assertAllowedRouteSharing(routes, context, sharedTargets);
 			return assertions;
 		},
 		haveNoOverlap() {

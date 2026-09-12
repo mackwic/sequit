@@ -1,19 +1,8 @@
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
+import { relationColors } from './relation-colors';
 
 const BRIDGE_RADIUS = 6;
-const RELATION_COLORS = ['#78716c', '#817a75', '#6f6a65', '#89817c'] as const;
-function relationColor(index: number): (typeof RELATION_COLORS)[number] {
-	switch (index % RELATION_COLORS.length) {
-		case 0:
-			return RELATION_COLORS[0];
-		case 1:
-			return RELATION_COLORS[1];
-		case 2:
-			return RELATION_COLORS[2];
-		default:
-			return RELATION_COLORS[3];
-	}
-}
+const BRIDGE_CLEARANCE = 6;
 
 enum Orientation {
 	Horizontal = 'horizontal',
@@ -118,9 +107,34 @@ function pointCommand(command: PathCommand, point: Point): string {
 	return `${command} ${point.x} ${point.y}`;
 }
 
+function bridgeSweep(segment: Segment, point: Point, segments: readonly Segment[]): number {
+	const horizontal = segment.orientation === Orientation.Horizontal;
+	const axis = horizontal ? 'x' : 'y';
+	const cross = horizontal ? 'y' : 'x';
+	let side = Math.sign(segment.end[axis] - segment.start[axis]);
+	if (horizontal) side = -side;
+	let current = Number.POSITIVE_INFINITY;
+	let opposite = Number.POSITIVE_INFINITY;
+	for (const other of segments) {
+		if (other.orientation !== segment.orientation) continue;
+		const start = Math.min(other.start[axis], other.end[axis]);
+		const end = Math.max(other.start[axis], other.end[axis]);
+		const before = point[axis] - BRIDGE_RADIUS;
+		const after = point[axis] + BRIDGE_RADIUS;
+		if (end < before || start > after) continue;
+		const offset = (other.start[cross] - point[cross]) * side;
+		if (offset > 0) current = Math.min(current, offset);
+		if (offset < 0) opposite = Math.min(opposite, -offset);
+	}
+	const minimum = BRIDGE_RADIUS + BRIDGE_CLEARANCE;
+	if (current < minimum && opposite > current) return 0;
+	return 1;
+}
+
 function pathFor(
 	segments: readonly Segment[],
 	crossings: ReadonlyMap<Segment, readonly Point[]>,
+	allSegments: readonly Segment[],
 ): string {
 	const first = segments.at(0);
 	if (!first) return '';
@@ -142,7 +156,8 @@ function pathFor(
 			const before = pointAlong(segment, distance - BRIDGE_RADIUS);
 			const after = pointAlong(segment, distance + BRIDGE_RADIUS);
 			commands.push(pointCommand(PathCommand.Line, before));
-			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 1 ${after.x} ${after.y}`);
+			const sweep = bridgeSweep(segment, pointAlong(segment, distance), allSegments);
+			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 ${sweep} ${after.x} ${after.y}`);
 			coveredUntil = distance + BRIDGE_RADIUS;
 		}
 		commands.push(pointCommand(PathCommand.Line, segment.end));
@@ -154,7 +169,8 @@ function pathFor(
 function hasBridgeSpace(segment: Segment, point: Point): boolean {
 	const distance = distanceAlong(segment, point);
 	const remaining = distanceAlong(segment, segment.end) - distance;
-	return distance >= BRIDGE_RADIUS && remaining >= BRIDGE_RADIUS;
+	const minimum = BRIDGE_RADIUS + BRIDGE_CLEARANCE;
+	return distance >= minimum && remaining >= minimum;
 }
 
 function canCarryBridge(
@@ -166,8 +182,27 @@ function canCarryBridge(
 	const distance = distanceAlong(segment, point);
 	return (crossings.get(segment) ?? []).every((previous) => {
 		const separation = Math.abs(distanceAlong(segment, previous) - distance);
-		const diameter = BRIDGE_RADIUS * 2;
+		const diameter = BRIDGE_RADIUS * 2 + BRIDGE_CLEARANCE;
 		return separation === 0 || separation >= diameter;
+	});
+}
+
+function overlappingCarriers(
+	segment: Segment,
+	point: Point,
+	segments: readonly Segment[],
+): Segment[] {
+	return segments.filter((candidate) => {
+		if (candidate.orientation !== segment.orientation) return false;
+		if (segment.orientation === Orientation.Horizontal) {
+			return (
+				candidate.start.y === point.y &&
+				strictlyBetween(point.x, candidate.start.x, candidate.end.x)
+			);
+		}
+		return (
+			candidate.start.x === point.x && strictlyBetween(point.y, candidate.start.y, candidate.end.y)
+		);
 	});
 }
 
@@ -175,29 +210,45 @@ function recordIntersection(
 	crossings: Map<Segment, Point[]>,
 	segment: Segment,
 	previous: Segment,
+	segments: readonly Segment[],
 ): void {
 	const point = intersection(segment, previous);
 	if (!point) return;
-	let carrier = segment;
-	if (!canCarryBridge(carrier, point, crossings)) {
-		if (!canCarryBridge(previous, point, crossings)) return;
-		carrier = previous;
+	const candidates = [segment, previous].map((candidate) =>
+		overlappingCarriers(candidate, point, segments),
+	);
+	if (
+		candidates
+			.flat()
+			.some((candidate) =>
+				(crossings.get(candidate) ?? []).some(
+					(existing) => existing.x === point.x && existing.y === point.y,
+				),
+			)
+	)
+		return;
+	const carriers = candidates.find((group) =>
+		group.every((candidate) => canCarryBridge(candidate, point, crossings)),
+	);
+	for (const carrier of carriers ?? []) {
+		const points = crossings.get(carrier) ?? [];
+		points.push(point);
+		crossings.set(carrier, points);
 	}
-	const points = crossings.get(carrier) ?? [];
-	if (points.some((candidate) => candidate.x === point.x && candidate.y === point.y)) return;
-	points.push(point);
-	crossings.set(carrier, points);
 }
 
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
 ): readonly RenderedRelation[] {
+	const colors = relationColors(relations);
 	const previousSegments: Segment[] = [];
 	const crossings = new Map<Segment, Point[]>();
 	const byRelation = relations.map(segmentsFor);
+	const allSegments = byRelation.flat();
 	for (const segments of byRelation) {
 		for (const segment of segments) {
-			for (const previous of previousSegments) recordIntersection(crossings, segment, previous);
+			for (const previous of previousSegments)
+				recordIntersection(crossings, segment, previous, allSegments);
 		}
 		previousSegments.push(...segments);
 	}
@@ -205,8 +256,8 @@ export function renderRelationPaths(
 		const segments = byRelation[relationIndex] ?? [];
 		return {
 			...relation,
-			path: pathFor(segments, crossings),
-			color: relationColor(relationIndex),
+			path: pathFor(segments, crossings, allSegments),
+			color: colors.get(relation.id) ?? 'var(--content-relation-1)',
 		};
 	});
 }

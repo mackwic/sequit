@@ -1,3 +1,4 @@
+import { collectJunctions } from '../../../lib/core/document/collect-junctions';
 import {
 	defined,
 	EndpointKind,
@@ -25,7 +26,10 @@ export function retargetWorkshopRelation(
 }
 
 export function removeWorkshopRelation(document: LogicDocument, id: string): LogicDocument {
-	return { ...document, relations: document.relations.filter((item) => item.id !== id) };
+	return collectJunctions({
+		...document,
+		relations: document.relations.filter((item) => item.id !== id),
+	});
 }
 
 export interface WorkshopConvergence {

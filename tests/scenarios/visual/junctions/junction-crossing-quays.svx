@@ -1,0 +1,18 @@
+<script>
+ import { scenario } from './junction-crossing-quays.scenario';
+ import source from './junction-crossing-quays.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Des troncs entrants communs pour réduire les ponts
+
+Relations : **J1 et J2 → A et B ; C, D et E → J1 et J2**. Les trois entrées de chaque jonction rejoignent une traverse puis un tronc commun jusqu’au quai central. Les dix relations restent présentes, avec leurs identifiants et leurs extrémités. Les deux familles restent distinctes et chaque croisement sans raccord porte un pont. Le scénario comporte cinq ponts, dont trois du côté entrant. Les deux sorties de chaque XOR partagent leur traverse, même si cela ajoute un pont par rapport à la variante gardant des rails sortants distincts pour J1. Les routes étrangères évitent les jonctions.
+
+Les flèches pointent vers les parents, à l’opposé de la progression des rangs. Le scénario est exécuté dans les quatre directions et avec leurs biais compatibles. Les dimensions sont des mesures d’entrée ; toutes les positions et routes proviennent du moteur réel. Les jonctions utilisent XOR comme représentant des opérateurs, sans prétendre prendre en charge AND ou OR.
+
+Les jonctions sont de petits ovales de 28 × 20 px, contre 96 × 60 px pour les nœuds. Le libellé de 6,5 px dispose d’environ 6 px de marge. Le quai central est partagé sur chaque face ; le pas de réservation reste de 12 px avec une marge de 8 px. Les sorties de J1 vers A et B partagent une même traverse ; celles de J2 aussi. La règle générale favorise le partage du rail transversal pour les flèches issues d’un même quai. Les arbitrages asymétriques et les règles propres aux groupes restent hors de ce lot.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-311 · Rangée](/atelier/lexique#VL-311), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-422 · Quai](/atelier/lexique#VL-422), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
+
+<VisualTest {scenario} {source} bind:settings />

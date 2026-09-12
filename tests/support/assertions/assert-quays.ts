@@ -25,7 +25,7 @@ interface QuaySizeAssertions {
 
 /** Observe physical anchors, not inferred allocator IDs: numbering remains a visual specification. */
 export function AssertQuays(layout: VisualLayout, nodeId: string, side: QuaySide): QuayAssertions {
-	const node = layout.getNodeById(nodeId);
+	const node = layout.getById(nodeId);
 	const axis = axesFor(layout.direction).transverse;
 	const routes = layout.relations.filter((route) => {
 		if (side === 'incoming') return route.to === nodeId;

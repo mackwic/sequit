@@ -3,6 +3,7 @@
 	import type { VisualLayout } from '../../../../tests/support/harnesses/visual-layout';
 	import { EndpointKind } from '../../../lib/core/document/logic-document';
 	import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
+	import JunctionSymbol from '../../web/ui/components/canvas/JunctionSymbol.svelte';
 	import RelationArrow from '../../web/ui/components/canvas/RelationArrow.svelte';
 	import RelationPath from '../../web/ui/components/canvas/RelationPath.svelte';
 	import RoutingReservationDetails from './RoutingReservationDetails.svelte';
@@ -58,27 +59,37 @@
 				{#if (targets.referenceBoxes?.includes(box.id) ?? false) && !(targets.boxes?.includes(box.id) ?? false)}<title
 						>Élément {box.id} de référence pour la comparaison</title
 					>{/if}
-				<rect
-					x={box.bounds.x}
-					y={box.bounds.y}
-					width={box.bounds.width}
-					height={box.bounds.height}
-					rx="5"
-					fill="#f4f7ef"
-					stroke="#456858"
-				/>
-				<text
-					x={box.bounds.x + 10}
-					y={box.bounds.y + 23}
-					fill="#243e32"
-					font-size="12"
-					font-weight="600"
-					>{box.id.toUpperCase()}{#if node}
-						· rang {node.rank}{/if}</text
-				>
-				<text x={box.bounds.x + 10} y={box.bounds.y + 43} fill="#66756b" font-size="10"
-					>{box.bounds.width} × {box.bounds.height}</text
-				>
+				{#if box.kind === EndpointKind.Junction}
+					<title>Jonction XOR · {box.id.toUpperCase()}</title>
+					<JunctionSymbol
+						x={box.bounds.x}
+						y={box.bounds.y}
+						width={box.bounds.width}
+						height={box.bounds.height}
+					/>
+				{:else}
+					<rect
+						x={box.bounds.x}
+						y={box.bounds.y}
+						width={box.bounds.width}
+						height={box.bounds.height}
+						rx="5"
+						fill="#f4f7ef"
+						stroke="#456858"
+					/>
+					<text
+						x={box.bounds.x + 10}
+						y={box.bounds.y + 23}
+						fill="#243e32"
+						font-size="12"
+						font-weight="600"
+						>{box.id.toUpperCase()}{#if node}
+							· rang {node.rank}{/if}</text
+					>
+					<text x={box.bounds.x + 10} y={box.bounds.y + 43} fill="#66756b" font-size="10"
+						>{box.bounds.width} × {box.bounds.height}</text
+					>
+				{/if}
 				{#if guides}
 					<g data-center-guide={box.id}>
 						<line
@@ -122,16 +133,19 @@
 </div>
 
 <style>
-	.assertion-reference > rect {
+	.assertion-reference > rect,
+	.assertion-reference :global(.junction-outline) {
 		stroke: #175cd3;
 		stroke-width: 3;
 		stroke-dasharray: 6 3;
 	}
-	.assertion-target > rect {
+	.assertion-target > rect,
+	.assertion-target :global(.junction-outline) {
 		stroke-dasharray: none;
 	}
 	.assertion-target :global(.relation-visual),
-	.assertion-target > rect {
+	.assertion-target > rect,
+	.assertion-target :global(.junction-outline) {
 		stroke: #b42318;
 		stroke-width: 3;
 	}

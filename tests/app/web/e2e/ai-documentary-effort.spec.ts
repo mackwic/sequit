@@ -397,7 +397,7 @@ test.describe('AI for documentary effort', () => {
 			function routeContract(root: HTMLElement) {
 				const numberPattern = String.raw`-?\d+(?:\.\d+)?(?:e[+-]?\d+)?`;
 				const validPathPattern = new RegExp(
-					`^M ${numberPattern} ${numberPattern}(?: (?:L ${numberPattern} ${numberPattern}|A 6 6 0 0 1 ${numberPattern} ${numberPattern}))+$`,
+					`^M ${numberPattern} ${numberPattern}(?: (?:L ${numberPattern} ${numberPattern}|A 6 6 0 0 [01] ${numberPattern} ${numberPattern}))+$`,
 					'i',
 				);
 				return [...root.querySelectorAll<SVGPathElement>('[data-relation-id]')].map((path) => {
@@ -491,9 +491,7 @@ test.describe('AI for documentary effort', () => {
 		expect(rendererContract.afterCrossings).toBeLessThan(rendererContract.beforeCrossings);
 		expect(rendererContract.topBiasedRankAligned).toBe(true);
 		expect(rendererContract.routes).not.toHaveLength(0);
-		expect(
-			rendererContract.routes.every(({ validPath: fourPointLinePath }) => fourPointLinePath),
-		).toBe(true);
+		expect(rendererContract.routes.every(({ validPath }) => validPath)).toBe(true);
 		expect(rendererContract.routes.every(({ orthogonal }) => orthogonal)).toBe(true);
 		expect(rendererContract.routes.every(({ endpointContact }) => endpointContact)).toBe(true);
 	});

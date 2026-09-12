@@ -1,3 +1,4 @@
+import { collectJunctions } from '../../../lib/core/document/collect-junctions';
 import {
 	contentStyleFields,
 	defined,
@@ -56,11 +57,11 @@ export function removeWorkshopNodes(
 	document: LogicDocument,
 	ids: ReadonlySet<string>,
 ): LogicDocument {
-	return {
+	return collectJunctions({
 		...document,
 		nodes: document.nodes.filter(({ id }) => !ids.has(id)),
 		relations: document.relations.filter(({ from, to }) => !ids.has(from) && !ids.has(to)),
-	};
+	});
 }
 
 /** Order only peers in the same group and topological rank; dependencies still win. */

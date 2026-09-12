@@ -4,6 +4,7 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { orderEndpoints } from '../../ordering/endpoint-order';
 import { type GroupHierarchy, prepareGroupHierarchy } from './group-hierarchy';
+import { type JunctionPlacement, prepareJunctions } from './junction-structure';
 import { containmentComponents, weaklyConnectedComponents } from './layout-components';
 import { preparePlacementRows, type RankedComponent } from './placement-rows';
 
@@ -12,6 +13,7 @@ export interface LayoutStructure {
 	readonly ranks: TopologicalRanks;
 	readonly maximumRank: number;
 	readonly junctionIds: ReadonlySet<string>;
+	readonly junctions: ReadonlyMap<string, JunctionPlacement>;
 	readonly hierarchy: GroupHierarchy | undefined;
 	readonly components: readonly RankedComponent[];
 	readonly containment: readonly (readonly string[])[] | undefined;
@@ -49,6 +51,9 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	const hierarchy = prepareGroupHierarchy(graph.document);
 	const maximumRank = Math.max(0, ...ranks.byEndpointId.values());
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
+	const junctions = prepareJunctions(graph, ranks.byEndpointId);
+	const placementRanks = new Map(ranks.byEndpointId);
+	for (const [id, junction] of junctions) placementRanks.set(id, junction.interval);
 	const endpointOrder = orderEndpoints([
 		...graph.document.groups,
 		...graph.document.nodes,
@@ -68,7 +73,7 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 		rows: preparePlacementRows({
 			ids,
 			orderById,
-			ranks: ranks.byEndpointId,
+			ranks: placementRanks,
 			junctionIds,
 			maximumRank,
 		}),
@@ -81,5 +86,5 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	let containment: LayoutStructure['containment'];
 	if (hierarchy !== undefined)
 		containment = containmentComponents(graph, packingOrder(components, hierarchy));
-	return { graph, ranks, maximumRank, junctionIds, hierarchy, components, containment };
+	return { graph, ranks, maximumRank, junctionIds, junctions, hierarchy, components, containment };
 }

@@ -73,6 +73,7 @@ export interface InspectedNode {
 export interface InspectedRail {
 	readonly coordinate: number;
 	readonly relations: string[];
+	readonly junctions?: readonly string[];
 }
 export interface InspectedCorridor {
 	/** Zero-based target rank, as in the graph. */
@@ -86,4 +87,10 @@ export interface RoutingInspection {
 	readonly vertical: boolean;
 	readonly nodes: readonly InspectedNode[];
 	readonly corridors: readonly InspectedCorridor[];
+}
+
+export interface RoutingLayers {
+	readonly rows: readonly (readonly string[])[];
+	readonly byId: ReadonlyMap<string, number>;
+	readonly intervals: readonly number[];
 }

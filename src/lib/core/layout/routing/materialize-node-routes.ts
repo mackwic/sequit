@@ -2,7 +2,7 @@ import { defined, LayoutDirection } from '../../document/logic-document';
 import { pointOnAxes } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point } from '../layout-types';
-import type { ChannelWire } from './channel-routing';
+import type { ChannelWire } from './channel-types';
 import type { NodeRouting } from './reserve-node-routing';
 
 interface ChannelGeometry {
@@ -11,7 +11,7 @@ interface ChannelGeometry {
 	readonly railStep: number;
 }
 
-function pointsFor(
+export function channelPoints(
 	wire: ChannelWire,
 	departure: number,
 	arrival: number,
@@ -105,7 +105,7 @@ export function applyNodeRouting(input: {
 			const { relation } = defined(channel.corridor.links[index]);
 			const departure = defined(faces.nodes.get(relation.from)).departure;
 			const arrival = defined(faces.nodes.get(relation.to)).arrival;
-			points.set(wire.id, pointsFor(wire, departure, arrival, geometry));
+			points.set(wire.id, channelPoints(wire, departure, arrival, geometry));
 		}
 	}
 	return points;

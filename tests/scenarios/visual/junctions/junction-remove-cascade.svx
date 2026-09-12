@@ -1,0 +1,21 @@
+<script>
+ import { scenario } from './junction-remove-cascade.scenario';
+ import source from './junction-remove-cascade.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Suppression en cascade et espace libéré
+
+Choisissez une variante pour examiner sa géométrie et son verdict. Chaque variante conserve ses assertions et s’exécute indépendamment dans les quatre directions et avec leurs biais compatibles.
+
+- Suppression en cascade depuis l’origine
+- Suppression en cascade depuis la destination
+- La collecte s’arrête devant une branche encore valide
+- Récupérer l’espace et les rails après suppression
+
+Les rangs logiques restent indépendants des jonctions. Les mesures et les dégagements reprennent la calibration existante de l’atelier. Les groupes et les arbitrages asymétriques restent hors de ce lot.
+
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-422 · Quai](/atelier/lexique#VL-422), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
+
+<VisualTest {scenario} {source} bind:settings />

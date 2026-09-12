@@ -4,6 +4,7 @@ import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
+import { sharedSourceQuays } from '../../../../src/lib/core/layout/routing/quay-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import { anchorRouteToQuays } from '../../../../src/lib/core/layout/routing/route-quay-anchors';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -112,4 +113,24 @@ describe('rail and quay reservations', () => {
 			centerRelatedRows({ rows: [[]], bounds: new Map(), parents: new Map(), vertical: true }),
 		).toBe(1);
 	});
+});
+
+it('shares an ordinary endpoint quay without merging other quays or coincident foreign endpoints', () => {
+	const relations = [
+		{ id: 'one', from: 'ordinary-node', to: 'a' },
+		{ id: 'two', from: 'ordinary-node', to: 'b' },
+		{ id: 'other-quay', from: 'ordinary-node', to: 'c' },
+		{ id: 'foreign', from: 'other-node', to: 'd' },
+	];
+	const offsets = new Map([
+		['one', -24],
+		['two', -24],
+		['other-quay', 24],
+		['foreign', -24],
+	]);
+	const shared = sharedSourceQuays(relations, offsets);
+	expect([...shared.keys()]).toEqual(['one', 'two']);
+	expect(shared.get('one')).toBe(shared.get('two'));
+	expect(sharedSourceQuays(relations.toReversed(), offsets)).toEqual(shared);
+	expect(sharedSourceQuays(relations.slice(0, 2), new Map()).size).toBe(2);
 });

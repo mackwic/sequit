@@ -2,8 +2,9 @@ import { defined } from '../../document/logic-document';
 import { transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
-import { type ChannelRouting, routeChannel } from './channel-routing';
-import type { QuayAllocation } from './quay-allocation';
+import { routeChannel } from './channel-routing';
+import type { ChannelRouting } from './channel-types';
+import { type QuayAllocation, sharedSourceQuays } from './quay-allocation';
 import type { RoutingCorridor } from './routing-corridors';
 
 interface PlannedCorridor extends ChannelRouting {
@@ -27,9 +28,14 @@ export function planNodeRouting(input: {
 	const gaps = new Map<number, number>();
 	const railCounts = new Map<number, number>();
 	const corridors = input.corridors.map((corridor) => {
+		const sourceQuays = sharedSourceQuays(
+			corridor.links.map(({ relation }) => relation),
+			input.quays.sourceOffsets,
+		);
 		const channel = routeChannel(
 			corridor.links.map(({ relation }) => ({
 				id: relation.id,
+				sharedSource: sourceQuays.get(relation.id),
 				source:
 					transverseCenter(defined(input.bounds.get(relation.from)), input.vertical) +
 					defined(input.quays.sourceOffsets.get(relation.id)),
