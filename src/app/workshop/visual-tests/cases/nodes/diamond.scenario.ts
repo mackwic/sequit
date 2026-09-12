@@ -1,22 +1,29 @@
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
 import { AssertBox } from '../../assert-box';
 import { AssertNode } from '../../assert-node';
 import { AssertRoutes } from '../../assert-routes';
 import { axesFor } from '../../directions';
-import { uniformNodeScenario } from '../../layout-nodes';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = uniformNodeScenario({
+export const scenario: LayoutScenario = {
 	id: 'diamond',
 	label: 'Un losange',
 	group: 'Convergences et croisements',
 	order: 130,
-	nodes: ['a', 'b', 'c', 'd'],
-	size: { width: 100, height: 60 },
-	relations: [
-		{ id: 'a-to-b', from: 'b', to: 'a' },
-		{ id: 'a-to-c', from: 'c', to: 'a' },
-		{ id: 'b-to-d', from: 'd', to: 'b' },
-		{ id: 'c-to-d', from: 'd', to: 'c' },
-	],
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.twoSuccessors()
+				.nodes(['d'])
+				.successorsOf('b', ['d'])
+				.successorsOf('c', ['d'])
+				.build(),
+		});
+	},
 	assert(layout) {
 		for (const id of ['a']) AssertNode(layout.getNodeById(id)).hasRank(1);
 		for (const id of ['b', 'c']) AssertNode(layout.getNodeById(id)).hasRank(2);
@@ -32,4 +39,4 @@ export const scenario = uniformNodeScenario({
 		}
 		AssertRoutes(layout.relations).haveNoCrossing();
 	},
-});
+};

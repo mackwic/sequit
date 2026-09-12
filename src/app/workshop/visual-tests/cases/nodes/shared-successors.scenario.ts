@@ -5,6 +5,7 @@ import { AssertNode } from '../../assert-node';
 import { AssertRenderedPaths } from '../../assert-rendered-paths';
 import { AssertRoutes } from '../../assert-routes';
 import { axesFor } from '../../directions';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
 import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';
 
@@ -17,18 +18,7 @@ export const scenario: LayoutScenario = {
 		return layoutNodes({
 			direction,
 			bias,
-			nodes: {
-				a: { width: 100, height: 60 },
-				b: { width: 100, height: 60 },
-				c: { width: 100, height: 60 },
-				d: { width: 100, height: 60 },
-			},
-			relations: [
-				{ id: 'a-to-c', from: 'c', to: 'a' },
-				{ id: 'a-to-d', from: 'd', to: 'a' },
-				{ id: 'b-to-c', from: 'c', to: 'b' },
-				{ id: 'b-to-d', from: 'd', to: 'b' },
-			],
+			...graphFixtures.sharedSuccessors().build(),
 		});
 	},
 	assert(layout) {

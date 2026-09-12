@@ -3,18 +3,16 @@ import {
 	EndpointKind,
 	type LayoutBias,
 	layoutConfiguration,
-	LayoutDirection,
+	type LayoutDirection,
 	type LogicDocument,
 	PERSISTENCE_FORMAT,
 } from '../../../lib/core/document/logic-document';
 import { orderKey } from '../../../lib/core/document/order-key';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import type { Size } from '../../../lib/core/layout/layout-types';
 import { layoutGraph } from '../../web/projection/layout-graph';
 import { defaultBiasFor } from './directions';
 import type { VisualGraphData } from './fixtures/visual-graph-builder';
-import type { LayoutScenario } from './scenario';
 import { VisualLayout } from './visual-layout';
 
 interface NodeFixture extends VisualGraphData {
@@ -58,30 +56,4 @@ export async function layoutNodes({
 		junctions: new Map(),
 	});
 	return new VisualLayout(result, ranks.byEndpointId, direction);
-}
-
-interface UniformNodeScenario extends Omit<LayoutScenario, 'arrange'> {
-	readonly nodes: readonly string[];
-	readonly size: Size;
-	readonly relations: LogicDocument['relations'];
-}
-
-/** A compact scenario fixture when every node has the same explicit dimensions. */
-export function uniformNodeScenario({
-	nodes,
-	size,
-	relations,
-	...scenario
-}: UniformNodeScenario): LayoutScenario {
-	return {
-		...scenario,
-		arrange(direction = LayoutDirection.TopToBottom, bias) {
-			return layoutNodes({
-				direction,
-				bias,
-				relations,
-				nodes: Object.fromEntries(nodes.map((id) => [id, size])),
-			});
-		},
-	};
 }

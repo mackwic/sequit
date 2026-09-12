@@ -5,6 +5,7 @@ import { AssertRenderedPaths } from '../../assert-rendered-paths';
 import { AssertRoute } from '../../assert-route';
 import { AssertRoutes } from '../../assert-routes';
 import { axesFor } from '../../directions';
+import { VisualGraphBuilder } from '../../fixtures/visual-graph-builder';
 import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';
 import type { VisualLayout } from '../../visual-layout';
@@ -31,11 +32,14 @@ export function routingLayout(
 ): Promise<VisualLayout> {
 	let size = { width: content, height: 60 };
 	if (axesFor(direction).transverse === 'y') size = { width: 60, height: content };
+	const graph = new VisualGraphBuilder(size).nodes(ids);
+	for (const [from, to] of links) {
+		graph.relation({ id: `${from}-to-${to}`, from, to });
+	}
 	return layoutNodes({
 		direction,
 		bias,
-		nodes: Object.fromEntries(ids.map((id) => [id, size])),
-		relations: links.map(([from, to]) => ({ id: `${from}-to-${to}`, from, to })),
+		...graph.build(),
 	});
 }
 

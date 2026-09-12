@@ -3,19 +3,26 @@ import { AssertBox } from '../../assert-box';
 import { AssertNode } from '../../assert-node';
 import { AssertRoutes } from '../../assert-routes';
 import { axesFor } from '../../directions';
-import { uniformNodeScenario } from '../../layout-nodes';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = uniformNodeScenario({
+export const scenario: LayoutScenario = {
 	id: 'avoidable-crossing',
 	label: 'Un croisement évitable par permutation',
 	group: 'Convergences et croisements',
 	order: 140,
-	nodes: ['a', 'b', 'c', 'd'],
-	size: { width: 100, height: 60 },
-	relations: [
-		{ id: 'a-to-d', from: 'd', to: 'a' },
-		{ id: 'b-to-c', from: 'c', to: 'b' },
-	],
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.independentNodes(['a', 'b', 'c', 'd'])
+				.successorsOf('a', ['d'])
+				.successorsOf('b', ['c'])
+				.build(),
+		});
+	},
 	assert(layout) {
 		for (const id of ['a', 'b']) AssertNode(layout.getNodeById(id)).hasRank(1);
 		for (const id of ['c', 'd']) AssertNode(layout.getNodeById(id)).hasRank(2);
@@ -34,4 +41,4 @@ export const scenario = uniformNodeScenario({
 		}
 		AssertRoutes(layout.relations).haveNoCrossing();
 	},
-});
+};

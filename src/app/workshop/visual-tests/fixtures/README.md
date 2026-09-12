@@ -31,3 +31,19 @@ The builder rejects duplicate or blank IDs, invalid dimensions and missing relat
 Relations may be declared before their nodes; endpoint validation happens at `build()`.
 Cycle detection stays in the real graph pipeline. Assertions stay in each `.scenario.ts` file,
 independent of fixture construction.
+
+All node scenarios use these fixtures. Reuse a named base and keep small extensions visible in
+`arrange`, for example a descendant added to one branch:
+
+```ts
+const graph = graphFixtures.twoSuccessors().nodes(['d']).successorsOf('b', ['d']).build();
+```
+
+`independentNodes(ids)` supplies the standard dimensions for custom topologies. Add nodes with
+explicit dimensions for size-sensitive scenarios. Keep node and relation insertion order stable:
+it is part of the input to the layout pipeline.
+
+Routing scenarios also use `VisualGraphBuilder`, through `routingLayout`. That helper preserves
+content dimensions along the transverse axis and uses `relation` for explicit document arrows.
+Comparative scenarios build their reference and variant separately. Assertions and routing
+policies remain independent of graph construction.

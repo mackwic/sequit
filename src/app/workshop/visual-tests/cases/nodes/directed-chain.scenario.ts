@@ -2,6 +2,7 @@ import { defined, LayoutDirection } from '../../../../../lib/core/document/logic
 import { AssertBox } from '../../assert-box';
 import { AssertNode } from '../../assert-node';
 import { AssertRoute } from '../../assert-route';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
 import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';
 
@@ -14,8 +15,7 @@ export const scenario: LayoutScenario = {
 		return layoutNodes({
 			direction,
 			bias,
-			nodes: { a: { width: 100, height: 60 }, b: { width: 100, height: 60 } },
-			relations: [{ id: 'a-to-b', from: 'b', to: 'a' }],
+			...graphFixtures.directedChain().build(),
 		});
 	},
 	assert(layout) {
