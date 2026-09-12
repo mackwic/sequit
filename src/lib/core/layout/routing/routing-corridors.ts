@@ -1,7 +1,8 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, EndpointKind, type LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { Bounds } from './layout-types';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import { transverseCenter } from '../geometry/layout-frame';
+import type { Bounds } from '../layout-types';
 
 export interface CorridorLink {
 	readonly relation: LogicRelation;
@@ -11,11 +12,6 @@ export interface CorridorLink {
 export interface RoutingCorridor {
 	readonly rank: number;
 	readonly links: readonly CorridorLink[];
-}
-
-export function crossCenter(box: Bounds, vertical: boolean): number {
-	if (vertical) return box.x + box.width / 2;
-	return box.y + box.height / 2;
 }
 
 function compareLinks(a: CorridorLink, b: CorridorLink): number {
@@ -84,8 +80,8 @@ export function crossingCorridors(input: {
 		const links = byRank.get(rank) ?? [];
 		links.push({
 			relation,
-			source: crossCenter(defined(input.bounds.get(relation.from)), input.vertical),
-			target: crossCenter(defined(input.bounds.get(relation.to)), input.vertical),
+			source: transverseCenter(defined(input.bounds.get(relation.from)), input.vertical),
+			target: transverseCenter(defined(input.bounds.get(relation.to)), input.vertical),
 		});
 		byRank.set(rank, links);
 	}

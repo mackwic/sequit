@@ -2,6 +2,59 @@
 module.exports = {
 	forbidden: [
 		{
+			name: 'layout-geometry-is-independent',
+			severity: 'error',
+			from: { path: '^src/lib/core/layout/geometry/' },
+			to: {
+				path: '^src/lib/core/layout/',
+				pathNot: '^src/lib/core/layout/(geometry/|layout-types[.]ts$)',
+			},
+		},
+		{
+			name: 'layout-structure-is-independent',
+			severity: 'error',
+			from: { path: '^src/lib/core/layout/structure/' },
+			to: {
+				path: '^src/lib/core/layout/',
+				pathNot: '^src/lib/core/layout/(structure/|geometry/|layout-(types|settings)[.]ts$)',
+			},
+		},
+		{
+			name: 'layout-placement-does-not-depend-on-routing',
+			severity: 'error',
+			from: { path: '^src/lib/core/layout/placement/' },
+			to: {
+				path: '^src/lib/core/layout/',
+				pathNot:
+					'^src/lib/core/layout/(placement/|structure/|geometry/|layout-(types|settings)[.]ts$)',
+			},
+		},
+		{
+			name: 'layout-routing-does-not-depend-on-placement',
+			severity: 'error',
+			from: { path: '^src/lib/core/layout/routing/' },
+			to: {
+				path: '^src/lib/core/layout/',
+				pathNot: '^src/lib/core/layout/(routing/|geometry/|layout-(types|settings)[.]ts$)',
+			},
+		},
+		{
+			name: 'layout-inspection-does-not-reenter-engine',
+			severity: 'error',
+			from: { path: '^src/lib/core/layout/inspection/' },
+			to: {
+				path: '^src/lib/core/layout/',
+				pathNot:
+					'^src/lib/core/layout/(inspection/|routing/|geometry/|layout-(types|settings)[.]ts$)',
+			},
+		},
+		{
+			name: 'layout-workspace-only-belongs-to-orchestration',
+			severity: 'error',
+			from: { path: '^src/', pathNot: '^src/lib/core/layout/layout-engine[.]ts$' },
+			to: { path: '^src/lib/core/layout/layout-workspace[.]ts$' },
+		},
+		{
 			name: 'visual-scenarios-use-the-layout-harness',
 			severity: 'error',
 			from: { path: '^tests/scenarios/visual/.*[.]scenario[.]ts$' },

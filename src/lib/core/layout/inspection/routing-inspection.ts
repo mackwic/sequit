@@ -1,5 +1,6 @@
-import { defined, EndpointKind, type LayoutDirection } from '../document/logic-document';
-import { isVerticalDirection } from './component-layout';
+import { defined, EndpointKind, type LayoutDirection } from '../../document/logic-document';
+import { isVerticalDirection } from '../geometry/layout-frame';
+import { BASE_RANK_GAP } from '../layout-settings';
 import {
 	type Bounds,
 	type InspectedCorridor,
@@ -11,9 +12,9 @@ import {
 	type LayoutResult,
 	type RoutingInspection,
 	RoutingQuaySide,
-} from './layout-types';
-import { BASE_GAP, type NodeRouting } from './node-routing';
-import { quayExtent } from './quay-allocation';
+} from '../layout-types';
+import { quayExtent } from '../routing/quay-allocation';
+import type { NodeRouting } from '../routing/reserve-node-routing';
 
 function usedQuays(id: string, routes: readonly LayoutRelation[]): InspectedQuay[] {
 	const quays = new Map<string, InspectedQuay>();
@@ -136,7 +137,7 @@ function corridorsFor(input: InspectionInput, vertical: boolean): InspectedCorri
 		corridors.push({
 			rank,
 			bounds: band(envelope(row), envelope(next), vertical),
-			requiredGap: input.plan?.gaps.get(rank) ?? BASE_GAP,
+			requiredGap: input.plan?.gaps.get(rank) ?? BASE_RANK_GAP,
 			allocated: input.plan?.gaps.has(rank) ?? false,
 			rails: railsFor(routes, vertical),
 		});

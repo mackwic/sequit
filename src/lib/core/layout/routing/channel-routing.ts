@@ -1,4 +1,4 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../document/logic-document';
 import { packRails, type RailRun } from './rail-packing';
 
 export interface ChannelEndpoint {

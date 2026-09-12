@@ -206,29 +206,7 @@ export default defineConfig(
 			'sonarjs/cognitive-complexity': ['error', 83],
 		},
 	},
-	{
-		files: ['src/lib/core/layout/dedicated-layout-engine.ts'],
-		rules: {
-			complexity: ['error', 38],
-			'max-lines': ['error', { max: 337, skipBlankLines: true, skipComments: true }],
-			'max-lines-per-function': [
-				'error',
-				{ max: 176, skipBlankLines: true, skipComments: true, IIFEs: true },
-			],
-			'max-statements': ['error', 101],
-			'no-ternary': 'off',
-			'sonarjs/cognitive-complexity': ['error', 68],
-		},
-	},
-	{
-		files: ['src/lib/core/layout/component-layout.ts'],
-		rules: {
-			complexity: ['error', 32],
-			'max-params': ['error', 7],
-			'no-ternary': 'off',
-			'sonarjs/cognitive-complexity': ['error', 32],
-		},
-	},
+
 	{
 		files: ['src/lib/infrastructure/collaboration/yjs-live-document.ts'],
 		rules: {

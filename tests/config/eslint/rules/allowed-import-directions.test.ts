@@ -271,12 +271,65 @@ tester.run('allowed-import-directions', rule, {
 		},
 		{
 			filename: filename('src/lib/core/graph/example.ts'),
-			code: "import { layoutWithDedicatedEngine } from '../layout/dedicated-layout-engine';",
+			code: "import { layoutWithDedicatedEngine } from '../layout/layout-engine';",
 			errors,
 		},
 		{
 			filename: filename('src/lib/infrastructure/toml/example.ts'),
 			code: "import { createGraph } from '../../core/graph/create-graph';",
+			errors,
+		},
+	],
+});
+
+tester.run('layout phase boundaries', rule, {
+	valid: [
+		{
+			filename: filename('src/lib/core/layout/layout-engine.ts'),
+			code: "import type { LayoutWorkspace } from './layout-workspace';",
+		},
+		{
+			filename: filename('src/lib/core/layout/placement/place-component.ts'),
+			code: "import { transverseEnvelope } from '../geometry/envelope';",
+		},
+		{
+			filename: filename('src/lib/core/layout/routing/quay-allocation.ts'),
+			code: "import { transverseCenter } from '../geometry/layout-frame';",
+		},
+		{
+			filename: filename('src/lib/core/layout/structure/prepare-layout.ts'),
+			code: "import { orderEndpoints } from '../../ordering/endpoint-order';",
+		},
+	],
+	invalid: [
+		{
+			filename: filename('src/lib/core/layout/geometry/envelope.ts'),
+			code: "import { placeElements } from '../placement/place-elements';",
+			errors,
+		},
+		{
+			filename: filename('src/lib/core/layout/structure/prepare-layout.ts'),
+			code: "import type { NodeRouting } from '../routing/reserve-node-routing';",
+			errors,
+		},
+		{
+			filename: filename('src/lib/core/layout/placement/place-component.ts'),
+			code: "import { planNodeRouting } from '../routing/reserve-node-routing';",
+			errors,
+		},
+		{
+			filename: filename('src/lib/core/layout/routing/quay-allocation.ts'),
+			code: "import { placeElements } from '../placement/place-elements';",
+			errors,
+		},
+		{
+			filename: filename('src/lib/core/layout/inspection/routing-inspection.ts'),
+			code: "import { layoutWithDedicatedEngine } from '../layout-engine';",
+			errors,
+		},
+		{
+			filename: filename('src/lib/core/layout/build-layout-result.ts'),
+			code: "import type { LayoutWorkspace } from './layout-workspace';",
 			errors,
 		},
 	],

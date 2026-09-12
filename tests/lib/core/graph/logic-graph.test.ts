@@ -166,6 +166,49 @@ describe('LogicGraph', () => {
 		).toEqual(graph.effectiveRelations);
 	});
 
+	it.each(['before', 'after'])(
+		'keeps a member-specific dependency separate when added %s a group relation',
+		(order) => {
+			const base = validLogicDocument();
+			let memberRelationId = 'a-member';
+			if (order === 'after') memberRelationId = 'z-member';
+			const document = {
+				...base,
+				junctions: [],
+				relations: [
+					{ id: 'm-group', from: 'container', to: 'target' },
+					{ id: memberRelationId, from: 'source-a', to: 'isolated' },
+				],
+			};
+			const graph = graphFrom(document);
+			expect(graph.outgoingByEndpointId.get('source-a')).toEqual(['isolated', 'target']);
+			expect(graph.outgoingByEndpointId.get('source-b')).toEqual(['target']);
+			expect(graph.predecessorsByEndpointId.get('target')).toEqual(['source-a', 'source-b']);
+			expect(graph.predecessorsByEndpointId.get('isolated')).toEqual(['source-a']);
+			expect(topologicallyRank(graph).byEndpointId.get('source-a')).toBe(1);
+			expect(topologicallyRank(graph).byEndpointId.get('source-b')).toBe(1);
+		},
+	);
+
+	it('keeps the longest parent rank when a group mixes junctions and ordinary nodes', () => {
+		const base = validLogicDocument();
+		const graph = graphFrom({
+			...base,
+			relations: [
+				{ id: 'a-to-root', from: 'source-a', to: 'target' },
+				{ id: 'b-to-root', from: 'source-b', to: 'target' },
+				{ id: 'junction-to-root', from: 'choice', to: 'target' },
+				{ id: 'node-to-group', from: 'isolated', to: 'container' },
+			],
+		});
+		const ranks = topologicallyRank(graph).byEndpointId;
+		expect(ranks.get('target')).toBe(0);
+		expect(ranks.get('choice')).toBe(0);
+		expect(ranks.get('source-a')).toBe(1);
+		expect(ranks.get('source-b')).toBe(1);
+		expect(ranks.get('isolated')).toBe(2);
+	});
+
 	it('rejects deterministically when cached expanded group memberships exceed the limit', () => {
 		const depth = Math.ceil(Math.sqrt(MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS * 2));
 		const base = validLogicDocument();

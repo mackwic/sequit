@@ -17,27 +17,51 @@ interface EffectiveRelation {
 }
 
 export interface GraphAdjacency {
-	readonly outgoing: Map<string, string[]>;
-	readonly predecessors: Map<string, string[]>;
+	readonly outgoing: ReadonlyMap<string, readonly string[]>;
+	readonly predecessors: ReadonlyMap<string, readonly string[]>;
 }
 
+interface AdjacencyEntry {
+	readonly ids: Set<string>;
+	readonly shared: boolean;
+}
+
+/** A group relation can give many endpoints the same neighbors. Copy only before divergence. */
 function appendAdjacency(
 	keys: readonly string[],
 	adjacentIds: readonly string[],
-	adjacency: Map<string, Set<string>>,
+	adjacency: Map<string, AdjacencyEntry>,
 ): void {
+	let shared: AdjacencyEntry | undefined;
 	for (const key of keys) {
-		const values = defined(adjacency.get(key));
-		for (const adjacentId of adjacentIds) values.add(adjacentId);
+		let entry = defined(adjacency.get(key));
+		if (entry.shared) {
+			if (entry.ids.size === 0 && keys.length > 1) {
+				shared ??= { ids: new Set(adjacentIds), shared: true };
+				adjacency.set(key, shared);
+				continue;
+			}
+			entry = { ids: new Set(entry.ids), shared: false };
+			adjacency.set(key, entry);
+		}
+		for (const id of adjacentIds) entry.ids.add(id);
 	}
 }
 
 function canonicalizeAdjacency(
-	adjacency: ReadonlyMap<string, ReadonlySet<string>>,
-): Map<string, string[]> {
-	return new Map(
-		[...adjacency].map(([id, adjacent]) => [id, [...adjacent].sort(compareCanonicalStrings)]),
-	);
+	adjacency: ReadonlyMap<string, AdjacencyEntry>,
+): ReadonlyMap<string, readonly string[]> {
+	const canonical = new Map<AdjacencyEntry, readonly string[]>();
+	const result = new Map<string, readonly string[]>();
+	for (const [id, entry] of adjacency) {
+		let ids = canonical.get(entry);
+		if (ids === undefined) {
+			ids = [...entry.ids].sort(compareCanonicalStrings);
+			canonical.set(entry, ids);
+		}
+		result.set(id, ids);
+	}
+	return result;
 }
 
 function adjacencyEndpointIds(
@@ -58,8 +82,9 @@ export function createAdjacency(
 	relations: readonly AdjacencyRelation[],
 	effectiveRelations: readonly EffectiveRelation[],
 ): GraphAdjacency {
-	const outgoingSets = new Map(endpointIds.map((id) => [id, new Set<string>()]));
-	const predecessorSets = new Map(endpointIds.map((id) => [id, new Set<string>()]));
+	const empty: AdjacencyEntry = { ids: new Set(), shared: true };
+	const outgoingSets = new Map(endpointIds.map((id) => [id, empty]));
+	const predecessorSets = new Map(endpointIds.map((id) => [id, empty]));
 	for (let index = 0; index < effectiveRelations.length; index += 1) {
 		const effectiveRelation = defined(effectiveRelations[index]);
 		const relation = defined(relations[index]);

@@ -1,4 +1,4 @@
-import type { GroupMeasurement, Size } from './layout-types';
+import type { GroupMeasurement, Size } from '../layout-types';
 
 function assertPositive(value: number, name: string): void {
 	if (!Number.isFinite(value) || value <= 0) {

@@ -13,6 +13,16 @@ Le moteur calcule les quais et les rails à partir du document, des rangs et des
 
 Le calcul de routage utilise des tris, des tables d’index et une file de priorité pour éviter une comparaison systématique de toutes les paires de relations. Les différentes phases réutilisent la préparation des composantes et leur ordre documentaire. Le résultat est déterministe et les entrées ne sont pas modifiées. Un recalcul après suppression repart du contenu mesuré et libère les réservations devenues inutiles.
 
+## Préparation et durée de vie
+
+Le point d’entrée `layout-engine.ts` construit un workspace par appel. `structure/prepare-layout.ts` prépare une fois les rangées, les composantes et l’index des membres directs des groupes. `placement/prepare-measurements.ts` conserve les mesures originales, valide celles des groupes et calcule les dimensions principales invariantes. Les phases de placement réutilisent ces données ; elles recalculent leurs métriques transversales lorsque les quais agrandissent les nœuds.
+
+Le parcours sans couloir croisé effectue un seul placement et ne construit aucun plan de rails. Sinon, `quay-allocation.ts` détermine les dimensions effectives, puis un deuxième placement fournit les coordonnées utilisées par `reserve-node-routing.ts`. L’espace réservé aux rails se propage par translation des rangées pour les nœuds ordinaires seuls ; les groupes ou jonctions nécessitent un troisième placement complet. Il n’y a pas de boucle de convergence.
+
+`materialize-node-routes.ts` transforme les réservations en points depuis les boîtes finales. Les autres attaches sont traitées par `endpoint-routes.ts` et `route-quay-anchors.ts`. Les constantes géométriques communes vivent dans `layout-settings.ts` ; les algorithmes de canaux et de coloration gardent leurs responsabilités propres.
+
+Les rangs logiques et les rangées de placement sont nommés séparément, même si leur correspondance actuelle est conservée. L’ordre d’assemblage des contenants est préparé explicitement et reste distinct de l’ordre canonique du résultat public. Les en-têtes des groupes restent en haut dans le repère physique, quelle que soit la direction du dessin.
+
 ## Géométrie et rendu
 
 Les quais se trouvent uniquement sur les deux faces principales opposées. Les valeurs actuelles sont : quais espacés de 48, marge de 24 ; intervalle de base de 72, augmenté de 24 par rail supplémentaire. Le rail par défaut est recherché au centre ; sa position absolue n’est pas persistante.

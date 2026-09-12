@@ -1,4 +1,4 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../document/logic-document';
 
 export interface RailRun {
 	readonly start: number;

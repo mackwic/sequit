@@ -1,9 +1,5 @@
-import { LayoutDirection } from '../document/logic-document';
-import type { Bounds, GroupMeasurement, Point } from './layout-types';
-
-export function translateBounds(bounds: Bounds, x: number, y: number): Bounds {
-	return { ...bounds, x: bounds.x + x, y: bounds.y + y };
-}
+import { LayoutDirection } from '../../document/logic-document';
+import type { Bounds, GroupMeasurement, Point } from '../layout-types';
 
 function routePoints(source: Bounds, target: Bounds, direction: LayoutDirection): readonly Point[] {
 	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {

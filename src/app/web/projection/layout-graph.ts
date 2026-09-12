@@ -1,6 +1,6 @@
 import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import type { TopologicalRanks } from '../../../lib/core/graph/topological-ranks';
-import { layoutWithDedicatedEngine } from '../../../lib/core/layout/dedicated-layout-engine';
+import { layoutWithDedicatedEngine } from '../../../lib/core/layout/layout-engine';
 import type {
 	LayoutMeasurements,
 	LayoutOptions,

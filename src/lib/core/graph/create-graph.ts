@@ -253,13 +253,20 @@ export function createGraph(document: LogicDocument): GraphResult {
 		diagnostics,
 		cachedMemberships: 0,
 	};
+	const effectiveIdsByEndpoint = new Map<string, readonly string[]>();
 	function effectiveEndpointIds(endpointId: string): readonly string[] {
+		const known = effectiveIdsByEndpoint.get(endpointId);
+		if (known !== undefined) return known;
 		const endpoint = endpointsById.get(endpointId);
-		if (endpoint?.kind !== EndpointKind.Group) return [endpointId];
-		const expanded = expandGroup(endpointId, expansionContext) ?? [];
-		if (expanded.length === 0) return [endpointId];
-		return expanded;
+		let ids: readonly string[] = [endpointId];
+		if (endpoint?.kind === EndpointKind.Group) {
+			const expanded = expandGroup(endpointId, expansionContext) ?? [];
+			if (expanded.length > 0) ids = expanded;
+		}
+		effectiveIdsByEndpoint.set(endpointId, ids);
+		return ids;
 	}
+
 	const effectiveRelations = collectEffectiveRelations(relations, effectiveEndpointIds);
 	if (diagnostics.length > 0) return { ok: false, diagnostics };
 	if (!Array.isArray(effectiveRelations)) return { ok: false, diagnostics: [effectiveRelations] };

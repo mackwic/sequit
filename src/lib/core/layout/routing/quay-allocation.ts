@@ -1,11 +1,10 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { Bounds, Size } from './layout-types';
-import { type CorridorLink, crossCenter, type RoutingCorridor } from './routing-corridors';
-
-const QUAY_SPACING = 48;
-const QUAY_INSET = 24;
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import { transverseCenter } from '../geometry/layout-frame';
+import { QUAY_INSET, QUAY_SPACING } from '../layout-settings';
+import type { Bounds, Size } from '../layout-types';
+import type { CorridorLink, RoutingCorridor } from './routing-corridors';
 
 export function quayExtent(count: number): number {
 	const span = (count - 1) * QUAY_SPACING;
@@ -61,7 +60,7 @@ export function allocateQuays(input: {
 			if (!incoming.has(relation.to)) incoming.set(relation.to, []);
 		}
 	const centers = new Map(
-		[...input.bounds].map(([id, box]) => [id, crossCenter(box, input.vertical)]),
+		[...input.bounds].map(([id, box]) => [id, transverseCenter(box, input.vertical)]),
 	);
 	for (const { relation } of input.graph.relations) {
 		const source = outgoing.get(relation.from);

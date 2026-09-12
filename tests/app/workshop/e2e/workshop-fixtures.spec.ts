@@ -93,14 +93,13 @@ test('creation uses the fixture nature and reset restores the original benchmark
 	await expect(page.locator('[data-node-id]')).toHaveCount(10);
 });
 
-test('unsupported complexity is explained and the user can return to a smaller document', async ({
+test('a deeply nested supported document renders and the user can return to a smaller document', async ({
 	page,
 }) => {
 	await page.goto('/atelier?scenario=SC-NAV-EXPLORE&fixture=nested-subgroups&nodes=1000');
-	await expect(page.getByRole('alert')).toContainText(
-		'Ce document dépasse les limites actuelles du graphe',
-	);
-	await expect(page.locator('[data-node-id]')).toHaveCount(0);
+	// Containment alone no longer expands every descendant membership in the graph.
+	await expect(page.locator('[data-node-id]')).toHaveCount(1000);
+	await expect(page.getByRole('alert')).toHaveCount(0);
 	await page.getByLabel('Boîtes', { exact: true }).selectOption('10');
 	await page.getByRole('button', { name: 'Charger le document' }).click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(10);

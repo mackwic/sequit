@@ -186,9 +186,10 @@ test('layout waits for application and changes direction and actual spacing', as
 	await page.getByRole('button', { name: 'Appliquer la disposition' }).click();
 	await expect
 		.poll(async () => {
-			const source = await node(page, 'collecter').boundingBox(),
-				target = await node(page, 'comparer').boundingBox();
-			return source !== null && target !== null && target.x > source.x + source.width;
+			// The document arrow goes from the child (collecter) to its parent (comparer).
+			const parent = await node(page, 'comparer').boundingBox();
+			const child = await node(page, 'collecter').boundingBox();
+			return parent !== null && child !== null && child.x > parent.x + parent.width;
 		})
 		.toBe(true);
 	const width = await page.locator('[data-graph-stage]').getAttribute('data-stage-width');
@@ -217,9 +218,9 @@ for (const variant of ['live', 'apply'])
 		await expect(direction).toHaveValue('top-to-bottom');
 		await expect
 			.poll(async () => {
-				const source = await node(page, 'collecter').boundingBox();
-				const target = await node(page, 'comparer').boundingBox();
-				return source !== null && target !== null && target.y > source.y + source.height;
+				const parent = await node(page, 'comparer').boundingBox();
+				const child = await node(page, 'collecter').boundingBox();
+				return parent !== null && child !== null && child.y > parent.y + parent.height;
 			})
 			.toBe(true);
 	});
@@ -347,6 +348,8 @@ test('two network sessions converge after offline editing and reconnect', async 
 test('connection handles draw and commit, and Escape abandons an active drag', async ({ page }) => {
 	await open(page, 'SC-REL-CONNECT', 'handles');
 	const handle = page.getByRole('button', { name: 'Connecter depuis collecter' });
+	await handle.hover();
+	await expect(handle).toBeInViewport();
 	const start = await handle.boundingBox(),
 		end = await node(page, 'explorer').boundingBox();
 	if (start === null || end === null) throw new Error('Missing endpoints');
@@ -357,6 +360,7 @@ test('connection handles draw and commit, and Escape abandons an active drag', a
 	await page.mouse.up();
 	await expect(page.locator('[data-relation-id]')).toHaveCount(4);
 	await expect(page.locator('.connection-preview')).toHaveCount(0);
+	await handle.hover();
 	const next = await handle.boundingBox();
 	if (next === null) throw new Error('Missing handle');
 	await page.mouse.move(next.x + 5, next.y + 5);

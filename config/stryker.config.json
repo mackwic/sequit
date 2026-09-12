@@ -36,12 +36,16 @@
 		"src/lib/core/graph/find-cycle.ts",
 		"src/lib/core/graph/topological-ranks.ts",
 		"src/app/web/projection/layout-graph.ts",
-		"src/lib/core/layout/component-layout.ts",
-		"src/lib/core/layout/dedicated-layout-engine.ts",
 		"src/app/web/ui/canvas/canvas-entity.ts",
 		"src/app/web/ui/canvas/canvas-viewport.ts",
 		"src/app/web/ui/session/canvas-session.svelte.ts",
-		"src/lib/infrastructure/toml/serialize-sequit-toml.ts"
+		"src/lib/infrastructure/toml/serialize-sequit-toml.ts",
+		"src/lib/core/layout/layout-engine.ts",
+		"src/lib/core/layout/layout-settings.ts",
+		"src/lib/core/layout/build-layout-result.ts",
+		"src/lib/core/layout/geometry/*.ts",
+		"src/lib/core/layout/structure/*.ts",
+		"src/lib/core/layout/placement/*.ts"
 	],
 	"thresholds": {
 		"high": 90,

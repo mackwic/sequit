@@ -5,8 +5,9 @@ import {
 	type LayoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { layoutComponent } from '../../../../src/lib/core/layout/component-layout';
+import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import type { Bounds, Size } from '../../../../src/lib/core/layout/layout-types';
+import { placeComponent } from '../../../../src/lib/core/layout/placement/place-component';
 import { deriveEndpointRows } from '../../../../src/lib/core/ordering/endpoint-order';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 
@@ -31,7 +32,15 @@ function bounds(
 	direction: LayoutDirection.TopToBottom | LayoutDirection.BottomToTop,
 ): ReadonlyMap<string, Bounds> {
 	const rows = deriveEndpointRows(['z', 'a', 'junction'], ids, ranks, junctionIds, 0);
-	return layoutComponent(rows, sizes, direction, LayoutBias.Top, [20]).boundsById;
+	return placeComponent({
+		rows,
+		sizes,
+		frame: createLayoutFrame(direction, LayoutBias.Top),
+		primaryBandSizes: [20],
+		rankGap: 72,
+		rankGaps: new Map(),
+		parents: undefined,
+	}).boundsById;
 }
 
 interface JunctionLayoutFixture {
@@ -142,36 +151,56 @@ function layoutJunctionFixture(
 		junction = [junctionFixtureIds];
 		primarySizes = [primarySize(startSize)];
 	}
-	const result = layoutComponent(
-		{ ordinary, junction },
-		fixtureSizes,
-		configuration.direction,
-		configuration.bias,
-		primarySizes,
-	);
+	const result = placeComponent({
+		rows: { ordinary, junction },
+		sizes: fixtureSizes,
+		frame: createLayoutFrame(configuration.direction, configuration.bias),
+		primaryBandSizes: primarySizes,
+		rankGap: 72,
+		rankGaps: new Map(),
+		parents: undefined,
+	});
 	return { bounds: result.boundsById, width: result.width, height: result.height };
 }
 
 describe('component layout endpoint order', () => {
 	it('rejects rows that do not align with the primary rank bands', () => {
 		expect(() =>
-			layoutComponent(
-				{ ordinary: [[]], junction: [] },
-				new Map(),
-				LayoutDirection.TopToBottom,
-				LayoutBias.Top,
-				[20],
-			),
+			placeComponent({
+				rows: { ordinary: [[]], junction: [] },
+				sizes: new Map(),
+				frame: createLayoutFrame(LayoutDirection.TopToBottom, LayoutBias.Top),
+				primaryBandSizes: [20],
+				rankGap: 72,
+				rankGaps: new Map(),
+				parents: undefined,
+			}),
 		).toThrow('Component rows must align with primary rank bands');
 	});
 
 	it('rejects ordinary and junction endpoints without measured sizes', () => {
 		const configuration = [LayoutDirection.TopToBottom, LayoutBias.Top, [20]] as const;
 		expect(() =>
-			layoutComponent({ ordinary: [['missing']], junction: [[]] }, new Map(), ...configuration),
+			placeComponent({
+				rows: { ordinary: [['missing']], junction: [[]] },
+				sizes: new Map(),
+				frame: createLayoutFrame(configuration[0], configuration[1]),
+				primaryBandSizes: configuration[2],
+				rankGap: 72,
+				rankGaps: new Map(),
+				parents: undefined,
+			}),
 		).toThrow('Missing measured size: missing');
 		expect(() =>
-			layoutComponent({ ordinary: [[]], junction: [['missing']] }, new Map(), ...configuration),
+			placeComponent({
+				rows: { ordinary: [[]], junction: [['missing']] },
+				sizes: new Map(),
+				frame: createLayoutFrame(configuration[0], configuration[1]),
+				primaryBandSizes: configuration[2],
+				rankGap: 72,
+				rankGaps: new Map(),
+				parents: undefined,
+			}),
 		).toThrow('Missing measured size: missing');
 	});
 
@@ -185,7 +214,15 @@ describe('component layout endpoint order', () => {
 		const rows = deriveEndpointRows(['junction', 'z', 'a'], ids, ranks, junctionIds, 0);
 		expect(rows.ordinary).toEqual([['z', 'a']]);
 		expect(rows.junction).toEqual([['junction']]);
-		const result = layoutComponent(rows, sizes, LayoutDirection.TopToBottom, LayoutBias.Top, [20]);
+		const result = placeComponent({
+			rows,
+			sizes,
+			frame: createLayoutFrame(LayoutDirection.TopToBottom, LayoutBias.Top),
+			primaryBandSizes: [20],
+			rankGap: 72,
+			rankGaps: new Map(),
+			parents: undefined,
+		});
 		const ordinary = result.boundsById.get('z');
 		const junction = result.boundsById.get('junction');
 		expect(junction?.x).toBe(28);

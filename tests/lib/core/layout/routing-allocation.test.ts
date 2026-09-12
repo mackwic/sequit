@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
-import { alignRowBranches } from '../../../../src/lib/core/layout/align-row-branches';
-import { routeChannel } from '../../../../src/lib/core/layout/channel-routing';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
-import { packRails } from '../../../../src/lib/core/layout/rail-packing';
-import { anchorRouteToQuays } from '../../../../src/lib/core/layout/route-quay-anchors';
+import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
+import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
+import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
+import { anchorRouteToQuays } from '../../../../src/lib/core/layout/routing/route-quay-anchors';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
 
@@ -105,11 +105,11 @@ describe('rail and quay reservations', () => {
 		]);
 		for (const parents of [new Map<string, string[]>(), new Map([['b', ['a']]])]) {
 			const original = structuredClone(bounds);
-			alignRowBranches({ rows: [['a'], ['b', 'c']], bounds, parents, vertical: true });
+			centerRelatedRows({ rows: [['a'], ['b', 'c']], bounds, parents, vertical: true });
 			expect(bounds).toEqual(original);
 		}
 		expect(
-			alignRowBranches({ rows: [[]], bounds: new Map(), parents: new Map(), vertical: true }),
+			centerRelatedRows({ rows: [[]], bounds: new Map(), parents: new Map(), vertical: true }),
 		).toBe(1);
 	});
 });

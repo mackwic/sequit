@@ -1,7 +1,7 @@
 import { defined, type LogicDocument } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { routePointsWithGroupHeaders } from '../../../lib/core/layout/dedicated-layout-geometry';
+import { routePointsWithGroupHeaders } from '../../../lib/core/layout/routing/endpoint-routes';
 import type { CanvasProjection } from '../../web/projection/canvas-projection';
 import { layoutGraph, type LayoutMeasurements } from '../../web/projection/layout-graph';
 import { createCanvasMeasurementModel, createCanvasModel } from '../../web/ui/canvas/canvas-model';

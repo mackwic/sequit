@@ -1,5 +1,5 @@
-import { defined } from '../document/logic-document';
-import type { Point } from './layout-types';
+import { defined } from '../../document/logic-document';
+import type { Point } from '../layout-types';
 
 function transverse(point: Point, vertical: boolean): number {
 	if (vertical) return point.x;

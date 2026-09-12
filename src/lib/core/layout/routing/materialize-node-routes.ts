@@ -1,55 +1,9 @@
-import { defined, LayoutDirection } from '../document/logic-document';
-import { type ChannelRouting, type ChannelWire, routeChannel } from './channel-routing';
-import type { Bounds, Point } from './layout-types';
-import type { QuayAllocation } from './quay-allocation';
-import { crossCenter, type RoutingCorridor } from './routing-corridors';
-
-const RAIL_SPACING = 24;
-export const BASE_GAP = 72;
-interface PlannedCorridor extends ChannelRouting {
-	readonly corridor: RoutingCorridor;
-}
-export interface NodeRouting {
-	readonly quays: QuayAllocation;
-	readonly ranks: ReadonlyMap<string, number>;
-	readonly corridors: readonly PlannedCorridor[];
-	readonly gaps: ReadonlyMap<number, number>;
-	readonly railCounts: ReadonlyMap<number, number>;
-}
-
-export function planNodeRouting(input: {
-	readonly corridors: readonly RoutingCorridor[];
-	readonly quays: QuayAllocation;
-	readonly ranks: ReadonlyMap<string, number>;
-	readonly bounds: ReadonlyMap<string, Bounds>;
-	readonly vertical: boolean;
-}): NodeRouting {
-	const gaps = new Map<number, number>();
-	const railCounts = new Map<number, number>();
-	const corridors = input.corridors.map((corridor) => {
-		const channel = routeChannel(
-			corridor.links.map(({ relation }) => ({
-				id: relation.id,
-				source:
-					crossCenter(defined(input.bounds.get(relation.from)), input.vertical) +
-					defined(input.quays.sourceOffsets.get(relation.id)),
-				target:
-					crossCenter(defined(input.bounds.get(relation.to)), input.vertical) +
-					defined(input.quays.targetOffsets.get(relation.id)),
-			})),
-		);
-		const count = Math.max(railCounts.get(corridor.rank) ?? 0, channel.railCount);
-		railCounts.set(corridor.rank, count);
-		gaps.set(corridor.rank, BASE_GAP + Math.max(0, count - 1) * RAIL_SPACING);
-		return { ...channel, corridor };
-	});
-	return { corridors, gaps, railCounts, quays: input.quays, ranks: input.ranks };
-}
-
-function at(cross: number, primary: number, vertical: boolean): Point {
-	if (vertical) return { x: cross, y: primary };
-	return { x: primary, y: cross };
-}
+import { defined, LayoutDirection } from '../../document/logic-document';
+import { pointOnAxes } from '../geometry/layout-frame';
+import { RAIL_SPACING } from '../layout-settings';
+import type { Bounds, Point } from '../layout-types';
+import type { ChannelWire } from './channel-routing';
+import type { NodeRouting } from './reserve-node-routing';
 
 interface ChannelGeometry {
 	readonly vertical: boolean;
@@ -64,15 +18,18 @@ function pointsFor(
 	geometry: ChannelGeometry,
 ): readonly Point[] {
 	const { vertical, railStart, railStep } = geometry;
-	const start = at(wire.source, departure, vertical);
-	const end = at(wire.target, arrival, vertical);
+	const start = pointOnAxes(wire.source, departure, vertical);
+	const end = pointOnAxes(wire.target, arrival, vertical);
 	if (wire.first === undefined) return [start, end];
 	const first = railStart + wire.first.rail * railStep;
 	const last = railStart + defined(wire.last).rail * railStep;
-	const points = [start, at(wire.source, first, vertical)];
+	const points = [start, pointOnAxes(wire.source, first, vertical)];
 	if (wire.middle !== undefined)
-		points.push(at(wire.middle, first, vertical), at(wire.middle, last, vertical));
-	points.push(at(wire.target, last, vertical), end);
+		points.push(
+			pointOnAxes(wire.middle, first, vertical),
+			pointOnAxes(wire.middle, last, vertical),
+		);
+	points.push(pointOnAxes(wire.target, last, vertical), end);
 	return points;
 }
 
