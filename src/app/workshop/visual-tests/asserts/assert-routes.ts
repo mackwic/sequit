@@ -1,4 +1,4 @@
-import type { LayoutRelation } from '../../../lib/core/layout/layout-types';
+import type { LayoutRelation } from '../../../../lib/core/layout/layout-types';
 import { routeCrossings, routeSegments } from './route-geometry';
 
 interface RoutesAssertions {

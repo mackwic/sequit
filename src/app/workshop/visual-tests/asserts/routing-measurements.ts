@@ -1,4 +1,4 @@
-import type { Bounds } from '../../../lib/core/layout/layout-types';
+import type { Bounds } from '../../../../lib/core/layout/layout-types';
 import { type AssertionTargets, VisualAssertionError } from './assertion-error';
 
 export type Axis = 'x' | 'y';

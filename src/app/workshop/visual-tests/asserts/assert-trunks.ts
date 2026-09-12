@@ -1,5 +1,5 @@
-import { defined } from '../../../lib/core/document/logic-document';
-import type { LayoutRelation } from '../../../lib/core/layout/layout-types';
+import { defined } from '../../../../lib/core/document/logic-document';
+import type { LayoutRelation } from '../../../../lib/core/layout/layout-types';
 import { routeSegments } from './route-geometry';
 import { type Axis, minimumMetric } from './routing-measurements';
 

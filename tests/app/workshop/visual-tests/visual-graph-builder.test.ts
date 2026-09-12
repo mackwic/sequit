@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { graphFixtures } from '../../../../src/app/workshop/visual-tests/fixtures/graph-fixtures';
 import { VisualGraphBuilder } from '../../../../src/app/workshop/visual-tests/fixtures/visual-graph-builder';
-import { defined } from '../../../../src/lib/core/document/logic-document';
+import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 const size = { width: 100, height: 60 };
@@ -100,3 +100,43 @@ describe('stable identities and references', () => {
 		expect(() => builder.withIsolatedNode('e')).toThrow('not isolated');
 	});
 });
+
+it('keeps explicit arrows distinct from logical succession when composing builders', () => {
+	const builder = new VisualGraphBuilder(size).nodes(['a', 'b', 'c']);
+	const original = builder.arrowsFrom('a', ['b', 'c']).build();
+	expect(original.relations).toEqual([
+		{ id: 'a-to-b', from: 'a', to: 'b' },
+		{ id: 'a-to-c', from: 'a', to: 'c' },
+	]);
+	expect(() => builder.arrowsFrom('a', ['b'])).toThrow('relation ID');
+	expect(original.relations).toHaveLength(2);
+});
+
+it.each([
+	[LayoutDirection.TopToBottom, 'width', 'height'],
+	[LayoutDirection.BottomToTop, 'width', 'height'],
+	[LayoutDirection.LeftToRight, 'height', 'width'],
+	[LayoutDirection.RightToLeft, 'height', 'width'],
+] as const)(
+	'preserves transverse content and fresh routing variants in %s',
+	(direction, transverse, primary) => {
+		fc.assert(
+			fc.property(fc.integer({ min: 1, max: 600 }), (content) => {
+				const base = graphFixtures.crossingRoutes(direction, content).build();
+				const extended = graphFixtures
+					.crossingRoutes(direction, content)
+					.nodes(['e'])
+					.arrowsFrom('c', ['e'])
+					.build();
+				expect(Object.keys(base.nodes)).toEqual(['a', 'b', 'c', 'd']);
+				for (const dimensions of Object.values(extended.nodes)) {
+					expect(dimensions[transverse]).toBe(content);
+					expect(dimensions[primary]).toBe(60);
+				}
+				expect(extended.relations.slice(0, 4)).toEqual(base.relations);
+				expect(graphFixtures.crossingRoutes(direction, content).build()).toEqual(base);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	},
+);

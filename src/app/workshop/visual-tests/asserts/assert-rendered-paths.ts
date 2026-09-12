@@ -1,5 +1,5 @@
-import type { Point } from '../../../lib/core/layout/layout-types';
-import type { RenderedRelation } from '../../web/ui/canvas/render-relations';
+import type { Point } from '../../../../lib/core/layout/layout-types';
+import type { RenderedRelation } from '../../../web/ui/canvas/render-relations';
 import { routeCrossings } from './route-geometry';
 
 interface Bridge extends Point {

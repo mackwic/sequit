@@ -9,7 +9,7 @@ const graph = graphFixtures.threeSuccessors().withIsolatedNode('e').build();
 const layout = await layoutNodes({ direction, bias, ...graph });
 ```
 
-Named fixtures use explicit 100 × 60 node dimensions. Each factory call creates a fresh mutable
+Node fixtures use explicit 100 × 60 node dimensions. Each factory call creates a fresh mutable
 builder. Chained methods extend that builder; every `build()` produces an independent snapshot.
 Use a new factory call for an independent variant.
 
@@ -25,7 +25,8 @@ const graph = new VisualGraphBuilder({ width: 100, height: 60 })
 
 `successorsOf('a', ['b'])` creates the document arrow **B → A** with the historical ID
 `a-to-b`. Logical succession and arrow direction are different concepts in these scenarios.
-Use `relation({ id, from, to })` for an explicit document arrow.
+`arrowsFrom('a', ['b'])` creates **A → B** with ID `a-to-b`.
+Use `relation({ id, from, to })` for an explicit document arrow with a custom ID.
 
 The builder rejects duplicate or blank IDs, invalid dimensions and missing relation endpoints.
 Relations may be declared before their nodes; endpoint validation happens at `build()`.
@@ -43,7 +44,23 @@ const graph = graphFixtures.twoSuccessors().nodes(['d']).successorsOf('b', ['d']
 explicit dimensions for size-sensitive scenarios. Keep node and relation insertion order stable:
 it is part of the input to the layout pipeline.
 
-Routing scenarios also use `VisualGraphBuilder`, through `routingLayout`. That helper preserves
-content dimensions along the transverse axis and uses `relation` for explicit document arrows.
+Routing scenarios use the same `arrange` / `assert` declaration and `layoutNodes` pipeline.
+`graphFixtures.routingNodes(ids, direction, content = 80)` creates a builder with content along
+the transverse axis and a primary extent of 60. Nodes added later inherit these dimensions.
+`graphFixtures.crossingRoutes(direction, content = 80)` adds the four arrows from A/B to C/D:
+
+```ts
+return layoutNodes({
+	direction,
+	bias,
+	...graphFixtures
+		.crossingRoutes(direction)
+		.nodes(['e', 'f', 'g'])
+		.arrowsFrom('c', ['e', 'f', 'g'])
+		.arrowsFrom('d', ['e', 'f', 'g'])
+		.build(),
+});
+```
+
 Comparative scenarios build their reference and variant separately. Assertions and routing
 policies remain independent of graph construction.

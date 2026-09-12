@@ -2,9 +2,9 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { renderRelationPaths } from '../../../../src/app/web/ui/canvas/render-relations';
-import { AssertRenderedPaths } from '../../../../src/app/workshop/visual-tests/assert-rendered-paths';
-import { AssertRoute } from '../../../../src/app/workshop/visual-tests/assert-route';
-import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/assert-routes';
+import { AssertRenderedPaths } from '../../../../src/app/workshop/visual-tests/asserts/assert-rendered-paths';
+import { AssertRoute } from '../../../../src/app/workshop/visual-tests/asserts/assert-route';
+import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/asserts/assert-routes';
 import { layoutNodes } from '../../../../src/app/workshop/visual-tests/layout-nodes';
 import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { routePointsWithGroupHeaders } from '../../../../src/lib/core/layout/dedicated-layout-geometry';

@@ -1,7 +1,24 @@
+import type { LayoutDirection } from '../../../../lib/core/document/logic-document';
+import { axesFor } from '../directions';
 import { VisualGraphBuilder } from './visual-graph-builder';
 
 /** Fresh builders for named topologies; assertions remain in each consuming scenario. */
 export const graphFixtures = {
+	routingNodes(
+		ids: readonly string[],
+		direction: LayoutDirection,
+		content = 80,
+	): VisualGraphBuilder {
+		let size = { width: content, height: 60 };
+		if (axesFor(direction).transverse === 'y') size = { width: 60, height: content };
+		return new VisualGraphBuilder(size).nodes(ids);
+	},
+	crossingRoutes(direction: LayoutDirection, content = 80): VisualGraphBuilder {
+		return graphFixtures
+			.routingNodes(['a', 'b', 'c', 'd'], direction, content)
+			.arrowsFrom('a', ['c', 'd'])
+			.arrowsFrom('b', ['c', 'd']);
+	},
 	independentNodes(ids: readonly string[]): VisualGraphBuilder {
 		return new VisualGraphBuilder({ width: 100, height: 60 }).nodes(ids);
 	},

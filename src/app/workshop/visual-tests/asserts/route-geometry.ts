@@ -1,4 +1,4 @@
-import type { LayoutRelation, Point } from '../../../lib/core/layout/layout-types';
+import type { LayoutRelation, Point } from '../../../../lib/core/layout/layout-types';
 
 export interface RouteSegment {
 	readonly routeId: string;

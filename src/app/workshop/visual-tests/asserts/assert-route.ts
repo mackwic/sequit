@@ -1,4 +1,4 @@
-import type { LayoutRelation, Point } from '../../../lib/core/layout/layout-types';
+import type { LayoutRelation, Point } from '../../../../lib/core/layout/layout-types';
 import type { BoxGeometry } from './assert-box';
 import { VisualAssertionError } from './assertion-error';
 import { routeSegments } from './route-geometry';

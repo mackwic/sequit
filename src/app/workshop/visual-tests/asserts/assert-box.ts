@@ -1,5 +1,5 @@
-import { LayoutDirection } from '../../../lib/core/document/logic-document';
-import type { Bounds } from '../../../lib/core/layout/layout-types';
+import { LayoutDirection } from '../../../../lib/core/document/logic-document';
+import type { Bounds } from '../../../../lib/core/layout/layout-types';
 
 /** A box observation in layout space (VL-302, VL-220 in docs/visual-language.md). */
 export interface BoxGeometry {

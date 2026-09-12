@@ -1,4 +1,4 @@
-import type { VisualNode } from './visual-layout';
+import type { VisualNode } from '../visual-layout';
 
 interface NodeAssertions {
 	hasRank(expected: number): NodeAssertions;

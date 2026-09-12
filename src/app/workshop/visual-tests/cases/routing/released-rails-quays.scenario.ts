@@ -1,17 +1,12 @@
 import { defined, LayoutDirection } from '../../../../../lib/core/document/logic-document';
-import { rowGap } from '../../assert-rails';
-import { AssertRoutes } from '../../assert-routes';
+import { rowGap } from '../../asserts/assert-rails';
+import { AssertRoutes } from '../../asserts/assert-routes';
+import { checkDistinctPaths, checkQuays, checkSize, railPolicy } from '../../asserts/routing';
+import { equalMetric, extent, minimumMetric } from '../../asserts/routing-measurements';
 import { axesFor } from '../../directions';
-import { equalMetric, extent, minimumMetric } from '../../routing-measurements';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';
-import {
-	checkDistinctPaths,
-	checkQuays,
-	checkSize,
-	completePairs,
-	railPolicy,
-	routingLayout,
-} from './fixtures';
 
 export const scenario: LayoutScenario = {
 	id: 'released-rails-quays',
@@ -19,18 +14,20 @@ export const scenario: LayoutScenario = {
 	group: 'Rails et quais',
 	order: 230,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
-		const ids = ['a', 'b', 'c', 'd'];
-		const before = await routingLayout(ids, completePairs, 80, direction, bias);
-		const after = await routingLayout(
-			ids,
-			[
-				['a', 'c'],
-				['b', 'd'],
-			],
-			80,
+		const before = await layoutNodes({
 			direction,
 			bias,
-		);
+			...graphFixtures.crossingRoutes(direction).build(),
+		});
+		const after = await layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.routingNodes(['a', 'b', 'c', 'd'], direction)
+				.arrowsFrom('a', ['c'])
+				.arrowsFrom('b', ['d'])
+				.build(),
+		});
 		return after.withReference('Avant : quatre relations et un croisement obligé', before);
 	},
 	assert(layout) {

@@ -1,37 +1,39 @@
 import { defined, LayoutDirection } from '../../../../../lib/core/document/logic-document';
-import { AssertRails, rowGap } from '../../assert-rails';
-import { equalMetric, minimumMetric } from '../../routing-measurements';
+import { AssertRails, rowGap } from '../../asserts/assert-rails';
+import { checkDistinctPaths, railPolicy } from '../../asserts/routing';
+import { equalMetric, minimumMetric } from '../../asserts/routing-measurements';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';
-import {
-	checkDistinctPaths,
-	completePairs,
-	type Link,
-	railPolicy,
-	routingLayout,
-} from './fixtures';
 
-const ids = ['x', 'y', 'a', 'b', 'c', 'd'];
-const simpleLinks: readonly Link[] = [
-	['x', 'y'],
-	['y', 'a'],
-	['y', 'b'],
-	['a', 'c'],
-	['b', 'd'],
-];
 export const scenario: LayoutScenario = {
 	id: 'local-rails',
 	label: 'Les rails agrandissent seulement leur intervalle',
 	group: 'Rails et quais',
 	order: 190,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
-		const reference = await routingLayout(ids, simpleLinks, 80, direction, bias);
-		const layout = await routingLayout(
-			ids,
-			[...simpleLinks.slice(0, 3), ...completePairs],
-			80,
+		const reference = await layoutNodes({
 			direction,
 			bias,
-		);
+			...graphFixtures
+				.routingNodes(['x', 'y', 'a', 'b', 'c', 'd'], direction)
+				.arrowsFrom('x', ['y'])
+				.arrowsFrom('y', ['a', 'b'])
+				.arrowsFrom('a', ['c'])
+				.arrowsFrom('b', ['d'])
+				.build(),
+		});
+		const layout = await layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.routingNodes(['x', 'y', 'a', 'b', 'c', 'd'], direction)
+				.arrowsFrom('x', ['y'])
+				.arrowsFrom('y', ['a', 'b'])
+				.arrowsFrom('a', ['c', 'd'])
+				.arrowsFrom('b', ['c', 'd'])
+				.build(),
+		});
 		return layout.withReference('Référence : mêmes nœuds, sans les deux diagonales', reference);
 	},
 	assert(layout) {

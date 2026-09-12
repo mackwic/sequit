@@ -1,22 +1,30 @@
-import { AssertRails, rowGap } from '../../assert-rails';
-import { AssertRoutes } from '../../assert-routes';
-import { AssertTrunks } from '../../assert-trunks';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertRails, rowGap } from '../../asserts/assert-rails';
+import { AssertRoutes } from '../../asserts/assert-routes';
+import { AssertTrunks } from '../../asserts/assert-trunks';
+import { checkQuays, checkSize, railPolicy } from '../../asserts/routing';
+import { equalMetric } from '../../asserts/routing-measurements';
 import { axesFor } from '../../directions';
-import { equalMetric } from '../../routing-measurements';
-import { checkQuays, checkSize, railPolicy, routingScenario } from './fixtures';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = routingScenario(
-	{ id: 'shared-quay', label: 'Un quai partagé et des troncs communs', order: 200 },
-	{
-		ids: ['a', 'b', 'c', 'd', 'e'],
-		links: [
-			['a', 'b'],
-			['a', 'c'],
-			['a', 'd'],
-			['a', 'e'],
-		],
+export const scenario: LayoutScenario = {
+	id: 'shared-quay',
+	label: 'Un quai partagé et des troncs communs',
+	group: 'Rails et quais',
+	order: 200,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.routingNodes(['a', 'b', 'c', 'd', 'e'], direction)
+				.arrowsFrom('a', ['b', 'c', 'd', 'e'])
+				.build(),
+		});
 	},
-	(layout) => {
+	assert(layout) {
 		checkQuays(layout, 'a', 'outgoing', 1);
 		checkSize(layout, 'a', [0, 1]);
 		for (const id of ['b', 'c', 'd', 'e']) checkQuays(layout, id, 'incoming', 1);
@@ -38,4 +46,4 @@ export const scenario = routingScenario(
 			railPolicy.baseGap,
 		);
 	},
-);
+};

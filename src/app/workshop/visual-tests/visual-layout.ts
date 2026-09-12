@@ -1,6 +1,6 @@
 import { EndpointKind, LayoutDirection } from '../../../lib/core/document/logic-document';
 import type { LayoutElement, LayoutResult } from '../../../lib/core/layout/layout-types';
-import type { BoxGeometry } from './assert-box';
+import type { BoxGeometry } from './asserts/assert-box';
 
 export interface VisualNode extends LayoutElement {
 	/** Human-facing ordinal; the first logical rank is 1. */

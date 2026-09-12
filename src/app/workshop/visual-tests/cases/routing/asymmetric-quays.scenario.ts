@@ -1,26 +1,27 @@
-import {
-	checkDistinctPaths,
-	checkQuays,
-	checkSize,
-	completePairs,
-	routingScenario,
-} from './fixtures';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { checkDistinctPaths, checkQuays, checkSize } from '../../asserts/routing';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = routingScenario(
-	{ id: 'asymmetric-quays', label: 'Deux quais entrants, trois sortants', order: 180 },
-	{
-		ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-		links: [
-			...completePairs,
-			['c', 'e'],
-			['c', 'f'],
-			['c', 'g'],
-			['d', 'e'],
-			['d', 'f'],
-			['d', 'g'],
-		],
+export const scenario: LayoutScenario = {
+	id: 'asymmetric-quays',
+	label: 'Deux quais entrants, trois sortants',
+	group: 'Rails et quais',
+	order: 180,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.crossingRoutes(direction)
+				.nodes(['e', 'f', 'g'])
+				.arrowsFrom('c', ['e', 'f', 'g'])
+				.arrowsFrom('d', ['e', 'f', 'g'])
+				.build(),
+		});
 	},
-	(layout) => {
+	assert(layout) {
 		for (const id of ['c', 'd']) {
 			checkQuays(layout, id, 'incoming', 2);
 			checkQuays(layout, id, 'outgoing', 3);
@@ -28,4 +29,4 @@ export const scenario = routingScenario(
 		}
 		checkDistinctPaths(layout);
 	},
-);
+};

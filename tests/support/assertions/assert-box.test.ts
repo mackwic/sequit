@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { AssertBox, type BoxGeometry } from '../../../src/app/workshop/visual-tests/assert-box';
+import {
+	AssertBox,
+	type BoxGeometry,
+} from '../../../src/app/workshop/visual-tests/asserts/assert-box';
 import { LARGE_BOX_WIDTH } from '../fixtures/layout-reference';
 
 const a: BoxGeometry = { id: 'a', bounds: { x: 20, y: 40, width: 100, height: 60 } };

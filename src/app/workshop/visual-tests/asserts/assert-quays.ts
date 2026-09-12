@@ -1,8 +1,8 @@
-import { defined } from '../../../lib/core/document/logic-document';
+import { defined } from '../../../../lib/core/document/logic-document';
+import { axesFor } from '../directions';
+import type { VisualLayout } from '../visual-layout';
 import { AssertRoute } from './assert-route';
-import { axesFor } from './directions';
 import { distinctCoordinates, equalMetric, extent, minimumMetric } from './routing-measurements';
-import type { VisualLayout } from './visual-layout';
 
 export type QuaySide = 'incoming' | 'outgoing';
 

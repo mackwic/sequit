@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { VisualAssertionError } from '../../../../src/app/workshop/visual-tests/assertion-error';
+import { VisualAssertionError } from '../../../../src/app/workshop/visual-tests/asserts/assertion-error';
 import { presentExecution } from '../../../../src/app/workshop/visual-tests/execution/present-execution';
 import {
 	ExecutionStatus,

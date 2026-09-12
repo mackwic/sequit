@@ -1,6 +1,6 @@
 # Assertions visuelles
 
-Le module partagé est désormais [dans l’atelier](../../../src/app/workshop/visual-tests/assert-box.ts), pour être importé à la fois par les tests et par le contrôle visuel.
+Le module partagé est désormais [dans l’atelier](../../../src/app/workshop/visual-tests/asserts/assert-box.ts), pour être importé à la fois par les tests et par le contrôle visuel.
 
 Cette version vérifie l’alignement, le centrage, l’ordre spatial des boîtes et les rangs logiques des nœuds. Les concepts de référence sont **boîte** (VL-302), **repère du layout** (VL-220), **alignement** (VL-505) et **rang** (VL-117) dans le [lexique](../../../docs/visual-language.md).
 
@@ -164,7 +164,7 @@ Chaque fiche est rejouée par le lanceur commun dans les quatre directions et le
 | `reused-rail`           | Deux fourches indépendantes utilisent des portions disjointes du rail 0.        |
 | `released-rails-quays`  | Après retrait des diagonales : retour aux dimensions et à l’intervalle simples. |
 
-Les mesures proposées pour ce cahier sont centralisées dans `cases/routing/fixtures.ts` et indiquées dans chaque fiche : pas des quais 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ce sont des attentes de test, pas des paramètres transmis au moteur. Leur calibration reste ouverte.
+Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-fixtures.ts` et indiquées dans chaque fiche : pas des quais 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ce sont des attentes de test, pas des paramètres transmis au moteur. Leur calibration reste ouverte.
 
 - `AssertQuays` observe les ancres distinctes sur une même face principale : nombre, centrage, espacement et marges.
 - `AssertQuaySize` vérifie le maximum du besoin du contenu et de chaque face, sans additionner les deux faces.

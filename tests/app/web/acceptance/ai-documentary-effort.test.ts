@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { openDocument } from '../../../../src/app/web/projection/open-document';
-import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/assert-routes';
+import { AssertRoutes } from '../../../../src/app/workshop/visual-tests/asserts/assert-routes';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';

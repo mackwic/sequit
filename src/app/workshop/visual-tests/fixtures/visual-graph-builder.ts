@@ -46,6 +46,14 @@ export class VisualGraphBuilder {
 		return this;
 	}
 
+	/** Explicit document arrows, with IDs following their direction. */
+	arrowsFrom(from: string, targets: readonly string[]): this {
+		for (const to of targets) {
+			this.relation({ id: `${from}-to-${to}`, from, to });
+		}
+		return this;
+	}
+
 	/** A successor points toward its parent; retain the workshop's historical parent-to-child IDs. */
 	successorsOf(parent: string, successors: readonly string[]): this {
 		for (const child of successors) {

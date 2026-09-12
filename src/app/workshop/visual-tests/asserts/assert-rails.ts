@@ -1,8 +1,8 @@
-import { defined } from '../../../lib/core/document/logic-document';
-import { axesFor } from './directions';
+import { defined } from '../../../../lib/core/document/logic-document';
+import { axesFor } from '../directions';
+import type { VisualLayout } from '../visual-layout';
 import { routeSegments } from './route-geometry';
 import { distinctCoordinates, equalMetric, extent, minimumMetric } from './routing-measurements';
-import type { VisualLayout } from './visual-layout';
 
 interface RailRoom {
 	readonly baseGap: number;

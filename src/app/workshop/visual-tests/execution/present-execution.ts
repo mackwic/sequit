@@ -1,4 +1,4 @@
-import { type AssertionTargets, VisualAssertionError } from '../assertion-error';
+import { type AssertionTargets, VisualAssertionError } from '../asserts/assertion-error';
 import { type ExecutionState, ExecutionStatus } from './scenario-execution';
 
 const verdicts = {

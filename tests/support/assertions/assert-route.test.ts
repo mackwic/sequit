@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { BoxGeometry } from '../../../src/app/workshop/visual-tests/assert-box';
-import { AssertRoute } from '../../../src/app/workshop/visual-tests/assert-route';
+import type { BoxGeometry } from '../../../src/app/workshop/visual-tests/asserts/assert-box';
+import { AssertRoute } from '../../../src/app/workshop/visual-tests/asserts/assert-route';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 
 const source: BoxGeometry = { id: 'a', bounds: { x: 0, y: 0, width: 100, height: 60 } };

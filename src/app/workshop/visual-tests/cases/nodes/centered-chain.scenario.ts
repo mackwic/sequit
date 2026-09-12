@@ -1,5 +1,5 @@
 import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
-import { AssertBox } from '../../assert-box';
+import { AssertBox } from '../../asserts/assert-box';
 import { axesFor } from '../../directions';
 import { graphFixtures } from '../../fixtures/graph-fixtures';
 import { layoutNodes } from '../../layout-nodes';

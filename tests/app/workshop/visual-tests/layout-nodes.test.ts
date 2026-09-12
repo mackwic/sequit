@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { expect, it } from 'vitest';
 
-import { AssertBox } from '../../../../src/app/workshop/visual-tests/assert-box';
+import { AssertBox } from '../../../../src/app/workshop/visual-tests/asserts/assert-box';
 import { layoutNodes } from '../../../../src/app/workshop/visual-tests/layout-nodes';
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';

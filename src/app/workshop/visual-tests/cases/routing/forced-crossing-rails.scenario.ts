@@ -1,17 +1,20 @@
-import { AssertRails } from '../../assert-rails';
-import { AssertRoutes } from '../../assert-routes';
-import {
-	checkCompleteQuays,
-	checkDistinctPaths,
-	completePairs,
-	railPolicy,
-	routingScenario,
-} from './fixtures';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertRails } from '../../asserts/assert-rails';
+import { AssertRoutes } from '../../asserts/assert-routes';
+import { checkCompleteQuays, checkDistinctPaths, railPolicy } from '../../asserts/routing';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = routingScenario(
-	{ id: 'forced-crossing-rails', label: 'Croisement obligé : rails, quais et pont', order: 210 },
-	{ ids: ['a', 'b', 'c', 'd'], links: completePairs },
-	(layout) => {
+export const scenario: LayoutScenario = {
+	id: 'forced-crossing-rails',
+	label: 'Croisement obligé : rails, quais et pont',
+	group: 'Rails et quais',
+	order: 210,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({ direction, bias, ...graphFixtures.crossingRoutes(direction).build() });
+	},
+	assert(layout) {
 		AssertRoutes(
 			layout.relations.filter((route) => ['a-to-d', 'b-to-c'].includes(route.id)),
 		).haveCrossing();
@@ -24,4 +27,4 @@ export const scenario = routingScenario(
 			.haveRoom(railPolicy);
 		checkCompleteQuays(layout);
 	},
-);
+};

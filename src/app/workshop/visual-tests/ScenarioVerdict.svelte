@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { VisualAssertionError } from './assertion-error';
+	import { VisualAssertionError } from './asserts/assertion-error';
 
 	let {
 		verdict,

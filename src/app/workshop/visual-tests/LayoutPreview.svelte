@@ -3,7 +3,7 @@
 	import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
 	import RelationArrow from '../../web/ui/components/canvas/RelationArrow.svelte';
 	import RelationPath from '../../web/ui/components/canvas/RelationPath.svelte';
-	import type { AssertionTargets } from './assertion-error';
+	import type { AssertionTargets } from './asserts/assertion-error';
 	import type { VisualLayout } from './visual-layout';
 	let {
 		layout,

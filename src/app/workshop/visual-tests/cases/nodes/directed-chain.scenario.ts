@@ -1,7 +1,7 @@
 import { defined, LayoutDirection } from '../../../../../lib/core/document/logic-document';
-import { AssertBox } from '../../assert-box';
-import { AssertNode } from '../../assert-node';
-import { AssertRoute } from '../../assert-route';
+import { AssertBox } from '../../asserts/assert-box';
+import { AssertNode } from '../../asserts/assert-node';
+import { AssertRoute } from '../../asserts/assert-route';
 import { graphFixtures } from '../../fixtures/graph-fixtures';
 import { layoutNodes } from '../../layout-nodes';
 import type { LayoutScenario } from '../../scenario';

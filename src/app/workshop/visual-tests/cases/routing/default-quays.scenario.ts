@@ -1,19 +1,30 @@
-import { AssertRoutes } from '../../assert-routes';
-import { checkQuays, checkSize, routingScenario } from './fixtures';
+import { LayoutDirection } from '../../../../../lib/core/document/logic-document';
+import { AssertRoutes } from '../../asserts/assert-routes';
+import { checkQuays, checkSize } from '../../asserts/routing';
+import { graphFixtures } from '../../fixtures/graph-fixtures';
+import { layoutNodes } from '../../layout-nodes';
+import type { LayoutScenario } from '../../scenario';
 
-export const scenario = routingScenario(
-	{ id: 'default-quays', label: 'Quai 0 entrant et sortant', order: 150 },
-	{
-		ids: ['a', 'b', 'c'],
-		links: [
-			['a', 'b'],
-			['b', 'c'],
-		],
+export const scenario: LayoutScenario = {
+	id: 'default-quays',
+	label: 'Quai 0 entrant et sortant',
+	group: 'Rails et quais',
+	order: 150,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		return layoutNodes({
+			direction,
+			bias,
+			...graphFixtures
+				.routingNodes(['a', 'b', 'c'], direction)
+				.arrowsFrom('a', ['b'])
+				.arrowsFrom('b', ['c'])
+				.build(),
+		});
 	},
-	(layout) => {
+	assert(layout) {
 		checkQuays(layout, 'b', 'incoming', 1);
 		checkQuays(layout, 'b', 'outgoing', 1);
 		for (const id of ['a', 'b', 'c']) checkSize(layout, id, [1, 1]);
 		AssertRoutes(layout.relations).haveNoCrossing();
 	},
-);
+};
