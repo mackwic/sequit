@@ -1,57 +1,29 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as Y from 'yjs';
 
-import type { LogicDocument } from '../../lib/core/document/logic-document';
+import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
+import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
-	type AuthorizationResult,
-	authorizeProposal,
-} from '../../lib/infrastructure/collaboration/authorize-proposal';
+	decodeSessionMessage,
+	encodeSessionMessage,
+	type ParticipantPresence,
+	type SessionMessage,
+	SessionMessageKind,
+} from '../../lib/infrastructure/collaboration/session-wire';
+import { executeSharedCommands } from '../../lib/infrastructure/collaboration/shared-command-executor';
 import {
-	type CollabMessage,
-	CollabMessageKind,
-	decodeCollabMessage,
-	encodeCollabMessage,
-	type ProposalMessage,
-	type ProtocolDiagnostic,
-} from '../../lib/infrastructure/collaboration/protocol';
-import {
-	GateDecisionKind,
-	postAuthorizationGate,
-	preAuthorizationGate,
-	type RoomSnapshot,
-} from '../../lib/infrastructure/collaboration/room-decision';
-import {
-	type PersistencePlan,
-	planPersistence,
-} from '../../lib/infrastructure/collaboration/room-persistence';
+	readSyncStep,
+	SyncStepKind,
+	writeSyncRequest,
+	writeSyncResponse,
+} from '../../lib/infrastructure/collaboration/sync-steps';
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
-import { readStructuralLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-reader';
-import { YJS_LIVE_DOCUMENT_FORMAT } from '../../lib/infrastructure/collaboration/yjs-document-schema';
+import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
+import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { persistRoomState, restoreRoomState, type RoomState } from './room-storage';
 
 function emptyRoomState(): RoomState {
-	return {
-		doc: new Y.Doc(),
-		commit: 0,
-		chunkCount: 0,
-		acceptedProposals: new Map(),
-	};
-}
-
-function isPingPayload(payload: unknown): boolean {
-	if (typeof payload !== 'object') return false;
-	if (payload === null) return false;
-	return 'type' in payload && payload.type === 'ping';
-}
-
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-	if (left.byteLength !== right.byteLength) return false;
-	return left.every((byte, index) => byte === right[index]);
-}
-
-/* istanbul ignore next -- exhaustive switch guards are unreachable after type checking */
-function assertNever(value: never): never {
-	throw new TypeError(`Unexpected client message: ${String(value)}`);
+	return { doc: new Y.Doc({ gc: false }), commit: 0, chunkCount: 0, acceptedProposals: new Map() };
 }
 
 export class CollaborationRoom extends DurableObject<Env> {
@@ -61,301 +33,221 @@ export class CollaborationRoom extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		void ctx.blockConcurrencyWhile(async () => {
-			this.roomState = await this.restore();
+			this.roomState = await restoreRoomState(this.ctx.storage, this.roomState, this.ctx.id.name);
 		});
 	}
 
-	private async restore(): Promise<RoomState> {
-		return restoreRoomState(this.ctx.storage, this.roomState, this.ctx.id.name);
-	}
-
 	override fetch(request: Request): Response {
-		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-			return Response.json(
-				{ error: 'WebSocket upgrade required' },
-				{ status: 426, headers: { 'cache-control': 'no-store' } },
-			);
-		}
-
+		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
+			return Response.json({ error: 'WebSocket upgrade required' }, { status: 426 });
 		const pair = new WebSocketPair();
-		const client = pair[0];
-		const server = pair[1];
-		this.ctx.acceptWebSocket(server);
-		this.sendText(server, JSON.stringify({ type: 'ready' }));
-		return new Response(null, { status: 101, webSocket: client });
+		this.ctx.acceptWebSocket(pair[1]);
+		pair[1].send(JSON.stringify({ type: 'ready' }));
+		this.sendPresence(pair[1]);
+		return new Response(null, { status: 101, webSocket: pair[0] });
 	}
 
-	override webSocketMessage(socket: WebSocket, message: ArrayBuffer | string): Promise<void> {
-		if (typeof message === 'string') {
-			this.handleControlMessage(socket, message);
-			return Promise.resolve();
-		}
-		const decoded = decodeCollabMessage(new Uint8Array(message));
-		if (!decoded.ok) {
-			const diagnosticMessage = decoded.diagnostics.map(({ message }) => message).join('; ');
-			this.sendProtocolError(socket, diagnosticMessage);
-			return Promise.resolve();
-		}
-		return this.enqueue(socket, () => this.handleProtocolMessage(socket, decoded.value));
-	}
-
-	private handleControlMessage(socket: WebSocket, message: string): void {
-		try {
-			const payload: unknown = JSON.parse(message);
-			if (isPingPayload(payload)) {
-				this.sendText(socket, JSON.stringify({ type: 'pong' }));
-				return;
-			}
-		} catch {
-			// Invalid JSON is answered on the text control channel like every non-ping message.
-		}
-		this.sendText(socket, JSON.stringify({ type: CollabMessageKind.ProtocolError }));
-	}
-
-	private enqueue(socket: WebSocket, task: () => Promise<void>): Promise<void> {
+	override webSocketMessage(socket: WebSocket, frame: ArrayBuffer | string): Promise<void> {
 		const run = async (): Promise<void> => {
+			if (socket.readyState !== WebSocket.OPEN) return;
 			try {
-				await task();
-			} catch {
-				this.sendProtocolError(socket, 'Protocol message could not be processed');
+				if (typeof frame === 'string') {
+					this.control(socket, frame);
+					return;
+				}
+				await this.handle(socket, decodeSessionMessage(new Uint8Array(frame)));
+			} catch (error) {
+				let message = 'La modification a été refusée.';
+				if (error instanceof Error) message = error.message;
+				this.reject(socket, message);
 			}
 		};
 		this.processing = this.processing.then(run, run);
 		return this.processing;
 	}
 
-	private handleProtocolMessage(socket: WebSocket, message: CollabMessage): Promise<void> {
+	private control(socket: WebSocket, frame: string): void {
+		const value: unknown = JSON.parse(frame);
+		const objectValue = typeof value === 'object';
+		if (!objectValue || value === null) throw new Error('Message invalide.');
+		if ('type' in value && value.type === 'ping') {
+			socket.send(JSON.stringify({ type: 'pong' }));
+			return;
+		}
+		throw new Error('Message invalide.');
+	}
+
+	private async handle(socket: WebSocket, message: SessionMessage): Promise<void> {
 		switch (message.type) {
-			case CollabMessageKind.SyncRequest:
-				this.send(socket, {
-					type: CollabMessageKind.SyncResponse,
-					commit: this.roomState.commit,
-					update: Y.encodeStateAsUpdate(this.roomState.doc, message.stateVector),
-					stateVector: Y.encodeStateVector(this.roomState.doc),
-				});
-				return Promise.resolve();
-			case CollabMessageKind.Proposal:
-				return this.handleProposal(socket, message);
-			case CollabMessageKind.SyncResponse:
-			case CollabMessageKind.Accepted:
-			case CollabMessageKind.Rejected:
-			case CollabMessageKind.ProtocolError:
-				this.sendProtocolError(socket, `Unexpected client message: ${message.type}`);
-				return Promise.resolve();
-			/* istanbul ignore next -- exhaustive switch guard */
+			case SessionMessageKind.Sync: {
+				const step = readSyncStep(message.payload);
+				if (step.kind === SyncStepKind.Request) {
+					this.send(socket, {
+						type: SessionMessageKind.Sync,
+						payload: writeSyncResponse(this.roomState.doc, step.stateVector),
+					});
+					this.send(socket, {
+						type: SessionMessageKind.Sync,
+						payload: writeSyncRequest(this.roomState.doc),
+					});
+				} else {
+					await this.acceptUpdate(step.update);
+				}
+				return;
+			}
+			case SessionMessageKind.Initialize:
+				await this.initialize(socket, message);
+				return;
+			case SessionMessageKind.Change:
+				if ('update' in message) await this.acceptUpdate(message.update);
+				else await this.acceptCommands(socket, message);
+				return;
+			case SessionMessageKind.Presence:
+				if (message.participants.length !== 1) throw new Error('Présence invalide.');
+				socket.serializeAttachment(encodeSessionMessage(message));
+				for (const peer of this.ctx.getWebSockets()) this.sendPresence(peer);
+				return;
+			case SessionMessageKind.Commit:
+			case SessionMessageKind.Reject:
 			default:
-				return assertNever(message);
+				throw new Error('Message client invalide.');
 		}
 	}
 
-	private roomSnapshot(): RoomSnapshot {
-		return {
-			roomId: this.ctx.id.name,
-			commit: this.roomState.commit,
-			acceptedProposals: this.roomState.acceptedProposals,
-		};
-	}
-
-	private acceptedDocument(): LogicDocument | undefined {
-		if (this.roomState.commit === 0) return undefined;
-		const result = readStructuralLogicDocument(this.roomState.doc, YJS_LIVE_DOCUMENT_FORMAT);
-		/* istanbul ignore next -- restored and committed authoritative documents are validated */
-		if (!result.ok) throw new Error('Authoritative document is invalid');
-		return result.value;
-	}
-
-	private handlePreAuthorizationDecision(socket: WebSocket, message: ProposalMessage): boolean {
-		const decision = preAuthorizationGate(this.roomSnapshot(), message);
-		switch (decision.kind) {
-			case GateDecisionKind.Proceed:
-				return false;
-			case GateDecisionKind.ReAcknowledge:
-				this.send(socket, {
-					type: CollabMessageKind.Accepted,
-					proposalId: message.proposalId,
-					commit: decision.commit,
-					update: this.authoritativeNoopUpdate(),
-					stateVector: Y.encodeStateVector(this.roomState.doc),
-				});
-				return true;
-			case GateDecisionKind.Reject:
-				this.reject(socket, message.proposalId, decision.diagnostics);
-				return true;
-			/* istanbul ignore next -- exhaustive switch guard */
-			default:
-				return assertNever(decision);
-		}
-	}
-
-	private async authorize(message: ProposalMessage): Promise<AuthorizationResult | undefined> {
-		try {
-			return await authorizeProposal({
-				proposalId: message.proposalId,
-				authoritative: this.roomState.doc,
-				acceptedDocument: this.acceptedDocument(),
-				proposedUpdate: message.update,
-				guards: defaultUpdateGuards,
-			});
-		} catch {
-			return undefined;
-		}
-	}
-
-	private handlePostAuthorizationDecision(
+	private async initialize(
 		socket: WebSocket,
-		message: ProposalMessage,
-		candidateDocument: LogicDocument,
-		fullUpdateByteLength: number,
-	): boolean {
-		const decision = postAuthorizationGate(
-			this.roomSnapshot(),
-			message,
-			candidateDocument,
-			fullUpdateByteLength,
-		);
-		switch (decision.kind) {
-			case GateDecisionKind.Proceed:
-				return false;
-			case GateDecisionKind.Reject:
-				this.reject(socket, message.proposalId, decision.diagnostics);
-				return true;
-			/* istanbul ignore next -- post-authorization gates never produce this decision */
-			case GateDecisionKind.ReAcknowledge:
-				throw new Error('Post-authorization gate cannot re-acknowledge a proposal');
-			/* istanbul ignore next -- exhaustive switch guard */
-			default:
-				return assertNever(decision);
-		}
-	}
-
-	private async handleProposal(socket: WebSocket, message: ProposalMessage): Promise<void> {
-		if (this.handlePreAuthorizationDecision(socket, message)) return;
-
-		const result = await this.authorize(message);
-		if (result === undefined) {
-			this.sendProtocolError(socket, 'Internal authorization failure');
-			return;
-		}
-		if (!result.ok) {
-			this.reject(socket, message.proposalId, result.diagnostics);
-			return;
-		}
-
-		const fullUpdate = Y.encodeStateAsUpdate(result.value.candidate);
-		const rejected = this.handlePostAuthorizationDecision(
-			socket,
-			message,
-			result.value.candidateDocument,
-			fullUpdate.byteLength,
-		);
-		if (rejected) {
-			result.value.candidate.destroy();
-			return;
-		}
-
-		await this.commitProposal(socket, message, result, fullUpdate);
-	}
-
-	private async commitProposal(
-		socket: WebSocket,
-		message: ProposalMessage,
-		result: Extract<AuthorizationResult, { readonly ok: true }>,
-		fullUpdate: Uint8Array,
+		message: Extract<SessionMessage, { type: SessionMessageKind.Initialize }>,
 	): Promise<void> {
-		const authoritativeUpdate = Y.encodeStateAsUpdate(this.roomState.doc);
-		if (bytesEqual(fullUpdate, authoritativeUpdate)) {
-			result.value.candidate.destroy();
+		if (this.roomState.commit > 0) {
+			// The room may have been initialized by another participant during the handshake.
 			this.send(socket, {
-				type: CollabMessageKind.Accepted,
-				proposalId: message.proposalId,
+				type: SessionMessageKind.Commit,
+				id: message.id,
 				commit: this.roomState.commit,
-				update: this.authoritativeNoopUpdate(),
-				stateVector: Y.encodeStateVector(this.roomState.doc),
+				update: Y.encodeStateAsUpdate(this.roomState.doc),
 			});
 			return;
 		}
-		const delta = Y.encodeStateAsUpdate(
-			result.value.candidate,
-			Y.encodeStateVector(this.roomState.doc),
-		);
+		const result = await authorizeProposal({
+			proposalId: message.id,
+			authoritative: this.roomState.doc,
+			acceptedDocument: undefined,
+			proposedUpdate: message.update,
+			guards: defaultUpdateGuards,
+		});
+		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+		try {
+			if (result.value.candidateDocument.id !== this.ctx.id.name)
+				throw new Error('Le document ne correspond pas à la room.');
+			upgradeSharedTexts(result.value.candidate);
+			await this.commit(result.value.candidate, message.id);
+		} finally {
+			result.value.candidate.destroy();
+		}
+	}
+
+	private async acceptCommands(
+		socket: WebSocket,
+		message: Extract<SessionMessage, { readonly commands: unknown }>,
+	): Promise<void> {
+		if (this.roomState.acceptedProposals.has(message.id)) {
+			this.send(socket, {
+				type: SessionMessageKind.Commit,
+				id: message.id,
+				commit: this.roomState.commit,
+				update: Y.encodeStateAsUpdate(this.roomState.doc),
+			});
+			return;
+		}
+		if (this.roomState.commit === 0)
+			throw new Error('Initialisez le document avant les commandes.');
+		const candidate = new Y.Doc({ gc: false });
+		try {
+			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.roomState.doc));
+			executeSharedCommands(candidate, message.commands);
+			await this.commit(candidate, message.id);
+		} finally {
+			candidate.destroy();
+		}
+	}
+
+	private async acceptUpdate(update: Uint8Array): Promise<void> {
+		const decoded = Y.decodeUpdate(update);
+		if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return;
+		const accepted = readLogicDocument(this.roomState.doc);
+		if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
+		const result = await authorizeProposal({
+			authoritative: this.roomState.doc,
+			acceptedDocument: accepted.value,
+			proposedUpdate: update,
+			guards: defaultUpdateGuards,
+			textOnly: true,
+		});
+		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+		try {
+			await this.commit(result.value.candidate);
+		} finally {
+			result.value.candidate.destroy();
+		}
+	}
+
+	private async commit(candidate: Y.Doc, id?: string): Promise<void> {
+		// Yjs recognizes replays; unchanged text syncs do not need another persisted commit.
+		if (id === undefined && Y.equalSnapshots(Y.snapshot(candidate), Y.snapshot(this.roomState.doc)))
+			return;
+		const update = Y.encodeStateAsUpdate(candidate, Y.encodeStateVector(this.roomState.doc));
 		const commit = this.roomState.commit + 1;
 		const acceptedProposals = new Map(this.roomState.acceptedProposals);
-		acceptedProposals.set(message.proposalId, commit);
+		if (id !== undefined) acceptedProposals.set(id, commit);
 		const plan = planPersistence({
-			fullUpdate,
+			fullUpdate: Y.encodeStateAsUpdate(candidate),
 			commit,
 			currentChunkCount: this.roomState.chunkCount,
 			acceptedProposals,
 		});
-		try {
-			await this.persist(plan);
-		} catch {
-			result.value.candidate.destroy();
-			this.sendProtocolError(socket, 'Internal persistence failure');
-			return;
-		}
-
-		const previous = this.roomState;
+		await persistRoomState(this.ctx.storage, plan);
+		Y.applyUpdate(this.roomState.doc, update);
 		this.roomState = {
-			doc: result.value.candidate,
+			doc: this.roomState.doc,
 			commit,
 			chunkCount: plan.chunks.length,
 			acceptedProposals: plan.acceptedProposals,
 		};
-		previous.doc.destroy();
-		const frame = encodeCollabMessage({
-			type: CollabMessageKind.Accepted,
-			proposalId: message.proposalId,
-			commit,
-			update: delta,
-			stateVector: Y.encodeStateVector(this.roomState.doc),
-		});
-		for (const peer of this.ctx.getWebSockets()) this.sendFrame(peer, frame);
+		let message: SessionMessage = { type: SessionMessageKind.Commit, update, commit };
+		if (id !== undefined) message = { ...message, id };
+		for (const peer of this.ctx.getWebSockets()) this.send(peer, message);
 	}
 
-	private persist(plan: PersistencePlan): Promise<void> {
-		return persistRoomState(this.ctx.storage, plan);
+	private sendPresence(socket: WebSocket, excluded?: WebSocket): void {
+		const participants: ParticipantPresence[] = [];
+		for (const peer of this.ctx.getWebSockets()) {
+			if (peer === excluded) continue;
+			const attachment: unknown = peer.deserializeAttachment();
+			if (!(attachment instanceof Uint8Array)) continue;
+			const message = decodeSessionMessage(attachment);
+			if (message.type === SessionMessageKind.Presence) participants.push(...message.participants);
+		}
+		this.send(socket, { type: SessionMessageKind.Presence, participants });
 	}
 
-	private authoritativeNoopUpdate(): Uint8Array {
-		return Y.encodeStateAsUpdate(this.roomState.doc, Y.encodeStateVector(this.roomState.doc));
-	}
-
-	private send(socket: WebSocket, message: CollabMessage): void {
-		this.sendFrame(socket, encodeCollabMessage(message));
-	}
-
-	private sendFrame(socket: WebSocket, frame: Uint8Array): void {
+	private send(socket: WebSocket, message: SessionMessage): void {
 		try {
-			socket.send(frame);
+			socket.send(encodeSessionMessage(message));
 		} catch {
-			// A failed peer must not interrupt room processing or delivery to other peers.
+			/* A closed peer must not prevent delivery to the room. */
 		}
 	}
 
-	private sendText(socket: WebSocket, message: string): void {
-		try {
-			socket.send(message);
-		} catch {
-			// A closed peer cannot affect the room or other peers.
-		}
-	}
-
-	private sendProtocolError(socket: WebSocket, message: string): void {
-		this.send(socket, { type: CollabMessageKind.ProtocolError, message });
-	}
-
-	private reject(
-		socket: WebSocket,
-		proposalId: string,
-		diagnostics: readonly ProtocolDiagnostic[],
-	): void {
-		this.send(socket, { type: CollabMessageKind.Rejected, proposalId, diagnostics });
+	private reject(socket: WebSocket, message: string): void {
+		this.send(socket, { type: SessionMessageKind.Reject, message });
+		socket.close(1008, 'Change rejected');
 	}
 
 	override webSocketClose(socket: WebSocket, code: number, reason: string): void {
 		let outgoingCode = code;
 		if ([1005, 1006, 1015].includes(code)) outgoingCode = 1000;
 		socket.close(outgoingCode, reason);
+		for (const peer of this.ctx.getWebSockets())
+			if (peer !== socket) this.sendPresence(peer, socket);
 	}
 }

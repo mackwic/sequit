@@ -1,8 +1,10 @@
+import { collapsedDocument } from '../../../lib/core/document/collapsed-document';
 import type {
 	LogicDocument,
 	LogicRelation,
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
+import { GroupState } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
 import type { DocumentCommandOutcome } from '../../../lib/infrastructure/document/document-command-contracts';
@@ -182,4 +184,23 @@ export function openDocument(
 			diagnostics,
 		};
 	}
+}
+
+/** Canvas projection of one accepted/shared snapshot; editing stays on the source document. */
+export function createSharedCanvasProjection(document: LogicDocument): CanvasProjection {
+	const closed = document.groups
+		.filter((group) => group.state === GroupState.Closed)
+		.map((group) => group.id);
+	const projection = projectDocument(collapsedDocument(document, closed));
+	return {
+		measurementModel: projection.measurementModel,
+		subscribe: () => () => undefined,
+		async createCanvasModel(measurements: LayoutMeasurements) {
+			const layout = await layoutGraph(projection.graph, projection.ranks, measurements);
+			return projectCanvasModel(projection.measurementModel, layout, {
+				document: projection.document,
+				ranks: projection.ranks,
+			});
+		},
+	};
 }

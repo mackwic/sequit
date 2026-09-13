@@ -3,7 +3,7 @@ import type { LogicGraph } from '../../core/graph/create-graph';
 import type { ProtocolDiagnostic } from './protocol';
 
 export interface UpdateGuardContext {
-	readonly proposalId: string;
+	readonly proposalId: string | undefined;
 	readonly acceptedDocument: LogicDocument;
 	readonly candidateDocument: LogicDocument;
 	readonly candidateGraph: LogicGraph;

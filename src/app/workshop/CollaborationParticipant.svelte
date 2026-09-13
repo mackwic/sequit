@@ -1,209 +1,146 @@
 <script lang="ts">
-	import type { CanvasModel } from '../web/ui/canvas/canvas-model';
-	import WorkshopViewportStart from './WorkshopViewportStart.svelte';
-	let initialCanvas = $state<CanvasModel>();
-	let initialViewport = $state<HTMLDivElement>();
-	function oncanvas(value: CanvasModel, element: HTMLDivElement) {
-		initialCanvas = value;
-		initialViewport = element;
-	}
 	import { onMount } from 'svelte';
 
-	import type { LogicDocument } from '$lib/core/document/logic-document';
+	import type { Pathname } from '$app/types';
+
+	import type { LogicDocument } from '../../lib/core/document/logic-document';
 	import {
 		CollaborationStatus,
+		type CollaborativeDocumentSession,
 		createCollaborativeDocumentSession,
-		ProposalDecisionKind,
-	} from '$lib/infrastructure/collaboration/collaborative-document-session';
-	import { createWebSocketCollaborationTransport } from '$lib/infrastructure/collaboration/websocket-collaboration-transport';
-	import { parseSequitToml } from '$lib/infrastructure/toml/parse-sequit-toml';
-
+	} from '../../lib/infrastructure/collaboration/collaborative-document-session';
+	import type { ParticipantPresence } from '../../lib/infrastructure/collaboration/session-wire';
+	import { createWebSocketCollaborationTransport } from '../../lib/infrastructure/collaboration/websocket-collaboration-transport';
+	import { parseSequitToml } from '../../lib/infrastructure/toml/parse-sequit-toml';
 	import {
-		type DocumentCommandOutcome,
-		DocumentCommandOutcomeKind,
-	} from '../../lib/infrastructure/document/document-command-contracts';
-	import CanvasViewportControls from '../web/ui/components/canvas/CanvasViewportControls.svelte';
-	import LogicCanvas from '../web/ui/components/canvas/LogicCanvas.svelte';
-	import { CanvasSession } from '../web/ui/session/canvas-session.svelte';
-	import PanelEditor from './PanelEditor.svelte';
-	import { WorkshopCollaboration } from './runtime/workshop-collaboration';
-	import { projectWorkshop } from './runtime/workshop-projection';
+		consumeCollaborationError,
+		refreshRejectedSession,
+	} from '../web/document/collaboration-rejection';
+	import CollaborativeWorkspace from '../web/ui/components/collaboration/CollaborativeWorkspace.svelte';
 	import { WorkshopTransport } from './runtime/workshop-transport';
 	let {
 		source,
 		room,
 		name,
-		peer,
-		presentation,
-		onpresence,
-	}: {
-		source: string;
-		room: string;
-		name: string;
-		peer: string;
-		presentation: string;
-		onpresence: (value: string) => void;
-	} = $props();
+		path = '/atelier/collaboration',
+	}: { source: string; room: string; name: string; path?: Pathname } = $props();
 	let model = $state<LogicDocument>();
-	let gateway: WorkshopCollaboration | undefined;
-	let initialized = $state(false);
+	let client = $state<CollaborativeDocumentSession>();
+	let participants = $state<readonly ParticipantPresence[]>([]);
 	let transport: WorkshopTransport | undefined;
 	let status = $state(CollaborationStatus.Connecting);
+	let initialized = $state(false);
 	let paused = $state(false);
-	let activity = $state<string[]>([]);
-	const session = new CanvasSession({ replaceNodeMarkdown: save });
-	session.zoom = 0.6;
-	let projection = $derived.by(() => {
-		if (model) return projectWorkshop(model, [], 1);
-		return undefined;
-	});
-	function record(value: string) {
-		activity = [value, ...activity].slice(0, 8);
-	}
-	function save(id: string, markdown: string): Promise<DocumentCommandOutcome> {
-		if (!gateway)
-			return Promise.resolve({
-				kind: DocumentCommandOutcomeKind.Failed,
-				error: new Error('Session indisponible'),
-			});
-		return gateway.replaceNodeMarkdown(id, markdown);
-	}
+	let toast = $state<string>();
 	onMount(() => {
+		toast = consumeCollaborationError(path);
 		const parsed = parseSequitToml(source);
 		if (!parsed.ok) return;
-		transport = new WorkshopTransport(() =>
+		const socket = new WorkshopTransport(() =>
 			createWebSocketCollaborationTransport(room, window.location.origin),
 		);
-		const client = createCollaborativeDocumentSession({ ...parsed.value, id: room }, transport);
-		model = client.read();
-		const current = client;
-		const commands = new WorkshopCollaboration(current, transport);
-		gateway = commands;
-		status = commands.status();
-		const statuses = commands.subscribeToStatus((value) => {
-			status = value;
-			initialized = commands.canPause();
-		});
-		const stop = current.subscribe((value) => {
-			model = value;
+		transport = socket;
+		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
+		client = current;
+		const updateStatus = (): void => {
 			status = current.connectionStatus();
-			record('Document actualisé.');
-		});
-		const decisions = current.subscribeToDecisions((decision) => {
-			if (decision.type === ProposalDecisionKind.Accepted) {
-				record(`Version ${decision.commit} validée.`);
-			} else {
-				record('Modification refusée. Brouillon conservé.');
+			if (status === CollaborationStatus.Ready) {
+				initialized = true;
+				model = current.read();
 			}
-		});
-		return () => {
-			statuses();
-			stop();
-			decisions();
-			commands.destroy();
 		};
-	});
-	$effect(() => {
-		onpresence([...session.selection.values()].map((ref) => ref.id).join(', '));
+		const cleanup = [
+			current.subscribe((value) => {
+				model = value;
+			}),
+			current.subscribeToRejection(refreshRejectedSession),
+			current.subscribeToPresence((value) => {
+				participants = value;
+			}),
+			socket.subscribeToFrames(updateStatus),
+			socket.subscribeToStatus(updateStatus),
+		];
+		return () => {
+			for (const stop of cleanup) stop();
+			current.destroy();
+		};
 	});
 </script>
 
 <section class="participant" aria-label={`Session ${name}`}>
 	<header>
-		<strong>{name}</strong><span role="status" class:ready={status === CollaborationStatus.Ready}
-			>{#if paused}Hors ligne · reprise en attente{:else if status === CollaborationStatus.Ready}Connecté{:else if status === CollaborationStatus.Disconnected}Déconnecté{:else}Connexion…{/if}</span
-		><button
+		<strong>{name}</strong>
+		<span role="status" aria-label="Connexion"
+			>{#if status === CollaborationStatus.Ready}Connecté{:else if status === CollaborationStatus.Disconnected}Hors
+				ligne{:else}Connexion…{/if}</span
+		>
+		<button
 			type="button"
 			disabled={!initialized}
 			onclick={() => {
-				if (paused) {
-					transport?.resume();
-					paused = false;
-				} else {
-					transport?.pause();
-					paused = true;
-				}
+				if (paused) transport?.resume();
+				else transport?.pause();
+				paused = !paused;
 			}}
+			>{#if paused}Reconnecter{:else}Mettre hors ligne{/if}</button
 		>
-			{#if paused}Reconnecter{:else}Mettre hors ligne{/if}</button
+		<span aria-label="Participants"
+			>{participants
+				.map((person) => `${person.name} ${person.selected.join(', ')}`)
+				.join(' · ')}</span
 		>
 	</header>
-	<div class="participant-canvas">
-		{#if projection}<LogicCanvas {oncanvas} document={projection} {session}
-				>{#snippet editor(editing, viewport)}<PanelEditor
-						{editing}
-						{viewport}
-						{session}
-					/>{/snippet}</LogicCanvas
-			><WorkshopViewportStart
-				canvas={initialCanvas}
-				viewport={initialViewport}
-			/><CanvasViewportControls {session} />{/if}
-		{#if peer}<span class="presence">L’autre session : {peer}</span>{/if}
-	</div>
-	{#if presentation === 'activity'}<ol aria-label={`Activité ${name}`}>
-			{#each activity as entry, i (i)}<li>{entry}</li>{/each}
-		</ol>{/if}
+	{#if toast}<div class="toast" role="alert">
+			{toast}<button
+				type="button"
+				aria-label="Fermer la notification"
+				onclick={() => {
+					toast = undefined;
+				}}>×</button
+			>
+		</div>{/if}
+	{#if client && model && initialized}<CollaborativeWorkspace
+			{client}
+			{model}
+			{name}
+			connected={status === CollaborationStatus.Ready}
+		/>{/if}
 </section>
 
 <style>
 	.participant {
 		display: flex;
 		flex-direction: column;
-		min-width: 0;
-		min-height: 0;
+		min-height: 600px;
+		height: 100%;
 		border: 1px solid #dedad3;
 		border-radius: 10px;
-		overflow: hidden;
 		background: white;
+		overflow: hidden;
 	}
-	.participant header {
+	header {
 		display: flex;
-		align-items: center;
-		gap: 8px;
 		flex-wrap: wrap;
+		gap: 14px;
+		align-items: center;
 		padding: 12px;
-		font-size: 11px;
 		border-bottom: 1px solid #dedad3;
+		font-size: 12px;
 	}
-	.participant strong {
-		font-size: 14px;
-	}
-	.participant header span {
-		color: #9a6325;
-		flex: 1;
-	}
-	.participant header span.ready {
-		color: #16866c;
-	}
-	.participant button {
+	button {
 		padding: 5px 8px;
 		border: 1px solid #d6d3d1;
 		border-radius: 6px;
 	}
-	.participant-canvas {
-		position: relative;
-		flex: 1;
-		min-height: 360px;
-	}
-	.presence {
-		position: absolute;
-		top: 10px;
-		left: 10px;
-		z-index: 20;
-		background: #eae8ff;
-		color: #50478f;
-		padding: 5px 9px;
-		border-radius: 6px;
-		font-size: 10px;
-		pointer-events: none;
-	}
-	.participant ol {
-		height: 90px;
-		overflow: auto;
-		padding: 10px 16px;
-		font-size: 11px;
-		color: #78716c;
-		list-style: none;
+	.toast {
+		position: fixed;
+		top: 15px;
+		right: 15px;
+		max-width: 450px;
+		padding: 16px;
+		z-index: 100;
+		background: #fff0ec;
+		color: #8f2416;
+		box-shadow: 0 4px 24px #0002;
 	}
 </style>

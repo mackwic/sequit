@@ -3,55 +3,17 @@ import * as Y from 'yjs';
 import { defined, type LogicDocument } from '../../../lib/core/document/logic-document';
 import { validateLogicDocument } from '../../../lib/core/document/validate-logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
+import { reconcileSharedDocument } from '../../../lib/infrastructure/collaboration/reconcile-shared-document';
 import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../lib/infrastructure/collaboration/yjs-document-codec';
-import {
-	createYjsEntityMap,
-	YjsCollection,
-} from '../../../lib/infrastructure/collaboration/yjs-document-schema';
+import { YjsCollection } from '../../../lib/infrastructure/collaboration/yjs-document-schema';
 import { parseSequitToml } from '../../../lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../lib/infrastructure/toml/serialize-sequit-toml';
 import { attachDocumentSession } from '../../web/document/yjs-document-session';
 import { openDocument } from '../../web/projection/open-document';
 import { WorkshopCommands } from './workshop-commands';
-
-function syncFields(target: Y.Map<unknown>, values: Readonly<Record<string, unknown>>): void {
-	for (const key of target.keys()) if (!(key in values)) target.delete(key);
-	for (const [key, value] of Object.entries(values)) {
-		const current = target.get(key);
-		if (current instanceof Y.Text && typeof value === 'string') {
-			if (current.toJSON() !== value) {
-				current.delete(0, current.length);
-				current.insert(0, value);
-			}
-		} else if (current !== value) {
-			if (key === 'markdown' && typeof value === 'string') target.set(key, new Y.Text(value));
-			else target.set(key, value);
-		}
-	}
-}
-function syncCollection(
-	document: Y.Doc,
-	name: YjsCollection,
-	entities: readonly { readonly id: string }[],
-): void {
-	const target = document.getMap<Y.Map<unknown>>(name);
-	const ids = new Set(entities.map(({ id }) => id));
-	for (const id of target.keys()) if (!ids.has(id)) target.delete(id);
-	for (const entity of entities) {
-		const values = Object.fromEntries(
-			Object.entries(entity).filter(([key]) => key !== 'id' && key !== 'kind'),
-		);
-		let map = target.get(entity.id);
-		if (map === undefined) {
-			map = createYjsEntityMap({});
-			target.set(entity.id, map);
-		}
-		syncFields(map, values);
-	}
-}
 
 /** Local prototype adapter. Existing commands still run through DocumentSession.
  * Experimental edits are validated before a fine-grained Yjs transaction.
@@ -111,21 +73,7 @@ export class WorkshopDocument {
 		if (!valid.ok) throw new Error(valid.diagnostics.map(({ message }) => message).join('; '));
 		const graph = createGraph(next);
 		if (!graph.ok) throw new Error(graph.diagnostics.map(({ message }) => message).join('; '));
-		this.ydoc.transact(() => {
-			const meta = this.ydoc.getMap(YjsCollection.Meta);
-			for (const [key, value] of Object.entries({
-				id: next.id,
-				title: next.title,
-				layoutDirection: next.layout.direction,
-				layoutBias: next.layout.bias,
-			}))
-				if (meta.get(key) !== value) meta.set(key, value);
-			syncCollection(this.ydoc, YjsCollection.Natures, next.natures);
-			syncCollection(this.ydoc, YjsCollection.Groups, next.groups);
-			syncCollection(this.ydoc, YjsCollection.Nodes, next.nodes);
-			syncCollection(this.ydoc, YjsCollection.Junctions, next.junctions);
-			syncCollection(this.ydoc, YjsCollection.Relations, next.relations);
-		}, this.origin);
+		reconcileSharedDocument(this.ydoc, next, this.origin);
 	}
 	import(source: string): void {
 		const parsed = parseSequitToml(source);

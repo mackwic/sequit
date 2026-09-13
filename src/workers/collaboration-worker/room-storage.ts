@@ -9,7 +9,9 @@ import {
 	MAX_CHUNKS,
 	META_KEY,
 	type PersistencePlan,
+	planPersistence,
 } from '../../lib/infrastructure/collaboration/room-persistence';
+import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 
 export interface RoomState {
@@ -70,7 +72,7 @@ export function decodeStoredRoomState(
 ): RoomState {
 	const keys = [...chunkKeys(meta.chunkCount)];
 	const fullUpdate = concatChunks(keys.map((key) => storedChunk(storedChunks.get(key))));
-	const doc = new Y.Doc();
+	const doc = new Y.Doc({ gc: false });
 	try {
 		Y.applyUpdate(doc, fullUpdate);
 		const document = readLogicDocument(doc);
@@ -106,7 +108,21 @@ export async function restoreRoomState(
 
 	const keys = [...chunkKeys(meta.chunkCount)];
 	const storedChunks = await storage.get(keys);
-	return decodeStoredRoomState(meta, storedChunks, roomId);
+	const restored = decodeStoredRoomState(meta, storedChunks, roomId);
+	if (!upgradeSharedTexts(restored.doc)) return restored;
+	try {
+		const plan = planPersistence({
+			fullUpdate: Y.encodeStateAsUpdate(restored.doc),
+			commit: restored.commit + 1,
+			currentChunkCount: restored.chunkCount,
+			acceptedProposals: restored.acceptedProposals,
+		});
+		await persistRoomState(storage, plan);
+		return { ...restored, commit: plan.meta.commit, chunkCount: plan.chunks.length };
+	} catch (error) {
+		restored.doc.destroy();
+		throw error;
+	}
 }
 
 export async function persistRoomState(

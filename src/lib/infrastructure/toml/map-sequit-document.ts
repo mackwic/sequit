@@ -4,6 +4,7 @@ import {
 	contentStyleFields,
 	type DocumentResult,
 	EndpointKind,
+	groupStateFields,
 	JunctionOperator,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
@@ -88,6 +89,23 @@ function mapContentStyle(
 		optionalString(entity['color'], [...path, 'color'], context),
 		optionalString(entity['icon'], [...path, 'icon'], context),
 	);
+}
+
+function mapGroupState(
+	value: unknown,
+	path: readonly string[],
+	context: MappingContext,
+): ReturnType<typeof groupStateFields> {
+	try {
+		return groupStateFields(value);
+	} catch {
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: 'Group state must be expanded or closed',
+			path,
+		});
+		return {};
+	}
 }
 
 function optionalGroupId(groupId: string | undefined): { readonly groupId?: string } {
@@ -226,6 +244,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 					id: groupId,
 					label,
 					...optionalGroupId(parentGroupId),
+					...mapGroupState(entity['state'], [...path, 'state'], context),
 					layoutOrder,
 				});
 			}

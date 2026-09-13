@@ -8,6 +8,7 @@ import {
 	type DocumentCommandDiagnostic,
 	DocumentCommandDiagnosticCode,
 } from '../document/document-command-contracts';
+import { spliceSharedText } from './shared-text';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
 import { createYjsEntityMap, YjsCollection } from './yjs-document-schema';
 
@@ -31,8 +32,7 @@ export function replaceNodeMarkdown(
 	const text = document.getMap<Y.Map<unknown>>(NODES).get(nodeId)?.get('markdown');
 	if (!(text instanceof Y.Text)) return false;
 	document.transact(() => {
-		text.delete(0, text.length);
-		text.insert(0, markdown);
+		spliceSharedText(text, markdown);
 	}, origin);
 	return true;
 }
@@ -235,8 +235,7 @@ export class YjsDocumentRepository {
 		}
 		for (const { endpoint, order } of orderChanges) endpoint.set('layoutOrder', order);
 		for (const { text, markdown } of markdownReplacements) {
-			text.delete(0, text.length);
-			text.insert(0, markdown);
+			spliceSharedText(text, markdown);
 		}
 	}
 

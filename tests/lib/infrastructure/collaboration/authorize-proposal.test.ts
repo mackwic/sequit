@@ -217,3 +217,30 @@ describe('authorizeProposal', () => {
 		authoritative.destroy();
 	});
 });
+
+it('accepts plain text through the text-only authority and rejects a structural mutation there', async () => {
+	const authoritative = authoritativeDocument();
+	const acceptedDocument = readAuthoritative(authoritative);
+	const valid = await authorizeProposal({
+		authoritative,
+		acceptedDocument,
+		guards: defaultUpdateGuards,
+		textOnly: true,
+		proposedUpdate: proposeChange(authoritative, (candidate) => {
+			replaceNodeMarkdown(candidate, 'source-a', 'Fine edit');
+		}),
+	});
+	expect(valid.ok).toBe(true);
+	if (valid.ok) valid.value.candidate.destroy();
+	const invalid = await authorizeProposal({
+		authoritative,
+		acceptedDocument,
+		guards: defaultUpdateGuards,
+		textOnly: true,
+		proposedUpdate: proposeChange(authoritative, (candidate) => {
+			candidate.getMap(YjsCollection.Nodes).delete('source-a');
+		}),
+	});
+	expect(invalid.ok).toBe(false);
+	authoritative.destroy();
+});

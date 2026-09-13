@@ -1,174 +1,250 @@
 import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
+import { META_KEY } from '../../../src/lib/infrastructure/collaboration/room-persistence';
+import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
-	type CollabMessage,
-	CollabMessageKind,
-	decodeCollabMessage,
-	encodeCollabMessage,
-	ProposalIntent,
-} from '../../../src/lib/infrastructure/collaboration/protocol';
-import { CHUNK_BYTES } from '../../../src/lib/infrastructure/collaboration/room-persistence';
+	writeSyncRequest,
+	writeSyncResponse,
+} from '../../../src/lib/infrastructure/collaboration/sync-steps';
+import { readLogicDocument } from '../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import {
-	collaborativeDocument,
-	encodeFullUpdate,
-	proposeChange,
-} from '../../support/builders/collaboration';
+	SharedCommandKind as Op,
+	SharedElementKind as Kind,
+} from '../../../src/lib/infrastructure/document/shared-document-command';
+import { proposeChange } from '../../support/builders/collaboration';
+import { CollaborativeFixture } from '../../support/fixtures/collaborative-document';
+import { connectRoom, initializeRoom } from './room-client';
 
-interface RoomClient {
-	readonly socket: WebSocket;
-	send(message: CollabMessage): void;
-	nextFrame(): Promise<CollabMessage>;
-}
-
-function nextMessage(socket: WebSocket): Promise<MessageEvent> {
-	const { promise, resolve } = Promise.withResolvers<MessageEvent>();
-	socket.addEventListener('message', resolve, { once: true });
-	return promise;
-}
-
-async function connect(roomId: string): Promise<RoomClient> {
-	const room = env.COLLABORATION_ROOMS.getByName(roomId);
-	const response = await room.fetch(`https://sequit.local/collab/${roomId}`, {
-		headers: { upgrade: 'websocket' },
-	});
-	const socket = response.webSocket;
-	if (!socket) throw new Error('Expected a WebSocket');
-	socket.binaryType = 'arraybuffer';
-	socket.accept();
-	await nextMessage(socket);
-	return {
-		socket,
-		send(message): void {
-			socket.send(encodeCollabMessage(message));
-		},
-		async nextFrame(): Promise<CollabMessage> {
-			const event = await nextMessage(socket);
-			if (!(event.data instanceof ArrayBuffer)) throw new TypeError('Expected binary frame');
-			const decoded = decodeCollabMessage(new Uint8Array(event.data));
-			if (!decoded.ok) throw new TypeError('Expected decodable frame');
-			return decoded.value;
-		},
-	};
-}
-
-async function initialize(roomId: string, client: RoomClient): Promise<Y.Doc> {
-	const update = encodeFullUpdate(collaborativeDocument(roomId));
-	client.send({
-		type: CollabMessageKind.Proposal,
-		proposalId: 'initialize',
-		intent: ProposalIntent.Initialize,
-		update,
-	});
-	expect(await client.nextFrame()).toMatchObject({ type: CollabMessageKind.Accepted, commit: 1 });
-	const doc = new Y.Doc();
-	Y.applyUpdate(doc, update);
-	return doc;
-}
-
-function markdownChange(doc: Y.Doc, markdown: string): Uint8Array {
-	return proposeChange(doc, (candidate) => {
-		const node = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-a');
-		const text = node?.get('markdown');
-		if (!(text instanceof Y.Text)) throw new TypeError('Expected source node text');
-		text.delete(0, text.length);
-		text.insert(0, markdown);
-	});
-}
-
-function sendChange(client: RoomClient, proposalId: string, update: Uint8Array): void {
-	client.send({
-		type: CollabMessageKind.Proposal,
-		proposalId,
-		intent: ProposalIntent.Change,
-		update,
-	});
-}
-
-describe('room proposal persistence', () => {
-	it('an authorization failure rejects the message without changing state', async () => {
-		const roomId = 'authorization-failure';
-		const room = env.COLLABORATION_ROOMS.getByName(roomId);
-		const client = await connect(roomId);
-		const doc = await initialize(roomId, client);
-		await runInDurableObject(room, (instance) => {
-			Object.defineProperty(instance, 'acceptedDocument', {
-				value: () => {
-					throw new Error('Authorization unavailable');
+describe('room authority', () => {
+	it('persists structural commands before broadcasting and deduplicates their IDs', async () => {
+		const room = 'structural';
+		const alice = await connectRoom(room);
+		const bob = await connectRoom(room);
+		const doc = await initializeRoom(room, alice);
+		await bob.next(Message.Commit);
+		const command = {
+			type: Message.Change,
+			id: 'link',
+			commands: [
+				{
+					op: Op.Create,
+					target: { kind: Kind.Relation, id: 'R' },
+					properties: { from: 'B', to: 'A' },
 				},
+			],
+		} as const;
+		alice.send(command);
+		const accepted = await alice.next(Message.Commit);
+		const remote = await bob.next(Message.Commit);
+		expect(remote).toEqual(accepted);
+		Y.applyUpdate(doc, remote.update);
+		expect(readLogicDocument(doc)).toMatchObject({
+			ok: true,
+			value: { relations: [{ id: 'R', from: 'B', to: 'A' }] },
+		});
+		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
+			expect(await state.storage.get(META_KEY)).toMatchObject({
+				commit: 2,
+				acceptedProposals: { link: 2 },
 			});
 		});
-
-		sendChange(client, 'failed-authorization', markdownChange(doc, 'Not authorized'));
-		expect(await client.nextFrame()).toEqual({
-			type: CollabMessageKind.ProtocolError,
-			message: 'Internal authorization failure',
-		});
-		client.send({
-			type: CollabMessageKind.SyncRequest,
-			lastCommit: 1,
-			stateVector: Y.encodeStateVector(doc),
-		});
-		expect(await client.nextFrame()).toMatchObject({
-			type: CollabMessageKind.SyncResponse,
-			commit: 1,
-		});
+		alice.send(command);
+		const replay = await alice.next(Message.Commit);
+		expect(replay.commit).toBe(2);
+		alice.socket.close();
+		bob.socket.close();
 		doc.destroy();
-		client.socket.close(1000, 'Test complete');
 	});
 
-	it('a persistence failure acknowledges nothing and changes nothing', async () => {
-		const roomId = 'persistence-failure';
-		const room = env.COLLABORATION_ROOMS.getByName(roomId);
-		const client = await connect(roomId);
-		const doc = await initialize(roomId, client);
-		await runInDurableObject(room, (instance) => {
-			Object.defineProperty(instance, 'persist', {
-				value: async () => Promise.reject(new Error('Storage unavailable')),
+	it.each([Message.Change, Message.Sync])(
+		'validates structure hidden in a %s update before it reaches other clients',
+		async (channel) => {
+			const room = `text-boundary-${channel}`;
+			const alice = await connectRoom(room);
+			const doc = await initializeRoom(room, alice);
+			const update = proposeChange(doc, (candidate) => {
+				candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.set('color', '#ff0000');
 			});
-		});
+			if (channel === Message.Change) alice.send({ type: Message.Change, update });
+			else {
+				const changed = new Y.Doc();
+				Y.applyUpdate(changed, Y.encodeStateAsUpdate(doc));
+				Y.applyUpdate(changed, update);
+				alice.send({
+					type: Message.Sync,
+					payload: writeSyncResponse(changed, Y.encodeStateVector(doc)),
+				});
+				changed.destroy();
+			}
+			const closed = new Promise<CloseEvent>((resolve) => {
+				alice.socket.addEventListener('close', resolve, { once: true });
+			});
+			expect((await alice.next(Message.Reject)).message).toBeTruthy();
+			expect((await closed).code).toBe(1008);
+			await runInDurableObject(
+				env.COLLABORATION_ROOMS.getByName(room),
+				async (_instance, state) => {
+					expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
+				},
+			);
+			doc.destroy();
+		},
+	);
 
-		sendChange(client, 'failed-change', markdownChange(doc, 'Not persisted'));
-		expect(await client.nextFrame()).toEqual({
-			type: CollabMessageKind.ProtocolError,
-			message: 'Internal persistence failure',
+	it('rejects a cycle and continues serving the unaffected participant', async () => {
+		const room = 'cycle';
+		const alice = await connectRoom(room);
+		const bob = await connectRoom(room);
+		const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
+		await bob.next(Message.Commit);
+		alice.send({
+			type: Message.Change,
+			id: 'cycle',
+			commands: [
+				{
+					op: Op.Create,
+					target: { kind: Kind.Relation, id: 'cycle' },
+					properties: { from: 'A', to: 'B' },
+				},
+			],
 		});
-		client.send({
-			type: CollabMessageKind.SyncRequest,
-			lastCommit: 1,
-			stateVector: Y.encodeStateVector(doc),
-		});
-		expect(await client.nextFrame()).toMatchObject({
-			type: CollabMessageKind.SyncResponse,
-			commit: 1,
-		});
+		await alice.next(Message.Reject);
+		bob.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
+		expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
+		bob.socket.close();
 		doc.destroy();
-		client.socket.close(1000, 'Test complete');
 	});
 
-	it('an oversized document is rejected with state unchanged', async () => {
-		const roomId = 'oversized-document';
-		const client = await connect(roomId);
-		const doc = await initialize(roomId, client);
-		const oversizedMarkdown = 'x'.repeat(CHUNK_BYTES * 15);
-		sendChange(client, 'oversized-change', markdownChange(doc, oversizedMarkdown));
-		expect(await client.nextFrame()).toMatchObject({
-			type: CollabMessageKind.Rejected,
-			diagnostics: [{ code: 'document-too-large' }],
-		});
-		client.send({
-			type: CollabMessageKind.SyncRequest,
-			lastCommit: 1,
-			stateVector: Y.encodeStateVector(doc),
-		});
-		expect(await client.nextFrame()).toMatchObject({
-			type: CollabMessageKind.SyncResponse,
-			commit: 1,
-		});
+	it('does not merge two initial documents racing for the same room', async () => {
+		const room = 'initialize-race';
+		const alice = await connectRoom(room);
+		const doc = await initializeRoom(room, alice);
+		const bob = await connectRoom(room);
+		bob.send({ type: Message.Initialize, id: 'second-init', update: new Uint8Array([255]) });
+		const result = await bob.next(Message.Commit);
+		expect(result.commit).toBe(1);
+		const accepted = new Y.Doc();
+		Y.applyUpdate(accepted, result.update);
+		expect(readLogicDocument(accepted)).toEqual(readLogicDocument(doc));
+		alice.socket.close();
+		bob.socket.close();
 		doc.destroy();
-		client.socket.close(1000, 'Test complete');
+		accepted.destroy();
 	});
+
+	it.each([new Error('Storage unavailable'), 'Storage unavailable'])(
+		'rejects persistence failure without publishing or mutating the accepted document: %s',
+		async (failure) => {
+			const room = 'persistence-failure';
+			const alice = await connectRoom(room);
+			const doc = await initializeRoom(room, alice);
+			const stub = env.COLLABORATION_ROOMS.getByName(room);
+			await runInDurableObject(stub, (_instance, state) => {
+				vi.spyOn(state.storage, 'transaction').mockRejectedValueOnce(failure);
+			});
+			alice.send({
+				type: Message.Change,
+				id: 'delete',
+				commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
+			});
+			const rejection = await alice.next(Message.Reject);
+			if (failure instanceof Error) expect(rejection.message).toContain('Storage unavailable');
+			else expect(rejection.message).toBe('La modification a été refusée.');
+			await runInDurableObject(stub, async (_instance, state) => {
+				vi.restoreAllMocks();
+				expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
+			});
+			doc.destroy();
+		},
+	);
+});
+
+it('requires initialization and rejects a snapshot for another room', async () => {
+	const empty = await connectRoom('not-initialized');
+	empty.send({
+		type: Message.Change,
+		id: 'premature',
+		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],
+	});
+	expect((await empty.next(Message.Reject)).message).toContain('Initialisez');
+	const source = await connectRoom('snapshot-source');
+	const doc = await initializeRoom('snapshot-source', source);
+	const wrong = await connectRoom('snapshot-target');
+	wrong.send({ type: Message.Initialize, id: 'wrong-room', update: Y.encodeStateAsUpdate(doc) });
+	expect((await wrong.next(Message.Reject)).message).toContain('room');
+	source.socket.close();
+	doc.destroy();
+});
+
+it('rejects malformed initialization, empty-room text and malformed presence', async () => {
+	const initial = await connectRoom('malformed-initial');
+	initial.send({ type: Message.Initialize, id: 'bad', update: new Uint8Array([255]) });
+	await initial.next(Message.Reject);
+	const empty = await connectRoom('text-without-doc');
+	const text = new Y.Doc();
+	text.getText('text').insert(0, 'Uninitialized');
+	empty.send({ type: Message.Change, update: Y.encodeStateAsUpdate(text) });
+	await empty.next(Message.Reject);
+	text.destroy();
+	const presence = await connectRoom('invalid-presence');
+	presence.send({ type: Message.Presence, participants: [] });
+	await presence.next(Message.Reject);
+});
+
+it('keeps the batch atomic when a later command fails and ignores messages queued after rejection', async () => {
+	const name = 'atomic-batch';
+	const client = await connectRoom(name);
+	const doc = await initializeRoom(name, client);
+	client.send({
+		type: Message.Change,
+		id: 'batch',
+		commands: [
+			{ op: Op.Update, target: { kind: Kind.Node, id: 'A' }, set: { color: '#aabbcc' }, unset: [] },
+			{ op: Op.Delete, target: { kind: Kind.Node, id: 'missing' } },
+		],
+	});
+	client.send({
+		type: Message.Change,
+		id: 'after-rejection',
+		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
+	});
+	await client.next(Message.Reject);
+	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), async (_instance, state) => {
+		expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
+	});
+	doc.destroy();
+});
+
+it('does not allocate command IDs or persist another commit for replayed text', async () => {
+	const name = 'text-idempotence';
+	const client = await connectRoom(name);
+	const doc = await initializeRoom(name, client);
+	const update = proposeChange(doc, (candidate) => {
+		const text = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+		if (!(text instanceof Y.Text)) throw new Error('Missing text');
+		text.delete(0, 1);
+		text.insert(0, 'a');
+	});
+	client.send({ type: Message.Change, update });
+	expect((await client.next(Message.Commit)).id).toBeUndefined();
+	client.send({ type: Message.Change, update });
+	const pong = new Promise<void>((resolve) => {
+		client.socket.addEventListener('message', (event) => {
+			if (event.data === '{"type":"pong"}') resolve();
+		});
+	});
+	client.socket.send('{"type":"ping"}');
+	await pong;
+	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), async (_instance, state) => {
+		expect(await state.storage.get(META_KEY)).toMatchObject({
+			commit: 2,
+			acceptedProposals: { initialize: 1 },
+		});
+	});
+	client.socket.close();
+	doc.destroy();
 });

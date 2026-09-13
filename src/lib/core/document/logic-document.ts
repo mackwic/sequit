@@ -86,7 +86,19 @@ export interface LogicNature extends ContentStyle {
 	readonly color: string;
 }
 
+export enum GroupState {
+	Expanded = 'expanded',
+	Closed = 'closed',
+}
+
+export function groupStateFields(value: unknown): { readonly state?: GroupState } {
+	if (value === undefined) return {};
+	if (value === GroupState.Expanded || value === GroupState.Closed) return { state: value };
+	throw new Error('Group state must be expanded or closed');
+}
+
 export interface LogicGroup {
+	readonly state?: GroupState;
 	readonly kind: EndpointKind.Group;
 	readonly id: string;
 	readonly label: string;

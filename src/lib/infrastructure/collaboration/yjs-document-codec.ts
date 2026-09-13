@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 
 import { contentStyleFields, type LogicDocument } from '../../core/document/logic-document';
 import { createGraph } from '../../core/graph/create-graph';
+import { sharedFieldValue } from './shared-text';
 import {
 	readStructuralLogicDocument,
 	YjsLiveDocumentDiagnosticCode,
@@ -18,7 +19,7 @@ function replaceMapContents(
 	values: Readonly<Record<string, unknown>>,
 ): void {
 	target.clear();
-	for (const [key, value] of Object.entries(values)) target.set(key, value);
+	for (const [key, value] of Object.entries(values)) target.set(key, sharedFieldValue(key, value));
 }
 
 function replaceEntityCollection<T extends { readonly id: string }>(
@@ -27,7 +28,18 @@ function replaceEntityCollection<T extends { readonly id: string }>(
 	project: (entity: T) => Readonly<Record<string, unknown>>,
 ): void {
 	target.clear();
-	for (const entity of entities) target.set(entity.id, createYjsEntityMap(project(entity)));
+	for (const entity of entities)
+		target.set(
+			entity.id,
+			createYjsEntityMap(
+				Object.fromEntries(
+					Object.entries(project(entity)).map(([key, value]) => [
+						key,
+						sharedFieldValue(key, value),
+					]),
+				),
+			),
+		);
 }
 
 const IMPORT_ORIGIN = Symbol('sequit import');
@@ -57,8 +69,9 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Groups),
 			document.groups,
-			({ label, groupId, layoutOrder }) => {
+			({ label, groupId, layoutOrder, state }) => {
 				const values: Record<string, unknown> = { label, layoutOrder };
+				if (state !== undefined) values['state'] = state;
 				if (groupId !== undefined) values['groupId'] = groupId;
 				return values;
 			},

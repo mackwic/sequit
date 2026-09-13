@@ -597,11 +597,14 @@ describe('document session', () => {
 		if (!parsed.ok) throw new Error('Reference document must parse');
 		const ydoc = new Y.Doc();
 		importLogicDocument(ydoc, { ...parsed.value, title: 'Already shared' });
+		const title = ydoc.getMap('sequit.meta').get('title');
+		if (!(title instanceof Y.Text)) throw new Error('Expected shared title');
 
 		const session = attachDocumentSession(ydoc);
 
 		expect(session.read().title).toBe('Already shared');
-		expect(ydoc.getMap('sequit.meta').get('title')).toBe('Already shared');
+		expect(ydoc.getMap('sequit.meta').get('title')).toBe(title);
+		expect(title.toJSON()).toBe('Already shared');
 	});
 
 	it('does not destroy an injected document during teardown', async () => {

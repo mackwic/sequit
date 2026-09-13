@@ -2,7 +2,11 @@ import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
-import { DocumentSessionError } from '../document/document-session-contracts';
+import {
+	type SharedDocumentCommand,
+	SharedElementKind,
+	type SharedTarget,
+} from '../document/shared-document-command';
 import { type CollaborationTransport, TransportStatus } from './collaboration-transport';
 import {
 	CollaborationStatus,
@@ -11,314 +15,262 @@ import {
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
 import {
-	applyAuthoritativeUpdate,
-	cloneCollaborativeYDoc,
-	createCollaborativeYDoc,
-	readCollaborativeYDoc,
-	stateVectorsEqual,
-} from './collaborative-session-documents';
-import { dispatchSessionFrame } from './collaborative-session-inbound';
-import {
-	acceptedDecision,
-	CommitApplication,
-	droppedDecision,
-	encodeInitializationProposal,
-	encodeSyncRequest,
-	initializationWasLost,
-	planCommitApplication,
-	type SessionPhase,
-	SessionPhaseKind,
-} from './collaborative-session-model';
-import { prepareProposal } from './collaborative-session-proposal';
-import { resolveSyncResponse, SyncResolutionKind } from './collaborative-session-sync';
-import {
-	coalesce,
-	type PendingOperation,
-	PendingOperationKind,
-	retainReplayable,
-} from './pending-operations';
-import type { AcceptedMessage, RejectedMessage, SyncResponseMessage } from './protocol';
-import { replaceNodeMarkdown as applyMarkdown } from './yjs-document-repository';
+	decodeSessionMessage,
+	encodeSessionMessage,
+	type LocalPresence,
+	type ParticipantPresence,
+	type SessionMessage,
+	SessionMessageKind,
+} from './session-wire';
+import { sharedElement } from './shared-element';
+import { spliceSharedText } from './shared-text';
+import { readSyncStep, SyncStepKind, writeSyncRequest, writeSyncResponse } from './sync-steps';
+import { TextUpdateBuffer } from './text-update-buffer';
+import { importLogicDocument, readLogicDocument } from './yjs-document-codec';
 
 export class CollaborativeSession implements CollaborativeDocumentSession {
+	readonly document = new Y.Doc();
 	readonly #subscribers = new Set<DocumentSessionSubscriber>();
 	readonly #decisionListeners = new Set<(decision: ProposalDecision) => void>();
-	readonly #unsubscribeFrames: () => void;
-	readonly #unsubscribeStatus: () => void;
-	#accepted: Y.Doc;
-	#overlay: Y.Doc;
-	#pending: readonly PendingOperation[] = [];
-	#phase: SessionPhase = { kind: SessionPhaseKind.Disconnected };
-	#lastCommit = 0;
+	readonly #presenceListeners = new Set<(participants: readonly ParticipantPresence[]) => void>();
+	readonly #rejectionListeners = new Set<(message: string) => void>();
+	readonly #pending = new Map<string, readonly SharedDocumentCommand[]>();
+	readonly #textOrigin = Symbol('local text');
+	readonly #buffer: TextUpdateBuffer;
+	readonly #stopFrames: () => void;
+	readonly #stopStatus: () => void;
+	#ready = false;
 	#destroyed = false;
+	#rejected = false;
+	#initialized = false;
+	#initialization: Extract<SessionMessage, { type: SessionMessageKind.Initialize }> | undefined;
+	#presence: ParticipantPresence | undefined;
+	#participants: readonly ParticipantPresence[] = [];
 
 	constructor(
-		initialDocument: LogicDocument,
+		private readonly initialDocument: LogicDocument,
 		private readonly transport: CollaborationTransport,
 	) {
-		this.#accepted = createCollaborativeYDoc(initialDocument);
-		this.#overlay = cloneCollaborativeYDoc(this.#accepted);
-		this.#unsubscribeFrames = transport.subscribeToFrames(this.#receiveFrame);
-		this.#unsubscribeStatus = transport.subscribeToStatus(this.#receiveStatus);
-		if (transport.status() === TransportStatus.Connected) this.#startFirstSync();
-		if (transport.status() === TransportStatus.Connecting)
-			this.#phase = { kind: SessionPhaseKind.FirstSync };
+		this.#buffer = new TextUpdateBuffer((update) => {
+			if (this.#ready) this.#send({ type: SessionMessageKind.Change, update });
+		});
+		this.document.on('update', this.#updated);
+		this.#stopFrames = transport.subscribeToFrames(this.#receive);
+		this.#stopStatus = transport.subscribeToStatus(this.#status);
+		if (transport.status() === TransportStatus.Connected) this.#startSync();
 	}
 
 	read(): LogicDocument {
-		this.#assertActive();
-		return readCollaborativeYDoc(this.#overlay);
+		if (this.#destroyed) throw new Error('Document session has been destroyed');
+		const result = readLogicDocument(this.document);
+		if (result.ok) return result.value;
+		return this.initialDocument;
 	}
+
 	subscribe(listener: DocumentSessionSubscriber): () => void {
-		this.#assertActive();
 		this.#subscribers.add(listener);
 		return () => this.#subscribers.delete(listener);
 	}
+
 	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void {
-		this.#assertActive();
 		this.#decisionListeners.add(listener);
 		return () => this.#decisionListeners.delete(listener);
 	}
+
+	subscribeToRejection(listener: (message: string) => void): () => void {
+		this.#rejectionListeners.add(listener);
+		return () => this.#rejectionListeners.delete(listener);
+	}
+
+	subscribeToPresence(
+		listener: (participants: readonly ParticipantPresence[]) => void,
+	): () => void {
+		this.#presenceListeners.add(listener);
+		listener(this.#participants);
+		return () => this.#presenceListeners.delete(listener);
+	}
+
+	setPresence(presence: LocalPresence): void {
+		this.#presence = { ...presence, clientId: this.document.clientID };
+		this.#sendPresence();
+	}
+
 	connectionStatus(): CollaborationStatus {
+		if (this.#rejected) return CollaborationStatus.Disconnected;
+		if (this.transport.status() === TransportStatus.Disconnected)
+			return CollaborationStatus.Disconnected;
 		if (this.transport.status() === TransportStatus.Connecting)
 			return CollaborationStatus.Connecting;
-		if (this.#phase.kind === SessionPhaseKind.Disconnected) return CollaborationStatus.Disconnected;
-		if (this.#phase.kind === SessionPhaseKind.Ready) return CollaborationStatus.Ready;
+		if (this.#ready) return CollaborationStatus.Ready;
 		return CollaborationStatus.Synchronizing;
 	}
-	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
-		if (this.#destroyed) return false;
-		const validation = cloneCollaborativeYDoc(this.#overlay);
-		const valid = applyMarkdown(validation, nodeId, markdown);
-		validation.destroy();
-		if (!valid) return false;
-		this.#pending = coalesce(this.#pending, {
-			kind: PendingOperationKind.ReplaceNodeMarkdown,
-			nodeId,
-			markdown,
-		});
-		this.#rebuildOverlay();
-		this.#tryPropose();
+
+	dispatch(commands: readonly SharedDocumentCommand[]): string {
+		if (!this.#ready || this.#rejected || this.#destroyed)
+			throw new Error('La session doit être connectée.');
+		const id = crypto.randomUUID();
+		this.#pending.set(id, commands);
+		this.#send({ type: SessionMessageKind.Change, id, commands });
+		return id;
+	}
+
+	text(target: SharedTarget, field: string): Y.Text | undefined {
+		try {
+			const value = sharedElement(this.document, target).get(field);
+			if (value instanceof Y.Text) return value;
+		} catch {
+			/* The target can disappear while an editor is open. */
+		}
+		return undefined;
+	}
+
+	applyLocalTextUpdate(update: Uint8Array): void {
+		if (this.#rejected || this.#destroyed) return;
+		Y.applyUpdate(this.document, update, this.#textOrigin);
+	}
+
+	updateText(target: SharedTarget, field: string, next: string): boolean {
+		if (this.#destroyed || this.#rejected || !this.#initialized) return false;
+		const text = this.text(target, field);
+		if (text === undefined) return false;
+		this.document.transact(() => {
+			spliceSharedText(text, next);
+		}, this.#textOrigin);
 		return true;
 	}
+
+	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
+		return this.updateText({ kind: SharedElementKind.Node, id: nodeId }, 'markdown', markdown);
+	}
+
 	destroy(): void {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
-		this.#unsubscribeFrames();
-		this.#unsubscribeStatus();
+		this.#buffer.close();
+		this.#stopFrames();
+		this.#stopStatus();
 		this.transport.close();
-		this.#accepted.destroy();
-		this.#overlay.destroy();
+		this.document.off('update', this.#updated);
+		this.document.destroy();
 		this.#subscribers.clear();
 		this.#decisionListeners.clear();
-		this.#pending = [];
+		this.#presenceListeners.clear();
+		this.#rejectionListeners.clear();
+		this.#pending.clear();
 	}
-	readonly #receiveStatus = (status: TransportStatus): void => {
-		/* istanbul ignore next -- destroy removes the transport status listener */
-		if (this.#destroyed) return;
-		if (status === TransportStatus.Connected) {
-			if (this.#lastCommit === 0) this.#startFirstSync();
-			else this.#startIncrementalResync();
-			return;
-		}
-		if (status === TransportStatus.Disconnected) this.#disconnect();
+
+	readonly #updated = (update: Uint8Array, origin: unknown): void => {
+		if (origin === this.#textOrigin) this.#buffer.push(update);
+		const result = readLogicDocument(this.document);
+		if (!result.ok) return;
+		this.#initialized = true;
+		for (const subscriber of this.#subscribers) subscriber(result.value);
 	};
-	readonly #receiveFrame = (frame: Uint8Array): void => {
-		/* istanbul ignore next -- destroy removes the transport frame listener */
-		if (this.#destroyed) return;
-		dispatchSessionFrame(frame, {
-			malformed: () => {
-				this.#startFullResync();
-			},
-			syncResponse: (message) => {
-				this.#handleSyncResponse(message);
-			},
-			accepted: (message) => {
-				this.#handleAccepted(message);
-			},
-			rejected: (message) => {
-				this.#handleRejected(message);
-			},
-			protocolError: () => {
-				this.#startFullResync();
-			},
-		});
+
+	readonly #status = (status: TransportStatus): void => {
+		if (this.#rejected || this.#destroyed) return;
+		this.#ready = false;
+		if (status === TransportStatus.Connected) this.#startSync();
 	};
-	#startFirstSync(): void {
-		this.#phase = { kind: SessionPhaseKind.FirstSync };
-		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, true));
+
+	#startSync(): void {
+		this.#send({ type: SessionMessageKind.Sync, payload: writeSyncRequest(this.document) });
+		this.#sendPresence();
 	}
-	#startIncrementalResync(): void {
-		this.#restoreInFlight();
-		this.#phase = { kind: SessionPhaseKind.IncrementalResync };
-		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, false));
-	}
-	#startFullResync(): void {
-		if (this.transport.status() !== TransportStatus.Connected) {
-			this.#disconnect();
-			return;
+
+	readonly #receive = (frame: Uint8Array): void => {
+		if (this.#destroyed || this.#rejected) return;
+		try {
+			this.#handle(decodeSessionMessage(frame));
+		} catch {
+			this.#reject('La session a reçu un message invalide.');
 		}
-		this.#restoreInFlight();
-		this.#phase = { kind: SessionPhaseKind.FullResync };
-		this.transport.send(encodeSyncRequest(this.#accepted, this.#lastCommit, true));
-	}
-	#disconnect(): void {
-		this.#restoreInFlight();
-		this.#phase = { kind: SessionPhaseKind.Disconnected };
-	}
-	#restoreInFlight(): void {
-		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
-		if (this.#phase.inFlight === undefined) return;
-		this.#pending = [this.#phase.inFlight.operation, ...this.#pending];
-	}
-	#handleSyncResponse(message: SyncResponseMessage): void {
-		const resolution = resolveSyncResponse(this.#phase, this.#accepted, this.#lastCommit, message);
-		if (resolution.kind === SyncResolutionKind.Ignore) return;
-		if (resolution.kind === SyncResolutionKind.Initialize) {
-			this.#initializeRoom();
-			return;
-		}
-		if (resolution.kind === SyncResolutionKind.Repair) {
-			this.#startFullResync();
-			return;
-		}
-		this.#replaceAccepted(resolution.document);
-		this.#lastCommit = resolution.commit;
-		this.#becomeReady();
-	}
-	#initializeRoom(): void {
-		const proposalId = crypto.randomUUID();
-		this.#phase = { kind: SessionPhaseKind.Initializing, proposalId };
-		this.transport.send(encodeInitializationProposal(this.#accepted, proposalId));
-	}
-	#handleAccepted(message: AcceptedMessage): void {
-		if (this.#phase.kind === SessionPhaseKind.Initializing) {
-			if (message.proposalId !== this.#phase.proposalId) {
-				this.#startFullResync();
+	};
+
+	#handle(message: SessionMessage): void {
+		switch (message.type) {
+			case SessionMessageKind.Sync:
+				this.#sync(message.payload);
 				return;
+			case SessionMessageKind.Commit:
+				Y.applyUpdate(this.document, message.update);
+				this.#ready = true;
+				if (message.id !== undefined) {
+					this.#pending.delete(message.id);
+					if (this.#initialization?.id === message.id) this.#initialization = undefined;
+					for (const listener of this.#decisionListeners)
+						listener({
+							type: ProposalDecisionKind.Accepted,
+							proposalId: message.id,
+							commit: message.commit,
+						});
+				}
+				return;
+			case SessionMessageKind.Reject:
+				this.#reject(message.message);
+				return;
+			case SessionMessageKind.Presence:
+				this.#participants = message.participants;
+				for (const listener of this.#presenceListeners) listener(this.#participants);
+				return;
+			case SessionMessageKind.Initialize:
+			case SessionMessageKind.Change:
+			default:
+				throw new Error('Unexpected server message');
+		}
+	}
+
+	#sync(payload: Uint8Array): void {
+		const step = readSyncStep(payload);
+		if (step.kind === SyncStepKind.Response) {
+			Y.applyUpdate(this.document, step.update);
+			return;
+		}
+		this.#send({
+			type: SessionMessageKind.Sync,
+			payload: writeSyncResponse(this.document, step.stateVector),
+		});
+		if (!this.#initialized) this.#initialize();
+		else this.#initialization = undefined;
+		for (const [id, commands] of this.#pending)
+			this.#send({ type: SessionMessageKind.Change, id, commands });
+		this.#ready = this.#initialized;
+	}
+
+	#initialize(): void {
+		if (this.#initialization === undefined) {
+			const initial = new Y.Doc();
+			try {
+				importLogicDocument(initial, this.initialDocument);
+				this.#initialization = {
+					type: SessionMessageKind.Initialize,
+					id: crypto.randomUUID(),
+					update: Y.encodeStateAsUpdate(initial),
+				};
+			} finally {
+				initial.destroy();
 			}
 		}
-		const application = planCommitApplication(this.#lastCommit, message.commit);
-		if (application === CommitApplication.IncrementalResync) {
-			this.#startIncrementalResync();
-			return;
-		}
-		if (application === CommitApplication.Apply) {
-			const candidate = applyAuthoritativeUpdate(cloneCollaborativeYDoc(this.#accepted), message);
-			if (candidate === undefined) {
-				this.#startFullResync();
-				return;
-			}
-			this.#replaceAccepted(candidate);
-			this.#lastCommit = message.commit;
-		}
-		const ignoredVectorMismatch =
-			application === CommitApplication.Ignore &&
-			!stateVectorsEqual(Y.encodeStateVector(this.#accepted), message.stateVector);
-		if (ignoredVectorMismatch) {
-			this.#startFullResync();
-			return;
-		}
-		let settled = false;
-		if (this.#phase.kind === SessionPhaseKind.Ready) settled = this.#settleInFlight(message);
-		if (this.#phase.kind === SessionPhaseKind.Initializing) {
-			this.#emitDecision(acceptedDecision(message.proposalId, message.commit));
-			this.#phase = { kind: SessionPhaseKind.Ready };
-		}
-		if (settled || application === CommitApplication.Apply) this.#rebuildOverlay();
-		this.#tryPropose();
+		this.#send(this.#initialization);
 	}
-	#settleInFlight(message: AcceptedMessage): boolean {
-		/* istanbul ignore next -- callers invoke this only from the Ready branch */
-		if (this.#phase.kind !== SessionPhaseKind.Ready) return false;
-		if (this.#phase.inFlight?.proposalId !== message.proposalId) return false;
-		this.#phase = { kind: SessionPhaseKind.Ready };
-		this.#emitDecision(acceptedDecision(message.proposalId, message.commit));
-		return true;
-	}
-	#handleRejected(message: RejectedMessage): void {
-		const lostInitialization =
-			this.#phase.kind === SessionPhaseKind.Initializing &&
-			initializationWasLost(message.diagnostics);
-		if (lostInitialization) {
-			this.#startFullResync();
-			return;
-		}
-		const matchingInitialization =
-			this.#phase.kind === SessionPhaseKind.Initializing &&
-			message.proposalId === this.#phase.proposalId;
-		if (matchingInitialization) {
-			this.#emitDecision({
-				type: ProposalDecisionKind.Rejected,
-				proposalId: message.proposalId,
-				diagnostics: message.diagnostics,
-			});
-			this.#phase = { kind: SessionPhaseKind.Disconnected };
-			this.transport.close();
-			return;
-		}
-		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
-		if (this.#phase.inFlight?.proposalId !== message.proposalId) return;
-		this.#phase = { kind: SessionPhaseKind.Ready };
-		this.#emitDecision({
-			type: ProposalDecisionKind.Rejected,
-			proposalId: message.proposalId,
-			diagnostics: message.diagnostics,
-		});
-		this.#rebuildOverlay();
-		this.#tryPropose();
-	}
-	#becomeReady(): void {
-		this.#phase = { kind: SessionPhaseKind.Ready };
-		this.#rebuildOverlay();
-		this.#tryPropose();
-	}
-	#replaceAccepted(document: Y.Doc): void {
-		const previous = this.#accepted;
-		this.#accepted = document;
-		previous.destroy();
-	}
-	#tryPropose(): void {
-		if (this.#phase.kind !== SessionPhaseKind.Ready) return;
-		if (this.#phase.inFlight !== undefined) return;
-		/* istanbul ignore next -- transport disconnection synchronously leaves Ready */
+
+	#send(message: SessionMessage): void {
+		if (this.#rejected || this.#destroyed) return;
 		if (this.transport.status() !== TransportStatus.Connected) return;
-		const operation = this.#pending[0];
-		if (operation === undefined) return;
-		const proposal = prepareProposal(this.#accepted, operation);
-		this.transport.send(proposal.frame);
-		this.#pending = this.#pending.slice(1);
-		this.#phase = {
-			kind: SessionPhaseKind.Ready,
-			inFlight: { operation: proposal.operation, proposalId: proposal.proposalId },
-		};
+		this.transport.send(encodeSessionMessage(message));
 	}
-	#rebuildOverlay(): void {
-		const previous = this.#overlay;
-		const next = cloneCollaborativeYDoc(this.#accepted);
-		const document = readCollaborativeYDoc(this.#accepted);
-		let inFlight: PendingOperation | undefined;
-		if (this.#phase.kind === SessionPhaseKind.Ready && this.#phase.inFlight !== undefined) {
-			const partition = retainReplayable([this.#phase.inFlight.operation], document);
-			inFlight = partition.retained[0];
-			if (inFlight === undefined) this.#phase = { kind: SessionPhaseKind.Ready };
-			for (const operation of partition.dropped) this.#emitDecision(droppedDecision(operation));
-		}
-		const partition = retainReplayable(this.#pending, document);
-		this.#pending = partition.retained;
-		if (inFlight !== undefined) applyMarkdown(next, inFlight.nodeId, inFlight.markdown);
-		for (const operation of this.#pending)
-			applyMarkdown(next, operation.nodeId, operation.markdown);
-		for (const operation of partition.dropped) this.#emitDecision(droppedDecision(operation));
-		this.#overlay = next;
-		previous.destroy();
-		const overlayDocument = readCollaborativeYDoc(this.#overlay);
-		for (const listener of [...this.#subscribers]) listener(overlayDocument);
+
+	#sendPresence(): void {
+		if (this.#presence !== undefined)
+			this.#send({ type: SessionMessageKind.Presence, participants: [this.#presence] });
 	}
-	#emitDecision(decision: ProposalDecision): void {
-		for (const listener of [...this.#decisionListeners]) listener(decision);
-	}
-	#assertActive(): void {
-		if (this.#destroyed) throw new DocumentSessionError('Document session has been destroyed');
+
+	#reject(message: string): void {
+		this.#rejected = true;
+		this.#ready = false;
+		this.#buffer.close();
+		this.#pending.clear();
+		this.transport.close();
+		for (const listener of this.#rejectionListeners) listener(message);
 	}
 }

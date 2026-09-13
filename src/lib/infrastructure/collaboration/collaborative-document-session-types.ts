@@ -1,6 +1,9 @@
+import type * as Y from 'yjs';
+
 import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
-import type { ProtocolDiagnostic } from './protocol';
+import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
+import type { LocalPresence, ParticipantPresence } from './session-wire';
 
 export enum CollaborationStatus {
 	Connecting = 'connecting',
@@ -11,39 +14,23 @@ export enum CollaborationStatus {
 
 export enum ProposalDecisionKind {
 	Accepted = 'accepted',
-	Rejected = 'rejected',
-	OperationDropped = 'operation-dropped',
 }
 
-export enum OperationDropReason {
-	StaleTarget = 'stale-target',
-}
-
-export enum CollaborativeSessionDiagnosticCode {
-	StaleOperationTarget = 'stale-operation-target',
-}
-
-interface AcceptedDecision {
+export interface ProposalDecision {
 	readonly type: ProposalDecisionKind.Accepted;
-	readonly proposalId?: string;
+	readonly proposalId: string;
 	readonly commit: number;
 }
 
-interface RejectedDecision {
-	readonly type: ProposalDecisionKind.Rejected;
-	readonly proposalId: string;
-	readonly diagnostics: readonly ProtocolDiagnostic[];
-}
-
-interface OperationDroppedDecision {
-	readonly type: ProposalDecisionKind.OperationDropped;
-	readonly reason: OperationDropReason.StaleTarget;
-	readonly diagnostics: readonly ProtocolDiagnostic[];
-}
-
-export type ProposalDecision = AcceptedDecision | RejectedDecision | OperationDroppedDecision;
-
 export interface CollaborativeDocumentSession {
+	readonly document: Y.Doc;
+	applyLocalTextUpdate(update: Uint8Array): void;
+	dispatch(commands: readonly SharedDocumentCommand[]): string;
+	text(target: SharedTarget, field: string): Y.Text | undefined;
+	updateText(target: SharedTarget, field: string, next: string): boolean;
+	setPresence(presence: LocalPresence): void;
+	subscribeToPresence(listener: (participants: readonly ParticipantPresence[]) => void): () => void;
+	subscribeToRejection(listener: (message: string) => void): () => void;
 	read(): LogicDocument;
 	subscribe(listener: DocumentSessionSubscriber): () => void;
 	replaceNodeMarkdown(nodeId: string, markdown: string): boolean;

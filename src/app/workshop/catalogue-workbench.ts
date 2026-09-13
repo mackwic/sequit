@@ -418,7 +418,7 @@ export const additionalGroups: readonly WorkshopGroup[] = [
 				'SC-COL-WORK',
 				'Travailler à deux',
 				'Éditer · déconnecter · reprendre',
-				'Sélectionne et modifie dans Alice puis dans Bob. Mets Bob hors ligne, enregistre un brouillon de son côté, modifie Alice puis reconnecte Bob et observe la convergence.',
+				'Sélectionne et modifie dans Alice puis dans Bob. Mets Bob hors ligne, continue à écrire de son côté, modifie Alice puis reconnecte Bob et observe la convergence.',
 				[
 					{
 						id: 'ambient',
@@ -427,7 +427,7 @@ export const additionalGroups: readonly WorkshopGroup[] = [
 						tag: 'À comparer',
 						label: 'Présence discrète',
 						description:
-							'Deux sessions réseau réelles ; la présence est un aperçu local entre ces deux vues.',
+							'Deux sessions réseau réelles ; les participants et leur sélection sont partagés par la room.',
 						question: 'La présence suffit-elle pour comprendre ce qui change ?',
 					},
 					{
@@ -436,8 +436,9 @@ export const additionalGroups: readonly WorkshopGroup[] = [
 						scene: CollaborationScene,
 						tag: 'À comparer',
 						label: 'Avec activité',
-						description: 'Les mêmes sessions avec un journal des validations et mises à jour.',
-						question: 'Le journal aide-t-il à comprendre l’attente et la reprise ?',
+						description:
+							'Observe la saisie continue, la coupure réseau et la reprise dans les deux vues.',
+						question: 'Le statut de connexion aide-t-il à comprendre la reprise ?',
 					},
 				],
 				source,

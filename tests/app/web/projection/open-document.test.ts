@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDocumentSession } from '../../../../src/app/web/document/yjs-document-session';
-import { openDocument } from '../../../../src/app/web/projection/open-document';
-import type { LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	createSharedCanvasProjection,
+	openDocument,
+} from '../../../../src/app/web/projection/open-document';
+import { GroupState, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { crossingDocument } from '../../../support/fixtures';
+import {
+	CollaborativeFixture,
+	collaborativeFixture,
+} from '../../../support/fixtures/collaborative-document';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
 
 describe('openDocument', () => {
@@ -253,4 +260,32 @@ describe('openDocument', () => {
 		expect(bounds.get('successor')).toEqual(successorBefore);
 		expect(bounds.get('isolated')?.x).toBeGreaterThan(bounds.get('successor')?.x ?? 0);
 	});
+});
+
+it('projects shared group state without removing the original members', async () => {
+	const source = collaborativeFixture(CollaborativeFixture.OpenGroup, 'room');
+	const open = createSharedCanvasProjection(source);
+	expect(open.measurementModel.nodes).toHaveLength(2);
+	const closed = createSharedCanvasProjection({
+		...source,
+		groups: source.groups.map((group) => ({ ...group, state: GroupState.Closed })),
+	});
+	expect(closed.measurementModel.nodes).toEqual([]);
+	const stop = closed.subscribe(() => undefined);
+	stop();
+	const canvas = await closed.createCanvasModel(
+		layoutMeasurementsForCanvas(closed.measurementModel),
+	);
+	expect(canvas.groups.map((group) => group.id)).toEqual(['G']);
+	expect(source.nodes).toHaveLength(2);
+});
+
+it('reports an invalid shared snapshot instead of rendering dangling relations', () => {
+	const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
+	expect(() =>
+		createSharedCanvasProjection({
+			...source,
+			relations: [{ id: 'dangling', from: 'missing', to: 'A' }],
+		}),
+	).toThrow();
 });

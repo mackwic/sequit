@@ -4,7 +4,7 @@ import type {
 	LogicDocument,
 	SequitDiagnostic,
 } from './logic-document';
-import { defined } from './logic-document';
+import { defined, groupStateFields } from './logic-document';
 import { SequitDiagnosticCode } from './logic-document';
 
 enum GroupVisitState {
@@ -128,6 +128,18 @@ function validateContentStyle(
 }
 
 function validateContent(document: LogicDocument, diagnostics: SequitDiagnostic[]): void {
+	for (const group of document.groups) {
+		try {
+			groupStateFields(group.state);
+		} catch {
+			diagnostics.push({
+				code: SequitDiagnosticCode.InvalidValue,
+				message: 'Group state must be expanded or closed',
+				path: ['groups', group.id, 'state'],
+			});
+		}
+	}
+
 	for (const nature of document.natures)
 		validateContentStyle(nature, ['natures', nature.id], diagnostics);
 	for (const node of document.nodes) validateContentStyle(node, ['nodes', node.id], diagnostics);

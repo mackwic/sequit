@@ -15,12 +15,17 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
-	type OrderKey,
 	PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
-import { parseOrderKey } from '../../core/document/order-key';
 import { validateLogicDocument } from '../../core/document/validate-logic-document';
 import { YjsCollection } from './yjs-document-schema';
+import {
+	readOptionalString,
+	readRequiredLayoutOrder,
+	readString,
+	readText,
+} from './yjs-field-readers';
+import { readGroupState } from './yjs-group-state';
 
 export { YjsLiveDocumentDiagnosticCode, type YjsLiveDocumentResult } from './yjs-document-result';
 import {
@@ -34,46 +39,6 @@ interface CollectionOptions<T> {
 	readonly sharedName: string;
 	readonly collectionName: string;
 	readonly project: (entity: Y.Map<unknown>, id: string, context: ReadContext) => T | undefined;
-}
-
-function readString(
-	value: unknown,
-	path: readonly string[],
-	context: ReadContext,
-): string | undefined {
-	if (typeof value === 'string') return value;
-	context.diagnostics.push({
-		code: YjsLiveDocumentDiagnosticCode.Invalid,
-		message: `${path.join('.')} must be a string`,
-		path,
-	});
-	return undefined;
-}
-
-function readOptionalString(
-	value: unknown,
-	path: readonly string[],
-	context: ReadContext,
-): string | undefined {
-	if (value === undefined) return undefined;
-	return readString(value, path, context);
-}
-
-function readRequiredLayoutOrder(
-	value: unknown,
-	path: readonly string[],
-	context: ReadContext,
-): OrderKey | undefined {
-	const key = readString(value, path, context);
-	if (key === undefined) return undefined;
-	const parsed = parseOrderKey(key);
-	if (parsed !== undefined) return parsed;
-	context.diagnostics.push({
-		code: YjsLiveDocumentDiagnosticCode.Invalid,
-		message: `${path.join('.')} must be a valid fractional order key`,
-		path,
-	});
-	return undefined;
 }
 
 function readCollection<T>(ydoc: Y.Doc, context: ReadContext, options: CollectionOptions<T>): T[] {
@@ -111,7 +76,7 @@ function readNature(
 	id: string,
 	context: ReadContext,
 ): LogicNature | undefined {
-	const label = readString(entity.get('label'), ['natures', id, 'label'], context);
+	const label = readText(entity.get('label'), ['natures', id, 'label'], context);
 	const color = readString(entity.get('color'), ['natures', id, 'color'], context);
 	const style = readContentStyle(entity, ['natures', id], context);
 	if (label === undefined || color === undefined) return undefined;
@@ -123,7 +88,7 @@ function readGroup(
 	id: string,
 	context: ReadContext,
 ): LogicGroup | undefined {
-	const label = readString(entity.get('label'), ['groups', id, 'label'], context);
+	const label = readText(entity.get('label'), ['groups', id, 'label'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['groups', id, 'group'], context);
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
@@ -131,7 +96,13 @@ function readGroup(
 		context,
 	);
 	if (label === undefined || layoutOrder === undefined) return undefined;
-	const group: LogicGroup = { kind: EndpointKind.Group, id, label, layoutOrder };
+	const group: LogicGroup = {
+		kind: EndpointKind.Group,
+		id,
+		label,
+		layoutOrder,
+		...readGroupState(entity, id, context),
+	};
 	if (groupId === undefined) return group;
 	return { ...group, groupId };
 }
@@ -212,7 +183,10 @@ function readRelation(
 }
 
 function validationFailure(
-	diagnostics: readonly { readonly message: string; readonly path: readonly string[] }[],
+	diagnostics: readonly {
+		readonly message: string;
+		readonly path: readonly string[];
+	}[],
 ): YjsLiveDocumentFailure {
 	return {
 		ok: false,
@@ -244,7 +218,7 @@ export function readStructuralLogicDocument(
 	}
 	const context: ReadContext = { diagnostics: [] };
 	const id = readString(meta.get('id'), ['document', 'id'], context);
-	const title = readString(meta.get('title'), ['document', 'title'], context);
+	const title = readText(meta.get('title'), ['document', 'title'], context);
 	const layoutDirection = readString(meta.get('layoutDirection'), ['layout', 'direction'], context);
 	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
 	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {

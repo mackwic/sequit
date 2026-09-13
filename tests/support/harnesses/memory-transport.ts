@@ -3,7 +3,7 @@ import {
 	TransportStatus,
 } from '../../../src/lib/infrastructure/collaboration/collaboration-transport';
 
-export class MemoryTransport implements CollaborationTransport {
+class MemoryTransport implements CollaborationTransport {
 	readonly #frameListeners = new Set<(frame: Uint8Array) => void>();
 	readonly #statusListeners = new Set<(status: TransportStatus) => void>();
 	readonly #pendingFrames: Uint8Array[] = [];

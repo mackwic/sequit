@@ -6,10 +6,7 @@ import { CollaborativeSession } from './collaborative-session';
 export {
 	CollaborationStatus,
 	type CollaborativeDocumentSession,
-	type ProposalDecision,
-	ProposalDecisionKind,
 } from './collaborative-document-session-types';
-export { CommitApplication, planCommitApplication } from './collaborative-session-model';
 
 export function createCollaborativeDocumentSession(
 	initialDocument: LogicDocument,
