@@ -360,12 +360,9 @@ describe('layoutGraph', () => {
 			({ id }) => id === 'data-team-to-ai-content-generation',
 		);
 		const dataTeam = byId.get('data-team');
-		const dataTeamHeader = layoutMeasurementsFor(await openReferenceLiveDocument()).groups.get(
-			'data-team',
-		)?.headerHeight;
 		const attachment = dataTeamRelation && requiredPoint(dataTeamRelation.points, 0);
-		expect(attachment?.y).toBeGreaterThan((dataTeam?.y ?? 0) + (dataTeamHeader ?? 0));
-		expect([dataTeam?.x, (dataTeam?.x ?? 0) + (dataTeam?.width ?? 0)]).toContain(attachment?.x);
+		expect(attachment?.y).toBe(dataTeam?.y);
+		expect(attachment?.x).toBe((dataTeam?.x ?? 0) + (dataTeam?.width ?? 0) / 2);
 	});
 
 	it('rejects overlapping relation endpoint bounds before routing with the relation identity', async () => {

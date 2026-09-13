@@ -95,12 +95,6 @@ function overridesFor(generated: LayoutCase) {
 	};
 }
 
-function groupMeasurementFor(generated: LayoutCase, groupId: string): GroupMeasurement {
-	const measurement = generated.groups[groupId];
-	if (measurement === undefined) throw new Error(`Missing generated group measurement: ${groupId}`);
-	return measurement;
-}
-
 function expectFinite(value: number): void {
 	expect(Number.isFinite(value)).toBe(true);
 }
@@ -331,19 +325,16 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('routes every relation orthogonally and keeps group attachments below their headers', async () => {
+	it('routes every relation through principal faces, including group sources and targets', async () => {
 		await fc.assert(
 			fc.asyncProperty(layoutCaseArbitrary, async (generated) => {
 				const { document, layout } = await layoutDocument(
 					generated.document,
 					overridesFor(generated),
 				);
-				const groupsById = new Map(document.groups.map((group) => [group.id, group]));
 				for (const relation of layout.relations) {
 					const sourceBounds = boundsFor(layout, relation.from);
 					const targetBounds = boundsFor(layout, relation.to);
-					const sourceGroup = groupsById.get(relation.from);
-					const targetGroup = groupsById.get(relation.to);
 					const first = relation.points[0];
 					const last = relation.points.at(-1);
 					expect(first).toBeDefined();
@@ -357,33 +348,31 @@ describe('generated layouts', () => {
 							return previous !== undefined && (previous.x === point.x || previous.y === point.y);
 						}),
 					).toBe(true);
-					if (sourceGroup !== undefined) {
-						expect(first.y).toBeGreaterThan(
-							sourceBounds.y + groupMeasurementFor(generated, sourceGroup.id).headerHeight,
-						);
-					}
-					if (targetGroup !== undefined) {
-						expect(last.y).toBeGreaterThan(
-							targetBounds.y + groupMeasurementFor(generated, targetGroup.id).headerHeight,
-						);
-					}
-					if (sourceGroup === undefined && targetGroup === undefined) {
-						// Crossing separation may offset ports transversely and choose a noncentral lane.
-						// Both ports must still face the parent/child corridor, and no leg may backtrack.
-						const direction = document.layout.direction;
-						let axis: 'x' | 'y' = 'x';
-						if (
-							direction === LayoutDirection.TopToBottom ||
-							direction === LayoutDirection.BottomToTop
-						)
-							axis = 'y';
-						expect(first[axis]).toBe(expectedBoundaryPoint(sourceBounds, direction, true)[axis]);
-						expect(last[axis]).toBe(expectedBoundaryPoint(targetBounds, direction, false)[axis]);
-						const sign = Math.sign(last[axis] - first[axis]);
-						for (const [index, point] of relation.points.slice(1).entries()) {
-							const previous = requiredAt(relation.points, index, 'route point');
-							expect((point[axis] - previous[axis]) * sign).toBeGreaterThanOrEqual(0);
-						}
+					// Crossing separation may offset ports transversely and choose a noncentral lane.
+					// Both ports must still face the parent/child corridor, and no leg may backtrack.
+					const direction = document.layout.direction;
+					let axis: 'x' | 'y' = 'x';
+					if (
+						direction === LayoutDirection.TopToBottom ||
+						direction === LayoutDirection.BottomToTop
+					)
+						axis = 'y';
+					expect(first[axis]).toBe(expectedBoundaryPoint(sourceBounds, direction, true)[axis]);
+					expect(last[axis]).toBe(expectedBoundaryPoint(targetBounds, direction, false)[axis]);
+					let transverse: 'x' | 'y' = 'y';
+					if (axis === 'y') transverse = 'x';
+					const departure = relation.points.find(
+						(point) => point.x !== first.x || point.y !== first.y,
+					);
+					const arrival = relation.points.findLast(
+						(point) => point.x !== last.x || point.y !== last.y,
+					);
+					expect(departure?.[transverse]).toBe(first[transverse]);
+					expect(arrival?.[transverse]).toBe(last[transverse]);
+					const sign = Math.sign(last[axis] - first[axis]);
+					for (const [index, point] of relation.points.slice(1).entries()) {
+						const previous = requiredAt(relation.points, index, 'route point');
+						expect((point[axis] - previous[axis]) * sign).toBeGreaterThanOrEqual(0);
 					}
 				}
 			}),

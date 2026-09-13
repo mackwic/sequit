@@ -1,0 +1,31 @@
+<script>
+ import { scenario } from './group-side-port.scenario';
+ import source from './group-side-port.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Groupe vide : départ interdit sur le côté
+
+Reproduction du défaut observé dans « AI for documentary effort ».
+Le minimum est **un groupe vide → un nœud**, sans jonction et sans autre relation.
+La seconde variante ajoute **Prompt management → AI tooling**, comme dans la capture.
+
+## Attendu
+
+Les relations quittent et rejoignent les faces perpendiculaires à l’axe principal,
+avec un premier et un dernier segment dans cet axe. En haut vers bas, les flèches
+partent du haut des enfants et arrivent au bas du parent.
+
+## Régression corrigée
+
+L’ancien routage des groupes imposait un port gauche ou droit sous l’en-tête,
+puis un détour susceptible de retraverser le groupe. Le trait près de
+« Prompt management » appartenait à la relation de « Data team ».
+
+Les groupes utilisent désormais les mêmes faces principales que les autres
+extrémités, sans exception pour les en-têtes. Une troisième variante vérifie
+l’arrivée sur un groupe. Toutes les variantes vérifient les faces, l’orientation
+des segments d’attache et l’absence de retour en arrière dans les quatre directions.
+
+<VisualTest {scenario} {source} bind:settings />

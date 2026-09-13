@@ -1,20 +1,10 @@
 import { compareCanonicalStrings } from '../canonical-string';
-import { defined, EndpointKind } from '../document/logic-document';
+import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { LayoutFrame } from './geometry/layout-frame';
 import { OUTER_MARGIN } from './layout-settings';
-import type {
-	Bounds,
-	LayoutElement,
-	LayoutMeasurements,
-	LayoutRelation,
-	LayoutResult,
-	Point,
-} from './layout-types';
-import {
-	assertRelationBoundsAreDisjoint,
-	routePointsWithGroupHeaders,
-} from './routing/endpoint-routes';
+import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
+import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint-routes';
 import { applyNodeRouting } from './routing/materialize-node-routes';
 import type { NodeRouting } from './routing/reserve-node-routing';
 import { anchorRouteToQuays } from './routing/route-quay-anchors';
@@ -22,7 +12,6 @@ import { anchorRouteToQuays } from './routing/route-quay-anchors';
 interface ResultInput {
 	readonly graph: LogicGraph;
 	readonly bounds: ReadonlyMap<string, Bounds>;
-	readonly measurements: LayoutMeasurements;
 	readonly routing: NodeRouting | undefined;
 	readonly frame: LayoutFrame;
 	readonly routes?: ReadonlyMap<string, readonly Point[]> | undefined;
@@ -33,7 +22,7 @@ function layoutRelation(
 	entry: LogicGraph['relations'][number],
 	planned: ReadonlyMap<string, readonly Point[]> | undefined,
 ): LayoutRelation {
-	const { relation, source: sourceEndpoint, target: targetEndpoint } = entry;
+	const { relation } = entry;
 	const source = defined(input.bounds.get(relation.from));
 	const target = defined(input.bounds.get(relation.to));
 	assertRelationBoundsAreDisjoint({
@@ -45,18 +34,10 @@ function layoutRelation(
 	});
 	let points = input.routes?.get(relation.id) ?? planned?.get(relation.id);
 	if (points === undefined) {
-		let sourceGroup;
-		let targetGroup;
-		if (sourceEndpoint.kind === EndpointKind.Group)
-			sourceGroup = input.measurements.groups.get(relation.from);
-		if (targetEndpoint.kind === EndpointKind.Group)
-			targetGroup = input.measurements.groups.get(relation.to);
-		const route = routePointsWithGroupHeaders({
+		const route = routePoints({
 			source,
 			target,
 			direction: input.frame.direction,
-			sourceGroup,
-			targetGroup,
 		});
 		points = anchorRouteToQuays(
 			route,

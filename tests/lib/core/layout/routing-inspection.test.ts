@@ -1,15 +1,40 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
-import { defined, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import {
+	defined,
+	layoutConfiguration,
+	LayoutDirection,
+} from '../../../../src/lib/core/document/logic-document';
 import { RoutingQuaySide } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { junctionFixtures } from '../../../support/fixtures/junction-fixtures';
 import { layoutDocument } from '../../../support/harnesses/layout';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
+import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
 
 describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direction) => {
+	it('does not invent a node corridor between independent group attachments', async () => {
+		const base = validLogicDocument();
+		// Two independent pairs occupy the same ranks: group → node and node → group.
+		const fixture = await layoutDocument({
+			...base,
+			layout: defined(layoutConfiguration(direction, defaultBiasFor(direction))),
+			groups: base.groups.filter(({ id }) => id !== 'container'),
+			nodes: base.nodes.filter(({ groupId }) => groupId === undefined),
+			junctions: [],
+			relations: [
+				{ id: 'group-to-node', from: 'endpoint-group', to: 'target' },
+				{ id: 'node-to-group', from: 'isolated', to: 'orphan-group' },
+			],
+		});
+		const inspected = await layoutGraph(fixture.graph, fixture.ranks, fixture.measurements, {
+			inspectRouting: true,
+		});
+		expect(inspected.relations).toEqual(fixture.layout.relations);
+		expect(inspected.routingInspection?.corridors).toEqual([]);
+	});
 	it('exposes occupied junction rails and the original content behind enlarged quays', async () => {
 		const chain = await layoutNodes({
 			...junctionFixtures.chain(direction, ['j1', 'j2', 'j3']).build(),

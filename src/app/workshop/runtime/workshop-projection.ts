@@ -1,7 +1,7 @@
 import { defined, type LogicDocument } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { routePointsWithGroupHeaders } from '../../../lib/core/layout/routing/endpoint-routes';
+import { routePoints } from '../../../lib/core/layout/routing/endpoint-routes';
 import type { CanvasProjection } from '../../web/projection/canvas-projection';
 import { layoutGraph, type LayoutMeasurements } from '../../web/projection/layout-graph';
 import { createCanvasMeasurementModel, createCanvasModel } from '../../web/ui/canvas/canvas-model';
@@ -83,12 +83,10 @@ export function projectWorkshop(
 				nodes,
 				relations: projected.relations.map((relation) => ({
 					...relation,
-					points: routePointsWithGroupHeaders({
+					points: routePoints({
 						source: defined(bounds.get(relation.from)),
 						target: defined(bounds.get(relation.to)),
 						direction: visible.layout.direction,
-						sourceGroup: measurements.groups.get(relation.from),
-						targetGroup: measurements.groups.get(relation.to),
 					}),
 				})),
 			};

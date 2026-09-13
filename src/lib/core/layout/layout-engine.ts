@@ -131,7 +131,6 @@ export function layoutWithDedicatedEngine(
 	if (routes === undefined) reserveRouting(workspace, baseGaps);
 	const result = buildLayoutResult({
 		graph,
-		measurements,
 		bounds: workspace.placement.bounds,
 		routing: workspace.routing,
 		frame,
