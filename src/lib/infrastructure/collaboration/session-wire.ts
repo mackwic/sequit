@@ -1,18 +1,12 @@
 import { decode, encode } from 'cborg';
 
 import type { SharedDocumentCommand } from '../document/shared-document-command';
+import { type ParticipantPresence, readParticipantPresence } from './participant-presence';
+export type { LocalPresence, ParticipantPresence } from './participant-presence';
 import { readSharedCommand } from './shared-command-codec';
-import {
-	wireBytes,
-	wireId,
-	wireInteger,
-	wireKeys,
-	wireObject,
-	wireString,
-	wireStrings,
-} from './wire-values';
+import { wireBytes, wireId, wireInteger, wireKeys, wireObject, wireString } from './wire-values';
 
-export const SESSION_WIRE_VERSION = 2;
+export const SESSION_WIRE_VERSION = 3;
 export const SESSION_FRAME_LIMIT = 1024 * 1024;
 
 export enum SessionMessageKind {
@@ -58,19 +52,6 @@ interface RejectMessage {
 	readonly message: string;
 }
 
-export interface LocalPresence {
-	readonly name: string;
-	readonly color: string;
-	readonly selected: readonly string[];
-}
-
-export interface ParticipantPresence extends LocalPresence {
-	readonly clientId: number;
-	readonly name: string;
-	readonly color: string;
-	readonly selected: readonly string[];
-}
-
 interface PresenceMessage {
 	readonly type: SessionMessageKind.Presence;
 	readonly participants: readonly ParticipantPresence[];
@@ -98,17 +79,6 @@ function readChange(message: Record<string, unknown>): CommandMessage | TextMess
 		type: SessionMessageKind.Change,
 		id: wireId(message['id']),
 		commands: commands.map((command: unknown) => readSharedCommand(command)),
-	};
-}
-
-function readPresence(value: unknown): ParticipantPresence {
-	const presence = wireObject(value);
-	wireKeys(presence, ['clientId', 'name', 'color', 'selected']);
-	return {
-		clientId: wireInteger(presence['clientId']),
-		name: wireString(presence['name']),
-		color: wireString(presence['color']),
-		selected: wireStrings(presence['selected']),
 	};
 }
 
@@ -145,7 +115,9 @@ function readMessage(value: unknown): SessionMessage {
 			if (!Array.isArray(message['participants'])) throw new Error('Expected presence list');
 			return {
 				type: SessionMessageKind.Presence,
-				participants: message['participants'].map((value: unknown) => readPresence(value)),
+				participants: message['participants'].map((value: unknown) =>
+					readParticipantPresence(value),
+				),
 			};
 		default:
 			throw new Error('Unknown session message');

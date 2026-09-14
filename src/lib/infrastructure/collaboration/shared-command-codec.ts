@@ -19,7 +19,7 @@ import {
 	wireStrings,
 } from './wire-values';
 
-function readTarget(value: unknown): SharedTarget {
+export function readSharedTarget(value: unknown): SharedTarget {
 	const target = wireObject(value);
 	wireKeys(target, ['kind', 'id']);
 	const kind = defined(
@@ -36,14 +36,14 @@ export function readSharedCommand(value: unknown): SharedDocumentCommand {
 			wireKeys(command, ['op', 'target', 'properties']);
 			return {
 				op: SharedCommandKind.Create,
-				target: readTarget(command['target']),
+				target: readSharedTarget(command['target']),
 				properties: wireProperties(command['properties']),
 			};
 		case SharedCommandKind.Update:
 			wireKeys(command, ['op', 'target', 'set', 'unset']);
 			return {
 				op: SharedCommandKind.Update,
-				target: readTarget(command['target']),
+				target: readSharedTarget(command['target']),
 				set: wireProperties(command['set']),
 				unset: wireStrings(command['unset']),
 			};
@@ -51,7 +51,7 @@ export function readSharedCommand(value: unknown): SharedDocumentCommand {
 			wireKeys(command, ['op', 'target', 'replacementId']);
 			const deletion = {
 				op: SharedCommandKind.Delete,
-				target: readTarget(command['target']),
+				target: readSharedTarget(command['target']),
 			} as const;
 			if (command['replacementId'] === undefined) return deletion;
 			return { ...deletion, replacementId: wireId(command['replacementId']) };

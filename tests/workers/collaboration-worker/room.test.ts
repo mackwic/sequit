@@ -9,6 +9,7 @@ import {
 	META_KEY,
 	planPersistence,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
+import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import worker from '../../../src/workers/collaboration-worker/index';
 import {
 	decodeStoredRoomState,
@@ -253,3 +254,18 @@ it.each([1005, 1006, 1015])(
 		expect((await closed).code).toBe(1000);
 	},
 );
+
+it('discards obsolete ephemeral presence attachments after a protocol upgrade', async () => {
+	const name = 'obsolete-awareness';
+	const alice = await connectRoom(name);
+	await alice.next(Message.Presence);
+	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), (_instance, state) => {
+		const socket = state.getWebSockets()[0];
+		if (socket === undefined) throw new Error('Missing socket');
+		socket.serializeAttachment(new Uint8Array([2, 255]));
+	});
+	const bob = await connectRoom(name);
+	expect((await bob.next(Message.Presence)).participants).toEqual([]);
+	alice.socket.close();
+	bob.socket.close();
+});

@@ -86,7 +86,7 @@
 		>
 		<span aria-label="Participants"
 			>{participants
-				.map((person) => `${person.name} ${person.selected.join(', ')}`)
+				.map((person) => `${person.name} ${person.selected.map((item) => item.id).join(', ')}`)
 				.join(' · ')}</span
 		>
 	</header>

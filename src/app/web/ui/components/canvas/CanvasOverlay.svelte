@@ -12,6 +12,7 @@
 		viewportElement,
 		session,
 		editor,
+		awareness,
 		hideToolbar = false,
 	}: {
 		canvas: CanvasModel | undefined;
@@ -19,6 +20,7 @@
 		session: CanvasSession;
 		hideToolbar?: boolean;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
+		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
 	let contextualNode = $derived.by(() => {
 		const key = session.contextualNodeKey;
@@ -29,6 +31,7 @@
 </script>
 
 <div class="pointer-events-none absolute inset-0 z-30 overflow-hidden" data-canvas-overlay>
+	{#if awareness && canvas && viewportElement}{@render awareness(canvas, viewportElement)}{/if}
 	{#if contextualNode && viewportElement && !hideToolbar}
 		<ContextualBar node={contextualNode} {viewportElement} {session} />
 	{/if}

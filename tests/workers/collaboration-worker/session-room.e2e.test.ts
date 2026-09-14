@@ -109,10 +109,18 @@ describe('real sessions through the Durable Object', () => {
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('Alpha modifié');
 			});
+			const rejected = vi.fn();
+			alice.subscribeToRejection(rejected);
+			alice.replaceNodeMarkdown('B', 'Dernière frappe avant suppression');
 			alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await vi.waitFor(() => {
 				expect(bob.read().nodes.map((node) => node.id)).toEqual(['A']);
 			});
+			alice.replaceNodeMarkdown('A', 'La session continue');
+			await vi.waitFor(() => {
+				expect(bob.read().nodes[0]?.markdown).toBe('La session continue');
+			});
+			expect(rejected).not.toHaveBeenCalled();
 		} finally {
 			alice.destroy();
 			bob.destroy();

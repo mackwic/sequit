@@ -23,6 +23,7 @@
 		document: openedDocument,
 		session,
 		editor,
+		awareness,
 		hideToolbar = false,
 		oncanvas,
 	}: {
@@ -31,6 +32,7 @@
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
+		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
 	let measurementModel = $state<CanvasMeasurementModel>();
 	let measurementLayer = $state<HTMLDivElement>();
@@ -325,6 +327,7 @@
 		viewportElement={viewport}
 		{session}
 		{editor}
+		{awareness}
 		{hideToolbar}
 	/>
 </div>

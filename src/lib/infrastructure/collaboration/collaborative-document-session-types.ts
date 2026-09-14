@@ -28,7 +28,7 @@ export interface CollaborativeDocumentSession {
 	dispatch(commands: readonly SharedDocumentCommand[]): string;
 	text(target: SharedTarget, field: string): Y.Text | undefined;
 	updateText(target: SharedTarget, field: string, next: string): boolean;
-	setPresence(presence: LocalPresence): void;
+	setPresence(presence: Partial<LocalPresence>): void;
 	subscribeToPresence(listener: (participants: readonly ParticipantPresence[]) => void): () => void;
 	subscribeToRejection(listener: (message: string) => void): () => void;
 	read(): LogicDocument;

@@ -224,8 +224,13 @@ export class CollaborationRoom extends DurableObject<Env> {
 			if (peer === excluded) continue;
 			const attachment: unknown = peer.deserializeAttachment();
 			if (!(attachment instanceof Uint8Array)) continue;
-			const message = decodeSessionMessage(attachment);
-			if (message.type === SessionMessageKind.Presence) participants.push(...message.participants);
+			try {
+				const message = decodeSessionMessage(attachment);
+				if (message.type === SessionMessageKind.Presence)
+					participants.push(...message.participants);
+			} catch {
+				// Presence is ephemeral; discard attachments left by an older protocol version.
+			}
 		}
 		this.send(socket, { type: SessionMessageKind.Presence, participants });
 	}

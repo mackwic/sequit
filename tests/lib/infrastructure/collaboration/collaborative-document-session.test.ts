@@ -186,13 +186,19 @@ describe('collaborative document session', () => {
 		room.sync();
 		const presence = vi.fn();
 		const stop = room.client.subscribeToPresence(presence);
-		room.client.setPresence({ name: 'Alice', color: '#123456', selected: ['A'] });
+		room.client.setPresence({
+			name: 'Alice',
+			color: '#123456',
+			selected: [{ kind: Kind.Node, id: 'A' }],
+		});
 		room.receive({
 			type: Message.Presence,
-			participants: [{ clientId: 42, name: 'Bob', color: '#abcdef', selected: ['B'] }],
+			participants: [
+				{ clientId: 42, name: 'Bob', color: '#abcdef', selected: [{ kind: Kind.Node, id: 'B' }] },
+			],
 		});
 		expect(presence).toHaveBeenLastCalledWith([
-			expect.objectContaining({ name: 'Bob', selected: ['B'] }),
+			expect.objectContaining({ name: 'Bob', selected: [{ kind: Kind.Node, id: 'B' }] }),
 		]);
 		room.receive({ type: Message.Presence, participants: [] });
 		expect(presence).toHaveBeenLastCalledWith([]);
@@ -226,7 +232,7 @@ it('retains the initial read model while connecting, and publishes local presenc
 	pair.server.subscribeToFrames((frame) => {
 		frames.push(decodeSessionMessage(frame));
 	});
-	client.setPresence({ name: 'Alice', color: '#123456', selected: ['A'] });
+	client.setPresence({ name: 'Alice', color: '#123456', selected: [{ kind: Kind.Node, id: 'A' }] });
 	expect(frames).toEqual([]);
 	pair.client.setStatus(TransportStatus.Disconnected);
 	expect(client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
@@ -326,4 +332,63 @@ it('does not publish an incomplete initial document as an editable session', () 
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	partial.destroy();
 	room.destroy();
+});
+
+it('sends buffered typing before deleting the edited node, without a later text batch', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	room.client.replaceNodeMarkdown('A', 'Dernière frappe');
+	room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
+	expect(room.sent).toHaveLength(2);
+	const [text, command] = room.sent;
+	if (text?.type !== Message.Change || !('update' in text))
+		throw new Error('Expected the text update before the command');
+	expect(text.update).toBeInstanceOf(Uint8Array);
+	expect(text).not.toHaveProperty('id');
+	expect(command).toMatchObject({
+		type: Message.Change,
+		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],
+	});
+	vi.advanceTimersByTime(500);
+	expect(room.sent).toHaveLength(2);
+	room.destroy();
+});
+
+it('coalesces pointer motion, preserves independent selection fields and clears peers when offline', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	room.client.setPresence({ pointer: { x: 1, y: 2 } });
+	room.client.setPresence({ name: 'Alice', selected: [{ kind: Kind.Node, id: 'A' }] });
+	room.client.setPresence({ pointer: { x: 30, y: 40 } });
+	expect(room.sent).toEqual([]);
+	vi.advanceTimersByTime(50);
+	expect(room.sent).toEqual([
+		{
+			type: Message.Presence,
+			participants: [
+				{
+					clientId: room.client.document.clientID,
+					name: 'Alice',
+					color: '#6f70e8',
+					selected: [{ kind: Kind.Node, id: 'A' }],
+					pointer: { x: 30, y: 40 },
+				},
+			],
+		},
+	]);
+	const peers = vi.fn();
+	room.client.subscribeToPresence(peers);
+	room.receive({
+		type: Message.Presence,
+		participants: [{ clientId: 42, name: 'Bob', color: '#123456', selected: [] }],
+	});
+	room.pair.client.setStatus(TransportStatus.Disconnected);
+	expect(peers).toHaveBeenLastCalledWith([]);
+	room.client.setPresence({ pointer: null });
+	room.destroy();
+	vi.advanceTimersByTime(50);
 });

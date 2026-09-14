@@ -45,6 +45,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	#initialized = false;
 	#initialization: Extract<SessionMessage, { type: SessionMessageKind.Initialize }> | undefined;
 	#presence: ParticipantPresence | undefined;
+	#presenceTimer: ReturnType<typeof setTimeout> | undefined;
 	#participants: readonly ParticipantPresence[] = [];
 
 	constructor(
@@ -90,9 +91,19 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		return () => this.#presenceListeners.delete(listener);
 	}
 
-	setPresence(presence: LocalPresence): void {
-		this.#presence = { ...presence, clientId: this.document.clientID };
-		this.#sendPresence();
+	setPresence(presence: Partial<LocalPresence>): void {
+		if (this.#destroyed || this.#rejected) return;
+		this.#presence = {
+			name: 'Participant',
+			color: '#6f70e8',
+			selected: [],
+			...this.#presence,
+			...presence,
+			clientId: this.document.clientID,
+		};
+		this.#presenceTimer ??= setTimeout(() => {
+			this.#sendPresence();
+		}, 50);
 	}
 
 	connectionStatus(): CollaborationStatus {
@@ -108,6 +119,8 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	dispatch(commands: readonly SharedDocumentCommand[]): string {
 		if (!this.#ready || this.#rejected || this.#destroyed)
 			throw new Error('La session doit être connectée.');
+		// Preserve gesture order: a deletion must not overtake buffered edits to its target.
+		this.#buffer.flush();
 		const id = crypto.randomUUID();
 		this.#pending.set(id, commands);
 		this.#send({ type: SessionMessageKind.Change, id, commands });
@@ -147,6 +160,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
 		this.#buffer.close();
+		this.#clearPresenceTimer();
 		this.#stopFrames();
 		this.#stopStatus();
 		this.transport.close();
@@ -171,6 +185,10 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		if (this.#rejected || this.#destroyed) return;
 		this.#ready = false;
 		if (status === TransportStatus.Connected) this.#startSync();
+		else {
+			this.#participants = [];
+			for (const listener of this.#presenceListeners) listener(this.#participants);
+		}
 	};
 
 	#startSync(): void {
@@ -260,7 +278,13 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.transport.send(encodeSessionMessage(message));
 	}
 
+	#clearPresenceTimer(): void {
+		if (this.#presenceTimer !== undefined) clearTimeout(this.#presenceTimer);
+		this.#presenceTimer = undefined;
+	}
+
 	#sendPresence(): void {
+		this.#clearPresenceTimer();
 		if (this.#presence !== undefined)
 			this.#send({ type: SessionMessageKind.Presence, participants: [this.#presence] });
 	}
@@ -269,6 +293,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#rejected = true;
 		this.#ready = false;
 		this.#buffer.close();
+		this.#clearPresenceTimer();
 		this.#pending.clear();
 		this.transport.close();
 		for (const listener of this.#rejectionListeners) listener(message);

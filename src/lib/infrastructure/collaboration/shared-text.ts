@@ -1,34 +1,16 @@
+import diff from 'fast-diff';
 import * as Y from 'yjs';
 
-function splitsSurrogatePair(value: string, index: number): boolean {
-	const before = value.charCodeAt(index - 1);
-	const after = value.charCodeAt(index);
-	const high = before >= 0xd800 && before <= 0xdbff;
-	const low = after >= 0xdc00 && after <= 0xdfff;
-	return high && low;
-}
-
-/** Preserve the unchanged characters and their CRDT identities. */
+/** Apply only changed spans, preserving CRDT identities between separate Markdown edits. */
 export function spliceSharedText(text: Y.Text, next: string): void {
-	const previous = text.toJSON();
-	let start = 0;
-	while (start < previous.length && previous[start] === next[start]) start += 1;
-	if (splitsSurrogatePair(previous, start) || splitsSurrogatePair(next, start)) start -= 1;
-	let end = previous.length;
-	let nextEnd = next.length;
-	while (end > start && nextEnd > start) {
-		const lastPrevious = previous[end - 1];
-		const lastNext = next[nextEnd - 1];
-		if (lastPrevious !== lastNext) break;
-		end -= 1;
-		nextEnd -= 1;
+	let index = 0;
+	for (const [kind, value] of diff(text.toJSON(), next)) {
+		if (kind === -1) text.delete(index, value.length);
+		else {
+			if (kind === 1) text.insert(index, value);
+			index += value.length;
+		}
 	}
-	if (splitsSurrogatePair(previous, end) || splitsSurrogatePair(next, nextEnd)) {
-		end += 1;
-		nextEnd += 1;
-	}
-	if (end > start) text.delete(start, end - start);
-	if (nextEnd > start) text.insert(start, next.slice(start, nextEnd));
 }
 
 export function isSharedTextField(key: string): boolean {

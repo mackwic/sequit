@@ -41,7 +41,14 @@ const commandMessages: SessionMessage[] = [
 	{ type: SessionMessageKind.Reject, message: 'Cette relation créerait un cycle.' },
 	{
 		type: SessionMessageKind.Presence,
-		participants: [{ clientId: 10, name: 'Alice', color: '#aa0000', selected: ['A'] }],
+		participants: [
+			{
+				clientId: 10,
+				name: 'Alice',
+				color: '#aa0000',
+				selected: [{ kind: SharedElementKind.Node, id: 'A' }],
+			},
+		],
 	},
 ];
 

@@ -329,8 +329,12 @@ test('two network sessions converge after offline editing and reconnect', async 
 	await expect(alice.locator('header').getByRole('status')).toHaveText('Connecté');
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
+	await bob.getByRole('button', { name: 'Modifier Boîte comparer', exact: true }).click();
 	await bob.getByLabel('Contenu comparer', { exact: true }).fill('Une modification hors ligne');
+	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
+	await alice.getByRole('button', { name: 'Modifier Boîte collecter', exact: true }).click();
 	await alice.getByLabel('Contenu collecter', { exact: true }).fill('Une observation distante');
+	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText(
@@ -378,30 +382,23 @@ test('creation stays usable on a narrow screen and N focuses its form', async ({
 		.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
 		.toBe(true);
 });
-test('two inline editors share live text and close independently', async ({ page }) => {
+test('modal editors reopen the shared text and close with Escape', async ({ page }) => {
 	await open(page, 'SC-COL-WORK');
 	const alice = page.getByRole('region', { name: 'Session Alice' });
 	const bob = page.getByRole('region', { name: 'Session Bob' });
 	await expect(alice.locator('header').getByRole('status')).toHaveText('Connecté');
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
 	await alice.locator('[data-node-id="comparer"]').dblclick();
-	await bob.locator('[data-node-id="comparer"]').dblclick();
 	const a = alice.getByLabel('Texte de comparer', { exact: true });
-	const b = bob.getByLabel('Texte de comparer', { exact: true });
-	await expect(a).toHaveCount(1);
-	await expect(b).toHaveCount(1);
-	await b.fill('Le texte de Bob');
-	await expect(a).toHaveValue('Le texte de Bob');
-	await alice.getByRole('button', { name: 'Fermer', exact: true }).click();
-	await expect(a).toHaveCount(0);
-	await expect(b).toHaveValue('Le texte de Bob');
-	await alice.locator('[data-node-id="comparer"]').dblclick();
 	await a.fill('Le texte commun');
-	await expect(b).toHaveValue('Le texte commun');
+	await a.press('Escape');
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await bob.locator('[data-node-id="comparer"]').dblclick();
+	const b = bob.getByLabel('Texte de comparer', { exact: true });
+	await expect(b).toHaveText('Le texte commun');
+	await b.fill('Le texte de Bob');
 	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
-	await expect(a).toHaveValue('Le texte commun');
-	await expect(b).toHaveCount(0);
-	await expect(bob.locator('[data-node-id="comparer"]')).toContainText('Le texte commun');
+	await expect(alice.locator('[data-node-id="comparer"]')).toContainText('Le texte de Bob');
 });
 
 test('composed creation and multi-duplication each undo and redo in one step', async ({ page }) => {
@@ -554,8 +551,10 @@ test('closing an offline editor preserves text and permits editing another node'
 	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
 	await bob.locator('[data-node-id="collecter"]').dblclick();
 	await bob.getByLabel('Texte de collecter', { exact: true }).fill('Deuxième texte');
+	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText('Envoi à conserver');
 	await expect(alice.locator('[data-node-id="collecter"]')).toContainText('Deuxième texte');
-	await expect(bob.getByLabel('Texte de collecter', { exact: true })).toHaveValue('Deuxième texte');
+	await bob.locator('[data-node-id="collecter"]').dblclick();
+	await expect(bob.getByLabel('Texte de collecter', { exact: true })).toHaveText('Deuxième texte');
 });

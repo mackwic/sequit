@@ -9,6 +9,7 @@ import {
 	writeSyncResponse,
 } from '../../../src/lib/infrastructure/collaboration/sync-steps';
 import { YjsCollection } from '../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import { SharedElementKind as Kind } from '../../../src/lib/infrastructure/document/shared-document-command';
 import { connectRoom, initializeRoom } from './room-client';
 
 describe('CBOR session protocol contract', () => {
@@ -35,10 +36,12 @@ describe('CBOR session protocol contract', () => {
 		await bob.next(Message.Presence);
 		alice.send({
 			type: Message.Presence,
-			participants: [{ clientId: 1, name: 'Alice', color: '#112233', selected: ['A'] }],
+			participants: [
+				{ clientId: 1, name: 'Alice', color: '#112233', selected: [{ kind: Kind.Node, id: 'A' }] },
+			],
 		});
 		expect((await bob.next(Message.Presence)).participants).toEqual([
-			{ clientId: 1, name: 'Alice', color: '#112233', selected: ['A'] },
+			{ clientId: 1, name: 'Alice', color: '#112233', selected: [{ kind: Kind.Node, id: 'A' }] },
 		]);
 		alice.socket.close();
 		expect((await bob.next(Message.Presence)).participants).toEqual([]);

@@ -54,7 +54,10 @@ const messageArbitrary: fc.Arbitrary<SessionMessage> = fc.oneof(
 						clientId: integer,
 						name: fc.string(),
 						color: fc.string(),
-						selected: fc.array(id, { maxLength: 8 }),
+						selected: fc.array(
+							fc.record({ kind: fc.constant(SharedElementKind.Node), id }, plain),
+							{ maxLength: 8 },
+						),
 					},
 					plain,
 				),
