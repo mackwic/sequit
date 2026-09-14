@@ -212,8 +212,8 @@ Le format textuel reste la représentation canonique portable. Le document compl
 
 Le protocole WebSocket en version `4` utilise des enveloppes CBOR, limitées à
 1 Mio. Ses messages sont `initialize`, `sync`, `change`, `commit`, `reject` et
-`retry` et `presence`. Le [plan de première implémentation](collaborative-session-plan.md)
-trace les décisions et leurs ajustements.
+`retry` et `presence`. Les règles de reprise, de collecte et de santé de la connexion
+sont détaillées dans [la documentation de résilience](collaboration-resilience.md).
 
 Le Durable Object valide les changements dans un document candidat jetable. Les
 commandes structurelles créent, modifient ou suppriment les éléments ; les gestes
@@ -301,8 +301,8 @@ sont isolées du document ; une sélection volumineuse est tronquée avant stock
 La cible de validation est de 1 000 boîtes et 50 personnes connectées sur ordinateur,
 majoritairement en observation, sous Chrome, Firefox et Safari ; consultation sur
 mobile. Les essais locaux de diffusion ne constituent pas une garantie de charge
-d’un déploiement Cloudflare. Les résultats sont consignés dans le
-[plan de remédiation](remediation-2026-09-14.md).
+d’un déploiement Cloudflare. Les scénarios reproductibles sont consignés dans
+[la documentation de résilience](collaboration-resilience.md#vérifications-reproductibles).
 
 ## Architecture technique retenue
 
