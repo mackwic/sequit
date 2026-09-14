@@ -1,7 +1,10 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import type { LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	type LogicDocument,
+	nodeDescriptionFields,
+} from '../../../../src/lib/core/document/logic-document';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -37,6 +40,28 @@ function reversedCollections(document: LogicDocument): LogicDocument {
 }
 
 describe('generated persistent documents', () => {
+	it('preserves description Markdown and treats an empty description as absent', () => {
+		fc.assert(
+			fc.property(fc.option(fc.string(), { nil: undefined }), (description) => {
+				const source = validLogicDocument();
+				const nodes = source.nodes.map((node) => {
+					if (description === undefined) return node;
+					return { ...node, description };
+				});
+				const document = { ...source, nodes };
+				const normalized = {
+					...source,
+					nodes: source.nodes.map((node) => ({ ...node, ...nodeDescriptionFields(description) })),
+				};
+				expect(parseSequitToml(serializeSequitToml(document))).toEqual({
+					ok: true,
+					value: canonicalDocument(normalized),
+				});
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('serializes optional group membership for junctions', () => {
 		const source = serializeSequitToml(validLogicDocument());
 		expect(source).toContain('group = "container"');

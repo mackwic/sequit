@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
 import { bindQuillMarkdown } from '../../../../src/app/web/document/quill-editor';
+import {
+	quillEditorOptions,
+	QuillEditorProfile,
+} from '../../../../src/app/web/document/quill-editor-config';
 import { spliceSharedText } from '../../../../src/lib/infrastructure/collaboration/shared-text';
 
 const cleanup: (() => void)[] = [];
@@ -13,25 +17,32 @@ afterEach(() => {
 	document.body.replaceChildren();
 	vi.restoreAllMocks();
 });
-function setup(markdown = 'Alpha') {
+function setup(markdown = 'Alpha', profile = QuillEditorProfile.Description) {
 	const doc = new Y.Doc();
 	const text = new Y.Text();
 	doc.getMap('nodes').set('markdown', text);
 	text.insert(0, markdown);
 	const host = document.createElement('div');
 	document.body.appendChild(host);
-	const quill = new Quill(host, { modules: { toolbar: false, history: { userOnly: true } } });
-	const binding = bindQuillMarkdown(quill, {
-		text,
-		edit: (next) => {
-			doc.transact(() => {
-				spliceSharedText(text, next);
-			});
-		},
-		merge: (update) => {
-			Y.applyUpdate(doc, update);
-		},
+	const quill = new Quill(host, {
+		...quillEditorOptions(profile),
+		modules: { toolbar: false, history: { userOnly: true } },
 	});
+	const binding = bindQuillMarkdown(
+		quill,
+		{
+			text,
+			edit: (next) => {
+				doc.transact(() => {
+					spliceSharedText(text, next);
+				});
+			},
+			merge: (update) => {
+				Y.applyUpdate(doc, update);
+			},
+		},
+		profile,
+	);
 	cleanup.push(() => {
 		binding.destroy();
 		doc.destroy();
@@ -127,4 +138,66 @@ it('round trips adjacent formatting and multiline structures through the real cl
 	view.quill.setContents(content, 'user');
 	view.editor.value = view.text.toJSON();
 	expect(view.quill.getContents().diff(content).ops).toEqual([]);
+});
+
+it.each([
+	'![Diagramme important](https://example.test/diagram.png "titre")\n\nConclusion',
+	'```typescript\nconst answer = 42;\n```\n\nConclusion',
+	'| A | B |\n|---|---|\n| un | deux |\n\nConclusion',
+	'- [x] Terminé\n- [ ] À faire\n\nConclusion',
+	'<aside data-info="private">Texte conservé</aside>\n\nConclusion',
+])('preserves unsupported source during a local edit: %s', (markdown) => {
+	const view = setup(markdown);
+	expect(view.editor.sourceMode).toBe(true);
+	expect(view.quill.getText()).toBe(`${markdown}\n`);
+	view.quill.insertText(view.quill.getLength() - 1, '!', 'user');
+	expect(view.text.toJSON()).toBe(`${markdown}!`);
+});
+
+it('switches to source when a peer introduces unsupported content and preserves selection positions', () => {
+	const view = setup('Alpha');
+	const change = vi.fn();
+	view.editor.addEventListener('modechange', change);
+	view.text.insert(5, '\n\n| A | B |\n|---|---|\n| one | two |');
+	expect(view.editor.sourceMode).toBe(true);
+	expect(change).toHaveBeenCalledOnce();
+	expect(view.editor.toEditor(3)).toBe(3);
+	expect(view.editor.toMarkdown(3)).toBe(3);
+	view.quill.insertText(0, 'Local ', 'user');
+	expect(view.text.toJSON()).toBe('Local Alpha\n\n| A | B |\n|---|---|\n| one | two |');
+	view.text.insert(0, 'Peer ');
+	expect(view.quill.getText()).toBe(`${view.text.toJSON()}\n`);
+});
+
+it('restricts the body to inline emphasis and preserves existing advanced content as source', () => {
+	const view = setup('Alpha', QuillEditorProfile.Body);
+	view.quill.formatText(0, 5, 'underline', true, 'user');
+	expect(view.text.toJSON()).toBe('<u>Alpha</u>');
+	view.editor.value = view.text.toJSON();
+	expect(view.editor.sourceMode).toBe(false);
+	expect(view.quill.root.querySelector('u')?.textContent).toBe('Alpha');
+	const heading = setup('# Heading', QuillEditorProfile.Body);
+	expect(heading.editor.sourceMode).toBe(true);
+	expect(heading.text.toJSON()).toBe('# Heading');
+});
+
+it('keeps titles as plain text and permits switching descriptions to source without writing', () => {
+	const plain = setup('A *literal* title', QuillEditorProfile.Plain);
+	expect(plain.quill.getText()).toBe('A *literal* title\n');
+	plain.quill.insertText(0, '# ', 'user');
+	expect(plain.text.toJSON()).toBe('# A *literal* title');
+	const view = setup('**Alpha**');
+	view.editor.showSource();
+	view.editor.showSource();
+	expect(view.text.toJSON()).toBe('**Alpha**');
+	expect(view.quill.getText()).toBe('**Alpha**\n');
+	view.quill.insertText(9, '!', 'user');
+	expect(view.text.toJSON()).toBe('**Alpha**!');
+});
+
+it('retains image alternative text in the supported rich description format', () => {
+	const view = setup('![A diagram](https://example.test/image.png)');
+	expect(view.editor.sourceMode).toBe(false);
+	view.quill.insertText(view.quill.getLength() - 1, ' caption', 'user');
+	expect(view.text.toJSON()).toBe('![A diagram](https://example.test/image.png) caption');
 });

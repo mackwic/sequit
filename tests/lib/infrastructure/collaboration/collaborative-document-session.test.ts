@@ -1,3 +1,4 @@
+import { encode } from 'cborg';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
@@ -7,8 +8,13 @@ import {
 	createCollaborativeDocumentSession,
 } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session';
 import {
+	RetryableSessionFailure,
+	SessionFailureCode,
+} from '../../../../src/lib/infrastructure/collaboration/session-failure';
+import {
 	decodeSessionMessage,
 	encodeSessionMessage,
+	SESSION_WIRE_VERSION,
 	type SessionMessage,
 	SessionMessageKind as Message,
 } from '../../../../src/lib/infrastructure/collaboration/session-wire';
@@ -56,6 +62,147 @@ function setup(initialized = true) {
 
 afterEach(() => {
 	vi.useRealTimers();
+	vi.unstubAllGlobals();
+});
+
+it('keeps unsent text and command identity through a retryable service failure', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const id = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	const original = room.sent[0];
+	const failure = new RetryableSessionFailure(SessionFailureCode.StorageUnavailable, 'Retry');
+	room.receive({
+		type: Message.Retry,
+		code: failure.code,
+		message: failure.message,
+	});
+	room.client.replaceNodeMarkdown('A', 'Retained');
+	room.client.setPresence({ selected: [{ kind: Kind.Node, id: 'A' }] });
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+	vi.advanceTimersByTime(50);
+	expect(room.sent.at(-1)?.type).toBe(Message.Presence);
+	vi.advanceTimersByTime(950);
+	expect(room.sent.some((message) => message.type === Message.Sync)).toBe(true);
+	room.sync();
+	expect(
+		room.sent.filter((message) => message.type === Message.Change && 'commands' in message),
+	).toEqual([original, original]);
+	expect(room.client.read().nodes[0]?.markdown).toBe('Retained');
+	expect(
+		room.sent.some(
+			(message) => message.type === Message.Change && 'id' in message && message.id === id,
+		),
+	).toBe(true);
+	room.destroy();
+});
+
+it('edits the shared document title only when the document target identity matches', () => {
+	const room = setup();
+	room.sync();
+	const target = { kind: Kind.Document, id: 'room' };
+	const title = room.client.text(target, 'title');
+	expect(title).toBeInstanceOf(Y.Text);
+	expect(
+		room.client.updateText({ kind: Kind.Document, id: 'another-room' }, 'title', 'Wrong'),
+	).toBe(false);
+	expect(room.client.updateText(target, 'title', 'Renamed')).toBe(true);
+	expect(room.client.read().title).toBe('Renamed');
+	expect(room.client.text(target, 'title')).toBe(title);
+	room.destroy();
+});
+
+it('retains only the latest presence while offline and publishes it when the connection returns', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	room.pair.client.setStatus(TransportStatus.Disconnected);
+	room.client.setPresence({ pointer: { x: 1, y: 2 } });
+	vi.advanceTimersByTime(50);
+	room.client.setPresence({ pointer: { x: 3, y: 4 } });
+	vi.advanceTimersByTime(50);
+	expect(room.sent).toEqual([]);
+	room.pair.client.setStatus(TransportStatus.Connected);
+	expect(room.sent.find((message) => message.type === Message.Presence)).toMatchObject({
+		participants: [{ pointer: { x: 3, y: 4 } }],
+	});
+	room.sync();
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	room.destroy();
+});
+
+it('rejects invalid local gestures without consuming a sequence or poisoning reconnect', () => {
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	expect(() => room.client.dispatch([])).toThrow();
+	room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	expect(room.sent[0]).toMatchObject({ type: Message.Change, sequence: 1 });
+	room.sync();
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(room.sent.filter((message) => message.type === Message.Change)).toEqual([
+		room.sent[0],
+		room.sent[0],
+	]);
+	room.destroy();
+});
+
+it('ignores malformed presence fields without rejecting the document session', () => {
+	const room = setup();
+	room.sync();
+	room.pair.server.send(
+		encode([
+			SESSION_WIRE_VERSION,
+			{
+				type: Message.Presence,
+				participants: [],
+				unexpected: true,
+			},
+		]),
+	);
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(room.client.replaceNodeMarkdown('A', 'Still editable')).toBe(true);
+	room.destroy();
+});
+
+it('isolates failing document, presence, decision and rejection subscribers', () => {
+	const room = setup();
+	room.sync();
+	const reported = vi.fn();
+	vi.stubGlobal('reportError', reported);
+	const fail = () => {
+		throw new Error('Broken view');
+	};
+	room.client.subscribe(fail);
+	const changed = vi.fn();
+	room.client.subscribe(changed);
+	room.client.subscribeToPresence(fail);
+	const presence = vi.fn();
+	room.client.subscribeToPresence(presence);
+	room.client.subscribeToDecisions(fail);
+	const decision = vi.fn();
+	room.client.subscribeToDecisions(decision);
+	room.client.subscribeToRejection(fail);
+	const rejection = vi.fn();
+	room.client.subscribeToRejection(rejection);
+	room.client.replaceNodeMarkdown('A', 'Local');
+	room.receive({ type: Message.Presence, participants: [] });
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		id: 'command',
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(changed).toHaveBeenCalledOnce();
+	expect(decision).toHaveBeenCalledOnce();
+	room.receive({ type: Message.Reject, message: 'Domain rejection' });
+	expect(rejection).toHaveBeenCalledWith('Domain rejection');
+	expect(presence).toHaveBeenCalled();
+	expect(reported).toHaveBeenCalled();
+	room.destroy();
 });
 
 describe('collaborative document session', () => {
@@ -124,10 +271,10 @@ describe('collaborative document session', () => {
 		expect(() => room.client.dispatch(commands)).toThrow();
 		room.pair.client.setStatus(TransportStatus.Connected);
 		room.sync();
-		expect(room.sent.filter((message) => message.type === Message.Change)).toEqual([
-			{ type: Message.Change, id, commands },
-			{ type: Message.Change, id, commands },
-		]);
+		const replays = room.sent.filter((message) => message.type === Message.Change);
+		expect(replays).toHaveLength(2);
+		expect(replays[0]).toMatchObject({ id, commands, sequence: 1 });
+		expect(replays[1]).toEqual(replays[0]);
 		const decisions = vi.fn();
 		const stop = room.client.subscribeToDecisions(decisions);
 		room.receive({

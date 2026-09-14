@@ -10,6 +10,7 @@ import { channelPoints } from './materialize-node-routes';
 import { allocateQuays, type QuayAllocation, sharedSourceQuays } from './quay-allocation';
 import { crossingCorridors } from './routing-corridors';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
+import { directRouteFitsSpace, type DirectRoutingSpace } from './routing-space';
 
 interface LayerChannel extends ChannelRouting {
 	readonly layer: number;
@@ -33,11 +34,21 @@ interface LayerInput extends LayerGeometry {
 	readonly junctionIds: ReadonlySet<string>;
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly sizes: ReadonlyMap<string, Size>;
+	readonly alignedPassages?: ReadonlyMap<string, number> | undefined;
+}
+
+interface ReservationInput extends LayerInput {
+	readonly space: DirectRoutingSpace;
 }
 
 function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerChannel[] {
 	const { graph, layers, bounds, frame } = input;
-	const links = layerLinks(graph, layers, bounds, frame.vertical);
+	const links = layerLinks(graph, layers, bounds, {
+		vertical: frame.vertical,
+		alignedPassages: input.alignedPassages,
+		sourceOffsets: quays.sourceOffsets,
+		targetOffsets: quays.targetOffsets,
+	});
 	const sourceQuays = sharedSourceQuays(
 		links.map(({ relation }) => relation),
 		quays.sourceOffsets,
@@ -59,7 +70,10 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 					...geometry,
 					offsets: quays.sourceOffsets,
 				}),
-				target: linkCoordinate(link, false, layer, { ...geometry, offsets: quays.targetOffsets }),
+				target: linkCoordinate(link, false, layer, {
+					...geometry,
+					offsets: quays.targetOffsets,
+				}),
 			};
 		});
 		channels.push({ layer, links: crossing, ...routeChannel(endpoints) });
@@ -132,8 +146,8 @@ export function materializeLayers(
 }
 
 /** Reserve faces before placement; channels are planned from the resulting transverse positions. */
-export function allocateLayerQuays(input: LayerInput): QuayAllocation | undefined {
-	const { graph, layers, bounds, frame, ranks, junctionIds, sizes } = input;
+export function allocateLayerQuays(input: ReservationInput): QuayAllocation | undefined {
+	const { graph, layers, bounds, frame, junctionIds, sizes } = input;
 	const crossings = crossingCorridors({
 		graph,
 		ranks: layers.byId,
@@ -141,25 +155,38 @@ export function allocateLayerQuays(input: LayerInput): QuayAllocation | undefine
 		vertical: frame.vertical,
 		includeJunctions: true,
 	});
-	const skipsRows = graph.relations.some(({ relation }) => {
-		const source = defined(ranks.get(relation.from));
-		const target = defined(ranks.get(relation.to));
-		return source > target + 1;
+	const passages = layerLinks(graph, layers, bounds, {
+		vertical: frame.vertical,
 	});
-	const skipsJunctions = graph.relations.some(({ relation }) => {
-		if (!junctionIds.has(relation.from) && !junctionIds.has(relation.to)) return false;
-		const source = defined(layers.byId.get(relation.from));
-		const target = defined(layers.byId.get(relation.to));
-		return source > target + 1;
+	const direct = passages.every(({ relation, sourceLayer, targetLayer }) => {
+		if (sourceLayer === targetLayer + 1) return true;
+		const sourceRank = defined(input.ranks.get(relation.from));
+		const targetRank = defined(input.ranks.get(relation.to));
+		if (sourceRank > targetRank + 1) return false;
+		if (junctionIds.has(relation.from) || junctionIds.has(relation.to)) return false;
+		return directRouteFitsSpace(input.space, relation.from, relation.to);
 	});
-	const direct = !skipsRows && !skipsJunctions;
-	if (crossings.length === 0 && direct) return undefined;
-	const links = layerLinks(graph, layers, bounds, frame.vertical).map((link) => {
-		const geometry = { bounds, vertical: frame.vertical, offsets: new Map<string, number>() };
+	if (crossings.length === 0 && direct) {
+		// A later ordinary reservation would move the rails and invalidate the direct passages.
+		const ordinaryCrossings = crossingCorridors({
+			graph,
+			ranks: input.ranks,
+			bounds,
+			vertical: frame.vertical,
+		});
+		if (ordinaryCrossings.length === 0) return undefined;
+	}
+	const links = passages.map((link) => {
+		const geometry = {
+			bounds,
+			vertical: frame.vertical,
+			offsets: new Map<string, number>(),
+		};
+		// Order each face by the opposite side of its adjacent channel, including long passages.
 		return {
 			relation: link.relation,
-			source: linkCoordinate(link, true, link.sourceLayer, geometry),
-			target: linkCoordinate(link, false, link.targetLayer, geometry),
+			source: linkCoordinate(link, true, link.targetLayer + 1, geometry),
+			target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
 		};
 	});
 	return allocateQuays({

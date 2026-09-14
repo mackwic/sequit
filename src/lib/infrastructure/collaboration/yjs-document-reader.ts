@@ -15,12 +15,14 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	nodeDescriptionFields,
 	PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { validateLogicDocument } from '../../core/document/validate-logic-document';
 import { YjsCollection } from './yjs-document-schema';
 import {
 	readOptionalString,
+	readOptionalText,
 	readRequiredLayoutOrder,
 	readString,
 	readText,
@@ -128,6 +130,9 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 	if (natureId === undefined || layoutOrder === undefined) return undefined;
 	const node: LogicNode = {
 		...style,
+		...nodeDescriptionFields(
+			readOptionalText(entity.get('description'), ['nodes', id, 'description'], context),
+		),
 		kind: EndpointKind.Node,
 		id,
 		natureId,

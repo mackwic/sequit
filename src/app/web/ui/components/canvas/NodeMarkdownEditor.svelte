@@ -35,16 +35,18 @@
 		const controls = [
 			...dialog.querySelectorAll<HTMLElement>('textarea:not(:disabled), button:not(:disabled)'),
 		];
-		const first = controls[0];
-		const last = controls.at(-1);
-		if (first === undefined || last === undefined) return;
-		if (event.shiftKey && document.activeElement === first) {
-			event.preventDefault();
-			last.focus();
-		} else if (!event.shiftKey && document.activeElement === last) {
-			event.preventDefault();
-			first.focus();
+		if (controls.length === 0) return;
+		const current = controls.findIndex((control) => control === document.activeElement);
+		let next = 0;
+		if (event.shiftKey) next = controls.length - 1;
+		if (current >= 0) {
+			let step = 1;
+			if (event.shiftKey) step = -1;
+			next = (current + step + controls.length) % controls.length;
 		}
+		// Include buttons even when the platform's native Tab preference skips them.
+		event.preventDefault();
+		controls[next]?.focus();
 	}
 </script>
 

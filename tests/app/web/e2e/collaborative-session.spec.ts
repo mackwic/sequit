@@ -1,56 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
-import * as Y from 'yjs';
 
-import {
-	decodeSessionMessage,
-	encodeSessionMessage,
-	SessionMessageKind,
-} from '../../../../src/lib/infrastructure/collaboration/session-wire';
-import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import {
-	CollaborativeFixture,
-	collaborativeFixture,
-} from '../../../support/fixtures/collaborative-document';
-
-async function seedRoom(room: string, fixture: CollaborativeFixture): Promise<void> {
-	const document = new Y.Doc();
-	importLogicDocument(document, collaborativeFixture(fixture, room));
-	const frame = encodeSessionMessage({
-		type: SessionMessageKind.Initialize,
-		id: 'fixture',
-		update: Y.encodeStateAsUpdate(document),
-	});
-	document.destroy();
-	const socket = new WebSocket(`ws://127.0.0.1:8788/collab/${room}`);
-	socket.binaryType = 'arraybuffer';
-	await new Promise<void>((resolve, reject) => {
-		const timer = setTimeout(() => {
-			socket.close();
-			reject(new Error('Room initialization timed out'));
-		}, 10000);
-		socket.addEventListener('open', () => {
-			socket.send(frame);
-		});
-		socket.addEventListener('message', (event) => {
-			if (!(event.data instanceof ArrayBuffer)) return;
-			const message = decodeSessionMessage(new Uint8Array(event.data));
-			if (message.type === SessionMessageKind.Commit) {
-				clearTimeout(timer);
-				socket.close();
-				resolve();
-			}
-			if (message.type === SessionMessageKind.Reject) {
-				clearTimeout(timer);
-				socket.close();
-				reject(new Error(message.message));
-			}
-		});
-		socket.addEventListener('error', () => {
-			clearTimeout(timer);
-			reject(new Error('Room connection failed'));
-		});
-	});
-}
+import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
+import { seedRoom } from './collaboration-room';
 
 async function edit(page: Page, label = 'Boîte A'): Promise<void> {
 	const current = page.getByRole('dialog');
@@ -88,7 +39,10 @@ test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs',
 	await aliceText.press('Shift+End');
 	await expect(bob.locator('.remote-text-cursor[data-participant="Alice"]')).toBeVisible();
 	await expect(bob.locator('.remote-text-selection').first()).toBeVisible();
-	await alice.getByRole('button', { name: 'Gras', exact: true }).click();
+	await alice
+		.locator('[data-text-field="markdown"]')
+		.getByRole('button', { name: 'Gras', exact: true })
+		.click();
 	await expect(bobText.locator('strong')).toHaveText('Alpha modifié');
 	await closeEditor(alice);
 	await expect(bob.locator('.remote-text-cursor[data-participant="Alice"]')).toHaveCount(0);
@@ -191,7 +145,7 @@ test('Groupe ouvert : repli partagé, dissolution et nouvelle disposition', asyn
 	await alice.getByRole('button', { name: 'Replier G', exact: true }).click();
 	await expect(bob.getByLabel('État de G', { exact: true })).toHaveText('closed');
 	await expect(bob.locator('[data-node-id="A"]')).toHaveCount(0);
-	await expect(bob.getByRole('button', { name: 'Modifier Boîte A', exact: true })).toHaveCount(1);
+	await expect(bob.getByRole('button', { name: 'Modifier Boîte A', exact: true })).toHaveCount(0);
 	await alice.getByRole('button', { name: 'Dissoudre G', exact: true }).click();
 	await expect(bob.getByLabel('État de G', { exact: true })).toHaveCount(0);
 	await expect(bob.locator('[data-node-id="A"]')).toBeVisible();
@@ -237,7 +191,14 @@ test('Deux boîtes : insertions concurrentes, curseur stable et autres champs pa
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
 	await edit(alice);
 	await edit(bob);
-	await aliceText.press('End');
+	await aliceText.focus();
+	await aliceText.evaluate((element) => {
+		const end = element.lastElementChild?.lastChild;
+		const selection = window.getSelection();
+		if (end?.nodeType !== Node.TEXT_NODE || selection === null)
+			throw new Error('Expected the final text node');
+		selection.collapse(end, end.textContent?.length ?? 0);
+	});
 	await aliceText.pressSequentially(' fin');
 	await bobText.press('Home');
 	await bobText.pressSequentially('Début ');

@@ -6,10 +6,17 @@ export function routePoints({
 	source,
 	target,
 	direction,
+	rail,
+	sourceOffset = 0,
+	targetOffset = 0,
 }: {
 	readonly source: Bounds;
 	readonly target: Bounds;
 	readonly direction: LayoutDirection;
+	/** Physical primary-axis coordinate of the reserved transverse rail. */
+	readonly rail?: number | undefined;
+	readonly sourceOffset?: number | undefined;
+	readonly targetOffset?: number | undefined;
 }): readonly Point[] {
 	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
 		let sourceY = source.y;
@@ -18,9 +25,9 @@ export function routePoints({
 			sourceY += source.height;
 			targetY = target.y;
 		}
-		const start = { x: source.x + source.width / 2, y: sourceY };
-		const end = { x: target.x + target.width / 2, y: targetY };
-		const middle = (start.y + end.y) / 2;
+		const start = { x: source.x + source.width / 2 + sourceOffset, y: sourceY };
+		const end = { x: target.x + target.width / 2 + targetOffset, y: targetY };
+		const middle = rail ?? (start.y + end.y) / 2;
 		return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
 	}
 	let sourceX = source.x;
@@ -29,9 +36,9 @@ export function routePoints({
 		sourceX += source.width;
 		targetX = target.x;
 	}
-	const start = { x: sourceX, y: source.y + source.height / 2 };
-	const end = { x: targetX, y: target.y + target.height / 2 };
-	const middle = (start.x + end.x) / 2;
+	const start = { x: sourceX, y: source.y + source.height / 2 + sourceOffset };
+	const end = { x: targetX, y: target.y + target.height / 2 + targetOffset };
+	const middle = rail ?? (start.x + end.x) / 2;
 	return [start, { x: middle, y: start.y }, { x: middle, y: end.y }, end];
 }
 

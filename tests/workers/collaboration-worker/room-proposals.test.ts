@@ -29,6 +29,8 @@ describe('room authority', () => {
 		const command = {
 			type: Message.Change,
 			id: 'link',
+			sessionId: 'test-session',
+			sequence: 1,
 			commands: [
 				{
 					op: Op.Create,
@@ -49,8 +51,8 @@ describe('room authority', () => {
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
 			expect(await state.storage.get(META_KEY)).toMatchObject({
 				commit: 2,
-				acceptedProposals: { link: 2 },
 			});
+			expect(await state.storage.get('command-session:test-session')).toBe(1);
 		});
 		alice.send(command);
 		const replay = await alice.next(Message.Commit);
@@ -104,6 +106,8 @@ describe('room authority', () => {
 		alice.send({
 			type: Message.Change,
 			id: 'cycle',
+			sessionId: 'test-session',
+			sequence: 1,
 			commands: [
 				{
 					op: Op.Create,
@@ -149,15 +153,18 @@ describe('room authority', () => {
 			alice.send({
 				type: Message.Change,
 				id: 'delete',
+				sessionId: 'test-session',
+				sequence: 1,
 				commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
 			});
-			const rejection = await alice.next(Message.Reject);
-			if (failure instanceof Error) expect(rejection.message).toContain('Storage unavailable');
-			else expect(rejection.message).toBe('La modification a été refusée.');
+			const rejection = await alice.next(Message.Retry);
+			expect(rejection.code).toBe('storage-unavailable');
 			await runInDurableObject(stub, async (_instance, state) => {
 				vi.restoreAllMocks();
 				expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
+				expect(await state.storage.get('command-session:test-session')).toBeUndefined();
 			});
+			alice.socket.close();
 			doc.destroy();
 		},
 	);
@@ -168,6 +175,8 @@ it('requires initialization and rejects a snapshot for another room', async () =
 	empty.send({
 		type: Message.Change,
 		id: 'premature',
+		sessionId: 'test-session',
+		sequence: 1,
 		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],
 	});
 	expect((await empty.next(Message.Reject)).message).toContain('Initialisez');
@@ -180,7 +189,7 @@ it('requires initialization and rejects a snapshot for another room', async () =
 	doc.destroy();
 });
 
-it('rejects malformed initialization, empty-room text and malformed presence', async () => {
+it('rejects malformed initialization and empty-room text but ignores malformed presence', async () => {
 	const initial = await connectRoom('malformed-initial');
 	initial.send({ type: Message.Initialize, id: 'bad', update: new Uint8Array([255]) });
 	await initial.next(Message.Reject);
@@ -192,7 +201,10 @@ it('rejects malformed initialization, empty-room text and malformed presence', a
 	text.destroy();
 	const presence = await connectRoom('invalid-presence');
 	presence.send({ type: Message.Presence, participants: [] });
-	await presence.next(Message.Reject);
+	const initialized = await initializeRoom('invalid-presence', presence);
+	expect(readLogicDocument(initialized).ok).toBe(true);
+	initialized.destroy();
+	presence.socket.close();
 });
 
 it('keeps the batch atomic when a later command fails and ignores messages queued after rejection', async () => {
@@ -202,6 +214,8 @@ it('keeps the batch atomic when a later command fails and ignores messages queue
 	client.send({
 		type: Message.Change,
 		id: 'batch',
+		sessionId: 'test-session',
+		sequence: 1,
 		commands: [
 			{ op: Op.Update, target: { kind: Kind.Node, id: 'A' }, set: { color: '#aabbcc' }, unset: [] },
 			{ op: Op.Delete, target: { kind: Kind.Node, id: 'missing' } },
@@ -210,6 +224,8 @@ it('keeps the batch atomic when a later command fails and ignores messages queue
 	client.send({
 		type: Message.Change,
 		id: 'after-rejection',
+		sessionId: 'test-session',
+		sequence: 1,
 		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
 	});
 	await client.next(Message.Reject);

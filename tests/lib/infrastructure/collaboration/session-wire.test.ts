@@ -1,7 +1,12 @@
 import { decode, encode } from 'cborg';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import {
+	GroupState,
+	LayoutBias,
+	LayoutDirection,
+} from '../../../../src/lib/core/document/logic-document';
+import { SessionFailureCode } from '../../../../src/lib/infrastructure/collaboration/session-failure';
 import {
 	decodeSessionMessage,
 	encodeSessionMessage,
@@ -16,18 +21,24 @@ import {
 	SharedElementKind,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
 
-const target = { kind: SharedElementKind.Group, id: 'G' };
+const target = { kind: SharedElementKind.Group, id: 'G' } as const;
 const commandMessages: SessionMessage[] = [
 	{ type: SessionMessageKind.Sync, payload: new Uint8Array([0, 1, 0]) },
 	{ type: SessionMessageKind.Change, update: new Uint8Array([0, 0]) },
 	{
 		type: SessionMessageKind.Change,
 		id: 'gesture',
+		sessionId: 'session',
+		sequence: 1,
 		commands: [
 			{ op: SharedCommandKind.Create, target, properties: { label: 'Groupe' } },
-			{ op: SharedCommandKind.Update, target, set: { state: 'closed' }, unset: [] },
-			{ op: SharedCommandKind.Delete, target },
-			{ op: SharedCommandKind.Delete, target, replacementId: 'replacement' },
+			{ op: SharedCommandKind.Update, target, set: { state: GroupState.Closed }, unset: [] },
+			{ op: SharedCommandKind.Delete, target: { kind: SharedElementKind.Node, id: 'A' } },
+			{
+				op: SharedCommandKind.Delete,
+				target: { kind: SharedElementKind.Nature, id: 'N' },
+				replacementId: 'replacement',
+			},
 			{ op: SharedCommandKind.Group, id: 'G', label: 'Groupe', members: ['A', 'B'] },
 			{ op: SharedCommandKind.Ungroup, id: 'G' },
 			{
@@ -39,6 +50,16 @@ const commandMessages: SessionMessage[] = [
 	{ type: SessionMessageKind.Commit, commit: 1, update: new Uint8Array([0, 0]) },
 	{ type: SessionMessageKind.Commit, commit: 1, id: 'gesture', update: new Uint8Array([0, 0]) },
 	{ type: SessionMessageKind.Reject, message: 'Cette relation créerait un cycle.' },
+	{
+		type: SessionMessageKind.Reject,
+		code: SessionFailureCode.InvalidDocument,
+		message: 'Invalid document',
+	},
+	{
+		type: SessionMessageKind.Retry,
+		code: SessionFailureCode.StorageUnavailable,
+		message: 'Try again',
+	},
 	{
 		type: SessionMessageKind.Presence,
 		participants: [
@@ -57,10 +78,32 @@ function frame(message: unknown): Uint8Array {
 }
 
 function invalidCommand(command: unknown): Uint8Array {
-	return frame({ type: 'change', id: 'gesture', commands: [command] });
+	return frame({
+		type: 'change',
+		id: 'gesture',
+		sessionId: 'session',
+		sequence: 1,
+		commands: [command],
+	});
 }
 
 describe('CBOR session protocol', () => {
+	it.each([0, -1, 0.5, Number.MAX_SAFE_INTEGER + 1])(
+		'requires positive safe command sequence %s',
+		(sequence) => {
+			expect(() =>
+				decodeSessionMessage(
+					frame({
+						type: 'change',
+						id: 'command',
+						sessionId: 'session',
+						sequence,
+						commands: [{ op: 'ungroup', id: 'G' }],
+					}),
+				),
+			).toThrow();
+		},
+	);
 	it.each(commandMessages)(
 		'transports $type with binary updates and typed operations',
 		(message) => {
@@ -90,6 +133,7 @@ describe('CBOR session protocol', () => {
 		{ type: 'commit', commit: -1, update: new Uint8Array() },
 		{ type: 'commit', commit: 0.5, update: new Uint8Array() },
 		{ type: 'reject', message: 5 },
+		{ type: 'retry', message: 'Try again', code: 'unknown' },
 		{ type: 'presence', participants: [{ clientId: 1, name: 'A', color: '#000', selected: 5 }] },
 		{ type: 'presence', participants: [{ clientId: 1, name: 'A', color: '#000', selected: [5] }] },
 	])('rejects malformed messages before dispatch: %j', (message) => {

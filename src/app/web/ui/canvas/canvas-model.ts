@@ -57,7 +57,13 @@ export interface RenderedCanvasJunction extends UnpositionedCanvasJunction {
 	readonly bounds: Bounds;
 }
 
-export interface RenderedCanvasRelation {
+interface CanvasRelationProjection {
+	readonly sourceRelationIds: readonly string[];
+	readonly canChangeFrom: boolean;
+	readonly canChangeTo: boolean;
+}
+
+export interface RenderedCanvasRelation extends Partial<CanvasRelationProjection> {
 	readonly id: string;
 	readonly from: string;
 	readonly to: string;
@@ -76,6 +82,7 @@ export interface CanvasModel {
 
 export interface CanvasNavigationProjection {
 	readonly document: LogicDocument;
+	readonly relationProjections?: ReadonlyMap<string, CanvasRelationProjection>;
 	readonly ranks: {
 		readonly byEndpointId: ReadonlyMap<string, number>;
 	};
@@ -157,6 +164,12 @@ export function createCanvasModel(
 			...junction,
 			bounds: boundsFor(junction.id),
 		})),
-		relations: layout.relations.map(({ id, from, to, points }) => ({ id, from, to, points })),
+		relations: layout.relations.map(({ id, from, to, points }) => ({
+			id,
+			from,
+			to,
+			points,
+			...navigation?.relationProjections?.get(id),
+		})),
 	};
 }

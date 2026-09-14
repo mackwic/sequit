@@ -1,0 +1,17 @@
+<script>
+ import { scenario } from './group-junction.scenario';
+ import source from './group-junction.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Frontière de groupe et jonction extérieure
+
+Le groupe contient un nœud et rejoint une jonction extérieure. Les variantes inversent
+la relation et ajoutent un groupe imbriqué. Chaque calcul traverse le vrai pipeline.
+
+L’enveloppe du groupe, son en-tête et ses dimensions minimales doivent laisser le canal
+libre devant la jonction. Les attaches restent sur les faces principales ; les groupes
+conservent leur contenu et ne deviennent pas des étapes logiques supplémentaires.
+
+<VisualTest {scenario} {source} bind:settings />

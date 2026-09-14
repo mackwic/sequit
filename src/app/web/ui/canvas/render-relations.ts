@@ -1,5 +1,6 @@
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
-import { relationColors } from './relation-colors';
+import { parallelSegmentsAreClose, relationColors } from './relation-colors';
+import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
 
 const BRIDGE_RADIUS = 6;
 const BRIDGE_CLEARANCE = 6;
@@ -239,8 +240,9 @@ function recordIntersection(
 
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
+	palette: RoutePalette = DEFAULT_ROUTE_PALETTE,
 ): readonly RenderedRelation[] {
-	const colorCrossings: [string, string][] = [];
+	const colorContacts: [string, string][] = [];
 	const previousSegments: Segment[] = [];
 	const crossings = new Map<Segment, Point[]>();
 	const byRelation = relations.map(segmentsFor);
@@ -254,20 +256,22 @@ export function renderRelationPaths(
 		for (const segment of segments) {
 			for (const previous of previousSegments) {
 				const pair: [string, string] = [owners.get(segment) ?? '', owners.get(previous) ?? ''];
-				const intersects = intersection(segment, previous) !== undefined;
-				colorCrossings.push(...(intersects ? [pair] : []));
+				const needsContrast =
+					intersection(segment, previous) !== undefined ||
+					parallelSegmentsAreClose(segment, previous);
+				colorContacts.push(...(needsContrast ? [pair] : []));
 				recordIntersection(crossings, segment, previous, allSegments);
 			}
 		}
 		previousSegments.push(...segments);
 	}
-	const colors = relationColors(relations, colorCrossings);
+	const colors = relationColors(relations, colorContacts, palette);
 	return relations.map((relation, relationIndex) => {
 		const segments = byRelation[relationIndex] ?? [];
 		return {
 			...relation,
 			path: pathFor(segments, crossings, allSegments),
-			color: colors.get(relation.id) ?? 'var(--content-relation-1)',
+			color: colors.get(relation.id) ?? palette[0],
 		};
 	});
 }

@@ -1,0 +1,26 @@
+<script>
+ import { scenario } from './mixed-branch-alignment.scenario';
+ import source from './mixed-branch-alignment.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Branches mixtes et trajets droits
+
+R porte trois branches P, Q et S. La rangée suivante mélange deux enfants de P,
+un enfant de Q et deux enfants de S. G est plus étroit pour reproduire une
+enveloppe de groupe compacte, représentée ici comme une boîte atomique.
+
+**Cas 1 — V → P.** Parmi U et V, V peut se placer dans l’axe de P. Le trajet
+devient droit en conservant U à sa gauche et l’espacement entre frères.
+
+**Cas 2 — W → Q.** W peut rejoindre directement son unique parent Q.
+Les branches voisines gardent leur place et au moins 36 px de séparation.
+
+Les deux alignements doivent coexister, sans croisement ni collision avec les
+boîtes. L’ordre R, P, Q, S, U, V, W, G, X reste documentaire : le moteur déplace
+les boîtes sans les permuter. L’enveloppe homogène de P, Q et S reste centrée
+sur R. Les assertions s’appliquent dans les quatre directions et leurs biais
+compatibles.
+
+<VisualTest {scenario} {source} bind:settings />

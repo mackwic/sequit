@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		JunctionOperator,
 		LAYOUT_BIASES,
 		LAYOUT_DIRECTIONS,
 		layoutConfiguration,
@@ -51,7 +52,7 @@
 			dispatch({
 				op: Op.Create,
 				target: { kind: Kind.Junction, id: crypto.randomUUID() },
-				properties: { operator: 'xor' },
+				properties: { operator: JunctionOperator.Xor },
 			});
 		}}>Ajouter une jonction</button
 	>

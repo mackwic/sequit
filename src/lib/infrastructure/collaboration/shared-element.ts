@@ -17,7 +17,7 @@ const COLLECTIONS: Readonly<Record<SharedElementKind, YjsCollection>> = {
 
 const FIELDS: Readonly<Record<SharedElementKind, readonly string[]>> = {
 	[SharedElementKind.Document]: ['title'],
-	[SharedElementKind.Node]: ['markdown', 'natureId', 'groupId', 'color', 'icon'],
+	[SharedElementKind.Node]: ['markdown', 'description', 'natureId', 'groupId', 'color', 'icon'],
 	[SharedElementKind.Group]: ['label', 'groupId', 'state'],
 	[SharedElementKind.Nature]: ['label', 'color', 'icon'],
 	[SharedElementKind.Junction]: ['operator', 'groupId'],
@@ -37,7 +37,7 @@ export function sharedElement(document: Y.Doc, target: SharedTarget): Y.Map<unkn
 	return defined(elementCollection(document, target.kind).get(target.id), 'Élément introuvable.');
 }
 
-function assertProperties(
+export function assertSharedProperties(
 	kind: SharedElementKind,
 	properties: Readonly<Record<string, string>>,
 ): void {
@@ -52,8 +52,11 @@ export function updateSharedElement(
 		readonly unset: readonly string[];
 	},
 ): void {
-	assertProperties(change.target.kind, change.set);
-	assertProperties(change.target.kind, Object.fromEntries(change.unset.map((key) => [key, ''])));
+	assertSharedProperties(change.target.kind, change.set);
+	assertSharedProperties(
+		change.target.kind,
+		Object.fromEntries(change.unset.map((key) => [key, ''])),
+	);
 	const fields = [...Object.keys(change.set), ...change.unset];
 	if (fields.some(isSharedTextField)) throw new Error('Use a Yjs update to edit text');
 	const entity = sharedElement(document, change.target);
@@ -65,7 +68,7 @@ export function initialElementProperties(
 	kind: SharedElementKind,
 	properties: Readonly<Record<string, string>>,
 ): Record<string, unknown> {
-	assertProperties(kind, properties);
+	assertSharedProperties(kind, properties);
 	return Object.fromEntries(
 		Object.entries(properties).map(([key, value]) => [key, sharedFieldValue(key, value)]),
 	);

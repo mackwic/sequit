@@ -75,8 +75,11 @@ export function allocateQuays(input: {
 	const enlarged = new Map(input.sizes);
 	const outgoing = new Map<string, CorridorLink[]>();
 	const incoming = new Map<string, CorridorLink[]>();
+	const corridorLinks = new Map<string, CorridorLink>();
 	for (const corridor of input.corridors)
-		for (const { relation } of corridor.links) {
+		for (const link of corridor.links) {
+			const { relation } = link;
+			corridorLinks.set(relation.id, link);
 			if (!outgoing.has(relation.from)) outgoing.set(relation.from, []);
 			if (!incoming.has(relation.to)) incoming.set(relation.to, []);
 		}
@@ -87,7 +90,7 @@ export function allocateQuays(input: {
 		const source = outgoing.get(relation.from);
 		const target = incoming.get(relation.to);
 		if (source === undefined && target === undefined) continue;
-		const link = {
+		const link = corridorLinks.get(relation.id) ?? {
 			relation,
 			source: defined(centers.get(relation.from)),
 			target: defined(centers.get(relation.to)),

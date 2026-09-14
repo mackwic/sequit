@@ -1,0 +1,27 @@
+<script>
+ import { scenario } from './junction-obstacle.scenario';
+ import source from './junction-obstacle.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Une relation évite la jonction voisine
+
+G rejoint S en passant par J. X rejoint directement S : ces deux nœuds occupent
+des rangs documentaires voisins, mais une couche physique contenant J les sépare.
+
+La relation X → S doit contourner J. L’absence de croisement entre relations ne
+suffit pas à rendre le passage libre : la jonction reste un obstacle pour les
+relations qui ne lui sont pas attachées.
+
+Les assertions préservent les rangs et l’ordre de G puis X. Elles exigent des
+attaches sur les faces principales, des routes orthogonales sans retour en
+arrière et un dégagement de 24 px autour des obstacles, dont J.
+Le scénario s’exécute dans les quatre directions et les deux biais compatibles.
+
+À gauche de J, les passages de U → P, V → P et W → Q sont libres. Ces routes
+restent dans l’enveloppe transversale de leurs propres extrémités ; elles ne
+contournent pas toute la jonction à droite. V → P reste droite ; W → Q peut
+conserver un coude local pour préserver l’espacement entre les boîtes.
+
+<VisualTest {scenario} {source} bind:settings />

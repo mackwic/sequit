@@ -1,12 +1,19 @@
 import { decode, encode } from 'cborg';
 
 import type { SharedDocumentCommand } from '../document/shared-document-command';
-import { type ParticipantPresence, readParticipantPresence } from './participant-presence';
+import { type CommandSequence, readCommandSequence } from './command-sequence';
+import {
+	InvalidPresenceError,
+	MAX_PRESENCE_PARTICIPANTS,
+	type ParticipantPresence,
+	readParticipantPresence,
+} from './participant-presence';
+import { SessionFailureCode } from './session-failure';
 export type { LocalPresence, ParticipantPresence } from './participant-presence';
 import { readSharedCommand } from './shared-command-codec';
 import { wireBytes, wireId, wireInteger, wireKeys, wireObject, wireString } from './wire-values';
 
-export const SESSION_WIRE_VERSION = 3;
+export const SESSION_WIRE_VERSION = 4;
 export const SESSION_FRAME_LIMIT = 1024 * 1024;
 
 export enum SessionMessageKind {
@@ -15,6 +22,7 @@ export enum SessionMessageKind {
 	Change = 'change',
 	Commit = 'commit',
 	Reject = 'reject',
+	Retry = 'retry',
 	Presence = 'presence',
 }
 
@@ -29,7 +37,7 @@ interface SyncMessage {
 	readonly payload: Uint8Array;
 }
 
-interface CommandMessage {
+interface CommandMessage extends CommandSequence {
 	readonly type: SessionMessageKind.Change;
 	readonly id: string;
 	readonly commands: readonly SharedDocumentCommand[];
@@ -50,6 +58,13 @@ interface CommitMessage {
 interface RejectMessage {
 	readonly type: SessionMessageKind.Reject;
 	readonly message: string;
+	readonly code?: SessionFailureCode;
+}
+
+interface RetryMessage {
+	readonly type: SessionMessageKind.Retry;
+	readonly message: string;
+	readonly code: SessionFailureCode;
 }
 
 interface PresenceMessage {
@@ -64,6 +79,7 @@ export type SessionMessage =
 	| TextMessage
 	| CommitMessage
 	| RejectMessage
+	| RetryMessage
 	| PresenceMessage;
 
 function readChange(message: Record<string, unknown>): CommandMessage | TextMessage {
@@ -71,13 +87,14 @@ function readChange(message: Record<string, unknown>): CommandMessage | TextMess
 		wireKeys(message, ['type', 'update']);
 		return { type: SessionMessageKind.Change, update: wireBytes(message['update']) };
 	}
-	wireKeys(message, ['type', 'id', 'commands']);
+	wireKeys(message, ['type', 'id', 'commands', 'sessionId', 'sequence']);
 	const commands: unknown = message['commands'];
 	if (!Array.isArray(commands)) throw new Error('Expected commands array');
 	if (commands.length === 0 || commands.length > 100) throw new Error('Expected 1 to 100 commands');
 	return {
 		type: SessionMessageKind.Change,
 		id: wireId(message['id']),
+		...readCommandSequence(message),
 		commands: commands.map((command: unknown) => readSharedCommand(command)),
 	};
 }
@@ -108,17 +125,28 @@ function readMessage(value: unknown): SessionMessage {
 			return { ...result, id: wireId(message['id']) };
 		}
 		case SessionMessageKind.Reject:
-			wireKeys(message, ['type', 'message']);
-			return { type: SessionMessageKind.Reject, message: wireString(message['message']) };
+		case SessionMessageKind.Retry: {
+			wireKeys(message, ['type', 'message', 'code']);
+			const result = { type: message['type'], message: wireString(message['message']) };
+			if (result.type === SessionMessageKind.Reject && message['code'] === undefined)
+				return { ...result, type: SessionMessageKind.Reject };
+			const code = Object.values(SessionFailureCode).find((value) => value === message['code']);
+			if (code === undefined) throw new Error('Unknown session failure code');
+			return { ...result, code };
+		}
 		case SessionMessageKind.Presence:
-			wireKeys(message, ['type', 'participants']);
-			if (!Array.isArray(message['participants'])) throw new Error('Expected presence list');
-			return {
-				type: SessionMessageKind.Presence,
-				participants: message['participants'].map((value: unknown) =>
-					readParticipantPresence(value),
-				),
-			};
+			try {
+				wireKeys(message, ['type', 'participants']);
+				if (!Array.isArray(message['participants'])) throw new Error('Expected presence list');
+				return {
+					type: SessionMessageKind.Presence,
+					participants: message['participants']
+						.slice(0, MAX_PRESENCE_PARTICIPANTS)
+						.map((value: unknown) => readParticipantPresence(value)),
+				};
+			} catch {
+				throw new InvalidPresenceError('Invalid ephemeral presence');
+			}
 		default:
 			throw new Error('Unknown session message');
 	}

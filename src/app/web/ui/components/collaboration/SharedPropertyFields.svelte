@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { readSharedCommand } from '../../../../../lib/infrastructure/collaboration/shared-command-codec';
 	import {
 		SharedCommandKind,
 		type SharedDocumentCommand,
@@ -9,11 +10,13 @@
 		properties,
 		connected,
 		dispatch,
+		disabledFields = [],
 	}: {
 		target: SharedTarget;
 		properties: Readonly<Record<string, string | undefined>>;
 		connected: boolean;
 		dispatch: (command: SharedDocumentCommand) => void;
+		disabledFields?: readonly string[];
 	} = $props();
 	const labels: Readonly<Record<string, string>> = {
 		color: 'Couleur',
@@ -24,6 +27,7 @@
 		from: 'Origine',
 		to: 'Destination',
 	};
+	let error = $state('');
 	function update(key: string, value: string): void {
 		let set: Readonly<Record<string, string>> = { [key]: value };
 		let unset: readonly string[] = [];
@@ -31,7 +35,13 @@
 			set = {};
 			unset = [key];
 		}
-		dispatch({ op: SharedCommandKind.Update, target, set, unset });
+		try {
+			const command = readSharedCommand({ op: SharedCommandKind.Update, target, set, unset });
+			dispatch(command);
+			error = '';
+		} catch (cause) {
+			error = String(cause);
+		}
 	}
 </script>
 
@@ -39,7 +49,7 @@
 	<label
 		>{labels[key] ?? key}<input
 			aria-label={`${labels[key] ?? key} de ${target.id}`}
-			disabled={!connected}
+			disabled={!connected || disabledFields.includes(key)}
 			value={value ?? ''}
 			onchange={(event) => {
 				update(key, event.currentTarget.value);
@@ -47,6 +57,7 @@
 		/></label
 	>
 {/each}
+{#if error}<p role="alert">{error}</p>{/if}
 
 <style>
 	label {

@@ -24,7 +24,7 @@
 		name,
 		path = '/atelier/collaboration',
 	}: { source: string; room: string; name: string; path?: Pathname } = $props();
-	let model = $state<LogicDocument>();
+	let model = $state.raw<LogicDocument>();
 	let client = $state<CollaborativeDocumentSession>();
 	let participants = $state<readonly ParticipantPresence[]>([]);
 	let transport: WorkshopTransport | undefined;
@@ -45,8 +45,8 @@
 		const updateStatus = (): void => {
 			status = current.connectionStatus();
 			if (status === CollaborationStatus.Ready) {
+				model ??= current.read();
 				initialized = true;
-				model = current.read();
 			}
 		};
 		const cleanup = [

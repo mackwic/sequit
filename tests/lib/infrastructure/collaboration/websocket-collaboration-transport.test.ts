@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TransportStatus } from '../../../../src/lib/infrastructure/collaboration/collaboration-transport';
+import {
+	SOCKET_HANDSHAKE_TIMEOUT_MS,
+	SOCKET_HEARTBEAT_INTERVAL_MS,
+	SOCKET_HEARTBEAT_TIMEOUT_MS,
+} from '../../../../src/lib/infrastructure/collaboration/socket-health';
 import { createWebSocketCollaborationTransport } from '../../../../src/lib/infrastructure/collaboration/websocket-collaboration-transport';
 import {
 	createFakeWebSocketFactory,
@@ -17,6 +22,97 @@ afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
+
+it('reconnects when the ready handshake never arrives, even if the socket remains open', () => {
+	vi.useFakeTimers();
+	const fake = createFakeWebSocketFactory();
+	const transport = createWebSocketCollaborationTransport(
+		'room',
+		'https://example.test',
+		fake.factory,
+	);
+	vi.advanceTimersByTime(SOCKET_HANDSHAKE_TIMEOUT_MS);
+	expect(transport.status()).toBe(TransportStatus.Disconnected);
+	expect(firstSocket(fake.sockets).closeCodes).toEqual([1000]);
+	vi.advanceTimersByTime(1_000);
+	expect(fake.sockets).toHaveLength(2);
+	transport.close();
+});
+
+it('checks idle connections, accepts pong and reconnects a silent half-open socket', () => {
+	vi.useFakeTimers();
+	const fake = createFakeWebSocketFactory();
+	const transport = createWebSocketCollaborationTransport(
+		'room',
+		'https://example.test',
+		fake.factory,
+	);
+	const socket = firstSocket(fake.sockets);
+	socket.emitMessage('{"type":"ready"}');
+	vi.advanceTimersByTime(SOCKET_HEARTBEAT_INTERVAL_MS);
+	expect(socket.sent).toEqual(['{"type":"ping"}']);
+	socket.emitMessage('{"type":"pong"}');
+	vi.advanceTimersByTime(SOCKET_HEARTBEAT_INTERVAL_MS + SOCKET_HEARTBEAT_TIMEOUT_MS);
+	expect(transport.status()).toBe(TransportStatus.Disconnected);
+	vi.advanceTimersByTime(1_000);
+	expect(fake.sockets).toHaveLength(2);
+	transport.close();
+});
+
+it('isolates failing transport subscribers without starving synchronization', () => {
+	const fake = createFakeWebSocketFactory();
+	const transport = createWebSocketCollaborationTransport(
+		'room',
+		'https://example.test',
+		fake.factory,
+	);
+	const reported = vi.fn();
+	vi.stubGlobal('reportError', reported);
+	transport.subscribeToFrames(() => {
+		throw new Error('Broken view');
+	});
+	transport.subscribeToStatus(() => {
+		throw new Error('Broken status widget');
+	});
+	const frame = vi.fn();
+	transport.subscribeToFrames(frame);
+	const socket = firstSocket(fake.sockets);
+	socket.emitMessage('{"type":"ready"}');
+	socket.emitMessage(new Uint8Array([1]).buffer);
+	expect(transport.status()).toBe(TransportStatus.Connected);
+	expect(frame).toHaveBeenCalledOnce();
+	expect(reported).toHaveBeenCalledTimes(2);
+	vi.stubGlobal('reportError', undefined);
+	socket.emitMessage(new Uint8Array([2]).buffer);
+	expect(frame).toHaveBeenCalledTimes(2);
+	transport.close();
+});
+
+it.each(['document', 'heartbeat'])(
+	'recovers from a socket send failure on the %s channel',
+	(channel) => {
+		vi.useFakeTimers();
+		const fake = createFakeWebSocketFactory();
+		const transport = createWebSocketCollaborationTransport(
+			'room',
+			'https://example.test',
+			fake.factory,
+		);
+		const socket = firstSocket(fake.sockets);
+		socket.emitMessage('{"type":"ready"}');
+		vi.spyOn(socket, 'send').mockImplementation(() => {
+			throw new Error('Network failure');
+		});
+		if (channel === 'document') {
+			transport.send(new Uint8Array([1]));
+			socket.emitClose();
+		} else vi.advanceTimersByTime(SOCKET_HEARTBEAT_INTERVAL_MS);
+		expect(transport.status()).toBe(TransportStatus.Disconnected);
+		vi.advanceTimersByTime(1000);
+		expect(fake.sockets).toHaveLength(2);
+		transport.close();
+	},
+);
 
 describe('websocket collaboration transport', () => {
 	it('uses the browser WebSocket constructor by default', () => {
@@ -142,7 +238,7 @@ describe('websocket collaboration transport', () => {
 			if (socket === undefined) throw new Error('Expected socket');
 			socket.emitMessage(JSON.stringify({ type: 'ready' }));
 			socket.emitClose();
-			vi.runAllTimers();
+			vi.advanceTimersByTime(1_000);
 		}
 		expect(fake.sockets).toHaveLength(8);
 		expect(statuses).toContain(TransportStatus.Disconnected);
@@ -166,7 +262,7 @@ describe('websocket collaboration transport', () => {
 		if (oldMessage === undefined) throw new Error('Expected the old socket message listener');
 		oldMessage({ data: JSON.stringify({ type: 'ready' }) });
 		expect(transport.status()).toBe(TransportStatus.Disconnected);
-		vi.runAllTimers();
+		vi.advanceTimersByTime(1_000);
 		const currentSocket = fake.sockets.at(-1);
 		if (currentSocket === undefined) throw new Error('Expected a replacement socket');
 		currentSocket.emitMessage(JSON.stringify({ type: 'ready' }));
@@ -189,7 +285,7 @@ describe('websocket collaboration transport', () => {
 		socket.emitClose();
 		transport.close();
 		transport.close();
-		vi.runAllTimers();
+		vi.advanceTimersByTime(1_000);
 		expect(fake.sockets).toHaveLength(1);
 		expect(socket.closeCodes).toEqual([]);
 	});

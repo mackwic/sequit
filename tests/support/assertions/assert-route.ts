@@ -1,7 +1,9 @@
 import type { LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
+import { identityOf, validateBox } from '../harnesses/box-geometry';
 import type { BoxGeometry } from './assert-box';
 import { VisualAssertionError } from './assertion-error';
 import { routeSegments } from './route-geometry';
+import { extent, minimumMetric } from './routing-measurements';
 
 function onBoundary(point: Point | undefined, box: BoxGeometry): boolean {
 	const { x, y, width, height } = box.bounds;
@@ -22,6 +24,7 @@ interface RouteAssertions {
 	isOrthogonal(): RouteAssertions;
 	isStraightAlong(axis: 'x' | 'y'): RouteAssertions;
 	isAttachedTo(source: BoxGeometry, target: BoxGeometry): RouteAssertions;
+	staysWithin(boundary: BoxGeometry, options: { readonly axis: 'x' | 'y' }): RouteAssertions;
 }
 
 /** VL-401/517: calculated route geometry and attachment to the intended endpoint contours. */
@@ -47,6 +50,20 @@ export function AssertRoute(route: LayoutRelation): RouteAssertions {
 				throw new Error(`Route "${route.id}" is not attached to source "${source.id}".`);
 			if (route.to !== target.id || !onBoundary(route.points.at(-1), target))
 				throw new Error(`Route "${route.id}" is not attached to target "${target.id}".`);
+			return assertions;
+		},
+		staysWithin(boundary, { axis }) {
+			validateBox(boundary);
+			routeSegments(route);
+			const start = boundary.bounds[axis];
+			const end = start + extent(boundary.bounds, axis);
+			for (const point of route.points)
+				minimumMetric(
+					`Route "${route.id}" dans l’enveloppe sur ${axis}`,
+					Math.min(point[axis] - start, end - point[axis]),
+					0,
+					{ routes: [route.id], referenceBoxes: identityOf(boundary).ids },
+				);
 			return assertions;
 		},
 	};

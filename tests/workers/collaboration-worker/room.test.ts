@@ -231,7 +231,7 @@ it('does not publish a migration when persistence fails', async () => {
 			acceptedProposals: new Map<string, number>(),
 		};
 		await expect(restoreRoomState(state.storage, empty, name)).rejects.toThrow(
-			'Storage unavailable',
+			'temporairement indisponible',
 		);
 		transaction.mockRestore();
 		source.destroy();

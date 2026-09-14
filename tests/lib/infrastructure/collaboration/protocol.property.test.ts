@@ -10,6 +10,7 @@ import {
 import {
 	SharedCommandKind,
 	SharedElementKind,
+	SharedProperty,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
 
 const bytes = fc.uint8Array({ maxLength: 64 });
@@ -27,16 +28,18 @@ const messageArbitrary: fc.Arbitrary<SessionMessage> = fc.oneof(
 		{
 			type: fc.constant(Message.Change),
 			id,
+			sessionId: id,
+			sequence: fc.integer({ min: 1, max: Number.MAX_SAFE_INTEGER }),
 			commands: fc.array(
 				fc.record(
 					{
 						op: fc.constant(SharedCommandKind.Update),
-						target: fc.record(
-							{ kind: fc.constantFrom(...Object.values(SharedElementKind)), id },
-							plain,
-						),
+						target: fc.record({ kind: fc.constant(SharedElementKind.Node), id }, plain),
 						set: fc.record({ color: fc.string() }, plain),
-						unset: fc.array(fc.string(), { maxLength: 4 }),
+						unset: fc.uniqueArray(
+							fc.constantFrom(SharedProperty.GroupId, SharedProperty.Color, SharedProperty.Icon),
+							{ maxLength: 3 },
+						),
 					},
 					plain,
 				),

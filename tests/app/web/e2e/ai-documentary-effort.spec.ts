@@ -104,10 +104,12 @@ test.describe('AI for documentary effort', () => {
 					Math.abs(
 						groupHeader.getBoundingClientRect().top - dataTeam.getBoundingClientRect().top,
 					) <= 2,
-				groupAttachmentBelowHeader:
-					groupHeader !== null &&
-					groupAttachment.y > dataTeamTop + groupHeader.offsetHeight &&
-					(groupAttachment.x === dataTeamLeft || groupAttachment.x === dataTeamRight),
+				groupAttachmentOnPrincipalFace:
+					Math.abs(groupAttachment.y - dataTeamTop) < 0.1 &&
+					groupAttachment.x > dataTeamLeft &&
+					groupAttachment.x < dataTeamRight &&
+					Math.abs((groupRelationPoints[2] ?? Number.NaN) - groupAttachment.x) < 0.1 &&
+					(groupRelationPoints[3] ?? Number.NaN) < groupAttachment.y,
 			};
 		});
 
@@ -117,7 +119,7 @@ test.describe('AI for documentary effort', () => {
 			emptyGroupHasBounds: true,
 			rootsBeforeChildren: true,
 			groupTitleAtVisualTop: true,
-			groupAttachmentBelowHeader: true,
+			groupAttachmentOnPrincipalFace: true,
 		});
 	});
 

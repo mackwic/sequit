@@ -115,3 +115,28 @@ it('exposes the route, expectation and observed axes as structured diagnostic fi
 		});
 	}
 });
+
+it.each(['x', 'y'] as const)('checks every route point against the envelope along %s', (axis) => {
+	const boundary: BoxGeometry = {
+		id: 'envelope(a,b)',
+		identity: { kind: 'envelope', ids: ['a', 'b'] },
+		bounds: { x: 0, y: 0, width: 200, height: 200 },
+	};
+	const assertions = AssertRoute(route);
+	expect(assertions.staysWithin(boundary, { axis })).toBe(assertions);
+	for (const outside of [-1, 201]) {
+		let points = [
+			{ x: 50, y: 60 },
+			{ x: outside, y: 60 },
+			{ x: outside, y: 160 },
+			{ x: 50, y: 160 },
+		];
+		if (axis === 'y') points = points.map(({ x, y }) => ({ x: y, y: x }));
+		expect(() => AssertRoute({ ...route, points }).staysWithin(boundary, { axis })).toThrow(
+			'dans l’enveloppe',
+		);
+	}
+	expect(() => AssertRoute({ ...route, points: [] }).staysWithin(boundary, { axis })).toThrow(
+		'no route',
+	);
+});

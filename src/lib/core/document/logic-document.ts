@@ -112,7 +112,16 @@ export interface LogicNode extends ContentStyle {
 	readonly natureId: string;
 	readonly groupId?: string;
 	readonly markdown: string;
+	/** Longer Markdown explanation; excluded from the compact canvas body. */
+	readonly description?: string;
 	readonly layoutOrder: OrderKey;
+}
+
+export function nodeDescriptionFields(description: string | undefined): {
+	readonly description?: string;
+} {
+	if (description === undefined || description === '') return {};
+	return { description };
 }
 
 export interface NewLogicNode extends Omit<LogicNode, keyof NewLogicNodeExcludedFields> {

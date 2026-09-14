@@ -10,6 +10,8 @@ import { ITEM_GAP, JUNCTION_CLEARANCE } from '../layout-settings';
 import type { Size } from '../layout-types';
 import type { JunctionPlacement } from '../structure/junction-structure';
 import type { PlacementRows } from '../structure/placement-rows';
+import { alignComponentCenters } from './align-component-centers';
+import type { BranchAlignment } from './align-mixed-row';
 import { centerRelatedRows } from './center-related-rows';
 import { junctionCrossPositions, railSpan } from './junction-rails';
 import { measureRows, type RowMetrics } from './row-metrics';
@@ -30,6 +32,8 @@ export interface ComponentPlacementInput {
 	readonly parents: ReadonlyMap<string, readonly string[]> | undefined;
 	readonly junctions?: ReadonlyMap<string, JunctionPlacement>;
 	readonly channelGaps?: ReadonlyMap<number, readonly number[]> | undefined;
+	readonly transverseCenters?: ReadonlyMap<string, number> | undefined;
+	readonly branchAlignment?: BranchAlignment | undefined;
 }
 
 interface RowPlacement {
@@ -118,7 +122,10 @@ export function placeComponent(input: ComponentPlacementInput): ComponentLayout 
 			parents: input.parents,
 			bounds,
 			vertical,
+			alignment: input.branchAlignment,
 		});
+	if (input.transverseCenters !== undefined)
+		crossLength = alignComponentCenters(bounds, input.transverseCenters, vertical, crossLength);
 	if (vertical) return { boundsById: bounds, width: crossLength, height: metrics.primaryLength };
 	return { boundsById: bounds, width: metrics.primaryLength, height: crossLength };
 }

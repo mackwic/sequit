@@ -16,6 +16,7 @@ function syncCollection(
 		const values = Object.fromEntries(
 			Object.entries(entity).filter(([key]) => key !== 'id' && key !== 'kind'),
 		);
+		if (name === YjsCollection.Nodes) values['description'] ??= '';
 		let map = target.get(entity.id);
 		if (map === undefined) {
 			map = createYjsEntityMap({});

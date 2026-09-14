@@ -25,16 +25,30 @@
 	let { canvas, zoom, session }: { canvas: CanvasModel; zoom: number; session: CanvasSession } =
 		$props();
 
-	let renderedRelations = $derived(renderRelationPaths(canvas.relations));
+	let relations = $derived(canvas.relations);
+	let renderedRelations = $derived(renderRelationPaths(relations));
 	let extent = $derived(scaledStageExtent(canvas, zoom));
 	let stage = $state<HTMLDivElement>();
 	let entityIndex = $derived(createCanvasEntityIndex(canvas));
 	let tabOrder = $derived(canvasNodeTabOrder(canvas, entityIndex));
+	let focusedKey = $state<EntityKey>();
 	let tabEntryKey = $derived.by(() => {
+		if (focusedKey !== undefined && entityIndex.has(focusedKey)) return focusedKey;
 		const first = tabOrder[0];
-		if (first === undefined) return undefined;
+		if (first === undefined) return entityIndex.keys().next().value;
 		return entityKey(first.kind, first.id);
 	});
+	function rememberFocus(event: FocusEvent): void {
+		if (!(event.target instanceof Element)) return;
+		const key = event.target.getAttribute('data-canvas-entity-key');
+		if (key === null) return;
+		const ref = entityRefFromKey(key);
+		focusedKey = entityKey(ref.kind, ref.id);
+	}
+	function tabIndexFor(ref: EntityRef): number {
+		if (entityKey(ref.kind, ref.id) === tabEntryKey) return 0;
+		return -1;
+	}
 
 	function handleClick(event: MouseEvent, ref: EntityRef) {
 		event.stopPropagation();
@@ -83,24 +97,6 @@
 		const currentKey = currentElement?.getAttribute('data-canvas-entity-key');
 		if (currentKey === null || currentKey === undefined || !stage) return;
 
-		if (event.code === 'Tab') {
-			if (tabOrder.length === 0) return;
-			const currentIndex = tabOrder.findIndex((ref) => entityKey(ref.kind, ref.id) === currentKey);
-			let nextIndex = 0;
-			if (event.shiftKey) nextIndex = tabOrder.length - 1;
-			if (currentIndex >= 0) {
-				let offset = 1;
-				if (event.shiftKey) offset = -1;
-				nextIndex = (currentIndex + offset + tabOrder.length) % tabOrder.length;
-			}
-			const nextRef = tabOrder[nextIndex];
-			if (nextRef === undefined) return;
-			event.preventDefault();
-			event.stopPropagation();
-			focusAndSelect(nextRef);
-			return;
-		}
-
 		const direction = navigationDirection(event.code);
 		if (direction === undefined) return;
 		event.preventDefault();
@@ -133,6 +129,7 @@
 		style:transform-origin="top left"
 		bind:this={stage}
 		onkeydown={handleKeyboardNavigation}
+		onfocusin={rememberFocus}
 	>
 		{#each canvas.groups as group (group.id)}
 			{@const ref = entityRef(EntityKind.Group, group.id)}
@@ -140,7 +137,7 @@
 				class="canvas-group"
 				class:selected={session.isSelected(ref)}
 				type="button"
-				tabindex="-1"
+				tabindex={tabIndexFor(ref)}
 				data-group-id={group.id}
 				data-endpoint-id={group.id}
 				data-canvas-entity-key={entityKey(ref.kind, ref.id)}
@@ -170,7 +167,12 @@
 		>
 			<RelationArrow id={markerId} />
 			{#each renderedRelations as relation (relation.id)}
-				<CanvasRelation {relation} {session} {markerId} />
+				<CanvasRelation
+					{relation}
+					{session}
+					{markerId}
+					tabbable={entityKey(EntityKind.Relation, relation.id) === tabEntryKey}
+				/>
 			{/each}
 		</svg>
 
@@ -183,7 +185,7 @@
 				class="junction"
 				class:selected={session.isSelected(ref)}
 				type="button"
-				tabindex="-1"
+				tabindex={tabIndexFor(ref)}
 				data-junction-id={junction.id}
 				data-endpoint-id={junction.id}
 				data-canvas-entity-key={entityKey(ref.kind, ref.id)}

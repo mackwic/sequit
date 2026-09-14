@@ -7,7 +7,7 @@ import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from 
 import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint-routes';
 import { applyNodeRouting } from './routing/materialize-node-routes';
 import type { NodeRouting } from './routing/reserve-node-routing';
-import { anchorRouteToQuays } from './routing/route-quay-anchors';
+import { directRouteRail, type RoutingSpace } from './routing/routing-space';
 
 interface ResultInput {
 	readonly graph: LogicGraph;
@@ -15,6 +15,7 @@ interface ResultInput {
 	readonly routing: NodeRouting | undefined;
 	readonly frame: LayoutFrame;
 	readonly routes?: ReadonlyMap<string, readonly Point[]> | undefined;
+	readonly space: RoutingSpace;
 }
 
 function layoutRelation(
@@ -32,20 +33,17 @@ function layoutRelation(
 		source,
 		target,
 	});
-	let points = input.routes?.get(relation.id) ?? planned?.get(relation.id);
-	if (points === undefined) {
-		const route = routePoints({
+	const points =
+		input.routes?.get(relation.id) ??
+		planned?.get(relation.id) ??
+		routePoints({
 			source,
 			target,
 			direction: input.frame.direction,
+			rail: directRouteRail(input.space, relation.from, relation.to),
+			sourceOffset: input.routing?.quays.sourceOffsets.get(relation.id),
+			targetOffset: input.routing?.quays.targetOffsets.get(relation.id),
 		});
-		points = anchorRouteToQuays(
-			route,
-			input.routing?.quays.sourceOffsets.get(relation.id) ?? 0,
-			input.routing?.quays.targetOffsets.get(relation.id) ?? 0,
-			input.frame.vertical,
-		);
-	}
 	return { id: relation.id, from: relation.from, to: relation.to, points };
 }
 
@@ -62,7 +60,11 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 	let width = OUTER_MARGIN * 2;
 	let height = OUTER_MARGIN * 2;
 	for (const [id, bounds] of input.bounds) {
-		elements.push({ id, kind: defined(input.graph.endpointsById.get(id)).kind, bounds });
+		elements.push({
+			id,
+			kind: defined(input.graph.endpointsById.get(id)).kind,
+			bounds,
+		});
 		width = Math.max(width, bounds.x + bounds.width + OUTER_MARGIN);
 		height = Math.max(height, bounds.y + bounds.height + OUTER_MARGIN);
 	}

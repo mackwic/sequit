@@ -3,6 +3,7 @@ import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { orderEndpoints } from '../../ordering/endpoint-order';
+import { type BranchAnchor, branchAnchors } from './branch-anchors';
 import { type GroupHierarchy, prepareGroupHierarchy } from './group-hierarchy';
 import { type JunctionPlacement, prepareJunctions } from './junction-structure';
 import { containmentComponents, weaklyConnectedComponents } from './layout-components';
@@ -14,6 +15,7 @@ export interface LayoutStructure {
 	readonly maximumRank: number;
 	readonly junctionIds: ReadonlySet<string>;
 	readonly junctions: ReadonlyMap<string, JunctionPlacement>;
+	readonly branchAnchors: ReadonlyMap<string, BranchAnchor>;
 	readonly hierarchy: GroupHierarchy | undefined;
 	readonly components: readonly RankedComponent[];
 	readonly containment: readonly (readonly string[])[] | undefined;
@@ -86,5 +88,15 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	let containment: LayoutStructure['containment'];
 	if (hierarchy !== undefined)
 		containment = containmentComponents(graph, packingOrder(components, hierarchy));
-	return { graph, ranks, maximumRank, junctionIds, junctions, hierarchy, components, containment };
+	return {
+		graph,
+		ranks,
+		maximumRank,
+		junctionIds,
+		junctions,
+		hierarchy,
+		components,
+		containment,
+		branchAnchors: branchAnchors(graph, ranks.byEndpointId),
+	};
 }

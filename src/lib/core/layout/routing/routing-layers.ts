@@ -10,6 +10,7 @@ import {
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import type { RoutingLayers } from '../layout-types';
+import { junctionPassages } from './junction-passages';
 
 export interface LayerLink {
 	readonly relation: LogicRelation;
@@ -18,12 +19,22 @@ export interface LayerLink {
 	readonly passage: number | undefined;
 }
 
-/** A long relation gets a free transverse column through every intervening object layer. */
+/** Long relations use an outside column, or a validated straight passage relative to their source. */
 export function layerLinks(
 	graph: LogicGraph,
 	layers: RoutingLayers,
 	bounds: ReadonlyMap<string, Bounds>,
-	vertical: boolean,
+	{
+		vertical,
+		alignedPassages,
+		sourceOffsets,
+		targetOffsets,
+	}: {
+		readonly vertical: boolean;
+		readonly alignedPassages?: ReadonlyMap<string, number> | undefined;
+		readonly sourceOffsets?: ReadonlyMap<string, number> | undefined;
+		readonly targetOffsets?: ReadonlyMap<string, number> | undefined;
+	},
 ): readonly LayerLink[] {
 	let outside = Math.max(
 		...[...bounds.values()].map(
@@ -31,6 +42,14 @@ export function layerLinks(
 		),
 	);
 	const arrivals = new Map<string, number>();
+	const localPassage = junctionPassages({
+		graph,
+		layers,
+		bounds,
+		vertical,
+		sourceOffsets,
+		targetOffsets,
+	});
 	return graph.relations
 		.filter(
 			({ source, target }) =>
@@ -41,7 +60,10 @@ export function layerLinks(
 			const targetLayer = defined(layers.byId.get(relation.to));
 			let passage;
 			if (sourceLayer > targetLayer + 1) {
-				passage = arrivals.get(relation.to);
+				const aligned = alignedPassages?.get(relation.id);
+				if (aligned !== undefined)
+					passage = transverseCenter(defined(bounds.get(relation.from)), vertical) + aligned;
+				else passage = localPassage(relation) ?? arrivals.get(relation.to);
 				if (passage === undefined) {
 					outside += RAIL_SPACING;
 					passage = outside;

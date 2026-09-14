@@ -3,6 +3,13 @@
 Plan simplifié, 13 septembre 2026. La cible reste la coédition fine de tout le
 document ; cette première version est implémentée avec les mécanismes ci-dessous.
 
+**Évolution du 14 septembre :** ce texte retrace la V1. Le contrat courant et les
+corrections de reprise, collecte Yjs, présence et édition sont décrits dans
+[design.md](design.md#collaboration) et [la remédiation de l’audit](remediation-2026-09-14.md).
+Le protocole courant est v4 ; les anciennes règles « 128 reçus » et « tout refus
+est terminal » ne décrivent plus la remédiation. La reprise après fermeture reste
+différée.
+
 ## Architecture retenue
 
 - Un seul `Y.Doc` logique, répliqué dans chaque navigateur et dans la room serveur.

@@ -11,6 +11,32 @@ export default defineConfig({
 		trace: 'retain-on-failure',
 		...devices['Desktop Chrome'],
 	},
+	projects: [
+		{ name: 'chromium', testIgnore: '**/mobile-reading.spec.ts' },
+		{
+			name: 'firefox',
+			use: { ...devices['Desktop Firefox'] },
+			testMatch: [
+				'**/shared-editor.spec.ts',
+				'**/canvas-live-projection.spec.ts',
+				'**/canvas-interactions.spec.ts',
+			],
+		},
+		{
+			name: 'webkit',
+			use: { ...devices['Desktop Safari'] },
+			testMatch: [
+				'**/shared-editor.spec.ts',
+				'**/canvas-live-projection.spec.ts',
+				'**/canvas-interactions.spec.ts',
+			],
+		},
+		{
+			name: 'mobile-reading',
+			use: { ...devices['iPhone 13'] },
+			testMatch: '**/mobile-reading.spec.ts',
+		},
+	],
 	webServer: [
 		{
 			command: 'pnpm run dev:collaboration --port 8788',

@@ -1,0 +1,23 @@
+<script>
+ import { scenario } from './wide-group-obstacle.scenario';
+ import source from './wide-group-obstacle.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Une relation évite le groupe voisin
+
+G et X rejoignent S. G est un vrai groupe vide de **160 × 84 px**, avec un en-tête
+de 36 px et une marge intérieure de 24 px. Ces dimensions physiques restent
+identiques dans toutes les orientations : le groupe ne tourne pas avec le graphe.
+
+En disposition horizontale, le groupe peut dépasser la face de son voisin X.
+La relation X → S doit donc utiliser l’espace libre devant toute la rangée,
+sans traverser le groupe. Le milieu des seules faces de X et S peut être occupé.
+
+Les assertions exigent 24 px de dégagement autour des obstacles, conservent les
+rangs documentaires et l’ordre W, G, X, et vérifient les attaches principales,
+l’orthogonalité et l’absence de retour en arrière. Les deux biais de chaque
+direction sont couverts, y compris ceux qui font dépasser G vers le passage.
+
+<VisualTest {scenario} {source} bind:settings />

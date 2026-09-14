@@ -271,32 +271,27 @@ test.describe('accessible canvas selection', () => {
 		}
 	});
 
-	test('tabs through nodes in top-to-bottom flow and wraps', async ({ page }) => {
-		const first = page.locator('[data-node-id="alcoa-plus"]');
-		const second = page.locator('[data-node-id="preserve-partner-content"]');
-		await first.focus();
-
-		const order: string[] = [];
-		for (let index = 0; index < 24; index += 1) {
-			const key = await page.locator(':focus').getAttribute('data-canvas-entity-key');
-			if (key === null) throw new Error(`Missing focused node at Tab index ${index}`);
-			order.push(key);
-			await page.keyboard.press('Tab');
-		}
-
-		expect(new Set(order).size).toBe(24);
-		expect(order.every((key) => key.startsWith('node:'))).toBe(true);
-		expect(order[0]).toBe('node:alcoa-plus');
-		expect(order[1]).toBe('node:preserve-partner-content');
-		await expect(first).toBeFocused();
-		await expect(first).toHaveAttribute('aria-pressed', 'true');
+	test('Tab leaves the canvas and returns to its last focused entity', async ({ page }) => {
+		const transitions = await keyboardTransitions(page);
+		const movement = required(
+			transitions.find((transition) => transition.target !== transition.source),
+			'Missing keyboard navigation step',
+		);
+		await entityByKey(page, movement.source).focus();
+		await page.keyboard.press(movement.code);
+		const target = entityByKey(page, movement.target);
+		await expect(target).toBeFocused();
+		await expect(target).toHaveAttribute('tabindex', '0');
+		await expect(page.locator('[data-graph-stage] [tabindex="0"]')).toHaveCount(1);
 
 		await page.keyboard.press('Tab');
-		await expect(second).toBeFocused();
+		await expect(page.locator('[data-graph-stage] :focus')).toHaveCount(0);
 		await page.keyboard.press('Shift+Tab');
-		await expect(first).toBeFocused();
+		await expect(target).toBeFocused();
 		await page.keyboard.press('Shift+Tab');
-		await expect(entityByKey(page, required(order.at(-1), 'Missing final Tab node'))).toBeFocused();
+		await expect(page.locator('[data-graph-stage] :focus')).toHaveCount(0);
+		await page.keyboard.press('Tab');
+		await expect(target).toBeFocused();
 	});
 
 	test('uses every arrow direction without wrapping and reaches junctions and relations', async ({
@@ -393,11 +388,13 @@ test.describe('resilient modal Markdown editing', () => {
 		await page.keyboard.press('Tab');
 		await expect(page.getByRole('button', { name: 'Save' })).toBeFocused();
 		await page.keyboard.press('Tab');
-		expect(
-			await dialog.evaluate(
-				(element) => element === document.activeElement || element.contains(document.activeElement),
-			),
-		).toBe(true);
+		await expect(textarea).toBeFocused();
+		await page.keyboard.press('Shift+Tab');
+		await expect(page.getByRole('button', { name: 'Save' })).toBeFocused();
+		await page.keyboard.press('Shift+Tab');
+		await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+		await page.keyboard.press('Shift+Tab');
+		await expect(textarea).toBeFocused();
 		await page.getByRole('button', { name: 'Cancel' }).click();
 
 		await expect(dialog).toHaveCount(0);

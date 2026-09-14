@@ -9,9 +9,18 @@ import { productionBoundaries } from './config/production-boundaries.ts';
 const collaborationPort = process.env['COLLABORATION_PORT'] ?? '8787';
 
 export default defineConfig({
-	// The catalogue is loaded on demand. Discover its dependency before a user opens it,
-	// so Vite does not reload the page and discard the workshop's local document.
-	optimizeDeps: { include: ['@phosphor-icons/core'] },
+	// These UI modules are loaded on demand. Prebundle them before opening a room so
+	// dependency discovery cannot invalidate already loaded chunks (HTTP 504) mid-edit.
+	optimizeDeps: {
+		include: [
+			'@phosphor-icons/core',
+			'@floating-ui/dom',
+			'quill',
+			'quill-delta',
+			'marked',
+			'fast-diff',
+		],
+	},
 	plugins: [
 		productionBoundaries(),
 		tailwindcss(),

@@ -14,7 +14,7 @@ export function spliceSharedText(text: Y.Text, next: string): void {
 }
 
 export function isSharedTextField(key: string): boolean {
-	return ['markdown', 'title', 'label'].includes(key);
+	return ['markdown', 'description', 'title', 'label'].includes(key);
 }
 
 export function sharedFieldValue(key: string, value: unknown): unknown {

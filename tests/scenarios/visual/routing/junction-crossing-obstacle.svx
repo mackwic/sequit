@@ -1,0 +1,25 @@
+<script>
+ import { scenario } from './junction-crossing-obstacle.scenario';
+ import source from './junction-crossing-obstacle.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Un croisement respecte les rails de jonction
+
+G rejoint S par une chaîne de deux jonctions, J2 puis J1. À côté, U0 rejoint P1
+et U2 rejoint P0 ainsi que P2 : leurs relations se croisent et demandent plusieurs
+rails. Les nœuds gardent des dimensions physiques de 80 × 60 px et les jonctions
+de 28 × 20 px, quelle que soit la direction du graphe.
+
+Un passage peut être libre avant la réservation des rails, puis traverser une
+jonction après leur déplacement. Le dégagement doit donc rester garanti sur
+les routes finales. U0 → P1 doit notamment éviter J1 après le placement des
+traverses du croisement voisin.
+
+Les assertions conservent les rangs documentaires, l’ordre des enfants et les
+deux rails successifs de jonction. Elles vérifient le croisement attendu entre
+relations, les attaches principales, la progression sans retour en arrière et
+24 px de dégagement autour des obstacles, dans les huit configurations.
+
+<VisualTest {scenario} {source} bind:settings />

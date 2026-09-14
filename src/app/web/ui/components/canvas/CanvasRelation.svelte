@@ -8,9 +8,19 @@
 		relation,
 		session,
 		markerId,
-	}: { relation: RenderedRelation; session: CanvasSession; markerId: string } = $props();
+		tabbable = false,
+	}: {
+		relation: RenderedRelation;
+		session: CanvasSession;
+		markerId: string;
+		tabbable?: boolean;
+	} = $props();
 	let ref = $derived(entityRef(EntityKind.Relation, relation.id));
 	let selected = $derived(session.isSelected(ref));
+	let tabIndex = $derived.by(() => {
+		if (tabbable) return 0;
+		return -1;
+	});
 
 	function handleClick(event: MouseEvent) {
 		event.stopPropagation();
@@ -46,7 +56,7 @@
 	stroke-linecap="round"
 	vector-effect="non-scaling-stroke"
 	role="button"
-	tabindex="-1"
+	tabindex={tabIndex}
 	aria-label={`Relation ${relation.id} from ${relation.from} to ${relation.to}`}
 	aria-pressed={selected}
 	onclick={handleClick}

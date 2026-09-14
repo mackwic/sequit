@@ -33,6 +33,12 @@
 	>
 </header>
 <SharedTextField {client} target={{ kind: Kind.Node, id: node.id }} field="markdown" {label} />
+<SharedTextField
+	{client}
+	target={{ kind: Kind.Node, id: node.id }}
+	field="description"
+	label={`Description de ${node.id}`}
+/>
 <SharedPropertyFields
 	target={{ kind: Kind.Node, id: node.id }}
 	properties={{

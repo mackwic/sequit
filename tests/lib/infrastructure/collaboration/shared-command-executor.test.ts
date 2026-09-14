@@ -3,9 +3,11 @@ import * as Y from 'yjs';
 
 import {
 	GroupState,
+	JunctionOperator,
 	LayoutBias,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
+import { readSharedCommand } from '../../../../src/lib/infrastructure/collaboration/shared-command-codec';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	importLogicDocument,
@@ -15,6 +17,7 @@ import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/
 import {
 	SharedCommandKind as Op,
 	SharedElementKind as Kind,
+	SharedProperty,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import {
 	CollaborativeFixture,
@@ -131,7 +134,7 @@ describe('whole-document edits', () => {
 				op: Op.Update,
 				target: { kind: Kind.Node, id: 'C' },
 				set: { icon: 'phosphor:star' },
-				unset: ['color'],
+				unset: [SharedProperty.Color],
 			},
 		]);
 		expect(read(doc).nodes.find((node) => node.id === 'C')).toMatchObject({
@@ -154,7 +157,7 @@ describe('whole-document edits', () => {
 		'rejects removal of a used nature with replacement %s',
 		(replacementId) => {
 			const doc = given(CollaborativeFixture.TwoBoxes);
-			const target = { kind: Kind.Nature, id: 'N' };
+			const target = { kind: Kind.Nature, id: 'N' } as const;
 			expect(() => {
 				if (replacementId === undefined) executeSharedCommands(doc, [{ op: Op.Delete, target }]);
 				else executeSharedCommands(doc, [{ op: Op.Delete, target, replacementId }]);
@@ -171,7 +174,11 @@ describe('whole-document edits', () => {
 				target: { kind: Kind.Nature, id: 'unused' },
 				properties: { label: 'Unused', color: '#123456' },
 			},
-			{ op: Op.Create, target: { kind: Kind.Junction, id: 'J' }, properties: { operator: 'xor' } },
+			{
+				op: Op.Create,
+				target: { kind: Kind.Junction, id: 'J' },
+				properties: { operator: JunctionOperator.Xor },
+			},
 			{
 				op: Op.Create,
 				target: { kind: Kind.Relation, id: 'R1' },
@@ -204,38 +211,30 @@ describe('whole-document edits', () => {
 		doc.destroy();
 	});
 
-	it('rejects unknown properties, text replacements, missing targets and document creation/deletion', () => {
+	it('rejects malformed commands before changing the document', () => {
 		const doc = given(CollaborativeFixture.OpenGroup);
+		const before = read(doc);
 		const target = { kind: Kind.Node, id: 'A' };
-		expect(() => {
-			executeSharedCommands(doc, [
-				{ op: Op.Update, target, set: { markdown: 'Replaced' }, unset: [] },
-			]);
-		}).toThrow('Yjs');
-		expect(() => {
-			executeSharedCommands(doc, [{ op: Op.Update, target, set: { id: 'renamed' }, unset: [] }]);
-		}).toThrow();
-		expect(() => {
-			executeSharedCommands(doc, [
-				{ op: Op.Create, target, properties: { natureId: 'N', markdown: 'Duplicate' } },
-			]);
-		}).toThrow();
-		expect(() => {
-			executeSharedCommands(doc, [{ op: Op.Delete, target: { kind: Kind.Group, id: 'G' } }]);
-		}).toThrow('ungroup');
-		expect(() => {
-			executeSharedCommands(doc, [
-				{ op: Op.Create, target: { kind: Kind.Document, id: 'room' }, properties: {} },
-			]);
-		}).toThrow('initialize');
-		expect(() => {
-			executeSharedCommands(doc, [{ op: Op.Delete, target: { kind: Kind.Document, id: 'room' } }]);
-		}).toThrow();
-		expect(() => {
-			executeSharedCommands(doc, [
-				{ op: Op.Update, target: { kind: Kind.Document, id: 'other' }, set: {}, unset: [] },
-			]);
-		}).toThrow();
+		const commands: readonly unknown[] = [
+			{ op: Op.Update, target, set: { markdown: 'Replaced' }, unset: [] },
+			{ op: Op.Update, target, set: { id: 'renamed' }, unset: [] },
+			{ op: Op.Update, target, set: {}, unset: ['natureId'] },
+			{ op: Op.Create, target, properties: { natureId: 'N', markdown: 'Duplicate' } },
+			{ op: Op.Delete, target: { kind: Kind.Group, id: 'G' } },
+			{ op: Op.Create, target: { kind: Kind.Document, id: 'room' }, properties: {} },
+			{ op: Op.Delete, target: { kind: Kind.Document, id: 'room' } },
+			{ op: Op.Update, target: { kind: Kind.Document, id: 'other' }, set: {}, unset: [] },
+			{
+				op: Op.Update,
+				target: { kind: Kind.Node, id: 'missing' },
+				set: { color: '#aabbcc' },
+				unset: [],
+			},
+		];
+		for (const command of commands) {
+			expect(() => executeSharedCommands(doc, [readSharedCommand(command)])).toThrow();
+			expect(read(doc)).toEqual(before);
+		}
 		doc.destroy();
 	});
 });

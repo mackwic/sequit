@@ -22,7 +22,12 @@ const eslint = new ESLint();
 const component = filename('src/app/web/ui/components/canvas/LogicCanvas.svelte');
 
 beforeAll(async () => {
-	await eslint.calculateConfigForFile(component);
+	// Initialize both the real configuration and the typed Svelte project before policy assertions.
+	const initialized = await eslint.lintText(
+		'<script lang="ts">const label = "Ready";</script><p>{label}</p>',
+		{ filePath: component },
+	);
+	expect(initialized.every((result) => result.fatalErrorCount === 0)).toBe(true);
 });
 
 it('enforces the shared policy in Svelte through the repository ESLint configuration', async () => {

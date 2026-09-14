@@ -79,13 +79,14 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Nodes),
 			document.nodes,
-			({ natureId, groupId, markdown, layoutOrder, color, icon }) => {
+			({ natureId, groupId, markdown, description, layoutOrder, color, icon }) => {
 				const text = new Y.Text();
 				text.insert(0, markdown);
 				const values: Record<string, unknown> = {
 					natureId,
 					layoutOrder,
 					markdown: text,
+					description: new Y.Text(description ?? ''),
 					...contentStyleFields(color, icon),
 				};
 				if (groupId !== undefined) values['groupId'] = groupId;

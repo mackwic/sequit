@@ -54,7 +54,7 @@ test('creation adds actual isolated and connected nodes and resets the source', 
 	await page.getByRole('button', { name: 'Créer', exact: true }).click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(5);
 	await expect(page.locator('[data-relation-id]')).toHaveCount(4);
-	await expect(page.getByRole('button', { name: 'Action: Faire un essai' })).toHaveAttribute(
+	await expect(page.getByRole('button', { name: 'Action Faire un essai' })).toHaveAttribute(
 		'aria-pressed',
 		'true',
 	);

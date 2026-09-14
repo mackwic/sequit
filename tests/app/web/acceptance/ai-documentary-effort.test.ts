@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { openDocument } from '../../../../src/app/web/projection/open-document';
+import { defined } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
@@ -12,6 +13,7 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
+import { AssertRoute } from '../../../support/assertions/assert-route';
 import { AssertRoutes } from '../../../support/assertions/assert-routes';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { twoByTwoInversionDocument } from '../../../support/fixtures';
@@ -310,16 +312,23 @@ describe('AI for documentary effort', () => {
 					expect(pointTouchesBoundary(lastPoint, toBounds)).toBe(true);
 				}
 			}
-			// Removing the inversion releases one rail: sources keep their transverse positions and move up by its spacing.
+			// VL-617 permits realignment after a relation edit; source order and the released rail remain observable.
 			AssertRoutes(before.relations).haveCrossing();
 			AssertRoutes(after.relations).haveNoCrossing();
-			for (const id of ['source-a', 'source-b']) {
+			const sourceIds = ['source-a', 'source-b'];
+			expect(orderedIds(after.nodes, sourceIds)).toEqual(orderedIds(before.nodes, sourceIds));
+			const sourceA = defined(afterBounds.get('source-a'));
+			const sourceB = defined(afterBounds.get('source-b'));
+			expect(sourceB.x - sourceA.x - sourceA.width).toBeGreaterThanOrEqual(36);
+			AssertRoute(
+				defined(after.relations.find(({ id }) => id === 'source-a-to-target-b')),
+			).isStraightAlong('y');
+			for (const id of sourceIds) {
 				const previous = beforeBounds.get(id);
 				const current = afterBounds.get(id);
 				if (previous === undefined || current === undefined)
 					throw new Error(`Missing source ${id}`);
 				expect(current).toMatchObject({
-					x: previous.x,
 					width: previous.width,
 					height: previous.height,
 				});

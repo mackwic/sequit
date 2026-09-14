@@ -14,6 +14,8 @@ import {
 	type ProposalDecision,
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
+import { notifySubscribers } from './notify-subscribers';
+import { InvalidPresenceError } from './participant-presence';
 import {
 	decodeSessionMessage,
 	encodeSessionMessage,
@@ -34,8 +36,11 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	readonly #decisionListeners = new Set<(decision: ProposalDecision) => void>();
 	readonly #presenceListeners = new Set<(participants: readonly ParticipantPresence[]) => void>();
 	readonly #rejectionListeners = new Set<(message: string) => void>();
-	readonly #pending = new Map<string, readonly SharedDocumentCommand[]>();
+	readonly #pending = new Map<string, Uint8Array>();
 	readonly #textOrigin = Symbol('local text');
+	readonly #sessionId = crypto.randomUUID();
+	#sequence = 0;
+	#retryTimer: ReturnType<typeof setTimeout> | undefined;
 	readonly #buffer: TextUpdateBuffer;
 	readonly #stopFrames: () => void;
 	readonly #stopStatus: () => void;
@@ -87,7 +92,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		listener: (participants: readonly ParticipantPresence[]) => void,
 	): () => void {
 		this.#presenceListeners.add(listener);
-		listener(this.#participants);
+		notifySubscribers([listener], this.#participants);
 		return () => this.#presenceListeners.delete(listener);
 	}
 
@@ -119,11 +124,21 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	dispatch(commands: readonly SharedDocumentCommand[]): string {
 		if (!this.#ready || this.#rejected || this.#destroyed)
 			throw new Error('La session doit être connectée.');
+		const id = crypto.randomUUID();
+		const sequence = this.#sequence + 1;
+		const frame = encodeSessionMessage({
+			type: SessionMessageKind.Change,
+			id,
+			sessionId: this.#sessionId,
+			sequence,
+			commands,
+		});
+		// Invalid local commands cannot consume a sequence; retain the exact frame for retries.
 		// Preserve gesture order: a deletion must not overtake buffered edits to its target.
 		this.#buffer.flush();
-		const id = crypto.randomUUID();
-		this.#pending.set(id, commands);
-		this.#send({ type: SessionMessageKind.Change, id, commands });
+		this.#sequence = sequence;
+		this.#pending.set(id, frame);
+		this.transport.send(frame);
 		return id;
 	}
 
@@ -161,6 +176,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#destroyed = true;
 		this.#buffer.close();
 		this.#clearPresenceTimer();
+		this.#clearRetryTimer();
 		this.#stopFrames();
 		this.#stopStatus();
 		this.transport.close();
@@ -178,7 +194,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		const result = readLogicDocument(this.document);
 		if (!result.ok) return;
 		this.#initialized = true;
-		for (const subscriber of this.#subscribers) subscriber(result.value);
+		notifySubscribers(this.#subscribers, result.value);
 	};
 
 	readonly #status = (status: TransportStatus): void => {
@@ -187,11 +203,12 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		if (status === TransportStatus.Connected) this.#startSync();
 		else {
 			this.#participants = [];
-			for (const listener of this.#presenceListeners) listener(this.#participants);
+			notifySubscribers(this.#presenceListeners, this.#participants);
 		}
 	};
 
 	#startSync(): void {
+		this.#clearRetryTimer();
 		this.#send({ type: SessionMessageKind.Sync, payload: writeSyncRequest(this.document) });
 		this.#sendPresence();
 	}
@@ -200,7 +217,8 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		if (this.#destroyed || this.#rejected) return;
 		try {
 			this.#handle(decodeSessionMessage(frame));
-		} catch {
+		} catch (error) {
+			if (error instanceof InvalidPresenceError) return;
 			this.#reject('La session a reçu un message invalide.');
 		}
 	};
@@ -216,20 +234,25 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 				if (message.id !== undefined) {
 					this.#pending.delete(message.id);
 					if (this.#initialization?.id === message.id) this.#initialization = undefined;
-					for (const listener of this.#decisionListeners)
-						listener({
-							type: ProposalDecisionKind.Accepted,
-							proposalId: message.id,
-							commit: message.commit,
-						});
+					notifySubscribers(this.#decisionListeners, {
+						type: ProposalDecisionKind.Accepted,
+						proposalId: message.id,
+						commit: message.commit,
+					});
 				}
 				return;
 			case SessionMessageKind.Reject:
 				this.#reject(message.message);
 				return;
+			case SessionMessageKind.Retry:
+				this.#ready = false;
+				this.#retryTimer ??= setTimeout(() => {
+					this.#startSync();
+				}, 1_000);
+				return;
 			case SessionMessageKind.Presence:
 				this.#participants = message.participants;
-				for (const listener of this.#presenceListeners) listener(this.#participants);
+				notifySubscribers(this.#presenceListeners, this.#participants);
 				return;
 			case SessionMessageKind.Initialize:
 			case SessionMessageKind.Change:
@@ -250,8 +273,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		});
 		if (!this.#initialized) this.#initialize();
 		else this.#initialization = undefined;
-		for (const [id, commands] of this.#pending)
-			this.#send({ type: SessionMessageKind.Change, id, commands });
+		for (const frame of this.#pending.values()) this.transport.send(frame);
 		this.#ready = this.#initialized;
 	}
 
@@ -278,6 +300,11 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.transport.send(encodeSessionMessage(message));
 	}
 
+	#clearRetryTimer(): void {
+		if (this.#retryTimer !== undefined) clearTimeout(this.#retryTimer);
+		this.#retryTimer = undefined;
+	}
+
 	#clearPresenceTimer(): void {
 		if (this.#presenceTimer !== undefined) clearTimeout(this.#presenceTimer);
 		this.#presenceTimer = undefined;
@@ -286,7 +313,11 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	#sendPresence(): void {
 		this.#clearPresenceTimer();
 		if (this.#presence !== undefined)
-			this.#send({ type: SessionMessageKind.Presence, participants: [this.#presence] });
+			try {
+				this.#send({ type: SessionMessageKind.Presence, participants: [this.#presence] });
+			} catch {
+				/* Invalid ephemeral presence must not interrupt document edits. */
+			}
 	}
 
 	#reject(message: string): void {
@@ -294,8 +325,9 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#ready = false;
 		this.#buffer.close();
 		this.#clearPresenceTimer();
+		this.#clearRetryTimer();
 		this.#pending.clear();
 		this.transport.close();
-		for (const listener of this.#rejectionListeners) listener(message);
+		notifySubscribers(this.#rejectionListeners, message);
 	}
 }

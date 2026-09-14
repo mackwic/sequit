@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type Snippet, tick } from 'svelte';
+	import { type Snippet, tick, untrack } from 'svelte';
 
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import { createCanvasEntityIndex } from '../../canvas/canvas-entity';
@@ -34,17 +34,21 @@
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
-	let measurementModel = $state<CanvasMeasurementModel>();
+	let measurementModel = $state.raw<CanvasMeasurementModel>();
 	let measurementLayer = $state<HTMLDivElement>();
 	let viewport = $state<HTMLDivElement>();
-	let canvas = $state<CanvasModel>();
-	let lastAcceptedCanvas = $state<CanvasModel>();
+	// Projection snapshots are immutable; deep proxies would track every geometry read.
+	let canvas = $state.raw<CanvasModel>();
+	let lastAcceptedCanvas = $state.raw<CanvasModel>();
 	let error = $state<string>();
 	let spacePressed = $state(false);
 	let panning = $state(false);
 	let panMoved = false;
 	let suppressBackgroundActivation = false;
 	let previousMeasurementSignature = '';
+	let projectionRevision = $state(0);
+	let acceptedRevision = $state(0);
+	let previousProjectionRevision = -1;
 	let activeLayoutRequest: object | undefined;
 	let pendingZoomAnchor: CanvasPoint | undefined;
 	let appliedZoom = DEFAULT_CANVAS_ZOOM;
@@ -66,30 +70,46 @@
 	$effect(() => {
 		const current = openedDocument;
 		measurementModel = current.measurementModel;
+		untrack(() => {
+			projectionRevision += 1;
+		});
 		return current.subscribe(() => {
 			measurementModel = current.measurementModel;
+			projectionRevision += 1;
 		});
 	});
 
-	async function recalculate(current: CanvasProjection = openedDocument) {
+	async function recalculate(current: CanvasProjection, revision: number) {
 		const layer = measurementLayer;
 		if (layer === undefined) return;
+		const start = performance.now();
 		const measurements = collectLayoutMeasurements(layer);
 		const signature = layoutMeasurementSignature(measurements);
-		if (signature === previousMeasurementSignature) return;
+		if (signature === previousMeasurementSignature && revision === previousProjectionRevision)
+			return;
 		previousMeasurementSignature = signature;
+		previousProjectionRevision = revision;
 		const request = {};
 		activeLayoutRequest = request;
 		try {
 			const result = await current.createCanvasModel(measurements);
-			if (activeLayoutRequest === request) {
+			if (
+				activeLayoutRequest === request &&
+				revision === projectionRevision &&
+				current === openedDocument
+			) {
 				canvas = result;
 				lastAcceptedCanvas = result;
+				acceptedRevision += 1;
 				error = undefined;
 				session.reconcile(createCanvasEntityIndex(result));
+				performance.clearMeasures('sequit:canvas-projection');
+				performance.measure('sequit:canvas-projection', { start, end: performance.now() });
 			}
 		} catch (cause) {
 			if (activeLayoutRequest === request) {
+				previousProjectionRevision = -1;
+				previousMeasurementSignature = '';
 				error = cause instanceof Error ? cause.message : String(cause);
 			}
 		}
@@ -242,10 +262,8 @@
 		const layer = measurementLayer;
 		const current = openedDocument;
 		const currentMeasurementModel = measurementModel;
-		canvas = undefined;
-		previousMeasurementSignature = '';
+		const revision = projectionRevision;
 		activeLayoutRequest = undefined;
-		error = undefined;
 		if (
 			!layer ||
 			currentMeasurementModel === undefined ||
@@ -254,7 +272,10 @@
 			return;
 
 		let cancelled = false;
-		const resizeObserver = new ResizeObserver(() => void scheduleRecalculation());
+		let frame: number | undefined;
+		const resizeObserver = new ResizeObserver(() => {
+			scheduleRecalculation();
+		});
 		const observeMeasuredElements = () => {
 			resizeObserver.disconnect();
 			for (const element of layer.querySelectorAll<HTMLElement>(
@@ -263,22 +284,29 @@
 				resizeObserver.observe(element);
 			}
 		};
-		const scheduleRecalculation = async () => {
-			await document.fonts.ready;
-			await tick();
-			if (!cancelled) await recalculate(current);
+		const scheduleRecalculation = () => {
+			if (cancelled || frame !== undefined) return;
+			frame = requestAnimationFrame(() => {
+				frame = undefined;
+				void tick().then(async () => {
+					if (!cancelled) await recalculate(current, revision);
+				});
+			});
 		};
 		const mutationObserver = new MutationObserver(() => {
 			observeMeasuredElements();
-			void scheduleRecalculation();
+			scheduleRecalculation();
 		});
 
 		observeMeasuredElements();
 		mutationObserver.observe(layer, { childList: true, subtree: true, characterData: true });
-		void scheduleRecalculation();
+		scheduleRecalculation();
+		void document.fonts.ready.then(scheduleRecalculation);
 
 		return () => {
 			cancelled = true;
+			activeLayoutRequest = undefined;
+			if (frame !== undefined) cancelAnimationFrame(frame);
 			resizeObserver.disconnect();
 			mutationObserver.disconnect();
 		};
@@ -304,6 +332,7 @@
 		role="region"
 		aria-label="Canvas viewport"
 		data-canvas-viewport
+		data-canvas-revision={acceptedRevision}
 		tabindex="-1"
 		bind:this={viewport}
 		onwheel={handleWheel}
@@ -313,12 +342,18 @@
 		onpointercancel={finishPanning}
 		onclick={handleBackgroundClick}
 	>
-		{#if error}
-			<p class="m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
-		{:else if canvas}
+		{#if canvas}
 			<RenderedCanvas {canvas} zoom={session.zoom} {session} />
 		{:else}
 			<p class="m-8 text-sm text-stone-500">Measuring document…</p>
+		{/if}
+		{#if error}
+			<p
+				role="alert"
+				class="absolute top-0 m-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+			>
+				{error}
+			</p>
 		{/if}
 	</div>
 

@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
-	import { GroupState, type LogicDocument } from '../../../../../lib/core/document/logic-document';
+	import {
+		defined,
+		GroupState,
+		type LogicDocument,
+	} from '../../../../../lib/core/document/logic-document';
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import {
 		SharedCommandKind as Op,
@@ -9,6 +13,10 @@
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import { createSharedCanvasProjection } from '../../../projection/open-document';
+	import {
+		deleteVisibleRelation,
+		hiddenRelationFields,
+	} from '../../../projection/visible-relation-commands';
 	import { CanvasSession, type EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import { sharedSelection } from './canvas-awareness';
@@ -41,16 +49,23 @@
 		presence.destroy();
 	});
 	let error = $state('');
-	const projection = $derived.by(() => {
+	const projection = untrack(() => createSharedCanvasProjection(model));
+	let visible = $state.raw(projection.visible);
+	$effect(() => {
 		try {
-			return createSharedCanvasProjection(model);
-		} catch {
-			return undefined;
+			projection.update(model);
+			visible = projection.visible;
+			error = projection.warning ?? '';
+		} catch (failure) {
+			error = `Ce repli ne peut pas être affiché. Dépliez le groupe. ${String(failure)}`;
 		}
 	});
 	function dispatch(command: SharedDocumentCommand): void {
+		dispatchMany([command]);
+	}
+	function dispatchMany(commands: readonly SharedDocumentCommand[]): void {
 		try {
-			client.dispatch([command]);
+			client.dispatch(commands);
 			error = '';
 		} catch (failure) {
 			if (failure instanceof Error) error = failure.message;
@@ -67,26 +82,24 @@
 
 <div class="workspace">
 	<div class="canvas">
-		{#if projection}<LogicCanvas document={projection} session={canvas}>
-				{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
-				{#snippet editor(editing: EditingCanvasActivity)}
-					{@const node = model.nodes.find((item) => item.id === editing.nodeId)}
-					{#if node}<SharedEditDialog
-							label={`Boîte ${editing.nodeId}`}
-							onclose={() => canvas.cancel()}
-						>
-							<SharedNodeFields
-								{node}
-								{client}
-								{connected}
-								{dispatch}
-								label={`Texte de ${editing.nodeId}`}
-							/>
-						</SharedEditDialog>{/if}
-				{/snippet}
-			</LogicCanvas>{:else}<p role="alert">
-				Ce repli ne peut pas être affiché. Dépliez le groupe.
-			</p>{/if}
+		<LogicCanvas document={projection} session={canvas}>
+			{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
+			{#snippet editor(editing: EditingCanvasActivity)}
+				{@const node = visible.document.nodes.find((item) => item.id === editing.nodeId)}
+				{#if node}<SharedEditDialog
+						label={`Boîte ${editing.nodeId}`}
+						onclose={() => canvas.cancel()}
+					>
+						<SharedNodeFields
+							{node}
+							{client}
+							{connected}
+							{dispatch}
+							label={`Texte de ${editing.nodeId}`}
+						/>
+					</SharedEditDialog>{/if}
+			{/snippet}
+		</LogicCanvas>
 	</div>
 	<aside aria-label="Document partagé">
 		<SharedElementCard label="Titre du document">
@@ -97,16 +110,16 @@
 				label="Titre du document"
 			/>
 		</SharedElementCard>
-		<SharedStructureControls {model} {connected} {dispatch} />
+		<SharedStructureControls model={visible.document} {connected} {dispatch} />
 		{#if error}<p role="alert">{error}</p>{/if}
-		{#each model.nodes as node (node.id)}
+		{#each visible.document.nodes as node (node.id)}
 			<section aria-label={`Boîte ${node.id}`}>
 				<SharedElementCard label={`Boîte ${node.id}`}>
 					<SharedNodeFields {node} {client} {connected} {dispatch} label={`Contenu ${node.id}`} />
 				</SharedElementCard>
 			</section>
 		{/each}
-		{#each model.groups as group (group.id)}
+		{#each visible.document.groups as group (group.id)}
 			<section aria-label={`Groupe ${group.id}`}>
 				<SharedElementCard label={`Groupe ${group.id}`}>
 					<SharedTextField
@@ -187,7 +200,7 @@
 				</SharedElementCard>
 			</section>
 		{/each}
-		{#each model.junctions as junction (junction.id)}
+		{#each visible.document.junctions as junction (junction.id)}
 			<section aria-label={`Jonction ${junction.id}`}>
 				<SharedElementCard label={`Jonction ${junction.id}`}>
 					<strong>{junction.id}</strong>
@@ -208,19 +221,22 @@
 			</section>
 		{/each}
 		<ul aria-label="Relations">
-			{#each model.relations as relation (relation.id)}<li>
+			{#each visible.document.relations as relation (relation.id)}
+				{@const provenance = defined(visible.relations.get(relation.id))}
+				<li>
 					{relation.from} → {relation.to}
 					<SharedElementCard label={`Relation ${relation.id}`}
 						><SharedPropertyFields
 							target={{ kind: Kind.Relation, id: relation.id }}
 							properties={{ from: relation.from, to: relation.to }}
+							disabledFields={hiddenRelationFields(provenance)}
 							{connected}
 							{dispatch}
 						/><button
 							type="button"
 							disabled={!connected}
 							onclick={() => {
-								dispatch({ op: Op.Delete, target: { kind: Kind.Relation, id: relation.id } });
+								dispatchMany(deleteVisibleRelation(provenance));
 							}}>Supprimer la relation {relation.id}</button
 						>
 					</SharedElementCard>
@@ -260,5 +276,18 @@
 	}
 	button:disabled {
 		opacity: 0.5;
+	}
+	@media (max-width: 640px) {
+		.workspace {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: minmax(320px, 60vh) minmax(0, 1fr);
+		}
+		.canvas {
+			min-height: 0;
+		}
+		aside {
+			border-left: 0;
+			border-top: 1px solid #ddd8d0;
+		}
 	}
 </style>

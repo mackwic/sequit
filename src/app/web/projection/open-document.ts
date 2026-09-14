@@ -1,4 +1,7 @@
-import { collapsedDocument } from '../../../lib/core/document/collapsed-document';
+import {
+	type CollapsedDocumentProjection,
+	projectCollapsedDocument,
+} from '../../../lib/core/document/collapsed-document';
 import type {
 	LogicDocument,
 	LogicRelation,
@@ -6,19 +9,14 @@ import type {
 } from '../../../lib/core/document/logic-document';
 import { GroupState } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
-import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
 import type { DocumentCommandOutcome } from '../../../lib/infrastructure/document/document-command-contracts';
 import { parseSequitToml } from '../../../lib/infrastructure/toml/parse-sequit-toml';
 import type { DocumentSession } from '../document/document-session';
 import { createDocumentSession } from '../document/yjs-document-session';
-import {
-	type CanvasMeasurementModel,
-	type CanvasModel,
-	createCanvasMeasurementModel,
-	createCanvasModel as projectCanvasModel,
-} from '../ui/canvas/canvas-model';
+import type { CanvasMeasurementModel, CanvasModel } from '../ui/canvas/canvas-model';
 import type { CanvasProjection } from './canvas-projection';
-import { layoutGraph, type LayoutMeasurements } from './layout-graph';
+import { DocumentProjection } from './document-projection';
+import type { LayoutMeasurements } from './layout-graph';
 
 interface OpenDocumentDiagnostic {
 	readonly code: string;
@@ -28,15 +26,8 @@ interface OpenDocumentDiagnostic {
 	readonly column?: number;
 }
 
-interface DocumentProjection {
-	readonly document: LogicDocument;
-	readonly graph: Extract<ReturnType<typeof createGraph>, { readonly ok: true }>['value'];
-	readonly ranks: ReturnType<typeof topologicallyRank>;
-	readonly measurementModel: CanvasMeasurementModel;
-}
-
 class OpenedDocument implements CanvasProjection {
-	#projection: DocumentProjection;
+	readonly #projection: DocumentProjection;
 	readonly #unsubscribe: () => void;
 	readonly #subscribers = new Set<() => void>();
 	#destroyed = false;
@@ -47,7 +38,7 @@ class OpenedDocument implements CanvasProjection {
 	) {
 		this.#projection = projection;
 		this.#unsubscribe = this.session.subscribe((document) => {
-			this.#projection = projectDocument(document);
+			this.#projection.update(document);
 			for (const subscriber of [...this.#subscribers]) {
 				try {
 					subscriber();
@@ -63,16 +54,7 @@ class OpenedDocument implements CanvasProjection {
 	}
 
 	async createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel> {
-		const currentProjection = this.#projection;
-		const layout = await layoutGraph(
-			currentProjection.graph,
-			currentProjection.ranks,
-			measurements,
-		);
-		return projectCanvasModel(currentProjection.measurementModel, layout, {
-			document: currentProjection.document,
-			ranks: currentProjection.ranks,
-		});
+		return this.#projection.createCanvasModel(measurements);
 	}
 
 	addNode(node: NewLogicNode): Promise<LogicDocument> {
@@ -119,31 +101,6 @@ function errorMessage(error: unknown): string {
 	return String(error);
 }
 
-function projectDocument(document: LogicDocument): DocumentProjection {
-	const nextGraph = createGraph(document);
-	if (!nextGraph.ok) {
-		throw new Error(nextGraph.diagnostics.map(({ message }) => message).join('; '));
-	}
-	return {
-		document,
-		graph: nextGraph.value,
-		ranks: topologicallyRank(nextGraph.value),
-		measurementModel: createCanvasMeasurementModel(document),
-	};
-}
-
-function projectionFromGraph(
-	document: LogicDocument,
-	graph: DocumentProjection['graph'],
-): DocumentProjection {
-	return {
-		document,
-		graph,
-		ranks: topologicallyRank(graph),
-		measurementModel: createCanvasMeasurementModel(document),
-	};
-}
-
 export function openDocument(
 	source: string,
 	createSession: (document: LogicDocument) => DocumentSession = createDocumentSession,
@@ -153,7 +110,7 @@ export function openDocument(
 
 	const graph = createGraph(parsed.value);
 	if (!graph.ok) return graph;
-	const projection = projectionFromGraph(parsed.value, graph.value);
+	const projection = new DocumentProjection(parsed.value, graph.value);
 	let session: DocumentSession | undefined;
 
 	try {
@@ -187,20 +144,90 @@ export function openDocument(
 }
 
 /** Canvas projection of one accepted/shared snapshot; editing stays on the source document. */
-export function createSharedCanvasProjection(document: LogicDocument): CanvasProjection {
+function sharedDocument(document: LogicDocument) {
 	const closed = document.groups
 		.filter((group) => group.state === GroupState.Closed)
 		.map((group) => group.id);
-	const projection = projectDocument(collapsedDocument(document, closed));
-	return {
-		measurementModel: projection.measurementModel,
-		subscribe: () => () => undefined,
-		async createCanvasModel(measurements: LayoutMeasurements) {
-			const layout = await layoutGraph(projection.graph, projection.ranks, measurements);
-			return projectCanvasModel(projection.measurementModel, layout, {
-				document: projection.document,
-				ranks: projection.ranks,
-			});
-		},
-	};
+	return projectCollapsedDocument(document, closed);
+}
+
+interface SharedProjectionUpdate {
+	readonly visible: CollapsedDocumentProjection;
+	readonly changed: boolean;
+	readonly warning: string | undefined;
+}
+
+/** A valid source can acquire a false cycle only in its collapsed view. Keep it expanded. */
+function projectSharedSnapshot(
+	document: LogicDocument,
+	accept: (visible: LogicDocument) => boolean,
+): SharedProjectionUpdate {
+	const visible = sharedDocument(document);
+	try {
+		return { visible, changed: accept(visible.document), warning: undefined };
+	} catch {
+		const expanded = projectCollapsedDocument(document, []);
+		return {
+			visible: expanded,
+			changed: accept(expanded.document),
+			warning: 'Ce repli crée une ambiguïté. La vue reste dépliée ; le document est conservé.',
+		};
+	}
+}
+
+class SharedCanvasProjection implements CanvasProjection {
+	readonly #projection: DocumentProjection;
+	#visible: ReturnType<typeof sharedDocument>;
+	#warning: string | undefined;
+	readonly #subscribers = new Set<() => void>();
+
+	constructor(document: LogicDocument) {
+		this.#projection = new DocumentProjection(document);
+		const result = projectSharedSnapshot(document, (visible) => this.#projection.update(visible));
+		this.#visible = result.visible;
+		this.#warning = result.warning;
+	}
+
+	get measurementModel(): CanvasMeasurementModel {
+		return this.#projection.measurementModel;
+	}
+
+	get visible(): ReturnType<typeof sharedDocument> {
+		return this.#visible;
+	}
+
+	get warning(): string | undefined {
+		return this.#warning;
+	}
+
+	update(document: LogicDocument): void {
+		const { visible, changed, warning } = projectSharedSnapshot(document, (next) =>
+			this.#projection.update(next),
+		);
+		const provenanceChanged =
+			JSON.stringify([...visible.relations]) !== JSON.stringify([...this.#visible.relations]);
+		this.#visible = visible;
+		this.#warning = warning;
+		if (!changed && !provenanceChanged) return;
+		for (const subscriber of [...this.#subscribers]) {
+			try {
+				subscriber();
+			} catch {
+				/* Isolate view subscribers. */
+			}
+		}
+	}
+
+	subscribe(subscriber: () => void): () => void {
+		this.#subscribers.add(subscriber);
+		return () => this.#subscribers.delete(subscriber);
+	}
+
+	createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel> {
+		return this.#projection.createCanvasModel(measurements, this.#visible.relations);
+	}
+}
+
+export function createSharedCanvasProjection(document: LogicDocument): SharedCanvasProjection {
+	return new SharedCanvasProjection(document);
 }

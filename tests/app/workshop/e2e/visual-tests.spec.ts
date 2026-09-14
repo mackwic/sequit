@@ -229,6 +229,7 @@ test('browses groups and searches scenarios by their stable identifier', async (
 	await expect(page.locator('.scenario-identity')).toContainText('directed-chain');
 	await expect(page.locator('.scenario-identity')).toContainText('Rangs et progression');
 	await expect(page.getByRole('status')).toContainText('Réussi');
+	const allScenarios = await navigation.getByRole('button').allTextContents();
 	const search = page.getByRole('searchbox', { name: 'Rechercher un scénario' });
 	await search.fill('single-node');
 	await expect(navigation.getByRole('button')).toHaveCount(1);
@@ -239,7 +240,7 @@ test('browses groups and searches scenarios by their stable identifier', async (
 	await search.fill('unknown-test');
 	await expect(navigation).toContainText('Aucun scénario trouvé.');
 	await search.clear();
-	await expect(navigation.getByRole('button')).toHaveCount(32);
+	await expect.poll(() => navigation.getByRole('button').allTextContents()).toEqual(allScenarios);
 });
 
 test('aligns the toolbar and keeps settings visible after either setting changes', async ({

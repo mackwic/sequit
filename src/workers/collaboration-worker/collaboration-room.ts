@@ -2,7 +2,14 @@ import { DurableObject } from 'cloudflare:workers';
 import * as Y from 'yjs';
 
 import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
+import type { CommandSequence } from '../../lib/infrastructure/collaboration/command-sequence';
+import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
+import { InvalidPresenceError } from '../../lib/infrastructure/collaboration/participant-presence';
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
+import {
+	RetryableSessionFailure,
+	SessionFailureCode,
+} from '../../lib/infrastructure/collaboration/session-failure';
 import {
 	decodeSessionMessage,
 	encodeSessionMessage,
@@ -20,6 +27,7 @@ import {
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
+import { readCommandReceipt } from './command-receipts';
 import { persistRoomState, restoreRoomState, type RoomState } from './room-storage';
 
 function emptyRoomState(): RoomState {
@@ -50,16 +58,28 @@ export class CollaborationRoom extends DurableObject<Env> {
 	override webSocketMessage(socket: WebSocket, frame: ArrayBuffer | string): Promise<void> {
 		const run = async (): Promise<void> => {
 			if (socket.readyState !== WebSocket.OPEN) return;
+			let code = SessionFailureCode.InvalidMessage;
 			try {
 				if (typeof frame === 'string') {
 					this.control(socket, frame);
 					return;
 				}
-				await this.handle(socket, decodeSessionMessage(new Uint8Array(frame)));
+				const message = decodeSessionMessage(new Uint8Array(frame));
+				code = SessionFailureCode.InvalidDocument;
+				await this.handle(socket, message);
 			} catch (error) {
+				if (error instanceof InvalidPresenceError) return;
+				if (error instanceof RetryableSessionFailure) {
+					this.send(socket, {
+						type: SessionMessageKind.Retry,
+						code: error.code,
+						message: error.message,
+					});
+					return;
+				}
 				let message = 'La modification a été refusée.';
 				if (error instanceof Error) message = error.message;
-				this.reject(socket, message);
+				this.reject(socket, message, code);
 			}
 		};
 		this.processing = this.processing.then(run, run);
@@ -67,6 +87,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 	}
 
 	private control(socket: WebSocket, frame: string): void {
+		if (frame.length > 1_024) throw new Error('Message de contrôle trop volumineux.');
 		const value: unknown = JSON.parse(frame);
 		const objectValue = typeof value === 'object';
 		if (!objectValue || value === null) throw new Error('Message invalide.');
@@ -103,12 +124,17 @@ export class CollaborationRoom extends DurableObject<Env> {
 				else await this.acceptCommands(socket, message);
 				return;
 			case SessionMessageKind.Presence:
-				if (message.participants.length !== 1) throw new Error('Présence invalide.');
-				socket.serializeAttachment(encodeSessionMessage(message));
-				for (const peer of this.ctx.getWebSockets()) this.sendPresence(peer);
+				if (message.participants.length !== 1) return;
+				try {
+					socket.serializeAttachment(encodeSessionMessage(message));
+				} catch {
+					return;
+				}
+				this.broadcastPresence();
 				return;
 			case SessionMessageKind.Commit:
 			case SessionMessageKind.Reject:
+			case SessionMessageKind.Retry:
 			default:
 				throw new Error('Message client invalide.');
 		}
@@ -150,7 +176,8 @@ export class CollaborationRoom extends DurableObject<Env> {
 		socket: WebSocket,
 		message: Extract<SessionMessage, { readonly commands: unknown }>,
 	): Promise<void> {
-		if (this.roomState.acceptedProposals.has(message.id)) {
+		const acceptedSequence = await readCommandReceipt(this.ctx.storage, message);
+		if (message.sequence <= acceptedSequence) {
 			this.send(socket, {
 				type: SessionMessageKind.Commit,
 				id: message.id,
@@ -159,13 +186,18 @@ export class CollaborationRoom extends DurableObject<Env> {
 			});
 			return;
 		}
+		if (message.sequence !== acceptedSequence + 1)
+			throw new RetryableSessionFailure(
+				SessionFailureCode.CommandGap,
+				'Une commande précédente manque. Synchronisation en cours.',
+			);
 		if (this.roomState.commit === 0)
 			throw new Error('Initialisez le document avant les commandes.');
 		const candidate = new Y.Doc({ gc: false });
 		try {
 			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.roomState.doc));
 			executeSharedCommands(candidate, message.commands);
-			await this.commit(candidate, message.id);
+			await this.commit(candidate, message.id, message);
 		} finally {
 			candidate.destroy();
 		}
@@ -191,22 +223,25 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	private async commit(candidate: Y.Doc, id?: string): Promise<void> {
+	private async commit(candidate: Y.Doc, id?: string, command?: CommandSequence): Promise<void> {
 		// Yjs recognizes replays; unchanged text syncs do not need another persisted commit.
 		if (id === undefined && Y.equalSnapshots(Y.snapshot(candidate), Y.snapshot(this.roomState.doc)))
 			return;
+		compactRoomDocument(candidate);
 		const update = Y.encodeStateAsUpdate(candidate, Y.encodeStateVector(this.roomState.doc));
 		const commit = this.roomState.commit + 1;
 		const acceptedProposals = new Map(this.roomState.acceptedProposals);
-		if (id !== undefined) acceptedProposals.set(id, commit);
+		// Legacy UUID receipts remain readable; protocol v4 stores durable session progress separately.
+		if (id !== undefined && command === undefined) acceptedProposals.set(id, commit);
 		const plan = planPersistence({
 			fullUpdate: Y.encodeStateAsUpdate(candidate),
 			commit,
 			currentChunkCount: this.roomState.chunkCount,
 			acceptedProposals,
 		});
-		await persistRoomState(this.ctx.storage, plan);
+		await persistRoomState(this.ctx.storage, plan, command);
 		Y.applyUpdate(this.roomState.doc, update);
+		compactRoomDocument(this.roomState.doc);
 		this.roomState = {
 			doc: this.roomState.doc,
 			commit,
@@ -218,13 +253,13 @@ export class CollaborationRoom extends DurableObject<Env> {
 		for (const peer of this.ctx.getWebSockets()) this.send(peer, message);
 	}
 
-	private sendPresence(socket: WebSocket, excluded?: WebSocket): void {
+	private presenceMessage(excluded?: WebSocket): SessionMessage {
 		const participants: ParticipantPresence[] = [];
 		for (const peer of this.ctx.getWebSockets()) {
 			if (peer === excluded) continue;
-			const attachment: unknown = peer.deserializeAttachment();
-			if (!(attachment instanceof Uint8Array)) continue;
 			try {
+				const attachment: unknown = peer.deserializeAttachment();
+				if (!(attachment instanceof Uint8Array)) continue;
 				const message = decodeSessionMessage(attachment);
 				if (message.type === SessionMessageKind.Presence)
 					participants.push(...message.participants);
@@ -232,7 +267,24 @@ export class CollaborationRoom extends DurableObject<Env> {
 				// Presence is ephemeral; discard attachments left by an older protocol version.
 			}
 		}
-		this.send(socket, { type: SessionMessageKind.Presence, participants });
+		return { type: SessionMessageKind.Presence, participants };
+	}
+
+	private sendPresence(socket: WebSocket): void {
+		this.send(socket, this.presenceMessage());
+	}
+
+	private broadcastPresence(excluded?: WebSocket): void {
+		const message = this.presenceMessage(excluded);
+		const frame = encodeSessionMessage(message);
+		for (const peer of this.ctx.getWebSockets()) {
+			if (peer === excluded) continue;
+			try {
+				peer.send(frame);
+			} catch {
+				/* A departed participant cannot interrupt the room. */
+			}
+		}
 	}
 
 	private send(socket: WebSocket, message: SessionMessage): void {
@@ -243,8 +295,8 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	private reject(socket: WebSocket, message: string): void {
-		this.send(socket, { type: SessionMessageKind.Reject, message });
+	private reject(socket: WebSocket, message: string, code: SessionFailureCode): void {
+		this.send(socket, { type: SessionMessageKind.Reject, code, message });
 		socket.close(1008, 'Change rejected');
 	}
 
@@ -252,7 +304,6 @@ export class CollaborationRoom extends DurableObject<Env> {
 		let outgoingCode = code;
 		if ([1005, 1006, 1015].includes(code)) outgoingCode = 1000;
 		socket.close(outgoingCode, reason);
-		for (const peer of this.ctx.getWebSockets())
-			if (peer !== socket) this.sendPresence(peer, socket);
+		this.broadcastPresence(socket);
 	}
 }

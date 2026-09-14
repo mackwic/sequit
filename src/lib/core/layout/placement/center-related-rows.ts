@@ -1,6 +1,7 @@
 import { defined } from '../../document/logic-document';
 import { transverseEnvelope } from '../geometry/envelope';
 import { type MutableBounds, translateTransversely } from '../geometry/layout-frame';
+import { alignMixedRow, type BranchAlignment } from './align-mixed-row';
 
 function commonParents(
 	row: readonly string[],
@@ -23,6 +24,7 @@ export function centerRelatedRows(input: {
 	readonly parents: ReadonlyMap<string, readonly string[]>;
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
+	readonly alignment?: BranchAlignment | undefined;
 }): number {
 	const { rows, parents, bounds, vertical } = input;
 	for (let rank = 1; rank < rows.length; rank += 1) {
@@ -30,7 +32,12 @@ export function centerRelatedRows(input: {
 		if (row.length === 0) continue;
 		const previous = new Set(rows[rank - 1]);
 		const adjacent = commonParents(row, parents);
-		if (adjacent.length === 0 || adjacent.some((id) => !previous.has(id))) continue;
+		if (adjacent.length === 0) {
+			if (input.alignment !== undefined)
+				alignMixedRow({ row, bounds, vertical, alignment: input.alignment });
+			continue;
+		}
+		if (adjacent.some((id) => !previous.has(id))) continue;
 		const source = transverseEnvelope(row, bounds, vertical);
 		const target = transverseEnvelope(adjacent, bounds, vertical);
 		const sourceCenter = (source.start + source.end) / 2;

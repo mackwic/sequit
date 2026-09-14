@@ -16,6 +16,7 @@ function inline(text: string, attributes: Readonly<Record<string, unknown>>): st
 	}
 	if (attributes['bold'] === true) result = `**${result}**`;
 	if (attributes['italic'] === true) result = `*${result}*`;
+	if (attributes['underline'] === true) result = `<u>${result}</u>`;
 	if (attributes['strike'] === true) result = `~~${result}~~`;
 	const link: unknown = attributes['link'];
 	if (typeof link === 'string') result = `[${result}](${link.replaceAll(')', '%29')})`;
@@ -53,7 +54,11 @@ function formattedLine(line: Delta): string {
 		.map((op) => {
 			if (typeof op.insert === 'string') return inline(op.insert, op.attributes ?? {});
 			const image: unknown = op.insert?.['image'];
-			if (typeof image === 'string') return `![](${image.replaceAll(')', '%29')})`;
+			if (typeof image === 'string') {
+				let alt = '';
+				if (typeof op.attributes?.['alt'] === 'string') alt = escapeText(op.attributes['alt']);
+				return `![${alt}](${image.replaceAll(')', '%29')})`;
+			}
 			return '';
 		})
 		.join('');

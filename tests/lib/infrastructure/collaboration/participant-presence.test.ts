@@ -17,6 +17,35 @@ const selection = {
 	head: new Uint8Array([0, 2]),
 };
 describe('ephemeral awareness protocol', () => {
+	it('bounds the largest attachment and room frame while keeping document-independent presence', () => {
+		const largeTarget = { kind: SharedElementKind.Document, id: 'a'.repeat(128) };
+		const participant = readParticipantPresence({
+			clientId: Number.MAX_SAFE_INTEGER,
+			name: '漢'.repeat(1000),
+			color: '漢'.repeat(1000),
+			selected: Array.from({ length: 1000 }, () => largeTarget),
+			pointer: { x: 0.125, y: -0.125 },
+			textSelection: {
+				target: largeTarget,
+				field: 'description',
+				anchor: new Uint8Array(512),
+				head: new Uint8Array(512),
+			},
+		});
+		expect(participant.selected).toHaveLength(16);
+		expect(
+			encodeSessionMessage({ type: SessionMessageKind.Presence, participants: [participant] })
+				.byteLength,
+		).toBeLessThan(6 * 1024);
+		const room = encodeSessionMessage({
+			type: SessionMessageKind.Presence,
+			participants: Array.from({ length: 129 }, () => participant),
+		});
+		expect(room.byteLength).toBeLessThan(1024 * 1024);
+		expect(decodeSessionMessage(room)).toMatchObject({
+			participants: Array.from({ length: 128 }, () => participant),
+		});
+	});
 	it('round trips binary relative positions, document coordinates and typed selections through CBOR', () => {
 		const message = {
 			type: SessionMessageKind.Presence as const,
@@ -37,7 +66,6 @@ describe('ephemeral awareness protocol', () => {
 		},
 	);
 	it.each([
-		{ selected: Array.from({ length: 1001 }, () => target) },
 		{ selected: ['A'] },
 		{ textSelection: { ...selection, field: 'css' } },
 		{ textSelection: { ...selection, anchor: new Uint8Array() } },

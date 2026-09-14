@@ -16,6 +16,12 @@ export function upgradeSharedTexts(document: Y.Doc): boolean {
 		for (const collection of [YjsCollection.Groups, YjsCollection.Natures]) {
 			for (const map of document.getMap<Y.Map<unknown>>(collection).values()) upgrade(map, 'label');
 		}
+		for (const map of document.getMap<Y.Map<unknown>>(YjsCollection.Nodes).values()) {
+			if (!map.has('description')) {
+				map.set('description', new Y.Text());
+				changed = true;
+			} else upgrade(map, 'description');
+		}
 	});
 	return changed;
 }

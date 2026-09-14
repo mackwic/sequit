@@ -36,7 +36,7 @@ class WorkerdWebSocket implements CollaborationWebSocket {
 		return this.#socket?.readyState ?? 0;
 	}
 
-	send(data: Uint8Array): void {
+	send(data: Uint8Array | string): void {
 		this.#socket?.send(data);
 	}
 

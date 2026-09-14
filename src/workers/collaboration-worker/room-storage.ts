@@ -1,5 +1,7 @@
 import * as Y from 'yjs';
 
+import type { CommandSequence } from '../../lib/infrastructure/collaboration/command-sequence';
+import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
 import { MAX_PROPOSAL_ID_BYTES } from '../../lib/infrastructure/collaboration/protocol';
 import {
 	chunkKeys,
@@ -11,8 +13,13 @@ import {
 	type PersistencePlan,
 	planPersistence,
 } from '../../lib/infrastructure/collaboration/room-persistence';
+import {
+	RetryableSessionFailure,
+	SessionFailureCode,
+} from '../../lib/infrastructure/collaboration/session-failure';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
+import { commandReceiptKey } from './command-receipts';
 
 export interface RoomState {
 	readonly doc: Y.Doc;
@@ -109,7 +116,12 @@ export async function restoreRoomState(
 	const keys = [...chunkKeys(meta.chunkCount)];
 	const storedChunks = await storage.get(keys);
 	const restored = decodeStoredRoomState(meta, storedChunks, roomId);
-	if (!upgradeSharedTexts(restored.doc)) return restored;
+	const beforeCompaction = Y.encodeStateAsUpdate(restored.doc).byteLength;
+	compactRoomDocument(restored.doc);
+	const compacted = Y.encodeStateAsUpdate(restored.doc).byteLength < beforeCompaction;
+	const upgraded = upgradeSharedTexts(restored.doc);
+	if (!upgraded && !compacted) return restored;
+	compactRoomDocument(restored.doc);
 	try {
 		const plan = planPersistence({
 			fullUpdate: Y.encodeStateAsUpdate(restored.doc),
@@ -128,18 +140,27 @@ export async function restoreRoomState(
 export async function persistRoomState(
 	storage: DurableObjectStorage,
 	plan: PersistencePlan,
+	command?: CommandSequence,
 ): Promise<void> {
-	const entries: Record<string, DocumentMeta | Uint8Array> = { [META_KEY]: plan.meta };
+	const entries: Record<string, DocumentMeta | Uint8Array | number> = { [META_KEY]: plan.meta };
+	if (command !== undefined) entries[commandReceiptKey(command.sessionId)] = command.sequence;
 	const keys = chunkKeys(plan.chunks.length);
 	for (const [index, chunk] of plan.chunks.entries()) {
 		const key = keys[index];
 		/* istanbul ignore else -- persistence plans always pair every chunk with a key */
 		if (key !== undefined) entries[key] = chunk;
 	}
-	await storage.transaction(async (transaction) => {
-		await transaction.put(entries);
-		if (plan.staleChunkKeys.length > 0) {
-			await transaction.delete([...plan.staleChunkKeys]);
-		}
-	});
+	try {
+		await storage.transaction(async (transaction) => {
+			await transaction.put(entries);
+			if (plan.staleChunkKeys.length > 0) {
+				await transaction.delete([...plan.staleChunkKeys]);
+			}
+		});
+	} catch {
+		throw new RetryableSessionFailure(
+			SessionFailureCode.StorageUnavailable,
+			'Le service est temporairement indisponible. Nouvelle tentative en cours.',
+		);
+	}
 }

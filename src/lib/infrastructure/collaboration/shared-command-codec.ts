@@ -10,6 +10,7 @@ import {
 	SharedElementKind,
 	type SharedTarget,
 } from '../document/shared-document-command';
+import { readElementCreation, readElementUpdate } from './shared-element-codec';
 import {
 	wireId,
 	wireKeys,
@@ -34,27 +35,36 @@ export function readSharedCommand(value: unknown): SharedDocumentCommand {
 	switch (command['op']) {
 		case SharedCommandKind.Create:
 			wireKeys(command, ['op', 'target', 'properties']);
-			return {
-				op: SharedCommandKind.Create,
-				target: readSharedTarget(command['target']),
-				properties: wireProperties(command['properties']),
-			};
+			return readElementCreation(
+				readSharedTarget(command['target']),
+				wireProperties(command['properties']),
+			);
 		case SharedCommandKind.Update:
 			wireKeys(command, ['op', 'target', 'set', 'unset']);
-			return {
-				op: SharedCommandKind.Update,
-				target: readSharedTarget(command['target']),
-				set: wireProperties(command['set']),
-				unset: wireStrings(command['unset']),
-			};
+			return readElementUpdate(
+				readSharedTarget(command['target']),
+				wireProperties(command['set']),
+				wireStrings(command['unset']),
+			);
 		case SharedCommandKind.Delete: {
 			wireKeys(command, ['op', 'target', 'replacementId']);
+			const target = readSharedTarget(command['target']);
+			if (target.kind === SharedElementKind.Document || target.kind === SharedElementKind.Group)
+				throw new Error('Use ungroup to dissolve a group; the document cannot be deleted');
+			if (target.kind === SharedElementKind.Nature) {
+				const nature = {
+					op: SharedCommandKind.Delete,
+					target: { ...target, kind: SharedElementKind.Nature },
+				} as const;
+				if (command['replacementId'] === undefined) return nature;
+				return { ...nature, replacementId: wireId(command['replacementId']) };
+			}
 			const deletion = {
 				op: SharedCommandKind.Delete,
-				target: readSharedTarget(command['target']),
+				target: { ...target, kind: target.kind },
 			} as const;
 			if (command['replacementId'] === undefined) return deletion;
-			return { ...deletion, replacementId: wireId(command['replacementId']) };
+			throw new Error('Only nature deletion accepts a replacement');
 		}
 		case SharedCommandKind.Group:
 			wireKeys(command, ['op', 'id', 'label', 'members']);
@@ -67,6 +77,12 @@ export function readSharedCommand(value: unknown): SharedDocumentCommand {
 		case SharedCommandKind.Ungroup:
 			wireKeys(command, ['op', 'id']);
 			return { op: SharedCommandKind.Ungroup, id: wireId(command['id']) };
+		case SharedCommandKind.DeleteRelations: {
+			wireKeys(command, ['op', 'ids']);
+			const ids = wireStrings(command['ids']).map(wireId);
+			if (ids.length === 0) throw new Error('Select relations to delete');
+			return { op: SharedCommandKind.DeleteRelations, ids };
+		}
 		case SharedCommandKind.UpdateLayout: {
 			wireKeys(command, ['op', 'layout']);
 			const layout = wireObject(command['layout']);

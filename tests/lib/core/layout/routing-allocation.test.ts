@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
-import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
+import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import { sharedSourceQuays } from '../../../../src/lib/core/layout/routing/quay-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
-import { anchorRouteToQuays } from '../../../../src/lib/core/layout/routing/route-quay-anchors';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
 
@@ -24,48 +23,6 @@ describe('rail and quay reservations', () => {
 			nodes: new Map(fixture.measurements.nodes).set('removed-node', { width: 1000, height: 1000 }),
 		};
 		expect(await layoutGraph(fixture.graph, fixture.ranks, measured)).toEqual(fixture.layout);
-	});
-	it('creates an orthogonal dogleg when a formerly straight route receives different quays', () => {
-		for (const vertical of [true, false]) {
-			const points = [
-				{ x: 0, y: 0 },
-				{ x: 0, y: 100 },
-			].map((point) => {
-				if (vertical) return point;
-				return { x: point.y, y: point.x };
-			});
-			const original = structuredClone(points);
-			const expected = [
-				{ x: 12, y: 0 },
-				{ x: 12, y: 50 },
-				{ x: -12, y: 50 },
-				{ x: -12, y: 100 },
-			].map((point) => {
-				if (vertical) return point;
-				return { x: point.y, y: point.x };
-			});
-			expect(anchorRouteToQuays(points, 12, -12, vertical)).toEqual(expected);
-			expect(points).toEqual(original);
-			expect(anchorRouteToQuays(points, 0, 0, vertical)).toBe(points);
-		}
-	});
-	it('preserves intermediate obstacle bends while moving only the endpoint legs', () => {
-		const points: Point[] = [
-			{ x: 0, y: 0 },
-			{ x: 0, y: 20 },
-			{ x: 30, y: 20 },
-			{ x: 30, y: 40 },
-			{ x: 60, y: 40 },
-			{ x: 60, y: 100 },
-		];
-		expect(anchorRouteToQuays(points, 12, -12, true)).toEqual([
-			{ x: 12, y: 0 },
-			{ x: 12, y: 20 },
-			{ x: 30, y: 20 },
-			{ x: 30, y: 40 },
-			{ x: 48, y: 40 },
-			{ x: 48, y: 100 },
-		]);
 	});
 	it('reuses a rail for separated intervals but reserves different rails for nested intervals', () => {
 		const runs = [

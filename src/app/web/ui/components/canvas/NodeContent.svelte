@@ -1,10 +1,11 @@
 <script lang="ts">
 	import Icon from '../ui/Icon.svelte';
+	import NodeBody from './NodeBody.svelte';
 	let { label, markdown, icon }: { label: string; markdown: string; icon: string } = $props();
 </script>
 
 <span class="node-header"><Icon name={icon} size={15} /><span>{label}</span></span>
-<span class="node-body">{markdown}</span>
+<span class="node-body"><NodeBody {markdown} /></span>
 
 <style>
 	.node-header {

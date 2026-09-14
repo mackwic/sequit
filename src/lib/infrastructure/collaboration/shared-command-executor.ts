@@ -24,8 +24,10 @@ function createElement(
 ): void {
 	const { target } = command;
 	const properties = initialElementProperties(target.kind, command.properties);
-	if (target.kind === SharedElementKind.Document)
-		throw new Error('Utilisez initialize pour créer le document.');
+	if (target.kind === SharedElementKind.Node)
+		properties['description'] ??= initialElementProperties(target.kind, { description: '' })[
+			'description'
+		];
 	const collection = elementCollection(document, target.kind);
 	if (collection.has(target.id)) throw new Error('Cet identifiant existe déjà.');
 	if (
@@ -57,8 +59,8 @@ function groupElements(
 	const parent = members[0]?.get('groupId');
 	if (members.some((member) => member.get('groupId') !== parent))
 		throw new Error('Les éléments doivent appartenir au même groupe.');
-	const properties: Record<string, string> = { label: command.label };
-	if (typeof parent === 'string') properties['groupId'] = parent;
+	const properties: { label: string; groupId?: string } = { label: command.label };
+	if (typeof parent === 'string') properties.groupId = parent;
 	createElement(document, {
 		op: SharedCommandKind.Create,
 		target: { kind: SharedElementKind.Group, id: command.id },
@@ -89,10 +91,6 @@ function deleteElement(
 ): void {
 	const { target } = command;
 	sharedElement(document, target);
-	if (target.kind === SharedElementKind.Document)
-		throw new Error('Le document ne peut pas être supprimé.');
-	if (target.kind === SharedElementKind.Group)
-		throw new Error('Utilisez ungroup pour dissoudre un groupe.');
 	if (target.kind === SharedElementKind.Nature) replaceNature(document, command);
 	elementCollection(document, target.kind).delete(target.id);
 	const endpoint =
@@ -117,6 +115,13 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 		}
 		case SharedCommandKind.Delete: {
 			deleteElement(document, command);
+			return;
+		}
+		case SharedCommandKind.DeleteRelations: {
+			const relations = elementCollection(document, SharedElementKind.Relation);
+			for (const id of command.ids)
+				sharedElement(document, { kind: SharedElementKind.Relation, id });
+			for (const id of command.ids) relations.delete(id);
 			return;
 		}
 		case SharedCommandKind.Group: {

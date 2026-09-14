@@ -36,6 +36,17 @@ export function readOptionalString(
 	return readString(value, path, context);
 }
 
+export function readOptionalText(
+	value: unknown,
+	path: readonly string[],
+	context: ReadContext,
+): string | undefined {
+	if (value === undefined) return undefined;
+	const text = readText(value, path, context);
+	if (text === '') return undefined;
+	return text;
+}
+
 export function readRequiredLayoutOrder(
 	value: unknown,
 	path: readonly string[],

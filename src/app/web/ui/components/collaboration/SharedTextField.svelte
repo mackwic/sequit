@@ -8,6 +8,7 @@
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import type { SharedTarget } from '../../../../../lib/infrastructure/document/shared-document-command';
 	import { bindQuillMarkdown, type QuillMarkdownEditor } from '../../../document/quill-editor';
+	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { getCollaborationAwareness } from './collaboration-awareness.svelte';
 	import QuillPresence from './QuillPresence.svelte';
 
@@ -28,6 +29,12 @@
 	let host: HTMLDivElement;
 	let editor = $state<QuillMarkdownEditor>();
 	let failure = $state('');
+	let sourceMode = $state(false);
+	const profile = $derived.by(() => {
+		if (field === 'markdown') return QuillEditorProfile.Body;
+		if (field === 'description') return QuillEditorProfile.Description;
+		return QuillEditorProfile.Plain;
+	});
 
 	onMount(() => {
 		let disposed = false;
@@ -35,45 +42,36 @@
 		async function initialize(): Promise<void> {
 			const { default: Editor } = await import('quill');
 			if (disposed || text === undefined) return;
-			const quill = new Editor(host, {
-				theme: 'snow',
-				formats: [
-					'bold',
-					'italic',
-					'strike',
-					'code',
-					'header',
-					'list',
-					'indent',
-					'blockquote',
-					'code-block',
-					'link',
-					'image',
-				],
-				modules: {
-					toolbar: [
-						[{ header: [1, 2, 3, false] }],
-						['bold', 'italic', 'strike', 'code'],
-						[{ list: 'ordered' }, { list: 'bullet' }],
-						['blockquote', 'code-block', 'link'],
-						['clean'],
-					],
-					history: { userOnly: true },
-				},
-			});
+			const quill = new Editor(host, quillEditorOptions(profile));
 			quill.root.setAttribute('aria-label', label);
 			quill.root.setAttribute('role', 'textbox');
 			quill.root.setAttribute('aria-multiline', 'true');
-			const binding = bindQuillMarkdown(quill, {
-				text,
-				edit: (markdown) => {
-					client.updateText(target, field, markdown);
+			const binding = bindQuillMarkdown(
+				quill,
+				{
+					text,
+					edit: (markdown) => {
+						client.updateText(target, field, markdown);
+					},
+					merge: (update) => {
+						client.applyLocalTextUpdate(update);
+					},
 				},
-				merge: (update) => {
-					client.applyLocalTextUpdate(update);
-				},
-			});
+				profile,
+			);
 			editor = binding.editor;
+			const updateMode = (): void => {
+				sourceMode = binding.editor.sourceMode;
+			};
+			updateMode();
+			binding.editor.addEventListener('modechange', updateMode);
+			const protectSource = (event: KeyboardEvent): void => {
+				if (!binding.editor.sourceMode || (!event.ctrlKey && !event.metaKey)) return;
+				if (!['b', 'i', 'u'].includes(event.key.toLowerCase())) return;
+				event.preventDefault();
+				event.stopImmediatePropagation();
+			};
+			quill.root.addEventListener('keydown', protectSource, true);
 			const publish = (): void => {
 				if (disposed) return;
 				if (!quill.hasFocus()) {
@@ -104,6 +102,8 @@
 			quill.history.clear();
 			cleanup = (): void => {
 				binding.destroy();
+				binding.editor.removeEventListener('modechange', updateMode);
+				quill.root.removeEventListener('keydown', protectSource, true);
 				quill.off('editor-change', changed);
 				quill.root.removeEventListener('blur', clear);
 				window.removeEventListener('blur', clear);
@@ -123,6 +123,7 @@
 		const labels: Record<string, string> = {
 			bold: 'Gras',
 			italic: 'Italique',
+			underline: 'Souligné',
 			strike: 'Barré',
 			code: 'Code',
 			blockquote: 'Citation',
@@ -139,9 +140,19 @@
 	}
 </script>
 
-<div class="shared-text-field">
+<div class="shared-text-field" data-text-field={field}>
 	<span class="field-label">{label}</span>
-	<div class="editor-wrapper">
+	{#if sourceMode && profile !== QuillEditorProfile.Plain}
+		<p class="source-notice" role="status">
+			Ce contenu s’édite en texte source pour conserver toutes ses mises en forme.
+		</p>
+	{:else if editor && profile === QuillEditorProfile.Description}
+		<button type="button" onclick={() => editor?.showSource()}>Texte source</button>
+	{/if}
+	<div
+		class="editor-wrapper"
+		class:source-mode={sourceMode && profile !== QuillEditorProfile.Plain}
+	>
 		<div bind:this={host}></div>
 		{#if editor && text}<QuillPresence {editor} {text} />{/if}
 	</div>
@@ -173,5 +184,16 @@
 	}
 	.editor-wrapper :global(.ql-container) {
 		border-radius: 0 0 8px 8px;
+	}
+	.source-mode :global(.ql-toolbar) {
+		display: none;
+	}
+	.source-mode :global(.ql-editor) {
+		font-family: monospace;
+	}
+	.source-notice {
+		font-size: 12px;
+		color: #57534e;
+		margin: 0 0 8px;
 	}
 </style>

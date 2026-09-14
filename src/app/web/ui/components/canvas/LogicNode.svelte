@@ -101,7 +101,6 @@
 		style:left={pixels(bounds?.x)}
 		style:top={pixels(bounds?.y)}
 		style:height={pixels(bounds?.height)}
-		aria-label={`${node.nature.label}: ${node.markdown}`}
 		aria-pressed={selected}
 		onclick={handleClick}
 		ondblclick={handleDoubleClick}

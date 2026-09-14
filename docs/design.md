@@ -65,10 +65,13 @@ Une boîte possède :
 
 - un identifiant stable ;
 - une nature ;
-- un contenu rich text ;
+- un corps Markdown avec édition visuelle gras, italique et souligné ;
+- une description Markdown optionnelle pour les explications détaillées ;
 - éventuellement des métadonnées.
 
 Le titre visible correspond à la nature de la boîte. Sa couleur et son icône sont héritées de la nature ; un nœud peut personnaliser ces deux propriétés séparément, puis revenir à leur héritage. Le texte conserve une encre sombre sur un fond teinté clair, y compris pour les couleurs très claires.
+
+La description accepte un contenu documentaire plus riche : titres, listes et tâches, citations, liens, code avec langage, tableaux et images par URL avec texte alternatif. Elle n’agrandit pas le corps de la carte. Une description vide équivaut à une description absente. La couleur du texte via la palette existante reste une amélioration souhaitable, secondaire à la conservation du contenu.
 
 ### UI et content
 
@@ -96,7 +99,7 @@ La signification exacte d'une relation reste à définir : dépendance, contribu
 
 ## Représentation textuelle
 
-La représentation textuelle est la forme lisible et portable du document. Le premier encodage concret est TOML sous `persistenceFormat = 1`.
+La représentation textuelle est la forme lisible et portable du document. L’encodage courant est TOML sous `persistenceFormat = 2`.
 
 ```text
 TOML versionné
@@ -110,7 +113,7 @@ Canvas interactif
 
 `persistenceFormat` appartient à la frontière textuelle. `LogicDocument` ne porte ni l’encodage ni sa version : un futur encodage compatible pourra produire le même modèle sémantique.
 
-Le document contient des identifiants stables, une bibliothèque locale de natures, des groupes, des nœuds, des junctions, des relations et des préférences de layout. Le contenu des nœuds est conservé exactement sous forme de Markdown décodé ; sa présentation visuelle reste une question distincte.
+Le document contient des identifiants stables, une bibliothèque locale de natures, des groupes, des nœuds, des junctions, des relations et des préférences de layout. Corps et descriptions restent du Markdown dans le TOML. L’édition visuelle peut normaliser une syntaxe équivalente, mais doit conserver le contenu et la mise en forme ; un contenu non représentable sans perte reste éditable en source. Le souligné est représenté par `<u>texte</u>`. L’import/export conserve le Markdown décodé sans convertir globalement les documents en HTML.
 
 ## Source de vérité et édition
 
@@ -201,15 +204,15 @@ La collaboration doit porter sur des objets structurés :
 - relations ;
 - options ou contraintes de présentation.
 
-Yjs est le moteur CRDT. `yjsLiveDocumentFormat = 3` versionne les structures partagées indépendamment du format de persistance. La `DocumentSession` masque Yjs au reste de l’application ; le Markdown est stocké sans normalisation dans des `Y.Text`.
+Yjs est le moteur CRDT. `yjsLiveDocumentFormat = 3` versionne les structures partagées indépendamment du format de persistance. La `DocumentSession` masque Yjs au reste de l’application ; les champs Markdown sont des `Y.Text` stables. Le serveur ajoute un texte de description vide aux anciens nœuds avant publication ; les éditions ultérieures utilisent le canal textuel existant.
 
 Le format textuel reste la représentation canonique portable. Le document complet n’est jamais resynchronisé comme une chaîne ou réimporté concurremment : les modifications collaboratives passent par des opérations fines.
 
 ### Protocole d’autorisation
 
-Le protocole WebSocket en version `2` utilise des enveloppes CBOR, limitées à
+Le protocole WebSocket en version `4` utilise des enveloppes CBOR, limitées à
 1 Mio. Ses messages sont `initialize`, `sync`, `change`, `commit`, `reject` et
-`presence`. Le [plan de première implémentation](collaborative-session-plan.md)
+`retry` et `presence`. Le [plan de première implémentation](collaborative-session-plan.md)
 trace les décisions et leurs ajustements.
 
 Le Durable Object valide les changements dans un document candidat jetable. Les
@@ -219,9 +222,12 @@ rejet des cycles restent applicables, avec la limite existante de 100 000
 appartenances ou dépendances effectives. Le candidat est persisté avant que son
 update soit appliquée au document autoritaire stable et diffusée à tous.
 
-Les commandes portent un ID ; les 128 derniers IDs acceptés sont conservés pour
-leur retransmission. Le serveur peut renvoyer l’état courant avec le même ID
-sans réexécuter une commande connue. Les updates textuelles n’ont aucun ID,
+Chaque session cliente ouverte possède un identifiant et une séquence de commandes
+strictement contiguë. Le dernier numéro accepté est persisté par session dans la
+même transaction que le snapshot. Une retransmission plus ancienne ne réexécute
+jamais la commande ; un trou de séquence demande une reprise. L’ID de commande
+reste une corrélation de réponse, sans porter la garantie de déduplication.
+Les updates textuelles n’ont aucun ID,
 aucune table de déduplication ni acquittement individuel. Le serveur vérifie
 qu’elles ne modifient que les `Y.Text` autorisés ; cette vérification s’applique
 également aux updates reçues pendant la synchronisation.
@@ -235,7 +241,7 @@ l’import concurrent. L’identifiant du document doit correspondre au nom de r
 La session conserve un seul `Y.Doc` stable. Ses collections sont des `Y.Map`
 indexées par ID, contenant les maps des éléments. Le Markdown, le titre et les
 libellés sont des `Y.Text`. La structure affichée attend le commit du serveur ;
-la saisie textuelle est locale et immédiate. Le textarea conserve sa sélection
+la saisie textuelle est locale et immédiate. Le binding de l’éditeur conserve sa sélection
 avec les positions relatives Yjs et préserve une composition de caractères lors
 de l’arrivée de modifications distantes.
 
@@ -251,6 +257,21 @@ lors du repli. Direction et biais de layout sont modifiés ensemble ; aucune
 commande de déplacement manuel n’est introduite. La présence et les sélections
 d’éléments sont éphémères, relayées sous forme de liste courante des participants.
 
+Les éléments internes masqués ne sont pas proposés à l’édition ni à la création
+de relations. Les flèches visibles conservent la liste canonique de leurs relations
+sources : supprimer un agrégat supprime toutes ces relations dans une même commande
+atomique. Une flèche unique permet la réaffectation de son extrémité visible ; une
+extrémité masquée et les deux extrémités d’un agrégat sont verrouillées. Si le repli introduit
+un faux cycle, la projection reste dépliée et explique l’ambiguïté.
+
+La projection réutilise la préparation du graphe à topologie constante et le
+layout à mesures constantes. Les instantanés immuables sont réactifs à leur
+remplacement, sans proxies profonds. Les chemins rendus et les couleurs des flèches
+sont réutilisés tant que géométrie et provenance restent identiques. Les mises à
+jour sont regroupées par frame ; la scène reste montée, avec focus, sélection et
+zoom conservés. Les messages de présence ne relisent pas le document.
+Tab et Maj+Tab sortent du canvas ; les flèches assurent la navigation interne.
+
 ### Persistance et refus
 
 Le Durable Object persiste un snapshot complet et son numéro de commit dans une
@@ -259,14 +280,29 @@ Les anciens titres et libellés scalaires sont migrés vers `Y.Text` et la migra
 est persistée avant publication. Une relecture Yjs sans changement ne crée pas de
 nouveau commit de texte.
 
-Un refus laisse l’état autoritaire inchangé, envoie `reject` au proposant puis
+La collecte du contenu Yjs supprimé intervient après le contrôle du candidat,
+afin de conserver l’information nécessaire au filtre d’autorisation. Les identités
+CRDT et positions relatives restent dans le même document. Une régression exerce
+600 insertions puis suppressions de 16 Kio, ainsi que la reprise d’un ancien client.
+
+Un refus définitif laisse l’état autoritaire inchangé, envoie `reject` au proposant puis
 ferme sa connexion. Le navigateur arrête le buffer et la reconnexion, recharge
 la page avec le message d’erreur en querystring, affiche le toast puis retire le
 paramètre. La perte des frappes non confirmées lors de ce refresh est acceptée.
 Pas de rollback, d’IndexedDB, d’undo collaboratif global ni de récupération après
 fermeture de page dans cette première version. Le contrôle texte conserve
 uniquement les échanges de disponibilité et ping/pong ; une entrée invalide
-suit le même chemin de refus terminal.
+suit le même chemin de refus terminal. Une panne de stockage ou un trou de séquence
+utilise `retry` et conserve l’état local pour reprendre. Le transport détecte les
+connexions silencieuses par ping/pong. Les erreurs d’un abonné et celles de présence
+sont isolées du document ; une sélection volumineuse est tronquée avant stockage
+éphémère, sans interdire la saisie ni les commandes.
+
+La cible de validation est de 1 000 boîtes et 50 personnes connectées sur ordinateur,
+majoritairement en observation, sous Chrome, Firefox et Safari ; consultation sur
+mobile. Les essais locaux de diffusion ne constituent pas une garantie de charge
+d’un déploiement Cloudflare. Les résultats sont consignés dans le
+[plan de remédiation](remediation-2026-09-14.md).
 
 ## Architecture technique retenue
 
@@ -313,7 +349,7 @@ Aucune décision n'est encore prise concernant :
 - Les boîtes sont reliées par des relations orientées.
 - Un tri topologique participe à leur réorganisation automatique.
 - Le canvas est dérivé d'une représentation logique sérialisable sous forme textuelle.
-- TOML est le premier encodage concret, sous `persistenceFormat = 1`.
+- TOML est l’encodage courant, sous `persistenceFormat = 2`.
 - `LogicDocument` reste indépendant de la version et de l’encodage persistants.
 - `yjsLiveDocumentFormat = 3` versionne le schéma partagé indépendamment de `persistenceFormat`.
 - `DocumentSession` est l’unique façade applicative vers le document Yjs live.

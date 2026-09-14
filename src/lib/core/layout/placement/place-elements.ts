@@ -1,6 +1,7 @@
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { encloseGroups } from './enclose-groups';
+import { insetJunctionChannels } from './group-junction-channels';
 import { junctionRails, railSpan } from './junction-rails';
 import { applyOuterMargin, packComponents, repackContainment } from './pack-components';
 import { type ComponentLayout, placeComponent } from './place-component';
@@ -9,6 +10,9 @@ import type { PreparedMeasurements } from './prepare-measurements';
 export interface PlacementState {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly components: ComponentLayout[];
+	groupChannelInsets: ReadonlyMap<number, readonly number[]>;
+	transverseCenters?: ReadonlyMap<string, number> | undefined;
+	branchOffsets?: ReadonlyMap<string, number> | undefined;
 }
 
 export interface PlacementInput {
@@ -26,6 +30,7 @@ export function placeElements(
 ): Map<string, MutableBounds> {
 	const { structure, measurements, frame, placement } = input;
 	const gaps = new Map(rankGaps);
+	const channels = new Map(channelGaps);
 	const junctionRows = new Map<number, string[]>();
 	for (const [id, junction] of structure.junctions) {
 		const row = junctionRows.get(junction.interval) ?? [];
@@ -39,7 +44,18 @@ export function placeElements(
 			vertical: frame.vertical,
 			junctions: structure.junctions,
 		});
-		gaps.set(rank, Math.max(gaps.get(rank) ?? 0, railSpan(rails, channelGaps?.get(rank))));
+		const insets = placement.groupChannelInsets.get(rank);
+		if (insets !== undefined)
+			channels.set(
+				rank,
+				insetJunctionChannels(
+					rails,
+					Math.max(measurements.rankGap, gaps.get(rank) ?? 0),
+					channels.get(rank),
+					insets,
+				),
+			);
+		gaps.set(rank, Math.max(gaps.get(rank) ?? 0, railSpan(rails, channels.get(rank))));
 	}
 	for (const [index, component] of structure.components.entries()) {
 		placement.components[index] = placeComponent({
@@ -51,7 +67,9 @@ export function placeElements(
 			rankGaps: gaps,
 			parents: structure.graph.outgoingByEndpointId,
 			junctions: structure.junctions,
-			channelGaps,
+			channelGaps: channels,
+			transverseCenters: placement.transverseCenters,
+			branchAlignment: { anchors: structure.branchAnchors, offsets: placement.branchOffsets },
 		});
 	}
 	placement.bounds.clear();

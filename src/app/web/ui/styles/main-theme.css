@@ -18,10 +18,13 @@
 	--ui-danger-soft: #fff0f2;
 	--ui-shadow: 0 5px 20px #29252412;
 	/* Content: the main presentation theme; natures and nodes provide the hue. */
-	--content-relation-1: var(--color-slate-600);
-	--content-relation-2: var(--color-gray-800);
-	--content-relation-3: var(--color-slate-700);
-	--content-relation-4: var(--color-gray-900);
+	--content-relation-1: #596579;
+	--content-relation-2: #b56849;
+	--content-relation-3: #398078;
+	--content-relation-4: #936184;
+	--content-relation-5: #987b35;
+	--content-relation-6: #527eaa;
+	--content-relation-7: #737e4a;
 	--content-surface: #ffffff;
 	--content-text: #292524;
 	--content-default-color: #6366f1;

@@ -1,4 +1,6 @@
 import { type CollaborationTransport, TransportStatus } from './collaboration-transport';
+import { notifySubscribers } from './notify-subscribers';
+import { SocketHealth } from './socket-health';
 
 interface SocketMessageEvent {
 	readonly data: unknown;
@@ -13,7 +15,7 @@ type SocketListener = (event: SocketMessageEvent | SocketCloseEvent | Event) => 
 export interface CollaborationWebSocket {
 	binaryType: string;
 	readonly readyState: number;
-	send(data: Uint8Array): void;
+	send(data: Uint8Array | string): void;
 	close(code?: number): void;
 	addEventListener(type: string, listener: SocketListener): void;
 	removeEventListener(type: string, listener: SocketListener): void;
@@ -67,10 +69,10 @@ export function createWebSocketCollaborationTransport(
 	const publishStatus = (status: TransportStatus): void => {
 		if (currentStatus === status) return;
 		currentStatus = status;
-		for (const listener of [...statusListeners]) listener(status);
+		notifySubscribers(statusListeners, status);
 	};
 	const publishFrame = (frame: Uint8Array): void => {
-		for (const listener of [...frameListeners]) listener(frame);
+		notifySubscribers(frameListeners, frame);
 	};
 
 	const connect = (): void => {
@@ -80,28 +82,48 @@ export function createWebSocketCollaborationTransport(
 		const connection = webSocketFactory(collaborationUrl(roomId, baseUrl));
 		socket = connection;
 		connection.binaryType = 'arraybuffer';
-		const onMessage: SocketListener = (event): void => {
-			if (socket !== connection) return;
-			if (!('data' in event)) return;
-			if (event.data instanceof ArrayBuffer) {
-				publishFrame(new Uint8Array(event.data));
-				return;
-			}
-			if (controlType(event.data) !== 'ready') return;
-			reconnectDelay = INITIAL_RECONNECT_DELAY;
-			publishStatus(TransportStatus.Connected);
-		};
-		const onClose: SocketListener = (): void => {
+		const health = new SocketHealth(
+			() => {
+				try {
+					connection.send(JSON.stringify({ type: 'ping' }));
+				} catch {
+					disconnect();
+				}
+			},
+			() => {
+				disconnect();
+			},
+		);
+		const disconnect = (): void => {
 			removeListeners();
 			if (closed || socket !== connection) return;
 			socket = undefined;
 			removeSocketListeners = undefined;
+			if (connection.readyState < 2) connection.close(1000);
 			publishStatus(TransportStatus.Disconnected);
 			scheduleReconnect();
+		};
+		const onMessage: SocketListener = (event): void => {
+			if (socket !== connection) return;
+			if (!('data' in event)) return;
+			if (currentStatus === TransportStatus.Connected) health.received();
+			if (event.data instanceof ArrayBuffer) {
+				publishFrame(new Uint8Array(event.data));
+				return;
+			}
+			const control = controlType(event.data);
+			if (control !== 'ready') return;
+			health.received();
+			reconnectDelay = INITIAL_RECONNECT_DELAY;
+			publishStatus(TransportStatus.Connected);
+		};
+		const onClose: SocketListener = (): void => {
+			disconnect();
 		};
 		connection.addEventListener('message', onMessage);
 		connection.addEventListener('close', onClose);
 		const removeListeners = (): void => {
+			health.close();
 			connection.removeEventListener('message', onMessage);
 			connection.removeEventListener('close', onClose);
 		};
@@ -123,7 +145,11 @@ export function createWebSocketCollaborationTransport(
 		send(frame): void {
 			if (currentStatus !== TransportStatus.Connected) return;
 			if (socket?.readyState !== SOCKET_OPEN) return;
-			socket.send(frame);
+			try {
+				socket.send(frame);
+			} catch {
+				socket.close();
+			}
 		},
 		subscribeToFrames(listener): () => void {
 			frameListeners.add(listener);

@@ -8,11 +8,11 @@ type Listener = Parameters<CollaborationWebSocket['addEventListener']>[1];
 export class FakeWebSocket implements CollaborationWebSocket {
 	binaryType = '';
 	readyState = 1;
-	readonly sent: Uint8Array[] = [];
+	readonly sent: (Uint8Array | string)[] = [];
 	readonly closeCodes: number[] = [];
 	readonly listeners = new Map<string, Set<Listener>>();
 
-	send(data: Uint8Array): void {
+	send(data: Uint8Array | string): void {
 		this.sent.push(data);
 	}
 	close(code?: number): void {

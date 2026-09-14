@@ -3,6 +3,7 @@ import {
 	contentStyleFields,
 	defined,
 	type LogicDocument,
+	nodeDescriptionFields,
 } from '../../core/document/logic-document';
 import { projectNodeAddition, projectRelationAddition } from '../../core/document/topology-edits';
 import { fractionalOrderKeySpace } from '../../core/ordering/order-key-space';
@@ -22,6 +23,7 @@ export function finalizeSharedCommand(
 	after: LogicDocument,
 	command: SharedDocumentCommand,
 ): LogicDocument {
+	if (command.op === SharedCommandKind.DeleteRelations) return collectJunctions(after);
 	if (command.op === SharedCommandKind.Delete) {
 		if (command.target.kind === SharedElementKind.Nature) return after;
 		return collectJunctions(after);
@@ -34,6 +36,7 @@ export function finalizeSharedCommand(
 			id: node.id,
 			natureId: node.natureId,
 			markdown: node.markdown,
+			...nodeDescriptionFields(node.description),
 			...contentStyleFields(node.color, node.icon),
 		};
 		if (node.groupId !== undefined) newNode = Object.assign(newNode, { groupId: node.groupId });

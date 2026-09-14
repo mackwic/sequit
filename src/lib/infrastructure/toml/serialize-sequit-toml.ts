@@ -3,6 +3,7 @@ import { stringify, type TomlTable } from 'smol-toml';
 import {
 	contentStyleFields,
 	type LogicDocument,
+	nodeDescriptionFields,
 	PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 
@@ -34,10 +35,11 @@ export function serializeSequitToml(document: LogicDocument): string {
 		}),
 		nodes: entityTable(
 			document.nodes,
-			({ natureId, groupId, markdown, layoutOrder, color, icon }) => {
+			({ natureId, groupId, markdown, description, layoutOrder, color, icon }) => {
 				const node: TomlTable = {
 					nature: natureId,
 					markdown,
+					...nodeDescriptionFields(description),
 					layoutOrder,
 					...contentStyleFields(color, icon),
 				};

@@ -16,6 +16,7 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	nodeDescriptionFields,
 	type OrderKey,
 	PERSISTENCE_FORMAT,
 	type SequitDiagnostic,
@@ -261,6 +262,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const style = mapContentStyle(entity, path, context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
 			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
+			const description = optionalString(entity['description'], [...path, 'description'], context);
 			const layoutOrder = requiredLayoutOrder(
 				entity['layoutOrder'],
 				[...path, 'layoutOrder'],
@@ -275,6 +277,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 					natureId,
 					...optionalGroupId(groupId),
 					markdown,
+					...nodeDescriptionFields(description),
 					layoutOrder,
 				});
 			}
