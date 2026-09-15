@@ -27,9 +27,17 @@
 <style>
 	.relation-visual {
 		pointer-events: none;
+		transition-property: d, stroke, stroke-width, opacity;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
 	}
 	.relation-visual.selected {
 		stroke: var(--ui-accent);
 		stroke-width: 4;
+	}
+	@starting-style {
+		.relation-visual {
+			opacity: 0;
+		}
 	}
 </style>

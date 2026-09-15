@@ -1,5 +1,6 @@
 import type {
 	LogicDocument,
+	LogicGroup,
 	LogicRelation,
 	NewLogicNode,
 } from '../../core/document/logic-document';
@@ -18,6 +19,7 @@ export interface DocumentCommandDiagnostic {
 
 export enum DocumentCommandDiagnosticCode {
 	NodeNotFound = 'node-not-found',
+	GroupNotFound = 'group-not-found',
 	NodeMarkdownUnavailable = 'node-markdown-unavailable',
 	SessionClosed = 'document-session-closed',
 }
@@ -48,13 +50,22 @@ export type DocumentCommandOutcome =
 	AcceptedCommandOutcome | RejectedCommandOutcome | RolledBackCommandOutcome | FailedCommandOutcome;
 
 export enum DocumentCommandKind {
+	DeleteElements = 'delete-elements',
 	AddNode = 'add-node',
+	AddConnectedNode = 'add-connected-node',
 	AddRelation = 'add-relation',
 	ReplaceNodeMarkdown = 'replace-node-markdown',
+	GroupNodes = 'group-nodes',
+	UpdateGroup = 'update-group',
 }
 interface AddNodeCommand {
 	readonly kind: DocumentCommandKind.AddNode;
 	readonly node: NewLogicNode;
+}
+interface AddConnectedNodeCommand {
+	readonly kind: DocumentCommandKind.AddConnectedNode;
+	readonly node: NewLogicNode;
+	readonly relations: readonly LogicRelation[];
 }
 interface AddRelationCommand {
 	readonly kind: DocumentCommandKind.AddRelation;
@@ -65,7 +76,28 @@ interface ReplaceNodeMarkdownCommand {
 	readonly nodeId: string;
 	readonly markdown: string;
 }
-export type DocumentCommand = AddNodeCommand | AddRelationCommand | ReplaceNodeMarkdownCommand;
+interface DeleteElementsCommand {
+	readonly kind: DocumentCommandKind.DeleteElements;
+	readonly endpointIds: readonly string[];
+	readonly relationIds: readonly string[];
+}
+interface GroupNodesCommand {
+	readonly kind: DocumentCommandKind.GroupNodes;
+	readonly group: { readonly id: string; readonly label: string };
+	readonly nodeIds: readonly string[];
+}
+interface UpdateGroupCommand {
+	readonly kind: DocumentCommandKind.UpdateGroup;
+	readonly group: LogicGroup;
+}
+export type DocumentCommand =
+	| AddNodeCommand
+	| AddConnectedNodeCommand
+	| AddRelationCommand
+	| ReplaceNodeMarkdownCommand
+	| DeleteElementsCommand
+	| GroupNodesCommand
+	| UpdateGroupCommand;
 
 interface DocumentChangeSuccess {
 	readonly ok: true;

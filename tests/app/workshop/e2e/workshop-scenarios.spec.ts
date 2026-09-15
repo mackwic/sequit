@@ -28,6 +28,13 @@ async function open(page: Page, id: string, variant?: string) {
 	).toHaveAttribute('aria-pressed', 'true');
 	await expect(page.locator('[data-node-id="comparer"]').first()).toBeVisible();
 }
+async function settleCanvasMotion(page: Page): Promise<void> {
+	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
+		await Promise.allSettled(
+			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
+		);
+	});
+}
 const node = (page: Page, id: string) => page.locator(`[data-node-id="${id}"]`);
 for (const [id, count] of scenarios)
 	test(`${id}: every variant starts with a real canvas`, async ({ page }) => {
@@ -180,6 +187,7 @@ test('nature management applies a new nature then reassigns it on deletion', asy
 });
 test('layout waits for application and changes direction and actual spacing', async ({ page }) => {
 	await open(page, 'SC-LAY-ARRANGE', 'apply');
+	await settleCanvasMotion(page);
 	const before = await node(page, 'comparer').boundingBox();
 	await page.getByLabel('Sens de lecture').selectOption('left-to-right');
 	expect(await node(page, 'comparer').boundingBox()).toEqual(before);

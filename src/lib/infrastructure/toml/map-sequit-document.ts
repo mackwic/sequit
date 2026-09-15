@@ -233,6 +233,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const entity = table(value, path, context);
 			if (!entity) continue;
 			const label = string(entity['label'], [...path, 'label'], context);
+			const color = optionalString(entity['color'], [...path, 'color'], context);
 			const parentGroupId = optionalString(entity['group'], [...path, 'group'], context);
 			const layoutOrder = requiredLayoutOrder(
 				entity['layoutOrder'],
@@ -244,6 +245,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 					kind: EndpointKind.Group,
 					id: groupId,
 					label,
+					...contentStyleFields(color, undefined),
 					...optionalGroupId(parentGroupId),
 					...mapGroupState(entity['state'], [...path, 'state'], context),
 					layoutOrder,

@@ -96,6 +96,52 @@ describe('local document command gateway', () => {
 		expect(persist).toHaveBeenCalledOnce();
 	});
 
+	it('projects group title and color updates through typed persistence', async () => {
+		const document = await referenceDocument();
+		const original = document.groups.find(({ id }) => id === 'use-cases');
+		if (original === undefined) throw new Error('Expected the use-cases group');
+		const replacement = { ...original, label: 'Cas d’usage', color: '#2563eb' };
+		const persist = vi.fn<DocumentChangeRepository['persist']>((changes) => {
+			const projected = changes.groupReplacements?.[0];
+			if (projected === undefined) throw new Error('Expected a group replacement');
+			return Promise.resolve({
+				ok: true,
+				value: {
+					...document,
+					groups: document.groups.map((group) => {
+						if (group.id === projected.id) return projected;
+						return group;
+					}),
+				},
+			});
+		});
+		const gateway = new LocalDocumentCommandGateway(() => document, { persist });
+
+		const accepted = await gateway.dispatch({
+			kind: DocumentCommandKind.UpdateGroup,
+			group: replacement,
+		});
+
+		expect(accepted.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		if (accepted.kind !== DocumentCommandOutcomeKind.Accepted)
+			throw new Error('Expected an accepted group update');
+		expect(accepted.document.groups).toContainEqual(replacement);
+		expect(persist).toHaveBeenCalledWith(
+			expect.objectContaining({ groupReplacements: [replacement] }),
+			undefined,
+		);
+		await expect(
+			gateway.dispatch({
+				kind: DocumentCommandKind.UpdateGroup,
+				group: { ...replacement, id: 'missing' },
+			}),
+		).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [{ code: 'group-not-found', path: ['groups', 'missing'] }],
+		});
+		expect(persist).toHaveBeenCalledOnce();
+	});
+
 	it('persists the complete change set before publishing its acceptance', async () => {
 		const document = await referenceDocument();
 		const events: string[] = [];

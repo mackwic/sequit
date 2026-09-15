@@ -19,48 +19,30 @@ import {
 	MIN_CANVAS_ZOOM,
 	stepCanvasZoom,
 } from '../canvas/canvas-viewport';
+import {
+	type CanvasActivity,
+	CanvasActivityKind,
+	canvasCommandDiagnostic,
+	type CanvasDocumentCommandPort,
+	CanvasEditableField,
+	CanvasEditAvailability,
+	type EditingCanvasActivity,
+	idleCanvasActivity,
+	type NodeEditDraft,
+	PendingNodeCreation,
+	type PendingNodeEdit,
+	pendingNodeEditActivity,
+	queuePendingNodeEdit,
+	unavailableCanvasCommands,
+} from './canvas-edit-activity';
 
-export interface CanvasDocumentCommandPort {
-	readonly replaceNodeMarkdown: (
-		nodeId: string,
-		markdown: string,
-	) => Promise<DocumentCommandOutcome>;
-}
-
-export enum CanvasActivityKind {
-	Idle = 'idle',
-	Editing = 'editing',
-}
-
-export enum CanvasEditAvailability {
-	Available = 'available',
-	Deleted = 'deleted',
-}
-
-enum CanvasEditableField {
-	Markdown = 'markdown',
-}
-
-interface IdleCanvasActivity {
-	readonly kind: CanvasActivityKind.Idle;
-}
-
-export interface EditingCanvasActivity {
-	readonly kind: CanvasActivityKind.Editing;
-	readonly target: EntityKey;
-	readonly nodeId: string;
-	readonly field: CanvasEditableField;
-	readonly baseValue: string;
-	readonly draft: string;
-	readonly frozenBounds: Bounds;
-	readonly availability: CanvasEditAvailability;
-	readonly diagnostic: string | undefined;
-	readonly saving: boolean;
-	readonly layoutRevision: number;
-	readonly saveId: number | undefined;
-}
-
-export type CanvasActivity = IdleCanvasActivity | EditingCanvasActivity;
+export {
+	type CanvasActivity,
+	CanvasActivityKind,
+	type CanvasDocumentCommandPort,
+	CanvasEditAvailability,
+	type EditingCanvasActivity,
+} from './canvas-edit-activity';
 
 interface CanvasFocusRequest {
 	readonly target: EntityKey;
@@ -68,47 +50,21 @@ interface CanvasFocusRequest {
 	readonly ready: boolean;
 }
 
-const idleActivity = (): IdleCanvasActivity => ({ kind: CanvasActivityKind.Idle });
 const NODE_NOT_FOUND_CODE: string = DocumentCommandDiagnosticCode.NodeNotFound;
-
-const unavailableCommands: CanvasDocumentCommandPort = {
-	replaceNodeMarkdown: (nodeId) => {
-		return Promise.resolve({
-			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [
-				{
-					code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
-					message: `Node Markdown editing is unavailable: ${nodeId}`,
-					path: ['nodes', nodeId, 'markdown'],
-				},
-			],
-		});
-	},
-};
-
-interface AcceptedCommandOutcome {
-	readonly kind: DocumentCommandOutcomeKind.Accepted;
-}
-
-function outcomeDiagnostic(outcome: Exclude<DocumentCommandOutcome, AcceptedCommandOutcome>) {
-	if (outcome.kind === DocumentCommandOutcomeKind.Failed) {
-		if (outcome.error instanceof Error) return outcome.error.message;
-		return String(outcome.error);
-	}
-	return outcome.diagnostics.map(({ message }) => message).join('; ');
-}
 
 export class CanvasSession {
 	zoom = $state(DEFAULT_CANVAS_ZOOM);
 	private readonly selectedEntities = new SvelteMap<EntityKey, EntityRef>();
-	activity = $state<CanvasActivity>(idleActivity());
+	activity = $state<CanvasActivity>(idleCanvasActivity());
 	announcement = $state('');
 	private focusRequest = $state<CanvasFocusRequest>();
+	private pendingNodeEdit = $state<PendingNodeEdit>();
+	private readonly pendingNodeCreation = new PendingNodeCreation();
 	private layoutRevision = 0;
 	private nextSaveId = 1;
 	readonly selectModeActive = true;
 
-	constructor(private readonly commands: CanvasDocumentCommandPort = unavailableCommands) {}
+	constructor(private readonly commands: CanvasDocumentCommandPort = unavailableCanvasCommands) {}
 
 	get selection(): ReadonlyMap<EntityKey, EntityRef> {
 		return this.selectedEntities;
@@ -144,13 +100,21 @@ export class CanvasSession {
 		return selected[0];
 	}
 
+	get relativeNodeCreationTarget(): EntityRef | undefined {
+		if (this.selectedEntities.size !== 1) return undefined;
+		const selected = [...this.selectedEntities.values()][0];
+		if (selected?.kind === EntityKind.Relation) return undefined;
+		return selected;
+	}
+
 	get focusRestorationTarget(): EntityKey | undefined {
 		if (this.focusRequest?.ready !== true) return undefined;
 		return this.focusRequest.target;
 	}
 
 	get awaitingAcceptedLayout(): boolean {
-		return this.focusRequest !== undefined && !this.focusRequest.ready;
+		const waitingForFocus = this.focusRequest !== undefined && !this.focusRequest.ready;
+		return waitingForFocus || this.pendingNodeEdit !== undefined;
 	}
 
 	zoomIn(): boolean {
@@ -175,7 +139,7 @@ export class CanvasSession {
 		if (this.selectedEntities.size === 1 && this.selectedEntities.has(key)) return false;
 		this.selectedEntities.clear();
 		this.selectedEntities.set(key, ref);
-		this.announceSelection(ref, 'selected');
+		this.announcement = `${ref.kind} ${ref.id} selected.`;
 		return true;
 	}
 
@@ -184,7 +148,7 @@ export class CanvasSession {
 		const key = entityKey(ref.kind, ref.id);
 		if (this.selectedEntities.has(key)) return false;
 		this.selectedEntities.set(key, ref);
-		this.announceSelection(ref, 'added to selection');
+		this.announcement = `${ref.kind} ${ref.id} added to selection.`;
 		return true;
 	}
 
@@ -193,7 +157,7 @@ export class CanvasSession {
 		const key = entityKey(ref.kind, ref.id);
 		if (!this.selectedEntities.has(key)) return this.addEntity(ref);
 		this.selectedEntities.delete(key);
-		this.announceSelection(ref, 'removed from selection');
+		this.announcement = `${ref.kind} ${ref.id} removed from selection.`;
 		return true;
 	}
 
@@ -233,6 +197,13 @@ export class CanvasSession {
 		return true;
 	}
 
+	queueNodeMarkdownEdit(node: NodeEditDraft, cancel?: () => void): boolean {
+		this.focusRequest = undefined;
+		this.pendingNodeEdit = queuePendingNodeEdit(this.selectedEntities, node);
+		this.announcement = `Opening editor for new node ${node.id}.`;
+		return this.pendingNodeCreation.queue(cancel);
+	}
+
 	updateDraft(draft: string): boolean {
 		const editing = this.editing;
 		if (editing === undefined) return false;
@@ -241,7 +212,7 @@ export class CanvasSession {
 		return true;
 	}
 
-	async saveDraft(): Promise<DocumentCommandOutcome | undefined> {
+	async saveDraft(closeOnSuccess = true): Promise<DocumentCommandOutcome | undefined> {
 		const editing = this.editing;
 		if (editing === undefined) return undefined;
 		const unavailable = editing.saving || editing.availability === CanvasEditAvailability.Deleted;
@@ -258,16 +229,28 @@ export class CanvasSession {
 		const current = this.editing;
 		if (current?.saveId !== saveId) return outcome;
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) {
+			this.pendingNodeCreation.commit();
 			if (current.availability === CanvasEditAvailability.Deleted) {
 				this.activity = { ...current, saving: false, saveId: undefined };
 				return outcome;
 			}
-			this.activity = idleActivity();
-			this.focusRequest = {
-				target: editing.target,
-				afterLayoutRevision: editing.layoutRevision,
-				ready: this.layoutRevision > editing.layoutRevision,
-			};
+			if (closeOnSuccess) {
+				this.activity = idleCanvasActivity();
+				this.focusRequest = {
+					target: editing.target,
+					afterLayoutRevision: editing.layoutRevision,
+					ready: this.layoutRevision > editing.layoutRevision,
+				};
+			} else {
+				this.activity = {
+					...current,
+					baseValue: current.draft,
+					saving: false,
+					diagnostic: undefined,
+					layoutRevision: this.layoutRevision,
+					saveId: undefined,
+				};
+			}
 			this.announcement = `Node ${editing.nodeId} Markdown saved.`;
 			return outcome;
 		}
@@ -280,17 +263,19 @@ export class CanvasSession {
 			...current,
 			saving: false,
 			availability,
-			diagnostic: outcomeDiagnostic(outcome),
+			diagnostic: canvasCommandDiagnostic(outcome),
 			saveId: undefined,
 		};
-		this.announcement = `Could not save node ${editing.nodeId}: ${outcomeDiagnostic(outcome)}`;
+		this.announcement = `Could not save node ${editing.nodeId}: ${canvasCommandDiagnostic(outcome)}`;
 		return outcome;
 	}
 
-	cancel(): boolean {
+	cancel(commitCreation = false): boolean {
+		const creationCancelled = this.pendingNodeCreation.finish(commitCreation);
+		this.pendingNodeEdit = undefined;
 		const editing = this.editing;
 		if (editing !== undefined) {
-			this.activity = idleActivity();
+			this.activity = idleCanvasActivity();
 			this.focusRequest = {
 				target: editing.target,
 				afterLayoutRevision: this.layoutRevision,
@@ -301,16 +286,21 @@ export class CanvasSession {
 			else this.announcement = `Editing node ${editing.nodeId} cancelled.`;
 			return true;
 		}
+		if (creationCancelled) return true;
 		return this.clearSelection();
 	}
 
 	reconcile(index: CanvasEntityIndex): boolean {
 		this.layoutRevision += 1;
 		let changed = this.reconcileEditingTarget(index);
+		if (this.openPendingNodeEdit(index)) changed = true;
 		const editingTarget = this.editing?.target;
+		const pendingTarget = this.pendingNodeEdit?.target;
 		let removed = 0;
 		for (const key of this.selectedEntities.keys()) {
-			if (index.has(key) || key === editingTarget) continue;
+			let retained = index.has(key) || key === editingTarget;
+			if (!retained) retained = key === pendingTarget;
+			if (retained) continue;
 			this.selectedEntities.delete(key);
 			removed += 1;
 		}
@@ -351,13 +341,19 @@ export class CanvasSession {
 		return true;
 	}
 
+	private openPendingNodeEdit(index: CanvasEntityIndex): boolean {
+		const pending = this.pendingNodeEdit;
+		const activity = pendingNodeEditActivity(pending, index, this.layoutRevision);
+		if (activity === undefined) return false;
+		this.pendingNodeEdit = undefined;
+		this.activity = activity;
+		this.announcement = `Editing new node ${activity.nodeId}.`;
+		return true;
+	}
+
 	private updateZoom(zoom: number): boolean {
 		if (zoom === this.zoom) return false;
 		this.zoom = zoom;
 		return true;
-	}
-
-	private announceSelection(ref: EntityRef, action: string): void {
-		this.announcement = `${ref.kind} ${ref.id} ${action}.`;
 	}
 }

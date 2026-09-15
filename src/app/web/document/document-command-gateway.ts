@@ -1,5 +1,12 @@
-import type { LogicDocument } from '../../../lib/core/document/logic-document';
 import {
+	defined,
+	EndpointKind,
+	type LogicDocument,
+	type LogicGroup,
+} from '../../../lib/core/document/logic-document';
+import { projectDeletion } from '../../../lib/core/document/topology-deletions';
+import {
+	projectConnectedNodeAddition,
 	projectNodeAddition,
 	projectRelationAddition,
 } from '../../../lib/core/document/topology-edits';
@@ -18,6 +25,7 @@ import {
 	type FailedCommandOutcome,
 	type LocalDocumentCommandGatewayOptions,
 } from '../../../lib/infrastructure/document/document-command-contracts';
+import { groupSiblingDocumentNodes } from '../../../lib/infrastructure/document/document-group-operations';
 
 function assertNever(value: never): never {
 	throw new TypeError(`Unsupported document command: ${String(value)}`);
@@ -49,6 +57,65 @@ function projectNodeMarkdownReplacement(
 				relationAdditions: [],
 				endpointOrderChanges: [],
 				nodeMarkdownReplacements: [{ nodeId, markdown }],
+			},
+		},
+	};
+}
+
+function projectNodeGrouping(
+	document: LogicDocument,
+	group: { readonly id: string; readonly label: string },
+	nodeIds: readonly string[],
+): DocumentCommandProjectionResult {
+	const grouped = groupSiblingDocumentNodes(document, group, new Set(nodeIds));
+	const added = defined(
+		grouped.groups.find(({ id }) => id === group.id),
+		'Le groupe n’a pas été créé.',
+	);
+	return {
+		ok: true,
+		value: {
+			changes: {
+				nodeAdditions: [],
+				relationAdditions: [],
+				endpointOrderChanges: [],
+				nodeMarkdownReplacements: [],
+				groupAdditions: [added],
+				endpointGroupChanges: nodeIds.map((endpointId) => ({
+					endpointKind: EndpointKind.Node,
+					endpointId,
+					groupId: added.id,
+				})),
+			},
+		},
+	};
+}
+
+function projectGroupUpdate(
+	document: LogicDocument,
+	group: LogicGroup,
+): DocumentCommandProjectionResult {
+	if (!document.groups.some(({ id }) => id === group.id)) {
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.GroupNotFound,
+					message: `Group no longer exists: ${group.id}`,
+					path: ['groups', group.id],
+				},
+			],
+		};
+	}
+	return {
+		ok: true,
+		value: {
+			changes: {
+				nodeAdditions: [],
+				relationAdditions: [],
+				endpointOrderChanges: [],
+				nodeMarkdownReplacements: [],
+				groupReplacements: [group],
 			},
 		},
 	};
@@ -92,8 +159,26 @@ export class LocalDocumentCommandGateway implements DocumentCommandGateway {
 			}
 			return this.#execute(() => {
 				switch (command.kind) {
+					case DocumentCommandKind.UpdateGroup:
+						return projectGroupUpdate(this.current(), command.group);
+					case DocumentCommandKind.GroupNodes:
+						return projectNodeGrouping(this.current(), command.group, command.nodeIds);
+					case DocumentCommandKind.DeleteElements:
+						return {
+							ok: true,
+							value: {
+								changes: projectDeletion(this.current(), command.endpointIds, command.relationIds),
+							},
+						};
 					case DocumentCommandKind.AddNode:
 						return projectNodeAddition(this.current(), command.node, fractionalOrderKeySpace);
+					case DocumentCommandKind.AddConnectedNode:
+						return projectConnectedNodeAddition(
+							this.current(),
+							command.node,
+							command.relations,
+							fractionalOrderKeySpace,
+						);
 					case DocumentCommandKind.AddRelation:
 						return projectRelationAddition(
 							this.current(),

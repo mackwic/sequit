@@ -34,6 +34,10 @@
 		return entityRef(EntityKind.Node, node.id);
 	});
 	let selected = $derived(ref !== undefined && session?.isSelected(ref) === true);
+	let nodeGroupId = $derived.by(() => {
+		if (!('navigation' in node)) return undefined;
+		return node.navigation.groupId;
+	});
 	let canvasEntityKey = $derived.by(() => {
 		if (ref === undefined) return undefined;
 		return entityKey(ref.kind, ref.id);
@@ -46,7 +50,7 @@
 	function handleClick(event: MouseEvent) {
 		if (!session || !ref) return;
 		event.stopPropagation();
-		if (event.metaKey || event.ctrlKey) session.toggleEntity(ref);
+		if (event.shiftKey || event.metaKey || event.ctrlKey) session.toggleEntity(ref);
 		else session.selectEntity(ref);
 	}
 
@@ -93,6 +97,8 @@
 		type="button"
 		tabindex={tabIndex}
 		data-node-id={nodeId}
+		data-node-group-id={nodeGroupId}
+		data-endpoint-id={nodeId}
 		data-content-icon={icon}
 		data-content-color={color}
 		data-canvas-entity-key={canvasEntityKey}
@@ -128,11 +134,24 @@
 		position: absolute;
 		z-index: 20;
 		overflow: hidden;
+		outline: 3px solid transparent;
+		outline-offset: 2px;
+		transition-property:
+			left, top, width, height, opacity, transform, border-color, background-color, box-shadow,
+			outline-color;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
+	}
+
+	@starting-style {
+		.positioned {
+			opacity: 0;
+			transform: scale(0.96);
+		}
 	}
 
 	.positioned.selected {
-		outline: 3px solid var(--ui-accent);
-		outline-offset: 2px;
+		outline-color: var(--ui-accent);
 	}
 
 	.positioned:focus-visible {

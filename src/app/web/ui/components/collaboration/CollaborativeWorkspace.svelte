@@ -3,9 +3,13 @@
 
 	import {
 		defined,
+		EndpointKind,
 		GroupState,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
+	import { projectDeletion } from '../../../../../lib/core/document/topology-deletions';
+	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
+	import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import {
 		SharedCommandKind as Op,
@@ -17,7 +21,13 @@
 		deleteVisibleRelation,
 		hiddenRelationFields,
 	} from '../../../projection/visible-relation-commands';
+	import { EntityKind } from '../../canvas/canvas-entity';
+	import {
+		planRelativeNodeCreation,
+		type RelativeNodePosition,
+	} from '../../canvas/relative-node-creation';
 	import { CanvasSession, type EditingCanvasActivity } from '../../session/canvas-session.svelte';
+	import CanvasGestures from '../canvas/CanvasGestures.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import { sharedSelection } from './canvas-awareness';
 	import CanvasAwareness from './CanvasAwareness.svelte';
@@ -25,8 +35,10 @@
 		CollaborationAwareness,
 		setCollaborationAwareness,
 	} from './collaboration-awareness.svelte';
+	import CreateNodeDialog from './CreateNodeDialog.svelte';
 	import SharedEditDialog from './SharedEditDialog.svelte';
 	import SharedElementCard from './SharedElementCard.svelte';
+	import SharedGroupFields from './SharedGroupFields.svelte';
 	import SharedNodeFields from './SharedNodeFields.svelte';
 	import SharedPropertyFields from './SharedPropertyFields.svelte';
 	import SharedStructureControls from './SharedStructureControls.svelte';
@@ -49,6 +61,15 @@
 		presence.destroy();
 	});
 	let error = $state('');
+	let creating = $state(false);
+	let editingGroupId = $state<string>();
+	let editingGroup = $derived(model.groups.find(({ id }) => id === editingGroupId));
+	let creationGroupId = $state<string>();
+	let lastNatureId = $state<string>();
+	function creationParent(): { groupId?: string } {
+		if (creationGroupId === undefined) return {};
+		return { groupId: creationGroupId };
+	}
 	const projection = untrack(() => createSharedCanvasProjection(model));
 	let visible = $state.raw(projection.visible);
 	$effect(() => {
@@ -63,14 +84,112 @@
 	function dispatch(command: SharedDocumentCommand): void {
 		dispatchMany([command]);
 	}
-	function dispatchMany(commands: readonly SharedDocumentCommand[]): void {
+	function dispatchMany(commands: readonly SharedDocumentCommand[]): boolean {
 		try {
 			client.dispatch(commands);
 			error = '';
+			return true;
 		} catch (failure) {
 			if (failure instanceof Error) error = failure.message;
+			return false;
 		}
 	}
+	function connect(from: string, to: string) {
+		if (!connected) return;
+		const relation = { id: crypto.randomUUID(), from, to };
+		const candidate = projectRelationAddition(model, relation, fractionalOrderKeySpace);
+		if (!candidate.ok) {
+			error = candidate.diagnostics.map(({ message }) => message).join('; ');
+			return;
+		}
+		dispatch({
+			op: Op.Create,
+			target: { kind: Kind.Relation, id: relation.id },
+			properties: { from, to },
+		});
+	}
+	function deleteSelection() {
+		if (!connected || canvas.editing) return;
+		const selected = sharedSelection(canvas.selection.values());
+		const relationIds = selected
+			.filter(({ kind }) => kind === Kind.Relation)
+			.flatMap(({ id }) => visible.relations.get(id)?.sourceRelationIds ?? []);
+		if (
+			dispatchDeletion(
+				selected.filter(({ kind }) => kind !== Kind.Relation).map(({ id }) => id),
+				relationIds,
+			)
+		)
+			canvas.clearSelection();
+	}
+	function dispatchDeletion(
+		endpointIds: readonly string[],
+		relationIds: readonly string[],
+	): boolean {
+		const changes = projectDeletion(model, endpointIds, relationIds);
+		const commands: SharedDocumentCommand[] = [];
+		const relations = changes.relationRemovals ?? [];
+		if (relations.length > 0) commands.push({ op: Op.DeleteRelations, ids: relations });
+		for (const { endpointKind, endpointId } of changes.endpointRemovals ?? []) {
+			if (endpointKind === EndpointKind.Group) commands.push({ op: Op.Ungroup, id: endpointId });
+			else {
+				let kind = Kind.Node;
+				if (endpointKind === EndpointKind.Junction) kind = Kind.Junction;
+				commands.push({ op: Op.Delete, target: { kind, id: endpointId } });
+			}
+		}
+		return commands.length > 0 && dispatchMany(commands);
+	}
+	function createRelativeNode(position: RelativeNodePosition): void {
+		const target = canvas.relativeNodeCreationTarget;
+		if (!connected || target === undefined) return;
+		const plan = planRelativeNodeCreation(model, target, position, {
+			nodeId: crypto.randomUUID(),
+			relationId: () => crypto.randomUUID(),
+			lastNatureId,
+		});
+		if (plan === undefined) {
+			error = 'Ajoutez d’abord une nature au document.';
+			return;
+		}
+		const { id: nodeId, ...properties } = plan.node;
+		const commands: SharedDocumentCommand[] = [
+			{
+				op: Op.Create,
+				target: { kind: Kind.Node, id: nodeId },
+				properties,
+			},
+			...plan.relations.map(({ id, from, to }) => ({
+				op: Op.Create as const,
+				target: { kind: Kind.Relation as const, id },
+				properties: { from, to },
+			})),
+		];
+		if (!dispatchMany(commands)) return;
+		lastNatureId = plan.node.natureId;
+		canvas.queueNodeMarkdownEdit(plan.node, () => {
+			dispatchDeletion([plan.node.id], []);
+		});
+	}
+	function groupSelection(): void {
+		if (!connected) return;
+		const members = [...canvas.selection.values()]
+			.filter(({ kind }) => kind === EntityKind.Node)
+			.map(({ id }) => id);
+		if (members.length < 2 || members.length !== canvas.selectionCount) return;
+		if (
+			dispatchMany([
+				{
+					op: Op.Group,
+					id: crypto.randomUUID(),
+					label: 'Groupe',
+					members,
+				},
+			])
+		)
+			canvas.clearSelection();
+	}
+
 	$effect(() => {
 		client.setPresence({
 			name,
@@ -82,24 +201,79 @@
 
 <div class="workspace">
 	<div class="canvas">
-		<LogicCanvas document={projection} session={canvas}>
-			{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
-			{#snippet editor(editing: EditingCanvasActivity)}
-				{@const node = visible.document.nodes.find((item) => item.id === editing.nodeId)}
-				{#if node}<SharedEditDialog
-						label={`Boîte ${editing.nodeId}`}
-						onclose={() => canvas.cancel()}
-					>
-						<SharedNodeFields
-							{node}
-							{client}
-							{connected}
-							{dispatch}
-							label={`Texte de ${editing.nodeId}`}
-						/>
-					</SharedEditDialog>{/if}
-			{/snippet}
-		</LogicCanvas>
+		<CanvasGestures
+			session={canvas}
+			enabled={connected && !creating && editingGroupId === undefined}
+			oncreate={(groupId: string | undefined) => {
+				creationGroupId = groupId;
+				creating = true;
+			}}
+			onconnect={connect}
+			ondelete={deleteSelection}
+			oncreaterelative={createRelativeNode}
+		>
+			<LogicCanvas
+				document={projection}
+				session={canvas}
+				onGroup={groupSelection}
+				onGroupEdit={(groupId: string) => {
+					editingGroupId = groupId;
+				}}
+			>
+				{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
+				{#snippet editor(editing: EditingCanvasActivity)}
+					{@const node = visible.document.nodes.find((item) => item.id === editing.nodeId)}
+					{#if node}<SharedEditDialog
+							label={`Boîte ${editing.nodeId}`}
+							onclose={() => canvas.cancel(true)}
+							oncancel={() => canvas.cancel()}
+							oncommitclose={() => canvas.cancel(true)}
+						>
+							{#key editing.nodeId}
+								<div class="editor-step">
+									<SharedNodeFields
+										{node}
+										{client}
+										{connected}
+										{dispatch}
+										label={`Texte de ${editing.nodeId}`}
+										autofocusMarkdown
+									/>
+								</div>
+							{/key}
+						</SharedEditDialog>{/if}
+				{/snippet}
+			</LogicCanvas>
+		</CanvasGestures>
+		{#if editingGroup}<SharedEditDialog
+				label={`Groupe ${editingGroup.label}`}
+				description="Le titre et la couleur sont partagés en direct."
+				onclose={() => {
+					editingGroupId = undefined;
+				}}
+			>
+				<SharedGroupFields group={editingGroup} {client} {connected} {dispatch} />
+			</SharedEditDialog>{/if}
+		{#if creating}<CreateNodeDialog
+				natures={model.natures}
+				{connected}
+				onclose={() => {
+					creating = false;
+				}}
+				oncreate={(natureId: string, markdown: string) => {
+					lastNatureId = natureId;
+					if (
+						dispatchMany([
+							{
+								op: Op.Create,
+								target: { kind: Kind.Node, id: crypto.randomUUID() },
+								properties: { natureId, markdown, ...creationParent() },
+							},
+						])
+					)
+						creating = false;
+				}}
+			/>{/if}
 	</div>
 	<aside aria-label="Document partagé">
 		<SharedElementCard label="Titre du document">
@@ -130,7 +304,7 @@
 					/>
 					<SharedPropertyFields
 						target={{ kind: Kind.Group, id: group.id }}
-						properties={{ groupId: group.groupId }}
+						properties={{ color: group.color, groupId: group.groupId }}
 						{connected}
 						{dispatch}
 					/>
@@ -251,6 +425,20 @@
 		grid-template-columns: minmax(240px, 1fr) 330px;
 		flex: 1;
 		min-height: 0;
+	}
+	.editor-step {
+		animation: editor-step-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	@keyframes editor-step-in {
+		from {
+			opacity: 0;
+			transform: translateX(10px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.editor-step {
+			animation: none;
+		}
 	}
 	.canvas {
 		position: relative;

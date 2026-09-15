@@ -26,11 +26,15 @@
 		awareness,
 		hideToolbar = false,
 		oncanvas,
+		onGroup,
+		onGroupEdit,
 	}: {
 		document: CanvasProjection;
 		session: CanvasSession;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
+		onGroup?: () => void;
+		onGroupEdit?: (groupId: string) => void;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -343,7 +347,7 @@
 		onclick={handleBackgroundClick}
 	>
 		{#if canvas}
-			<RenderedCanvas {canvas} zoom={session.zoom} {session} />
+			<RenderedCanvas {canvas} zoom={session.zoom} {session} {onGroupEdit} />
 		{:else}
 			<p class="m-8 text-sm text-stone-500">Measuring document…</p>
 		{/if}
@@ -364,6 +368,7 @@
 		{editor}
 		{awareness}
 		{hideToolbar}
+		{onGroup}
 	/>
 </div>
 

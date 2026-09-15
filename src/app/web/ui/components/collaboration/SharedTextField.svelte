@@ -17,11 +17,13 @@
 		target,
 		field,
 		label,
+		autofocus = false,
 	}: {
 		client: CollaborativeDocumentSession;
 		target: SharedTarget;
 		field: string;
 		label: string;
+		autofocus?: boolean;
 	} = $props();
 	const awareness = getCollaborationAwareness();
 	const owner = Symbol('text editor');
@@ -100,6 +102,7 @@
 			window.addEventListener('blur', clear);
 			labelToolbar(quill);
 			quill.history.clear();
+			if (autofocus) quill.focus();
 			cleanup = (): void => {
 				binding.destroy();
 				binding.editor.removeEventListener('modechange', updateMode);

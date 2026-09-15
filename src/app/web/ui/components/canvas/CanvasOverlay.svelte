@@ -6,6 +6,7 @@
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import ContextualBar from './ContextualBar.svelte';
 	import NodeMarkdownEditor from './NodeMarkdownEditor.svelte';
+	import SelectionBar from './SelectionBar.svelte';
 
 	let {
 		canvas,
@@ -14,11 +15,13 @@
 		editor,
 		awareness,
 		hideToolbar = false,
+		onGroup,
 	}: {
 		canvas: CanvasModel | undefined;
 		viewportElement: HTMLDivElement | undefined;
 		session: CanvasSession;
 		hideToolbar?: boolean;
+		onGroup?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -34,6 +37,9 @@
 	{#if awareness && canvas && viewportElement}{@render awareness(canvas, viewportElement)}{/if}
 	{#if contextualNode && viewportElement && !hideToolbar}
 		<ContextualBar node={contextualNode} {viewportElement} {session} />
+	{/if}
+	{#if viewportElement && !hideToolbar}
+		<SelectionBar {viewportElement} {session} {onGroup} />
 	{/if}
 	{#if session.editing}
 		{#if editor}

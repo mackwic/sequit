@@ -23,6 +23,7 @@ export interface UnpositionedCanvasNode extends ContentStyle {
 interface UnpositionedCanvasGroup {
 	readonly id: string;
 	readonly label: string;
+	readonly color?: string;
 }
 
 interface UnpositionedCanvasJunction {
@@ -101,7 +102,11 @@ export function createCanvasMeasurementModel(document: LogicDocument): CanvasMea
 				markdown: node.markdown,
 			};
 		}),
-		groups: document.groups.map(({ id, label }) => ({ id, label })),
+		groups: document.groups.map(({ id, label, color }) => ({
+			id,
+			label,
+			...contentStyleFields(color, undefined),
+		})),
 		junctions: document.junctions.map(({ id, operator }) => ({ id, operator })),
 	};
 }

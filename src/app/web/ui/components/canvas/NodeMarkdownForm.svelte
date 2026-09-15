@@ -34,6 +34,21 @@
 	let form = $state<HTMLFormElement>();
 	function keydown(event: KeyboardEvent) {
 		if (!(event.target instanceof Node) || form?.contains(event.target) !== true) return;
+		if (
+			event.key === 'Enter' &&
+			event.shiftKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			!event.altKey &&
+			!event.repeat &&
+			!event.isComposing &&
+			!event.defaultPrevented
+		) {
+			event.preventDefault();
+			event.stopPropagation();
+			void session.saveDraft();
+			return;
+		}
 		if (event.key !== 'Escape' || event.defaultPrevented) return;
 		event.preventDefault();
 		event.stopPropagation();

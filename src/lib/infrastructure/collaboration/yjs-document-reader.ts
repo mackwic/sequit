@@ -91,6 +91,7 @@ function readGroup(
 	context: ReadContext,
 ): LogicGroup | undefined {
 	const label = readText(entity.get('label'), ['groups', id, 'label'], context);
+	const color = readOptionalString(entity.get('color'), ['groups', id, 'color'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['groups', id, 'group'], context);
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
@@ -102,6 +103,7 @@ function readGroup(
 		kind: EndpointKind.Group,
 		id,
 		label,
+		...contentStyleFields(color, undefined),
 		layoutOrder,
 		...readGroupState(entity, id, context),
 	};

@@ -167,6 +167,29 @@ describe('openDocument', () => {
 		expect(first?.bounds.x).toBeLessThan(second?.bounds.x ?? 0);
 	});
 
+	it('adds a node and its parent relations through one opened-document command', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const beforeNodes = result.value.read().nodes.length;
+		const beforeRelations = result.value.read().relations.length;
+
+		await result.value.addConnectedNode({ id: 'connected-child', natureId: 'goal', markdown: '' }, [
+			{
+				id: 'connected-child-to-parent',
+				from: 'connected-child',
+				to: 'traceable-edits',
+			},
+		]);
+
+		expect(result.value.read().nodes).toHaveLength(beforeNodes + 1);
+		expect(result.value.read().relations).toHaveLength(beforeRelations + 1);
+		expect(result.value.read().relations).toContainEqual({
+			id: 'connected-child-to-parent',
+			from: 'connected-child',
+			to: 'traceable-edits',
+		});
+	});
+
 	it('forwards typed Markdown replacement and reprojects through the narrow opened port', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
@@ -189,6 +212,23 @@ describe('openDocument', () => {
 			'Opened-document replacement',
 		);
 		expect(updates).toHaveBeenCalledOnce();
+	});
+
+	it('forwards group presentation updates and reprojects the canvas group', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const original = result.value.read().groups.find(({ id }) => id === 'use-cases');
+		if (original === undefined) throw new Error('Expected the use-cases group');
+
+		await result.value.updateGroup({ ...original, label: 'Cas d’usage', color: '#2563eb' });
+		const canvas = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+
+		expect(canvas.groups.find(({ id }) => id === original.id)).toMatchObject({
+			label: 'Cas d’usage',
+			color: '#2563eb',
+		});
 	});
 
 	it('isolates opened-document subscribers and supports explicit unsubscription', async () => {

@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
-	let { label, onclose, children }: { label: string; onclose: () => void; children: Snippet } =
-		$props();
+	let {
+		label,
+		description = 'Les modifications sont partagées en direct.',
+		onclose,
+		oncancel,
+		oncommitclose,
+		children,
+	}: {
+		label: string;
+		description?: string;
+		onclose: () => void;
+		oncancel?: () => void;
+		oncommitclose?: () => void;
+		children: Snippet;
+	} = $props();
 	let dialog: HTMLDialogElement;
 	onMount(() => {
 		dialog.showModal();
@@ -9,13 +22,41 @@
 			dialog.close();
 		};
 	});
+	function keydown(event: KeyboardEvent): void {
+		if (
+			oncommitclose === undefined ||
+			event.key !== 'Enter' ||
+			!event.shiftKey ||
+			event.ctrlKey ||
+			event.metaKey ||
+			event.altKey ||
+			event.repeat ||
+			event.isComposing ||
+			event.defaultPrevented
+		)
+			return;
+		event.preventDefault();
+		event.stopPropagation();
+		oncommitclose();
+	}
+	function cancel(event: Event): void {
+		if (oncancel === undefined) return;
+		event.preventDefault();
+		oncancel();
+	}
 </script>
 
-<dialog bind:this={dialog} aria-label={label} {onclose}>
+<dialog
+	bind:this={dialog}
+	aria-label={label}
+	{onclose}
+	oncancel={cancel}
+	onkeydowncapture={keydown}
+>
 	<header>
 		<div>
 			<h2>{label}</h2>
-			<p>Les modifications sont partagées en direct.</p>
+			<p>{description}</p>
 		</div>
 		<button
 			type="button"

@@ -12,12 +12,17 @@
 
 	$effect(() => {
 		const currentDialog = dialog;
-		const currentTextarea = textarea;
-		if (!currentDialog || !currentTextarea || opened) return;
+		if (!currentDialog || opened) return;
 		opened = true;
 		currentDialog.showModal();
+	});
+
+	$effect(() => {
+		const nodeId = editing.nodeId;
+		const currentTextarea = textarea;
+		if (!currentTextarea) return;
 		void tick().then(() => {
-			currentTextarea.focus();
+			if (editing.nodeId === nodeId) currentTextarea.focus();
 		});
 	});
 
@@ -61,28 +66,50 @@
 	onclick={cancelFromBackdrop}
 	onkeydown={containFocus}
 >
-	<NodeMarkdownForm {editing} {session} bind:textarea>
-		{#snippet header()}
-			<header
-				class="shrink-0 border-b border-stone-200 bg-stone-50 px-6 py-5 max-sm:px-4 max-sm:py-4"
-			>
-				<p class="m-0 text-xs font-bold tracking-[0.12em] text-stone-500 uppercase">Node content</p>
-				<h2 class="mt-1 mb-0 text-xl font-semibold" id={`node-markdown-title-${editorId}`}>
-					Edit Markdown
-				</h2>
-				<p class="mt-1 mb-0 text-sm text-stone-600" id={`node-markdown-context-${editorId}`}>
-					Editing node <code class="rounded bg-stone-200 px-1.5 py-0.5 text-xs"
-						>{editing.nodeId}</code
-					>. Write Markdown, then save to update the graph.
-				</p>
-			</header>
-		{/snippet}
-	</NodeMarkdownForm>
+	{#key editing.nodeId}
+		<div class="editor-step">
+			<NodeMarkdownForm {editing} {session} bind:textarea>
+				{#snippet header()}
+					<header
+						class="shrink-0 border-b border-stone-200 bg-stone-50 px-6 py-5 max-sm:px-4 max-sm:py-4"
+					>
+						<p class="m-0 text-xs font-bold tracking-[0.12em] text-stone-500 uppercase">
+							Node content
+						</p>
+						<h2 class="mt-1 mb-0 text-xl font-semibold" id={`node-markdown-title-${editorId}`}>
+							Edit Markdown
+						</h2>
+						<p class="mt-1 mb-0 text-sm text-stone-600" id={`node-markdown-context-${editorId}`}>
+							Editing node <code class="rounded bg-stone-200 px-1.5 py-0.5 text-xs"
+								>{editing.nodeId}</code
+							>. Write Markdown, then save to update the graph.
+						</p>
+					</header>
+				{/snippet}
+			</NodeMarkdownForm>
+		</div>
+	{/key}
 </dialog>
 
 <style>
 	.node-editor::backdrop {
 		background: rgb(28 25 23 / 0.58);
 		backdrop-filter: blur(2px);
+	}
+	.editor-step {
+		display: flex;
+		min-height: 0;
+		animation: editor-step-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+	}
+	@keyframes editor-step-in {
+		from {
+			opacity: 0;
+			transform: translateX(10px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.editor-step {
+			animation: none;
+		}
 	}
 </style>

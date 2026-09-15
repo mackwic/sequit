@@ -110,6 +110,17 @@ describe('CanvasSession selection intents', () => {
 		expect([...session.selection.values()]).toEqual([relation]);
 	});
 
+	it('exposes exactly one selected endpoint for relative node creation', () => {
+		const session = new CanvasSession();
+		expect(session.relativeNodeCreationTarget).toBeUndefined();
+		session.selectEntity(group);
+		expect(session.relativeNodeCreationTarget).toEqual(group);
+		session.addEntity(node);
+		expect(session.relativeNodeCreationTarget).toBeUndefined();
+		session.selectEntity(relation);
+		expect(session.relativeNodeCreationTarget).toBeUndefined();
+	});
+
 	it('toggles keyboard-style membership without confusing overlapping IDs', () => {
 		const session = new CanvasSession();
 
@@ -308,6 +319,73 @@ describe('CanvasSession Markdown editing intents', () => {
 
 		expect(session.awaitingAcceptedLayout).toBe(false);
 		expect(session.focusRestorationTarget).toBe(entityKey(EntityKind.Node, editableNode.id));
+	});
+
+	it('keeps the current editor open while saving and hands off to a created node after layout', async () => {
+		const commands = commandPort(() =>
+			Promise.resolve({
+				kind: DocumentCommandOutcomeKind.Accepted,
+				document: validLogicDocument(),
+			}),
+		);
+		const session = selectedSession(commands);
+		session.beginNodeMarkdownEdit(editableNode);
+		session.updateDraft('Saved before the handoff');
+
+		await expect(session.saveDraft(false)).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Accepted,
+		});
+		expect(session.editing).toMatchObject({
+			nodeId: 'shared',
+			baseValue: 'Saved before the handoff',
+			saving: false,
+		});
+
+		expect(session.queueNodeMarkdownEdit({ id: 'created', markdown: '' })).toBe(true);
+		expect([...session.selection.values()]).toEqual([entityRef(EntityKind.Node, 'created')]);
+		expect(session.awaitingAcceptedLayout).toBe(true);
+		expect(session.reconcile(entityIndex(node))).toBe(false);
+		expect(session.editing?.nodeId).toBe('shared');
+
+		const createdRef = entityRef(EntityKind.Node, 'created');
+		const createdIndex: CanvasEntityIndex = new Map([
+			[
+				entityKey(createdRef.kind, createdRef.id),
+				{
+					ref: createdRef,
+					bounds: { x: 1, y: 2, width: 3, height: 4 },
+					navigationPoint: { x: 2.5, y: 4 },
+				},
+			],
+		]);
+		expect(session.reconcile(createdIndex)).toBe(true);
+		expect(session.awaitingAcceptedLayout).toBe(false);
+		expect(session.editing).toMatchObject({
+			nodeId: 'created',
+			draft: '',
+			frozenBounds: { x: 1, y: 2, width: 3, height: 4 },
+		});
+	});
+
+	it('rolls back a queued node creation when its editor is cancelled', () => {
+		const session = selectedSession();
+		const cancelCreation = vi.fn();
+		session.beginNodeMarkdownEdit(editableNode);
+		session.queueNodeMarkdownEdit({ id: 'created', markdown: '' }, cancelCreation);
+
+		expect(session.cancel()).toBe(true);
+		expect(cancelCreation).toHaveBeenCalledOnce();
+		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
+		expect(session.editing).toBeUndefined();
+	});
+
+	it('keeps a queued node creation when its live editor is committed', () => {
+		const session = selectedSession();
+		const cancelCreation = vi.fn();
+		session.queueNodeMarkdownEdit({ id: 'created', markdown: '' }, cancelCreation);
+
+		expect(session.cancel(true)).toBe(true);
+		expect(cancelCreation).not.toHaveBeenCalled();
 	});
 
 	it.each([

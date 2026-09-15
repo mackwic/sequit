@@ -7,7 +7,10 @@ async function documentPointAt(page: Page, clientX: number, clientY: number) {
 			const transform = getComputedStyle(stage).transform;
 			let scale = 1;
 			if (transform !== 'none') scale = new DOMMatrixReadOnly(transform).a;
-			return { x: (point.x - bounds.left) / scale, y: (point.y - bounds.top) / scale };
+			return {
+				x: (point.x - bounds.left) / scale,
+				y: (point.y - bounds.top) / scale,
+			};
 		},
 		{ x: clientX, y: clientY },
 	);
@@ -31,6 +34,14 @@ async function blankCanvasPoint(page: Page) {
 	});
 }
 
+async function settleCanvasMotion(page: Page): Promise<void> {
+	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
+		await Promise.allSettled(
+			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
+		);
+	});
+}
+
 async function visibleRelationPoint(page: Page, selector: string) {
 	const relation = page.locator(selector);
 	await relation.scrollIntoViewIfNeeded();
@@ -46,6 +57,76 @@ async function visibleRelationPoint(page: Page, selector: string) {
 				return { x: screen.x, y: screen.y };
 		}
 		throw new Error('Relation has no visible hit-target point');
+	});
+}
+
+async function dragSelectionEnvelope(
+	page: Page,
+	nodeIds: readonly string[],
+	shiftKey = false,
+	groupId?: string,
+): Promise<void> {
+	const bounds = await page.locator('[data-graph-stage]').evaluate((stage, ids) => {
+		const boxes = ids.map((id) => {
+			const node = stage.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(id)}"]`);
+			if (!node) throw new Error(`Missing marquee node: ${id}`);
+			return node.getBoundingClientRect();
+		});
+		return {
+			left: Math.min(...boxes.map((box) => box.left)) - 2,
+			top: Math.min(...boxes.map((box) => box.top)) - 2,
+			right: Math.max(...boxes.map((box) => box.right)) + 2,
+			bottom: Math.max(...boxes.map((box) => box.bottom)) + 2,
+		};
+	}, nodeIds);
+	const viewport = page.getByRole('region', { name: 'Canvas viewport' });
+	let origin = viewport;
+	if (groupId !== undefined) origin = page.locator(`[data-group-id="${groupId}"]`);
+	await origin.dispatchEvent('pointerdown', {
+		button: 0,
+		clientX: bounds.left,
+		clientY: bounds.top,
+		isPrimary: true,
+		pointerId: 71,
+		shiftKey,
+	});
+	await page.evaluate(
+		({ right, bottom, shift }) => {
+			window.dispatchEvent(
+				new PointerEvent('pointermove', {
+					bubbles: true,
+					clientX: right,
+					clientY: bottom,
+					isPrimary: true,
+					pointerId: 71,
+					shiftKey: shift,
+				}),
+			);
+		},
+		{ right: bounds.right, bottom: bounds.bottom, shift: shiftKey },
+	);
+	await expect(page.locator('.selection-envelope')).toBeVisible();
+	for (const id of nodeIds)
+		await expect(page.locator(`[data-node-id="${id}"]`)).toHaveAttribute('aria-pressed', 'true');
+	await page.evaluate(
+		({ right, bottom, shift }) => {
+			window.dispatchEvent(
+				new PointerEvent('pointerup', {
+					bubbles: true,
+					button: 0,
+					clientX: right,
+					clientY: bottom,
+					isPrimary: true,
+					pointerId: 71,
+					shiftKey: shift,
+				}),
+			);
+		},
+		{ right: bounds.right, bottom: bounds.bottom, shift: shiftKey },
+	);
+	await viewport.dispatchEvent('click', {
+		clientX: bounds.right,
+		clientY: bounds.bottom,
 	});
 }
 
@@ -106,7 +187,10 @@ test.describe('canvas viewport interactions', () => {
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
 		const bounds = await viewport.boundingBox();
 		if (!bounds) throw new Error('Canvas viewport has no bounds');
-		const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+		const center = {
+			x: bounds.x + bounds.width / 2,
+			y: bounds.y + bounds.height / 2,
+		};
 		const before = await documentPointAt(page, center.x, center.y);
 
 		await page.getByRole('button', { name: 'Zoom in' }).click();
@@ -133,7 +217,10 @@ test.describe('canvas viewport interactions', () => {
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
 		const bounds = await viewport.boundingBox();
 		if (!bounds) throw new Error('Canvas viewport has no bounds');
-		const pointer = { x: bounds.x + bounds.width * 0.72, y: bounds.y + bounds.height * 0.35 };
+		const pointer = {
+			x: bounds.x + bounds.width * 0.72,
+			y: bounds.y + bounds.height * 0.35,
+		};
 		const before = await documentPointAt(page, pointer.x, pointer.y);
 
 		await viewport.dispatchEvent('wheel', {
@@ -172,10 +259,11 @@ test.describe('canvas viewport interactions', () => {
 			left: element.scrollLeft,
 			top: element.scrollTop,
 		}));
+		const panBlank = await blankCanvasPoint(page);
 		await page.keyboard.down('Space');
-		await page.mouse.move(blank.x, blank.y);
+		await page.mouse.move(panBlank.x, panBlank.y);
 		await page.mouse.down();
-		await page.mouse.move(blank.x + 80, blank.y + 60, { steps: 4 });
+		await page.mouse.move(panBlank.x + 80, panBlank.y + 60, { steps: 4 });
 		await page.mouse.up();
 		await page.keyboard.up('Space');
 		const afterPan = await viewport.evaluate((element) => ({
@@ -235,13 +323,63 @@ test.describe('accessible canvas selection', () => {
 		const group = page.locator('[data-group-id="data-team"]');
 
 		await node.click();
-		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
+		await group.click({
+			modifiers: ['Meta'],
+			position: { x: 8, y: 8 },
+			force: true,
+		});
 		await expect(node).toHaveAttribute('aria-pressed', 'true');
 		await expect(group).toHaveAttribute('aria-pressed', 'true');
 
 		await page.keyboard.press('Escape');
 		await expect(node).toHaveAttribute('aria-pressed', 'false');
 		await expect(group).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	test('selects nodes with envelopes, composes with Shift, and groups from the floating bar', async ({
+		page,
+	}) => {
+		const first = page.locator('[data-node-id="traceable-edits"]');
+		const second = page.locator('[data-node-id="training-roi"]');
+		const added = page.locator('[data-node-id="isolated-partner-edits"]');
+		const previousGroups = await page.locator('[data-group-id]').count();
+
+		await dragSelectionEnvelope(page, ['traceable-edits', 'training-roi'], false, 'use-cases');
+		await expect(first).toHaveAttribute('aria-pressed', 'true');
+		await expect(second).toHaveAttribute('aria-pressed', 'true');
+		expect(
+			await first.evaluate((node) => {
+				const style = getComputedStyle(node);
+				return {
+					property: style.transitionProperty,
+					duration: style.transitionDuration,
+					easing: style.transitionTimingFunction,
+				};
+			}),
+		).toMatchObject({
+			property: expect.stringContaining('outline-color'),
+			duration: '0.26s',
+			easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+		});
+		await expect(page.getByRole('group', { name: 'Selection actions' })).toBeVisible();
+
+		await first.click({ modifiers: ['Shift'] });
+		await expect(first).toHaveAttribute('aria-pressed', 'false');
+		await first.click({ modifiers: ['Shift'] });
+		await expect(first).toHaveAttribute('aria-pressed', 'true');
+
+		await dragSelectionEnvelope(page, ['isolated-partner-edits'], true);
+		await expect(first).toHaveAttribute('aria-pressed', 'true');
+		await expect(second).toHaveAttribute('aria-pressed', 'true');
+		await expect(added).toHaveAttribute('aria-pressed', 'true');
+
+		await page.keyboard.press('g');
+		await expect(page.locator('[data-group-id]')).toHaveCount(previousGroups + 1);
+		await expect(page.getByRole('group', { name: 'Selection actions' })).toHaveCount(0);
+		const groupId = await first.getAttribute('data-node-group-id');
+		expect(groupId).toBeTruthy();
+		expect(await second.getAttribute('data-node-group-id')).toBe(groupId);
+		expect(await added.getAttribute('data-node-group-id')).toBe(groupId);
 	});
 
 	test('keeps keyboard focus visible and arbitrates Space away from panning', async ({ page }) => {
@@ -368,7 +506,9 @@ test.describe('resilient modal Markdown editing', () => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		const measured = page.locator('[data-measure-node="traceable-edits"]');
 		await node.click();
-		const edit = page.getByRole('button', { name: 'Edit Markdown for node traceable-edits' });
+		const edit = page.getByRole('button', {
+			name: 'Edit Markdown for node traceable-edits',
+		});
 		await expect(edit).toBeVisible();
 		const nodeBounds = await node.boundingBox();
 		if (!nodeBounds) throw new Error('Selected node has no bounds');
@@ -424,7 +564,9 @@ test.describe('resilient modal Markdown editing', () => {
 		await expect(page.locator('[data-node-markdown-editor="traceable-edits"]')).toHaveCount(0);
 		await expect(node).toContainText('Saved through the typed document command.');
 		await expect(node).toBeFocused();
-		const edit = page.getByRole('button', { name: 'Edit Markdown for node traceable-edits' });
+		const edit = page.getByRole('button', {
+			name: 'Edit Markdown for node traceable-edits',
+		});
 		await expect(edit).toBeVisible();
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
 		await viewport.evaluate((element) => {
@@ -466,6 +608,20 @@ test.describe('resilient modal Markdown editing', () => {
 		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
 	});
 
+	test('saves and closes the editor with Shift+Enter', async ({ page }) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.dblclick();
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(textarea).toBeFocused();
+		await textarea.fill('Saved and closed from Shift+Enter');
+
+		await page.keyboard.press('Shift+Enter');
+
+		await expect(page.getByRole('dialog', { name: 'Edit Markdown' })).toHaveCount(0);
+		await expect(node).toContainText('Saved and closed from Shift+Enter');
+		await expect(node).toBeFocused();
+	});
+
 	test('contains keyboard focus and remains usable at a narrow viewport', async ({ page }) => {
 		await page.setViewportSize({ width: 360, height: 640 });
 		const node = page.locator('[data-node-id="traceable-edits"]');
@@ -483,4 +639,222 @@ test.describe('resilient modal Markdown editing', () => {
 		await expect(dialog).toHaveCount(0);
 		await expect(node).toBeFocused();
 	});
+
+	test('creates children and siblings from the keyboard while handing off the open editor', async ({
+		page,
+	}) => {
+		const parent = page.locator('[data-node-id="ai-content-generation"]');
+		await parent.click();
+		await page.keyboard.press('Control+Enter');
+
+		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		await expect(dialog).toBeVisible();
+		await expect(textarea).toBeFocused();
+		await expect(textarea).toHaveValue('');
+		const firstChildId = await dialog.getAttribute('data-node-markdown-editor');
+		if (firstChildId === null || firstChildId === '')
+			throw new Error('Created child editor has no node id');
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${firstChildId}"][data-edge-to="ai-content-generation"]`,
+			),
+		).toHaveCount(1);
+
+		await textarea.fill('First keyboard child');
+		await page.keyboard.press('Control+Shift+Enter');
+		await expect(dialog).toBeVisible();
+		await expect(textarea).toBeFocused();
+		await expect(textarea).toHaveValue('');
+		const siblingId = await dialog.getAttribute('data-node-markdown-editor');
+		if (siblingId === null || siblingId === '')
+			throw new Error('Created sibling editor has no node id');
+		expect(siblingId).not.toBe(firstChildId);
+		await expect(page.locator(`[data-node-id="${firstChildId}"]`)).toContainText(
+			'First keyboard child',
+		);
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${siblingId}"][data-edge-to="ai-content-generation"]`,
+			),
+		).toHaveCount(1);
+	});
+
+	test('creates a root sibling and a child of a junction from the keyboard', async ({ page }) => {
+		const root = page.locator('[data-node-id="reduce-documentary-effort"]');
+		await root.click();
+		await page.keyboard.press('Control+Shift+Enter');
+
+		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+		await expect(dialog).toBeVisible();
+		const rootSiblingId = await dialog.getAttribute('data-node-markdown-editor');
+		if (rootSiblingId === null || rootSiblingId === '')
+			throw new Error('Created root sibling editor has no node id');
+		await expect(page.locator(`[data-relation-id][data-edge-from="${rootSiblingId}"]`)).toHaveCount(
+			0,
+		);
+
+		await page.keyboard.press('Escape');
+		await expect(page.locator(`[data-node-id="${rootSiblingId}"]`)).toHaveCount(0);
+
+		const parent = page.locator('[data-node-id="ai-content-generation"]');
+		await parent.click();
+		await page.keyboard.press('Control+Enter');
+		await expect(dialog).toBeVisible();
+		const childId = await dialog.getAttribute('data-node-markdown-editor');
+		if (childId === null || childId === '') throw new Error('Created child editor has no node id');
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="ai-content-generation"]`,
+			),
+		).toHaveCount(1);
+		await page.keyboard.press('Escape');
+		await expect(page.locator(`[data-node-id="${childId}"]`)).toHaveCount(0);
+
+		const junction = page.locator('[data-junction-id="word-ui-options"]');
+		await junction.click();
+		await page.keyboard.press('Control+Enter');
+		await expect(dialog).toBeVisible();
+		const junctionChildId = await dialog.getAttribute('data-node-markdown-editor');
+		if (junctionChildId === null || junctionChildId === '')
+			throw new Error('Created junction child editor has no node id');
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${junctionChildId}"][data-edge-to="word-ui-options"]`,
+			),
+		).toHaveCount(1);
+	});
+});
+
+test('double-clicking a group title edits its title and color', async ({ page }) => {
+	await page.goto('/examples/ai-documentary-effort');
+	const group = page.locator('[data-group-id="use-cases"]');
+	await expect(group).toContainText('Use cases');
+
+	await group.locator('[data-group-header]').dblclick();
+
+	const dialog = page.getByRole('dialog', { name: 'Modifier le groupe' });
+	await expect(dialog).toBeVisible();
+	const title = page.getByRole('textbox', { name: 'Titre du groupe' });
+	await expect(title).toBeFocused();
+	await title.fill('Cas d’usage');
+	await page.getByLabel('Couleur personnalisée').fill('#2563eb');
+	await page.getByRole('button', { name: 'Enregistrer' }).click();
+
+	await expect(dialog).toHaveCount(0);
+	await expect(group).toContainText('Cas d’usage');
+	await expect(group).toHaveAttribute('data-group-color', '#2563eb');
+});
+
+test('a keyboard child of a selected group is related to the group without becoming its member', async ({
+	page,
+}) => {
+	await page.goto('/examples/ai-documentary-effort');
+	const group = page.locator('[data-group-id="data-team"]');
+	await group.focus();
+	await group.press('Enter');
+	await page.keyboard.press('Control+Enter');
+	const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+	await expect(dialog).toBeVisible();
+	const childId = await dialog.getAttribute('data-node-markdown-editor');
+	if (childId === null || childId === '')
+		throw new Error('Created group child editor has no node id');
+	await expect(
+		page.locator(`[data-relation-id][data-edge-from="${childId}"][data-edge-to="data-team"]`),
+	).toHaveCount(1);
+	const child = page.locator(`[data-node-id="${childId}"]`);
+	const childBox = await child.boundingBox();
+	const groupBox = await group.boundingBox();
+	if (!childBox || !groupBox) throw new Error('Created group child has no rendered geometry');
+	expect(
+		childBox.x >= groupBox.x &&
+			childBox.y >= groupBox.y &&
+			childBox.x + childBox.width <= groupBox.x + groupBox.width &&
+			childBox.y + childBox.height <= groupBox.y + groupBox.height,
+	).toBe(false);
+});
+
+test('double-click creates through a modal; Backspace and the delete action remove nodes', async ({
+	page,
+}) => {
+	await page.goto('/');
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	const point = await blankCanvasPoint(page);
+	await page.mouse.dblclick(point.x, point.y);
+	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByLabel('Contenu')).toBeFocused();
+	await dialog.getByLabel('Contenu').fill('Nouvelle idée canvas');
+	await dialog.getByLabel('Contenu').press('Backspace');
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	await dialog.getByLabel('Contenu').fill('Nouvelle idée canvas');
+	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	const node = page.locator('[data-node-id]').filter({ hasText: 'Nouvelle idée canvas' });
+	await expect(node).toBeVisible();
+	await node.click();
+	await node.press('Backspace');
+	await expect(node).toHaveCount(0);
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	const existing = page.locator('[data-node-id]').first();
+	await existing.click();
+	await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
+	await expect(page.locator('[data-node-id]')).toHaveCount(23);
+});
+
+test('deleting a selected relation preserves its endpoints', async ({ page }) => {
+	await page.goto('/');
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	const before = await page.locator('[data-relation-id]').count();
+	const firstId = await page.locator('[data-relation-id]').first().getAttribute('data-relation-id');
+	const point = await visibleRelationPoint(page, `[data-relation-id="${firstId}"]`);
+	await page.mouse.click(point.x, point.y);
+	await page.keyboard.press('Delete');
+	await expect(page.locator('[data-relation-id]')).toHaveCount(before - 1);
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+});
+
+test('double-click on group background creates a member; canvas background resets the parent', async ({
+	page,
+}) => {
+	await page.goto('/');
+	const group = page.locator('[data-group-id="data-team"]');
+	await group.scrollIntoViewIfNeeded();
+	await settleCanvasMotion(page);
+	const point = await group.evaluate((element) => {
+		const bounds = element.getBoundingClientRect();
+		for (
+			let y = Math.max(bounds.top + 40, 60);
+			y < Math.min(bounds.bottom - 4, innerHeight);
+			y += 8
+		) {
+			for (
+				let x = Math.max(bounds.left + 4, 0);
+				x < Math.min(bounds.right - 4, innerWidth);
+				x += 8
+			) {
+				if (document.elementFromPoint(x, y) === element) return { x, y };
+			}
+		}
+		throw new Error('No visible group background');
+	});
+	await page.mouse.dblclick(point.x, point.y);
+	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+	await dialog.getByLabel('Contenu').fill('Membre créé dans le groupe');
+	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+	const member = page.locator('[data-node-id]').filter({ hasText: 'Membre créé dans le groupe' });
+	await expect(member).toBeVisible();
+	await settleCanvasMotion(page);
+	const background = await blankCanvasPoint(page);
+	await page.mouse.dblclick(background.x, background.y);
+	await dialog.getByLabel('Contenu').fill('Boîte hors groupe');
+	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+	const outside = page.locator('[data-node-id]').filter({ hasText: 'Boîte hors groupe' });
+	await expect(outside).toBeVisible();
+	await group.focus();
+	await group.press('Enter');
+	await group.press('Delete');
+	await expect(group).toHaveCount(0);
+	await expect(member).toHaveCount(0);
+	await expect(outside).toBeVisible();
 });

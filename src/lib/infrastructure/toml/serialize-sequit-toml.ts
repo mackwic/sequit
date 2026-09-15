@@ -27,8 +27,8 @@ export function serializeSequitToml(document: LogicDocument): string {
 			label,
 			...contentStyleFields(color, icon),
 		})),
-		groups: entityTable(document.groups, ({ label, groupId, layoutOrder, state }) => {
-			const group: TomlTable = { label, layoutOrder };
+		groups: entityTable(document.groups, ({ label, color, groupId, layoutOrder, state }) => {
+			const group: TomlTable = { label, ...contentStyleFields(color, undefined), layoutOrder };
 			if (groupId !== undefined) group['group'] = groupId;
 			if (state !== undefined) group['state'] = state;
 			return group;

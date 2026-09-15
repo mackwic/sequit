@@ -79,6 +79,54 @@ function markdownTarget(document: Y.Doc, nodeId: string): Y.Text {
 	return markdown;
 }
 
+type GroupAdditions = NonNullable<DocumentChangeSet['groupAdditions']>;
+type GroupReplacements = NonNullable<DocumentChangeSet['groupReplacements']>;
+type EndpointGroupChanges = NonNullable<DocumentChangeSet['endpointGroupChanges']>;
+
+function validateGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {
+	for (const group of additions) {
+		if (groups.has(group.id))
+			throw new Error(`Group addition conflicts with existing id: ${group.id}`);
+	}
+}
+
+function applyGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {
+	for (const group of additions) {
+		const values: Record<string, unknown> = {
+			label: new Y.Text(group.label),
+			...contentStyleFields(group.color, undefined),
+			layoutOrder: group.layoutOrder,
+		};
+		if (group.groupId !== undefined) values['groupId'] = group.groupId;
+		groups.set(group.id, createYjsEntityMap(values));
+	}
+}
+
+function applyGroupReplacements(
+	groups: Y.Map<Y.Map<unknown>>,
+	replacements: GroupReplacements,
+): void {
+	for (const group of replacements) {
+		const entity = defined(groups.get(group.id), `Group no longer exists: ${group.id}`);
+		const label = entity.get('label');
+		if (!(label instanceof Y.Text)) throw new Error(`Group label is unavailable: ${group.id}`);
+		spliceSharedText(label, group.label);
+		if (group.color === undefined) entity.delete('color');
+		else entity.set('color', group.color);
+	}
+}
+
+function applyEndpointGroupChanges(document: Y.Doc, changes: EndpointGroupChanges): void {
+	for (const change of changes) {
+		const endpoint = defined(
+			document
+				.getMap<Y.Map<unknown>>(COLLECTION_BY_ENDPOINT_KIND[change.endpointKind])
+				.get(change.endpointId),
+		);
+		endpoint.set('groupId', change.groupId);
+	}
+}
+
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
 	#persistenceCapture: PersistenceCapture | undefined;
@@ -198,6 +246,7 @@ export class YjsDocumentRepository {
 	}
 
 	#apply(changes: DocumentChangeSet): void {
+		const groups = this.document.getMap<Y.Map<unknown>>(GROUPS);
 		const nodes = this.document.getMap<Y.Map<unknown>>(NODES);
 		const relations = this.document.getMap<Y.Map<unknown>>(RELATIONS);
 		for (const node of changes.nodeAdditions) {
@@ -209,6 +258,9 @@ export class YjsDocumentRepository {
 				throw new Error(`Relation addition conflicts with existing id: ${relation.id}`);
 			}
 		}
+		validateGroupAdditions(groups, changes.groupAdditions ?? []);
+		for (const group of changes.groupReplacements ?? [])
+			defined(groups.get(group.id), `Group no longer exists: ${group.id}`);
 		const orderChanges = changes.endpointOrderChanges.map((change) => {
 			const endpoint = this.document
 				.getMap<Y.Map<unknown>>(COLLECTION_BY_ENDPOINT_KIND[change.endpointKind])
@@ -230,10 +282,19 @@ export class YjsDocumentRepository {
 			if (node.groupId !== undefined) values['groupId'] = node.groupId;
 			nodes.set(node.id, createYjsEntityMap(values));
 		}
+		applyGroupAdditions(groups, changes.groupAdditions ?? []);
+		applyGroupReplacements(groups, changes.groupReplacements ?? []);
 		for (const relation of changes.relationAdditions) {
 			relations.set(relation.id, createYjsEntityMap({ from: relation.from, to: relation.to }));
 		}
+		for (const removal of changes.endpointRemovals ?? []) {
+			this.document
+				.getMap(COLLECTION_BY_ENDPOINT_KIND[removal.endpointKind])
+				.delete(removal.endpointId);
+		}
+		for (const id of changes.relationRemovals ?? []) relations.delete(id);
 		for (const { endpoint, order } of orderChanges) endpoint.set('layoutOrder', order);
+		applyEndpointGroupChanges(this.document, changes.endpointGroupChanges ?? []);
 		for (const { text, markdown } of markdownReplacements) {
 			spliceSharedText(text, markdown);
 		}

@@ -99,6 +99,7 @@ export function groupStateFields(value: unknown): { readonly state?: GroupState 
 
 export interface LogicGroup {
 	readonly state?: GroupState;
+	readonly color?: string;
 	readonly kind: EndpointKind.Group;
 	readonly id: string;
 	readonly label: string;

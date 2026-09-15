@@ -23,6 +23,7 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import {
+	type DocumentCommand,
 	DocumentCommandKind,
 	DocumentCommandOutcomeKind,
 } from '../../../../src/lib/infrastructure/document/document-command-contracts';
@@ -168,18 +169,7 @@ function insertYjsNode(
 	document.getMap<Y.Map<unknown>>('sequit.nodes').set(id, node);
 }
 
-async function dispatchCommand(
-	document: Y.Doc,
-	command:
-		| { readonly kind: DocumentCommandKind.AddNode; readonly node: NewLogicNode }
-		| { readonly kind: DocumentCommandKind.AddRelation; readonly relation: LogicRelation }
-		| {
-				readonly kind: DocumentCommandKind.ReplaceNodeMarkdown;
-				readonly nodeId: string;
-				readonly markdown: string;
-		  },
-	origin?: unknown,
-) {
+async function dispatchCommand(document: Y.Doc, command: DocumentCommand, origin?: unknown) {
 	const repository = new YjsDocumentRepository(document);
 	const gateway = new LocalDocumentCommandGateway(
 		() => {
@@ -754,6 +744,31 @@ describe('yjsLiveDocumentFormat', () => {
 				origin,
 			),
 		).rejects.toThrow('Node addition conflicts with existing id: contested-node');
+	});
+
+	it('rejects a group addition that conflicts during its guarded transaction', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, crossingDocument());
+		const origin = {};
+		ydoc.on('beforeTransaction', (transaction) => {
+			if (transaction.origin !== origin) return;
+			const group = new Y.Map<unknown>();
+			group.set('label', new Y.Text('Concurrent group'));
+			group.set('layoutOrder', orderKey('a8'));
+			ydoc.getMap<Y.Map<unknown>>('sequit.groups').set('contested-group', group);
+		});
+
+		await expect(
+			dispatchCommand(
+				ydoc,
+				{
+					kind: DocumentCommandKind.GroupNodes,
+					group: { id: 'contested-group', label: 'Command group' },
+					nodeIds: ['source-a', 'source-b'],
+				},
+				origin,
+			),
+		).rejects.toThrow('Group addition conflicts with existing id: contested-group');
 	});
 
 	it('persists the optional group on a newly added node', async () => {

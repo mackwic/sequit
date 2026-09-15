@@ -1,5 +1,6 @@
 import type {
 	LogicDocument,
+	LogicGroup,
 	LogicRelation,
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
@@ -44,9 +45,37 @@ export class DocumentSession {
 		return this.#publishedDocument;
 	}
 
+	async deleteElements(
+		endpointIds: readonly string[],
+		relationIds: readonly string[],
+	): Promise<LogicDocument> {
+		this.#assertActive();
+		const outcome = await this.gateway.dispatch({
+			kind: DocumentCommandKind.DeleteElements,
+			endpointIds,
+			relationIds,
+		});
+		this.#assertActive();
+		return this.#unwrap(outcome);
+	}
+
 	async addNode(node: NewLogicNode): Promise<LogicDocument> {
 		this.#assertActive();
 		const outcome = await this.gateway.dispatch({ kind: DocumentCommandKind.AddNode, node });
+		this.#assertActive();
+		return this.#unwrap(outcome);
+	}
+
+	async addConnectedNode(
+		node: NewLogicNode,
+		relations: readonly LogicRelation[],
+	): Promise<LogicDocument> {
+		this.#assertActive();
+		const outcome = await this.gateway.dispatch({
+			kind: DocumentCommandKind.AddConnectedNode,
+			node,
+			relations,
+		});
 		this.#assertActive();
 		return this.#unwrap(outcome);
 	}
@@ -57,6 +86,27 @@ export class DocumentSession {
 			kind: DocumentCommandKind.AddRelation,
 			relation,
 		});
+		this.#assertActive();
+		return this.#unwrap(outcome);
+	}
+
+	async groupNodes(
+		group: { readonly id: string; readonly label: string },
+		nodeIds: readonly string[],
+	): Promise<LogicDocument> {
+		this.#assertActive();
+		const outcome = await this.gateway.dispatch({
+			kind: DocumentCommandKind.GroupNodes,
+			group,
+			nodeIds,
+		});
+		this.#assertActive();
+		return this.#unwrap(outcome);
+	}
+
+	async updateGroup(group: LogicGroup): Promise<LogicDocument> {
+		this.#assertActive();
+		const outcome = await this.gateway.dispatch({ kind: DocumentCommandKind.UpdateGroup, group });
 		this.#assertActive();
 		return this.#unwrap(outcome);
 	}

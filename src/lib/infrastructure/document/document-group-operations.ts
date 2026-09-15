@@ -1,4 +1,9 @@
-import { defined, EndpointKind, type LogicDocument } from '../../core/document/logic-document';
+import {
+	defined,
+	EndpointKind,
+	type LogicDocument,
+	type LogicGroup,
+} from '../../core/document/logic-document';
 import { fractionalOrderKeySpace } from '../../core/ordering/order-key-space';
 
 export function groupDocumentNodes(
@@ -19,6 +24,38 @@ export function groupDocumentNodes(
 		nodes: document.nodes.map((node) => {
 			if (ids.has(node.id)) return { ...node, groupId: group.id };
 			return node;
+		}),
+	};
+}
+
+export function groupSiblingDocumentNodes(
+	document: LogicDocument,
+	group: { readonly id: string; readonly label: string },
+	ids: ReadonlySet<string>,
+): LogicDocument {
+	if (ids.size === 0) throw new Error('Sélectionnez les nœuds à regrouper.');
+	const members = [...ids].map((id) =>
+		defined(
+			document.nodes.find((node) => node.id === id),
+			`Nœud introuvable : ${id}`,
+		),
+	);
+	const parent = members[0]?.groupId;
+	if (members.some((member) => member.groupId !== parent))
+		throw new Error('Les nœuds doivent appartenir au même groupe.');
+	if (
+		[...document.groups, ...document.nodes, ...document.junctions].some(
+			(endpoint) => endpoint.id === group.id,
+		)
+	)
+		throw new Error(`Cet identifiant existe déjà : ${group.id}`);
+	const grouped = groupDocumentNodes(document, group, ids);
+	if (parent === undefined) return grouped;
+	return {
+		...grouped,
+		groups: grouped.groups.map((candidate): LogicGroup => {
+			if (candidate.id !== group.id) return candidate;
+			return { ...candidate, groupId: parent };
 		}),
 	};
 }

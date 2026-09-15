@@ -4,6 +4,7 @@ import {
 } from '../../../lib/core/document/collapsed-document';
 import type {
 	LogicDocument,
+	LogicGroup,
 	LogicRelation,
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
@@ -57,12 +58,41 @@ class OpenedDocument implements CanvasProjection {
 		return this.#projection.createCanvasModel(measurements);
 	}
 
+	read(): LogicDocument {
+		return this.session.read();
+	}
+
+	deleteElements(
+		endpointIds: readonly string[],
+		relationIds: readonly string[],
+	): Promise<LogicDocument> {
+		return this.session.deleteElements(endpointIds, relationIds);
+	}
+
 	addNode(node: NewLogicNode): Promise<LogicDocument> {
 		return this.session.addNode(node);
 	}
 
+	addConnectedNode(
+		node: NewLogicNode,
+		relations: readonly LogicRelation[],
+	): Promise<LogicDocument> {
+		return this.session.addConnectedNode(node, relations);
+	}
+
 	addRelation(relation: LogicRelation): Promise<LogicDocument> {
 		return this.session.addRelation(relation);
+	}
+
+	groupNodes(
+		group: { readonly id: string; readonly label: string },
+		nodeIds: readonly string[],
+	): Promise<LogicDocument> {
+		return this.session.groupNodes(group, nodeIds);
+	}
+
+	updateGroup(group: LogicGroup): Promise<LogicDocument> {
+		return this.session.updateGroup(group);
 	}
 
 	replaceNodeMarkdown(nodeId: string, markdown: string): Promise<DocumentCommandOutcome> {

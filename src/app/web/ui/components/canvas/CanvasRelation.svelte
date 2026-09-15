@@ -67,6 +67,7 @@
 	.relation-hit-target {
 		cursor: pointer;
 		pointer-events: stroke;
+		transition: d var(--canvas-motion-duration) var(--canvas-motion-easing);
 	}
 
 	.relation-hit-target:focus-visible {

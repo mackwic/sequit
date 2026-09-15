@@ -122,7 +122,11 @@ export function readElementUpdate(
 				op,
 				target: { ...target, kind: Kind.Group },
 				set,
-				unset: optionalKeys(unset, [SharedProperty.GroupId, SharedProperty.State]),
+				unset: optionalKeys(unset, [
+					SharedProperty.Color,
+					SharedProperty.GroupId,
+					SharedProperty.State,
+				]),
 			};
 		case Kind.Nature:
 			return {

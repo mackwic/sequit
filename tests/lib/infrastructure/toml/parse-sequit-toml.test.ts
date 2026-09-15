@@ -154,6 +154,17 @@ describe('parseSequitToml', () => {
 		});
 	});
 
+	it('maps an optional group color', async () => {
+		const styled = (await source()).replace(
+			'[groups.use-cases]\nlabel = "Use cases"',
+			'[groups.use-cases]\nlabel = "Use cases"\ncolor = "#2563eb"',
+		);
+
+		expect(
+			expectSuccess(parseSequitToml(styled)).groups.find(({ id }) => id === 'use-cases'),
+		).toMatchObject({ color: '#2563eb' });
+	});
+
 	it('rejects unsupported layout directions and junction operators', async () => {
 		const original = await source();
 		const invalidDirection = original.replace(

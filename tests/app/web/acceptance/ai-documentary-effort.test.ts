@@ -15,6 +15,7 @@ import {
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { AssertRoute } from '../../../support/assertions/assert-route';
 import { AssertRoutes } from '../../../support/assertions/assert-routes';
+import { AssertTrunks } from '../../../support/assertions/assert-trunks';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { twoByTwoInversionDocument } from '../../../support/fixtures';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
@@ -83,6 +84,30 @@ describe('AI for documentary effort', () => {
 			expect(canvas.width).toBeGreaterThan(0);
 			expect(canvas.height).toBeGreaterThan(0);
 			projection.destroy();
+		});
+
+		it('preserves an unrelated shared arrival trunk when a bypass is added', async () => {
+			const opened = expectDocument(openDocument(await aiDocumentaryEffortScenario()));
+			const before = await opened.createCanvasModel(
+				layoutMeasurementsForCanvas(opened.measurementModel),
+			);
+			await opened.addRelation({
+				id: 'freshness-tracking-to-documents-live-18-months',
+				from: 'freshness-tracking',
+				to: 'documents-live-18-months',
+			});
+			const after = await opened.createCanvasModel(
+				layoutMeasurementsForCanvas(opened.measurementModel),
+			);
+			const routesToInterdependentSections = (canvas: typeof before) =>
+				[
+					'ai-generation-orchestration-to-interdependent-sections',
+					'conclusion-section-example-to-interdependent-sections',
+				].map((id) => defined(canvas.relations.find((relation) => relation.id === id)));
+
+			AssertTrunks(routesToInterdependentSections(before)).haveSharedSegment('y', 1);
+			AssertTrunks(routesToInterdependentSections(after)).haveSharedSegment('y', 1);
+			opened.destroy();
 		});
 
 		it('keeps the improved reference order stable across reopen and Yjs snapshots', async () => {

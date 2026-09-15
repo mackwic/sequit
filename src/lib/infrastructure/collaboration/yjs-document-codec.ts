@@ -69,8 +69,12 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Groups),
 			document.groups,
-			({ label, groupId, layoutOrder, state }) => {
-				const values: Record<string, unknown> = { label, layoutOrder };
+			({ label, color, groupId, layoutOrder, state }) => {
+				const values: Record<string, unknown> = {
+					label,
+					...contentStyleFields(color, undefined),
+					layoutOrder,
+				};
 				if (state !== undefined) values['state'] = state;
 				if (groupId !== undefined) values['groupId'] = groupId;
 				return values;

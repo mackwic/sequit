@@ -355,6 +355,59 @@ describe('document session', () => {
 		expect(subscriber).toHaveBeenCalledWith(added);
 	});
 
+	it('groups sibling nodes atomically inside their current container', async () => {
+		const session = await createSession();
+
+		const grouped = await session.groupNodes({ id: 'selected-needs', label: 'Groupe' }, [
+			'traceable-edits',
+			'training-roi',
+		]);
+
+		expect(grouped.groups).toContainEqual(
+			expect.objectContaining({
+				kind: EndpointKind.Group,
+				id: 'selected-needs',
+				label: 'Groupe',
+				groupId: 'use-cases',
+			}),
+		);
+		expect(
+			grouped.nodes
+				.filter(({ id }) => id === 'traceable-edits' || id === 'training-roi')
+				.map(({ groupId }) => groupId),
+		).toEqual(['selected-needs', 'selected-needs']);
+
+		await expect(
+			session.groupNodes({ id: 'mixed', label: 'Groupe' }, [
+				'traceable-edits',
+				'reduce-documentary-effort',
+			]),
+		).rejects.toThrow('Les nœuds doivent appartenir au même groupe.');
+	});
+
+	it('updates and clears group presentation through the document repository', async () => {
+		const session = await createSession();
+		const original = session.read().groups.find(({ id }) => id === 'use-cases');
+		if (original === undefined) throw new Error('Expected the use-cases group');
+
+		const styled = await session.updateGroup({
+			...original,
+			label: 'Cas d’usage',
+			color: '#2563eb',
+		});
+		expect(styled.groups.find(({ id }) => id === original.id)).toMatchObject({
+			label: 'Cas d’usage',
+			color: '#2563eb',
+		});
+
+		const current = styled.groups.find(({ id }) => id === original.id);
+		if (current === undefined) throw new Error('Expected the updated group');
+		const reset = { ...current };
+		delete reset.color;
+		const unstyled = await session.updateGroup(reset);
+		expect(unstyled.groups.find(({ id }) => id === original.id)).not.toHaveProperty('color');
+	});
+
 	it('returns typed Markdown outcomes while authoritative publication notifies subscribers', async () => {
 		const session = await createSession();
 		const subscriber = vi.fn();

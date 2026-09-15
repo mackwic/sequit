@@ -58,7 +58,7 @@ interface SharedCreateProperties {
 	>;
 	readonly [SharedElementKind.Group]: Pick<
 		LogicGroup,
-		SharedProperty.Label | SharedProperty.GroupId | SharedProperty.State
+		SharedProperty.Label | SharedProperty.Color | SharedProperty.GroupId | SharedProperty.State
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,
@@ -81,7 +81,7 @@ interface SharedUpdateProperties {
 	>;
 	readonly [SharedElementKind.Group]: Pick<
 		LogicGroup,
-		SharedProperty.GroupId | SharedProperty.State
+		SharedProperty.Color | SharedProperty.GroupId | SharedProperty.State
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,

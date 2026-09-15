@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+	import {
+		autoUpdate,
+		computePosition,
+		flip,
+		offset,
+		type ReferenceElement,
+		shift,
+	} from '@floating-ui/dom';
 	import { type Snippet, tick } from 'svelte';
 	let {
 		anchor,
@@ -11,7 +18,7 @@
 		onclose,
 		element = $bindable(),
 	}: {
-		anchor: HTMLElement | undefined;
+		anchor: ReferenceElement | undefined;
 		trigger?: HTMLElement | undefined;
 		fixed?: boolean;
 		menu?: boolean;

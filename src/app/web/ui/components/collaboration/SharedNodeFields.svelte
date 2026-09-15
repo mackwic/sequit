@@ -14,12 +14,14 @@
 		connected,
 		dispatch,
 		label,
+		autofocusMarkdown = false,
 	}: {
 		node: LogicDocument['nodes'][number];
 		client: CollaborativeDocumentSession;
 		connected: boolean;
 		dispatch: (command: SharedDocumentCommand) => void;
 		label: string;
+		autofocusMarkdown?: boolean;
 	} = $props();
 </script>
 
@@ -32,7 +34,13 @@
 		}}>Supprimer {node.id}</button
 	>
 </header>
-<SharedTextField {client} target={{ kind: Kind.Node, id: node.id }} field="markdown" {label} />
+<SharedTextField
+	{client}
+	target={{ kind: Kind.Node, id: node.id }}
+	field="markdown"
+	{label}
+	autofocus={autofocusMarkdown}
+/>
 <SharedTextField
 	{client}
 	target={{ kind: Kind.Node, id: node.id }}

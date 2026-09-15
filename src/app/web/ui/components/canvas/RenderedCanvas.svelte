@@ -22,8 +22,17 @@
 
 	const markerId = $props.id();
 
-	let { canvas, zoom, session }: { canvas: CanvasModel; zoom: number; session: CanvasSession } =
-		$props();
+	let {
+		canvas,
+		zoom,
+		session,
+		onGroupEdit,
+	}: {
+		canvas: CanvasModel;
+		zoom: number;
+		session: CanvasSession;
+		onGroupEdit?: ((groupId: string) => void) | undefined;
+	} = $props();
 
 	let relations = $derived(canvas.relations);
 	let renderedRelations = $derived(renderRelationPaths(relations));
@@ -52,7 +61,7 @@
 
 	function handleClick(event: MouseEvent, ref: EntityRef) {
 		event.stopPropagation();
-		if (event.metaKey || event.ctrlKey) session.toggleEntity(ref);
+		if (event.shiftKey || event.metaKey || event.ctrlKey) session.toggleEntity(ref);
 		else session.selectEntity(ref);
 	}
 
@@ -66,6 +75,15 @@
 			event.stopPropagation();
 			session.selectEntity(ref);
 		}
+	}
+
+	function editGroup(event: MouseEvent, ref: EntityRef): void {
+		if (!(event.target instanceof Element) || event.target.closest('[data-group-header]') === null)
+			return;
+		event.preventDefault();
+		event.stopPropagation();
+		session.selectEntity(ref);
+		onGroupEdit?.(ref.id);
 	}
 
 	function focusAndSelect(ref: EntityRef): void {
@@ -141,6 +159,8 @@
 				data-group-id={group.id}
 				data-endpoint-id={group.id}
 				data-canvas-entity-key={entityKey(ref.kind, ref.id)}
+				data-group-color={group.color}
+				style:--group-color={group.color ?? '#78716c'}
 				style:left={`${group.bounds.x}px`}
 				style:top={`${group.bounds.y}px`}
 				style:width={`${group.bounds.width}px`}
@@ -150,11 +170,14 @@
 				onclick={(event) => {
 					handleClick(event, ref);
 				}}
+				ondblclick={(event) => {
+					editGroup(event, ref);
+				}}
 				onkeydown={(event) => {
 					handleKeyDown(event, ref);
 				}}
 			>
-				<span class="group-header">{group.label}</span>
+				<span class="group-header" data-group-header>{group.label}</span>
 			</button>
 		{/each}
 
@@ -214,16 +237,27 @@
 </div>
 
 <style>
+	[data-graph-stage] {
+		--canvas-motion-duration: 260ms;
+		--canvas-motion-easing: cubic-bezier(0.22, 1, 0.36, 1);
+	}
+
 	.canvas-group {
 		position: absolute;
 		display: block;
 		box-sizing: border-box;
-		border: 1px solid #a8a29e;
+		border: 1px solid color-mix(in srgb, var(--group-color) 55%, #a8a29e);
 		border-radius: 0.75rem;
-		background: rgb(231 229 228 / 0.52);
+		background: color-mix(in srgb, var(--group-color) 10%, transparent);
 		cursor: pointer;
 		padding: 0;
 		text-align: left;
+		outline: 3px solid transparent;
+		outline-offset: 2px;
+		transition-property:
+			left, top, width, height, opacity, transform, border-color, background-color, outline-color;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
 	}
 
 	.canvas-group .group-header {
@@ -235,8 +269,8 @@
 		display: block;
 		border-radius: 0.7rem 0.7rem 0 0;
 		padding: 0.65rem 0.9rem;
-		border-bottom: 1px solid #d6d3d1;
-		background: #e7e5e4;
+		border-bottom: 1px solid color-mix(in srgb, var(--group-color) 30%, #d6d3d1);
+		background: color-mix(in srgb, var(--group-color) 20%, #f5f5f4);
 		color: #44403c;
 		font-size: 0.75rem;
 		font-weight: 700;
@@ -244,8 +278,7 @@
 
 	.canvas-group.selected,
 	.junction.selected {
-		outline: 3px solid var(--ui-accent);
-		outline-offset: 2px;
+		outline-color: var(--ui-accent);
 	}
 
 	.canvas-group:focus-visible,
@@ -267,5 +300,24 @@
 		font-size: 0.55rem;
 		font-weight: 800;
 		padding: 0;
+		outline: 3px solid transparent;
+		outline-offset: 2px;
+		transition-property: left, top, width, height, opacity, transform, outline-color;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
+	}
+
+	@starting-style {
+		.canvas-group,
+		.junction {
+			opacity: 0;
+			transform: scale(0.96);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		[data-graph-stage] {
+			--canvas-motion-duration: 0s;
+		}
 	}
 </style>

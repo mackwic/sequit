@@ -194,6 +194,16 @@ Fonctions centrales envisagées :
 - partage par URL ;
 - import et export textuels.
 
+### Gestes de création, connexion et suppression
+
+- Un glissement depuis le fond du canvas ou la zone vide d’un groupe dessine une enveloppe et remplace la sélection par les nœuds et jonctions qu’elle intersecte ; les groupes ne sont jamais capturés par l’enveloppe. Avec Maj, l’enveloppe ajoute ces éléments à la sélection existante. Maj+clic sur un nœud non sélectionné l’ajoute ; Maj+clic sur un nœud sélectionné le retire.
+- À partir de deux nœuds sélectionnés, une barre contextuelle centrée au-dessus de leur enveloppe commune propose « Grouper ». Son raccourci est `G`. Les nœuds doivent appartenir au même conteneur ; le nouveau groupe est créé dans ce conteneur.
+- Un double-clic sur le fond ouvre une modale avec nature et contenu. Le focus entre dans le contenu ; Annuler ou Échap ferme sans création. Valider crée la boîte à sa place calculée par le layout, sans enregistrer le point cliqué. Un double-clic sur le fond d’un groupe crée la boîte dans ce groupe ; le fond du canvas crée une boîte hors groupe.
+- Un clic sélectionne ; un double-clic sur une boîte ouvre son édition. Un glissement depuis toute la surface d’un nœud, groupe ou jonction crée une relation vers l’élément de destination. Le geste commence après 6 pixels de déplacement ; une ligne droite fantôme suit le pointeur et toute la destination se surligne. Relâcher dans le vide ou Échap annule. Le sens est origine → destination ; les connexions invalides sont refusées.
+- Avec exactement un nœud, groupe ou jonction sélectionné, Cmd/Ctrl+Entrée crée un nœud enfant et Cmd/Ctrl+Maj+Entrée un sibling, puis ouvre directement son contenu. Un enfant pointe vers la sélection ; un sibling reprend tous ses parents, ou reste racine si elle n’en a pas. Le nouveau nœud conserve le groupe conteneur de la sélection : l’enfant d’un groupe est relié à ce groupe sans en devenir membre. Depuis la modale, les mêmes raccourcis sauvegardent d’abord le nœud courant puis enchaînent dans la même modale avec le nouveau contenu focusé ; Maj+Entrée sauvegarde et ferme simplement la modale.
+- « Supprimer », Suppr et Backspace suppriment la sélection et les relations incidentes aux éléments supprimés. Supprimer une relation conserve ses extrémités. Supprimer un groupe supprime son contenu ; l’action distincte « Dissoudre » conserve les membres. Une sélection composée est supprimée atomiquement, y compris les relations sources d’une flèche agrégée.
+- Les raccourcis de suppression sont limités au canvas et ignorent les champs de saisie. Pendant l’édition, glisser sélectionne le texte et Backspace efface du texte. Les commandes structurelles du canvas partagé sont disponibles uniquement lorsque la session est connectée.
+
 ## Collaboration
 
 La collaboration doit porter sur des objets structurés :

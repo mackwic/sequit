@@ -20,6 +20,9 @@
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;
+		transition-property: color, border-color, background-color;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
 	}
 
 	.node-body {
