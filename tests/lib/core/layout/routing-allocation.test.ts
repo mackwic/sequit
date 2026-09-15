@@ -4,7 +4,10 @@ import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
-import { sharedSourceQuays } from '../../../../src/lib/core/layout/routing/quay-allocation';
+import {
+	sharedSourceQuays,
+	sharedTargetQuays,
+} from '../../../../src/lib/core/layout/routing/quay-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
@@ -90,4 +93,12 @@ it('shares an ordinary endpoint quay without merging other quays or coincident f
 	expect(shared.get('one')).toBe(shared.get('two'));
 	expect(sharedSourceQuays(relations.toReversed(), offsets)).toEqual(shared);
 	expect(sharedSourceQuays(relations.slice(0, 2), new Map()).size).toBe(2);
+	const converging = relations.map((relation) => {
+		let to = relation.to;
+		if (['one', 'two'].includes(relation.id)) to = 'ordinary-target';
+		return { ...relation, to };
+	});
+	const sharedTargets = sharedTargetQuays(converging, offsets);
+	expect([...sharedTargets.keys()]).toEqual(['one', 'two']);
+	expect(sharedTargets.get('one')).toBe(sharedTargets.get('two'));
 });

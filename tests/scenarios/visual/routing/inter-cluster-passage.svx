@@ -1,0 +1,36 @@
+<script>
+ import { scenario } from './inter-cluster-passage.scenario';
+ import source from './inter-cluster-passage.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Une relation longue emprunte le corridor entre deux clusters
+
+Reproduction minimale de la branche « Docx-oriented platform » observée dans
+« AI for documentary effort ». Le premier cluster forme la chaîne
+**Solution → Want → Need** et ajoute le bypass **Solution → Need**. Un second
+cluster indépendant forme une convergence simple vers un même Need.
+
+## Attendu
+
+Les trois nœuds du premier cluster sont centrés sur le même axe et ses deux
+relations adjacentes sont droites. Seul le bypass contourne le nœud Want : il
+emprunte le corridor libre du côté positif — à droite en disposition verticale,
+en bas en disposition horizontale — avec 24 px de dégagement de chaque côté. Il
+ne rejoint ni le padding du groupe ni le bord extérieur du layout. Ces trois
+routes suffisamment espacées gardent la couleur de base.
+
+Les deux routes de la convergence voisine gardent leur quai entrant central et
+leur tronc commun. Activer le plan par couches pour le bypass ne doit pas changer
+la géométrie d'une composante déconnectée.
+
+Les assertions vérifient les rangs, les attaches principales, l’orthogonalité,
+le sens du trajet, le dégagement des obstacles, le maintien dans l’enveloppe des
+deux clusters et l’utilisation effective de leur corridor. Le scénario couvre
+les quatre directions et les deux biais compatibles.
+
+Ce scénario crante la recherche des corridors géométriques intermédiaires par
+le moteur de layout.
+
+<VisualTest {scenario} {source} bind:settings />

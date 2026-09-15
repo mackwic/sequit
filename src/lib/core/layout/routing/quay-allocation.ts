@@ -113,16 +113,16 @@ export function allocateQuays(input: {
 	};
 }
 
-/** Shared faces are identified by endpoint and actual quay offset, independently of endpoint kind. */
-export function sharedSourceQuays(
+function sharedEndpointQuays(
 	relations: readonly LogicRelation[],
 	offsets: ReadonlyMap<string, number>,
+	endpoint: (relation: LogicRelation) => string,
 ): ReadonlyMap<string, string> {
 	const families = new Map<string, string[]>();
-	for (const { id, from } of relations) {
-		const key = JSON.stringify([from, offsets.get(id) ?? 0]);
+	for (const relation of relations) {
+		const key = JSON.stringify([endpoint(relation), offsets.get(relation.id) ?? 0]);
 		const ids = families.get(key) ?? [];
-		ids.push(id);
+		ids.push(relation.id);
 		families.set(key, ids);
 	}
 	const shared = new Map<string, string>();
@@ -131,4 +131,19 @@ export function sharedSourceQuays(
 		for (const id of ids) shared.set(id, key);
 	}
 	return shared;
+}
+
+/** Shared faces are identified by endpoint and actual quay offset, independently of endpoint kind. */
+export function sharedSourceQuays(
+	relations: readonly LogicRelation[],
+	offsets: ReadonlyMap<string, number>,
+): ReadonlyMap<string, string> {
+	return sharedEndpointQuays(relations, offsets, ({ from }) => from);
+}
+
+export function sharedTargetQuays(
+	relations: readonly LogicRelation[],
+	offsets: ReadonlyMap<string, number>,
+): ReadonlyMap<string, string> {
+	return sharedEndpointQuays(relations, offsets, ({ to }) => to);
 }

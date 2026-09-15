@@ -7,7 +7,12 @@ import type { Bounds, Point, RoutingLayers, Size } from '../layout-types';
 import { routeChannel } from './channel-routing';
 import type { ChannelRouting } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
-import { allocateQuays, type QuayAllocation, sharedSourceQuays } from './quay-allocation';
+import {
+	allocateQuays,
+	type QuayAllocation,
+	sharedSourceQuays,
+	sharedTargetQuays,
+} from './quay-allocation';
 import { crossingCorridors } from './routing-corridors';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
 import { directRouteFitsSpace, type DirectRoutingSpace } from './routing-space';
@@ -34,7 +39,7 @@ interface LayerInput extends LayerGeometry {
 	readonly junctionIds: ReadonlySet<string>;
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly sizes: ReadonlyMap<string, Size>;
-	readonly alignedPassages?: ReadonlyMap<string, number> | undefined;
+	readonly componentByEndpointId: ReadonlyMap<string, number>;
 }
 
 interface ReservationInput extends LayerInput {
@@ -45,13 +50,16 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 	const { graph, layers, bounds, frame } = input;
 	const links = layerLinks(graph, layers, bounds, {
 		vertical: frame.vertical,
-		alignedPassages: input.alignedPassages,
 		sourceOffsets: quays.sourceOffsets,
 		targetOffsets: quays.targetOffsets,
 	});
 	const sourceQuays = sharedSourceQuays(
 		links.map(({ relation }) => relation),
 		quays.sourceOffsets,
+	);
+	const targetQuays = sharedTargetQuays(
+		links.map(({ relation }) => relation),
+		quays.targetOffsets,
 	);
 	const channels: LayerChannel[] = [];
 	for (let layer = 0; layer < layers.rows.length - 1; layer += 1) {
@@ -61,6 +69,7 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 			let sharedTarget: string | undefined;
 			let sharedSource: string | undefined;
 			if (link.sourceLayer === layer + 1) sharedSource = sourceQuays.get(link.relation.id);
+			sharedTarget = targetQuays.get(link.relation.id);
 			if (input.junctionIds.has(link.relation.to)) sharedTarget = link.relation.to;
 			return {
 				id: link.relation.id,
@@ -176,6 +185,17 @@ export function allocateLayerQuays(input: ReservationInput): QuayAllocation | un
 		});
 		if (ordinaryCrossings.length === 0) return undefined;
 	}
+	const routedComponents = new Set<number>();
+	for (const id of junctionIds) routedComponents.add(defined(input.componentByEndpointId.get(id)));
+	for (const { links } of crossings)
+		for (const { relation } of links)
+			routedComponents.add(defined(input.componentByEndpointId.get(relation.from)));
+	for (const { relation } of passages) {
+		const sourceRank = defined(input.ranks.get(relation.from));
+		const targetRank = defined(input.ranks.get(relation.to));
+		if (sourceRank > targetRank + 1)
+			routedComponents.add(defined(input.componentByEndpointId.get(relation.from)));
+	}
 	const links = passages.map((link) => {
 		const geometry = {
 			bounds,
@@ -189,6 +209,10 @@ export function allocateLayerQuays(input: ReservationInput): QuayAllocation | un
 			target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
 		};
 	});
+	const sharedTargets = new Set(junctionIds);
+	for (const { relation } of passages)
+		if (!routedComponents.has(defined(input.componentByEndpointId.get(relation.to))))
+			sharedTargets.add(relation.to);
 	return allocateQuays({
 		corridors: [{ rank: 0, links }],
 		sizes,
@@ -196,6 +220,6 @@ export function allocateLayerQuays(input: ReservationInput): QuayAllocation | un
 		graph,
 		vertical: frame.vertical,
 		sharedSources: junctionIds,
-		sharedTargets: junctionIds,
+		sharedTargets,
 	});
 }

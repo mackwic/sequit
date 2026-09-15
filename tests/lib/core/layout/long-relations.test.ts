@@ -18,7 +18,7 @@ const relations = [
 describe.each(LAYOUT_CONFIGURATIONS)(
 	'ordinary long relations in $direction / $bias',
 	({ direction, bias }) => {
-		it('aligns a chain beside its bypass, preserving ranks and principal attachments', async () => {
+		it('centers a straight chain and sends only its bypass to the positive side', async () => {
 			const layout = await layoutNodes({
 				nodes: {
 					a: { width: 100, height: 50 },
@@ -36,10 +36,16 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
 			check.obstacles().haveClearance(24);
 			check.routes().haveNoCrossing();
-			for (const { id } of relations) check.route(id).isStraightAlong(axesFor(direction).primary);
+			check.node('b').isAlignedWith('a', { by: 'chain' }).isAlignedWith('c', { by: 'chain' });
+			for (const { id } of relations.slice(0, -1))
+				check.route(id).isStraightAlong(axesFor(direction).primary);
+			check.route('c-a').usesPositiveSideOf(layout.getById('b'), {
+				axis: axesFor(direction).transverse,
+				clearance: 24,
+			});
 		});
 
-		it('spreads both endpoint quays when a wide intermediate node needs more room', async () => {
+		it('moves only the bypass farther when a wide intermediate node needs more room', async () => {
 			const nodes = {
 				a: { width: 80, height: 80 },
 				b: { width: 80, height: 80 },
@@ -55,21 +61,25 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			const check = AssertLayout(wide);
 			check.obstacles().haveClearance(24);
 			check.routes().haveNoCrossing().areAttachedToEndpoints().followLayoutFlow();
-			for (const { id } of relations) check.route(id).isStraightAlong(axesFor(direction).primary);
-			const clearance = { spacing: 360 / 2 + 24, inset: quayPolicy.inset };
+			check.node('b').isAlignedWith('a', { by: 'chain' }).isAlignedWith('c', { by: 'chain' });
+			for (const { id } of relations.slice(0, -1))
+				check.route(id).isStraightAlong(axesFor(direction).primary);
+			check.route('c-a').usesPositiveSideOf(wide.getById('b'), {
+				axis: axesFor(direction).transverse,
+				clearance: 24,
+			});
+			const clearance = { spacing: 72, inset: quayPolicy.inset };
 			check.quays('a', { side: 'incoming' }).haveCount(2).haveClearance(clearance);
 			check.quays('c', { side: 'outgoing' }).haveCount(2).haveClearance(clearance);
 			let dimension: 'width' | 'height' = 'width';
 			if (axesFor(direction).transverse === 'y') dimension = 'height';
 			for (const id of ['a', 'c'])
-				expect(wide.getById(id).bounds[dimension]).toBeGreaterThan(
-					narrow.getById(id).bounds[dimension],
-				);
+				expect(wide.getById(id).bounds[dimension]).toBe(narrow.getById(id).bounds[dimension]);
 		});
 	},
 );
 
-it('keeps unequal chains and their bypass straight regardless of relation IDs and input order', async () => {
+it('keeps unequal chains centered with a positive bypass regardless of IDs and input order', async () => {
 	await fc.assert(
 		fc.asyncProperty(
 			fc.array(
@@ -92,7 +102,13 @@ it('keeps unequal chains and their bypass straight regardless of relation IDs an
 				const check = AssertLayout(layout);
 				check.obstacles().haveClearance(24);
 				check.routes().haveNoCrossing().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
-				for (const { id } of arrows) check.route(id).isStraightAlong(axesFor(direction).primary);
+				for (const { id } of arrows.slice(0, -1))
+					check.route(id).isStraightAlong(axesFor(direction).primary);
+				for (const id of ids.slice(1)) check.node(id).isAlignedWith('0', { by: 'chain' });
+				check.route(longId).usesPositiveSideOf(layout.envelopeOf(ids.slice(1, -1)), {
+					axis: axesFor(direction).transverse,
+					clearance: 24,
+				});
 				for (const [index, id] of ids.entries()) check.node(id).hasRank(index + 1);
 				const reversed = await layoutNodes({
 					nodes,

@@ -25,6 +25,15 @@ interface RouteAssertions {
 	isStraightAlong(axis: 'x' | 'y'): RouteAssertions;
 	isAttachedTo(source: BoxGeometry, target: BoxGeometry): RouteAssertions;
 	staysWithin(boundary: BoxGeometry, options: { readonly axis: 'x' | 'y' }): RouteAssertions;
+	usesCorridorBetween(
+		before: BoxGeometry,
+		after: BoxGeometry,
+		options: { readonly axis: 'x' | 'y'; readonly clearance: number },
+	): RouteAssertions;
+	usesPositiveSideOf(
+		obstacle: BoxGeometry,
+		options: { readonly axis: 'x' | 'y'; readonly clearance: number },
+	): RouteAssertions;
 }
 
 /** VL-401/517: calculated route geometry and attachment to the intended endpoint contours. */
@@ -63,6 +72,67 @@ export function AssertRoute(route: LayoutRelation): RouteAssertions {
 					Math.min(point[axis] - start, end - point[axis]),
 					0,
 					{ routes: [route.id], referenceBoxes: identityOf(boundary).ids },
+				);
+			return assertions;
+		},
+		usesCorridorBetween(before, after, { axis, clearance }) {
+			validateBox(before);
+			validateBox(after);
+			if (!Number.isFinite(clearance) || clearance < 0)
+				throw new Error('Corridor clearance must be finite and non-negative.');
+			const referenceBoxes = [...identityOf(before).ids, ...identityOf(after).ids];
+			const start = before.bounds[axis] + extent(before.bounds, axis) + clearance;
+			const end = after.bounds[axis] - clearance;
+			if (end < start)
+				throw new VisualAssertionError(
+					`Corridor entre "${before.id}" et "${after.id}" sur ${axis}`,
+					`largeur minimale=${clearance * 2}`,
+					Math.max(0, after.bounds[axis] - before.bounds[axis] - extent(before.bounds, axis)),
+					{
+						routes: [route.id],
+						referenceBoxes,
+					},
+				);
+			let passageAxis: 'x' | 'y' = 'y';
+			if (axis === 'y') passageAxis = 'x';
+			const coordinates = [
+				...new Set(
+					routeSegments(route)
+						.filter((segment) => segment.axis === passageAxis)
+						.map(({ fixed }) => fixed),
+				),
+			];
+			if (!coordinates.some((coordinate) => coordinate >= start && coordinate <= end)) {
+				let actual = coordinates.join(', ');
+				if (coordinates.length === 0) actual = 'aucun passage';
+				throw new VisualAssertionError(
+					`Route "${route.id}" · colonne entre les clusters`,
+					`un passage sur ${passageAxis} entre ${start} et ${end}`,
+					actual,
+					{
+						routes: [route.id],
+						referenceBoxes,
+					},
+				);
+			}
+			return assertions;
+		},
+		usesPositiveSideOf(obstacle, { axis, clearance }) {
+			validateBox(obstacle);
+			if (!Number.isFinite(clearance) || clearance < 0)
+				throw new Error('Side clearance must be finite and non-negative.');
+			let passageAxis: 'x' | 'y' = 'y';
+			if (axis === 'y') passageAxis = 'x';
+			const minimum = obstacle.bounds[axis] + extent(obstacle.bounds, axis) + clearance;
+			const coordinates = routeSegments(route)
+				.filter((segment) => segment.axis === passageAxis)
+				.map(({ fixed }) => fixed);
+			if (!coordinates.some((coordinate) => coordinate >= minimum))
+				throw new VisualAssertionError(
+					`Route "${route.id}" · côté positif de ${obstacle.id}`,
+					`un passage sur ${passageAxis} à partir de ${minimum}`,
+					coordinates.join(', ') || 'aucun passage',
+					{ routes: [route.id], referenceBoxes: identityOf(obstacle).ids },
 				);
 			return assertions;
 		},

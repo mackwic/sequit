@@ -2,8 +2,8 @@ import type { LayoutRelation, Point } from '../../projection/layout-graph';
 import { clusterColors } from './route-color-clusters';
 import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
 
-// Distinguish at least three parallel routes separated by the usual 24px rail spacing.
-const PARALLEL_COLOR_DISTANCE = 48;
+// Distinguish only parallel routes close enough to be visually confused.
+const PARALLEL_COLOR_DISTANCE = 24;
 
 interface ColorSegment {
 	readonly start: Point;

@@ -64,8 +64,16 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			const check = AssertLayout(layout);
 			check.obstacles().haveClearance(24);
 			check.routes().areAttachedToEndpoints().followLayoutFlow().haveNoCrossing();
-			for (const { id } of fixture.relations)
+			for (const { id } of fixture.relations.filter(({ id }) => id !== 'd-to-a' && id !== 'g-to-e'))
 				check.route(id).isStraightAlong(axesFor(configuration.direction).primary);
+			check.route('d-to-a').usesPositiveSideOf(layout.envelopeOf(['b', 'c']), {
+				axis: axesFor(configuration.direction).transverse,
+				clearance: 24,
+			});
+			check.route('g-to-e').usesPositiveSideOf(layout.getById('f'), {
+				axis: axesFor(configuration.direction).transverse,
+				clearance: 24,
+			});
 			check.envelope(['e', 'f', 'g']).isAfter(layout.envelopeOf(['a', 'b', 'c', 'd']), {
 				direction: 'transverse-positive',
 			});
@@ -88,8 +96,14 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 				.arrowsFrom('c', ['b', 'a'])
 				.build();
 			const before = await layoutNodes({ ...fixture, ...configuration });
-			for (const { id } of fixture.relations)
+			for (const { id } of fixture.relations.slice(0, -1))
 				AssertLayout(before).route(id).isStraightAlong(axesFor(configuration.direction).primary);
+			AssertLayout(before)
+				.route('c-to-a')
+				.usesPositiveSideOf(before.getById('b'), {
+					axis: axesFor(configuration.direction).transverse,
+					clearance: 24,
+				});
 			const removed = await layoutNodes({
 				...fixture,
 				...configuration,
@@ -158,6 +172,14 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 				configuration.direction,
 			);
 			AssertLayout(layout).routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
+			for (const id of ['b-to-a', 'c-to-b', 'd-to-c'])
+				AssertLayout(layout).route(id).isStraightAlong(axesFor(configuration.direction).primary);
+			AssertLayout(layout)
+				.route('d-to-a')
+				.usesPositiveSideOf(layout.envelopeOf(['b', 'c']), {
+					axis: axesFor(configuration.direction).transverse,
+					clearance: 24,
+				});
 			for (const id of Object.keys(fixture.nodes))
 				expect(contains(layout.getById('group').bounds, layout.getById(id).bounds)).toBe(true);
 			const members = layout.withElements(

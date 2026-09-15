@@ -7,9 +7,11 @@ import {
 	type Point,
 } from '../../../../src/app/web/projection/layout-graph';
 import {
+	defined,
 	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -695,4 +697,49 @@ describe('layoutGraph', () => {
 		expect(second.layout).toEqual(first.layout);
 		expect(reordered.layout).toEqual(first.layout);
 	});
+
+	it.each([
+		[LayoutDirection.TopToBottom, LayoutBias.Top],
+		[LayoutDirection.BottomToTop, LayoutBias.Bottom],
+		[LayoutDirection.LeftToRight, LayoutBias.Left],
+		[LayoutDirection.RightToLeft, LayoutBias.Right],
+	] as const)(
+		'keeps a long relation between members inside their common group in %s',
+		async (direction, bias) => {
+			const original = openLiveDocument(await aiDocumentaryEffortScenario());
+			const document: LogicDocument = {
+				...original,
+				layout: defined(layoutConfiguration(direction, bias)),
+				nodes: [
+					...original.nodes,
+					{
+						kind: EndpointKind.Node,
+						id: 'new-node',
+						natureId: 'desirable-effect',
+						groupId: 'use-cases',
+						markdown: 'new node',
+						layoutOrder: orderKey('az'),
+					},
+				],
+				relations: [
+					...original.relations,
+					{ id: 'new-node-to-onlyoffice', from: 'new-node', to: 'onlyoffice' },
+					{ id: 'new-node-to-familiar-word-ui', from: 'new-node', to: 'familiar-word-ui' },
+				],
+			};
+			const { layout } = await layoutDocument(document);
+			const bounds = boundsById(layout);
+			const group = bounds.get('use-cases');
+			const relation = layout.relations.find(({ id }) => id === 'new-node-to-familiar-word-ui');
+			if (group === undefined || relation === undefined)
+				throw new Error('Missing reproduction geometry');
+
+			for (const point of relation.points) {
+				expect(point.x).toBeGreaterThanOrEqual(group.x);
+				expect(point.x).toBeLessThanOrEqual(group.x + group.width);
+				expect(point.y).toBeGreaterThanOrEqual(group.y);
+				expect(point.y).toBeLessThanOrEqual(group.y + group.height);
+			}
+		},
+	);
 });

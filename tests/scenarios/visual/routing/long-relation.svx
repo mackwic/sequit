@@ -10,9 +10,9 @@
 B → A et C → B forment une chaîne. La relation supplémentaire C → A saute la rangée de B.
 Son passage doit contourner B, même en l’absence de jonction. Les rangs documentaires
 restent identiques et les relations rejoignent les faces principales de leurs extrémités.
-Dans ce motif, B se décale transversalement à gauche de la relation longue pour que
-la chaîne C → B → A et le passage C → A restent entièrement droits, sans croisement.
-Les quais de A et C s’écartent si nécessaire pour conserver au moins 24 px entre
-la relation longue et B. La même géométrie s’applique dans les quatre directions.
+Dans ce motif, A, B et C restent centrés sur le même axe et les deux liens de la
+chaîne sont droits. Seule la relation longue C → A se décale du côté positif — à
+droite en disposition verticale, en bas en disposition horizontale — pour conserver
+au moins 24 px autour de B. La même géométrie s’applique dans les quatre directions.
 
 <VisualTest {scenario} {source} bind:settings />

@@ -98,7 +98,11 @@ function reserveLayeredRouting(
 		ranks: structure.ranks.byEndpointId,
 		junctionIds: structure.junctionIds,
 		sizes: measurements.sizes,
-		alignedPassages: alignment?.passageOffsets,
+		componentByEndpointId: new Map(
+			structure.components.flatMap((component, index) =>
+				component.ids.map((id) => [id, index] as const),
+			),
+		),
 	};
 	let quays = allocateLayerQuays({
 		...input,

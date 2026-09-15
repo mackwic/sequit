@@ -286,7 +286,7 @@ describe('renderRelationPaths', () => {
 	it.each(['horizontal', 'vertical'])(
 		'distinguishes three nearby %s routes without crossings',
 		(orientation) => {
-			const relations = [0, 24, 48].map((offset, index) => {
+			const relations = [0, 12, 24].map((offset, index) => {
 				let points = [
 					{ x: 0, y: offset },
 					{ x: 120, y: offset },
@@ -312,7 +312,7 @@ describe('renderRelationPaths', () => {
 	);
 
 	it.each([
-		{ start: 0, end: 100, offset: 49 },
+		{ start: 0, end: 100, offset: 25 },
 		{ start: 100, end: 200, offset: 24 },
 		{ start: 120, end: 200, offset: 0 },
 	])('reuses ink for separated parallel portions %j', ({ start, end, offset }) => {
@@ -342,14 +342,14 @@ describe('renderRelationPaths', () => {
 				...relation('b', [
 					{ x: 0, y: 0 },
 					{ x: 0, y: 40 },
-					{ x: 24, y: 40 },
-					{ x: 24, y: 120 },
+					{ x: 12, y: 40 },
+					{ x: 12, y: 120 },
 				]),
 				from: 'source',
 			},
 			relation('c', [
-				{ x: 48, y: 40 },
-				{ x: 48, y: 120 },
+				{ x: 24, y: 40 },
+				{ x: 24, y: 120 },
 			]),
 		];
 		const colors = new Map(renderRelationPaths(routes).map(({ id, color }) => [id, color]));

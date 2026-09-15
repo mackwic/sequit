@@ -31,7 +31,7 @@ function chainIn(
 	return { ids, links, bypass };
 }
 
-/** A whole root-level component with two paths: an ordinary chain and its direct bypass. */
+/** A whole component in one containment context, with an ordinary chain and its direct bypass. */
 export function bypassedChains(
 	graph: LogicGraph,
 	components: readonly RankedComponent[],
@@ -46,13 +46,10 @@ export function bypassedChains(
 	const chains: BypassedChain[] = [];
 	for (const component of components) {
 		if (component.ids.length < 3) continue;
-		if (
-			component.ids.some((id) => {
-				const endpoint = defined(graph.endpointsById.get(id));
-				return endpoint.kind !== EndpointKind.Node || endpoint.entity.groupId !== undefined;
-			})
-		)
-			continue;
+		const endpoints = component.ids.map((id) => defined(graph.endpointsById.get(id)));
+		if (endpoints.some(({ kind }) => kind !== EndpointKind.Node)) continue;
+		const contexts = new Set(endpoints.map(({ entity }) => entity.groupId));
+		if (contexts.size !== 1) continue;
 		const ids = [...component.ids].sort((a, b) => defined(ranks.get(a)) - defined(ranks.get(b)));
 		if (ids.some((id, index) => ranks.get(id) !== index)) continue;
 		const chain = chainIn(ids, outgoing);

@@ -140,3 +140,81 @@ it.each(['x', 'y'] as const)('checks every route point against the envelope alon
 		'no route',
 	);
 });
+
+it.each(['x', 'y'] as const)(
+	'checks that a principal passage uses the free corridor along %s',
+	(axis) => {
+		let before: BoxGeometry = {
+			id: 'left-cluster',
+			bounds: { x: 0, y: 0, width: 100, height: 220 },
+		};
+		let after: BoxGeometry = {
+			id: 'right-cluster',
+			bounds: { x: 200, y: 0, width: 100, height: 220 },
+		};
+		let points = [
+			{ x: 50, y: 220 },
+			{ x: 150, y: 220 },
+			{ x: 150, y: 0 },
+			{ x: 50, y: 0 },
+		];
+		if (axis === 'y') {
+			before = { ...before, bounds: { x: 0, y: 0, width: 220, height: 100 } };
+			after = { ...after, bounds: { x: 0, y: 200, width: 220, height: 100 } };
+			points = points.map(({ x, y }) => ({ x: y, y: x }));
+		}
+		const assertions = AssertRoute({ ...route, points });
+		expect(assertions.usesCorridorBetween(before, after, { axis, clearance: 24 })).toBe(assertions);
+
+		const outside = points.map((point) => ({ ...point }));
+		for (const point of outside) if (point[axis] === 150) point[axis] = 190;
+		expect(() =>
+			AssertRoute({ ...route, points: outside }).usesCorridorBetween(before, after, {
+				axis,
+				clearance: 24,
+			}),
+		).toThrow('colonne entre les clusters');
+		expect(() => assertions.usesCorridorBetween(before, after, { axis, clearance: 60 })).toThrow(
+			'Corridor entre',
+		);
+		expect(() =>
+			assertions.usesCorridorBetween(before, after, {
+				axis,
+				clearance: Number.NaN,
+			}),
+		).toThrow('finite and non-negative');
+	},
+);
+
+it.each(['x', 'y'] as const)('checks a passage on the positive side along %s', (axis) => {
+	const obstacle: BoxGeometry = {
+		id: 'middle',
+		bounds: { x: 70, y: 70, width: 60, height: 60 },
+	};
+	let points = [
+		{ x: 50, y: 220 },
+		{ x: 160, y: 220 },
+		{ x: 160, y: 0 },
+		{ x: 50, y: 0 },
+	];
+	if (axis === 'y') points = points.map(({ x, y }) => ({ x: y, y: x }));
+	const assertions = AssertRoute({ ...route, points });
+	expect(assertions.usesPositiveSideOf(obstacle, { axis, clearance: 24 })).toBe(assertions);
+	expect(() => assertions.usesPositiveSideOf(obstacle, { axis, clearance: 31 })).toThrow(
+		'côté positif',
+	);
+	expect(() => assertions.usesPositiveSideOf(obstacle, { axis, clearance: Number.NaN })).toThrow(
+		'finite and non-negative',
+	);
+	let noPassage = [
+		{ x: 0, y: 0 },
+		{ x: 100, y: 0 },
+	];
+	if (axis === 'y') noPassage = noPassage.map(({ x, y }) => ({ x: y, y: x }));
+	expect(() =>
+		AssertRoute({ ...route, points: noPassage }).usesPositiveSideOf(obstacle, {
+			axis,
+			clearance: 24,
+		}),
+	).toThrow('aucun passage');
+});

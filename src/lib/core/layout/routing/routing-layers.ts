@@ -10,7 +10,7 @@ import {
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import type { RoutingLayers } from '../layout-types';
-import { junctionPassages } from './junction-passages';
+import { layerPassages } from './layer-passages';
 
 export interface LayerLink {
 	readonly relation: LogicRelation;
@@ -26,12 +26,10 @@ export function layerLinks(
 	bounds: ReadonlyMap<string, Bounds>,
 	{
 		vertical,
-		alignedPassages,
 		sourceOffsets,
 		targetOffsets,
 	}: {
 		readonly vertical: boolean;
-		readonly alignedPassages?: ReadonlyMap<string, number> | undefined;
 		readonly sourceOffsets?: ReadonlyMap<string, number> | undefined;
 		readonly targetOffsets?: ReadonlyMap<string, number> | undefined;
 	},
@@ -42,7 +40,7 @@ export function layerLinks(
 		),
 	);
 	const arrivals = new Map<string, number>();
-	const localPassage = junctionPassages({
+	const localPassage = layerPassages({
 		graph,
 		layers,
 		bounds,
@@ -60,10 +58,7 @@ export function layerLinks(
 			const targetLayer = defined(layers.byId.get(relation.to));
 			let passage;
 			if (sourceLayer > targetLayer + 1) {
-				const aligned = alignedPassages?.get(relation.id);
-				if (aligned !== undefined)
-					passage = transverseCenter(defined(bounds.get(relation.from)), vertical) + aligned;
-				else passage = localPassage(relation) ?? arrivals.get(relation.to);
+				passage = localPassage(relation) ?? arrivals.get(relation.to);
 				if (passage === undefined) {
 					outside += RAIL_SPACING;
 					passage = outside;

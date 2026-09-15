@@ -355,6 +355,7 @@ Aucune décision n'est encore prise concernant :
 - `DocumentSession` est l’unique façade applicative vers le document Yjs live.
 - Les cycles sont rejetés avant le calcul des rangs.
 - Toutes les relations s’attachent aux faces perpendiculaires à l’axe principal, avec des segments de départ et d’arrivée dans cet axe. Aucune attache transversale, y compris pour les groupes et leurs en-têtes.
+- Une relation longue dont les deux extrémités appartiennent au même groupe emprunte un passage dans le padding de leur groupe commun le plus profond ; sa route ne sort pas de cette enveloppe.
 - Un groupe non vide occupe l’intervalle des rangs de son contenu ; un groupe vide endpoint est atomique.
 - ELK a été écarté après sa gate de compatibilité ; `layoutGraph(...)` utilise un moteur dédié déterministe.
 - Le frontend utilise SvelteKit et TypeScript.

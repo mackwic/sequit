@@ -29,7 +29,12 @@ export const scenario: LayoutScenario = {
 		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
 		check.obstacles().haveClearance(24);
 		check.routes().haveNoCrossing();
-		for (const id of ['b-to-a', 'c-to-b', 'c-to-a'])
+		check.node('b').isAlignedWith('a', { by: 'chain' }).isAlignedWith('c', { by: 'chain' });
+		for (const id of ['b-to-a', 'c-to-b'])
 			check.route(id).isStraightAlong(axesFor(layout.direction).primary);
+		check.route('c-to-a').usesPositiveSideOf(layout.getById('b'), {
+			axis: axesFor(layout.direction).transverse,
+			clearance: 24,
+		});
 	},
 };
