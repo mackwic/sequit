@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';
+	import DocumentMenu from './document/DocumentMenu.svelte';
 
 	let { source, title }: { source: string; title: string } = $props();
 </script>
@@ -31,9 +32,7 @@
 				<span>Sequit</span>
 			</a>
 			<div class="h-5 w-px bg-stone-200"></div>
-			<span class="truncate px-2 py-1 text-sm font-medium text-stone-700">
-				{title}
-			</span>
+			<DocumentMenu {title} />
 		</div>
 	</header>
 

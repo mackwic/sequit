@@ -123,7 +123,10 @@ test.describe('canvas viewport interactions', () => {
 		);
 		await expect(page.getByRole('button', { name: 'Add box' })).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Connect boxes' })).toHaveCount(0);
-		await expect(page.getByRole('button', { name: 'AI for documentary effort' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'AI for documentary effort' })).toHaveAttribute(
+			'aria-haspopup',
+			'menu',
+		);
 	});
 
 	test('zooms around a modified-wheel pointer anchor', async ({ page }) => {
