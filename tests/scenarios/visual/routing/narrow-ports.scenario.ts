@@ -1,15 +1,15 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
-import { quayPolicy } from '../../../support/fixtures/routing-fixtures';
+import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
-	id: 'narrow-quays',
-	label: 'Deux quais agrandissent le nœud',
-	group: 'Rails et quais',
+	id: 'narrow-ports',
+	label: 'Deux ports agrandissent le nœud',
+	group: 'Rails et ports',
 	order: 160,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({ ...graphFixtures.crossingRoutes(direction).build(), direction, bias });
@@ -23,15 +23,15 @@ export const scenario: LayoutScenario = {
 
 		for (const id of ['a', 'b']) {
 			check
-				.quays(id, { side: 'outgoing' })
+				.ports(id, { role: 'outgoing' })
 				.haveCountBetween(1, 2)
 				.areCentered()
-				.haveClearance(quayPolicy);
-			check.node(id).hasSizeForUsedQuays({ content: 80, ...quayPolicy });
+				.haveClearance(portPolicy);
+			check.node(id).hasSizeForUsedPorts({ content: 80, ...portPolicy });
 		}
 		for (const id of ['c', 'd']) {
-			check.quays(id, { side: 'incoming' }).haveCount(2).areCentered().haveClearance(quayPolicy);
-			check.node(id).hasSizeForQuays({ content: 80, incoming: 2, outgoing: 0, ...quayPolicy });
+			check.ports(id, { role: 'incoming' }).haveCount(2).areCentered().haveClearance(portPolicy);
+			check.node(id).hasSizeForPorts({ content: 80, incoming: 2, outgoing: 0, ...portPolicy });
 		}
 		check.routes().areOrthogonal().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths().haveBridgeAtEveryCrossing();

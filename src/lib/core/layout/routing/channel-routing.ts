@@ -168,7 +168,7 @@ function assignRails(runs: readonly ChannelRun[]): number {
 	return count;
 }
 
-/** Share traverses at a common quay, preserve distinct nets, then color transverse runs. */
+/** Share traverses at a common port, preserve distinct nets, then color transverse runs. */
 export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting {
 	const wires: ChannelWire[] = input.map((endpoint) => ({
 		...endpoint,

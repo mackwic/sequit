@@ -17,7 +17,7 @@ function variant(groupAsTarget: boolean, nested: boolean): LayoutScenario {
 	return {
 		id,
 		label,
-		group: 'Rails et quais',
+		group: 'Rails et ports',
 		order: 166,
 		arrange(direction = LayoutDirection.TopToBottom, bias) {
 			return layoutGroupJunction(direction, bias, groupAsTarget, nested);

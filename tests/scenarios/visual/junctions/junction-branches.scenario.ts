@@ -14,7 +14,7 @@ const variants: readonly LayoutScenario[] = [
 		id: 'junction-fan-in',
 		label: 'Plusieurs entrées sur une jonction',
 		description:
-			'Relations : B → J, C → J, J → A. Dans ce motif symétrique, J est centrée sur les enveloppes de ses voisins des deux côtés. Les quais respectent le sens des flèches ; partager un tronc suit les règles générales, sans exception liée à l’opérateur.',
+			'Relations : B → J, C → J, J → A. Dans ce motif symétrique, J est centrée sur les enveloppes de ses voisins des deux côtés. Les ports respectent le sens des flèches ; partager un tronc suit les règles générales, sans exception liée à l’opérateur.',
 		group: 'Jonctions et rails',
 		order: 330,
 		arrange(direction = LayoutDirection.TopToBottom, bias?: LayoutBias): Promise<VisualLayout> {
@@ -41,7 +41,7 @@ const variants: readonly LayoutScenario[] = [
 		id: 'junction-fan-out',
 		label: 'Plusieurs sorties sur une jonction',
 		description:
-			'Relations : B → J, J → A, J → C. Dans ce motif symétrique, J est centrée sur les enveloppes de ses voisins des deux côtés. Les quais respectent le sens des flèches ; partager un tronc suit les règles générales, sans exception liée à l’opérateur.',
+			'Relations : B → J, J → A, J → C. Dans ce motif symétrique, J est centrée sur les enveloppes de ses voisins des deux côtés. Les ports respectent le sens des flèches ; partager un tronc suit les règles générales, sans exception liée à l’opérateur.',
 		group: 'Jonctions et rails',
 		order: 340,
 		arrange(direction = LayoutDirection.TopToBottom, bias?: LayoutBias): Promise<VisualLayout> {

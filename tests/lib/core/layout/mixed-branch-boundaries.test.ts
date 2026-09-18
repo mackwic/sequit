@@ -120,7 +120,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			safeGeometry(layout);
 		});
 
-		it('aligns to the actual offset quay when another branch crosses an ordinary row', async () => {
+		it('aligns to the actual offset port when another branch crosses an ordinary row', async () => {
 			const fixture = withRelation(mixedBranchAlignment(configuration.direction), {
 				id: 'x-to-r',
 				from: 'x',
@@ -135,7 +135,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			expect(
 				Math.abs(defined(route.points.at(-1))[axis] - parent[axis] - parent[dimension] / 2),
 			).toBeGreaterThan(0);
-			AssertLayout(layout).quays('p', { side: 'incoming' }).haveCount(2);
+			AssertLayout(layout).ports('p', { role: 'incoming' }).haveCount(2);
 			AssertLayout(layout)
 				.route('v-to-p')
 				.isStraightAlong(axesFor(configuration.direction).primary);

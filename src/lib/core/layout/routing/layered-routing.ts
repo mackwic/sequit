@@ -8,11 +8,11 @@ import { routeChannel } from './channel-routing';
 import type { ChannelRouting } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
 import {
-	allocateQuays,
-	type QuayAllocation,
-	sharedSourceQuays,
-	sharedTargetQuays,
-} from './quay-allocation';
+	allocatePorts,
+	type PortAllocation,
+	sharedSourcePorts,
+	sharedTargetPorts,
+} from './port-allocation';
 import { crossingCorridors } from './routing-corridors';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
 import { directRouteFitsSpace, type DirectRoutingSpace } from './routing-space';
@@ -24,7 +24,7 @@ interface LayerChannel extends ChannelRouting {
 export interface LayerPlan {
 	readonly layers: RoutingLayers;
 	readonly channels: readonly LayerChannel[];
-	readonly quays: QuayAllocation;
+	readonly ports: PortAllocation;
 	readonly gaps: ReadonlyMap<number, number>;
 	readonly channelGaps: ReadonlyMap<number, readonly number[]>;
 }
@@ -46,20 +46,20 @@ interface ReservationInput extends LayerInput {
 	readonly space: DirectRoutingSpace;
 }
 
-function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerChannel[] {
+function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerChannel[] {
 	const { graph, layers, bounds, frame } = input;
 	const links = layerLinks(graph, layers, bounds, {
 		vertical: frame.vertical,
-		sourceOffsets: quays.sourceOffsets,
-		targetOffsets: quays.targetOffsets,
+		sourceOffsets: ports.sourceOffsets,
+		targetOffsets: ports.targetOffsets,
 	});
-	const sourceQuays = sharedSourceQuays(
+	const sourcePorts = sharedSourcePorts(
 		links.map(({ relation }) => relation),
-		quays.sourceOffsets,
+		ports.sourceOffsets,
 	);
-	const targetQuays = sharedTargetQuays(
+	const targetPorts = sharedTargetPorts(
 		links.map(({ relation }) => relation),
-		quays.targetOffsets,
+		ports.targetOffsets,
 	);
 	const channels: LayerChannel[] = [];
 	for (let layer = 0; layer < layers.rows.length - 1; layer += 1) {
@@ -68,8 +68,8 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 		const endpoints = crossing.map((link) => {
 			let sharedTarget: string | undefined;
 			let sharedSource: string | undefined;
-			if (link.sourceLayer === layer + 1) sharedSource = sourceQuays.get(link.relation.id);
-			sharedTarget = targetQuays.get(link.relation.id);
+			if (link.sourceLayer === layer + 1) sharedSource = sourcePorts.get(link.relation.id);
+			sharedTarget = targetPorts.get(link.relation.id);
 			if (input.junctionIds.has(link.relation.to)) sharedTarget = link.relation.to;
 			return {
 				id: link.relation.id,
@@ -77,11 +77,11 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 				sharedSource,
 				source: linkCoordinate(link, true, layer + 1, {
 					...geometry,
-					offsets: quays.sourceOffsets,
+					offsets: ports.sourceOffsets,
 				}),
 				target: linkCoordinate(link, false, layer, {
 					...geometry,
-					offsets: quays.targetOffsets,
+					offsets: ports.targetOffsets,
 				}),
 			};
 		});
@@ -90,9 +90,9 @@ function channelsFor(input: LayerInput, quays: QuayAllocation): readonly LayerCh
 	return channels;
 }
 
-export function planLayeredRouting(input: LayerInput, quays: QuayAllocation): LayerPlan {
+export function planLayeredRouting(input: LayerInput, ports: PortAllocation): LayerPlan {
 	const { layers } = input;
-	const channels = channelsFor(input, quays);
+	const channels = channelsFor(input, ports);
 	const channelGaps = new Map<number, number[]>();
 	const gaps = new Map<number, number>();
 	for (const channel of channels) {
@@ -116,7 +116,7 @@ export function planLayeredRouting(input: LayerInput, quays: QuayAllocation): La
 		const interval = defined(layers.intervals[layer]);
 		gaps.set(interval, (gaps.get(interval) ?? 0) + thickness);
 	}
-	return { layers, channels, quays, gaps, channelGaps };
+	return { layers, channels, ports, gaps, channelGaps };
 }
 
 export function materializeLayers(
@@ -155,7 +155,7 @@ export function materializeLayers(
 }
 
 /** Reserve faces before placement; channels are planned from the resulting transverse positions. */
-export function allocateLayerQuays(input: ReservationInput): QuayAllocation | undefined {
+export function allocateLayerPorts(input: ReservationInput): PortAllocation | undefined {
 	const { graph, layers, bounds, frame, junctionIds, sizes } = input;
 	const crossings = crossingCorridors({
 		graph,
@@ -213,7 +213,7 @@ export function allocateLayerQuays(input: ReservationInput): QuayAllocation | un
 	for (const { relation } of passages)
 		if (!routedComponents.has(defined(input.componentByEndpointId.get(relation.to))))
 			sharedTargets.add(relation.to);
-	return allocateQuays({
+	return allocatePorts({
 		corridors: [{ rank: 0, links }],
 		sizes,
 		bounds,

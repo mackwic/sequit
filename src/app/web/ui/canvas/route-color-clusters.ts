@@ -110,7 +110,7 @@ function alignCluster(
 	}
 }
 
-/** Contact components restart the palette; aligned quays propagate a rotation between components. */
+/** Contact components restart the palette; aligned ports propagate a rotation between components. */
 export function clusterColors(input: ClusterColorInput): ReadonlyMap<Family, string> {
 	const clusters = contactClusters(input);
 	const byFamily = new Map(

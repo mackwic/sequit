@@ -16,11 +16,11 @@ Chaque fourche possède de vrais segments transversaux. Les deux familles utilis
 ## Conventions de ce cahier
 
 La **calibration actuelle du moteur**, vérifiée indépendamment par ces tests, est :
-quais espacés de **48**, marge de **24** à chaque bord ; intervalle normal de **72**, augmenté de **24** par rail supplémentaire, avec au moins **12** de marge près des rangées.
+ports espacés de **48**, marge de **24** à chaque bord ; intervalle normal de **72**, augmenté de **24** par rail supplémentaire, avec au moins **12** de marge près des rangées.
 La dimension du contenu est une mesure fournie au moteur ; aucun texte long n’est simulé dans la boîte.
 
-Les quais entrants/sortants suivent **le sens des flèches** et occupent uniquement les deux faces opposées perpendiculaires à l’axe principal, jamais les faces latérales. Un rail est observé à partir d’un segment transversal de longueur positive ; un trajet droit ne suffit pas à prouver sa réutilisation.
-Le nom « 0 » désigne le quai ou rail par défaut : les assertions observent la géométrie, car le moteur n’expose pas encore d’identifiants de rails ou de quais.
+Les ports entrants/sortants suivent **le sens des flèches** et occupent uniquement les deux faces opposées perpendiculaires à l’axe principal, jamais les faces latérales. Un rail est observé à partir d’un segment transversal de longueur positive ; un trajet droit ne suffit pas à prouver sa réutilisation.
+Le nom « 0 » désigne le port ou rail par défaut : les assertions observent la géométrie, car le moteur n’expose pas encore d’identifiants de rails ou de ports.
 
 Les quatre directions et leurs biais compatibles sont exécutables. L’axe transversal est X en disposition verticale, Y en disposition horizontale : l’agrandissement concerne donc la largeur ou la hauteur.
 **Le dessin et le verdict utilisent le moteur réel. Un résultat rouge signale un écart au comportement spécifié.**

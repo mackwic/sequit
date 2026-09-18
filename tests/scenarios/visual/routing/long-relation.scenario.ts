@@ -8,7 +8,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'long-relation',
 	label: 'Relation longue hors des boîtes',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 167,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({

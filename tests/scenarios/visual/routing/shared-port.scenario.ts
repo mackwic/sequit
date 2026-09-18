@@ -3,15 +3,15 @@ import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { rowGap } from '../../../support/assertions/assert-rails';
 import { equalMetric } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
-import { quayPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
+import { portPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
-	id: 'shared-quay',
-	label: 'Un quai partagé et des troncs communs',
-	group: 'Rails et quais',
+	id: 'shared-port',
+	label: 'Un port partagé et des troncs communs',
+	group: 'Rails et ports',
 	order: 200,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
@@ -25,10 +25,10 @@ export const scenario: LayoutScenario = {
 	},
 	assert(layout) {
 		const check = AssertLayout(layout);
-		check.quays('a', { side: 'outgoing' }).haveCount(1).areCentered().haveClearance(quayPolicy);
-		check.node('a').hasSizeForQuays({ content: 80, incoming: 0, outgoing: 1, ...quayPolicy });
+		check.ports('a', { role: 'outgoing' }).haveCount(1).areCentered().haveClearance(portPolicy);
+		check.node('a').hasSizeForPorts({ content: 80, incoming: 0, outgoing: 1, ...portPolicy });
 		for (const id of ['b', 'c', 'd', 'e'])
-			check.quays(id, { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+			check.ports(id, { role: 'incoming' }).haveCount(1).areCentered().haveClearance(portPolicy);
 		const axes = axesFor(layout.direction);
 		check.trunks().haveSharedSegment(axes.primary, 1);
 		const ordered = [...layout.relations].sort(

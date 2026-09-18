@@ -7,7 +7,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'junction-crossing-obstacle',
 	label: 'Un croisement respecte les rails de jonction',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 171,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({ ...junctionCrossingObstacle(), direction, bias });

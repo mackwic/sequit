@@ -1,19 +1,19 @@
 <script>
- import { scenario } from './forced-crossing-rails.scenario';
- import source from './forced-crossing-rails.scenario.ts?raw';
+ import { scenario } from './asymmetric-ports.scenario';
+ import source from './asymmetric-ports.scenario.ts?raw';
  import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
  let { settings = $bindable() } = $props();
 </script>
 
-# Croisement obligé : rails, ports et pont
+# Deux arrivées exclusives, trois départs partageables
 
-Le motif complet **A → C, A → D, B → C, B → D**, avec un contenu de **80** par nœud.
+Sept nœuds. Toutes les flèches **A/B → C/D**, puis toutes les flèches **C/D → E/F/G**.
 
 ## Attendu
 
-A → D et B → C se croisent. Chaque croisement possède un pont sur l’un des deux chemins concernés. Aucun recouvrement hors des troncs autorisés au départ. Au moins deux rails sont utilisés, suffisamment espacés ; le corridor grandit selon leur nombre. Les deux ports entrants portent la dimension transversale des destinations à **96**. Les sources mesurent **80** avec un port sortant partagé, **96** avec deux ports.
+C et D reçoivent chacun **deux flèches sur des ports entrants exclusifs**, à cause du croisement A → D / B → C. Leurs trois flèches sortantes peuvent utiliser **un à trois ports**, avec partage autorisé d’un tronc continu au départ. Les ensembles de ports utilisés sont centrés indépendamment.
 
-Les sources peuvent partager un tronc continu au départ, avec un ou deux ports sortants. Les destinations ont deux ports entrants distincts : les deux diagonales sont considérées comme croisées, indépendamment du porteur du pont. Seuls les partages autorisés sont permis.
+La dimension est le maximum du contenu et des besoins des deux faces : **96** avec un ou deux ports sortants, **144** avec trois, jamais la somme des besoins entrants et sortants. Chaque croisement porte un pont ; ses deux participants conservent une arrivée exclusive.
 
 ## Conventions de ce cahier
 

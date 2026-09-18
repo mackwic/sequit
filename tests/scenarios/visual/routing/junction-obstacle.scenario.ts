@@ -8,7 +8,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'junction-obstacle',
 	label: 'Une relation évite la jonction voisine',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 169,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({ ...junctionObstacle(direction), direction, bias });

@@ -1,19 +1,17 @@
 <script>
- import { scenario } from './forced-crossing-rails.scenario';
- import source from './forced-crossing-rails.scenario.ts?raw';
+ import { scenario } from './shared-port.scenario';
+ import source from './shared-port.scenario.ts?raw';
  import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
  let { settings = $bindable() } = $props();
 </script>
 
-# Croisement obligé : rails, ports et pont
+# Un port partagé et des troncs communs
 
-Le motif complet **A → C, A → D, B → C, B → D**, avec un contenu de **80** par nœud.
+Une fourche à quatre branches : **A → B, C, D et E**. Quatre destinations permettent d’observer un partage transversal de chaque côté du centre.
 
 ## Attendu
 
-A → D et B → C se croisent. Chaque croisement possède un pont sur l’un des deux chemins concernés. Aucun recouvrement hors des troncs autorisés au départ. Au moins deux rails sont utilisés, suffisamment espacés ; le corridor grandit selon leur nombre. Les deux ports entrants portent la dimension transversale des destinations à **96**. Les sources mesurent **80** avec un port sortant partagé, **96** avec deux ports.
-
-Les sources peuvent partager un tronc continu au départ, avec un ou deux ports sortants. Les destinations ont deux ports entrants distincts : les deux diagonales sont considérées comme croisées, indépendamment du porteur du pont. Seuls les partages autorisés sont permis.
+Un seul port sortant centré sur A, un port entrant par destination. A reste à **80**. Les quatre routes partagent un tronc sur l’axe principal au départ de A. Les deux branches de chaque côté partagent aussi un tronçon transversal. Elles utilisent le même rail 0, sans croisement ni agrandissement de l’intervalle.
 
 ## Conventions de ce cahier
 

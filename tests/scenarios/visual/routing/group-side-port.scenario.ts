@@ -17,7 +17,7 @@ function groupSidePort(withSibling: boolean, groupAsTarget = false): LayoutScena
 	return {
 		id,
 		label,
-		group: 'Rails et quais',
+		group: 'Rails et ports',
 		order: 165,
 		arrange(direction = LayoutDirection.TopToBottom, bias) {
 			return layoutGroupSidePort(withSibling, direction, bias, groupAsTarget);

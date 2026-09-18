@@ -6,7 +6,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'wide-group-obstacle',
 	label: 'Une relation évite le groupe voisin',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 170,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutWideGroupObstacle(direction, bias);

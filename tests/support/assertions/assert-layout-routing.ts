@@ -2,7 +2,7 @@ import { renderRelationPaths } from '../../../src/app/web/ui/canvas/render-relat
 import { EndpointKind } from '../../../src/lib/core/document/logic-document';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 import type { VisualLayout } from '../harnesses/visual-layout';
-import { AssertQuays, type QuaySide } from './assert-quays';
+import { AssertPorts, type PortRole } from './assert-ports';
 import { AssertRails } from './assert-rails';
 import { AssertRenderedPaths } from './assert-rendered-paths';
 import { AssertRoute } from './assert-route';
@@ -86,7 +86,7 @@ export function layoutRoutingAssertions(layout: VisualLayout): {
 	route(id: string): ReturnType<typeof AssertRoute>;
 	routes(selection?: RouteSelection): LayoutRoutes;
 	renderedPaths(selection?: RouteSelection): ReturnType<typeof AssertRenderedPaths>;
-	quays(id: string, options: { readonly side: QuaySide }): ReturnType<typeof AssertQuays>;
+	ports(id: string, options: { readonly role: PortRole }): ReturnType<typeof AssertPorts>;
 	rails(options: {
 		readonly between: readonly [readonly string[], readonly string[]];
 	}): ReturnType<typeof AssertRails>;
@@ -102,8 +102,8 @@ export function layoutRoutingAssertions(layout: VisualLayout): {
 		renderedPaths(selection = layout.relations) {
 			return AssertRenderedPaths(renderRelationPaths(resolveRoutes(layout, selection)));
 		},
-		quays(id, { side }) {
-			return AssertQuays(layout, id, side);
+		ports(id, { role }) {
+			return AssertPorts(layout, id, role);
 		},
 		rails({ between }) {
 			return AssertRails(layout, between);

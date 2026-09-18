@@ -32,7 +32,7 @@ tester.run('no-abandoned-visual-selection', rule, {
 			'route',
 			'routes',
 			'renderedPaths',
-			'quays',
+			'ports',
 			'rails',
 			'trunks',
 		].map((selection) => ({

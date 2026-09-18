@@ -8,7 +8,7 @@ import {
 import type { Bounds, Point } from '../../../src/lib/core/layout/layout-types';
 import { VisualLayout } from '../harnesses/visual-layout';
 import { AssertLayout } from './assert-layout';
-import { AssertQuays, usedQuayCount } from './assert-quays';
+import { AssertPorts, usedPortCount } from './assert-ports';
 
 function fixture(direction: LayoutDirection, points: readonly Point[]): VisualLayout {
 	const horizontal = [LayoutDirection.LeftToRight, LayoutDirection.RightToLeft].includes(direction);
@@ -48,7 +48,7 @@ function fixture(direction: LayoutDirection, points: readonly Point[]): VisualLa
 }
 
 describe.each(Object.values(LayoutDirection))('causal faces and flow in %s', (direction) => {
-	it('accepts different quay positions on principal faces', () => {
+	it('accepts different port positions on principal faces', () => {
 		for (const x of [24, 40, 56])
 			AssertLayout(
 				fixture(direction, [
@@ -105,7 +105,7 @@ describe.each(Object.values(LayoutDirection))('causal faces and flow in %s', (di
 			'Attache sur l’axe principal',
 		);
 	});
-	it('measures used quays independently of arrow count and checks their size demand', () => {
+	it('measures used ports independently of arrow count and checks their size demand', () => {
 		const layout = fixture(direction, [
 			{ x: 40, y: 100 },
 			{ x: 40, y: 20 },
@@ -123,16 +123,16 @@ describe.each(Object.values(LayoutDirection))('causal faces and flow in %s', (di
 			]),
 			direction,
 		);
-		expect(usedQuayCount(duplicate, 'a', 'outgoing')).toBe(1);
-		expect(usedQuayCount(duplicate, 'a', 'incoming')).toBe(0);
-		AssertQuays(duplicate, 'a', 'outgoing').haveCountBetween(1, 2);
-		expect(() => AssertQuays(duplicate, 'a', 'outgoing').haveCountBetween(2, 3)).toThrow('minimal');
-		expect(() => AssertQuays(duplicate, 'a', 'outgoing').haveCountBetween(0, 0)).toThrow('maximal');
-		AssertLayout(duplicate).node('a').hasSizeForUsedQuays({ content: 80, spacing: 48, inset: 24 });
+		expect(usedPortCount(duplicate, 'a', 'outgoing')).toBe(1);
+		expect(usedPortCount(duplicate, 'a', 'incoming')).toBe(0);
+		AssertPorts(duplicate, 'a', 'outgoing').haveCountBetween(1, 2);
+		expect(() => AssertPorts(duplicate, 'a', 'outgoing').haveCountBetween(2, 3)).toThrow('minimal');
+		expect(() => AssertPorts(duplicate, 'a', 'outgoing').haveCountBetween(0, 0)).toThrow('maximal');
+		AssertLayout(duplicate).node('a').hasSizeForUsedPorts({ content: 80, spacing: 48, inset: 24 });
 		expect(() =>
 			AssertLayout(duplicate)
 				.node('a')
-				.hasSizeForUsedQuays({ content: 100, spacing: 48, inset: 24 }),
+				.hasSizeForUsedPorts({ content: 100, spacing: 48, inset: 24 }),
 		).toThrow('Dimension transversale');
 	});
 });

@@ -4,7 +4,7 @@ import { EndpointKind, LayoutDirection } from '../../../src/lib/core/document/lo
 import type { Bounds, LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
 import { VisualLayout } from '../harnesses/visual-layout';
 import { AssertLayout } from './assert-layout';
-import { AssertQuays, AssertQuaySize } from './assert-quays';
+import { AssertPorts, AssertPortSize } from './assert-ports';
 import { AssertRails } from './assert-rails';
 import { AssertTrunks } from './assert-trunks';
 
@@ -57,23 +57,23 @@ function fixture(
 const room = { baseGap: 72, spacing: 24, inset: 12 };
 const rows = [['a'], ['b']] as const;
 
-describe.each(Object.values(LayoutDirection))('rails and quays in %s', (direction) => {
-	it('counts distinct anchors and checks centered, spaced incoming and outgoing quays', () => {
+describe.each(Object.values(LayoutDirection))('rails and ports in %s', (direction) => {
+	it('counts distinct anchors and checks centered, spaced incoming and outgoing ports', () => {
 		const layout = fixture(direction);
-		AssertQuays(layout, 'a', 'outgoing')
+		AssertPorts(layout, 'a', 'outgoing')
 			.haveCount(2)
 			.areCentered()
 			.haveClearance({ spacing: 48, inset: 24 });
-		AssertQuays(layout, 'b', 'incoming')
+		AssertPorts(layout, 'b', 'incoming')
 			.haveCount(2)
 			.areCentered()
 			.haveClearance({ spacing: 48, inset: 24 });
 		AssertRails(layout, rows).haveCount(2).haveAtLeast(2).haveRoom(room);
 	});
-	it('does not count two coincident anchors as two quays', () => {
+	it('does not count two coincident anchors as two ports', () => {
 		const layout = fixture(direction, [48, 48]);
-		AssertQuays(layout, 'a', 'outgoing').haveCount(1).areCentered();
-		expect(() => AssertQuays(layout, 'a', 'outgoing').haveCount(2)).toThrow('Nombre de quais');
+		AssertPorts(layout, 'a', 'outgoing').haveCount(1).areCentered();
+		expect(() => AssertPorts(layout, 'a', 'outgoing').haveCount(2)).toThrow('Nombre de ports');
 		expect(() => AssertRails(layout, rows).haveCount(1)).toThrow('Nombre de rails');
 	});
 	it('rejects insufficient rail spacing, room and boundary clearance', () => {
@@ -84,18 +84,18 @@ describe.each(Object.values(LayoutDirection))('rails and quays in %s', (directio
 	});
 });
 
-it('rejects off-center, crowded and edge-adjacent quays independently', () => {
-	expect(() => AssertQuays(fixture(undefined, [24, 60]), 'a', 'outgoing').areCentered()).toThrow(
+it('rejects off-center, crowded and edge-adjacent ports independently', () => {
+	expect(() => AssertPorts(fixture(undefined, [24, 60]), 'a', 'outgoing').areCentered()).toThrow(
 		'Centre',
 	);
 	expect(() =>
-		AssertQuays(fixture(undefined, [40, 56]), 'a', 'outgoing').haveClearance({
+		AssertPorts(fixture(undefined, [40, 56]), 'a', 'outgoing').haveClearance({
 			spacing: 48,
 			inset: 24,
 		}),
 	).toThrow('Espacement');
 	expect(() =>
-		AssertQuays(fixture(undefined, [12, 84]), 'a', 'outgoing').haveClearance({
+		AssertPorts(fixture(undefined, [12, 84]), 'a', 'outgoing').haveClearance({
 			spacing: 48,
 			inset: 24,
 		}),
@@ -104,21 +104,21 @@ it('rejects off-center, crowded and edge-adjacent quays independently', () => {
 
 it('uses the maximum of content and the two faces, not their sum', () => {
 	const options = { incoming: 2, outgoing: 3, content: 80, spacing: 48, inset: 24 };
-	AssertQuaySize(fixture(undefined, [24, 72], 144), 'a').matchesContentAndQuays(options);
-	AssertQuaySize(fixture(undefined, [24, 72], 200), 'a').matchesContentAndQuays({
+	AssertPortSize(fixture(undefined, [24, 72], 144), 'a').matchesContentAndPorts(options);
+	AssertPortSize(fixture(undefined, [24, 72], 200), 'a').matchesContentAndPorts({
 		...options,
 		content: 200,
 	});
 	expect(() => {
-		AssertQuaySize(fixture(), 'a').matchesContentAndQuays(options);
+		AssertPortSize(fixture(), 'a').matchesContentAndPorts(options);
 	}).toThrow('Dimension');
 	expect(() => {
-		AssertQuaySize(fixture(undefined, [24, 72], 240), 'a').matchesContentAndQuays(options);
+		AssertPortSize(fixture(undefined, [24, 72], 240), 'a').matchesContentAndPorts(options);
 	}).toThrow('Dimension');
 });
 
-it('rejects absent quays and unrelated rows instead of passing vacuously', () => {
-	expect(() => AssertQuays(fixture(), 'a', 'incoming')).toThrow('Aucun quai');
+it('rejects absent ports and unrelated rows instead of passing vacuously', () => {
+	expect(() => AssertPorts(fixture(), 'a', 'incoming')).toThrow('Aucun port');
 	expect(() => AssertRails(fixture(), [['a'], ['missing']])).toThrow('Aucune route');
 });
 
@@ -163,33 +163,33 @@ it('retains the reference while changing the observed elements', () => {
 });
 
 describe.each(Object.values(LayoutDirection))('fluent routing context in %s', (direction) => {
-	it('keeps quay, node and rail subjects throughout their chains', () => {
+	it('keeps port, node and rail subjects throughout their chains', () => {
 		const layout = fixture(direction);
 		const check = AssertLayout(layout);
-		const outgoing = check.quays('a', { side: 'outgoing' });
+		const outgoing = check.ports('a', { role: 'outgoing' });
 		expect(outgoing.haveCount(2).areCentered().haveClearance({ spacing: 48, inset: 24 })).toBe(
 			outgoing,
 		);
 		check
-			.quays('b', { side: 'incoming' })
+			.ports('b', { role: 'incoming' })
 			.haveCount(2)
 			.areCentered()
 			.haveClearance({ spacing: 48, inset: 24 });
 		const size = { content: 80, incoming: 2, outgoing: 2, spacing: 48, inset: 24 };
 		const a = check.node('a');
-		expect(a.hasSizeForQuays(size).hasRank(1)).toBe(a);
+		expect(a.hasSizeForPorts(size).hasRank(1)).toBe(a);
 		const nodes = check.nodes(['a', 'b']);
-		expect(nodes.haveSizeForQuays(size)).toBe(nodes);
+		expect(nodes.haveSizeForPorts(size)).toBe(nodes);
 		const rails = check.rails({ between: rows });
 		expect(rails.haveCount(2).haveAtLeast(2).haveRoom(room)).toBe(rails);
-		expect(() => check.node('a').hasSizeForQuays({ ...size, outgoing: 3 })).toThrow('Dimension');
-		expect(() => check.nodes(['a', 'b']).haveSizeForQuays({ ...size, content: 200 })).toThrow(
+		expect(() => check.node('a').hasSizeForPorts({ ...size, outgoing: 3 })).toThrow('Dimension');
+		expect(() => check.nodes(['a', 'b']).haveSizeForPorts({ ...size, content: 200 })).toThrow(
 			'Dimension',
 		);
 	});
-	it('retains a deliberately failing quay expectation instead of masking it in the facade', () => {
+	it('retains a deliberately failing port expectation instead of masking it in the facade', () => {
 		const check = AssertLayout(fixture(direction, [48, 48]));
-		expect(() => check.quays('a', { side: 'outgoing' }).haveCount(2)).toThrow('Nombre de quais');
-		expect(() => check.quays('a', { side: 'incoming' })).toThrow('Aucun quai');
+		expect(() => check.ports('a', { role: 'outgoing' }).haveCount(2)).toThrow('Nombre de ports');
+		expect(() => check.ports('a', { role: 'incoming' })).toThrow('Aucun port');
 	});
 });

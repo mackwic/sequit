@@ -53,13 +53,14 @@ export interface LayoutOptions {
 	readonly inspectRouting?: boolean;
 }
 
-export enum RoutingQuaySide {
+/** Flow role of a derived routing port; its geometric side comes from the layout direction. */
+export enum RoutingPortRole {
 	Incoming = 'incoming',
 	Outgoing = 'outgoing',
 }
 
-export interface InspectedQuay {
-	readonly side: RoutingQuaySide;
+export interface InspectedPort {
+	readonly role: RoutingPortRole;
 	readonly point: Point;
 	readonly relations: string[];
 }
@@ -68,7 +69,7 @@ export interface InspectedNode {
 	readonly content: Bounds;
 	readonly incomingMinimum: number;
 	readonly outgoingMinimum: number;
-	readonly quays: readonly InspectedQuay[];
+	readonly ports: readonly InspectedPort[];
 }
 export interface InspectedRail {
 	readonly coordinate: number;

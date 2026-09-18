@@ -63,7 +63,7 @@
 		<div class="preview-controls">
 			<label
 				><input type="checkbox" bind:checked={() => settings.reservations, setReservations} /> Afficher
-				les rails et les quais</label
+				les rails et les ports</label
 			>
 			<label
 				><input type="checkbox" bind:checked={() => settings.guides, setGuides} /> Afficher les centres

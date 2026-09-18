@@ -7,8 +7,8 @@ export const BASE_RANK_GAP = 72;
 export const JUNCTION_CLEARANCE = 48;
 /** Space for a bridge radius, a 9px arrowhead and 9px of visible air on either side. */
 export const JUNCTION_CHANNEL_GAP = 48;
-export const JUNCTION_QUAY_SPACING = 12;
-export const JUNCTION_QUAY_INSET = 8;
+export const JUNCTION_PORT_SPACING = 12;
+export const JUNCTION_PORT_INSET = 8;
 export const RAIL_SPACING = 24;
-export const QUAY_SPACING = 48;
-export const QUAY_INSET = 24;
+export const PORT_SPACING = 48;
+export const PORT_INSET = 24;

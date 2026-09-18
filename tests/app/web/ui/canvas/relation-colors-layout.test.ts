@@ -15,7 +15,7 @@ it.each(LAYOUT_CONFIGURATIONS)(
 		const arrivals = ['u1-to-p2', 'u2-to-p2'].map((id) =>
 			defined(layout.relations.find((route) => route.id === id)),
 		);
-		// These routes approach the same node at separate quays without crossing each other.
+		// These routes approach the same node at separate ports without crossing each other.
 		const first = defined(routeSegments(defined(arrivals[0])).at(-1));
 		const second = defined(routeSegments(defined(arrivals[1])).at(-1));
 		expect(first.axis).toBe(second.axis);

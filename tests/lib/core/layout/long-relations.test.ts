@@ -5,7 +5,7 @@ import { defined } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
-import { quayPolicy } from '../../../support/fixtures/routing-fixtures';
+import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 
@@ -68,9 +68,9 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 				axis: axesFor(direction).transverse,
 				clearance: 24,
 			});
-			const clearance = { spacing: 72, inset: quayPolicy.inset };
-			check.quays('a', { side: 'incoming' }).haveCount(2).haveClearance(clearance);
-			check.quays('c', { side: 'outgoing' }).haveCount(2).haveClearance(clearance);
+			const clearance = { spacing: 72, inset: portPolicy.inset };
+			check.ports('a', { role: 'incoming' }).haveCount(2).haveClearance(clearance);
+			check.ports('c', { role: 'outgoing' }).haveCount(2).haveClearance(clearance);
 			let dimension: 'width' | 'height' = 'width';
 			if (axesFor(direction).transverse === 'y') dimension = 'height';
 			for (const id of ['a', 'c'])

@@ -1,7 +1,7 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { junctionClearance, junctionFixtures } from '../../../support/fixtures/junction-fixtures';
-import { junctionQuayPolicy } from '../../../support/fixtures/routing-fixtures';
+import { junctionPortPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
@@ -20,15 +20,15 @@ export const scenario: LayoutScenario = {
 		check.junctions(['j']).areBetween(['a'], ['b'], junctionClearance).areOnBaseRail(['a'], ['b']);
 		check.junction('j').isAlignedWith('a', { by: 'chain' }).isAlignedWith('b', { by: 'chain' });
 		check
-			.quays('j', { side: 'incoming' })
+			.ports('j', { role: 'incoming' })
 			.haveCount(1)
 			.areCentered()
-			.haveClearance(junctionQuayPolicy);
+			.haveClearance(junctionPortPolicy);
 		check
-			.quays('j', { side: 'outgoing' })
+			.ports('j', { role: 'outgoing' })
 			.haveCount(1)
 			.areCentered()
-			.haveClearance(junctionQuayPolicy);
+			.haveClearance(junctionPortPolicy);
 		check.routes().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths().haveBridgeAtEveryCrossing();
 		check.obstacles().haveClearance(junctionClearance);

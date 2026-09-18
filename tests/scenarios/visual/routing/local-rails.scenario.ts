@@ -10,7 +10,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'local-rails',
 	label: 'Les rails agrandissent seulement leur intervalle',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 190,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const reference = await layoutNodes({

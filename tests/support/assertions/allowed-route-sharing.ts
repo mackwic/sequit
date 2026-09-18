@@ -53,11 +53,11 @@ function permittedTrunks(
 	}
 	if (samePoint(defined(a.points.at(-1)), defined(b.points.at(-1)))) {
 		throw new VisualAssertionError(
-			'Quai entrant après croisement',
-			'un quai exclusif par flèche croisée',
-			'quai partagé',
+			'Port entrant après croisement',
+			'un port exclusif par flèche croisée',
+			'port partagé',
 			{ routes: [a.id, b.id], boxes: [a.to] },
-			{ code: 'routes.shared-crossed-quay' },
+			{ code: 'routes.shared-crossed-port' },
 		);
 	}
 	return allowed;

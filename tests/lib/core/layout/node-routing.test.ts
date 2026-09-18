@@ -21,7 +21,7 @@ function verify(layout: VisualLayout): void {
 	check.renderedPaths().haveBridgeAtEveryCrossing();
 }
 
-describe.each(Object.values(LayoutDirection))('planned rails and quays in %s', (direction) => {
+describe.each(Object.values(LayoutDirection))('planned rails and ports in %s', (direction) => {
 	it('keeps direct paths straight, separates diagonals and reserves the necessary space', async () => {
 		const nodes = Object.fromEntries(
 			['a', 'b', 'c', 'd'].map((id) => [id, { width: 80, height: 60 }]),
@@ -35,7 +35,7 @@ describe.each(Object.values(LayoutDirection))('planned rails and quays in %s', (
 		expect(second).toEqual(layout);
 		expect({ nodes, relations }).toEqual(original);
 	});
-	it('retains shared central quays in simple forks and convergences', async () => {
+	it('retains shared central ports in simple forks and convergences', async () => {
 		const nodes = Object.fromEntries(
 			['a', 'b', 'c', 'd'].map((id) => [id, { width: 80, height: 60 }]),
 		);
@@ -59,7 +59,7 @@ describe.each(Object.values(LayoutDirection))('planned rails and quays in %s', (
 		verify(layout);
 		for (const id of ['c', 'd'])
 			AssertLayout(layout)
-				.quays(id, { side: 'incoming' })
+				.ports(id, { role: 'incoming' })
 				.haveCount(2)
 				.haveClearance({ spacing: 48, inset: 24 });
 	});
@@ -134,7 +134,7 @@ it('keeps varied, dense bipartite corridors orthogonal, monotone, separated and 
 	);
 });
 
-it('reserves quays for every relation incident to a crossing face, including parallel edges and rank skips', async () => {
+it('reserves ports for every relation incident to a crossing face, including parallel edges and rank skips', async () => {
 	const direction = LayoutDirection.TopToBottom;
 	const nodes = Object.fromEntries(
 		['a', 'b', 'c', 'd', 'root'].map((id) => [id, { width: 80, height: 60 }]),
@@ -149,11 +149,11 @@ it('reserves quays for every relation incident to a crossing face, including par
 	const layout = await layoutNodes({ nodes, relations: links, direction });
 	const check = AssertLayout(layout);
 	check
-		.quays('a', { side: 'outgoing' })
+		.ports('a', { role: 'outgoing' })
 		.haveCount(4)
 		.areCentered()
 		.haveClearance({ spacing: 48, inset: 24 });
-	check.node('a').hasSizeForUsedQuays({ content: 80, spacing: 48, inset: 24 });
+	check.node('a').hasSizeForUsedPorts({ content: 80, spacing: 48, inset: 24 });
 	check.routes().followLayoutFlow();
 	expect(layout.relations.map(({ id }) => id).sort()).toEqual(links.map(({ id }) => id).sort());
 });

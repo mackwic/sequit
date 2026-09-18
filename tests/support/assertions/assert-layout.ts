@@ -7,7 +7,7 @@ import { JunctionAssertions } from './assert-junctions';
 import { assertLayoutObstacles } from './assert-layout-obstacles';
 import { layoutRoutingAssertions } from './assert-layout-routing';
 import { AssertNode } from './assert-node';
-import { AssertQuaySize, type QuaySizeOptions, usedQuayCount } from './assert-quays';
+import { AssertPortSize, type PortSizeOptions, usedPortCount } from './assert-ports';
 import { VisualDocumentAssertions } from './assert-visual-document';
 
 type BoxReference = string | BoxGeometry;
@@ -28,14 +28,14 @@ interface BoxCheck {
 }
 interface NodeCheck {
 	isAlignedWith(reference: BoxReference, options: AlignmentOptions): NodeCheck;
-	hasSizeForUsedQuays(options: Omit<QuaySizeOptions, 'incoming' | 'outgoing'>): NodeCheck;
-	hasSizeForQuays(options: QuaySizeOptions): NodeCheck;
+	hasSizeForUsedPorts(options: Omit<PortSizeOptions, 'incoming' | 'outgoing'>): NodeCheck;
+	hasSizeForPorts(options: PortSizeOptions): NodeCheck;
 	hasRank(expected: number): NodeCheck;
 	isAfter(reference: BoxReference, options?: OrderOptions): NodeCheck;
 	isCenteredOn(reference: BoxReference, options: CenterOptions): NodeCheck;
 }
 interface NodesCheck {
-	haveSizeForQuays(options: QuaySizeOptions): NodesCheck;
+	haveSizeForPorts(options: PortSizeOptions): NodesCheck;
 	haveRank(expected: number): NodesCheck;
 	areAfter(reference: BoxReference, options?: OrderOptions): NodesCheck;
 }
@@ -98,16 +98,16 @@ function nodeCheck(layout: VisualLayout, id: string): NodeCheck {
 			box.isAlignedWith(reference, options);
 			return check;
 		},
-		hasSizeForUsedQuays(options) {
-			AssertQuaySize(layout, node.id).matchesContentAndQuays({
+		hasSizeForUsedPorts(options) {
+			AssertPortSize(layout, node.id).matchesContentAndPorts({
 				...options,
-				incoming: usedQuayCount(layout, node.id, 'incoming'),
-				outgoing: usedQuayCount(layout, node.id, 'outgoing'),
+				incoming: usedPortCount(layout, node.id, 'incoming'),
+				outgoing: usedPortCount(layout, node.id, 'outgoing'),
 			});
 			return check;
 		},
-		hasSizeForQuays(options) {
-			AssertQuaySize(layout, node.id).matchesContentAndQuays(options);
+		hasSizeForPorts(options) {
+			AssertPortSize(layout, node.id).matchesContentAndPorts(options);
 			return check;
 		},
 		hasRank(expected) {
@@ -131,8 +131,8 @@ function nodesCheck(layout: VisualLayout, ids: readonly string[]): NodesCheck {
 	if (new Set(ids).size !== ids.length) throw new Error('Node identifiers must be unique.');
 	const nodes = ids.map((id) => nodeCheck(layout, id));
 	const check: NodesCheck = {
-		haveSizeForQuays(options) {
-			for (const node of nodes) node.hasSizeForQuays(options);
+		haveSizeForPorts(options) {
+			for (const node of nodes) node.hasSizeForPorts(options);
 			return check;
 		},
 		haveRank(expected) {

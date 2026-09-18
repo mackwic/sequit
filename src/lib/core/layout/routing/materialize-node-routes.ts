@@ -57,7 +57,7 @@ function principalFaces(input: {
 }): { nodes: ReadonlyMap<string, PrincipalFaces>; rows: ReadonlyMap<number, PrincipalFaces> } {
 	const nodes = new Map<string, PrincipalFaces>();
 	const rows = new Map<number, PrincipalFaces>();
-	for (const id of input.plan.quays.sizes.keys()) {
+	for (const id of input.plan.ports.sizes.keys()) {
 		const rank = input.plan.ranks.get(id);
 		if (rank === undefined) continue;
 		const face = nodeFaces(defined(input.bounds.get(id)), input.vertical, input.sign);
@@ -73,7 +73,7 @@ function principalFaces(input: {
 	return { nodes, rows };
 }
 
-/** Materialize a previously reserved channel after row placement, without moving its quays. */
+/** Materialize a previously reserved channel after row placement, without moving its ports. */
 export function applyNodeRouting(input: {
 	readonly plan: NodeRouting;
 	readonly bounds: ReadonlyMap<string, Bounds>;

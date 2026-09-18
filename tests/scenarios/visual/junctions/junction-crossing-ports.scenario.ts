@@ -1,13 +1,13 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { junctionClearance, junctionFixtures } from '../../../support/fixtures/junction-fixtures';
-import { junctionQuayPolicy } from '../../../support/fixtures/routing-fixtures';
+import { junctionPortPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
-	id: 'junction-crossing-quays',
+	id: 'junction-crossing-ports',
 	label: 'Des troncs entrants communs pour réduire les ponts',
 	group: 'Jonctions et rails',
 	order: 410,
@@ -24,19 +24,19 @@ export const scenario: LayoutScenario = {
 		for (const id of ['j1', 'j2']) {
 			check.rails({ between: [[id], ['a', 'b']] }).haveCount(1);
 			check
-				.quays(id, { side: 'incoming' })
+				.ports(id, { role: 'incoming' })
 				.haveCount(1)
 				.areCentered()
-				.haveClearance(junctionQuayPolicy);
+				.haveClearance(junctionPortPolicy);
 			check
-				.quays(id, { side: 'outgoing' })
+				.ports(id, { role: 'outgoing' })
 				.haveCount(1)
 				.areCentered()
-				.haveClearance(junctionQuayPolicy);
+				.haveClearance(junctionPortPolicy);
 		}
 		let content = 28;
 		if (axesFor(layout.direction).transverse === 'y') content = 20;
-		check.junctions(['j1', 'j2']).haveSizeForUsedQuays({ content, ...junctionQuayPolicy });
+		check.junctions(['j1', 'j2']).haveSizeForUsedPorts({ content, ...junctionPortPolicy });
 		check.routes().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths().haveBridgeAtEveryCrossing();
 		check.renderedPaths().haveBridgeCount(5);

@@ -376,8 +376,8 @@ test('navigates scenarios through shareable URLs and browser history', async ({ 
 	await expect(page.getByRole('heading', { name: 'Un nœud, au centre.' })).toBeVisible();
 	await page.reload();
 	await expect(page.getByRole('heading', { name: 'Un nœud, au centre.' })).toBeVisible();
-	await page.goto('/atelier/tests-visuels/default-quays');
-	await expect(page.locator('.scenario-identity')).toContainText('default-quays');
+	await page.goto('/atelier/tests-visuels/default-ports');
+	await expect(page.locator('.scenario-identity')).toContainText('default-ports');
 	await expect(page.locator('.scenario-tree button[aria-pressed="true"]')).toHaveAttribute(
 		'aria-pressed',
 		'true',

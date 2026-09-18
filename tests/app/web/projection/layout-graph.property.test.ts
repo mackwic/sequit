@@ -238,7 +238,7 @@ function expectMeasuredNode(
 	const reserved = Math.max(content, required);
 	if (vertical) expect(box.height).toBe(measured.height);
 	else expect(box.width).toBe(measured.width);
-	// The default central quay may remain unreserved; additional quays require their full space.
+	// The default central port may remain unreserved; additional ports require their full space.
 	if (count === 1) expect([content, reserved]).toContain(actual);
 	else expect(actual).toBe(reserved);
 }
@@ -416,7 +416,7 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('scales content while preserving topology and fixed quay clearances', async () => {
+	it('scales content while preserving topology and fixed port clearances', async () => {
 		await fc.assert(
 			fc.asyncProperty(
 				layoutCaseArbitrary,

@@ -7,7 +7,7 @@ import { junctionFixtures } from '../../../support/fixtures/junction-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 
 it.each(Object.values(LayoutDirection))(
-	'aligns both departure quays with junction trunks in %s',
+	'aligns both departure ports with junction trunks in %s',
 	async (direction) => {
 		const input = { ...junctionFixtures.crossing(direction).build(), direction };
 		const layout = await layoutNodes(input);

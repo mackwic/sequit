@@ -1,6 +1,6 @@
 import { defined } from '../../document/logic-document';
 import { transverseSize } from '../geometry/layout-frame';
-import { QUAY_INSET, QUAY_SPACING, RAIL_SPACING } from '../layout-settings';
+import { PORT_INSET, PORT_SPACING, RAIL_SPACING } from '../layout-settings';
 import type { Size } from '../layout-types';
 import type { BypassedChain } from '../structure/bypassed-chains';
 
@@ -23,11 +23,11 @@ export function alignBypassedChains(
 	const sourceOffsets = new Map<string, number>();
 	const targetOffsets = new Map<string, number>();
 	for (const chain of chains) {
-		const bypassOffset = QUAY_SPACING + RAIL_SPACING;
+		const bypassOffset = PORT_SPACING + RAIL_SPACING;
 		for (const id of chain.ids) centers.set(id, 0);
 		for (const id of [chain.bypass.from, chain.bypass.to]) {
 			const size = defined(sizes.get(id));
-			const extent = Math.max(transverseSize(size, vertical), 2 * (bypassOffset + QUAY_INSET));
+			const extent = Math.max(transverseSize(size, vertical), 2 * (bypassOffset + PORT_INSET));
 			let grown = { ...size, width: extent };
 			if (!vertical) grown = { ...size, height: extent };
 			enlarged.set(id, grown);

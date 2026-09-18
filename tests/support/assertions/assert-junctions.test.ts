@@ -133,7 +133,7 @@ describe('junction observations reject plausible incorrect layouts', () => {
 		for (const ids of [[], ['j', 'j'], ['a']])
 			expect(() => AssertLayout(layout([junction('j', 96)])).junctions(ids)).toThrow();
 	});
-	it('checks actual junction quay counts when deriving the minimum size', () => {
+	it('checks actual junction port counts when deriving the minimum size', () => {
 		const routes = [0, 48].map((x, i) => ({
 			id: `r${i}`,
 			from: 'b',
@@ -146,7 +146,7 @@ describe('junction observations reject plausible incorrect layouts', () => {
 		expect(() =>
 			AssertLayout(layout([junction('j', 96)], routes))
 				.junctions(['j'])
-				.haveSizeForUsedQuays({ content: 48, spacing: 48, inset: 24 }),
+				.haveSizeForUsedPorts({ content: 48, spacing: 48, inset: 24 }),
 		).toThrow('Dimension');
 	});
 });

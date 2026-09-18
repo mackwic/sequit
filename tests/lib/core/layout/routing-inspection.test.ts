@@ -6,7 +6,7 @@ import {
 	layoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { RoutingQuaySide } from '../../../../src/lib/core/layout/layout-types';
+import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { junctionFixtures } from '../../../support/fixtures/junction-fixtures';
@@ -35,7 +35,7 @@ describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direc
 		expect(inspected.relations).toEqual(fixture.layout.relations);
 		expect(inspected.routingInspection?.corridors).toEqual([]);
 	});
-	it('exposes occupied junction rails and the original content behind enlarged quays', async () => {
+	it('exposes occupied junction rails and the original content behind enlarged ports', async () => {
 		const chain = await layoutNodes({
 			...junctionFixtures.chain(direction, ['j1', 'j2', 'j3']).build(),
 			direction,
@@ -56,11 +56,11 @@ describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direc
 			expect(node.content).toMatchObject({ width: 28, height: 20 });
 			expect(node.incomingMinimum).toBe(16);
 			expect(node.outgoingMinimum).toBe(16);
-			expect(node.quays.filter((quay) => quay.side === RoutingQuaySide.Incoming)).toHaveLength(1);
-			expect(node.quays.filter((quay) => quay.side === RoutingQuaySide.Outgoing)).toHaveLength(1);
+			expect(node.ports.filter((port) => port.role === RoutingPortRole.Incoming)).toHaveLength(1);
+			expect(node.ports.filter((port) => port.role === RoutingPortRole.Outgoing)).toHaveLength(1);
 		}
 	});
-	it.each([80, 200])('explains real quays, rails and content size %i', async (content) => {
+	it.each([80, 200])('explains real ports, rails and content size %i', async (content) => {
 		const layout = await layoutNodes({
 			...graphFixtures.crossingRoutes(direction, content).build(),
 			direction,
@@ -73,16 +73,16 @@ describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direc
 		expect(corridor.rails).toHaveLength(3);
 		for (const node of inspection.nodes) {
 			expect(node.content.width * node.content.height).toBe(content * 60);
-			expect(node.quays).toHaveLength(2);
+			expect(node.ports).toHaveLength(2);
 			expect(Math.max(node.incomingMinimum, node.outgoingMinimum)).toBe(96);
 			const box = layout.getById(node.id).bounds;
 			expect(box.width * box.height).toBe(Math.max(content, 96) * 60);
-			for (const quay of node.quays)
-				for (const id of quay.relations) {
+			for (const port of node.ports)
+				for (const id of port.relations) {
 					const route = defined(layout.relations.find((relation) => relation.id === id));
 					let endpoint = route.points[0];
-					if (quay.side === RoutingQuaySide.Incoming) endpoint = route.points.at(-1);
-					expect(quay.point).toEqual(endpoint);
+					if (port.role === RoutingPortRole.Incoming) endpoint = route.points.at(-1);
+					expect(port.point).toEqual(endpoint);
 				}
 		}
 		for (const rail of corridor.rails) {
@@ -99,15 +99,15 @@ describe.each(Object.values(LayoutDirection))('routing inspection in %s', (direc
 		expect(layout.withReference('Before', layout).routingInspection).toBe(inspection);
 		expect(layout.withElements(layout.elements).routingInspection).toBeUndefined();
 	});
-	it('groups shared default quays and leaves isolated nodes without quays', async () => {
+	it('groups shared default ports and leaves isolated nodes without ports', async () => {
 		const layout = await layoutNodes({
 			...graphFixtures.twoSuccessors().nodes(['isolated']).build(),
 			direction,
 		});
 		const inspection = defined(layout.routingInspection);
-		expect(inspection.nodes.find((node) => node.id === 'isolated')?.quays).toEqual([]);
-		expect(inspection.nodes.find((node) => node.id === 'a')?.quays).toHaveLength(1);
-		expect(inspection.nodes.find((node) => node.id === 'a')?.quays[0]?.relations).toHaveLength(2);
+		expect(inspection.nodes.find((node) => node.id === 'isolated')?.ports).toEqual([]);
+		expect(inspection.nodes.find((node) => node.id === 'a')?.ports).toHaveLength(1);
+		expect(inspection.nodes.find((node) => node.id === 'a')?.ports[0]?.relations).toHaveLength(2);
 		expect(
 			inspection.nodes.every((node) => node.incomingMinimum === 0 && node.outgoingMinimum === 0),
 		).toBe(true);

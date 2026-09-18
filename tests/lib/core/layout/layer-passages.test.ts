@@ -101,7 +101,7 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		});
 	}
 
-	it('prefers the effective source quay and falls back to the effective target quay', () => {
+	it('prefers the effective source port and falls back to the effective target port', () => {
 		const offsets = {
 			sourceOffsets: new Map([['first', 12]]),
 			targetOffsets: new Map([['first', -12]]),

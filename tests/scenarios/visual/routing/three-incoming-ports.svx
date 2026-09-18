@@ -1,0 +1,20 @@
+<script>
+ import { scenario } from './three-incoming-ports.scenario';
+ import source from './three-incoming-ports.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Trois arrivées saturent une face étroite
+
+Cinq nœuds de dimension intrinsèque **80** sur l’axe transversal. Chacun de **A, B, C** pointe vers **D et E**. Les relations croisées obligent à séparer les arrivées, tandis que les départs peuvent partager un tronc.
+
+## Contrainte à éprouver
+
+Les trois relations arrivent sur **trois ports distincts** de chaque cible, centrés sur sa face d’entrée. Avec un espacement de **48** et une marge de **24** à chaque bord, cette face demande au minimum **24 + 48 + 48 + 24 = 144**. D et E doivent donc grandir de **80 à 144** sur l’axe transversal. Chaque source peut utiliser un ou deux ports sortants selon les troncs partagés. Toutes les routes restent orthogonales et attachées aux faces principales.
+
+Sans les relations vers E, les trois arrivées vers D peuvent partager un seul port. La saturation testée ici vient du croisement, pas du simple nombre de flèches.
+
+Le scénario utilise le graphe, le classement et le layout réels. Les quatre directions et leurs biais compatibles sont exécutés. Un verdict rouge montre précisément la contrainte que le moteur actuel ne satisfait pas ; le dessin reste visible pour explorer ce choix du futur solveur.
+
+<VisualTest {scenario} {source} bind:settings />

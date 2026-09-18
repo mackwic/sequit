@@ -1,19 +1,17 @@
 <script>
- import { scenario } from './forced-crossing-rails.scenario';
- import source from './forced-crossing-rails.scenario.ts?raw';
+ import { scenario } from './released-rails-ports.scenario';
+ import source from './released-rails-ports.scenario.ts?raw';
  import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
  let { settings = $bindable() } = $props();
 </script>
 
-# Croisement obligé : rails, ports et pont
+# Suppression : libérer les rails et les ports
 
-Le motif complet **A → C, A → D, B → C, B → D**, avec un contenu de **80** par nœud.
+Avant : toutes les flèches **A/B → C/D**. Après : on retire **A → D et B → C**. Il reste **A → C et B → D**.
 
 ## Attendu
 
-A → D et B → C se croisent. Chaque croisement possède un pont sur l’un des deux chemins concernés. Aucun recouvrement hors des troncs autorisés au départ. Au moins deux rails sont utilisés, suffisamment espacés ; le corridor grandit selon leur nombre. Les deux ports entrants portent la dimension transversale des destinations à **96**. Les sources mesurent **80** avec un port sortant partagé, **96** avec deux ports.
-
-Les sources peuvent partager un tronc continu au départ, avec un ou deux ports sortants. Les destinations ont deux ports entrants distincts : les deux diagonales sont considérées comme croisées, indépendamment du porteur du pont. Seuls les partages autorisés sont permis.
+Les ports redeviennent uniques et centrés. Les destinations C et D reviennent de **96 à 80**. Toutes les sources reviennent à **80** également ; si elles partageaient déjà un port sortant, leur dimension peut rester inchangée. Les chemins ne se croisent plus et l’intervalle revient à **72**. Les deux dessins proviennent du vrai moteur, appliqué aux deux états du document. Ce cas spécifie le résultat après suppression ; il ne teste pas encore le geste de suppression ni l’undo dans l’éditeur.
 
 ## Conventions de ce cahier
 

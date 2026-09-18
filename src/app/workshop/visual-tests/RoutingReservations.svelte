@@ -2,7 +2,7 @@
 	import {
 		type Bounds,
 		type RoutingInspection,
-		RoutingQuaySide,
+		RoutingPortRole,
 	} from '../../../lib/core/layout/layout-types';
 	let { inspection }: { inspection: RoutingInspection } = $props();
 	function railLine(bounds: Bounds, coordinate: number) {
@@ -10,8 +10,8 @@
 			return { x1: bounds.x, x2: bounds.x + bounds.width, y1: coordinate, y2: coordinate };
 		return { x1: coordinate, x2: coordinate, y1: bounds.y, y2: bounds.y + bounds.height };
 	}
-	function sideLabel(side: RoutingQuaySide) {
-		if (side === RoutingQuaySide.Incoming) return 'entrant';
+	function roleLabel(role: RoutingPortRole) {
+		if (role === RoutingPortRole.Incoming) return 'entrant';
 		return 'sortant';
 	}
 </script>
@@ -50,25 +50,25 @@
 			stroke-dasharray="2 3"
 			rx="3"
 		/>
-		{#each node.quays as quay, index (`${node.id}-${index}`)}
-			<g data-quay-node={node.id} data-quay-side={quay.side}>
+		{#each node.ports as port, index (`${node.id}-${index}`)}
+			<g data-port-node={node.id} data-port-role={port.role}>
 				<title
-					>{node.id.toUpperCase()} · quai {sideLabel(quay.side)} · {quay.relations.join(
+					>{node.id.toUpperCase()} · port {roleLabel(port.role)} · {port.relations.join(
 						', ',
 					)}</title
 				>
-				{#if quay.side === RoutingQuaySide.Incoming}
+				{#if port.role === RoutingPortRole.Incoming}
 					<rect
-						x={quay.point.x - 3}
-						y={quay.point.y - 3}
+						x={port.point.x - 3}
+						y={port.point.y - 3}
 						width="6"
 						height="6"
 						fill="#087e64"
 						stroke="white"
 					/>
 				{:else}<circle
-						cx={quay.point.x}
-						cy={quay.point.y}
+						cx={port.point.x}
+						cy={port.point.y}
 						r="3.5"
 						fill="#8a3da0"
 						stroke="white"

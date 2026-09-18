@@ -102,7 +102,7 @@ describe('layout workspace ownership', () => {
 		);
 	});
 
-	it('keeps enlarged quays, rails and nested enclosures local to the current calculation', () => {
+	it('keeps enlarged ports, rails and nested enclosures local to the current calculation', () => {
 		fc.assert(
 			fc.property(
 				fc.constantFrom(...LAYOUT_CONFIGURATIONS),

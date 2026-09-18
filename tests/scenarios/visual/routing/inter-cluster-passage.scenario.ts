@@ -10,7 +10,7 @@ const alcoaCluster = ['traceable-edits', 'word-alcoa-question', 'compliance-revi
 export const scenario: LayoutScenario = {
 	id: 'inter-cluster-passage',
 	label: 'Une relation longue emprunte le corridor entre deux clusters',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 171,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutInterClusterPassage(direction, bias);

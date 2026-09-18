@@ -21,7 +21,7 @@ function relation(id: string, from: string, to: string, offset = 0): LayoutRelat
 }
 
 describe('relationColors', () => {
-	it('keeps shared departure and arrival quays in one color, including merged families', () => {
+	it('keeps shared departure and arrival ports in one color, including merged families', () => {
 		const relations = [
 			relation('a', 'one', 'first'),
 			relation('b', 'two', 'second'),
@@ -102,7 +102,7 @@ describe('relationColors', () => {
 		expect([...colors.values()]).toEqual(['ink', 'accent', 'ink']);
 	});
 
-	it('propagates a color through aligned incoming and outgoing quays', () => {
+	it('propagates a color through aligned incoming and outgoing ports', () => {
 		const incoming = {
 			...relation('incoming', 'source', 'middle'),
 			points: [
@@ -127,7 +127,7 @@ describe('relationColors', () => {
 		expect(colors.get('unrelated')).toBe('var(--content-relation-1)');
 	});
 
-	it('does not merge routes touching the same quay without a positive common trunk', () => {
+	it('does not merge routes touching the same port without a positive common trunk', () => {
 		const relations = [
 			{
 				id: 'a',

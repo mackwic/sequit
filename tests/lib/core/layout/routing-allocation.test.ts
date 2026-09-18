@@ -5,14 +5,14 @@ import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
-	sharedSourceQuays,
-	sharedTargetQuays,
-} from '../../../../src/lib/core/layout/routing/quay-allocation';
+	sharedSourcePorts,
+	sharedTargetPorts,
+} from '../../../../src/lib/core/layout/routing/port-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
 
-describe('rail and quay reservations', () => {
+describe('rail and port reservations', () => {
 	it('ignores cached measurements for nodes no longer present in the document', async () => {
 		const fixture = await layoutDocument({
 			...validLogicDocument(),
@@ -75,30 +75,30 @@ describe('rail and quay reservations', () => {
 	});
 });
 
-it('shares an ordinary endpoint quay without merging other quays or coincident foreign endpoints', () => {
+it('shares an ordinary endpoint port without merging other ports or coincident foreign endpoints', () => {
 	const relations = [
 		{ id: 'one', from: 'ordinary-node', to: 'a' },
 		{ id: 'two', from: 'ordinary-node', to: 'b' },
-		{ id: 'other-quay', from: 'ordinary-node', to: 'c' },
+		{ id: 'other-port', from: 'ordinary-node', to: 'c' },
 		{ id: 'foreign', from: 'other-node', to: 'd' },
 	];
 	const offsets = new Map([
 		['one', -24],
 		['two', -24],
-		['other-quay', 24],
+		['other-port', 24],
 		['foreign', -24],
 	]);
-	const shared = sharedSourceQuays(relations, offsets);
+	const shared = sharedSourcePorts(relations, offsets);
 	expect([...shared.keys()]).toEqual(['one', 'two']);
 	expect(shared.get('one')).toBe(shared.get('two'));
-	expect(sharedSourceQuays(relations.toReversed(), offsets)).toEqual(shared);
-	expect(sharedSourceQuays(relations.slice(0, 2), new Map()).size).toBe(2);
+	expect(sharedSourcePorts(relations.toReversed(), offsets)).toEqual(shared);
+	expect(sharedSourcePorts(relations.slice(0, 2), new Map()).size).toBe(2);
 	const converging = relations.map((relation) => {
 		let to = relation.to;
 		if (['one', 'two'].includes(relation.id)) to = 'ordinary-target';
 		return { ...relation, to };
 	});
-	const sharedTargets = sharedTargetQuays(converging, offsets);
+	const sharedTargets = sharedTargetPorts(converging, offsets);
 	expect([...sharedTargets.keys()]).toEqual(['one', 'two']);
 	expect(sharedTargets.get('one')).toBe(sharedTargets.get('two'));
 });

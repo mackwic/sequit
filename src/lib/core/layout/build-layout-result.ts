@@ -41,8 +41,8 @@ function layoutRelation(
 			target,
 			direction: input.frame.direction,
 			rail: directRouteRail(input.space, relation.from, relation.to),
-			sourceOffset: input.routing?.quays.sourceOffsets.get(relation.id),
-			targetOffset: input.routing?.quays.targetOffsets.get(relation.id),
+			sourceOffset: input.routing?.ports.sourceOffsets.get(relation.id),
+			targetOffset: input.routing?.ports.targetOffsets.get(relation.id),
 		});
 	return { id: relation.id, from: relation.from, to: relation.to, points };
 }

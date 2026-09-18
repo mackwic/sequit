@@ -133,7 +133,7 @@ function sortByDistance(candidates: number[], source: number, target: number): r
 	});
 }
 
-/** Free transverse gaps between obstacle clusters, nearest to the two endpoint quays first. */
+/** Free transverse gaps between obstacle clusters, nearest to the two endpoint ports first. */
 function internalCorridorCandidates(
 	occupied: readonly Interval[],
 	source: number,

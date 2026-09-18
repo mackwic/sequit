@@ -43,7 +43,7 @@ enum TrunkSide {
 	Incoming = 'incoming',
 }
 
-function quay(relation: LayoutRelation, side: TrunkSide) {
+function endpointPort(relation: LayoutRelation, side: TrunkSide) {
 	let points = relation.points;
 	let endpoint = relation.from;
 	if (side === TrunkSide.Incoming) {
@@ -60,9 +60,9 @@ function quay(relation: LayoutRelation, side: TrunkSide) {
 	return { endpoint, side, start, horizontal, vertical };
 }
 
-function quayKeys(relation: LayoutRelation): readonly string[] {
+function portKeys(relation: LayoutRelation): readonly string[] {
 	return [TrunkSide.Outgoing, TrunkSide.Incoming].flatMap((side) => {
-		const port = quay(relation, side);
+		const port = endpointPort(relation, side);
 		if (port === undefined) return [];
 		return [JSON.stringify(port)];
 	});
@@ -108,7 +108,7 @@ function routeFamilies(relations: readonly LayoutRelation[]) {
 		return Number(left.id > right.id) - Number(left.id < right.id);
 	});
 	for (const relation of ordered) {
-		const keys = quayKeys(relation);
+		const keys = portKeys(relation);
 		const family = new Set([relation.id]);
 		for (const key of keys) {
 			for (const member of families.get(key) ?? []) family.add(member);
@@ -126,7 +126,7 @@ function continuities(
 ): readonly (readonly [string, string])[] {
 	const outgoing = new Map<string, string[]>();
 	for (const relation of relations) {
-		const port = quay(relation, TrunkSide.Outgoing);
+		const port = endpointPort(relation, TrunkSide.Outgoing);
 		if (port === undefined) continue;
 		const key = continuityKey(port, 1);
 		const ids = outgoing.get(key) ?? [];
@@ -134,7 +134,7 @@ function continuities(
 		outgoing.set(key, ids);
 	}
 	return relations.flatMap((relation) => {
-		const port = quay(relation, TrunkSide.Incoming);
+		const port = endpointPort(relation, TrunkSide.Incoming);
 		if (port === undefined) return [];
 		return (outgoing.get(continuityKey(port, -1)) ?? []).map((id): readonly [string, string] => [
 			relation.id,
@@ -143,7 +143,7 @@ function continuities(
 	});
 }
 
-function continuityKey(port: NonNullable<ReturnType<typeof quay>>, sign: number): string {
+function continuityKey(port: NonNullable<ReturnType<typeof endpointPort>>, sign: number): string {
 	let transverse = port.start.y;
 	if (port.horizontal === 0) transverse = port.start.x;
 	return JSON.stringify([port.endpoint, transverse, port.horizontal * sign, port.vertical * sign]);

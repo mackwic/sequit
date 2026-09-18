@@ -21,7 +21,7 @@ en bas en disposition horizontale — avec 24 px de dégagement de chaque côté
 ne rejoint ni le padding du groupe ni le bord extérieur du layout. Ces trois
 routes suffisamment espacées gardent la couleur de base.
 
-Les deux routes de la convergence voisine gardent leur quai entrant central et
+Les deux routes de la convergence voisine gardent leur port entrant central et
 leur tronc commun. Activer le plan par couches pour le bypass ne doit pas changer
 la géométrie d'une composante déconnectée.
 

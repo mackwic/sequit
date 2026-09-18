@@ -4,14 +4,14 @@ import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { routeChannel } from './channel-routing';
 import type { ChannelRouting } from './channel-types';
-import { type QuayAllocation, sharedSourceQuays } from './quay-allocation';
+import { type PortAllocation, sharedSourcePorts } from './port-allocation';
 import type { RoutingCorridor } from './routing-corridors';
 
 interface PlannedCorridor extends ChannelRouting {
 	readonly corridor: RoutingCorridor;
 }
 export interface NodeRouting {
-	readonly quays: QuayAllocation;
+	readonly ports: PortAllocation;
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly corridors: readonly PlannedCorridor[];
 	readonly gaps: ReadonlyMap<number, number>;
@@ -20,7 +20,7 @@ export interface NodeRouting {
 
 export function planNodeRouting(input: {
 	readonly corridors: readonly RoutingCorridor[];
-	readonly quays: QuayAllocation;
+	readonly ports: PortAllocation;
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
@@ -28,20 +28,20 @@ export function planNodeRouting(input: {
 	const gaps = new Map<number, number>();
 	const railCounts = new Map<number, number>();
 	const corridors = input.corridors.map((corridor) => {
-		const sourceQuays = sharedSourceQuays(
+		const sourcePorts = sharedSourcePorts(
 			corridor.links.map(({ relation }) => relation),
-			input.quays.sourceOffsets,
+			input.ports.sourceOffsets,
 		);
 		const channel = routeChannel(
 			corridor.links.map(({ relation }) => ({
 				id: relation.id,
-				sharedSource: sourceQuays.get(relation.id),
+				sharedSource: sourcePorts.get(relation.id),
 				source:
 					transverseCenter(defined(input.bounds.get(relation.from)), input.vertical) +
-					defined(input.quays.sourceOffsets.get(relation.id)),
+					defined(input.ports.sourceOffsets.get(relation.id)),
 				target:
 					transverseCenter(defined(input.bounds.get(relation.to)), input.vertical) +
-					defined(input.quays.targetOffsets.get(relation.id)),
+					defined(input.ports.targetOffsets.get(relation.id)),
 			})),
 		);
 		const count = Math.max(railCounts.get(corridor.rank) ?? 0, channel.railCount);
@@ -49,5 +49,5 @@ export function planNodeRouting(input: {
 		gaps.set(corridor.rank, BASE_RANK_GAP + Math.max(0, count - 1) * RAIL_SPACING);
 		return { ...channel, corridor };
 	});
-	return { corridors, gaps, railCounts, quays: input.quays, ranks: input.ranks };
+	return { corridors, gaps, railCounts, ports: input.ports, ranks: input.ranks };
 }

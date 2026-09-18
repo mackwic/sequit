@@ -10,7 +10,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'mixed-branch-alignment',
 	label: 'Branches mixtes et trajets droits',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 168,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({ ...mixedBranchAlignment(direction), direction, bias });

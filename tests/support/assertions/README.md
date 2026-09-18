@@ -48,10 +48,10 @@ Les préconditions invalides restent des erreurs d'utilisation, distinctes d'une
 
 ```ts
 const check = AssertLayout(layout);
-check.quays('b', { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+check.ports('b', { role: 'incoming' }).haveCount(1).areCentered().haveClearance(portPolicy);
 check
 	.nodes(['a', 'b', 'c'])
-	.haveSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
+	.haveSizeForPorts({ content: 80, incoming: 1, outgoing: 1, ...portPolicy });
 check.routes().areOrthogonal().areAttachedToEndpoints().haveNoOverlap();
 check.renderedPaths().haveBridgeAtEveryCrossing();
 check
@@ -60,10 +60,10 @@ check
 	.haveRoom(railPolicy);
 ```
 
-`quays` utilise le sens des flèches pour `incoming` et `outgoing`. `haveClearance` prend un objet
-`{ spacing, inset }`, sans valeur cachée. `hasSizeForQuays` et `haveSizeForQuays` vérifient la
+`ports` utilise le sens des flèches pour `incoming` et `outgoing`. `haveClearance` prend un objet
+`{ spacing, inset }`, sans valeur cachée. `hasSizeForPorts` et `haveSizeForPorts` vérifient la
 **dimension transversale** requise par le contenu et les capacités des deux faces, selon leur maximum.
-Ces méthodes ne vérifient pas les nombres de quais observés : `quays(...).haveCount(...)` le fait
+Ces méthodes ne vérifient pas les nombres de ports observés : `ports(...).haveCount(...)` le fait
 séparément. Les valeurs de calibration sont dans [routing-fixtures.ts](../fixtures/routing-fixtures.ts)
 et restent indépendantes des paramètres du moteur.
 
@@ -77,8 +77,8 @@ leurs ponts est une assertion distincte de leur géométrie calculée. `trunks(s
 uniquement la famille explicitement sélectionnée. Les mesures et différences entre l'état courant
 et un état de référence restent exprimées directement dans les scénarios comparatifs.
 
-Les neuf scénarios de routage utilisent cette façade. Les anciens helpers `checkQuays`, `checkSize`,
-`checkDistinctPaths` et `checkCompleteQuays` sont remplacés par les attentes explicites ci-dessus.
+Les neuf scénarios de routage utilisent cette façade. Les anciens helpers `checkPorts`, `checkSize`,
+`checkDistinctPaths` et `checkCompletePorts` sont remplacés par les attentes explicites ci-dessus.
 
 ## Assertions spécialisées
 
@@ -208,7 +208,7 @@ Les assertions distinguent les niveaux du lexique :
 - `haveNoCrossingWith(other)` et `haveNoOverlapWith(other)` comparent deux collections disjointes, sans imposer ces contraintes à l’intérieur de chacune.
 - `AssertRenderedPaths(paths).haveBridgeAtEveryCrossing()` vérifie un pont à chaque croisement sur l’un des deux chemins concernés (VL-403/416). Elle lit les commandes absolues M/L/A actuellement émises par le canvas et repère les arcs semi-circulaires ; une autre syntaxe échoue explicitement. Pour exiger aussi l’existence d’un croisement, appeler `AssertRoutes(...).haveCrossing()`.
 
-Les troncs communs restent autorisés dans les scénarios de deux et trois successeurs. Dans le cas des deux parents et deux successeurs, les troncs continus en sortie sont également autorisés ; les deux flèches croisées ont chacune une arrivée et un quai exclusifs. Le contrôle visuel utilise le rendu des chemins du produit.
+Les troncs communs restent autorisés dans les scénarios de deux et trois successeurs. Dans le cas des deux parents et deux successeurs, les troncs continus en sortie sont également autorisés ; les deux flèches croisées ont chacune une arrivée et un port exclusifs. Le contrôle visuel utilise le rendu des chemins du produit.
 
 ## Convergences et croisements
 
@@ -223,27 +223,27 @@ Les quatre cas vérifient les rangs, la progression, le centrage transversal et 
 
 Pour les scénarios dont toutes les boîtes ont la même taille, `uniformNodeScenario` mutualise la préparation : la fiche TypeScript garde les identifiants de nœuds, la taille explicite, les relations et les assertions. Les scénarios à tailles différentes peuvent continuer à appeler `layoutNodes` directement.
 
-## Rails et quais : spécifications à examiner
+## Rails et ports : spécifications à examiner
 
-Neuf fiches dans `tests/scenarios/visual/routing/` vérifient l’allocation réelle des rails et des quais.
+Neuf fiches dans `tests/scenarios/visual/routing/` vérifient l’allocation réelle des rails et des ports.
 Chaque fiche est rejouée par le lanceur commun dans les quatre directions et les biais compatibles.
 
 | Identifiant             | Comportement attendu                                                                    |
 | ----------------------- | --------------------------------------------------------------------------------------- |
-| `default-quays`         | Quai entrant et sortant uniques, centrés, sans agrandissement.                          |
-| `narrow-quays`          | Deux quais distincts : le besoin des quais agrandit le nœud.                            |
-| `wide-quays`            | Le contenu suffit : aucun agrandissement supplémentaire.                                |
-| `asymmetric-quays`      | Deux arrivées exclusives et trois départs partageables : maximum des besoins des faces. |
+| `default-ports`         | Port entrant et sortant uniques, centrés, sans agrandissement.                          |
+| `narrow-ports`          | Deux ports distincts : le besoin des ports agrandit le nœud.                            |
+| `wide-ports`            | Le contenu suffit : aucun agrandissement supplémentaire.                                |
+| `asymmetric-ports`      | Deux arrivées exclusives et trois départs partageables : maximum des besoins des faces. |
 | `local-rails`           | Le corridor concerné grandit ; les autres intervalles restent identiques.               |
-| `shared-quay`           | Une fourche partage un quai et des tronçons sur les deux axes.                          |
-| `forced-crossing-rails` | Chemins distincts, pont, quais espacés et corridor agrandi.                             |
+| `shared-port`           | Une fourche partage un port et des tronçons sur les deux axes.                          |
+| `forced-crossing-rails` | Chemins distincts, pont, ports espacés et corridor agrandi.                             |
 | `reused-rail`           | Deux fourches indépendantes utilisent des portions disjointes du rail 0.                |
-| `released-rails-quays`  | Après retrait des diagonales : retour aux dimensions et à l’intervalle simples.         |
+| `released-rails-ports`  | Après retrait des diagonales : retour aux dimensions et à l’intervalle simples.         |
 
-Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-fixtures.ts` et indiquées dans chaque fiche : pas des quais 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ces attentes sont indépendantes des constantes du moteur pour détecter les régressions. Leur calibration reste ajustable.
+Les mesures proposées pour ce cahier sont centralisées dans `fixtures/routing-fixtures.ts` et indiquées dans chaque fiche : pas des ports 48, marges 24 ; intervalle de base 72, pas des rails 24, marge des rails 12. Ces attentes sont indépendantes des constantes du moteur pour détecter les régressions. Leur calibration reste ajustable.
 
-- `AssertQuays` observe les ancres distinctes sur une même face principale : nombre, centrage, espacement et marges.
-- `AssertQuaySize` vérifie le maximum du besoin du contenu et de chaque face, sans additionner les deux faces.
+- `AssertPorts` observe les ancres distinctes sur une même face principale : nombre, centrage, espacement et marges.
+- `AssertPortSize` vérifie le maximum du besoin du contenu et de chaque face, sans additionner les deux faces.
 - `AssertRails` observe les segments transversaux de longueur positive, leur nombre de coordonnées distinctes, leurs espacements et l’intervalle disponible. Il ne prétend pas lire une réservation virtuelle ou son numéro dans le moteur.
 - `AssertTrunks` exige un segment de longueur positive partagé par tous les chemins d’une famille explicitement autorisée. Il ne décide pas quelles familles peuvent fusionner.
 - `VisualLayout.withReference` conserve un dessin de référence pour une comparaison dans la même page. La suppression est spécifiée par les états avant/après ; le geste d’édition et l’undo ne sont pas couverts par cette comparaison.
@@ -252,9 +252,9 @@ Les neuf scénarios passent désormais dans les quatre directions et leurs biais
 
 Le partage est autorisé continûment depuis une même source. Une arrivée commune est autorisée seulement si aucune flèche concernée ne participe à un croisement. Les deux participants sont concernés, indépendamment du porteur du pont ; un croisement sur un tronc partagé concerne toutes ses flèches. Le motif mixte A vers B/C, E vers C suit cette règle générale.
 
-`check.routes().haveOnlyAllowedSharedTrunks()` contrôle ces partages, les quais entrants exclusifs (même un simple point commun est interdit après croisement) et les recouvrements hors des troncs autorisés. Une sélection utilise le layout complet pour détecter ses croisements. `followLayoutFlow()` exige des attaches sur les faces principales opposées, des segments d’attache sur l’axe principal et aucun retour en arrière. Les contacts en T sans partage restent à spécifier séparément.
+`check.routes().haveOnlyAllowedSharedTrunks()` contrôle ces partages, les ports entrants exclusifs (même un simple point commun est interdit après croisement) et les recouvrements hors des troncs autorisés. Une sélection utilise le layout complet pour détecter ses croisements. `followLayoutFlow()` exige des attaches sur les faces principales opposées, des segments d’attache sur l’axe principal et aucun retour en arrière. Les contacts en T sans partage restent à spécifier séparément.
 
-Les sources du motif biparti peuvent utiliser un ou plusieurs quais. `haveCountBetween` observe cette latitude ; `hasSizeForUsedQuays` vérifie le maximum du contenu et des besoins des quais effectivement utilisés, sans imposer un quai par flèche. Les capacités inutilisées ne sont pas encore exposées par le moteur.
+Les sources du motif biparti peuvent utiliser un ou plusieurs ports. `haveCountBetween` observe cette latitude ; `hasSizeForUsedPorts` vérifie le maximum du contenu et des besoins des ports effectivement utilisés, sans imposer un port par flèche. Les capacités inutilisées ne sont pas encore exposées par le moteur.
 
 Priorités convenues : contraintes documentaires et séparations nécessaires, réduction des croisements, centrages, trajets droits, puis réduction des rails et des coudes. Examiner une permutation à partir de deux flèches contournant la même boîte reste une hypothèse à illustrer ; aucun nouveau mécanisme de permutation n’est ajouté ici.
 

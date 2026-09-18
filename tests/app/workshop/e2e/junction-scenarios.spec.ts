@@ -88,11 +88,11 @@ test('uses the main canvas junction symbol in the workshop and keeps diagnostic 
 	await expect(junction.locator('[data-center-guide="j"]')).toBeVisible();
 });
 
-test('keeps junctions compact at their real bounds and exposes their occupied rails and quays', async ({
+test('keeps junctions compact at their real bounds and exposes their occupied rails and ports', async ({
 	page,
 }) => {
-	await page.goto('/atelier/tests-visuels/junction-crossing-quays');
-	await page.getByRole('checkbox', { name: 'Afficher les rails et les quais' }).check();
+	await page.goto('/atelier/tests-visuels/junction-crossing-ports');
+	await page.getByRole('checkbox', { name: 'Afficher les rails et les ports' }).check();
 	for (const direction of ['top-to-bottom', 'bottom-to-top', 'left-to-right', 'right-to-left']) {
 		await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption(direction);
 		await expect(page.getByRole('status')).toContainText('Réussi');
@@ -113,10 +113,10 @@ test('keeps junctions compact at their real bounds and exposes their occupied ra
 				};
 			});
 			for (const gap of Object.values(padding)) expect(gap).toBeGreaterThan(4);
-			await expect(page.locator(`[data-quay-node="${id}"][data-quay-side="incoming"]`)).toHaveCount(
+			await expect(page.locator(`[data-port-node="${id}"][data-port-role="incoming"]`)).toHaveCount(
 				1,
 			);
-			await expect(page.locator(`[data-quay-node="${id}"][data-quay-side="outgoing"]`)).toHaveCount(
+			await expect(page.locator(`[data-port-node="${id}"][data-port-role="outgoing"]`)).toHaveCount(
 				1,
 			);
 			await expect(page.locator(`[data-reservation-node="${id}"]`)).toContainText('16');

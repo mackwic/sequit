@@ -3,27 +3,27 @@ import { defined, EndpointKind, type LogicRelation } from '../../document/logic-
 import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
 import {
-	JUNCTION_QUAY_INSET,
-	JUNCTION_QUAY_SPACING,
-	QUAY_INSET,
-	QUAY_SPACING,
+	JUNCTION_PORT_INSET,
+	JUNCTION_PORT_SPACING,
+	PORT_INSET,
+	PORT_SPACING,
 } from '../layout-settings';
 import type { Bounds, Size } from '../layout-types';
 import type { CorridorLink, RoutingCorridor } from './routing-corridors';
 
-function quaySpacing(kind: EndpointKind): number {
-	if (kind === EndpointKind.Junction) return JUNCTION_QUAY_SPACING;
-	return QUAY_SPACING;
+function portSpacing(kind: EndpointKind): number {
+	if (kind === EndpointKind.Junction) return JUNCTION_PORT_SPACING;
+	return PORT_SPACING;
 }
 
-export function quayExtent(count: number, kind: EndpointKind): number {
-	let inset = QUAY_INSET;
-	if (kind === EndpointKind.Junction) inset = JUNCTION_QUAY_INSET;
-	const span = (count - 1) * quaySpacing(kind);
+export function portExtent(count: number, kind: EndpointKind): number {
+	let inset = PORT_INSET;
+	if (kind === EndpointKind.Junction) inset = JUNCTION_PORT_INSET;
+	const span = (count - 1) * portSpacing(kind);
 	return 2 * inset + span;
 }
 
-export interface QuayAllocation {
+export interface PortAllocation {
 	readonly sourceOffsets: ReadonlyMap<string, number>;
 	readonly targetOffsets: ReadonlyMap<string, number>;
 	readonly sizes: ReadonlyMap<string, Size>;
@@ -49,7 +49,7 @@ function allocateFace(input: {
 			return difference || compareCanonicalStrings(a.relation.id, b.relation.id);
 		});
 		const kind = defined(input.graph.endpointsById.get(id)).kind;
-		const required = quayExtent(links.length, kind);
+		const required = portExtent(links.length, kind);
 		const size = defined(input.sizes.get(id));
 		let grown: Size;
 		if (input.vertical) grown = { ...size, width: Math.max(size.width, required) };
@@ -57,13 +57,13 @@ function allocateFace(input: {
 		input.sizes.set(id, grown);
 		const centerIndex = (links.length - 1) / 2;
 		for (const [index, link] of links.entries())
-			offsets.set(link.relation.id, (index - centerIndex) * quaySpacing(kind));
+			offsets.set(link.relation.id, (index - centerIndex) * portSpacing(kind));
 	}
 	return offsets;
 }
 
-/** Reserve distinct quays in crossing corridors; simple forks keep their shared central quay. */
-export function allocateQuays(input: {
+/** Reserve distinct ports in crossing corridors; simple forks keep their shared central port. */
+export function allocatePorts(input: {
 	readonly corridors: readonly RoutingCorridor[];
 	readonly sizes: ReadonlyMap<string, Size>;
 	readonly vertical: boolean;
@@ -71,7 +71,7 @@ export function allocateQuays(input: {
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly sharedSources?: ReadonlySet<string>;
 	readonly sharedTargets?: ReadonlySet<string>;
-}): QuayAllocation {
+}): PortAllocation {
 	const enlarged = new Map(input.sizes);
 	const outgoing = new Map<string, CorridorLink[]>();
 	const incoming = new Map<string, CorridorLink[]>();
@@ -113,7 +113,7 @@ export function allocateQuays(input: {
 	};
 }
 
-function sharedEndpointQuays(
+function sharedEndpointPorts(
 	relations: readonly LogicRelation[],
 	offsets: ReadonlyMap<string, number>,
 	endpoint: (relation: LogicRelation) => string,
@@ -133,17 +133,17 @@ function sharedEndpointQuays(
 	return shared;
 }
 
-/** Shared faces are identified by endpoint and actual quay offset, independently of endpoint kind. */
-export function sharedSourceQuays(
+/** Shared faces are identified by endpoint and actual port offset, independently of endpoint kind. */
+export function sharedSourcePorts(
 	relations: readonly LogicRelation[],
 	offsets: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, string> {
-	return sharedEndpointQuays(relations, offsets, ({ from }) => from);
+	return sharedEndpointPorts(relations, offsets, ({ from }) => from);
 }
 
-export function sharedTargetQuays(
+export function sharedTargetPorts(
 	relations: readonly LogicRelation[],
 	offsets: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, string> {
-	return sharedEndpointQuays(relations, offsets, ({ to }) => to);
+	return sharedEndpointPorts(relations, offsets, ({ to }) => to);
 }

@@ -1,14 +1,14 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
-import { quayPolicy } from '../../../support/fixtures/routing-fixtures';
+import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
-	id: 'asymmetric-quays',
+	id: 'asymmetric-ports',
 	label: 'Deux arrivées exclusives, trois départs partageables',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 180,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({
@@ -26,13 +26,13 @@ export const scenario: LayoutScenario = {
 		const check = AssertLayout(layout);
 		check.routes(['a-to-d', 'b-to-c']).haveCrossing();
 		for (const id of ['c', 'd']) {
-			check.quays(id, { side: 'incoming' }).haveCount(2).areCentered().haveClearance(quayPolicy);
+			check.ports(id, { role: 'incoming' }).haveCount(2).areCentered().haveClearance(portPolicy);
 			check
-				.quays(id, { side: 'outgoing' })
+				.ports(id, { role: 'outgoing' })
 				.haveCountBetween(1, 3)
 				.areCentered()
-				.haveClearance(quayPolicy);
-			check.node(id).hasSizeForUsedQuays({ content: 80, ...quayPolicy });
+				.haveClearance(portPolicy);
+			check.node(id).hasSizeForUsedPorts({ content: 80, ...portPolicy });
 		}
 		check.routes().areOrthogonal().followLayoutFlow().haveOnlyAllowedSharedTrunks();
 		check.renderedPaths().haveBridgeAtEveryCrossing();

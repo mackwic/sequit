@@ -51,7 +51,7 @@ it('enforces visual conventions through the repository configuration', async () 
  assert(layout) { const check = verify(layout); check.node('a'); try { check.routes().haveNoCrossing(); } catch {} }
  };
  `,
-		{ filePath: filename('tests/scenarios/visual/routing/default-quays.scenario.ts') },
+		{ filePath: filename('tests/scenarios/visual/routing/default-ports.scenario.ts') },
 	);
 	expect(results.flatMap((result) => result.messages.map((message) => message.ruleId))).toEqual(
 		expect.arrayContaining([
@@ -125,7 +125,7 @@ tester.run('allowed-import-directions', rule, {
 			code: "import { expect } from 'vitest';",
 		},
 		{
-			filename: filename('tests/scenarios/visual/routing/default-quays.scenario.ts'),
+			filename: filename('tests/scenarios/visual/routing/default-ports.scenario.ts'),
 			code: "import { AssertLayout } from '../../../support/assertions/assert-layout';",
 		},
 		{
@@ -184,7 +184,7 @@ tester.run('allowed-import-directions', rule, {
 			'playwright',
 			'playwright-core',
 		].map((runner) => ({
-			filename: filename('tests/scenarios/visual/routing/default-quays.scenario.ts'),
+			filename: filename('tests/scenarios/visual/routing/default-ports.scenario.ts'),
 			code: `import runner from '${runner}';`,
 			errors,
 		})),
@@ -298,7 +298,7 @@ tester.run('layout phase boundaries', rule, {
 			code: "import { transverseEnvelope } from '../geometry/envelope';",
 		},
 		{
-			filename: filename('src/lib/core/layout/routing/quay-allocation.ts'),
+			filename: filename('src/lib/core/layout/routing/port-allocation.ts'),
 			code: "import { transverseCenter } from '../geometry/layout-frame';",
 		},
 		{
@@ -323,7 +323,7 @@ tester.run('layout phase boundaries', rule, {
 			errors,
 		},
 		{
-			filename: filename('src/lib/core/layout/routing/quay-allocation.ts'),
+			filename: filename('src/lib/core/layout/routing/port-allocation.ts'),
 			code: "import { placeElements } from '../placement/place-elements';",
 			errors,
 		},

@@ -7,15 +7,15 @@ import {
 	minimumMetric,
 } from '../../../support/assertions/routing-measurements';
 import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
-import { quayPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
+import { portPolicy, railPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
-	id: 'released-rails-quays',
-	label: 'Suppression : libérer les rails et les quais',
-	group: 'Rails et quais',
+	id: 'released-rails-ports',
+	label: 'Suppression : libérer les rails et les ports',
+	group: 'Rails et ports',
 	order: 230,
 	async arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const before = await layoutNodes({
@@ -41,11 +41,11 @@ export const scenario: LayoutScenario = {
 		check.renderedPaths().haveBridgeAtEveryCrossing();
 		check.routes().haveNoCrossing();
 		for (const id of ['a', 'b'])
-			check.quays(id, { side: 'outgoing' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+			check.ports(id, { role: 'outgoing' }).haveCount(1).areCentered().haveClearance(portPolicy);
 		for (const id of ['c', 'd'])
-			check.quays(id, { side: 'incoming' }).haveCount(1).areCentered().haveClearance(quayPolicy);
+			check.ports(id, { role: 'incoming' }).haveCount(1).areCentered().haveClearance(portPolicy);
 		for (const id of ['a', 'b', 'c', 'd']) {
-			check.node(id).hasSizeForQuays({ content: 80, incoming: 1, outgoing: 1, ...quayPolicy });
+			check.node(id).hasSizeForPorts({ content: 80, incoming: 1, outgoing: 1, ...portPolicy });
 		}
 		for (const id of ['c', 'd']) {
 			const axis = axesFor(layout.direction).transverse;

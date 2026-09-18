@@ -4,7 +4,7 @@
 		type Bounds,
 		type InspectedNode,
 		type RoutingInspection,
-		RoutingQuaySide,
+		RoutingPortRole,
 	} from '../../../lib/core/layout/layout-types';
 	let { layout, inspection }: { layout: VisualLayout; inspection: RoutingInspection } = $props();
 	const rounded = (value: number) => Number(value.toFixed(2));
@@ -16,17 +16,17 @@
 		if (inspection.vertical) return bounds.height;
 		return bounds.width;
 	}
-	function demand(node: InspectedNode, side: RoutingQuaySide) {
-		if (!node.quays.some((quay) => quay.side === side)) return '—';
+	function demand(node: InspectedNode, role: RoutingPortRole) {
+		if (!node.ports.some((port) => port.role === role)) return '—';
 		let minimum = node.outgoingMinimum;
-		if (side === RoutingQuaySide.Incoming) minimum = node.incomingMinimum;
+		if (role === RoutingPortRole.Incoming) minimum = node.incomingMinimum;
 		return minimum || 'Central';
 	}
 </script>
 
 <section class="reservation-details" aria-label="Réservations de routage">
 	<p class="legend">
-		<span class="incoming">■ Quais entrants</span> <span class="outgoing">● Quais sortants</span>
+		<span class="incoming">■ Ports entrants</span> <span class="outgoing">● Ports sortants</span>
 		<span class="rails">┄ Rails et intervalle</span>
 		<span class="content">┄ Dimension du contenu</span>
 	</p>
@@ -52,8 +52,8 @@
 					{@const final = transverseSize(box)}
 					<tr data-reservation-node={node.id}
 						><th scope="row">{node.id.toUpperCase()}</th><td>{rounded(content)}</td><td
-							>{demand(node, RoutingQuaySide.Incoming)}</td
-						><td>{demand(node, RoutingQuaySide.Outgoing)}</td><td>{rounded(final)}</td><td
+							>{demand(node, RoutingPortRole.Incoming)}</td
+						><td>{demand(node, RoutingPortRole.Outgoing)}</td><td>{rounded(final)}</td><td
 							>+{rounded(final - content)}</td
 						></tr
 					>
@@ -71,7 +71,7 @@
 		</p>
 	{/each}
 	<p class="note">
-		Les points montrent les quais utilisés. Le contour du contenu indique sa dimension mesurée, sans
+		Les points montrent les ports utilisés. Le contour du contenu indique sa dimension mesurée, sans
 		simuler la position du texte. Les rails montrent les traverses et les centres des jonctions dans
 		chaque intervalle entre rangées.
 	</p>

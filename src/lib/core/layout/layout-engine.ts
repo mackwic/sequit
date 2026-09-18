@@ -17,13 +17,13 @@ import { expandRowGaps } from './placement/expand-row-gaps';
 import { groupJunctionInsets } from './placement/group-junction-channels';
 import { placeElements } from './placement/place-elements';
 import { prepareMeasurements } from './placement/prepare-measurements';
-import { alignJunctionQuays } from './routing/align-junction-quays';
+import { alignJunctionPorts } from './routing/align-junction-ports';
 import {
-	allocateLayerQuays,
+	allocateLayerPorts,
 	materializeLayers,
 	planLayeredRouting,
 } from './routing/layered-routing';
-import { allocateQuays, type QuayAllocation } from './routing/quay-allocation';
+import { allocatePorts, type PortAllocation } from './routing/port-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
 import { crossingCorridors } from './routing/routing-corridors';
@@ -37,36 +37,36 @@ interface PlacementReservation {
 	readonly channelGaps?: ReadonlyMap<number, readonly number[]>;
 }
 
-function alignBranchesWithQuays(workspace: LayoutWorkspace, quays: QuayAllocation): void {
+function alignBranchesWithPorts(workspace: LayoutWorkspace, ports: PortAllocation): void {
 	const offsets = new Map<string, number>();
 	for (const [id, anchor] of workspace.structure.branchAnchors) {
-		const source = quays.sourceOffsets.get(anchor.relationId) ?? 0;
-		const target = quays.targetOffsets.get(anchor.relationId) ?? 0;
+		const source = ports.sourceOffsets.get(anchor.relationId) ?? 0;
+		const target = ports.targetOffsets.get(anchor.relationId) ?? 0;
 		offsets.set(id, target - source);
 	}
 	workspace.placement.branchOffsets = offsets;
 }
 
 /** Applying a proposal or restoring its predecessor updates the same placement inputs. */
-function placeWithQuays(
+function placeWithPorts(
 	workspace: LayoutWorkspace,
-	quays: QuayAllocation,
+	ports: PortAllocation,
 	reservation?: PlacementReservation,
 ): void {
-	alignBranchesWithQuays(workspace, quays);
-	for (const [id, size] of quays.sizes) workspace.measurements.sizes.set(id, size);
+	alignBranchesWithPorts(workspace, ports);
+	for (const [id, size] of ports.sizes) workspace.measurements.sizes.set(id, size);
 	placeElements(workspace, reservation?.gaps ?? new Map(), reservation?.channelGaps);
 }
 
 function withChainAlignment(
-	quays: QuayAllocation,
+	ports: PortAllocation,
 	alignment: ReturnType<typeof alignBypassedChains>,
-): QuayAllocation {
-	if (alignment === undefined) return quays;
+): PortAllocation {
+	if (alignment === undefined) return ports;
 	return {
-		sizes: new Map([...quays.sizes, ...alignment.sizes]),
-		sourceOffsets: new Map([...quays.sourceOffsets, ...alignment.sourceOffsets]),
-		targetOffsets: new Map([...quays.targetOffsets, ...alignment.targetOffsets]),
+		sizes: new Map([...ports.sizes, ...alignment.sizes]),
+		sourceOffsets: new Map([...ports.sourceOffsets, ...alignment.sourceOffsets]),
+		targetOffsets: new Map([...ports.targetOffsets, ...alignment.targetOffsets]),
 	};
 }
 
@@ -104,7 +104,7 @@ function reserveLayeredRouting(
 			),
 		),
 	};
-	let quays = allocateLayerQuays({
+	let ports = allocateLayerPorts({
 		...input,
 		space: directRoutingSpace({
 			layers,
@@ -114,41 +114,41 @@ function reserveLayeredRouting(
 			enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
 		}),
 	});
-	if (quays === undefined) return undefined;
+	if (ports === undefined) return undefined;
 	placement.transverseCenters = alignment?.centers;
-	quays = withChainAlignment(quays, alignment);
-	placeWithQuays(workspace, quays);
-	let plan = planLayeredRouting(input, quays);
-	placeWithQuays(workspace, quays, plan);
+	ports = withChainAlignment(ports, alignment);
+	placeWithPorts(workspace, ports);
+	let plan = planLayeredRouting(input, ports);
+	placeWithPorts(workspace, ports, plan);
 	if (structure.junctionIds.size > 0) {
-		const originalQuays = quays;
+		const originalPorts = ports;
 		const originalPlan = plan;
 		const originalPaths = materializeLayers(input, plan);
-		const proposal = alignJunctionQuays({
+		const proposal = alignJunctionPorts({
 			...input,
 			vertical: frame.vertical,
-			quays,
+			ports,
 		});
-		placeWithQuays(workspace, proposal, plan);
-		quays = alignJunctionQuays({
+		placeWithPorts(workspace, proposal, plan);
+		ports = alignJunctionPorts({
 			...input,
 			vertical: frame.vertical,
-			quays: originalQuays,
+			ports: originalPorts,
 		});
-		plan = planLayeredRouting(input, quays);
-		placeWithQuays(workspace, quays, plan);
-		const fits = [...quays.sizes].every(([id, size]) => {
+		plan = planLayeredRouting(input, ports);
+		placeWithPorts(workspace, ports, plan);
+		const fits = [...ports.sizes].every(([id, size]) => {
 			const placed = proposal.sizes.get(id);
 			return placed?.width === size.width && placed.height === size.height;
 		});
 		if (!fits || !improvesRoutes(originalPaths, materializeLayers(input, plan))) {
-			quays = originalQuays;
+			ports = originalPorts;
 			plan = originalPlan;
-			placeWithQuays(workspace, quays, plan);
+			placeWithPorts(workspace, ports, plan);
 		}
 	}
 	workspace.routing = {
-		quays,
+		ports,
 		gaps: plan.gaps,
 		ranks: structure.ranks.byEndpointId,
 		corridors: [],
@@ -167,17 +167,17 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		vertical: frame.vertical,
 	});
 	if (corridors.length === 0) return;
-	const quays = allocateQuays({
+	const ports = allocatePorts({
 		corridors,
 		sizes: measurements.content.nodes,
 		vertical: frame.vertical,
 		graph,
 		bounds: placement.bounds,
 	});
-	placeWithQuays(workspace, quays, { gaps: baseGaps });
+	placeWithPorts(workspace, ports, { gaps: baseGaps });
 	const routing = planNodeRouting({
 		corridors,
-		quays,
+		ports,
 		bounds: placement.bounds,
 		vertical: frame.vertical,
 		ranks: ranks.byEndpointId,
@@ -193,7 +193,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		});
 		return;
 	}
-	placeWithQuays(workspace, quays, routing);
+	placeWithPorts(workspace, ports, routing);
 }
 
 export function layoutWithDedicatedEngine(

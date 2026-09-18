@@ -7,7 +7,7 @@ import type { Bounds } from '../../../src/lib/core/layout/layout-types';
 import { axesFor } from '../harnesses/visual-directions';
 import type { VisualLayout } from '../harnesses/visual-layout';
 import { AssertBox } from './assert-box';
-import { AssertQuaySize, type QuaySizeOptions, usedQuayCount } from './assert-quays';
+import { AssertPortSize, type PortSizeOptions, usedPortCount } from './assert-ports';
 import { routeSegments } from './route-geometry';
 import { equalMetric, extent, minimumMetric } from './routing-measurements';
 
@@ -129,12 +129,12 @@ export class JunctionAssertions {
 		return this;
 	}
 
-	haveSizeForUsedQuays(options: Omit<QuaySizeOptions, 'incoming' | 'outgoing'>): this {
+	haveSizeForUsedPorts(options: Omit<PortSizeOptions, 'incoming' | 'outgoing'>): this {
 		for (const id of this.ids)
-			AssertQuaySize(this.layout, id).matchesContentAndQuays({
+			AssertPortSize(this.layout, id).matchesContentAndPorts({
 				...options,
-				incoming: usedQuayCount(this.layout, id, 'incoming'),
-				outgoing: usedQuayCount(this.layout, id, 'outgoing'),
+				incoming: usedPortCount(this.layout, id, 'incoming'),
+				outgoing: usedPortCount(this.layout, id, 'outgoing'),
 			});
 		return this;
 	}

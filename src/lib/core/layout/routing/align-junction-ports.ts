@@ -1,29 +1,29 @@
 import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter, transverseSize } from '../geometry/layout-frame';
-import { QUAY_INSET, QUAY_SPACING } from '../layout-settings';
+import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import type { Bounds, Size } from '../layout-types';
-import type { QuayAllocation } from './quay-allocation';
+import type { PortAllocation } from './port-allocation';
 
 interface AlignmentInput {
 	readonly graph: LogicGraph;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
-	readonly quays: QuayAllocation;
+	readonly ports: PortAllocation;
 }
 
 function tooClose(offsets: readonly { readonly value: number }[]): boolean {
 	return offsets.some((offset, index) => {
 		if (index === 0) return false;
 		const previous = defined(offsets[index - 1]);
-		return offset.value - previous.value < QUAY_SPACING;
+		return offset.value - previous.value < PORT_SPACING;
 	});
 }
 
-/** One bounded proposal: align ordinary departure quays with adjacent junction centers. */
-export function alignJunctionQuays(input: AlignmentInput): QuayAllocation {
-	const sizes = new Map(input.quays.sizes);
-	const sourceOffsets = new Map(input.quays.sourceOffsets);
+/** One bounded proposal: align ordinary departure ports with adjacent junction centers. */
+export function alignJunctionPorts(input: AlignmentInput): PortAllocation {
+	const sizes = new Map(input.ports.sizes);
+	const sourceOffsets = new Map(input.ports.sourceOffsets);
 	for (const [id, size] of sizes) {
 		if (input.graph.endpointsById.get(id)?.kind !== EndpointKind.Node) continue;
 		const links = input.graph.relations.filter(({ relation }) => relation.from === id);
@@ -37,7 +37,7 @@ export function alignJunctionQuays(input: AlignmentInput): QuayAllocation {
 			}))
 			.sort((a, b) => a.value - b.value);
 		if (tooClose(offsets)) continue;
-		const required = 2 * (QUAY_INSET + Math.max(...offsets.map(({ value }) => Math.abs(value))));
+		const required = 2 * (PORT_INSET + Math.max(...offsets.map(({ value }) => Math.abs(value))));
 		const extent = transverseSize(size, input.vertical);
 		if (required > extent + 24) continue;
 		const grown = Math.max(extent, required);
@@ -46,5 +46,5 @@ export function alignJunctionQuays(input: AlignmentInput): QuayAllocation {
 		sizes.set(id, next);
 		for (const offset of offsets) sourceOffsets.set(offset.id, offset.value);
 	}
-	return { ...input.quays, sizes, sourceOffsets };
+	return { ...input.ports, sizes, sourceOffsets };
 }

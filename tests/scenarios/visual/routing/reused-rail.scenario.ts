@@ -10,7 +10,7 @@ import type { LayoutScenario } from '../scenario';
 export const scenario: LayoutScenario = {
 	id: 'reused-rail',
 	label: 'Deux fourches réutilisent le rail 0',
-	group: 'Rails et quais',
+	group: 'Rails et ports',
 	order: 220,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		return layoutNodes({

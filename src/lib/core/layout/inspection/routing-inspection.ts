@@ -5,44 +5,44 @@ import {
 	type Bounds,
 	type InspectedCorridor,
 	type InspectedNode,
-	type InspectedQuay,
+	type InspectedPort,
 	type InspectedRail,
 	type LayoutElement,
 	type LayoutMeasurements,
 	type LayoutRelation,
 	type LayoutResult,
 	type RoutingInspection,
-	RoutingQuaySide,
+	RoutingPortRole,
 } from '../layout-types';
-import { quayExtent } from '../routing/quay-allocation';
+import { portExtent } from '../routing/port-allocation';
 import type { NodeRouting } from '../routing/reserve-node-routing';
 
-function usedQuays(id: string, routes: readonly LayoutRelation[]): InspectedQuay[] {
-	const quays = new Map<string, InspectedQuay>();
+function usedPorts(id: string, routes: readonly LayoutRelation[]): InspectedPort[] {
+	const ports = new Map<string, InspectedPort>();
 	for (const route of routes) {
 		if (route.from !== id && route.to !== id) continue;
-		let side: InspectedQuay['side'] = RoutingQuaySide.Incoming;
+		let role: InspectedPort['role'] = RoutingPortRole.Incoming;
 		let point = defined(route.points.at(-1));
 		if (route.from === id) {
-			side = RoutingQuaySide.Outgoing;
+			role = RoutingPortRole.Outgoing;
 			point = defined(route.points[0]);
 		}
-		const key = `${side}:${point.x}:${point.y}`;
-		const quay = quays.get(key) ?? { side, point, relations: [] };
-		quay.relations.push(route.id);
-		quays.set(key, quay);
+		const key = `${role}:${point.x}:${point.y}`;
+		const port = ports.get(key) ?? { role, point, relations: [] };
+		port.relations.push(route.id);
+		ports.set(key, port);
 	}
-	return [...quays.values()];
+	return [...ports.values()];
 }
 
 function minimum(
-	quays: readonly InspectedQuay[],
+	ports: readonly InspectedPort[],
 	offsets: ReadonlyMap<string, number>,
 	kind: EndpointKind,
 ): number {
-	const reserved = quays.filter((quay) => quay.relations.some((id) => offsets.has(id)));
+	const reserved = ports.filter((port) => port.relations.some((id) => offsets.has(id)));
 	if (reserved.length === 0) return 0;
-	return quayExtent(reserved.length, kind);
+	return portExtent(reserved.length, kind);
 }
 
 function nodesFor(input: InspectionInput): InspectedNode[] {
@@ -52,7 +52,7 @@ function nodesFor(input: InspectionInput): InspectedNode[] {
 			let measurements = input.measurements.nodes;
 			if (node.kind === EndpointKind.Junction) measurements = input.measurements.junctions;
 			const measured = defined(measurements.get(node.id));
-			const quays = usedQuays(node.id, input.layout.relations);
+			const ports = usedPorts(node.id, input.layout.relations);
 			const content = {
 				...measured,
 				x: node.bounds.x + (node.bounds.width - measured.width) / 2,
@@ -62,15 +62,15 @@ function nodesFor(input: InspectionInput): InspectedNode[] {
 			return {
 				id: node.id,
 				content,
-				quays,
+				ports,
 				incomingMinimum: minimum(
-					quays.filter((quay) => quay.side === RoutingQuaySide.Incoming),
-					input.plan?.quays.targetOffsets ?? new Map(),
+					ports.filter((port) => port.role === RoutingPortRole.Incoming),
+					input.plan?.ports.targetOffsets ?? new Map(),
 					node.kind,
 				),
 				outgoingMinimum: minimum(
-					quays.filter((quay) => quay.side === RoutingQuaySide.Outgoing),
-					input.plan?.quays.sourceOffsets ?? new Map(),
+					ports.filter((port) => port.role === RoutingPortRole.Outgoing),
+					input.plan?.ports.sourceOffsets ?? new Map(),
 					node.kind,
 				),
 			};

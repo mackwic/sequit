@@ -14,6 +14,6 @@ Choisissez une variante pour examiner sa géométrie et son verdict. Chaque vari
 
 Les rangs logiques restent indépendants des jonctions. Les mesures et les dégagements reprennent la calibration existante de l’atelier. Les groupes et les arbitrages asymétriques restent hors de ce lot.
 
-Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-422 · Quai](/atelier/lexique#VL-422), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
+Références : [VL-117 · Rang](/atelier/lexique#VL-117), [VL-421 · Rail](/atelier/lexique#VL-421), [VL-407 · Port](/atelier/lexique#VL-407), [VL-413 · Tronc commun](/atelier/lexique#VL-413).
 
 <VisualTest {scenario} {source} bind:settings />

@@ -61,7 +61,7 @@ describe('permitted shared trunks', () => {
 						]),
 					];
 					expect(() => AssertRoutes(transform(invalid)).haveOnlyAllowedSharedTrunks()).toThrow(
-						'Quai entrant',
+						'Port entrant',
 					);
 				},
 			),
@@ -92,7 +92,7 @@ describe('permitted shared trunks', () => {
 				[15, 15],
 			]),
 		];
-		expect(() => AssertRoutes(paths).haveOnlyAllowedSharedTrunks()).toThrow('Quai entrant');
+		expect(() => AssertRoutes(paths).haveOnlyAllowedSharedTrunks()).toThrow('Port entrant');
 	});
 	it('allows crossed junction arrivals while keeping unrelated overlap forbidden', () => {
 		const paths = [
@@ -127,11 +127,11 @@ describe('permitted shared trunks', () => {
 			]);
 			expect(() =>
 				AssertRoutes([path, other]).haveOnlyAllowedSharedTrunks([...context, other]),
-			).toThrow('Quai entrant');
+			).toThrow('Port entrant');
 		}
 	});
 	it.each([false, true])(
-		'both crossing participants need exclusive arrival quays (reverse order: %s)',
+		'both crossing participants need exclusive arrival ports (reverse order: %s)',
 		(reverse) => {
 			const horizontal = route('horizontal', 'a', 'c', [
 				[0, 0],
@@ -152,7 +152,7 @@ describe('permitted shared trunks', () => {
 					[defined(path.points.at(-1)).x, 20],
 				]);
 				expect(() => AssertRoutes([...crossing, other]).haveOnlyAllowedSharedTrunks()).toThrow(
-					'Quai entrant',
+					'Port entrant',
 				);
 			}
 		},
