@@ -150,7 +150,9 @@ Le placement visuel nécessite un moteur de layout qui décide notamment :
 - le routage des relations ;
 - la réduction des croisements.
 
-L’[allocation des rails et des quais](layout-routing.md) décrit le calcul actuel, ses contraintes et les extensions de routage restant à spécifier.
+L’[allocation des rails et des ports](layout-routing.md) décrit le calcul actuel, ses contraintes et les extensions de routage restant à spécifier.
+
+La [refonte du moteur par IR et régions](layout-engine-refactor.md) distingue le contenu documentaire des régions de présentation, puis prépare les lanes, les cellules de grille et l’incrémentalité sans faire des coordonnées une nouvelle source de vérité.
 
 ### Cycles
 

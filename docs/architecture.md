@@ -90,15 +90,17 @@ Les listes d’adjacence du graphe sont en lecture seule. Une relation de groupe
 
 `layout/layout-engine.ts` orchestre un calcul couplé de placement et de routage. Un `LayoutWorkspace` existe pour cet appel seulement : il emprunte le graphe et les rangs, conserve la préparation stable, puis possède les dimensions effectives et les boîtes modifiées. Aucun état géométrique ne survit pour être réutilisé par l’appel suivant.
 
+La [cible de refonte par IR et régions](layout-engine-refactor.md) documente le découpage proposé, la boucle bornée entre routage et géométrie, les contrats de mémoïsation et le plan de migration. Elle décrit une cible ; le présent chapitre reste la description du moteur exécuté aujourd’hui.
+
 - `structure/` prépare les composantes, les rangées et les membres directs des groupes. Le parcours itératif de la hiérarchie mémorise racines et profondeurs. Les composantes du graphe classable et celles de l’assemblage des contenants sont distinctes ; leur ordre de parcours est explicite.
 - `geometry/` définit le repère physique, les translations des boîtes possédées et les enveloppes. Il ne connaît ni le workspace ni les décisions de placement et de routage.
 - `placement/` valide les mesures, calcule les métriques de rangées, place les éléments, centre les rangées concernées et construit les enveloppes des groupes. Les maxima principaux sont partagés globalement entre composantes ; les métriques transversales suivent les dimensions effectives.
-- `routing/` sélectionne les couloirs, réserve les quais et les rails, puis matérialise les routes. La réservation et la production de points sont séparées.
+- `routing/` sélectionne les couloirs, réserve les ports et les rails, puis matérialise les routes. La réservation et la production de points sont séparées.
 - `build-layout-result.ts` assemble les résultats dans l’ordre canonique. `inspection/` construit les explications seulement si l’option est activée.
 
 Seul l’orchestrateur importe le type complet du workspace. Placement et routage reçoivent les vues dont ils ont besoin et ne s’importent pas mutuellement. Ces directions internes sont contrôlées par la même politique d’import que les frontières applicatives. La politique d’édition `crossing-aware-order.ts` reste indépendante de la géométrie et du workspace.
 
-Les mesures du contenu restent intactes ; l’agrandissement pour les quais remplace seulement les dimensions effectives. Les translations opèrent sur des boîtes construites pour l’appel. Le résultat en reçoit la propriété à la fin : il n’existe ni copie systématique entre phases, ni double stockage synchronisé des coordonnées. Les tests de propriété vérifient que deux appels, y compris avec inspection et mesures différentes, ne modifient ni leurs entrées ni un résultat précédent.
+Les mesures du contenu restent intactes ; l’agrandissement pour les ports remplace seulement les dimensions effectives. Les translations opèrent sur des boîtes construites pour l’appel. Le résultat en reçoit la propriété à la fin : il n’existe ni copie systématique entre phases, ni double stockage synchronisé des coordonnées. Les tests de propriété vérifient que deux appels, y compris avec inspection et mesures différentes, ne modifient ni leurs entrées ni un résultat précédent.
 
 ## Atelier et production
 
