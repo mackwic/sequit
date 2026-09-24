@@ -85,19 +85,20 @@ export function canonicalCrossingAllocation(
 }
 
 /**
- * One rail order from the interval containment rule: the innermost interval takes track 0. The
- * order keeps one slot per crossing track, free when no relation of the rail uses it.
+ * One order from the interval containment rule: the innermost interval takes track 0. The order
+ * keeps one slot per crossing track, free when no relation of the edge uses it.
  */
 function containmentOrder(
+	input: CrossingAllocationInput,
 	edge: RoutingEdge,
 	ids: readonly string[],
-	spanOf: (relationId: string) => { readonly start: number; readonly end: number },
+	axis: CrossingSpanAxis,
 ): readonly string[] {
 	const allocation = allocateNestedTracks(
 		edge,
-		ids.map((relationId) => ({ relationId, ...spanOf(relationId) })),
+		ids.map((relationId) => ({ relationId, ...spanOn(input, relationId, axis) })),
 	);
-	const order = Array<string>(edge.capacity - 1).fill(FREE_TRACK);
+	const order = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
 	for (const relationId of ids)
 		order[defined(allocation.trackByRelationId.get(relationId))] = relationId;
 	return order;
@@ -124,15 +125,9 @@ export function containmentCrossingAllocation(
 	input: CrossingAllocationInput,
 ): GridCrossingAllocation {
 	return allocationOf(
-		containmentOrder(input.edges.leftRail, input.leftRailIds, (id) =>
-			spanOn(input, id, CrossingSpanAxis.Y),
-		),
-		containmentOrder(input.edges.rightRail, input.rightRailIds, (id) =>
-			spanOn(input, id, CrossingSpanAxis.Y),
-		),
-		containmentOrder(input.edges.topBus, input.crossingIds, (id) =>
-			spanOn(input, id, CrossingSpanAxis.X),
-		),
+		containmentOrder(input, input.edges.leftRail, input.leftRailIds, CrossingSpanAxis.Y),
+		containmentOrder(input, input.edges.rightRail, input.rightRailIds, CrossingSpanAxis.Y),
+		containmentOrder(input, input.edges.topBus, input.crossingIds, CrossingSpanAxis.X),
 		input.incidence,
 	);
 }
