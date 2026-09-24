@@ -146,6 +146,17 @@ describe('Yjs region grid presentation', () => {
 		document.destroy();
 	});
 
+	it('rejects a grid schema on a live policy document', () => {
+		const document = restored(compositionGridDocument());
+		const migrated = readLogicDocument(document);
+		if (!migrated.ok) throw new Error('Expected the composition document to migrate');
+		const policy = restored(migrated.value);
+		policy.getMap(YjsCollection.Meta).set('regionPresentationSchema', 6);
+		expect(paths(policy)).toContain('regionPresentation.schemaVersion');
+		policy.destroy();
+		document.destroy();
+	});
+
 	it('rolls back a rejected edit on a restored replica without advancing its state vector', async () => {
 		const document = restored(compositionGridDocument());
 		const repository = new YjsDocumentRepository(document);
@@ -361,8 +372,8 @@ describe('Yjs region grid presentation', () => {
 				path: 'regionPresentation.regions.grid.grid',
 			},
 			{
-				name: 'short minima',
-				mutate: (document) => regionGrid(document).set('minimumColumnWidths', [700]),
+				name: 'empty minima',
+				mutate: (document) => regionGrid(document).set('minimumColumnWidths', []),
 				path: 'regionPresentation.regions.grid.grid.minimumColumnWidths',
 			},
 			{
@@ -384,7 +395,7 @@ describe('Yjs region grid presentation', () => {
 			},
 			{
 				name: 'invalid coordinate',
-				mutate: (document) => gridCell(document, 'a').set('row', 2),
+				mutate: (document) => gridCell(document, 'a').set('row', 1.5),
 				path: 'regionPresentation.regions.grid.grid.cells.a.row',
 			},
 			{
@@ -437,6 +448,12 @@ describe('Yjs region grid presentation', () => {
 				name: 'wrong composition schema',
 				mutate: (document) =>
 					document.getMap(YjsCollection.Meta).set('regionPresentationSchema', 3),
+				path: 'regionPresentation.schemaVersion',
+			},
+			{
+				name: 'non numeric schema',
+				mutate: (document) =>
+					document.getMap(YjsCollection.Meta).set('regionPresentationSchema', 'grid'),
 				path: 'regionPresentation.schemaVersion',
 			},
 		];

@@ -79,3 +79,58 @@ export function sameBounds(left: Bounds, right: Bounds): boolean {
 		equal(left.height, right.height),
 	].every(Boolean);
 }
+
+export interface GridTrackCell {
+	readonly row: number;
+	readonly column: number;
+	readonly bounds: Bounds;
+}
+
+/** True when the cells share one frame per column and per row and the tracks stay separated. */
+export function gridTracksAligned(cells: readonly GridTrackCell[]): boolean {
+	const columns = [...new Set(cells.map(({ column }) => column))].sort(
+		(left, right) => left - right,
+	);
+	const rows = [...new Set(cells.map(({ row }) => row))].sort((left, right) => left - right);
+	for (const column of columns) {
+		const group = cells.filter((cell) => cell.column === column);
+		const first = defined(group[0]).bounds;
+		if (!group.every(({ bounds }) => equal(bounds.x, first.x) && equal(bounds.width, first.width)))
+			return false;
+	}
+	for (const row of rows) {
+		const group = cells.filter((cell) => cell.row === row);
+		const first = defined(group[0]).bounds;
+		if (
+			!group.every(({ bounds }) => equal(bounds.y, first.y) && equal(bounds.height, first.height))
+		)
+			return false;
+	}
+	const separatedColumns = separated(
+		columns,
+		(column) => cells.filter((cell) => cell.column === column),
+		({ x }) => x,
+		({ x, width }) => x + width,
+	);
+	const separatedRows = separated(
+		rows,
+		(row) => cells.filter((cell) => cell.row === row),
+		({ y }) => y,
+		({ y, height }) => y + height,
+	);
+	return separatedColumns && separatedRows;
+}
+
+function separated(
+	values: readonly number[],
+	group: (value: number) => readonly GridTrackCell[],
+	start: (bounds: Bounds) => number,
+	end: (bounds: Bounds) => number,
+): boolean {
+	for (let index = 1; index < values.length; index += 1) {
+		const previous = group(defined(values[index - 1])).map(({ bounds }) => end(bounds));
+		const current = group(defined(values[index])).map(({ bounds }) => start(bounds));
+		if (!(Math.max(...previous) < Math.min(...current))) return false;
+	}
+	return true;
+}

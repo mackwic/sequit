@@ -11,7 +11,10 @@ import { validateLogicDocument } from '../../../../src/lib/core/document/validat
 import { mapGridPresentation } from '../../../../src/lib/infrastructure/toml/map-grid-presentation';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
-import { persistedGridDocument } from '../../core/layout/grid-cell-fixture';
+import {
+	persistedGridDocument,
+	persistedNxmGridDocument,
+} from '../../core/layout/grid-cell-fixture';
 
 function paths(document: LogicDocument): readonly string[] {
 	const result = validateLogicDocument(document);
@@ -165,7 +168,7 @@ describe('TOML grid presentation', () => {
 				path: 'regionPresentation.grid.cells',
 			},
 			{
-				mutate: (document) => Reflect.set(requiredGrid(document), 'minimumRowHeights', [50]),
+				mutate: (document) => Reflect.set(requiredGrid(document), 'minimumRowHeights', []),
 				path: 'regionPresentation.grid.minimumRowHeights',
 			},
 			{
@@ -175,6 +178,20 @@ describe('TOML grid presentation', () => {
 			{
 				mutate: (document) => Reflect.set(requiredGrid(document), 'cells', [null, {}, 3, false]),
 				path: 'regionPresentation.grid.cells',
+			},
+			{
+				mutate: (document) => Reflect.set(requiredGrid(document), 'cells', 'broken'),
+				path: 'regionPresentation.grid.cells',
+			},
+			{
+				mutate: (document) =>
+					Reflect.set(requiredGrid(document), 'cells', [
+						{ regionId: 'a', row: 0, column: 0 },
+						{ regionId: 'b', row: 0, column: 1 },
+						{ regionId: 'c', row: 1, column: 0 },
+						{ regionId: 'd', row: 1.5, column: 1 },
+					]),
+				path: 'regionPresentation.grid.cells.d.row',
 			},
 			{
 				mutate: (document) =>
@@ -206,7 +223,7 @@ describe('TOML grid presentation', () => {
 		const invalidValues: readonly { readonly value: unknown; readonly path: string }[] = [
 			{ value: null, path: 'regionPresentation.grid' },
 			{
-				value: { ...valid, minimumColumnWidths: [700] },
+				value: { ...valid, minimumColumnWidths: [] },
 				path: 'regionPresentation.grid.minimumColumnWidths',
 			},
 			{
@@ -227,7 +244,7 @@ describe('TOML grid presentation', () => {
 				path: 'regionPresentation.grid.cells.a.row',
 			},
 			{
-				value: { ...valid, cells: { a: { row: 0, column: 3 } } },
+				value: { ...valid, cells: { a: { row: 0, column: -1 } } },
 				path: 'regionPresentation.grid.cells.a.column',
 			},
 			{
@@ -243,5 +260,47 @@ describe('TOML grid presentation', () => {
 				path,
 			).toContain(path);
 		}
+	});
+
+	it('round trips a persisted three by two grid and reads the historical schema', () => {
+		const source = persistedNxmGridDocument();
+		expect(paths(source)).toEqual([]);
+		const serialized = serializeSequitToml(source);
+		expect(serialized).toContain('persistenceFormat = 5');
+		expect(serialized).toContain(`schemaVersion = ${GRID_REGION_PRESENTATION_SCHEMA}`);
+		expect(serialized).toContain('[regionPresentation.grid.cells.f]');
+		const parsed = parseSequitToml(serialized);
+		expect(parsed).toMatchObject({
+			ok: true,
+			value: {
+				persistenceFormat: GRID_PERSISTENCE_FORMAT,
+				regionPresentation: {
+					grid: {
+						minimumColumnWidths: [180, 120, 140],
+						minimumRowHeights: [70, 90],
+					},
+				},
+			},
+		});
+		if (!parsed.ok) throw new Error('Expected the three by two grid to parse');
+		expect(
+			parsed.value.regionPresentation?.grid?.cells.map(
+				({ regionId, row, column }) => `${regionId}:${row}:${column}`,
+			),
+		).toEqual(['a:0:0', 'b:0:1', 'c:0:2', 'd:1:0', 'e:1:1', 'f:1:2']);
+		expect(parseSequitToml(serializeSequitToml(parsed.value))).toEqual(parsed);
+		const historical = serialized.replace(
+			`schemaVersion = ${GRID_REGION_PRESENTATION_SCHEMA}`,
+			'schemaVersion = 2',
+		);
+		const migrated = parseSequitToml(historical);
+		expect(migrated).toMatchObject({
+			ok: true,
+			value: { regionPresentation: { schemaVersion: GRID_REGION_PRESENTATION_SCHEMA } },
+		});
+		if (!migrated.ok) throw new Error('Expected the historical grid schema to parse');
+		expect(serializeSequitToml(migrated.value)).toContain(
+			`schemaVersion = ${GRID_REGION_PRESENTATION_SCHEMA}`,
+		);
 	});
 });

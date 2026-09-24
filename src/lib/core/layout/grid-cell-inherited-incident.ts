@@ -2,6 +2,7 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
 import {
 	CROSSING_SPACING,
+	crossingEndpointSide,
 	crossingRailX,
 	gridRoutingEdges,
 	reservedRailTrack,
@@ -20,6 +21,8 @@ import {
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
 import { RegionPortalSide } from './region-composition-types';
+import { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import { UnknownRegionLeafLayoutError } from './region-leaf-layout';
 
 interface GridIncidentInput {
 	readonly context: RecursiveContext;
@@ -27,6 +30,12 @@ interface GridIncidentInput {
 	readonly incidentSides: IncidentSides;
 	readonly selected: GridCellSelected;
 	readonly children: ReadonlyMap<string, SolvedRecursiveRegion>;
+}
+
+/** The grid extent a child incident is continued through: its columns and rows. */
+interface GridExtent {
+	readonly columns: number;
+	readonly rows: number;
 }
 
 function framedPoint(
@@ -88,26 +97,29 @@ interface ContinuationInput {
 
 function outerRailX(grid: GridIncidentInput, cell: GridCellPlacement): number {
 	const crossingCount = grid.selected.portals.length / 2;
-	const edges = gridRoutingEdges(grid.regionId, crossingCount);
-	const track = reservedRailTrack(edges);
-	if (cell.column === 0) {
-		const left = defined(grid.selected.cells.find(({ column }) => column === 0)).bounds.x;
-		return crossingRailX(edges.leftRail, left, RegionPortalSide.Left, track);
-	}
-	const right =
-		defined(grid.selected.cells.find(({ column }) => column === 1)).bounds.x +
-		defined(grid.selected.columnWidths[1]);
-	return crossingRailX(edges.leftRail, right, RegionPortalSide.Right, track);
+	const columnCount = grid.selected.columnWidths.length;
+	const edges = gridRoutingEdges(grid.regionId, columnCount, crossingCount);
+	const edge = defined(edges.gutters[cell.column]);
+	const track = reservedRailTrack(edge);
+	const side = crossingEndpointSide(cell.column, columnCount);
+	let frameX = cell.bounds.x + cell.bounds.width;
+	if (side === RegionPortalSide.Left) frameX = cell.bounds.x;
+	return crossingRailX(edge, frameX, side, track);
 }
 
 function childPortalApproach(
 	cell: GridCellPlacement,
 	childPortal: RegionIncidentPath['portals'][number],
+	columns: number,
+	rows: number,
 ): { readonly points: Point[]; readonly y: number } {
 	const points: Point[] = [childPortal.point];
 	let y = childPortal.point.y;
-	const fromLeftToOuterRail = childPortal.side === RegionPortalSide.Left && cell.column === 1;
-	const fromRightToOuterRail = childPortal.side === RegionPortalSide.Right && cell.column === 0;
+	const outward = crossingEndpointSide(cell.column, columns);
+	const fromLeftToOuterRail =
+		childPortal.side === RegionPortalSide.Left && outward === RegionPortalSide.Right;
+	const fromRightToOuterRail =
+		childPortal.side === RegionPortalSide.Right && outward === RegionPortalSide.Left;
 	const innerLateral = fromLeftToOuterRail || fromRightToOuterRail;
 	if (innerLateral) {
 		let offset = -CROSSING_SPACING;
@@ -115,7 +127,7 @@ function childPortalApproach(
 		const gapX = childPortal.point.x + offset;
 		points.push({ x: gapX, y });
 		y = cell.bounds.y - CROSSING_SPACING;
-		if (cell.row === 1) y = cell.bounds.y + cell.bounds.height + CROSSING_SPACING;
+		if (cell.row === rows - 1) y = cell.bounds.y + cell.bounds.height + CROSSING_SPACING;
 		points.push({ x: gapX, y });
 		return { points, y };
 	}
@@ -131,26 +143,30 @@ function outerPortalY(
 	side: RegionPortalSide,
 	approachY: number,
 ): number {
-	const exitsLeftFromRightCell = side === RegionPortalSide.Left && cell.column === 1;
-	const exitsRightFromLeftCell = side === RegionPortalSide.Right && cell.column === 0;
+	const outward = crossingEndpointSide(cell.column, grid.selected.columnWidths.length);
+	const exitsLeftFromRightCell =
+		side === RegionPortalSide.Left && outward === RegionPortalSide.Right;
+	const exitsRightFromLeftCell =
+		side === RegionPortalSide.Right && outward === RegionPortalSide.Left;
 	const oppositeColumn = exitsLeftFromRightCell || exitsRightFromLeftCell;
 	if (oppositeColumn) return defined(grid.selected.cells[0]).bounds.y / 2;
 	return approachY;
 }
 
-function continuation({
-	grid,
-	cell,
-	childPortal,
-	side,
-	relationId,
-	endpointId,
-}: ContinuationInput): {
+function continuation(
+	{ grid, cell, childPortal, side, relationId, endpointId }: ContinuationInput,
+	extent: GridExtent,
+): {
 	readonly points: readonly Point[];
 	readonly portal: RegionIncidentPath['portals'][number];
 } {
 	const railX = outerRailX(grid, cell);
-	const { points, y: approachY } = childPortalApproach(cell, childPortal);
+	const { points, y: approachY } = childPortalApproach(
+		cell,
+		childPortal,
+		extent.columns,
+		extent.rows,
+	);
 	points.push({ x: railX, y: approachY });
 	const portalY = outerPortalY(grid, cell, side, approachY);
 	const portal = boundaryPortal({
@@ -175,6 +191,10 @@ export function gridCellInheritedIncidentPaths(
 	input: GridIncidentInput,
 ): ReadonlyMap<string, RegionIncidentPath> {
 	const paths = new Map<string, RegionIncidentPath>();
+	const extent: GridExtent = {
+		columns: input.selected.columnWidths.length,
+		rows: input.selected.rowHeights.length,
+	};
 	const ordered = [...input.incidentSides].sort(([a], [b]) => compareCanonicalStrings(a, b));
 	for (const [relationId, sides] of ordered) {
 		const owned = defined(input.context.ownershipByRelationId.get(relationId));
@@ -183,6 +203,14 @@ export function gridCellInheritedIncidentPaths(
 		if (source) endpointId = owned.relation.from;
 		const childId = directChild(input.context, input.regionId, endpointId);
 		const cell = defined(input.selected.cells.find(({ id }) => id === childId));
+		const lastColumn = extent.columns - 1;
+		if (cell.column > 0 && cell.column < lastColumn)
+			throw new UnknownRegionLeafLayoutError(
+				`Grid cell ${cell.id} has no gutter reaching the region frame.`,
+				RegionGeometryDiagnosticCode.GridInnerGutterMissing,
+				undefined,
+				input.regionId,
+			);
 		const child = defined(input.children.get(childId));
 		const path = extendedToCellFrame(
 			translatedIncidentPath(defined(child.incidentPaths.get(relationId)), cell.translation),
@@ -193,14 +221,17 @@ export function gridCellInheritedIncidentPaths(
 		if (source) childPortal = path.portals.at(-1);
 		childPortal = defined(childPortal);
 		const side = defined(sides[0]);
-		const { points, portal } = continuation({
-			grid: input,
-			cell,
-			childPortal,
-			side,
-			relationId,
-			endpointId,
-		});
+		const { points, portal } = continuation(
+			{
+				grid: input,
+				cell,
+				childPortal,
+				side,
+				relationId,
+				endpointId,
+			},
+			extent,
+		);
 		let orientedPoints = [...points].reverse();
 		let pieces = [{ relationId, regionId: input.regionId, points: orientedPoints }, ...path.pieces];
 		let portals = [portal, ...path.portals];

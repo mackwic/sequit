@@ -1,5 +1,9 @@
 import { defined, type LogicRelation } from '../document/logic-document';
-import { crossingIncidence, crossingPortPositions } from './grid-cell-crossing';
+import {
+	crossingEndpointSide,
+	crossingIncidence,
+	crossingPortPositions,
+} from './grid-cell-crossing';
 import { equal, samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
@@ -16,9 +20,11 @@ function outerPortX(bounds: Bounds, side: RegionPortalSide.Left | RegionPortalSi
 	return bounds.x + bounds.width;
 }
 
-function sideOf(cell: GridCellPlacement): RegionPortalSide.Left | RegionPortalSide.Right {
-	if (cell.column === 0) return RegionPortalSide.Left;
-	return RegionPortalSide.Right;
+function sideOf(
+	cell: GridCellPlacement,
+	columnCount: number,
+): RegionPortalSide.Left | RegionPortalSide.Right {
+	return crossingEndpointSide(cell.column, columnCount);
 }
 
 export function validateCrossPorts(
@@ -39,13 +45,19 @@ export function validateCrossPorts(
 		);
 		return equal(point.x, x) && positions.some((position) => equal(point.y, position));
 	};
+	const columnCount = candidate.columnWidths.length;
 	const sourceOnFace = onFace(
 		first,
-		outerPortX(source, sideOf(context.fromCell)),
+		outerPortX(source, sideOf(context.fromCell, columnCount)),
 		route.from,
 		source,
 	);
-	const targetOnFace = onFace(last, outerPortX(target, sideOf(context.toCell)), route.to, target);
+	const targetOnFace = onFace(
+		last,
+		outerPortX(target, sideOf(context.toCell, columnCount)),
+		route.to,
+		target,
+	);
 	if (!sourceOnFace || !targetOnFace)
 		return `Cross-cell relation ${route.id} has invalid endpoint ports.`;
 	return undefined;
@@ -82,7 +94,7 @@ function checkPortal(portal: GridCellPortal, candidate: GridCellSelected): boole
 	const cell = candidate.cells.find(({ id }) => id === portal.cellId);
 	const knownCell = defined(cell);
 	if (portal.regionId !== knownCell.id) return false;
-	if (portal.side !== sideOf(knownCell)) return false;
+	if (portal.side !== sideOf(knownCell, candidate.columnWidths.length)) return false;
 	let expectedLocalX = 0;
 	if (portal.side === RegionPortalSide.Right) expectedLocalX = knownCell.bounds.width;
 	if (!equal(portal.localPoint.x, expectedLocalX)) return false;

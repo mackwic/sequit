@@ -35,26 +35,35 @@ function readMinimums(
 	field: GridMinimumField,
 	gridPath: readonly string[],
 	context: ReadContext,
-): readonly [number, number] | undefined {
+): readonly number[] | undefined {
 	const path = [...gridPath, field];
-	if (!isUnknownArray(value) || value.length !== 2) {
-		invalid(context, 'Grid track minima must contain exactly two values', path);
+	if (!isUnknownArray(value) || value.length === 0) {
+		invalid(context, 'Grid track minima must contain at least one value', path);
 		return undefined;
 	}
-	const first = readMinimum(value[0], [...path, '0'], context);
-	const second = readMinimum(value[1], [...path, '1'], context);
-	if (first === undefined || second === undefined) return undefined;
-	return [first, second];
+	const minima: number[] = [];
+	for (const [index, raw] of value.entries()) {
+		const minimum = readMinimum(raw, [...path, String(index)], context);
+		if (minimum === undefined) return undefined;
+		minima.push(minimum);
+	}
+	return minima;
 }
 
 function readPosition(
 	value: unknown,
 	path: readonly string[],
 	context: ReadContext,
-): 0 | 1 | undefined {
-	if (value === 0 || value === 1) return value;
-	invalid(context, 'Grid coordinate must be 0 or 1', path);
-	return undefined;
+): number | undefined {
+	if (typeof value !== 'number') {
+		invalid(context, 'Grid coordinate must be a nonnegative integer', path);
+		return undefined;
+	}
+	if (!Number.isSafeInteger(value) || value < 0) {
+		invalid(context, 'Grid coordinate must be a nonnegative integer', path);
+		return undefined;
+	}
+	return value;
 }
 
 function readCell(

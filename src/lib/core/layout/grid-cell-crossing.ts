@@ -25,38 +25,64 @@ const BUS_ANCHOR_Y = TOP_BUS_Y - CROSSING_SPACING;
 
 /** The declared routing edges of one grid region. */
 export interface GridRoutingEdges {
-	readonly leftRail: RoutingEdge;
-	readonly rightRail: RoutingEdge;
+	/**
+	 * One vertical gutter edge per column, in column order. A column exits through its gutter: the
+	 * gutters of the leading columns sit between two columns, the last sits on the right frame.
+	 */
+	readonly gutters: readonly RoutingEdge[];
 	readonly topBus: RoutingEdge;
+	/** Total crossings the frame margin and every gutter reserve track space for. */
+	readonly crossingCount: number;
 }
 
 /**
- * Rails and bus of one grid region. Each rail owns the crossing tracks plus one outermost track:
- * that reserved track is the one the margin pays for, and an inherited incident uses it to leave
- * the grid without entering the crossing tracks.
+ * Gutters and bus of one grid region. Every gutter owns the crossing tracks plus one outermost
+ * track: that reserved track is the one the margin pays for, and an inherited incident uses it to
+ * leave the grid without entering the crossing tracks. The last gutter sits on the right frame, so
+ * the leading columns all leave towards the left.
  */
-export function gridRoutingEdges(regionId: string, crossingCount: number): GridRoutingEdges {
-	const rail: RoutingEdge = {
+export function gridRoutingEdges(
+	regionId: string,
+	columnCount: number,
+	crossingCount: number,
+): GridRoutingEdges {
+	const gutter: RoutingEdge = {
 		ownerId: regionId,
 		capacity: crossingCount + 1,
 		spacing: CROSSING_SPACING,
 	};
-	return { leftRail: rail, rightRail: rail, topBus: { ...rail, capacity: crossingCount } };
+	return {
+		gutters: Array.from({ length: Math.max(1, columnCount) }, () => gutter),
+		topBus: { ...gutter, capacity: crossingCount },
+		crossingCount,
+	};
 }
 
-/** The outermost rail track: reserved for an inherited incident or an added crossing track. */
-export function reservedRailTrack({ leftRail }: GridRoutingEdges): number {
-	return leftRail.capacity - 1;
+/** The outermost gutter track: reserved for an inherited incident or an added crossing track. */
+export function reservedRailTrack(edge: RoutingEdge): number {
+	return edge.capacity - 1;
 }
 
 /**
- * The margin the rail edges reserve: OUTER_RAIL_OFFSET clear of the first crossing track on each
- * side, plus one CROSSING_SPACING between the crossing tracks. The far OUTER_RAIL_OFFSET covers
- * the reserved track and its clearance, so no rail track ever leaves the composed canvas.
+ * The margin one frame edge reserves: OUTER_RAIL_OFFSET clear of the first crossing track, plus one
+ * CROSSING_SPACING per additional crossing track. The far OUTER_RAIL_OFFSET covers the reserved
+ * track and its clearance, so no rail track ever leaves the composed canvas.
  */
-export function gridMargin({ leftRail }: GridRoutingEdges): number {
-	const span = CROSSING_SPACING * Math.max(0, leftRail.capacity - 2);
+export function gridMargin({ crossingCount }: GridRoutingEdges): number {
+	const span = CROSSING_SPACING * Math.max(0, crossingCount - 1);
 	return OUTER_RAIL_OFFSET * 2 + span;
+}
+
+/**
+ * The side a column leaves by: every gutter but the last sits on the left of its column, and the
+ * last gutter is the right frame.
+ */
+export function crossingEndpointSide(
+	column: number,
+	columnCount: number,
+): RegionPortalSide.Left | RegionPortalSide.Right {
+	if (column < columnCount - 1) return RegionPortalSide.Left;
+	return RegionPortalSide.Right;
 }
 
 /** Rail x: OUTER_RAIL_OFFSET + CROSSING_SPACING * track outside the grid frame. */

@@ -7,6 +7,7 @@ import {
 	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 	type RegionLayoutPresentation,
+	regionPresentationSchemaFor,
 	SequitDiagnosticCode,
 } from '../../core/document/logic-document';
 import { mapGridPresentation } from './map-grid-presentation';
@@ -118,7 +119,8 @@ export function mapRegionPresentation(
 	const path = ['regionPresentation'];
 	const root = table(value, path, context);
 	if (root === undefined) return undefined;
-	const schema = root['schemaVersion'];
+	const rawSchema = root['schemaVersion'];
+	const schema = regionPresentationSchemaFor(rawSchema);
 	const gridSchema = schema === GRID_REGION_PRESENTATION_SCHEMA;
 	const laneSchema = schema === REGION_LANE_PRESENTATION_SCHEMA;
 	const compositionSchema = schema === REGION_COMPOSITION_PRESENTATION_SCHEMA;
@@ -134,7 +136,7 @@ export function mapRegionPresentation(
 	if (!validSchema)
 		context.diagnostics.push({
 			code: SequitDiagnosticCode.InvalidValue,
-			message: `Unsupported region presentation schema: ${String(schema)}`,
+			message: `Unsupported region presentation schema: ${String(rawSchema)}`,
 			path: [...path, 'schemaVersion'],
 		});
 	if (expectedSchema !== undefined && schema !== expectedSchema)

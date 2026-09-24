@@ -7,7 +7,9 @@ import {
 	type LayoutRegionDefinition,
 	type LogicDocument,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_LANE_PRESENTATION_SCHEMA,
 	REGION_POLICY_PERSISTENCE_FORMAT,
 	REGION_POLICY_PRESENTATION_SCHEMA,
 	type RegionLanePresentation,
@@ -231,11 +233,19 @@ export function migrateLegacyRegionDefinitions(
 	});
 }
 
-/** Materialize the old implicit choice once at the persistence boundary. */
+/**
+ * Materialize the old implicit choice once at the persistence boundary. Only the lane and the
+ * composition formats carry the old implicit policy; the legacy region and grid formats do not.
+ */
 export function migrateLegacyRegionPolicyDocument(document: LogicDocument): LogicDocument {
 	const presentation = document.regionPresentation;
 	if (presentation === undefined || hasExplicitRegionPolicy(document)) return document;
-	if (presentation.schemaVersion < 3) return document;
+	const schema = presentation.schemaVersion;
+	if (
+		schema !== REGION_LANE_PRESENTATION_SCHEMA &&
+		schema !== REGION_COMPOSITION_PRESENTATION_SCHEMA
+	)
+		return document;
 	const rootFields: { presentation?: NonNullable<LogicDocument['presentation']> } = {};
 	if (document.presentation !== undefined)
 		rootFields.presentation = { ...document.presentation, policy: LayoutPolicy.SharedLanes };

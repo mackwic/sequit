@@ -25,7 +25,7 @@ function isUnknownArray(value: unknown): value is readonly unknown[] {
 	return Array.isArray(value);
 }
 
-function validMinimum(value: unknown): boolean {
+function validMinimum(value: unknown): value is number {
 	if (typeof value !== 'number') return false;
 	return Number.isFinite(value) && value >= 0;
 }
@@ -35,22 +35,29 @@ function validateMinimums(
 	field: GridMinimumField,
 	diagnostics: SequitDiagnostic[],
 	scope: GridValidationScope,
-): void {
+): readonly number[] | undefined {
 	const path = [...scope.path, field];
-	if (!isUnknownArray(value) || value.length !== 2) {
-		invalid(diagnostics, 'Grid track minima must contain exactly two values', path);
-		return;
+	if (!isUnknownArray(value) || value.length === 0) {
+		invalid(diagnostics, 'Grid track minima must contain at least one value', path);
+		return undefined;
 	}
-	for (const [index, minimum] of value.entries())
-		if (!validMinimum(minimum))
+	const minima: number[] = [];
+	for (const [index, minimum] of value.entries()) {
+		if (!validMinimum(minimum)) {
 			invalid(diagnostics, 'Grid track minima must be finite nonnegative numbers', [
 				...path,
 				String(index),
 			]);
+			return undefined;
+		}
+		minima.push(minimum);
+	}
+	return minima;
 }
 
-function validPosition(value: unknown): value is 0 | 1 {
-	return value === 0 || value === 1;
+function validPosition(value: unknown): value is number {
+	if (typeof value !== 'number') return false;
+	return Number.isSafeInteger(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -94,9 +101,9 @@ function validateCell(value: unknown, context: CellValidationContext): void {
 	const row = value['row'];
 	const column = value['column'];
 	if (!validPosition(row))
-		invalid(context.diagnostics, 'Grid row must be 0 or 1', [...path, 'row']);
+		invalid(context.diagnostics, 'Grid row must be a nonnegative integer', [...path, 'row']);
 	if (!validPosition(column))
-		invalid(context.diagnostics, 'Grid column must be 0 or 1', [...path, 'column']);
+		invalid(context.diagnostics, 'Grid column must be a nonnegative integer', [...path, 'column']);
 	if (!validPosition(row) || !validPosition(column)) return;
 	const slot = `${row}:${column}`;
 	if (context.slots.has(slot))
@@ -111,8 +118,8 @@ function validateCells(
 	scope: GridValidationScope,
 ): ReadonlySet<string> {
 	const assigned = new Set<string>();
-	if (!isUnknownArray(value) || value.length !== 4) {
-		invalid(diagnostics, 'A two by two grid requires exactly four cells', [...scope.path, 'cells']);
+	if (!isUnknownArray(value) || value.length === 0) {
+		invalid(diagnostics, 'A grid requires at least one cell', [...scope.path, 'cells']);
 		return assigned;
 	}
 	let eligible = regions;
@@ -130,6 +137,38 @@ function validateCells(
 	))
 		validateCell(cell, context);
 	return assigned;
+}
+
+/** The cells must cover exactly the rectangle the two minima arrays describe. */
+function validateRectangle(
+	value: unknown,
+	minima: readonly [readonly number[] | undefined, readonly number[] | undefined],
+	diagnostics: SequitDiagnostic[],
+	scope: GridValidationScope,
+): void {
+	const [columnWidths, rowHeights] = minima;
+	if (columnWidths === undefined || rowHeights === undefined) return;
+	const path = [...scope.path, 'cells'];
+	if (!isUnknownArray(value)) {
+		invalid(diagnostics, 'Grid cells must cover exactly one cell rectangle', path);
+		return;
+	}
+	const rows = new Set<number>();
+	const columns = new Set<number>();
+	for (const cell of value) {
+		if (!isRecord(cell)) return;
+		const row = cell['row'];
+		const column = cell['column'];
+		if (!validPosition(row) || !validPosition(column)) return;
+		rows.add(row);
+		columns.add(column);
+	}
+	const sized = rows.size === rowHeights.length && columns.size === columnWidths.length;
+	const tiled = value.length === rowHeights.length * columnWidths.length;
+	const rowsOrdered = Math.max(...rows) === rows.size - 1;
+	const columnsOrdered = Math.max(...columns) === columns.size - 1;
+	const covers = sized && tiled && rowsOrdered && columnsOrdered;
+	if (!covers) invalid(diagnostics, 'Grid cells must cover exactly one cell rectangle', path);
 }
 
 function validateRegions(
@@ -170,18 +209,19 @@ export function validateGridPresentation(
 		invalid(diagnostics, 'Grid presentation must be an object', scope.path);
 		return;
 	}
-	validateMinimums(
+	const columnWidths = validateMinimums(
 		grid[GridMinimumField.ColumnWidths],
 		GridMinimumField.ColumnWidths,
 		diagnostics,
 		scope,
 	);
-	validateMinimums(
+	const rowHeights = validateMinimums(
 		grid[GridMinimumField.RowHeights],
 		GridMinimumField.RowHeights,
 		diagnostics,
 		scope,
 	);
 	const assigned = validateCells(grid['cells'], regions, diagnostics, scope);
+	validateRectangle(grid['cells'], [columnWidths, rowHeights], diagnostics, scope);
 	validateRegions(regions, assigned, diagnostics, scope);
 }

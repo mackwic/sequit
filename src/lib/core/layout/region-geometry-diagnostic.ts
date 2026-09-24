@@ -58,6 +58,10 @@ export enum RegionGeometryDiagnosticCode {
 	GridCrossingEntersCell = 'grid-crossing-enters-cell',
 	GridCrossingEntersElement = 'grid-crossing-enters-element',
 	GridCrossingOverlap = 'grid-crossing-overlap',
+	/** An inner-column gutter cannot carry an incident to the region frame. */
+	GridInnerGutterMissing = 'grid-inner-gutter-missing',
+	/** A crossing that would need a horizontal gutter between two rows: not modelled yet. */
+	GridRowGutterMissing = 'grid-row-gutter-missing',
 }
 
 export enum RegionIncidentRole {

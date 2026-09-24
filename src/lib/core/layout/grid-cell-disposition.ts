@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { GridCellDefinition, GridCellInput, GridCellPlacement } from './grid-cell-types';
 import type { LayoutResult, Point } from './layout-types';
@@ -13,61 +14,78 @@ export interface SolvedGridCell {
 
 export interface GridCellDisposition {
 	readonly cells: readonly GridCellPlacement[];
-	readonly columnWidths: readonly [number, number];
-	readonly rowHeights: readonly [number, number];
+	readonly columnWidths: readonly number[];
+	readonly rowHeights: readonly number[];
 	readonly gridRight: number;
 	readonly gridBottom: number;
 }
 
-function columnExtent(children: readonly SolvedGridCell[], column: 0 | 1, minimum: number): number {
+function columnExtent(
+	children: readonly SolvedGridCell[],
+	column: number,
+	minimum: number,
+): number {
 	const demands = children
 		.filter(({ cell }) => cell.column === column)
 		.map(({ layout }) => layout.width + CELL_PADDING * 2);
 	return Math.max(minimum, ...demands);
 }
 
-function rowExtent(children: readonly SolvedGridCell[], row: 0 | 1, minimum: number): number {
+function rowExtent(children: readonly SolvedGridCell[], row: number, minimum: number): number {
 	const demands = children
 		.filter(({ cell }) => cell.row === row)
 		.map(({ layout }) => layout.height + CELL_PADDING * 2);
 	return Math.max(minimum, ...demands);
 }
 
+/**
+ * The gap after column `column` hosts the gutter of column `column + 1`. A gutter between two
+ * columns reserves the same clearance as the frame margin; the last gutters sit on the frame.
+ */
+function columnGap(column: number, columnCount: number, margin: number): number {
+	if (column + 1 < columnCount - 1) return Math.max(TRACK_GAP, margin);
+	return TRACK_GAP;
+}
+
 function cellOrigin(
 	cell: GridCellDefinition,
-	columnWidths: readonly [number, number],
-	rowHeights: readonly [number, number],
+	columnWidths: readonly number[],
+	rowHeights: readonly number[],
 	margin: number,
 ): Point {
 	let x = margin;
+	for (let column = 0; column < cell.column; column += 1)
+		x += defined(columnWidths[column]) + columnGap(column, columnWidths.length, margin);
 	let y = margin;
-	if (cell.column === 1) x += columnWidths[0] + TRACK_GAP;
-	if (cell.row === 1) y += rowHeights[0] + TRACK_GAP;
+	for (let row = 0; row < cell.row; row += 1) y += defined(rowHeights[row]) + TRACK_GAP;
 	return { x, y };
 }
 
-/** Place four independently solved children into extensible two by two tracks. */
+/** Place solved children into extensible column and row tracks. */
 export function layoutGridCellDisposition(
 	children: readonly SolvedGridCell[],
 	input: GridCellInput,
 	margin: number,
 ): GridCellDisposition {
-	const columnWidths: [number, number] = [
-		columnExtent(children, 0, input.minimumColumnWidths[0]),
-		columnExtent(children, 1, input.minimumColumnWidths[1]),
-	];
-	const rowHeights: [number, number] = [
-		rowExtent(children, 0, input.minimumRowHeights[0]),
-		rowExtent(children, 1, input.minimumRowHeights[1]),
-	];
-	const gridRight = margin + columnWidths[0] + TRACK_GAP + columnWidths[1];
+	const columnWidths = input.minimumColumnWidths.map((minimum, column) =>
+		columnExtent(children, column, minimum),
+	);
+	const rowHeights = input.minimumRowHeights.map((minimum, row) =>
+		rowExtent(children, row, minimum),
+	);
+	let gridRight = margin;
+	for (const [column, width] of columnWidths.entries()) {
+		gridRight += width;
+		if (column + 1 < columnWidths.length)
+			gridRight += columnGap(column, columnWidths.length, margin);
+	}
 	const cells: GridCellPlacement[] = children.map(({ cell, layout, ranks }) => {
 		const origin = cellOrigin(cell, columnWidths, rowHeights, margin);
 		const bounds = {
 			x: origin.x,
 			y: origin.y,
-			width: columnWidths[cell.column],
-			height: rowHeights[cell.row],
+			width: defined(columnWidths[cell.column]),
+			height: defined(rowHeights[cell.row]),
 		};
 		return {
 			id: cell.id,
@@ -80,6 +98,8 @@ export function layoutGridCellDisposition(
 			localRanks: ranks,
 		};
 	});
-	const gridBottom = margin + rowHeights[0] + TRACK_GAP + rowHeights[1];
+	const rowTotal = rowHeights.reduce((total, height) => total + height, 0);
+	const rowGaps = TRACK_GAP * Math.max(0, rowHeights.length - 1);
+	const gridBottom = margin + rowTotal + rowGaps;
 	return { cells, columnWidths, rowHeights, gridRight, gridBottom };
 }

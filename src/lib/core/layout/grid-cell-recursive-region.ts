@@ -1,6 +1,6 @@
 import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
-import { gridMargin, gridRoutingEdges } from './grid-cell-crossing';
+import { crossingEndpointSide, gridMargin, gridRoutingEdges } from './grid-cell-crossing';
 import { gridCrossingOwnedRoutes } from './grid-cell-crossing-routing';
 import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
 import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
@@ -25,9 +25,8 @@ function gridCellInput(context: RecursiveContext, regionId: string): GridCellInp
 	const region = defined(context.model.regionsById.get(regionId));
 	const grid = defined(region.definition.grid);
 	const childIds = new Set(region.childIds);
-	const wrongCount = childIds.size !== 4 || grid.cells.length !== 4;
 	const foreignCell = grid.cells.some(({ regionId: id }) => !childIds.has(id));
-	if (wrongCount || foreignCell)
+	if (grid.cells.length !== childIds.size || foreignCell)
 		throw new UnsupportedRegionLeafLayoutError(`Region ${regionId} has an invalid grid cell set.`);
 	const cells = grid.cells.map((cell) => {
 		const { regionId: id, row, column } = cell;
@@ -98,18 +97,19 @@ const GRID_INCIDENT_SIDES: readonly RegionPortalSide[] = [
 ];
 
 function cellTouchesSide(
-	cell: { readonly row: 0 | 1; readonly column: 0 | 1 },
+	cell: { readonly row: number; readonly column: number },
 	side: RegionPortalSide,
+	extent: { readonly rows: number; readonly columns: number },
 ): boolean {
 	switch (side) {
 		case RegionPortalSide.Top:
 			return cell.row === 0;
 		case RegionPortalSide.Bottom:
-			return cell.row === 1;
+			return cell.row === extent.rows - 1;
 		case RegionPortalSide.Left:
 			return cell.column === 0;
 		case RegionPortalSide.Right:
-			return cell.column === 1;
+			return cell.column === extent.columns - 1;
 		default:
 			throw new Error('Unknown grid side.');
 	}
@@ -119,7 +119,7 @@ function gridIncidentSides(input: ArrangementIncidentInput): readonly RegionPort
 	const region = defined(input.context.model.regionsById.get(input.regionId));
 	const grid = defined(region.definition.grid);
 	if (
-		grid.cells.length !== 4 ||
+		grid.cells.length !== region.childIds.length ||
 		grid.cells.some(({ regionId }) => !region.childIds.includes(regionId))
 	)
 		throw new UnsupportedRegionLeafLayoutError(
@@ -130,10 +130,13 @@ function gridIncidentSides(input: ArrangementIncidentInput): readonly RegionPort
 		throw new UnsupportedRegionLeafLayoutError(
 			`Region ${input.regionId} has an invalid grid cell set.`,
 		);
-	let outward = RegionPortalSide.Left;
-	if (cell.column === 1) outward = RegionPortalSide.Right;
+	const extent = {
+		rows: Math.max(0, ...grid.cells.map(({ row }) => row + 1)),
+		columns: Math.max(0, ...grid.cells.map(({ column }) => column + 1)),
+	};
+	const outward = crossingEndpointSide(cell.column, extent.columns);
 	if (input.inheritedSides === undefined) return [outward];
-	const direct = input.inheritedSides.filter((side) => cellTouchesSide(cell, side));
+	const direct = input.inheritedSides.filter((side) => cellTouchesSide(cell, side, extent));
 	return [...new Set([...direct, outward, ...input.inheritedSides, ...GRID_INCIDENT_SIDES])];
 }
 
@@ -161,7 +164,9 @@ function placeGrid(input: ArrangementPlaceInput): GridPlaced {
 			);
 		return { cell, layout: solved.layout, ranks: solved.ranks };
 	});
-	const margin = gridMargin(gridRoutingEdges(input.regionId, input.crossings.length));
+	const margin = gridMargin(
+		gridRoutingEdges(input.regionId, gridInput.minimumColumnWidths.length, input.crossings.length),
+	);
 	return {
 		graph,
 		input: gridInput,

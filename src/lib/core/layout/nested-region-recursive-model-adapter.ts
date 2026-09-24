@@ -65,8 +65,6 @@ function regionPolicyFailure(
 	model: RegionCompositionModel,
 ): string | undefined {
 	const count = region.childIds.length;
-	if (region.definition.grid !== undefined && count !== 4)
-		return `Region ${region.id} grid requires four direct child regions.`;
 	if (count === 0) {
 		const occupied = [...model.leafByEndpointId.values()].includes(region.id);
 		if (!occupied) return 'Each leaf region must own an endpoint.';

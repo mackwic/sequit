@@ -7,18 +7,17 @@ import { allocateNestedTracks, type RoutingEdge } from './routing-resource-alloc
 /**
  * The declared budget of the grid crossing reallocation. The reallocation space of an admitted
  * grid is exhaustive below it: the resource limit admits three crossings, so the product of the
- * two rail edges and the shared endpoint faces is at most 6 x 6 x 6 = 216 candidates, and the
- * remainder starts the extra-track phase.
+ * gutters and the shared endpoint faces is bounded, and the remainder starts the extra-track phase.
  */
 export const CROSSING_ALLOCATION_BUDGET = 256;
 
-/** A rail track that no crossing relation uses: the edge owns one more track than it carries. */
+/** A gutter track that no crossing relation uses: the edge owns one more track than it carries. */
 const FREE_TRACK = '';
 
-/** One allocated track per crossing relation, on each edge the grid routes on. */
+/** One allocated track per crossing relation, on each gutter edge and on the bus. */
 export interface GridCrossingAllocation {
-	readonly leftRailTrackByRelationId: ReadonlyMap<string, number>;
-	readonly rightRailTrackByRelationId: ReadonlyMap<string, number>;
+	/** One track map per column gutter, in column order. */
+	readonly gutterTrackByRelationId: readonly ReadonlyMap<string, number>[];
 	readonly busTrackByRelationId: ReadonlyMap<string, number>;
 	readonly portTrackByEndpointId: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
@@ -33,13 +32,14 @@ export interface CrossingAllocationInput {
 	readonly edges: GridRoutingEdges;
 	/** Crossing relation identities in canonical order. */
 	readonly crossingIds: readonly string[];
-	/** Crossing relations with an endpoint in the left column, in canonical order. */
-	readonly leftRailIds: readonly string[];
-	readonly rightRailIds: readonly string[];
+	/** Crossing relations with an endpoint in each column, in canonical order, per column. */
+	readonly gutterIds: readonly (readonly string[])[];
 	/** Canonical port order per endpoint. */
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 	readonly portalByRelationId: ReadonlyMap<string, CrossingPortalSpan>;
 }
+
+type TrackOrderFactory = () => Generator<readonly string[]>;
 
 function trackMap(order: readonly string[]): ReadonlyMap<string, number> {
 	const tracks = new Map<string, number>();
@@ -49,14 +49,12 @@ function trackMap(order: readonly string[]): ReadonlyMap<string, number> {
 }
 
 function allocationOf(
-	leftRailOrder: readonly string[],
-	rightRailOrder: readonly string[],
+	gutterOrders: readonly (readonly string[])[],
 	busOrder: readonly string[],
 	portOrderByEndpointId: ReadonlyMap<string, readonly string[]>,
 ): GridCrossingAllocation {
 	return {
-		leftRailTrackByRelationId: trackMap(leftRailOrder),
-		rightRailTrackByRelationId: trackMap(rightRailOrder),
+		gutterTrackByRelationId: gutterOrders.map(trackMap),
 		busTrackByRelationId: trackMap(busOrder),
 		portTrackByEndpointId: new Map(
 			[...portOrderByEndpointId].map(([endpointId, order]) => [endpointId, trackMap(order)]),
@@ -65,8 +63,8 @@ function allocationOf(
 }
 
 /**
- * The canonical allocation: the crossing order on the bus, the same order restricted to each rail
- * edge, and the canonical port order on each face.
+ * The canonical allocation: the crossing order on the bus, the same order restricted to each
+ * gutter edge, and the canonical port order on each face.
  */
 export function canonicalCrossingAllocation(
 	input: CrossingAllocationInput,
@@ -76,12 +74,7 @@ export function canonicalCrossingAllocation(
 			if (ids.includes(relationId)) return relationId;
 			return FREE_TRACK;
 		});
-	return allocationOf(
-		restricted(input.leftRailIds),
-		restricted(input.rightRailIds),
-		input.crossingIds,
-		input.incidence,
-	);
+	return allocationOf(input.gutterIds.map(restricted), input.crossingIds, input.incidence);
 }
 
 /**
@@ -92,15 +85,12 @@ function containmentOrder(
 	input: CrossingAllocationInput,
 	edge: RoutingEdge,
 	ids: readonly string[],
-	axis: CrossingSpanAxis,
 ): readonly string[] {
 	const allocation = allocateNestedTracks(
 		edge,
 		ids.map((relationId) => {
 			const portal = defined(input.portalByRelationId.get(relationId));
-			if (axis === CrossingSpanAxis.Y)
-				return { relationId, start: portal.source.y, end: portal.target.y };
-			return { relationId, start: portal.source.x, end: portal.target.x };
+			return { relationId, start: portal.source.y, end: portal.target.y };
 		}),
 	);
 	const order = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
@@ -109,20 +99,25 @@ function containmentOrder(
 	return order;
 }
 
-/** The axis a crossing portal span is read on: rails stack on y, the bus runs along x. */
-enum CrossingSpanAxis {
-	X = 'x',
-	Y = 'y',
-}
-
-/** The containment allocation: rails and bus are ordered by interval inclusion, ports stay canonical. */
+/** The containment allocation: gutters by interval inclusion on y, the bus on x, ports canonical. */
 export function containmentCrossingAllocation(
 	input: CrossingAllocationInput,
 ): GridCrossingAllocation {
+	const bus = allocateNestedTracks(
+		input.edges.topBus,
+		input.crossingIds.map((relationId) => {
+			const portal = defined(input.portalByRelationId.get(relationId));
+			return { relationId, start: portal.source.x, end: portal.target.x };
+		}),
+	);
+	const busOrder = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
+	for (const relationId of input.crossingIds)
+		busOrder[defined(bus.trackByRelationId.get(relationId))] = relationId;
 	return allocationOf(
-		containmentOrder(input, input.edges.leftRail, input.leftRailIds, CrossingSpanAxis.Y),
-		containmentOrder(input, input.edges.rightRail, input.rightRailIds, CrossingSpanAxis.Y),
-		containmentOrder(input, input.edges.topBus, input.crossingIds, CrossingSpanAxis.X),
+		input.gutterIds.map((ids, column) =>
+			containmentOrder(input, defined(input.edges.gutters[column]), ids),
+		),
+		busOrder,
 		input.incidence,
 	);
 }
@@ -175,8 +170,7 @@ function allocationKey(allocation: GridCrossingAllocation): string {
 	const entries = (tracks: ReadonlyMap<string, number>): readonly (readonly [string, number])[] =>
 		[...tracks].sort(([left], [right]) => compareCanonicalStrings(left, right));
 	return JSON.stringify([
-		entries(allocation.leftRailTrackByRelationId),
-		entries(allocation.rightRailTrackByRelationId),
+		allocation.gutterTrackByRelationId.map(entries),
 		entries(allocation.busTrackByRelationId),
 		[...allocation.portTrackByEndpointId]
 			.sort(([left], [right]) => compareCanonicalStrings(left, right))
@@ -184,22 +178,20 @@ function allocationKey(allocation: GridCrossingAllocation): string {
 	]);
 }
 
-function* portCandidates(
-	input: CrossingAllocationInput,
-	leftRailOrder: readonly string[],
-	rightRailOrder: readonly string[],
-	excluded: Set<string>,
-): Generator<GridCrossingAllocation> {
-	for (const portOrderByEndpointId of portOrders(input.incidence)) {
-		const allocation = allocationOf(
-			leftRailOrder,
-			rightRailOrder,
-			input.crossingIds,
-			portOrderByEndpointId,
-		);
-		const key = allocationKey(allocation);
-		if (excluded.has(key)) continue;
-		yield allocation;
+function* combineOrders(
+	factories: readonly TrackOrderFactory[],
+	index: number,
+	prefix: (readonly string[])[],
+): Generator<readonly (readonly string[])[]> {
+	const factory = factories[index];
+	if (factory === undefined) {
+		yield [...prefix];
+		return;
+	}
+	for (const order of factory()) {
+		prefix.push(order);
+		yield* combineOrders(factories, index + 1, prefix);
+		prefix.pop();
 	}
 }
 
@@ -208,17 +200,26 @@ function* permutationCandidates(
 	extraTracks: number,
 	excluded: Set<string>,
 ): Generator<GridCrossingAllocation> {
-	const leftTracks = input.edges.leftRail.capacity - 1 + extraTracks;
-	const rightTracks = input.edges.rightRail.capacity - 1 + extraTracks;
-	for (const leftRailOrder of trackOrders(input.leftRailIds, leftTracks))
-		for (const rightRailOrder of trackOrders(input.rightRailIds, rightTracks))
-			yield* portCandidates(input, leftRailOrder, rightRailOrder, excluded);
+	const factories = input.gutterIds.map(
+		(_ids, column) => (): Generator<readonly string[]> =>
+			trackOrders(
+				defined(input.gutterIds[column]),
+				defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
+			),
+	);
+	for (const gutterOrders of combineOrders(factories, 0, []))
+		for (const portOrderByEndpointId of portOrders(input.incidence)) {
+			const allocation = allocationOf(gutterOrders, input.crossingIds, portOrderByEndpointId);
+			const key = allocationKey(allocation);
+			if (excluded.has(key)) continue;
+			yield allocation;
+		}
 }
 
 /**
  * The declared allocation candidates: the canonical allocation, the containment allocation, then
- * the remaining rail and port permutations in lexicographic order. The list is lazy, so a bounded
- * search never materializes more than the candidates it evaluates.
+ * the remaining gutter and port permutations in lexicographic order. The list is lazy, so a
+ * bounded search never materializes more than the candidates it evaluates.
  */
 export function* crossingAllocationCandidates(
 	input: CrossingAllocationInput,
@@ -235,7 +236,7 @@ export function* crossingAllocationCandidates(
 	yield* permutationCandidates(input, 0, excluded);
 }
 
-/** The same list once each rail edge owns one extra track, which the margin already reserves. */
+/** The same list once each gutter edge owns one extra track, which the margin already reserves. */
 export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation> {

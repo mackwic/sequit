@@ -13,6 +13,7 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 	type RegionLanePresentation,
 	type RegionLayoutPresentation,
+	regionPresentationSchemaFor,
 } from '../../core/document/logic-document';
 import {
 	readGridPresentation,
@@ -300,7 +301,8 @@ function readSupportedRegionPresentation(
 	options: RegionReadOptions,
 ): RegionLayoutPresentation | undefined {
 	const { version, regionLanes, regionGrids, context } = options;
-	const schema = meta.get('regionPresentationSchema');
+	let schema = meta.get('regionPresentationSchema');
+	if (typeof schema === 'number') schema = regionPresentationSchemaFor(schema);
 	if (schema !== expectedRegionSchema(version))
 		invalid(context, `Unsupported region presentation schema: ${String(schema)}`, [
 			'regionPresentation',

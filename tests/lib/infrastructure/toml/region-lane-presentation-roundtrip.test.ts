@@ -53,7 +53,7 @@ describe('TOML region leaf lane presentation', () => {
 		if (!parsed.ok) throw new Error('Expected region lanes to parse');
 		const upgraded = serializeSequitToml(parsed.value);
 		expect(upgraded).toContain('persistenceFormat = 8');
-		expect(upgraded).toContain('schemaVersion = 5');
+		expect(upgraded).toContain('schemaVersion = 7');
 		expect(parseSequitToml(upgraded)).toEqual(parsed);
 	});
 

@@ -1,6 +1,7 @@
 import { defined, type LogicRelation } from '../document/logic-document';
 import {
 	crossingBusY,
+	crossingEndpointSide,
 	crossingPortEdge,
 	crossingPortY,
 	crossingRailX,
@@ -15,12 +16,9 @@ import { type RegionOwnedRoute, RegionPortalSide } from './region-composition-ty
 export interface GridCrossingRouting {
 	readonly rootId: string;
 	readonly crossing: readonly LogicRelation[];
-	readonly leftRailIds: readonly string[];
-	readonly rightRailIds: readonly string[];
+	readonly columnCount: number;
 	readonly cells: readonly GridCellPlacement[];
 	readonly cellByEndpointId: GridCellInput['cellByEndpointId'];
-	readonly gridRight: number;
-	readonly margin: number;
 	readonly edges: GridRoutingEdges;
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 }
@@ -32,12 +30,11 @@ function crossingEndpoint(
 	relation: LogicRelation,
 	endpointId: string,
 ): { readonly port: Point; readonly portal: GridCellPortal; readonly railX: number } {
-	const { rootId, incidence, edges, gridRight, margin, cellByEndpointId } = routing;
+	const { rootId, incidence, edges, columnCount, cellByEndpointId } = routing;
 	const cellId = defined(cellByEndpointId.get(endpointId));
 	const cell = defined(routing.cells.find(({ id }) => id === cellId));
 	const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId));
-	let side: RegionPortalSide.Left | RegionPortalSide.Right = RegionPortalSide.Left;
-	if (cell.column === 1) side = RegionPortalSide.Right;
+	const side = crossingEndpointSide(cell.column, columnCount);
 	let portX = cell.translation.x + local.bounds.x;
 	let portalX = cell.bounds.x;
 	if (side === RegionPortalSide.Right) {
@@ -66,12 +63,9 @@ function crossingEndpoint(
 		point: global,
 		localPoint: { x: global.x - cell.bounds.x, y: global.y - cell.bounds.y },
 	};
-	if (side === RegionPortalSide.Right) {
-		const track = defined(allocation.rightRailTrackByRelationId.get(relation.id));
-		return { port, portal, railX: crossingRailX(edges.leftRail, gridRight, side, track) };
-	}
-	const track = defined(allocation.leftRailTrackByRelationId.get(relation.id));
-	return { port, portal, railX: crossingRailX(edges.leftRail, margin, side, track) };
+	const edge = defined(edges.gutters[cell.column]);
+	const track = defined(defined(allocation.gutterTrackByRelationId[cell.column]).get(relation.id));
+	return { port, portal, railX: crossingRailX(edge, portalX, side, track) };
 }
 
 export function crossingRoute(

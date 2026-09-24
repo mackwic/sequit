@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
+import {
+	persistedGridDocument,
+	persistedNxmGridDocument,
+} from '../../../lib/core/layout/grid-cell-fixture';
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
 import { seedRoom } from './collaboration-room';
 
@@ -242,4 +245,97 @@ test('a direct cross-cell group relation attaches to the group face and keeps ce
 	const screenshot = info.outputPath('cross-cell-group-portal.png');
 	await page.screenshot({ path: screenshot });
 	await info.attach('cross-cell-group-portal', { path: screenshot, contentType: 'image/png' });
+});
+
+test('a persisted three by two grid renders six cells in three column and two row tracks', async ({
+	page,
+}, info) => {
+	await page.setViewportSize({ width: 1920, height: 1200 });
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes, persistedNxmGridDocument());
+	await page.goto(`/atelier/collaboration?room=${room}`);
+	await expect(page.locator('[data-graph-stage]')).toBeVisible();
+	await expect(page.locator('[data-region-id]')).toHaveCount(6);
+	await expect(page.locator('[data-node-id]')).toHaveCount(6);
+	for (const id of ['a-b', 'a-c', 'c-f'])
+		await expect(page.locator(`[data-relation-id="${id}"]`)).toHaveCount(1);
+	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
+	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
+		await Promise.allSettled(
+			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
+		);
+	});
+	const frames = await page.evaluate(() => {
+		const rectangles = new Map<string, DOMRect>();
+		for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			const element = document.querySelector<HTMLElement>(`[data-region-id="${id}"]`);
+			if (element === null) throw new Error(`Missing grid cell ${id}`);
+			rectangles.set(id, element.getBoundingClientRect());
+		}
+		const box = (id: string): DOMRect => {
+			const bounds = rectangles.get(id);
+			if (bounds === undefined) throw new Error(`Missing bounds for ${id}`);
+			return bounds;
+		};
+		for (const id of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			const cell = box(id);
+			const endpoint = document.querySelector<HTMLElement>(`[data-node-id="${id}"]`);
+			if (endpoint === null) throw new Error(`Missing endpoint ${id}`);
+			const bounds = endpoint.getBoundingClientRect();
+			if (
+				bounds.left <= cell.left ||
+				bounds.right >= cell.right ||
+				bounds.top <= cell.top ||
+				bounds.bottom >= cell.bottom
+			)
+				throw new Error(`${id} escaped cell ${id}`);
+		}
+		for (const [id, foreign] of [
+			['a-b', ['c', 'd', 'e', 'f']],
+			['a-c', ['b', 'd', 'e', 'f']],
+			['c-f', ['a', 'b', 'd', 'e']],
+		] as const) {
+			const path = document.querySelector<SVGPathElement>(`[data-relation-id="${id}"]`);
+			if (path === null) throw new Error(`Missing route ${id}`);
+			const matrix = path.getScreenCTM();
+			if (matrix === null) throw new Error(`Missing route transform ${id}`);
+			const length = path.getTotalLength();
+			for (let sample = 0; sample <= 128; sample += 1) {
+				const point = path.getPointAtLength((length * sample) / 128);
+				const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+				for (const cellId of foreign) {
+					const bounds = box(cellId);
+					if (
+						screen.x > bounds.left + 1 &&
+						screen.x < bounds.right - 1 &&
+						screen.y > bounds.top + 1 &&
+						screen.y < bounds.bottom - 1
+					)
+						throw new Error(`${id} entered opaque cell ${cellId}`);
+				}
+			}
+		}
+		return [...rectangles].map(([id, bounds]) => ({ id, x: bounds.x, y: bounds.y }));
+	});
+	const at = (id: string) => {
+		const frame = frames.find((entry) => entry.id === id);
+		if (frame === undefined) throw new Error(`Missing frame ${id}`);
+		return frame;
+	};
+	const close = (left: number, right: number): boolean => Math.abs(left - right) < 1;
+	expect(close(at('a').y, at('b').y)).toBe(true);
+	expect(close(at('b').y, at('c').y)).toBe(true);
+	expect(close(at('a').x, at('d').x)).toBe(true);
+	expect(close(at('b').x, at('e').x)).toBe(true);
+	expect(close(at('c').x, at('f').x)).toBe(true);
+	expect(at('a').x).toBeLessThan(at('b').x);
+	expect(at('b').x).toBeLessThan(at('c').x);
+	expect(at('a').y).toBeLessThan(at('d').y);
+	const screenshot = info.outputPath('persisted-three-by-two-grid.png');
+	await page.screenshot({ path: screenshot });
+	await info.attach('persisted-three-by-two-grid', {
+		path: screenshot,
+		contentType: 'image/png',
+	});
 });

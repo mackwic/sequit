@@ -55,7 +55,7 @@ describe('TOML internal grid presentation', () => {
 		expect(parsedRegions.find(({ id }) => id === 'branch')?.policy).toBe('layered');
 		const upgraded = serializeSequitToml(parsed.value);
 		expect(upgraded).toContain('persistenceFormat = 8');
-		expect(upgraded).toContain('schemaVersion = 5');
+		expect(upgraded).toContain('schemaVersion = 7');
 		expect(parseSequitToml(upgraded)).toEqual(parsed);
 	});
 
@@ -109,7 +109,7 @@ describe('TOML internal grid presentation', () => {
 				value: {
 					...raw,
 					regions: {
-						branch: { ...region, grid: { ...grid, cells: { a: { row: 0, column: 2 } } } },
+						branch: { ...region, grid: { ...grid, cells: { a: { row: 0, column: -1 } } } },
 					},
 				},
 				path: 'regionPresentation.regions.branch.grid.cells.a.column',
@@ -145,5 +145,20 @@ describe('TOML internal grid presentation', () => {
 		expect(parsed.diagnostics.map(({ path }) => path.join('.'))).toContain(
 			'regionPresentation.regions.branch.grid',
 		);
+	});
+
+	it('reads the historical policy schema and materializes the current one', () => {
+		const parsed = parseSequitToml(serializeSequitToml(regionGridDocument()));
+		if (!parsed.ok) throw new Error('Expected the grid document to migrate');
+		const serialized = serializeSequitToml(parsed.value);
+		expect(serialized).toContain('persistenceFormat = 8');
+		expect(serialized).toContain('schemaVersion = 7');
+		const migrated = parseSequitToml(serialized.replace('schemaVersion = 7', 'schemaVersion = 5'));
+		expect(migrated).toMatchObject({
+			ok: true,
+			value: { regionPresentation: { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA } },
+		});
+		if (!migrated.ok) throw new Error('Expected the historical policy schema to parse');
+		expect(serializeSequitToml(migrated.value)).toContain('schemaVersion = 7');
 	});
 });

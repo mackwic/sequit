@@ -29,10 +29,12 @@ const CROSSING_IDS = ['a-b', 'a-c', 'a-d'] as const;
 
 function allocationInput(): CrossingAllocationInput {
 	return {
-		edges: gridRoutingEdges('grid', CROSSING_IDS.length),
+		edges: gridRoutingEdges('grid', 2, CROSSING_IDS.length),
 		crossingIds: [...CROSSING_IDS],
-		leftRailIds: ['a-b', 'a-c'],
-		rightRailIds: ['a-b', 'a-d'],
+		gutterIds: [
+			['a-b', 'a-c'],
+			['a-b', 'a-d'],
+		],
 		incidence: new Map([
 			['a', [...CROSSING_IDS]],
 			['b', ['a-b']],
@@ -47,27 +49,34 @@ function allocationInput(): CrossingAllocationInput {
 	};
 }
 
-function railTracks(
+function gutterTracks(
 	allocation: GridCrossingAllocation,
-	side: 'leftRailTrackByRelationId' | 'rightRailTrackByRelationId',
+	column: number,
 ): readonly (readonly [string, number])[] {
-	return [...allocation[side]].sort(([left], [right]) => compareCanonicalStrings(left, right));
+	return [...defined(allocation.gutterTrackByRelationId[column])].sort(([left], [right]) =>
+		compareCanonicalStrings(left, right),
+	);
 }
 
 describe('grid crossing allocation', () => {
 	it('keeps the declared track formulas', () => {
-		const edges = gridRoutingEdges('grid', 3);
-		expect(edges.leftRail).toEqual({ ownerId: 'grid', capacity: 4, spacing: 24 });
+		const edges = gridRoutingEdges('grid', 2, 3);
+		expect(edges.gutters[0]).toEqual({ ownerId: 'grid', capacity: 4, spacing: 24 });
+		expect(edges.gutters[1]).toEqual({ ownerId: 'grid', capacity: 4, spacing: 24 });
 		expect(edges.topBus).toEqual({ ownerId: 'grid', capacity: 3, spacing: 24 });
-		expect(reservedRailTrack(edges)).toBe(3);
+		expect(reservedRailTrack(defined(edges.gutters[0]))).toBe(3);
 		expect(
-			[0, 1, 2].map((track) => crossingRailX(edges.leftRail, 96, RegionPortalSide.Left, track)),
+			[0, 1, 2].map((track) =>
+				crossingRailX(defined(edges.gutters[0]), 96, RegionPortalSide.Left, track),
+			),
 		).toEqual([48, 24, 0]);
 		expect(
-			[0, 1, 2].map((track) => crossingRailX(edges.leftRail, 1704, RegionPortalSide.Right, track)),
+			[0, 1, 2].map((track) =>
+				crossingRailX(defined(edges.gutters[1]), 1704, RegionPortalSide.Right, track),
+			),
 		).toEqual([1752, 1776, 1800]);
 		expect([0, 1, 2].map((track) => crossingBusY(edges.topBus, track))).toEqual([24, 48, 72]);
-		expect([0, 1, 2].map((count) => gridMargin(gridRoutingEdges('grid', count)))).toEqual([
+		expect([0, 1, 2].map((count) => gridMargin(gridRoutingEdges('grid', 2, count)))).toEqual([
 			96, 96, 120,
 		]);
 	});
@@ -81,14 +90,14 @@ describe('grid crossing allocation', () => {
 		expect(crossingPortY(face, crossingPortEdge('grid', 2), 1)).toBe(142);
 	});
 
-	it('starts with the canonical allocation and its crossing order per rail', () => {
+	it('starts with the canonical allocation and its crossing order per gutter', () => {
 		const input = allocationInput();
 		const canonical = canonicalCrossingAllocation(input);
-		expect(railTracks(canonical, 'leftRailTrackByRelationId')).toEqual([
+		expect(gutterTracks(canonical, 0)).toEqual([
 			['a-b', 0],
 			['a-c', 1],
 		]);
-		expect(railTracks(canonical, 'rightRailTrackByRelationId')).toEqual([
+		expect(gutterTracks(canonical, 1)).toEqual([
 			['a-b', 0],
 			['a-d', 2],
 		]);
@@ -109,11 +118,11 @@ describe('grid crossing allocation', () => {
 	it('orders the containment candidate by interval inclusion', () => {
 		const input = allocationInput();
 		const containment = containmentCrossingAllocation(input);
-		expect(railTracks(containment, 'leftRailTrackByRelationId')).toEqual([
+		expect(gutterTracks(containment, 0)).toEqual([
 			['a-b', 0],
 			['a-c', 1],
 		]);
-		expect(railTracks(containment, 'rightRailTrackByRelationId')).toEqual([
+		expect(gutterTracks(containment, 1)).toEqual([
 			['a-b', 0],
 			['a-d', 1],
 		]);
@@ -131,8 +140,7 @@ describe('grid crossing allocation', () => {
 		expect(candidates[1]).toEqual(containmentCrossingAllocation(input));
 		const keys = candidates.map((allocation) =>
 			JSON.stringify([
-				railTracks(allocation, 'leftRailTrackByRelationId'),
-				railTracks(allocation, 'rightRailTrackByRelationId'),
+				allocation.gutterTrackByRelationId.map((tracks) => [...tracks]),
 				[...allocation.busTrackByRelationId],
 				[...allocation.portTrackByEndpointId].map(([endpointId, tracks]) => [
 					endpointId,
@@ -143,9 +151,9 @@ describe('grid crossing allocation', () => {
 		expect(new Set(keys).size).toBe(keys.length);
 		expect(candidates.length).toBeLessThanOrEqual(CROSSING_ALLOCATION_BUDGET);
 		for (const allocation of candidates) {
-			const left = [...allocation.leftRailTrackByRelationId.values()];
+			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
 			expect(new Set(left).size).toBe(left.length);
-			expect(Math.max(...left)).toBeLessThanOrEqual(input.edges.leftRail.capacity - 1);
+			expect(Math.max(...left)).toBeLessThanOrEqual(defined(input.edges.gutters[0]).capacity - 1);
 			const portTracks = [...defined(allocation.portTrackByEndpointId.get('a')).values()].sort(
 				(first, second) => first - second,
 			);
@@ -153,18 +161,18 @@ describe('grid crossing allocation', () => {
 		}
 	});
 
-	it('adds one rail track when the reallocation is exhausted', () => {
+	it('adds one gutter track when the reallocation is exhausted', () => {
 		const input = allocationInput();
-		const reserved = input.edges.leftRail.capacity - 1;
+		const reserved = defined(input.edges.gutters[0]).capacity - 1;
 		const candidates = [...crossingAllocationCandidatesWithExtraTrack(input)];
 		expect(candidates.length).toBeGreaterThan(0);
 		const tracks = candidates.flatMap((allocation) => [
-			...allocation.leftRailTrackByRelationId.values(),
-			...allocation.rightRailTrackByRelationId.values(),
+			...defined(allocation.gutterTrackByRelationId[0]).values(),
+			...defined(allocation.gutterTrackByRelationId[1]).values(),
 		]);
 		expect(Math.max(...tracks)).toBe(reserved);
 		for (const allocation of candidates) {
-			const left = [...allocation.leftRailTrackByRelationId.values()];
+			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
 			expect(new Set(left).size).toBe(left.length);
 			expect(Math.max(...left)).toBeLessThanOrEqual(reserved);
 		}

@@ -973,7 +973,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		});
 	});
 
-	it('requires four direct cells even when the region tree itself is valid', () => {
+	it('requires cells that cover one rectangle even when the region tree itself is valid', () => {
 		const { document, input } = nestedGridFixture();
 		const fewerCells: RegionInput = {
 			regions: input.regions
@@ -998,7 +998,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, fewerCells),
 		).toEqual({
 			status: RegionCompositionStatus.Unsupported,
-			reason: 'Region grid grid requires four direct child regions.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		});
 	});
 

@@ -13,8 +13,8 @@ export { RegionCompositionStatus as GridCellLayoutStatus } from './region-compos
 export interface GridCellDefinition {
 	readonly id: string;
 	readonly parentId: string;
-	readonly row: 0 | 1;
-	readonly column: 0 | 1;
+	readonly row: number;
+	readonly column: number;
 	readonly layout?: LayoutConfiguration;
 }
 
@@ -22,13 +22,13 @@ export interface GridCellInput {
 	readonly rootId: string;
 	readonly cells: readonly GridCellDefinition[];
 	readonly cellByEndpointId: ReadonlyMap<string, string>;
-	readonly minimumColumnWidths: readonly [number, number];
-	readonly minimumRowHeights: readonly [number, number];
+	readonly minimumColumnWidths: readonly number[];
+	readonly minimumRowHeights: readonly number[];
 }
 
 export interface GridCellPlacement extends RegionChildPlacement {
-	readonly row: 0 | 1;
-	readonly column: 0 | 1;
+	readonly row: number;
+	readonly column: number;
 }
 
 export interface GridCellPortal extends RegionPortal<
@@ -39,8 +39,8 @@ export interface GridCellPortal extends RegionPortal<
 
 export interface GridCellSelected extends RegionCompositionSelected<GridCellPortal> {
 	readonly cells: readonly GridCellPlacement[];
-	readonly columnWidths: readonly [number, number];
-	readonly rowHeights: readonly [number, number];
+	readonly columnWidths: readonly number[];
+	readonly rowHeights: readonly number[];
 }
 
 export type GridCellLayoutAttempt = RegionCompositionAttempt<GridCellSelected>;

@@ -117,18 +117,18 @@ interface DamagedCase {
 const FRAME_CASES: readonly DamagedCase[] = [
 	{
 		name: 'missing published cells',
-		reason: 'must publish four cells',
+		reason: 'must contain each grid cell exactly once',
 		damage: (selected) => ({ ...selected, layout: { ...selected.layout, regions: [] } }),
 	},
 	{
 		name: 'column below minimum',
 		reason: 'below its minimum',
-		damage: (selected) => ({ ...selected, columnWidths: [699, selected.columnWidths[1]] }),
+		damage: (selected) => ({ ...selected, columnWidths: [699, defined(selected.columnWidths[1])] }),
 	},
 	{
 		name: 'row below minimum',
 		reason: 'below its minimum',
-		damage: (selected) => ({ ...selected, rowHeights: [selected.rowHeights[0], 299] }),
+		damage: (selected) => ({ ...selected, rowHeights: [defined(selected.rowHeights[0]), 299] }),
 	},
 	{
 		name: 'invalid root extent',
@@ -179,6 +179,45 @@ const FRAME_CASES: readonly DamagedCase[] = [
 				bounds: { ...cell.bounds, x: cell.bounds.x + 1 },
 			}));
 			return withPublishedRegion(shifted, 'b', (bounds) => ({ ...bounds, x: bounds.x + 1 }));
+		},
+	},
+	{
+		name: 'misaligned rows',
+		reason: 'misaligned or overlap',
+		damage: (selected) => {
+			const shifted = withCell(selected, 'd', (cell) => ({
+				...cell,
+				bounds: { ...cell.bounds, y: cell.bounds.y + 1 },
+			}));
+			return withPublishedRegion(shifted, 'd', (bounds) => ({ ...bounds, y: bounds.y + 1 }));
+		},
+	},
+	{
+		name: 'no cells at all',
+		reason: 'must contain each grid cell exactly once',
+		damage: (selected) => ({ ...selected, cells: [] }),
+	},
+	{
+		name: 'cells that no longer tile the rectangle',
+		reason: 'must contain each grid cell exactly once',
+		damage: (selected) =>
+			withCell(selected, 'd', (cell) => ({ ...cell, column: 0, bounds: { ...cell.bounds } })),
+	},
+	{
+		name: 'extra published column track',
+		reason: 'tracks disagree with the cell rectangle',
+		damage: (selected) => ({ ...selected, columnWidths: [...selected.columnWidths, 40] }),
+	},
+	{
+		name: 'overlapping columns',
+		reason: 'misaligned or overlap',
+		damage: (selected) => {
+			const shifted = withCell(selected, 'b', (cell) => ({
+				...cell,
+				bounds: { ...cell.bounds, x: cell.bounds.x - 800 },
+				translation: { ...cell.translation, x: cell.translation.x - 800 },
+			}));
+			return withPublishedRegion(shifted, 'b', (bounds) => ({ ...bounds, x: bounds.x - 800 }));
 		},
 	},
 ];

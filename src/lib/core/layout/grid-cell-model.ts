@@ -31,22 +31,56 @@ function envelopeFailure(graph: LogicGraph, input: GridCellInput): string | unde
 	return undefined;
 }
 
-function validCell(cell: GridCellDefinition, index: number, rootId: string): boolean {
+/** The rectangle a cell set tiles, when it tiles exactly one. */
+export interface GridRectangle {
+	readonly rows: number;
+	readonly columns: number;
+}
+
+/** The rectangle the cells cover, or undefined when they do not tile one exactly. */
+export function gridRectangle(
+	cells: readonly { readonly row: number; readonly column: number }[],
+): GridRectangle | undefined {
+	if (cells.length === 0) return undefined;
+	let rows = 0;
+	let columns = 0;
+	for (const cell of cells) {
+		if (!Number.isSafeInteger(cell.row) || cell.row < 0) return undefined;
+		if (!Number.isSafeInteger(cell.column) || cell.column < 0) return undefined;
+		if (cell.row + 1 > rows) rows = cell.row + 1;
+		if (cell.column + 1 > columns) columns = cell.column + 1;
+	}
+	if (rows * columns !== cells.length) return undefined;
+	const slots = new Set(cells.map(({ row, column }) => `${row}:${column}`));
+	if (slots.size !== cells.length) return undefined;
+	return { rows, columns };
+}
+
+/**
+ * A tiled rectangle already implies that every slot is covered once, so a sorted cell only has to
+ * carry an identity distinct from the root and from its siblings.
+ */
+function validCellIdentity(cell: GridCellDefinition, rootId: string): boolean {
 	if (cell.id.length === 0 || cell.id === rootId) return false;
-	if (cell.parentId !== rootId) return false;
-	if (cell.row !== Math.floor(index / 2)) return false;
-	return cell.column === index % 2;
+	return cell.parentId === rootId;
 }
 
 function orderedCells(input: GridCellInput): readonly GridCellDefinition[] | string {
-	if (input.cells.length !== 4) return 'Exactly four direct child cells are required.';
+	if (input.cells.length === 0) return 'At least one direct child cell is required.';
 	const cells = [...input.cells].sort(
 		(left, right) => left.row - right.row || left.column - right.column,
 	);
-	if (cells.some((cell, index) => !validCell(cell, index, input.rootId)))
-		return 'Cells must uniquely cover the root two by two grid.';
-	if (new Set(cells.map(({ id }) => id)).size !== 4)
-		return 'Cells must uniquely cover the root two by two grid.';
+	const rectangle = gridRectangle(cells);
+	if (rectangle === undefined) return 'Cells must uniquely cover the root grid rectangle.';
+	if (cells.some((cell) => !validCellIdentity(cell, input.rootId)))
+		return 'Cells must uniquely cover the root grid rectangle.';
+	if (new Set(cells.map(({ id }) => id)).size !== cells.length)
+		return 'Cells must uniquely cover the root grid rectangle.';
+	if (
+		input.minimumColumnWidths.length !== rectangle.columns ||
+		input.minimumRowHeights.length !== rectangle.rows
+	)
+		return 'Grid track minima must match the cell rectangle.';
 	return cells;
 }
 
@@ -84,7 +118,7 @@ function partitionRelations(
 	graph: LogicGraph,
 	input: GridCellInput,
 	cells: readonly GridCellDefinition[],
-): RelationPartition | string {
+): RelationPartition {
 	const localRelations = new Map(cells.map(({ id }) => [id, [] as LogicRelation[]]));
 	const crossing: LogicRelation[] = [];
 	for (const { relation } of graph.relations) {
@@ -106,9 +140,7 @@ export function normalize(graph: LogicGraph, input: GridCellInput): GridModel | 
 	if (typeof cells === 'string') return cells;
 	const ownership = ownershipFailure(graph, input, cells);
 	if (ownership !== undefined) return ownership;
-	const relations = partitionRelations(graph, input, cells);
-	if (typeof relations === 'string') return relations;
-	return { cells, ...relations };
+	return { cells, ...partitionRelations(graph, input, cells) };
 }
 
 export function localDocument(

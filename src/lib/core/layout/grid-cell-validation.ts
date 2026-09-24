@@ -5,6 +5,7 @@ import {
 	entersInterior,
 	equal,
 	finiteBounds,
+	gridTracksAligned,
 	sameBounds,
 	samePoint,
 	validPath,
@@ -12,6 +13,7 @@ import {
 } from './grid-cell-geometry-primitives';
 import { validateGridCellGroupContainment } from './grid-cell-group-validation';
 import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
+import { gridRectangle } from './grid-cell-model';
 import {
 	validateCrossPortals,
 	validateCrossPorts,
@@ -61,8 +63,8 @@ function checkCell(
 	);
 	if (cell.parentId !== candidate.rootId || cell.id !== declared?.id)
 		return `Cell ${cell.id} has invalid ownership.`;
-	const correctWidth = equal(cell.bounds.width, candidate.columnWidths[cell.column]);
-	const correctHeight = equal(cell.bounds.height, candidate.rowHeights[cell.row]);
+	const correctWidth = equal(cell.bounds.width, defined(candidate.columnWidths[cell.column]));
+	const correctHeight = equal(cell.bounds.height, defined(candidate.rowHeights[cell.row]));
 	if (!correctWidth || !correctHeight) return `Cell ${cell.id} does not fill its grid tracks.`;
 	const published = candidate.layout.regions?.find(({ id }) => id === cell.id);
 	if (published === undefined || !sameBounds(published.bounds, cell.bounds))
@@ -78,30 +80,19 @@ function checkCell(
 }
 
 function checkAlignment(cells: readonly GridCellPlacement[]): string | undefined {
-	const at = (row: 0 | 1, column: 0 | 1): Bounds =>
-		defined(cells.find((cell) => cell.row === row && cell.column === column)).bounds;
-	const topLeft = at(0, 0);
-	const topRight = at(0, 1);
-	const bottomLeft = at(1, 0);
-	const bottomRight = at(1, 1);
-	const separatedColumns = topLeft.x + topLeft.width < topRight.x;
-	const separatedRows = topLeft.y + topLeft.height < bottomLeft.y;
-	const aligned = [
-		equal(topLeft.x, bottomLeft.x),
-		equal(topRight.x, bottomRight.x),
-		equal(topLeft.y, topRight.y),
-		equal(bottomLeft.y, bottomRight.y),
-		separatedColumns,
-		separatedRows,
-	];
-	if (!aligned.every(Boolean)) return 'Grid tracks are misaligned or overlap.';
+	if (!gridTracksAligned(cells)) return 'Grid tracks are misaligned or overlap.';
 	return undefined;
 }
 
 function cellGeometry(candidate: GridCellSelected, input: GridCellInput): string | undefined {
 	const { cells, columnWidths, rowHeights, layout } = candidate;
-	if (cells.length !== 4 || layout.regions?.length !== 4)
-		return 'The composed layout must publish four cells.';
+	if (gridRectangle(cells) === undefined || layout.regions?.length !== cells.length)
+		return 'The composed layout must contain each grid cell exactly once.';
+	if (
+		columnWidths.length !== input.minimumColumnWidths.length ||
+		rowHeights.length !== input.minimumRowHeights.length
+	)
+		return 'The composed layout tracks disagree with the cell rectangle.';
 	if (columnWidths.some((width, index) => width < defined(input.minimumColumnWidths[index])))
 		return 'A track fell below its minimum extent.';
 	if (rowHeights.some((height, index) => height < defined(input.minimumRowHeights[index])))

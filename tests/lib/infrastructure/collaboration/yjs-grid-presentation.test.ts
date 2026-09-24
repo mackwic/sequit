@@ -4,6 +4,7 @@ import * as Y from 'yjs';
 import {
 	EndpointKind,
 	GRID_PERSISTENCE_FORMAT,
+	GRID_REGION_PRESENTATION_SCHEMA,
 	type LogicDocument,
 	REGION_PERSISTENCE_FORMAT,
 	REGION_PRESENTATION_SCHEMA,
@@ -17,7 +18,10 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
-import { persistedGridDocument } from '../../core/layout/grid-cell-fixture';
+import {
+	persistedGridDocument,
+	persistedNxmGridDocument,
+} from '../../core/layout/grid-cell-fixture';
 
 function restored(source: LogicDocument): Y.Doc {
 	const original = new Y.Doc();
@@ -94,7 +98,7 @@ describe('Yjs grid presentation', () => {
 		const document = restored(persistedGridDocument());
 		const cell = document.getMap<Y.Map<unknown>>(YjsCollection.GridCells).get('b');
 		if (cell === undefined) throw new Error('Expected cell b');
-		cell.set('column', 3);
+		cell.set('column', 1.5);
 		expect(paths(document)).toContain('regionPresentation.grid.cells.b.column');
 		cell.set('column', 1);
 		document.getMap(YjsCollection.Meta).set('gridMinimumRowHeights', [50, -1]);
@@ -109,7 +113,7 @@ describe('Yjs grid presentation', () => {
 		}[] = [
 			{
 				mutate: (document) =>
-					document.getMap(YjsCollection.Meta).set('gridMinimumColumnWidths', [700]),
+					document.getMap(YjsCollection.Meta).set('gridMinimumColumnWidths', []),
 				path: 'regionPresentation.grid.minimumColumnWidths',
 			},
 			{
@@ -131,9 +135,17 @@ describe('Yjs grid presentation', () => {
 				mutate: (document) => {
 					const cell = document.getMap<Y.Map<unknown>>(YjsCollection.GridCells).get('a');
 					if (cell === undefined) throw new Error('Expected cell a');
-					cell.set('row', 4);
+					cell.set('row', -1);
 				},
 				path: 'regionPresentation.grid.cells.a.row',
+			},
+			{
+				mutate: (document) => {
+					const cell = document.getMap<Y.Map<unknown>>(YjsCollection.GridCells).get('b');
+					if (cell === undefined) throw new Error('Expected cell b');
+					cell.set('column', '0');
+				},
+				path: 'regionPresentation.grid.cells.b.column',
 			},
 		];
 		for (const { mutate, path } of invalidChanges) {
@@ -199,5 +211,41 @@ describe('Yjs grid presentation', () => {
 			repository.destroy();
 			document.destroy();
 		}
+	});
+
+	it('round trips the three by two grid with six cells through Yjs', () => {
+		const document = restored(persistedNxmGridDocument());
+		expect(document.getMap(YjsCollection.GridCells).size).toBe(6);
+		const result = readLogicDocument(document);
+		expect(result).toMatchObject({
+			ok: true,
+			value: {
+				regionPresentation: {
+					grid: {
+						minimumColumnWidths: [180, 120, 140],
+						minimumRowHeights: [70, 90],
+					},
+				},
+			},
+		});
+		if (!result.ok) throw new Error('Expected the shared three by two grid to round trip');
+		expect(
+			result.value.regionPresentation?.grid?.cells.map(
+				({ regionId, row, column }) => `${regionId}:${row}:${column}`,
+			),
+		).toEqual(['a:0:0', 'b:0:1', 'c:0:2', 'd:1:0', 'e:1:1', 'f:1:2']);
+		document.destroy();
+	});
+
+	it('reads a historical grid schema and materializes the current one', () => {
+		const document = restored(persistedGridDocument());
+		document.getMap(YjsCollection.Meta).set('regionPresentationSchema', 2);
+		expect(paths(document)).toEqual([]);
+		const result = readLogicDocument(document);
+		expect(result).toMatchObject({
+			ok: true,
+			value: { regionPresentation: { schemaVersion: GRID_REGION_PRESENTATION_SCHEMA } },
+		});
+		document.destroy();
 	});
 });

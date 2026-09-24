@@ -33,31 +33,35 @@ function minima(
 	field: GridMinimumField,
 	context: MappingContext,
 	gridPath: readonly string[],
-): readonly [number, number] | undefined {
+): readonly number[] | undefined {
 	const path = [...gridPath, field];
-	if (!isUnknownArray(value) || value.length !== 2) {
+	if (!isUnknownArray(value) || value.length === 0) {
 		context.diagnostics.push({
 			code: SequitDiagnosticCode.InvalidValue,
-			message: 'Grid track minima must contain exactly two values',
+			message: 'Grid track minima must contain at least one value',
 			path,
 		});
 		return undefined;
 	}
-	const first = minimum(value[0], [...path, '0'], context);
-	const second = minimum(value[1], [...path, '1'], context);
-	if (first === undefined || second === undefined) return undefined;
-	return [first, second];
+	const minima: number[] = [];
+	for (const [index, raw] of value.entries()) {
+		const mapped = minimum(raw, [...path, String(index)], context);
+		if (mapped === undefined) return undefined;
+		minima.push(mapped);
+	}
+	return minima;
 }
 
 function position(
 	value: unknown,
 	path: readonly string[],
 	context: MappingContext,
-): 0 | 1 | undefined {
-	if (value === 0 || value === 1) return value;
+): number | undefined {
+	const integer = typeof value === 'number' && Number.isSafeInteger(value);
+	if (integer && value >= 0) return value;
 	context.diagnostics.push({
 		code: SequitDiagnosticCode.InvalidValue,
-		message: 'Grid coordinate must be 0 or 1',
+		message: 'Grid coordinate must be a nonnegative integer',
 		path,
 	});
 	return undefined;

@@ -121,7 +121,13 @@ export function composeGridCellDisposition(
 	model: RegionCompositionModel,
 	children: readonly SolvedGridCell[],
 ): GridCellLayoutAttempt {
-	const margin = gridMargin(gridRoutingEdges(input.rootId, ownedCrossings(model, input).length));
+	const margin = gridMargin(
+		gridRoutingEdges(
+			input.rootId,
+			input.minimumColumnWidths.length,
+			ownedCrossings(model, input).length,
+		),
+	);
 	const disposition = layoutGridCellDisposition(children, input, margin);
 	return routePlacedGridCellDisposition({ graph, input, model, disposition });
 }
@@ -152,23 +158,28 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 	const { graph, input, model, disposition } = placed;
 	const crossing = ownedCrossings(model, input);
 	const incidence = crossingIncidence(crossing);
-	const edges = gridRoutingEdges(input.rootId, crossing.length);
 	const { cells, columnWidths, rowHeights, gridRight, gridBottom } = disposition;
+	const columnCount = columnWidths.length;
+	const edges = gridRoutingEdges(input.rootId, columnCount, crossing.length);
+	const margin = gridMargin(edges);
 	const cellById = new Map(cells.map((cell) => [cell.id, cell]));
-	const ownsColumn = (relation: LogicRelation, column: 0 | 1): boolean =>
-		[relation.from, relation.to].some(
-			(endpointId) =>
-				defined(cellById.get(defined(input.cellByEndpointId.get(endpointId)))).column === column,
-		);
+	const gutterIds = Array.from({ length: columnCount }, (_, column) =>
+		crossing
+			.filter((relation) =>
+				[relation.from, relation.to].some(
+					(endpointId) =>
+						defined(cellById.get(defined(input.cellByEndpointId.get(endpointId)))).column ===
+						column,
+				),
+			)
+			.map(({ id }) => id),
+	);
 	const routing: GridCrossingRouting = {
 		rootId: input.rootId,
 		crossing,
-		leftRailIds: crossing.filter((relation) => ownsColumn(relation, 0)).map(({ id }) => id),
-		rightRailIds: crossing.filter((relation) => ownsColumn(relation, 1)).map(({ id }) => id),
+		columnCount,
 		cells,
 		cellByEndpointId: input.cellByEndpointId,
-		gridRight,
-		margin: gridMargin(edges),
 		edges,
 		incidence,
 	};
@@ -200,8 +211,8 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			]),
 		);
 		let layout: LayoutResult = {
-			width: gridRight + routing.margin,
-			height: gridBottom + routing.margin,
+			width: gridRight + margin,
+			height: gridBottom + margin,
 			elements,
 			relations: graph.relations.map(({ relation }) => defined(routesById.get(relation.id))),
 			regions: cells.map(({ id, bounds }) => ({ id, bounds })),
@@ -232,8 +243,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 	const allocationInput: CrossingAllocationInput = {
 		edges,
 		crossingIds,
-		leftRailIds: routing.leftRailIds,
-		rightRailIds: routing.rightRailIds,
+		gutterIds,
 		incidence,
 		portalByRelationId: new Map(),
 	};

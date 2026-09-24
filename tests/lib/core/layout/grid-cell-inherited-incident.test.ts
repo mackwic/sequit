@@ -19,7 +19,9 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
+import { UnknownRegionLeafLayoutError } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
@@ -271,5 +273,29 @@ describe('inherited grid incident continuation', () => {
 			RegionPortalSide.Top,
 			RegionPortalSide.Bottom,
 		]);
+	});
+
+	it('reports the missing inner gutter for an incident in an inner column', () => {
+		const grid = selectedGrid();
+		const interior: GridCellSelected = {
+			...grid,
+			columnWidths: [200, 200, 200],
+		};
+		let error: unknown;
+		try {
+			gridCellInheritedIncidentPaths({
+				context,
+				regionId: 'grid',
+				incidentSides: new Map([['a-right-exit', [RegionPortalSide.Left]]]),
+				selected: interior,
+				children: new Map(),
+			});
+		} catch (caught) {
+			error = caught;
+		}
+		expect(error).toBeInstanceOf(UnknownRegionLeafLayoutError);
+		if (!(error instanceof UnknownRegionLeafLayoutError))
+			throw new Error('Expected the missing inner gutter failure.');
+		expect(error.code).toBe(RegionGeometryDiagnosticCode.GridInnerGutterMissing);
 	});
 });

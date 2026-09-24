@@ -148,32 +148,52 @@ describe('grid model envelope', () => {
 		{
 			name: 'three cells',
 			value: { ...input, cells: input.cells.slice(0, 3) },
-			reason: 'Exactly four direct child cells are required.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		},
 		{
 			name: 'empty cell id',
 			value: changeCell(input, 'a', { id: '' }),
-			reason: 'Cells must uniquely cover the root two by two grid.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		},
 		{
 			name: 'root as cell',
 			value: changeCell(input, 'a', { id: '@root' }),
-			reason: 'Cells must uniquely cover the root two by two grid.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		},
 		{
 			name: 'wrong parent',
 			value: changeCell(input, 'a', { parentId: 'other' }),
-			reason: 'Cells must uniquely cover the root two by two grid.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		},
 		{
 			name: 'duplicate coordinate',
 			value: changeCell(input, 'd', { row: 0 }),
-			reason: 'Cells must uniquely cover the root two by two grid.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
 		},
 		{
 			name: 'duplicate id',
 			value: changeCell(input, 'd', { id: 'a' }),
-			reason: 'Cells must uniquely cover the root two by two grid.',
+			reason: 'Cells must uniquely cover the root grid rectangle.',
+		},
+		{
+			name: 'fractional coordinate',
+			value: changeCell(input, 'd', { row: 1.5 }),
+			reason: 'Cells must uniquely cover the root grid rectangle.',
+		},
+		{
+			name: 'negative coordinate',
+			value: changeCell(input, 'd', { column: -1 }),
+			reason: 'Cells must uniquely cover the root grid rectangle.',
+		},
+		{
+			name: 'no cells',
+			value: { ...input, cells: [] },
+			reason: 'At least one direct child cell is required.',
+		},
+		{
+			name: 'minima that do not match the rectangle',
+			value: { ...input, minimumColumnWidths: [700] },
+			reason: 'Grid track minima must match the cell rectangle.',
 		},
 	];
 	it.each(invalidInputs)('rejects $name', ({ value, reason }) => {

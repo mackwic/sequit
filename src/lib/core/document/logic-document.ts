@@ -14,10 +14,20 @@ export const REGION_COMPOSITION_PERSISTENCE_FORMAT = 7 as const;
 export const REGION_POLICY_PERSISTENCE_FORMAT = 8 as const;
 export const LAYOUT_PRESENTATION_SCHEMA = 1 as const;
 export const REGION_PRESENTATION_SCHEMA = 1 as const;
-export const GRID_REGION_PRESENTATION_SCHEMA = 2 as const;
 export const REGION_LANE_PRESENTATION_SCHEMA = 3 as const;
 export const REGION_COMPOSITION_PRESENTATION_SCHEMA = 4 as const;
-export const REGION_POLICY_PRESENTATION_SCHEMA = 5 as const;
+/** The N x M grid schemas; the leading numbers 2 and 5 stay readable as their legacy form. */
+export const GRID_REGION_PRESENTATION_SCHEMA = 6 as const;
+export const REGION_POLICY_PRESENTATION_SCHEMA = 7 as const;
+const LEGACY_GRID_REGION_PRESENTATION_SCHEMA = 2 as const;
+const LEGACY_REGION_POLICY_PRESENTATION_SCHEMA = 5 as const;
+
+/** The schema a reader materializes for a raw persisted region presentation schema. */
+export function regionPresentationSchemaFor(schema: unknown): unknown {
+	if (schema === LEGACY_GRID_REGION_PRESENTATION_SCHEMA) return GRID_REGION_PRESENTATION_SCHEMA;
+	if (schema === LEGACY_REGION_POLICY_PRESENTATION_SCHEMA) return REGION_POLICY_PRESENTATION_SCHEMA;
+	return schema;
+}
 
 export enum LayoutDirection {
 	TopToBottom = 'top-to-bottom',
@@ -72,7 +82,7 @@ export interface LayoutRegionDefinition {
 	readonly layoutOrder: OrderKey;
 	readonly policy: LayoutPolicy;
 	readonly lanePresentation?: RegionLanePresentation;
-	/** An internal region may arrange exactly four direct children in a two by two grid. */
+	/** An internal region may arrange its direct children in a rectangular grid. */
 	readonly grid?: GridLayoutPresentation;
 }
 
@@ -93,8 +103,8 @@ export interface RootLayoutPresentation {
 
 export interface GridLayoutCell {
 	readonly regionId: string;
-	readonly row: 0 | 1;
-	readonly column: 0 | 1;
+	readonly row: number;
+	readonly column: number;
 }
 
 export enum GridMinimumField {
@@ -102,9 +112,10 @@ export enum GridMinimumField {
 	RowHeights = 'minimumRowHeights',
 }
 
+/** One minimum extent per column and per row; the cells cover the rectangle they describe. */
 export interface GridLayoutPresentation {
-	readonly minimumColumnWidths: readonly [number, number];
-	readonly minimumRowHeights: readonly [number, number];
+	readonly minimumColumnWidths: readonly number[];
+	readonly minimumRowHeights: readonly number[];
 	readonly cells: readonly GridLayoutCell[];
 }
 

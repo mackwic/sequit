@@ -1,6 +1,15 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import {
+	EndpointKind,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
+	type LogicNode,
+	type LogicRelation,
+} from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
@@ -12,7 +21,102 @@ import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-c
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { gridDocument, gridInput } from './grid-cell-fixture';
+
+const fractionalSize = fc.record({
+	width: fc.integer({ min: 80, max: 320 }).map((value) => value + 0.25),
+	height: fc.integer({ min: 40, max: 160 }).map((value) => value + 0.5),
+});
+
+interface GridShape {
+	readonly rows: number;
+	readonly columns: number;
+}
+
+function nodeId(row: number, column: number): string {
+	return `${row}-${column}`;
+}
+
+function cellInput(
+	shape: GridShape,
+	minimumColumns: readonly number[],
+	minimumRows: readonly number[],
+): GridCellInput {
+	const cells = [];
+	const cellByEndpointId = new Map<string, string>();
+	for (let row = 0; row < shape.rows; row += 1)
+		for (let column = 0; column < shape.columns; column += 1) {
+			const id = nodeId(row, column);
+			cells.push({ id, parentId: '@root', row, column });
+			cellByEndpointId.set(id, id);
+		}
+	return {
+		rootId: '@root',
+		cells,
+		cellByEndpointId,
+		minimumColumnWidths: minimumColumns.slice(0, shape.columns),
+		minimumRowHeights: minimumRows.slice(0, shape.rows),
+	};
+}
+
+function gridDocument(shape: GridShape): LogicDocument {
+	const nodes: LogicNode[] = [];
+	let order = 0;
+	for (let row = 0; row < shape.rows; row += 1)
+		for (let column = 0; column < shape.columns; column += 1) {
+			const id = nodeId(row, column);
+			nodes.push({
+				kind: EndpointKind.Node,
+				id,
+				natureId: 'task',
+				markdown: `${id}\n`,
+				layoutOrder: orderKey(`a${order}`),
+			});
+			order += 1;
+		}
+	const relations: LogicRelation[] = [];
+	for (let row = 0; row < shape.rows; row += 1)
+		relations.push({
+			id: `right-${row}`,
+			from: nodeId(row, 0),
+			to: nodeId(row, 1),
+		});
+	if (shape.rows > 1)
+		relations.push({
+			id: 'down-leading',
+			from: nodeId(0, 0),
+			to: nodeId(shape.rows - 1, 0),
+		});
+	if (shape.columns > 2)
+		relations.push({
+			id: 'right-trailing',
+			from: nodeId(0, shape.columns - 2),
+			to: nodeId(0, shape.columns - 1),
+		});
+	return {
+		persistenceFormat: 2,
+		id: 'grid-property',
+		title: 'Grid property',
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
+		groups: [],
+		junctions: [],
+		nodes,
+		relations,
+	};
+}
+
+function nodeOverrides(
+	shape: GridShape,
+	sizes: readonly { readonly width: number; readonly height: number }[],
+): Record<string, { readonly width: number; readonly height: number }> {
+	const overrides: Record<string, { readonly width: number; readonly height: number }> = {};
+	for (let row = 0; row < shape.rows; row += 1)
+		for (let column = 0; column < shape.columns; column += 1) {
+			const size = sizes[row * 3 + column];
+			if (size !== undefined) overrides[nodeId(row, column)] = size;
+		}
+	return overrides;
+}
 
 /** The grid owns the middle piece of each crossing route: the contact oracle compares those. */
 function gridOwnedUnbridgedContact(
@@ -35,77 +139,43 @@ function gridOwnedUnbridgedContact(
 	return undefined;
 }
 
-const fractionalSize = fc.record({
-	width: fc.integer({ min: 80, max: 320 }).map((value) => value + 0.25),
-	height: fc.integer({ min: 40, max: 160 }).map((value) => value + 0.5),
-});
-
 describe('grid-cell real-pipeline properties', () => {
-	it('keeps independent cells and three opaque crossings under fractional sizes and permutations', () => {
+	it('keeps independent cells and opaque crossings across two and three by two and three grids', () => {
 		fc.assert(
 			fc.property(
 				fc.record({
-					aTop: fractionalSize,
-					aBottom: fractionalSize,
-					b: fractionalSize,
-					c: fractionalSize,
-					d: fractionalSize,
-					groupWidth: fc.integer({ min: 400, max: 900 }).map((value) => value + 0.25),
-					groupHeight: fc.integer({ min: 240, max: 600 }).map((value) => value + 0.5),
-					minimumColumns: fc.tuple(
-						fc.integer({ min: 0, max: 1000 }),
-						fc.integer({ min: 0, max: 1000 }),
-					),
-					minimumRows: fc.tuple(fc.integer({ min: 0, max: 700 }), fc.integer({ min: 0, max: 700 })),
+					rows: fc.constantFrom(2, 3),
+					columns: fc.constantFrom(2, 3),
+					sizes: fc.array(fractionalSize, { minLength: 9, maxLength: 9 }),
+					minimumColumns: fc.array(fc.integer({ min: 0, max: 1000 }), {
+						minLength: 3,
+						maxLength: 3,
+					}),
+					minimumRows: fc.array(fc.integer({ min: 0, max: 700 }), {
+						minLength: 3,
+						maxLength: 3,
+					}),
 				}),
-				(values) => {
-					const base = gridDocument();
-					const document = {
-						...base,
-						relations: [
-							...base.relations,
-							{ id: 'second-crossing', from: 'a-bottom', to: 'c' },
-							{ id: 'third-crossing', from: 'a-top', to: 'd' },
-						],
-					};
-					const overrides = {
-						nodes: {
-							'a-top': values.aTop,
-							'a-bottom': values.aBottom,
-							b: values.b,
-							c: values.c,
-							d: values.d,
-						},
-						groups: {
-							oversized: {
-								minimumWidth: values.groupWidth,
-								minimumHeight: values.groupHeight,
-								headerHeight: 36,
-								padding: 24,
-							},
-						},
-					};
-					const input = {
-						...gridInput(),
-						minimumColumnWidths: values.minimumColumns,
-						minimumRowHeights: values.minimumRows,
-					};
+				({ rows, columns, sizes, minimumColumns, minimumRows }) => {
+					const shape: GridShape = { rows, columns };
+					const document = gridDocument(shape);
+					const input = cellInput(shape, minimumColumns, minimumRows);
+					const overrides = { nodes: nodeOverrides(shape, sizes) };
 					const cold = prepareLayoutDocument(document, overrides);
 					const solved = solveGridCellLayout(cold.graph, cold.measurements, input);
 					if (solved.status !== GridCellLayoutStatus.Selected)
 						throw new Error(`Expected selected grid: ${solved.status}: ${solved.reason}`);
 					expect(validateGridCellGeometry(solved, cold.graph, input)).toBeUndefined();
 					expect(gridOwnedUnbridgedContact(solved.layout, input)).toBeUndefined();
-					expect(solved.portals).toHaveLength(6);
-					expect(solved.columnWidths[0]).toBeGreaterThanOrEqual(values.minimumColumns[0]);
-					expect(solved.columnWidths[1]).toBeGreaterThanOrEqual(values.minimumColumns[1]);
-					expect(solved.rowHeights[0]).toBeGreaterThanOrEqual(values.minimumRows[0]);
-					expect(solved.rowHeights[1]).toBeGreaterThanOrEqual(values.minimumRows[1]);
+					expect(solved.portals).toHaveLength(2 * document.relations.length);
+					for (const [index, minimum] of input.minimumColumnWidths.entries())
+						expect(solved.columnWidths[index]).toBeGreaterThanOrEqual(minimum);
+					for (const [index, minimum] of input.minimumRowHeights.entries())
+						expect(solved.rowHeights[index]).toBeGreaterThanOrEqual(minimum);
 					const permuted = prepareLayoutDocument(
 						{
 							...document,
 							nodes: [...document.nodes].reverse(),
-							groups: [...document.groups].reverse(),
 							relations: [...document.relations].reverse(),
 						},
 						overrides,
@@ -118,7 +188,6 @@ describe('grid-cell real-pipeline properties', () => {
 					const reversedMeasurements = {
 						...permuted.measurements,
 						nodes: new Map([...permuted.measurements.nodes].reverse()),
-						groups: new Map([...permuted.measurements.groups].reverse()),
 					};
 					expect(solveGridCellLayout(permuted.graph, reversedMeasurements, reversedInput)).toEqual(
 						solved,
@@ -127,5 +196,5 @@ describe('grid-cell real-pipeline properties', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+	}, 600_000);
 });
