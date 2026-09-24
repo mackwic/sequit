@@ -19,9 +19,7 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
-import { UnknownRegionLeafLayoutError } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
@@ -80,7 +78,40 @@ function selectedGrid(): GridCellSelected {
 	};
 }
 
-function localPortal(side: RegionPortalSide): { readonly anchor: Point; readonly point: Point } {
+/** A three by three grid whose middle cell (`b`) sits in the inner column and the middle row. */
+function selectedThreeByThreeGrid(): GridCellSelected {
+	const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+	const cells: GridCellPlacement[] = ids.map((id, index) => {
+		const row = Math.floor(index / 3);
+		const column = index % 3;
+		const x = 100 + column * 400;
+		const y = 100 + row * 400;
+		return {
+			id,
+			parentId: 'grid',
+			row,
+			column,
+			bounds: { x, y, width: 200, height: 200 },
+			translation: { x: x + 20, y: y + 20 },
+			localLayout: EMPTY_LAYOUT,
+			localRanks: EMPTY_RANKS,
+		};
+	});
+	return {
+		status: GridCellLayoutStatus.Selected,
+		rootId: 'grid',
+		layout: { width: 1200, height: 1200, elements: [], relations: [] },
+		portals: [],
+		cells,
+		columnWidths: [200, 200, 200],
+		rowHeights: [200, 200, 200],
+	};
+}
+
+function localPortal(side: RegionPortalSide): {
+	readonly anchor: Point;
+	readonly point: Point;
+} {
 	switch (side) {
 		case RegionPortalSide.Top:
 			return { anchor: { x: 80, y: 40 }, point: { x: 80, y: 0 } };
@@ -137,6 +168,7 @@ function inheritedPath(input: {
 	readonly childSide: RegionPortalSide;
 	readonly outerSide: RegionPortalSide;
 	readonly role?: RegionIncidentRole;
+	readonly selected?: GridCellSelected;
 }): RegionIncidentPath {
 	const child = childWithIncident({
 		childId: input.childId,
@@ -149,7 +181,7 @@ function inheritedPath(input: {
 		context: input.context,
 		regionId: 'grid',
 		incidentSides: new Map([[input.relationId, [input.outerSide]]]),
-		selected: selectedGrid(),
+		selected: input.selected ?? selectedGrid(),
 		children: new Map([[input.childId, child]]),
 	});
 	return defined(paths.get(input.relationId));
@@ -275,27 +307,48 @@ describe('inherited grid incident continuation', () => {
 		]);
 	});
 
-	it('reports the missing inner gutter for an incident in an inner column', () => {
-		const grid = selectedGrid();
-		const interior: GridCellSelected = {
-			...grid,
-			columnWidths: [200, 200, 200],
-		};
-		let error: unknown;
-		try {
-			gridCellInheritedIncidentPaths({
-				context,
-				regionId: 'grid',
-				incidentSides: new Map([['a-right-exit', [RegionPortalSide.Left]]]),
-				selected: interior,
-				children: new Map(),
-			});
-		} catch (caught) {
-			error = caught;
+	it('carries an inner-column incident up its gutter and out along the declared frame side', () => {
+		const grid = selectedThreeByThreeGrid();
+		const cell = defined(grid.cells.find(({ id }) => id === 'b'));
+		const path = inheritedPath({
+			context,
+			relationId: 'a-right-exit',
+			childId: 'b',
+			endpointId: 'b',
+			childSide: RegionPortalSide.Bottom,
+			outerSide: RegionPortalSide.Left,
+			selected: grid,
+		});
+		const gridPiece = defined(path.pieces[1]);
+		// The inner-column gutter sits between columns 0 and 1: the reserved track of that gutter.
+		const railX = cell.bounds.x - 48;
+		const busY = defined(grid.cells[0]).bounds.y / 2;
+		expect(gridPiece.points).toContainEqual({ x: railX, y: busY });
+		const outer = defined(path.portals[1]);
+		expect(outer.side).toBe(RegionPortalSide.Left);
+		expect(outer.point.y).toBe(busY);
+		expect(outer.point.x).toBe(-32);
+		for (let index = 1; index < gridPiece.points.length; index += 1) {
+			const previous = defined(gridPiece.points[index - 1]);
+			const current = defined(gridPiece.points[index]);
+			expect(previous.x === current.x || previous.y === current.y).toBe(true);
 		}
-		expect(error).toBeInstanceOf(UnknownRegionLeafLayoutError);
-		if (!(error instanceof UnknownRegionLeafLayoutError))
-			throw new Error('Expected the missing inner gutter failure.');
-		expect(error.code).toBe(RegionGeometryDiagnosticCode.GridInnerGutterMissing);
+	});
+
+	it('leaves an inner-column top cell by its nearest frame side without a lateral detour', () => {
+		const grid = selectedThreeByThreeGrid();
+		const path = inheritedPath({
+			context,
+			relationId: 'a-right-exit',
+			childId: 'b',
+			endpointId: 'b',
+			childSide: RegionPortalSide.Top,
+			outerSide: RegionPortalSide.Top,
+			selected: grid,
+		});
+		const outer = defined(path.portals[1]);
+		expect(outer.side).toBe(RegionPortalSide.Top);
+		const cell = defined(grid.cells.find(({ id }) => id === 'b'));
+		expect(outer.point.x).toBe(cell.bounds.x - 48);
 	});
 });

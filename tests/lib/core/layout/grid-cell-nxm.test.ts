@@ -6,8 +6,14 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
@@ -16,6 +22,7 @@ import {
 	nxmTwoByThreeDocument,
 	nxmTwoByThreeInput,
 	persistedNxmGridDocument,
+	persistedNxmInnerGridDocument,
 } from './grid-cell-fixture';
 
 interface NxmShape {
@@ -130,5 +137,32 @@ describe('N by M grid region arrangement', () => {
 		expect(columns.get('c')).toBe(columns.get('f'));
 		expect(columns.get('a')).toBeLessThan(columns.get('b') ?? 0);
 		expect(columns.get('b')).toBeLessThan(columns.get('c') ?? 0);
+	});
+
+	it('carries an inner-grid incident from its middle column to the sibling leaf', () => {
+		const source = persistedNxmInnerGridDocument();
+		const prepared = prepareLayoutDocument(source, undefined);
+		const input = nestedRegionInput(prepared.graph);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`${attempt.status}: ${attempt.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized inner grid.');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+		// The middle-column cell is column 1 of 3 and is the only cell without an incident node.
+		expect(
+			attempt.regions.filter(({ id }) => ['a', 'b', 'c', 'd', 'e', 'f'].includes(id)),
+		).toHaveLength(6);
+		const middle = new Map(attempt.regions.map(({ id, bounds }) => [id, bounds]));
+		expect(middle.get('b')?.x).toBe(middle.get('e')?.x);
+		expect(middle.get('a')?.x).toBeLessThan(middle.get('b')?.x ?? 0);
+		expect(middle.get('b')?.x).toBeLessThan(middle.get('c')?.x ?? 0);
+		const route = attempt.layout.relations.find(({ id }) => id === 'b-out');
+		if (route === undefined) throw new Error('Expected the middle-column incident.');
+		// The route climbs the middle column gutter above the cells before it leaves the grid.
+		const above = route.points.filter(({ y }) => y < (middle.get('a')?.y ?? 0));
+		expect(above.length).toBeGreaterThanOrEqual(2);
 	});
 });

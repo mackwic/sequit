@@ -7,6 +7,8 @@ import {
 	LayoutPolicy,
 	type LogicDocument,
 	PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import type {
@@ -89,7 +91,10 @@ export function gridInput(): GridCellInput {
 				parentId: '@root',
 				row: 0,
 				column: 1,
-				layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+				layout: {
+					direction: LayoutDirection.RightToLeft,
+					bias: LayoutBias.Right,
+				},
 			},
 			{ id: 'c', parentId: '@root', row: 1, column: 0 },
 			{ id: 'd', parentId: '@root', row: 1, column: 1 },
@@ -143,7 +148,14 @@ export function persistedGridDocument(): LogicDocument {
 
 export function prepareGrid(document = gridDocument()): PreparedLayoutDocument {
 	return prepareLayoutDocument(document, {
-		groups: { oversized: { minimumWidth: 620, minimumHeight: 320, headerHeight: 36, padding: 24 } },
+		groups: {
+			oversized: {
+				minimumWidth: 620,
+				minimumHeight: 320,
+				headerHeight: 36,
+				padding: 24,
+			},
+		},
 	});
 }
 
@@ -271,5 +283,57 @@ export function persistedNxmGridDocument(): LogicDocument {
 			},
 		},
 		nodes: document.nodes.map((node) => ({ ...node, regionId: node.id })),
+	};
+}
+
+/** A three by two grid nested in a region tree, with one incident from its middle column outwards. */
+export function persistedNxmInnerGridDocument(): LogicDocument {
+	const shape = NXM_3X2;
+	const document = nxmDocument(shape, 'nxm-inner-grid-proof', 'Persisted inner three by two grid');
+	return {
+		...document,
+		persistenceFormat: REGION_COMPOSITION_PERSISTENCE_FORMAT,
+		regionPresentation: {
+			schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA,
+			regions: [
+				{
+					id: 'grid',
+					layoutOrder: orderKey('a0'),
+					policy: LayoutPolicy.Layered,
+					grid: {
+						minimumColumnWidths: shape.minimumColumnWidths,
+						minimumRowHeights: shape.minimumRowHeights,
+						cells: shape.ids.map((regionId, index) => ({
+							regionId,
+							row: Math.floor(index / shape.columns),
+							column: index % shape.columns,
+						})),
+					},
+				},
+				{
+					id: 'outside',
+					layoutOrder: orderKey('a1'),
+					policy: LayoutPolicy.Layered,
+				},
+				...shape.ids.map((id, index) => ({
+					id,
+					parentId: 'grid',
+					layoutOrder: orderKey(`a${index}`),
+					policy: LayoutPolicy.Layered,
+				})),
+			],
+		},
+		nodes: [
+			...document.nodes.map((node) => ({ ...node, regionId: node.id })),
+			{
+				kind: EndpointKind.Node,
+				id: 'outside',
+				natureId: 'task',
+				markdown: 'Outside\n',
+				layoutOrder: orderKey('a6'),
+				regionId: 'outside',
+			},
+		],
+		relations: [{ id: 'b-out', from: 'b', to: 'outside' }],
 	};
 }

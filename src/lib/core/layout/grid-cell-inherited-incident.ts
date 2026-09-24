@@ -21,8 +21,6 @@ import {
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
 import { RegionPortalSide } from './region-composition-types';
-import { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
-import { UnknownRegionLeafLayoutError } from './region-leaf-layout';
 
 interface GridIncidentInput {
 	readonly context: RecursiveContext;
@@ -143,13 +141,20 @@ function outerPortalY(
 	side: RegionPortalSide,
 	approachY: number,
 ): number {
-	const outward = crossingEndpointSide(cell.column, grid.selected.columnWidths.length);
+	const columnCount = grid.selected.columnWidths.length;
+	const lastColumn = columnCount - 1;
+	const outward = crossingEndpointSide(cell.column, columnCount);
 	const exitsLeftFromRightCell =
 		side === RegionPortalSide.Left && outward === RegionPortalSide.Right;
 	const exitsRightFromLeftCell =
 		side === RegionPortalSide.Right && outward === RegionPortalSide.Left;
 	const oppositeColumn = exitsLeftFromRightCell || exitsRightFromLeftCell;
-	if (oppositeColumn) return defined(grid.selected.cells[0]).bounds.y / 2;
+	// An inner column's gutter sits between two columns and reaches no lateral frame; a lateral exit
+	// leaves it along the top bus above the cells, exactly like the opposite-column detour.
+	const innerColumn = cell.column > 0 && cell.column < lastColumn;
+	const lateral = side === RegionPortalSide.Left || side === RegionPortalSide.Right;
+	if (oppositeColumn || (innerColumn && lateral))
+		return defined(grid.selected.cells[0]).bounds.y / 2;
 	return approachY;
 }
 
@@ -203,14 +208,6 @@ export function gridCellInheritedIncidentPaths(
 		if (source) endpointId = owned.relation.from;
 		const childId = directChild(input.context, input.regionId, endpointId);
 		const cell = defined(input.selected.cells.find(({ id }) => id === childId));
-		const lastColumn = extent.columns - 1;
-		if (cell.column > 0 && cell.column < lastColumn)
-			throw new UnknownRegionLeafLayoutError(
-				`Grid cell ${cell.id} has no gutter reaching the region frame.`,
-				RegionGeometryDiagnosticCode.GridInnerGutterMissing,
-				undefined,
-				input.regionId,
-			);
 		const child = defined(input.children.get(childId));
 		const path = extendedToCellFrame(
 			translatedIncidentPath(defined(child.incidentPaths.get(relationId)), cell.translation),
