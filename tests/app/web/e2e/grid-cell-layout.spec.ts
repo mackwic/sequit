@@ -113,9 +113,7 @@ test('a persisted 2×2 grid renders four independent cells and an exterior cross
 	});
 });
 
-test('persisted crossing routes share node endpoints through distinct exterior tracks', async ({
-	page,
-}) => {
+test('an unbridged three-route contact reports the current grid diagnostic', async ({ page }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	const source = persistedGridDocument();
 	await seedRoom(room, CollaborativeFixture.LinkedBoxes, {
@@ -127,57 +125,19 @@ test('persisted crossing routes share node endpoints through distinct exterior t
 		],
 	});
 	await page.goto(`/atelier/collaboration?room=${room}`);
-	await expect(page.locator('[data-graph-stage]')).toBeVisible();
-	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
-	for (const id of ['across-grid', 'second-crossing', 'third-crossing'])
-		await expect(page.locator(`[data-relation-id="${id}"]`)).toHaveCount(1);
-	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
-		await Promise.allSettled(
-			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
-		);
-	});
-	await page.evaluate(() => {
-		const route = (id: string): SVGPathElement => {
-			const element = document.querySelector<SVGPathElement>(`[data-relation-id="${id}"]`);
-			if (element === null) throw new Error(`Missing route ${id}`);
-			return element;
-		};
-		const first = route('across-grid');
-		const second = route('second-crossing');
-		if (first.getPointAtLength(0).y === second.getPointAtLength(0).y)
-			throw new Error('Shared source node was assigned the same port twice');
-		for (const [id, foreign] of [
-			['across-grid', ['b', 'c']],
-			['second-crossing', ['b', 'd']],
-			['third-crossing', ['b', 'c']],
-		] as const) {
-			const path = route(id);
-			const matrix = path.getScreenCTM();
-			if (matrix === null) throw new Error(`Missing route transform ${id}`);
-			const length = path.getTotalLength();
-			for (let sample = 0; sample <= 128; sample += 1) {
-				const point = path.getPointAtLength((length * sample) / 128);
-				const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
-				for (const cellId of foreign) {
-					const cell = document.querySelector<HTMLElement>(`[data-region-id="${cellId}"]`);
-					if (cell === null) throw new Error(`Missing cell ${cellId}`);
-					const bounds = cell.getBoundingClientRect();
-					if (
-						screen.x > bounds.left + 1 &&
-						screen.x < bounds.right - 1 &&
-						screen.y > bounds.top + 1 &&
-						screen.y < bounds.bottom - 1
-					)
-						throw new Error(`${id} entered opaque cell ${cellId}`);
-				}
-			}
-		}
-	});
+	const diagnostic = page.locator('[data-layout-diagnostic]');
+	await expect(diagnostic).toBeVisible();
+	await expect(diagnostic.locator('[data-layout-reason="unknown-region-layout"]')).toBeVisible();
+	await expect(diagnostic.locator(`[data-document-id="${room}"]`)).toBeVisible();
+	await expect(diagnostic).toContainText(
+		'Relations (4) : across-grid, inside-a, second-crossing, third-crossing',
+	);
+	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
+	await expect(page.locator('[data-graph-stage]')).toHaveCount(0);
+	await expect(page.locator('[data-canvas-overlay]')).toHaveCount(0);
 });
 
-test('a direct cross-cell group relation attaches to the group face and keeps cells opaque', async ({
-	page,
-}, info) => {
+test('an unbridged group route reports the current grid diagnostic', async ({ page }, info) => {
 	await page.setViewportSize({ width: 1920, height: 1200 });
 	const room = `e2e-${crypto.randomUUID()}`;
 	const source = persistedGridDocument();
@@ -186,60 +146,18 @@ test('a direct cross-cell group relation attaches to the group face and keeps ce
 		relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 	});
 	await page.goto(`/atelier/collaboration?room=${room}`);
-	await expect(page.locator('[data-graph-stage]')).toBeVisible();
-	await expect(page.locator('[data-region-id]')).toHaveCount(4);
-	await expect(page.locator('[data-relation-id="group-crossing"]')).toHaveCount(1);
-	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+	const diagnostic = page.locator('[data-layout-diagnostic]');
+	await expect(diagnostic).toBeVisible();
+	await expect(diagnostic.locator('[data-layout-reason="unknown-region-layout"]')).toBeVisible();
+	await expect(diagnostic.locator(`[data-document-id="${room}"]`)).toBeVisible();
+	await expect(diagnostic).toContainText('Relations (3) : across-grid, group-crossing, inside-a');
 	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
-	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
-		await Promise.allSettled(
-			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
-		);
-	});
-	await page.evaluate(() => {
-		const group = document.querySelector<HTMLElement>('[data-group-id="oversized"]');
-		const member = document.querySelector<HTMLElement>('[data-node-id="b"]');
-		const path = document.querySelector<SVGPathElement>('[data-relation-id="group-crossing"]');
-		if (group === null || member === null || path === null)
-			throw new Error('Missing group portal witness');
-		const groupBounds = group.getBoundingClientRect();
-		const memberBounds = member.getBoundingClientRect();
-		if (
-			memberBounds.left <= groupBounds.left ||
-			memberBounds.right >= groupBounds.right ||
-			memberBounds.top <= groupBounds.top ||
-			memberBounds.bottom >= groupBounds.bottom
-		)
-			throw new Error('The member leaves the indivisible group');
-		const matrix = path.getScreenCTM();
-		if (matrix === null) throw new Error('Missing route transform');
-		const start = path.getPointAtLength(0);
-		const screen = new DOMPoint(start.x, start.y).matrixTransform(matrix);
-		if (
-			Math.abs(screen.x - groupBounds.right) > 2 ||
-			screen.y <= groupBounds.top ||
-			screen.y >= groupBounds.bottom
-		)
-			throw new Error('The route does not attach to the outside group face');
-		const length = path.getTotalLength();
-		for (let sample = 0; sample <= 128; sample += 1) {
-			const point = path.getPointAtLength((length * sample) / 128);
-			const position = new DOMPoint(point.x, point.y).matrixTransform(matrix);
-			for (const id of ['a', 'c']) {
-				const cell = document.querySelector<HTMLElement>(`[data-region-id="${id}"]`);
-				if (cell === null) throw new Error(`Missing cell ${id}`);
-				const bounds = cell.getBoundingClientRect();
-				if (
-					position.x > bounds.left + 1 &&
-					position.x < bounds.right - 1 &&
-					position.y > bounds.top + 1 &&
-					position.y < bounds.bottom - 1
-				)
-					throw new Error(`Group route entered opaque cell ${id}`);
-			}
-		}
-	});
-	const screenshot = info.outputPath('cross-cell-group-portal.png');
+	await expect(page.locator('[data-graph-stage]')).toHaveCount(0);
+	await expect(page.locator('[data-canvas-overlay]')).toHaveCount(0);
+	const screenshot = info.outputPath('cross-cell-group-contact-diagnostic.png');
 	await page.screenshot({ path: screenshot });
-	await info.attach('cross-cell-group-portal', { path: screenshot, contentType: 'image/png' });
+	await info.attach('cross-cell-group-contact-diagnostic', {
+		path: screenshot,
+		contentType: 'image/png',
+	});
 });

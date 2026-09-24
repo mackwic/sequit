@@ -178,6 +178,41 @@ describe('implicit root layout region', () => {
 		expect(layout.relations.map(({ id }) => id)).toEqual(['across-grid', 'inside-a', 'inside-b']);
 	});
 
+	it('rejects an unbridged contact between three persisted root grid crossings', () => {
+		const source = persistedGridDocument();
+		const prepared = prepareGrid({
+			...source,
+			relations: [
+				...source.relations,
+				{ id: 'second-crossing', from: 'a-bottom', to: 'c' },
+				{ id: 'third-crossing', from: 'a-top', to: 'd' },
+			],
+		});
+		const attempt = solveNestedRegionLayout(
+			prepared.graph,
+			prepared.measurements,
+			nestedRegionInput(prepared.graph),
+		);
+		expect(attempt).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: '@root',
+			relationId: 'across-grid',
+		});
+		let failure: unknown;
+		try {
+			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		} catch (error) {
+			failure = error;
+		}
+		expect(failure).toBeInstanceOf(UnknownGridCellLayoutError);
+		expect(failure).toMatchObject({
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: '@root',
+			relationId: 'across-grid',
+		});
+	});
+
 	it('rejects an unbridged group crossing that the old grid checker accepted', () => {
 		const source = persistedGridDocument();
 		const extraCrossing = prepareGrid({

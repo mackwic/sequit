@@ -306,7 +306,7 @@ test('a persisted grid inside a region renders four cells beside an ordinary sib
 	await info.attach('persisted-nested-grid', { path: screenshot, contentType: 'image/png' });
 });
 
-test('a persisted route leaves an internal grid through both region boundaries', async ({
+test('an unbridged external grid incident reports the current region diagnostic', async ({
 	page,
 }, info) => {
 	await page.setViewportSize({ width: 1920, height: 1200 });
@@ -318,30 +318,18 @@ test('a persisted route leaves an internal grid through both region boundaries',
 	};
 	await seedRoom(room, CollaborativeFixture.LinkedBoxes, document);
 	await page.goto(`/atelier/collaboration?room=${room}`);
-	await expect(page.locator('[data-graph-stage]')).toBeVisible();
-	await expect(page.locator('[data-region-id]')).toHaveCount(6);
-	await expect(page.locator('[data-relation-id="leaves-grid"]')).toHaveCount(1);
-	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+	const diagnostic = page.locator('[data-layout-diagnostic]');
+	await expect(diagnostic).toBeVisible();
+	await expect(diagnostic.locator('[data-layout-reason="unknown-region-layout"]')).toBeVisible();
+	await expect(diagnostic.locator(`[data-document-id="${room}"]`)).toBeVisible();
+	await expect(diagnostic).toContainText('Relations (3) : across-grid, inside-a, leaves-grid');
 	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
-	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
-		await Promise.all(
-			stage
-				.getAnimations({ subtree: true })
-				.map((animation) => animation.finished.catch(() => undefined)),
-		);
-	});
-	const viewport = page.locator('[data-canvas-viewport]');
-	for (let step = 0; step < 5; step += 1)
-		await viewport.dispatchEvent('wheel', {
-			ctrlKey: true,
-			deltaY: 100,
-			clientX: 780,
-			clientY: 600,
-		});
-	await expect(page.locator('[data-graph-stage]')).toHaveCSS('transform', /^matrix\(0\.5,/);
-	const screenshot = info.outputPath('persisted-grid-external-incident.png');
+	await expect(page.locator('[data-graph-stage]')).toHaveCount(0);
+	await expect(page.locator('[data-canvas-overlay]')).toHaveCount(0);
+	await expect(page.locator('[data-relation-id="leaves-grid"]')).toHaveCount(0);
+	const screenshot = info.outputPath('persisted-grid-external-contact-diagnostic.png');
 	await page.screenshot({ path: screenshot });
-	await info.attach('persisted-grid-external-incident', {
+	await info.attach('persisted-grid-external-contact-diagnostic', {
 		path: screenshot,
 		contentType: 'image/png',
 	});
