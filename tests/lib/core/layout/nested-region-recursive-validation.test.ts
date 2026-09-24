@@ -4,14 +4,14 @@ import { defined } from '../../../../src/lib/core/document/logic-document';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
@@ -21,7 +21,7 @@ function selected() {
 	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 	const input = depthTwoRegionInput();
 	const candidate = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (candidate.status !== NestedRegionLayoutStatus.Selected)
+	if (candidate.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected recursive candidate: ${candidate.status}: ${candidate.reason}`);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -43,7 +43,7 @@ function selectedIncident() {
 	const prepared = prepareLayoutDocument(document);
 	const input = depthTwoRegionInput();
 	const candidate = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (candidate.status !== NestedRegionLayoutStatus.Selected)
+	if (candidate.status !== RegionCompositionStatus.Selected)
 		throw new Error(
 			`Expected intermediate-boundary candidate: ${candidate.status}: ${candidate.reason}`,
 		);
@@ -53,7 +53,7 @@ function selectedIncident() {
 	return { graph: prepared.graph, input, candidate, model: normalized.model };
 }
 
-function restitchIncident(candidate: NestedRegionSelected): NestedRegionSelected {
+function restitchIncident(candidate: RegionLayoutSelected): RegionLayoutSelected {
 	const owners = candidate.ownedRoutes.filter(({ relationId }) => relationId === crossingId);
 	const points: Point[] = [];
 	for (const owner of owners) {
@@ -73,10 +73,10 @@ function restitchIncident(candidate: NestedRegionSelected): NestedRegionSelected
 }
 
 function changedIncidentPiece(
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 	regionId: string,
 	points: readonly Point[],
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	return restitchIncident({
 		...candidate,
 		ownedRoutes: candidate.ownedRoutes.map((piece) => {
@@ -87,12 +87,12 @@ function changedIncidentPiece(
 }
 
 function changedRegion(
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 	id: string,
 	change: (
-		region: NestedRegionSelected['regions'][number],
-	) => NestedRegionSelected['regions'][number],
-): NestedRegionSelected {
+		region: RegionLayoutSelected['regions'][number],
+	) => RegionLayoutSelected['regions'][number],
+): RegionLayoutSelected {
 	return {
 		...candidate,
 		regions: candidate.regions.map((region) => {

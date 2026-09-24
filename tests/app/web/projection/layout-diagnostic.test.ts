@@ -8,10 +8,10 @@ import {
 import {
 	UnknownGridCellLayoutError,
 	UnknownLayoutPresentationError,
-	UnknownNestedRegionLayoutError,
+	UnknownRegionLayoutError,
 	UnsupportedGridCellLayoutError,
 	UnsupportedLayoutPresentationError,
-	UnsupportedNestedRegionLayoutError,
+	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 
@@ -70,14 +70,14 @@ it('identifies unsupported multi-lane layout by the core error type', () => {
 it('reports unresolved or unsupported region composition without leaking solver details', () => {
 	const document = validLogicDocument();
 	expect(
-		layoutDiagnostic(document, new UnsupportedNestedRegionLayoutError(document.id, 'private rule'))
+		layoutDiagnostic(document, new UnsupportedRegionLayoutError(document.id, 'private rule'))
 			.reason,
 	).toEqual({
 		code: LayoutFailureReasonCode.UnsupportedRegionLayout,
 		message: 'Cette configuration de régions n’est pas encore prise en charge.',
 	});
 	expect(
-		layoutDiagnostic(document, new UnknownNestedRegionLayoutError(document.id, 'private geometry'))
+		layoutDiagnostic(document, new UnknownRegionLayoutError(document.id, 'private geometry'))
 			.reason,
 	).toEqual({
 		code: LayoutFailureReasonCode.UnknownRegionLayout,

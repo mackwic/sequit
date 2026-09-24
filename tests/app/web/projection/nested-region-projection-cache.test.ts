@@ -12,7 +12,7 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,
@@ -128,10 +128,10 @@ it('invalidates only the lane leaf for orientation and refreshes its label after
 	const source = sourceWithRegionLanes(LaneOrientation.Parallel);
 	const projection = new DocumentProjection(source);
 	const measured = layoutMeasurementsForCanvas(projection.measurementModel);
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
+	const resolver = vi.spyOn(RegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const first = await projection.createCanvasModel(measured);
 	const cache = resolver.mock.contexts[0];
-	if (!(cache instanceof NestedRegionLocalLayoutCache)) throw new Error('Missing projection cache');
+	if (!(cache instanceof RegionLocalLayoutCache)) throw new Error('Missing projection cache');
 	expect(first.lanes?.map(({ id, regionId, label }) => [id, regionId, label])).toEqual([
 		['sales', 'left', 'Sales'],
 		['service', 'left', 'Service'],
@@ -153,13 +153,13 @@ it('invalidates only the lane leaf for orientation and refreshes its label after
 });
 
 it('keeps child cache state inside one DocumentProjection across source and measurement updates', async () => {
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
+	const resolver = vi.spyOn(RegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const source = sourceWithRegions();
 	const projection = new DocumentProjection(source);
 	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
 	await projection.createCanvasModel(measurements);
 	const cache = resolver.mock.contexts[0];
-	if (!(cache instanceof NestedRegionLocalLayoutCache)) throw new Error('Missing projection cache');
+	if (!(cache instanceof RegionLocalLayoutCache)) throw new Error('Missing projection cache');
 	const first = cache.stats;
 	expect(first).toEqual({ entries: 3, hits: 0, misses: 3, evictions: 0 });
 
@@ -201,8 +201,8 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 	});
 	const projection = new DocumentProjection(source);
 	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
-	const localCache = new NestedRegionLocalLayoutCache();
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
+	const localCache = new RegionLocalLayoutCache();
+	const resolver = vi.spyOn(RegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const check = async (
 		document: typeof source,
 		sizes: typeof measurements,
@@ -210,7 +210,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 	) => {
 		const incrementalCanvas = await projection.createCanvasModel(sizes);
 		const projectionCache = resolver.mock.contexts[0];
-		if (!(projectionCache instanceof NestedRegionLocalLayoutCache))
+		if (!(projectionCache instanceof RegionLocalLayoutCache))
 			throw new Error('Missing projection-owned nested-region cache');
 		expect(projectionCache.stats).toEqual(stats);
 		expect(incrementalCanvas).toEqual(

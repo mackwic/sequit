@@ -14,17 +14,17 @@ import { pathsTouchWithoutBridge } from '../../../../lib/core/layout/nested-regi
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../lib/core/layout/nested-region-recursive-layout';
 import {
-	type NestedOwnedRoute,
-	type NestedRegionInput,
-	type NestedRegionLayoutAttempt,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+	type RegionLayoutSelected,
+	type RegionOwnedRoute,
+} from '../../../../lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
 
 export enum RegionContactCaseId {
@@ -49,7 +49,7 @@ interface RegionContactPanel {
 	readonly status: RegionContactPanelStatus;
 	readonly validator: string;
 	readonly reason: string | undefined;
-	readonly selected: NestedRegionSelected;
+	readonly selected: RegionLayoutSelected;
 	readonly probe?: RegionContactProbe;
 }
 
@@ -65,13 +65,13 @@ export interface RegionContactCase {
 }
 
 interface SolvedContact {
-	readonly selected: NestedRegionSelected;
+	readonly selected: RegionLayoutSelected;
 	readonly model: RegionCompositionModel;
 }
 
 interface RegionContactSource {
 	readonly document: LogicDocument;
-	readonly input: NestedRegionInput;
+	readonly input: RegionInput;
 }
 
 function node(id: string, order: string): LogicNode {
@@ -98,7 +98,7 @@ function baseDocument(): LogicDocument {
 	};
 }
 
-function branchSource(): { readonly document: LogicDocument; readonly input: NestedRegionInput } {
+function branchSource(): { readonly document: LogicDocument; readonly input: RegionInput } {
 	const source = baseDocument();
 	return {
 		document: {
@@ -133,7 +133,7 @@ function branchSource(): { readonly document: LogicDocument; readonly input: Nes
 	};
 }
 
-function gridSource(): { readonly document: LogicDocument; readonly input: NestedRegionInput } {
+function gridSource(): { readonly document: LogicDocument; readonly input: RegionInput } {
 	const source = baseDocument();
 	return {
 		document: {
@@ -215,7 +215,7 @@ function focusViewBox(points: readonly Point[]): string {
 /** Inspect the production solver verdict before a workshop panel claims a selected geometry. */
 export function probeRegionContactScenario(source: RegionContactSource): {
 	readonly model: RegionCompositionModel;
-	readonly attempt: NestedRegionLayoutAttempt;
+	readonly attempt: RegionLayoutAttempt;
 } {
 	const graph = createGraph(source.document);
 	if (!graph.ok) throw new Error('The contact witness source graph is invalid.');
@@ -233,7 +233,7 @@ export function probeRegionContactScenario(source: RegionContactSource): {
 /** Runs a selected workshop source through the real solver and independent geometry oracles. */
 export function solveRegionContactScenario(source: RegionContactSource): SolvedContact {
 	const { model, attempt: selected } = probeRegionContactScenario(source);
-	if (selected.status !== NestedRegionLayoutStatus.Selected)
+	if (selected.status !== RegionCompositionStatus.Selected)
 		throw new Error(`The contact witness is ${selected.status}: ${selected.reason}`);
 	const failure = validateContact(model, selected);
 	if (failure !== undefined) throw new Error(`The real contact witness is invalid: ${failure}`);
@@ -242,7 +242,7 @@ export function solveRegionContactScenario(source: RegionContactSource): SolvedC
 
 function validateContact(
 	model: RegionCompositionModel,
-	selected: NestedRegionSelected,
+	selected: RegionLayoutSelected,
 ): string | undefined {
 	return (
 		validateRegionCompositionGeometry(model, selected) ??
@@ -250,7 +250,7 @@ function validateContact(
 	);
 }
 
-function stitched(pieces: readonly NestedOwnedRoute[]): readonly Point[] {
+function stitched(pieces: readonly RegionOwnedRoute[]): readonly Point[] {
 	return pieces.flatMap(({ points }, index) => {
 		if (index === 0) return [...points];
 		return points.slice(1);
@@ -258,11 +258,11 @@ function stitched(pieces: readonly NestedOwnedRoute[]): readonly Point[] {
 }
 
 function withChangedIncident(
-	selected: NestedRegionSelected,
+	selected: RegionLayoutSelected,
 	relationId: string,
-	ownedRoutes: readonly NestedOwnedRoute[],
-	portals: NestedRegionSelected['portals'],
-): NestedRegionSelected {
+	ownedRoutes: readonly RegionOwnedRoute[],
+	portals: RegionLayoutSelected['portals'],
+): RegionLayoutSelected {
 	const points = stitched(ownedRoutes.filter((piece) => piece.relationId === relationId));
 	return {
 		...selected,
@@ -278,7 +278,7 @@ function withChangedIncident(
 	};
 }
 
-function sharedParentPortal(selected: NestedRegionSelected): NestedRegionSelected {
+function sharedParentPortal(selected: RegionLayoutSelected): RegionLayoutSelected {
 	const incoming = defined(
 		selected.portals.find(
 			({ relationId, regionId }) => relationId === 'inside-branch' && regionId === 'branch-right',
@@ -321,7 +321,7 @@ function sharedParentPortal(selected: NestedRegionSelected): NestedRegionSelecte
 	return withChangedIncident(selected, 'c-to-d', pieces, portals);
 }
 
-function directCellExit(selected: NestedRegionSelected): NestedRegionSelected {
+function directCellExit(selected: RegionLayoutSelected): RegionLayoutSelected {
 	const cell = defined(selected.regions.find(({ id }) => id === 'a'));
 	const portal = defined(
 		selected.portals.find(
@@ -363,7 +363,7 @@ function directCellExit(selected: NestedRegionSelected): NestedRegionSelected {
 	return withChangedIncident(selected, 'leaves-grid', pieces, portals);
 }
 
-function selectedPanel(selected: NestedRegionSelected, description: string): RegionContactPanel {
+function selectedPanel(selected: RegionLayoutSelected, description: string): RegionContactPanel {
 	return {
 		id: 'validated',
 		title: 'Corridor distinct',
@@ -378,7 +378,7 @@ function selectedPanel(selected: NestedRegionSelected, description: string): Reg
 /** Requires a candidate to fail an independent geometry oracle before labelling it rejected. */
 export function requireRejectedRegionContactCandidate(input: {
 	readonly model: RegionCompositionModel;
-	readonly selected: NestedRegionSelected;
+	readonly selected: RegionLayoutSelected;
 	readonly id: string;
 	readonly title: string;
 	readonly description: string;
@@ -396,7 +396,7 @@ export function requireRejectedRegionContactCandidate(input: {
 	};
 }
 
-function strictCrossingProbe(selected: NestedRegionSelected): RegionContactPanel {
+function strictCrossingProbe(selected: RegionLayoutSelected): RegionContactPanel {
 	const cellPiece = defined(
 		selected.ownedRoutes.find(
 			({ relationId, regionId }) => relationId === 'leaves-grid' && regionId === 'a',

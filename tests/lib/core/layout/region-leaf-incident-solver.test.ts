@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
 	defined,
 	EndpointKind,
+	LayoutPolicy,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -19,6 +19,7 @@ import {
 } from '../../../../src/lib/core/layout/region-incident-contract';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
@@ -44,8 +45,12 @@ describe('dedicated leaf incident contracts', () => {
 	it('preserves a zero-incident local layout through the same cache path', () => {
 		const document = oneNodeLeaf();
 		const measurements = prepareLayoutDocument(document).measurements;
-		const expected = solveRegionLeafLayout(document, measurements);
-		const cache = new NestedRegionLocalLayoutCache();
+		const expected = solveRegionLeafLayout({
+			document,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		const cache = new RegionLocalLayoutCache();
 		const input = { document, measurements, contracts: [], cache };
 		const cold = solveDedicatedRegionLeafWithIncidents(input);
 		const hit = solveDedicatedRegionLeafWithIncidents(input);
@@ -96,7 +101,7 @@ describe('dedicated leaf incident contracts', () => {
 			incident('cross-b', RegionPortalSide.Top),
 			incident('cross-a', RegionPortalSide.Top),
 		];
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const input = { document, measurements, contracts };
 		const cold = solveDedicatedRegionLeafWithIncidents(input);
 		const miss = solveDedicatedRegionLeafWithIncidents({ ...input, cache });

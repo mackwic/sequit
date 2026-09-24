@@ -8,20 +8,20 @@ import {
 	segmentEnters,
 	within,
 } from './nested-region-geometry-primitives';
-import type {
-	NestedOwnedRoute,
-	NestedRegionInput,
-	NestedRegionPlacement,
-	NestedRegionPortal,
-	NestedRegionSelected,
-} from './nested-region-types';
-import { NestedPortalSide } from './nested-region-types';
+import {
+	type RegionChildPlacement,
+	type RegionInput,
+	type RegionLayoutSelected,
+	type RegionOwnedRoute,
+	type RegionPortal,
+	RegionPortalSide,
+} from './region-composition-types';
 
-function portalOnBoundary(portal: NestedRegionPortal, region: NestedRegionPlacement): boolean {
+function portalOnBoundary(portal: RegionPortal, region: RegionChildPlacement): boolean {
 	if (portal.regionId !== region.id) return false;
 	let y = region.bounds.y;
 	let localY = 0;
-	if (portal.side === NestedPortalSide.Bottom) {
+	if (portal.side === RegionPortalSide.Bottom) {
 		y += region.bounds.height;
 		localY = region.bounds.height;
 	}
@@ -35,19 +35,19 @@ function portalOnBoundary(portal: NestedRegionPortal, region: NestedRegionPlacem
 function endpointOnPortalSide(
 	point: Point,
 	bounds: Bounds | undefined,
-	side: NestedPortalSide,
+	side: RegionPortalSide,
 ): boolean {
 	if (bounds === undefined) return false;
 	let y = bounds.y;
-	if (side === NestedPortalSide.Bottom) y += bounds.height;
+	if (side === RegionPortalSide.Bottom) y += bounds.height;
 	return samePoint(point, { x: bounds.x + bounds.width / 2, y });
 }
 
 function portalConnectionFailure(
 	relationId: string,
-	owners: readonly NestedOwnedRoute[],
-	source: NestedRegionPortal,
-	target: NestedRegionPortal,
+	owners: readonly RegionOwnedRoute[],
+	source: RegionPortal,
+	target: RegionPortal,
 ): string | undefined {
 	const parent = defined(owners[1]);
 	if (!samePoint(defined(owners[0]).points.at(-1) ?? { x: NaN, y: NaN }, source.point))
@@ -64,9 +64,9 @@ function portalConnectionFailure(
 
 function incidentPortalFailure(
 	relation: LogicRelation,
-	owners: readonly NestedOwnedRoute[],
-	candidate: NestedRegionSelected,
-	input: NestedRegionInput,
+	owners: readonly RegionOwnedRoute[],
+	candidate: RegionLayoutSelected,
+	input: RegionInput,
 ): string | undefined {
 	const sourceRegion = candidate.regions.find(
 		({ id }) => id === input.regionByEndpointId.get(relation.from),
@@ -87,7 +87,7 @@ function incidentPortalFailure(
 	return portalConnectionFailure(relation.id, owners, source, target);
 }
 
-function routeMatchesOwners(route: LayoutRelation, owners: readonly NestedOwnedRoute[]): boolean {
+function routeMatchesOwners(route: LayoutRelation, owners: readonly RegionOwnedRoute[]): boolean {
 	const stitched: Point[] = [];
 	for (const owner of owners) {
 		if (stitched.length > 0) stitched.push(...owner.points.slice(1));
@@ -106,7 +106,7 @@ interface RelationRegions {
 	readonly local: boolean;
 }
 
-function relationRegions(relation: LogicRelation, input: NestedRegionInput): RelationRegions {
+function relationRegions(relation: LogicRelation, input: RegionInput): RelationRegions {
 	const sourceId = input.regionByEndpointId.get(relation.from);
 	const targetId = input.regionByEndpointId.get(relation.to);
 	return { sourceId, targetId, local: sourceId === targetId };
@@ -114,9 +114,9 @@ function relationRegions(relation: LogicRelation, input: NestedRegionInput): Rel
 
 function ownershipFailure(
 	relation: LogicRelation,
-	owners: readonly NestedOwnedRoute[],
-	candidate: NestedRegionSelected,
-	input: NestedRegionInput,
+	owners: readonly RegionOwnedRoute[],
+	candidate: RegionLayoutSelected,
+	input: RegionInput,
 ): string | undefined {
 	const regions = relationRegions(relation, input);
 	if (regions.local) {
@@ -137,9 +137,9 @@ function ownershipFailure(
 
 function localRouteFailure(
 	relation: LogicRelation,
-	owners: readonly NestedOwnedRoute[],
-	candidate: NestedRegionSelected,
-	input: NestedRegionInput,
+	owners: readonly RegionOwnedRoute[],
+	candidate: RegionLayoutSelected,
+	input: RegionInput,
 ): string | undefined {
 	const regions = relationRegions(relation, input);
 	if (!regions.local) return undefined;
@@ -161,8 +161,8 @@ function localRouteFailure(
 
 function ownedSegmentFailure(
 	relation: LogicRelation,
-	owner: NestedOwnedRoute,
-	candidate: NestedRegionSelected,
+	owner: RegionOwnedRoute,
+	candidate: RegionLayoutSelected,
 ): string | undefined {
 	if (owner.regionId === candidate.rootId) {
 		if (candidate.regions.some(({ bounds }) => segmentEnters(owner.points, bounds)))
@@ -177,8 +177,8 @@ function ownedSegmentFailure(
 
 function relationFailure(
 	relation: LogicRelation,
-	candidate: NestedRegionSelected,
-	input: NestedRegionInput,
+	candidate: RegionLayoutSelected,
+	input: RegionInput,
 ): string | undefined {
 	const route = candidate.layout.relations.find(({ id }) => id === relation.id);
 	if (route === undefined || !orthogonal(route.points))
@@ -219,8 +219,8 @@ function relationFailure(
 
 export function validateNestedRouteOwnership(
 	graph: LogicGraph,
-	input: NestedRegionInput,
-	candidate: NestedRegionSelected,
+	input: RegionInput,
+	candidate: RegionLayoutSelected,
 ): string | undefined {
 	if (candidate.layout.elements.length !== graph.document.nodes.length)
 		return 'The composed canvas does not contain each source node exactly once.';

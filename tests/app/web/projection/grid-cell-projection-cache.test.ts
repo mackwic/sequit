@@ -6,7 +6,7 @@ import {
 	GRID_REGION_PRESENTATION_SCHEMA,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 
@@ -16,10 +16,10 @@ it('keeps grid child layouts local to a projection when group metrics and track 
 	const source = persistedGridDocument();
 	const projection = new DocumentProjection(source);
 	const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
+	const resolver = vi.spyOn(RegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const original = await projection.createCanvasModel(sizes);
 	const cache = resolver.mock.contexts[0];
-	if (!(cache instanceof NestedRegionLocalLayoutCache)) throw new Error('Missing grid child cache');
+	if (!(cache instanceof RegionLocalLayoutCache)) throw new Error('Missing grid child cache');
 	expect(cache.stats).toEqual({ entries: 4, hits: 0, misses: 4, evictions: 0 });
 
 	const groups = new Map(sizes.groups);

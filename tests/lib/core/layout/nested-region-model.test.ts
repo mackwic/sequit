@@ -16,18 +16,18 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 
-function solve(document: LogicDocument, regions: NestedRegionInput) {
+function solve(document: LogicDocument, regions: RegionInput) {
 	const prepared = prepareLayoutDocument(document);
 	return solveNestedRegionLayout(prepared.graph, prepared.measurements, regions);
 }
@@ -45,8 +45,8 @@ describe('normalized child-region envelope', () => {
 			regionByEndpointId: new Map([...regions.regionByEndpointId].filter(([id]) => id !== 'b')),
 		};
 		const result = solve(withoutMiddle, twoChildren);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(result.regions.map(({ id }) => id)).toEqual(['left', 'right']);
 		expect(result.regions[1]?.localLayout.elements.map(({ id }) => id)).toEqual(['c']);
 	});
@@ -54,14 +54,14 @@ describe('normalized child-region envelope', () => {
 	it.each([
 		[
 			'duplicate id',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regions: [...value.regions, { id: 'left', parentId: '@root', layoutOrder: 'a' }],
 			}),
 		],
 		[
 			'empty id',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regions: value.regions.map((region) => {
 					if (region.id !== 'right') return region;
@@ -71,7 +71,7 @@ describe('normalized child-region envelope', () => {
 		],
 		[
 			'two roots',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regions: value.regions.map((region) => {
 					if (region.id !== 'right') return region;
@@ -79,10 +79,10 @@ describe('normalized child-region envelope', () => {
 				}),
 			}),
 		],
-		['one child', (value: NestedRegionInput) => ({ ...value, regions: value.regions.slice(0, 2) })],
+		['one child', (value: RegionInput) => ({ ...value, regions: value.regions.slice(0, 2) })],
 		[
 			'grandchild',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regions: value.regions.map((region) => {
 					if (region.id !== 'right') return region;
@@ -92,28 +92,28 @@ describe('normalized child-region envelope', () => {
 		],
 		[
 			'unknown assignment',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regionByEndpointId: new Map([...value.regionByEndpointId, ['c', 'absent']]),
 			}),
 		],
 		[
 			'extra assignment',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regionByEndpointId: new Map([...value.regionByEndpointId, ['ghost', 'left']]),
 			}),
 		],
 		[
 			'empty child',
-			(value: NestedRegionInput) => ({
+			(value: RegionInput) => ({
 				...value,
 				regionByEndpointId: new Map([...value.regionByEndpointId, ['b', 'right']]),
 			}),
 		],
 	] as const)('returns unsupported for %s', (_, change) => {
 		const result = solve(regionDocument(), change(nestedRegionInput()));
-		expect(result.status).toBe(NestedRegionLayoutStatus.Unsupported);
+		expect(result.status).toBe(RegionCompositionStatus.Unsupported);
 	});
 
 	it('rejects unsupported graph constructs before child materialization', () => {
@@ -133,9 +133,9 @@ describe('normalized child-region envelope', () => {
 				},
 			],
 		};
-		expect(solve(withGroup, nestedRegionInput()).status).toBe(NestedRegionLayoutStatus.Unsupported);
+		expect(solve(withGroup, nestedRegionInput()).status).toBe(RegionCompositionStatus.Unsupported);
 		expect(solve(withJunction, nestedRegionInput()).status).toBe(
-			NestedRegionLayoutStatus.Unsupported,
+			RegionCompositionStatus.Unsupported,
 		);
 		const withLanes: LogicDocument = {
 			...document,
@@ -152,7 +152,7 @@ describe('normalized child-region envelope', () => {
 			},
 			nodes: document.nodes.map((node) => ({ ...node, laneId: 'one' })),
 		};
-		expect(solve(withLanes, nestedRegionInput()).status).toBe(NestedRegionLayoutStatus.Unsupported);
+		expect(solve(withLanes, nestedRegionInput()).status).toBe(RegionCompositionStatus.Unsupported);
 	});
 
 	it('keeps the explicit size envelope and canonical region tie-break', () => {
@@ -165,7 +165,7 @@ describe('normalized child-region envelope', () => {
 			layoutOrder: orderKey(`a${'456789ABC'.charAt(index)}`),
 		}));
 		const tooMany = { ...document, nodes: [...document.nodes, ...extraNodes] };
-		expect(solve(tooMany, nestedRegionInput()).status).toBe(NestedRegionLayoutStatus.Unsupported);
+		expect(solve(tooMany, nestedRegionInput()).status).toBe(RegionCompositionStatus.Unsupported);
 		const withinNodeBudget = [...document.nodes, ...extraNodes.slice(0, 6)];
 		const relations = [] as LogicDocument['relations'][number][];
 		for (let source = 0; source < withinNodeBudget.length; source += 1) {
@@ -179,7 +179,7 @@ describe('normalized child-region envelope', () => {
 		}
 		const tooManyRelations = { ...document, nodes: withinNodeBudget, relations };
 		expect(solve(tooManyRelations, nestedRegionInput()).status).toBe(
-			NestedRegionLayoutStatus.Unsupported,
+			RegionCompositionStatus.Unsupported,
 		);
 		const sameOrder = nestedRegionInput();
 		const tied = {
@@ -190,8 +190,8 @@ describe('normalized child-region envelope', () => {
 			}),
 		};
 		const resolved = solve(document, tied);
-		expect(resolved.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (resolved.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(resolved.status).toBe(RegionCompositionStatus.Selected);
+		if (resolved.status !== RegionCompositionStatus.Selected) return;
 		expect(resolved.regions.map(({ id }) => id)).toEqual(['left', 'middle', 'right']);
 	});
 
@@ -207,7 +207,7 @@ describe('normalized child-region envelope', () => {
 			],
 		};
 		expect(solve(moreCrossings, nestedRegionInput()).status).toBe(
-			NestedRegionLayoutStatus.Unsupported,
+			RegionCompositionStatus.Unsupported,
 		);
 	});
 
@@ -219,7 +219,7 @@ describe('normalized child-region envelope', () => {
 			nestedRegionInput(),
 			{ inspectRouting: true },
 		);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Unsupported);
+		expect(result.status).toBe(RegionCompositionStatus.Unsupported);
 	});
 
 	it('preserves the source graph when children choose their own direction', () => {
@@ -243,8 +243,8 @@ describe('normalized child-region envelope', () => {
 			prepared.measurements,
 			differentlyDirected,
 		);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status === NestedRegionLayoutStatus.Selected) {
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status === RegionCompositionStatus.Selected) {
 			const normalized = normalizeRegionCompositionModel(prepared.graph, differentlyDirected);
 			expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
 			if (normalized.status === RegionCompositionModelStatus.Ready) {

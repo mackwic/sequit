@@ -5,9 +5,14 @@ import {
 	EndpointKind,
 	JunctionOperator,
 	LaneOrientation,
+	LayoutPolicy,
 	type LogicDocument,
+	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PRESENTATION_SCHEMA,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
@@ -17,7 +22,9 @@ import { executeSharedCommands } from '../../../../src/lib/infrastructure/collab
 import {
 	importLogicDocument,
 	readLogicDocument,
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
@@ -162,7 +169,7 @@ describe('Yjs region lane presentation', () => {
 		}
 	});
 
-	it('round trips local lanes through live format 7 and binary restoration', () => {
+	it('migrates format 6 local lanes after live format 7 binary restoration', () => {
 		const document = restored();
 		const meta = document.getMap(YjsCollection.Meta);
 		expect(meta.get('yjsLiveDocumentFormat')).toBe(YJS_REGION_LANE_DOCUMENT_FORMAT);
@@ -174,12 +181,13 @@ describe('Yjs region lane presentation', () => {
 		expect(result).toMatchObject({
 			ok: true,
 			value: {
-				persistenceFormat: 6,
-				regionPresentation: { schemaVersion: 3 },
+				persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+				regionPresentation: { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA },
 			},
 		});
 		if (!result.ok) throw new Error('Expected valid region lane document');
 		const shared = result.value.regionPresentation?.regions.find(({ id }) => id === 'shared');
+		expect(shared?.policy).toBe(LayoutPolicy.SharedLanes);
 		expect(shared?.lanePresentation).toMatchObject({
 			laneOrientation: LaneOrientation.Parallel,
 			lanes: [
@@ -187,14 +195,98 @@ describe('Yjs region lane presentation', () => {
 				{ id: 'service', label: 'Service' },
 			],
 		});
-		expect(
-			result.value.regionPresentation?.regions.find(({ id }) => id === 'ordinary'),
-		).not.toHaveProperty('lanePresentation');
+		const ordinary = result.value.regionPresentation?.regions.find(({ id }) => id === 'ordinary');
+		expect(ordinary?.policy).toBe(LayoutPolicy.Layered);
+		expect(ordinary).not.toHaveProperty('lanePresentation');
 		expect(result.value.groups.find(({ id }) => id === 'container')).toMatchObject({
 			regionId: 'shared',
 			laneId: 'sales',
 		});
 		document.destroy();
+	});
+
+	it('migrates format 7 root lanes and local lanes to explicit leaf policies', () => {
+		const source = regionLaneDocumentWithRootLanes();
+		const presentation = source.regionPresentation;
+		if (presentation === undefined) throw new Error('Expected region presentation');
+		const previous: LogicDocument = {
+			...source,
+			persistenceFormat: REGION_COMPOSITION_PERSISTENCE_FORMAT,
+			regionPresentation: {
+				schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA,
+				regions: presentation.regions,
+			},
+		};
+		const document = restored(previous);
+		try {
+			const meta = document.getMap(YjsCollection.Meta);
+			expect(meta.get('yjsLiveDocumentFormat')).toBe(YJS_REGION_COMPOSITION_DOCUMENT_FORMAT);
+			const result = readLogicDocument(document);
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+					presentation: { policy: LayoutPolicy.SharedLanes },
+					regionPresentation: { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA },
+				},
+			});
+			if (!result.ok) throw new Error('Expected migrated composition document');
+			const regions = result.value.regionPresentation?.regions;
+			expect(regions?.find(({ id }) => id === 'shared')?.policy).toBe(LayoutPolicy.SharedLanes);
+			expect(regions?.find(({ id }) => id === 'ordinary')?.policy).toBe(LayoutPolicy.SharedLanes);
+		} finally {
+			document.destroy();
+		}
+	});
+
+	it('round trips a new explicit region policy through live format 9 and binary restoration', () => {
+		const previous = regionLaneDocument();
+		const presentation = previous.regionPresentation;
+		if (presentation === undefined) throw new Error('Expected region presentation');
+		const source: LogicDocument = {
+			...previous,
+			persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+			regionPresentation: {
+				schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
+				regions: presentation.regions.map((region) => {
+					if (region.id === 'shared') return { ...region, policy: LayoutPolicy.SharedLanes };
+					return region;
+				}),
+			},
+		};
+		const document = restored(source);
+		try {
+			const meta = document.getMap(YjsCollection.Meta);
+			expect(meta.get('yjsLiveDocumentFormat')).toBe(YJS_REGION_POLICY_DOCUMENT_FORMAT);
+			expect(meta.get('persistenceFormat')).toBe(REGION_POLICY_PERSISTENCE_FORMAT);
+			expect(meta.get('regionPresentationSchema')).toBe(REGION_POLICY_PRESENTATION_SCHEMA);
+			expect(
+				document.getMap<Y.Map<unknown>>(YjsCollection.Regions).get('shared')?.get('policy'),
+			).toBe(LayoutPolicy.SharedLanes);
+			const result = readLogicDocument(document);
+			expect(result).toMatchObject({
+				ok: true,
+				value: {
+					persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+					regionPresentation: {
+						schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
+						regions: [
+							{ id: 'ordinary', policy: LayoutPolicy.Layered },
+							{ id: 'shared', policy: LayoutPolicy.SharedLanes },
+						],
+					},
+				},
+			});
+			if (!result.ok) throw new Error('Expected valid explicit region policy document');
+			const second = restored(result.value);
+			try {
+				expect(readLogicDocument(second)).toEqual(result);
+			} finally {
+				second.destroy();
+			}
+		} finally {
+			document.destroy();
+		}
 	});
 
 	it('keeps lane identifiers scoped to their leaf after binary restoration', () => {

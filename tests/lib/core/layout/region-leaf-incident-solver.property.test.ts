@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -13,6 +12,7 @@ import {
 	RegionIncidentRole,
 } from '../../../../src/lib/core/layout/region-incident-contract';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument } from './nested-region-fixture';
@@ -51,7 +51,7 @@ describe('dedicated leaf incident invariants', () => {
 				});
 				const input = { document, measurements, contracts };
 				const cold = solveDedicatedRegionLeafWithIncidents(input);
-				const cache = new NestedRegionLocalLayoutCache();
+				const cache = new RegionLocalLayoutCache();
 				const first = solveDedicatedRegionLeafWithIncidents({ ...input, cache });
 				const repeat = solveDedicatedRegionLeafWithIncidents({
 					...input,

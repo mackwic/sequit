@@ -18,21 +18,21 @@ import {
 	type RecursiveContext,
 } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
-function solve(input: NestedRegionInput) {
+function solve(input: RegionInput) {
 	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 	return solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 }
@@ -108,7 +108,7 @@ describe('recursive region model and row policy', () => {
 	it.each([
 		[
 			'duplicate region identity',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'left', parentId: 'branch', layoutOrder: 'z' }],
 			}),
@@ -116,7 +116,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'an empty region identity',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'left') return { ...region, id: '' };
@@ -127,7 +127,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'two roots',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'second-root', layoutOrder: 'z' }],
 			}),
@@ -135,7 +135,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'an unknown parent',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'branch') return { ...region, parentId: 'absent' };
@@ -146,7 +146,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a parent cycle',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'branch') return { ...region, parentId: 'left' };
@@ -157,7 +157,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a missing node assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId].filter(([id]) => id !== 'c')),
 			}),
@@ -165,7 +165,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'an extra node assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['ghost', 'left']]),
 			}),
@@ -173,7 +173,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a substituted node assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([
 					...[...input.regionByEndpointId].filter(([id]) => id !== 'c'),
@@ -184,7 +184,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a node assigned to an unknown region',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'absent']]),
 			}),
@@ -192,7 +192,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a node owned by an internal region',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'branch']]),
 			}),
@@ -212,7 +212,7 @@ describe('recursive region model and row policy', () => {
 	it.each([
 		[
 			'one top-level child',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'right' || region.id === 'far-right')
@@ -224,7 +224,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'four top-level children',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'extra', parentId: '@root', layoutOrder: 'z' }],
 			}),
@@ -232,7 +232,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'a single grandchild',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.filter(({ id }) => id !== 'middle' && id !== 'branch-right'),
 				regionByEndpointId: new Map(
@@ -246,7 +246,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'four grandchildren',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'fourth', parentId: 'branch', layoutOrder: 'z' }],
 			}),
@@ -254,7 +254,7 @@ describe('recursive region model and row policy', () => {
 		],
 		[
 			'an empty leaf',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['b', 'left']]),
 			}),
@@ -262,15 +262,15 @@ describe('recursive region model and row policy', () => {
 		],
 	] as const)('keeps the row policy bounded for %s', (_, change, reason) => {
 		const attempt = solve(change(depthTwoRegionInput()));
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unsupported);
-		if (attempt.status !== NestedRegionLayoutStatus.Unsupported) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
+		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
 		expect(attempt.reason).toContain(reason);
 	});
 
 	it('normalizes a third level without a depth limit', () => {
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 		const input = depthTwoRegionInput();
-		const deeper: NestedRegionInput = {
+		const deeper: RegionInput = {
 			...input,
 			regions: [...input.regions, { id: 'deep', parentId: 'left', layoutOrder: 'a' }],
 			regionByEndpointId: new Map(
@@ -303,8 +303,8 @@ describe('recursive region model and row policy', () => {
 			prepared.measurements,
 			depthTwoRegionInput(),
 		);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unsupported);
-		if (attempt.status !== NestedRegionLayoutStatus.Unsupported) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
+		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
 		expect(attempt.reason).toContain('at most three owned crossings');
 	});
 
@@ -337,8 +337,8 @@ describe('recursive region model and row policy', () => {
 			prepared.measurements,
 			composedInput,
 		);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		const normalized = normalizeRegionCompositionModel(prepared.graph, composedInput);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
 			throw new Error(normalized.diagnostic.message);
@@ -359,8 +359,8 @@ describe('recursive region model and row policy', () => {
 			}),
 		};
 		const attempt = solve(tied);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		expect(attempt.regions.map(({ id }) => id).slice(1, 4)).toEqual([
 			'branch-right',
 			'left',
@@ -381,8 +381,8 @@ describe('recursive region model and row policy', () => {
 			}),
 		};
 		const attempt = solve(directed);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		const branch = defined(attempt.regions.find(({ id }) => id === 'branch'));
 		expect(branch.localLayout.elements).toHaveLength(4);
 	});

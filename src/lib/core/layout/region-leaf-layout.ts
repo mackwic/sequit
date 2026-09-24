@@ -1,11 +1,7 @@
-import type { LayoutPolicy, LogicDocument } from '../document/logic-document';
+import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import type { LayoutMeasurements } from './layout-types';
-import type {
-	NestedRegionLocalLayout,
-	NestedRegionLocalLayoutCache,
-} from './nested-region-local-cache';
 import { RegionCompositionStatus } from './region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
@@ -18,6 +14,8 @@ import {
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-base-layout';
 import { solveDedicatedRegionLeafWithIncidents } from './region-leaf-incident-solver';
+import { regionLeafPolicyFailure } from './region-leaf-policy';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export {
@@ -30,17 +28,17 @@ export {
 export interface RegionLeafIncidentInput {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
-	readonly policy?: LayoutPolicy | undefined;
-	readonly cache?: NestedRegionLocalLayoutCache | undefined;
+	readonly leafPolicy: LayoutPolicy;
+	readonly cache?: RegionLocalLayoutCache | undefined;
 	readonly contracts: readonly RegionIncidentContract[];
 }
 
 interface RegionLeafIncidentSelected {
 	readonly status: RegionCompositionStatus.Selected;
-	readonly layout: NestedRegionLocalLayout['layout'];
-	readonly ranks: NestedRegionLocalLayout['ranks'];
-	readonly incidents: NonNullable<NestedRegionLocalLayout['incidents']>;
-	readonly witness: NonNullable<NestedRegionLocalLayout['witness']>;
+	readonly layout: RegionLocalLayout['layout'];
+	readonly ranks: RegionLocalLayout['ranks'];
+	readonly incidents: NonNullable<RegionLocalLayout['incidents']>;
+	readonly witness: NonNullable<RegionLocalLayout['witness']>;
 }
 
 interface RegionLeafIncidentUnknown {
@@ -77,9 +75,17 @@ export function solveRegionLeafLayoutWithIncidents(
 			witness: emptyWitness(),
 		};
 	}
-	if (input.document.presentation === undefined)
+	const policyFailure = regionLeafPolicyFailure(input.leafPolicy, input.document);
+	if (policyFailure !== undefined)
+		return {
+			status: RegionCompositionStatus.Unknown,
+			code: RegionIncidentUnknownCode.UnsupportedLeafPolicy,
+			reason: policyFailure,
+			witness: emptyWitness(),
+		};
+	if (input.leafPolicy === LayoutPolicy.Layered)
 		return solveDedicatedRegionLeafWithIncidents({ ...input, contracts });
-	const compute = (): NestedRegionLocalLayout => {
+	const compute = (): RegionLocalLayout => {
 		const graph = createGraph(input.document);
 		if (!graph.ok) throw new InvalidRegionLeafGraphError();
 		const ranks = topologicallyRank(graph.value);
@@ -109,7 +115,7 @@ export function solveRegionLeafLayoutWithIncidents(
 			input.cache?.getOrComputeContract({
 				document: input.document,
 				measurements: input.measurements,
-				policy: input.policy,
+				policy: input.leafPolicy,
 				contracts,
 				compute,
 			}) ?? compute();

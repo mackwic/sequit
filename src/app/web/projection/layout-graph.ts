@@ -5,7 +5,7 @@ import type {
 	LayoutOptions,
 	LayoutResult,
 } from '../../../lib/core/layout/layout-types';
-import type { NestedRegionLocalLayoutCache } from '../../../lib/core/layout/nested-region-local-cache';
+import type { RegionLocalLayoutCache } from '../../../lib/core/layout/region-local-cache';
 import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,
@@ -35,7 +35,7 @@ export function layoutGraphForProjection(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 ): Promise<LayoutResult> {
 	return Promise.resolve().then(() =>
 		layoutWithRootRegionForProjection(graph, ranks, measurements, cache),

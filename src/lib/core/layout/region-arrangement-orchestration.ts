@@ -6,25 +6,9 @@ import {
 	type RecursiveContext,
 	sideForRegion,
 } from './nested-region-recursive-model-adapter';
-import { NestedPortalSide } from './nested-region-types';
 import type { ArrangementIncidentInput, RegionArrangement } from './region-arrangement';
-import { RegionPortalSide } from './region-composition-types';
+import type { RegionPortalSide } from './region-composition-types';
 import { RegionIncidentRole } from './region-incident-contract';
-
-function regionPortalSide(side: NestedPortalSide): RegionPortalSide {
-	switch (side) {
-		case NestedPortalSide.Top:
-			return RegionPortalSide.Top;
-		case NestedPortalSide.Right:
-			return RegionPortalSide.Right;
-		case NestedPortalSide.Bottom:
-			return RegionPortalSide.Bottom;
-		case NestedPortalSide.Left:
-			return RegionPortalSide.Left;
-		default:
-			throw new Error(`Unknown region portal side ${String(side)}.`);
-	}
-}
 
 interface ChildSidesInput<Placement> {
 	readonly context: RecursiveContext;
@@ -81,7 +65,7 @@ export function solveArrangedRegion<Placement>(
 ): SolvedRecursiveRegion {
 	const { context, regionId, incidentSides, arrangement, solveChild } = input;
 	const region = defined(context.model.regionsById.get(regionId));
-	const preferredSide = regionPortalSide(sideForRegion(context, regionId));
+	const preferredSide = sideForRegion(context, regionId);
 	const crossings = context.graph.relations
 		.map(({ relation }) => relation)
 		.filter((relation) => context.ownershipByRelationId.get(relation.id)?.ownerId === regionId);

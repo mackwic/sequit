@@ -8,8 +8,6 @@ import {
 } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { LayoutMeasurements } from './layout-types';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
-import { NestedPortalSide } from './nested-region-types';
 import type {
 	RegionCompositionModel,
 	RegionCompositionNode,
@@ -21,15 +19,9 @@ import {
 	type RegionIncidentContract,
 	RegionIncidentRole,
 } from './region-incident-contract';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 
 export type IncidentSides = ReadonlyMap<string, readonly RegionPortalSide[]>;
-
-const REGION_SIDE: Readonly<Record<NestedPortalSide, RegionPortalSide>> = {
-	[NestedPortalSide.Top]: RegionPortalSide.Top,
-	[NestedPortalSide.Right]: RegionPortalSide.Right,
-	[NestedPortalSide.Bottom]: RegionPortalSide.Bottom,
-	[NestedPortalSide.Left]: RegionPortalSide.Left,
-};
 
 /** Resolve source provenance before the local policy sees the incident contract. */
 export function leafIncidentContracts(
@@ -64,9 +56,9 @@ export interface RecursiveContext {
 	readonly graph: LogicGraph;
 	readonly model: RegionCompositionModel;
 	readonly measurements: LayoutMeasurements;
-	readonly cache: NestedRegionLocalLayoutCache | undefined;
+	readonly cache: RegionLocalLayoutCache | undefined;
 	readonly ownershipByRelationId: ReadonlyMap<string, RegionRelationOwnership>;
-	readonly dispositionSideByRegionId?: ReadonlyMap<string, NestedPortalSide>;
+	readonly dispositionSideByRegionId?: ReadonlyMap<string, RegionPortalSide>;
 }
 
 function regionPolicyFailure(
@@ -109,13 +101,13 @@ export function policyFailure(
 	return undefined;
 }
 
-export function sideForRegion(context: RecursiveContext, regionId: string): NestedPortalSide {
+export function sideForRegion(context: RecursiveContext, regionId: string): RegionPortalSide {
 	const selected = context.dispositionSideByRegionId?.get(regionId);
 	if (selected !== undefined) return selected;
 	const region = defined(context.model.regionsById.get(regionId));
 	const direction = region.definition.layout?.direction ?? context.graph.document.layout.direction;
-	if (direction === LayoutDirection.BottomToTop) return NestedPortalSide.Bottom;
-	return NestedPortalSide.Top;
+	if (direction === LayoutDirection.BottomToTop) return RegionPortalSide.Bottom;
+	return RegionPortalSide.Top;
 }
 
 export function directChild(
@@ -167,14 +159,14 @@ export function childSides(input: {
 	readonly regionId: string;
 	readonly childId: string;
 	readonly incidentSides: IncidentSides;
-	readonly localSide: NestedPortalSide;
+	readonly localSide: RegionPortalSide;
 }): IncidentSides {
 	const { context, regionId, childId, incidentSides, localSide } = input;
 	const sides = new Map<string, readonly RegionPortalSide[]>();
 	for (const owned of context.model.relations) {
 		const inherited = incidentSides.get(owned.relation.id);
 		if (owned.ownerId !== regionId && inherited === undefined) continue;
-		let allowedSides: readonly RegionPortalSide[] = [REGION_SIDE[localSide]];
+		let allowedSides: readonly RegionPortalSide[] = [localSide];
 		if (inherited !== undefined) allowedSides = inherited;
 		const sourceHere = owned.ownerId === regionId || owned.sourcePathToOwner.includes(regionId);
 		if (sourceHere && directChild(context, regionId, owned.relation.from) === childId)

@@ -18,11 +18,11 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	layoutWithRootRegionForProjection,
-	UnknownNestedRegionLayoutError,
-	UnsupportedNestedRegionLayoutError,
+	UnknownRegionLayoutError,
+	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
 
 const measurements: LayoutMeasurements = {
@@ -58,7 +58,7 @@ function fixture(orientation: LaneOrientation, duplicate = false): LogicDocument
 		{
 			id: 'shared',
 			layoutOrder: orderKey('a0'),
-			policy: LayoutPolicy.Layered,
+			policy: LayoutPolicy.SharedLanes,
 			lanePresentation: { laneOrientation: orientation, growth: LaneGrowth.Auto, lanes },
 		},
 		{ id: 'ordinary', layoutOrder: orderKey('a1'), policy: LayoutPolicy.Layered },
@@ -67,7 +67,7 @@ function fixture(orientation: LaneOrientation, duplicate = false): LogicDocument
 		regions.push({
 			id: 'other-shared',
 			layoutOrder: orderKey('a2'),
-			policy: LayoutPolicy.Layered,
+			policy: LayoutPolicy.SharedLanes,
 			lanePresentation: { laneOrientation: orientation, growth: LaneGrowth.Auto, lanes },
 		});
 	return {
@@ -101,7 +101,7 @@ function fixture(orientation: LaneOrientation, duplicate = false): LogicDocument
 
 function solve(
 	document: LogicDocument,
-	cache = new NestedRegionLocalLayoutCache(),
+	cache = new RegionLocalLayoutCache(),
 	sizes: LayoutMeasurements = measurements,
 ) {
 	const graph = createGraph(document);
@@ -146,7 +146,7 @@ describe('persisted lanes in a region leaf', () => {
 				return member;
 			}),
 		};
-		expect(() => solve(document)).toThrow(UnsupportedNestedRegionLayoutError);
+		expect(() => solve(document)).toThrow(UnsupportedRegionLayoutError);
 	});
 
 	it('reports an unresolved local three-dependency crossing as unknown', () => {
@@ -173,8 +173,8 @@ describe('persisted lanes in a region leaf', () => {
 			...measurements,
 			nodes: new Map([...measurements.nodes, ['second-request', { width: 132, height: 64 }]]),
 		};
-		expect(() => solve(document, new NestedRegionLocalLayoutCache(), sizes)).toThrow(
-			UnknownNestedRegionLayoutError,
+		expect(() => solve(document, new RegionLocalLayoutCache(), sizes)).toThrow(
+			UnknownRegionLayoutError,
 		);
 	});
 
@@ -182,7 +182,7 @@ describe('persisted lanes in a region leaf', () => {
 		'composes %s lane frames with the ordinary sibling and reuses a cold local solve',
 		(orientation) => {
 			const document = fixture(orientation);
-			const cache = new NestedRegionLocalLayoutCache();
+			const cache = new RegionLocalLayoutCache();
 			const first = solve(document, cache);
 			const cold = solve(document);
 			expect(first).toEqual(cold);
@@ -209,7 +209,7 @@ describe('persisted lanes in a region leaf', () => {
 
 	it('scopes repeated lane ids to their leaf and refreshes a label after a cache hit', () => {
 		const document = fixture(LaneOrientation.Parallel, true);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = solve(document, cache);
 		expect(first.lanes).toHaveLength(4);
 		expect(first.lanes?.map(({ regionId, id }) => [regionId, id])).toEqual([
@@ -265,7 +265,7 @@ describe('persisted lanes in a region leaf', () => {
 	);
 
 	it('matches a cold solve through fractional resizes, orientations and collection permutations', () => {
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		fc.assert(
 			fc.property(
 				fc.integer({ min: 80, max: 200 }),
@@ -294,7 +294,7 @@ describe('persisted lanes in a region leaf', () => {
 					nodeSizes.set('neighbor', { width: neighborWidth + 0.5, height: 72.25 });
 					const sizes: LayoutMeasurements = { ...measurements, nodes: nodeSizes };
 					const incremental = solve(document, cache, sizes);
-					const cold = solve(document, new NestedRegionLocalLayoutCache(), sizes);
+					const cold = solve(document, new RegionLocalLayoutCache(), sizes);
 					expect(incremental).toEqual(cold);
 					expect(incremental.lanes).toHaveLength(4);
 					for (const lane of incremental.lanes ?? []) {

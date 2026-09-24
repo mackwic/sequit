@@ -14,33 +14,17 @@ import {
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
 import type {
-	NestedOwnedRoute,
-	NestedRegionPlacement,
-	NestedRegionPortal,
-} from './nested-region-types';
-import { NestedPortalSide } from './nested-region-types';
-import { RegionPortalSide } from './region-composition-types';
-
-function nestedSide(side: RegionPortalSide): NestedPortalSide {
-	switch (side) {
-		case RegionPortalSide.Top:
-			return NestedPortalSide.Top;
-		case RegionPortalSide.Right:
-			return NestedPortalSide.Right;
-		case RegionPortalSide.Bottom:
-			return NestedPortalSide.Bottom;
-		case RegionPortalSide.Left:
-			return NestedPortalSide.Left;
-		default:
-			throw new Error(`Unsupported region portal side ${String(side)}.`);
-	}
-}
+	RegionChildPlacement,
+	RegionOwnedRoute,
+	RegionPortal,
+	RegionPortalSide,
+} from './region-composition-types';
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;
 	readonly regionId: string;
 	readonly children: readonly { readonly id: string; readonly solved: SolvedRecursiveRegion }[];
-	readonly placements: readonly NestedRegionPlacement[];
+	readonly placements: readonly RegionChildPlacement[];
 }
 
 interface CrossingDraft {
@@ -49,8 +33,8 @@ interface CrossingDraft {
 	readonly targetChildId: string;
 	readonly sourcePath: RegionIncidentPath;
 	readonly targetPath: RegionIncidentPath;
-	readonly sourcePortal: NestedRegionPortal;
-	readonly targetPortal: NestedRegionPortal;
+	readonly sourcePortal: RegionPortal;
+	readonly targetPortal: RegionPortal;
 }
 
 function crossingDraft(input: PositionedChildren, relation: LogicRelation): CrossingDraft {
@@ -112,11 +96,11 @@ function busRailIndices(
 export function composeCrossings(
 	input: PositionedChildren & {
 		readonly crossings: readonly LogicRelation[];
-		readonly localSide: NestedPortalSide;
+		readonly localSide: RegionPortalSide;
 		readonly bottomBusEdge: number;
 		readonly relationsById: Map<string, LayoutRelation>;
-		readonly portals: NestedRegionPortal[];
-		readonly ownedRoutes: NestedOwnedRoute[];
+		readonly portals: RegionPortal[];
+		readonly ownedRoutes: RegionOwnedRoute[];
 	},
 ): void {
 	const { regionId } = input;
@@ -152,7 +136,7 @@ export function inheritedIncidentPaths(
 	const region = defined(context.model.regionsById.get(regionId));
 	const incidentPaths = new Map<string, RegionIncidentPath>();
 	for (const [relationId, sides] of input.incidentSides) {
-		const side = nestedSide(defined(sides[0]));
+		const side = defined(sides[0]);
 		const owned = defined(context.ownershipByRelationId.get(relationId));
 		const isSource = owned.sourcePathToOwner.includes(regionId);
 		let endpointId = owned.relation.to;

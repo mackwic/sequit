@@ -20,10 +20,6 @@ import {
 	sideForRegion,
 } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
 import {
-	NestedPortalSide,
-	type NestedRegionInput,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
@@ -35,7 +31,10 @@ import {
 	normalizedRegions,
 	parentCycle,
 } from '../../../../src/lib/core/layout/region-composition-tree';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	type RegionInput,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 const emptyMeasurements: LayoutMeasurements = {
@@ -122,7 +121,7 @@ describe('direct region composition contracts', () => {
 	] as const)('keeps $name in its owned leaf document', ({ add, endpointId, collection }) => {
 		const source = graph(add(depthTwoRegionDocument()));
 		const input = depthTwoRegionInput();
-		const assigned: NestedRegionInput = {
+		const assigned: RegionInput = {
 			...input,
 			regionByEndpointId: new Map([...input.regionByEndpointId, [endpointId, 'left']]),
 		};
@@ -149,7 +148,7 @@ describe('direct region composition contracts', () => {
 		}));
 		const source = graph({ ...document, nodes: [...document.nodes, ...extra] });
 		const input = depthTwoRegionInput();
-		const assigned: NestedRegionInput = {
+		const assigned: RegionInput = {
 			...input,
 			regionByEndpointId: new Map([
 				...input.regionByEndpointId,
@@ -162,7 +161,7 @@ describe('direct region composition contracts', () => {
 
 	it('rejects a root without children after normalization', () => {
 		const source = graph();
-		const input: NestedRegionInput = {
+		const input: RegionInput = {
 			regions: [{ id: '@root', layoutOrder: 'a0' }],
 			regionByEndpointId: new Map([...source.endpointsById.keys()].map((id) => [id, '@root'])),
 		};
@@ -196,7 +195,7 @@ describe('direct region composition contracts', () => {
 			regionId: '@root',
 			childId: 'branch',
 			incidentSides: new Map(),
-			localSide: NestedPortalSide.Top,
+			localSide: RegionPortalSide.Top,
 		});
 		expect([...rootToBranch]).toEqual([
 			['at-root', [RegionPortalSide.Top]],
@@ -211,7 +210,7 @@ describe('direct region composition contracts', () => {
 			regionId: 'branch',
 			childId: 'left',
 			incidentSides: inherited,
-			localSide: NestedPortalSide.Top,
+			localSide: RegionPortalSide.Top,
 		});
 		expect([...sourceLeaf]).toEqual([
 			['at-root', [RegionPortalSide.Bottom]],
@@ -222,7 +221,7 @@ describe('direct region composition contracts', () => {
 			regionId: 'branch',
 			childId: 'branch-right',
 			incidentSides: inherited,
-			localSide: NestedPortalSide.Top,
+			localSide: RegionPortalSide.Top,
 		});
 		expect([...targetLeaf]).toEqual([
 			['inside-branch', [RegionPortalSide.Top]],
@@ -233,7 +232,7 @@ describe('direct region composition contracts', () => {
 			regionId: 'branch',
 			childId: 'middle',
 			incidentSides: inherited,
-			localSide: NestedPortalSide.Top,
+			localSide: RegionPortalSide.Top,
 		});
 		expect(unrelatedLeaf.size).toBe(0);
 	});
@@ -245,7 +244,7 @@ describe('direct region composition contracts', () => {
 			direction: LayoutDirection.BottomToTop,
 			bias: LayoutBias.Bottom,
 		} as const;
-		const directed: NestedRegionInput = {
+		const directed: RegionInput = {
 			...input,
 			regions: input.regions.map((region) => {
 				if (region.id !== 'left') return region;
@@ -262,11 +261,11 @@ describe('direct region composition contracts', () => {
 		};
 		const context: RecursiveContext = {
 			...naturalContext,
-			dispositionSideByRegionId: new Map([['left', NestedPortalSide.Top]]),
+			dispositionSideByRegionId: new Map([['left', RegionPortalSide.Top]]),
 		};
 		expect(leafDocument(context, 'left').layout).toEqual(localLayout);
-		expect(sideForRegion(context, '@root')).toBe(NestedPortalSide.Top);
-		expect(sideForRegion(context, 'left')).toBe(NestedPortalSide.Top);
-		expect(sideForRegion(naturalContext, 'left')).toBe(NestedPortalSide.Bottom);
+		expect(sideForRegion(context, '@root')).toBe(RegionPortalSide.Top);
+		expect(sideForRegion(context, 'left')).toBe(RegionPortalSide.Top);
+		expect(sideForRegion(naturalContext, 'left')).toBe(RegionPortalSide.Bottom);
 	});
 });

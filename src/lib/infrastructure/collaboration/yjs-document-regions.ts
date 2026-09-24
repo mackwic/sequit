@@ -9,6 +9,7 @@ import {
 	LayoutPolicy,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PRESENTATION_SCHEMA,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 	type RegionLanePresentation,
 	type RegionLayoutPresentation,
@@ -25,6 +26,7 @@ import {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 	YjsCollection,
 } from './yjs-document-schema';
 import {
@@ -36,6 +38,7 @@ import {
 
 const policyByValue: Readonly<Record<string, LayoutPolicy>> = {
 	[LayoutPolicy.Layered]: LayoutPolicy.Layered,
+	[LayoutPolicy.SharedLanes]: LayoutPolicy.SharedLanes,
 };
 const growthByValue: Readonly<Record<string, LaneGrowth>> = {
 	[LaneGrowth.Auto]: LaneGrowth.Auto,
@@ -45,7 +48,25 @@ const REGION_YJS_FORMATS = new Set<number>([
 	YJS_GRID_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 ]);
+const REGION_LANE_YJS_FORMATS = new Set<number>([
+	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
+]);
+const REGION_GRID_YJS_FORMATS = new Set<number>([
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
+]);
+
+function supportsRegionLanes(version: number): boolean {
+	return REGION_LANE_YJS_FORMATS.has(version);
+}
+
+function supportsRegionGrid(version: number): boolean {
+	return REGION_GRID_YJS_FORMATS.has(version);
+}
 
 interface RegionReadOptions {
 	readonly version: number;
@@ -137,10 +158,7 @@ function regionLaneFields(
 	id: string,
 	options: RegionReadOptions,
 ): { readonly lanePresentation?: RegionLanePresentation } {
-	if (
-		options.version !== YJS_REGION_LANE_DOCUMENT_FORMAT &&
-		options.version !== YJS_REGION_COMPOSITION_DOCUMENT_FORMAT
-	) {
+	if (!supportsRegionLanes(options.version)) {
 		if (entity.has('laneOrientation') || entity.has('laneGrowth'))
 			invalid(options.context, 'This shared format cannot persist region lanes', [
 				'regionPresentation',
@@ -159,7 +177,7 @@ function regionGridFields(
 	id: string,
 	options: RegionReadOptions,
 ): { readonly grid?: NonNullable<RegionLayoutPresentation['regions'][number]['grid']> } {
-	if (options.version !== YJS_REGION_COMPOSITION_DOCUMENT_FORMAT) return {};
+	if (!supportsRegionGrid(options.version)) return {};
 	if (!options.regionGrids.has(id)) return {};
 	const grid = readRegionGridPresentation(options.regionGrids.get(id), id, options.context);
 	if (grid === undefined) return {};
@@ -182,18 +200,23 @@ function readRegion(
 	const policy = readString(entity.get('policy'), [...path, 'policy'], context);
 	let mappedPolicy: LayoutPolicy | undefined;
 	if (policy !== undefined) mappedPolicy = policyByValue[policy];
-	if (policy !== undefined && mappedPolicy === undefined)
+	const legacySharedPolicy =
+		mappedPolicy === LayoutPolicy.SharedLanes &&
+		options.version !== YJS_REGION_POLICY_DOCUMENT_FORMAT;
+	const invalidPolicy = mappedPolicy === undefined || legacySharedPolicy;
+	if (policy !== undefined && invalidPolicy)
 		invalid(context, `Unsupported region layout policy: ${policy}`, [...path, 'policy']);
 	const laneFields = regionLaneFields(entity, id, options);
 	const gridFields = regionGridFields(id, options);
-	if (layoutOrder === undefined || mappedPolicy === undefined) return undefined;
+	if (layoutOrder === undefined) return undefined;
+	if (invalidPolicy || mappedPolicy === undefined) return undefined;
 	const parentFields: { parentId?: string } = {};
 	if (parentId !== undefined) parentFields.parentId = parentId;
 	return {
 		id,
 		...parentFields,
 		layoutOrder,
-		policy: LayoutPolicy.Layered,
+		policy: mappedPolicy,
 		...laneFields,
 		...gridFields,
 	};
@@ -207,10 +230,7 @@ function validateRegionLaneEntries(
 ): void {
 	for (const id of [...regionLanes.keys()].sort(compareCanonicalStrings)) {
 		const path = ['regionPresentation', 'regions', id, 'lanePresentation'];
-		if (
-			version === YJS_REGION_LANE_DOCUMENT_FORMAT ||
-			version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT
-		) {
+		if (supportsRegionLanes(version)) {
 			if (!regionIds.has(id))
 				invalid(context, 'Region lanes must belong to an existing region', path);
 			continue;
@@ -227,7 +247,7 @@ function validateRegionGridEntries(
 ): void {
 	for (const id of [...regionGrids.keys()].sort(compareCanonicalStrings)) {
 		const path = ['regionPresentation', 'regions', id, 'grid'];
-		if (version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT) {
+		if (supportsRegionGrid(version)) {
 			if (!regionIds.has(id))
 				invalid(context, 'Region grid must belong to an existing region', path);
 			continue;
@@ -241,6 +261,7 @@ function expectedRegionSchema(version: number): number {
 	if (version === YJS_REGION_LANE_DOCUMENT_FORMAT) return REGION_LANE_PRESENTATION_SCHEMA;
 	if (version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT)
 		return REGION_COMPOSITION_PRESENTATION_SCHEMA;
+	if (version === YJS_REGION_POLICY_DOCUMENT_FORMAT) return REGION_POLICY_PRESENTATION_SCHEMA;
 	return REGION_PRESENTATION_SCHEMA;
 }
 
@@ -264,6 +285,10 @@ function materializeRegionPresentation(
 	if (version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT) {
 		if (schema !== REGION_COMPOSITION_PRESENTATION_SCHEMA) return undefined;
 		return { schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA, regions };
+	}
+	if (version === YJS_REGION_POLICY_DOCUMENT_FORMAT) {
+		if (schema !== REGION_POLICY_PRESENTATION_SCHEMA) return undefined;
+		return { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA, regions };
 	}
 	if (schema !== REGION_LANE_PRESENTATION_SCHEMA) return undefined;
 	return { schemaVersion: REGION_LANE_PRESENTATION_SCHEMA, regions };

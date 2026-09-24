@@ -3,16 +3,16 @@ import type { Bounds, LayoutElement, Point } from './layout-types';
 import { orthogonal, samePoint, segmentEnters } from './nested-region-geometry-primitives';
 import { pathsTouchWithoutBridge } from './nested-region-leaf-incident-contacts';
 import {
-	type NestedOwnedRoute,
-	NestedPortalSide,
-	type NestedRegionPortal,
-	type NestedRegionSelected,
-} from './nested-region-types';
-import {
 	type RegionCompositionModel,
 	RegionRelationKind,
 	type RegionRelationOwnership,
 } from './region-composition-model';
+import {
+	type RegionLayoutSelected,
+	type RegionOwnedRoute,
+	type RegionPortal,
+	RegionPortalSide,
+} from './region-composition-types';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic,
@@ -26,8 +26,8 @@ interface LeafIncident {
 	readonly endpointId: string;
 	readonly leafId: string;
 	readonly role: IncidentRole;
-	readonly portal: NestedRegionPortal;
-	readonly piece: NestedOwnedRoute;
+	readonly portal: RegionPortal;
+	readonly piece: RegionOwnedRoute;
 	readonly anchor: Point;
 }
 
@@ -46,23 +46,23 @@ function incidentDiagnostic(
 	});
 }
 
-function onFace(anchor: Point, bounds: Bounds, side: NestedPortalSide): boolean {
-	if (side === NestedPortalSide.Top || side === NestedPortalSide.Bottom) {
+function onFace(anchor: Point, bounds: Bounds, side: RegionPortalSide): boolean {
+	if (side === RegionPortalSide.Top || side === RegionPortalSide.Bottom) {
 		const right = bounds.x + bounds.width;
 		const horizontal = anchor.x > bounds.x && anchor.x < right;
 		if (!horizontal) return false;
-		if (side === NestedPortalSide.Top) return anchor.y === bounds.y;
+		if (side === RegionPortalSide.Top) return anchor.y === bounds.y;
 		return anchor.y === bounds.y + bounds.height;
 	}
 	const bottom = bounds.y + bounds.height;
 	const vertical = anchor.y > bounds.y && anchor.y < bottom;
 	if (!vertical) return false;
-	if (side === NestedPortalSide.Left) return anchor.x === bounds.x;
+	if (side === RegionPortalSide.Left) return anchor.x === bounds.x;
 	return anchor.x === bounds.x + bounds.width;
 }
 
 function matchesLeafPortal(
-	portal: NestedRegionPortal,
+	portal: RegionPortal,
 	relationId: string,
 	leafId: string,
 	endpointId: string,
@@ -75,7 +75,7 @@ function matchesLeafPortal(
 function incidentFor(
 	owned: RegionRelationOwnership,
 	role: IncidentRole,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 ): LeafIncident | RegionGeometryDiagnostic {
 	const { relation } = owned;
 	let endpointId = relation.to;
@@ -149,7 +149,7 @@ function localConnectionAt(
 function foreignNodeFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 ): RegionGeometryDiagnostic | undefined {
 	const containingGroups = ancestorGroupIds(model, incident.endpointId);
 	for (const foreign of candidate.layout.elements) {
@@ -187,11 +187,11 @@ function exitsContainingGroup(incident: LeafIncident, group: LayoutElement): boo
 	const bottom = y + height;
 	if (anchor.x <= x || anchor.x >= right) return false;
 	if (anchor.y <= y || anchor.y >= bottom) return false;
-	if (portal.side === NestedPortalSide.Left)
+	if (portal.side === RegionPortalSide.Left)
 		return anchor.y === portal.point.y && portal.point.x < x;
-	if (portal.side === NestedPortalSide.Right)
+	if (portal.side === RegionPortalSide.Right)
 		return anchor.y === portal.point.y && portal.point.x > right;
-	if (portal.side === NestedPortalSide.Top)
+	if (portal.side === RegionPortalSide.Top)
 		return anchor.x === portal.point.x && portal.point.y < y;
 	return anchor.x === portal.point.x && portal.point.y > bottom;
 }
@@ -199,7 +199,7 @@ function exitsContainingGroup(incident: LeafIncident, group: LayoutElement): boo
 function localRouteFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 ): RegionGeometryDiagnostic | undefined {
 	for (const local of model.localRelationsByOwner.get(incident.leafId) ?? []) {
 		const route = candidate.ownedRoutes.find(
@@ -234,7 +234,7 @@ function localRouteFailure(
 function leafFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 	elementsById: ReadonlyMap<string, LayoutElement>,
 ): RegionGeometryDiagnostic | undefined {
 	const element = elementFor(incident, elementsById);
@@ -253,7 +253,7 @@ function leafFailure(
 /** Complement to chain/opacity validation: inspect incident geometry inside each leaf. */
 export function validateNestedRegionLeafIncidents(
 	model: RegionCompositionModel,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 ): RegionGeometryDiagnostic | undefined {
 	const elementsById = new Map(candidate.layout.elements.map((element) => [element.id, element]));
 	for (const owned of model.relations) {
@@ -271,7 +271,7 @@ export function validateNestedRegionLeafIncidents(
 /** Display adapter for callers that only need the established wording. */
 export function validateNestedRegionLeafIncidentsMessage(
 	model: RegionCompositionModel,
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 ): string | undefined {
 	return validateNestedRegionLeafIncidents(model, candidate)?.message;
 }

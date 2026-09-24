@@ -3,16 +3,11 @@ import { defined, type LogicDocument } from '../../../lib/core/document/logic-do
 import { createGraph, type LogicGraph } from '../../../lib/core/graph/create-graph';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
 import { solveNestedRegionLayoutForProjection } from '../../../lib/core/layout/nested-region-layout';
-import type { NestedRegionLocalLayoutCache } from '../../../lib/core/layout/nested-region-local-cache';
 import { nestedRegionLocalMeasurements } from '../../../lib/core/layout/nested-region-local-measurements';
 import {
 	leafDocument,
 	type RecursiveContext,
 } from '../../../lib/core/layout/nested-region-recursive-model-adapter';
-import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
@@ -20,14 +15,20 @@ import {
 	RegionRelationKind,
 } from '../../../lib/core/layout/region-composition-model';
 import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../lib/core/layout/region-composition-types';
+import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../../../lib/core/layout/region-leaf-layout';
+import { regionLeafPolicy } from '../../../lib/core/layout/region-leaf-policy';
+import type { RegionLocalLayoutCache } from '../../../lib/core/layout/region-local-cache';
 import {
 	nestedRegionInput,
-	UnknownNestedRegionLayoutError,
-	UnsupportedNestedRegionLayoutError,
+	UnknownRegionLayoutError,
+	UnsupportedRegionLayoutError,
 } from '../../../lib/core/layout/root-region';
 import {
 	type CanvasModel,
@@ -108,9 +109,14 @@ function localFailure(error: unknown): LocalFailure {
 function previewLeaf(context: RecursiveContext, regionId: string): RegionPreview {
 	const document = leafDocument(context, regionId);
 	const measurements = nestedRegionLocalMeasurements(document, context.measurements);
-	const policy = defined(context.model.regionsById.get(regionId)).definition.policy;
+	const policy = regionLeafPolicy(defined(context.model.regionsById.get(regionId)).definition);
 	try {
-		const solved = solveRegionLeafLayout(document, measurements, policy, context.cache);
+		const solved = solveRegionLeafLayout({
+			document,
+			measurements,
+			leafPolicy: policy,
+			cache: context.cache,
+		});
 		return {
 			kind: RegionPreviewKind.Ready,
 			regionId,
@@ -182,7 +188,7 @@ function subtreeInput(
 	rootId: string,
 	regionIds: ReadonlySet<string>,
 	endpointIds: ReadonlySet<string>,
-): NestedRegionInput {
+): RegionInput {
 	const regions = model.preorderIds.flatMap((regionId) => {
 		if (!regionIds.has(regionId)) return [];
 		const definition = defined(model.regionsById.get(regionId)).definition;
@@ -215,7 +221,7 @@ function previewClosedSubtree(
 			subtreeInput(context.model, regionId, regionIds, endpointIds),
 			defined(context.cache),
 		);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return undefined;
+		if (attempt.status !== RegionCompositionStatus.Selected) return undefined;
 		const layout = {
 			...attempt.layout,
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
@@ -236,7 +242,7 @@ function previewClosedSubtree(
 export function partialRegionPreviews(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 ): readonly RegionPreview[] {
 	const normalized = normalizeRegionCompositionModel(graph, nestedRegionInput(graph));
 	if (normalized.status !== RegionCompositionModelStatus.Ready) return [];
@@ -274,15 +280,15 @@ export function partialRegionPreviews(
 }
 
 function isNestedRegionFailure(error: unknown): boolean {
-	if (error instanceof UnknownNestedRegionLayoutError) return true;
-	return error instanceof UnsupportedNestedRegionLayoutError;
+	if (error instanceof UnknownRegionLayoutError) return true;
+	return error instanceof UnsupportedRegionLayoutError;
 }
 
 export function partialRegionFailure(
 	error: unknown,
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 ): unknown {
 	if (!isNestedRegionFailure(error)) return error;
 	try {

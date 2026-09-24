@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
@@ -46,7 +46,7 @@ function exits(
 	};
 }
 
-function solve(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) {
+function solve(document: LogicDocument, cache?: RegionLocalLayoutCache) {
 	const prepared = prepareLayoutDocument(document);
 	const input = nestedRegionInput(prepared.graph);
 	const candidate = solveRecursiveNestedRegionLayout(
@@ -60,7 +60,7 @@ function solve(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) {
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error('Expected a normalized grid region tree');
-	if (candidate.status === NestedRegionLayoutStatus.Selected) {
+	if (candidate.status === RegionCompositionStatus.Selected) {
 		expect(validateRegionCompositionGeometry(normalized.model, candidate)).toBeUndefined();
 		expect(validateNestedRegionLeafIncidents(normalized.model, candidate)).toBeUndefined();
 	}
@@ -70,7 +70,7 @@ function solve(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) {
 function parentPiece(
 	candidate: Extract<
 		ReturnType<typeof solve>['candidate'],
-		{ status: NestedRegionLayoutStatus.Selected }
+		{ status: RegionCompositionStatus.Selected }
 	>,
 	id: string,
 ) {
@@ -90,9 +90,9 @@ describe('parent bus rails for two grid exits', () => {
 		'puts the outer $label arc farther from the children regardless of relation IDs',
 		(direction) => {
 			const document = exits(direction);
-			const cache = new NestedRegionLocalLayoutCache();
+			const cache = new RegionLocalLayoutCache();
 			const { candidate, model } = solve(document, cache);
-			if (candidate.status !== NestedRegionLayoutStatus.Selected)
+			if (candidate.status !== RegionCompositionStatus.Selected)
 				throw new Error(`Expected two grid exits: ${candidate.status}: ${candidate.reason}`);
 			const outer = parentPiece(candidate, 'a-left-exit');
 			const inner = parentPiece(candidate, 'z-right-exit');
@@ -145,7 +145,7 @@ describe('parent bus rails for two grid exits', () => {
 			},
 		};
 		const { candidate } = solve(document);
-		if (candidate.status !== NestedRegionLayoutStatus.Selected)
+		if (candidate.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected disjoint grid exits: ${candidate.status}: ${candidate.reason}`);
 		const left = parentPiece(candidate, 'a-left-exit');
 		const right = parentPiece(candidate, 'z-right-exit');
@@ -155,7 +155,7 @@ describe('parent bus rails for two grid exits', () => {
 	it('keeps interleaved arcs and three conflicting exits unknown', () => {
 		const interleaved = exits({ leftOutside: 'outside-2', rightOutside: 'outside' });
 		expect(solve(interleaved).candidate).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 			regionId: '@root',
 			relationId: 'a-left-exit',
@@ -166,7 +166,7 @@ describe('parent bus rails for two grid exits', () => {
 			relations: [...interleaved.relations, { id: 'third-exit', from: 'c', to: 'outside' }],
 		};
 		expect(solve(third).candidate).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 			regionId: 'grid',
 			relationId: 'a-left-exit',

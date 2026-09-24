@@ -8,7 +8,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { layoutWithRootRegion } from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
@@ -58,7 +58,7 @@ describe('nested region real-pipeline properties', () => {
 					const original = prepareLayoutDocument(document, overrides);
 					const input = depthTwoRegionInput();
 					const selected = solveNestedRegionLayout(original.graph, original.measurements, input);
-					if (selected.status !== NestedRegionLayoutStatus.Selected)
+					if (selected.status !== RegionCompositionStatus.Selected)
 						throw new Error(`Expected two-level selection: ${selected.status}: ${selected.reason}`);
 					expect(validateNestedRegionGeometry(original.graph, input, selected)).toBeUndefined();
 					const presentation = defined(document.regionPresentation);
@@ -120,7 +120,7 @@ describe('nested region real-pipeline properties', () => {
 					const cold = prepareLayoutDocument(document, overrides);
 					const regionInput = nestedRegionInput();
 					const solved = solveNestedRegionLayout(cold.graph, cold.measurements, regionInput);
-					if (solved.status !== NestedRegionLayoutStatus.Selected)
+					if (solved.status !== RegionCompositionStatus.Selected)
 						throw new Error(`Expected a selected crossing: ${solved.status}: ${solved.reason}`);
 					expect(validateNestedRegionGeometry(cold.graph, regionInput, solved)).toBeUndefined();
 					const presentation = defined(document.regionPresentation);

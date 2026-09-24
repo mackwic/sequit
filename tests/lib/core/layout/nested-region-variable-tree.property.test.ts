@@ -31,18 +31,18 @@ import {
 	solveNestedRegionLayoutForProjection,
 } from '../../../../src/lib/core/layout/nested-region-layout';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
-import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { UnknownNestedRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { UnknownRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
@@ -65,7 +65,7 @@ interface TreeCase {
 
 interface BuiltTree {
 	readonly document: LogicDocument;
-	readonly input: NestedRegionInput;
+	readonly input: RegionInput;
 	readonly sizesById: Readonly<Record<string, Size>>;
 }
 
@@ -196,7 +196,7 @@ function buildTree(sample: TreeCase): BuiltTree {
 			regions: definitions,
 		},
 	};
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		regions: [
 			{ id: ROOT_LAYOUT_REGION_ID, layoutOrder: 'a0' },
 			...definitions.map(({ id, parentId, layoutOrder, policy }) => ({
@@ -300,7 +300,7 @@ function verifyPublicGeometry(layout: LayoutResult, tree: BuiltTree): void {
 }
 
 function verifyBoundaryChain(
-	result: NestedRegionSelected,
+	result: RegionLayoutSelected,
 	tree: BuiltTree,
 	sample: TreeCase,
 ): void {
@@ -353,27 +353,27 @@ async function checkCase(sample: TreeCase): Promise<void> {
 	const secondMeasurements = reversedMeasurements(secondPrepared.measurements);
 	const second = solveNestedRegionLayout(secondPrepared.graph, secondMeasurements, permuted.input);
 	expect(second).toEqual(first);
-	expect(first.status).not.toBe(NestedRegionLayoutStatus.Unsupported);
-	if (first.status === NestedRegionLayoutStatus.Unknown) {
+	expect(first.status).not.toBe(RegionCompositionStatus.Unsupported);
+	if (first.status === RegionCompositionStatus.Unknown) {
 		expect(sample.depth).toBe(2);
 		expect(sample.crossingScope).toBe('root');
 		expect(sample.firstLeafPair).toBe(true);
 		await expect(
 			layoutGraph(prepared.graph, prepared.ranks, prepared.measurements),
 		).rejects.toMatchObject({
-			name: UnknownNestedRegionLayoutError.name,
+			name: UnknownRegionLayoutError.name,
 			reason: first.reason,
 		});
 		await expect(
 			layoutGraph(secondPrepared.graph, secondPrepared.ranks, secondMeasurements),
 		).rejects.toMatchObject({
-			name: UnknownNestedRegionLayoutError.name,
+			name: UnknownRegionLayoutError.name,
 			reason: first.reason,
 		});
 		return;
 	}
-	expect(first.status).toBe(NestedRegionLayoutStatus.Selected);
-	if (first.status !== NestedRegionLayoutStatus.Selected) return;
+	expect(first.status).toBe(RegionCompositionStatus.Selected);
+	if (first.status !== RegionCompositionStatus.Selected) return;
 	expect(validateNestedRegionGeometry(prepared.graph, tree.input, first)).toBeUndefined();
 	verifyBoundaryChain(first, tree, sample);
 	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
@@ -470,7 +470,7 @@ function applySequenceEdit(tree: BuiltTree, sample: SequenceCase, edit: EditKind
 }
 
 async function checkSequenceCase(sample: SequenceCase): Promise<void> {
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	let tree = buildTree(sample.tree);
 	let previous: ReturnType<typeof solveNestedRegionLayoutForProjection> | undefined;
 	let completedEdits: readonly EditKind[] = [];
@@ -493,29 +493,29 @@ async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 			);
 			const cold = solveNestedRegionLayout(prepared.graph, measurements, tree.input);
 			expect(incremental).toEqual(cold);
-			expect(incremental.status).not.toBe(NestedRegionLayoutStatus.Unsupported);
+			expect(incremental.status).not.toBe(RegionCompositionStatus.Unsupported);
 			if (edit === 'permutation') {
 				expect(incremental).toEqual(previous);
 			}
 			previous = incremental;
-			if (incremental.status === NestedRegionLayoutStatus.Unknown) {
+			if (incremental.status === RegionCompositionStatus.Unknown) {
 				expect(incremental.reason.length).toBeGreaterThan(0);
 				await expect(
 					layoutGraph(prepared.graph, prepared.ranks, measurements),
 				).rejects.toMatchObject({
-					name: UnknownNestedRegionLayoutError.name,
+					name: UnknownRegionLayoutError.name,
 					reason: incremental.reason,
 				});
 				await expect(
 					layoutGraphForProjection(prepared.graph, prepared.ranks, measurements, cache),
 				).rejects.toMatchObject({
-					name: UnknownNestedRegionLayoutError.name,
+					name: UnknownRegionLayoutError.name,
 					reason: incremental.reason,
 				});
 				continue;
 			}
-			expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
-			if (incremental.status !== NestedRegionLayoutStatus.Selected) continue;
+			expect(incremental.status).toBe(RegionCompositionStatus.Selected);
+			if (incremental.status !== RegionCompositionStatus.Selected) continue;
 			const normalized = normalizeRegionCompositionModel(prepared.graph, tree.input);
 			expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
 			if (normalized.status !== RegionCompositionModelStatus.Ready) continue;

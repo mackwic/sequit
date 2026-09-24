@@ -1,5 +1,6 @@
 export enum RegionPresentationIssueCode {
 	InvalidRegion = 'invalid-region',
+	InvalidLeafPolicy = 'invalid-leaf-policy',
 	DuplicateRegion = 'duplicate-region',
 	UnknownParent = 'unknown-parent',
 	RegionCycle = 'region-cycle',

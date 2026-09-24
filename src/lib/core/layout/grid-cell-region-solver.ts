@@ -4,16 +4,17 @@ import type { SolvedGridCell } from './grid-cell-disposition';
 import { type GridModel, localMeasurements } from './grid-cell-model';
 import { gridCellRegionLeafDocument } from './grid-cell-region-model';
 import type { LayoutMeasurements } from './layout-types';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
 import type { RegionCompositionModel } from './region-composition-model';
 import { InvalidRegionLeafGraphError, solveRegionLeafLayout } from './region-leaf-layout';
+import { regionLeafPolicy } from './region-leaf-policy';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 
 interface GridRegionSolveInput {
 	readonly graph: LogicGraph;
 	readonly grid: GridModel;
 	readonly model: RegionCompositionModel;
 	readonly measurements: LayoutMeasurements;
-	readonly cache?: NestedRegionLocalLayoutCache | undefined;
+	readonly cache?: RegionLocalLayoutCache | undefined;
 }
 
 function solveCellLeaf(
@@ -29,12 +30,12 @@ function solveCellLeaf(
 		return [
 			{
 				cell,
-				...solveRegionLeafLayout(
+				...solveRegionLeafLayout({
 					document,
-					localMeasurements(document, measurements),
-					region.definition.policy,
+					measurements: localMeasurements(document, measurements),
+					leafPolicy: regionLeafPolicy(region.definition),
 					cache,
-				),
+				}),
 			},
 		];
 	} catch (error) {

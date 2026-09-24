@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	LayoutPolicy,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
+	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { mapRegionPresentation } from '../../../../src/lib/infrastructure/toml/map-region-presentation';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
@@ -18,7 +21,7 @@ function mappingPaths(value: unknown): readonly string[] {
 }
 
 describe('TOML internal grid presentation', () => {
-	it('round trips format 7 with a nested grid, ordinary sibling, endpoint owners and local lanes', () => {
+	it('migrates format 7 nested grid and local lanes to explicit format 8 policies', () => {
 		const source = regionGridDocument();
 		const serialized = serializeSequitToml(source);
 		expect(serialized).toContain('persistenceFormat = 7');
@@ -29,8 +32,8 @@ describe('TOML internal grid presentation', () => {
 		expect(parsed).toMatchObject({
 			ok: true,
 			value: {
-				persistenceFormat: REGION_COMPOSITION_PERSISTENCE_FORMAT,
-				regionPresentation: { schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA },
+				persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+				regionPresentation: { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA },
 			},
 		});
 		if (!parsed.ok) throw new Error('Expected internal grid document to parse');
@@ -48,7 +51,35 @@ describe('TOML internal grid presentation', () => {
 		expect(
 			parsedRegions.find(({ id }) => id === 'a')?.lanePresentation?.lanes.map(({ id }) => id),
 		).toEqual(['left', 'right']);
-		expect(serializeSequitToml(parsed.value)).toBe(serialized);
+		expect(parsedRegions.find(({ id }) => id === 'a')?.policy).toBe('shared-lanes');
+		expect(parsedRegions.find(({ id }) => id === 'branch')?.policy).toBe('layered');
+		const upgraded = serializeSequitToml(parsed.value);
+		expect(upgraded).toContain('persistenceFormat = 8');
+		expect(upgraded).toContain('schemaVersion = 5');
+		expect(parseSequitToml(upgraded)).toEqual(parsed);
+	});
+
+	it('rejects a format 8 leaf policy that contradicts its local lanes', () => {
+		const legacy = parseSequitToml(serializeSequitToml(regionGridDocument()));
+		if (!legacy.ok) throw new Error('Expected the legacy grid to migrate.');
+		const presentation = legacy.value.regionPresentation;
+		if (presentation === undefined) throw new Error('Expected region presentation.');
+		const conflicting = {
+			...legacy.value,
+			regionPresentation: {
+				...presentation,
+				regions: presentation.regions.map((region) => {
+					if (region.id !== 'a') return region;
+					return { ...region, policy: LayoutPolicy.Layered };
+				}),
+			},
+		};
+		const parsed = parseSequitToml(serializeSequitToml(conflicting));
+		expect(parsed).toMatchObject({ ok: false });
+		if (parsed.ok) return;
+		expect(parsed.diagnostics.map(({ path }) => path.join('.'))).toContain(
+			'regionPresentation.regions.a.policy',
+		);
 	});
 
 	it('reports malformed internal grid tables at their nested TOML paths', () => {
@@ -97,7 +128,11 @@ describe('TOML internal grid presentation', () => {
 			const parsed = parseSequitToml(serialized);
 			expect(parsed).toMatchObject({ ok: true });
 			if (!parsed.ok) throw new Error('Expected previous format to parse');
-			expect(serializeSequitToml(parsed.value)).toBe(serialized);
+			const replayed = serializeSequitToml(parsed.value);
+			if (source.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT)
+				expect(replayed).toContain('persistenceFormat = 8');
+			else expect(replayed).toBe(serialized);
+			expect(parseSequitToml(replayed)).toEqual(parsed);
 		}
 		const source = regionGridDocument();
 		const serialized = serializeSequitToml(source);

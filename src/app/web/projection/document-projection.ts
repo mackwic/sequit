@@ -10,7 +10,7 @@ import {
 	type TopologicalRanks,
 } from '../../../lib/core/graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
-import { NestedRegionLocalLayoutCache } from '../../../lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../lib/core/layout/region-local-cache';
 import {
 	type CanvasMeasurementModel,
 	type CanvasModel,
@@ -145,7 +145,7 @@ export class DocumentProjection {
 	#measurementModel: CanvasMeasurementModel;
 	#measurementSignature: string;
 	#layout: MeasuredLayout | undefined;
-	readonly #nestedRegionCache = new NestedRegionLocalLayoutCache();
+	readonly #nestedRegionCache = new RegionLocalLayoutCache();
 
 	constructor(document: LogicDocument, graph?: LogicGraph) {
 		this.#document = document;

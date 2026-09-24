@@ -12,9 +12,9 @@ import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-l
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-	GridCellSide,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
@@ -307,7 +307,7 @@ describe('bounded two by two grid composition', () => {
 		).toMatchObject({
 			cellId: 'b',
 			regionId: 'b',
-			side: GridCellSide.Right,
+			side: RegionPortalSide.Right,
 			point: { x: groupCell.bounds.x + groupCell.bounds.width, y: port?.y },
 		});
 		expect(member.bounds.x).toBeGreaterThan(group.bounds.x);

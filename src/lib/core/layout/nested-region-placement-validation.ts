@@ -1,9 +1,9 @@
 import { defined } from '../document/logic-document';
 import type { LayoutElement } from './layout-types';
 import { finiteBounds, inside, overlaps } from './nested-region-geometry-primitives';
-import type { NestedRegionPlacement, NestedRegionSelected } from './nested-region-types';
+import type { RegionChildPlacement, RegionLayoutSelected } from './region-composition-types';
 
-function childCanvasFits(region: NestedRegionPlacement): boolean {
+function childCanvasFits(region: RegionChildPlacement): boolean {
 	const { localLayout, translation, bounds } = region;
 	if (!Number.isFinite(translation.x) || !Number.isFinite(translation.y)) return false;
 	if (translation.x <= bounds.x || translation.y <= bounds.y) return false;
@@ -14,7 +14,7 @@ function childCanvasFits(region: NestedRegionPlacement): boolean {
 }
 
 function elementFits(
-	region: NestedRegionPlacement,
+	region: RegionChildPlacement,
 	local: LayoutElement,
 	global: LayoutElement | undefined,
 ): boolean {
@@ -27,8 +27,8 @@ function elementFits(
 }
 
 function placementFailure(
-	candidate: NestedRegionSelected,
-	region: NestedRegionPlacement,
+	candidate: RegionLayoutSelected,
+	region: RegionChildPlacement,
 ): string | undefined {
 	const root = { x: 0, y: 0, width: candidate.layout.width, height: candidate.layout.height };
 	if (!finiteBounds(region.bounds) || !inside(root, region.bounds))
@@ -43,7 +43,7 @@ function placementFailure(
 	return undefined;
 }
 
-export function validateNestedPlacements(candidate: NestedRegionSelected): string | undefined {
+export function validateNestedPlacements(candidate: RegionLayoutSelected): string | undefined {
 	const root = { x: 0, y: 0, width: candidate.layout.width, height: candidate.layout.height };
 	if (!finiteBounds(root)) return 'The root canvas has invalid dimensions.';
 	const elementIds = candidate.layout.elements.map(({ id }) => id);

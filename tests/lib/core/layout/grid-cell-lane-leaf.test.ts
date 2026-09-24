@@ -11,21 +11,16 @@ import { validateLogicDocument } from '../../../../src/lib/core/document/validat
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import {
-	NestedRegionLocalLayoutCache,
-	nestedRegionLocalLayoutKey,
-} from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	NestedPortalSide,
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
@@ -33,6 +28,10 @@ import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 } from '../../../../src/lib/core/layout/region-incident-contract';
+import {
+	RegionLocalLayoutCache,
+	regionLocalLayoutKey,
+} from '../../../../src/lib/core/layout/region-local-cache';
 import { layoutWithRootRegionForProjection } from '../../../../src/lib/core/layout/root-region';
 import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
 import {
@@ -47,7 +46,7 @@ import {
 	persistedNestedGridWithLaneCrossingDocument,
 } from './nested-region-fixture';
 
-function regionInput(document: LogicDocument): NestedRegionInput {
+function regionInput(document: LogicDocument): RegionInput {
 	const presentation = defined(document.regionPresentation);
 	return {
 		regions: [
@@ -109,7 +108,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = regionInput(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected lane cell: ${selected.status}: ${selected.reason}`);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
@@ -142,7 +141,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.graph,
 			prepared.ranks,
 			prepared.measurements,
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(projected.lanes).toEqual(lanes);
 	});
@@ -151,14 +150,14 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const document = persistedNestedGridWithLaneCellDocument();
 		const prepared = prepareLayoutDocument(document);
 		const input = regionInput(document);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = solveRecursiveNestedRegionLayout(
 			prepared.graph,
 			prepared.measurements,
 			input,
 			cache,
 		);
-		expect(first.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(first.status).toBe(RegionCompositionStatus.Selected);
 		const measurements = resizedB2(prepared.measurements);
 		const incremental = solveRecursiveNestedRegionLayout(
 			prepared.graph,
@@ -168,7 +167,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		const cold = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input);
 		expect(incremental).toEqual(cold);
-		expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(incremental.status).toBe(RegionCompositionStatus.Selected);
 		expect(incremental).not.toEqual(first);
 		expect(cache.stats).toMatchObject({ misses: 6, hits: 4 });
 	});
@@ -179,7 +178,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = regionInput(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected inner-lane crossing: ${selected.status}: ${selected.reason}`);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -208,7 +207,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				prepared.graph,
 				prepared.ranks,
 				prepared.measurements,
-				new NestedRegionLocalLayoutCache(),
+				new RegionLocalLayoutCache(),
 			),
 		).toEqual({
 			...selected.layout,
@@ -220,14 +219,14 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const source = persistedNestedGridWithInnerLaneCrossingDocument();
 		const prepared = prepareLayoutDocument(source);
 		const input = regionInput(source);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = solveRecursiveNestedRegionLayout(
 			prepared.graph,
 			prepared.measurements,
 			input,
 			cache,
 		);
-		expect(first.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(first.status).toBe(RegionCompositionStatus.Selected);
 		const edited: LogicDocument = {
 			...source,
 			relations: source.relations.map((relation) => {
@@ -246,7 +245,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		const cold = solveRecursiveNestedRegionLayout(next.graph, prepared.measurements, editedInput);
 		expect(incremental).toEqual(cold);
-		if (cold.status !== NestedRegionLayoutStatus.Selected)
+		if (cold.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected edited incident: ${cold.status}: ${cold.reason}`);
 		// The crossing contract belongs to both endpoint leaves.
 		expect(cache.stats.misses).toBe(previousStats.misses + 2);
@@ -268,11 +267,11 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		expect(alternateSelected).toEqual(cold);
 		expect(
-			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, [
+			regionLocalLayoutKey(source, prepared.measurements, undefined, [
 				outgoingContract(source, 'leaves-b'),
 			]),
 		).not.toBe(
-			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, [
+			regionLocalLayoutKey(source, prepared.measurements, undefined, [
 				outgoingContract(edited, 'edited-leaves-b'),
 			]),
 		);
@@ -283,7 +282,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const measurements = { ...widened, nodes };
 		const varied = solveRecursiveNestedRegionLayout(next.graph, measurements, editedInput, cache);
 		expect(varied).toEqual(solveRecursiveNestedRegionLayout(next.graph, measurements, editedInput));
-		expect(varied.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(varied.status).toBe(RegionCompositionStatus.Selected);
 		const switched: LogicDocument = {
 			...source,
 			relations: source.relations.map((relation) => {
@@ -305,9 +304,9 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			regionInput(switched),
 		);
 		expect(reused).toEqual(switchedCold);
-		if (reused.status !== NestedRegionLayoutStatus.Selected)
+		if (reused.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected switched incident: ${reused.status}: ${reused.reason}`);
-		if (first.status !== NestedRegionLayoutStatus.Selected)
+		if (first.status !== RegionCompositionStatus.Selected)
 			throw new Error('Expected the original incident to be selected');
 		expect(defined(reused.regions.find(({ id }) => id === 'b')).localLayout).not.toEqual(
 			defined(first.regions.find(({ id }) => id === 'b')).localLayout,
@@ -329,10 +328,10 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			regionInput(document),
 		);
 		expect(attempt).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 		});
-		if (attempt.status === NestedRegionLayoutStatus.Unknown)
+		if (attempt.status === RegionCompositionStatus.Unknown)
 			expect(attempt.reason).toContain('enters element b2');
 	});
 
@@ -350,8 +349,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.measurements,
 			regionInput(document),
 		);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unknown);
-		if (attempt.status !== NestedRegionLayoutStatus.Unknown) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Unknown);
+		if (attempt.status !== RegionCompositionStatus.Unknown) return;
 		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
 		expect(attempt.reason).toContain('enters element b3');
 	});
@@ -361,7 +360,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(source);
 		const input = regionInput(source);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected passage: ${selected.status}: ${selected.reason}`);
 		const local = defined(defined(selected.regions.find(({ id }) => id === 'b')).localLayout);
 		const geometry = { ...local, lanes: defined(local.lanes) };
@@ -473,7 +472,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				regionInput(document),
 			),
 		).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
 	});
@@ -495,8 +494,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			sidewaysPrepared.measurements,
 			sidewaysInput,
 		);
-		expect(sidewaysAttempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (sidewaysAttempt.status === NestedRegionLayoutStatus.Selected) {
+		expect(sidewaysAttempt.status).toBe(RegionCompositionStatus.Selected);
+		if (sidewaysAttempt.status === RegionCompositionStatus.Selected) {
 			const model = normalizeRegionCompositionModel(sidewaysPrepared.graph, sidewaysInput);
 			if (model.status !== RegionCompositionModelStatus.Ready)
 				throw new Error('Expected normalized sideways region composition');
@@ -526,8 +525,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			transversePrepared.measurements,
 			transverseInput,
 		);
-		expect(transverseAttempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (transverseAttempt.status === NestedRegionLayoutStatus.Selected) {
+		expect(transverseAttempt.status).toBe(RegionCompositionStatus.Selected);
+		if (transverseAttempt.status === RegionCompositionStatus.Selected) {
 			const model = normalizeRegionCompositionModel(transversePrepared.graph, transverseInput);
 			if (model.status !== RegionCompositionModelStatus.Ready)
 				throw new Error('Expected normalized transverse region composition');
@@ -551,7 +550,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			RegionCompositionModelStatus.Ready,
 		);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(
 				`Expected selected lane-cell incident: ${selected.status}: ${selected.reason}`,
 			);
@@ -573,7 +572,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = regionInput(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected lane crossing: ${selected.status}: ${selected.reason}`);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -585,8 +584,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				.filter(({ relationId }) => relationId === 'leaves-b')
 				.map(({ regionId, side }) => [regionId, side]),
 		).toEqual([
-			['b', NestedPortalSide.Right],
-			['d', NestedPortalSide.Right],
+			['b', RegionPortalSide.Right],
+			['d', RegionPortalSide.Right],
 		]);
 		expect(
 			selected.ownedRoutes
@@ -599,7 +598,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				prepared.graph,
 				prepared.ranks,
 				prepared.measurements,
-				new NestedRegionLocalLayoutCache(),
+				new RegionLocalLayoutCache(),
 			),
 		).toEqual({
 			...selected.layout,
@@ -613,12 +612,12 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			...crossing,
 			relations: crossing.relations.filter(({ id }) => id !== 'leaves-b'),
 		};
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = prepareLayoutDocument(without);
 		expect(
 			solveRecursiveNestedRegionLayout(first.graph, first.measurements, regionInput(without), cache)
 				.status,
-		).toBe(NestedRegionLayoutStatus.Selected);
+		).toBe(RegionCompositionStatus.Selected);
 		const prepared = prepareLayoutDocument(crossing);
 		const input = regionInput(crossing);
 		const incremental = solveRecursiveNestedRegionLayout(
@@ -629,7 +628,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		const cold = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(incremental).toEqual(cold);
-		expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(incremental.status).toBe(RegionCompositionStatus.Selected);
 		const statsAfterIncremental = cache.stats;
 		expect(
 			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input, cache),
@@ -639,7 +638,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const measurements = resizedB2(prepared.measurements);
 		const resized = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input, cache);
 		expect(resized).toEqual(solveRecursiveNestedRegionLayout(prepared.graph, measurements, input));
-		expect(resized.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(resized.status).toBe(RegionCompositionStatus.Selected);
 		const renamed: LogicDocument = {
 			...crossing,
 			relations: crossing.relations.map((relation) => {
@@ -662,7 +661,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				renamedInput,
 			),
 		);
-		if (reused.status !== NestedRegionLayoutStatus.Selected)
+		if (reused.status !== RegionCompositionStatus.Selected)
 			throw new Error('Expected renamed crossing to be selected');
 		expect(reused.layout.relations.some(({ id }) => id === 'leaves-b')).toBe(false);
 		expect(reused.layout.relations.some(({ id }) => id === 'renamed-leaves-b')).toBe(true);
@@ -691,9 +690,9 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			alternatePrepared.measurements,
 			regionInput(permuted),
 		);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error('Expected the original crossing to be selected');
-		if (alternate.status !== NestedRegionLayoutStatus.Selected)
+		if (alternate.status !== RegionCompositionStatus.Selected)
 			throw new Error('Expected the permuted crossing to be selected');
 		expect(alternate.layout.relations.find(({ id }) => id === 'leaves-b')).toEqual(
 			selected.layout.relations.find(({ id }) => id === 'leaves-b'),
@@ -707,7 +706,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(source);
 		const input = regionInput(source);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error('Expected a selected lane crossing');
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -746,7 +745,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = regionInput(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected lane cell: ${selected.status}: ${selected.reason}`);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -779,7 +778,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.measurements,
 			regionInput(document),
 		);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected lane cell: ${selected.status}: ${selected.reason}`);
 		const cells = selected.regions
 			.filter(({ parentId }) => parentId === 'grid')
@@ -816,8 +815,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.measurements,
 			regionInput(document),
 		);
-		expect(selected.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (selected.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(selected.status).toBe(RegionCompositionStatus.Selected);
+		if (selected.status !== RegionCompositionStatus.Selected) return;
 		expect(selected.layout).not.toHaveProperty('lanes');
 	});
 });

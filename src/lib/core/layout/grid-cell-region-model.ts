@@ -2,13 +2,13 @@ import { defined, type LogicDocument } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { GridModel } from './grid-cell-model';
 import type { GridCellInput } from './grid-cell-types';
-import type { NestedRegionDefinition, NestedRegionInput } from './nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionLimits,
 	type RegionCompositionModel,
 	type RegionCompositionModelBuild,
 } from './region-composition-model';
+import type { RegionDefinition, RegionInput } from './region-composition-types';
 
 /** Adapt an already normalized two-by-two grid to the common region ownership model. */
 export function normalizeGridCellRegionModel(
@@ -17,9 +17,9 @@ export function normalizeGridCellRegionModel(
 	grid: GridModel,
 	limits: RegionCompositionLimits = {},
 ): RegionCompositionModelBuild {
-	const regions: NestedRegionDefinition[] = [{ id: input.rootId, layoutOrder: '0' }];
+	const regions: RegionDefinition[] = [{ id: input.rootId, layoutOrder: '0' }];
 	for (const cell of grid.cells) {
-		const region: NestedRegionDefinition = {
+		const region: RegionDefinition = {
 			id: cell.id,
 			parentId: cell.parentId,
 			layoutOrder: `${cell.row}${cell.column}`,
@@ -27,7 +27,7 @@ export function normalizeGridCellRegionModel(
 		if (cell.layout === undefined) regions.push(region);
 		else regions.push({ ...region, layout: cell.layout });
 	}
-	const composition: NestedRegionInput = {
+	const composition: RegionInput = {
 		regions,
 		regionByEndpointId: input.cellByEndpointId,
 	};

@@ -7,10 +7,12 @@ import {
 } from './logic-document';
 import { type OrderKey, parseOrderKey } from './order-key';
 import {
+	migrateLegacyRegionDefinitions,
 	normalizedRegionLaneFields,
 	regionLeafLaneAssignmentIssues,
 	regionLeafLaneDefinitionIssues,
 } from './region-leaf-lane-presentation';
+export { migrateLegacyRegionPolicyDocument } from './region-leaf-lane-presentation';
 import {
 	type RegionPresentationIssue,
 	RegionPresentationIssueCode,
@@ -26,7 +28,7 @@ interface NormalizedLayoutRegion {
 	readonly id: string;
 	readonly parentId?: string;
 	readonly layoutOrder?: OrderKey;
-	readonly policy: LayoutPolicy.Layered;
+	readonly policy: LayoutPolicy;
 	readonly lanePresentation?: NonNullable<LayoutRegionDefinition['lanePresentation']>;
 	readonly grid?: NonNullable<LayoutRegionDefinition['grid']>;
 }
@@ -60,10 +62,14 @@ function validRegionDefinition(definition: LayoutRegionDefinition): boolean {
 	const validId = definition.id.trim() !== '' && definition.id !== ROOT_LAYOUT_REGION_ID;
 	const validOrder = parseOrderKey(definition.layoutOrder) !== undefined;
 	const policy: unknown = definition.policy;
-	return validId && validOrder && policy === LayoutPolicy.Layered;
+	const validPolicy = policy === LayoutPolicy.Layered || policy === LayoutPolicy.SharedLanes;
+	return validId && validOrder && validPolicy;
 }
 
-function regionIssues(definitions: readonly LayoutRegionDefinition[]): {
+function regionIssues(
+	document: LogicDocument,
+	definitions: readonly LayoutRegionDefinition[],
+): {
 	readonly byId: ReadonlyMap<string, LayoutRegionDefinition>;
 	readonly issues: readonly RegionPresentationIssue[];
 } {
@@ -86,6 +92,14 @@ function regionIssues(definitions: readonly LayoutRegionDefinition[]): {
 		byId.set(definition.id, definition);
 	}
 	issues.push(...regionLeafLaneDefinitionIssues(sorted));
+	const parentIds = new Set(sorted.map(({ parentId }) => parentId));
+	for (const definition of sorted) {
+		if (parentIds.has(definition.id)) continue;
+		const hasLanes =
+			definition.lanePresentation !== undefined || document.presentation !== undefined;
+		if ((definition.policy === LayoutPolicy.SharedLanes) !== hasLanes)
+			issues.push({ code: RegionPresentationIssueCode.InvalidLeafPolicy, id: definition.id });
+	}
 	for (const definition of sorted) {
 		const parentId = definition.parentId ?? ROOT_LAYOUT_REGION_ID;
 		if (parentId !== ROOT_LAYOUT_REGION_ID && !byId.has(parentId))
@@ -284,7 +298,7 @@ export function normalizeRegionPresentation(
 	definitions: readonly LayoutRegionDefinition[] = [],
 	assignments: ReadonlyMap<string, string> = new Map(),
 ): RegionPresentationResult {
-	const regionCheck = regionIssues(definitions);
+	const regionCheck = regionIssues(document, migrateLegacyRegionDefinitions(document, definitions));
 	const cyclic = cyclicRegionIds(regionCheck.byId);
 	const issues: RegionPresentationIssue[] = [...regionCheck.issues];
 	for (const id of [...cyclic].sort(compareCanonicalStrings))

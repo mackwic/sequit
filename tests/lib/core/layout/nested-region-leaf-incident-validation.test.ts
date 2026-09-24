@@ -12,19 +12,19 @@ import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/ne
 import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import {
-	type NestedOwnedRoute,
-	NestedPortalSide,
-	type NestedRegionDefinition,
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionPlacement,
-	type NestedRegionPortal,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	type RegionChildPlacement,
+	RegionCompositionStatus,
+	type RegionDefinition,
+	type RegionInput,
+	type RegionLayoutSelected,
+	type RegionOwnedRoute,
+	type RegionPortal,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { regionDocument } from './nested-region-fixture';
@@ -57,9 +57,9 @@ function must<T>(value: T | undefined): T {
 function portal(
 	regionId: string,
 	endpointId: string,
-	side: NestedPortalSide,
+	side: RegionPortalSide,
 	point: Point,
-): NestedRegionPortal {
+): RegionPortal {
 	const bounds = must(REGION_BOUNDS.get(regionId));
 	return {
 		relationId: 'across-middle',
@@ -71,8 +71,8 @@ function portal(
 	};
 }
 
-function regionDefinitions(depth: 1 | 2 | 3): readonly NestedRegionDefinition[] {
-	const regions: NestedRegionDefinition[] = [{ id: '@root', layoutOrder: '0' }];
+function regionDefinitions(depth: 1 | 2 | 3): readonly RegionDefinition[] {
+	const regions: RegionDefinition[] = [{ id: '@root', layoutOrder: '0' }];
 	let leftParent = '@root';
 	if (depth === 3) {
 		regions.push({ id: 'wrap-2', parentId: '@root', layoutOrder: 'a' });
@@ -118,7 +118,7 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	if (groupBounds !== undefined) regionByEndpointId.set('a-group', 'left');
 	const endpointBounds = new Map(NODE_BOUNDS);
 	if (groupBounds !== undefined) endpointBounds.set('a-group', groupBounds);
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		regions: regionDefinitions(depth),
 		regionByEndpointId,
 	};
@@ -126,7 +126,7 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error(normalized.diagnostic.message);
 	const model = normalized.model;
-	const regions: NestedRegionPlacement[] = model.preorderIds
+	const regions: RegionChildPlacement[] = model.preorderIds
 		.filter((id) => id !== model.rootId)
 		.map((id) => {
 			const bounds = must(REGION_BOUNDS.get(id));
@@ -170,13 +170,13 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	).sourcePathToOwner;
 	const sourcePortals = sourcePath.map((id) => {
 		const bounds = must(REGION_BOUNDS.get(id));
-		return portal(id, 'a-target', NestedPortalSide.Bottom, {
+		return portal(id, 'a-target', RegionPortalSide.Bottom, {
 			x: 110,
 			y: bounds.y + bounds.height,
 		});
 	});
-	const targetPortal = portal('right', 'c', NestedPortalSide.Top, { x: 400, y: 30 });
-	const sourcePieces: NestedOwnedRoute[] = [];
+	const targetPortal = portal('right', 'c', RegionPortalSide.Top, { x: 400, y: 30 });
+	const sourcePieces: RegionOwnedRoute[] = [];
 	let start: Point = { x: 110, y: 170 };
 	for (const crossing of sourcePortals) {
 		sourcePieces.push({
@@ -186,7 +186,7 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 		});
 		start = crossing.point;
 	}
-	const rootPiece: NestedOwnedRoute = {
+	const rootPiece: RegionOwnedRoute = {
 		relationId: 'across-middle',
 		regionId: '@root',
 		points: [
@@ -198,7 +198,7 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 			targetPortal.point,
 		],
 	};
-	const targetPiece: NestedOwnedRoute = {
+	const targetPiece: RegionOwnedRoute = {
 		relationId: 'across-middle',
 		regionId: 'right',
 		points: [targetPortal.point, { x: 400, y: 140 }],
@@ -212,8 +212,8 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 		{ id: 'across-middle', from: 'a-target', to: 'c', points: crossingPoints },
 		{ id: 'inside-a', from: 'a-source', to: 'a-target', points: LOCAL_POINTS },
 	];
-	const candidate: NestedRegionSelected = {
-		status: NestedRegionLayoutStatus.Selected,
+	const candidate: RegionLayoutSelected = {
+		status: RegionCompositionStatus.Selected,
 		rootId: '@root',
 		regions,
 		portals: [...sourcePortals, targetPortal],
@@ -237,9 +237,9 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 
 function lateralFixture(groupBounds?: Bounds) {
 	const { graph, input, model, candidate } = fixture(1, groupBounds);
-	const sourcePortal = portal('left', 'a-target', NestedPortalSide.Right, { x: 230, y: 160 });
-	const targetPortal = portal('right', 'c', NestedPortalSide.Left, { x: 350, y: 150 });
-	const crossingPieces: readonly NestedOwnedRoute[] = [
+	const sourcePortal = portal('left', 'a-target', RegionPortalSide.Right, { x: 230, y: 160 });
+	const targetPortal = portal('right', 'c', RegionPortalSide.Left, { x: 350, y: 150 });
+	const crossingPieces: readonly RegionOwnedRoute[] = [
 		{
 			relationId: 'across-middle',
 			regionId: 'left',
@@ -260,7 +260,7 @@ function lateralFixture(groupBounds?: Bounds) {
 		if (index === 0) return [...points];
 		return points.slice(1);
 	});
-	const lateral: NestedRegionSelected = {
+	const lateral: RegionLayoutSelected = {
 		...candidate,
 		portals: [sourcePortal, targetPortal],
 		ownedRoutes: [
@@ -279,11 +279,11 @@ function lateralFixture(groupBounds?: Bounds) {
 }
 
 function replaceRoute(
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 	relationId: string,
 	regionId: string,
 	points: readonly Point[],
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	const regions = candidate.regions.map((region) => {
 		if (relationId !== 'inside-a' || region.id !== regionId) return region;
 		return {
@@ -323,10 +323,10 @@ function replaceRoute(
 }
 
 function replaceElementBounds(
-	candidate: NestedRegionSelected,
+	candidate: RegionLayoutSelected,
 	elementId: string,
 	bounds: Bounds,
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	return {
 		...candidate,
 		regions: candidate.regions.map((region) => ({
@@ -357,11 +357,11 @@ function replaceElementBounds(
 }
 
 function redirectSourceIncident(
-	candidate: NestedRegionSelected,
-	side: NestedPortalSide,
+	candidate: RegionLayoutSelected,
+	side: RegionPortalSide,
 	anchor: Point,
 	point: Point,
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	const redirected = replaceRoute(candidate, 'across-middle', 'left', [anchor, point]);
 	return {
 		...redirected,
@@ -384,7 +384,7 @@ describe('recursive nested-region leaf incident validation', () => {
 
 		const left = redirectSourceIncident(
 			right.candidate,
-			NestedPortalSide.Left,
+			RegionPortalSide.Left,
 			{ x: 100, y: 160 },
 			{ x: 30, y: 160 },
 		);
@@ -397,7 +397,7 @@ describe('recursive nested-region leaf incident validation', () => {
 		]);
 		const top = redirectSourceIncident(
 			topLocal,
-			NestedPortalSide.Top,
+			RegionPortalSide.Top,
 			{ x: 110, y: 150 },
 			{ x: 110, y: 30 },
 		);
@@ -423,7 +423,7 @@ describe('recursive nested-region leaf incident validation', () => {
 		const { model, candidate } = lateralFixture(groupBounds);
 		const wrongWay = redirectSourceIncident(
 			candidate,
-			NestedPortalSide.Right,
+			RegionPortalSide.Right,
 			{ x: 120, y: 160 },
 			{ x: 125, y: 160 },
 		);

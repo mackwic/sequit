@@ -5,10 +5,10 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { validateNestedRouteOwnership } from '../../../../src/lib/core/layout/nested-region-route-validation';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	nestedRegionInput,
@@ -24,13 +24,13 @@ function selectedWithUnrelatedNode() {
 		nodes: [...source.nodes, { ...template, id: 'foreign', layoutOrder: orderKey('a4') }],
 	};
 	const base = nestedRegionInput();
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		...base,
 		regionByEndpointId: new Map([...base.regionByEndpointId, ['foreign', 'left']]),
 	};
 	const prepared = prepareLayoutDocument(document);
 	const selected = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (selected.status !== NestedRegionLayoutStatus.Selected)
+	if (selected.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected unrelated-node fixture: ${selected.reason}`);
 	return { prepared, input, selected };
 }
@@ -56,17 +56,17 @@ function selectedWithTwoParentRoutes() {
 	const input = { ...base, regionByEndpointId };
 	const prepared = prepareLayoutDocument(document);
 	const selected = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (selected.status !== NestedRegionLayoutStatus.Selected)
+	if (selected.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected two-route fixture: ${selected.reason}`);
 	return { prepared, input, selected };
 }
 
 function replaceRoute(
-	selected: NestedRegionSelected,
+	selected: RegionLayoutSelected,
 	relationId: string,
 	regionId: string,
 	points: readonly { readonly x: number; readonly y: number }[],
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	const ownedRoutes = selected.ownedRoutes.map((piece) => {
 		if (piece.relationId !== relationId || piece.regionId !== regionId) return piece;
 		return { ...piece, points };
@@ -95,7 +95,7 @@ describe('direct nested route diagnostics on selected layouts', () => {
 		const { prepared, result } = selectedNestedRegionLayout();
 		const input = nestedRegionInput();
 		expect(validateNestedRouteOwnership(prepared.graph, input, result)).toBeUndefined();
-		const invalid: NestedRegionSelected = {
+		const invalid: RegionLayoutSelected = {
 			...result,
 			layout: {
 				...result.layout,
@@ -131,7 +131,7 @@ describe('direct nested route diagnostics on selected layouts', () => {
 		};
 		const points = [start, { x: center.x, y: start.y }, center, { x: end.x, y: center.y }, end];
 		const withOwnedRoute = replaceRoute(selected, 'inside-a', 'left', points);
-		const invalid: NestedRegionSelected = {
+		const invalid: RegionLayoutSelected = {
 			...withOwnedRoute,
 			regions: withOwnedRoute.regions.map((region) => {
 				if (region.id !== 'left') return region;

@@ -6,6 +6,7 @@ export const YJS_REGION_DOCUMENT_FORMAT = 5 as const;
 export const YJS_GRID_DOCUMENT_FORMAT = 6 as const;
 export const YJS_REGION_LANE_DOCUMENT_FORMAT = 7 as const;
 export const YJS_REGION_COMPOSITION_DOCUMENT_FORMAT = 8 as const;
+export const YJS_REGION_POLICY_DOCUMENT_FORMAT = 9 as const;
 
 export enum YjsCollection {
 	Meta = 'sequit.meta',

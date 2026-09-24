@@ -11,22 +11,24 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import {
-	MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES,
-	NestedRegionLocalLayoutCache,
-	nestedRegionLocalLayoutKey,
-} from '../../../../src/lib/core/layout/nested-region-local-cache';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+	RegionCompositionStatus,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 } from '../../../../src/lib/core/layout/region-incident-contract';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-layout';
+import {
+	MAX_REGION_LOCAL_CACHE_ENTRIES,
+	RegionLocalLayoutCache,
+	regionLocalLayoutKey,
+} from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 
 function selected(
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 	document = regionDocument(),
 	resize?: {
 		readonly id: string;
@@ -48,8 +50,8 @@ function selected(
 		options: {},
 		cache,
 	});
-	expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-	if (result.status !== NestedRegionLayoutStatus.Selected)
+	expect(result.status).toBe(RegionCompositionStatus.Selected);
+	if (result.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected nested layout: ${result.reason}`);
 	const cold = solveNestedRegionLayout(prepared.graph, measurements, nestedRegionInput());
 	expect(result).toEqual(cold);
@@ -58,7 +60,7 @@ function selected(
 
 describe('per-projection local region layout cache', () => {
 	it('does not recompute B for a foreign relation edit and recomposes the root for a local size edit', () => {
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const original = selected(cache);
 		expect(cache.stats).toEqual({
 			entries: 3,
@@ -110,7 +112,7 @@ describe('per-projection local region layout cache', () => {
 	});
 
 	it('uses a canonical source and measurement key across permutations', () => {
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const source = regionDocument();
 		const original = selected(cache, source);
 		const permuted = {
@@ -133,14 +135,14 @@ describe('per-projection local region layout cache', () => {
 			relations: source.relations.slice(0, 1),
 		};
 		const measurements = prepareLayoutDocument(source).measurements;
-		expect(nestedRegionLocalLayoutKey(local, measurements)).toBe(
-			nestedRegionLocalLayoutKey(
+		expect(regionLocalLayoutKey(local, measurements)).toBe(
+			regionLocalLayoutKey(
 				{ ...local, nodes: [...local.nodes].reverse() },
 				{ ...measurements, nodes: new Map([...measurements.nodes].reverse()) },
 			),
 		);
-		expect(nestedRegionLocalLayoutKey(local, measurements)).not.toBe(
-			nestedRegionLocalLayoutKey(local, { ...measurements, nodes: new Map() }),
+		expect(regionLocalLayoutKey(local, measurements)).not.toBe(
+			regionLocalLayoutKey(local, { ...measurements, nodes: new Map() }),
 		);
 	});
 
@@ -165,41 +167,45 @@ describe('per-projection local region layout cache', () => {
 			allowedSides: [RegionPortalSide.Left, RegionPortalSide.Top],
 		};
 		const contracts = [outgoing, incoming];
-		const base = nestedRegionLocalLayoutKey(local, measurements);
-		expect(base).toBe(nestedRegionLocalLayoutKey(local, measurements, undefined, []));
-		const key = nestedRegionLocalLayoutKey(local, measurements, undefined, contracts);
+		const base = regionLocalLayoutKey(local, measurements);
+		expect(base).toBe(regionLocalLayoutKey(local, measurements, undefined, []));
+		const key = regionLocalLayoutKey(local, measurements, undefined, contracts);
 		expect(key).toBe(
-			nestedRegionLocalLayoutKey(local, measurements, undefined, [...contracts].reverse()),
+			regionLocalLayoutKey(local, measurements, undefined, [...contracts].reverse()),
 		);
 		expect(key).not.toBe(base);
 		expect(key).not.toBe(
-			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+			regionLocalLayoutKey(local, measurements, undefined, [
 				{ ...outgoing, allowedSides: [...outgoing.allowedSides].reverse() },
 				incoming,
 			]),
 		);
 		expect(key).not.toBe(
-			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+			regionLocalLayoutKey(local, measurements, undefined, [
 				{ ...outgoing, relation: { ...outgoing.relation, to: 'another' } },
 				incoming,
 			]),
 		);
 		const selfRelation = { id: 'self', from: 'a-target', to: 'a-target' };
 		expect(
-			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+			regionLocalLayoutKey(local, measurements, undefined, [
 				{ ...outgoing, relation: selfRelation },
 			]),
 		).not.toBe(
-			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+			regionLocalLayoutKey(local, measurements, undefined, [
 				{ ...outgoing, relation: selfRelation, role: RegionIncidentRole.Target },
 			]),
 		);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		let calculations = 0;
 		const calculate = () => {
 			calculations += 1;
 			return {
-				...solveRegionLeafLayout(local, measurements),
+				...solveRegionLeafLayout({
+					document: local,
+					measurements,
+					leafPolicy: LayoutPolicy.Layered,
+				}),
 				incidents: [
 					{
 						relationId: outgoing.relation.id,
@@ -255,7 +261,7 @@ describe('per-projection local region layout cache', () => {
 	});
 
 	it('retains at most twelve bounded child results and keeps callers from mutating entries', () => {
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = selected(cache);
 		const firstPoint = first.regions[0]?.localLayout.elements[0]?.bounds;
 		if (firstPoint === undefined) throw new Error('Missing cached bounds');
@@ -263,19 +269,19 @@ describe('per-projection local region layout cache', () => {
 		const repeated = selected(cache);
 		expect(repeated.regions[0]?.localLayout.elements[0]?.bounds.x).not.toBe(-1000);
 
-		for (let index = 0; index < MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES + 2; index += 1) {
+		for (let index = 0; index < MAX_REGION_LOCAL_CACHE_ENTRIES + 2; index += 1) {
 			selected(cache, regionDocument(), {
 				id: 'a-target',
 				width: 160 + index,
 				height: 80,
 			});
-			expect(cache.stats.entries).toBeLessThanOrEqual(MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES);
+			expect(cache.stats.entries).toBeLessThanOrEqual(MAX_REGION_LOCAL_CACHE_ENTRIES);
 		}
 		expect(cache.stats.evictions).toBeGreaterThan(0);
 	});
 
 	it('does not retain failed local calculations', () => {
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const source = regionDocument();
 		const measurements = prepareLayoutDocument(source).measurements;
 		expect(() =>
@@ -347,9 +353,9 @@ describe('per-projection local region layout cache', () => {
 			]),
 			junctions: new Map([['measured', { width: 24, height: 24 }]]),
 		};
-		const key = nestedRegionLocalLayoutKey(document, measurements, LayoutPolicy.Layered);
+		const key = regionLocalLayoutKey(document, measurements, LayoutPolicy.Layered);
 		expect(
-			nestedRegionLocalLayoutKey(
+			regionLocalLayoutKey(
 				{
 					...document,
 					nodes: [...document.nodes].reverse(),
@@ -367,21 +373,17 @@ describe('per-projection local region layout cache', () => {
 			),
 		).toBe(key);
 		expect(
-			nestedRegionLocalLayoutKey(
-				document,
-				{ ...measurements, groups: new Map() },
-				LayoutPolicy.Layered,
-			),
+			regionLocalLayoutKey(document, { ...measurements, groups: new Map() }, LayoutPolicy.Layered),
 		).not.toBe(key);
 		expect(
-			nestedRegionLocalLayoutKey(
+			regionLocalLayoutKey(
 				document,
 				{ ...measurements, junctions: new Map() },
 				LayoutPolicy.Layered,
 			),
 		).not.toBe(key);
 		expect(
-			nestedRegionLocalLayoutKey(
+			regionLocalLayoutKey(
 				{
 					...document,
 					groups: document.groups.map((group) => {
@@ -393,7 +395,7 @@ describe('per-projection local region layout cache', () => {
 				LayoutPolicy.Layered,
 			),
 		).not.toBe(key);
-		expect(nestedRegionLocalLayoutKey(document, measurements)).not.toBe(key);
+		expect(regionLocalLayoutKey(document, measurements)).not.toBe(key);
 	});
 
 	it('invalidates a real leaf for a local metric edit and protects route and rank copies', () => {
@@ -404,12 +406,26 @@ describe('per-projection local region layout cache', () => {
 			relations: source.relations.filter(({ id }) => id === 'inside-a'),
 		};
 		const measurements = prepareLayoutDocument(local).measurements;
-		const cache = new NestedRegionLocalLayoutCache();
-		const cold = solveRegionLeafLayout(local, measurements);
-		const first = solveRegionLeafLayout(local, measurements, undefined, cache);
+		const cache = new RegionLocalLayoutCache();
+		const cold = solveRegionLeafLayout({
+			document: local,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		const first = solveRegionLeafLayout({
+			document: local,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+			cache,
+		});
 		expect(first).toEqual(cold);
 		Object.assign(defined(first.layout.relations[0]?.points[0]), { x: -1000 });
-		const hit = solveRegionLeafLayout(local, measurements, undefined, cache);
+		const hit = solveRegionLeafLayout({
+			document: local,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+			cache,
+		});
 		expect(hit).toEqual(cold);
 		expect(hit.ranks.byEndpointId).not.toBe(first.ranks.byEndpointId);
 		expect(hit.ranks.bands[0]).not.toBe(first.ranks.bands[0]);
@@ -424,17 +440,23 @@ describe('per-projection local region layout cache', () => {
 				height: 80,
 			}),
 		};
-		const edited = solveRegionLeafLayout(local, editedMeasurements, undefined, cache);
-		expect(edited).toEqual(solveRegionLeafLayout(local, editedMeasurements));
+		const edited = solveRegionLeafLayout({
+			document: local,
+			measurements: editedMeasurements,
+			leafPolicy: LayoutPolicy.Layered,
+			cache,
+		});
+		expect(edited).toEqual(
+			solveRegionLeafLayout({
+				document: local,
+				measurements: editedMeasurements,
+				leafPolicy: LayoutPolicy.Layered,
+			}),
+		);
 		expect(edited.layout).not.toEqual(cold.layout);
 		expect(cache.stats).toMatchObject({ entries: 2, misses: 2, hits: 1 });
-		const policyVariant = solveRegionLeafLayout(
-			local,
-			editedMeasurements,
-			LayoutPolicy.Layered,
-			cache,
+		expect(regionLocalLayoutKey(local, editedMeasurements, LayoutPolicy.SharedLanes)).not.toBe(
+			regionLocalLayoutKey(local, editedMeasurements, LayoutPolicy.Layered),
 		);
-		expect(policyVariant).toEqual(edited);
-		expect(cache.stats).toMatchObject({ entries: 3, misses: 3, hits: 1 });
 	});
 });

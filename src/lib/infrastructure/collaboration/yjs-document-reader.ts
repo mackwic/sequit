@@ -18,9 +18,11 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 	type RegionLayoutPresentation,
 	type RootLayoutPresentation,
 } from '../../core/document/logic-document';
+import { migrateLegacyRegionPolicyDocument } from '../../core/document/region-presentation';
 import { validateLogicDocument } from '../../core/document/validate-logic-document';
 import { readSharedLayout } from './yjs-document-layout';
 import { readCollection, readVersionedPresentation } from './yjs-document-presentation';
@@ -32,6 +34,7 @@ import {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 	YjsCollection,
 } from './yjs-document-schema';
 import {
@@ -220,6 +223,7 @@ const SUPPORTED_YJS_FORMATS = new Set<number>([
 	YJS_GRID_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 ]);
 
 const REGION_YJS_FORMATS = new Set<number>([
@@ -227,6 +231,7 @@ const REGION_YJS_FORMATS = new Set<number>([
 	YJS_GRID_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 ]);
 
 function persistenceFormatFor(version: number): LogicDocument['persistenceFormat'] {
@@ -236,6 +241,7 @@ function persistenceFormatFor(version: number): LogicDocument['persistenceFormat
 	if (version === YJS_REGION_LANE_DOCUMENT_FORMAT) return REGION_LANE_PERSISTENCE_FORMAT;
 	if (version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT)
 		return REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	if (version === YJS_REGION_POLICY_DOCUMENT_FORMAT) return REGION_POLICY_PERSISTENCE_FORMAT;
 	return PERSISTENCE_FORMAT;
 }
 
@@ -323,7 +329,7 @@ export function readStructuralLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<
 		junctions,
 		relations,
 	};
-	const validated = validateLogicDocument(document);
+	const validated = validateLogicDocument(migrateLegacyRegionPolicyDocument(document));
 	if (!validated.ok) return validationFailure(validated.diagnostics);
 	return { ok: true, value: validated.value };
 }

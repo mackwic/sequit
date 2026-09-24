@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { solveNestedRegionLayoutForProjection } from '../../../../src/lib/core/layout/nested-region-layout';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
@@ -20,7 +20,7 @@ describe('recursive incident contract cache', () => {
 	it('matches cold composition after short incident edit sequences', () => {
 		fc.assert(
 			fc.property(fc.array(edit, { minLength: 1, maxLength: 4 }), (edits) => {
-				const cache = new NestedRegionLocalLayoutCache();
+				const cache = new RegionLocalLayoutCache();
 				const source = depthTwoRegionDocument();
 				const input = depthTwoRegionInput();
 				for (const change of edits) {
@@ -62,11 +62,11 @@ describe('recursive incident contract cache', () => {
 						prepared.graph,
 						prepared.measurements,
 						input,
-						new NestedRegionLocalLayoutCache(),
+						new RegionLocalLayoutCache(),
 					);
 					expect(incremental).toEqual(cold);
 					expect(repeated).toEqual(cold);
-					if (incremental.status === NestedRegionLayoutStatus.Selected)
+					if (incremental.status === RegionCompositionStatus.Selected)
 						expect(
 							validateNestedRegionGeometry(prepared.graph, input, incremental),
 						).toBeUndefined();

@@ -4,6 +4,7 @@ import type {
 	RegionCompositionAttempt,
 	RegionCompositionSelected,
 	RegionPortal,
+	RegionPortalSide,
 } from './region-composition-types';
 
 export { RegionCompositionStatus as GridCellLayoutStatus } from './region-composition-types';
@@ -30,14 +31,10 @@ export interface GridCellPlacement extends RegionChildPlacement {
 	readonly column: 0 | 1;
 }
 
-export interface GridCellPortal extends RegionPortal {
+export interface GridCellPortal extends RegionPortal<
+	RegionPortalSide.Left | RegionPortalSide.Right
+> {
 	readonly cellId: string;
-	readonly side: GridCellSide;
-}
-
-export enum GridCellSide {
-	Left = 'left',
-	Right = 'right',
 }
 
 export interface GridCellSelected extends RegionCompositionSelected<GridCellPortal> {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
-import type { NestedRegionInput } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import type { RegionInput } from '../../../../src/lib/core/layout/region-composition-types';
 import { gridDocument, gridInput } from './grid-cell-fixture';
 import {
 	depthTwoRegionDocument,
@@ -28,7 +28,7 @@ function ready(source = graph(), input = depthTwoRegionInput()) {
 	return result.model;
 }
 
-function thirdLevelInput(): NestedRegionInput {
+function thirdLevelInput(): RegionInput {
 	const input = depthTwoRegionInput();
 	return {
 		regions: [...input.regions, { id: 'deep', parentId: 'left', layoutOrder: 'a' }],
@@ -113,7 +113,7 @@ describe('recursive region composition model', () => {
 	it.each([
 		[
 			'duplicate region',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'left', parentId: '@root', layoutOrder: 'z' }],
 			}),
@@ -121,7 +121,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'unknown parent',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'branch') return { ...region, parentId: 'absent' };
@@ -132,7 +132,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'parent cycle',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: input.regions.map((region) => {
 					if (region.id === 'branch') return { ...region, parentId: 'left' };
@@ -143,7 +143,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'multiple roots',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'other-root', layoutOrder: 'z' }],
 			}),
@@ -151,7 +151,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'missing endpoint assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId].filter(([id]) => id !== 'c')),
 			}),
@@ -159,7 +159,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'unknown endpoint assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['ghost', 'left']]),
 			}),
@@ -167,7 +167,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'unknown region assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'absent']]),
 			}),
@@ -175,7 +175,7 @@ describe('recursive region composition model', () => {
 		],
 		[
 			'internal region assignment',
-			(input: NestedRegionInput) => ({
+			(input: RegionInput) => ({
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'branch']]),
 			}),
@@ -224,7 +224,7 @@ describe('recursive region composition model', () => {
 
 	it('keeps an indivisible group in one leaf and diagnoses a split assignment', () => {
 		const input = gridInput();
-		const regions: NestedRegionInput['regions'] = [
+		const regions: RegionInput['regions'] = [
 			{ id: '@root', layoutOrder: '0' },
 			...input.cells.map(({ id }) => ({
 				id,

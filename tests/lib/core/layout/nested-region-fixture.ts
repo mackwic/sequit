@@ -11,15 +11,17 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	type PreparedLayoutDocument,
 	prepareLayoutDocument,
@@ -71,7 +73,7 @@ export function regionDocument(crossFrom = 'a-target'): LogicDocument {
 	};
 }
 
-export function nestedRegionInput(): NestedRegionInput {
+export function nestedRegionInput(): RegionInput {
 	return {
 		regions: [
 			{ id: '@root', layoutOrder: '0' },
@@ -115,7 +117,7 @@ export function depthTwoRegionDocument(): LogicDocument {
 	};
 }
 
-export function depthTwoRegionInput(): NestedRegionInput {
+export function depthTwoRegionInput(): RegionInput {
 	return {
 		regions: [
 			{ id: '@root', layoutOrder: '0' },
@@ -360,12 +362,14 @@ export function persistedNestedGridWithLaneCellDocument(): PersistedRegionDocume
 	const b = defined(source.nodes.find(({ id }) => id === 'b'));
 	return {
 		...source,
+		persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
 		regionPresentation: {
-			...source.regionPresentation,
+			schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
 			regions: source.regionPresentation.regions.map((region) => {
 				if (region.id !== 'b') return region;
 				return {
 					...region,
+					policy: LayoutPolicy.SharedLanes,
 					lanePresentation: {
 						laneOrientation: LaneOrientation.Parallel,
 						growth: LaneGrowth.Auto,
@@ -423,11 +427,11 @@ export function selectedNestedRegionLayout(
 	regions = nestedRegionInput(),
 ): {
 	readonly prepared: PreparedLayoutDocument;
-	readonly result: NestedRegionSelected;
+	readonly result: RegionLayoutSelected;
 } {
 	const prepared = prepareLayoutDocument(document);
 	const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, regions);
-	if (result.status !== NestedRegionLayoutStatus.Selected)
+	if (result.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected nested layout, got ${result.status}: ${result.reason}`);
 	return { prepared, result };
 }

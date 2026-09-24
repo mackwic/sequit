@@ -20,9 +20,9 @@ import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grid-ce
 import { layoutWithDedicatedEngine } from '../../../../../src/lib/core/layout/layout-engine';
 import type { LayoutMeasurements } from '../../../../../src/lib/core/layout/layout-types';
 import {
-	NestedRegionLocalLayoutCache,
-	nestedRegionLocalLayoutKey,
-} from '../../../../../src/lib/core/layout/nested-region-local-cache';
+	RegionLocalLayoutCache,
+	regionLocalLayoutKey,
+} from '../../../../../src/lib/core/layout/region-local-cache';
 import { median, percentile } from '../../../../support/performance/performance-statistics';
 import { gridInput, prepareGrid } from '../grid-cell-fixture';
 
@@ -53,7 +53,7 @@ it('profiles grouped leaf construction, fingerprint, hit and cold solve', () => 
 	);
 	const document = localDocument(graph, input, model, cell);
 	const sizes = localMeasurements(document, demandedMeasurements);
-	const key = nestedRegionLocalLayoutKey(document, sizes);
+	const key = regionLocalLayoutKey(document, sizes);
 	let computes = 0;
 	const compute = () => {
 		computes += 1;
@@ -62,7 +62,7 @@ it('profiles grouped leaf construction, fingerprint, hit and cold solve', () => 
 		const ranks = topologicallyRank(localGraph.value);
 		return { layout: layoutWithDedicatedEngine(localGraph.value, ranks, sizes), ranks };
 	};
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	cache.getOrCompute(document, sizes, undefined, compute);
 	const construction: number[] = [];
 	const fingerprint: number[] = [];
@@ -76,7 +76,7 @@ it('profiles grouped leaf construction, fingerprint, hit and cold solve', () => 
 		const constructedSizes = localMeasurements(constructed, demandedMeasurements);
 		const buildDuration = performance.now() - buildStart;
 		const fingerprintStart = performance.now();
-		const constructedKey = nestedRegionLocalLayoutKey(constructed, constructedSizes);
+		const constructedKey = regionLocalLayoutKey(constructed, constructedSizes);
 		const fingerprintDuration = performance.now() - fingerprintStart;
 		const hitStart = performance.now();
 		const cached = cache.getOrCompute(constructed, constructedSizes, undefined, compute);
@@ -103,7 +103,7 @@ it('profiles grouped leaf construction, fingerprint, hit and cold solve', () => 
 it('profiles root recomposition through distinct local group measurement edits', () => {
 	const { graph, measurements } = prepareGrid();
 	const input = gridInput();
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	const initial = solveGridCellLayout(graph, measurements, input, cache);
 	expect(initial.status).toBe(GridCellLayoutStatus.Selected);
 	const cached: number[] = [];
@@ -133,11 +133,11 @@ it('profiles root recomposition through distinct local group measurement edits',
 	});
 	let memory = 'retained heap unavailable (GC not exposed)';
 	if (typeof global.gc === 'function') {
-		const held: NestedRegionLocalLayoutCache[] = [];
+		const held: RegionLocalLayoutCache[] = [];
 		global.gc();
 		const before = process.memoryUsage().heapUsed;
 		for (let cacheIndex = 0; cacheIndex < 20; cacheIndex += 1) {
-			const retained = new NestedRegionLocalLayoutCache();
+			const retained = new RegionLocalLayoutCache();
 			for (let variant = 0; variant < 12; variant += 1) {
 				const edited = withGroupWidth(measurements, 1000 + cacheIndex * 12 + variant);
 				const result = solveGridCellLayout(graph, edited, input, retained);

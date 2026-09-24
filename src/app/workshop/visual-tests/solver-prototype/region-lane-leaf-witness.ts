@@ -21,15 +21,15 @@ import type {
 	Point,
 } from '../../../../lib/core/layout/layout-types';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
 import { solveRegionLeafLayout } from '../../../../lib/core/layout/region-leaf-layout';
 import {
@@ -53,7 +53,7 @@ interface WitnessLane {
 
 export interface RegionLaneLeafCandidate {
 	readonly model: RegionCompositionModel;
-	readonly selected: NestedRegionSelected;
+	readonly selected: RegionLayoutSelected;
 	readonly lanes: readonly WitnessLane[];
 	readonly laneByEndpointId: ReadonlyMap<string, string>;
 	readonly localRanks: ReadonlyMap<string, number>;
@@ -102,7 +102,7 @@ function sourceDocument(): LogicDocument {
 	};
 }
 
-function input(): NestedRegionInput {
+function input(): RegionInput {
 	return {
 		regions: [
 			{ id: '@root', layoutOrder: 'a0' },
@@ -303,14 +303,14 @@ export function runRegionLaneLeafWitness(
 	if (sharedAttempt.status !== SharedLaneLayoutStatus.Selected)
 		return { reason: `${sharedAttempt.status}: ${sharedAttempt.reason}` };
 	const ordinaryDocument = localDocument(source, ORDINARY_REGION_ID, orientation);
-	const ordinary = solveRegionLeafLayout(
-		ordinaryDocument,
-		localMeasurements(
+	const ordinary = solveRegionLeafLayout({
+		document: ordinaryDocument,
+		measurements: localMeasurements(
 			allMeasurements,
 			ordinaryDocument.nodes.map(({ id }) => id),
 		),
-		LayoutPolicy.Layered,
-	);
+		leafPolicy: LayoutPolicy.Layered,
+	});
 	const labels = new Map(
 		defined(sharedDocument.presentation).lanes.map(({ id, label }) => [id, label]),
 	);
@@ -335,7 +335,7 @@ export function runRegionLaneLeafWitness(
 	};
 	const sharedTranslation = { x: sharedBounds.x + PADDING, y: sharedBounds.y + PADDING };
 	const ordinaryTranslation = { x: ordinaryBounds.x + PADDING, y: ordinaryBounds.y + PADDING };
-	const regions: NestedRegionSelected['regions'] = [
+	const regions: RegionLayoutSelected['regions'] = [
 		{
 			id: SHARED_REGION_ID,
 			parentId: '@root',
@@ -371,8 +371,8 @@ export function runRegionLaneLeafWitness(
 		})),
 	];
 	const relations = sharedLayout.relations.map((route) => moveRoute(route, sharedTranslation));
-	const selected: NestedRegionSelected = {
-		status: NestedRegionLayoutStatus.Selected,
+	const selected: RegionLayoutSelected = {
+		status: RegionCompositionStatus.Selected,
 		rootId: '@root',
 		layout: {
 			width: ordinaryBounds.x + ordinaryBounds.width + MARGIN,

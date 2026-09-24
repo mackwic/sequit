@@ -9,7 +9,7 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 
@@ -112,7 +112,7 @@ describe('observable contacts at region boundaries', () => {
 		};
 		const { attempt } = probeRegionContactScenario(originalContact);
 		expect(attempt).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 			regionId: 'grid',
 			relationId: 'across-grid',

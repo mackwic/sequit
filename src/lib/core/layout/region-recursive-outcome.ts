@@ -4,10 +4,10 @@ import {
 } from './nested-region-recursive-diagnostics';
 import { type RecursiveContext, sideForRegion } from './nested-region-recursive-model-adapter';
 import {
-	NestedPortalSide,
-	type NestedRegionLayoutAttempt,
-	NestedRegionLayoutStatus,
-} from './nested-region-types';
+	RegionCompositionStatus,
+	type RegionLayoutAttempt,
+	RegionPortalSide,
+} from './region-composition-types';
 import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import {
 	UnknownRegionLeafLayoutError,
@@ -15,19 +15,19 @@ import {
 } from './region-leaf-layout';
 
 export interface DiagnosedCandidate {
-	readonly attempt: NestedRegionLayoutAttempt;
+	readonly attempt: RegionLayoutAttempt;
 	readonly diagnostic?: RegionGeometryDiagnostic;
 }
 
 export interface RegionRetryState {
 	readonly context: RecursiveContext;
 	readonly retriedOwners: Set<string>;
-	readonly dispositionSides: Map<string, NestedPortalSide>;
+	readonly dispositionSides: Map<string, RegionPortalSide>;
 }
 
-function alternateSide(side: NestedPortalSide): NestedPortalSide {
-	if (side === NestedPortalSide.Top) return NestedPortalSide.Bottom;
-	return NestedPortalSide.Top;
+function alternateSide(side: RegionPortalSide): RegionPortalSide {
+	if (side === RegionPortalSide.Top) return RegionPortalSide.Bottom;
+	return RegionPortalSide.Top;
 }
 
 function retrySide(state: RegionRetryState, ownerId: string | undefined): boolean {
@@ -69,7 +69,7 @@ export function diagnosedFailure(
 ): DiagnosedCandidate {
 	return {
 		attempt: {
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: diagnostic.code,
 			reason,
 			...failureProvenance(diagnostic),
@@ -78,9 +78,9 @@ export function diagnosedFailure(
 	};
 }
 
-export function leafErrorAttempt(error: unknown): NestedRegionLayoutAttempt | undefined {
+export function leafErrorAttempt(error: unknown): RegionLayoutAttempt | undefined {
 	if (error instanceof UnsupportedRegionLeafLayoutError)
-		return { status: NestedRegionLayoutStatus.Unsupported, reason: error.reason };
+		return { status: RegionCompositionStatus.Unsupported, reason: error.reason };
 	if (!(error instanceof UnknownRegionLeafLayoutError)) return undefined;
 	let code = {};
 	let witness = {};
@@ -89,7 +89,7 @@ export function leafErrorAttempt(error: unknown): NestedRegionLayoutAttempt | un
 	if (error.witness !== undefined) witness = { witness: error.witness };
 	if (error.regionId !== undefined) region = { regionId: error.regionId };
 	return {
-		status: NestedRegionLayoutStatus.Unknown,
+		status: RegionCompositionStatus.Unknown,
 		reason: error.reason,
 		...code,
 		...witness,

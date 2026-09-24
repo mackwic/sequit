@@ -3,8 +3,6 @@ import {
 	contentStyleFields,
 	type DocumentResult,
 	EndpointKind,
-	GRID_PERSISTENCE_FORMAT,
-	GRID_REGION_PRESENTATION_SCHEMA,
 	groupStateFields,
 	LANE_PERSISTENCE_FORMAT,
 	LAYOUT_BIASES,
@@ -17,19 +15,11 @@ import {
 	type LogicNode,
 	type LogicRelation,
 	nodeDescriptionFields,
-	PERSISTENCE_FORMAT,
-	REGION_COMPOSITION_PERSISTENCE_FORMAT,
-	REGION_COMPOSITION_PRESENTATION_SCHEMA,
-	REGION_LANE_PERSISTENCE_FORMAT,
-	REGION_LANE_PRESENTATION_SCHEMA,
-	REGION_PERSISTENCE_FORMAT,
-	REGION_PRESENTATION_SCHEMA,
 	type RegionLayoutPresentation,
 	type RootLayoutPresentation,
 	SequitDiagnosticCode,
 } from '../../core/document/logic-document';
-import { mapPresentation } from './map-layout-presentation';
-import { mapRegionPresentation } from './map-region-presentation';
+import { migrateLegacyRegionPolicyDocument } from '../../core/document/region-presentation';
 import {
 	entries,
 	type MappingContext,
@@ -40,6 +30,12 @@ import {
 	type UnknownTable,
 } from './map-sequit-fields';
 import { mapJunctions } from './map-sequit-junctions';
+import {
+	isRegionFormat,
+	mapVersionedPresentation,
+	mapVersionedRegionPresentation,
+	supportedPersistenceFormat,
+} from './map-sequit-presentation-versions';
 
 function mapContentStyle(
 	entity: UnknownTable,
@@ -117,71 +113,6 @@ function mapLayout(
 		});
 	}
 	return layout;
-}
-
-function mapVersionedPresentation(
-	root: UnknownTable,
-	format: unknown,
-	context: MappingContext,
-): RootLayoutPresentation | undefined {
-	if (format === LANE_PERSISTENCE_FORMAT) return mapPresentation(root['presentation'], context);
-	if (isRegionFormat(format)) {
-		if (root['presentation'] === undefined) return undefined;
-		return mapPresentation(root['presentation'], context);
-	}
-	if (root['presentation'] !== undefined)
-		context.diagnostics.push({
-			code: SequitDiagnosticCode.InvalidValue,
-			message: 'Legacy documents cannot persist explicit lanes',
-			path: ['presentation'],
-		});
-	return undefined;
-}
-
-function isRegionFormat(format: unknown): boolean {
-	if (format === REGION_PERSISTENCE_FORMAT) return true;
-	if (format === GRID_PERSISTENCE_FORMAT) return true;
-	if (format === REGION_LANE_PERSISTENCE_FORMAT) return true;
-	return format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
-}
-
-function mapVersionedRegionPresentation(
-	root: UnknownTable,
-	format: unknown,
-	context: MappingContext,
-): RegionLayoutPresentation | undefined {
-	if (format === REGION_PERSISTENCE_FORMAT)
-		return mapRegionPresentation(root['regionPresentation'], context, REGION_PRESENTATION_SCHEMA);
-	if (format === GRID_PERSISTENCE_FORMAT)
-		return mapRegionPresentation(
-			root['regionPresentation'],
-			context,
-			GRID_REGION_PRESENTATION_SCHEMA,
-		);
-	if (format === REGION_LANE_PERSISTENCE_FORMAT)
-		return mapRegionPresentation(
-			root['regionPresentation'],
-			context,
-			REGION_LANE_PRESENTATION_SCHEMA,
-		);
-	if (format === REGION_COMPOSITION_PERSISTENCE_FORMAT)
-		return mapRegionPresentation(
-			root['regionPresentation'],
-			context,
-			REGION_COMPOSITION_PRESENTATION_SCHEMA,
-		);
-	if (root['regionPresentation'] !== undefined)
-		context.diagnostics.push({
-			code: SequitDiagnosticCode.InvalidValue,
-			message: 'This format cannot persist explicit regions',
-			path: ['regionPresentation'],
-		});
-	return undefined;
-}
-
-function supportedPersistenceFormat(format: unknown): format is LogicDocument['persistenceFormat'] {
-	if (format === PERSISTENCE_FORMAT || format === LANE_PERSISTENCE_FORMAT) return true;
-	return isRegionFormat(format);
 }
 
 export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocument> {
@@ -325,7 +256,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 		regionPresentationField.regionPresentation = regionPresentation;
 	return {
 		ok: true,
-		value: {
+		value: migrateLegacyRegionPolicyDocument({
 			persistenceFormat: format,
 			id,
 			title,
@@ -337,6 +268,6 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			nodes,
 			junctions,
 			relations,
-		},
+		}),
 	};
 }

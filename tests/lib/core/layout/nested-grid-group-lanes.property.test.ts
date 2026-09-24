@@ -10,14 +10,14 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import type { LayoutMeasurementOverrides } from '../../../support/builders/layout-measurements';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -137,7 +137,7 @@ function permute(document: LogicDocument): LogicDocument {
 async function checkSelection(
 	document: LogicDocument,
 	overrides: LayoutMeasurementOverrides,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 	projection: DocumentProjection,
 ): Promise<void> {
 	const prepared = prepareLayoutDocument(document, overrides);
@@ -153,7 +153,7 @@ async function checkSelection(
 		input,
 		cache,
 	);
-	if (incremental.status !== NestedRegionLayoutStatus.Selected)
+	if (incremental.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected mixed grid: ${incremental.status}: ${incremental.reason}`);
 	expect(validateRegionCompositionGeometry(normalized.model, incremental)).toBeUndefined();
 	expect(validateNestedRegionLeafIncidents(normalized.model, incremental)).toBeUndefined();
@@ -215,7 +215,7 @@ describe('a grouped cell beside local lanes in a persisted nested grid', () => {
 					const base = nestedGridGroupLanesDocument();
 					const widened = withWiderTracks(base, values.trackGrowth);
 					const relabeled = withLaneLabel(widened);
-					const cache = new NestedRegionLocalLayoutCache();
+					const cache = new RegionLocalLayoutCache();
 					const projection = new DocumentProjection(base);
 					const states = [
 						{ document: base, overrides: measurements(values, false, false) },
@@ -264,7 +264,7 @@ describe('a grouped cell beside local lanes in a persisted nested grid', () => {
 			nestedRegionInput(prepared.graph),
 		);
 		expect(result).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
+			status: RegionCompositionStatus.Unsupported,
 			reason: 'Groups with descendants are outside the first shared layout policy.',
 		});
 	});

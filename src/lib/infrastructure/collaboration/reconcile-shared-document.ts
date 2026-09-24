@@ -12,6 +12,7 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { syncSharedFields } from './shared-text';
 import {
@@ -22,6 +23,7 @@ import {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 	YjsCollection,
 } from './yjs-document-schema';
 
@@ -138,6 +140,19 @@ function syncRegionGridCollection(
 	}
 }
 
+function liveFormatFor(document: LogicDocument): number {
+	if (document.persistenceFormat === REGION_POLICY_PERSISTENCE_FORMAT)
+		return YJS_REGION_POLICY_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT)
+		return YJS_REGION_COMPOSITION_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT)
+		return YJS_REGION_LANE_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === GRID_PERSISTENCE_FORMAT) return YJS_GRID_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === REGION_PERSISTENCE_FORMAT) return YJS_REGION_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === LANE_PERSISTENCE_FORMAT) return YJS_LANE_DOCUMENT_FORMAT;
+	return YJS_LIVE_DOCUMENT_FORMAT;
+}
+
 /** Reconcile existing entities and texts in place; never reconstruct a live document. */
 export function reconcileSharedDocument(
 	document: Y.Doc,
@@ -149,18 +164,9 @@ export function reconcileSharedDocument(
 		const meta = document.getMap(YjsCollection.Meta);
 		const presentation = next.presentation;
 		const regionPresentation = next.regionPresentation;
-		let liveFormat: number = YJS_LIVE_DOCUMENT_FORMAT;
-		if (next.persistenceFormat === LANE_PERSISTENCE_FORMAT) liveFormat = YJS_LANE_DOCUMENT_FORMAT;
-		if (next.persistenceFormat === REGION_PERSISTENCE_FORMAT)
-			liveFormat = YJS_REGION_DOCUMENT_FORMAT;
-		if (next.persistenceFormat === GRID_PERSISTENCE_FORMAT) liveFormat = YJS_GRID_DOCUMENT_FORMAT;
-		if (next.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT)
-			liveFormat = YJS_REGION_LANE_DOCUMENT_FORMAT;
-		if (next.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT)
-			liveFormat = YJS_REGION_COMPOSITION_DOCUMENT_FORMAT;
 		const metaValues: Record<string, unknown> = {
 			...meta.toJSON(),
-			yjsLiveDocumentFormat: liveFormat,
+			yjsLiveDocumentFormat: liveFormatFor(next),
 			persistenceFormat: next.persistenceFormat,
 			id: next.id,
 			title: next.title,

@@ -4,6 +4,7 @@ import {
 	type LayoutRegionDefinition,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PRESENTATION_SCHEMA,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 	type RegionLayoutPresentation,
 	SequitDiagnosticCode,
@@ -23,6 +24,7 @@ import {
 
 const policyByValue: Readonly<Record<string, LayoutPolicy>> = {
 	[LayoutPolicy.Layered]: LayoutPolicy.Layered,
+	[LayoutPolicy.SharedLanes]: LayoutPolicy.SharedLanes,
 };
 
 interface RegionContractFields {
@@ -46,7 +48,10 @@ function mapRegionContracts(
 			if (presentation !== undefined) fields.lanePresentation = presentation;
 		}
 	}
-	if (schema === REGION_COMPOSITION_PRESENTATION_SCHEMA && region['grid'] !== undefined) {
+	const supportsGrid =
+		schema === REGION_COMPOSITION_PRESENTATION_SCHEMA ||
+		schema === REGION_POLICY_PRESENTATION_SCHEMA;
+	if (supportsGrid && region['grid'] !== undefined) {
 		const grid = mapGridPresentation(region['grid'], context, [
 			'regionPresentation',
 			'regions',
@@ -67,9 +72,10 @@ function mapRegion(
 	const path = ['regionPresentation', 'regions', id];
 	const region = table(value, path, context);
 	if (region === undefined) return undefined;
-	const allowLocalLanes =
-		schema === REGION_LANE_PRESENTATION_SCHEMA || schema === REGION_COMPOSITION_PRESENTATION_SCHEMA;
-	const allowGrid = schema === REGION_COMPOSITION_PRESENTATION_SCHEMA;
+	const allowGrid =
+		schema === REGION_COMPOSITION_PRESENTATION_SCHEMA ||
+		schema === REGION_POLICY_PRESENTATION_SCHEMA;
+	const allowLocalLanes = schema === REGION_LANE_PRESENTATION_SCHEMA || allowGrid;
 	const allowedFields = ['parentId', 'layoutOrder', 'policy'];
 	if (allowLocalLanes) allowedFields.push('lanePresentation');
 	if (allowGrid) allowedFields.push('grid');
@@ -82,19 +88,23 @@ function mapRegion(
 	const policy = string(region['policy'], [...path, 'policy'], context);
 	let mappedPolicy: LayoutPolicy | undefined;
 	if (policy !== undefined) mappedPolicy = policyByValue[policy];
-	if (policy !== undefined && mappedPolicy === undefined)
+	const legacySharedPolicy =
+		mappedPolicy === LayoutPolicy.SharedLanes && schema !== REGION_POLICY_PRESENTATION_SCHEMA;
+	const unsupportedPolicy = mappedPolicy === undefined || legacySharedPolicy;
+	if (policy !== undefined && unsupportedPolicy)
 		context.diagnostics.push({
 			code: SequitDiagnosticCode.InvalidValue,
 			message: `Unsupported region layout policy: ${policy}`,
 			path: [...path, 'policy'],
 		});
 	if (layoutOrder === undefined || mappedPolicy === undefined) return undefined;
+	if (legacySharedPolicy) return undefined;
 	const parentFields: { parentId?: string } = {};
 	if (parentId !== undefined) parentFields.parentId = parentId;
 	return {
 		id,
 		layoutOrder,
-		policy: LayoutPolicy.Layered,
+		policy: mappedPolicy,
 		...parentFields,
 		...mapRegionContracts(region, id, context, schema),
 	};
@@ -112,8 +122,9 @@ export function mapRegionPresentation(
 	const gridSchema = schema === GRID_REGION_PRESENTATION_SCHEMA;
 	const laneSchema = schema === REGION_LANE_PRESENTATION_SCHEMA;
 	const compositionSchema = schema === REGION_COMPOSITION_PRESENTATION_SCHEMA;
+	const policySchema = schema === REGION_POLICY_PRESENTATION_SCHEMA;
 	const legacySchema = schema === REGION_PRESENTATION_SCHEMA || gridSchema;
-	const validSchema = legacySchema || laneSchema || compositionSchema;
+	const validSchema = legacySchema || laneSchema || compositionSchema || policySchema;
 	let allowedFields = ['schemaVersion', 'regions'];
 	if (gridSchema) allowedFields = [...allowedFields, 'grid'];
 	rejectUnknownFields(root, allowedFields, path, {
@@ -139,6 +150,7 @@ export function mapRegionPresentation(
 		const region = mapRegion(rawRegion, id, context, schema);
 		if (region !== undefined) regions.push(region);
 	}
+	if (policySchema) return { schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA, regions };
 	if (compositionSchema) return { schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA, regions };
 	if (laneSchema) return { schemaVersion: REGION_LANE_PRESENTATION_SCHEMA, regions };
 	if (!gridSchema) return { schemaVersion: REGION_PRESENTATION_SCHEMA, regions };

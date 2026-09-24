@@ -1,7 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import type { LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { NestedRegionDefinition, NestedRegionInput } from './nested-region-types';
 import {
 	partitionRelations,
 	type RegionRelationOwnership,
@@ -12,6 +11,7 @@ import {
 	parentCycle,
 	type RegionCompositionNode,
 } from './region-composition-tree';
+import type { RegionDefinition, RegionInput } from './region-composition-types';
 
 export type { RegionRelationOwnership } from './region-composition-relations';
 export { RegionRelationKind } from './region-composition-relations';
@@ -121,7 +121,7 @@ function resourceFailure(
 
 function checkLimits(
 	graph: LogicGraph,
-	input: NestedRegionInput,
+	input: RegionInput,
 	limits: RegionCompositionLimits,
 ): RegionCompositionModelBuild | undefined {
 	for (const limit of [limits.maxRegions, limits.maxEndpoints, limits.maxRelations]) {
@@ -138,7 +138,7 @@ function checkLimits(
 
 function assignmentFailure(
 	graph: LogicGraph,
-	input: NestedRegionInput,
+	input: RegionInput,
 	regionsById: ReadonlyMap<string, RegionCompositionNode>,
 ): RegionCompositionModelBuild | undefined {
 	const endpointIds = [...graph.endpointsById.keys()].sort(compareCanonicalStrings);
@@ -192,14 +192,12 @@ function assignmentFailure(
 }
 
 interface ParsedDefinitions {
-	readonly definitions: ReadonlyMap<string, NestedRegionDefinition>;
+	readonly definitions: ReadonlyMap<string, RegionDefinition>;
 	readonly rootId: string;
 }
 
-function parseDefinitions(
-	input: NestedRegionInput,
-): ParsedDefinitions | RegionCompositionModelBuild {
-	const definitions = new Map<string, NestedRegionDefinition>();
+function parseDefinitions(input: RegionInput): ParsedDefinitions | RegionCompositionModelBuild {
+	const definitions = new Map<string, RegionDefinition>();
 	for (const region of [...input.regions].sort((left, right) =>
 		compareCanonicalStrings(left.id, right.id),
 	)) {
@@ -263,7 +261,7 @@ function duplicateRelationFailure(graph: LogicGraph): RegionCompositionModelBuil
 /** Normalize any finite region tree; solver-specific node and route budgets belong to policies. */
 export function normalizeRegionCompositionModel(
 	graph: LogicGraph,
-	input: NestedRegionInput,
+	input: RegionInput,
 	limits: RegionCompositionLimits = {},
 ): RegionCompositionModelBuild {
 	const resource = checkLimits(graph, input, limits);

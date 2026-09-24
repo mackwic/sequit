@@ -1,12 +1,15 @@
 import {
 	GRID_PERSISTENCE_FORMAT,
 	GRID_REGION_PRESENTATION_SCHEMA,
+	LayoutPolicy,
 	type LogicDocument,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_LANE_PRESENTATION_SCHEMA,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	REGION_PRESENTATION_SCHEMA,
 	type SequitDiagnostic,
 	SequitDiagnosticCode,
@@ -106,6 +109,8 @@ function issuePath(
 		code === RegionPresentationIssueCode.DuplicateRegion
 	)
 		return ['regionPresentation', 'regions', id];
+	if (code === RegionPresentationIssueCode.InvalidLeafPolicy)
+		return ['regionPresentation', 'regions', id, 'policy'];
 	if (
 		code === RegionPresentationIssueCode.UnknownParent ||
 		code === RegionPresentationIssueCode.RegionCycle
@@ -141,7 +146,10 @@ function hasRegionPresentation(document: LogicDocument): boolean {
 	if (document.persistenceFormat === REGION_PERSISTENCE_FORMAT) return true;
 	if (document.persistenceFormat === GRID_PERSISTENCE_FORMAT) return true;
 	if (document.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT) return true;
-	return document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	return (
+		document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT ||
+		document.persistenceFormat === REGION_POLICY_PERSISTENCE_FORMAT
+	);
 }
 
 function expectedSchema(document: LogicDocument): number {
@@ -151,7 +159,42 @@ function expectedSchema(document: LogicDocument): number {
 		return REGION_LANE_PRESENTATION_SCHEMA;
 	if (document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT)
 		return REGION_COMPOSITION_PRESENTATION_SCHEMA;
+	if (document.persistenceFormat === REGION_POLICY_PERSISTENCE_FORMAT)
+		return REGION_POLICY_PRESENTATION_SCHEMA;
 	return REGION_PRESENTATION_SCHEMA;
+}
+
+function validateRegionEntry(
+	document: LogicDocument,
+	presentation: NonNullable<LogicDocument['regionPresentation']>,
+	region: NonNullable<LogicDocument['regionPresentation']>['regions'][number],
+	diagnostics: SequitDiagnostic[],
+): void {
+	const path = ['regionPresentation', 'regions', region.id];
+	if (
+		document.persistenceFormat !== REGION_POLICY_PERSISTENCE_FORMAT &&
+		region.policy !== LayoutPolicy.Layered
+	)
+		invalid(diagnostics, 'This region format requires the layered policy', [...path, 'policy']);
+	const format = document.persistenceFormat;
+	const earlierLaneFormat =
+		format === REGION_LANE_PERSISTENCE_FORMAT || format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	const localLanesAllowed = earlierLaneFormat || format === REGION_POLICY_PERSISTENCE_FORMAT;
+	if (region.lanePresentation !== undefined && !localLanesAllowed)
+		invalid(diagnostics, 'This region format cannot persist leaf lanes', [
+			...path,
+			'lanePresentation',
+		]);
+	if (region.grid === undefined) return;
+	const gridAllowed =
+		format === REGION_COMPOSITION_PERSISTENCE_FORMAT || format === REGION_POLICY_PERSISTENCE_FORMAT;
+	if (!gridAllowed)
+		invalid(diagnostics, 'This region format cannot persist an internal grid', [...path, 'grid']);
+	else
+		validateGridPresentation(region.grid, presentation.regions, diagnostics, {
+			path: [...path, 'grid'],
+			parentId: region.id,
+		});
 }
 
 function validateRegionFields(
@@ -159,25 +202,8 @@ function validateRegionFields(
 	presentation: NonNullable<LogicDocument['regionPresentation']>,
 	diagnostics: SequitDiagnostic[],
 ): void {
-	for (const region of presentation.regions) {
-		const path = ['regionPresentation', 'regions', region.id];
-		const localLanesAllowed =
-			document.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT ||
-			document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT;
-		if (region.lanePresentation !== undefined && !localLanesAllowed)
-			invalid(diagnostics, 'This region format cannot persist leaf lanes', [
-				...path,
-				'lanePresentation',
-			]);
-		if (region.grid === undefined) continue;
-		if (document.persistenceFormat !== REGION_COMPOSITION_PERSISTENCE_FORMAT)
-			invalid(diagnostics, 'This region format cannot persist an internal grid', [...path, 'grid']);
-		else
-			validateGridPresentation(region.grid, presentation.regions, diagnostics, {
-				path: [...path, 'grid'],
-				parentId: region.id,
-			});
-	}
+	for (const region of presentation.regions)
+		validateRegionEntry(document, presentation, region, diagnostics);
 	if (document.persistenceFormat === GRID_PERSISTENCE_FORMAT) {
 		if (presentation.grid === undefined)
 			invalid(diagnostics, 'Grid documents require grid presentation preferences', [

@@ -14,18 +14,18 @@ import {
 	solveNestedRegionLayoutForProjection,
 } from '../../../../src/lib/core/layout/nested-region-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
-import {
-	type NestedOwnedRoute,
-	NestedPortalSide,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionLayoutSelected,
+	type RegionOwnedRoute,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { layoutDocument, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,
@@ -63,15 +63,15 @@ function selectedGrandchildToRootSibling() {
 	const prepared = prepareLayoutDocument(document);
 	const input = depthTwoRegionInput();
 	const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (result.status !== NestedRegionLayoutStatus.Selected)
+	if (result.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected a composed grandchild route: ${result.reason}`);
 	return { prepared, input, result };
 }
 
 function withGrandchildParentRoute(
-	result: NestedRegionSelected,
-	points: NestedOwnedRoute['points'],
-): NestedRegionSelected {
+	result: RegionLayoutSelected,
+	points: RegionOwnedRoute['points'],
+): RegionLayoutSelected {
 	const relationId = 'grandchild-to-right';
 	const ownedRoutes = result.ownedRoutes.map((piece) => {
 		if (piece.relationId !== relationId || piece.regionId !== 'branch') return piece;
@@ -122,8 +122,8 @@ describe('bounded nested-region composition', () => {
 		const input = depthTwoRegionInput();
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(result.regions.map(({ id }) => id)).toEqual([
 			'branch',
 			'left',
@@ -172,7 +172,7 @@ describe('bounded nested-region composition', () => {
 			prepareLayoutDocument(document).measurements,
 			input,
 		);
-		expect(original.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(original.status).toBe(RegionCompositionStatus.Selected);
 		const permuted = {
 			...document,
 			nodes: [...document.nodes].reverse(),
@@ -201,8 +201,8 @@ describe('bounded nested-region composition', () => {
 			regions,
 			regionByEndpointId: assignments,
 		});
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(result.regions.map(({ id }) => id)).toEqual([
 			'branch',
 			'left',
@@ -238,8 +238,8 @@ describe('bounded nested-region composition', () => {
 		const nestedInput = { ...input, regionByEndpointId: assignments };
 		const prepared = prepareLayoutDocument(document);
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, nestedInput);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(
 			result.ownedRoutes
 				.filter(({ relationId }) => relationId === 'inside-right')
@@ -258,8 +258,8 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(persisted);
 		const input = depthTwoRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		const relationId = 'grandchild-to-right';
 		expect(layout.regions?.map(({ id }) => id)).toEqual(result.regions.map(({ id }) => id));
 		expect(layout.relations.find(({ id }) => id === relationId)).toEqual(
@@ -310,8 +310,8 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(persisted);
 		const input = depthTwoRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		const falsified = {
 			...result,
 			portals: result.portals.filter(
@@ -508,16 +508,16 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = depthTwoRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(
 			result.portals
 				.filter(({ relationId }) => relationId === 'grandchild-to-right')
 				.map(({ regionId, side }) => [regionId, side]),
 		).toEqual([
-			['branch-right', NestedPortalSide.Bottom],
-			['branch', NestedPortalSide.Bottom],
-			['right', NestedPortalSide.Bottom],
+			['branch-right', RegionPortalSide.Bottom],
+			['branch', RegionPortalSide.Bottom],
+			['right', RegionPortalSide.Bottom],
 		]);
 		expect(
 			result.ownedRoutes
@@ -533,8 +533,8 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(persisted);
 		const input = depthTwoRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		const relationId = 'right-to-grandchild';
 		expect(layout.relations.find(({ id }) => id === relationId)).toEqual(
 			result.layout.relations.find(({ id }) => id === relationId),
@@ -575,7 +575,7 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = depthTwoRegionInput();
 		const attempt = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected)
+		if (attempt.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected dual incident: ${attempt.status}: ${attempt.reason}`);
 		const incoming = defined(
 			attempt.portals.find(
@@ -590,7 +590,7 @@ describe('bounded nested-region composition', () => {
 		);
 		expect(outgoing.point.x).toBeGreaterThan(incoming.point.x);
 		expect(validateNestedRegionGeometry(prepared.graph, input, attempt)).toBeUndefined();
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = solveNestedRegionLayoutForProjection(
 			prepared.graph,
 			prepared.measurements,
@@ -623,8 +623,8 @@ describe('bounded nested-region composition', () => {
 			prepared.measurements,
 			depthTwoRegionInput(),
 		);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		expect(
 			attempt.ownedRoutes
 				.filter(({ relationId }) => relationId === 'inside-branch')
@@ -659,8 +659,8 @@ describe('bounded nested-region composition', () => {
 			regionByEndpointId: assignments,
 		};
 		const attempt = solveNestedRegionLayout(prepared.graph, prepared.measurements, amendedInput);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		expect(
 			attempt.ownedRoutes.some(
 				({ relationId, regionId }) => relationId === 'inside-right' && regionId === 'right',
@@ -673,7 +673,7 @@ describe('bounded nested-region composition', () => {
 		const input = depthTwoRegionInput();
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (result.status !== NestedRegionLayoutStatus.Selected)
+		if (result.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected depth-two selection: ${result.status}: ${result.reason}`);
 		const middle = defined(result.regions.find(({ id }) => id === 'middle'));
 		const branch = defined(result.regions.find(({ id }) => id === 'branch'));
@@ -777,11 +777,11 @@ describe('bounded nested-region composition', () => {
 		});
 		const input = nestedRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(result.portals.map(({ side }) => side)).toEqual([
-			NestedPortalSide.Bottom,
-			NestedPortalSide.Bottom,
+			RegionPortalSide.Bottom,
+			RegionPortalSide.Bottom,
 		]);
 		const bottom = Math.max(...result.regions.map(({ bounds }) => bounds.y + bounds.height));
 		const parent = result.ownedRoutes.find(({ regionId }) => regionId === result.rootId);
@@ -847,8 +847,8 @@ describe('bounded nested-region composition', () => {
 		const prepared = prepareLayoutDocument(document);
 		const input = nestedRegionInput();
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
 		if (normalized.status !== RegionCompositionModelStatus.Ready) return;
@@ -873,8 +873,8 @@ describe('bounded nested-region composition', () => {
 		};
 		const prepared = prepareLayoutDocument(document);
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, regions);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Unknown);
-		if (result.status !== NestedRegionLayoutStatus.Unknown) return;
+		expect(result.status).toBe(RegionCompositionStatus.Unknown);
+		if (result.status !== RegionCompositionStatus.Unknown) return;
 		expect(result.reason).toContain('intersect without a bridge');
 	});
 
@@ -903,7 +903,7 @@ describe('bounded nested-region composition', () => {
 		};
 		const prepared = prepareLayoutDocument(document);
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, regions);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
 	});
 
 	it('returns unsupported for invalid ownership and deeper hierarchy', () => {
@@ -916,7 +916,7 @@ describe('bounded nested-region composition', () => {
 				...invalidAssignment,
 				regionByEndpointId: noOwner,
 			}).status,
-		).toBe(NestedRegionLayoutStatus.Unsupported);
+		).toBe(RegionCompositionStatus.Unsupported);
 		const grandchild = nestedRegionInput();
 		expect(
 			solveNestedRegionLayout(prepared.graph, prepared.measurements, {
@@ -926,6 +926,6 @@ describe('bounded nested-region composition', () => {
 					return { ...region, parentId: 'middle' };
 				}),
 			}).status,
-		).toBe(NestedRegionLayoutStatus.Unsupported);
+		).toBe(RegionCompositionStatus.Unsupported);
 	});
 });

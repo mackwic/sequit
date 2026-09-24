@@ -9,6 +9,7 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 	type SequitDiagnostic,
 	SequitDiagnosticCode,
 } from './logic-document';
@@ -52,6 +53,7 @@ function validateAbsentLanePresentation(
 
 function validateLaneDefinitions(
 	presentation: NonNullable<LogicDocument['presentation']>,
+	expectedPolicy: LayoutPolicy,
 	diagnostics: SequitDiagnostic[],
 ): Set<string> {
 	const schemaVersion: unknown = presentation.schemaVersion;
@@ -62,7 +64,7 @@ function validateLaneDefinitions(
 			'presentation',
 			'schemaVersion',
 		]);
-	if (policy !== LayoutPolicy.Layered)
+	if (policy !== expectedPolicy)
 		invalidPresentation(diagnostics, 'Unsupported root layout policy', ['presentation', 'policy']);
 	if (!Object.values(LaneOrientation).includes(presentation.laneOrientation))
 		invalidPresentation(diagnostics, 'Unsupported lane orientation', [
@@ -123,12 +125,14 @@ export function validateLaneDocument(
 		validateAbsentLanePresentation(document, diagnostics);
 		return;
 	}
-	if (
-		document.persistenceFormat === REGION_LANE_PERSISTENCE_FORMAT ||
-		document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT
-	) {
+	const format = document.persistenceFormat;
+	const earlierRegionFormat =
+		format === REGION_LANE_PERSISTENCE_FORMAT || format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	if (earlierRegionFormat || format === REGION_POLICY_PERSISTENCE_FORMAT) {
+		let expectedPolicy = LayoutPolicy.Layered;
+		if (format === REGION_POLICY_PERSISTENCE_FORMAT) expectedPolicy = LayoutPolicy.SharedLanes;
 		if (document.presentation !== undefined)
-			validateLaneDefinitions(document.presentation, diagnostics);
+			validateLaneDefinitions(document.presentation, expectedPolicy, diagnostics);
 		return;
 	}
 	const presentation = document.presentation;
@@ -146,6 +150,6 @@ export function validateLaneDocument(
 		} else validateAbsentLanePresentation(document, diagnostics);
 		return;
 	}
-	const laneIds = validateLaneDefinitions(presentation, diagnostics);
+	const laneIds = validateLaneDefinitions(presentation, LayoutPolicy.Layered, diagnostics);
 	validateLaneOwners(document, laneIds, diagnostics);
 }

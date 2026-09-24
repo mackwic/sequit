@@ -10,20 +10,20 @@ import {
 } from './region-incident-contract';
 
 /** Projection-owned cache; every entry stores one bounded local child layout. */
-export const MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES = 12;
+export const MAX_REGION_LOCAL_CACHE_ENTRIES = 12;
 
 /** Bump this when the local child solver's geometry contract changes. */
 const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v4';
 const INCIDENT_CONTRACT = 'region-incident-contract-v1';
 
-export interface NestedRegionLocalLayout {
+export interface RegionLocalLayout {
 	readonly layout: LayoutResult;
 	readonly ranks: TopologicalRanks;
 	readonly incidents?: readonly RegionSolvedIncident[];
 	readonly witness?: RegionIncidentSearchWitness;
 }
 
-export interface NestedRegionLocalCacheStats {
+export interface RegionLocalCacheStats {
 	readonly entries: number;
 	readonly hits: number;
 	readonly misses: number;
@@ -35,7 +35,7 @@ interface RegionContractCacheInput {
 	readonly measurements: LayoutMeasurements;
 	readonly policy?: LayoutPolicy | undefined;
 	readonly contracts: readonly RegionIncidentContract[];
-	readonly compute: () => NestedRegionLocalLayout;
+	readonly compute: () => RegionLocalLayout;
 }
 
 function canonicalById<T extends { readonly id: string }>(items: readonly T[]): T[] {
@@ -43,7 +43,7 @@ function canonicalById<T extends { readonly id: string }>(items: readonly T[]): 
 }
 
 /** Geometry inputs only. Content and foreign relations cannot change a child's local solve. */
-export function nestedRegionLocalLayoutKey(
+export function regionLocalLayoutKey(
 	document: LogicDocument,
 	measurements: LayoutMeasurements,
 	policy?: LayoutPolicy,
@@ -118,7 +118,7 @@ export function nestedRegionLocalLayoutKey(
 	});
 }
 
-function copyLocalLayout(value: NestedRegionLocalLayout): NestedRegionLocalLayout {
+function copyLocalLayout(value: RegionLocalLayout): RegionLocalLayout {
 	let witness: { readonly witness?: RegionIncidentSearchWitness } = {};
 	if (value.witness !== undefined)
 		witness = {
@@ -170,13 +170,13 @@ function copyLocalLayout(value: NestedRegionLocalLayout): NestedRegionLocalLayou
 }
 
 /** Instance ownership belongs to one open projection; no core-global mutable state. */
-export class NestedRegionLocalLayoutCache {
-	readonly #entries = new Map<string, NestedRegionLocalLayout>();
+export class RegionLocalLayoutCache {
+	readonly #entries = new Map<string, RegionLocalLayout>();
 	#hits = 0;
 	#misses = 0;
 	#evictions = 0;
 
-	get stats(): NestedRegionLocalCacheStats {
+	get stats(): RegionLocalCacheStats {
 		return {
 			entries: this.#entries.size,
 			hits: this.#hits,
@@ -189,19 +189,19 @@ export class NestedRegionLocalLayoutCache {
 		document: LogicDocument,
 		measurements: LayoutMeasurements,
 		policy: LayoutPolicy | undefined,
-		compute: () => NestedRegionLocalLayout,
-	): NestedRegionLocalLayout {
-		const key = nestedRegionLocalLayoutKey(document, measurements, policy);
+		compute: () => RegionLocalLayout,
+	): RegionLocalLayout {
+		const key = regionLocalLayoutKey(document, measurements, policy);
 		return this.#getOrComputeKey(key, compute);
 	}
 
-	getOrComputeContract(input: RegionContractCacheInput): NestedRegionLocalLayout {
+	getOrComputeContract(input: RegionContractCacheInput): RegionLocalLayout {
 		const { document, measurements, policy, contracts, compute } = input;
-		const key = nestedRegionLocalLayoutKey(document, measurements, policy, contracts);
+		const key = regionLocalLayoutKey(document, measurements, policy, contracts);
 		return this.#getOrComputeKey(key, compute);
 	}
 
-	#getOrComputeKey(key: string, compute: () => NestedRegionLocalLayout): NestedRegionLocalLayout {
+	#getOrComputeKey(key: string, compute: () => RegionLocalLayout): RegionLocalLayout {
 		const hit = this.#entries.get(key);
 		if (hit !== undefined) {
 			this.#hits += 1;
@@ -212,7 +212,7 @@ export class NestedRegionLocalLayoutCache {
 		this.#misses += 1;
 		const calculated = compute();
 		this.#entries.set(key, copyLocalLayout(calculated));
-		if (this.#entries.size > MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES) {
+		if (this.#entries.size > MAX_REGION_LOCAL_CACHE_ENTRIES) {
 			const oldest = this.#entries.keys().next().value;
 			this.#entries.delete(defined(oldest));
 			this.#evictions += 1;

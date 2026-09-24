@@ -10,6 +10,7 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { createGraph } from '../../core/graph/create-graph';
 import { sharedFieldValue } from './shared-text';
@@ -26,6 +27,7 @@ import {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 	YjsCollection,
 } from './yjs-document-schema';
 
@@ -36,6 +38,7 @@ export {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 };
 
 export type { YjsLiveDocumentResult };
@@ -141,6 +144,8 @@ export function importLogicDocument(
 		liveFormat = YJS_REGION_LANE_DOCUMENT_FORMAT;
 	if (document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT)
 		liveFormat = YJS_REGION_COMPOSITION_DOCUMENT_FORMAT;
+	if (document.persistenceFormat === REGION_POLICY_PERSISTENCE_FORMAT)
+		liveFormat = YJS_REGION_POLICY_DOCUMENT_FORMAT;
 	const presentationFields: Record<string, unknown> = {};
 	if (presentation !== undefined) {
 		presentationFields['layoutPresentationSchema'] = presentation.schemaVersion;

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/nested-region-recursive-geometry';
 import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import { NestedPortalSide } from '../../../../src/lib/core/layout/nested-region-types';
 import type { RegionArrangement } from '../../../../src/lib/core/layout/region-arrangement';
 import { solveArrangedRegion } from '../../../../src/lib/core/layout/region-arrangement-orchestration';
 import {
@@ -25,7 +24,7 @@ const EMPTY_CHILD: SolvedRecursiveRegion = {
 	incidentPaths: new Map(),
 };
 
-function contextFor(side: NestedPortalSide): RecursiveContext {
+function contextFor(side: RegionPortalSide): RecursiveContext {
 	const prepared = prepareLayoutDocument(persistedNestedGridWithTwoOuterIncidentsDocument());
 	const normalized = normalizeRegionCompositionModel(
 		prepared.graph,
@@ -47,8 +46,8 @@ function contextFor(side: NestedPortalSide): RecursiveContext {
 
 describe('common region arrangement orchestration', () => {
 	it.each([
-		[NestedPortalSide.Left, RegionPortalSide.Left],
-		[NestedPortalSide.Right, RegionPortalSide.Right],
+		[RegionPortalSide.Left, RegionPortalSide.Left],
+		[RegionPortalSide.Right, RegionPortalSide.Right],
 	] as const)(
 		'passes a %s preference and inherited contracts to the grid disposition',
 		(side, expected) => {

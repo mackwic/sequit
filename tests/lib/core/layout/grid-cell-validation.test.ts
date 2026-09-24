@@ -10,7 +10,6 @@ import {
 	GridCellLayoutStatus,
 	type GridCellPlacement,
 	type GridCellSelected,
-	GridCellSide,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import {
 	validateGridCellGeometry,
@@ -21,6 +20,7 @@ import type {
 	LayoutElement,
 	LayoutRelation,
 } from '../../../../src/lib/core/layout/layout-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
@@ -412,7 +412,7 @@ const ROUTE_CASES: readonly DamagedCase[] = [
 			...selected,
 			portals: selected.portals.map((portal, index) => {
 				if (index !== 0) return portal;
-				return { ...portal, side: GridCellSide.Right };
+				return { ...portal, side: RegionPortalSide.Right };
 			}),
 		}),
 	},

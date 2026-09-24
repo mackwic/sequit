@@ -1,11 +1,7 @@
-import { defined, type LayoutPolicy, type LogicDocument } from '../document/logic-document';
+import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import type {
-	NestedRegionLocalLayout,
-	NestedRegionLocalLayoutCache,
-} from './nested-region-local-cache';
 import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
@@ -33,6 +29,8 @@ import {
 	takeAttempt,
 	witness,
 } from './region-leaf-incident-search-state';
+import { regionLeafPolicyFailure } from './region-leaf-policy';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 
 const MAX_INCIDENTS = 8;
 
@@ -40,8 +38,7 @@ export interface DedicatedRegionLeafIncidentInput {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
 	readonly contracts: readonly RegionIncidentContract[];
-	readonly policy?: LayoutPolicy | undefined;
-	readonly cache?: NestedRegionLocalLayoutCache | undefined;
+	readonly cache?: RegionLocalLayoutCache | undefined;
 }
 
 interface DedicatedRegionLeafIncidentSelected {
@@ -238,6 +235,14 @@ class UncacheableIncidentFailure extends Error {
 export function solveDedicatedRegionLeafWithIncidents(
 	input: DedicatedRegionLeafIncidentInput,
 ): DedicatedRegionLeafIncidentAttempt {
+	const policyFailure = regionLeafPolicyFailure(LayoutPolicy.Layered, input.document);
+	if (policyFailure !== undefined)
+		return unknown(
+			RegionIncidentUnknownCode.UnsupportedLeafPolicy,
+			policyFailure,
+			newSearchState(),
+			true,
+		);
 	let contracts: readonly RegionIncidentContract[];
 	try {
 		contracts = normalizeRegionIncidentContracts(input.contracts);
@@ -260,7 +265,11 @@ export function solveDedicatedRegionLeafWithIncidents(
 			demands,
 			input.document.layout.direction,
 		);
-		const raw = solveRegionLeafLayout(input.document, demanded, input.policy);
+		const raw = solveRegionLeafLayout({
+			document: input.document,
+			measurements: demanded,
+			leafPolicy: LayoutPolicy.Layered,
+		});
 		const attempt = solveOnLayout(contracts, raw.layout, raw.ranks);
 		if (attempt.status === RegionCompositionStatus.Unknown)
 			throw new UncacheableIncidentFailure(attempt);
@@ -272,13 +281,13 @@ export function solveDedicatedRegionLeafWithIncidents(
 		};
 	};
 	try {
-		let solved: NestedRegionLocalLayout;
+		let solved: RegionLocalLayout;
 		if (input.cache === undefined) solved = compute();
 		else
 			solved = input.cache.getOrComputeContract({
 				document: input.document,
 				measurements: input.measurements,
-				policy: input.policy,
+				policy: LayoutPolicy.Layered,
 				contracts,
 				compute,
 			});

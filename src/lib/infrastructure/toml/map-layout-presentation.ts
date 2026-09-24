@@ -11,6 +11,7 @@ import { type MappingContext, rejectUnknownFields, string, table } from './map-s
 
 const policyByValue: Readonly<Record<string, LayoutPolicy>> = {
 	[LayoutPolicy.Layered]: LayoutPolicy.Layered,
+	[LayoutPolicy.SharedLanes]: LayoutPolicy.SharedLanes,
 };
 
 function invalidValue(context: MappingContext, message: string, path: readonly string[]): void {
@@ -20,6 +21,7 @@ function invalidValue(context: MappingContext, message: string, path: readonly s
 export function mapPresentation(
 	value: unknown,
 	context: MappingContext,
+	allowSharedPolicy = false,
 ): RootLayoutPresentation | undefined {
 	const path = ['presentation'];
 	const root = table(value, path, context);
@@ -38,7 +40,10 @@ export function mapPresentation(
 			[...path, 'schemaVersion'],
 		);
 	const policy = string(root['policy'], [...path, 'policy'], context);
-	const validPolicy = policy !== undefined && policyByValue[policy] !== undefined;
+	let mappedPolicy: LayoutPolicy | undefined;
+	if (policy !== undefined) mappedPolicy = policyByValue[policy];
+	const permittedPolicy = allowSharedPolicy || mappedPolicy === LayoutPolicy.Layered;
+	const validPolicy = mappedPolicy !== undefined && permittedPolicy;
 	if (policy !== undefined && !validPolicy)
 		invalidValue(context, `Unsupported root layout policy: ${policy}`, [...path, 'policy']);
 	const { orientation, validGrowth } = mapLanePresentationFields(root, path, context);
@@ -46,9 +51,10 @@ export function mapPresentation(
 		mapLaneTable(root['lanes'], ['presentation', 'lanes'], context, 'presentation') ?? [];
 	const valid = [validSchema, validPolicy, orientation !== undefined, validGrowth].every(Boolean);
 	if (!valid || orientation === undefined) return undefined;
+	if (mappedPolicy === undefined) return undefined;
 	return {
 		schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
-		policy: LayoutPolicy.Layered,
+		policy: mappedPolicy,
 		laneOrientation: orientation,
 		growth: LaneGrowth.Auto,
 		lanes,

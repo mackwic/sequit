@@ -3,10 +3,13 @@ import {
 	defined,
 	LaneGrowth,
 	LaneOrientation,
+	LayoutPolicy,
 	type LayoutRegionDefinition,
 	type LogicDocument,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 	type RegionLanePresentation,
 } from './logic-document';
 import { parseOrderKey } from './order-key';
@@ -175,11 +178,10 @@ export function regionLeafLaneAssignmentIssues(
 	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
 	ownership: ReadonlyMap<string, string>,
 ): readonly RegionPresentationIssue[] {
-	if (
-		document.persistenceFormat !== REGION_LANE_PERSISTENCE_FORMAT &&
-		document.persistenceFormat !== REGION_COMPOSITION_PERSISTENCE_FORMAT
-	)
-		return [];
+	const format = document.persistenceFormat;
+	const earlierRegionFormat =
+		format === REGION_LANE_PERSISTENCE_FORMAT || format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	if (!earlierRegionFormat && format !== REGION_POLICY_PERSISTENCE_FORMAT) return [];
 	const rootLaneIds = new Set(document.presentation?.lanes.map(({ id }) => id) ?? []);
 	const context = { document, byRegionId, ownership, rootLaneIds };
 	const issues: RegionPresentationIssue[] = [];
@@ -203,6 +205,47 @@ export function normalizedRegionLaneFields(definition: LayoutRegionDefinition): 
 					compareCanonicalStrings(left.layoutOrder, right.layoutOrder) ||
 					compareCanonicalStrings(left.id, right.id),
 			),
+		},
+	};
+}
+
+function hasExplicitRegionPolicy(document: LogicDocument): boolean {
+	return (
+		document.persistenceFormat === REGION_POLICY_PERSISTENCE_FORMAT ||
+		document.regionPresentation?.schemaVersion === REGION_POLICY_PRESENTATION_SCHEMA
+	);
+}
+
+/** Old region documents encoded the leaf policy through its effective lane presentation. */
+export function migrateLegacyRegionDefinitions(
+	document: LogicDocument,
+	definitions: readonly LayoutRegionDefinition[],
+): readonly LayoutRegionDefinition[] {
+	if (hasExplicitRegionPolicy(document)) return definitions;
+	const parentIds = new Set(definitions.map(({ parentId }) => parentId));
+	return definitions.map((definition) => {
+		if (parentIds.has(definition.id)) return definition;
+		if (definition.lanePresentation === undefined && document.presentation === undefined)
+			return definition;
+		return { ...definition, policy: LayoutPolicy.SharedLanes };
+	});
+}
+
+/** Materialize the old implicit choice once at the persistence boundary. */
+export function migrateLegacyRegionPolicyDocument(document: LogicDocument): LogicDocument {
+	const presentation = document.regionPresentation;
+	if (presentation === undefined || hasExplicitRegionPolicy(document)) return document;
+	if (presentation.schemaVersion < 3) return document;
+	const rootFields: { presentation?: NonNullable<LogicDocument['presentation']> } = {};
+	if (document.presentation !== undefined)
+		rootFields.presentation = { ...document.presentation, policy: LayoutPolicy.SharedLanes };
+	return {
+		...document,
+		persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+		...rootFields,
+		regionPresentation: {
+			schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
+			regions: migrateLegacyRegionDefinitions(document, presentation.regions),
 		},
 	};
 }

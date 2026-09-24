@@ -1,3 +1,9 @@
+import type {
+	GridLayoutPresentation,
+	LayoutConfiguration,
+	LayoutPolicy,
+	RegionLanePresentation,
+} from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { Bounds, LayoutResult, Point } from './layout-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
@@ -9,6 +15,22 @@ import type { RegionPortalSide } from './region-portal-side';
 
 export { RegionPortalSide } from './region-portal-side';
 
+/** A derived region tree, supplied separately from the persisted document schema. */
+export interface RegionDefinition {
+	readonly id: string;
+	readonly parentId?: string;
+	readonly layoutOrder: string;
+	readonly policy?: LayoutPolicy;
+	readonly layout?: LayoutConfiguration;
+	readonly lanePresentation?: RegionLanePresentation;
+	readonly grid?: GridLayoutPresentation;
+}
+
+export interface RegionInput {
+	readonly regions: readonly RegionDefinition[];
+	readonly regionByEndpointId: ReadonlyMap<string, string>;
+}
+
 /** A child layout stays in local coordinates until its parent places it. */
 export interface RegionChildPlacement {
 	readonly id: string;
@@ -19,9 +41,7 @@ export interface RegionChildPlacement {
 	readonly localRanks: TopologicalRanks;
 }
 
-type RegionPortalSideValue = `${RegionPortalSide}`;
-
-interface RegionPortalBase<Side extends RegionPortalSideValue = RegionPortalSideValue> {
+interface RegionPortalBase<Side extends RegionPortalSide = RegionPortalSide> {
 	readonly relationId: string;
 	readonly endpointId: string;
 	readonly side: Side;
@@ -30,7 +50,7 @@ interface RegionPortalBase<Side extends RegionPortalSideValue = RegionPortalSide
 
 /** Normalized portal published by a child to its parent. */
 export interface RegionPortal<
-	Side extends RegionPortalSideValue = RegionPortalSideValue,
+	Side extends RegionPortalSide = RegionPortalSide,
 > extends RegionPortalBase<Side> {
 	readonly regionId: string;
 	readonly localPoint: Point;
@@ -71,3 +91,10 @@ interface RegionCompositionUnsupported {
 
 export type RegionCompositionAttempt<Selected extends RegionCompositionSelected> =
 	Selected | RegionCompositionUnknown | RegionCompositionUnsupported;
+
+export interface RegionLayoutSelected extends RegionCompositionSelected<RegionPortal> {
+	readonly regions: readonly RegionChildPlacement[];
+	readonly ownedRoutes: readonly RegionOwnedRoute[];
+}
+
+export type RegionLayoutAttempt = RegionCompositionAttempt<RegionLayoutSelected>;

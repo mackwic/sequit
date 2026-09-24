@@ -28,7 +28,7 @@ type LaneEndpoint =
 	| LogicDocument['junctions'][number];
 
 export interface NormalizedRootLayout {
-	readonly policy: LayoutPolicy.Layered;
+	readonly policy: LayoutPolicy;
 	readonly laneOrientation: LaneOrientation;
 	readonly growth: LaneGrowth.Auto;
 	readonly lanes: readonly NormalizedLayoutLane[];

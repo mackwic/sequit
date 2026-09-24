@@ -10,6 +10,8 @@ import {
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_LANE_PRESENTATION_SCHEMA,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { reconcileSharedDocument } from '../../../../src/lib/infrastructure/collaboration/reconcile-shared-document';
@@ -18,6 +20,7 @@ import {
 	readLogicDocument,
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
@@ -107,7 +110,7 @@ function gridCell(document: Y.Doc, id: string): Y.Map<unknown> {
 }
 
 describe('Yjs region grid presentation', () => {
-	it('round trips persistence format 7 through live format 8 and binary restoration', () => {
+	it('migrates format 7 grid geometry through live format 8, then writes format 9', () => {
 		const source = compositionGridDocument();
 		const document = restored(source);
 		const meta = document.getMap(YjsCollection.Meta);
@@ -120,8 +123,9 @@ describe('Yjs region grid presentation', () => {
 		const result = readLogicDocument(document);
 		expect(result).toMatchObject({ ok: true });
 		if (!result.ok) throw new Error('Expected valid region grid document');
+		expect(result.value.persistenceFormat).toBe(REGION_POLICY_PERSISTENCE_FORMAT);
 		expect(result.value.regionPresentation).toEqual({
-			schemaVersion: REGION_COMPOSITION_PRESENTATION_SCHEMA,
+			schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
 			regions: [...(source.regionPresentation?.regions ?? [])].sort((left, right) =>
 				compareCanonicalStrings(left.id, right.id),
 			),
@@ -129,6 +133,16 @@ describe('Yjs region grid presentation', () => {
 		expect(result.value.nodes.find(({ id }) => id === 'a-top')?.markdown).toBe(
 			'PRIVATE_MARKDOWN_SENTINEL',
 		);
+		const upgraded = restored(result.value);
+		expect(upgraded.getMap(YjsCollection.Meta).get('yjsLiveDocumentFormat')).toBe(
+			YJS_REGION_POLICY_DOCUMENT_FORMAT,
+		);
+		expect(upgraded.getMap(YjsCollection.Meta).get('regionPresentationSchema')).toBe(
+			REGION_POLICY_PRESENTATION_SCHEMA,
+		);
+		expect(gridCells(upgraded).size).toBe(4);
+		expect(readLogicDocument(upgraded)).toEqual(result);
+		upgraded.destroy();
 		document.destroy();
 	});
 

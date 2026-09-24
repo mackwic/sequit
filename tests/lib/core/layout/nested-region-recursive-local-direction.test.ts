@@ -9,13 +9,13 @@ import {
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
-	NestedPortalSide,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
@@ -32,15 +32,15 @@ it('chooses a clear bus side for an internal bottom-to-top disposition', () => {
 		}),
 	};
 	const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, directed);
-	expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
-	if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+	expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+	if (attempt.status !== RegionCompositionStatus.Selected) return;
 	const branch = defined(attempt.regions.find(({ id }) => id === 'branch'));
 	expect(branch.localLayout.elements).toHaveLength(4);
 	expect(
 		attempt.portals
 			.filter(({ relationId }) => relationId === 'inside-branch')
 			.map(({ side }) => side),
-	).toEqual([NestedPortalSide.Bottom, NestedPortalSide.Bottom]);
+	).toEqual([RegionPortalSide.Bottom, RegionPortalSide.Bottom]);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, directed);
 	expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
 	if (normalized.status !== RegionCompositionModelStatus.Ready) return;

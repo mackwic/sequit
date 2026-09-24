@@ -6,21 +6,21 @@ import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/gr
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithLaneCellDocument } from './nested-region-fixture';
 
 type PublishedLane = NonNullable<LayoutResult['lanes']>[number];
 
-function regionInput(document: LogicDocument): NestedRegionInput {
+function regionInput(document: LogicDocument): RegionInput {
 	const presentation = defined(document.regionPresentation);
 	return {
 		regions: [
@@ -44,7 +44,7 @@ function selectedLaneFixture() {
 	const prepared = prepareLayoutDocument(document);
 	const input = regionInput(document);
 	const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-	if (selected.status !== NestedRegionLayoutStatus.Selected)
+	if (selected.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected a selected lane cell: ${selected.status}: ${selected.reason}`);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -61,9 +61,9 @@ function selectedLaneFixture() {
 }
 
 function withFirstGlobalLane(
-	selected: NestedRegionSelected,
+	selected: RegionLayoutSelected,
 	change: (lane: PublishedLane) => PublishedLane,
-): NestedRegionSelected {
+): RegionLayoutSelected {
 	const lanes = defined(selected.layout.lanes);
 	return {
 		...selected,
@@ -131,7 +131,7 @@ describe('selected region lane geometry falsifications', () => {
 	it('rejects a leaf lane with a foreign owner or changed published identity', () => {
 		const { selected, model } = selectedLaneFixture();
 		expect(validateRegionCompositionGeometry(model, selected)).toBeUndefined();
-		const invalidLocalOwner: NestedRegionSelected = {
+		const invalidLocalOwner: RegionLayoutSelected = {
 			...selected,
 			regions: selected.regions.map((region) => {
 				if (region.id !== 'b') return region;
@@ -181,14 +181,14 @@ describe('selected region lane geometry falsifications', () => {
 	it('rejects missing and spurious global lanes independently', () => {
 		const { selected, model } = selectedLaneFixture();
 		const lanes = defined(selected.layout.lanes);
-		const missing: NestedRegionSelected = {
+		const missing: RegionLayoutSelected = {
 			...selected,
 			layout: { ...selected.layout, lanes: lanes.slice(1) },
 		};
 		expect(validateRegionCompositionGeometry(model, missing)).toBe(
 			'Leaf region b does not publish each local lane exactly once.',
 		);
-		const unknown: NestedRegionSelected = {
+		const unknown: RegionLayoutSelected = {
 			...selected,
 			layout: {
 				...selected.layout,

@@ -9,18 +9,18 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	NestedPortalSide,
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,
@@ -34,7 +34,7 @@ function depthThreeFixture(
 	bias: LayoutBias,
 ): {
 	readonly document: LogicDocument;
-	readonly input: NestedRegionInput;
+	readonly input: RegionInput;
 } {
 	const source = depthTwoRegionDocument();
 	const c = defined(source.nodes.find(({ id }) => id === 'c'));
@@ -51,7 +51,7 @@ function depthThreeFixture(
 	const assignments = new Map(base.regionByEndpointId);
 	assignments.set('c', 'deep-left');
 	assignments.set('f', 'deep-right');
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		regions: [
 			...base.regions,
 			{ id: 'deep-left', parentId: 'branch-right', layoutOrder: 'a' },
@@ -84,10 +84,10 @@ describe('recursive row disposition', () => {
 				prepared.measurements,
 				input,
 			);
-			expect(recursive.status).toBe(NestedRegionLayoutStatus.Selected);
-			expect(production.status).toBe(NestedRegionLayoutStatus.Selected);
-			if (recursive.status !== NestedRegionLayoutStatus.Selected) return;
-			if (production.status !== NestedRegionLayoutStatus.Selected) return;
+			expect(recursive.status).toBe(RegionCompositionStatus.Selected);
+			expect(production.status).toBe(RegionCompositionStatus.Selected);
+			if (recursive.status !== RegionCompositionStatus.Selected) return;
+			if (production.status !== RegionCompositionStatus.Selected) return;
 			expect(production).toEqual(recursive);
 		},
 	);
@@ -95,14 +95,14 @@ describe('recursive row disposition', () => {
 	it('reuses unaffected depth-three leaves and matches a cold recomposition after a local edit', () => {
 		const { document, input } = depthThreeFixture(LayoutDirection.TopToBottom, LayoutBias.Top);
 		const prepared = prepareLayoutDocument(document);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = solveRecursiveNestedRegionLayout(
 			prepared.graph,
 			prepared.measurements,
 			input,
 			cache,
 		);
-		expect(first.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(first.status).toBe(RegionCompositionStatus.Selected);
 		expect(cache.stats).toMatchObject({ misses: 6, hits: 0 });
 		const changedSizes = new Map(prepared.measurements.nodes);
 		const c = defined(changedSizes.get('c'));
@@ -111,7 +111,7 @@ describe('recursive row disposition', () => {
 		const incremental = solveRecursiveNestedRegionLayout(prepared.graph, changed, input, cache);
 		const cold = solveRecursiveNestedRegionLayout(prepared.graph, changed, input);
 		expect(incremental).toEqual(cold);
-		expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(incremental.status).toBe(RegionCompositionStatus.Selected);
 		expect(cache.stats).toMatchObject({ misses: 7, hits: 5 });
 	});
 
@@ -130,8 +130,8 @@ describe('recursive row disposition', () => {
 			prepared.measurements,
 			depthTwoRegionInput(),
 		);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
 		expect(
 			result.ownedRoutes
 				.filter(({ relationId }) => relationId === 'grandchild-to-right')
@@ -140,15 +140,15 @@ describe('recursive row disposition', () => {
 	});
 
 	it.each([
-		[LayoutDirection.TopToBottom, LayoutBias.Top, NestedPortalSide.Top],
-		[LayoutDirection.BottomToTop, LayoutBias.Bottom, NestedPortalSide.Bottom],
+		[LayoutDirection.TopToBottom, LayoutBias.Top, RegionPortalSide.Top],
+		[LayoutDirection.BottomToTop, LayoutBias.Bottom, RegionPortalSide.Bottom],
 	] as const)(
 		'resolves a depth-three incident through four boundaries in %s',
 		(direction, bias, side) => {
 			const { document, input } = depthThreeFixture(direction, bias);
 			const prepared = prepareLayoutDocument(document);
 			const result = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-			if (result.status !== NestedRegionLayoutStatus.Selected)
+			if (result.status !== RegionCompositionStatus.Selected)
 				throw new Error(`Expected selected depth-three layout: ${result.status}: ${result.reason}`);
 			const regionIds = result.regions.map(({ id }) => id);
 			expect(regionIds).toHaveLength(8);

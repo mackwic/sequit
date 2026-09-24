@@ -1,43 +1,43 @@
 import type { LogicGraph } from '../graph/create-graph';
 import type { LayoutMeasurements, LayoutOptions } from './layout-types';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from './nested-region-recursive-layout';
 import {
-	type NestedRegionInput,
-	type NestedRegionLayoutAttempt,
-	NestedRegionLayoutStatus,
-} from './nested-region-types';
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+} from './region-composition-types';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 
 /** A projection may supply its own bounded leaf-layout cache. */
-export interface NestedRegionExecutionContext {
+export interface RegionExecutionContext {
 	readonly options: LayoutOptions;
-	readonly cache?: NestedRegionLocalLayoutCache;
+	readonly cache?: RegionLocalLayoutCache;
 }
 
 export function solveNestedRegionLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	input: NestedRegionInput,
-	context: NestedRegionExecutionContext,
-): NestedRegionLayoutAttempt;
+	input: RegionInput,
+	context: RegionExecutionContext,
+): RegionLayoutAttempt;
 export function solveNestedRegionLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	input: NestedRegionInput,
+	input: RegionInput,
 	options?: LayoutOptions,
-): NestedRegionLayoutAttempt;
+): RegionLayoutAttempt;
 export function solveNestedRegionLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	input: NestedRegionInput,
-	optionsOrContext: LayoutOptions | NestedRegionExecutionContext = {},
-): NestedRegionLayoutAttempt {
-	let execution: NestedRegionExecutionContext;
+	input: RegionInput,
+	optionsOrContext: LayoutOptions | RegionExecutionContext = {},
+): RegionLayoutAttempt {
+	let execution: RegionExecutionContext;
 	if ('options' in optionsOrContext) execution = optionsOrContext;
 	else execution = { options: optionsOrContext };
 	if (execution.options.inspectRouting === true)
 		return {
-			status: NestedRegionLayoutStatus.Unsupported,
+			status: RegionCompositionStatus.Unsupported,
 			reason: 'Combined routing inspection is not available.',
 		};
 	return solveRecursiveNestedRegionLayout(graph, measurements, input, execution.cache);
@@ -47,9 +47,9 @@ export function solveNestedRegionLayout(
 export function solveNestedRegionLayoutForProjection(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	input: NestedRegionInput,
-	cache: NestedRegionLocalLayoutCache,
-): NestedRegionLayoutAttempt {
+	input: RegionInput,
+	cache: RegionLocalLayoutCache,
+): RegionLayoutAttempt {
 	return solveNestedRegionLayout(graph, measurements, input, {
 		options: {},
 		cache,

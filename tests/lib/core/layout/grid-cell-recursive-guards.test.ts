@@ -10,12 +10,14 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionCompositionStatus,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
 import { UnsupportedRegionLeafLayoutError } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
@@ -124,7 +126,7 @@ describe('recursive grid boundaries', () => {
 		if (modelBuild.status !== RegionCompositionModelStatus.Ready)
 			throw new Error('Expected a normalized region tree.');
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected a selected grid: ${selected.status}: ${selected.reason}`);
 		const grid = defined(input.regions.find(({ id }) => id === 'grid')?.grid);
 		const cellIds = new Set(grid.cells.map(({ regionId }) => regionId));

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_LANE_PRESENTATION_SCHEMA,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { mapRegionPresentation } from '../../../../src/lib/infrastructure/toml/map-region-presentation';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
@@ -19,7 +20,7 @@ function mappingPaths(value: unknown): readonly string[] {
 }
 
 describe('TOML region leaf lane presentation', () => {
-	it('round trips format 6 with two scoped lanes and an ordinary sibling', () => {
+	it('migrates format 6 local lanes to an explicit leaf policy in format 8', () => {
 		const source = regionLaneDocument();
 		const serialized = serializeSequitToml(source);
 		expect(serialized).toContain('persistenceFormat = 6');
@@ -31,13 +32,14 @@ describe('TOML region leaf lane presentation', () => {
 		expect(parsed).toMatchObject({
 			ok: true,
 			value: {
-				persistenceFormat: REGION_LANE_PERSISTENCE_FORMAT,
+				persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
 				regionPresentation: {
-					schemaVersion: REGION_LANE_PRESENTATION_SCHEMA,
+					schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
 					regions: [
-						{ id: 'ordinary' },
+						{ id: 'ordinary', policy: 'layered' },
 						{
 							id: 'shared',
+							policy: 'shared-lanes',
 							lanePresentation: {
 								laneOrientation: 'parallel',
 								growth: 'auto',
@@ -49,7 +51,10 @@ describe('TOML region leaf lane presentation', () => {
 			},
 		});
 		if (!parsed.ok) throw new Error('Expected region lanes to parse');
-		expect(serializeSequitToml(parsed.value)).toBe(serialized);
+		const upgraded = serializeSequitToml(parsed.value);
+		expect(upgraded).toContain('persistenceFormat = 8');
+		expect(upgraded).toContain('schemaVersion = 5');
+		expect(parseSequitToml(upgraded)).toEqual(parsed);
 	});
 
 	it('round trips root lanes beside leaf-local lanes without merging their identities', () => {
@@ -59,17 +64,26 @@ describe('TOML region leaf lane presentation', () => {
 		expect(parsed).toMatchObject({
 			ok: true,
 			value: {
-				presentation: { lanes: [{ id: 'root-left' }, { id: 'root-right' }] },
+				presentation: {
+					policy: 'shared-lanes',
+					lanes: [{ id: 'root-left' }, { id: 'root-right' }],
+				},
 				regionPresentation: {
 					regions: [
-						{ id: 'ordinary' },
-						{ id: 'shared', lanePresentation: { lanes: [{ id: 'sales' }, { id: 'service' }] } },
+						{ id: 'ordinary', policy: 'shared-lanes' },
+						{
+							id: 'shared',
+							policy: 'shared-lanes',
+							lanePresentation: { lanes: [{ id: 'sales' }, { id: 'service' }] },
+						},
 					],
 				},
 			},
 		});
 		if (!parsed.ok) throw new Error('Expected both lane scopes to parse');
-		expect(serializeSequitToml(parsed.value)).toBe(serialized);
+		const upgraded = serializeSequitToml(parsed.value);
+		expect(upgraded).toContain('persistenceFormat = 8');
+		expect(parseSequitToml(upgraded)).toEqual(parsed);
 	});
 
 	it('diagnoses malformed local lane fields at their TOML paths', () => {

@@ -15,6 +15,7 @@ import {
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
 	YJS_REGION_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 	YjsCollection,
 } from './yjs-document-schema';
 import { readRequiredLayoutOrder, readString, readText } from './yjs-field-readers';
@@ -54,6 +55,7 @@ const orientationByValue: Readonly<Record<string, LaneOrientation>> = {
 };
 const policyByValue: Readonly<Record<string, LayoutPolicy>> = {
 	[LayoutPolicy.Layered]: LayoutPolicy.Layered,
+	[LayoutPolicy.SharedLanes]: LayoutPolicy.SharedLanes,
 };
 const growthByValue: Readonly<Record<string, LaneGrowth>> = {
 	[LaneGrowth.Auto]: LaneGrowth.Auto,
@@ -63,6 +65,7 @@ const OPTIONAL_ROOT_PRESENTATION_FORMATS = new Set<number>([
 	YJS_GRID_DOCUMENT_FORMAT,
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 ]);
 
 function readLane(
@@ -122,10 +125,11 @@ function readPresentation(
 		project: readLane,
 	});
 	const valid = [validSchema, validPolicy, orientation !== undefined, validGrowth].every(Boolean);
-	if (!valid || orientation === undefined) return undefined;
+	if (!valid) return undefined;
+	if (orientation === undefined || policy === undefined) return undefined;
 	return {
 		schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
-		policy: LayoutPolicy.Layered,
+		policy: policyByValue[policy] ?? LayoutPolicy.Layered,
 		laneOrientation: orientation,
 		growth: LaneGrowth.Auto,
 		lanes,

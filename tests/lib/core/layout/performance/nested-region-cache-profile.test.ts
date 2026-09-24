@@ -6,8 +6,8 @@ import { createGraph } from '../../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../../src/lib/core/graph/topological-ranks';
 import { layoutWithDedicatedEngine } from '../../../../../src/lib/core/layout/layout-engine';
 import { solveNestedRegionLayout } from '../../../../../src/lib/core/layout/nested-region-layout';
-import { NestedRegionLocalLayoutCache } from '../../../../../src/lib/core/layout/nested-region-local-cache';
-import { NestedRegionLayoutStatus } from '../../../../../src/lib/core/layout/nested-region-types';
+import { RegionCompositionStatus } from '../../../../../src/lib/core/layout/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayoutDocument } from '../../../../support/harnesses/layout';
 import { median, percentile } from '../../../../support/performance/performance-statistics';
 import { nestedRegionInput, regionDocument } from '../nested-region-fixture';
@@ -27,7 +27,7 @@ it('measures canonical key and defensive copy against cold child solves of one t
 			),
 		};
 		const measurements = prepareLayoutDocument(document).measurements;
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		let computes = 0;
 		const compute = () => {
 			computes += 1;
@@ -66,9 +66,9 @@ it('measures canonical key and defensive copy against cold child solves of one t
 it('profiles a root recomposition with three local cache hits against a cold solve', () => {
 	const { graph, measurements } = prepareLayoutDocument(regionDocument());
 	const regions = nestedRegionInput();
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	const initial = solveNestedRegionLayout(graph, measurements, regions, { options: {}, cache });
-	expect(initial.status).toBe(NestedRegionLayoutStatus.Selected);
+	expect(initial.status).toBe(RegionCompositionStatus.Selected);
 	const cached: number[] = [];
 	const cold: number[] = [];
 	const warmup = 20;

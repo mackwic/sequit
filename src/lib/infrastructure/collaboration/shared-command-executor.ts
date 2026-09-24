@@ -8,6 +8,7 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { ROOT_LAYOUT_REGION_ID } from '../../core/document/region-presentation';
 import { dissolveDocumentGroup } from '../document/document-group-operations';
@@ -89,6 +90,7 @@ function rootGroupOwnership(
 		GRID_PERSISTENCE_FORMAT,
 		REGION_LANE_PERSISTENCE_FORMAT,
 		REGION_COMPOSITION_PERSISTENCE_FORMAT,
+		REGION_POLICY_PERSISTENCE_FORMAT,
 	];
 	const regionFormat = typeof format === 'number' && regionFormats.includes(format);
 	const first = members[0];

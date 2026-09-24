@@ -14,7 +14,6 @@ import type {
 	SolvedRecursiveRegion,
 } from '../../../../src/lib/core/layout/nested-region-recursive-geometry';
 import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import { NestedPortalSide } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -79,15 +78,15 @@ function selectedGrid(): GridCellSelected {
 	};
 }
 
-function localPortal(side: NestedPortalSide): { readonly anchor: Point; readonly point: Point } {
+function localPortal(side: RegionPortalSide): { readonly anchor: Point; readonly point: Point } {
 	switch (side) {
-		case NestedPortalSide.Top:
+		case RegionPortalSide.Top:
 			return { anchor: { x: 80, y: 40 }, point: { x: 80, y: 0 } };
-		case NestedPortalSide.Right:
+		case RegionPortalSide.Right:
 			return { anchor: { x: 120, y: 80 }, point: { x: 160, y: 80 } };
-		case NestedPortalSide.Bottom:
+		case RegionPortalSide.Bottom:
 			return { anchor: { x: 80, y: 120 }, point: { x: 80, y: 160 } };
-		case NestedPortalSide.Left:
+		case RegionPortalSide.Left:
 			return { anchor: { x: 40, y: 80 }, point: { x: 0, y: 80 } };
 		default:
 			throw new Error('Unknown test portal side.');
@@ -98,7 +97,7 @@ function childWithIncident(input: {
 	readonly childId: string;
 	readonly endpointId: string;
 	readonly relationId: string;
-	readonly side: NestedPortalSide;
+	readonly side: RegionPortalSide;
 	readonly role: RegionIncidentRole;
 }): SolvedRecursiveRegion {
 	const { anchor, point } = localPortal(input.side);
@@ -133,7 +132,7 @@ function inheritedPath(input: {
 	readonly relationId: string;
 	readonly childId: string;
 	readonly endpointId: string;
-	readonly childSide: NestedPortalSide;
+	readonly childSide: RegionPortalSide;
 	readonly outerSide: RegionPortalSide;
 	readonly role?: RegionIncidentRole;
 }): RegionIncidentPath {
@@ -159,10 +158,10 @@ describe('inherited grid incident continuation', () => {
 	const context = contextFor(source);
 
 	it.each([
-		[NestedPortalSide.Top, RegionPortalSide.Top],
-		[NestedPortalSide.Right, RegionPortalSide.Right],
-		[NestedPortalSide.Bottom, RegionPortalSide.Bottom],
-		[NestedPortalSide.Left, RegionPortalSide.Left],
+		[RegionPortalSide.Top, RegionPortalSide.Top],
+		[RegionPortalSide.Right, RegionPortalSide.Right],
+		[RegionPortalSide.Bottom, RegionPortalSide.Bottom],
+		[RegionPortalSide.Left, RegionPortalSide.Left],
 	] as const)(
 		'extends a child %s portal to the cell frame and grid %s frame',
 		(childSide, outerSide) => {
@@ -179,11 +178,11 @@ describe('inherited grid incident continuation', () => {
 			const childPortal = defined(path.portals[0]);
 			const outerPortal = defined(path.portals[1]);
 			const cell = defined(selectedGrid().cells.find(({ id }) => id === 'a'));
-			if (childSide === NestedPortalSide.Top) expect(childPortal.point.y).toBe(cell.bounds.y);
-			if (childSide === NestedPortalSide.Bottom)
+			if (childSide === RegionPortalSide.Top) expect(childPortal.point.y).toBe(cell.bounds.y);
+			if (childSide === RegionPortalSide.Bottom)
 				expect(childPortal.point.y).toBe(cell.bounds.y + cell.bounds.height);
-			if (childSide === NestedPortalSide.Left) expect(childPortal.point.x).toBe(cell.bounds.x);
-			if (childSide === NestedPortalSide.Right)
+			if (childSide === RegionPortalSide.Left) expect(childPortal.point.x).toBe(cell.bounds.x);
+			if (childSide === RegionPortalSide.Right)
 				expect(childPortal.point.x).toBe(cell.bounds.x + cell.bounds.width);
 			if (outerSide === RegionPortalSide.Top) expect(outerPortal.point.y).toBe(-32);
 			if (outerSide === RegionPortalSide.Bottom) expect(outerPortal.point.y).toBe(832);
@@ -204,7 +203,7 @@ describe('inherited grid incident continuation', () => {
 			relationId: 'a-right-exit',
 			childId: 'b',
 			endpointId: 'b',
-			childSide: NestedPortalSide.Left,
+			childSide: RegionPortalSide.Left,
 			outerSide: RegionPortalSide.Left,
 		});
 		const gridPiece = defined(path.pieces[1]);
@@ -225,7 +224,7 @@ describe('inherited grid incident continuation', () => {
 			relationId: 'z-left-exit',
 			childId: 'c',
 			endpointId: 'c',
-			childSide: NestedPortalSide.Right,
+			childSide: RegionPortalSide.Right,
 			outerSide: RegionPortalSide.Left,
 		});
 		const gridPiece = defined(path.pieces[1]);
@@ -246,7 +245,7 @@ describe('inherited grid incident continuation', () => {
 			relationId: 'z-left-exit',
 			childId: 'a',
 			endpointId: 'a-target',
-			childSide: NestedPortalSide.Top,
+			childSide: RegionPortalSide.Top,
 			outerSide: RegionPortalSide.Left,
 			role: RegionIncidentRole.Target,
 		});

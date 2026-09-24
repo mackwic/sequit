@@ -5,27 +5,17 @@ import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell
 import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
 import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
-import {
-	type GridCellInput,
-	GridCellLayoutStatus,
-	type GridCellSelected,
-	GridCellSide,
-} from './grid-cell-types';
+import { type GridCellInput, GridCellLayoutStatus, type GridCellSelected } from './grid-cell-types';
 import type { LayoutRelation } from './layout-types';
 import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
 import { directChild, type RecursiveContext } from './nested-region-recursive-model-adapter';
-import {
-	type NestedOwnedRoute,
-	NestedPortalSide,
-	type NestedRegionPortal,
-} from './nested-region-types';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
 } from './region-arrangement';
-import { RegionPortalSide } from './region-composition-types';
+import { type RegionOwnedRoute, RegionPortalSide } from './region-composition-types';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
@@ -183,21 +173,13 @@ function routeById(selected: GridCellSelected): ReadonlyMap<string, LayoutRelati
 	return new Map(selected.layout.relations.map((route) => [route.id, route]));
 }
 
-function nestedPortals(selected: GridCellSelected): readonly NestedRegionPortal[] {
-	return selected.portals.map((portal) => {
-		let side = NestedPortalSide.Left;
-		if (portal.side === GridCellSide.Right) side = NestedPortalSide.Right;
-		return { ...portal, side };
-	});
-}
-
 function ownedGridCrossingRoutes(
 	context: RecursiveContext,
 	regionId: string,
 	selected: GridCellSelected,
-): readonly NestedOwnedRoute[] {
+): readonly RegionOwnedRoute[] {
 	const routes = routeById(selected);
-	const owned: NestedOwnedRoute[] = [];
+	const owned: RegionOwnedRoute[] = [];
 	for (const relation of defined(context.model.crossingRelationsByOwner.get(regionId))) {
 		const route = defined(routes.get(relation.id));
 		const sourceCellId = directChild(context, regionId, relation.from);
@@ -247,7 +229,7 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 		layout: attempt.layout,
 		ranks: { bands: [], byEndpointId: new Map() },
 		regions: placedChildren.regions,
-		portals: [...placedChildren.portals, ...nestedPortals(attempt)],
+		portals: [...placedChildren.portals, ...attempt.portals],
 		ownedRoutes: [
 			...placedChildren.ownedRoutes,
 			...ownedGridCrossingRoutes(context, regionId, attempt),

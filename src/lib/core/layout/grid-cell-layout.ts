@@ -24,7 +24,6 @@ import {
 	type GridCellPlacement,
 	type GridCellPortal,
 	type GridCellSelected,
-	GridCellSide,
 } from './grid-cell-types';
 import { validateGridCellGeometryDiagnostic } from './grid-cell-validation';
 import type {
@@ -35,14 +34,15 @@ import type {
 	LayoutResult,
 	Point,
 } from './layout-types';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
 import {
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 	RegionRelationKind,
 	type RegionRelationOwnership,
 } from './region-composition-model';
+import { RegionPortalSide } from './region-composition-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 
 const OUTER_RAIL_OFFSET = 48;
 const TOP_BUS_Y = 24;
@@ -90,13 +90,13 @@ function crossingRoute(
 		endpointId: string,
 	): { port: Point; portal: GridCellPortal; railX: number } {
 		const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId));
-		let side = GridCellSide.Left;
-		if (cell.column === 1) side = GridCellSide.Right;
+		let side: RegionPortalSide.Left | RegionPortalSide.Right = RegionPortalSide.Left;
+		if (cell.column === 1) side = RegionPortalSide.Right;
 		let portX = cell.translation.x + local.bounds.x;
 		let portalX = cell.bounds.x;
 		const railOffset = CROSSING_SPACING * index;
 		let railX = margin - OUTER_RAIL_OFFSET - railOffset;
-		if (side === GridCellSide.Right) {
+		if (side === RegionPortalSide.Right) {
 			portX += local.bounds.width;
 			portalX += cell.bounds.width;
 			railX = gridRight + OUTER_RAIL_OFFSET + railOffset;
@@ -145,7 +145,7 @@ export function solveGridCellLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	input: GridCellInput,
-	cache?: NestedRegionLocalLayoutCache,
+	cache?: RegionLocalLayoutCache,
 ): GridCellLayoutAttempt {
 	const grid = normalize(graph, input);
 	if (typeof grid === 'string') return unsupported(grid);

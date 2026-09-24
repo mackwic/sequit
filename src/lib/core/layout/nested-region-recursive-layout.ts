@@ -3,7 +3,6 @@ import type { LogicGraph } from '../graph/create-graph';
 import { gridCellArrangement } from './grid-cell-recursive-region';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
 import type { RegionIncidentPath, SolvedRecursiveRegion } from './nested-region-recursive-geometry';
@@ -14,25 +13,26 @@ import {
 	policyFailure,
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
-import {
-	type NestedPortalSide,
-	type NestedRegionInput,
-	type NestedRegionLayoutAttempt,
-	NestedRegionLayoutStatus,
-} from './nested-region-types';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 } from './region-composition-model';
-import { RegionCompositionStatus } from './region-composition-types';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+	type RegionPortalSide,
+} from './region-composition-types';
 import { validateRegionCompositionGeometry } from './region-composition-validation';
 import { regionLeafIncidentPath } from './region-leaf-incident-path';
 import {
 	solveRegionLeafLayoutWithIncidents,
 	UnknownRegionLeafLayoutError,
 } from './region-leaf-layout';
+import { regionLeafPolicy } from './region-leaf-policy';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 import {
 	type DiagnosedCandidate,
 	diagnosedFailure,
@@ -50,11 +50,11 @@ function solveLeaf(
 ): SolvedRecursiveRegion {
 	const document = leafDocument(context, regionId);
 	const measurements = nestedRegionLocalMeasurements(document, context.measurements);
-	const policy = defined(context.model.regionsById.get(regionId)).definition.policy;
+	const definition = defined(context.model.regionsById.get(regionId)).definition;
 	const solved = solveRegionLeafLayoutWithIncidents({
 		document,
 		measurements,
-		policy,
+		leafPolicy: regionLeafPolicy(definition),
 		cache: context.cache,
 		contracts: leafIncidentContracts(context, regionId, incidentSides),
 	});
@@ -122,7 +122,7 @@ interface RecursiveCandidateInput {
 	readonly graph: LogicGraph;
 	readonly measurements: LayoutMeasurements;
 	readonly model: RegionCompositionModel;
-	readonly cache: NestedRegionLocalLayoutCache | undefined;
+	readonly cache: RegionLocalLayoutCache | undefined;
 }
 
 function retryCompositionFailure(
@@ -135,7 +135,7 @@ function retryCompositionFailure(
 
 function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandidate {
 	const { graph, measurements, model, cache } = input;
-	const dispositionSideByRegionId = new Map<string, NestedPortalSide>();
+	const dispositionSideByRegionId = new Map<string, RegionPortalSide>();
 	const context: RecursiveContext = {
 		graph,
 		measurements,
@@ -161,7 +161,7 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandi
 			throw error;
 		}
 		const candidate = {
-			status: NestedRegionLayoutStatus.Selected,
+			status: RegionCompositionStatus.Selected,
 			rootId: model.rootId,
 			layout: solved.layout,
 			regions: solved.regions,
@@ -189,18 +189,18 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandi
 export function solveRecursiveNestedRegionLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	input: NestedRegionInput,
-	cache?: NestedRegionLocalLayoutCache,
-): NestedRegionLayoutAttempt {
+	input: RegionInput,
+	cache?: RegionLocalLayoutCache,
+): RegionLayoutAttempt {
 	const normalized = normalizeRegionCompositionModel(graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		return {
-			status: NestedRegionLayoutStatus.Unsupported,
+			status: RegionCompositionStatus.Unsupported,
 			reason: normalized.diagnostic.message,
 		};
 	const failure = policyFailure(graph, normalized.model);
 	if (failure !== undefined)
-		return { status: NestedRegionLayoutStatus.Unsupported, reason: failure };
+		return { status: RegionCompositionStatus.Unsupported, reason: failure };
 	try {
 		return solveRecursiveCandidate({
 			graph,

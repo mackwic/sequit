@@ -14,15 +14,7 @@ import {
 	type IncidentSides,
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
-import { NestedPortalSide } from './nested-region-types';
 import { RegionPortalSide } from './region-composition-types';
-
-const NESTED_SIDE: Readonly<Record<RegionPortalSide, NestedPortalSide>> = {
-	[RegionPortalSide.Top]: NestedPortalSide.Top,
-	[RegionPortalSide.Right]: NestedPortalSide.Right,
-	[RegionPortalSide.Bottom]: NestedPortalSide.Bottom,
-	[RegionPortalSide.Left]: NestedPortalSide.Left,
-};
 
 interface GridIncidentInput {
 	readonly context: RecursiveContext;
@@ -37,13 +29,13 @@ function framedPoint(
 	cell: GridCellPlacement,
 ): Point {
 	switch (portal.side) {
-		case NestedPortalSide.Left:
+		case RegionPortalSide.Left:
 			return { x: cell.bounds.x, y: portal.point.y };
-		case NestedPortalSide.Right:
+		case RegionPortalSide.Right:
 			return { x: cell.bounds.x + cell.bounds.width, y: portal.point.y };
-		case NestedPortalSide.Top:
+		case RegionPortalSide.Top:
 			return { x: portal.point.x, y: cell.bounds.y };
-		case NestedPortalSide.Bottom:
+		case RegionPortalSide.Bottom:
 			return { x: portal.point.x, y: cell.bounds.y + cell.bounds.height };
 		default:
 			throw new Error('Unknown grid child portal side.');
@@ -84,7 +76,7 @@ interface ContinuationInput {
 	readonly grid: GridIncidentInput;
 	readonly cell: GridCellPlacement;
 	readonly childPortal: RegionIncidentPath['portals'][number];
-	readonly side: NestedPortalSide;
+	readonly side: RegionPortalSide;
 	readonly relationId: string;
 	readonly endpointId: string;
 }
@@ -107,12 +99,12 @@ function childPortalApproach(
 ): { readonly points: Point[]; readonly y: number } {
 	const points: Point[] = [childPortal.point];
 	let y = childPortal.point.y;
-	const fromLeftToOuterRail = childPortal.side === NestedPortalSide.Left && cell.column === 1;
-	const fromRightToOuterRail = childPortal.side === NestedPortalSide.Right && cell.column === 0;
+	const fromLeftToOuterRail = childPortal.side === RegionPortalSide.Left && cell.column === 1;
+	const fromRightToOuterRail = childPortal.side === RegionPortalSide.Right && cell.column === 0;
 	const innerLateral = fromLeftToOuterRail || fromRightToOuterRail;
 	if (innerLateral) {
 		let offset = -CROSSING_SPACING;
-		if (childPortal.side === NestedPortalSide.Right) offset = CROSSING_SPACING;
+		if (childPortal.side === RegionPortalSide.Right) offset = CROSSING_SPACING;
 		const gapX = childPortal.point.x + offset;
 		points.push({ x: gapX, y });
 		y = cell.bounds.y - CROSSING_SPACING;
@@ -120,8 +112,8 @@ function childPortalApproach(
 		points.push({ x: gapX, y });
 		return { points, y };
 	}
-	if (childPortal.side === NestedPortalSide.Top) y -= CROSSING_SPACING;
-	if (childPortal.side === NestedPortalSide.Bottom) y += CROSSING_SPACING;
+	if (childPortal.side === RegionPortalSide.Top) y -= CROSSING_SPACING;
+	if (childPortal.side === RegionPortalSide.Bottom) y += CROSSING_SPACING;
 	if (y !== childPortal.point.y) points.push({ x: childPortal.point.x, y });
 	return { points, y };
 }
@@ -129,11 +121,11 @@ function childPortalApproach(
 function outerPortalY(
 	grid: GridIncidentInput,
 	cell: GridCellPlacement,
-	side: NestedPortalSide,
+	side: RegionPortalSide,
 	approachY: number,
 ): number {
-	const exitsLeftFromRightCell = side === NestedPortalSide.Left && cell.column === 1;
-	const exitsRightFromLeftCell = side === NestedPortalSide.Right && cell.column === 0;
+	const exitsLeftFromRightCell = side === RegionPortalSide.Left && cell.column === 1;
+	const exitsRightFromLeftCell = side === RegionPortalSide.Right && cell.column === 0;
 	const oppositeColumn = exitsLeftFromRightCell || exitsRightFromLeftCell;
 	if (oppositeColumn) return defined(grid.selected.cells[0]).bounds.y / 2;
 	return approachY;
@@ -164,7 +156,7 @@ function continuation({
 		canvasWidth: grid.selected.layout.width,
 		canvasHeight: grid.selected.layout.height,
 	});
-	if (side === NestedPortalSide.Top || side === NestedPortalSide.Bottom)
+	if (side === RegionPortalSide.Top || side === RegionPortalSide.Bottom)
 		points.push({ x: railX, y: portal.point.y });
 	else if (portalY === approachY) points.push(portal.point);
 	else points.push({ x: railX, y: portalY }, portal.point);
@@ -193,7 +185,7 @@ export function gridCellInheritedIncidentPaths(
 		let childPortal = path.portals[0];
 		if (source) childPortal = path.portals.at(-1);
 		childPortal = defined(childPortal);
-		const side = NESTED_SIDE[defined(sides[0])];
+		const side = defined(sides[0]);
 		const { points, portal } = continuation({
 			grid: input,
 			cell,

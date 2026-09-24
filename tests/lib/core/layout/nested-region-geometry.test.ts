@@ -19,11 +19,11 @@ import {
 	within,
 } from '../../../../src/lib/core/layout/nested-region-geometry-primitives';
 import type {
-	NestedOwnedRoute,
-	NestedRegionPlacement,
-	NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
-import { NestedPortalSide } from '../../../../src/lib/core/layout/nested-region-types';
+	RegionChildPlacement,
+	RegionLayoutSelected,
+	RegionOwnedRoute,
+} from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	nestedRegionInput,
 	regionDocument,
@@ -39,9 +39,9 @@ type Mutable<T> =
 				? { -readonly [P in keyof T]: Mutable<T[P]> }
 				: T;
 
-type Candidate = Mutable<NestedRegionSelected>;
+type Candidate = Mutable<RegionLayoutSelected>;
 
-function region(candidate: Candidate, id: string): Mutable<NestedRegionPlacement> {
+function region(candidate: Candidate, id: string): Mutable<RegionChildPlacement> {
 	const found = candidate.regions.find((value) => value.id === id);
 	if (found === undefined) throw new Error(`Missing region ${id}`);
 	return found;
@@ -57,7 +57,7 @@ function owner(
 	candidate: Candidate,
 	relationId: string,
 	regionId: string,
-): Mutable<NestedOwnedRoute> {
+): Mutable<RegionOwnedRoute> {
 	const found = candidate.ownedRoutes.find(
 		(value) => value.relationId === relationId && value.regionId === regionId,
 	);
@@ -77,7 +77,7 @@ function cloneLayout(layout: LayoutResult): Mutable<LayoutResult> {
 	};
 }
 
-function cloneCandidate(result: NestedRegionSelected): Candidate {
+function cloneCandidate(result: RegionLayoutSelected): Candidate {
 	return {
 		status: result.status,
 		rootId: result.rootId,
@@ -120,7 +120,7 @@ describe('nested region geometry oracle', () => {
 		};
 		const { prepared, result } = selectedNestedRegionLayout(document);
 		const candidate = cloneCandidate(result);
-		defined(candidate.portals[0]).side = NestedPortalSide.Top;
+		defined(candidate.portals[0]).side = RegionPortalSide.Top;
 		expect(validateNestedRegionGeometry(prepared.graph, nestedRegionInput(), candidate)).toContain(
 			'portal outside',
 		);

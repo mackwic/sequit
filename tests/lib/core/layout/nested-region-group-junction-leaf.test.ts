@@ -8,21 +8,21 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 
-function withMiddleEndpoint(id: string): NestedRegionInput {
+function withMiddleEndpoint(id: string): RegionInput {
 	const base = nestedRegionInput();
 	return {
 		...base,
@@ -59,14 +59,14 @@ describe('groups and junctions in recursive region leaves', () => {
 				},
 			},
 		});
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const selected = solveRecursiveNestedRegionLayout(
 			prepared.graph,
 			prepared.measurements,
 			input,
 			cache,
 		);
-		if (selected.status !== NestedRegionLayoutStatus.Selected) throw new Error(selected.reason);
+		if (selected.status !== RegionCompositionStatus.Selected) throw new Error(selected.reason);
 		const group = defined(selected.layout.elements.find(({ id }) => id === 'middle-group'));
 		const member = defined(selected.layout.elements.find(({ id }) => id === 'b'));
 		expect(group.bounds.width).toBeGreaterThanOrEqual(390);
@@ -110,7 +110,7 @@ describe('groups and junctions in recursive region leaves', () => {
 		const input = withMiddleEndpoint('middle-junction');
 		const prepared = prepareLayoutDocument(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected) throw new Error(selected.reason);
+		if (selected.status !== RegionCompositionStatus.Selected) throw new Error(selected.reason);
 		expect(selected.layout.elements.find(({ id }) => id === 'middle-junction')).toBeDefined();
 		expect(selected.layout.relations.find(({ id }) => id === 'middle-local')).toBeDefined();
 		const middle = defined(selected.regions.find(({ id }) => id === 'middle'));
@@ -145,8 +145,8 @@ describe('groups and junctions in recursive region leaves', () => {
 		};
 		const prepared = prepareLayoutDocument(document);
 		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(selected.status).toBe(NestedRegionLayoutStatus.Selected);
-		if (selected.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(selected.status).toBe(RegionCompositionStatus.Selected);
+		if (selected.status !== RegionCompositionStatus.Selected) return;
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
 			throw new Error(normalized.diagnostic.message);

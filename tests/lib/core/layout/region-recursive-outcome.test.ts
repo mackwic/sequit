@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { NestedPortalSide } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -50,7 +49,7 @@ function retryState(): RegionRetryState {
 	});
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error('Expected normalized two-level regions');
-	const dispositionSides = new Map<string, NestedPortalSide>();
+	const dispositionSides = new Map<string, RegionPortalSide>();
 	return {
 		context: {
 			graph: prepared.graph,
@@ -146,7 +145,7 @@ describe('recursive composition outcome', () => {
 				),
 			),
 		).toBe(true);
-		expect(state.dispositionSides.get('branch')).toBe(NestedPortalSide.Top);
+		expect(state.dispositionSides.get('branch')).toBe(RegionPortalSide.Top);
 		expect(state.retriedOwners).toEqual(new Set(['branch']));
 		expect(
 			retryIncidentFailure(
@@ -158,7 +157,7 @@ describe('recursive composition outcome', () => {
 				),
 			),
 		).toBe(false);
-		expect(state.dispositionSides.get('branch')).toBe(NestedPortalSide.Top);
+		expect(state.dispositionSides.get('branch')).toBe(RegionPortalSide.Top);
 		expect(
 			retryIncidentFailure(
 				state,
@@ -170,7 +169,7 @@ describe('recursive composition outcome', () => {
 			),
 		).toBe(false);
 		const topSide = retryState();
-		topSide.dispositionSides.set('branch', NestedPortalSide.Top);
+		topSide.dispositionSides.set('branch', RegionPortalSide.Top);
 		expect(
 			retryIncidentFailure(
 				topSide,
@@ -181,6 +180,6 @@ describe('recursive composition outcome', () => {
 				),
 			),
 		).toBe(true);
-		expect(topSide.dispositionSides.get('branch')).toBe(NestedPortalSide.Bottom);
+		expect(topSide.dispositionSides.get('branch')).toBe(RegionPortalSide.Bottom);
 	});
 });

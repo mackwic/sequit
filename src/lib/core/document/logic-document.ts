@@ -11,11 +11,13 @@ export const REGION_PERSISTENCE_FORMAT = 4 as const;
 export const GRID_PERSISTENCE_FORMAT = 5 as const;
 export const REGION_LANE_PERSISTENCE_FORMAT = 6 as const;
 export const REGION_COMPOSITION_PERSISTENCE_FORMAT = 7 as const;
+export const REGION_POLICY_PERSISTENCE_FORMAT = 8 as const;
 export const LAYOUT_PRESENTATION_SCHEMA = 1 as const;
 export const REGION_PRESENTATION_SCHEMA = 1 as const;
 export const GRID_REGION_PRESENTATION_SCHEMA = 2 as const;
 export const REGION_LANE_PRESENTATION_SCHEMA = 3 as const;
 export const REGION_COMPOSITION_PRESENTATION_SCHEMA = 4 as const;
+export const REGION_POLICY_PRESENTATION_SCHEMA = 5 as const;
 
 export enum LayoutDirection {
 	TopToBottom = 'top-to-bottom',
@@ -45,6 +47,7 @@ export type LayoutConfiguration = VerticalLayoutConfiguration | HorizontalLayout
 
 export enum LayoutPolicy {
 	Layered = 'layered',
+	SharedLanes = 'shared-lanes',
 }
 
 export enum LaneOrientation {
@@ -67,7 +70,7 @@ export interface LayoutRegionDefinition {
 	/** Omission denotes the virtual root. */
 	readonly parentId?: string;
 	readonly layoutOrder: OrderKey;
-	readonly policy: LayoutPolicy.Layered;
+	readonly policy: LayoutPolicy;
 	readonly lanePresentation?: RegionLanePresentation;
 	/** An internal region may arrange exactly four direct children in a two by two grid. */
 	readonly grid?: GridLayoutPresentation;
@@ -82,7 +85,7 @@ export interface RegionLanePresentation {
 
 export interface RootLayoutPresentation {
 	readonly schemaVersion: typeof LAYOUT_PRESENTATION_SCHEMA;
-	readonly policy: LayoutPolicy.Layered;
+	readonly policy: LayoutPolicy;
 	readonly laneOrientation: LaneOrientation;
 	readonly growth: LaneGrowth.Auto;
 	readonly lanes: readonly LayoutLane[];
@@ -129,11 +132,17 @@ interface RegionCompositionLayoutPresentation extends BaseRegionLayoutPresentati
 	readonly grid?: never;
 }
 
+interface RegionPolicyLayoutPresentation extends BaseRegionLayoutPresentation {
+	readonly schemaVersion: typeof REGION_POLICY_PRESENTATION_SCHEMA;
+	readonly grid?: never;
+}
+
 export type RegionLayoutPresentation =
 	| LegacyRegionLayoutPresentation
 	| GridRegionLayoutPresentation
 	| RegionLaneLayoutPresentation
-	| RegionCompositionLayoutPresentation;
+	| RegionCompositionLayoutPresentation
+	| RegionPolicyLayoutPresentation;
 
 export function layoutConfiguration(
 	direction: LayoutDirection,
@@ -283,7 +292,8 @@ export interface LogicDocument {
 		| typeof REGION_PERSISTENCE_FORMAT
 		| typeof GRID_PERSISTENCE_FORMAT
 		| typeof REGION_LANE_PERSISTENCE_FORMAT
-		| typeof REGION_COMPOSITION_PERSISTENCE_FORMAT;
+		| typeof REGION_COMPOSITION_PERSISTENCE_FORMAT
+		| typeof REGION_POLICY_PERSISTENCE_FORMAT;
 	readonly id: string;
 	readonly title: string;
 	readonly layout: LayoutConfiguration;

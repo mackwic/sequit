@@ -1,13 +1,9 @@
 import { defined } from '../document/logic-document';
 import { crossingPortY } from './grid-cell-crossing';
 import { equal, samePoint } from './grid-cell-geometry-primitives';
-import {
-	type GridCellPlacement,
-	type GridCellPortal,
-	type GridCellSelected,
-	GridCellSide,
-} from './grid-cell-types';
+import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation } from './layout-types';
+import { RegionPortalSide } from './region-composition-types';
 
 interface CrossPortContext {
 	readonly fromCell: GridCellPlacement;
@@ -15,14 +11,14 @@ interface CrossPortContext {
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 }
 
-function outerPortX(bounds: Bounds, side: GridCellSide): number {
-	if (side === GridCellSide.Left) return bounds.x;
+function outerPortX(bounds: Bounds, side: RegionPortalSide.Left | RegionPortalSide.Right): number {
+	if (side === RegionPortalSide.Left) return bounds.x;
 	return bounds.x + bounds.width;
 }
 
-function sideOf(cell: GridCellPlacement): GridCellSide {
-	if (cell.column === 0) return GridCellSide.Left;
-	return GridCellSide.Right;
+function sideOf(cell: GridCellPlacement): RegionPortalSide.Left | RegionPortalSide.Right {
+	if (cell.column === 0) return RegionPortalSide.Left;
+	return RegionPortalSide.Right;
 }
 
 export function validateCrossPorts(
@@ -54,7 +50,7 @@ function checkPortal(portal: GridCellPortal, candidate: GridCellSelected): boole
 	if (portal.regionId !== knownCell.id) return false;
 	if (portal.side !== sideOf(knownCell)) return false;
 	let expectedLocalX = 0;
-	if (portal.side === GridCellSide.Right) expectedLocalX = knownCell.bounds.width;
+	if (portal.side === RegionPortalSide.Right) expectedLocalX = knownCell.bounds.width;
 	if (!equal(portal.localPoint.x, expectedLocalX)) return false;
 	if (portal.localPoint.y < 0 || portal.localPoint.y > knownCell.bounds.height) return false;
 	return (

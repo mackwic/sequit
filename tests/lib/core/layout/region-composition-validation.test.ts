@@ -8,11 +8,11 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
-import type { NestedRegionInput } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import type { RegionInput } from '../../../../src/lib/core/layout/region-composition-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	type RegionCompositionGeometryCandidate,
@@ -91,7 +91,7 @@ function groupedLeafFixture(innerBounds: Bounds = { x: 60, y: 60, width: 100, he
 	};
 	const graph = createGraph(document);
 	if (!graph.ok) throw new Error('Grouped region fixture graph must be valid.');
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		regions: [
 			{ id: '@root', layoutOrder: '0' },
 			{ id: 'left', parentId: '@root', layoutOrder: 'a' },
@@ -185,14 +185,14 @@ function fixture(
 	});
 	if (!graph.ok) throw new Error('The composition fixture has an invalid source graph.');
 	const sourceIds = Array.from({ length: depth }, (_, index) => `source-${index + 1}`);
-	const innerForeignDefinitions: NestedRegionInput['regions'][number][] = [];
+	const innerForeignDefinitions: RegionInput['regions'][number][] = [];
 	if (depth > 1)
 		innerForeignDefinitions.push({
 			id: 'foreign-inner',
 			parentId: 'source-1',
 			layoutOrder: 'b',
 		});
-	const input: NestedRegionInput = {
+	const input: RegionInput = {
 		regions: [
 			{ id: '@root', layoutOrder: '0' },
 			...sourceIds.map((id, index) => ({
@@ -361,7 +361,7 @@ describe('generic region composition geometry', () => {
 			relations: [{ id: 'inside', from: 'a-source', to: 'a-target' }],
 		});
 		if (!graph.ok) throw new Error('The local relation fixture has an invalid graph.');
-		const input: NestedRegionInput = {
+		const input: RegionInput = {
 			regions: [
 				{ id: '@root', layoutOrder: '0' },
 				{ id: 'leaf', parentId: '@root', layoutOrder: 'a' },

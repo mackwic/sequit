@@ -3,10 +3,10 @@ import type { LogicDocument } from '../../../lib/core/document/logic-document';
 import {
 	UnknownGridCellLayoutError,
 	UnknownLayoutPresentationError,
-	UnknownNestedRegionLayoutError,
+	UnknownRegionLayoutError,
 	UnsupportedGridCellLayoutError,
 	UnsupportedLayoutPresentationError,
-	UnsupportedNestedRegionLayoutError,
+	UnsupportedRegionLayoutError,
 } from '../../../lib/core/layout/root-region';
 import { PartialRegionLayoutError, type RegionPreview } from './partial-region-layout';
 import { UnresolvedFoldedGroupLayoutError } from './unresolved-folded-group-error';
@@ -60,13 +60,13 @@ function regionFailureReason(cause: unknown): LayoutFailureReason | undefined {
 			message: 'Le moteur n’a pas trouvé de géométrie validée pour cette grille.',
 		};
 	}
-	if (cause instanceof UnsupportedNestedRegionLayoutError) {
+	if (cause instanceof UnsupportedRegionLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedRegionLayout,
 			message: 'Cette configuration de régions n’est pas encore prise en charge.',
 		};
 	}
-	if (cause instanceof UnknownNestedRegionLayoutError) {
+	if (cause instanceof UnknownRegionLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnknownRegionLayout,
 			message: 'Le moteur n’a pas trouvé de géométrie validée pour ces régions.',

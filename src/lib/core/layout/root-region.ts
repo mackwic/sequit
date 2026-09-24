@@ -1,3 +1,4 @@
+import { defined, type LayoutPolicy } from '../document/logic-document';
 import {
 	normalizeRegionPresentation,
 	RegionPresentationStatus,
@@ -8,18 +9,18 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
-	type NestedRegionExecutionContext,
+	type RegionExecutionContext,
 	solveNestedRegionLayout,
 	solveNestedRegionLayoutForProjection,
 } from './nested-region-layout';
-import type { NestedRegionLocalLayoutCache } from './nested-region-local-cache';
 import {
-	type NestedRegionInput,
-	type NestedRegionLayoutAttempt,
-	NestedRegionLayoutStatus,
-} from './nested-region-types';
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+} from './region-composition-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 import type { RegionIncidentUnknownCode } from './region-incident-contract';
+import type { RegionLocalLayoutCache } from './region-local-cache';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export enum LayoutRegionKind {
@@ -53,23 +54,23 @@ export class UnknownLayoutPresentationError extends Error {
 	}
 }
 
-export class UnsupportedNestedRegionLayoutError extends Error {
+export class UnsupportedRegionLayoutError extends Error {
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
 	) {
 		super(`Nested region layout is unsupported for document ${documentId}: ${reason}`);
-		this.name = 'UnsupportedNestedRegionLayoutError';
+		this.name = 'UnsupportedRegionLayoutError';
 	}
 }
 
-export class UnknownNestedRegionLayoutError extends Error {
+export class UnknownRegionLayoutError extends Error {
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
 	) {
 		super(`Nested region layout is unresolved for document ${documentId}: ${reason}`);
-		this.name = 'UnknownNestedRegionLayoutError';
+		this.name = 'UnknownRegionLayoutError';
 	}
 }
 
@@ -129,7 +130,7 @@ export function normalizeRootRegion(graph: LogicGraph, ranks: TopologicalRanks):
 	};
 }
 
-export function nestedRegionInput(graph: LogicGraph): NestedRegionInput {
+export function nestedRegionInput(graph: LogicGraph): RegionInput {
 	const definitions = graph.document.regionPresentation?.regions ?? [];
 	const assignments = new Map<string, string>();
 	for (const endpoint of [
@@ -141,25 +142,26 @@ export function nestedRegionInput(graph: LogicGraph): NestedRegionInput {
 	}
 	const normalized = normalizeRegionPresentation(graph.document, definitions, assignments);
 	if (normalized.status !== RegionPresentationStatus.Ready)
-		throw new UnsupportedNestedRegionLayoutError(
+		throw new UnsupportedRegionLayoutError(
 			graph.document.id,
 			'Invalid region hierarchy or ownership.',
 		);
-	let root: NestedRegionInput['regions'][number] = {
+	const rootPolicy: LayoutPolicy = defined(
+		normalized.value.regions.find(({ id }) => id === ROOT_LAYOUT_REGION_ID),
+	).policy;
+	let root: RegionInput['regions'][number] = {
 		id: ROOT_LAYOUT_REGION_ID,
 		layoutOrder: 'a0',
+		policy: rootPolicy,
 	};
 	if (graph.document.regionPresentation?.grid !== undefined)
 		root = { ...root, grid: graph.document.regionPresentation.grid };
-	const regions: NestedRegionInput['regions'][number][] = [root];
+	const regions: RegionInput['regions'][number][] = [root];
 	for (const region of normalized.value.regions) {
 		if (region.id === ROOT_LAYOUT_REGION_ID) continue;
 		if (region.parentId === undefined || region.layoutOrder === undefined)
-			throw new UnsupportedNestedRegionLayoutError(
-				graph.document.id,
-				'Invalid normalized child region.',
-			);
-		let definition: NestedRegionInput['regions'][number] = {
+			throw new UnsupportedRegionLayoutError(graph.document.id, 'Invalid normalized child region.');
+		let definition: RegionInput['regions'][number] = {
 			id: region.id,
 			parentId: region.parentId,
 			layoutOrder: region.layoutOrder,
@@ -176,35 +178,35 @@ export function nestedRegionInput(graph: LogicGraph): NestedRegionInput {
 function layoutWithNestedRegions(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
-	execution: LayoutOptions | NestedRegionExecutionContext,
+	execution: LayoutOptions | RegionExecutionContext,
 	gridRoot = false,
 ): LayoutResult {
-	let input: NestedRegionInput;
+	let input: RegionInput;
 	try {
 		input = nestedRegionInput(graph);
 	} catch (error) {
-		if (gridRoot && error instanceof UnsupportedNestedRegionLayoutError)
+		if (gridRoot && error instanceof UnsupportedRegionLayoutError)
 			throw new UnsupportedGridCellLayoutError(graph.document.id, error.reason);
 		throw error;
 	}
-	let attempt: NestedRegionLayoutAttempt;
+	let attempt: RegionLayoutAttempt;
 	if ('options' in execution && execution.cache !== undefined)
 		attempt = solveNestedRegionLayoutForProjection(graph, measurements, input, execution.cache);
 	else attempt = solveNestedRegionLayout(graph, measurements, input, layoutOptions(execution));
-	if (attempt.status === NestedRegionLayoutStatus.Selected)
+	if (attempt.status === RegionCompositionStatus.Selected)
 		return {
 			...attempt.layout,
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
 		};
-	if (attempt.status === NestedRegionLayoutStatus.Unsupported) {
+	if (attempt.status === RegionCompositionStatus.Unsupported) {
 		if (gridRoot) throw new UnsupportedGridCellLayoutError(graph.document.id, attempt.reason);
-		throw new UnsupportedNestedRegionLayoutError(graph.document.id, attempt.reason);
+		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason);
 	}
 	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);
-	throw new UnknownNestedRegionLayoutError(graph.document.id, attempt.reason);
+	throw new UnknownRegionLayoutError(graph.document.id, attempt.reason);
 }
 
-function layoutOptions(execution: LayoutOptions | NestedRegionExecutionContext): LayoutOptions {
+function layoutOptions(execution: LayoutOptions | RegionExecutionContext): LayoutOptions {
 	if ('options' in execution) return execution.options;
 	return execution;
 }
@@ -213,7 +215,7 @@ function layoutWithRootRegionExecution(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	execution: LayoutOptions | NestedRegionExecutionContext,
+	execution: LayoutOptions | RegionExecutionContext,
 ): LayoutResult {
 	const options = layoutOptions(execution);
 	const region = normalizeRootRegion(graph, ranks);
@@ -245,7 +247,7 @@ export function layoutWithRootRegionForProjection(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 ): LayoutResult {
 	return layoutWithRootRegionExecution(graph, ranks, measurements, {
 		options: {},

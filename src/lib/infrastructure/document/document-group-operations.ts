@@ -8,6 +8,7 @@ import {
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
+	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import {
 	normalizeRegionPresentation,
@@ -22,6 +23,7 @@ function hasRegionPresentation(document: LogicDocument): boolean {
 		GRID_PERSISTENCE_FORMAT,
 		REGION_LANE_PERSISTENCE_FORMAT,
 		REGION_COMPOSITION_PERSISTENCE_FORMAT,
+		REGION_POLICY_PERSISTENCE_FORMAT,
 	];
 	return regionFormats.includes(document.persistenceFormat);
 }

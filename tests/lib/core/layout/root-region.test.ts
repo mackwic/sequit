@@ -14,11 +14,11 @@ import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-c
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
-import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
@@ -30,7 +30,7 @@ import {
 	UnknownGridCellLayoutError,
 	UnsupportedGridCellLayoutError,
 	UnsupportedLayoutPresentationError,
-	UnsupportedNestedRegionLayoutError,
+	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
 import {
 	LAYOUT_CONFIGURATIONS,
@@ -61,7 +61,9 @@ describe('implicit root layout region', () => {
 		expect(region.ranks).toBe(prepared.ranks);
 		expect(region.graph.document).toBe(prepared.document);
 		const input = nestedRegionInput(prepared.graph);
-		expect(input.regions).toEqual([{ id: '@root', layoutOrder: 'a0' }]);
+		expect(input.regions).toEqual([
+			{ id: '@root', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
+		]);
 		expect(new Set(input.regionByEndpointId.values())).toEqual(new Set(['@root']));
 		expect(input.regionByEndpointId.size).toBe(prepared.graph.endpointsById.size);
 	});
@@ -188,7 +190,7 @@ describe('implicit root layout region', () => {
 			nestedRegionInput(extraCrossing.graph),
 		);
 		expect(attempt).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 			regionId: '@root',
 		});
@@ -305,7 +307,7 @@ describe('implicit root layout region', () => {
 		const prepared = prepareLayoutDocument(persistedRegionDocument(regionDocument('a-source')));
 		const input = nestedRegionInput(prepared.graph);
 		const selected = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		if (selected.status !== NestedRegionLayoutStatus.Selected)
+		if (selected.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected crossing: ${selected.status}: ${selected.reason}`);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -330,7 +332,7 @@ describe('implicit root layout region', () => {
 		});
 		expect(() =>
 			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements),
-		).toThrow(UnsupportedNestedRegionLayoutError);
+		).toThrow(UnsupportedRegionLayoutError);
 	});
 
 	it('rejects root-owned nodes and invalid region references explicitly', () => {
@@ -352,7 +354,7 @@ describe('implicit root layout region', () => {
 		});
 		expect(() =>
 			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements),
-		).toThrow(UnsupportedNestedRegionLayoutError);
+		).toThrow(UnsupportedRegionLayoutError);
 
 		const invalid = {
 			...document,
@@ -365,6 +367,6 @@ describe('implicit root layout region', () => {
 		if (!graph.ok) throw new Error('Expected an acyclic graph');
 		expect(() =>
 			layoutWithRootRegion(graph.value, topologicallyRank(graph.value), prepared.measurements),
-		).toThrow(UnsupportedNestedRegionLayoutError);
+		).toThrow(UnsupportedRegionLayoutError);
 	});
 });

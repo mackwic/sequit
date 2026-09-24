@@ -14,19 +14,19 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	type NestedRegionInput,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutSelected,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import type { PreparedLayoutDocument } from '../../../support/harnesses/layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
@@ -34,7 +34,7 @@ import {
 	persistedNestedGridWithLaneCellDocument,
 } from './nested-region-fixture';
 
-function regionInput(document: LogicDocument): NestedRegionInput {
+function regionInput(document: LogicDocument): RegionInput {
 	const presentation = defined(document.regionPresentation);
 	const groups = new Map(document.groups.map((group) => [group.id, group]));
 	function ownerRegion(endpoint: {
@@ -63,20 +63,20 @@ function regionInput(document: LogicDocument): NestedRegionInput {
 
 function selected(
 	prepared: PreparedLayoutDocument,
-	input: NestedRegionInput,
+	input: RegionInput,
 	measurements: LayoutMeasurements = prepared.measurements,
-	cache?: NestedRegionLocalLayoutCache,
-): NestedRegionSelected {
+	cache?: RegionLocalLayoutCache,
+): RegionLayoutSelected {
 	const result = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input, cache);
-	if (result.status !== NestedRegionLayoutStatus.Selected)
+	if (result.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected internal group portal: ${result.status}: ${result.reason}`);
 	return result;
 }
 
 function validated(
 	prepared: PreparedLayoutDocument,
-	input: NestedRegionInput,
-	result: NestedRegionSelected,
+	input: RegionInput,
+	result: RegionLayoutSelected,
 ): void {
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -153,7 +153,7 @@ describe('direct group portals owned by an internal grid', () => {
 				'cell-group',
 			)?.minimumHeight,
 		).toBe(56);
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = selected(prepared, input, measurements, cache);
 		expect(first).toEqual(selected(prepared, input, measurements));
 		validated(prepared, input, first);
@@ -223,7 +223,7 @@ describe('direct group portals owned by an internal grid', () => {
 				regionInput(document),
 			),
 		).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 			regionId: 'grid',
 			relationId: 'group-crossing',
@@ -368,7 +368,7 @@ describe('direct group portals owned by an internal grid', () => {
 				regionInput(document),
 			),
 		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
+			status: RegionCompositionStatus.Unsupported,
 			reason: 'Groups with descendants are outside the first shared layout policy.',
 		});
 	});
@@ -419,7 +419,7 @@ describe('direct group portals owned by an internal grid', () => {
 		expect(
 			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
 		).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 			regionId: 'grid',
 			reason: 'Cross-cell relation group-crossing enters element d2.',

@@ -18,14 +18,14 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function selected(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	input: GridCellInput,
-	cache: NestedRegionLocalLayoutCache,
+	cache: RegionLocalLayoutCache,
 ) {
 	const incremental = solveGridCellLayout(graph, measurements, input, cache);
 	expect(incremental).toEqual(solveGridCellLayout(graph, measurements, input));
@@ -41,7 +41,7 @@ it('reuses grouped grid leaves by effective measurements through edits and permu
 	const nodes = new Map(prepared.measurements.nodes);
 	nodes.set('a-bottom', { width: 220, height: 24 });
 	const measurements = { ...prepared.measurements, nodes };
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	const original = selected(prepared.graph, measurements, input, cache);
 	expect(cache.stats).toEqual({ entries: 4, hits: 0, misses: 4, evictions: 0 });
 
@@ -142,7 +142,7 @@ it('reserves two direct group ports and keeps cached and cold grid results equal
 	expect(groupDemand?.minimum).toBe(56);
 	expect(demanded.groups.get('oversized')?.minimumHeight).toBe(56);
 
-	const cache = new NestedRegionLocalLayoutCache();
+	const cache = new RegionLocalLayoutCache();
 	const original = selected(prepared.graph, measurements, input, cache);
 	const group = defined(original.layout.elements.find(({ id }) => id === 'oversized'));
 	const routes = new Map(original.layout.relations.map((route) => [route.id, route]));

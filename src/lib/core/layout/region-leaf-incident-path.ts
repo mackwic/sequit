@@ -1,16 +1,7 @@
 import { defined } from '../document/logic-document';
 import type { LayoutResult, Point } from './layout-types';
 import { boundaryPortal, type RegionIncidentPath } from './nested-region-recursive-geometry';
-import { NestedPortalSide } from './nested-region-types';
-import { RegionPortalSide } from './region-composition-types';
 import { RegionIncidentRole, type RegionSolvedIncident } from './region-incident-contract';
-
-const NESTED_SIDE: Readonly<Record<RegionPortalSide, NestedPortalSide>> = {
-	[RegionPortalSide.Top]: NestedPortalSide.Top,
-	[RegionPortalSide.Right]: NestedPortalSide.Right,
-	[RegionPortalSide.Bottom]: NestedPortalSide.Bottom,
-	[RegionPortalSide.Left]: NestedPortalSide.Left,
-};
 
 function sameAxis(first: Point, middle: Point, last: Point): boolean {
 	const sameColumn = first.x === middle.x && middle.x === last.x;
@@ -32,12 +23,11 @@ export function regionLeafIncidentPath(
 	layout: LayoutResult,
 	incident: RegionSolvedIncident,
 ): RegionIncidentPath {
-	const side = NESTED_SIDE[incident.side];
 	const portal = boundaryPortal({
 		relationId: incident.relationId,
 		endpointId: incident.endpointId,
 		regionId,
-		side,
+		side: incident.side,
 		x: incident.portal.x,
 		y: incident.portal.y,
 		canvasWidth: layout.width,

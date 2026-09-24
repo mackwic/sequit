@@ -1,9 +1,9 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import type { NestedRegionDefinition } from './nested-region-types';
+import type { RegionDefinition } from './region-composition-types';
 
 export interface RegionCompositionNode {
-	readonly definition: NestedRegionDefinition;
+	readonly definition: RegionDefinition;
 	readonly id: string;
 	readonly parentId?: string;
 	readonly childIds: readonly string[];
@@ -11,7 +11,7 @@ export interface RegionCompositionNode {
 }
 
 export function parentCycle(
-	definitions: ReadonlyMap<string, NestedRegionDefinition>,
+	definitions: ReadonlyMap<string, RegionDefinition>,
 ): readonly string[] | undefined {
 	const done = new Set<string>();
 	for (const start of [...definitions.keys()].sort(compareCanonicalStrings)) {
@@ -32,7 +32,7 @@ export function parentCycle(
 }
 
 function orderedChildren(
-	definitions: ReadonlyMap<string, NestedRegionDefinition>,
+	definitions: ReadonlyMap<string, RegionDefinition>,
 ): ReadonlyMap<string, readonly string[]> {
 	const children = new Map([...definitions.keys()].map((id) => [id, [] as string[]]));
 	for (const definition of definitions.values())
@@ -52,7 +52,7 @@ function orderedChildren(
 
 export function normalizedRegions(
 	rootId: string,
-	definitions: ReadonlyMap<string, NestedRegionDefinition>,
+	definitions: ReadonlyMap<string, RegionDefinition>,
 ): {
 	readonly preorderIds: readonly string[];
 	readonly byId: ReadonlyMap<string, RegionCompositionNode>;

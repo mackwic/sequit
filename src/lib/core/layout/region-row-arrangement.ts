@@ -7,7 +7,6 @@ import {
 	sortedElements,
 	translatedChildren,
 } from './nested-region-recursive-geometry';
-import { NestedPortalSide } from './nested-region-types';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
@@ -22,9 +21,9 @@ interface RowPlaced {
 	readonly size: ReturnType<typeof rowSize>;
 }
 
-function rowSide(side: RegionPortalSide): NestedPortalSide {
-	if (side === RegionPortalSide.Top) return NestedPortalSide.Top;
-	if (side === RegionPortalSide.Bottom) return NestedPortalSide.Bottom;
+function rowSide(side: RegionPortalSide): RegionPortalSide {
+	if (side === RegionPortalSide.Top) return RegionPortalSide.Top;
+	if (side === RegionPortalSide.Bottom) return RegionPortalSide.Bottom;
 	throw new UnsupportedRegionLeafLayoutError(`A row has no ${side} routing disposition.`);
 }
 

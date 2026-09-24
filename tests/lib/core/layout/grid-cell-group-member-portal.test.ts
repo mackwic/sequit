@@ -7,19 +7,19 @@ import {
 	crossingMetricDemands,
 } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	NestedPortalSide,
-	NestedRegionLayoutStatus,
-	type NestedRegionSelected,
-} from '../../../../src/lib/core/layout/nested-region-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionLayoutSelected,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithGroupPortalDocument } from './nested-region-fixture';
@@ -35,7 +35,7 @@ function memberDocument(from = 'b', to = 'd'): LogicDocument {
 	};
 }
 
-function attempt(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) {
+function attempt(document: LogicDocument, cache?: RegionLocalLayoutCache) {
 	const prepared = prepareLayoutDocument(document);
 	const input = nestedRegionInput(prepared.graph);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
@@ -49,21 +49,21 @@ function attempt(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) 
 	);
 	const cold = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 	expect(result).toEqual(cold);
-	if (result.status === NestedRegionLayoutStatus.Selected) {
+	if (result.status === RegionCompositionStatus.Selected) {
 		expect(validateRegionCompositionGeometry(normalized.model, result)).toBeUndefined();
 		expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
 	}
 	return { result, model: normalized.model };
 }
 
-function selected(document: LogicDocument, cache?: NestedRegionLocalLayoutCache) {
+function selected(document: LogicDocument, cache?: RegionLocalLayoutCache) {
 	const { result, model } = attempt(document, cache);
-	if (result.status !== NestedRegionLayoutStatus.Selected)
+	if (result.status !== RegionCompositionStatus.Selected)
 		throw new Error(`Expected selected member portal: ${result.status}: ${result.reason}`);
 	return { result, model };
 }
 
-function leafPiece(result: NestedRegionSelected) {
+function leafPiece(result: RegionLayoutSelected) {
 	return defined(
 		result.ownedRoutes.find(
 			({ relationId, regionId }) => relationId === 'group-crossing' && regionId === 'b',
@@ -108,13 +108,13 @@ describe('direct group member crossing an internal grid cell', () => {
 				result.portals.find(
 					({ relationId, regionId }) => relationId === 'group-crossing' && regionId === 'b',
 				)?.side,
-			).toBe(NestedPortalSide.Right);
+			).toBe(RegionPortalSide.Right);
 		},
 	);
 
 	it('reuses local geometry under permutations and invalidates a resized group', () => {
 		const document = memberDocument();
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const first = selected(document, cache).result;
 		const permuted: LogicDocument = {
 			...document,
@@ -139,7 +139,7 @@ describe('direct group member crossing an internal grid cell', () => {
 		const input = nestedRegionInput(prepared.graph);
 		const incremental = solveRecursiveNestedRegionLayout(prepared.graph, resized, input, cache);
 		expect(incremental).toEqual(solveRecursiveNestedRegionLayout(prepared.graph, resized, input));
-		expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
+		expect(incremental.status).toBe(RegionCompositionStatus.Selected);
 	});
 
 	it('reserves two distinct member ports when two cells receive crossings', () => {
@@ -163,10 +163,10 @@ describe('direct group member crossing an internal grid cell', () => {
 				height: 20,
 			}),
 		};
-		const cache = new NestedRegionLocalLayoutCache();
+		const cache = new RegionLocalLayoutCache();
 		const result = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input, cache);
 		expect(result).toEqual(solveRecursiveNestedRegionLayout(prepared.graph, measurements, input));
-		if (result.status !== NestedRegionLayoutStatus.Selected)
+		if (result.status !== RegionCompositionStatus.Selected)
 			throw new Error(`Expected selected member ports: ${result.status}: ${result.reason}`);
 		expect(validateRegionCompositionGeometry(normalized.model, result)).toBeUndefined();
 		expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
@@ -226,7 +226,7 @@ describe('direct group member crossing an internal grid cell', () => {
 			}),
 		};
 		expect(attempt(blocked).result).toMatchObject({
-			status: NestedRegionLayoutStatus.Unknown,
+			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 			regionId: 'grid',
 			reason: 'Cross-cell relation group-crossing enters element b-obstacle.',

@@ -4,11 +4,11 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
 import { PARENT_BUS_SPACING, REGION_PADDING } from './nested-region-crossing-routing';
 import {
-	type NestedOwnedRoute,
-	NestedPortalSide,
-	type NestedRegionPlacement,
-	type NestedRegionPortal,
-} from './nested-region-types';
+	type RegionChildPlacement,
+	type RegionOwnedRoute,
+	type RegionPortal,
+	RegionPortalSide,
+} from './region-composition-types';
 
 const REGION_GAP = 96;
 const ROOT_MARGIN = 48;
@@ -16,23 +16,23 @@ const ROOT_MARGIN = 48;
 export interface RegionIncidentPath {
 	readonly relationId: string;
 	readonly endpointId: string;
-	readonly pieces: readonly NestedOwnedRoute[];
-	readonly portals: readonly NestedRegionPortal[];
+	readonly pieces: readonly RegionOwnedRoute[];
+	readonly portals: readonly RegionPortal[];
 }
 
 export interface SolvedRecursiveRegion {
 	readonly layout: LayoutResult;
 	readonly ranks: TopologicalRanks;
-	readonly regions: readonly NestedRegionPlacement[];
-	readonly portals: readonly NestedRegionPortal[];
-	readonly ownedRoutes: readonly NestedOwnedRoute[];
+	readonly regions: readonly RegionChildPlacement[];
+	readonly portals: readonly RegionPortal[];
+	readonly ownedRoutes: readonly RegionOwnedRoute[];
 	readonly incidentPaths: ReadonlyMap<string, RegionIncidentPath>;
 }
 
 interface TranslatedChildrenResult {
-	readonly regions: readonly NestedRegionPlacement[];
-	readonly portals: readonly NestedRegionPortal[];
-	readonly ownedRoutes: readonly NestedOwnedRoute[];
+	readonly regions: readonly RegionChildPlacement[];
+	readonly portals: readonly RegionPortal[];
+	readonly ownedRoutes: readonly RegionOwnedRoute[];
 	readonly elements: readonly LayoutElement[];
 	readonly relations: readonly LayoutRelation[];
 	readonly lanes: NonNullable<LayoutResult['lanes']>;
@@ -46,14 +46,14 @@ interface RowBusInput {
 	readonly target: Point;
 	readonly childTop: number;
 	readonly bottomBusEdge: number;
-	readonly portalSide: NestedPortalSide;
+	readonly portalSide: RegionPortalSide;
 }
 
 interface BoundaryPortalInput {
 	readonly relationId: string;
 	readonly endpointId: string;
 	readonly regionId: string;
-	readonly side: NestedPortalSide;
+	readonly side: RegionPortalSide;
 	readonly x: number;
 	/** Required for a left or right portal. */
 	readonly y?: number;
@@ -77,11 +77,11 @@ function translatedRelation(relation: LayoutRelation, delta: Point): LayoutRelat
 	};
 }
 
-function translatedPortal(portal: NestedRegionPortal, delta: Point): NestedRegionPortal {
+function translatedPortal(portal: RegionPortal, delta: Point): RegionPortal {
 	return { ...portal, point: translated(portal.point, delta) };
 }
 
-function translatedOwnedRoute(route: NestedOwnedRoute, delta: Point): NestedOwnedRoute {
+function translatedOwnedRoute(route: RegionOwnedRoute, delta: Point): RegionOwnedRoute {
 	return {
 		...route,
 		points: route.points.map((point) => translated(point, delta)),
@@ -101,11 +101,11 @@ export function translatedChildren(
 		readonly id: string;
 		readonly solved: SolvedRecursiveRegion;
 	}[],
-	placements: readonly NestedRegionPlacement[],
+	placements: readonly RegionChildPlacement[],
 ): TranslatedChildrenResult {
-	const regions: NestedRegionPlacement[] = [];
-	const portals: NestedRegionPortal[] = [];
-	const ownedRoutes: NestedOwnedRoute[] = [];
+	const regions: RegionChildPlacement[] = [];
+	const portals: RegionPortal[] = [];
+	const ownedRoutes: RegionOwnedRoute[] = [];
 	const elements: LayoutElement[] = [];
 	const relations: LayoutRelation[] = [];
 	const lanes: NonNullable<LayoutResult['lanes']>[number][] = [];
@@ -157,11 +157,11 @@ export function childPlacements(
 		readonly id: string;
 		readonly solved: SolvedRecursiveRegion;
 	}[],
-	portalSide: NestedPortalSide,
+	portalSide: RegionPortalSide,
 	crossingCount: number,
-): readonly NestedRegionPlacement[] {
+): readonly RegionChildPlacement[] {
 	let top = 64;
-	if (portalSide === NestedPortalSide.Top) top += crossingCount * PARENT_BUS_SPACING;
+	if (portalSide === RegionPortalSide.Top) top += crossingCount * PARENT_BUS_SPACING;
 	let left = ROOT_MARGIN;
 	return children.map(({ id, solved }) => {
 		const bounds = {
@@ -186,8 +186,8 @@ export function childPlacements(
 }
 
 export function rowSize(
-	placements: readonly NestedRegionPlacement[],
-	portalSide: NestedPortalSide,
+	placements: readonly RegionChildPlacement[],
+	portalSide: RegionPortalSide,
 	crossingCount: number,
 ): {
 	readonly width: number;
@@ -197,7 +197,7 @@ export function rowSize(
 	const bottomBusEdge = Math.max(...placements.map(({ bounds }) => bounds.y + bounds.height));
 	const width = Math.max(...placements.map(({ bounds }) => bounds.x + bounds.width)) + ROOT_MARGIN;
 	let height = bottomBusEdge + ROOT_MARGIN;
-	if (portalSide === NestedPortalSide.Bottom) height += crossingCount * PARENT_BUS_SPACING;
+	if (portalSide === RegionPortalSide.Bottom) height += crossingCount * PARENT_BUS_SPACING;
 	return { width, height, bottomBusEdge };
 }
 
@@ -210,10 +210,10 @@ export function rowBus({
 	childTop,
 	bottomBusEdge,
 	portalSide,
-}: RowBusInput): NestedOwnedRoute {
+}: RowBusInput): RegionOwnedRoute {
 	const offset = PARENT_BUS_SPACING * (index + 1);
 	let y = childTop - offset;
-	if (portalSide === NestedPortalSide.Bottom) y = bottomBusEdge + offset;
+	if (portalSide === RegionPortalSide.Bottom) y = bottomBusEdge + offset;
 	return {
 		relationId: relation.id,
 		regionId,
@@ -230,12 +230,12 @@ export function boundaryPortal({
 	y: incidentY,
 	canvasWidth,
 	canvasHeight,
-}: BoundaryPortalInput): NestedRegionPortal {
-	if (side === NestedPortalSide.Left || side === NestedPortalSide.Right) {
+}: BoundaryPortalInput): RegionPortal {
+	if (side === RegionPortalSide.Left || side === RegionPortalSide.Right) {
 		const y = defined(incidentY, 'A lateral boundary portal needs its vertical coordinate.');
 		let boundaryX = -REGION_PADDING;
 		let localX = 0;
-		if (side === NestedPortalSide.Right) {
+		if (side === RegionPortalSide.Right) {
 			const width = defined(canvasWidth, 'A right boundary portal needs its canvas width.');
 			boundaryX = width + REGION_PADDING;
 			localX = width + REGION_PADDING * 2;
@@ -251,7 +251,7 @@ export function boundaryPortal({
 	}
 	let y = -REGION_PADDING;
 	let localY = 0;
-	if (side === NestedPortalSide.Bottom) {
+	if (side === RegionPortalSide.Bottom) {
 		y = canvasHeight + REGION_PADDING;
 		localY = canvasHeight + REGION_PADDING * 2;
 	}
@@ -267,7 +267,7 @@ export function boundaryPortal({
 
 export function stitchedRoute(
 	relation: LogicRelation,
-	pieces: readonly NestedOwnedRoute[],
+	pieces: readonly RegionOwnedRoute[],
 ): LayoutRelation {
 	const points: Point[] = [];
 	for (const piece of pieces) {

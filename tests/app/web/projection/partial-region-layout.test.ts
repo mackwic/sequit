@@ -22,7 +22,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
-import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	readSourceDocumentState,
 	SourceDocumentStateKind,
@@ -112,7 +112,7 @@ describe('partial region layout projection', () => {
 		const previews = partialRegionPreviews(
 			graphFor(document),
 			layoutMeasurementsForCanvas(projection.measurementModel),
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(previews.find(({ regionId }) => regionId === 'branch')).toBeUndefined();
 		expect(previews.some(({ kind }) => kind === RegionPreviewKind.Ready)).toBe(false);
@@ -130,7 +130,7 @@ describe('partial region layout projection', () => {
 		const previews = partialRegionPreviews(
 			graphFor(document),
 			layoutMeasurementsForCanvas(projection.measurementModel),
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(previews.find(({ regionId }) => regionId === 'branch')).toBeUndefined();
 		expect(previews.find(({ regionId }) => regionId === 'ordinary')).toMatchObject({
@@ -153,15 +153,11 @@ describe('partial region layout projection', () => {
 		const graph = graphFor(document);
 		const projection = createSharedCanvasProjection(document);
 		const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
-		const incremental = partialRegionPreviews(
-			graph,
-			measurements,
-			new NestedRegionLocalLayoutCache(),
-		);
+		const incremental = partialRegionPreviews(graph, measurements, new RegionLocalLayoutCache());
 		const cold = partialRegionPreviews(
 			graphFor(document),
 			measurements,
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(incremental).toEqual(cold);
 		expect(incremental).toEqual([]);
@@ -176,7 +172,7 @@ describe('partial region layout projection', () => {
 		const previews = partialRegionPreviews(
 			graphFor(document),
 			{ ...measured, nodes },
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(previews).toMatchObject([
 			{
@@ -361,7 +357,7 @@ describe('partial region layout projection', () => {
 		const regions = partialRegionPreviews(
 			graphFor(document),
 			layoutMeasurementsForCanvas(projection.measurementModel),
-			new NestedRegionLocalLayoutCache(),
+			new RegionLocalLayoutCache(),
 		);
 		expect(regions).toEqual([]);
 		const failure = await layoutFailureFromProjection(projection);
@@ -373,7 +369,7 @@ describe('partial region layout projection', () => {
 				ordinaryFailure,
 				graphFor(document),
 				layoutMeasurementsForCanvas(projection.measurementModel),
-				new NestedRegionLocalLayoutCache(),
+				new RegionLocalLayoutCache(),
 			),
 		).toBe(ordinaryFailure);
 	});
