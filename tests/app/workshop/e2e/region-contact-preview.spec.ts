@@ -26,7 +26,7 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 
 	const grid = explorer.getByTestId('contact-case-grid-contact');
 	await expect(grid).toContainText('Document grid-contact-witness · 6 nœuds · 2 relations');
-	await expect(grid).toContainText('across-grid touche cette sortie sans pont');
+	await expect(grid).toContainText('across-grid croise cette sortie');
 	const gridValid = grid.getByTestId('contact-panel-grid-contact-validated');
 	const gridDirect = grid.getByTestId('contact-panel-grid-contact-direct-exit');
 	const gridCrossing = grid.getByTestId('contact-panel-grid-contact-strict-crossing');
@@ -39,7 +39,7 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 	await expect(gridCrossing.getByTestId('contact-status')).toHaveText('Rejeté');
 	await expect(gridCrossing.getByTestId('strict-crossing-probe')).toHaveCount(1);
 	await expect(gridCrossing).toContainText('hypothèse');
-	await expect(explorer).toContainText('aucun pont n’est validé ici');
+	await expect(explorer).toContainText('l’oracle de pont le valide');
 	for (const candidate of [gridDirect, gridCrossing]) {
 		expect(await gridValid.locator('svg').getAttribute('viewBox')).toBe(
 			await candidate.locator('svg').getAttribute('viewBox'),

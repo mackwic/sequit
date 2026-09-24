@@ -416,6 +416,23 @@ describe('a grid disposition inside the recursive region tree', () => {
 		).toBeUndefined();
 	});
 
+	it('reports the unbridged parent contact when the relations are omitted', () => {
+		const { document, input } = nestedGridFixture();
+		const prepared = prepareLayoutDocument({
+			...document,
+			relations: [...document.relations, { id: 'leaves-grid', from: 'a-target', to: 'outside' }],
+		});
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized external-incident grid');
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		expect(diagnoseParentRouteContacts(normalized.model, attempt.ownedRoutes)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+		});
+	});
+
 	it('bridges an external incident crossing a grid rail and keeps the scene selected', () => {
 		const { document, input } = nestedGridFixture();
 		const prepared = prepareLayoutDocument({

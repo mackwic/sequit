@@ -183,7 +183,7 @@ function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previou
 		points.push(point);
 		scan.carried.set(carrier, points);
 	}
-	const crossed = groups.find((group) => group !== carriers) ?? [];
+	const crossed = groups.filter((group) => group !== carriers).flat();
 	const bridge: LayoutBridge = {
 		...point,
 		carrierIds: [...new Set(carriers.map(({ pathId }) => pathId))].sort(compareCanonicalStrings),
@@ -244,12 +244,7 @@ export function routeBridgeAnalysis(paths: readonly RoutedPath[]): RouteBridgeAn
 		bridges: [...scan.bridges.values()].sort((left, right) => {
 			const byPoint = left.x - right.x || left.y - right.y;
 			if (byPoint !== 0) return byPoint;
-			const byCarrier = compareCanonicalStrings(
-				left.carrierIds.join(','),
-				right.carrierIds.join(','),
-			);
-			if (byCarrier !== 0) return byCarrier;
-			return compareCanonicalStrings(left.crossedIds.join(','), right.crossedIds.join(','));
+			return compareCanonicalStrings(canonicalBridgeKey(left), canonicalBridgeKey(right));
 		}),
 	};
 }

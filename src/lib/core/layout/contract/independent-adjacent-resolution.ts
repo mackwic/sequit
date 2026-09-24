@@ -231,7 +231,8 @@ export function resolveIndependentAdjacentContract(
 	const detour = bestOfIssue(selections, IndependentAdjacentIssue.Detour);
 	const bridge = bestOfIssue(selections, IndependentAdjacentIssue.Bridge);
 	const selected = arbitrateIssue(detour, bridge);
-	const comparison = compareIssues(detour, bridge, selected);
+	let comparison: IndependentAdjacentComparison | undefined;
+	if (selected !== undefined) comparison = compareIssues(detour, bridge, selected);
 	let trace: SearchTrace = {
 		contract,
 		scope: contract.shape,
@@ -260,11 +261,9 @@ export function resolveIndependentAdjacentContract(
 function compareIssues(
 	detour: IndependentAdjacentSelection | undefined,
 	bridge: IndependentAdjacentSelection | undefined,
-	selected: IndependentAdjacentSelection | undefined,
+	selected: IndependentAdjacentSelection,
 ): IndependentAdjacentComparison | undefined {
-	if (detour === undefined) return undefined;
-	if (bridge === undefined) return undefined;
-	if (selected === undefined) return undefined;
+	if (detour === undefined || bridge === undefined) return undefined;
 	let issue = IndependentAdjacentIssue.Detour;
 	if (selected.bridged) issue = IndependentAdjacentIssue.Bridge;
 	return { selected: issue, detour: detour.cost, bridge: bridge.cost };

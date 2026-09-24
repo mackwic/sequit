@@ -17,7 +17,7 @@ test('compares the real adjacent bridge with an independently validated detour o
 		'Valide géométriquement selon la politique du moteur dédié',
 	);
 	await expect(independent).toContainText(
-		'Valide géométriquement selon la politique sans croisement strict',
+		'Admet les croisements portés par un pont validé puis arbitre détour et pont par les tolérances déclarées',
 	);
 	await expect(dedicated).toContainText('Ordre cible : d < e');
 	await expect(independent).toContainText('Ordre cible : e < d');

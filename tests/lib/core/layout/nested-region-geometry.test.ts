@@ -239,6 +239,53 @@ describe('nested region geometry oracle', () => {
 		).toBe(false);
 	});
 
+	it('detects orthogonal path contact for every pair of segment orientations', () => {
+		const vertical = [
+			{ x: 0, y: 0 },
+			{ x: 0, y: 10 },
+		];
+		const overlappingVertical = [
+			{ x: 0, y: 5 },
+			{ x: 0, y: 20 },
+		];
+		const parallelVertical = [
+			{ x: 1, y: 5 },
+			{ x: 1, y: 20 },
+		];
+		const horizontal = [
+			{ x: 0, y: 0 },
+			{ x: 10, y: 0 },
+		];
+		const overlappingHorizontal = [
+			{ x: 5, y: 0 },
+			{ x: 20, y: 0 },
+		];
+		const parallelHorizontal = [
+			{ x: 5, y: 1 },
+			{ x: 20, y: 1 },
+		];
+		expect(orthogonalPathsTouch(vertical, overlappingVertical)).toBe(true);
+		expect(orthogonalPathsTouch(vertical, parallelVertical)).toBe(false);
+		expect(orthogonalPathsTouch(horizontal, overlappingHorizontal)).toBe(true);
+		expect(orthogonalPathsTouch(horizontal, parallelHorizontal)).toBe(false);
+		const crossingVertical = [
+			{ x: 5, y: 0 },
+			{ x: 5, y: 10 },
+		];
+		const crossingHorizontal = [
+			{ x: 0, y: 5 },
+			{ x: 10, y: 5 },
+		];
+		expect(orthogonalPathsTouch(crossingVertical, crossingHorizontal)).toBe(true);
+		expect(orthogonalPathsTouch(crossingHorizontal, crossingVertical)).toBe(true);
+		expect(
+			orthogonalPathsTouch(crossingVertical, [
+				{ x: 5, y: 20 },
+				{ x: 20, y: 20 },
+			]),
+		).toBe(false);
+	});
+
 	it.each([
 		[
 			'invalid root dimensions',

@@ -1000,6 +1000,18 @@ describe('adjacent node LayoutContract', () => {
 		expect(resolved.selection.bridged).toBe(false);
 	});
 
+	it('reports no comparison when no candidate keeps a bridged crossing', () => {
+		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
+		const ranks = topologicallyRank(source);
+		const measured = measurements();
+		mockMaterials(detourMockLayout(100, 100), () => detourMockLayout(100, 100));
+		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
+		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
+		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
+		expect(resolved.selection.bridged).toBe(false);
+		expect(resolved.comparison).toBeUndefined();
+	});
+
 	it('does not materialize a malformed adjacent face contract', () => {
 		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
 		const measured = measurements();

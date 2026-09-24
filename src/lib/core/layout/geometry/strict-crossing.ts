@@ -13,13 +13,11 @@ export function strictlyBetween(value: number, first: number, second: number): b
  */
 export function strictCrossing(a: Point, b: Point, c: Point, d: Point): Point | undefined {
 	if (a.x === b.x && c.y === d.y) {
-		if (strictlyBetween(a.x, c.x, d.x) && strictlyBetween(c.y, a.y, b.y))
-			return { x: a.x, y: c.y };
+		if (strictlyBetween(a.x, c.x, d.x) && strictlyBetween(c.y, a.y, b.y)) return { x: a.x, y: c.y };
 		return undefined;
 	}
 	if (a.y === b.y && c.x === d.x) {
-		if (strictlyBetween(c.x, a.x, b.x) && strictlyBetween(a.y, c.y, d.y))
-			return { x: c.x, y: a.y };
+		if (strictlyBetween(c.x, a.x, b.x) && strictlyBetween(a.y, c.y, d.y)) return { x: c.x, y: a.y };
 		return undefined;
 	}
 	return undefined;
