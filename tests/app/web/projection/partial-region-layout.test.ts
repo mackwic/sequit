@@ -22,7 +22,10 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { UnknownRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
 import {
 	readSourceDocumentState,
 	SourceDocumentStateKind,
@@ -64,6 +67,11 @@ describe('partial region layout projection', () => {
 				kind: 'diagnostic',
 				regionId: 'shared',
 				code: RegionPreviewFailureCode.Unknown,
+				failure: {
+					status: RegionCompositionStatus.Unknown,
+					code: RegionIncidentUnknownCode.NoValidAlternative,
+					witness: { exhaustive: true },
+				},
 			},
 			{
 				kind: 'ready',
@@ -71,6 +79,13 @@ describe('partial region layout projection', () => {
 				canvas: { relations: [], nodes: [{ id: 'neighbor' }] },
 			},
 		]);
+		expect(failure.cause).toBeInstanceOf(UnknownRegionLayoutError);
+		if (failure.cause instanceof UnknownRegionLayoutError)
+			expect(failure.cause.diagnostic).toMatchObject({
+				status: RegionCompositionStatus.Unknown,
+				code: RegionIncidentUnknownCode.NoValidAlternative,
+				witness: { exhaustive: true },
+			});
 		expect(failure.regions?.find(({ regionId }) => regionId === 'ordinary')).toMatchObject({
 			canvas: { nodes: [{ markdown: 'Neighbor\n' }] },
 		});

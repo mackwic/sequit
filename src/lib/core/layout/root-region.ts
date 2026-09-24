@@ -68,6 +68,7 @@ export class UnknownRegionLayoutError extends Error {
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
+		readonly diagnostic?: Extract<RegionLayoutAttempt, { status: RegionCompositionStatus.Unknown }>,
 	) {
 		super(`Nested region layout is unresolved for document ${documentId}: ${reason}`);
 		this.name = 'UnknownRegionLayoutError';
@@ -203,7 +204,7 @@ function layoutWithNestedRegions(
 		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason);
 	}
 	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);
-	throw new UnknownRegionLayoutError(graph.document.id, attempt.reason);
+	throw new UnknownRegionLayoutError(graph.document.id, attempt.reason, attempt);
 }
 
 function layoutOptions(execution: LayoutOptions | RegionExecutionContext): LayoutOptions {

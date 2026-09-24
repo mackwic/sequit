@@ -60,7 +60,7 @@ function solveLeaf(input: RegionLeafLayoutInput): RegionLocalLayout {
 			if (attempt.status === SharedLaneLayoutStatus.Unsupported)
 				throw new UnsupportedRegionLeafLayoutError(attempt.reason);
 			if (attempt.status === SharedLaneLayoutStatus.Unknown)
-				throw new UnknownRegionLeafLayoutError(attempt.reason);
+				throw new UnknownRegionLeafLayoutError(attempt.reason, attempt.code, attempt.witness);
 			return {
 				layout: attempt.layout,
 				ranks,
