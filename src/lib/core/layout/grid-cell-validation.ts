@@ -12,7 +12,11 @@ import {
 } from './grid-cell-geometry-primitives';
 import { validateGridCellGroupContainment } from './grid-cell-group-validation';
 import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
-import { validateCrossPortals, validateCrossPorts } from './grid-cell-port-validation';
+import {
+	validateCrossPortals,
+	validateCrossPorts,
+	validateCrossPortStacking,
+} from './grid-cell-port-validation';
 import type { GridCellInput, GridCellPlacement, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation } from './layout-types';
 import {
@@ -283,6 +287,9 @@ function relationGeometry(
 		const failure = checkRelationGeometry(context, relation, routes.get(relation.id));
 		if (failure !== undefined) return failure;
 	}
+	const stacking = validateCrossPortStacking(candidate, crossing);
+	if (stacking !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPort, stacking);
 	const overlap = crossingOverlap(crossing.map(({ id }) => defined(routes.get(id))));
 	if (overlap !== undefined)
 		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingOverlap, overlap);

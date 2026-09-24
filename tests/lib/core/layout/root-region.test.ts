@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	LayoutBias,
 	LayoutDirection,
 	LayoutPolicy,
@@ -8,10 +9,11 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { entersInterior } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import {
@@ -20,7 +22,6 @@ import {
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	LayoutRegionKind,
 	LayoutRegionPolicy,
@@ -48,6 +49,24 @@ import {
 	persistedRegionDocument,
 	regionDocument,
 } from './nested-region-fixture';
+
+/** Opacity witness: no segment of the route enters a foreign cell. */
+function foreignCellEntry(
+	layout: LayoutResult,
+	route: LayoutRelation,
+	foreign: readonly string[],
+): string | undefined {
+	for (const id of foreign) {
+		const cell = layout.regions?.find((region) => region.id === id);
+		if (cell === undefined) throw new Error(`Missing cell ${id}`);
+		for (let index = 0; index < route.points.length - 1; index += 1)
+			if (
+				entersInterior(defined(route.points[index]), defined(route.points[index + 1]), cell.bounds)
+			)
+				return id;
+	}
+	return undefined;
+}
 
 describe('implicit root layout region', () => {
 	it('normalizes a legacy document as one virtual region borrowing its graph and ranks', () => {
@@ -178,7 +197,7 @@ describe('implicit root layout region', () => {
 		expect(layout.relations.map(({ id }) => id)).toEqual(['across-grid', 'inside-a', 'inside-b']);
 	});
 
-	it('rejects an unbridged contact between three persisted root grid crossings', () => {
+	it('selects an unbridged three-route contact by reallocating the exterior rails', () => {
 		const source = persistedGridDocument();
 		const prepared = prepareGrid({
 			...source,
@@ -188,104 +207,104 @@ describe('implicit root layout region', () => {
 				{ id: 'third-crossing', from: 'a-top', to: 'd' },
 			],
 		});
-		const attempt = solveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			nestedRegionInput(prepared.graph),
-		);
-		expect(attempt).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: '@root',
-			relationId: 'across-grid',
-		});
-		let failure: unknown;
-		try {
-			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
-		} catch (error) {
-			failure = error;
-		}
-		expect(failure).toBeInstanceOf(UnknownGridCellLayoutError);
-		expect(failure).toMatchObject({
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: '@root',
-			relationId: 'across-grid',
-		});
+		const input = nestedRegionInput(prepared.graph);
+		const attempt = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(layout).toEqual(attempt.layout);
+		const routes = new Map(layout.relations.map((route) => [route.id, route]));
+		const across = defined(routes.get('across-grid'));
+		const second = defined(routes.get('second-crossing'));
+		const third = defined(routes.get('third-crossing'));
+		expect(across.points[0]).not.toEqual(second.points[0]);
+		expect(across.points.at(-1)).not.toEqual(third.points.at(-1));
+		expect(pathsTouchWithoutBridge(across.points, second.points)).toBe(false);
+		expect(pathsTouchWithoutBridge(across.points, third.points)).toBe(false);
+		expect(pathsTouchWithoutBridge(second.points, third.points)).toBe(false);
+		expect(foreignCellEntry(layout, across, ['b', 'c'])).toBeUndefined();
+		expect(foreignCellEntry(layout, second, ['b', 'd'])).toBeUndefined();
+		expect(foreignCellEntry(layout, third, ['b', 'c'])).toBeUndefined();
 	});
 
-	it('rejects an unbridged group crossing that the old grid checker accepted', () => {
+	it('selects an unbridged group crossing that the old grid checker rejected', () => {
 		const source = persistedGridDocument();
 		const extraCrossing = prepareGrid({
 			...source,
 			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 		});
-		const attempt = solveNestedRegionLayout(
+		const input = nestedRegionInput(extraCrossing.graph);
+		const attempt = solveNestedRegionLayout(extraCrossing.graph, extraCrossing.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(extraCrossing.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		const layout = layoutWithRootRegion(
 			extraCrossing.graph,
+			extraCrossing.ranks,
 			extraCrossing.measurements,
-			nestedRegionInput(extraCrossing.graph),
 		);
-		expect(attempt).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: '@root',
-		});
-		expect(() =>
-			layoutWithRootRegion(extraCrossing.graph, extraCrossing.ranks, extraCrossing.measurements),
-		).toThrow(UnknownGridCellLayoutError);
-		const baseInput = gridInput();
-		const input = {
-			...baseInput,
-			cells: baseInput.cells.map(({ id, parentId, row, column }) => ({
-				id,
-				parentId,
-				row,
-				column,
-			})),
-		};
-		const selected = solveGridCellLayout(extraCrossing.graph, extraCrossing.measurements, input);
-		expect(selected.status).toBe(GridCellLayoutStatus.Selected);
-		if (selected.status !== GridCellLayoutStatus.Selected) return;
-		expect(validateGridCellGeometry(selected, extraCrossing.graph, input)).toBeUndefined();
-		const layout = selected.layout;
-		const across = layout.relations.find(({ id }) => id === 'across-grid');
-		const groupCrossing = layout.relations.find(({ id }) => id === 'group-crossing');
-		if (across === undefined || groupCrossing === undefined)
-			throw new Error('Expected both grid crossings');
-		expect(pathsTouchWithoutBridge(across.points, groupCrossing.points)).toBe(true);
-		const group = layout.elements.find(({ id }) => id === 'oversized');
-		const member = layout.elements.find(({ id }) => id === 'b');
-		const port = layout.relations.find(({ id }) => id === 'group-crossing')?.points[0];
-		if (group === undefined || member === undefined || port === undefined)
-			throw new Error('Expected the group crossing geometry');
+		expect(layout).toEqual(attempt.layout);
+		const across = defined(layout.relations.find(({ id }) => id === 'across-grid'));
+		const groupCrossing = defined(layout.relations.find(({ id }) => id === 'group-crossing'));
+		expect(pathsTouchWithoutBridge(across.points, groupCrossing.points)).toBe(false);
+		expect(across.points.at(-1)).not.toEqual(groupCrossing.points.at(-1));
+		const group = defined(layout.elements.find(({ id }) => id === 'oversized'));
+		const member = defined(layout.elements.find(({ id }) => id === 'b'));
+		const port = defined(groupCrossing.points[0]);
 		expect(port.x).toBe(group.bounds.x + group.bounds.width);
 		expect(port.y).toBeGreaterThan(group.bounds.y);
 		expect(port.y).toBeLessThan(group.bounds.y + group.bounds.height);
 		expect(member.bounds.x).toBeGreaterThan(group.bounds.x);
 		expect(member.bounds.x + member.bounds.width).toBeLessThan(group.bounds.x + group.bounds.width);
+		expect(foreignCellEntry(layout, groupCrossing, ['a', 'c'])).toBeUndefined();
+		expect(foreignCellEntry(layout, across, ['b', 'c'])).toBeUndefined();
 
 		const groupedEndpoint = prepareGrid({
 			...source,
 			relations: [...source.relations, { id: 'grouped-crossing', from: 'b', to: 'd' }],
 		});
-		let groupedFailure: unknown;
-		try {
-			layoutWithRootRegion(
-				groupedEndpoint.graph,
-				groupedEndpoint.ranks,
-				groupedEndpoint.measurements,
-			);
-		} catch (error) {
-			groupedFailure = error;
-		}
-		expect(groupedFailure).toBeInstanceOf(UnknownGridCellLayoutError);
-		expect(groupedFailure).toMatchObject({
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: '@root',
-		});
+		const groupedInput = nestedRegionInput(groupedEndpoint.graph);
+		const grouped = solveNestedRegionLayout(
+			groupedEndpoint.graph,
+			groupedEndpoint.measurements,
+			groupedInput,
+		);
+		expect(grouped.status).toBe(RegionCompositionStatus.Selected);
+		if (grouped.status !== RegionCompositionStatus.Selected) return;
+		const groupedModel = normalizeRegionCompositionModel(groupedEndpoint.graph, groupedInput);
+		if (groupedModel.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(groupedModel.model, grouped)).toBeUndefined();
+		const groupedLayout = layoutWithRootRegion(
+			groupedEndpoint.graph,
+			groupedEndpoint.ranks,
+			groupedEndpoint.measurements,
+		);
+		const groupedRoute = defined(
+			groupedLayout.relations.find(({ id }) => id === 'grouped-crossing'),
+		);
+		expect(
+			pathsTouchWithoutBridge(
+				groupedRoute.points,
+				defined(groupedLayout.relations.find(({ id }) => id === 'across-grid')).points,
+			),
+		).toBe(false);
+		const groupedMember = defined(groupedLayout.elements.find(({ id }) => id === 'b'));
+		const groupedPort = defined(groupedRoute.points[0]);
+		expect(groupedPort.x).toBe(groupedMember.bounds.x + groupedMember.bounds.width);
+		expect(foreignCellEntry(groupedLayout, groupedRoute, ['a', 'c'])).toBeUndefined();
 
 		const blocked = prepareGrid({
 			...source,
 			layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 		});
 		expect(() => layoutWithRootRegion(blocked.graph, blocked.ranks, blocked.measurements)).toThrow(
 			UnknownGridCellLayoutError,

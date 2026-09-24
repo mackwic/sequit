@@ -561,6 +561,45 @@ describe('independent grid geometry validation', () => {
 		expect(validateGridCellGeometry(damaged, pair.graph, input)).toContain('overlap');
 	});
 
+	it('rejects two crossing ports stacked on one face position', () => {
+		const base = gridDocument();
+		const pair = prepareGrid({
+			...base,
+			relations: [...base.relations, { id: 'second-crossing', from: 'a-bottom', to: 'c' }],
+		});
+		const input = gridInput();
+		const result = solveGridCellLayout(pair.graph, pair.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`Expected a selected pair: ${result.status}: ${result.reason}`);
+		const acrossY = defined(
+			defined(result.layout.relations.find(({ id }) => id === 'across-grid')).points[0],
+		).y;
+		const stacked = withRoute(result, 'second-crossing', (route) => ({
+			...route,
+			points: route.points.map((point, index) => {
+				if (index > 2) return point;
+				return { ...point, y: acrossY };
+			}),
+		}));
+		const candidate = {
+			...stacked,
+			portals: stacked.portals.map((portal) => {
+				if (portal.relationId !== 'second-crossing' || portal.endpointId !== 'a-bottom')
+					return portal;
+				const offset = portal.point.y - portal.localPoint.y;
+				return {
+					...portal,
+					point: { ...portal.point, y: acrossY },
+					localPoint: { ...portal.localPoint, y: acrossY - offset },
+				};
+			}),
+		};
+		expect(validateGridCellGeometryDiagnostic(candidate, pair.graph, input)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.GridCrossingPort,
+			message: 'Cross-cell relations do not stack their ports on shared endpoint a-bottom.',
+		});
+	});
+
 	it('rejects an owner mapping to an absent cell', () => {
 		const input = gridInput();
 		const assignment = new Map(input.cellByEndpointId);

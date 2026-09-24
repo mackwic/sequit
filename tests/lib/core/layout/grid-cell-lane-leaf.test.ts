@@ -10,6 +10,7 @@ import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
+import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
@@ -457,7 +458,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		});
 	});
 
-	it('rejects a second intercell incident on the lane cell', () => {
+	it('selects a second intercell incident on the lane cell by reallocating the grid rails', () => {
 		const source = persistedNestedGridWithLaneCrossingDocument();
 		const document: LogicDocument = {
 			...source,
@@ -465,16 +466,20 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		};
 		expect(validateLogicDocument(document)).toMatchObject({ ok: true });
 		const prepared = prepareLayoutDocument(document);
-		expect(
-			solveRecursiveNestedRegionLayout(
-				prepared.graph,
-				prepared.measurements,
-				regionInput(document),
-			),
-		).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-		});
+		const input = regionInput(document);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+		const routes = new Map(attempt.layout.relations.map((route) => [route.id, route]));
+		const first = defined(routes.get('leaves-b'));
+		const second = defined(routes.get('second-leaves-b'));
+		expect(first.points[0]).not.toEqual(second.points[0]);
+		expect(pathsTouchWithoutBridge(first.points, second.points)).toBe(false);
 	});
 
 	it('evaluates a non-monotone lane crossing and transverse lanes through the contract', () => {

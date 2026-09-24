@@ -1,6 +1,11 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import { CROSSING_SPACING } from './grid-cell-crossing';
+import {
+	CROSSING_SPACING,
+	crossingRailX,
+	gridRoutingEdges,
+	reservedRailTrack,
+} from './grid-cell-crossing';
 import type { GridCellPlacement, GridCellSelected } from './grid-cell-types';
 import type { Point } from './layout-types';
 import {
@@ -83,14 +88,16 @@ interface ContinuationInput {
 
 function outerRailX(grid: GridIncidentInput, cell: GridCellPlacement): number {
 	const crossingCount = grid.selected.portals.length / 2;
-	const railInset = CROSSING_SPACING * (2 + crossingCount);
-	if (cell.column === 0)
-		return defined(grid.selected.cells.find(({ column }) => column === 0)).bounds.x - railInset;
-	return (
+	const edges = gridRoutingEdges(grid.regionId, crossingCount);
+	const track = reservedRailTrack(edges);
+	if (cell.column === 0) {
+		const left = defined(grid.selected.cells.find(({ column }) => column === 0)).bounds.x;
+		return crossingRailX(edges.leftRail, left, RegionPortalSide.Left, track);
+	}
+	const right =
 		defined(grid.selected.cells.find(({ column }) => column === 1)).bounds.x +
-		defined(grid.selected.columnWidths[1]) +
-		railInset
-	);
+		defined(grid.selected.columnWidths[1]);
+	return crossingRailX(edges.leftRail, right, RegionPortalSide.Right, track);
 }
 
 function childPortalApproach(

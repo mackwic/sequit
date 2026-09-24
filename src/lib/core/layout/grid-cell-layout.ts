@@ -1,14 +1,28 @@
 import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
+import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import { boundedCounter, firstValidDepthFirst } from './bounded-search';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import {
-	CROSSING_SPACING,
 	crossingIncidence,
-	crossingMargin,
 	crossingMetricDemands,
-	crossingPortY,
+	gridMargin,
+	gridRoutingEdges,
 } from './grid-cell-crossing';
+import {
+	canonicalCrossingAllocation,
+	CROSSING_ALLOCATION_BUDGET,
+	crossingAllocationCandidates,
+	crossingAllocationCandidatesWithExtraTrack,
+	type CrossingAllocationInput,
+	type GridCrossingAllocation,
+} from './grid-cell-crossing-allocation';
+import {
+	crossingPortalSpans,
+	crossingRoute,
+	gridCrossingOwnedRoutes,
+	type GridCrossingRouting,
+} from './grid-cell-crossing-routing';
 import {
 	type GridCellDisposition,
 	layoutGridCellDisposition,
@@ -21,8 +35,6 @@ import {
 	type GridCellInput,
 	type GridCellLayoutAttempt,
 	GridCellLayoutStatus,
-	type GridCellPlacement,
-	type GridCellPortal,
 	type GridCellSelected,
 } from './grid-cell-types';
 import { validateGridCellGeometryDiagnostic } from './grid-cell-validation';
@@ -38,23 +50,13 @@ import {
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 	RegionRelationKind,
-	type RegionRelationOwnership,
 } from './region-composition-model';
-import { RegionPortalSide } from './region-composition-types';
-import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
+import {
+	type RegionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from './region-geometry-diagnostic';
 import type { RegionLocalLayoutCache } from './region-local-cache';
-
-const OUTER_RAIL_OFFSET = 48;
-const TOP_BUS_Y = 24;
-
-interface CrossingRouteContext {
-	readonly cells: readonly GridCellPlacement[];
-	readonly cellByEndpointId: GridCellInput['cellByEndpointId'];
-	readonly gridRight: number;
-	readonly margin: number;
-	readonly index: number;
-	readonly incidence: ReadonlyMap<string, readonly string[]>;
-}
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };
@@ -77,69 +79,6 @@ function moveRelation(relation: LayoutRelation, delta: Point): LayoutRelation {
 	return { ...relation, points: relation.points.map((point) => offset(point, delta)) };
 }
 
-function crossingRoute(
-	owned: RegionRelationOwnership,
-	context: CrossingRouteContext,
-): { readonly route: LayoutRelation; readonly portals: readonly [GridCellPortal, GridCellPortal] } {
-	const { relation } = owned;
-	const { cells, cellByEndpointId, gridRight, margin, index, incidence } = context;
-	const sourceCell = defined(cells.find(({ id }) => id === cellByEndpointId.get(relation.from)));
-	const targetCell = defined(cells.find(({ id }) => id === cellByEndpointId.get(relation.to)));
-	function endpoint(
-		cell: GridCellPlacement,
-		endpointId: string,
-	): { port: Point; portal: GridCellPortal; railX: number } {
-		const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId));
-		let side: RegionPortalSide.Left | RegionPortalSide.Right = RegionPortalSide.Left;
-		if (cell.column === 1) side = RegionPortalSide.Right;
-		let portX = cell.translation.x + local.bounds.x;
-		let portalX = cell.bounds.x;
-		const railOffset = CROSSING_SPACING * index;
-		let railX = margin - OUTER_RAIL_OFFSET - railOffset;
-		if (side === RegionPortalSide.Right) {
-			portX += local.bounds.width;
-			portalX += cell.bounds.width;
-			railX = gridRight + OUTER_RAIL_OFFSET + railOffset;
-		}
-		const globalBounds = moveBounds(local.bounds, cell.translation);
-		const port = {
-			x: portX,
-			y: crossingPortY(globalBounds, endpointId, relation.id, incidence),
-		};
-		const point = { x: portalX, y: port.y };
-		return {
-			port,
-			portal: {
-				relationId: relation.id,
-				endpointId,
-				cellId: cell.id,
-				regionId: cell.id,
-				side,
-				point,
-				localPoint: { x: point.x - cell.bounds.x, y: point.y - cell.bounds.y },
-			},
-			railX,
-		};
-	}
-	const source = endpoint(sourceCell, relation.from);
-	const target = endpoint(targetCell, relation.to);
-	const points: Point[] = [source.port, source.portal.point, { x: source.railX, y: source.port.y }];
-	if (source.railX === target.railX) {
-		points.push({ x: target.railX, y: target.port.y });
-	} else {
-		points.push(
-			{ x: source.railX, y: TOP_BUS_Y + CROSSING_SPACING * index },
-			{ x: target.railX, y: TOP_BUS_Y + CROSSING_SPACING * index },
-			{ x: target.railX, y: target.port.y },
-		);
-	}
-	points.push(target.portal.point, target.port);
-	return {
-		route: { id: relation.id, from: relation.from, to: relation.to, points },
-		portals: [source.portal, target.portal],
-	};
-}
-
 /** Bounded root grid proof. Each cell gets an independent graph, rank set, and dedicated layout. */
 export function solveGridCellLayout(
 	graph: LogicGraph,
@@ -157,8 +96,7 @@ export function solveGridCellLayout(
 		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === model.rootId,
 	);
 	const crossing = crossingOwnership.map(({ relation }) => relation);
-	const incidence = crossingIncidence(crossing);
-	const metricDemands = crossingMetricDemands(incidence);
+	const metricDemands = crossingMetricDemands(crossingIncidence(crossing));
 	const demandedMeasurements = satisfyMetricDemands(
 		measurements,
 		metricDemands,
@@ -182,10 +120,7 @@ export function composeGridCellDisposition(
 	model: RegionCompositionModel,
 	children: readonly SolvedGridCell[],
 ): GridCellLayoutAttempt {
-	const crossingOwnership = model.relations.filter(
-		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId,
-	);
-	const margin = crossingMargin(crossingOwnership.length);
+	const margin = gridMargin(gridRoutingEdges(input.rootId, ownedCrossings(model, input).length));
 	const disposition = layoutGridCellDisposition(children, input, margin);
 	return routePlacedGridCellDisposition({ graph, input, model, disposition });
 }
@@ -197,16 +132,45 @@ interface PlacedGridCellInput {
 	readonly disposition: GridCellDisposition;
 }
 
+interface RoutedGridCrossing {
+	readonly candidate: GridCellSelected;
+	readonly failure?: RegionGeometryDiagnostic;
+}
+
+function ownedCrossings(
+	model: RegionCompositionModel,
+	input: GridCellInput,
+): readonly LogicRelation[] {
+	return model.relations
+		.filter(({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId)
+		.map(({ relation }) => relation);
+}
+
 /** Route a grid whose child placements have already been selected. */
 export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellLayoutAttempt {
 	const { graph, input, model, disposition } = placed;
-	const crossingOwnership = model.relations.filter(
-		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId,
-	);
-	const crossing = crossingOwnership.map(({ relation }) => relation);
+	const crossing = ownedCrossings(model, input);
 	const incidence = crossingIncidence(crossing);
-	const margin = crossingMargin(crossing.length);
+	const edges = gridRoutingEdges(input.rootId, crossing.length);
 	const { cells, columnWidths, rowHeights, gridRight, gridBottom } = disposition;
+	const cellById = new Map(cells.map((cell) => [cell.id, cell]));
+	const ownsColumn = (relation: LogicRelation, column: 0 | 1): boolean =>
+		[relation.from, relation.to].some(
+			(endpointId) =>
+				defined(cellById.get(defined(input.cellByEndpointId.get(endpointId)))).column === column,
+		);
+	const routing: GridCrossingRouting = {
+		rootId: input.rootId,
+		crossing,
+		leftRailIds: crossing.filter((relation) => ownsColumn(relation, 0)).map(({ id }) => id),
+		rightRailIds: crossing.filter((relation) => ownsColumn(relation, 1)).map(({ id }) => id),
+		cells,
+		cellByEndpointId: input.cellByEndpointId,
+		gridRight,
+		margin: gridMargin(edges),
+		edges,
+		incidence,
+	};
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,
@@ -217,43 +181,89 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 	const localRoutes = cells.flatMap((cell) =>
 		cell.localLayout.relations.map((relation) => moveRelation(relation, cell.translation)),
 	);
-	const crossingRoutes = crossingOwnership.map((owned, index) =>
-		crossingRoute(owned, {
-			cells,
-			cellByEndpointId: input.cellByEndpointId,
-			gridRight,
-			margin,
-			index,
-			incidence,
-		}),
-	);
-	const routesById = new Map(
-		[...localRoutes, ...crossingRoutes.map(({ route }) => route)].map((route) => [route.id, route]),
-	);
 	const lanes = cells.flatMap((cell) =>
 		(cell.localLayout.lanes ?? []).map((lane) => ({
 			...lane,
 			bounds: moveBounds(lane.bounds, cell.translation),
 		})),
 	);
-	let layout: LayoutResult = {
-		width: gridRight + margin,
-		height: gridBottom + margin,
-		elements,
-		relations: graph.relations.map(({ relation }) => defined(routesById.get(relation.id))),
-		regions: cells.map(({ id, bounds }) => ({ id, bounds })),
+	const routed = (allocation: GridCrossingAllocation): RoutedGridCrossing => {
+		const crossingRoutes = crossing.map((relation) => crossingRoute(routing, allocation, relation));
+		const routesById = new Map(
+			[...localRoutes, ...crossingRoutes.map(({ route }) => route)].map((route) => [
+				route.id,
+				route,
+			]),
+		);
+		let layout: LayoutResult = {
+			width: gridRight + routing.margin,
+			height: gridBottom + routing.margin,
+			elements,
+			relations: graph.relations.map(({ relation }) => defined(routesById.get(relation.id))),
+			regions: cells.map(({ id, bounds }) => ({ id, bounds })),
+		};
+		if (lanes.length > 0) layout = { ...layout, lanes };
+		const candidate: GridCellSelected = {
+			status: GridCellLayoutStatus.Selected,
+			rootId: input.rootId,
+			layout,
+			cells,
+			columnWidths,
+			rowHeights,
+			portals: crossingRoutes.flatMap(({ portals }) => portals),
+		};
+		const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
+		if (failure !== undefined) return { candidate, failure };
+		const contact = diagnoseParentRouteContacts(
+			model,
+			gridCrossingOwnedRoutes(input.rootId, input.cellByEndpointId, crossing, routesById),
+		);
+		if (contact !== undefined) return { candidate, failure: contact };
+		return { candidate };
 	};
-	if (lanes.length > 0) layout = { ...layout, lanes };
-	const candidate: GridCellSelected = {
-		status: GridCellLayoutStatus.Selected,
-		rootId: input.rootId,
-		layout,
-		cells,
-		columnWidths,
-		rowHeights,
-		portals: crossingRoutes.flatMap(({ portals }) => portals),
+	const crossingIds = crossing.map(({ id }) => id);
+	const allocationInput: CrossingAllocationInput = {
+		edges,
+		crossingIds,
+		leftRailIds: routing.leftRailIds,
+		rightRailIds: routing.rightRailIds,
+		incidence,
+		portalByRelationId: new Map(),
 	};
-	const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
-	if (failure !== undefined) return unknown(failure.message, failure.code);
-	return candidate;
+	// The containment rule reads the canonical portals, which do not depend on the allocation.
+	const canonical = canonicalCrossingAllocation(allocationInput);
+	const withSpans: CrossingAllocationInput = {
+		...allocationInput,
+		portalByRelationId: crossingPortalSpans(routing, canonical),
+	};
+	let selected: GridCellSelected | undefined;
+	const counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
+	const search = (candidates: Iterable<GridCrossingAllocation>): boolean => {
+		const result = firstValidDepthFirst<GridCrossingAllocation, RegionGeometryDiagnostic>({
+			levels: 1,
+			counter,
+			// The declared list is the only level: the search evaluates it in order.
+			choices: () => candidates,
+			accept: (_, allocation) => {
+				const attempt = routed(allocation);
+				if (attempt.failure === undefined) selected = attempt.candidate;
+				return attempt.failure;
+			},
+			onReject: () => undefined,
+		});
+		return result.exhaustive;
+	};
+	const reallocated = search(crossingAllocationCandidates(withSpans));
+	if (selected === undefined && reallocated)
+		search(crossingAllocationCandidatesWithExtraTrack(withSpans));
+	if (selected !== undefined) return selected;
+	// Nothing validates: keep the canonical allocation and today's diagnostic, so the composition
+	// validator reports the contact that no reallocation resolved.
+	const fallback = routed(canonical);
+	if (
+		fallback.failure !== undefined &&
+		fallback.failure.code !== RegionGeometryDiagnosticCode.ParentRouteContact
+	)
+		return unknown(fallback.failure.message, fallback.failure.code);
+	return fallback.candidate;
 }

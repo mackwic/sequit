@@ -1,21 +1,21 @@
 import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
-import { crossingMargin } from './grid-cell-crossing';
+import { gridMargin, gridRoutingEdges } from './grid-cell-crossing';
+import { gridCrossingOwnedRoutes } from './grid-cell-crossing-routing';
 import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
 import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
 import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
-import { type GridCellInput, GridCellLayoutStatus, type GridCellSelected } from './grid-cell-types';
-import type { LayoutRelation } from './layout-types';
+import { type GridCellInput, GridCellLayoutStatus } from './grid-cell-types';
 import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
-import { directChild, type RecursiveContext } from './nested-region-recursive-model-adapter';
+import type { RecursiveContext } from './nested-region-recursive-model-adapter';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
 } from './region-arrangement';
-import { type RegionOwnedRoute, RegionPortalSide } from './region-composition-types';
+import { RegionPortalSide } from './region-composition-types';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
@@ -161,44 +161,12 @@ function placeGrid(input: ArrangementPlaceInput): GridPlaced {
 			);
 		return { cell, layout: solved.layout, ranks: solved.ranks };
 	});
-	const margin = crossingMargin(input.crossings.length);
+	const margin = gridMargin(gridRoutingEdges(input.regionId, input.crossings.length));
 	return {
 		graph,
 		input: gridInput,
 		disposition: layoutGridCellDisposition(solvedCells, gridInput, margin),
 	};
-}
-
-function routeById(selected: GridCellSelected): ReadonlyMap<string, LayoutRelation> {
-	return new Map(selected.layout.relations.map((route) => [route.id, route]));
-}
-
-function ownedGridCrossingRoutes(
-	context: RecursiveContext,
-	regionId: string,
-	selected: GridCellSelected,
-): readonly RegionOwnedRoute[] {
-	const routes = routeById(selected);
-	const owned: RegionOwnedRoute[] = [];
-	for (const relation of defined(context.model.crossingRelationsByOwner.get(regionId))) {
-		const route = defined(routes.get(relation.id));
-		const sourceCellId = directChild(context, regionId, relation.from);
-		const targetCellId = directChild(context, regionId, relation.to);
-		owned.push(
-			{
-				relationId: relation.id,
-				regionId: sourceCellId,
-				points: route.points.slice(0, 2),
-			},
-			{ relationId: relation.id, regionId, points: route.points.slice(1, -1) },
-			{
-				relationId: relation.id,
-				regionId: targetCellId,
-				points: route.points.slice(-2),
-			},
-		);
-	}
-	return owned;
 }
 
 function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveRegion {
@@ -232,7 +200,12 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 		portals: [...placedChildren.portals, ...attempt.portals],
 		ownedRoutes: [
 			...placedChildren.ownedRoutes,
-			...ownedGridCrossingRoutes(context, regionId, attempt),
+			...gridCrossingOwnedRoutes(
+				regionId,
+				placement.input.cellByEndpointId,
+				defined(context.model.crossingRelationsByOwner.get(regionId)),
+				new Map(attempt.layout.relations.map((route) => [route.id, route])),
+			),
 		],
 		incidentPaths,
 	};

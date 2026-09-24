@@ -209,26 +209,23 @@ describe('direct group portals owned by an internal grid', () => {
 		expect(cache.stats.hits).toBeGreaterThanOrEqual(9);
 	});
 
-	it('reports an unresolved parent corridor contact for the opposite route order', () => {
+	it('selects the opposite group corridor order by reallocating the shared ports', () => {
 		const source = persistedNestedGridWithGroupPortalDocument();
 		const document = {
 			...source,
 			relations: [...source.relations, { id: 'group-to-c', from: 'cell-group', to: 'c' }],
 		};
 		const prepared = prepareLayoutDocument(document);
-		expect(
-			solveRecursiveNestedRegionLayout(
-				prepared.graph,
-				prepared.measurements,
-				regionInput(document),
-			),
-		).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: 'grid',
-			relationId: 'group-crossing',
-			reason: 'Region grid routes group-crossing and group-to-c intersect without a bridge.',
-		});
+		const input = regionInput(document);
+		const result = selected(prepared, input);
+		validated(prepared, input, result);
+		const group = defined(result.layout.elements.find(({ id }) => id === 'cell-group'));
+		const ports = ['group-crossing', 'group-to-c'].map((id) =>
+			defined(defined(result.layout.relations.find((route) => route.id === id)).points[0]),
+		);
+		expect(Math.abs(defined(ports[0]).y - defined(ports[1]).y)).toBe(24);
+		for (const port of ports) expect(port.x).toBe(group.bounds.x + group.bounds.width);
+		expect(result).toEqual(selected(prepared, input));
 	});
 
 	it('rejects a member moved beyond the group while it remains inside its cell', () => {

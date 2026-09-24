@@ -1,8 +1,8 @@
-import { defined } from '../document/logic-document';
-import { crossingPortY } from './grid-cell-crossing';
+import { defined, type LogicRelation } from '../document/logic-document';
+import { crossingIncidence, crossingPortPositions } from './grid-cell-crossing';
 import { equal, samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
-import type { Bounds, LayoutRelation } from './layout-types';
+import type { Bounds, LayoutRelation, Point } from './layout-types';
 import { RegionPortalSide } from './region-composition-types';
 
 interface CrossPortContext {
@@ -31,16 +31,50 @@ export function validateCrossPorts(
 	const target = defined(elements.get(route.to)).bounds;
 	const first = defined(route.points[0]);
 	const last = defined(route.points.at(-1));
-	const sourcePort = {
-		x: outerPortX(source, sideOf(context.fromCell)),
-		y: crossingPortY(source, route.from, route.id, context.incidence),
+	const onFace = (point: Point, x: number, endpointId: string, bounds: Bounds): boolean => {
+		const positions = crossingPortPositions(
+			candidate.rootId,
+			bounds,
+			defined(context.incidence.get(endpointId)).length,
+		);
+		return equal(point.x, x) && positions.some((position) => equal(point.y, position));
 	};
-	const targetPort = {
-		x: outerPortX(target, sideOf(context.toCell)),
-		y: crossingPortY(target, route.to, route.id, context.incidence),
-	};
-	if (!samePoint(first, sourcePort) || !samePoint(last, targetPort))
+	const sourceOnFace = onFace(
+		first,
+		outerPortX(source, sideOf(context.fromCell)),
+		route.from,
+		source,
+	);
+	const targetOnFace = onFace(last, outerPortX(target, sideOf(context.toCell)), route.to, target);
+	if (!sourceOnFace || !targetOnFace)
 		return `Cross-cell relation ${route.id} has invalid endpoint ports.`;
+	return undefined;
+}
+
+/**
+ * A shared endpoint stacks one port per incident crossing on the declared face positions. The
+ * allocation may permute which relation takes which position, never the positions themselves.
+ */
+export function validateCrossPortStacking(
+	candidate: GridCellSelected,
+	crossing: readonly LogicRelation[],
+): string | undefined {
+	const elements = new Map(candidate.layout.elements.map((element) => [element.id, element]));
+	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
+	for (const [endpointId, relations] of crossingIncidence(crossing)) {
+		if (relations.length < 2) continue;
+		const bounds = defined(elements.get(endpointId)).bounds;
+		const positions = crossingPortPositions(candidate.rootId, bounds, relations.length);
+		const observed = relations
+			.map((relationId) => {
+				const route = defined(routes.get(relationId));
+				if (route.from === endpointId) return defined(route.points[0]).y;
+				return defined(route.points.at(-1)).y;
+			})
+			.sort((left, right) => left - right);
+		if (!observed.every((y, track) => equal(y, defined(positions[track]))))
+			return `Cross-cell relations do not stack their ports on shared endpoint ${endpointId}.`;
+	}
 	return undefined;
 }
 
