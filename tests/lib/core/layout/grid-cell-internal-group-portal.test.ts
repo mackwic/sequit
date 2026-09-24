@@ -86,7 +86,12 @@ function validated(
 }
 
 /** The group portal fixture with its group nested in an outer group and its member grouped deeper. */
-function deeplyGroupedDocument(from: string, to: string): LogicDocument {
+function deeplyGroupedDocument(
+	from: string,
+	to: string,
+): LogicDocument & {
+	readonly regionPresentation: NonNullable<LogicDocument['regionPresentation']>;
+} {
 	const source = persistedNestedGridWithGroupPortalDocument();
 	const group = defined(source.groups[0]);
 	const inner = { ...group, groupId: 'outer-group' };

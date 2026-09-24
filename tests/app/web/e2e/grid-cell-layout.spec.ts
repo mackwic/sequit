@@ -1,9 +1,12 @@
 import { expect, test } from '@playwright/test';
 
+import { defined } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
 	persistedGridDocument,
 	persistedNxmGridDocument,
 } from '../../../lib/core/layout/grid-cell-fixture';
+import { persistedNestedGridWithGroupPortalDocument } from '../../../lib/core/layout/nested-region-fixture';
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
 import { seedRoom } from './collaboration-room';
 
@@ -335,6 +338,76 @@ test('a persisted three by two grid renders six cells in three column and two ro
 	const screenshot = info.outputPath('persisted-three-by-two-grid.png');
 	await page.screenshot({ path: screenshot });
 	await info.attach('persisted-three-by-two-grid', {
+		path: screenshot,
+		contentType: 'image/png',
+	});
+});
+
+test('a persisted nested group crosses an internal grid to a foreign cell from its own face', async ({
+	page,
+}, info) => {
+	await page.setViewportSize({ width: 1920, height: 1200 });
+	const room = `e2e-${crypto.randomUUID()}`;
+	const source = persistedNestedGridWithGroupPortalDocument();
+	const group = defined(source.groups[0]);
+	const inner = { ...group, groupId: 'outer-group' };
+	delete inner.regionId;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes, {
+		...source,
+		groups: [{ ...group, id: 'outer-group', layoutOrder: orderKey('a1') }, inner],
+	});
+	await page.goto(`/atelier/collaboration?room=${room}`);
+	await expect(page.locator('[data-graph-stage]')).toBeVisible();
+	await expect(page.locator('[data-region-id]')).toHaveCount(6);
+	await expect(page.locator('[data-group-id="outer-group"]')).toHaveCount(1);
+	await expect(page.locator('[data-group-id="cell-group"]')).toHaveCount(1);
+	await expect(page.locator('[data-node-id="b"]')).toHaveCount(1);
+	await expect(page.locator('[data-relation-id="group-crossing"]')).toHaveCount(1);
+	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
+	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
+		await Promise.allSettled(
+			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
+		);
+	});
+	await page.evaluate(() => {
+		const outer = document.querySelector<HTMLElement>('[data-group-id="outer-group"]');
+		const inner = document.querySelector<HTMLElement>('[data-group-id="cell-group"]');
+		const member = document.querySelector<HTMLElement>('[data-node-id="b"]');
+		const route = document.querySelector<SVGPathElement>('[data-relation-id="group-crossing"]');
+		if (outer === null || inner === null || member === null || route === null)
+			throw new Error('Missing persisted nested group witness');
+		const outerBounds = outer.getBoundingClientRect();
+		const innerBounds = inner.getBoundingClientRect();
+		const memberBounds = member.getBoundingClientRect();
+		if (
+			innerBounds.left <= outerBounds.left ||
+			innerBounds.right >= outerBounds.right ||
+			innerBounds.top <= outerBounds.top ||
+			innerBounds.bottom >= outerBounds.bottom
+		)
+			throw new Error('The nested group leaves its outer group');
+		if (
+			memberBounds.left <= innerBounds.left ||
+			memberBounds.right >= innerBounds.right ||
+			memberBounds.top <= innerBounds.top ||
+			memberBounds.bottom >= innerBounds.bottom
+		)
+			throw new Error('The member leaves its nested group');
+		const matrix = route.getScreenCTM();
+		if (matrix === null) throw new Error('Missing route transform');
+		const start = route.getPointAtLength(0);
+		const contact = new DOMPoint(start.x, start.y).matrixTransform(matrix);
+		if (
+			Math.abs(contact.x - innerBounds.right) > 2 ||
+			contact.y <= innerBounds.top ||
+			contact.y >= innerBounds.bottom
+		)
+			throw new Error('The route does not attach to the nested group own face');
+	});
+	const screenshot = info.outputPath('persisted-internal-nested-group.png');
+	await page.screenshot({ path: screenshot });
+	await info.attach('persisted-internal-nested-group', {
 		path: screenshot,
 		contentType: 'image/png',
 	});
