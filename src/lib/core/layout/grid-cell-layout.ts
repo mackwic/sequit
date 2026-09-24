@@ -197,10 +197,8 @@ interface PlacedGridCellInput {
 	readonly disposition: GridCellDisposition;
 }
 
-/** Materialize the grid tracks before a caller composes its child incident paths. */
-export function materializePlacedGridCellDisposition(
-	placed: PlacedGridCellInput,
-): GridCellSelected {
+/** Route a grid whose child placements have already been selected. */
+export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellLayoutAttempt {
 	const { graph, input, model, disposition } = placed;
 	const crossingOwnership = model.relations.filter(
 		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId,
@@ -255,13 +253,7 @@ export function materializePlacedGridCellDisposition(
 		rowHeights,
 		portals: crossingRoutes.flatMap(({ portals }) => portals),
 	};
-	return candidate;
-}
-
-/** Preserve the standalone grid validator for the direct bounded grid API. */
-export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellLayoutAttempt {
-	const candidate = materializePlacedGridCellDisposition(placed);
-	const failure = validateGridCellGeometryDiagnostic(candidate, placed.graph, placed.input);
+	const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
 	if (failure !== undefined) return unknown(failure.message, failure.code);
 	return candidate;
 }

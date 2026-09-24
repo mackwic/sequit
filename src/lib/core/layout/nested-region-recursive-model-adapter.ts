@@ -2,7 +2,6 @@ import {
 	defined,
 	LAYOUT_PRESENTATION_SCHEMA,
 	LayoutDirection,
-	LayoutPolicy,
 	type LogicDocument,
 	type RootLayoutPresentation,
 } from '../document/logic-document';
@@ -146,7 +145,7 @@ export function leafDocument(context: RecursiveContext, regionId: string): Logic
 	if (lanePresentation !== undefined) {
 		const presentation: RootLayoutPresentation = {
 			schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
-			policy: region.definition.policy ?? LayoutPolicy.Layered,
+			policy: region.definition.policy,
 			...lanePresentation,
 		};
 		document = { ...document, presentation };

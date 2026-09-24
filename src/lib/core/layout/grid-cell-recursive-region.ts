@@ -1,22 +1,13 @@
-import { defined, type LogicDocument, type LogicRelation } from '../document/logic-document';
+import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
 import { crossingMargin } from './grid-cell-crossing';
 import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
-import {
-	extendedToCellFrame,
-	gridCellInheritedIncidentPaths,
-} from './grid-cell-inherited-incident';
-import { materializePlacedGridCellDisposition } from './grid-cell-layout';
+import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
+import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
-import type { GridCellInput, GridCellSelected } from './grid-cell-types';
-import type { LayoutRelation, Point } from './layout-types';
-import {
-	type RegionIncidentPath,
-	type SolvedRecursiveRegion,
-	stitchedRoute,
-	translatedChildren,
-	translatedIncidentPath,
-} from './nested-region-recursive-geometry';
+import { type GridCellInput, GridCellLayoutStatus, type GridCellSelected } from './grid-cell-types';
+import type { LayoutRelation } from './layout-types';
+import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
 import { directChild, type RecursiveContext } from './nested-region-recursive-model-adapter';
 import type {
 	ArrangementIncidentInput,
@@ -24,12 +15,7 @@ import type {
 	ArrangementRouteInput,
 	RegionArrangement,
 } from './region-arrangement';
-import {
-	type RegionOwnedRoute,
-	type RegionPortal,
-	RegionPortalSide,
-} from './region-composition-types';
-import { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import { type RegionOwnedRoute, RegionPortalSide } from './region-composition-types';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
@@ -183,151 +169,71 @@ function placeGrid(input: ArrangementPlaceInput): GridPlaced {
 	};
 }
 
-interface GridCrossingComposition {
-	readonly routes: ReadonlyMap<string, LayoutRelation>;
-	readonly portals: readonly RegionPortal[];
-	readonly ownedRoutes: readonly RegionOwnedRoute[];
+function routeById(selected: GridCellSelected): ReadonlyMap<string, LayoutRelation> {
+	return new Map(selected.layout.relations.map((route) => [route.id, route]));
 }
 
-function unknownGridPath(regionId: string, relationId: string, detail: string): never {
-	throw new UnknownRegionLeafLayoutError(
-		`Grid region ${regionId} relation ${relationId}: ${detail}`,
-		RegionGeometryDiagnosticCode.GridCrossingPortal,
-		undefined,
-		regionId,
-	);
-}
-
-interface CellIncidentPathInput {
-	readonly context: RecursiveContext;
-	readonly regionId: string;
-	readonly selected: GridCellSelected;
-	readonly children: ReadonlyMap<string, SolvedRecursiveRegion>;
-	readonly relation: LogicRelation;
-	readonly source: boolean;
-}
-
-function cellIncidentPath(input: CellIncidentPathInput): RegionIncidentPath {
-	const { context, regionId, selected, children, relation, source } = input;
-	let endpointId = relation.to;
-	if (source) endpointId = relation.from;
-	const childId = directChild(context, regionId, endpointId);
-	const child = defined(children.get(childId));
-	const cell = defined(selected.cells.find(({ id }) => id === childId));
-	const path = child.incidentPaths.get(relation.id);
-	const missingPath = path === undefined;
-	const wrongEndpoint = path?.endpointId !== endpointId;
-	const wrongRelation = path?.relationId !== relation.id;
-	if (missingPath || wrongEndpoint || wrongRelation)
-		unknownGridPath(regionId, relation.id, `child ${childId} has no matching incident path.`);
-	return extendedToCellFrame(translatedIncidentPath(path, cell.translation), cell, source);
-}
-
-function framePortal(path: RegionIncidentPath, source: boolean): RegionPortal {
-	let portal = path.portals[0];
-	if (source) portal = path.portals.at(-1);
-	return defined(portal);
-}
-
-interface GridTrackPieceInput {
-	readonly selected: GridCellSelected;
-	readonly relation: LogicRelation;
-	readonly sourcePortal: RegionPortal;
-	readonly targetPortal: RegionPortal;
-	readonly regionId: string;
-}
-
-function gridTrackPiece(input: GridTrackPieceInput): RegionOwnedRoute {
-	const { selected, relation, sourcePortal, targetPortal, regionId } = input;
-	const skeleton = selected.layout.relations.find(({ id }) => id === relation.id);
-	const legacyPortals = selected.portals.filter(({ relationId }) => relationId === relation.id);
-	if (skeleton === undefined || legacyPortals.length !== 2)
-		unknownGridPath(regionId, relation.id, 'the grid has no complete crossing track.');
-	const [oldSource, oldTarget] = legacyPortals;
-	if (oldSource === undefined || oldTarget === undefined)
-		unknownGridPath(regionId, relation.id, 'the chosen child portals cannot meet the grid track.');
-	const sameSides = sourcePortal.side === oldSource.side && targetPortal.side === oldTarget.side;
-	const sameSourceX = sourcePortal.point.x === oldSource.point.x;
-	const sameTargetX = targetPortal.point.x === oldTarget.point.x;
-	const matchingPortals = sameSides && sameSourceX && sameTargetX;
-	if (!matchingPortals)
-		unknownGridPath(regionId, relation.id, 'the chosen child portals cannot meet the grid track.');
-	const points = skeleton.points.slice(1, -1);
-	if (points.length < 4) unknownGridPath(regionId, relation.id, 'the grid track is incomplete.');
-	const startRail = defined(points[1]);
-	const endRail = defined(points.at(-2));
-	const adjusted: Point[] = [
-		sourcePortal.point,
-		{ x: startRail.x, y: sourcePortal.point.y },
-		...points.slice(2, -2),
-		{ x: endRail.x, y: targetPortal.point.y },
-		targetPortal.point,
-	];
-	return { relationId: relation.id, regionId, points: adjusted };
-}
-
-/** Join the already selected child incident paths through the grid tracks. */
-export function composeGridCellCrossings(
+function ownedGridCrossingRoutes(
 	context: RecursiveContext,
 	regionId: string,
 	selected: GridCellSelected,
-	children: ReadonlyMap<string, SolvedRecursiveRegion>,
-): GridCrossingComposition {
-	const routes = new Map(selected.layout.relations.map((route) => [route.id, route]));
-	const portals: RegionPortal[] = [];
-	const ownedRoutes: RegionOwnedRoute[] = [];
+): readonly RegionOwnedRoute[] {
+	const routes = routeById(selected);
+	const owned: RegionOwnedRoute[] = [];
 	for (const relation of defined(context.model.crossingRelationsByOwner.get(regionId))) {
-		const cellIncidentPathBase = { context, regionId, selected, children, relation };
-		const sourcePath = cellIncidentPath({ ...cellIncidentPathBase, source: true });
-		const targetPath = cellIncidentPath({ ...cellIncidentPathBase, source: false });
-		const track = gridTrackPiece({
-			selected,
-			relation,
-			sourcePortal: framePortal(sourcePath, true),
-			targetPortal: framePortal(targetPath, false),
-			regionId,
-		});
-		const pieces = [...sourcePath.pieces, track, ...targetPath.pieces];
-		routes.set(relation.id, stitchedRoute(relation, pieces));
-		portals.push(...sourcePath.portals, ...targetPath.portals);
-		ownedRoutes.push(...pieces);
+		const route = defined(routes.get(relation.id));
+		const sourceCellId = directChild(context, regionId, relation.from);
+		const targetCellId = directChild(context, regionId, relation.to);
+		owned.push(
+			{
+				relationId: relation.id,
+				regionId: sourceCellId,
+				points: route.points.slice(0, 2),
+			},
+			{ relationId: relation.id, regionId, points: route.points.slice(1, -1) },
+			{
+				relationId: relation.id,
+				regionId: targetCellId,
+				points: route.points.slice(-2),
+			},
+		);
 	}
-	return { routes, portals, ownedRoutes };
+	return owned;
 }
 
 function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveRegion {
 	const { context, regionId, placement } = input;
 	const childrenById = new Map(input.children.map(({ id, solved }) => [id, solved]));
-	const selected = materializePlacedGridCellDisposition({
+	const attempt = routePlacedGridCellDisposition({
 		graph: placement.graph,
 		input: placement.input,
 		model: context.model,
 		disposition: placement.disposition,
 	});
-	const crossings = composeGridCellCrossings(context, regionId, selected, childrenById);
+	if (attempt.status === GridCellLayoutStatus.Unsupported)
+		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
+	if (attempt.status === GridCellLayoutStatus.Unknown)
+		throw new UnknownRegionLeafLayoutError(attempt.reason, attempt.code, undefined, regionId);
 	const incidentPaths = gridCellInheritedIncidentPaths({
 		context,
 		regionId,
 		incidentSides: input.incidentSides,
-		selected,
+		selected: attempt,
 		children: childrenById,
 	});
 	const placements = input.children.map(({ id }) =>
-		defined(selected.cells.find((cell) => cell.id === id)),
+		defined(attempt.cells.find((cell) => cell.id === id)),
 	);
 	const placedChildren = translatedChildren(input.children, placements);
-	const layout = {
-		...selected.layout,
-		relations: placement.graph.relations.map(({ relation }) =>
-			defined(crossings.routes.get(relation.id)),
-		),
-	};
 	return {
-		layout,
+		layout: attempt.layout,
 		ranks: { bands: [], byEndpointId: new Map() },
 		regions: placedChildren.regions,
-		portals: [...placedChildren.portals, ...crossings.portals],
-		ownedRoutes: [...placedChildren.ownedRoutes, ...crossings.ownedRoutes],
+		portals: [...placedChildren.portals, ...attempt.portals],
+		ownedRoutes: [
+			...placedChildren.ownedRoutes,
+			...ownedGridCrossingRoutes(context, regionId, attempt),
+		],
 		incidentPaths,
 	};
 }
