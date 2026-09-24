@@ -1,3 +1,4 @@
+import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './bounded-search';
 import type { RegionPortalSide } from './region-composition-types';
 import type {
 	RegionIncidentContract,
@@ -16,17 +17,57 @@ export interface SearchState {
 	budgetExceeded: boolean;
 	incomplete: boolean;
 	readonly rejected: RegionIncidentRejectedAlternative[];
+	/** The alternative budget: the per-assignment cap composed under the global cap. */
+	readonly budget: SearchBudgetCounter;
 }
 
+/**
+ * The leaf's budget composes a per-assignment cap under the global cap over the state's own witness
+ * fields, so a new side assignment restarts the scoped count and a capped assignment leaves the
+ * search incomplete even when a later one succeeds.
+ */
 export function newSearchState(): SearchState {
-	return {
+	const state: SearchState = {
 		attempted: 0,
 		assignmentAttempts: 0,
 		assignmentLimitReached: false,
 		budgetExceeded: false,
 		incomplete: false,
 		rejected: [],
+		budget: scopedCounter(
+			boundedCounter(MAX_ALTERNATIVES, {
+				get attempted(): number {
+					return state.attempted;
+				},
+				set attempted(value: number) {
+					state.attempted = value;
+				},
+				get exhausted(): boolean {
+					return state.budgetExceeded;
+				},
+				set exhausted(value: boolean) {
+					state.budgetExceeded = value;
+				},
+			}),
+			MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT,
+			{
+				get attempted(): number {
+					return state.assignmentAttempts;
+				},
+				set attempted(value: number) {
+					state.assignmentAttempts = value;
+				},
+				get exhausted(): boolean {
+					return state.assignmentLimitReached;
+				},
+				set exhausted(value: boolean) {
+					state.assignmentLimitReached = value;
+					state.incomplete = value;
+				},
+			},
+		),
 	};
+	return state;
 }
 
 export function witness(state: SearchState, exhaustive: boolean): RegionIncidentSearchWitness {
@@ -56,16 +97,5 @@ export function recordRejection(
 }
 
 export function takeAttempt(state: SearchState): boolean {
-	if (state.attempted >= MAX_ALTERNATIVES) {
-		state.budgetExceeded = true;
-		return false;
-	}
-	if (state.assignmentAttempts >= MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT) {
-		state.assignmentLimitReached = true;
-		state.incomplete = true;
-		return false;
-	}
-	state.attempted += 1;
-	state.assignmentAttempts += 1;
-	return true;
+	return state.budget.take();
 }

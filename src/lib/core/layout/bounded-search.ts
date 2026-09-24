@@ -60,3 +60,134 @@ export function bestWithinBudget<Alternative, Evaluation, Selection>(
 	if (incumbent === undefined) return result;
 	return { ...result, incumbent };
 }
+
+/** One bounded counter's evidence: the alternatives it spent and whether it refused one. */
+export interface SearchBudgetEvidence {
+	attempted: number;
+	exhausted: boolean;
+}
+
+/** A bounded counter reserves one alternative per examined choice until it refuses. */
+export interface SearchBudgetCounter {
+	take(): boolean;
+	readonly attempted: number;
+	readonly exhausted: boolean;
+}
+
+/**
+ * A counter bounded by `limit` alternatives. It keeps its own evidence unless the caller passes
+ * evidence of its own, which is how a search keeps its own witness fields as the count.
+ */
+export function boundedCounter(
+	limit: number,
+	evidence: SearchBudgetEvidence = { attempted: 0, exhausted: false },
+): SearchBudgetCounter {
+	const counter: SearchBudgetCounter = {
+		take(): boolean {
+			if (evidence.attempted >= limit) {
+				evidence.exhausted = true;
+				return false;
+			}
+			evidence.attempted += 1;
+			return true;
+		},
+		get attempted(): number {
+			return evidence.attempted;
+		},
+		get exhausted(): boolean {
+			return evidence.exhausted;
+		},
+	};
+	return counter;
+}
+
+/**
+ * A counter capped at `limit` for one phase of a wider search: it refuses at its own cap and
+ * otherwise consumes its parent, so no phase overspends the global budget. A phase restarts by
+ * resetting the evidence it owns.
+ */
+export function scopedCounter(
+	parent: SearchBudgetCounter,
+	limit: number,
+	evidence: SearchBudgetEvidence = { attempted: 0, exhausted: false },
+): SearchBudgetCounter {
+	const counter: SearchBudgetCounter = {
+		take(): boolean {
+			if (evidence.attempted >= limit) {
+				evidence.exhausted = true;
+				return false;
+			}
+			if (!parent.take()) return false;
+			evidence.attempted += 1;
+			return true;
+		},
+		get attempted(): number {
+			return evidence.attempted;
+		},
+		get exhausted(): boolean {
+			return evidence.exhausted;
+		},
+	};
+	return counter;
+}
+
+export interface FirstValidSearchInput<Choice, Rejection> {
+	readonly levels: number;
+	readonly counter: SearchBudgetCounter;
+	readonly choices: (level: number, prefix: readonly Choice[]) => Iterable<Choice>;
+	readonly accept: (
+		level: number,
+		choice: Choice,
+		prefix: readonly Choice[],
+	) => Rejection | undefined;
+	readonly onReject: (level: number, choice: Choice, rejection: Rejection) => void;
+	readonly onBacktrack?: ((level: number, choice: Choice) => void) | undefined;
+	readonly onExhausted?: ((level: number, prefix: readonly Choice[]) => void) | undefined;
+}
+
+export interface FirstValidSearchResult<Choice> {
+	readonly selected?: readonly Choice[];
+	readonly exhaustive: boolean;
+}
+
+/**
+ * `firstValid` + `bounded(budget)`: a depth-first search whose acceptance depends on the selected
+ * prefix. Levels are walked in the iteration order of `choices`, and every examined choice reserves
+ * one alternative before its acceptance is evaluated, so a refused reservation stops the search
+ * non-exhaustively. A level whose choices are all rejected reports it to `onExhausted`, and a choice
+ * whose fully explored subtree failed reports it to `onBacktrack`.
+ */
+export function firstValidDepthFirst<Choice, Rejection>(
+	input: FirstValidSearchInput<Choice, Rejection>,
+): FirstValidSearchResult<Choice> {
+	const { levels, counter, choices, accept, onReject, onBacktrack, onExhausted } = input;
+	const selected: Choice[] = [];
+	let stopped = false;
+
+	function descend(level: number): boolean {
+		if (level === levels) return true;
+		for (const choice of choices(level, selected)) {
+			if (!counter.take()) {
+				stopped = true;
+				return false;
+			}
+			const rejection = accept(level, choice, selected);
+			if (rejection !== undefined) {
+				onReject(level, choice, rejection);
+				continue;
+			}
+			selected.push(choice);
+			const found = descend(level + 1);
+			if (found) return true;
+			selected.pop();
+			if (stopped) return false;
+			onBacktrack?.(level, choice);
+		}
+		onExhausted?.(level, selected);
+		return false;
+	}
+
+	const found = descend(0);
+	if (!found) return { exhaustive: !stopped };
+	return { selected: [...selected], exhaustive: !stopped };
+}

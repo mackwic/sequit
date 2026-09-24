@@ -1,5 +1,6 @@
 import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import { firstValidDepthFirst } from './bounded-search';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
@@ -17,6 +18,7 @@ import {
 	faceAnchor,
 	type FaceSlot,
 	geometryFailure,
+	type RegionLeafIncidentGeometryFailure,
 	routeCandidates,
 	routeFor,
 	slotFractions,
@@ -77,38 +79,18 @@ function candidateId(points: readonly { readonly x: number; readonly y: number }
 	return points.map(({ x, y }) => `${x},${y}`).join(';');
 }
 
-interface AnchorSearchInput {
-	readonly contract: RegionIncidentContract;
-	readonly slot: FaceSlot;
-	readonly fraction: number;
-	readonly endpoint: LayoutResult['elements'][number];
-	readonly layout: LayoutResult;
-	readonly selected: RegionSolvedIncident[];
-	readonly state: SearchState;
-	readonly continueSearch: () => readonly RegionSolvedIncident[] | undefined;
-}
-
-function tryAnchor(input: AnchorSearchInput): readonly RegionSolvedIncident[] | undefined {
-	const { contract, slot, fraction, endpoint, layout, selected, state, continueSearch } = input;
-	const anchor = faceAnchor(endpoint.bounds, slot.side, fraction);
-	for (const points of routeCandidates(anchor, slot.side, layout)) {
-		if (!takeAttempt(state)) return undefined;
-		const path = routeFor(contract, slot.side, points);
-		const failure = geometryFailure(layout, endpoint, path, selected);
-		if (failure !== undefined) {
-			recordRejection(state, contract, slot.side, {
-				...failure,
-				candidateId: candidateId(points),
-			});
-			continue;
-		}
-		selected.push(path);
-		const completed = continueSearch();
-		if (completed !== undefined) return completed;
-		selected.pop();
-		if (state.assignmentLimitReached || state.budgetExceeded) return undefined;
+/** Every route of one slot: the preferred face fraction first, then the declared fallbacks. */
+function* routeChoices(
+	contract: RegionIncidentContract,
+	slot: FaceSlot,
+	endpoint: LayoutResult['elements'][number],
+	layout: LayoutResult,
+): Generator<RegionSolvedIncident> {
+	for (const fraction of slotFractions(slot.preferredFraction)) {
+		const anchor = faceAnchor(endpoint.bounds, slot.side, fraction);
+		for (const points of routeCandidates(anchor, slot.side, layout))
+			yield routeFor(contract, slot.side, points);
 	}
-	return undefined;
 }
 
 function solveOnLayout(
@@ -150,36 +132,39 @@ function solveOnLayout(
 			state,
 			true,
 		);
+	const endpoints = contracts.map((contract) => defined(elements.get(contract.endpointId)));
 	const sides: RegionPortalSide[] = [];
-	const selected: RegionSolvedIncident[] = [];
 
 	function routeAt(
-		index: number,
-		slots: readonly FaceSlot[],
+		slotSides: readonly RegionPortalSide[],
 	): readonly RegionSolvedIncident[] | undefined {
-		if (index === contracts.length) return [...selected];
-		const contract = defined(contracts[index]);
-		const slot = defined(slots[index]);
-		const endpoint = defined(elements.get(contract.endpointId));
-		for (const fraction of slotFractions(slot.preferredFraction)) {
-			const completed = tryAnchor({
-				contract,
-				slot,
-				fraction,
-				endpoint,
-				layout,
-				selected,
-				state,
-				continueSearch: () => routeAt(index + 1, slots),
-			});
-			if (completed !== undefined) return completed;
-			if (state.assignmentLimitReached || state.budgetExceeded) return undefined;
-		}
-		recordRejection(state, contract, slot.side, {
-			code: RegionIncidentRejectionCode.GeometryInvalid,
-			reason: 'This incident side has no joint route with the other contracts.',
+		const slots = slotsForAssignment(contracts, slotSides);
+		const found = firstValidDepthFirst<RegionSolvedIncident, RegionLeafIncidentGeometryFailure>({
+			levels: contracts.length,
+			counter: state.budget,
+			choices: (level) =>
+				routeChoices(
+					defined(contracts[level]),
+					defined(slots[level]),
+					defined(endpoints[level]),
+					layout,
+				),
+			accept: (level, path, selected) =>
+				geometryFailure(layout, defined(endpoints[level]), path, selected),
+			onReject: (level, path, failure) => {
+				recordRejection(state, defined(contracts[level]), path.side, {
+					...failure,
+					candidateId: candidateId(path.points),
+				});
+			},
+			onExhausted: (level) => {
+				recordRejection(state, defined(contracts[level]), defined(slots[level]).side, {
+					code: RegionIncidentRejectionCode.GeometryInvalid,
+					reason: 'This incident side has no joint route with the other contracts.',
+				});
+			},
 		});
-		return undefined;
+		return found.selected;
 	}
 
 	function assignSides(index: number): readonly RegionSolvedIncident[] | undefined {
@@ -188,7 +173,7 @@ function solveOnLayout(
 			// admitted sides. The witness remains incomplete if this cap is reached.
 			state.assignmentAttempts = 0;
 			state.assignmentLimitReached = false;
-			return routeAt(0, slotsForAssignment(contracts, sides));
+			return routeAt(sides);
 		}
 		const contract = defined(contracts[index]);
 		for (const side of contract.allowedSides) {
