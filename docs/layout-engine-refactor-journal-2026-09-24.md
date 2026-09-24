@@ -324,13 +324,13 @@ Recherche bornée commune : quatre commits de refactor pur (`ba4018a`, `7815bbe`
 - `grid-cell.property.test.ts` : propriété élargie à 2..3 × 2..3 (nœuds, minima par colonne et par ligne, permutations d'entrée), exécutée en mode fuzz. Coût mesuré : environ 6 s pour 200 tirages, environ 155 s en mode fuzz ; le délai d'arrêt du test est porté à 600 s pour couvrir le fuzz sans réduire le nombre de tirages (registre n° 17).
 - Persistance : aller-retour TOML et Yjs de la 3 × 2 (`grid-presentation-roundtrip.test.ts`, `yjs-grid-presentation.test.ts`), et migration des schémas historiques 2 → 6 et 5 → 7 dans les deux infrastructures.
 - `grid-cell-inherited-incident.test.ts` : un incident dont la case est dans une colonne intérieure lève `GridInnerGutterMissing`.
-- E2E Chromium : `grid-cell-layout.spec.ts` ajoute « a persisted three by two grid renders six cells in three column and two row tracks » ; la spec passe **4/4** sur Chromium, et `nested-region-layout.spec.ts` passe sur le même navigateur.
+- E2E Chromium : `grid-cell-layout.spec.ts` ajoute « a persisted three by two grid renders six cells in three column and two row tracks » ; la spec passe **4/4** sur Chromium ; `nested-region-layout.spec.ts` passe **18/18** sur le même navigateur.
 
 **Identité 2 × 2.** Les cinq empreintes SHA-256 de `grid-cell-layout-identity.test.ts` sont inchangées : une grille 2 × 2 n'a pas de gouttière intérieure, chaque colonne reçoit `crossingCount + 1` pistes (l'espace de réallocation total, registre n° 13) et la marge reste dérivée du nombre de traversées, donc la géométrie, la piste réservée des incidents hérités et l'espace de candidats sont identiques au bit près.
 
 **S4.** L'extrémité de groupe générale et les groupes imbriqués ne sont pas livrés (registre n° 15) : la ressource manquante est une piste de face de groupe publiée par la case.
 
-**Portes.** `mise exec -- pnpm check:types` (0 erreur), `format:check`, `quality:unused` (knip), `quality:architecture`, `quality:duplicates` et `quality:fast` verts : `quality:fast` est vert : lint, `knip` sans export inutilisé, `dependency-cruiser` sans violation, `test:coverage` (seuil global de branches 98 % respecté) et `quality:duplicates` à **0,94 %** pour un seuil de 1 %..
+**Portes.** `mise exec -- pnpm check:types` (0 erreur), `format:check`, `quality:unused` (knip), `quality:architecture`, `quality:duplicates` et `quality:fast` verts : `quality:fast` est vert : lint, `knip` sans export inutilisé, `dependency-cruiser` sans violation, `test:coverage` : 267 fichiers et **4 429 tests web**, **98,07 % de branches** (8 908/9 083), 99,03 % de statements, 99,44 % de fonctions et 99,4 % de lignes ; `quality:duplicates` à **0,94 %** pour un seuil de 1 %..
 
 ## Registre des hypothèses et dégradations — phase 2
 
