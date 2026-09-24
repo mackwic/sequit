@@ -16,9 +16,11 @@ import {
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	type RegionCompositionGeometryCandidate,
-	validateRegionCompositionGeometry,
+	validateRegionCompositionGeometry as validateCompositionDiagnostic,
+	validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry,
 } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	depthTwoRegionDocument,
 	depthTwoRegionInput,
@@ -622,6 +624,12 @@ describe('generic region composition geometry', () => {
 		expect(validateRegionCompositionGeometry(normalized.model, candidate)).toContain(
 			'intersect without a bridge',
 		);
+		expect(validateCompositionDiagnostic(normalized.model, candidate)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: 'branch',
+			relationId: 'inside-branch',
+			relatedRelationId: 'parallel-branch',
+		});
 		expect(
 			validateParentRouteContacts(normalized.model, [
 				{ relationId: 'inside-branch', regionId: 'branch', points: [point(100), point(200)] },

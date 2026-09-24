@@ -30,7 +30,7 @@ import {
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
 import { solveRegionLeafLayout } from '../../../../lib/core/layout/region-leaf-layout';
 import {
 	SharedLaneLayoutStatus,

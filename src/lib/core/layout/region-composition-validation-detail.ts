@@ -12,6 +12,11 @@ import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic as diagnostic,
+	RegionGeometryDiagnosticCode as Code,
+} from './region-geometry-diagnostic';
 
 function translatedBoundsMatch(local: Bounds, global: Bounds, translation: Point): boolean {
 	if (global.x !== local.x + translation.x) return false;
@@ -49,26 +54,62 @@ function leafElementsFailure(
 	placement: RegionGeometryPlacement,
 	globalById: ReadonlyMap<string, LayoutElement>,
 	model: RegionCompositionModel,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const { localLayout, translation } = placement;
 	if (localLayout === undefined || translation === undefined)
-		return `Leaf region ${leafId} has no local layout or translation.`;
+		return diagnostic(
+			Code.MissingLeafLayout,
+			`Leaf region ${leafId} has no local layout or translation.`,
+			{
+				regionId: leafId,
+			},
+		);
 	const expected = [...model.leafByEndpointId]
 		.filter(([, ownerId]) => ownerId === leafId)
 		.map(([id]) => id);
 	const localById = new Map(localLayout.elements.map((element) => [element.id, element]));
 	if (localLayout.elements.length !== expected.length || localById.size !== expected.length)
-		return `Leaf region ${leafId} does not contain each local element exactly once.`;
+		return diagnostic(
+			Code.LeafElementInventory,
+			`Leaf region ${leafId} does not contain each local element exactly once.`,
+			{ regionId: leafId },
+		);
 	for (const id of expected) {
 		const local = localById.get(id);
 		const global = globalById.get(id);
 		if (local === undefined || global === undefined)
-			return `Leaf region ${leafId} does not contain each local element exactly once.`;
-		if (local.kind !== global.kind) return `Element ${id} differs from its translated leaf layout.`;
+			return diagnostic(
+				Code.LeafElementInventory,
+				`Leaf region ${leafId} does not contain each local element exactly once.`,
+				{ regionId: leafId, endpointId: id },
+			);
+		if (local.kind !== global.kind)
+			return diagnostic(
+				Code.TranslatedElementMismatch,
+				`Element ${id} differs from its translated leaf layout.`,
+				{
+					regionId: leafId,
+					endpointId: id,
+				},
+			);
 		if (!translatedBoundsMatch(local.bounds, global.bounds, translation))
-			return `Element ${id} differs from its translated leaf layout.`;
+			return diagnostic(
+				Code.TranslatedElementMismatch,
+				`Element ${id} differs from its translated leaf layout.`,
+				{
+					regionId: leafId,
+					endpointId: id,
+				},
+			);
 		if (!elementWithinLeaf(global, placement))
-			return `Element ${id} leaves its leaf region ${leafId}.`;
+			return diagnostic(
+				Code.ElementOutsideLeaf,
+				`Element ${id} leaves its leaf region ${leafId}.`,
+				{
+					regionId: leafId,
+					endpointId: id,
+				},
+			);
 	}
 	return undefined;
 }
@@ -78,23 +119,45 @@ function leafRoutesFailure(
 	placement: RegionGeometryPlacement,
 	globalById: ReadonlyMap<string, LayoutRelation>,
 	model: RegionCompositionModel,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const { localLayout, translation } = placement;
 	if (localLayout === undefined || translation === undefined)
-		return `Leaf region ${leafId} has no local layout or translation.`;
+		return diagnostic(
+			Code.MissingLeafLayout,
+			`Leaf region ${leafId} has no local layout or translation.`,
+			{
+				regionId: leafId,
+			},
+		);
 	const expected = model.localRelationsByOwner.get(leafId) ?? [];
 	const localById = new Map(localLayout.relations.map((route) => [route.id, route]));
 	if (localLayout.relations.length !== expected.length || localById.size !== expected.length)
-		return `Leaf region ${leafId} does not contain each local relation exactly once.`;
+		return diagnostic(
+			Code.LeafRelationInventory,
+			`Leaf region ${leafId} does not contain each local relation exactly once.`,
+			{ regionId: leafId },
+		);
 	for (const relation of expected) {
 		const local = localById.get(relation.id);
 		const global = globalById.get(relation.id);
 		if (local === undefined || global === undefined)
-			return `Leaf region ${leafId} does not contain each local relation exactly once.`;
+			return diagnostic(
+				Code.LeafRelationInventory,
+				`Leaf region ${leafId} does not contain each local relation exactly once.`,
+				{ regionId: leafId, relationId: relation.id },
+			);
 		if (local.from !== relation.from || local.to !== relation.to)
-			return `Relation ${relation.id} differs from its translated leaf layout.`;
+			return diagnostic(
+				Code.TranslatedRelationMismatch,
+				`Relation ${relation.id} differs from its translated leaf layout.`,
+				{ regionId: leafId, relationId: relation.id },
+			);
 		if (!translatedRouteMatches(local, global, translation))
-			return `Relation ${relation.id} differs from its translated leaf layout.`;
+			return diagnostic(
+				Code.TranslatedRelationMismatch,
+				`Relation ${relation.id} differs from its translated leaf layout.`,
+				{ regionId: leafId, relationId: relation.id },
+			);
 	}
 	return undefined;
 }
@@ -103,13 +166,17 @@ function groupContainmentFailure(
 	leafId: string,
 	globalById: ReadonlyMap<string, LayoutElement>,
 	model: RegionCompositionModel,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	for (const [endpointId, groupId] of model.parentGroupByEndpointId) {
 		if (model.leafByEndpointId.get(endpointId) !== leafId) continue;
 		const member = defined(globalById.get(endpointId));
 		const group = defined(globalById.get(groupId));
 		if (!inside(group.bounds, member.bounds))
-			return `Element ${endpointId} leaves its parent group ${groupId} in leaf region ${leafId}.`;
+			return diagnostic(
+				Code.MemberOutsideGroup,
+				`Element ${endpointId} leaves its parent group ${groupId} in leaf region ${leafId}.`,
+				{ regionId: leafId, endpointId, relatedEndpointId: groupId },
+			);
 	}
 	return undefined;
 }
@@ -119,17 +186,32 @@ function lanePlacementFailure(
 	local: NonNullable<LayoutResult['lanes']>[number],
 	global: NonNullable<LayoutResult['lanes']>[number],
 	placement: RegionGeometryPlacement,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const correctOwner = local.regionId === regionId;
 	const sameIdentity = global.id === local.id && global.label === local.label;
-	if (!correctOwner || !sameIdentity) return `Lane ${local.id} differs from its leaf layout.`;
+	if (!correctOwner || !sameIdentity)
+		return diagnostic(Code.LaneIdentityMismatch, `Lane ${local.id} differs from its leaf layout.`, {
+			regionId,
+			laneId: local.id,
+		});
 	if (!finiteBounds(global.bounds) || !inside(placement.bounds, global.bounds))
-		return `Lane ${local.id} leaves its leaf region ${regionId}.`;
+		return diagnostic(
+			Code.LaneOutsideLeaf,
+			`Lane ${local.id} leaves its leaf region ${regionId}.`,
+			{
+				regionId,
+				laneId: local.id,
+			},
+		);
 	if (
 		placement.translation === undefined ||
 		!translatedBoundsMatch(local.bounds, global.bounds, placement.translation)
 	)
-		return `Lane ${local.id} differs from its translated leaf layout.`;
+		return diagnostic(
+			Code.TranslatedLaneMismatch,
+			`Lane ${local.id} differs from its translated leaf layout.`,
+			{ regionId, laneId: local.id },
+		);
 	return undefined;
 }
 
@@ -137,7 +219,7 @@ function leafLaneGeometryFailure(
 	model: RegionCompositionModel,
 	candidate: RegionCompositionGeometryCandidate,
 	placements: ReadonlyMap<string, RegionGeometryPlacement>,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const published = candidate.layout.lanes ?? [];
 	let expectedCount = 0;
 	for (const region of model.regionsById.values()) {
@@ -147,7 +229,11 @@ function leafLaneGeometryFailure(
 		const owned = published.filter(({ regionId }) => regionId === region.id);
 		expectedCount += local.length;
 		if (owned.length !== local.length)
-			return `Leaf region ${region.id} does not publish each local lane exactly once.`;
+			return diagnostic(
+				Code.LeafLaneInventory,
+				`Leaf region ${region.id} does not publish each local lane exactly once.`,
+				{ regionId: region.id },
+			);
 		for (const [index, lane] of local.entries()) {
 			const global = defined(owned[index]);
 			const failure = lanePlacementFailure(region.id, lane, global, placement);
@@ -155,7 +241,10 @@ function leafLaneGeometryFailure(
 		}
 	}
 	if (published.length !== expectedCount)
-		return 'The composed canvas has an unknown or duplicate lane.';
+		return diagnostic(
+			Code.GlobalLaneInventory,
+			'The composed canvas has an unknown or duplicate lane.',
+		);
 	return undefined;
 }
 
@@ -163,14 +252,17 @@ export function validateLeafCompositionGeometry(
 	model: RegionCompositionModel,
 	candidate: RegionCompositionGeometryCandidate,
 	placements: ReadonlyMap<string, RegionGeometryPlacement>,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const expectedIds = model.leafByEndpointId;
 	const globalElements = candidate.layout.elements;
 	const elementsById = new Map(globalElements.map((element) => [element.id, element]));
 	if (globalElements.length !== expectedIds.size || elementsById.size !== expectedIds.size)
-		return 'The composed canvas does not contain each element exactly once.';
+		return diagnostic(
+			Code.ElementInventory,
+			'The composed canvas does not contain each element exactly once.',
+		);
 	if (globalElements.some(({ id }) => !expectedIds.has(id)))
-		return 'The composed canvas has an unknown element.';
+		return diagnostic(Code.UnknownElement, 'The composed canvas has an unknown element.');
 	const routesById = new Map(candidate.layout.relations.map((route) => [route.id, route]));
 	for (const region of model.regionsById.values()) {
 		if (region.childIds.length > 0 || region.id === model.rootId) continue;
@@ -190,13 +282,28 @@ export function validateParentRouteContacts(
 	model: RegionCompositionModel,
 	ownedRoutes: readonly RegionOwnedRoute[],
 ): string | undefined {
+	return diagnoseParentRouteContacts(model, ownedRoutes)?.message;
+}
+
+export function diagnoseParentRouteContacts(
+	model: RegionCompositionModel,
+	ownedRoutes: readonly RegionOwnedRoute[],
+): RegionGeometryDiagnostic | undefined {
 	for (const [index, route] of ownedRoutes.entries()) {
 		const owner = model.regionsById.get(route.regionId);
 		if (owner === undefined || owner.childIds.length === 0) continue;
 		for (const other of ownedRoutes.slice(index + 1)) {
 			if (other.regionId !== route.regionId || other.relationId === route.relationId) continue;
 			if (orthogonalPathsTouch(route.points, other.points))
-				return `Region ${route.regionId} routes ${route.relationId} and ${other.relationId} intersect without a bridge.`;
+				return diagnostic(
+					Code.ParentRouteContact,
+					`Region ${route.regionId} routes ${route.relationId} and ${other.relationId} intersect without a bridge.`,
+					{
+						relationId: route.relationId,
+						regionId: route.regionId,
+						relatedRelationId: other.relationId,
+					},
+				);
 		}
 	}
 	return undefined;

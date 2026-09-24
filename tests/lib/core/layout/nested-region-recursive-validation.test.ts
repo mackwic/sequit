@@ -12,7 +12,7 @@ import {
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';

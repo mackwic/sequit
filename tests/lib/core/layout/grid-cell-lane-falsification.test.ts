@@ -14,7 +14,7 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithLaneCellDocument } from './nested-region-fixture';
 

@@ -8,6 +8,7 @@ import { nestedRegionLocalMeasurements } from './nested-region-local-measurement
 import { composeCrossings, inheritedIncidentPaths } from './nested-region-recursive-composition';
 import {
 	regionQualifiedFailure,
+	retryGhostLeafForCompositionFailure,
 	retryOwnerForIncidentFailure,
 } from './nested-region-recursive-diagnostics';
 import {
@@ -40,6 +41,7 @@ import {
 	RegionCompositionModelStatus,
 } from './region-composition-model';
 import { validateRegionCompositionGeometry } from './region-composition-validation';
+import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
@@ -215,7 +217,12 @@ interface RecursiveCandidateInput {
 	readonly ghostLeafIds?: ReadonlySet<string>;
 }
 
-function solveRecursiveCandidate(input: RecursiveCandidateInput): NestedRegionLayoutAttempt {
+interface DiagnosedCandidate {
+	readonly attempt: NestedRegionLayoutAttempt;
+	readonly diagnostic?: RegionGeometryDiagnostic;
+}
+
+function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandidate {
 	const { graph, measurements, model, cache, ghostLeafIds } = input;
 	const dispositionSideByRegionId = new Map<string, NestedPortalSide>();
 	let context: RecursiveContext = {
@@ -245,7 +252,13 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): NestedRegionLa
 		} as const;
 		const chainFailure = validateRegionCompositionGeometry(model, candidate);
 		if (chainFailure !== undefined)
-			return { status: NestedRegionLayoutStatus.Unknown, reason: chainFailure };
+			return {
+				attempt: {
+					status: NestedRegionLayoutStatus.Unknown,
+					reason: chainFailure.message,
+				},
+				diagnostic: chainFailure,
+			};
 		const incidentFailure = validateNestedRegionLeafIncidents(model, candidate);
 		if (incidentFailure !== undefined) {
 			const ownerId = retryOwnerForIncidentFailure(model, incidentFailure);
@@ -255,11 +268,14 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): NestedRegionLa
 				continue;
 			}
 			return {
-				status: NestedRegionLayoutStatus.Unknown,
-				reason: regionQualifiedFailure(model, incidentFailure),
+				attempt: {
+					status: NestedRegionLayoutStatus.Unknown,
+					reason: regionQualifiedFailure(model, incidentFailure),
+				},
+				diagnostic: incidentFailure,
 			};
 		}
-		return candidate;
+		return { attempt: candidate };
 	}
 }
 
@@ -286,8 +302,8 @@ export function solveRecursiveNestedRegionLayout(
 			model: normalized.model,
 			cache,
 		});
-		if (baseline.status !== NestedRegionLayoutStatus.Unknown) return baseline;
-		if (!baseline.reason.includes('intersect without a bridge')) return baseline;
+		if (baseline.attempt.status !== NestedRegionLayoutStatus.Unknown) return baseline.attempt;
+		if (!retryGhostLeafForCompositionFailure(baseline.diagnostic)) return baseline.attempt;
 		for (const leafId of multiIncidentLeaves(normalized.model)) {
 			const alternative = solveRecursiveCandidate({
 				graph,
@@ -296,9 +312,10 @@ export function solveRecursiveNestedRegionLayout(
 				cache,
 				ghostLeafIds: new Set([leafId]),
 			});
-			if (alternative.status === NestedRegionLayoutStatus.Selected) return alternative;
+			if (alternative.attempt.status === NestedRegionLayoutStatus.Selected)
+				return alternative.attempt;
 		}
-		return baseline;
+		return baseline.attempt;
 	} catch (error) {
 		if (error instanceof UnsupportedRegionLeafLayoutError)
 			return {

@@ -13,11 +13,13 @@ import {
 	RegionRelationKind,
 	type RegionRelationOwnership,
 } from './region-composition-model';
-
-enum IncidentRole {
-	Source = 'source',
-	Target = 'target',
-}
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+	type RegionGeometryProvenance,
+	RegionIncidentRole as IncidentRole,
+} from './region-geometry-diagnostic';
 
 interface LeafIncident {
 	readonly relation: LogicRelation;
@@ -27,6 +29,21 @@ interface LeafIncident {
 	readonly portal: NestedRegionPortal;
 	readonly piece: NestedOwnedRoute;
 	readonly anchor: Point;
+}
+
+function incidentDiagnostic(
+	incident: LeafIncident,
+	code: RegionGeometryDiagnosticCode,
+	message: string,
+	provenance: RegionGeometryProvenance = {},
+): RegionGeometryDiagnostic {
+	return regionGeometryDiagnostic(code, message, {
+		relationId: incident.relation.id,
+		regionId: incident.leafId,
+		endpointId: incident.endpointId,
+		role: incident.role,
+		...provenance,
+	});
 }
 
 function onFace(anchor: Point, bounds: Bounds, side: NestedPortalSide): boolean {
@@ -59,7 +76,7 @@ function incidentFor(
 	owned: RegionRelationOwnership,
 	role: IncidentRole,
 	candidate: NestedRegionSelected,
-): LeafIncident | string {
+): LeafIncident | RegionGeometryDiagnostic {
 	const { relation } = owned;
 	let endpointId = relation.to;
 	let leafId = owned.targetLeafId;
@@ -71,16 +88,28 @@ function incidentFor(
 		matchesLeafPortal(portal, relation.id, leafId, endpointId),
 	);
 	if (portals.length !== 1)
-		return `Relation ${relation.id} has ${portals.length} ${role} portals on leaf ${leafId}; expected one.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.IncidentPortalInventory,
+			`Relation ${relation.id} has ${portals.length} ${role} portals on leaf ${leafId}; expected one.`,
+			{ relationId: relation.id, regionId: leafId, endpointId, role },
+		);
 	const pieces = candidate.ownedRoutes.filter(
 		(piece) => piece.relationId === relation.id && piece.regionId === leafId,
 	);
 	if (pieces.length !== 1)
-		return `Relation ${relation.id} has ${pieces.length} ${role} incident pieces in leaf ${leafId}; expected one.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.IncidentPieceInventory,
+			`Relation ${relation.id} has ${pieces.length} ${role} incident pieces in leaf ${leafId}; expected one.`,
+			{ relationId: relation.id, regionId: leafId, endpointId, role },
+		);
 	const piece = defined(pieces[0]);
 	const portal = defined(portals[0]);
 	if (!orthogonal(piece.points))
-		return `Relation ${relation.id} has a non-orthogonal ${role} incident in leaf ${leafId}.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.NonOrthogonalIncident,
+			`Relation ${relation.id} has a non-orthogonal ${role} incident in leaf ${leafId}.`,
+			{ relationId: relation.id, regionId: leafId, endpointId, role },
+		);
 	let anchor = defined(piece.points.at(-1));
 	if (role === IncidentRole.Source) anchor = defined(piece.points[0]);
 	return { relation, endpointId, leafId, role, portal, piece, anchor };
@@ -89,10 +118,14 @@ function incidentFor(
 function elementFor(
 	incident: LeafIncident,
 	elementsById: ReadonlyMap<string, LayoutElement>,
-): LayoutElement | string {
+): LayoutElement | RegionGeometryDiagnostic {
 	const element = elementsById.get(incident.endpointId);
 	if (element === undefined)
-		return `Relation ${incident.relation.id} has no ${incident.role} node ${incident.endpointId}.`;
+		return incidentDiagnostic(
+			incident,
+			RegionGeometryDiagnosticCode.MissingIncidentNode,
+			`Relation ${incident.relation.id} has no ${incident.role} node ${incident.endpointId}.`,
+		);
 	return element;
 }
 
@@ -117,7 +150,7 @@ function foreignNodeFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
 	candidate: NestedRegionSelected,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const endpoint = candidate.layout.elements.find(({ id }) => id === incident.endpointId);
 	const groupId = model.parentGroupByEndpointId.get(incident.endpointId);
 	let directGroupId: string | undefined;
@@ -128,7 +161,12 @@ function foreignNodeFailure(
 		if (model.leafByEndpointId.get(foreign.id) !== incident.leafId) continue;
 		if (foreign.id === directGroupId && crossesDirectGroupFace(incident, foreign)) continue;
 		if (segmentEnters(incident.piece.points, foreign.bounds))
-			return `Relation ${incident.relation.id} ${incident.role} incident in leaf ${incident.leafId} crosses foreign node ${foreign.id}.`;
+			return incidentDiagnostic(
+				incident,
+				RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+				`Relation ${incident.relation.id} ${incident.role} incident in leaf ${incident.leafId} crosses foreign node ${foreign.id}.`,
+				{ relatedEndpointId: foreign.id },
+			);
 	}
 	return undefined;
 }
@@ -152,18 +190,33 @@ function localRouteFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
 	candidate: NestedRegionSelected,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	for (const local of model.localRelationsByOwner.get(incident.leafId) ?? []) {
 		const route = candidate.ownedRoutes.find(
 			(piece) => piece.regionId === incident.leafId && piece.relationId === local.id,
 		);
 		if (route === undefined)
-			return `Local relation ${local.id} is missing from leaf ${incident.leafId}.`;
+			return incidentDiagnostic(
+				incident,
+				RegionGeometryDiagnosticCode.LocalRelationMissing,
+				`Local relation ${local.id} is missing from leaf ${incident.leafId}.`,
+				{ relatedRelationId: local.id },
+			);
 		if (!orthogonal(route.points))
-			return `Local relation ${local.id} has a non-orthogonal route in leaf ${incident.leafId}.`;
+			return incidentDiagnostic(
+				incident,
+				RegionGeometryDiagnosticCode.LocalRelationNonOrthogonal,
+				`Local relation ${local.id} has a non-orthogonal route in leaf ${incident.leafId}.`,
+				{ relatedRelationId: local.id },
+			);
 		const allowed = localConnectionAt(local, route.points, incident.endpointId, incident.anchor);
 		if (pathsTouchWithoutBridge(incident.piece.points, route.points, allowed))
-			return `Relation ${incident.relation.id} incident touches local relation ${local.id} in leaf ${incident.leafId} without a defined bridge.`;
+			return incidentDiagnostic(
+				incident,
+				RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
+				`Relation ${incident.relation.id} incident touches local relation ${local.id} in leaf ${incident.leafId} without a defined bridge.`,
+				{ relatedRelationId: local.id },
+			);
 	}
 	return undefined;
 }
@@ -173,11 +226,15 @@ function leafFailure(
 	model: RegionCompositionModel,
 	candidate: NestedRegionSelected,
 	elementsById: ReadonlyMap<string, LayoutElement>,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const element = elementFor(incident, elementsById);
-	if (typeof element === 'string') return element;
+	if ('code' in element) return element;
 	if (!onFace(incident.anchor, element.bounds, incident.portal.side))
-		return `Relation ${incident.relation.id} ${incident.role} incident in leaf ${incident.leafId} does not attach to node ${incident.endpointId} on its ${incident.portal.side} face.`;
+		return incidentDiagnostic(
+			incident,
+			RegionGeometryDiagnosticCode.IncidentWrongAttachment,
+			`Relation ${incident.relation.id} ${incident.role} incident in leaf ${incident.leafId} does not attach to node ${incident.endpointId} on its ${incident.portal.side} face.`,
+		);
 	return (
 		foreignNodeFailure(incident, model, candidate) ?? localRouteFailure(incident, model, candidate)
 	);
@@ -187,16 +244,24 @@ function leafFailure(
 export function validateNestedRegionLeafIncidents(
 	model: RegionCompositionModel,
 	candidate: NestedRegionSelected,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const elementsById = new Map(candidate.layout.elements.map((element) => [element.id, element]));
 	for (const owned of model.relations) {
 		if (owned.kind !== RegionRelationKind.Crossing) continue;
 		for (const role of [IncidentRole.Source, IncidentRole.Target]) {
 			const incident = incidentFor(owned, role, candidate);
-			if (typeof incident === 'string') return incident;
+			if ('code' in incident) return incident;
 			const failure = leafFailure(incident, model, candidate, elementsById);
 			if (failure !== undefined) return failure;
 		}
 	}
 	return undefined;
+}
+
+/** Display adapter for callers that only need the established wording. */
+export function validateNestedRegionLeafIncidentsMessage(
+	model: RegionCompositionModel,
+	candidate: NestedRegionSelected,
+): string | undefined {
+	return validateNestedRegionLeafIncidents(model, candidate)?.message;
 }

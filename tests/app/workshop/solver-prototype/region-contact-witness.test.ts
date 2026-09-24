@@ -8,7 +8,7 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 
 describe('observable contacts at region boundaries', () => {
 	const cases = runRegionContactWitnesses();

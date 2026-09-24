@@ -6,7 +6,7 @@ import {
 	layoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	NestedPortalSide,

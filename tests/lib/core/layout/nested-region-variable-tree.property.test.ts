@@ -30,7 +30,7 @@ import {
 	solveNestedRegionLayout,
 	solveNestedRegionLayoutForProjection,
 } from '../../../../src/lib/core/layout/nested-region-layout';
-import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import {
 	type NestedRegionInput,
@@ -41,7 +41,7 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { UnknownNestedRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

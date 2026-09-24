@@ -29,7 +29,7 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridDocument, regionDocument } from './nested-region-fixture';

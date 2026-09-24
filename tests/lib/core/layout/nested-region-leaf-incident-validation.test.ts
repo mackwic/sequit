@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds, LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
-import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import {
 	type NestedOwnedRoute,
 	NestedPortalSide,
@@ -18,7 +19,8 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { regionDocument } from './nested-region-fixture';
 
 const NODE_BOUNDS = new Map<string, Bounds>([
@@ -398,6 +400,13 @@ describe('recursive nested-region leaf incident validation', () => {
 			{ x: 110, y: 230 },
 		]);
 		expect(validateRegionCompositionGeometry(model, damaged)).toBeUndefined();
+		expect(validateIncidentDiagnostic(model, damaged)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentWrongAttachment,
+			relationId: 'across-middle',
+			regionId: 'left',
+			endpointId: 'a-target',
+			role: 'source',
+		});
 		expect(validateNestedRegionLeafIncidents(model, damaged)).toContain(
 			'does not attach to node a-target on its bottom face',
 		);

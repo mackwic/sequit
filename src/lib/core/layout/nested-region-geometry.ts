@@ -1,5 +1,5 @@
 import type { LogicGraph } from '../graph/create-graph';
-import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { validateNestedPlacements } from './nested-region-placement-validation';
 import { validateNestedRouteOwnership } from './nested-region-route-validation';
 import {
@@ -11,7 +11,7 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from './region-composition-model';
-import { validateRegionCompositionGeometry } from './region-composition-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from './region-composition-validation';
 
 /** Separate materialization check: confinement, portals, ownership and opacity. */
 export function validateNestedRegionGeometry(

@@ -1,26 +1,36 @@
 import { defined } from '../document/logic-document';
 import type { RegionCompositionModel } from './region-composition-model';
+import {
+	type RegionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from './region-geometry-diagnostic';
 
-export function regionQualifiedFailure(model: RegionCompositionModel, failure: string): string {
-	const owner = model.relations.find(({ relation }) =>
-		failure.startsWith(`Relation ${relation.id} `),
-	)?.ownerId;
-	if (owner === undefined || owner === model.rootId) return failure;
-	return `Region ${owner}: ${failure}`;
+const RETRYABLE_INCIDENT_CODES = new Set([
+	RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+	RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
+	RegionGeometryDiagnosticCode.IncidentWrongAttachment,
+]);
+
+export function regionQualifiedFailure(
+	model: RegionCompositionModel,
+	failure: RegionGeometryDiagnostic,
+): string {
+	if (
+		failure.code === RegionGeometryDiagnosticCode.LocalRelationMissing ||
+		failure.code === RegionGeometryDiagnosticCode.LocalRelationNonOrthogonal
+	)
+		return failure.message;
+	const owner = model.relations.find(({ relation }) => relation.id === failure.relationId)?.ownerId;
+	if (owner === undefined || owner === model.rootId) return failure.message;
+	return `Region ${owner}: ${failure.message}`;
 }
 
 export function retryOwnerForIncidentFailure(
 	model: RegionCompositionModel,
-	failure: string,
+	failure: RegionGeometryDiagnostic,
 ): string | undefined {
-	const geometricFailure =
-		failure.includes(' crosses foreign node ') ||
-		failure.includes(' touches local relation ') ||
-		failure.includes(' does not attach to node ');
-	if (!geometricFailure) return undefined;
-	const owned = model.relations.find(({ relation }) =>
-		failure.startsWith(`Relation ${relation.id} `),
-	);
+	if (!RETRYABLE_INCIDENT_CODES.has(failure.code)) return undefined;
+	const owned = model.relations.find(({ relation }) => relation.id === failure.relationId);
 	const ownerId = owned?.ownerId;
 	if (ownerId === undefined) return undefined;
 	const owner = model.regionsById.get(ownerId);
@@ -33,4 +43,10 @@ export function retryOwnerForIncidentFailure(
 	}
 	if (ownerId !== model.rootId && owner?.definition.layout === undefined) return undefined;
 	return ownerId;
+}
+
+export function retryGhostLeafForCompositionFailure(
+	failure: RegionGeometryDiagnostic | undefined,
+): boolean {
+	return failure?.code === RegionGeometryDiagnosticCode.ParentRouteContact;
 }
