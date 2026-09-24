@@ -1,7 +1,15 @@
 import { defined } from '../document/logic-document';
-import { OUTER_MARGIN, RAIL_SPACING } from './layout-settings';
+import { OUTER_MARGIN } from './layout-settings';
 import type { LayoutElement } from './layout-types';
-import { type LogicalBox, physicalBounds, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
+import type { RoutingEdge } from './routing-resource-allocation';
+import {
+	frameEdgeBand,
+	frameExteriorRailEdge,
+	frameGutterEdge,
+	frameOwnerId,
+	type LogicalBox,
+	physicalBounds,
+} from './shared-lane-frame';
 import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneBounds } from './shared-lane-types';
@@ -20,6 +28,14 @@ export interface TransverseLaneFrame {
 	readonly longExtent: number;
 	readonly laneLongStarts: readonly number[];
 	readonly laneLongSizes: readonly number[];
+	/** The port offsets the frame placed its elements with: what the routing reads a port again by. */
+	readonly portOffsetByIncidence: ReadonlyMap<string, number>;
+	/** The owner of the routing edges this frame publishes. */
+	readonly ownerId: string;
+	/** The gutter corridor across the lanes: one track per plan, both sides reading the ordinal. */
+	readonly gutterEdge: RoutingEdge;
+	/** The rail band along a lane: one track per plan, both ends of a lane reading the ordinal. */
+	readonly railEdge: RoutingEdge;
 }
 
 function orderedEndpoints(
@@ -66,13 +82,11 @@ function laneMetrics(
 
 function longitudinalPositions(
 	lengths: readonly number[],
-	relationCount: number,
+	maximumTrack: number,
 ): {
 	readonly starts: readonly number[];
 	readonly extent: number;
-	readonly maximumTrack: number;
 } {
-	const maximumTrack = SHARED_LANE_CLEARANCE + (relationCount + 1) * RAIL_SPACING;
 	const gap = 2 * maximumTrack + LANE_INSET;
 	const starts: number[] = [];
 	let cursor = OUTER_MARGIN + maximumTrack;
@@ -81,7 +95,7 @@ function longitudinalPositions(
 		cursor += length + gap;
 	}
 	const extent = cursor - gap + maximumTrack + OUTER_MARGIN;
-	return { starts, extent, maximumTrack };
+	return { starts, extent };
 }
 
 interface TransversePositioning {
@@ -147,8 +161,12 @@ export function makeTransverseLaneFrame(
 	ports: SharedLanePorts,
 ): TransverseLaneFrame {
 	const metrics = laneMetrics(input, ports);
-	const positions = longitudinalPositions(metrics.lengths, input.plans.length);
-	const crossStart = OUTER_MARGIN + positions.maximumTrack;
+	const ownerId = frameOwnerId(input);
+	const gutterEdge = frameGutterEdge(ownerId, input.plans.length);
+	const railEdge = frameExteriorRailEdge(ownerId, input.plans.length);
+	const maximumTrack = Math.max(frameEdgeBand(gutterEdge), frameEdgeBand(railEdge));
+	const positions = longitudinalPositions(metrics.lengths, maximumTrack);
+	const crossStart = OUTER_MARGIN + maximumTrack;
 	const placed = positionEndpoints(input, ports, metrics, { longitudinal: positions, crossStart });
 	return {
 		boxes: placed.boxes,
@@ -156,9 +174,13 @@ export function makeTransverseLaneFrame(
 		lanes: positionedLanes(input, metrics, positions, crossStart),
 		crossStart,
 		crossSize: metrics.crossSize,
-		crossExtent: crossStart + metrics.crossSize + positions.maximumTrack + OUTER_MARGIN,
+		crossExtent: crossStart + metrics.crossSize + maximumTrack + OUTER_MARGIN,
 		longExtent: positions.extent,
 		laneLongStarts: positions.starts,
 		laneLongSizes: metrics.lengths,
+		portOffsetByIncidence: ports.offsetByIncidence,
+		ownerId,
+		gutterEdge,
+		railEdge,
 	};
 }

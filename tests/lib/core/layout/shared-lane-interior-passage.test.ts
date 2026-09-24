@@ -19,10 +19,14 @@ import {
 } from '../../../../src/lib/core/layout/shared-lane-layout';
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
-import { routeSharedLanes } from '../../../../src/lib/core/layout/shared-lane-routing';
+import {
+	allocateParallelRoutes,
+	routeSharedLanes,
+} from '../../../../src/lib/core/layout/shared-lane-routing';
 import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-types';
 import { makeTransverseLaneFrame } from '../../../../src/lib/core/layout/shared-transverse-frame';
 import {
+	allocateTransverseRoutes,
 	routeTransverseLanes,
 	TransverseRouteOrder,
 } from '../../../../src/lib/core/layout/shared-transverse-routing';
@@ -126,7 +130,7 @@ describe('interior passage through S | SD | C', () => {
 			height: frame.longExtent,
 			lanes: frame.lanes,
 			elements: frame.elements,
-			relations: routeSharedLanes(input, frame, ports),
+			relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame)),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, exterior)).toBeUndefined();
 		expect(validateSharedLaneInteriorPassage(prepared.graph, exterior, 'request')).toContain(
@@ -403,9 +407,25 @@ describe('interior passage through S | SD | C', () => {
 		};
 		const { prepared, input, ports } = plannedPassage(document);
 		const frame = makeTransverseLaneFrame(input, ports);
-		const canonical = routeTransverseLanes(input, frame, ports, TransverseRouteOrder.Canonical);
-		const nested = routeTransverseLanes(input, frame, ports, TransverseRouteOrder.Nested);
-		expect(routeTransverseLanes(input, frame, ports)).toEqual(canonical);
+		const canonical = routeTransverseLanes(
+			input,
+			frame,
+			allocateTransverseRoutes(input, frame, TransverseRouteOrder.Canonical),
+			TransverseRouteOrder.Canonical,
+		);
+		const nested = routeTransverseLanes(
+			input,
+			frame,
+			allocateTransverseRoutes(input, frame, TransverseRouteOrder.Nested),
+			TransverseRouteOrder.Nested,
+		);
+		expect(
+			routeTransverseLanes(
+				input,
+				frame,
+				allocateTransverseRoutes(input, frame, TransverseRouteOrder.Canonical),
+			),
+		).toEqual(canonical);
 		const canonicalGutter = defined(defined(canonical[0]).points[2]).x;
 		const nestedGutter = defined(defined(nested[0]).points[2]).x;
 		expect(canonicalGutter).toBeLessThan(frame.crossStart);
@@ -440,7 +460,12 @@ describe('interior passage through S | SD | C', () => {
 		expect((sourceBox.cross + targetBox.cross) / 2 + sourceBox.crossSize / 2).toBe(
 			frame.crossStart + frame.crossSize / 2,
 		);
-		const relations = routeTransverseLanes(input, frame, ports, TransverseRouteOrder.Nested);
+		const relations = routeTransverseLanes(
+			input,
+			frame,
+			allocateTransverseRoutes(input, frame, TransverseRouteOrder.Nested),
+			TransverseRouteOrder.Nested,
+		);
 		expect(defined(defined(relations[0]).points[2]).x).toBeLessThan(frame.crossStart);
 		expect(
 			validateSharedLaneGeometry(prepared.graph, {

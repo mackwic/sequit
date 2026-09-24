@@ -27,7 +27,10 @@ import {
 } from '../../../../lib/core/layout/shared-lane-layout';
 import { prepareSharedLanes } from '../../../../lib/core/layout/shared-lane-model';
 import { planSharedLanePorts } from '../../../../lib/core/layout/shared-lane-ports';
-import { routeSharedLanes } from '../../../../lib/core/layout/shared-lane-routing';
+import {
+	allocateParallelRoutes,
+	routeSharedLanes,
+} from '../../../../lib/core/layout/shared-lane-routing';
 import type { SharedLaneGeometry } from '../../../../lib/core/layout/shared-lane-types';
 
 export enum PassageCandidateId {
@@ -204,7 +207,7 @@ export function compareSharedLanePassages(): SharedLanePassageComparison {
 		height: frame.longExtent,
 		lanes: frame.lanes,
 		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, ports),
+		relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame)),
 	};
 	const exteriorIssue = validateSharedLaneGeometry(graph, exterior, SHARED_LANE_CLEARANCE);
 	if (exteriorIssue !== undefined)

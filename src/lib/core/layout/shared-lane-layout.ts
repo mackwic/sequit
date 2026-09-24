@@ -19,17 +19,21 @@ import {
 	searchWitness,
 	unknownCode,
 } from './shared-lane-incident-search';
-import { interiorPassageTrack } from './shared-lane-interior-passage';
+import { interiorPassageAllocation } from './shared-lane-interior-passage';
 import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import {
+	allocateParallelRoutes,
 	ParallelRouteOrder,
 	routeSharedLanes,
-	routeSharedLaneThroughInterior,
 } from './shared-lane-routing';
 import { makeTransverseLaneFrame } from './shared-transverse-frame';
-import { routeTransverseLanes, TransverseRouteOrder } from './shared-transverse-routing';
+import {
+	allocateTransverseRoutes,
+	routeTransverseLanes,
+	TransverseRouteOrder,
+} from './shared-transverse-routing';
 
 export enum SharedLaneLayoutStatus {
 	Selected = 'selected',
@@ -88,7 +92,7 @@ function parallelGeometry(
 		...dimensions,
 		lanes: frame.lanes,
 		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, ports, order),
+		relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame), order),
 	};
 }
 
@@ -97,14 +101,17 @@ function interiorParallelGeometry(
 	ports: SharedLanePorts,
 ): SharedLaneGeometry | undefined {
 	const frame = makeSharedLaneFrame(input, ports);
-	const track = interiorPassageTrack(input, frame, ports);
-	if (track === undefined) return undefined;
+	const passage = interiorPassageAllocation(input, frame, ports);
+	if (passage === undefined) return undefined;
 	const dimensions = geometryDimensions(input, frame.crossExtent, frame.longExtent);
 	return {
 		...dimensions,
 		lanes: frame.lanes,
 		elements: frame.elements,
-		relations: routeSharedLaneThroughInterior(input, frame, ports, track),
+		relations: routeSharedLanes(input, frame, {
+			...allocateParallelRoutes(input, frame),
+			passage,
+		}),
 	};
 }
 
@@ -119,7 +126,12 @@ function transverseGeometry(
 		...dimensions,
 		lanes: frame.lanes,
 		elements: frame.elements,
-		relations: routeTransverseLanes(input, frame, ports, order),
+		relations: routeTransverseLanes(
+			input,
+			frame,
+			allocateTransverseRoutes(input, frame, order),
+			order,
+		),
 	};
 }
 

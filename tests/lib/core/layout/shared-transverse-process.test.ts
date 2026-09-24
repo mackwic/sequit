@@ -23,11 +23,13 @@ import {
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
 import {
+	allocateParallelRoutes,
 	ParallelRouteOrder,
 	routeSharedLanes,
 } from '../../../../src/lib/core/layout/shared-lane-routing';
 import { makeTransverseLaneFrame } from '../../../../src/lib/core/layout/shared-transverse-frame';
 import {
+	allocateTransverseRoutes,
 	routeTransverseLanes,
 	TransverseRouteOrder,
 } from '../../../../src/lib/core/layout/shared-transverse-routing';
@@ -149,11 +151,21 @@ describe('S | SD | C shared process', () => {
 		const base = { ...dimensions, lanes: frame.lanes, elements: frame.elements };
 		const canonical = {
 			...base,
-			relations: routeTransverseLanes(input, frame, ports, TransverseRouteOrder.Canonical),
+			relations: routeTransverseLanes(
+				input,
+				frame,
+				allocateTransverseRoutes(input, frame, TransverseRouteOrder.Canonical),
+				TransverseRouteOrder.Canonical,
+			),
 		};
 		const nested = {
 			...base,
-			relations: routeTransverseLanes(input, frame, ports, TransverseRouteOrder.Nested),
+			relations: routeTransverseLanes(
+				input,
+				frame,
+				allocateTransverseRoutes(input, frame, TransverseRouteOrder.Nested),
+				TransverseRouteOrder.Nested,
+			),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, canonical)).toContain(
 			'cross without a bridge',
@@ -209,7 +221,11 @@ describe('S | SD | C shared process', () => {
 			height: canonicalFrame.longExtent,
 			lanes: canonicalFrame.lanes,
 			elements: canonicalFrame.elements,
-			relations: routeSharedLanes(input, canonicalFrame, ports),
+			relations: routeSharedLanes(
+				input,
+				canonicalFrame,
+				allocateParallelRoutes(input, canonicalFrame),
+			),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, canonical)).toContain(
 			'cross without a bridge',
@@ -220,7 +236,12 @@ describe('S | SD | C shared process', () => {
 			height: localFrame.longExtent,
 			lanes: localFrame.lanes,
 			elements: localFrame.elements,
-			relations: routeSharedLanes(input, localFrame, ports, ParallelRouteOrder.LocalPassages),
+			relations: routeSharedLanes(
+				input,
+				localFrame,
+				allocateParallelRoutes(input, localFrame),
+				ParallelRouteOrder.LocalPassages,
+			),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, local)).toBeUndefined();
 	});

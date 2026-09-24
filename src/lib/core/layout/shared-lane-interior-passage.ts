@@ -1,4 +1,11 @@
 import { defined, EndpointKind, LaneOrientation } from '../document/logic-document';
+import { RAIL_SPACING } from './layout-settings';
+import {
+	allocateCenteredTrack,
+	type CenteredTrackAllocation,
+	centeredTrackOffset,
+	type RoutingTrackDemand,
+} from './routing-resource-allocation';
 import { SHARED_LANE_CLEARANCE, type SharedLaneFrame } from './shared-lane-frame';
 import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
 import { incidenceKey, PortRole, type SharedLanePorts } from './shared-lane-ports';
@@ -10,12 +17,12 @@ function onlyMiddleObstacle(input: SharedLaneInput): SharedLaneEndpoint | undefi
 	return middle[0];
 }
 
-/** A free rank gap between the two ports, optionally after a blocking empty group. */
-export function interiorPassageTrack(
+/** The free rank gap between the two ports, optionally after a blocking empty group. */
+function interiorPassageDemand(
 	input: SharedLaneInput,
 	frame: SharedLaneFrame,
 	ports: SharedLanePorts,
-): number | undefined {
+): RoutingTrackDemand | undefined {
 	if (input.orientation !== LaneOrientation.Parallel) return undefined;
 	if (!input.vertical || input.reverse) return undefined;
 	if (input.laneIds.length !== 3 || input.plans.length !== 1) return undefined;
@@ -51,5 +58,34 @@ export function interiorPassageTrack(
 	const last = sourceBox.longitudinal - SHARED_LANE_CLEARANCE;
 	if (first >= last || first <= targetPort) return undefined;
 	if (last >= sourcePort) return undefined;
-	return (first + last) / 2;
+	return { relationId: plan.id, start: first, end: last };
+}
+
+/**
+ * The interior passage as an allocation on its own edge: capacity one, centred in the free interval
+ * between the two ports. The edge reserves no `edgeExtent`, because the space it uses is the empty
+ * rank its lane already owns, which is why its centred track is off the frame's rail grid.
+ */
+export function interiorPassageAllocation(
+	input: SharedLaneInput,
+	frame: SharedLaneFrame,
+	ports: SharedLanePorts,
+): CenteredTrackAllocation | undefined {
+	const demand = interiorPassageDemand(input, frame, ports);
+	if (demand === undefined) return undefined;
+	return allocateCenteredTrack(
+		{ ownerId: `${frame.ownerId}/interior`, capacity: 1, spacing: RAIL_SPACING },
+		demand,
+	);
+}
+
+/** The centred coordinate of the interior passage, undefined when the lane owns no free interval. */
+export function interiorPassageTrack(
+	input: SharedLaneInput,
+	frame: SharedLaneFrame,
+	ports: SharedLanePorts,
+): number | undefined {
+	const allocation = interiorPassageAllocation(input, frame, ports);
+	if (allocation === undefined) return undefined;
+	return centeredTrackOffset(allocation);
 }

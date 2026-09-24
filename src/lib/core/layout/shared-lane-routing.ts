@@ -1,7 +1,13 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import { RAIL_SPACING } from './layout-settings';
 import type { LayoutRelation, Point } from './layout-types';
+import {
+	allocateNestedTracks,
+	type CenteredTrackAllocation,
+	centeredTrackOffset,
+	type RoutingTrackAllocation,
+	trackOffset,
+} from './routing-resource-allocation';
 import {
 	type LogicalBox,
 	physicalPoint,
@@ -9,15 +15,15 @@ import {
 	type SharedLaneFrame,
 } from './shared-lane-frame';
 import type { LaneSide, SharedLaneInput, SharedLanePlan } from './shared-lane-model';
-import { incidenceKey, PortRole, type SharedLanePorts } from './shared-lane-ports';
+import { incidenceKey, PortRole } from './shared-lane-ports';
 
 function portLong(
 	box: LogicalBox,
 	relationId: string,
 	role: PortRole,
-	ports: SharedLanePorts,
+	frame: SharedLaneFrame,
 ): number {
-	const offset = defined(ports.offsetByIncidence.get(incidenceKey(relationId, role)));
+	const offset = defined(frame.portOffsetByIncidence.get(incidenceKey(relationId, role)));
 	return box.longitudinal + box.longSize / 2 + offset;
 }
 
@@ -37,22 +43,58 @@ function gutter(
 	return start + defined(frame.laneWidths[laneIndex]) + gutterOffset;
 }
 
+/** The tracks one plan's route reads: the gutter offset it was granted, its ports and its order. */
 interface RoutePosition {
-	readonly passageIndex: number;
-	readonly gutterIndex: number;
+	readonly gutterOffset: number;
+	readonly sourceLong: number;
+	readonly targetLong: number;
 	readonly order: ParallelRouteOrder;
-	readonly interiorTrack?: number;
 }
 
-interface RouteChoice {
-	readonly order: ParallelRouteOrder;
-	readonly interiorTrack?: number;
+/** The tracks a parallel lane frame routes on: its gutter band, both rails and its interior passage. */
+export interface ParallelRouteAllocation {
+	readonly gutter: RoutingTrackAllocation;
+	readonly exteriorRail: RoutingTrackAllocation;
+	readonly topExteriorRail: RoutingTrackAllocation;
+	/** The passage that replaces the rail of a route when the geometry declares one. */
+	readonly passage?: CenteredTrackAllocation;
 }
 
 export enum ParallelRouteOrder {
 	Canonical = 'canonical',
 	LocalPassages = 'local-passages',
 	ReservedTopPassage = 'reserved-top-passage',
+}
+
+/**
+ * The canonical parallel allocation: every plan owns its canonical gutter track — both gutters of a
+ * plan share the ordinal, as the frame has always placed them — and every relation that crosses a
+ * lane owns its declared rail track, the rank of its plan in the crossing order the frame publishes.
+ * A rail demand declares the frame's whole content extent, so the declared ordinal orders it and no
+ * interval containment can move it off the rank the placement reserved.
+ */
+export function allocateParallelRoutes(
+	input: SharedLaneInput,
+	frame: SharedLaneFrame,
+): ParallelRouteAllocation {
+	const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
+		relationId: plan.id,
+		start: frame.contentLongStart,
+		end: frame.contentLongEnd,
+		order,
+	}));
+	return {
+		gutter: allocateNestedTracks(
+			frame.gutterEdge,
+			input.plans.map((plan) => ({
+				relationId: plan.id,
+				start: frame.contentLongStart,
+				end: frame.contentLongEnd,
+			})),
+		),
+		exteriorRail: allocateNestedTracks(frame.exteriorRailEdge, crossingDemands),
+		topExteriorRail: allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands),
+	};
 }
 
 function adjacentPoints(
@@ -72,37 +114,41 @@ function adjacentPoints(
 	];
 }
 
+/** The rail offset of a crossing plan, on the rail edge the route order selects. */
+function railOffset(allocation: RoutingTrackAllocation, plan: SharedLanePlan): number {
+	return trackOffset(allocation.edge, defined(allocation.trackByRelationId.get(plan.id)));
+}
+
 function passageTrack(
 	frame: SharedLaneFrame,
+	allocation: ParallelRouteAllocation,
+	plan: SharedLanePlan,
 	position: RoutePosition,
-	sourceLong: number,
-	targetLong: number,
 ): number {
-	if (position.interiorTrack !== undefined) return position.interiorTrack;
+	const { passage } = allocation;
+	if (passage !== undefined) return centeredTrackOffset(passage);
 	if (position.order === ParallelRouteOrder.ReservedTopPassage)
-		return frame.topExteriorBase + position.passageIndex * RAIL_SPACING;
+		return frame.topExteriorBase + railOffset(allocation.topExteriorRail, plan);
 	if (position.order === ParallelRouteOrder.LocalPassages) {
 		const contentMidpoint = (frame.contentLongStart + frame.contentLongEnd) / 2;
-		const routeMidpoint = (sourceLong + targetLong) / 2;
+		const routeMidpoint = (position.sourceLong + position.targetLong) / 2;
 		if (routeMidpoint < contentMidpoint)
-			return frame.topExteriorBase + position.passageIndex * RAIL_SPACING;
+			return frame.topExteriorBase + railOffset(allocation.topExteriorRail, plan);
 	}
-	return frame.exteriorBase + position.passageIndex * RAIL_SPACING;
+	return frame.exteriorBase + railOffset(allocation.exteriorRail, plan);
 }
 
 function logicalPoints(
 	plan: SharedLanePlan,
 	frame: SharedLaneFrame,
-	ports: SharedLanePorts,
+	allocation: ParallelRouteAllocation,
 	position: RoutePosition,
 ): readonly Point[] {
 	const source = defined(frame.boxes.get(plan.from));
 	const target = defined(frame.boxes.get(plan.to));
-	const sourceLong = portLong(source, plan.id, PortRole.Source, ports);
-	const targetLong = portLong(target, plan.id, PortRole.Target, ports);
-	const offset = SHARED_LANE_CLEARANCE + (position.gutterIndex + 1) * RAIL_SPACING;
-	const sourceGutter = gutter(frame, plan.sourceLaneIndex, plan.sourceSide, offset);
-	const targetGutter = gutter(frame, plan.targetLaneIndex, plan.targetSide, offset);
+	const { sourceLong, targetLong, gutterOffset } = position;
+	const sourceGutter = gutter(frame, plan.sourceLaneIndex, plan.sourceSide, gutterOffset);
+	const targetGutter = gutter(frame, plan.targetLaneIndex, plan.targetSide, gutterOffset);
 	const start = { x: face(source, plan.sourceSide), y: sourceLong };
 	const end = { x: face(target, plan.targetSide), y: targetLong };
 	if (plan.sameLane)
@@ -110,7 +156,7 @@ function logicalPoints(
 	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
 	if (position.order === ParallelRouteOrder.LocalPassages && laneSpan === 1)
 		return adjacentPoints(start, end, sourceGutter, targetGutter);
-	const track = passageTrack(frame, position, sourceLong, targetLong);
+	const track = passageTrack(frame, allocation, plan, position);
 	return [
 		start,
 		{ x: sourceGutter, y: sourceLong },
@@ -125,23 +171,37 @@ function canonicalPlans(input: SharedLaneInput): readonly SharedLanePlan[] {
 	return [...input.plans].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
-function routesForOrder(
+/** The granted gutter track, the ports and the order of one plan's route. */
+function routePosition(
+	frame: SharedLaneFrame,
+	allocation: ParallelRouteAllocation,
+	plan: SharedLanePlan,
+	order: ParallelRouteOrder,
+): RoutePosition {
+	const gutterTrack = defined(allocation.gutter.trackByRelationId.get(plan.id));
+	return {
+		gutterOffset: SHARED_LANE_CLEARANCE + trackOffset(allocation.gutter.edge, gutterTrack),
+		sourceLong: portLong(defined(frame.boxes.get(plan.from)), plan.id, PortRole.Source, frame),
+		targetLong: portLong(defined(frame.boxes.get(plan.to)), plan.id, PortRole.Target, frame),
+		order,
+	};
+}
+
+/** The route of every plan of the frame, in the canonical plan order. */
+export function routeSharedLanes(
 	input: SharedLaneInput,
 	frame: SharedLaneFrame,
-	ports: SharedLanePorts,
-	choice: RouteChoice,
+	allocation: ParallelRouteAllocation,
+	order: ParallelRouteOrder = ParallelRouteOrder.Canonical,
 ): readonly LayoutRelation[] {
 	const routes: LayoutRelation[] = [];
-	for (const [gutterIndex, plan] of canonicalPlans(input).entries()) {
-		const passageIndex = frame.crossLanePlans.findIndex(({ id }) => id === plan.id);
-		let position: RoutePosition = {
-			passageIndex,
-			gutterIndex,
-			order: choice.order,
-		};
-		if (choice.interiorTrack !== undefined)
-			position = { ...position, interiorTrack: choice.interiorTrack };
-		const points = logicalPoints(plan, frame, ports, position);
+	for (const plan of canonicalPlans(input)) {
+		const points = logicalPoints(
+			plan,
+			frame,
+			allocation,
+			routePosition(frame, allocation, plan, order),
+		);
 		routes.push({
 			id: plan.id,
 			from: plan.from,
@@ -150,25 +210,4 @@ function routesForOrder(
 		});
 	}
 	return routes;
-}
-
-export function routeSharedLanes(
-	input: SharedLaneInput,
-	frame: SharedLaneFrame,
-	ports: SharedLanePorts,
-	order: ParallelRouteOrder = ParallelRouteOrder.Canonical,
-): readonly LayoutRelation[] {
-	return routesForOrder(input, frame, ports, { order });
-}
-
-export function routeSharedLaneThroughInterior(
-	input: SharedLaneInput,
-	frame: SharedLaneFrame,
-	ports: SharedLanePorts,
-	track: number,
-): readonly LayoutRelation[] {
-	return routesForOrder(input, frame, ports, {
-		order: ParallelRouteOrder.Canonical,
-		interiorTrack: track,
-	});
 }

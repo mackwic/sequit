@@ -2,6 +2,7 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
 import { BASE_RANK_GAP, OUTER_MARGIN, RAIL_SPACING } from './layout-settings';
 import type { Bounds, LayoutElement, Point } from './layout-types';
+import { type RoutingEdge, trackOffset } from './routing-resource-allocation';
 import type { SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneBounds } from './shared-lane-types';
@@ -30,6 +31,45 @@ export interface SharedLaneFrame {
 	readonly topExteriorBase: number;
 	readonly exteriorBase: number;
 	readonly crossLanePlans: readonly SharedLanePlan[];
+	/** The port offsets the frame placed its elements with: what the routing reads a port again by. */
+	readonly portOffsetByIncidence: ReadonlyMap<string, number>;
+	/** The owner of the routing edges this frame publishes. */
+	readonly ownerId: string;
+	/** The gutter band beside the lanes: one track per plan, both sides of a lane reading the ordinal. */
+	readonly gutterEdge: RoutingEdge;
+	/** The rail band outside the content: one track per relation that crosses a lane. */
+	readonly exteriorRailEdge: RoutingEdge;
+	/** The band reserved above the content: one track per plan, read by the top passage. */
+	readonly topExteriorRailEdge: RoutingEdge;
+}
+
+/** The owner of the edges of one lane frame: its lanes, in the canonical presentation order. */
+export function frameOwnerId(input: SharedLaneInput): string {
+	return `lanes:${input.laneIds.join('+')}`;
+}
+
+/** The gutter band of a lane frame: the canonical track of every plan, on both gutter sides. */
+export function frameGutterEdge(ownerId: string, planCount: number): RoutingEdge {
+	return { ownerId: `${ownerId}/gutter`, capacity: planCount, spacing: RAIL_SPACING };
+}
+
+/** The rail band outside a lane frame's content: one track per relation that crosses a lane. */
+export function frameExteriorRailEdge(ownerId: string, crossingCount: number): RoutingEdge {
+	return { ownerId: `${ownerId}/exterior-rail`, capacity: crossingCount, spacing: RAIL_SPACING };
+}
+
+/** The band a lane frame reserves above its content: one track per plan, since any plan may detour. */
+function frameTopExteriorRailEdge(ownerId: string, planCount: number): RoutingEdge {
+	return { ownerId: `${ownerId}/top-exterior-rail`, capacity: planCount, spacing: RAIL_SPACING };
+}
+
+/**
+ * The band an edge owns from the frame border to its far track: the clearance, then the first track
+ * offset and the whole edge extent. Placement reserves exactly this, so a track the routing places
+ * on the edge always stays inside the space placement owned.
+ */
+export function frameEdgeBand(edge: RoutingEdge): number {
+	return SHARED_LANE_CLEARANCE + trackOffset(edge, edge.capacity);
 }
 
 export function physicalPoint(point: Point, input: SharedLaneInput, extent: number): Point {
@@ -103,12 +143,12 @@ function sortedCrossLanePlans(input: SharedLaneInput): readonly SharedLanePlan[]
 
 function lanePositions(
 	widths: readonly number[],
-	relationCount: number,
+	gutterEdge: RoutingEdge,
 ): {
 	readonly starts: number[];
 	readonly extent: number;
 } {
-	const maxGutter = SHARED_LANE_CLEARANCE + (relationCount + 1) * RAIL_SPACING;
+	const maxGutter = frameEdgeBand(gutterEdge);
 	const laneGap = Math.max(72, 2 * maxGutter + LANE_INSET);
 	const starts: number[] = [];
 	let cursor = OUTER_MARGIN + maxGutter;
@@ -185,16 +225,19 @@ export function makeSharedLaneFrame(
 	reserveTopExterior = false,
 ): SharedLaneFrame {
 	const sizes = rowAndLaneSizes(input, ports);
-	let topReserve = 0;
-	if (reserveTopExterior) {
-		const reserveCount = input.plans.length + 1;
-		topReserve = SHARED_LANE_CLEARANCE + reserveCount * RAIL_SPACING;
-	}
-	const rows = rowStarts(sizes.rows, topReserve);
+	const ownerId = frameOwnerId(input);
 	const crossLanePlans = sortedCrossLanePlans(input);
-	const positions = lanePositions(sizes.widths, input.plans.length);
-	const exteriorBase = rows.end + SHARED_LANE_CLEARANCE + RAIL_SPACING;
-	const lastTrack = exteriorBase + Math.max(0, crossLanePlans.length - 1) * RAIL_SPACING;
+	const gutterEdge = frameGutterEdge(ownerId, input.plans.length);
+	const exteriorRailEdge = frameExteriorRailEdge(ownerId, crossLanePlans.length);
+	const topExteriorRailEdge = frameTopExteriorRailEdge(ownerId, input.plans.length);
+	let topReserve = 0;
+	if (reserveTopExterior) topReserve = frameEdgeBand(topExteriorRailEdge);
+	const rows = rowStarts(sizes.rows, topReserve);
+	const positions = lanePositions(sizes.widths, gutterEdge);
+	const exteriorRailAnchor = rows.end + SHARED_LANE_CLEARANCE;
+	const exteriorBase = exteriorRailAnchor + trackOffset(exteriorRailEdge, 0);
+	const lastTrack =
+		exteriorRailAnchor + trackOffset(exteriorRailEdge, Math.max(0, exteriorRailEdge.capacity - 1));
 	const longExtent = Math.max(rows.end + OUTER_MARGIN, lastTrack + OUTER_MARGIN);
 	const placed = endpointBoxes(input, ports, {
 		rowPositions: rows.starts,
@@ -213,8 +256,13 @@ export function makeSharedLaneFrame(
 		longExtent,
 		contentLongStart: rows.starts[0] ?? OUTER_MARGIN + topReserve,
 		contentLongEnd: rows.end,
-		topExteriorBase: OUTER_MARGIN + SHARED_LANE_CLEARANCE + RAIL_SPACING,
+		topExteriorBase: OUTER_MARGIN + trackOffset(topExteriorRailEdge, 0),
 		exteriorBase,
 		crossLanePlans,
+		portOffsetByIncidence: ports.offsetByIncidence,
+		ownerId,
+		gutterEdge,
+		exteriorRailEdge,
+		topExteriorRailEdge,
 	};
 }
