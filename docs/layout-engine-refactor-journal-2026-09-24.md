@@ -350,7 +350,14 @@ Recherche bornée commune : quatre commits de refactor pur (`ba4018a`, `7815bbe`
 
 ## Phase 2 — clôture (25 septembre 2026)
 
-Portes finales : voir ci-dessous.
+Portes finales rejouées le 25 septembre 2026 sur `bdd13e1` (code identique à `0e2c23d`, seule la documentation diffère), sans autre exécution concurrente :
+
+- `mise exec -- pnpm format:check` et `mise exec -- pnpm check:types` verts.
+- `mise exec -- pnpm quality:fast` vert : lint, `knip`, `dependency-cruiser`, 268 fichiers et **4 448 tests web** à **98,03 % de branches** (8 929/9 108 ; seuil 98 %, objectif 98,05 % non atteint, registre n° 27), 48 tests worker à 98,66 %, duplication **0,95 %** pour un seuil de 1 %.
+- `mise exec -- pnpm test:property` (mode par défaut) : 24 fichiers, 133 tests verts. Les propriétés des modules touchés ont été rejouées en mode fuzz étape par étape (sections ci-dessus) ; les deux échecs fuzz antérieurs de l'étape 0 (`layout-graph.property`, `yjs-live-document.property`) restent hors périmètre.
+- `mise exec -- pnpm test:e2e --project=chromium` : **207 parcours verts** (suite Chromium complète, 4,8 min). Firefox, WebKit et le projet mobile ne sont pas rejoués (décision utilisateur : un seul navigateur local, ni CI ni PR).
+- `mise exec -- pnpm test:performance`, trois rapports isolés successifs : **60/60** à chaque fois ; `wide-bipartite-layers/nodes=1000` mesure 93,080 / 89,325 / 94,527 ms pour le budget strict `< 100 ms`, inchangé. La marge reste de quelques millisecondes : le budget n'est pas revendiqué comme stable.
+- Empreinte SHA-256 du résultat dense et corpus différentiel inchangés depuis le début de la phase ; une seule empreinte de grille ré-épinglée (`multiple-crossings`, registre n° 4).
 
 ## Registre des hypothèses et dégradations — phase 2
 
