@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { defined, LayoutPolicy } from '../../../../src/lib/core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import {
 	normalizeRegionCompositionModel,
@@ -7,6 +8,8 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import type { RegionInput } from '../../../../src/lib/core/layout/region-composition-types';
+import { regionLeafPolicy } from '../../../../src/lib/core/layout/region-leaf-policy';
+import { regionLaneDocument } from '../../../support/builders/region-lane-document';
 import { gridDocument, gridInput } from './grid-cell-fixture';
 import {
 	depthTwoRegionDocument,
@@ -42,6 +45,30 @@ function thirdLevelInput(): RegionInput {
 }
 
 describe('recursive region composition model', () => {
+	it('materializes legacy leaf policies once and preserves an explicit policy despite local lanes', () => {
+		const presentation = defined(
+			regionLaneDocument().regionPresentation?.regions.find(({ id }) => id === 'shared')
+				?.lanePresentation,
+		);
+		const input = nestedRegionInput();
+		const model = ready(graph(regionDocument()), {
+			...input,
+			regions: input.regions.map((region) => {
+				if (region.id === 'left') return { ...region, lanePresentation: presentation };
+				if (region.id === 'middle')
+					return { ...region, policy: LayoutPolicy.Layered, lanePresentation: presentation };
+				return region;
+			}),
+		});
+		expect(defined(model.regionsById.get('@root')).definition.policy).toBe(LayoutPolicy.Layered);
+		const inherited = defined(model.regionsById.get('left')).definition;
+		expect(inherited.policy).toBe(LayoutPolicy.SharedLanes);
+		expect(regionLeafPolicy(inherited)).toBe(LayoutPolicy.SharedLanes);
+		const explicit = defined(model.regionsById.get('middle')).definition;
+		expect(explicit.policy).toBe(LayoutPolicy.Layered);
+		expect(regionLeafPolicy(explicit)).toBe(LayoutPolicy.Layered);
+	});
+
 	it('normalizes one level with local ranks and root-owned crossings', () => {
 		const model = ready(graph(regionDocument()), nestedRegionInput());
 		expect(model.preorderIds).toEqual(['@root', 'left', 'middle', 'right']);

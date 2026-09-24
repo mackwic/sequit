@@ -10,6 +10,7 @@ import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
+import { segmentEnters } from '../../../../src/lib/core/layout/nested-region-geometry-primitives';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
@@ -22,6 +23,7 @@ import {
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	type RegionIncidentContract,
@@ -314,7 +316,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		expect(cache.stats.misses).toBe(statsBeforeSwitch.misses + 2);
 	});
 
-	it('rejects an inner-lane crossing without its single local passage', () => {
+	it('uses the selected leaf detour for an inner-lane crossing without a local passage', () => {
 		const source = persistedNestedGridWithInnerLaneCrossingDocument();
 		const document: LogicDocument = {
 			...source,
@@ -327,15 +329,25 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.measurements,
 			regionInput(document),
 		);
-		expect(attempt).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
-		});
-		if (attempt.status === RegionCompositionStatus.Unknown)
-			expect(attempt.reason).toContain('enters element b2');
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected a validated detour: ${attempt.status}: ${attempt.reason}`);
+		const model = normalizeRegionCompositionModel(prepared.graph, regionInput(document));
+		if (model.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized grid model');
+		expect(validateRegionCompositionGeometry(model.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(model.model, attempt)).toBeUndefined();
+		expect(validateParentRouteContacts(model.model, attempt.ownedRoutes)).toBeUndefined();
+		const piece = defined(
+			attempt.ownedRoutes.find(
+				({ relationId, regionId }) => relationId === 'leaves-b' && regionId === 'b',
+			),
+		);
+		const obstacle = defined(attempt.layout.elements.find(({ id }) => id === 'b2'));
+		expect(piece.points.length).toBeGreaterThan(2);
+		expect(segmentEnters(piece.points, obstacle.bounds)).toBe(false);
 	});
 
-	it('returns unknown when an outer-lane node blocks the reserved corridor', () => {
+	it('detours an outer-lane node obstructing the direct crossing corridor', () => {
 		const source = persistedNestedGridWithInnerLaneCrossingDocument();
 		const b2 = defined(source.nodes.find(({ id }) => id === 'b2'));
 		const document: LogicDocument = {
@@ -349,10 +361,22 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.measurements,
 			regionInput(document),
 		);
-		expect(attempt.status).toBe(RegionCompositionStatus.Unknown);
-		if (attempt.status !== RegionCompositionStatus.Unknown) return;
-		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
-		expect(attempt.reason).toContain('enters element b3');
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected a validated detour: ${attempt.status}: ${attempt.reason}`);
+		const model = normalizeRegionCompositionModel(prepared.graph, regionInput(document));
+		if (model.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized grid model');
+		expect(validateRegionCompositionGeometry(model.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(model.model, attempt)).toBeUndefined();
+		expect(validateParentRouteContacts(model.model, attempt.ownedRoutes)).toBeUndefined();
+		const piece = defined(
+			attempt.ownedRoutes.find(
+				({ relationId, regionId }) => relationId === 'leaves-b' && regionId === 'b',
+			),
+		);
+		const obstacle = defined(attempt.layout.elements.find(({ id }) => id === 'b3'));
+		expect(piece.points.length).toBeGreaterThan(2);
+		expect(segmentEnters(piece.points, obstacle.bounds)).toBe(false);
 	});
 
 	it('rejects forged face capacity or a node obstructing the reserved lane passage', () => {

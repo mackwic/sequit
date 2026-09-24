@@ -18,8 +18,8 @@ import {
 import {
 	type RegionChildPlacement,
 	RegionCompositionStatus,
-	type RegionDefinition,
 	type RegionInput,
+	type RegionInputDefinition,
 	type RegionLayoutSelected,
 	type RegionOwnedRoute,
 	type RegionPortal,
@@ -71,8 +71,8 @@ function portal(
 	};
 }
 
-function regionDefinitions(depth: 1 | 2 | 3): readonly RegionDefinition[] {
-	const regions: RegionDefinition[] = [{ id: '@root', layoutOrder: '0' }];
+function regionDefinitions(depth: 1 | 2 | 3): readonly RegionInputDefinition[] {
+	const regions: RegionInputDefinition[] = [{ id: '@root', layoutOrder: '0' }];
 	let leftParent = '@root';
 	if (depth === 3) {
 		regions.push({ id: 'wrap-2', parentId: '@root', layoutOrder: 'a' });

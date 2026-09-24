@@ -1,11 +1,9 @@
 import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import type { RegionDefinition } from './region-composition-types';
 
-/** Use the persisted region policy; only older derived inputs need a presentation fallback. */
-export function regionLeafPolicy(definition: Partial<RegionDefinition>): LayoutPolicy {
-	if (definition.policy !== undefined) return definition.policy;
-	if (definition.lanePresentation !== undefined) return LayoutPolicy.SharedLanes;
-	return LayoutPolicy.Layered;
+/** Dispatch only on the policy materialized by region normalization. */
+export function regionLeafPolicy(definition: RegionDefinition): LayoutPolicy {
+	return definition.policy;
 }
 
 /** Reject a caller/configuration disagreement before either leaf policy can read the cache. */

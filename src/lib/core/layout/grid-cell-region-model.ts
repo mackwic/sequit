@@ -8,7 +8,7 @@ import {
 	type RegionCompositionModel,
 	type RegionCompositionModelBuild,
 } from './region-composition-model';
-import type { RegionDefinition, RegionInput } from './region-composition-types';
+import type { RegionInput, RegionInputDefinition } from './region-composition-types';
 
 /** Adapt an already normalized two-by-two grid to the common region ownership model. */
 export function normalizeGridCellRegionModel(
@@ -17,9 +17,9 @@ export function normalizeGridCellRegionModel(
 	grid: GridModel,
 	limits: RegionCompositionLimits = {},
 ): RegionCompositionModelBuild {
-	const regions: RegionDefinition[] = [{ id: input.rootId, layoutOrder: '0' }];
+	const regions: RegionInputDefinition[] = [{ id: input.rootId, layoutOrder: '0' }];
 	for (const cell of grid.cells) {
-		const region: RegionDefinition = {
+		const region: RegionInputDefinition = {
 			id: cell.id,
 			parentId: cell.parentId,
 			layoutOrder: `${cell.row}${cell.column}`,

@@ -74,8 +74,8 @@ describe('direct region composition contracts', () => {
 	});
 
 	it('reports a canonical cycle and rejects a missing traversal root', () => {
-		const input = depthTwoRegionInput();
-		const definitions = new Map(input.regions.map((region) => [region.id, region]));
+		const model = readyModel();
+		const definitions = new Map([...model.regionsById].map(([id, node]) => [id, node.definition]));
 		expect(parentCycle(definitions)).toBeUndefined();
 		expect(() => normalizedRegions('missing', definitions)).toThrow('Unvalidated region identity.');
 		const cyclic = new Map(definitions);

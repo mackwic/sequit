@@ -18,7 +18,6 @@ import {
 	solveRegionLeafLayoutWithIncidents,
 	UnsupportedRegionLeafLayoutError,
 } from '../../../../src/lib/core/layout/region-leaf-layout';
-import { regionLeafPolicy } from '../../../../src/lib/core/layout/region-leaf-policy';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { regionDocument } from './nested-region-fixture';
@@ -146,14 +145,5 @@ describe('incident-aware leaf dispatch', () => {
 			expect(aware.incidents).toEqual([]);
 			expect(cache.stats).toMatchObject({ entries: 1, misses: 1, hits: 1 });
 		}
-	});
-
-	it('takes the explicit region policy before any legacy presentation fallback', () => {
-		const lanePresentation = laneLeafDocument().presentation;
-		expect(regionLeafPolicy({ lanePresentation })).toBe(LayoutPolicy.SharedLanes);
-		expect(regionLeafPolicy({ policy: LayoutPolicy.Layered, lanePresentation })).toBe(
-			LayoutPolicy.Layered,
-		);
-		expect(regionLeafPolicy({ policy: LayoutPolicy.SharedLanes })).toBe(LayoutPolicy.SharedLanes);
 	});
 });

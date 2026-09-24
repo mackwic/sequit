@@ -43,7 +43,7 @@ function framedPoint(
 }
 
 /** The grid track can be larger than the solved child frame. */
-function extendedToCellFrame(
+export function extendedToCellFrame(
 	path: RegionIncidentPath,
 	cell: GridCellPlacement,
 	source: boolean,

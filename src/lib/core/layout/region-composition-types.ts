@@ -15,19 +15,27 @@ import type { RegionPortalSide } from './region-portal-side';
 
 export { RegionPortalSide } from './region-portal-side';
 
-/** A derived region tree, supplied separately from the persisted document schema. */
-export interface RegionDefinition {
+interface RegionDefinitionFields {
 	readonly id: string;
 	readonly parentId?: string;
 	readonly layoutOrder: string;
-	readonly policy?: LayoutPolicy;
 	readonly layout?: LayoutConfiguration;
 	readonly lanePresentation?: RegionLanePresentation;
 	readonly grid?: GridLayoutPresentation;
 }
 
+/** A normalized region always has a policy before a leaf is dispatched. */
+export interface RegionDefinition extends RegionDefinitionFields {
+	readonly policy: LayoutPolicy;
+}
+
+/** Earlier derived inputs may omit the policy; normalization materializes it once. */
+export interface RegionInputDefinition extends RegionDefinitionFields {
+	readonly policy?: LayoutPolicy;
+}
+
 export interface RegionInput {
-	readonly regions: readonly RegionDefinition[];
+	readonly regions: readonly RegionInputDefinition[];
 	readonly regionByEndpointId: ReadonlyMap<string, string>;
 }
 

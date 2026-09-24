@@ -1,5 +1,5 @@
 import { compareCanonicalStrings } from '../canonical-string';
-import type { LogicRelation } from '../document/logic-document';
+import { LayoutPolicy, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import {
 	partitionRelations,
@@ -11,7 +11,11 @@ import {
 	parentCycle,
 	type RegionCompositionNode,
 } from './region-composition-tree';
-import type { RegionDefinition, RegionInput } from './region-composition-types';
+import type {
+	RegionDefinition,
+	RegionInput,
+	RegionInputDefinition,
+} from './region-composition-types';
 
 export type { RegionRelationOwnership } from './region-composition-relations';
 export { RegionRelationKind } from './region-composition-relations';
@@ -196,6 +200,12 @@ interface ParsedDefinitions {
 	readonly rootId: string;
 }
 
+function inputPolicy(region: RegionInputDefinition): LayoutPolicy {
+	if (region.policy !== undefined) return region.policy;
+	if (region.lanePresentation !== undefined) return LayoutPolicy.SharedLanes;
+	return LayoutPolicy.Layered;
+}
+
 function parseDefinitions(input: RegionInput): ParsedDefinitions | RegionCompositionModelBuild {
 	const definitions = new Map<string, RegionDefinition>();
 	for (const region of [...input.regions].sort((left, right) =>
@@ -213,7 +223,7 @@ function parseDefinitions(input: RegionInput): ParsedDefinitions | RegionComposi
 				`Duplicate region identity ${region.id}.`,
 				['regions', region.id],
 			);
-		definitions.set(region.id, region);
+		definitions.set(region.id, { ...region, policy: inputPolicy(region) });
 	}
 	for (const region of definitions.values())
 		if (region.parentId !== undefined && !definitions.has(region.parentId))
