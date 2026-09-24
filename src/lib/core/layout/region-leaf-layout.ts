@@ -91,7 +91,6 @@ export function solveRegionLeafLayoutWithIncidents(
 		const ranks = topologicallyRank(graph.value);
 		const attempt = solveSharedLaneLayout(graph.value, ranks, input.measurements, {
 			incidents: contracts,
-			acceptBridges: false,
 		});
 		if (attempt.status === SharedLaneLayoutStatus.Unsupported)
 			throw new UnsupportedRegionLeafLayoutError(attempt.reason);

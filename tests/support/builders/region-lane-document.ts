@@ -1,5 +1,7 @@
 import {
 	defined,
+	EndpointKind,
+	JunctionOperator,
 	LaneGrowth,
 	LaneOrientation,
 	LAYOUT_PRESENTATION_SCHEMA,
@@ -80,7 +82,11 @@ export function regionLaneDocumentWithRootLanes(): LogicDocument {
 	};
 }
 
-/** A persisted, source-valid local lane failure beside an incident-free ordinary leaf. */
+/**
+ * A persisted, source-valid local lane failure beside an incident-free ordinary leaf. The unresolved
+ * variant declares a junction inside the shared lane leaf: the first shared layout policy diagnoses
+ * a junction as unsupported, so the failure is structural rather than a rescuable route contact.
+ */
 export function regionLanePartialDocument(unresolved: boolean): LogicDocument {
 	const source = regionLaneDocument();
 	const template = defined(source.nodes.find(({ id }) => id === 'target'));
@@ -106,22 +112,15 @@ export function regionLanePartialDocument(unresolved: boolean): LogicDocument {
 	};
 	const nodes = [request, delivery, neighbor];
 	const relations = [{ id: 'first-handoff', from: 'request', to: 'delivery' }];
+	const junctions: LogicDocument['junctions'][number][] = [];
 	if (unresolved) {
-		nodes.push({
-			...request,
-			id: 'second-request',
-			markdown: 'Second request\n',
+		junctions.push({
+			kind: EndpointKind.Junction,
+			id: 'gate',
+			operator: JunctionOperator.Xor,
+			regionId: 'shared',
+			laneId: 'sales',
 			layoutOrder: orderKey('a4'),
-		});
-		relations.push({
-			id: 'within-sales',
-			from: 'request',
-			to: 'second-request',
-		});
-		relations.push({
-			id: 'second-handoff',
-			from: 'second-request',
-			to: 'delivery',
 		});
 	}
 	return {
@@ -130,7 +129,7 @@ export function regionLanePartialDocument(unresolved: boolean): LogicDocument {
 		title: 'Partial region lane',
 		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 		groups: [],
-		junctions: [],
+		junctions,
 		nodes,
 		relations,
 	};

@@ -11,7 +11,6 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	REGION_SUBTREE_CALCULATION_FAILED,
@@ -41,17 +40,16 @@ function attemptsFor(
 }
 
 describe('region partial composition', () => {
-	it('reports an unresolved leaf beside the current independent leaf', () => {
+	it('reports an unsupported leaf beside the current independent leaf', () => {
 		const attempts = attemptsFor(regionLanePartialDocument(true));
 		expect(attempts).toMatchObject([
 			{
-				status: RegionCompositionStatus.Unknown,
+				status: RegionCompositionStatus.Unsupported,
 				regionId: 'shared',
 				scope: RegionSubtreeScope.Leaf,
-				code: RegionIncidentUnknownCode.NoValidAlternative,
-				witness: { exhaustive: true },
-				endpointIds: ['delivery', 'request', 'second-request'],
-				relationIds: ['first-handoff', 'second-handoff', 'within-sales'],
+				reason: 'Junctions are outside the first shared layout policy.',
+				endpointIds: ['delivery', 'gate', 'request'],
+				relationIds: ['first-handoff'],
 			},
 			{
 				status: RegionCompositionStatus.Selected,
@@ -109,7 +107,7 @@ describe('region partial composition', () => {
 		});
 	});
 
-	it('retains typed search evidence when a closed branch contains an unresolved lane leaf', () => {
+	it('reports a typed unsupported closed branch containing a shared-lane leaf', () => {
 		const source = regionLanePartialSubtreeDocument(true);
 		const presentation = source.regionPresentation;
 		if (presentation === undefined) throw new Error('Expected region presentation');
@@ -132,12 +130,17 @@ describe('region partial composition', () => {
 		};
 		const attempts = attemptsFor(document);
 		expect(attempts.find(({ regionId }) => regionId === 'branch')).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
+			status: RegionCompositionStatus.Unsupported,
 			scope: RegionSubtreeScope.ClosedSubtree,
-			code: RegionIncidentUnknownCode.NoValidAlternative,
-			failureRegionId: 'shared',
-			witness: { exhaustive: true },
-			endpointIds: ['delivery', 'neighbor', 'request', 'second-request'],
+			reason: 'Junctions are outside the first shared layout policy.',
+			endpointIds: ['delivery', 'gate', 'neighbor', 'request'],
+			relationIds: ['first-handoff'],
+		});
+		expect(attempts.find(({ regionId }) => regionId === 'shared')).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			scope: RegionSubtreeScope.Leaf,
+			reason: 'Junctions are outside the first shared layout policy.',
+			endpointIds: ['delivery', 'gate', 'request'],
 		});
 		expect(attempts.find(({ regionId }) => regionId === 'mate')).toMatchObject({
 			status: RegionCompositionStatus.Selected,
@@ -294,7 +297,7 @@ describe('region partial composition', () => {
 			relationIds: ['inside-branch'],
 		});
 		expect(attempts.find(({ regionId }) => regionId === 'shared')?.status).toBe(
-			RegionCompositionStatus.Unknown,
+			RegionCompositionStatus.Unsupported,
 		);
 		expect(attempts.find(({ regionId }) => regionId === 'ordinary')).toBeUndefined();
 	});

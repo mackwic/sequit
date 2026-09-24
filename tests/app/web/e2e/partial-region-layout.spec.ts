@@ -118,8 +118,8 @@ test('a current healthy leaf remains visible through a sibling layout failure an
 		{ selected, changed },
 	);
 	expect(observed.partial).toEqual({
-		rootReason: 'unknown-region-layout',
-		sharedReason: 'unknown-leaf-layout',
+		rootReason: 'unsupported-region-layout',
+		sharedReason: 'unsupported-leaf-layout',
 		currentNeighbor: true,
 		oldNeighbor: false,
 		oldScene: false,
@@ -140,7 +140,7 @@ test('a persisted unresolved region shows independent local previews in the work
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.LinkedBoxes, regionLanePartialDocument(true));
 	await page.goto(`/atelier/collaboration?room=${room}`);
-	await expect(page.locator('[data-layout-reason="unknown-region-layout"]')).toBeVisible();
+	await expect(page.locator('[data-layout-reason="unsupported-region-layout"]')).toBeVisible();
 	await expect(page.locator('[data-partial-region-id="shared"]')).toHaveAttribute(
 		'data-partial-region-status',
 		'diagnostic',
@@ -167,7 +167,7 @@ test('a persisted unresolved sibling keeps the complete route of a closed branch
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.LinkedBoxes, regionLanePartialSubtreeDocument(true));
 	await page.goto(`/atelier/collaboration?room=${room}`);
-	await expect(page.locator('[data-layout-reason="unknown-region-layout"]')).toBeVisible();
+	await expect(page.locator('[data-layout-reason="unsupported-region-layout"]')).toBeVisible();
 	const branch = page.locator('[data-partial-region-id="branch"]');
 	await expect(branch).toHaveAttribute('data-partial-region-status', 'ready');
 	await expect(branch.locator('[data-preview-node-id="neighbor"]')).toBeVisible();

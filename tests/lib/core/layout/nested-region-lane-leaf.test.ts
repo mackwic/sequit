@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	defined,
 	EndpointKind,
+	JunctionOperator,
 	LaneGrowth,
 	LaneOrientation,
 	LayoutBias,
@@ -21,7 +22,6 @@ import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	layoutWithRootRegionForProjection,
-	UnknownRegionLayoutError,
 	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
 
@@ -149,33 +149,22 @@ describe('persisted lanes in a region leaf', () => {
 		expect(() => solve(document)).toThrow(UnsupportedRegionLayoutError);
 	});
 
-	it('reports an unresolved local three-dependency crossing as unknown', () => {
+	it('reports a junction in a shared lane leaf as unsupported', () => {
 		const source = fixture(LaneOrientation.Parallel);
-		const template = defined(source.nodes.find(({ id }) => id === 'request'));
 		const document: LogicDocument = {
 			...source,
-			nodes: [
-				...source.nodes,
+			junctions: [
 				{
-					...template,
-					id: 'second-request',
-					markdown: 'Second request\n',
+					kind: EndpointKind.Junction,
+					id: 'gate',
+					operator: JunctionOperator.Xor,
+					regionId: 'shared',
+					laneId: 'sales',
 					layoutOrder: orderKey('a4'),
 				},
 			],
-			relations: [
-				{ id: 'within-sales', from: 'request', to: 'second-request' },
-				{ id: 'first-handoff', from: 'request', to: 'delivery' },
-				{ id: 'second-handoff', from: 'second-request', to: 'delivery' },
-			],
 		};
-		const sizes: LayoutMeasurements = {
-			...measurements,
-			nodes: new Map([...measurements.nodes, ['second-request', { width: 132, height: 64 }]]),
-		};
-		expect(() => solve(document, new RegionLocalLayoutCache(), sizes)).toThrow(
-			UnknownRegionLayoutError,
-		);
+		expect(() => solve(document)).toThrow(UnsupportedRegionLayoutError);
 	});
 
 	it.each([LaneOrientation.Parallel, LaneOrientation.Transverse])(

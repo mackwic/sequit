@@ -580,21 +580,6 @@ describe('shared lane layout', () => {
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
 	});
 
-	it('keeps the three-dependency crossing unknown when bridges are forbidden', () => {
-		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
-			{ id: 'within-a', from: 'a1', to: 'a2' },
-			{ id: 'a1-to-b', from: 'a1', to: 'b1' },
-			{ id: 'a2-to-b', from: 'a2', to: 'b1' },
-		]);
-		const prepared = prepareLayoutDocument(document);
-		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
-			acceptBridges: false,
-		});
-		expect(result.status).toBe(SharedLaneLayoutStatus.Unknown);
-		if (result.status !== SharedLaneLayoutStatus.Unknown) return;
-		expect(result.reason).toContain('cross without a bridge');
-	});
-
 	it('types an invalid incident contract before any geometry', () => {
 		const prepared = prepareLayoutDocument(
 			laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [

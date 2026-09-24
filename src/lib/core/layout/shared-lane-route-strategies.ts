@@ -6,24 +6,16 @@ export interface LaneRouteStrategy<Order> {
 }
 
 /**
- * The declared order list, then the same list again when `acceptBridges` is set: the first pass
- * forbids every contact, so each currently selected lane layout keeps its exact geometry, and the
- * bridged pass only runs once the first has exhaustively failed, accepting a contact carried by a
- * validated bridge (step 4 oracle). A caller that forbids bridges gets the first pass alone.
+ * The declared order list, then the same list again: the first pass forbids every contact, so each
+ * currently selected lane layout keeps its exact geometry, and the bridged pass only runs once the
+ * first has exhaustively failed, accepting a contact carried by a validated bridge (step 4 oracle).
  */
 export function twoPassStrategies<Order extends string>(
 	prefix: string,
 	orders: readonly Order[],
-	acceptBridges: boolean,
 ): readonly LaneRouteStrategy<Order>[] {
-	const forbidden = orders.map((order) => ({
-		id: `${prefix}/${order}`,
-		acceptBridges: false,
-		order,
-	}));
-	if (!acceptBridges) return forbidden;
 	return [
-		...forbidden,
+		...orders.map((order) => ({ id: `${prefix}/${order}`, acceptBridges: false, order })),
 		...orders.map((order) => ({ id: `${prefix}/bridged/${order}`, acceptBridges: true, order })),
 	];
 }

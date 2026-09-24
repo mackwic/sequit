@@ -67,12 +67,6 @@ export type SharedLaneLayoutOutcome =
 
 export interface SharedLaneSolveOptions extends LayoutOptions {
 	readonly incidents?: readonly RegionIncidentContract[];
-	/**
-	 * Whether the solver's second pass may accept a contact carried by a validated bridge. Root
-	 * shared lanes adopt it; a region leaf keeps it forbidden until leaf bridge support lands, so
-	 * every leaf lane layout stays exactly as before.
-	 */
-	readonly acceptBridges?: boolean;
 }
 
 function geometryDimensions(
@@ -216,7 +210,6 @@ interface LaneAttemptInput {
 	readonly input: SharedLaneInput;
 	readonly ports: SharedLanePorts;
 	readonly contracts: readonly RegionIncidentContract[];
-	readonly acceptBridges: boolean;
 }
 
 function parallelAttempt({
@@ -224,7 +217,6 @@ function parallelAttempt({
 	input,
 	ports,
 	contracts,
-	acceptBridges,
 }: LaneAttemptInput): SharedLaneLayoutOutcome {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
@@ -243,7 +235,7 @@ function parallelAttempt({
 			firstIssue = issue;
 		}
 	}
-	for (const strategy of twoPassStrategies('parallel', parallelOrders(contracts), acceptBridges)) {
+	for (const strategy of twoPassStrategies('parallel', parallelOrders(contracts))) {
 		state.strategyId = strategy.id;
 		state.candidateId = strategy.id;
 		const geometry = parallelGeometry(input, ports, strategy.order);
@@ -272,7 +264,6 @@ function transverseAttempt({
 	input,
 	ports,
 	contracts,
-	acceptBridges,
 }: LaneAttemptInput): SharedLaneLayoutOutcome {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
@@ -282,11 +273,10 @@ function transverseAttempt({
 		candidateId: '',
 		rejectedAlternatives: [],
 	};
-	for (const strategy of twoPassStrategies(
-		'transverse',
-		[TransverseRouteOrder.Canonical, TransverseRouteOrder.Nested],
-		acceptBridges,
-	)) {
+	for (const strategy of twoPassStrategies('transverse', [
+		TransverseRouteOrder.Canonical,
+		TransverseRouteOrder.Nested,
+	])) {
 		state.strategyId = strategy.id;
 		state.candidateId = strategy.id;
 		const geometry = transverseGeometry(input, ports, strategy.order);
@@ -335,8 +325,7 @@ export function solveSharedLaneLayout(
 	if (input === undefined)
 		return { status: SharedLaneLayoutStatus.Unsupported, reason: defined(prepared.reason) };
 	const ports = planSharedLanePorts(input, contracts);
-	const acceptBridges = options.acceptBridges ?? true;
-	const attempt = { graph, input, ports, contracts, acceptBridges };
+	const attempt = { graph, input, ports, contracts };
 	if (input.orientation === LaneOrientation.Parallel) return parallelAttempt(attempt);
 	return transverseAttempt(attempt);
 }

@@ -56,7 +56,6 @@ function solveLeaf(input: RegionLeafLayoutInput): RegionLocalLayout {
 		if (leafPolicy === LayoutPolicy.SharedLanes) {
 			const attempt = solveSharedLaneLayout(graph.value, ranks, measurements, {
 				incidents: [],
-				acceptBridges: false,
 			});
 			if (attempt.status === SharedLaneLayoutStatus.Unsupported)
 				throw new UnsupportedRegionLeafLayoutError(attempt.reason);

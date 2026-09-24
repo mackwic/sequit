@@ -23,9 +23,8 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
-import { UnknownRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
+import { UnsupportedRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
 import {
 	readSourceDocumentState,
 	SourceDocumentStateKind,
@@ -61,16 +60,17 @@ describe('partial region layout projection', () => {
 		expect(parsed).toMatchObject({ ok: true });
 		if (!parsed.ok) throw new Error('Expected a persisted region document');
 		const failure = await layoutFailure(parsed.value);
-		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnknownRegionLayout);
+		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnsupportedRegionLayout);
 		expect(failure.regions).toMatchObject([
 			{
 				kind: 'diagnostic',
 				regionId: 'shared',
-				code: RegionPreviewFailureCode.Unknown,
+				code: RegionPreviewFailureCode.Unsupported,
 				failure: {
-					status: RegionCompositionStatus.Unknown,
-					code: RegionIncidentUnknownCode.NoValidAlternative,
-					witness: { exhaustive: true },
+					status: RegionCompositionStatus.Unsupported,
+					reason: 'Junctions are outside the first shared layout policy.',
+					endpointIds: ['delivery', 'gate', 'request'],
+					relationIds: ['first-handoff'],
 				},
 			},
 			{
@@ -79,13 +79,9 @@ describe('partial region layout projection', () => {
 				canvas: { relations: [], nodes: [{ id: 'neighbor' }] },
 			},
 		]);
-		expect(failure.cause).toBeInstanceOf(UnknownRegionLayoutError);
-		if (failure.cause instanceof UnknownRegionLayoutError)
-			expect(failure.cause.diagnostic).toMatchObject({
-				status: RegionCompositionStatus.Unknown,
-				code: RegionIncidentUnknownCode.NoValidAlternative,
-				witness: { exhaustive: true },
-			});
+		expect(failure.cause).toBeInstanceOf(UnsupportedRegionLayoutError);
+		if (failure.cause instanceof UnsupportedRegionLayoutError)
+			expect(failure.cause.reason).toBe('Junctions are outside the first shared layout policy.');
 		expect(failure.regions?.find(({ regionId }) => regionId === 'ordinary')).toMatchObject({
 			canvas: { nodes: [{ markdown: 'Neighbor\n' }] },
 		});
@@ -98,7 +94,7 @@ describe('partial region layout projection', () => {
 		expect(parsed).toMatchObject({ ok: true });
 		if (!parsed.ok) throw new Error('Expected persisted closed subtree');
 		const failure = await layoutFailure(parsed.value);
-		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnknownRegionLayout);
+		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnsupportedRegionLayout);
 		const branch = failure.regions?.find(({ regionId }) => regionId === 'branch');
 		expect(branch).toMatchObject({
 			kind: RegionPreviewKind.Ready,
@@ -193,7 +189,7 @@ describe('partial region layout projection', () => {
 			{
 				kind: RegionPreviewKind.Diagnostic,
 				regionId: 'shared',
-				code: RegionPreviewFailureCode.Unknown,
+				code: RegionPreviewFailureCode.Unsupported,
 			},
 		]);
 	});
@@ -348,7 +344,7 @@ describe('partial region layout projection', () => {
 		} catch (error) {
 			if (error instanceof LayoutProjectionError) failure = error;
 		}
-		expect(failure?.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnknownRegionLayout);
+		expect(failure?.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnsupportedRegionLayout);
 		const missingOrdinary = failure?.regions?.find(({ regionId }) => regionId === 'ordinary');
 		expect(missingOrdinary).toMatchObject({
 			kind: 'diagnostic',
@@ -376,7 +372,7 @@ describe('partial region layout projection', () => {
 		);
 		expect(regions).toEqual([]);
 		const failure = await layoutFailureFromProjection(projection);
-		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnknownRegionLayout);
+		expect(failure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.UnsupportedRegionLayout);
 		expect(failure.regions).toBeUndefined();
 		const ordinaryFailure = new Error('Unrelated failure');
 		expect(
