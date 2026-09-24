@@ -12,6 +12,8 @@ Les cinq étapes de la généralisation indiquée à l'[étape 5](#5-composer-le
 
 Cette tranche clôt la **phase 1** : la structure de composition est générale. Le routage à l'intérieur des dispositions reste en revanche spécialisé et sans capacité explicite ; c'est pourquoi trois relations inter-cellules à source commune, la relation directe d'un groupe vers une autre cellule et la sortie externe d'une grille interne combinée à une traversée, sélectionnées à tort par l'ancien oracle de grille, sont aujourd'hui diagnostiquées `unknown`. Leur restauration, le graphe de ressources de routage et la politique de pont sont l'objet du [plan de la phase 2](layout-engine-refactor-phase-2.md).
 
+La **phase 2** est exécutée : les étapes 0 à 7 sont livrées les 24 et 25 septembre 2026, et leur bilan — ce qui est devenu commun, ce qui reste spécialisé et les propositions de phase 3 — est dans la section [Bilan de la phase 2](layout-engine-refactor-phase-2.md#bilan-de-la-phase-2). Les trois capacités perdues sont restaurées : deux (les trois relations inter-cellules à source commune et la relation directe du groupe racine) par réallocation des pistes de rail et des ports à l'étape 3, la troisième (la sortie externe d'une grille interne combinée à une relation locale et à une traversée) par un pont validé à l'étape 4.
+
 ## Intention
 
 Le moteur doit devenir une suite de calculs explicites, déterministes et inspectables afin de pouvoir :
