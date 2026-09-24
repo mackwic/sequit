@@ -1,7 +1,8 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import { boundedCounter, firstValidDepthFirst } from './bounded-search';
+import { boundedCounter, firstValidDepthFirst, type SearchBudgetCounter } from './bounded-search';
+import type { RoutedPath } from './bridge-oracle';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import {
 	crossingIncidence,
@@ -12,9 +13,9 @@ import {
 import {
 	canonicalCrossingAllocation,
 	CROSSING_ALLOCATION_BUDGET,
-	crossingAllocationCandidates,
-	crossingAllocationCandidatesWithExtraTrack,
 	type CrossingAllocationInput,
+	type CrossingAllocationPhase,
+	crossingAllocationPhases,
 	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
 import {
@@ -187,7 +188,10 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			bounds: moveBounds(lane.bounds, cell.translation),
 		})),
 	);
-	const routed = (allocation: GridCrossingAllocation): RoutedGridCrossing => {
+	const routed = (
+		allocation: GridCrossingAllocation,
+		acceptBridges: boolean,
+	): RoutedGridCrossing => {
 		const crossingRoutes = crossing.map((relation) => crossingRoute(routing, allocation, relation));
 		const routesById = new Map(
 			[...localRoutes, ...crossingRoutes.map(({ route }) => route)].map((route) => [
@@ -214,9 +218,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		};
 		const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
 		if (failure !== undefined) return { candidate, failure };
+		let bridgeRelations: readonly RoutedPath[] = [];
+		if (acceptBridges) bridgeRelations = layout.relations;
 		const contact = diagnoseParentRouteContacts(
 			model,
 			gridCrossingOwnedRoutes(input.rootId, input.cellByEndpointId, crossing, routesById),
+			bridgeRelations,
 		);
 		if (contact !== undefined) return { candidate, failure: contact };
 		return { candidate };
@@ -237,15 +244,15 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
 	let selected: GridCellSelected | undefined;
-	const counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
-	const search = (candidates: Iterable<GridCrossingAllocation>): boolean => {
+	let counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
+	const search = (phase: CrossingAllocationPhase, phaseCounter: SearchBudgetCounter): boolean => {
 		const result = firstValidDepthFirst<GridCrossingAllocation, RegionGeometryDiagnostic>({
 			levels: 1,
-			counter,
+			counter: phaseCounter,
 			// The declared list is the only level: the search evaluates it in order.
-			choices: () => candidates,
+			choices: () => phase.candidates(withSpans),
 			accept: (_, allocation) => {
-				const attempt = routed(allocation);
+				const attempt = routed(allocation, phase.acceptBridges);
 				if (attempt.failure === undefined) selected = attempt.candidate;
 				return attempt.failure;
 			},
@@ -253,13 +260,15 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		});
 		return result.exhaustive;
 	};
-	const reallocated = search(crossingAllocationCandidates(withSpans));
-	if (selected === undefined && reallocated)
-		search(crossingAllocationCandidatesWithExtraTrack(withSpans));
+	for (const phase of crossingAllocationPhases(withSpans)) {
+		if (!phase.sharesBudget) counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
+		const exhaustive = search(phase, counter);
+		if (selected !== undefined || !exhaustive) break;
+	}
 	if (selected !== undefined) return selected;
 	// Nothing validates: keep the canonical allocation and today's diagnostic, so the composition
 	// validator reports the contact that no reallocation resolved.
-	const fallback = routed(canonical);
+	const fallback = routed(canonical, false);
 	if (
 		fallback.failure !== undefined &&
 		fallback.failure.code !== RegionGeometryDiagnosticCode.ParentRouteContact

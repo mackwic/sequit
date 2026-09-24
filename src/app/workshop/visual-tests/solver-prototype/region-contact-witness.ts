@@ -478,7 +478,7 @@ function gridContact(): RegionContactCase {
 		id: RegionContactCaseId.Grid,
 		title: 'Relation locale et sortie d’une cellule de grille',
 		description:
-			'La paire locale et sortie est sélectionnée. Ajouter la traversée across-grid touche cette sortie sans pont et rend le document indéterminé.',
+			'La paire locale et sortie est sélectionnée. Ajouter la traversée across-grid croise cette sortie : le contact est un croisement strict que l’oracle de pont valide, et la scène reste sélectionnée.',
 		source,
 		width: selected.layout.width,
 		height: selected.layout.height,

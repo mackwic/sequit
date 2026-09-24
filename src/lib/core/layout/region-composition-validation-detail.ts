@@ -1,11 +1,8 @@
 import { defined } from '../document/logic-document';
+import { unbridgedContacts } from './bridge-contact';
+import { type RoutedPath, validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
-import {
-	finiteBounds,
-	inside,
-	orthogonalPathsTouch,
-	within,
-} from './nested-region-geometry-primitives';
+import { finiteBounds, inside, within } from './nested-region-geometry-primitives';
 import type { RegionCompositionModel } from './region-composition-model';
 import type { RegionOwnedRoute } from './region-composition-types';
 import type {
@@ -281,20 +278,32 @@ export function validateLeafCompositionGeometry(
 export function validateParentRouteContacts(
 	model: RegionCompositionModel,
 	ownedRoutes: readonly RegionOwnedRoute[],
+	relations: readonly RoutedPath[] = [],
 ): string | undefined {
-	return diagnoseParentRouteContacts(model, ownedRoutes)?.message;
+	return diagnoseParentRouteContacts(model, ownedRoutes, relations)?.message;
 }
 
+/**
+ * A touching pair is accepted only when every contact between the two paths is a strict crossing
+ * carried by a validated bridge of `relations`; a T-contact and a collinear overlap never are.
+ */
 export function diagnoseParentRouteContacts(
 	model: RegionCompositionModel,
 	ownedRoutes: readonly RegionOwnedRoute[],
+	relations: readonly RoutedPath[] = [],
 ): RegionGeometryDiagnostic | undefined {
+	const bridges = validatedBridges(relations);
 	for (const [index, route] of ownedRoutes.entries()) {
 		const owner = model.regionsById.get(route.regionId);
 		if (owner === undefined || owner.childIds.length === 0) continue;
 		for (const other of ownedRoutes.slice(index + 1)) {
 			if (other.regionId !== route.regionId || other.relationId === route.relationId) continue;
-			if (orthogonalPathsTouch(route.points, other.points))
+			const unbridged = unbridgedContacts(
+				{ id: route.relationId, points: route.points },
+				{ id: other.relationId, points: other.points },
+				bridges,
+			);
+			if (unbridged.length > 0)
 				return diagnostic(
 					Code.ParentRouteContact,
 					`Region ${route.regionId} routes ${route.relationId} and ${other.relationId} intersect without a bridge.`,

@@ -9,9 +9,9 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 
 describe('observable contacts at region boundaries', () => {
 	const cases = runRegionContactWitnesses();
@@ -101,7 +101,7 @@ describe('observable contacts at region boundaries', () => {
 		expect(probePanel.description).toContain('Aucun pont');
 	});
 
-	it('reports the original three-relation grid contact as an unresolved bridge-free crossing', () => {
+	it('bridges the three-relation grid contact instead of leaving it unresolved', () => {
 		const source = defined(cases.find(({ id }) => id === RegionContactCaseId.Grid)).source;
 		const originalContact = {
 			...source,
@@ -111,13 +111,18 @@ describe('observable contacts at region boundaries', () => {
 			},
 		};
 		const { attempt } = probeRegionContactScenario(originalContact);
-		expect(attempt).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: 'grid',
-			relationId: 'across-grid',
-			reason: 'Region grid routes across-grid and leaves-grid intersect without a bridge.',
-		});
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const bridges = validatedBridges(attempt.layout.relations);
+		expect(bridges.length).toBeGreaterThan(0);
+		expect(
+			defined(
+				bridges.find(
+					({ carrierIds, crossedIds }) =>
+						carrierIds.includes('leaves-grid') && crossedIds.includes('across-grid'),
+				),
+			),
+		).toBeDefined();
 	});
 
 	it('reports invalid graph and region ownership from mutations of a real workshop document', () => {

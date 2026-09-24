@@ -1,13 +1,9 @@
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import { unbridgedContacts } from './bridge-contact';
+import { validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
-import {
-	orthogonal,
-	orthogonalPathsTouch,
-	samePoint,
-	segmentEnters,
-	within,
-} from './nested-region-geometry-primitives';
+import { orthogonal, samePoint, segmentEnters, within } from './nested-region-geometry-primitives';
 import {
 	type RegionChildPlacement,
 	type RegionInput,
@@ -233,10 +229,16 @@ export function validateNestedRouteOwnership(
 	const parentRoutes = candidate.ownedRoutes.filter(
 		({ regionId }) => regionId === candidate.rootId,
 	);
+	const bridges = validatedBridges(candidate.layout.relations);
 	for (let index = 0; index < parentRoutes.length; index += 1) {
 		const current = defined(parentRoutes[index]);
 		for (const other of parentRoutes.slice(index + 1)) {
-			if (orthogonalPathsTouch(current.points, other.points))
+			const unbridged = unbridgedContacts(
+				{ id: current.relationId, points: current.points },
+				{ id: other.relationId, points: other.points },
+				bridges,
+			);
+			if (unbridged.length > 0)
 				return `Parent routes ${current.relationId} and ${other.relationId} intersect without a bridge.`;
 		}
 	}

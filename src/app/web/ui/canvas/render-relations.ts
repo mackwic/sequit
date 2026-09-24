@@ -1,125 +1,52 @@
 import { defined } from '../../../../lib/core/document/logic-document';
+import {
+	routeBridgeAnalysis,
+	RouteOrientation,
+	type RouteRun,
+	routeRuns,
+} from '../../../../lib/core/layout/bridge-oracle';
+import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../lib/core/layout/layout-settings';
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
 import { parallelSegmentsAreClose, relationColors } from './relation-colors';
 import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
-
-const BRIDGE_RADIUS = 6;
-const BRIDGE_CLEARANCE = 6;
-
-enum Orientation {
-	Horizontal = 'horizontal',
-	Vertical = 'vertical',
-}
-
-interface Segment {
-	readonly relationId: string;
-	readonly start: Point;
-	readonly end: Point;
-	readonly orientation: Orientation;
-}
 
 export interface RenderedRelation extends LayoutRelation {
 	readonly path: string;
 	readonly color: string;
 }
 
-function segmentBetween(relationId: string, start: Point, end: Point): Segment | undefined {
-	if (start.x === end.x && start.y !== end.y) {
-		return { relationId, start, end, orientation: Orientation.Vertical };
-	}
-	if (start.y === end.y && start.x !== end.x) {
-		return { relationId, start, end, orientation: Orientation.Horizontal };
-	}
-	return undefined;
+function pairKey(horizontalId: string, verticalId: string): string {
+	return `${horizontalId}\u0000${verticalId}`;
 }
 
-function appendSegment(segments: Segment[], segment: Segment): void {
-	const last = segments.at(-1);
-	if (last === undefined) {
-		segments.push(segment);
-		return;
-	}
-	const contiguous = last.end.x === segment.start.x && last.end.y === segment.start.y;
-	const previousDirection =
-		Math.sign(last.end.x - last.start.x) + Math.sign(last.end.y - last.start.y);
-	const nextDirection =
-		Math.sign(segment.end.x - segment.start.x) + Math.sign(segment.end.y - segment.start.y);
-	const sameOrientation = last.orientation === segment.orientation;
-	const merge = contiguous && sameOrientation && previousDirection === nextDirection;
-	if (merge) {
-		segments.pop();
-		segments.push({ ...segment, start: last.start });
-		return;
-	}
-	segments.push(segment);
+function distanceAlong(run: RouteRun, point: Point): number {
+	if (run.orientation === RouteOrientation.Horizontal) return Math.abs(point.x - run.start.x);
+	return Math.abs(point.y - run.start.y);
 }
 
-function segmentsFor(relation: LayoutRelation): readonly Segment[] {
-	const segments: Segment[] = [];
-	let start: Point | undefined;
-	for (const end of relation.points) {
-		if (start) {
-			const segment = segmentBetween(relation.id, start, end);
-			if (segment) appendSegment(segments, segment);
-		}
-		start = end;
-	}
-	return segments;
-}
-
-function strictlyBetween(value: number, first: number, second: number): boolean {
-	return value > Math.min(first, second) && value < Math.max(first, second);
-}
-
-function intersection(current: Segment, other: Segment): Point | undefined {
-	if (current.orientation === other.orientation) return undefined;
-	const horizontal = current.orientation === Orientation.Horizontal ? current : other;
-	const vertical = current.orientation === Orientation.Vertical ? current : other;
-	const point = { x: vertical.start.x, y: horizontal.start.y };
-	return strictlyBetween(point.x, horizontal.start.x, horizontal.end.x) &&
-		strictlyBetween(point.y, vertical.start.y, vertical.end.y)
-		? point
-		: undefined;
-}
-
-function distanceAlong(segment: Segment, point: Point): number {
-	const horizontalDistance = Math.abs(point.x - segment.start.x);
-	const verticalDistance = Math.abs(point.y - segment.start.y);
-	return segment.orientation === Orientation.Horizontal ? horizontalDistance : verticalDistance;
-}
-
-function pointAlong(segment: Segment, distance: number): Point {
-	if (segment.orientation === Orientation.Horizontal) {
+function pointAlong(run: RouteRun, distance: number): Point {
+	if (run.orientation === RouteOrientation.Horizontal)
 		return {
-			x: segment.start.x + Math.sign(segment.end.x - segment.start.x) * distance,
-			y: segment.start.y,
+			x: run.start.x + Math.sign(run.end.x - run.start.x) * distance,
+			y: run.start.y,
 		};
-	}
 	return {
-		x: segment.start.x,
-		y: segment.start.y + Math.sign(segment.end.y - segment.start.y) * distance,
+		x: run.start.x,
+		y: run.start.y + Math.sign(run.end.y - run.start.y) * distance,
 	};
 }
 
-enum PathCommand {
-	Move = 'M',
-	Line = 'L',
-}
-
-function pointCommand(command: PathCommand, point: Point): string {
-	return `${command} ${point.x} ${point.y}`;
-}
-
-function bridgeSweep(segment: Segment, point: Point, segments: readonly Segment[]): number {
-	const horizontal = segment.orientation === Orientation.Horizontal;
+/** The visual side of a bridge: the bulge avoids a parallel trunk closer than the clearance. */
+function bridgeSweep(run: RouteRun, point: Point, runs: readonly RouteRun[]): number {
+	const horizontal = run.orientation === RouteOrientation.Horizontal;
 	const axis = horizontal ? 'x' : 'y';
 	const cross = horizontal ? 'y' : 'x';
-	let side = Math.sign(segment.end[axis] - segment.start[axis]);
+	let side = Math.sign(run.end[axis] - run.start[axis]);
 	if (horizontal) side = -side;
 	let current = Number.POSITIVE_INFINITY;
 	let opposite = Number.POSITIVE_INFINITY;
-	for (const other of segments) {
-		if (other.orientation !== segment.orientation) continue;
+	for (const other of runs) {
+		if (other.orientation !== run.orientation) continue;
 		const start = Math.min(other.start[axis], other.end[axis]);
 		const end = Math.max(other.start[axis], other.end[axis]);
 		const before = point[axis] - BRIDGE_RADIUS;
@@ -135,135 +62,113 @@ function bridgeSweep(segment: Segment, point: Point, segments: readonly Segment[
 }
 
 function pathFor(
-	segments: readonly Segment[],
-	crossings: ReadonlyMap<Segment, readonly Point[]>,
-	allSegments: readonly Segment[],
+	runs: readonly RouteRun[],
+	bridges: ReadonlyMap<RouteRun, readonly Point[]>,
+	allRuns: readonly RouteRun[],
 ): string {
-	const first = segments.at(0);
+	const first = runs.at(0);
 	if (!first) return '';
-	const commands = [pointCommand(PathCommand.Move, first.start)];
+	const commands = [`M ${first.start.x} ${first.start.y}`];
 	let cursor = first.start;
-	for (const segment of segments) {
-		if (cursor.x !== segment.start.x || cursor.y !== segment.start.y) {
-			commands.push(pointCommand(PathCommand.Line, segment.start));
-		}
-		const length = distanceAlong(segment, segment.end);
-		const lastBridgeCenter = length - BRIDGE_RADIUS;
-		const distances = [...(crossings.get(segment) ?? [])]
-			.map((point) => distanceAlong(segment, point))
-			.filter((distance) => distance >= BRIDGE_RADIUS && distance <= lastBridgeCenter)
+	for (const run of runs) {
+		if (cursor.x !== run.start.x || cursor.y !== run.start.y)
+			commands.push(`L ${run.start.x} ${run.start.y}`);
+		const distances = [...(bridges.get(run) ?? [])]
+			.map((point) => distanceAlong(run, point))
 			.sort((left, right) => left - right);
 		for (const distance of distances) {
-			const before = pointAlong(segment, distance - BRIDGE_RADIUS);
-			const after = pointAlong(segment, distance + BRIDGE_RADIUS);
-			commands.push(pointCommand(PathCommand.Line, before));
-			const sweep = bridgeSweep(segment, pointAlong(segment, distance), allSegments);
+			const before = pointAlong(run, distance - BRIDGE_RADIUS);
+			const after = pointAlong(run, distance + BRIDGE_RADIUS);
+			commands.push(`L ${before.x} ${before.y}`);
+			const sweep = bridgeSweep(run, pointAlong(run, distance), allRuns);
 			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 ${sweep} ${after.x} ${after.y}`);
 		}
-		commands.push(pointCommand(PathCommand.Line, segment.end));
-		cursor = segment.end;
+		commands.push(`L ${run.end.x} ${run.end.y}`);
+		cursor = run.end;
 	}
 	return commands.join(' ');
 }
 
-function hasBridgeSpace(segment: Segment, point: Point): boolean {
-	const distance = distanceAlong(segment, point);
-	const remaining = distanceAlong(segment, segment.end) - distance;
-	const minimum = BRIDGE_RADIUS + BRIDGE_CLEARANCE;
-	return distance >= minimum && remaining >= minimum;
-}
-
-function canCarryBridge(
-	segment: Segment,
-	point: Point,
-	crossings: ReadonlyMap<Segment, readonly Point[]>,
-): boolean {
-	if (!hasBridgeSpace(segment, point)) return false;
-	const distance = distanceAlong(segment, point);
-	return (crossings.get(segment) ?? []).every((previous) => {
-		const separation = Math.abs(distanceAlong(segment, previous) - distance);
-		const diameter = BRIDGE_RADIUS * 2 + BRIDGE_CLEARANCE;
-		return separation === 0 || separation >= diameter;
-	});
-}
-
-function overlappingCarriers(
-	segment: Segment,
-	point: Point,
-	segments: readonly Segment[],
-): Segment[] {
-	return segments.filter((candidate) => {
-		if (candidate.orientation !== segment.orientation) return false;
-		if (segment.orientation === Orientation.Horizontal) {
-			return (
-				candidate.start.y === point.y &&
-				strictlyBetween(point.x, candidate.start.x, candidate.end.x)
-			);
-		}
-		return (
-			candidate.start.x === point.x && strictlyBetween(point.y, candidate.start.y, candidate.end.y)
-		);
-	});
-}
-
-function recordIntersection(
-	crossings: Map<Segment, Point[]>,
-	segment: Segment,
-	previous: Segment,
-	segments: readonly Segment[],
-): void {
-	const point = intersection(segment, previous);
-	if (!point) return;
-	const candidates = [segment, previous].map((candidate) =>
-		overlappingCarriers(candidate, point, segments),
-	);
-	if (
-		candidates
-			.flat()
-			.some((candidate) =>
-				(crossings.get(candidate) ?? []).some(
-					(existing) => existing.x === point.x && existing.y === point.y,
-				),
-			)
-	)
-		return;
-	const carriers = candidates.find((group) =>
-		group.every((candidate) => canCarryBridge(candidate, point, crossings)),
-	);
-	for (const carrier of carriers ?? []) {
-		const points = crossings.get(carrier) ?? [];
-		points.push(point);
-		crossings.set(carrier, points);
+function strictlyContains(run: RouteRun, point: Point): boolean {
+	if (run.orientation === RouteOrientation.Horizontal) {
+		const sameCross = run.start.y === point.y;
+		const within =
+			point.x > Math.min(run.start.x, run.end.x) && point.x < Math.max(run.start.x, run.end.x);
+		return sameCross && within;
 	}
+	const sameCross = run.start.x === point.x;
+	const within =
+		point.y > Math.min(run.start.y, run.end.y) && point.y < Math.max(run.start.y, run.end.y);
+	return sameCross && within;
 }
 
+function pairKeyFor(run: RouteRun, previous: RouteRun): string {
+	if (run.orientation === RouteOrientation.Horizontal) return pairKey(run.pathId, previous.pathId);
+	return pairKey(previous.pathId, run.pathId);
+}
+
+function needsContrast(
+	run: RouteRun,
+	previous: RouteRun,
+	crossingPairs: ReadonlySet<string>,
+): boolean {
+	return crossingPairs.has(pairKeyFor(run, previous)) || parallelSegmentsAreClose(run, previous);
+}
+
+/** Crossings and nearby parallels need different ink; both are read from the same run pairs. */
+function colorContactsFor(
+	runsByRelation: readonly (readonly RouteRun[])[],
+	crossingPairs: ReadonlySet<string>,
+): readonly (readonly [string, string])[] {
+	const contacts: (readonly [string, string])[] = [];
+	const previousRuns: RouteRun[] = [];
+	for (const runs of runsByRelation) {
+		for (const run of runs) {
+			const touched = previousRuns.filter((previous) =>
+				needsContrast(run, previous, crossingPairs),
+			);
+			for (const previous of touched) contacts.push([run.pathId, previous.pathId]);
+		}
+		previousRuns.push(...runs);
+	}
+	return contacts;
+}
+
+/**
+ * Draws the relations of a layout. The bridges come from the shared oracle, which is the single
+ * decision of where an arc is drawn: the canvas only chooses its bulge. A crossing the oracle does
+ * not validate stays a straight line.
+ */
 export function renderRelationPaths(
 	relations: readonly LayoutRelation[],
 	palette: RoutePalette = DEFAULT_ROUTE_PALETTE,
 ): readonly RenderedRelation[] {
-	const colorContacts: [string, string][] = [];
-	const previousSegments: Segment[] = [];
-	const crossings = new Map<Segment, Point[]>();
-	const byRelation = relations.map((relation) => ({ relation, segments: segmentsFor(relation) }));
-	const allSegments = byRelation.flatMap(({ segments }) => segments);
-	for (const { segments } of byRelation) {
-		for (const segment of segments) {
-			for (const previous of previousSegments) {
-				const pair: [string, string] = [segment.relationId, previous.relationId];
-				const needsContrast =
-					intersection(segment, previous) !== undefined ||
-					parallelSegmentsAreClose(segment, previous);
-				colorContacts.push(...(needsContrast ? [pair] : []));
-				recordIntersection(crossings, segment, previous, allSegments);
-			}
+	const runsByRelation = relations.map((relation) => routeRuns(relation));
+	const allRuns = runsByRelation.flat();
+	const { crossings, bridges } = routeBridgeAnalysis(relations);
+	const crossingPairs = new Set(
+		crossings.map((crossing) => pairKey(crossing.horizontalId, crossing.verticalId)),
+	);
+	const bridgePoints = new Map<RouteRun, Point[]>();
+	for (const bridge of bridges) {
+		for (const run of allRuns) {
+			if (!bridge.carrierIds.includes(run.pathId)) continue;
+			if (!strictlyContains(run, bridge)) continue;
+			const points = bridgePoints.get(run) ?? [];
+			points.push(bridge);
+			bridgePoints.set(run, points);
 		}
-		previousSegments.push(...segments);
 	}
-	const colors = relationColors(relations, colorContacts, palette);
-	return byRelation.map(({ relation, segments }) => {
+	const colors = relationColors(
+		relations,
+		colorContactsFor(runsByRelation, crossingPairs),
+		palette,
+	);
+	return runsByRelation.map((runs, index) => {
+		const relation = defined(relations[index]);
 		return {
 			...relation,
-			path: pathFor(segments, crossings, allSegments),
+			path: pathFor(runs, bridgePoints, allRuns),
 			color: defined(colors.get(relation.id)),
 		};
 	});

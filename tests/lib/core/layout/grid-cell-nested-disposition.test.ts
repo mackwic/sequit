@@ -14,6 +14,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { within } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
@@ -30,6 +31,7 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -387,7 +389,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		);
 	});
 
-	it('keeps an unbridged crossing between three grid routes unresolved', () => {
+	it('bridges the strict crossings between three grid routes instead of losing the capacity', () => {
 		const { document, input } = nestedGridFixture();
 		const prepared = prepareLayoutDocument({
 			...document,
@@ -397,18 +399,24 @@ describe('a grid disposition inside the recursive region tree', () => {
 				{ id: 'third-crossing', from: 'a-source', to: 'd' },
 			],
 		});
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const bridges = validatedBridges(attempt.layout.relations);
+		expect(bridges.length).toBe(3);
+		expect(bridges.every(({ crossedIds }) => crossedIds.length > 0)).toBe(true);
 		expect(
-			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
-		).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			reason: 'Region grid routes across-grid and third-crossing intersect without a bridge.',
-			regionId: 'grid',
-			relationId: 'across-grid',
-		});
+			defined(bridges.find(({ carrierIds }) => carrierIds.includes('third-crossing'))),
+		).toBeDefined();
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized three-crossing grid');
+		expect(
+			diagnoseParentRouteContacts(normalized.model, attempt.ownedRoutes, attempt.layout.relations),
+		).toBeUndefined();
 	});
 
-	it('reports a typed unbridged contact for an external incident crossing a grid rail', () => {
+	it('bridges an external incident crossing a grid rail and keeps the scene selected', () => {
 		const { document, input } = nestedGridFixture();
 		const prepared = prepareLayoutDocument({
 			...document,
@@ -416,15 +424,17 @@ describe('a grid disposition inside the recursive region tree', () => {
 		});
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const bridges = validatedBridges(attempt.layout.relations);
+		expect(bridges).toEqual([
+			{ x: 128, y: 188, carrierIds: ['leaves-grid'], crossedIds: ['across-grid'] },
+		]);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Expected model');
 		expect(
-			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
-		).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: 'grid',
-			relationId: 'across-grid',
-			reason: 'Region grid routes across-grid and leaves-grid intersect without a bridge.',
-		});
+			diagnoseParentRouteContacts(normalized.model, attempt.ownedRoutes, attempt.layout.relations),
+		).toBeUndefined();
 	});
 
 	it('keeps the external incident deterministic in four directions and both roles', () => {
@@ -537,7 +547,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		);
 	});
 
-	it('keeps an unresolved incident cold-equal across reversal and a resized leaf', () => {
+	it('keeps a bridged incident cold-equal across reversal and a resized leaf', () => {
 		const { document, input } = nestedGridFixture();
 		const source: LogicDocument = {
 			...document,
@@ -554,10 +564,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		expect(first).toEqual(
 			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
 		);
-		expect(first).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-		});
+		expect(first).toMatchObject({ status: RegionCompositionStatus.Selected });
 		expect(cache.stats).toMatchObject({ misses: 5, hits: 0 });
 		const reversed = prepareLayoutDocument({
 			...source,
@@ -575,10 +582,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		expect(incremental).toEqual(
 			solveRecursiveNestedRegionLayout(reversed.graph, reversed.measurements, input),
 		);
-		expect(incremental).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-		});
+		expect(incremental).toMatchObject({ status: RegionCompositionStatus.Selected });
 		expect(cache.stats).toMatchObject({ misses: 7, hits: 3 });
 		const nodes = new Map(reversed.measurements.nodes);
 		const target = defined(nodes.get('a-target'));
@@ -586,10 +590,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		const measurements = { ...reversed.measurements, nodes };
 		const resized = solveRecursiveNestedRegionLayout(reversed.graph, measurements, input, cache);
 		expect(resized).toEqual(solveRecursiveNestedRegionLayout(reversed.graph, measurements, input));
-		expect(resized).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-		});
+		expect(resized).toMatchObject({ status: RegionCompositionStatus.Selected });
 		expect(cache.stats).toMatchObject({ misses: 8, hits: 7 });
 	});
 
@@ -690,6 +691,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		function decided(
 			prepared: ReturnType<typeof prepareLayoutDocument>,
 			expected: RegionCompositionStatus.Selected | RegionCompositionStatus.Unknown,
+			bridges?: number,
 		): void {
 			const attempt = solveRecursiveNestedRegionLayout(
 				prepared.graph,
@@ -702,6 +704,8 @@ describe('a grid disposition inside the recursive region tree', () => {
 				return;
 			}
 			if (attempt.status !== RegionCompositionStatus.Selected) return;
+			if (bridges !== undefined)
+				expect(validatedBridges(attempt.layout.relations)).toHaveLength(bridges);
 			const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 			if (normalized.status !== RegionCompositionModelStatus.Ready)
 				throw new Error('Expected normalized grid composition');
@@ -734,7 +738,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 				{ id: 'right-exit', from: 'b', to: 'outside-2' },
 			],
 		});
-		decided(crossing, RegionCompositionStatus.Unknown);
+		decided(crossing, RegionCompositionStatus.Selected, 2);
 		const bottom = prepareLayoutDocument({
 			...document,
 			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },

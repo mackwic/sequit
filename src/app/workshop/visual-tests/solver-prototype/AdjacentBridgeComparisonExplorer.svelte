@@ -37,7 +37,7 @@
 				id: 'independent',
 				title: 'Matérialiseur indépendant · détour sans croisement',
 				policy:
-					'Valide géométriquement selon la politique sans croisement strict ; statut global undetermined.',
+					'Admet les croisements portés par un pont validé puis arbitre détour et pont par les tolérances déclarées ; statut global undetermined.',
 				result: comparison.independent,
 			},
 		];
@@ -51,8 +51,9 @@
 		<p>
 			Les relations a→d, b→d, c→d et a→e partagent les mêmes rangs et les mêmes mesures dans les
 			deux dessins. Le moteur dédié accepte et ponte ses croisements stricts. Le matérialiseur
-			indépendant inverse l’ordre transversal de d et e et choisit des routes sans croisement ; sa
-			recherche globale reste indéterminée.
+			indépendant admet désormais les mêmes croisements pontés ; sur ce témoin son meilleur candidat
+			ponté garde l’aire du détour et allonge les routes, donc les tolérances déclarées gardent le
+			détour sans croisement. Sa recherche globale reste indéterminée.
 		</p>
 	</header>
 	{#if error}

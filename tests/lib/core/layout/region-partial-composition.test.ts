@@ -6,11 +6,11 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
@@ -145,7 +145,7 @@ describe('region partial composition', () => {
 		});
 	});
 
-	it('reports typed geometry failure for crossing routes wholly inside a branch', () => {
+	it('bridges two crossing routes wholly inside a branch', () => {
 		const source = regionDocument();
 		const document: LogicDocument = {
 			...source,
@@ -179,14 +179,13 @@ describe('region partial composition', () => {
 		});
 		const branch = attempts.find(({ regionId }) => regionId === 'branch');
 		expect(branch).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
+			status: RegionCompositionStatus.Selected,
 			scope: RegionSubtreeScope.ClosedSubtree,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			failureRegionId: 'branch',
-			relationId: 'across-middle',
-			endpointIds: ['a-target', 'b', 'c'],
-			relationIds: ['across-middle', 'b-to-a'],
+			regionId: 'branch',
 		});
+		if (branch?.status !== RegionCompositionStatus.Selected)
+			throw new Error('Expected a selected branch subtree');
+		expect(validatedBridges(branch.layout.relations).length).toBeGreaterThan(0);
 		expect(attempts.find(({ regionId }) => regionId === 'outside')?.status).toBe(
 			RegionCompositionStatus.Selected,
 		);

@@ -13,6 +13,8 @@ import {
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../../src/lib/core/graph/topological-ranks';
+import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridge-contact';
+import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridge-oracle';
 import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contract/candidate-face-branches';
 import { materializeIndependentAdjacentGeometry } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
@@ -224,7 +226,7 @@ describe('independent adjacent 2+2 contract', () => {
 		expect(crossStart + crossSize - defined(outgoing[1])).toBeGreaterThanOrEqual(PORT_INSET);
 	});
 
-	it('materializes an inverted branch and rejects its strict crossing after geometry validation', () => {
+	it('materializes an inverted branch and validates its strict crossing as a bridge', () => {
 		const source = graph(document(LayoutDirection.TopToBottom));
 		const measured = measurements();
 		const inverted = defined(
@@ -248,6 +250,9 @@ describe('independent adjacent 2+2 contract', () => {
 			}),
 		).toEqual({ valid: true });
 		expect(routeCrossings(layout.relations).length).toBeGreaterThan(0);
+		const analysis = routeBridgeAnalysis(layout.relations);
+		expect(analysis.crossings.length).toBeGreaterThan(0);
+		expect(unbridgedCrossings(analysis)).toEqual([]);
 		const resolved = resolveIndependentAdjacentContract(
 			source,
 			topologicallyRank(source),
@@ -255,7 +260,7 @@ describe('independent adjacent 2+2 contract', () => {
 		);
 		expect(resolved.evaluations).toContainEqual({
 			branchId: branch.id,
-			status: IndependentAdjacentBranchStatus.CrossingRejected,
+			status: IndependentAdjacentBranchStatus.Accepted,
 		});
 	});
 

@@ -96,7 +96,12 @@ function containmentOrder(
 ): readonly string[] {
 	const allocation = allocateNestedTracks(
 		edge,
-		ids.map((relationId) => ({ relationId, ...spanOn(input, relationId, axis) })),
+		ids.map((relationId) => {
+			const portal = defined(input.portalByRelationId.get(relationId));
+			if (axis === CrossingSpanAxis.Y)
+				return { relationId, start: portal.source.y, end: portal.target.y };
+			return { relationId, start: portal.source.x, end: portal.target.x };
+		}),
 	);
 	const order = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
 	for (const relationId of ids)
@@ -108,16 +113,6 @@ function containmentOrder(
 enum CrossingSpanAxis {
 	X = 'x',
 	Y = 'y',
-}
-
-function spanOn(
-	input: CrossingAllocationInput,
-	relationId: string,
-	axis: CrossingSpanAxis,
-): { readonly start: number; readonly end: number } {
-	const portal = defined(input.portalByRelationId.get(relationId));
-	if (axis === CrossingSpanAxis.Y) return { start: portal.source.y, end: portal.target.y };
-	return { start: portal.source.x, end: portal.target.x };
 }
 
 /** The containment allocation: rails and bus are ordered by interval inclusion, ports stay canonical. */
@@ -245,4 +240,59 @@ export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation> {
 	yield* permutationCandidates(input, 1, new Set());
+}
+
+/** One declared attempt of the crossing allocation search, in the order the search tries them. */
+export enum CrossingAllocationPhaseId {
+	/** Permute tracks and portals: the reallocation issue of the routing resource graph. */
+	Reallocate = 'reallocate',
+	/** Add one rail track: the growth issue, already reserved by the margin. */
+	ExtraTrack = 'extra-track',
+	/** Reallocate again, now accepting a crossing that a validated bridge carries. */
+	Bridge = 'bridge',
+}
+
+export interface CrossingAllocationPhase {
+	readonly id: CrossingAllocationPhaseId;
+	/** True when a contact between two parent routes is admissible if a validated bridge carries it. */
+	readonly acceptBridges: boolean;
+	/**
+	 * True when the phase keeps spending the declared budget of the previous one: the added track
+	 * is a growth of the same allocation, not a second reallocation space. A phase with its own
+	 * budget re-opens the declared list under its own exhaustiveness bound.
+	 */
+	readonly sharesBudget: boolean;
+	readonly candidates: (input: CrossingAllocationInput) => Generator<GridCrossingAllocation>;
+}
+
+/**
+ * The declared issue order of a grid conflict: reallocate, then add a track, then accept a
+ * validated bridge, then `unknown`. A grid crossing relation has exactly one geometry per
+ * allocation and the arrangement declares no alternative side (`alternativeSides: []`), so the
+ * grid owns no detour: the detour/bridge thresholds of the contract search are vacuous here, and
+ * the bridge phase is the last resource before a coded `unknown`.
+ */
+export function crossingAllocationPhases(
+	input: CrossingAllocationInput,
+): readonly CrossingAllocationPhase[] {
+	return [
+		{
+			id: CrossingAllocationPhaseId.Reallocate,
+			acceptBridges: false,
+			sharesBudget: false,
+			candidates: () => crossingAllocationCandidates(input),
+		},
+		{
+			id: CrossingAllocationPhaseId.ExtraTrack,
+			acceptBridges: false,
+			sharesBudget: true,
+			candidates: () => crossingAllocationCandidatesWithExtraTrack(input),
+		},
+		{
+			id: CrossingAllocationPhaseId.Bridge,
+			acceptBridges: true,
+			sharesBudget: false,
+			candidates: () => crossingAllocationCandidates(input),
+		},
+	];
 }

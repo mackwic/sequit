@@ -7,6 +7,10 @@ export const BASE_RANK_GAP = 72;
 export const JUNCTION_CLEARANCE = 48;
 /** Space for a bridge radius, a 9px arrowhead and 9px of visible air on either side. */
 export const JUNCTION_CHANNEL_GAP = 48;
+/** Radius of a drawn bridge arc; the arc spans twice this around its crossing point. */
+export const BRIDGE_RADIUS = 6;
+/** Free ink between an arc and a run end, and between two arcs on one carrier. */
+export const BRIDGE_CLEARANCE = 6;
 export const JUNCTION_PORT_SPACING = 12;
 export const JUNCTION_PORT_INSET = 8;
 export const RAIL_SPACING = 24;

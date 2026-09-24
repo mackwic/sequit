@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
@@ -14,6 +15,7 @@ import {
 } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
+import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
@@ -234,19 +236,21 @@ describe('parent bus rail order', () => {
 		expect(defined(left.points[1]).y).toBeGreaterThan(defined(right.points[1]).y);
 	});
 
-	it('keeps interleaved arcs and three conflicting exits unknown', () => {
+	it('bridges interleaved arcs and keeps a shared-rail exit conflict unknown', () => {
 		const interleaved = exits({ leftOutside: 'outside-2', rightOutside: 'outside' });
-		expect(solve(interleaved).candidate).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: '@root',
-			relationId: 'a-left-exit',
-			reason: 'Region @root routes a-left-exit and z-right-exit intersect without a bridge.',
-		});
+		const { candidate, model } = solve(interleaved);
+		expect(candidate.status).toBe(RegionCompositionStatus.Selected);
+		if (candidate.status !== RegionCompositionStatus.Selected) return;
+		expect(validatedBridges(candidate.layout.relations).length).toBeGreaterThan(0);
+		expect(
+			diagnoseParentRouteContacts(model, candidate.ownedRoutes, candidate.layout.relations),
+		).toBeUndefined();
 		const third = {
 			...interleaved,
 			relations: [...interleaved.relations, { id: 'third-exit', from: 'c', to: 'outside' }],
 		};
+		// Two exits of the same column share the left rail: their contact is a collinear overlap,
+		// which no bridge can carry, so the capacity stays unknown.
 		expect(solve(third).candidate).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,

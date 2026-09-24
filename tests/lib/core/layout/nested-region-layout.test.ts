@@ -7,6 +7,7 @@ import {
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { segmentEnters } from '../../../../src/lib/core/layout/nested-region-geometry-primitives';
 import {
@@ -856,7 +857,7 @@ describe('bounded nested-region composition', () => {
 		expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
 	});
 
-	it('returns unknown for two LCA routes that cross without a bridge', () => {
+	it('bridges two LCA routes that cross instead of losing the capacity', () => {
 		const source = regionDocument();
 		const document = {
 			...source,
@@ -873,9 +874,13 @@ describe('bounded nested-region composition', () => {
 		};
 		const prepared = prepareLayoutDocument(document);
 		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, regions);
-		expect(result.status).toBe(RegionCompositionStatus.Unknown);
-		if (result.status !== RegionCompositionStatus.Unknown) return;
-		expect(result.reason).toContain('intersect without a bridge');
+		expect(result.status).toBe(RegionCompositionStatus.Selected);
+		if (result.status !== RegionCompositionStatus.Selected) return;
+		expect(validatedBridges(result.layout.relations).length).toBeGreaterThan(0);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, regions);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized two-route composition');
+		expect(validateRegionCompositionGeometry(normalized.model, result)).toBeUndefined();
 	});
 
 	it('selects two LCA routes when their parent corridors are disjoint', () => {

@@ -1,6 +1,8 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -8,23 +10,28 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { orthogonalPathsTouch } from '../../../../src/lib/core/layout/nested-region-geometry-primitives';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { gridDocument, gridInput } from './grid-cell-fixture';
 
 /** The grid owns the middle piece of each crossing route: the contact oracle compares those. */
-function gridOwnedContact(
+function gridOwnedUnbridgedContact(
 	layout: LayoutResult,
 	input: GridCellInput,
 ): readonly [string, string] | undefined {
 	const crossing = layout.relations.filter(
 		(route) => input.cellByEndpointId.get(route.from) !== input.cellByEndpointId.get(route.to),
 	);
+	const bridges = validatedBridges(layout.relations);
 	for (const [index, first] of crossing.entries())
-		for (const second of crossing.slice(index + 1))
-			if (orthogonalPathsTouch(first.points.slice(1, -1), second.points.slice(1, -1)))
-				return [first.id, second.id];
+		for (const second of crossing.slice(index + 1)) {
+			const unbridged = unbridgedContacts(
+				{ id: first.id, points: first.points.slice(1, -1) },
+				{ id: second.id, points: second.points.slice(1, -1) },
+				bridges,
+			);
+			if (unbridged.length > 0) return [first.id, second.id];
+		}
 	return undefined;
 }
 
@@ -88,7 +95,7 @@ describe('grid-cell real-pipeline properties', () => {
 					if (solved.status !== GridCellLayoutStatus.Selected)
 						throw new Error(`Expected selected grid: ${solved.status}: ${solved.reason}`);
 					expect(validateGridCellGeometry(solved, cold.graph, input)).toBeUndefined();
-					expect(gridOwnedContact(solved.layout, input)).toBeUndefined();
+					expect(gridOwnedUnbridgedContact(solved.layout, input)).toBeUndefined();
 					expect(solved.portals).toHaveLength(6);
 					expect(solved.columnWidths[0]).toBeGreaterThanOrEqual(values.minimumColumns[0]);
 					expect(solved.columnWidths[1]).toBeGreaterThanOrEqual(values.minimumColumns[1]);

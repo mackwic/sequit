@@ -157,7 +157,7 @@ export function validateRegionCompositionGeometry(
 		const failure = relationFailure(owned, candidate, context);
 		if (failure !== undefined) return failure;
 	}
-	return diagnoseParentRouteContacts(model, candidate.ownedRoutes);
+	return diagnoseParentRouteContacts(model, candidate.ownedRoutes, candidate.layout.relations);
 }
 
 /** Display adapter for callers that only need the established wording. */

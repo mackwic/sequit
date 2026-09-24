@@ -192,9 +192,10 @@
 		<p>
 			D’abord le confinement, les faces, les propriétaires et l’absence de faux contacts. Ensuite,
 			comparer la lisibilité des attaches : séparer les portails, partager un tronc avec une
-			jonction explicite, ou déplacer un corridor. Un pont à un vrai croisement demanderait son
-			propre contrat, un dégagement et un oracle ; aucun pont n’est validé ici. La longueur, les
-			coudes et l’aire départagent seulement des candidats déjà admissibles.
+			jonction explicite, ou déplacer un corridor. Un pont à un vrai croisement exige un dégagement
+			: l’oracle de pont le valide, le rendu trace l’arc, et la marque reste dérivée des routes ; un
+			contact en T ou un recouvrement colinéaire reste rejeté. La longueur, les coudés et l’aire
+			départagent seulement des candidats déjà admissibles.
 		</p>
 	</aside>
 </section>
