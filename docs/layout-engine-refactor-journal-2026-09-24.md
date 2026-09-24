@@ -173,3 +173,20 @@ La **vue stabilisée** ne conserve pas le dernier layout valide. Un tel fallback
 ## Atelier des contacts de régions
 
 L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deux documents réels sur leurs mesures et cadres respectifs : `inside-branch` + `c→d` avec portails séparés, puis relation locale dans une cellule avec sortie externe contournant son nœud. Le même cadre est conservé entre les panneaux d'une rangée, avec un zoom synchronisé sur le contact. Deux modifications de route et de portail sont rejetées par les validateurs de composition ; une sonde de croisement strict est étiquetée comme hypothèse rejetée par l'oracle de contact, sans prétendre qu'un pont existe. Le parcours navigateur Chromium vérifie statuts, portails, propriétaires et bascule de zoom. Les captures `region-contact-workshop.png` et `region-contact-workshop-focused.png` conservent les vues complète et focalisée. L'arbitrage entre corridor distinct, tronc partagé explicitement sémantique et pont reste ouvert.
+
+## Phase 2 — étape 0 (24 septembre 2026)
+
+Le WIP rouge `819d5a3` est scindé en deux commits sous `4a93d1f`.
+
+- `f4b5909` conserve la seule **matérialisation unique de la politique de feuille** à la normalisation : `RegionDefinition` requis distinct de `RegionInputDefinition` optionnel, `regionLeafPolicy` dispatchant sur `definition.policy` sans repli de présentation, et le repli mort `policy ?? LayoutPolicy.Layered` retiré de `nested-region-recursive-model-adapter.ts`. La **composition de grille par chemins incidents** (`composeGridCellCrossings`, changements de la région récursive de grille, attentes de détour de `grid-cell-lane-leaf.test.ts`) est revertée à son état d'avant le WIP ; elle sera reprise à l'étape 3 sur le graphe de ressources partagé. Les deux cas de `grid-cell-lane-leaf.test.ts` retrouvent donc leurs attentes d'avant le WIP (`unknown`, `GridCrossingEntersElement`). Porte `mise exec -- pnpm quality:fast` verte : 260 fichiers, 4 347 tests web, 98,01 % de branches (8 708/8 884) au-dessus du seuil de 98 %, 0,96 % de duplication pour un seuil de 1 %. Le test `indexed-route-materialization.test.ts` (« preserves the full dense adjacent-rank result ») atteint son délai de 5 s de façon intermittente sous charge parallèle, sans échec en série isolée.
+- `fcc850c` ajoute six fichiers de propriétés de composition à `test:property` : `grid-cell`, `nested-region`, `nested-grid-group-lanes`, `nested-region-incident-cache`, `region-leaf-incident-solver` et `group-junction-layout`. En mode par défaut, 19 fichiers et 92 tests passent en environ 13 s. En mode fuzz (`SEQUIT_PROPERTY_MODE=fuzz`, environ 4 min 30), les six fichiers ajoutés passent ; deux échecs **préexistants** subsistent, hors périmètre de la phase 2 et à traiter séparément : (1) `layout-graph.property.test.ts` « scales content while preserving topology and fixed port clearances », graine `-45145774`, reproductible, `expected 192 to be 96` à `expectMeasuredNode` (:243), sur groupes imbriqués + jonction + groupe d'extrémité vide ; (2) `yjs-live-document.property.test.ts` « converges mixed operation sequences… », délai de 10 s atteint sans contre-exemple.
+
+**Performance.** `mise exec -- pnpm test:performance` rejoué trois fois d'affilée, sans autre exécution concurrente ni changement de budget :
+
+1. 60/60 ; `wide-bipartite-layers/nodes=1000` médiane **98,259 ms** (budget strict < 100 ms respecté).
+2. 59/60 ; `wide-bipartite-layers/nodes=1000` médiane **105,668 ms** (budget strict manqué).
+3. 59/60 ; `wide-bipartite-layers/nodes=1000` médiane **102,761 ms** (budget strict manqué).
+
+Les 59 autres snapshots passent dans les trois rapports ; le budget strict intermittent n'est ni assoupli ni revendiqué vert.
+
+**Décision utilisateur pour la phase 2.** Pas de CI ni de PR ; la branche n'est pas poussée. Les parcours navigateur ne sont rejoués que localement, sur **un seul navigateur (Chromium)**, et uniquement quand une étape change un rendu. À l'étape 0, le `check` complet et Firefox ne sont pas rejoués : la preuve se limite à `quality:fast`, à `test:property` et aux trois rapports de performance ci-dessus.
