@@ -10,7 +10,7 @@ import {
 	type RegionSolvedIncident,
 } from './region-incident-contract';
 import { hitsBox } from './shared-lane-geometry-primitives';
-import { incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
+import { facePortEdge, incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneGeometry } from './shared-lane-types';
 
 const INCIDENT_CLEARANCE = 12;
@@ -142,6 +142,7 @@ function routePortOnFace(
 	return undefined;
 }
 
+/** Two ports of one face land on the same track when they are closer than the face edge spacing. */
 function sameFacePort(port: Point, anchor: Point, side: RegionPortalSide): boolean {
 	if (side === RegionPortalSide.Left || side === RegionPortalSide.Right) {
 		const gap = Math.abs(port.y - anchor.y);
@@ -197,14 +198,16 @@ function elementContact(
 
 function localRouteContact(
 	geometry: SharedLaneGeometry,
+	bounds: Bounds,
 	path: RegionSolvedIncident,
 ): SharedLaneIncidentFailure | undefined {
+	const edge = facePortEdge(path.endpointId, path.side, bounds);
 	for (const route of geometry.relations) {
 		const port = routePortOnFace(route.points, path.endpointId, route.from, route.to);
 		if (port !== undefined && sameFacePort(port, path.anchor, path.side))
 			return failure(
 				RegionIncidentRejectionCode.PortUnavailable,
-				`Incident ${path.relationId} has insufficient face capacity beside ${route.id}.`,
+				`Incident ${path.relationId} has insufficient face capacity on edge ${edge.ownerId} (${edge.capacity} tracks): the demanded track is held by ${route.id}.`,
 			);
 		if (pathsTouchWithoutBridge(path.points, route.points))
 			return failure(
@@ -255,7 +258,7 @@ export function validateSharedLaneIncidentPath(
 		);
 	return (
 		elementContact(geometry, contract.endpointId, path) ??
-		localRouteContact(geometry, path) ??
+		localRouteContact(geometry, source.bounds, path) ??
 		earlierIncidentContact(path, earlier)
 	);
 }

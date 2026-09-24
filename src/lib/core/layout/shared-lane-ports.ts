@@ -1,8 +1,10 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined, LaneOrientation } from '../document/logic-document';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
+import type { Bounds } from './layout-types';
 import { RegionPortalSide } from './region-composition-types';
 import type { RegionIncidentContract } from './region-incident-contract';
+import type { RoutingEdge } from './routing-resource-allocation';
 import type {
 	LaneSide,
 	SharedLaneEndpoint,
@@ -13,6 +15,30 @@ import type {
 export enum PortRole {
 	Source = 'source',
 	Target = 'target',
+}
+
+/**
+ * The port edge of one lane-leaf face: the face publishes one track per `PORT_SPACING` slot between
+ * its two insets, and two ports closer than that spacing share a track. The size demand of the face
+ * (`demandByEndpoint`) is what grows the face until it publishes the tracks its ports request.
+ */
+export function facePortEdge(
+	endpointId: string,
+	side: RegionPortalSide,
+	bounds: Bounds,
+): RoutingEdge {
+	const extent = faceExtent(bounds, side);
+	const slots = (extent - 2 * PORT_INSET) / PORT_SPACING;
+	return {
+		ownerId: `${endpointId}/${side}`,
+		capacity: Math.floor(slots) + 1,
+		spacing: PORT_SPACING,
+	};
+}
+
+function faceExtent(bounds: Bounds, side: RegionPortalSide): number {
+	if (side === RegionPortalSide.Left || side === RegionPortalSide.Right) return bounds.height;
+	return bounds.width;
 }
 
 interface PortIncidence {

@@ -385,7 +385,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
 		expect(laneIncidentIssue(occupiedPort, contract)).toMatchObject({
 			code: RegionIncidentRejectionCode.PortUnavailable,
-			reason: 'Incident leaves-b has insufficient face capacity beside inside-b.',
+			reason:
+				'Incident leaves-b has insufficient face capacity on edge b/right (3 tracks): the demanded track is held by inside-b.',
 		});
 		const incoming = {
 			...geometry,
