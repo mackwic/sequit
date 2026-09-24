@@ -102,9 +102,9 @@ export function crossingBusY(edge: RoutingEdge, track: number): number {
 	return BUS_ANCHOR_Y + trackOffset(edge, track);
 }
 
-/** The port edge of one endpoint face: one port track per incident crossing relation. */
-export function crossingPortEdge(regionId: string, incidenceCount: number): RoutingEdge {
-	return { ownerId: regionId, capacity: incidenceCount, spacing: CROSSING_SPACING };
+/** The declared face edge of one crossing endpoint: one port track per incident crossing relation. */
+export function crossingFaceEdge(endpointId: string, incidenceCount: number): RoutingEdge {
+	return { ownerId: endpointId, capacity: incidenceCount, spacing: CROSSING_SPACING };
 }
 
 /** Port y on a face: the port tracks are centred on the element. */
@@ -114,13 +114,13 @@ export function crossingPortY(bounds: Bounds, edge: RoutingEdge, track: number):
 	return centre + trackOffset(edge, track) - centring;
 }
 
-/** The declared port positions of a face, in track order. */
+/** The declared port positions of an endpoint's own face, in track order. */
 export function crossingPortPositions(
-	regionId: string,
+	endpointId: string,
 	bounds: Bounds,
 	incidenceCount: number,
 ): readonly number[] {
-	const edge = crossingPortEdge(regionId, incidenceCount);
+	const edge = crossingFaceEdge(endpointId, incidenceCount);
 	return Array.from({ length: incidenceCount }, (_, track) => crossingPortY(bounds, edge, track));
 }
 

@@ -58,6 +58,8 @@ export enum RegionGeometryDiagnosticCode {
 	GridCrossingEntersCell = 'grid-crossing-enters-cell',
 	GridCrossingEntersElement = 'grid-crossing-enters-element',
 	GridCrossingOverlap = 'grid-crossing-overlap',
+	/** A crossing endpoint needs a port face its cell does not publish: no group-face track. */
+	GridGroupFaceMissing = 'grid-group-face-missing',
 	/** A crossing that would need a horizontal gutter between two rows: not modelled yet. */
 	GridRowGutterMissing = 'grid-row-gutter-missing',
 }

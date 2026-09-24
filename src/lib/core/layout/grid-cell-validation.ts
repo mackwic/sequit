@@ -197,10 +197,7 @@ function checkCrossRoute(
 	context: CrossContext,
 ): RegionGeometryDiagnostic | undefined {
 	const portFailure = validateCrossPorts(candidate, route, context);
-	if (portFailure !== undefined)
-		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPort, portFailure, {
-			relationId: route.id,
-		});
+	if (portFailure !== undefined) return portFailure;
 	const portalFailure = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
 	if (portalFailure !== undefined)
 		return regionGeometryDiagnostic(

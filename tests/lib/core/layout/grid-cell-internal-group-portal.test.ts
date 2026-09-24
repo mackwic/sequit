@@ -85,6 +85,22 @@ function validated(
 	expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
 }
 
+/** The group portal fixture with its group nested in an outer group and its member grouped deeper. */
+function deeplyGroupedDocument(from: string, to: string): LogicDocument {
+	const source = persistedNestedGridWithGroupPortalDocument();
+	const group = defined(source.groups[0]);
+	const inner = { ...group, groupId: 'outer-group' };
+	delete inner.regionId;
+	return {
+		...source,
+		groups: [{ ...group, id: 'outer-group', layoutOrder: orderKey('a1') }, inner],
+		relations: source.relations.map((relation) => {
+			if (relation.id !== 'group-crossing') return relation;
+			return { ...relation, from, to };
+		}),
+	};
+}
+
 describe('direct group portals owned by an internal grid', () => {
 	it.each([
 		{ from: 'cell-group', to: 'd', owners: ['b', 'grid', 'd'] },
@@ -337,6 +353,77 @@ describe('direct group portals owned by an internal grid', () => {
 				.filter(({ relationId }) => relationId === 'group-crossing')
 				.map(({ regionId }) => regionId),
 		).toEqual(['b', 'grid', 'd']);
+	});
+
+	it.each([
+		{ from: 'cell-group', to: 'd', owners: ['b', 'grid', 'd'] },
+		{ from: 'd', to: 'cell-group', owners: ['d', 'grid', 'b'] },
+		{ from: 'b', to: 'd', owners: ['b', 'grid', 'd'] },
+		{ from: 'd', to: 'b', owners: ['d', 'grid', 'b'] },
+	] as const)(
+		'ports the $from → $to nested group endpoint on its own face and crosses the outer face',
+		({ from, to, owners }) => {
+			const document = deeplyGroupedDocument(from, to);
+			const prepared = prepareLayoutDocument(document);
+			const input = regionInput(document);
+			const result = selected(prepared, input);
+			validated(prepared, input, result);
+			expect(
+				result.ownedRoutes
+					.filter(({ relationId }) => relationId === 'group-crossing')
+					.map(({ regionId }) => regionId),
+			).toEqual(owners);
+			let endpointId = to;
+			if (to === 'd') endpointId = from;
+			const endpoint = defined(result.layout.elements.find(({ id }) => id === endpointId));
+			const outer = defined(result.layout.elements.find(({ id }) => id === 'outer-group'));
+			const route = defined(result.layout.relations.find(({ id }) => id === 'group-crossing'));
+			let port = defined(route.points[0]);
+			if (to !== 'd') port = defined(route.points.at(-1));
+			expect(port.x).toBe(endpoint.bounds.x + endpoint.bounds.width);
+			expect(port.y).toBeGreaterThan(endpoint.bounds.y);
+			expect(port.y).toBeLessThan(endpoint.bounds.y + endpoint.bounds.height);
+			// The endpoint's own face lies inside the outer group, so the route crosses that face.
+			expect(port.x).toBeLessThan(outer.bounds.x + outer.bounds.width);
+			expect(port.x).toBeGreaterThan(outer.bounds.x);
+		},
+	);
+
+	it('keeps the nested group endpoint invariant under permutation and equals the cold result', () => {
+		const document = deeplyGroupedDocument('cell-group', 'd');
+		const prepared = prepareLayoutDocument(document);
+		const input = regionInput(document);
+		const cache = new RegionLocalLayoutCache();
+		const first = selected(prepared, input, prepared.measurements, cache);
+		validated(prepared, input, first);
+		expect(first).toEqual(selected(prepared, input));
+		const permutedDocument = {
+			...document,
+			nodes: [...document.nodes].reverse(),
+			groups: [...document.groups].reverse(),
+			relations: [...document.relations].reverse(),
+			regionPresentation: {
+				...document.regionPresentation,
+				regions: [...document.regionPresentation.regions].reverse(),
+			},
+		};
+		const permuted = prepareLayoutDocument(permutedDocument);
+		const permutedMeasurements = {
+			...prepared.measurements,
+			nodes: new Map([...prepared.measurements.nodes].reverse()),
+			groups: new Map([...prepared.measurements.groups].reverse()),
+		};
+		const reordered = selected(
+			permuted,
+			regionInput(permutedDocument),
+			permutedMeasurements,
+			cache,
+		);
+		expect(reordered).toEqual(first);
+		expect(reordered).toEqual(
+			selected(permuted, regionInput(permutedDocument), permutedMeasurements),
+		);
+		expect(cache.stats.hits).toBeGreaterThanOrEqual(1);
 	});
 
 	it('keeps an incident on a lane-bearing group cell outside the direct portal contract', () => {

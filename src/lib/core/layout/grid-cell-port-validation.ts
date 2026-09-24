@@ -8,6 +8,11 @@ import { equal, samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
 import { RegionPortalSide } from './region-composition-types';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from './region-geometry-diagnostic';
 
 interface CrossPortContext {
 	readonly fromCell: GridCellPlacement;
@@ -27,19 +32,31 @@ function sideOf(
 	return crossingEndpointSide(cell.column, columnCount);
 }
 
+/** The face a crossing endpoint ports on is its own published element; a missing one is named. */
 export function validateCrossPorts(
 	candidate: GridCellSelected,
 	route: LayoutRelation,
 	context: CrossPortContext,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const elements = new Map(candidate.layout.elements.map((element) => [element.id, element]));
-	const source = defined(elements.get(route.from)).bounds;
-	const target = defined(elements.get(route.to)).bounds;
+	const sourceElement = elements.get(route.from);
+	const targetElement = elements.get(route.to);
+	if (sourceElement === undefined || targetElement === undefined) {
+		let missingId = route.to;
+		if (sourceElement === undefined) missingId = route.from;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridGroupFaceMissing,
+			`Cross-cell relation ${route.id} has no published face for endpoint ${missingId}.`,
+			{ relationId: route.id, endpointId: missingId },
+		);
+	}
+	const source = sourceElement.bounds;
+	const target = targetElement.bounds;
 	const first = defined(route.points[0]);
 	const last = defined(route.points.at(-1));
 	const onFace = (point: Point, x: number, endpointId: string, bounds: Bounds): boolean => {
 		const positions = crossingPortPositions(
-			candidate.rootId,
+			endpointId,
 			bounds,
 			defined(context.incidence.get(endpointId)).length,
 		);
@@ -59,7 +76,11 @@ export function validateCrossPorts(
 		target,
 	);
 	if (!sourceOnFace || !targetOnFace)
-		return `Cross-cell relation ${route.id} has invalid endpoint ports.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridCrossingPort,
+			`Cross-cell relation ${route.id} has invalid endpoint ports.`,
+			{ relationId: route.id },
+		);
 	return undefined;
 }
 

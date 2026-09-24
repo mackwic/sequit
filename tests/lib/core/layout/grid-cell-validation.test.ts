@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import {
 	entersInterior,
 	within,
 } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+import { validateCrossPorts } from '../../../../src/lib/core/layout/grid-cell-port-validation';
 import {
 	GridCellLayoutStatus,
 	type GridCellPlacement,
@@ -649,6 +651,29 @@ describe('independent grid geometry validation', () => {
 				cellByEndpointId: assignment,
 			}),
 		).toContain('Endpoint c has missing geometry');
+	});
+
+	it('names a crossing endpoint whose face the candidate does not publish', () => {
+		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
+		const relation = defined(gridDocument().relations.find(({ id }) => id === 'across-grid'));
+		const candidate = {
+			...selected,
+			layout: {
+				...selected.layout,
+				elements: selected.layout.elements.filter(({ id }) => id !== route.to),
+			},
+		};
+		expect(
+			validateCrossPorts(candidate, route, {
+				fromCell: cellFor(selected, 'a'),
+				toCell: cellFor(selected, 'd'),
+				incidence: crossingIncidence([relation]),
+			}),
+		).toMatchObject({
+			code: RegionGeometryDiagnosticCode.GridGroupFaceMissing,
+			endpointId: route.to,
+			relationId: 'across-grid',
+		});
 	});
 
 	it('treats vertical escape and diagonal intrusion as geometric violations', () => {

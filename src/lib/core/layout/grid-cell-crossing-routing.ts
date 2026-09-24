@@ -2,7 +2,7 @@ import { defined, type LogicRelation } from '../document/logic-document';
 import {
 	crossingBusY,
 	crossingEndpointSide,
-	crossingPortEdge,
+	crossingFaceEdge,
 	crossingPortY,
 	crossingRailX,
 	type GridRoutingEdges,
@@ -30,7 +30,7 @@ function crossingEndpoint(
 	relation: LogicRelation,
 	endpointId: string,
 ): { readonly port: Point; readonly portal: GridCellPortal; readonly railX: number } {
-	const { rootId, incidence, edges, columnCount, cellByEndpointId } = routing;
+	const { incidence, edges, columnCount, cellByEndpointId } = routing;
 	const cellId = defined(cellByEndpointId.get(endpointId));
 	const cell = defined(routing.cells.find(({ id }) => id === cellId));
 	const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId));
@@ -49,7 +49,7 @@ function crossingEndpoint(
 				x: local.bounds.x + cell.translation.x,
 				y: local.bounds.y + cell.translation.y,
 			},
-			crossingPortEdge(rootId, defined(incidence.get(endpointId)).length),
+			crossingFaceEdge(endpointId, defined(incidence.get(endpointId)).length),
 			defined(defined(allocation.portTrackByEndpointId.get(endpointId)).get(relation.id)),
 		),
 	};

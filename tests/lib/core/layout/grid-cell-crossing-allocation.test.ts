@@ -4,7 +4,7 @@ import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-stri
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
 	crossingBusY,
-	crossingPortEdge,
+	crossingFaceEdge,
 	crossingPortPositions,
 	crossingPortY,
 	crossingRailX,
@@ -86,8 +86,8 @@ describe('grid crossing allocation', () => {
 		expect(crossingPortPositions('grid', face, 1)).toEqual([130]);
 		expect(crossingPortPositions('grid', face, 2)).toEqual([118, 142]);
 		expect(crossingPortPositions('grid', face, 3)).toEqual([106, 130, 154]);
-		expect(crossingPortY(face, crossingPortEdge('grid', 1), 0)).toBe(130);
-		expect(crossingPortY(face, crossingPortEdge('grid', 2), 1)).toBe(142);
+		expect(crossingPortY(face, crossingFaceEdge('grid', 1), 0)).toBe(130);
+		expect(crossingPortY(face, crossingFaceEdge('grid', 2), 1)).toBe(142);
 	});
 
 	it('starts with the canonical allocation and its crossing order per gutter', () => {
