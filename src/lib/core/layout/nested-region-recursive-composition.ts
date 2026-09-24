@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LayoutRelation } from './layout-types';
 import {
@@ -29,8 +30,6 @@ interface PositionedChildren {
 
 interface CrossingDraft {
 	readonly relation: LogicRelation;
-	readonly sourceChildId: string;
-	readonly targetChildId: string;
 	readonly sourcePath: RegionIncidentPath;
 	readonly targetPath: RegionIncidentPath;
 	readonly sourcePortal: RegionPortal;
@@ -58,8 +57,6 @@ function crossingDraft(input: PositionedChildren, relation: LogicRelation): Cros
 	);
 	return {
 		relation,
-		sourceChildId,
-		targetChildId,
 		sourcePath,
 		targetPath,
 		sourcePortal: defined(sourcePath.portals.at(-1)),
@@ -75,22 +72,34 @@ function strictlyContains(outer: CrossingDraft, inner: CrossingDraft): boolean {
 	return outerMin < innerMin && innerMax < outerMax;
 }
 
-function busRailIndices(
-	input: PositionedChildren,
-	drafts: readonly CrossingDraft[],
-): readonly number[] {
-	if (drafts.length !== 2) return drafts.map((_, index) => index);
-	const gridChild = input.children.find(
-		({ id }) =>
-			defined(input.context.model.regionsById.get(id)).definition.grid !== undefined &&
-			drafts.every((draft) => draft.sourceChildId === id || draft.targetChildId === id),
+function busRailIndices(drafts: readonly CrossingDraft[]): readonly number[] {
+	const canonicalIndices = drafts
+		.map((_, index) => index)
+		.sort((left, right) =>
+			compareCanonicalStrings(
+				defined(drafts[left]).relation.id,
+				defined(drafts[right]).relation.id,
+			),
+		);
+	const pendingInnerCount = drafts.map((outer) =>
+		drafts.reduce((count, inner) => count + Number(strictlyContains(outer, inner)), 0),
 	);
-	const first = defined(drafts[0]);
-	const second = defined(drafts[1]);
-	// A containing arc must use the rail farther from the children. Keep all other
-	// pairs in canonical order; interleaved intervals still need a bridge.
-	if (gridChild !== undefined && strictlyContains(first, second)) return [1, 0];
-	return [0, 1];
+	const railIndices = Array<number>(drafts.length).fill(-1);
+	for (let rail = 0; rail < drafts.length; rail += 1) {
+		const ready = defined(
+			canonicalIndices.find((index) => {
+				const unassigned = railIndices[index] === -1;
+				return unassigned && pendingInnerCount[index] === 0;
+			}),
+			'Portal interval containment must be acyclic.',
+		);
+		railIndices[ready] = rail;
+		for (const [index, outer] of drafts.entries()) {
+			if (strictlyContains(outer, defined(drafts[ready])))
+				pendingInnerCount[index] = defined(pendingInnerCount[index]) - 1;
+		}
+	}
+	return railIndices;
 }
 
 export function composeCrossings(
@@ -105,7 +114,7 @@ export function composeCrossings(
 ): void {
 	const { regionId } = input;
 	const drafts = input.crossings.map((relation) => crossingDraft(input, relation));
-	const railIndices = busRailIndices(input, drafts);
+	const railIndices = busRailIndices(drafts);
 	for (const [index, draft] of drafts.entries()) {
 		const { relation, sourcePath, targetPath, sourcePortal, targetPortal } = draft;
 		const bus = rowBus({

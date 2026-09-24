@@ -8,14 +8,20 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
+import {
+	persistedNestedGridWithTwoOuterIncidentsDocument,
+	regionDocument,
+} from './nested-region-fixture';
 
 function exits(
 	input: {
@@ -46,9 +52,9 @@ function exits(
 	};
 }
 
-function solve(document: LogicDocument, cache?: RegionLocalLayoutCache) {
+function solve(document: LogicDocument, cache?: RegionLocalLayoutCache, regions?: RegionInput) {
 	const prepared = prepareLayoutDocument(document);
-	const input = nestedRegionInput(prepared.graph);
+	const input = regions ?? nestedRegionInput(prepared.graph);
 	const candidate = solveRecursiveNestedRegionLayout(
 		prepared.graph,
 		prepared.measurements,
@@ -59,12 +65,51 @@ function solve(document: LogicDocument, cache?: RegionLocalLayoutCache) {
 	expect(candidate).toEqual(cold);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
-		throw new Error('Expected a normalized grid region tree');
+		throw new Error('Expected a normalized region tree');
 	if (candidate.status === RegionCompositionStatus.Selected) {
 		expect(validateRegionCompositionGeometry(normalized.model, candidate)).toBeUndefined();
 		expect(validateNestedRegionLeafIncidents(normalized.model, candidate)).toBeUndefined();
 	}
 	return { candidate, model: normalized.model };
+}
+
+function threeNestedRowExits(): {
+	readonly document: LogicDocument;
+	readonly regions: RegionInput;
+} {
+	const source = regionDocument();
+	const template = defined(source.nodes[0]);
+	const ids = ['l0', 'l1', 'l2', 'r0', 'r1', 'r2'] as const;
+	return {
+		document: {
+			...source,
+			nodes: ids.map((id, index) => ({
+				...template,
+				id,
+				markdown: `${id}\n`,
+				layoutOrder: orderKey(`a${index}`),
+			})),
+			relations: [
+				{ id: 'a-outer', from: 'l0', to: 'r2' },
+				{ id: 'm-middle', from: 'l1', to: 'r1' },
+				{ id: 'z-inner', from: 'l2', to: 'r0' },
+			],
+		},
+		regions: {
+			regions: [
+				{ id: '@root', layoutOrder: '0' },
+				{ id: 'left', parentId: '@root', layoutOrder: 'a' },
+				{ id: 'right', parentId: '@root', layoutOrder: 'b' },
+				{ id: 'l0', parentId: 'left', layoutOrder: 'a0' },
+				{ id: 'l1', parentId: 'left', layoutOrder: 'a1' },
+				{ id: 'l2', parentId: 'left', layoutOrder: 'a2' },
+				{ id: 'r0', parentId: 'right', layoutOrder: 'a0' },
+				{ id: 'r1', parentId: 'right', layoutOrder: 'a1' },
+				{ id: 'r2', parentId: 'right', layoutOrder: 'a2' },
+			],
+			regionByEndpointId: new Map(ids.map((id) => [id, id])),
+		},
+	};
 }
 
 function parentPiece(
@@ -81,7 +126,44 @@ function parentPiece(
 	);
 }
 
-describe('parent bus rails for two grid exits', () => {
+describe('parent bus rail order', () => {
+	it('places three nested row arcs from inner to outer without a grid child', () => {
+		const { document, regions } = threeNestedRowExits();
+		const cache = new RegionLocalLayoutCache();
+		const { candidate, model } = solve(document, cache, regions);
+		if (candidate.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected three nested row arcs: ${candidate.status}: ${candidate.reason}`);
+		const outer = parentPiece(candidate, 'a-outer');
+		const middle = parentPiece(candidate, 'm-middle');
+		const inner = parentPiece(candidate, 'z-inner');
+		const endpoints = (piece: typeof outer): readonly [number, number] => [
+			defined(piece.points[0]).x,
+			defined(piece.points.at(-1)).x,
+		];
+		const [outerLeft, outerRight] = endpoints(outer);
+		const [middleLeft, middleRight] = endpoints(middle);
+		const [innerLeft, innerRight] = endpoints(inner);
+		expect(outerLeft).toBeLessThan(middleLeft);
+		expect(middleLeft).toBeLessThan(innerLeft);
+		expect(innerRight).toBeLessThan(middleRight);
+		expect(middleRight).toBeLessThan(outerRight);
+		expect(defined(outer.points[1]).y).toBeLessThan(defined(middle.points[1]).y);
+		expect(defined(middle.points[1]).y).toBeLessThan(defined(inner.points[1]).y);
+		expect(validateParentRouteContacts(model, candidate.ownedRoutes)).toBeUndefined();
+
+		const permuted = {
+			...document,
+			nodes: [...document.nodes].reverse(),
+			relations: [...document.relations].reverse(),
+		};
+		const permutedRegions: RegionInput = {
+			regions: [...regions.regions].reverse(),
+			regionByEndpointId: new Map([...regions.regionByEndpointId].reverse()),
+		};
+		expect(solve(permuted, cache, permutedRegions).candidate).toEqual(candidate);
+		expect(cache.stats.hits).toBeGreaterThan(0);
+	});
+
 	it.each([
 		{ label: 'outbound', reverseLeft: false, reverseRight: false },
 		{ label: 'inbound', reverseLeft: true, reverseRight: true },
