@@ -65,8 +65,9 @@ function frameTopExteriorRailEdge(ownerId: string, planCount: number): RoutingEd
 
 /**
  * The band an edge owns from the frame border to its far track: the clearance, then the first track
- * offset and the whole edge extent. Placement reserves exactly this, so a track the routing places
- * on the edge always stays inside the space placement owned.
+ * offset and the whole edge extent. Layout reserves its placement bands with this (`maxGutter`,
+ * `topReserve`, the transverse `maximumTrack`) and routing places only tracks inside `edgeExtent`,
+ * so a track always stays inside the space the placement of the same edge opened.
  */
 export function frameEdgeBand(edge: RoutingEdge): number {
 	return SHARED_LANE_CLEARANCE + trackOffset(edge, edge.capacity);
