@@ -276,10 +276,12 @@ export function solveDedicatedRegionLeafWithIncidents(
 				contracts,
 				compute,
 			});
-		const incidents = solved.incidents;
-		const selectedWitness = solved.witness;
-		if (incidents === undefined || selectedWitness === undefined)
-			throw new Error('The cached leaf omitted its incident solution.');
+		// Every writer of a `RegionLocalLayout` in this cache defines both fields: this solver's own
+		// `compute`, `region-leaf-layout`'s lane compute, and `region-leaf-base-layout`'s compute all
+		// set `incidents` and `witness`, and the cache key carries the policy and normalized
+		// contracts, so a hit at this key always carries the incident solution.
+		const incidents = defined(solved.incidents);
+		const selectedWitness = defined(solved.witness);
 		return {
 			status: RegionCompositionStatus.Selected,
 			layout: solved.layout,

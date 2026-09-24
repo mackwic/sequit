@@ -1,4 +1,4 @@
-import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
+import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import type { LayoutMeasurements } from './layout-types';
@@ -119,14 +119,17 @@ export function solveRegionLeafLayoutWithIncidents(
 				contracts,
 				compute,
 			}) ?? compute();
-		if (solved.incidents === undefined || solved.witness === undefined)
-			throw new Error('A cached lane leaf omitted its incident solution.');
+		// Every cache writer defines both fields for this key: the lane compute above, the
+		// dedicated leaf compute, and `region-leaf-base-layout`'s compute, while the key carries
+		// the policy and the normalized contracts.
+		const incidents = defined(solved.incidents);
+		const witness = defined(solved.witness);
 		return {
 			status: RegionCompositionStatus.Selected,
 			layout: solved.layout,
 			ranks: solved.ranks,
-			incidents: solved.incidents,
-			witness: solved.witness,
+			incidents,
+			witness,
 		};
 	} catch (error) {
 		if (error instanceof UncacheableLaneIncidentFailure) return error.attempt;

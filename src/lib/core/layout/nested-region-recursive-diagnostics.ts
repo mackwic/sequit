@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import { regionArrangementFor } from './region-arrangement-selection';
 import type { RegionCompositionModel } from './region-composition-model';
 import {
@@ -33,8 +34,9 @@ export function regionQualifiedFailure(
 
 /** Only an arrangement that declares alternate sides can own a retry. */
 function retryableOwner(model: RegionCompositionModel, ownerId: string): string | undefined {
-	const owner = model.regionsById.get(ownerId);
-	if (owner === undefined) return undefined;
+	// Every relation owner comes from `relationOwnership`'s least common ancestor, so the
+	// normalized model always holds the region for an owner identifier read from `model.relations`.
+	const owner = defined(model.regionsById.get(ownerId));
 	const arrangement = regionArrangementFor(owner);
 	if (arrangement === undefined || arrangement.alternativeSides.length === 0) return undefined;
 	return ownerId;

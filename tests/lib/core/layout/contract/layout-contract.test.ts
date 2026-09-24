@@ -31,6 +31,7 @@ import {
 } from '../../../../../src/lib/core/layout/contract/independent-adjacent-resolution';
 import * as layoutContract from '../../../../../src/lib/core/layout/contract/layout-contract';
 import {
+	AdjacentContractShape,
 	buildAdjacentLayoutContract,
 	LayoutContractBuildStatus,
 	LayoutContractUnknownReason,
@@ -1398,6 +1399,23 @@ describe('adjacent node LayoutContract', () => {
 		});
 	});
 
+	it('refuses a ready 2+2 contract through the exhaustive 3+1 resolver', () => {
+		const source = graph(adjacentDocument(LayoutDirection.TopToBottom, '2+2', false));
+		const ranks = topologicallyRank(source);
+		const built = buildAdjacentLayoutContract(source, ranks, measurements());
+		expect(built).toMatchObject({
+			status: LayoutContractBuildStatus.Ready,
+			contract: { shape: AdjacentContractShape.TwoByTwo },
+		});
+		if (built.status !== LayoutContractBuildStatus.Ready) return;
+		expect(resolveAdjacentLayoutContract(source, ranks, measurements())).toEqual({
+			status: LayoutContractResolutionStatus.Unknown,
+			reason: LayoutContractUnknownReason.UnsupportedShape,
+			contract: built.contract,
+			evaluations: [],
+		});
+	});
+
 	it('reports unsupported input through the resolver and rejects invalid search budgets', () => {
 		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
 		const ranks = topologicallyRank(source);
@@ -1501,5 +1519,28 @@ describe('adjacent node LayoutContract', () => {
 			forcedInversions: leastInversions,
 			layout: baseline,
 		});
+	});
+
+	it('prefers the fewest forced inversions when two admissible candidates tie on growth', () => {
+		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
+		const ranks = topologicallyRank(source);
+		const measured = measurements();
+		const baseline = layoutWithDedicatedEngine(source, ranks, measured);
+		vi.spyOn(candidateLayout, 'materializeContractCandidate').mockReturnValue(baseline);
+		// Admit every branch but the zero-growth ones, so the least admitted growth is shared by
+		// branches of two distinct candidates that differ in their forced inversions.
+		vi.spyOn(geometryValidation, 'validateContractCandidate').mockImplementation(({ choices }) => {
+			const growth = choices.reduce((sum, choice) => sum + choice.metricDemand.growth, 0);
+			if (growth === 0) return { valid: false, reason: CandidateGeometryReason.MetricDemand };
+			return { valid: true };
+		});
+		const resolved = resolveAdjacentLayoutContract(source, ranks, measured);
+		expect(resolved.status).toBe(LayoutContractResolutionStatus.Selected);
+		if (resolved.status !== LayoutContractResolutionStatus.Selected) return;
+		expect(resolved.selection.totalGrowth).toBe(16);
+		expect(resolved.selection.forcedInversions).toBe(0);
+		expect(
+			resolved.evaluations.filter(({ status }) => status === ContractBranchStatus.Accepted).length,
+		).toBeGreaterThan(2);
 	});
 });
