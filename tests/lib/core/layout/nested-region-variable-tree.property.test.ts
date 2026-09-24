@@ -48,7 +48,7 @@ import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
 
 type Depth = 1 | 2 | 3;
-type BranchWidth = 2 | 3;
+type BranchWidth = 1 | 2 | 3 | 4 | 5;
 type NestedParents = 0 | 1 | 2 | 3;
 type CrossingScope = 'root' | 'branch' | 'between-branches';
 
@@ -69,11 +69,39 @@ interface BuiltTree {
 	readonly sizesById: Readonly<Record<string, Size>>;
 }
 
-const branchWidth = fc.constantFrom(2 as const, 3 as const);
+const branchWidth = fc.constantFrom(1 as const, 2 as const, 3 as const, 4 as const, 5 as const);
 const fractionalSize = fc.record({
 	width: fc.integer({ min: 80, max: 280 }).map((value) => value + 0.25),
 	height: fc.integer({ min: 40, max: 140 }).map((value) => value + 0.5),
 });
+
+/** Leaf-bearing regions of a sample, mirroring the definition loop of `buildTree`. */
+function leafRegionCount(sample: TreeCase): number {
+	let count = 0;
+	for (let parentIndex = 0; parentIndex < sample.rootChildren; parentIndex += 1) {
+		if (parentIndex >= sample.nestedParents) {
+			count += 1;
+			continue;
+		}
+		const width = defined(sample.grandchildren[parentIndex]);
+		if (sample.depth === 3 && parentIndex < 2) count += width + 1;
+		else count += width;
+	}
+	return count;
+}
+
+function nodeCount(sample: TreeCase): number {
+	const leaves = leafRegionCount(sample);
+	if (sample.firstLeafPair) return leaves + 1;
+	return leaves;
+}
+
+/** A self-relation is not a crossing: keep the source region distinct from the target. */
+function hasDistinctCrossing(sample: TreeCase): boolean {
+	if (sample.crossingScope === 'branch')
+		return sample.depth === 3 || defined(sample.grandchildren[0]) >= 2;
+	return leafRegionCount(sample) >= 2;
+}
 
 function treeCases(depth: Depth, crossingScope: CrossingScope): fc.Arbitrary<TreeCase> {
 	let nestedParents: fc.Arbitrary<NestedParents> = fc.constant(0);
@@ -99,7 +127,9 @@ function treeCases(depth: Depth, crossingScope: CrossingScope): fc.Arbitrary<Tre
 			direction: fc.constantFrom(...LAYOUT_DIRECTIONS),
 			sizes: fc.array(fractionalSize, { minLength: 12, maxLength: 12 }),
 		})
-		.filter(({ rootChildren, nestedParents }) => nestedParents <= rootChildren);
+		.filter(({ rootChildren, nestedParents }) => nestedParents <= rootChildren)
+		.filter((sample) => nodeCount(sample) <= 12)
+		.filter(hasDistinctCrossing);
 }
 
 function buildTree(sample: TreeCase): BuiltTree {
@@ -413,7 +443,8 @@ const sequenceCases: fc.Arbitrary<SequenceCase> = fc.record({
 			treeCases(3, 'root'),
 			treeCases(3, 'between-branches'),
 		)
-		.map((tree) => ({ ...tree, firstLeafPair: true })),
+		.map((tree) => ({ ...tree, firstLeafPair: true }))
+		.filter((tree) => nodeCount(tree) <= 12),
 	order: fc.shuffledSubarray([...editKinds], {
 		minLength: editKinds.length,
 		maxLength: editKinds.length,

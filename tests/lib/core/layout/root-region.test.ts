@@ -372,7 +372,7 @@ describe('implicit root layout region', () => {
 		).toEqual(selected.layout.relations);
 	});
 
-	it('reports a fourth direct child as outside the bounded composition', () => {
+	it('rejects a fourth direct child that owns no endpoint', () => {
 		const document = persistedRegionDocument();
 		const prepared = prepareLayoutDocument({
 			...document,
@@ -387,6 +387,40 @@ describe('implicit root layout region', () => {
 		expect(() =>
 			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements),
 		).toThrow(UnsupportedRegionLayoutError);
+	});
+
+	it('selects a fourth direct child that owns its endpoint', () => {
+		const document = persistedRegionDocument();
+		const template = defined(document.nodes[0]);
+		const withFourth = {
+			...document,
+			regionPresentation: {
+				...document.regionPresentation,
+				regions: [
+					...document.regionPresentation.regions,
+					{ id: 'fourth', layoutOrder: orderKey('a3'), policy: LayoutPolicy.Layered },
+				],
+			},
+			nodes: [
+				...document.nodes,
+				{
+					...template,
+					id: 'd',
+					markdown: 'D\n',
+					layoutOrder: orderKey('a4'),
+					regionId: 'fourth',
+				},
+			],
+			relations: [...document.relations, { id: 'across-fourth', from: 'a-target', to: 'd' }],
+		};
+		const prepared = prepareLayoutDocument(withFourth);
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(
+			(layout.regions ?? [])
+				.map(({ id }) => id)
+				.filter((id) => ['left', 'middle', 'right', 'fourth'].includes(id))
+				.sort(),
+		).toEqual(['fourth', 'left', 'middle', 'right']);
 	});
 
 	it('rejects root-owned nodes and invalid region references explicitly', () => {

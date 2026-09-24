@@ -191,7 +191,7 @@ describe('region partial composition', () => {
 		);
 	});
 
-	it('marks a closed four-child branch unsupported and still attempts independent leaves', () => {
+	it('selects a closed four-child branch and still attempts independent leaves', () => {
 		const source = regionDocument();
 		const template = source.nodes.find(({ id }) => id === 'c');
 		if (template === undefined) throw new Error('Expected node template');
@@ -229,12 +229,20 @@ describe('region partial composition', () => {
 			input,
 			cache: new RegionLocalLayoutCache(),
 		});
-		expect(attempts.find(({ regionId }) => regionId === 'branch')).toMatchObject({
-			status: RegionCompositionStatus.Unsupported,
+		const branch = attempts.find(({ regionId }) => regionId === 'branch');
+		expect(branch).toMatchObject({
+			status: RegionCompositionStatus.Selected,
 			scope: RegionSubtreeScope.ClosedSubtree,
-			endpointIds: ['a-source', 'a-target', 'b', 'c'],
-			relationIds: ['across-middle', 'inside-a'],
+			regionId: 'branch',
 		});
+		if (branch?.status !== RegionCompositionStatus.Selected)
+			throw new Error('Expected a selected four-child branch');
+		expect(branch.layout.regions?.map(({ id }) => id).sort()).toEqual([
+			'left',
+			'middle',
+			'right',
+			'second',
+		]);
 		expect(attempts.find(({ regionId }) => regionId === 'outside')?.status).toBe(
 			RegionCompositionStatus.Selected,
 		);

@@ -164,7 +164,7 @@ describe('observable contacts at region boundaries', () => {
 			},
 		};
 		expect(() => solveRegionContactScenario(tooManyCrossings)).toThrow(
-			'at most three owned crossings',
+			'crossings exceed the configured limit of 3',
 		);
 	});
 

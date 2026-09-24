@@ -67,18 +67,10 @@ function regionPolicyFailure(
 	const count = region.childIds.length;
 	if (region.definition.grid !== undefined && count !== 4)
 		return `Region ${region.id} grid requires four direct child regions.`;
-	if (count > 0 && count < 2)
-		return 'This bounded composition requires two or three direct child regions.';
-	if (count > 3 && region.definition.grid === undefined)
-		return 'This bounded composition requires two or three direct child regions.';
 	if (count === 0) {
 		const occupied = [...model.leafByEndpointId.values()].includes(region.id);
 		if (!occupied) return 'Each leaf region must own an endpoint.';
 	}
-	if ((model.crossingRelationsByOwner.get(region.id)?.length ?? 0) > 3)
-		return `Region ${region.id} accepts at most three owned crossings.`;
-	if (count > 0 && region.definition.lanePresentation !== undefined)
-		return `Region ${region.id} has lanes but is not a leaf.`;
 	return undefined;
 }
 
@@ -88,11 +80,8 @@ export function policyFailure(
 ): string | undefined {
 	if (graph.document.presentation !== undefined)
 		return 'Lanes are outside the bounded nested-region envelope.';
-	if (graph.endpointsById.size > 12 || graph.document.relations.length > 16)
-		return 'This bounded composition accepts at most twelve endpoints and sixteen relations.';
 	const root = defined(model.regionsById.get(model.rootId));
-	if (root.childIds.length === 0)
-		return 'This bounded composition requires two or three direct child regions.';
+	if (root.childIds.length === 0) return 'A bounded composition requires a nonempty root region.';
 	for (const region of model.regionsById.values()) {
 		const failure = regionPolicyFailure(region, model);
 		if (failure !== undefined) return failure;

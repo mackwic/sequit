@@ -14,6 +14,7 @@ import {
 } from './nested-region-recursive-model-adapter';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
 import { regionArrangementFor } from './region-arrangement-selection';
+import { NESTED_REGION_COMPOSITION_LIMITS } from './region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
@@ -185,7 +186,11 @@ export function solveRecursiveNestedRegionLayout(
 	input: RegionInput,
 	cache?: RegionLocalLayoutCache,
 ): RegionLayoutAttempt {
-	const normalized = normalizeRegionCompositionModel(graph, input);
+	const normalized = normalizeRegionCompositionModel(
+		graph,
+		input,
+		NESTED_REGION_COMPOSITION_LIMITS,
+	);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		return {
 			status: RegionCompositionStatus.Unsupported,

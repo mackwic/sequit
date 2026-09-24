@@ -17,6 +17,7 @@ import {
 	leafIncidentContracts,
 	type RecursiveContext,
 } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
@@ -35,6 +36,24 @@ import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fix
 function solve(input: RegionInput) {
 	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 	return solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+}
+
+/** A row is a row: every shape below the declared envelope must select and validate. */
+function expectSelectedRow(input: RegionInput) {
+	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
+	const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+	expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+	if (attempt.status !== RegionCompositionStatus.Selected) return undefined;
+	const normalized = normalizeRegionCompositionModel(
+		prepared.graph,
+		input,
+		NESTED_REGION_COMPOSITION_LIMITS,
+	);
+	if (normalized.status !== RegionCompositionModelStatus.Ready)
+		throw new Error(normalized.diagnostic.message);
+	expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+	expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+	return attempt;
 }
 
 describe('recursive region model and row policy', () => {
@@ -209,40 +228,77 @@ describe('recursive region model and row policy', () => {
 		expect(result.diagnostic.path.length).toBeGreaterThan(0);
 	});
 
-	it.each([
-		[
-			'one top-level child',
-			(input: RegionInput) => ({
-				...input,
-				regions: input.regions.map((region) => {
-					if (region.id === 'right' || region.id === 'far-right')
-						return { ...region, parentId: 'branch' };
-					return region;
+	it('selects a single-child row as a pass-through frame', () => {
+		const input = depthTwoRegionInput();
+		const passThrough: RegionInput = {
+			...input,
+			regions: input.regions.filter(({ id }) => id !== 'middle' && id !== 'branch-right'),
+			regionByEndpointId: new Map(
+				[...input.regionByEndpointId].map(([id, regionId]) => {
+					if (regionId === 'middle' || regionId === 'branch-right') return [id, 'left'];
+					return [id, regionId];
 				}),
+			),
+		};
+		const attempt = expectSelectedRow(passThrough);
+		expect(attempt?.regions.filter(({ parentId }) => parentId === 'branch')).toHaveLength(1);
+	});
+
+	it('selects a five-child row and its single-child root frame', () => {
+		const input = depthTwoRegionInput();
+		const wider: RegionInput = {
+			...input,
+			regions: input.regions.map((region) => {
+				if (region.id === 'right' || region.id === 'far-right')
+					return { ...region, parentId: 'branch' };
+				return region;
 			}),
-			'two or three direct child regions',
-		],
+		};
+		const attempt = expectSelectedRow(wider);
+		expect(attempt?.regions.filter(({ parentId }) => parentId === 'branch')).toHaveLength(5);
+		expect(attempt?.regions.filter(({ parentId }) => parentId === '@root')).toHaveLength(1);
+	});
+
+	it('reports a declared children budget beyond the configured bound', () => {
+		const input = depthTwoRegionInput();
+		const wide: RegionInput = {
+			...input,
+			regions: [
+				...input.regions,
+				...Array.from({ length: 6 }, (_, index) => ({
+					id: `spare-${index}`,
+					parentId: '@root',
+					layoutOrder: orderKey(`a${'6789AB'.charAt(index)}`),
+				})),
+			],
+		};
+		const normalized = normalizeRegionCompositionModel(
+			prepareLayoutDocument(depthTwoRegionDocument()).graph,
+			wide,
+			NESTED_REGION_COMPOSITION_LIMITS,
+		);
+		expect(normalized).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: ['regions', '@root', 'children'],
+				actual: 9,
+				limit: 8,
+			},
+		});
+		expect(solve(wide)).toEqual({
+			status: RegionCompositionStatus.Unsupported,
+			reason: 'children exceed the configured limit of 8.',
+		});
+	});
+
+	it.each([
 		[
 			'four top-level children',
 			(input: RegionInput) => ({
 				...input,
 				regions: [...input.regions, { id: 'extra', parentId: '@root', layoutOrder: 'z' }],
 			}),
-			'two or three direct child regions',
-		],
-		[
-			'a single grandchild',
-			(input: RegionInput) => ({
-				...input,
-				regions: input.regions.filter(({ id }) => id !== 'middle' && id !== 'branch-right'),
-				regionByEndpointId: new Map(
-					[...input.regionByEndpointId].map(([id, regionId]) => {
-						if (regionId === 'middle' || regionId === 'branch-right') return [id, 'left'];
-						return [id, regionId];
-					}),
-				),
-			}),
-			'two or three direct child regions',
 		],
 		[
 			'four grandchildren',
@@ -250,7 +306,6 @@ describe('recursive region model and row policy', () => {
 				...input,
 				regions: [...input.regions, { id: 'fourth', parentId: 'branch', layoutOrder: 'z' }],
 			}),
-			'two or three direct child regions',
 		],
 		[
 			'an empty leaf',
@@ -258,13 +313,12 @@ describe('recursive region model and row policy', () => {
 				...input,
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['b', 'left']]),
 			}),
-			'leaf region must own',
 		],
-	] as const)('keeps the row policy bounded for %s', (_, change, reason) => {
+	] as const)('reports an unendpointed leaf for %s', (_, change) => {
 		const attempt = solve(change(depthTwoRegionInput()));
 		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
 		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
-		expect(attempt.reason).toContain(reason);
+		expect(attempt.reason).toContain('leaf region must own an endpoint');
 	});
 
 	it('normalizes a third level without a depth limit', () => {
@@ -305,7 +359,7 @@ describe('recursive region model and row policy', () => {
 		);
 		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
 		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
-		expect(attempt.reason).toContain('at most three owned crossings');
+		expect(attempt.reason).toContain('crossings exceed the configured limit of 3');
 	});
 
 	it('resolves a group crossing after its owning parent retries a bus side', () => {

@@ -19,8 +19,10 @@ import {
 	type RecursiveContext,
 	sideForRegion,
 } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
+	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import {
@@ -138,7 +140,7 @@ describe('direct region composition contracts', () => {
 		expect(leafDocument(context, 'middle')[collection]).toEqual([]);
 	});
 
-	it('keeps the resource bound separate from a valid region tree', () => {
+	it('reports the endpoint budget through the coded resource limit', () => {
 		const document = depthTwoRegionDocument();
 		const template = defined(document.nodes[0]);
 		const extra = Array.from({ length: 7 }, (_, index) => ({
@@ -155,8 +157,17 @@ describe('direct region composition contracts', () => {
 				...extra.map(({ id }) => [id, 'left'] as const),
 			]),
 		};
-		const model = readyModel(source, assigned);
-		expect(policyFailure(source, model)).toContain('at most twelve endpoints');
+		expect(
+			normalizeRegionCompositionModel(source, assigned, NESTED_REGION_COMPOSITION_LIMITS),
+		).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: ['endpoints'],
+				actual: 13,
+				limit: 12,
+			},
+		});
 	});
 
 	it('rejects a root without children after normalization', () => {
@@ -166,7 +177,7 @@ describe('direct region composition contracts', () => {
 			regionByEndpointId: new Map([...source.endpointsById.keys()].map((id) => [id, '@root'])),
 		};
 		const model = readyModel(source, input);
-		expect(policyFailure(source, model)).toContain('two or three direct child regions');
+		expect(policyFailure(source, model)).toContain('nonempty root region');
 	});
 
 	it('propagates both inherited incident roles through the owning branch', () => {

@@ -69,6 +69,32 @@ describe('recursive region composition model', () => {
 		expect(regionLeafPolicy(explicit)).toBe(LayoutPolicy.Layered);
 	});
 
+	it('rejects a leaf lane presentation on a region that owns children', () => {
+		const lanes = defined(
+			regionLaneDocument().regionPresentation?.regions.find(({ id }) => id === 'shared')
+				?.lanePresentation,
+		);
+		const input = depthTwoRegionInput();
+		const result = normalizeRegionCompositionModel(graph(), {
+			...input,
+			regions: input.regions.map((region) => {
+				if (region.id !== 'branch') return region;
+				return { ...region, lanePresentation: lanes };
+			}),
+		});
+		expect(result).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.NonLeafLanePresentation,
+				path: ['regions', 'branch'],
+			},
+		});
+		if (result.status === RegionCompositionModelStatus.Ready) return;
+		expect(result.diagnostic.message).toContain(
+			'owns child regions but declares a leaf lane presentation',
+		);
+	});
+
 	it('normalizes one level with local ranks and root-owned crossings', () => {
 		const model = ready(graph(regionDocument()), nestedRegionInput());
 		expect(model.preorderIds).toEqual(['@root', 'left', 'middle', 'right']);
