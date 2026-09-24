@@ -307,48 +307,62 @@ describe('inherited grid incident continuation', () => {
 		]);
 	});
 
-	it('carries an inner-column incident up its gutter and out along the declared frame side', () => {
-		const grid = selectedThreeByThreeGrid();
-		const cell = defined(grid.cells.find(({ id }) => id === 'b'));
-		const path = inheritedPath({
-			context,
-			relationId: 'a-right-exit',
-			childId: 'b',
-			endpointId: 'b',
-			childSide: RegionPortalSide.Bottom,
-			outerSide: RegionPortalSide.Left,
-			selected: grid,
-		});
-		const gridPiece = defined(path.pieces[1]);
-		// The inner-column gutter sits between columns 0 and 1: the reserved track of that gutter.
-		const railX = cell.bounds.x - 48;
-		const busY = defined(grid.cells[0]).bounds.y / 2;
-		expect(gridPiece.points).toContainEqual({ x: railX, y: busY });
-		const outer = defined(path.portals[1]);
-		expect(outer.side).toBe(RegionPortalSide.Left);
-		expect(outer.point.y).toBe(busY);
-		expect(outer.point.x).toBe(-32);
-		for (let index = 1; index < gridPiece.points.length; index += 1) {
-			const previous = defined(gridPiece.points[index - 1]);
-			const current = defined(gridPiece.points[index]);
-			expect(previous.x === current.x || previous.y === current.y).toBe(true);
-		}
-	});
+	it.each([
+		RegionPortalSide.Top,
+		RegionPortalSide.Right,
+		RegionPortalSide.Bottom,
+		RegionPortalSide.Left,
+	] as const)(
+		'carries a middle-row inner-column incident to the declared %s frame side',
+		(outerSide) => {
+			const grid = selectedThreeByThreeGrid();
+			const cell = defined(grid.cells.find(({ id }) => id === 'b'));
+			const path = inheritedPath({
+				context,
+				relationId: 'a-right-exit',
+				childId: 'b',
+				endpointId: 'b',
+				childSide: RegionPortalSide.Bottom,
+				outerSide,
+				selected: grid,
+			});
+			const gridPiece = defined(path.pieces[1]);
+			const outer = defined(path.portals[1]);
+			expect(outer.side).toBe(outerSide);
+			// The inner-column gutter sits between columns 0 and 1: the reserved track of that gutter.
+			const railX = cell.bounds.x - 48;
+			if (outerSide === RegionPortalSide.Left || outerSide === RegionPortalSide.Right) {
+				const busY = defined(grid.cells[0]).bounds.y / 2;
+				expect(gridPiece.points).toContainEqual({ x: railX, y: busY });
+				expect(outer.point.y).toBe(busY);
+			} else {
+				expect(outer.point.x).toBe(railX);
+			}
+			for (let index = 1; index < gridPiece.points.length; index += 1) {
+				const previous = defined(gridPiece.points[index - 1]);
+				const current = defined(gridPiece.points[index]);
+				expect(previous.x === current.x || previous.y === current.y).toBe(true);
+			}
+		},
+	);
 
-	it('leaves an inner-column top cell by its nearest frame side without a lateral detour', () => {
-		const grid = selectedThreeByThreeGrid();
-		const path = inheritedPath({
-			context,
-			relationId: 'a-right-exit',
-			childId: 'b',
-			endpointId: 'b',
-			childSide: RegionPortalSide.Top,
-			outerSide: RegionPortalSide.Top,
-			selected: grid,
-		});
-		const outer = defined(path.portals[1]);
-		expect(outer.side).toBe(RegionPortalSide.Top);
-		const cell = defined(grid.cells.find(({ id }) => id === 'b'));
-		expect(outer.point.x).toBe(cell.bounds.x - 48);
-	});
+	it.each([RegionPortalSide.Top, RegionPortalSide.Bottom] as const)(
+		'leaves an inner-column top cell to the declared %s side',
+		(outerSide) => {
+			const grid = selectedThreeByThreeGrid();
+			const cell = defined(grid.cells.find(({ id }) => id === 'b'));
+			const path = inheritedPath({
+				context,
+				relationId: 'a-right-exit',
+				childId: 'b',
+				endpointId: 'b',
+				childSide: outerSide,
+				outerSide,
+				selected: grid,
+			});
+			const outer = defined(path.portals[1]);
+			expect(outer.side).toBe(outerSide);
+			expect(outer.point.x).toBe(cell.bounds.x - 48);
+		},
+	);
 });

@@ -641,6 +641,25 @@ describe('independent grid geometry validation', () => {
 		});
 	});
 
+	it('stacks two crossing ports on a shared target face', () => {
+		const base = gridDocument();
+		const pair = prepareGrid({
+			...base,
+			relations: [...base.relations, { id: 'second-crossing', from: 'a-top', to: 'd' }],
+		});
+		const input = gridInput();
+		const result = solveGridCellLayout(pair.graph, pair.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`Expected two crossings into one target: ${result.status}: ${result.reason}`);
+		expect(validateGridCellGeometry(result, pair.graph, input)).toBeUndefined();
+		const target = elementFor(result, 'd');
+		const ports = ['across-grid', 'second-crossing'].map((id) =>
+			defined(defined(result.layout.relations.find((route) => route.id === id)).points.at(-1)),
+		);
+		expect(Math.abs(defined(ports[0]).y - defined(ports[1]).y)).toBe(24);
+		for (const port of ports) expect(port.x).toBe(target.bounds.x + target.bounds.width);
+	});
+
 	it('rejects an owner mapping to an absent cell', () => {
 		const input = gridInput();
 		const assignment = new Map(input.cellByEndpointId);
@@ -653,14 +672,17 @@ describe('independent grid geometry validation', () => {
 		).toContain('Endpoint c has missing geometry');
 	});
 
-	it('names a crossing endpoint whose face the candidate does not publish', () => {
+	it.each([
+		{ missing: 'from', endpointId: 'a-bottom' },
+		{ missing: 'to', endpointId: 'd' },
+	])('names a crossing endpoint whose $missing face is not published', ({ endpointId }) => {
 		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
 		const relation = defined(gridDocument().relations.find(({ id }) => id === 'across-grid'));
 		const candidate = {
 			...selected,
 			layout: {
 				...selected.layout,
-				elements: selected.layout.elements.filter(({ id }) => id !== route.to),
+				elements: selected.layout.elements.filter(({ id }) => id !== endpointId),
 			},
 		};
 		expect(
@@ -671,7 +693,7 @@ describe('independent grid geometry validation', () => {
 			}),
 		).toMatchObject({
 			code: RegionGeometryDiagnosticCode.GridGroupFaceMissing,
-			endpointId: route.to,
+			endpointId,
 			relationId: 'across-grid',
 		});
 	});
