@@ -128,7 +128,7 @@ it('invalidates only the lane leaf for orientation and refreshes its label after
 	const source = sourceWithRegionLanes(LaneOrientation.Parallel);
 	const projection = new DocumentProjection(source);
 	const measured = layoutMeasurementsForCanvas(projection.measurementModel);
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrCompute');
+	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const first = await projection.createCanvasModel(measured);
 	const cache = resolver.mock.contexts[0];
 	if (!(cache instanceof NestedRegionLocalLayoutCache)) throw new Error('Missing projection cache');
@@ -153,7 +153,7 @@ it('invalidates only the lane leaf for orientation and refreshes its label after
 });
 
 it('keeps child cache state inside one DocumentProjection across source and measurement updates', async () => {
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrCompute');
+	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const source = sourceWithRegions();
 	const projection = new DocumentProjection(source);
 	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
@@ -172,7 +172,8 @@ it('keeps child cache state inside one DocumentProjection across source and meas
 	};
 	expect(projection.update(foreignRelationEdit)).toBe(true);
 	const edited = await projection.createCanvasModel(measurements);
-	expect(cache.stats).toEqual({ entries: 3, hits: 3, misses: 3, evictions: 0 });
+	// Both incident leaves change contract; the unrelated middle leaf is reused.
+	expect(cache.stats).toEqual({ entries: 5, hits: 1, misses: 5, evictions: 0 });
 	expect(edited).toEqual(
 		await new DocumentProjection(foreignRelationEdit).createCanvasModel(measurements),
 	);
@@ -182,7 +183,7 @@ it('keeps child cache state inside one DocumentProjection across source and meas
 	if (originalSize === undefined) throw new Error('Missing A measurement');
 	resized.nodes.set('a-target', { ...originalSize, width: originalSize.width + 40 });
 	const incremental = await projection.createCanvasModel(resized);
-	expect(cache.stats).toEqual({ entries: 4, hits: 5, misses: 4, evictions: 0 });
+	expect(cache.stats).toEqual({ entries: 6, hits: 3, misses: 6, evictions: 0 });
 	expect(incremental).toEqual(
 		await new DocumentProjection(foreignRelationEdit).createCanvasModel(resized),
 	);
@@ -201,7 +202,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 	const projection = new DocumentProjection(source);
 	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
 	const localCache = new NestedRegionLocalLayoutCache();
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrCompute');
+	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const check = async (
 		document: typeof source,
 		sizes: typeof measurements,
@@ -236,13 +237,13 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 		}),
 	};
 	expect(projection.update(foreign)).toBe(true);
-	await check(foreign, measurements, cacheStats(5, 5, 5));
+	await check(foreign, measurements, cacheStats(7, 3, 7));
 
 	const resized = { ...measurements, nodes: new Map(measurements.nodes) };
 	const originalSize = resized.nodes.get('a-target');
 	if (originalSize === undefined) throw new Error('Missing nested leaf measurement');
 	resized.nodes.set('a-target', { ...originalSize, width: originalSize.width + 40 });
-	await check(foreign, resized, cacheStats(6, 9, 6));
+	await check(foreign, resized, cacheStats(8, 7, 8));
 
 	const incident = {
 		...foreign,
@@ -252,7 +253,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 		}),
 	};
 	expect(projection.update(incident)).toBe(true);
-	const beforePermutation = await check(incident, resized, cacheStats(7, 13, 7));
+	const beforePermutation = await check(incident, resized, cacheStats(9, 11, 9));
 
 	const permuted = {
 		...incident,
@@ -264,7 +265,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 		},
 	};
 	projection.update(permuted);
-	const beforeCrossing = await check(permuted, resized, cacheStats(7, 13, 7));
+	const beforeCrossing = await check(permuted, resized, cacheStats(9, 11, 9));
 	expect(beforeCrossing).toEqual(beforePermutation);
 
 	const crossing = {
@@ -275,7 +276,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 		}),
 	};
 	expect(projection.update(crossing)).toBe(true);
-	const afterCrossing = await check(crossing, resized, cacheStats(7, 18, 7));
+	const afterCrossing = await check(crossing, resized, cacheStats(12, 13, 12));
 	expect(afterCrossing).not.toEqual(beforeCrossing);
 	expect(afterCrossing.relations.map(({ id }) => id)).toContain('grandchild-to-right');
 });

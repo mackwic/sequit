@@ -41,4 +41,17 @@ describe('contacts between a leaf incident and a local route', () => {
 	it('inspects later bends as well as the first segment', () => {
 		expect(pathsTouchWithoutBridge(path([0, 0], [0, 2], [3, 2]), path([2, 0], [2, 3]))).toBe(true);
 	});
+
+	it('treats a missing route point as an unbridgeable contact', () => {
+		const missingFirst = new Array<Point>(2);
+		missingFirst[1] = { x: 0, y: 2 };
+		const missingLast = new Array<Point>(2);
+		missingLast[0] = { x: 0, y: 0 };
+		const complete = path([1, 0], [1, 2]);
+
+		expect(pathsTouchWithoutBridge(missingFirst, complete)).toBe(true);
+		expect(pathsTouchWithoutBridge(missingLast, complete)).toBe(true);
+		expect(pathsTouchWithoutBridge(complete, missingFirst)).toBe(true);
+		expect(pathsTouchWithoutBridge(complete, missingLast)).toBe(true);
+	});
 });

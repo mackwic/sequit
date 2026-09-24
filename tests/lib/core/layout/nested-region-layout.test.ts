@@ -13,6 +13,7 @@ import {
 	solveNestedRegionLayout,
 	solveNestedRegionLayoutForProjection,
 } from '../../../../src/lib/core/layout/nested-region-layout';
+import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { NestedRegionLocalLayoutCache } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import {
 	type NestedOwnedRoute,
@@ -20,6 +21,11 @@ import {
 	NestedRegionLayoutStatus,
 	type NestedRegionSelected,
 } from '../../../../src/lib/core/layout/nested-region-types';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { layoutDocument, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,
@@ -602,7 +608,7 @@ describe('bounded nested-region composition', () => {
 		expect(cache.stats.hits).toBeGreaterThan(0);
 	});
 
-	it('propagates an unresolved grandchild corridor with its nested parent identity', () => {
+	it('resolves a grandchild corridor through its nested parent', () => {
 		const source = depthTwoRegionDocument();
 		const document = {
 			...source,
@@ -617,12 +623,19 @@ describe('bounded nested-region composition', () => {
 			prepared.measurements,
 			depthTwoRegionInput(),
 		);
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unknown);
-		if (attempt.status !== NestedRegionLayoutStatus.Unknown) return;
-		expect(attempt.reason).toContain('Region branch');
+		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(
+			attempt.ownedRoutes
+				.filter(({ relationId }) => relationId === 'inside-branch')
+				.map(({ regionId }) => regionId),
+		).toEqual(['left', 'branch', 'branch-right']);
+		expect(
+			validateNestedRegionGeometry(prepared.graph, depthTwoRegionInput(), attempt),
+		).toBeUndefined();
 	});
 
-	it('propagates an unresolved root corridor without discarding a valid nested child', () => {
+	it('resolves the root corridor beside a valid nested child', () => {
 		const source = depthTwoRegionDocument();
 		const rightNode = defined(source.nodes.find(({ id }) => id === 'd'));
 		const document = {
@@ -641,11 +654,19 @@ describe('bounded nested-region composition', () => {
 		const assignments = new Map(input.regionByEndpointId);
 		assignments.set('d2', 'right');
 		const prepared = prepareLayoutDocument(document);
-		const attempt = solveNestedRegionLayout(prepared.graph, prepared.measurements, {
+		const amendedInput = {
 			...input,
 			regionByEndpointId: assignments,
-		});
-		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unknown);
+		};
+		const attempt = solveNestedRegionLayout(prepared.graph, prepared.measurements, amendedInput);
+		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		expect(
+			attempt.ownedRoutes.some(
+				({ relationId, regionId }) => relationId === 'inside-right' && regionId === 'right',
+			),
+		).toBe(true);
+		expect(validateNestedRegionGeometry(prepared.graph, amendedInput, attempt)).toBeUndefined();
 	});
 
 	it('rejects a falsified grandchild route entering its opaque sibling', () => {
@@ -821,15 +842,18 @@ describe('bounded nested-region composition', () => {
 		);
 	});
 
-	it('returns unknown when the top incident corridor is blocked by another local node', () => {
+	it('selects a valid incident corridor beside another local node', () => {
 		const document = regionDocument('a-source');
 		const prepared = prepareLayoutDocument(document);
-		const result = solveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			nestedRegionInput(),
-		);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Unknown);
+		const input = nestedRegionInput();
+		const result = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (result.status !== NestedRegionLayoutStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) return;
+		expect(validateRegionCompositionGeometry(normalized.model, result)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
 	});
 
 	it('returns unknown for two LCA routes that cross without a bridge', () => {

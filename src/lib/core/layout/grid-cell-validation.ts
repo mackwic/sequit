@@ -1,4 +1,4 @@
-import { defined, EndpointKind } from '../document/logic-document';
+import { defined, EndpointKind, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import { crossingIncidence, crossingOverlap } from './grid-cell-crossing';
 import {
@@ -15,6 +15,11 @@ import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
 import { validateCrossPortals, validateCrossPorts } from './grid-cell-port-validation';
 import type { GridCellInput, GridCellPlacement, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation } from './layout-types';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from './region-geometry-diagnostic';
 
 interface CrossContext {
 	readonly graph: LogicGraph;
@@ -23,13 +28,20 @@ interface CrossContext {
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 }
 
-function directMemberGroup(graph: LogicGraph, endpointId: string): string | undefined {
+function ancestorGroups(graph: LogicGraph, endpointId: string): ReadonlySet<string> {
+	const ancestors = new Set<string>();
 	const endpoint = graph.endpointsById.get(endpointId);
-	if (endpoint?.kind !== EndpointKind.Node || endpoint.entity.groupId === undefined)
-		return undefined;
-	const group = graph.endpointsById.get(endpoint.entity.groupId);
-	if (group?.kind !== EndpointKind.Group || group.entity.groupId !== undefined) return undefined;
-	return group.entity.id;
+	if (endpoint?.kind !== EndpointKind.Node && endpoint?.kind !== EndpointKind.Group)
+		return ancestors;
+	let groupId = endpoint.entity.groupId;
+	for (let depth = 0; groupId !== undefined && depth < graph.endpointsById.size; depth += 1) {
+		if (ancestors.has(groupId)) break;
+		const group = graph.endpointsById.get(groupId);
+		if (group?.kind !== EndpointKind.Group) break;
+		ancestors.add(groupId);
+		groupId = group.entity.groupId;
+	}
+	return ancestors;
 }
 
 function checkCell(
@@ -151,28 +163,36 @@ function checkSegment(
 	route: LayoutRelation,
 	context: CrossContext,
 	index: number,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const start = defined(route.points[index]);
 	const end = defined(route.points[index + 1]);
 	const last = route.points.length - 2;
-	let allowedGroupId: string | undefined;
-	if (index === 0) allowedGroupId = directMemberGroup(context.graph, route.from);
-	if (index === last) allowedGroupId = directMemberGroup(context.graph, route.to);
+	let allowedGroupIds: ReadonlySet<string> = new Set();
+	if (index === 0) allowedGroupIds = ancestorGroups(context.graph, route.from);
+	if (index === last) allowedGroupIds = ancestorGroups(context.graph, route.to);
 	const crossedCell = candidate.cells.find((cell) => {
 		if (index === 0 && cell.id === context.fromCell.id) return false;
 		if (index === last && cell.id === context.toCell.id) return false;
 		return entersInterior(start, end, cell.bounds);
 	});
 	if (crossedCell !== undefined)
-		return `Cross-cell relation ${route.id} enters opaque cell ${crossedCell.id}.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridCrossingEntersCell,
+			`Cross-cell relation ${route.id} enters opaque cell ${crossedCell.id}.`,
+			{ relationId: route.id, regionId: crossedCell.id },
+		);
 	const crossedElement = candidate.layout.elements.find((element) => {
 		if (index === 0 && element.id === route.from) return false;
 		if (index === last && element.id === route.to) return false;
-		if (element.id === allowedGroupId) return false;
+		if (allowedGroupIds.has(element.id)) return false;
 		return entersInterior(start, end, element.bounds);
 	});
 	if (crossedElement !== undefined)
-		return `Cross-cell relation ${route.id} enters element ${crossedElement.id}.`;
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+			`Cross-cell relation ${route.id} enters element ${crossedElement.id}.`,
+			{ relationId: route.id, endpointId: crossedElement.id },
+		);
 	return undefined;
 }
 
@@ -180,69 +200,124 @@ function checkCrossRoute(
 	candidate: GridCellSelected,
 	route: LayoutRelation,
 	context: CrossContext,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const portFailure = validateCrossPorts(candidate, route, context);
-	if (portFailure !== undefined) return portFailure;
+	if (portFailure !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPort, portFailure, {
+			relationId: route.id,
+		});
 	const portalFailure = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
-	if (portalFailure !== undefined) return portalFailure;
+	if (portalFailure !== undefined)
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridCrossingPortal,
+			portalFailure,
+			{
+				relationId: route.id,
+			},
+		);
 	for (let index = 0; index < route.points.length - 1; index += 1) {
-		const failure = checkSegment(candidate, route, context, index);
-		if (failure !== undefined) return failure;
+		const diagnostic = checkSegment(candidate, route, context, index);
+		if (diagnostic !== undefined) return diagnostic;
 	}
 	return undefined;
+}
+
+interface RelationCheckContext {
+	readonly candidate: GridCellSelected;
+	readonly graph: LogicGraph;
+	readonly input: GridCellInput;
+	readonly incidence: ReadonlyMap<string, readonly string[]>;
+}
+
+function checkRelationGeometry(
+	context: RelationCheckContext,
+	relation: LogicRelation,
+	route: LayoutRelation | undefined,
+): RegionGeometryDiagnostic | undefined {
+	if (route === undefined)
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridRelationGeometry,
+			`Relation ${relation.id} has an invalid path.`,
+			{ relationId: relation.id },
+		);
+	const wrongEndpoints = route.from !== relation.from || route.to !== relation.to;
+	if (wrongEndpoints || !validPath(route))
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridRelationGeometry,
+			`Relation ${relation.id} has an invalid path.`,
+			{ relationId: relation.id },
+		);
+	const { candidate, graph, input, incidence } = context;
+	const fromCell = defined(
+		candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.from)),
+	);
+	const toCell = defined(
+		candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.to)),
+	);
+	if (fromCell.id !== toCell.id)
+		return checkCrossRoute(candidate, route, { graph, fromCell, toCell, incidence });
+	const failure = checkLocalRoute(route, fromCell);
+	if (failure === undefined) return undefined;
+	return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridRelationGeometry, failure, {
+		relationId: relation.id,
+		regionId: fromCell.id,
+	});
 }
 
 function relationGeometry(
 	candidate: GridCellSelected,
 	graph: LogicGraph,
 	input: GridCellInput,
-): string | undefined {
+): RegionGeometryDiagnostic | undefined {
 	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
 	if (routes.size !== graph.relations.length || routes.size !== candidate.layout.relations.length)
-		return 'The composed layout does not contain each relation exactly once.';
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridRelationGeometry,
+			'The composed layout does not contain each relation exactly once.',
+		);
 	const crossing = graph.relations
 		.map(({ relation }) => relation)
 		.filter(({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to));
-	const incidence = crossingIncidence(crossing);
+	const context = { candidate, graph, input, incidence: crossingIncidence(crossing) };
 	for (const { relation } of graph.relations) {
-		const route = routes.get(relation.id);
-		if (route === undefined) return `Relation ${relation.id} has an invalid path.`;
-		if (route.from !== relation.from || route.to !== relation.to)
-			return `Relation ${relation.id} has an invalid path.`;
-		if (!validPath(route)) return `Relation ${relation.id} has an invalid path.`;
-		const fromCell = defined(
-			candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.from)),
-		);
-		const toCell = defined(
-			candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.to)),
-		);
-		let failure: string | undefined;
-		if (fromCell.id === toCell.id) failure = checkLocalRoute(route, fromCell);
-		else
-			failure = checkCrossRoute(candidate, route, {
-				graph,
-				fromCell,
-				toCell,
-				incidence,
-			});
+		const failure = checkRelationGeometry(context, relation, routes.get(relation.id));
 		if (failure !== undefined) return failure;
 	}
-	return crossingOverlap(crossing.map(({ id }) => defined(routes.get(id))));
+	const overlap = crossingOverlap(crossing.map(({ id }) => defined(routes.get(id))));
+	if (overlap !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingOverlap, overlap);
+	return undefined;
 }
 
-/** Separate geometric checker for every candidate selected by the bounded grid composer. */
+/** Separate typed geometric checker for every candidate selected by the grid composer. */
+export function validateGridCellGeometryDiagnostic(
+	candidate: GridCellSelected,
+	graph: LogicGraph,
+	input: GridCellInput,
+): RegionGeometryDiagnostic | undefined {
+	const cellFailure = cellGeometry(candidate, input);
+	if (cellFailure !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCellGeometry, cellFailure);
+	const elementFailure = elementGeometry(candidate, graph, input);
+	if (elementFailure !== undefined)
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridElementGeometry,
+			elementFailure,
+		);
+	const groupFailure = validateGridCellGroupContainment(candidate, graph);
+	if (groupFailure !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridGroupGeometry, groupFailure);
+	const laneFailure = validateGridCellLaneGeometry(candidate);
+	if (laneFailure !== undefined)
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridLaneGeometry, laneFailure);
+	return relationGeometry(candidate, graph, input);
+}
+
+/** Existing display-message adapter; solver decisions use the typed diagnostic. */
 export function validateGridCellGeometry(
 	candidate: GridCellSelected,
 	graph: LogicGraph,
 	input: GridCellInput,
 ): string | undefined {
-	const cellFailure = cellGeometry(candidate, input);
-	if (cellFailure !== undefined) return cellFailure;
-	const elementFailure = elementGeometry(candidate, graph, input);
-	if (elementFailure !== undefined) return elementFailure;
-	const groupFailure = validateGridCellGroupContainment(candidate, graph);
-	if (groupFailure !== undefined) return groupFailure;
-	const laneFailure = validateGridCellLaneGeometry(candidate);
-	if (laneFailure !== undefined) return laneFailure;
-	return relationGeometry(candidate, graph, input);
+	return validateGridCellGeometryDiagnostic(candidate, graph, input)?.message;
 }

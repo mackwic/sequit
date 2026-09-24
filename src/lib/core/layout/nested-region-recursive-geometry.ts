@@ -55,6 +55,10 @@ interface BoundaryPortalInput {
 	readonly regionId: string;
 	readonly side: NestedPortalSide;
 	readonly x: number;
+	/** Required for a left or right portal. */
+	readonly y?: number;
+	/** Required for a right portal. */
+	readonly canvasWidth?: number;
 	readonly canvasHeight: number;
 }
 
@@ -67,7 +71,10 @@ function translatedBounds(bounds: Bounds, delta: Point): Bounds {
 }
 
 function translatedRelation(relation: LayoutRelation, delta: Point): LayoutRelation {
-	return { ...relation, points: relation.points.map((point) => translated(point, delta)) };
+	return {
+		...relation,
+		points: relation.points.map((point) => translated(point, delta)),
+	};
 }
 
 function translatedPortal(portal: NestedRegionPortal, delta: Point): NestedRegionPortal {
@@ -75,7 +82,10 @@ function translatedPortal(portal: NestedRegionPortal, delta: Point): NestedRegio
 }
 
 function translatedOwnedRoute(route: NestedOwnedRoute, delta: Point): NestedOwnedRoute {
-	return { ...route, points: route.points.map((point) => translated(point, delta)) };
+	return {
+		...route,
+		points: route.points.map((point) => translated(point, delta)),
+	};
 }
 
 export function translatedIncidentPath(path: RegionIncidentPath, delta: Point): RegionIncidentPath {
@@ -87,7 +97,10 @@ export function translatedIncidentPath(path: RegionIncidentPath, delta: Point): 
 }
 
 export function translatedChildren(
-	children: readonly { readonly id: string; readonly solved: SolvedRecursiveRegion }[],
+	children: readonly {
+		readonly id: string;
+		readonly solved: SolvedRecursiveRegion;
+	}[],
 	placements: readonly NestedRegionPlacement[],
 ): TranslatedChildrenResult {
 	const regions: NestedRegionPlacement[] = [];
@@ -140,7 +153,10 @@ export function translatedChildren(
 
 export function childPlacements(
 	parentId: string,
-	children: readonly { readonly id: string; readonly solved: SolvedRecursiveRegion }[],
+	children: readonly {
+		readonly id: string;
+		readonly solved: SolvedRecursiveRegion;
+	}[],
 	portalSide: NestedPortalSide,
 	crossingCount: number,
 ): readonly NestedRegionPlacement[] {
@@ -159,7 +175,10 @@ export function childPlacements(
 			id,
 			parentId,
 			bounds,
-			translation: { x: bounds.x + REGION_PADDING, y: bounds.y + REGION_PADDING },
+			translation: {
+				x: bounds.x + REGION_PADDING,
+				y: bounds.y + REGION_PADDING,
+			},
 			localLayout: solved.layout,
 			localRanks: solved.ranks,
 		};
@@ -170,7 +189,11 @@ export function rowSize(
 	placements: readonly NestedRegionPlacement[],
 	portalSide: NestedPortalSide,
 	crossingCount: number,
-): { readonly width: number; readonly height: number; readonly bottomBusEdge: number } {
+): {
+	readonly width: number;
+	readonly height: number;
+	readonly bottomBusEdge: number;
+} {
 	const bottomBusEdge = Math.max(...placements.map(({ bounds }) => bounds.y + bounds.height));
 	const width = Math.max(...placements.map(({ bounds }) => bounds.x + bounds.width)) + ROOT_MARGIN;
 	let height = bottomBusEdge + ROOT_MARGIN;
@@ -204,8 +227,28 @@ export function boundaryPortal({
 	regionId,
 	side,
 	x,
+	y: incidentY,
+	canvasWidth,
 	canvasHeight,
 }: BoundaryPortalInput): NestedRegionPortal {
+	if (side === NestedPortalSide.Left || side === NestedPortalSide.Right) {
+		const y = defined(incidentY, 'A lateral boundary portal needs its vertical coordinate.');
+		let boundaryX = -REGION_PADDING;
+		let localX = 0;
+		if (side === NestedPortalSide.Right) {
+			const width = defined(canvasWidth, 'A right boundary portal needs its canvas width.');
+			boundaryX = width + REGION_PADDING;
+			localX = width + REGION_PADDING * 2;
+		}
+		return {
+			relationId,
+			endpointId,
+			regionId,
+			side,
+			localPoint: { x: localX, y: y + REGION_PADDING },
+			point: { x: boundaryX, y },
+		};
+	}
 	let y = -REGION_PADDING;
 	let localY = 0;
 	if (side === NestedPortalSide.Bottom) {

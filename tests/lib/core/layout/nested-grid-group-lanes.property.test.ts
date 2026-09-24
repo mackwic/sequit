@@ -201,29 +201,38 @@ async function checkSelection(
 }
 
 describe('a grouped cell beside local lanes in a persisted nested grid', () => {
-	it('keeps every geometry selected and incremental equal to cold through fractional edits', async () => {
-		await fc.assert(
-			fc.asyncProperty(scenario, async (values) => {
-				const base = nestedGridGroupLanesDocument();
-				const widened = withWiderTracks(base, values.trackGrowth);
-				const relabeled = withLaneLabel(widened);
-				const cache = new NestedRegionLocalLayoutCache();
-				const projection = new DocumentProjection(base);
-				const states = [
-					{ document: base, overrides: measurements(values, false, false) },
-					{ document: base, overrides: measurements(values, true, false) },
-					{ document: widened, overrides: measurements(values, true, false) },
-					{ document: relabeled, overrides: measurements(values, true, true) },
-				];
-				for (const [index, state] of states.entries()) {
-					let document = state.document;
-					if (values.permute && index % 2 === 1) document = permute(document);
-					await checkSelection(document, state.overrides, cache, projection);
-				}
-			}),
-			PROPERTY_PARAMETERS,
-		);
-	});
+	it.each([0, 1])(
+		'keeps every geometry selected and incremental equal to cold through fractional edits, batch %i',
+		async (batch) => {
+			const parameters = {
+				...PROPERTY_PARAMETERS,
+				numRuns: PROPERTY_PARAMETERS.numRuns / 2,
+			};
+			if (PROPERTY_PARAMETERS.seed !== undefined)
+				parameters.seed = PROPERTY_PARAMETERS.seed + batch;
+			await fc.assert(
+				fc.asyncProperty(scenario, async (values) => {
+					const base = nestedGridGroupLanesDocument();
+					const widened = withWiderTracks(base, values.trackGrowth);
+					const relabeled = withLaneLabel(widened);
+					const cache = new NestedRegionLocalLayoutCache();
+					const projection = new DocumentProjection(base);
+					const states = [
+						{ document: base, overrides: measurements(values, false, false) },
+						{ document: base, overrides: measurements(values, true, false) },
+						{ document: widened, overrides: measurements(values, true, false) },
+						{ document: relabeled, overrides: measurements(values, true, true) },
+					];
+					for (const [index, state] of states.entries()) {
+						let document = state.document;
+						if (values.permute && index % 2 === 1) document = permute(document);
+						await checkSelection(document, state.overrides, cache, projection);
+					}
+				}),
+				parameters,
+			);
+		},
+	);
 
 	it('keeps a grouped member inside a lane cell explicitly unsupported', () => {
 		const source = nestedGridGroupLanesDocument();

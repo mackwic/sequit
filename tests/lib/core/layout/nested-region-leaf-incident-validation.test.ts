@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import {
+	EndpointKind,
+	type LogicDocument,
+	type LogicGroup,
+} from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds, LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
@@ -81,18 +87,40 @@ function regionDefinitions(depth: 1 | 2 | 3): readonly NestedRegionDefinition[] 
 	return regions;
 }
 
-function fixture(depth: 1 | 2 | 3) {
+function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	const original = regionDocument();
-	const document = { ...original, nodes: original.nodes.filter(({ id }) => id !== 'b') };
+	const groups: LogicGroup[] = [];
+	if (groupBounds !== undefined)
+		groups.push({
+			kind: EndpointKind.Group,
+			id: 'a-group',
+			label: 'A group',
+			layoutOrder: orderKey('a0'),
+		});
+	const document: LogicDocument = {
+		...original,
+		groups,
+		nodes: original.nodes
+			.filter(({ id }) => id !== 'b')
+			.map((node) => {
+				if (node.id === 'a-target' && groupBounds !== undefined)
+					return { ...node, groupId: 'a-group' };
+				return node;
+			}),
+	};
 	const created = createGraph(document);
 	if (!created.ok) throw new Error('Fixture graph must be valid.');
+	const regionByEndpointId = new Map([
+		['a-source', 'left'],
+		['a-target', 'left'],
+		['c', 'right'],
+	]);
+	if (groupBounds !== undefined) regionByEndpointId.set('a-group', 'left');
+	const endpointBounds = new Map(NODE_BOUNDS);
+	if (groupBounds !== undefined) endpointBounds.set('a-group', groupBounds);
 	const input: NestedRegionInput = {
 		regions: regionDefinitions(depth),
-		regionByEndpointId: new Map([
-			['a-source', 'left'],
-			['a-target', 'left'],
-			['c', 'right'],
-		]),
+		regionByEndpointId,
 	};
 	const normalized = normalizeRegionCompositionModel(created.value, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
@@ -103,10 +131,10 @@ function fixture(depth: 1 | 2 | 3) {
 		.map((id) => {
 			const bounds = must(REGION_BOUNDS.get(id));
 			const translation = { x: bounds.x + 16, y: bounds.y + 16 };
-			const localElements = document.nodes
+			const localElements = [...document.nodes, ...document.groups]
 				.filter((node) => model.leafByEndpointId.get(node.id) === id)
 				.map((node) => {
-					const global = must(NODE_BOUNDS.get(node.id));
+					const global = must(endpointBounds.get(node.id));
 					return {
 						id: node.id,
 						kind: node.kind,
@@ -196,10 +224,10 @@ function fixture(depth: 1 | 2 | 3) {
 		layout: {
 			width: 600,
 			height: 300,
-			elements: document.nodes.map((node) => ({
+			elements: [...document.nodes, ...document.groups].map((node) => ({
 				id: node.id,
 				kind: node.kind,
-				bounds: must(NODE_BOUNDS.get(node.id)),
+				bounds: must(endpointBounds.get(node.id)),
 			})),
 			relations,
 		},
@@ -207,8 +235,8 @@ function fixture(depth: 1 | 2 | 3) {
 	return { graph: created.value, input, model, candidate };
 }
 
-function lateralFixture() {
-	const { graph, input, model, candidate } = fixture(1);
+function lateralFixture(groupBounds?: Bounds) {
+	const { graph, input, model, candidate } = fixture(1, groupBounds);
 	const sourcePortal = portal('left', 'a-target', NestedPortalSide.Right, { x: 230, y: 160 });
 	const targetPortal = portal('right', 'c', NestedPortalSide.Left, { x: 350, y: 150 });
 	const crossingPieces: readonly NestedOwnedRoute[] = [
@@ -328,7 +356,115 @@ function replaceElementBounds(
 	};
 }
 
+function redirectSourceIncident(
+	candidate: NestedRegionSelected,
+	side: NestedPortalSide,
+	anchor: Point,
+	point: Point,
+): NestedRegionSelected {
+	const redirected = replaceRoute(candidate, 'across-middle', 'left', [anchor, point]);
+	return {
+		...redirected,
+		portals: redirected.portals.map((crossing) => {
+			if (crossing.regionId === 'left') return portal('left', 'a-target', side, point);
+			return crossing;
+		}),
+	};
+}
+
 describe('recursive nested-region leaf incident validation', () => {
+	it('accepts a direct incident leaving its containing group on each portal side', () => {
+		const groupBounds = { x: 90, y: 140, width: 40, height: 50 };
+		const bottom = fixture(1, groupBounds);
+		expect(bottom.model.parentGroupByEndpointId.get('a-target')).toBe('a-group');
+		expect(validateNestedRegionLeafIncidents(bottom.model, bottom.candidate)).toBeUndefined();
+
+		const right = lateralFixture(groupBounds);
+		expect(validateNestedRegionLeafIncidents(right.model, right.candidate)).toBeUndefined();
+
+		const left = redirectSourceIncident(
+			right.candidate,
+			NestedPortalSide.Left,
+			{ x: 100, y: 160 },
+			{ x: 30, y: 160 },
+		);
+		expect(validateNestedRegionLeafIncidents(right.model, left)).toBeUndefined();
+
+		const topLocal = replaceRoute(bottom.candidate, 'inside-a', 'left', [
+			{ x: 90, y: 100 },
+			{ x: 90, y: 150 },
+			{ x: 110, y: 150 },
+		]);
+		const top = redirectSourceIncident(
+			topLocal,
+			NestedPortalSide.Top,
+			{ x: 110, y: 150 },
+			{ x: 110, y: 30 },
+		);
+		expect(validateNestedRegionLeafIncidents(bottom.model, top)).toBeUndefined();
+	});
+
+	it('rejects a route that enters a declared containing group from outside', () => {
+		const { model, candidate } = fixture(1, {
+			x: 90,
+			y: 175,
+			width: 40,
+			height: 35,
+		});
+		expect(validateIncidentDiagnostic(model, candidate)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+			endpointId: 'a-target',
+			relatedEndpointId: 'a-group',
+		});
+	});
+
+	it('rejects a portal that points back inside its containing group', () => {
+		const groupBounds = { x: 90, y: 140, width: 40, height: 50 };
+		const { model, candidate } = lateralFixture(groupBounds);
+		const wrongWay = redirectSourceIncident(
+			candidate,
+			NestedPortalSide.Right,
+			{ x: 120, y: 160 },
+			{ x: 125, y: 160 },
+		);
+		expect(validateIncidentDiagnostic(model, wrongWay)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+			endpointId: 'a-target',
+			relatedEndpointId: 'a-group',
+		});
+	});
+
+	it('rejects a bent incident through a group even when both segments are collinear', () => {
+		const { model, candidate } = fixture(1, {
+			x: 90,
+			y: 140,
+			width: 40,
+			height: 50,
+		});
+		const bent = replaceRoute(candidate, 'across-middle', 'left', [
+			{ x: 110, y: 170 },
+			{ x: 110, y: 190 },
+			{ x: 110, y: 230 },
+		]);
+		expect(validateIncidentDiagnostic(model, bent)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+			relatedEndpointId: 'a-group',
+		});
+	});
+
+	it('rejects an incident crossing a declared group that misses its endpoint horizontally', () => {
+		const { model, candidate } = lateralFixture({
+			x: 130,
+			y: 140,
+			width: 40,
+			height: 50,
+		});
+		expect(validateIncidentDiagnostic(model, candidate)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
+			relatedEndpointId: 'a-group',
+		});
+	});
+
 	it('accepts right and left node-face attachments on lateral portals', () => {
 		const { graph, input, model, candidate } = lateralFixture();
 		expect(validateRegionCompositionGeometry(model, candidate)).toBeUndefined();
@@ -556,6 +692,16 @@ describe('recursive nested-region leaf incident validation', () => {
 		expect(validateNestedRegionLeafIncidents(model, wrongRegion)).toContain(
 			'0 source portals on leaf left',
 		);
+		const wrongRelation = {
+			...candidate,
+			portals: candidate.portals.map((crossing) => {
+				if (crossing.regionId === 'left') return { ...crossing, relationId: 'inside-a' };
+				return crossing;
+			}),
+		};
+		expect(validateNestedRegionLeafIncidents(model, wrongRelation)).toContain(
+			'0 source portals on leaf left',
+		);
 	});
 
 	it('rejects a node corner even when the incident is orthogonal', () => {
@@ -585,5 +731,29 @@ describe('recursive nested-region leaf incident validation', () => {
 			{ x: 90, y: 100 },
 		]);
 		expect(validateNestedRegionLeafIncidents(swappedModel, departing)).toBeUndefined();
+	});
+
+	it('rejects a crossing with a local route whose declared source misses the incident anchor', () => {
+		const { model, candidate } = lateralFixture();
+		const local = must(model.localRelationsByOwner.get('left'));
+		const swappedModel = {
+			...model,
+			localRelationsByOwner: new Map([
+				...model.localRelationsByOwner,
+				['left', local.map((relation) => ({ ...relation, from: 'a-target', to: 'a-source' }))],
+			]),
+		};
+		const crossing = replaceRoute(candidate, 'inside-a', 'left', [
+			{ x: 110, y: 150 },
+			{ x: 110, y: 160 },
+			{ x: 160, y: 160 },
+			{ x: 160, y: 150 },
+			{ x: 90, y: 150 },
+			{ x: 90, y: 100 },
+		]);
+		expect(validateIncidentDiagnostic(swappedModel, crossing)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
+			relatedRelationId: 'inside-a',
+		});
 	});
 });

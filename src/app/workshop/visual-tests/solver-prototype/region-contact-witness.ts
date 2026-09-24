@@ -16,6 +16,7 @@ import { solveRecursiveNestedRegionLayout } from '../../../../lib/core/layout/ne
 import {
 	type NestedOwnedRoute,
 	type NestedRegionInput,
+	type NestedRegionLayoutAttempt,
 	NestedRegionLayoutStatus,
 	type NestedRegionSelected,
 } from '../../../../lib/core/layout/nested-region-types';
@@ -139,11 +140,7 @@ function gridSource(): { readonly document: LogicDocument; readonly input: Neste
 			...source,
 			id: 'grid-contact-witness',
 			nodes: [...source.nodes, node('d', 'a4'), node('outside', 'a5')],
-			relations: [
-				...source.relations,
-				{ id: 'across-grid', from: 'a-target', to: 'd' },
-				{ id: 'leaves-grid', from: 'a-target', to: 'outside' },
-			],
+			relations: [...source.relations, { id: 'leaves-grid', from: 'a-target', to: 'outside' }],
 		},
 		input: {
 			regions: [
@@ -215,23 +212,32 @@ function focusViewBox(points: readonly Point[]): string {
 	return `${x} ${y} ${width} ${height}`;
 }
 
-/** Runs a workshop source through the real graph, model, recursive solver, and geometry oracles. */
-export function solveRegionContactScenario(source: RegionContactSource): SolvedContact {
+/** Inspect the production solver verdict before a workshop panel claims a selected geometry. */
+export function probeRegionContactScenario(source: RegionContactSource): {
+	readonly model: RegionCompositionModel;
+	readonly attempt: NestedRegionLayoutAttempt;
+} {
 	const graph = createGraph(source.document);
 	if (!graph.ok) throw new Error('The contact witness source graph is invalid.');
 	const normalized = normalizeRegionCompositionModel(graph.value, source.input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error(normalized.diagnostic.message);
-	const selected = solveRecursiveNestedRegionLayout(
+	const attempt = solveRecursiveNestedRegionLayout(
 		graph.value,
 		measurements(source.document),
 		source.input,
 	);
+	return { model: normalized.model, attempt };
+}
+
+/** Runs a selected workshop source through the real solver and independent geometry oracles. */
+export function solveRegionContactScenario(source: RegionContactSource): SolvedContact {
+	const { model, attempt: selected } = probeRegionContactScenario(source);
 	if (selected.status !== NestedRegionLayoutStatus.Selected)
 		throw new Error(`The contact witness is ${selected.status}: ${selected.reason}`);
-	const failure = validateContact(normalized.model, selected);
+	const failure = validateContact(model, selected);
 	if (failure !== undefined) throw new Error(`The real contact witness is invalid: ${failure}`);
-	return { model: normalized.model, selected };
+	return { model, selected };
 }
 
 function validateContact(
@@ -333,10 +339,17 @@ function directCellExit(selected: NestedRegionSelected): NestedRegionSelected {
 		),
 	);
 	const anchor = defined(cellPiece.points[0]);
-	const point = { x: anchor.x, y: portal.point.y };
+	const source = defined(selected.layout.elements.find(({ id }) => id === 'a-source'));
+	const detourY = source.bounds.y + source.bounds.height / 2;
+	const point = { x: source.bounds.x + source.bounds.width + 32, y: portal.point.y };
 	const pieces = selected.ownedRoutes.map((piece) => {
-		if (piece === cellPiece) return { ...piece, points: [anchor, point] };
-		if (piece === gridPiece) return { ...piece, points: [point, ...piece.points.slice(1)] };
+		if (piece === cellPiece)
+			return {
+				...piece,
+				points: [anchor, { x: anchor.x, y: detourY }, { x: point.x, y: detourY }, point],
+			};
+		if (piece === gridPiece)
+			return { ...piece, points: [point, portal.point, ...piece.points.slice(1)] };
 		return piece;
 	});
 	const portals = selected.portals.map((item) => {
@@ -465,7 +478,7 @@ function gridContact(): RegionContactCase {
 		id: RegionContactCaseId.Grid,
 		title: 'Relation locale et sortie d’une cellule de grille',
 		description:
-			'La relation locale rejoint a-target. Sa sortie vers outside longe la marge de la cellule avant de franchir la piste allouée.',
+			'La paire locale et sortie est sélectionnée. Ajouter la traversée across-grid touche cette sortie sans pont et rend le document indéterminé.',
 		source,
 		width: selected.layout.width,
 		height: selected.layout.height,
@@ -476,9 +489,9 @@ function gridContact(): RegionContactCase {
 				model,
 				selected: directCellExit(selected),
 				id: 'direct-exit',
-				title: 'Sortie directe · falsification',
+				title: 'Détour par a-source · falsification',
 				description:
-					'Le stub vertical traverse le nœud local a-source ; un port commun ne suffit pas.',
+					'Un détour ajouté à la sortie traverse le nœud local a-source. Le validateur le rejette.',
 			}),
 			strictCrossingProbe(selected),
 		],

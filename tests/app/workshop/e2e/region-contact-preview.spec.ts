@@ -25,7 +25,8 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 	);
 
 	const grid = explorer.getByTestId('contact-case-grid-contact');
-	await expect(grid).toContainText('Document grid-contact-witness · 6 nœuds · 3 relations');
+	await expect(grid).toContainText('Document grid-contact-witness · 6 nœuds · 2 relations');
+	await expect(grid).toContainText('across-grid touche cette sortie sans pont');
 	const gridValid = grid.getByTestId('contact-panel-grid-contact-validated');
 	const gridDirect = grid.getByTestId('contact-panel-grid-contact-direct-exit');
 	const gridCrossing = grid.getByTestId('contact-panel-grid-contact-strict-crossing');

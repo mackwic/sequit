@@ -5,6 +5,7 @@ import {
 	gridCellRegionLeafDocument,
 	normalizeGridCellRegionModel,
 } from '../../../../src/lib/core/layout/grid-cell-region-model';
+import { solveGridCellRegionLeaves } from '../../../../src/lib/core/layout/grid-cell-region-solver';
 import type { GridCellInput } from '../../../../src/lib/core/layout/grid-cell-types';
 import {
 	RegionCompositionDiagnosticCode,
@@ -109,5 +110,25 @@ describe('grid cells in the common region ownership model', () => {
 				limit: 4,
 			},
 		});
+	});
+
+	it('propagates an invalid local relation partition instead of publishing partial cells', () => {
+		const prepared = prepareGrid();
+		const input = gridInput();
+		const grid = normalize(prepared.graph, input);
+		if (typeof grid === 'string') throw new Error(grid);
+		const normalized = normalizeGridCellRegionModel(prepared.graph, input, grid);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized grid model.');
+		const localRelationsByOwner = new Map(normalized.model.localRelationsByOwner);
+		localRelationsByOwner.set('a', [{ id: 'broken-local', from: 'a-bottom', to: 'missing' }]);
+		expect(
+			solveGridCellRegionLeaves({
+				graph: prepared.graph,
+				grid,
+				model: { ...normalized.model, localRelationsByOwner },
+				measurements: prepared.measurements,
+			}),
+		).toBeUndefined();
 	});
 });

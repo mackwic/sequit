@@ -18,6 +18,41 @@ import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-c
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
+	it('reports an unsolved local cycle without publishing a partial grid', () => {
+		const prepared = prepareGrid();
+		const endpoint = prepared.graph.endpointsById.get('a-top');
+		if (endpoint === undefined) throw new Error('Expected the a-top endpoint.');
+		const graph = {
+			...prepared.graph,
+			relations: [
+				...prepared.graph.relations,
+				{
+					relation: { id: 'local-cycle', from: 'a-top', to: 'a-top' },
+					source: endpoint,
+					target: endpoint,
+				},
+			],
+		};
+		expect(solveGridCellLayout(graph, prepared.measurements, gridInput())).toEqual({
+			status: GridCellLayoutStatus.Unknown,
+			reason: 'A child graph could not be solved independently.',
+		});
+	});
+
+	it('propagates a duplicate relation identity rejected by the common ownership model', () => {
+		const prepared = prepareGrid();
+		const first = prepared.graph.relations[0];
+		if (first === undefined) throw new Error('Expected a relation in the grid fixture.');
+		const duplicateGraph = {
+			...prepared.graph,
+			relations: [...prepared.graph.relations, first],
+		};
+		expect(solveGridCellLayout(duplicateGraph, prepared.measurements, gridInput())).toEqual({
+			status: GridCellLayoutStatus.Unsupported,
+			reason: `Duplicate relation identity ${first.relation.id}.`,
+		});
+	});
+
 	it('can compose the same grid in the local coordinates of a named region', () => {
 		const prepared = prepareGrid();
 		const rootInput = gridInput();

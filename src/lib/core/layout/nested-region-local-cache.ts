@@ -2,19 +2,25 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import type { SharedLaneOutgoingIncident } from './shared-lane-incident-contract';
+import {
+	normalizeRegionIncidentContracts,
+	type RegionIncidentContract,
+	type RegionIncidentSearchWitness,
+	type RegionSolvedIncident,
+} from './region-incident-contract';
 
 /** Projection-owned cache; every entry stores one bounded local child layout. */
 export const MAX_NESTED_REGION_LOCAL_CACHE_ENTRIES = 12;
 
 /** Bump this when the local child solver's geometry contract changes. */
-const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v3';
-/** Materialized incidents enter the local graph and this key when a ghost policy is selected. */
-const INCIDENT_CONTRACT = 'materialized-local-incidents-v2';
+const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v4';
+const INCIDENT_CONTRACT = 'region-incident-contract-v1';
 
 export interface NestedRegionLocalLayout {
 	readonly layout: LayoutResult;
 	readonly ranks: TopologicalRanks;
+	readonly incidents?: readonly RegionSolvedIncident[];
+	readonly witness?: RegionIncidentSearchWitness;
 }
 
 export interface NestedRegionLocalCacheStats {
@@ -24,11 +30,11 @@ export interface NestedRegionLocalCacheStats {
 	readonly evictions: number;
 }
 
-interface IncidentCacheInput {
+interface RegionContractCacheInput {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
-	readonly policy: LayoutPolicy | undefined;
-	readonly incident: SharedLaneOutgoingIncident;
+	readonly policy?: LayoutPolicy | undefined;
+	readonly contracts: readonly RegionIncidentContract[];
 	readonly compute: () => NestedRegionLocalLayout;
 }
 
@@ -41,8 +47,9 @@ export function nestedRegionLocalLayoutKey(
 	document: LogicDocument,
 	measurements: LayoutMeasurements,
 	policy?: LayoutPolicy,
-	incident?: SharedLaneOutgoingIncident,
+	inputContracts: readonly RegionIncidentContract[] = [],
 ): string {
+	const contracts = normalizeRegionIncidentContracts(inputContracts);
 	const nodes = canonicalById(document.nodes);
 	const groups = canonicalById(document.groups);
 	const junctions = canonicalById(document.junctions);
@@ -55,8 +62,13 @@ export function nestedRegionLocalLayoutKey(
 		];
 	return JSON.stringify({
 		algorithm: LOCAL_LAYOUT_ALGORITHM,
-		incident: INCIDENT_CONTRACT,
-		outgoingLaneIncident: incident ?? null,
+		incidentContract: INCIDENT_CONTRACT,
+		incidentContracts: contracts.map(({ relation, endpointId, role, allowedSides }) => [
+			[relation.id, relation.from, relation.to],
+			endpointId,
+			role,
+			allowedSides,
+		]),
 		source: {
 			documentId: document.id,
 			policy: policy ?? null,
@@ -107,6 +119,26 @@ export function nestedRegionLocalLayoutKey(
 }
 
 function copyLocalLayout(value: NestedRegionLocalLayout): NestedRegionLocalLayout {
+	let witness: { readonly witness?: RegionIncidentSearchWitness } = {};
+	if (value.witness !== undefined)
+		witness = {
+			witness: {
+				...value.witness,
+				rejectedAlternatives: value.witness.rejectedAlternatives.map((rejected) => ({
+					...rejected,
+				})),
+			},
+		};
+	let incidents: { readonly incidents?: readonly RegionSolvedIncident[] } = {};
+	if (value.incidents !== undefined)
+		incidents = {
+			incidents: value.incidents.map((incident) => ({
+				...incident,
+				anchor: { ...incident.anchor },
+				portal: { ...incident.portal },
+				points: incident.points.map((point) => ({ ...point })),
+			})),
+		};
 	let lanes: { readonly lanes?: NonNullable<LayoutResult['lanes']> } = {};
 	if (value.layout.lanes !== undefined)
 		lanes = {
@@ -116,6 +148,8 @@ function copyLocalLayout(value: NestedRegionLocalLayout): NestedRegionLocalLayou
 			})),
 		};
 	return {
+		...witness,
+		...incidents,
 		layout: {
 			...value.layout,
 			...lanes,
@@ -161,9 +195,9 @@ export class NestedRegionLocalLayoutCache {
 		return this.#getOrComputeKey(key, compute);
 	}
 
-	getOrComputeIncident(input: IncidentCacheInput): NestedRegionLocalLayout {
-		const { document, measurements, policy, incident, compute } = input;
-		const key = nestedRegionLocalLayoutKey(document, measurements, policy, incident);
+	getOrComputeContract(input: RegionContractCacheInput): NestedRegionLocalLayout {
+		const { document, measurements, policy, contracts, compute } = input;
+		const key = nestedRegionLocalLayoutKey(document, measurements, policy, contracts);
 		return this.#getOrComputeKey(key, compute);
 	}
 

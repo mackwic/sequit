@@ -9,10 +9,12 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	leafDocument,
+	leafIncidentContracts,
 	type RecursiveContext,
 } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
 import {
@@ -24,6 +26,9 @@ import {
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
@@ -33,6 +38,49 @@ function solve(input: NestedRegionInput) {
 }
 
 describe('recursive region model and row policy', () => {
+	it('passes source provenance and a four-sided incident choice to either leaf', () => {
+		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
+		const normalized = normalizeRegionCompositionModel(prepared.graph, depthTwoRegionInput());
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error(normalized.diagnostic.message);
+		const context: RecursiveContext = {
+			graph: prepared.graph,
+			model: normalized.model,
+			measurements: prepared.measurements,
+			cache: undefined,
+			ownershipByRelationId: new Map(
+				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
+			),
+		};
+		expect(
+			leafIncidentContracts(
+				context,
+				'left',
+				new Map([['inside-branch', [RegionPortalSide.Right]]]),
+			),
+		).toEqual([
+			{
+				relation: { id: 'inside-branch', from: 'a-target', to: 'c' },
+				endpointId: 'a-target',
+				role: RegionIncidentRole.Source,
+				allowedSides: [RegionPortalSide.Right],
+			},
+		]);
+		expect(
+			leafIncidentContracts(
+				context,
+				'branch-right',
+				new Map([['inside-branch', [RegionPortalSide.Left]]]),
+			),
+		).toMatchObject([
+			{
+				endpointId: 'c',
+				role: RegionIncidentRole.Target,
+				allowedSides: [RegionPortalSide.Left],
+			},
+		]);
+	});
+
 	it('keeps only local measurements and does not fabricate an absent local size', () => {
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 		const normalized = normalizeRegionCompositionModel(prepared.graph, depthTwoRegionInput());
@@ -260,7 +308,7 @@ describe('recursive region model and row policy', () => {
 		expect(attempt.reason).toContain('at most three owned crossings');
 	});
 
-	it('rejects a crossing whose source is a group endpoint', () => {
+	it('resolves a group crossing after its owning parent retries a bus side', () => {
 		const source = depthTwoRegionDocument();
 		const document: LogicDocument = {
 			...source,
@@ -280,14 +328,25 @@ describe('recursive region model and row policy', () => {
 		};
 		const input = depthTwoRegionInput();
 		const prepared = prepareLayoutDocument(document);
-		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, {
+		const composedInput = {
 			...input,
 			regionByEndpointId: new Map([...input.regionByEndpointId, ['group-left', 'left']]),
-		});
-		expect(attempt).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
+		};
+		const attempt = solveRecursiveNestedRegionLayout(
+			prepared.graph,
+			prepared.measurements,
+			composedInput,
+		);
+		expect(attempt.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (attempt.status !== NestedRegionLayoutStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, composedInput);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error(normalized.diagnostic.message);
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+		expect(
+			attempt.layout.relations.find(({ id }) => id === 'group-crossing')?.points.length,
+		).toBeGreaterThan(1);
 	});
 
 	it('uses stable identities to order tied grandchildren', () => {

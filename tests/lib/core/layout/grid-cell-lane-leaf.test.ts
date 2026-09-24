@@ -8,7 +8,6 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-presentation';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
-import { solveContractedLaneCell } from '../../../../src/lib/core/layout/grid-cell-lane-incident-leaf';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
@@ -17,7 +16,6 @@ import {
 	nestedRegionLocalLayoutKey,
 } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
 import {
 	NestedPortalSide,
 	type NestedRegionInput,
@@ -27,9 +25,20 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
+import {
+	type RegionIncidentContract,
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/region-incident-contract';
 import { layoutWithRootRegionForProjection } from '../../../../src/lib/core/layout/root-region';
-import { validateSharedLaneOutgoingIncident } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
+import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import {
+	directSharedLaneIncidentPath,
+	validateSharedLaneIncidentPath,
+} from '../../../../src/lib/core/layout/shared-lane-incident-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	persistedNestedGridDocument,
@@ -71,6 +80,27 @@ function resizedB2(measurements: LayoutMeasurements): LayoutMeasurements {
 	const b2 = defined(nodes.get('b2'));
 	nodes.set('b2', { ...b2, width: b2.width + 72.5 });
 	return { ...measurements, nodes };
+}
+
+function outgoingContract(document: LogicDocument, relationId: string): RegionIncidentContract {
+	const relation = defined(document.relations.find(({ id }) => id === relationId));
+	return {
+		relation,
+		endpointId: relation.from,
+		role: RegionIncidentRole.Source,
+		allowedSides: [RegionPortalSide.Right],
+	};
+}
+
+function laneIncidentIssue(geometry: SharedLaneGeometry, contract: RegionIncidentContract) {
+	const path = directSharedLaneIncidentPath(
+		geometry,
+		{ offsetByIncidence: new Map(), demandByEndpoint: new Map(), incidentOffsetByFace: new Map() },
+		contract,
+		RegionPortalSide.Right,
+	);
+	if ('code' in path) return path;
+	return validateSharedLaneIncidentPath(geometry, contract, path);
 }
 
 describe('a two-lane leaf in a recursive grid cell', () => {
@@ -159,13 +189,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const cell = defined(selected.regions.find(({ id }) => id === 'b'));
 		const local = defined(cell.localLayout);
 		const geometry = { ...local, lanes: defined(local.lanes) };
-		expect(
-			validateSharedLaneOutgoingIncident(geometry, {
-				relationId: 'leaves-b',
-				endpointId: 'b',
-				side: 1,
-			}),
-		).toBeUndefined();
+		expect(laneIncidentIssue(geometry, outgoingContract(document, 'leaves-b'))).toBeUndefined();
 		const b = defined(selected.layout.elements.find(({ id }) => id === 'b'));
 		const localRoute = defined(selected.layout.relations.find(({ id }) => id === 'inside-b'));
 		const incident = defined(selected.layout.relations.find(({ id }) => id === 'leaves-b'));
@@ -190,30 +214,6 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			...selected.layout,
 			regions: selected.regions.map(({ id, bounds }) => ({ id, bounds })),
 		});
-	});
-
-	it('rejects an outgoing lane contract on an ordinary grid cell', () => {
-		const document = persistedNestedGridWithInnerLaneCrossingDocument();
-		const prepared = prepareLayoutDocument(document);
-		const normalized = normalizeRegionCompositionModel(prepared.graph, regionInput(document));
-		if (normalized.status !== RegionCompositionModelStatus.Ready)
-			throw new Error('Expected normalized region composition');
-		const context: RecursiveContext = {
-			graph: prepared.graph,
-			model: normalized.model,
-			measurements: prepared.measurements,
-			cache: undefined,
-			ownershipByRelationId: new Map(
-				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
-			),
-		};
-		expect(() =>
-			solveContractedLaneCell(context, 'a', {
-				relationId: 'leaves-a',
-				endpointId: 'a-source',
-				side: 1,
-			}),
-		).toThrow('Grid cell a has no lanes for its outgoing incident.');
 	});
 
 	it('keeps a same-measure inner-lane incident cold-equal after an edit and permutation', () => {
@@ -248,7 +248,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		expect(incremental).toEqual(cold);
 		if (cold.status !== NestedRegionLayoutStatus.Selected)
 			throw new Error(`Expected edited incident: ${cold.status}: ${cold.reason}`);
-		expect(cache.stats.misses).toBe(previousStats.misses + 1);
+		// The crossing contract belongs to both endpoint leaves.
+		expect(cache.stats.misses).toBe(previousStats.misses + 2);
 		const permuted: LogicDocument = {
 			...edited,
 			nodes: [...edited.nodes].reverse(),
@@ -267,17 +268,13 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		expect(alternateSelected).toEqual(cold);
 		expect(
-			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, {
-				relationId: 'leaves-b',
-				endpointId: 'b',
-				side: 1,
-			}),
+			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, [
+				outgoingContract(source, 'leaves-b'),
+			]),
 		).not.toBe(
-			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, {
-				relationId: 'edited-leaves-b',
-				endpointId: 'b',
-				side: 1,
-			}),
+			nestedRegionLocalLayoutKey(source, prepared.measurements, undefined, [
+				outgoingContract(edited, 'edited-leaves-b'),
+			]),
 		);
 		const widened = resizedB2(prepared.measurements);
 		const nodes = new Map(widened.nodes);
@@ -315,7 +312,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		expect(defined(reused.regions.find(({ id }) => id === 'b')).localLayout).not.toEqual(
 			defined(first.regions.find(({ id }) => id === 'b')).localLayout,
 		);
-		expect(cache.stats.misses).toBe(statsBeforeSwitch.misses + 1);
+		expect(cache.stats.misses).toBe(statsBeforeSwitch.misses + 2);
 	});
 
 	it('rejects an inner-lane crossing without its single local passage', () => {
@@ -326,16 +323,17 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		};
 		expect(validateLogicDocument(document)).toMatchObject({ ok: true });
 		const prepared = prepareLayoutDocument(document);
-		expect(
-			solveRecursiveNestedRegionLayout(
-				prepared.graph,
-				prepared.measurements,
-				regionInput(document),
-			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid cell b requires one local passage from the incident node to its outer lane.',
+		const attempt = solveRecursiveNestedRegionLayout(
+			prepared.graph,
+			prepared.measurements,
+			regionInput(document),
+		);
+		expect(attempt).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 		});
+		if (attempt.status === NestedRegionLayoutStatus.Unknown)
+			expect(attempt.reason).toContain('enters element b2');
 	});
 
 	it('returns unknown when an outer-lane node blocks the reserved corridor', () => {
@@ -354,7 +352,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		expect(attempt.status).toBe(NestedRegionLayoutStatus.Unknown);
 		if (attempt.status !== NestedRegionLayoutStatus.Unknown) return;
-		expect(attempt.reason).toContain('crosses node b3 in its lane leaf');
+		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
+		expect(attempt.reason).toContain('enters element b3');
 	});
 
 	it('rejects forged face capacity or a node obstructing the reserved lane passage', () => {
@@ -377,23 +376,17 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			...geometry,
 			relations: [{ ...relation, points }],
 		};
-		const contract = {
-			relationId: 'leaves-b',
-			endpointId: 'b',
-			side: 1,
-		} as const;
+		const contract = outgoingContract(source, 'leaves-b');
+		expect(laneIncidentIssue(geometry, { ...contract, endpointId: 'removed-b' })).toMatchObject({
+			code: RegionIncidentRejectionCode.InvalidAttachment,
+		});
 		expect(
-			validateSharedLaneOutgoingIncident(geometry, { ...contract, endpointId: 'removed-b' }),
-		).toBe('Incident leaves-b has no local source node.');
-		expect(
-			validateSharedLaneOutgoingIncident(
-				{ ...geometry, width: b.bounds.x + b.bounds.width },
-				contract,
-			),
-		).toBe('Incident leaves-b has no right-facing port capacity.');
-		expect(validateSharedLaneOutgoingIncident(occupiedPort, contract)).toBe(
-			'Incident leaves-b has insufficient face capacity beside inside-b.',
-		);
+			laneIncidentIssue({ ...geometry, width: b.bounds.x + b.bounds.width }, contract),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		expect(laneIncidentIssue(occupiedPort, contract)).toMatchObject({
+			code: RegionIncidentRejectionCode.PortUnavailable,
+			reason: 'Incident leaves-b has insufficient face capacity beside inside-b.',
+		});
 		const incoming = {
 			...geometry,
 			relations: [
@@ -406,7 +399,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				},
 			],
 		};
-		expect(validateSharedLaneOutgoingIncident(incoming, contract)).toBeUndefined();
+		expect(laneIncidentIssue(incoming, contract)).toBeUndefined();
 		const detour = {
 			...geometry,
 			relations: [
@@ -419,9 +412,10 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				},
 			],
 		};
-		expect(validateSharedLaneOutgoingIncident(detour, contract)).toBe(
-			'Incident leaves-b touches local relation inside-b in its lane leaf.',
-		);
+		expect(laneIncidentIssue(detour, contract)).toMatchObject({
+			code: RegionIncidentRejectionCode.RouteObstructed,
+			reason: 'Incident leaves-b touches local relation inside-b in its lane leaf.',
+		});
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
 			throw new Error('Expected normalized region composition');
@@ -458,9 +452,10 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				};
 			}),
 		};
-		expect(validateSharedLaneOutgoingIncident(obstructed, contract)).toBe(
-			'Incident leaves-b crosses node b2 in its lane leaf.',
-		);
+		expect(laneIncidentIssue(obstructed, contract)).toMatchObject({
+			code: RegionIncidentRejectionCode.RouteObstructed,
+			reason: 'Incident leaves-b crosses node b2 in its lane leaf.',
+		});
 	});
 
 	it('rejects a second intercell incident on the lane cell', () => {
@@ -477,13 +472,13 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				prepared.measurements,
 				regionInput(document),
 			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid cell b with lanes accepts one inter-cell incident.',
+		).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
 	});
 
-	it('rejects a non-monotone lane crossing or transverse lanes', () => {
+	it('evaluates a non-monotone lane crossing and transverse lanes through the contract', () => {
 		const source = persistedNestedGridWithLaneCrossingDocument();
 		const sideways: LogicDocument = {
 			...source,
@@ -494,16 +489,19 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		};
 		expect(validateLogicDocument(sideways)).toMatchObject({ ok: true });
 		const sidewaysPrepared = prepareLayoutDocument(sideways);
-		expect(
-			solveRecursiveNestedRegionLayout(
-				sidewaysPrepared.graph,
-				sidewaysPrepared.measurements,
-				regionInput(sideways),
-			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid cell b with lanes requires an outgoing right-rail crossing to the cell below.',
-		});
+		const sidewaysInput = regionInput(sideways);
+		const sidewaysAttempt = solveRecursiveNestedRegionLayout(
+			sidewaysPrepared.graph,
+			sidewaysPrepared.measurements,
+			sidewaysInput,
+		);
+		expect(sidewaysAttempt.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (sidewaysAttempt.status === NestedRegionLayoutStatus.Selected) {
+			const model = normalizeRegionCompositionModel(sidewaysPrepared.graph, sidewaysInput);
+			if (model.status !== RegionCompositionModelStatus.Ready)
+				throw new Error('Expected normalized sideways region composition');
+			expect(validateRegionCompositionGeometry(model.model, sidewaysAttempt)).toBeUndefined();
+		}
 		const transverse: LogicDocument = {
 			...source,
 			regionPresentation: {
@@ -522,19 +520,22 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		};
 		expect(validateLogicDocument(transverse)).toMatchObject({ ok: true });
 		const transversePrepared = prepareLayoutDocument(transverse);
-		expect(
-			solveRecursiveNestedRegionLayout(
-				transversePrepared.graph,
-				transversePrepared.measurements,
-				regionInput(transverse),
-			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid cell b with an inter-cell incident requires top-to-bottom parallel lanes.',
-		});
+		const transverseInput = regionInput(transverse);
+		const transverseAttempt = solveRecursiveNestedRegionLayout(
+			transversePrepared.graph,
+			transversePrepared.measurements,
+			transverseInput,
+		);
+		expect(transverseAttempt.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (transverseAttempt.status === NestedRegionLayoutStatus.Selected) {
+			const model = normalizeRegionCompositionModel(transversePrepared.graph, transverseInput);
+			if (model.status !== RegionCompositionModelStatus.Ready)
+				throw new Error('Expected normalized transverse region composition');
+			expect(validateRegionCompositionGeometry(model.model, transverseAttempt)).toBeUndefined();
+		}
 	});
 
-	it('rejects a lane-cell incident across the grid boundary', () => {
+	it('composes a lane-cell incident across the grid boundary', () => {
 		const source = persistedNestedGridWithLaneCellDocument();
 		const document: LogicDocument = {
 			...source,
@@ -549,10 +550,21 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		expect(normalizeRegionCompositionModel(prepared.graph, input).status).toBe(
 			RegionCompositionModelStatus.Ready,
 		);
-		expect(solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input)).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid region grid requires an ordinary cell for its outer incident.',
-		});
+		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== NestedRegionLayoutStatus.Selected)
+			throw new Error(
+				`Expected selected lane-cell incident: ${selected.status}: ${selected.reason}`,
+			);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, selected)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, selected)).toBeUndefined();
+		expect(
+			selected.portals
+				.filter(({ relationId }) => relationId === 'leaves-grid')
+				.map(({ regionId }) => regionId),
+		).toEqual(['b', 'grid', 'outside']);
 	});
 
 	it('selects one right-lane incident with a local lane route and complete ownership', () => {
@@ -618,7 +630,12 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const cold = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(incremental).toEqual(cold);
 		expect(incremental.status).toBe(NestedRegionLayoutStatus.Selected);
-		expect(cache.stats).toMatchObject({ hits: 5, misses: 5 });
+		const statsAfterIncremental = cache.stats;
+		expect(
+			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input, cache),
+		).toEqual(cold);
+		expect(cache.stats.misses).toBe(statsAfterIncremental.misses);
+		expect(cache.stats.hits).toBeGreaterThan(statsAfterIncremental.hits);
 		const measurements = resizedB2(prepared.measurements);
 		const resized = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input, cache);
 		expect(resized).toEqual(solveRecursiveNestedRegionLayout(prepared.graph, measurements, input));

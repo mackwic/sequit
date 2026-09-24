@@ -1,16 +1,10 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, EndpointKind, type LogicDocument } from '../document/logic-document';
-import { createGraph } from '../graph/create-graph';
-import { satisfyMetricDemands } from './contract/metric-demand';
-import { crossingIncidence, crossingMetricDemands } from './grid-cell-crossing';
-import { solveContractedLaneCell } from './grid-cell-lane-incident-leaf';
-import {
-	laneCellIncidentFailure,
-	laneCellOutgoingContract,
-} from './grid-cell-lane-incident-policy';
-import { composeGridCellDisposition } from './grid-cell-layout';
+import { defined, type LogicDocument } from '../document/logic-document';
+import { createGraph, type LogicGraph } from '../graph/create-graph';
+import { crossingMargin } from './grid-cell-crossing';
+import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
+import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
+import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
-import { type ExternalGridIncident, outerGridIncidentPath } from './grid-cell-outer-incident';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
@@ -18,119 +12,45 @@ import {
 	GridCellSide,
 } from './grid-cell-types';
 import type { LayoutRelation } from './layout-types';
-import {
-	boundaryPortal,
-	type RegionIncidentPath,
-	type SolvedRecursiveRegion,
-} from './nested-region-recursive-geometry';
-import type { IncidentSides, RecursiveContext } from './nested-region-recursive-model-adapter';
+import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
+import { directChild, type RecursiveContext } from './nested-region-recursive-model-adapter';
 import {
 	type NestedOwnedRoute,
 	NestedPortalSide,
 	type NestedRegionPortal,
 } from './nested-region-types';
+import type {
+	ArrangementIncidentInput,
+	ArrangementPlaceInput,
+	ArrangementRouteInput,
+	RegionArrangement,
+} from './region-arrangement';
+import { RegionPortalSide } from './region-composition-types';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-layout';
 
-const LEAF_DETOUR_CLEARANCE = 16;
-
-function externalIncidents(
-	context: RecursiveContext,
-	regionId: string,
-	incidentSides: IncidentSides,
-): readonly ExternalGridIncident[] {
-	if (incidentSides.size > 2)
-		throw new UnsupportedRegionLeafLayoutError(
-			`Grid region ${regionId} accepts at most two outer incidents.`,
-		);
-	const incidents = [...incidentSides]
-		.sort(([left], [right]) => compareCanonicalStrings(left, right))
-		.map(([relationId, side]): ExternalGridIncident =>
-			externalIncident(context, regionId, relationId, side),
-		);
-	if (incidents.length === 2) {
-		const first = defined(incidents[0]);
-		const second = defined(incidents[1]);
-		const wrongSide = first.side !== NestedPortalSide.Top || second.side !== NestedPortalSide.Top;
-		const sameCell = first.cellId === second.cellId;
-		// Normalization creates an owner partition for every region, including empty ones.
-		const hasCrossings = defined(context.model.crossingRelationsByOwner.get(regionId)).length > 0;
-		if (wrongSide || sameCell || hasCrossings)
-			throw new UnsupportedRegionLeafLayoutError(
-				`Grid region ${regionId} requires two top incidents in distinct cells without inter-cell crossings.`,
-			);
-		const grid = defined(defined(context.model.regionsById.get(regionId)).definition.grid);
-		const firstColumn = defined(grid.cells.find(({ regionId: id }) => id === first.cellId)).column;
-		const secondColumn = defined(
-			grid.cells.find(({ regionId: id }) => id === second.cellId),
-		).column;
-		if (firstColumn === secondColumn)
-			throw new UnsupportedRegionLeafLayoutError(
-				`Grid region ${regionId} requires separate columns for two outer incidents.`,
-			);
-	}
-	return incidents;
-}
-
-function externalIncident(
-	context: RecursiveContext,
-	regionId: string,
-	relationId: string,
-	side: NestedPortalSide,
-): ExternalGridIncident {
-	if (side !== NestedPortalSide.Top && side !== NestedPortalSide.Bottom)
-		throw new UnsupportedRegionLeafLayoutError(
-			`Grid region ${regionId} requires a top or bottom outer incident.`,
-		);
-	const owned = defined(context.ownershipByRelationId.get(relationId));
-	const source = owned.sourcePathToOwner.includes(regionId);
-	let endpointId = owned.relation.to;
-	if (source) endpointId = owned.relation.from;
-	const endpoint = defined(context.graph.endpointsById.get(endpointId));
-	if (endpoint.kind !== EndpointKind.Node || endpoint.entity.groupId !== undefined)
-		throw new UnsupportedRegionLeafLayoutError(
-			`Grid region ${regionId} requires an ungrouped node for its outer incident.`,
-		);
-	const cellId = defined(context.model.leafByEndpointId.get(endpointId));
-	const cell = defined(context.model.regionsById.get(cellId));
-	if (cell.parentId !== regionId || cell.definition.lanePresentation !== undefined)
-		throw new UnsupportedRegionLeafLayoutError(
-			`Grid region ${regionId} requires an ordinary cell for its outer incident.`,
-		);
-	return { relationId, endpointId, cellId, source, side };
-}
-
 function gridCellInput(context: RecursiveContext, regionId: string): GridCellInput {
 	const region = defined(context.model.regionsById.get(regionId));
 	const grid = defined(region.definition.grid);
 	const childIds = new Set(region.childIds);
-	const crossings = defined(context.model.crossingRelationsByOwner.get(regionId));
-	if (childIds.size !== 4 || grid.cells.some(({ regionId: id }) => !childIds.has(id)))
+	const wrongCount = childIds.size !== 4 || grid.cells.length !== 4;
+	const foreignCell = grid.cells.some(({ regionId: id }) => !childIds.has(id));
+	if (wrongCount || foreignCell)
 		throw new UnsupportedRegionLeafLayoutError(`Region ${regionId} has an invalid grid cell set.`);
 	const cells = grid.cells.map((cell) => {
 		const { regionId: id, row, column } = cell;
 		const child = defined(context.model.regionsById.get(id));
-		if (child.childIds.length > 0)
-			throw new UnsupportedRegionLeafLayoutError(
-				`Grid cell ${id} must use an ordinary leaf layout in this bounded policy.`,
-			);
-		const incidentFailure = laneCellIncidentFailure({
-			graph: context.graph,
-			model: context.model,
-			gridId: regionId,
-			cell,
-			crossings,
-		});
-		if (incidentFailure !== undefined) throw new UnsupportedRegionLeafLayoutError(incidentFailure);
 		const base = { id, parentId: regionId, row, column };
 		if (child.definition.layout === undefined) return base;
 		return { ...base, layout: child.definition.layout };
 	});
-	const cellByEndpointId = new Map(
-		[...context.model.leafByEndpointId].filter(([, leafId]) => childIds.has(leafId)),
-	);
+	const cellByEndpointId = new Map<string, string>();
+	for (const [endpointId, leafId] of context.model.leafByEndpointId) {
+		const childId = gridChildForLeaf(context, regionId, leafId);
+		if (childId !== undefined && childIds.has(childId)) cellByEndpointId.set(endpointId, childId);
+	}
 	return {
 		rootId: regionId,
 		cells,
@@ -138,6 +58,21 @@ function gridCellInput(context: RecursiveContext, regionId: string): GridCellInp
 		minimumColumnWidths: grid.minimumColumnWidths,
 		minimumRowHeights: grid.minimumRowHeights,
 	};
+}
+
+function gridChildForLeaf(
+	context: RecursiveContext,
+	regionId: string,
+	leafId: string,
+): string | undefined {
+	let descendant = leafId;
+	for (let depth = 0; depth < context.model.regionsById.size; depth += 1) {
+		const parentId = context.model.regionsById.get(descendant)?.parentId;
+		if (parentId === regionId) return descendant;
+		if (parentId === undefined) return undefined;
+		descendant = parentId;
+	}
+	return undefined;
 }
 
 function localGridDocument(context: RecursiveContext, input: GridCellInput): LogicDocument {
@@ -159,106 +94,89 @@ function localGridDocument(context: RecursiveContext, input: GridCellInput): Log
 	};
 }
 
-type SolveChild = (
-	context: RecursiveContext,
-	regionId: string,
-	incidentSides: IncidentSides,
-) => SolvedRecursiveRegion;
-
-interface SolvedGrid {
-	readonly selected: GridCellSelected;
-	readonly children: ReadonlyMap<string, SolvedRecursiveRegion>;
+interface GridPlaced {
+	readonly graph: LogicGraph;
+	readonly input: GridCellInput;
+	readonly disposition: GridCellDisposition;
 }
 
-function childSide(side: NestedPortalSide): NestedPortalSide {
-	if (side === NestedPortalSide.Top) return NestedPortalSide.Bottom;
-	return NestedPortalSide.Top;
+const GRID_INCIDENT_SIDES: readonly RegionPortalSide[] = [
+	RegionPortalSide.Top,
+	RegionPortalSide.Right,
+	RegionPortalSide.Bottom,
+	RegionPortalSide.Left,
+];
+
+function cellTouchesSide(
+	cell: { readonly row: 0 | 1; readonly column: 0 | 1 },
+	side: RegionPortalSide,
+): boolean {
+	switch (side) {
+		case RegionPortalSide.Top:
+			return cell.row === 0;
+		case RegionPortalSide.Bottom:
+			return cell.row === 1;
+		case RegionPortalSide.Left:
+			return cell.column === 0;
+		case RegionPortalSide.Right:
+			return cell.column === 1;
+		default:
+			throw new Error('Unknown grid side.');
+	}
 }
 
-function withOuterCellIncident(
-	cellId: string,
-	incident: ExternalGridIncident,
-	solved: SolvedRecursiveRegion,
-): SolvedRecursiveRegion {
-	const original = defined(solved.incidentPaths.get(incident.relationId));
-	const piece = defined(original.pieces[0]);
-	let anchor = defined(piece.points.at(-1));
-	if (incident.source) anchor = defined(piece.points[0]);
-	const leftmost = Math.min(...solved.layout.elements.map(({ bounds }) => bounds.x));
-	// A reserved route in the leaf margin can pass beside local nodes and routes.
-	const corridorX = Math.max(-LEAF_DETOUR_CLEARANCE, leftmost - LEAF_DETOUR_CLEARANCE);
-	const portal = boundaryPortal({
-		relationId: incident.relationId,
-		endpointId: incident.endpointId,
-		regionId: cellId,
-		side: childSide(incident.side),
-		x: corridorX,
-		canvasHeight: solved.layout.height,
-	});
-	const bend = { x: corridorX, y: anchor.y };
-	let points = [portal.point, bend, anchor];
-	if (incident.source) points = [anchor, bend, portal.point];
-	const path: RegionIncidentPath = {
-		relationId: incident.relationId,
-		endpointId: incident.endpointId,
-		pieces: [{ relationId: incident.relationId, regionId: cellId, points }],
-		portals: [portal],
-	};
-	return {
-		...solved,
-		incidentPaths: new Map([...solved.incidentPaths, [incident.relationId, path]]),
-	};
+function gridIncidentSides(input: ArrangementIncidentInput): readonly RegionPortalSide[] {
+	const region = defined(input.context.model.regionsById.get(input.regionId));
+	const grid = defined(region.definition.grid);
+	if (
+		grid.cells.length !== 4 ||
+		grid.cells.some(({ regionId }) => !region.childIds.includes(regionId))
+	)
+		throw new UnsupportedRegionLeafLayoutError(
+			`Region ${input.regionId} has an invalid grid cell set.`,
+		);
+	const cell = grid.cells.find(({ regionId }) => regionId === input.childId);
+	if (cell === undefined)
+		throw new UnsupportedRegionLeafLayoutError(
+			`Region ${input.regionId} has an invalid grid cell set.`,
+		);
+	let outward = RegionPortalSide.Left;
+	if (cell.column === 1) outward = RegionPortalSide.Right;
+	if (input.inheritedSides === undefined) return [outward];
+	const direct = input.inheritedSides.filter((side) => cellTouchesSide(cell, side));
+	return [...new Set([...direct, outward, ...input.inheritedSides, ...GRID_INCIDENT_SIDES])];
 }
 
-function selectedGrid(
-	context: RecursiveContext,
-	regionId: string,
-	incidents: readonly ExternalGridIncident[],
-	solveChild: SolveChild,
-): SolvedGrid {
-	const input = gridCellInput(context, regionId);
-	const document = localGridDocument(context, input);
-	const graph = createGraph(document);
-	if (!graph.ok)
+function localGridGraph(document: LogicDocument, regionId: string): LogicGraph {
+	const result = createGraph(document);
+	if (!result.ok)
 		throw new UnsupportedRegionLeafLayoutError(
 			`Grid region ${regionId} has an invalid local graph.`,
 		);
-	const grid = normalize(graph.value, input);
+	return result.value;
+}
+
+function placeGrid(input: ArrangementPlaceInput): GridPlaced {
+	const gridInput = gridCellInput(input.context, input.regionId);
+	const document = localGridDocument(input.context, gridInput);
+	const graph = localGridGraph(document, input.regionId);
+	const grid = normalize(graph, gridInput);
 	if (typeof grid === 'string') throw new UnsupportedRegionLeafLayoutError(grid);
-	const crossing = defined(context.model.crossingRelationsByOwner.get(regionId));
-	const metricDemands = crossingMetricDemands(crossingIncidence(crossing));
-	const measurements = satisfyMetricDemands(
-		context.measurements,
-		metricDemands,
-		document.layout.direction,
-	);
-	const childContext = { ...context, measurements };
-	const solvedById = new Map<string, SolvedRecursiveRegion>();
-	const incidentByCell = new Map(incidents.map((incident) => [incident.cellId, incident]));
-	const children = grid.cells.map((cell) => {
-		const incident = incidentByCell.get(cell.id);
-		const sides = new Map<string, NestedPortalSide>();
-		if (incident?.cellId === cell.id) sides.set(incident.relationId, childSide(incident.side));
-		const contract = laneCellOutgoingContract({
-			graph: context.graph,
-			model: context.model,
-			gridId: regionId,
-			cell: { regionId: cell.id, row: cell.row, column: cell.column },
-			crossings: crossing,
-		});
-		let solved: SolvedRecursiveRegion;
-		if (contract === undefined) solved = solveChild(childContext, cell.id, sides);
-		else solved = solveContractedLaneCell(childContext, cell.id, contract);
-		if (incident?.cellId === cell.id) solved = withOuterCellIncident(cell.id, incident, solved);
-		solvedById.set(cell.id, solved);
+	const childrenById = new Map(input.children.map((child) => [child.id, child.solved]));
+	const solvedCells = grid.cells.map((cell) => {
+		const solved = childrenById.get(cell.id);
+		if (solved === undefined)
+			throw new UnsupportedRegionLeafLayoutError(
+				`Grid region ${input.regionId} has no solved child cell ${cell.id}.`,
+			);
 		return { cell, layout: solved.layout, ranks: solved.ranks };
 	});
-	const attempt = composeGridCellDisposition(graph.value, input, context.model, children);
-	if (attempt.status === GridCellLayoutStatus.Unsupported)
-		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
-	if (attempt.status === GridCellLayoutStatus.Unknown)
-		throw new UnknownRegionLeafLayoutError(attempt.reason);
-	return { selected: attempt, children: solvedById };
+	const margin = crossingMargin(input.crossings.length);
+	return {
+		graph,
+		input: gridInput,
+		disposition: layoutGridCellDisposition(solvedCells, gridInput, margin),
+	};
 }
 
 function routeById(selected: GridCellSelected): ReadonlyMap<string, LayoutRelation> {
@@ -273,26 +191,17 @@ function nestedPortals(selected: GridCellSelected): readonly NestedRegionPortal[
 	});
 }
 
-function ownedGridRoutes(
+function ownedGridCrossingRoutes(
 	context: RecursiveContext,
 	regionId: string,
 	selected: GridCellSelected,
 ): readonly NestedOwnedRoute[] {
 	const routes = routeById(selected);
 	const owned: NestedOwnedRoute[] = [];
-	for (const cell of selected.cells)
-		for (const relation of defined(context.model.localRelationsByOwner.get(cell.id))) {
-			const route = defined(routes.get(relation.id));
-			owned.push({
-				relationId: relation.id,
-				regionId: cell.id,
-				points: route.points,
-			});
-		}
 	for (const relation of defined(context.model.crossingRelationsByOwner.get(regionId))) {
 		const route = defined(routes.get(relation.id));
-		const sourceCellId = defined(context.model.leafByEndpointId.get(relation.from));
-		const targetCellId = defined(context.model.leafByEndpointId.get(relation.to));
+		const sourceCellId = directChild(context, regionId, relation.from);
+		const targetCellId = directChild(context, regionId, relation.to);
 		owned.push(
 			{
 				relationId: relation.id,
@@ -310,28 +219,46 @@ function ownedGridRoutes(
 	return owned;
 }
 
-/** Embed the bounded grid policy as a region disposition with disjoint outer incidents. */
-export function solveGridCellRecursiveRegion(
-	context: RecursiveContext,
-	regionId: string,
-	incidentSides: IncidentSides,
-	solveChild: SolveChild,
-): SolvedRecursiveRegion {
-	const incidents = externalIncidents(context, regionId, incidentSides);
-	const grid = selectedGrid(context, regionId, incidents, solveChild);
-	const { selected } = grid;
-	const incidentPaths = new Map<string, RegionIncidentPath>();
-	for (const incident of incidents)
-		incidentPaths.set(
-			incident.relationId,
-			outerGridIncidentPath(incident, regionId, selected, grid.children),
-		);
+function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveRegion {
+	const { context, regionId, placement } = input;
+	const childrenById = new Map(input.children.map(({ id, solved }) => [id, solved]));
+	const attempt = routePlacedGridCellDisposition({
+		graph: placement.graph,
+		input: placement.input,
+		model: context.model,
+		disposition: placement.disposition,
+	});
+	if (attempt.status === GridCellLayoutStatus.Unsupported)
+		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
+	if (attempt.status === GridCellLayoutStatus.Unknown)
+		throw new UnknownRegionLeafLayoutError(attempt.reason, attempt.code, undefined, regionId);
+	const incidentPaths = gridCellInheritedIncidentPaths({
+		context,
+		regionId,
+		incidentSides: input.incidentSides,
+		selected: attempt,
+		children: childrenById,
+	});
+	const placements = input.children.map(({ id }) =>
+		defined(attempt.cells.find((cell) => cell.id === id)),
+	);
+	const placedChildren = translatedChildren(input.children, placements);
 	return {
-		layout: selected.layout,
+		layout: attempt.layout,
 		ranks: { bands: [], byEndpointId: new Map() },
-		regions: selected.cells,
-		portals: nestedPortals(selected),
-		ownedRoutes: ownedGridRoutes(context, regionId, selected),
+		regions: placedChildren.regions,
+		portals: [...placedChildren.portals, ...nestedPortals(attempt)],
+		ownedRoutes: [
+			...placedChildren.ownedRoutes,
+			...ownedGridCrossingRoutes(context, regionId, attempt),
+		],
 		incidentPaths,
 	};
 }
+
+/** Grid placement and routing implement the same contract as the row arrangement. */
+export const gridCellArrangement: RegionArrangement<GridPlaced> = {
+	incidentSides: gridIncidentSides,
+	place: placeGrid,
+	route: routeGrid,
+};

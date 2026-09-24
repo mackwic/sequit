@@ -27,11 +27,15 @@ function strictlyBetween(value: number, minimum: number, maximum: number): boole
 	return value > minimum && value < maximum;
 }
 
+function sameCoordinate(left: number, right: number): boolean {
+	return Math.abs(left - right) <= 1e-6;
+}
+
 function portalOnBoundary(portal: RegionPortal, region: RegionGeometryPlacement): boolean {
 	const { x, y, width, height } = region.bounds;
 	const point = portal.point;
-	if (portal.localPoint.x !== point.x - x) return false;
-	if (portal.localPoint.y !== point.y - y) return false;
+	if (!sameCoordinate(portal.localPoint.x, point.x - x)) return false;
+	if (!sameCoordinate(portal.localPoint.y, point.y - y)) return false;
 	const horizontal = strictlyBetween(point.x, x, x + width);
 	const vertical = strictlyBetween(point.y, y, y + height);
 	const boundaryBySide = {

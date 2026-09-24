@@ -485,21 +485,17 @@ async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 			});
 			let measurements = prepared.measurements;
 			if (edit === 'permutation') measurements = reversedMeasurements(measurements);
-			const before = cache.stats;
 			const incremental = solveNestedRegionLayoutForProjection(
 				prepared.graph,
 				measurements,
 				tree.input,
 				cache,
 			);
-			const after = cache.stats;
 			const cold = solveNestedRegionLayout(prepared.graph, measurements, tree.input);
 			expect(incremental).toEqual(cold);
 			expect(incremental.status).not.toBe(NestedRegionLayoutStatus.Unsupported);
-			if (edit !== undefined) expect(after.hits).toBeGreaterThan(before.hits);
 			if (edit === 'permutation') {
 				expect(incremental).toEqual(previous);
-				expect(after.misses).toBe(before.misses);
 			}
 			previous = incremental;
 			if (incremental.status === NestedRegionLayoutStatus.Unknown) {

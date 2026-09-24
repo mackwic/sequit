@@ -1,4 +1,3 @@
-import { GRID_REGION_PRESENTATION_SCHEMA } from '../document/logic-document';
 import {
 	normalizeRegionPresentation,
 	RegionPresentationStatus,
@@ -6,8 +5,6 @@ import {
 } from '../document/region-presentation';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import { solveGridCellLayout } from './grid-cell-layout';
-import { type GridCellInput, GridCellLayoutStatus } from './grid-cell-types';
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
@@ -21,6 +18,8 @@ import {
 	type NestedRegionLayoutAttempt,
 	NestedRegionLayoutStatus,
 } from './nested-region-types';
+import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import type { RegionIncidentUnknownCode } from './region-incident-contract';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export enum LayoutRegionKind {
@@ -85,12 +84,24 @@ export class UnsupportedGridCellLayoutError extends Error {
 }
 
 export class UnknownGridCellLayoutError extends Error {
+	readonly code: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
+	readonly regionId: string | undefined;
+	readonly relationId: string | undefined;
+
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
+		diagnostic?: {
+			readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
+			readonly regionId?: string;
+			readonly relationId?: string;
+		},
 	) {
 		super(`Grid cell layout is unresolved for document ${documentId}: ${reason}`);
 		this.name = 'UnknownGridCellLayoutError';
+		this.code = diagnostic?.code;
+		this.regionId = diagnostic?.regionId;
+		this.relationId = diagnostic?.relationId;
 	}
 }
 
@@ -118,60 +129,6 @@ export function normalizeRootRegion(graph: LogicGraph, ranks: TopologicalRanks):
 	};
 }
 
-function gridCellInput(graph: LogicGraph): GridCellInput {
-	const presentation = graph.document.regionPresentation;
-	if (presentation?.schemaVersion !== GRID_REGION_PRESENTATION_SCHEMA)
-		throw new UnsupportedGridCellLayoutError(graph.document.id, 'Missing grid presentation.');
-	const assignments = new Map<string, string>();
-	for (const endpoint of [
-		...graph.document.groups,
-		...graph.document.nodes,
-		...graph.document.junctions,
-	]) {
-		if (endpoint.regionId !== undefined) assignments.set(endpoint.id, endpoint.regionId);
-	}
-	const normalized = normalizeRegionPresentation(graph.document, presentation.regions, assignments);
-	if (normalized.status !== RegionPresentationStatus.Ready)
-		throw new UnsupportedGridCellLayoutError(
-			graph.document.id,
-			'Invalid region hierarchy or ownership.',
-		);
-	if (normalized.value.regions.length !== 5)
-		throw new UnsupportedGridCellLayoutError(
-			graph.document.id,
-			'A grid requires exactly four direct child regions.',
-		);
-	const regionsById = new Map(normalized.value.regions.map((region) => [region.id, region]));
-	const cells = presentation.grid.cells.map(({ regionId, row, column }) => {
-		const region = regionsById.get(regionId);
-		return {
-			id: regionId,
-			parentId: region?.parentId ?? '',
-			row,
-			column,
-		};
-	});
-	return {
-		rootId: ROOT_LAYOUT_REGION_ID,
-		cells,
-		cellByEndpointId: normalized.value.regionByEndpointId,
-		minimumColumnWidths: presentation.grid.minimumColumnWidths,
-		minimumRowHeights: presentation.grid.minimumRowHeights,
-	};
-}
-
-function layoutWithGridCells(
-	graph: LogicGraph,
-	measurements: LayoutMeasurements,
-	cache?: NestedRegionLocalLayoutCache,
-): LayoutResult {
-	const attempt = solveGridCellLayout(graph, measurements, gridCellInput(graph), cache);
-	if (attempt.status === GridCellLayoutStatus.Selected) return attempt.layout;
-	if (attempt.status === GridCellLayoutStatus.Unsupported)
-		throw new UnsupportedGridCellLayoutError(graph.document.id, attempt.reason);
-	throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason);
-}
-
 export function nestedRegionInput(graph: LogicGraph): NestedRegionInput {
 	const definitions = graph.document.regionPresentation?.regions ?? [];
 	const assignments = new Map<string, string>();
@@ -188,9 +145,13 @@ export function nestedRegionInput(graph: LogicGraph): NestedRegionInput {
 			graph.document.id,
 			'Invalid region hierarchy or ownership.',
 		);
-	const regions: NestedRegionInput['regions'][number][] = [
-		{ id: ROOT_LAYOUT_REGION_ID, layoutOrder: 'a0' },
-	];
+	let root: NestedRegionInput['regions'][number] = {
+		id: ROOT_LAYOUT_REGION_ID,
+		layoutOrder: 'a0',
+	};
+	if (graph.document.regionPresentation?.grid !== undefined)
+		root = { ...root, grid: graph.document.regionPresentation.grid };
+	const regions: NestedRegionInput['regions'][number][] = [root];
 	for (const region of normalized.value.regions) {
 		if (region.id === ROOT_LAYOUT_REGION_ID) continue;
 		if (region.parentId === undefined || region.layoutOrder === undefined)
@@ -216,8 +177,16 @@ function layoutWithNestedRegions(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	execution: LayoutOptions | NestedRegionExecutionContext,
+	gridRoot = false,
 ): LayoutResult {
-	const input = nestedRegionInput(graph);
+	let input: NestedRegionInput;
+	try {
+		input = nestedRegionInput(graph);
+	} catch (error) {
+		if (gridRoot && error instanceof UnsupportedNestedRegionLayoutError)
+			throw new UnsupportedGridCellLayoutError(graph.document.id, error.reason);
+		throw error;
+	}
 	let attempt: NestedRegionLayoutAttempt;
 	if ('options' in execution && execution.cache !== undefined)
 		attempt = solveNestedRegionLayoutForProjection(graph, measurements, input, execution.cache);
@@ -227,21 +196,17 @@ function layoutWithNestedRegions(
 			...attempt.layout,
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
 		};
-	if (attempt.status === NestedRegionLayoutStatus.Unsupported)
+	if (attempt.status === NestedRegionLayoutStatus.Unsupported) {
+		if (gridRoot) throw new UnsupportedGridCellLayoutError(graph.document.id, attempt.reason);
 		throw new UnsupportedNestedRegionLayoutError(graph.document.id, attempt.reason);
+	}
+	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);
 	throw new UnknownNestedRegionLayoutError(graph.document.id, attempt.reason);
 }
 
 function layoutOptions(execution: LayoutOptions | NestedRegionExecutionContext): LayoutOptions {
 	if ('options' in execution) return execution.options;
 	return execution;
-}
-
-function layoutCache(
-	execution: LayoutOptions | NestedRegionExecutionContext,
-): NestedRegionLocalLayoutCache | undefined {
-	if ('options' in execution) return execution.cache;
-	return undefined;
 }
 
 function layoutWithRootRegionExecution(
@@ -257,7 +222,7 @@ function layoutWithRootRegionExecution(
 	if (region.policy === LayoutRegionPolicy.NestedRegions)
 		return layoutWithNestedRegions(region.graph, measurements, execution);
 	if (region.policy === LayoutRegionPolicy.GridCells)
-		return layoutWithGridCells(region.graph, measurements, layoutCache(execution));
+		return layoutWithNestedRegions(region.graph, measurements, execution, true);
 	const attempt = solveSharedLaneLayout(region.graph, region.ranks, measurements, options);
 	if (attempt.status === SharedLaneLayoutStatus.Selected) return attempt.layout;
 	if (attempt.status === SharedLaneLayoutStatus.Unsupported)

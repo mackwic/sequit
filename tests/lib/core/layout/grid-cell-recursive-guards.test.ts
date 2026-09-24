@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { composeGridCellDisposition } from '../../../../src/lib/core/layout/grid-cell-layout';
+import { gridCellArrangement } from '../../../../src/lib/core/layout/grid-cell-recursive-region';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
@@ -14,11 +15,107 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
+import { UnsupportedRegionLeafLayoutError } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithLaneCellDocument } from './nested-region-fixture';
 
 describe('recursive grid boundaries', () => {
+	it('rejects incomplete or foreign cell inventories and unknown direct children before arrangement', () => {
+		const document = persistedNestedGridWithLaneCellDocument();
+		const prepared = prepareLayoutDocument(document);
+		const input = nestedRegionInput(prepared.graph);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized region tree.');
+		const context = {
+			graph: prepared.graph,
+			model: normalized.model,
+			measurements: prepared.measurements,
+			cache: undefined,
+			ownershipByRelationId: new Map(
+				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
+			),
+		};
+		const relation = defined(document.relations.find(({ id }) => id === 'across-grid'));
+		const incident = {
+			context,
+			regionId: 'grid',
+			childId: 'a',
+			relation,
+			role: RegionIncidentRole.Source,
+			preferredSide: RegionPortalSide.Top,
+		};
+		expect(() => gridCellArrangement.incidentSides({ ...incident, childId: 'ghost' })).toThrow(
+			UnsupportedRegionLeafLayoutError,
+		);
+		const gridRegion = defined(normalized.model.regionsById.get('grid'));
+		const grid = defined(gridRegion.definition.grid);
+		const withCells = (cells: typeof grid.cells) => ({
+			...context,
+			model: {
+				...normalized.model,
+				regionsById: new Map([
+					...normalized.model.regionsById,
+					[
+						'grid',
+						{
+							...gridRegion,
+							definition: {
+								...gridRegion.definition,
+								grid: { ...grid, cells },
+							},
+						},
+					],
+				]),
+			},
+		});
+		const incomplete = withCells(grid.cells.slice(0, 3));
+		expect(() => gridCellArrangement.incidentSides({ ...incident, context: incomplete })).toThrow(
+			UnsupportedRegionLeafLayoutError,
+		);
+		const foreign = withCells([
+			{ ...defined(grid.cells[0]), regionId: 'ghost' },
+			...grid.cells.slice(1),
+		]);
+		expect(() => gridCellArrangement.incidentSides({ ...incident, context: foreign })).toThrow(
+			UnsupportedRegionLeafLayoutError,
+		);
+		expect(() =>
+			gridCellArrangement.place({
+				context: incomplete,
+				regionId: 'grid',
+				children: [],
+				crossings: [],
+				preferredSide: RegionPortalSide.Top,
+			}),
+		).toThrow(UnsupportedRegionLeafLayoutError);
+		expect(() =>
+			gridCellArrangement.place({
+				context,
+				regionId: 'grid',
+				children: [],
+				crossings: [],
+				preferredSide: RegionPortalSide.Top,
+			}),
+		).toThrow('Grid region grid has no solved child cell a.');
+		const cyclicLocalDocument = {
+			...document,
+			relations: [...document.relations, { id: 'local-cycle', from: 'a-target', to: 'a-target' }],
+		};
+		expect(() =>
+			gridCellArrangement.place({
+				context: { ...context, graph: { ...prepared.graph, document: cyclicLocalDocument } },
+				regionId: 'grid',
+				children: [],
+				crossings: [],
+				preferredSide: RegionPortalSide.Top,
+			}),
+		).toThrow('Grid region grid has an invalid local graph.');
+	});
+
 	it('rejects a damaged published lane through the complete grid validator', () => {
 		const document = persistedNestedGridWithLaneCellDocument();
 		const prepared = prepareLayoutDocument(document);

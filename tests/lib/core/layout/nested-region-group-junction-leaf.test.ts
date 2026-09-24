@@ -121,7 +121,7 @@ describe('groups and junctions in recursive region leaves', () => {
 		expect(middle.localLayout.relations.map(({ id }) => id)).toEqual(['middle-local']);
 	});
 
-	it('reports a crossing from a group member as unsupported until its boundary contract exists', () => {
+	it('routes a group-member crossing out of its containing group', () => {
 		const source = regionDocument();
 		const document: LogicDocument = {
 			...source,
@@ -144,11 +144,16 @@ describe('groups and junctions in recursive region leaves', () => {
 			regionByEndpointId: new Map([...base.regionByEndpointId, ['left-group', 'left']]),
 		};
 		const prepared = prepareLayoutDocument(document);
+		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(selected.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (selected.status !== NestedRegionLayoutStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error(normalized.diagnostic.message);
+		expect(validateRegionCompositionGeometry(normalized.model, selected)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, selected)).toBeUndefined();
 		expect(
-			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
-		).toMatchObject({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
+			selected.layout.relations.find(({ id }) => id === 'across-middle')?.points.length,
+		).toBeGreaterThan(1);
 	});
 });

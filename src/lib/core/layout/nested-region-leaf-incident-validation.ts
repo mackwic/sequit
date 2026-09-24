@@ -1,4 +1,4 @@
-import { defined, EndpointKind, type LogicRelation } from '../document/logic-document';
+import { defined, type LogicRelation } from '../document/logic-document';
 import type { Bounds, LayoutElement, Point } from './layout-types';
 import { orthogonal, samePoint, segmentEnters } from './nested-region-geometry-primitives';
 import { pathsTouchWithoutBridge } from './nested-region-leaf-incident-contacts';
@@ -151,15 +151,11 @@ function foreignNodeFailure(
 	model: RegionCompositionModel,
 	candidate: NestedRegionSelected,
 ): RegionGeometryDiagnostic | undefined {
-	const endpoint = candidate.layout.elements.find(({ id }) => id === incident.endpointId);
-	const groupId = model.parentGroupByEndpointId.get(incident.endpointId);
-	let directGroupId: string | undefined;
-	if (endpoint?.kind === EndpointKind.Node && groupId !== undefined)
-		if (!model.parentGroupByEndpointId.has(groupId)) directGroupId = groupId;
+	const containingGroups = ancestorGroupIds(model, incident.endpointId);
 	for (const foreign of candidate.layout.elements) {
 		if (foreign.id === incident.endpointId) continue;
 		if (model.leafByEndpointId.get(foreign.id) !== incident.leafId) continue;
-		if (foreign.id === directGroupId && crossesDirectGroupFace(incident, foreign)) continue;
+		if (containingGroups.has(foreign.id) && exitsContainingGroup(incident, foreign)) continue;
 		if (segmentEnters(incident.piece.points, foreign.bounds))
 			return incidentDiagnostic(
 				incident,
@@ -171,19 +167,33 @@ function foreignNodeFailure(
 	return undefined;
 }
 
-function crossesDirectGroupFace(incident: LeafIncident, group: LayoutElement): boolean {
+function ancestorGroupIds(model: RegionCompositionModel, endpointId: string): ReadonlySet<string> {
+	const ids = new Set<string>();
+	let groupId = model.parentGroupByEndpointId.get(endpointId);
+	for (let depth = 0; depth < model.parentGroupByEndpointId.size; depth += 1) {
+		if (groupId === undefined || ids.has(groupId)) break;
+		ids.add(groupId);
+		groupId = model.parentGroupByEndpointId.get(groupId);
+	}
+	return ids;
+}
+
+/** A direct attachment may leave any group that contains its endpoint. */
+function exitsContainingGroup(incident: LeafIncident, group: LayoutElement): boolean {
 	if (incident.piece.points.length !== 2) return false;
 	const { anchor, portal } = incident;
 	const { x, y, width, height } = group.bounds;
 	const right = x + width;
 	const bottom = y + height;
-	const level = anchor.y === portal.point.y;
-	const insideHeight = anchor.y > y && anchor.y < bottom;
-	if (!level || !insideHeight) return false;
-	const insideWidth = anchor.x > x && anchor.x < right;
-	if (!insideWidth) return false;
-	if (portal.side === NestedPortalSide.Left) return portal.point.x < x;
-	return portal.side === NestedPortalSide.Right && portal.point.x > right;
+	if (anchor.x <= x || anchor.x >= right) return false;
+	if (anchor.y <= y || anchor.y >= bottom) return false;
+	if (portal.side === NestedPortalSide.Left)
+		return anchor.y === portal.point.y && portal.point.x < x;
+	if (portal.side === NestedPortalSide.Right)
+		return anchor.y === portal.point.y && portal.point.x > right;
+	if (portal.side === NestedPortalSide.Top)
+		return anchor.x === portal.point.x && portal.point.y < y;
+	return anchor.x === portal.point.x && portal.point.y > bottom;
 }
 
 function localRouteFailure(

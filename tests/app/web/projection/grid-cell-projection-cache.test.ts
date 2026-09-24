@@ -16,7 +16,7 @@ it('keeps grid child layouts local to a projection when group metrics and track 
 	const source = persistedGridDocument();
 	const projection = new DocumentProjection(source);
 	const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
-	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrCompute');
+	const resolver = vi.spyOn(NestedRegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const original = await projection.createCanvasModel(sizes);
 	const cache = resolver.mock.contexts[0];
 	if (!(cache instanceof NestedRegionLocalLayoutCache)) throw new Error('Missing grid child cache');

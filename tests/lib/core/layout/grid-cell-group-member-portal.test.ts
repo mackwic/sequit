@@ -19,6 +19,7 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithGroupPortalDocument } from './nested-region-fixture';
@@ -224,8 +225,10 @@ describe('direct group member crossing an internal grid cell', () => {
 				return { ...node, layoutOrder: orderKey('a3') };
 			}),
 		};
-		expect(attempt(blocked).result).toEqual({
+		expect(attempt(blocked).result).toMatchObject({
 			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+			regionId: 'grid',
 			reason: 'Cross-cell relation group-crossing enters element b-obstacle.',
 		});
 	});
@@ -290,21 +293,25 @@ describe('direct group member crossing an internal grid cell', () => {
 		);
 	});
 
-	it('keeps an outer incident and a nested group outside the member portal contract', () => {
+	it('routes an outer member incident, a mixed grid and nested groups', () => {
 		const outer = memberDocument('b', 'outside');
-		expect(attempt(outer).result).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
+		const outerResult = selected(outer).result;
+		expect(
+			outerResult.ownedRoutes
+				.filter(({ relationId }) => relationId === 'group-crossing')
+				.map(({ regionId }) => regionId),
+		).toEqual(['b', 'grid', '@root', 'outside']);
 		const source = memberDocument();
 		const mixed: LogicDocument = {
 			...source,
 			relations: [...source.relations, { id: 'outer-incident', from: 'a-target', to: 'outside' }],
 		};
-		expect(attempt(mixed).result).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid region grid does not combine direct group crossings with outer incidents.',
-		});
+		const mixedResult = selected(mixed).result;
+		expect(
+			mixedResult.ownedRoutes
+				.filter(({ relationId }) => relationId === 'outer-incident')
+				.map(({ regionId }) => regionId),
+		).toEqual(['a', 'grid', '@root', 'outside']);
 		const inner = defined(source.groups.find(({ id }) => id === 'cell-group'));
 		const nested = { ...inner, groupId: 'outer-group' };
 		delete nested.regionId;
@@ -312,9 +319,11 @@ describe('direct group member crossing an internal grid cell', () => {
 			...source,
 			groups: [{ ...inner, id: 'outer-group', layoutOrder: orderKey('a1') }, nested],
 		};
-		expect(attempt(document).result).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
+		const nestedResult = selected(document).result;
+		expect(
+			nestedResult.ownedRoutes
+				.filter(({ relationId }) => relationId === 'group-crossing')
+				.map(({ regionId }) => regionId),
+		).toEqual(['b', 'grid', 'd']);
 	});
 });

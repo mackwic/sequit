@@ -1,10 +1,4 @@
-import {
-	defined,
-	EndpointKind,
-	type LogicDocument,
-	type LogicRelation,
-	REGION_COMPOSITION_PERSISTENCE_FORMAT,
-} from '../document/logic-document';
+import { defined, type LogicDocument, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { GridCellDefinition, GridCellInput } from './grid-cell-types';
 import type { LayoutMeasurements } from './layout-types';
@@ -18,18 +12,6 @@ export interface GridModel {
 interface RelationPartition {
 	readonly localRelations: ReadonlyMap<string, readonly LogicRelation[]>;
 	readonly crossing: readonly LogicRelation[];
-}
-
-type RelationEndpoint = LogicGraph['relations'][number]['source'];
-
-function ungroupedNode(endpoint: RelationEndpoint): boolean {
-	return endpoint.kind === EndpointKind.Node && endpoint.entity.groupId === undefined;
-}
-
-function directGroupMember(graph: LogicGraph, endpoint: RelationEndpoint): boolean {
-	if (endpoint.kind !== EndpointKind.Node || endpoint.entity.groupId === undefined) return false;
-	const parent = graph.endpointsById.get(endpoint.entity.groupId);
-	return parent?.kind === EndpointKind.Group && parent.entity.groupId === undefined;
 }
 
 function envelopeFailure(graph: LogicGraph, input: GridCellInput): string | undefined {
@@ -98,38 +80,6 @@ function ownershipFailure(
 	return undefined;
 }
 
-function crossingEndpointFailure(
-	graph: LogicGraph,
-	source: RelationEndpoint,
-	target: RelationEndpoint,
-): string | undefined {
-	const nodeEndpoints = source.kind === EndpointKind.Node && target.kind === EndpointKind.Node;
-	const groupToNode = source.kind === EndpointKind.Group && target.kind === EndpointKind.Node;
-	const nodeToGroup = source.kind === EndpointKind.Node && target.kind === EndpointKind.Group;
-	const directGroup = groupToNode || nodeToGroup;
-	if (!nodeEndpoints && !directGroup)
-		return 'Cross-cell routes currently require ungrouped node endpoints.';
-	const sourceGroupedNode =
-		source.kind === EndpointKind.Node && source.entity.groupId !== undefined;
-	const targetGroupedNode =
-		target.kind === EndpointKind.Node && target.entity.groupId !== undefined;
-	if (sourceGroupedNode || targetGroupedNode) {
-		const internalGrid = graph.document.persistenceFormat === REGION_COMPOSITION_PERSISTENCE_FORMAT;
-		const memberToNode =
-			(directGroupMember(graph, source) && ungroupedNode(target)) ||
-			(directGroupMember(graph, target) && ungroupedNode(source));
-		if (!internalGrid || !memberToNode)
-			return 'Cross-cell routes currently require ungrouped node endpoints.';
-	}
-	const sourceNestedGroup =
-		source.kind === EndpointKind.Group && source.entity.groupId !== undefined;
-	const targetNestedGroup =
-		target.kind === EndpointKind.Group && target.entity.groupId !== undefined;
-	if (sourceNestedGroup || targetNestedGroup)
-		return 'Cross-cell routes to nested groups are outside this bounded grid proof.';
-	return undefined;
-}
-
 function partitionRelations(
 	graph: LogicGraph,
 	input: GridCellInput,
@@ -137,15 +87,13 @@ function partitionRelations(
 ): RelationPartition | string {
 	const localRelations = new Map(cells.map(({ id }) => [id, [] as LogicRelation[]]));
 	const crossing: LogicRelation[] = [];
-	for (const { relation, source, target } of graph.relations) {
+	for (const { relation } of graph.relations) {
 		const sourceCell = defined(input.cellByEndpointId.get(relation.from));
 		const targetCell = defined(input.cellByEndpointId.get(relation.to));
 		if (sourceCell === targetCell) {
 			defined(localRelations.get(sourceCell)).push(relation);
 			continue;
 		}
-		const failure = crossingEndpointFailure(graph, source, target);
-		if (failure !== undefined) return failure;
 		crossing.push(relation);
 	}
 	return { localRelations, crossing };

@@ -9,7 +9,11 @@ import {
 	crossingMetricDemands,
 	crossingPortY,
 } from './grid-cell-crossing';
-import { layoutGridCellDisposition, type SolvedGridCell } from './grid-cell-disposition';
+import {
+	type GridCellDisposition,
+	layoutGridCellDisposition,
+	type SolvedGridCell,
+} from './grid-cell-disposition';
 import { normalize } from './grid-cell-model';
 import { normalizeGridCellRegionModel } from './grid-cell-region-model';
 import { solveGridCellRegionLeaves } from './grid-cell-region-solver';
@@ -22,7 +26,7 @@ import {
 	type GridCellSelected,
 	GridCellSide,
 } from './grid-cell-types';
-import { validateGridCellGeometry } from './grid-cell-validation';
+import { validateGridCellGeometryDiagnostic } from './grid-cell-validation';
 import type {
 	Bounds,
 	LayoutElement,
@@ -38,12 +42,14 @@ import {
 	RegionRelationKind,
 	type RegionRelationOwnership,
 } from './region-composition-model';
+import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 
 const OUTER_RAIL_OFFSET = 48;
 const TOP_BUS_Y = 24;
 
 interface CrossingRouteContext {
 	readonly cells: readonly GridCellPlacement[];
+	readonly cellByEndpointId: GridCellInput['cellByEndpointId'];
 	readonly gridRight: number;
 	readonly margin: number;
 	readonly index: number;
@@ -54,7 +60,8 @@ function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };
 }
 
-function unknown(reason: string): GridCellLayoutAttempt {
+function unknown(reason: string, code?: RegionGeometryDiagnosticCode): GridCellLayoutAttempt {
+	if (code !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, code };
 	return { status: GridCellLayoutStatus.Unknown, reason };
 }
 
@@ -74,10 +81,10 @@ function crossingRoute(
 	owned: RegionRelationOwnership,
 	context: CrossingRouteContext,
 ): { readonly route: LayoutRelation; readonly portals: readonly [GridCellPortal, GridCellPortal] } {
-	const { relation, sourceLeafId, targetLeafId } = owned;
-	const { cells, gridRight, margin, index, incidence } = context;
-	const sourceCell = defined(cells.find(({ id }) => id === sourceLeafId));
-	const targetCell = defined(cells.find(({ id }) => id === targetLeafId));
+	const { relation } = owned;
+	const { cells, cellByEndpointId, gridRight, margin, index, incidence } = context;
+	const sourceCell = defined(cells.find(({ id }) => id === cellByEndpointId.get(relation.from)));
+	const targetCell = defined(cells.find(({ id }) => id === cellByEndpointId.get(relation.to)));
 	function endpoint(
 		cell: GridCellPlacement,
 		endpointId: string,
@@ -178,14 +185,28 @@ export function composeGridCellDisposition(
 	const crossingOwnership = model.relations.filter(
 		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId,
 	);
+	const margin = crossingMargin(crossingOwnership.length);
+	const disposition = layoutGridCellDisposition(children, input, margin);
+	return routePlacedGridCellDisposition({ graph, input, model, disposition });
+}
+
+interface PlacedGridCellInput {
+	readonly graph: LogicGraph;
+	readonly input: GridCellInput;
+	readonly model: RegionCompositionModel;
+	readonly disposition: GridCellDisposition;
+}
+
+/** Route a grid whose child placements have already been selected. */
+export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellLayoutAttempt {
+	const { graph, input, model, disposition } = placed;
+	const crossingOwnership = model.relations.filter(
+		({ kind, ownerId }) => kind === RegionRelationKind.Crossing && ownerId === input.rootId,
+	);
 	const crossing = crossingOwnership.map(({ relation }) => relation);
 	const incidence = crossingIncidence(crossing);
 	const margin = crossingMargin(crossing.length);
-	const { cells, columnWidths, rowHeights, gridRight, gridBottom } = layoutGridCellDisposition(
-		children,
-		input,
-		margin,
-	);
+	const { cells, columnWidths, rowHeights, gridRight, gridBottom } = disposition;
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,
@@ -197,7 +218,14 @@ export function composeGridCellDisposition(
 		cell.localLayout.relations.map((relation) => moveRelation(relation, cell.translation)),
 	);
 	const crossingRoutes = crossingOwnership.map((owned, index) =>
-		crossingRoute(owned, { cells, gridRight, margin, index, incidence }),
+		crossingRoute(owned, {
+			cells,
+			cellByEndpointId: input.cellByEndpointId,
+			gridRight,
+			margin,
+			index,
+			incidence,
+		}),
 	);
 	const routesById = new Map(
 		[...localRoutes, ...crossingRoutes.map(({ route }) => route)].map((route) => [route.id, route]),
@@ -225,7 +253,7 @@ export function composeGridCellDisposition(
 		rowHeights,
 		portals: crossingRoutes.flatMap(({ portals }) => portals),
 	};
-	const failure = validateGridCellGeometry(candidate, graph, input);
-	if (failure !== undefined) return unknown(failure);
+	const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
+	if (failure !== undefined) return unknown(failure.message, failure.code);
 	return candidate;
 }

@@ -48,6 +48,16 @@ export enum RegionGeometryDiagnosticCode {
 	LocalRelationMissing = 'local-relation-missing',
 	LocalRelationNonOrthogonal = 'local-relation-non-orthogonal',
 	IncidentTouchesLocalRelation = 'incident-touches-local-relation',
+	GridCellGeometry = 'grid-cell-geometry',
+	GridElementGeometry = 'grid-element-geometry',
+	GridGroupGeometry = 'grid-group-geometry',
+	GridLaneGeometry = 'grid-lane-geometry',
+	GridRelationGeometry = 'grid-relation-geometry',
+	GridCrossingPort = 'grid-crossing-port',
+	GridCrossingPortal = 'grid-crossing-portal',
+	GridCrossingEntersCell = 'grid-crossing-enters-cell',
+	GridCrossingEntersElement = 'grid-crossing-enters-element',
+	GridCrossingOverlap = 'grid-crossing-overlap',
 }
 
 export enum RegionIncidentRole {

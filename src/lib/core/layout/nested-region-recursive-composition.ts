@@ -15,10 +15,26 @@ import {
 } from './nested-region-recursive-model-adapter';
 import type {
 	NestedOwnedRoute,
-	NestedPortalSide,
 	NestedRegionPlacement,
 	NestedRegionPortal,
 } from './nested-region-types';
+import { NestedPortalSide } from './nested-region-types';
+import { RegionPortalSide } from './region-composition-types';
+
+function nestedSide(side: RegionPortalSide): NestedPortalSide {
+	switch (side) {
+		case RegionPortalSide.Top:
+			return NestedPortalSide.Top;
+		case RegionPortalSide.Right:
+			return NestedPortalSide.Right;
+		case RegionPortalSide.Bottom:
+			return NestedPortalSide.Bottom;
+		case RegionPortalSide.Left:
+			return NestedPortalSide.Left;
+		default:
+			throw new Error(`Unsupported region portal side ${String(side)}.`);
+	}
+}
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;
@@ -128,13 +144,15 @@ export function composeCrossings(
 export function inheritedIncidentPaths(
 	input: PositionedChildren & {
 		readonly incidentSides: IncidentSides;
+		readonly layoutWidth: number;
 		readonly layoutHeight: number;
 	},
 ): ReadonlyMap<string, RegionIncidentPath> {
 	const { context, regionId, children, placements } = input;
 	const region = defined(context.model.regionsById.get(regionId));
 	const incidentPaths = new Map<string, RegionIncidentPath>();
-	for (const [relationId, side] of input.incidentSides) {
+	for (const [relationId, sides] of input.incidentSides) {
+		const side = nestedSide(defined(sides[0]));
 		const owned = defined(context.ownershipByRelationId.get(relationId));
 		const isSource = owned.sourcePathToOwner.includes(regionId);
 		let endpointId = owned.relation.to;
@@ -155,6 +173,8 @@ export function inheritedIncidentPaths(
 			regionId,
 			side,
 			x: childPortal.point.x,
+			y: childPortal.point.y,
+			canvasWidth: input.layoutWidth,
 			canvasHeight: input.layoutHeight,
 		});
 		let points = [portal.point, childPortal.point];

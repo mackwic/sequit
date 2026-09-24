@@ -16,6 +16,11 @@ import {
 	nestedRegionLocalLayoutKey,
 } from '../../../../src/lib/core/layout/nested-region-local-cache';
 import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/region-incident-contract';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
@@ -72,9 +77,9 @@ describe('per-projection local region layout cache', () => {
 		};
 		const edited = selected(cache, foreignRelationEdit);
 		expect(cache.stats).toEqual({
-			entries: 3,
-			hits: 3,
-			misses: 3,
+			entries: 5,
+			hits: 1,
+			misses: 5,
 			evictions: 0,
 		});
 		expect(edited.regions.find(({ id }) => id === 'middle')?.localLayout).toEqual(
@@ -90,9 +95,9 @@ describe('per-projection local region layout cache', () => {
 			height: 80,
 		});
 		expect(cache.stats).toEqual({
-			entries: 4,
-			hits: 5,
-			misses: 4,
+			entries: 6,
+			hits: 3,
+			misses: 6,
 			evictions: 0,
 		});
 		expect(resized.regions.find(({ id }) => id === 'middle')?.localLayout).toEqual(
@@ -137,6 +142,116 @@ describe('per-projection local region layout cache', () => {
 		expect(nestedRegionLocalLayoutKey(local, measurements)).not.toBe(
 			nestedRegionLocalLayoutKey(local, { ...measurements, nodes: new Map() }),
 		);
+	});
+
+	it('keys the complete incident contract for every leaf and preserves search evidence on a hit', () => {
+		const source = regionDocument();
+		const local = {
+			...source,
+			nodes: source.nodes.slice(0, 2),
+			relations: source.relations.slice(0, 1),
+		};
+		const measurements = prepareLayoutDocument(local).measurements;
+		const outgoing = {
+			relation: { id: 'crossing-a', from: 'a-target', to: 'foreign' },
+			endpointId: 'a-target',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Bottom, RegionPortalSide.Right],
+		};
+		const incoming = {
+			relation: { id: 'crossing-b', from: 'foreign', to: 'a-source' },
+			endpointId: 'a-source',
+			role: RegionIncidentRole.Target,
+			allowedSides: [RegionPortalSide.Left, RegionPortalSide.Top],
+		};
+		const contracts = [outgoing, incoming];
+		const base = nestedRegionLocalLayoutKey(local, measurements);
+		expect(base).toBe(nestedRegionLocalLayoutKey(local, measurements, undefined, []));
+		const key = nestedRegionLocalLayoutKey(local, measurements, undefined, contracts);
+		expect(key).toBe(
+			nestedRegionLocalLayoutKey(local, measurements, undefined, [...contracts].reverse()),
+		);
+		expect(key).not.toBe(base);
+		expect(key).not.toBe(
+			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+				{ ...outgoing, allowedSides: [...outgoing.allowedSides].reverse() },
+				incoming,
+			]),
+		);
+		expect(key).not.toBe(
+			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+				{ ...outgoing, relation: { ...outgoing.relation, to: 'another' } },
+				incoming,
+			]),
+		);
+		const selfRelation = { id: 'self', from: 'a-target', to: 'a-target' };
+		expect(
+			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+				{ ...outgoing, relation: selfRelation },
+			]),
+		).not.toBe(
+			nestedRegionLocalLayoutKey(local, measurements, undefined, [
+				{ ...outgoing, relation: selfRelation, role: RegionIncidentRole.Target },
+			]),
+		);
+		const cache = new NestedRegionLocalLayoutCache();
+		let calculations = 0;
+		const calculate = () => {
+			calculations += 1;
+			return {
+				...solveRegionLeafLayout(local, measurements),
+				incidents: [
+					{
+						relationId: outgoing.relation.id,
+						endpointId: outgoing.endpointId,
+						role: outgoing.role,
+						side: RegionPortalSide.Bottom,
+						anchor: { x: 1, y: 2 },
+						portal: { x: 1, y: 10 },
+						points: [
+							{ x: 1, y: 2 },
+							{ x: 1, y: 10 },
+						],
+					},
+				],
+				witness: {
+					attempted: 2,
+					exhaustive: true,
+					rejectedAlternatives: [
+						{
+							relationId: outgoing.relation.id,
+							endpointId: outgoing.endpointId,
+							role: outgoing.role,
+							side: RegionPortalSide.Right,
+							code: RegionIncidentRejectionCode.RouteObstructed,
+						},
+					],
+				},
+			};
+		};
+		const first = cache.getOrComputeContract({
+			document: local,
+			measurements,
+			contracts,
+			compute: calculate,
+		});
+		Object.assign(first.incidents?.[0]?.anchor ?? {}, { x: -100 });
+		Object.assign(first.incidents?.[0]?.portal ?? {}, { y: -100 });
+		Object.assign(first.incidents?.[0]?.points[0] ?? {}, { x: -100 });
+		Object.assign(first.witness?.rejectedAlternatives[0] ?? {}, {
+			reason: 'changed',
+		});
+		const hit = cache.getOrComputeContract({
+			document: local,
+			measurements,
+			contracts: [...contracts].reverse(),
+			compute: calculate,
+		});
+		expect(calculations).toBe(1);
+		expect(hit.incidents?.[0]?.anchor.x).toBe(1);
+		expect(hit.incidents?.[0]?.portal.y).toBe(10);
+		expect(hit.incidents?.[0]?.points[0]?.x).toBe(1);
+		expect(hit.witness?.rejectedAlternatives[0]?.reason).toBeUndefined();
 	});
 
 	it('retains at most twelve bounded child results and keeps callers from mutating entries', () => {

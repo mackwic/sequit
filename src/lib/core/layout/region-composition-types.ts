@@ -1,5 +1,13 @@
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { Bounds, LayoutResult, Point } from './layout-types';
+import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import type {
+	RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+} from './region-incident-contract';
+import type { RegionPortalSide } from './region-portal-side';
+
+export { RegionPortalSide } from './region-portal-side';
 
 /** A child layout stays in local coordinates until its parent places it. */
 export interface RegionChildPlacement {
@@ -9,14 +17,6 @@ export interface RegionChildPlacement {
 	readonly translation: Point;
 	readonly localLayout: LayoutResult;
 	readonly localRanks: TopologicalRanks;
-}
-
-/** A disposition may connect an incident relation through any frame side. */
-export enum RegionPortalSide {
-	Top = 'top',
-	Bottom = 'bottom',
-	Left = 'left',
-	Right = 'right',
 }
 
 type RegionPortalSideValue = `${RegionPortalSide}`;
@@ -58,6 +58,10 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 interface RegionCompositionUnknown {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
+	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
+	readonly witness?: RegionIncidentSearchWitness;
+	readonly regionId?: string;
+	readonly relationId?: string;
 }
 
 interface RegionCompositionUnsupported {

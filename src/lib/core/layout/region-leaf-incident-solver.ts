@@ -1,0 +1,300 @@
+import { defined, type LayoutPolicy, type LogicDocument } from '../document/logic-document';
+import type { TopologicalRanks } from '../graph/topological-ranks';
+import { satisfyMetricDemands } from './contract/metric-demand';
+import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import type {
+	NestedRegionLocalLayout,
+	NestedRegionLocalLayoutCache,
+} from './nested-region-local-cache';
+import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
+import {
+	normalizeRegionIncidentContracts,
+	type RegionIncidentContract,
+	RegionIncidentRejectionCode,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+	type RegionSolvedIncident,
+} from './region-incident-contract';
+import { incidentMetricDemands } from './region-incident-metric-demand';
+import { solveRegionLeafLayout } from './region-leaf-base-layout';
+import {
+	faceAnchor,
+	type FaceSlot,
+	geometryFailure,
+	routeCandidates,
+	routeFor,
+	slotFractions,
+	slotsForAssignment,
+} from './region-leaf-incident-geometry';
+import {
+	newSearchState,
+	recordRejection,
+	type SearchState,
+	takeAttempt,
+	witness,
+} from './region-leaf-incident-search-state';
+
+const MAX_INCIDENTS = 8;
+
+export interface DedicatedRegionLeafIncidentInput {
+	readonly document: LogicDocument;
+	readonly measurements: LayoutMeasurements;
+	readonly contracts: readonly RegionIncidentContract[];
+	readonly policy?: LayoutPolicy | undefined;
+	readonly cache?: NestedRegionLocalLayoutCache | undefined;
+}
+
+interface DedicatedRegionLeafIncidentSelected {
+	readonly status: RegionCompositionStatus.Selected;
+	readonly layout: LayoutResult;
+	readonly ranks: TopologicalRanks;
+	readonly incidents: readonly RegionSolvedIncident[];
+	readonly witness: RegionIncidentSearchWitness;
+}
+
+interface DedicatedRegionLeafIncidentUnknown {
+	readonly status: RegionCompositionStatus.Unknown;
+	readonly code: RegionIncidentUnknownCode;
+	readonly reason: string;
+	readonly witness: RegionIncidentSearchWitness;
+}
+
+export type DedicatedRegionLeafIncidentAttempt =
+	DedicatedRegionLeafIncidentSelected | DedicatedRegionLeafIncidentUnknown;
+
+function unknown(
+	code: RegionIncidentUnknownCode,
+	reason: string,
+	state: SearchState,
+	exhaustive: boolean,
+): DedicatedRegionLeafIncidentUnknown {
+	return {
+		status: RegionCompositionStatus.Unknown,
+		code,
+		reason,
+		witness: witness(state, exhaustive),
+	};
+}
+
+function candidateId(points: readonly { readonly x: number; readonly y: number }[]): string {
+	return points.map(({ x, y }) => `${x},${y}`).join(';');
+}
+
+interface AnchorSearchInput {
+	readonly contract: RegionIncidentContract;
+	readonly slot: FaceSlot;
+	readonly fraction: number;
+	readonly endpoint: LayoutResult['elements'][number];
+	readonly layout: LayoutResult;
+	readonly selected: RegionSolvedIncident[];
+	readonly state: SearchState;
+	readonly continueSearch: () => readonly RegionSolvedIncident[] | undefined;
+}
+
+function tryAnchor(input: AnchorSearchInput): readonly RegionSolvedIncident[] | undefined {
+	const { contract, slot, fraction, endpoint, layout, selected, state, continueSearch } = input;
+	const anchor = faceAnchor(endpoint.bounds, slot.side, fraction);
+	for (const points of routeCandidates(anchor, slot.side, layout)) {
+		if (!takeAttempt(state)) return undefined;
+		const path = routeFor(contract, slot.side, points);
+		const failure = geometryFailure(layout, endpoint, path, selected);
+		if (failure !== undefined) {
+			recordRejection(state, contract, slot.side, {
+				...failure,
+				candidateId: candidateId(points),
+			});
+			continue;
+		}
+		selected.push(path);
+		const completed = continueSearch();
+		if (completed !== undefined) return completed;
+		selected.pop();
+		if (state.assignmentLimitReached || state.budgetExceeded) return undefined;
+	}
+	return undefined;
+}
+
+function solveOnLayout(
+	contracts: readonly RegionIncidentContract[],
+	layout: LayoutResult,
+	ranks: TopologicalRanks,
+): DedicatedRegionLeafIncidentAttempt {
+	const state = newSearchState();
+	if (contracts.length === 0)
+		return {
+			status: RegionCompositionStatus.Selected,
+			layout,
+			ranks,
+			incidents: [],
+			witness: witness(state, true),
+		};
+	if (contracts.length > MAX_INCIDENTS)
+		return unknown(
+			RegionIncidentUnknownCode.SearchBudgetExceeded,
+			`A dedicated leaf accepts at most ${MAX_INCIDENTS} incident contracts per bounded search.`,
+			state,
+			false,
+		);
+	const elements = new Map(layout.elements.map((element) => [element.id, element]));
+	for (const contract of contracts) {
+		if (elements.has(contract.endpointId)) continue;
+		for (const side of contract.allowedSides) {
+			takeAttempt(state);
+			recordRejection(state, contract, side, {
+				code: RegionIncidentRejectionCode.PortUnavailable,
+				reason: `The local layout has no endpoint ${contract.endpointId}.`,
+			});
+		}
+	}
+	if (state.rejected.length > 0)
+		return unknown(
+			RegionIncidentUnknownCode.NoValidAlternative,
+			'A declared incident endpoint is absent from the local layout.',
+			state,
+			true,
+		);
+	const sides: RegionPortalSide[] = [];
+	const selected: RegionSolvedIncident[] = [];
+
+	function routeAt(
+		index: number,
+		slots: readonly FaceSlot[],
+	): readonly RegionSolvedIncident[] | undefined {
+		if (index === contracts.length) return [...selected];
+		const contract = defined(contracts[index]);
+		const slot = defined(slots[index]);
+		const endpoint = defined(elements.get(contract.endpointId));
+		for (const fraction of slotFractions(slot.preferredFraction)) {
+			const completed = tryAnchor({
+				contract,
+				slot,
+				fraction,
+				endpoint,
+				layout,
+				selected,
+				state,
+				continueSearch: () => routeAt(index + 1, slots),
+			});
+			if (completed !== undefined) return completed;
+			if (state.assignmentLimitReached || state.budgetExceeded) return undefined;
+		}
+		recordRejection(state, contract, slot.side, {
+			code: RegionIncidentRejectionCode.GeometryInvalid,
+			reason: 'This incident side has no joint route with the other contracts.',
+		});
+		return undefined;
+	}
+
+	function assignSides(index: number): readonly RegionSolvedIncident[] | undefined {
+		if (index === contracts.length) {
+			// A hard side combination must not consume the search reserved for later
+			// admitted sides. The witness remains incomplete if this cap is reached.
+			state.assignmentAttempts = 0;
+			state.assignmentLimitReached = false;
+			return routeAt(0, slotsForAssignment(contracts, sides));
+		}
+		const contract = defined(contracts[index]);
+		for (const side of contract.allowedSides) {
+			sides.push(side);
+			const result = assignSides(index + 1);
+			if (result !== undefined) return result;
+			sides.pop();
+			if (state.budgetExceeded) return undefined;
+		}
+		return undefined;
+	}
+
+	const incidents = assignSides(0);
+	if (incidents !== undefined)
+		return {
+			status: RegionCompositionStatus.Selected,
+			layout,
+			ranks,
+			incidents,
+			witness: witness(state, false),
+		};
+	if (state.budgetExceeded || state.incomplete)
+		return unknown(
+			RegionIncidentUnknownCode.SearchBudgetExceeded,
+			'The bounded dedicated-leaf incident search exhausted its alternative budget.',
+			state,
+			false,
+		);
+	return unknown(
+		RegionIncidentUnknownCode.NoValidAlternative,
+		'No declared bounded alternative admits noncontacting local incident routes.',
+		state,
+		true,
+	);
+}
+
+class UncacheableIncidentFailure extends Error {
+	constructor(readonly attempt: DedicatedRegionLeafIncidentUnknown) {
+		super(attempt.reason);
+	}
+}
+
+/** The dedicated leaf policy solves all declared incidents before the region is composed. */
+export function solveDedicatedRegionLeafWithIncidents(
+	input: DedicatedRegionLeafIncidentInput,
+): DedicatedRegionLeafIncidentAttempt {
+	let contracts: readonly RegionIncidentContract[];
+	try {
+		contracts = normalizeRegionIncidentContracts(input.contracts);
+	} catch (error) {
+		let reason = String(error);
+		if (error instanceof Error) reason = error.message;
+		return unknown(RegionIncidentUnknownCode.InvalidContract, reason, newSearchState(), true);
+	}
+	const compute = () => {
+		const endpointIds = new Set([
+			...input.document.nodes.map(({ id }) => id),
+			...input.document.groups.map(({ id }) => id),
+			...input.document.junctions.map(({ id }) => id),
+		]);
+		const demands = incidentMetricDemands(contracts).filter(({ endpointId }) =>
+			endpointIds.has(endpointId),
+		);
+		const demanded = satisfyMetricDemands(
+			input.measurements,
+			demands,
+			input.document.layout.direction,
+		);
+		const raw = solveRegionLeafLayout(input.document, demanded, input.policy);
+		const attempt = solveOnLayout(contracts, raw.layout, raw.ranks);
+		if (attempt.status === RegionCompositionStatus.Unknown)
+			throw new UncacheableIncidentFailure(attempt);
+		return {
+			layout: attempt.layout,
+			ranks: attempt.ranks,
+			incidents: attempt.incidents,
+			witness: attempt.witness,
+		};
+	};
+	try {
+		let solved: NestedRegionLocalLayout;
+		if (input.cache === undefined) solved = compute();
+		else
+			solved = input.cache.getOrComputeContract({
+				document: input.document,
+				measurements: input.measurements,
+				policy: input.policy,
+				contracts,
+				compute,
+			});
+		const incidents = solved.incidents;
+		const selectedWitness = solved.witness;
+		if (incidents === undefined || selectedWitness === undefined)
+			throw new Error('The cached leaf omitted its incident solution.');
+		return {
+			status: RegionCompositionStatus.Selected,
+			layout: solved.layout,
+			ranks: solved.ranks,
+			incidents,
+			witness: selectedWitness,
+		};
+	} catch (error) {
+		if (error instanceof UncacheableIncidentFailure) return error.attempt;
+		throw error;
+	}
+}

@@ -26,6 +26,7 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import type { PreparedLayoutDocument } from '../../../support/harnesses/layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
@@ -221,8 +222,11 @@ describe('direct group portals owned by an internal grid', () => {
 				prepared.measurements,
 				regionInput(document),
 			),
-		).toEqual({
+		).toMatchObject({
 			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: 'grid',
+			relationId: 'group-crossing',
 			reason: 'Region grid routes group-crossing and group-to-c intersect without a bridge.',
 		});
 	});
@@ -270,7 +274,7 @@ describe('direct group portals owned by an internal grid', () => {
 		);
 	});
 
-	it('selects a direct grouped member while refusing a group endpoint outside its grid', () => {
+	it('selects a direct grouped member and a group endpoint outside its grid', () => {
 		const source = persistedNestedGridWithGroupPortalDocument();
 		const memberDocument = {
 			...source,
@@ -290,35 +294,35 @@ describe('direct group portals owned by an internal grid', () => {
 			}),
 		};
 		const outerPrepared = prepareLayoutDocument(outerDocument);
+		const outerInput = regionInput(outerDocument);
+		const outerResult = selected(outerPrepared, outerInput);
+		validated(outerPrepared, outerInput, outerResult);
 		expect(
-			solveRecursiveNestedRegionLayout(
-				outerPrepared.graph,
-				outerPrepared.measurements,
-				regionInput(outerDocument),
-			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
-		for (const [from, to] of [
-			['a-target', 'outside'],
-			['outside', 'a-target'],
+			outerResult.ownedRoutes
+				.filter(({ relationId }) => relationId === 'group-crossing')
+				.map(({ regionId }) => regionId),
+		).toEqual(['b', 'grid', '@root', 'outside']);
+		for (const { from, to, owners } of [
+			{ from: 'a-target', to: 'outside', owners: ['a', 'grid', '@root', 'outside'] },
+			{ from: 'outside', to: 'a-target', owners: ['outside', '@root', 'grid', 'a'] },
 		] as const) {
 			const mixed = {
 				...source,
 				relations: [...source.relations, { id: 'outer-incident', from, to }],
 			};
 			const prepared = prepareLayoutDocument(mixed);
+			const input = regionInput(mixed);
+			const result = selected(prepared, input);
+			validated(prepared, input, result);
 			expect(
-				solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, regionInput(mixed)),
-			).toEqual({
-				status: NestedRegionLayoutStatus.Unsupported,
-				reason: 'Grid region grid does not combine direct group crossings with outer incidents.',
-			});
+				result.ownedRoutes
+					.filter(({ relationId }) => relationId === 'outer-incident')
+					.map(({ regionId }) => regionId),
+			).toEqual(owners);
 		}
 	});
 
-	it('keeps a nested group outside the direct portal contract', () => {
+	it('routes a nested group endpoint through the grid', () => {
 		const source = persistedNestedGridWithGroupPortalDocument();
 		const group = defined(source.groups[0]);
 		const inner = { ...group, groupId: 'outer-group' };
@@ -328,16 +332,14 @@ describe('direct group portals owned by an internal grid', () => {
 			groups: [{ ...group, id: 'outer-group', layoutOrder: orderKey('a1') }, inner],
 		};
 		const prepared = prepareLayoutDocument(document);
+		const input = regionInput(document);
+		const result = selected(prepared, input);
+		validated(prepared, input, result);
 		expect(
-			solveRecursiveNestedRegionLayout(
-				prepared.graph,
-				prepared.measurements,
-				regionInput(document),
-			),
-		).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
-		});
+			result.ownedRoutes
+				.filter(({ relationId }) => relationId === 'group-crossing')
+				.map(({ regionId }) => regionId),
+		).toEqual(['b', 'grid', 'd']);
 	});
 
 	it('keeps an incident on a lane-bearing group cell outside the direct portal contract', () => {
@@ -367,7 +369,7 @@ describe('direct group portals owned by an internal grid', () => {
 			),
 		).toEqual({
 			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
+			reason: 'Groups with descendants are outside the first shared layout policy.',
 		});
 	});
 
@@ -414,9 +416,13 @@ describe('direct group portals owned by an internal grid', () => {
 			sourceLeafId: 'b',
 			targetLeafId: 'd-left',
 		});
-		expect(solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input)).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Cross-region relations currently require ungrouped node endpoints.',
+		expect(
+			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input),
+		).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+			regionId: 'grid',
+			reason: 'Cross-cell relation group-crossing enters element d2.',
 		});
 	});
 });

@@ -14,10 +14,16 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
+import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import {
 	type NestedRegionInput,
 	NestedRegionLayoutStatus,
 } from '../../../../src/lib/core/layout/nested-region-types';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 
@@ -237,7 +243,15 @@ describe('normalized child-region envelope', () => {
 			prepared.measurements,
 			differentlyDirected,
 		);
-		expect(result.status).toBe(NestedRegionLayoutStatus.Unknown);
+		expect(result.status).toBe(NestedRegionLayoutStatus.Selected);
+		if (result.status === NestedRegionLayoutStatus.Selected) {
+			const normalized = normalizeRegionCompositionModel(prepared.graph, differentlyDirected);
+			expect(normalized.status).toBe(RegionCompositionModelStatus.Ready);
+			if (normalized.status === RegionCompositionModelStatus.Ready) {
+				expect(validateRegionCompositionGeometry(normalized.model, result)).toBeUndefined();
+				expect(validateNestedRegionLeafIncidents(normalized.model, result)).toBeUndefined();
+			}
+		}
 		expect(prepared.graph).toEqual(before);
 	});
 });

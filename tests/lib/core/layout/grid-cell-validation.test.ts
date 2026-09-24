@@ -12,12 +12,16 @@ import {
 	type GridCellSelected,
 	GridCellSide,
 } from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+import {
+	validateGridCellGeometry,
+	validateGridCellGeometryDiagnostic,
+} from '../../../../src/lib/core/layout/grid-cell-validation';
 import type {
 	Bounds,
 	LayoutElement,
 	LayoutRelation,
 } from '../../../../src/lib/core/layout/layout-types';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function fixture(): {
@@ -516,6 +520,13 @@ describe('independent grid geometry validation', () => {
 		expect(validateGridCellGeometry(candidate, prepared.graph, gridInput())).toContain(
 			'enters element a-top',
 		);
+		expect(
+			validateGridCellGeometryDiagnostic(candidate, prepared.graph, gridInput()),
+		).toMatchObject({
+			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+			relationId: 'across-grid',
+			endpointId: 'a-top',
+		});
 	});
 
 	it('still validates the untouched selected result', () => {

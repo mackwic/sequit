@@ -1,11 +1,9 @@
 import {
 	defined,
-	EndpointKind,
 	LAYOUT_PRESENTATION_SCHEMA,
 	LayoutDirection,
 	LayoutPolicy,
 	type LogicDocument,
-	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	type RootLayoutPresentation,
 } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
@@ -17,63 +15,49 @@ import type {
 	RegionCompositionNode,
 	RegionRelationOwnership,
 } from './region-composition-model';
-import { RegionRelationKind } from './region-composition-model';
+import { RegionPortalSide } from './region-composition-types';
+import {
+	normalizeRegionIncidentContracts,
+	type RegionIncidentContract,
+	RegionIncidentRole,
+} from './region-incident-contract';
 
-export type IncidentSides = ReadonlyMap<string, NestedPortalSide>;
+export type IncidentSides = ReadonlyMap<string, readonly RegionPortalSide[]>;
 
-function ungroupedNode(endpoint: {
-	readonly kind: EndpointKind;
-	readonly entity: { readonly groupId?: string };
-}): boolean {
-	if (endpoint.kind !== EndpointKind.Node) return false;
-	return endpoint.entity.groupId === undefined;
-}
+const REGION_SIDE: Readonly<Record<NestedPortalSide, RegionPortalSide>> = {
+	[NestedPortalSide.Top]: RegionPortalSide.Top,
+	[NestedPortalSide.Right]: RegionPortalSide.Right,
+	[NestedPortalSide.Bottom]: RegionPortalSide.Bottom,
+	[NestedPortalSide.Left]: RegionPortalSide.Left,
+};
 
-type RelationEndpoint = LogicGraph['relations'][number]['source'];
-
-function directGroupMember(graph: LogicGraph, endpoint: RelationEndpoint): boolean {
-	if (endpoint.kind !== EndpointKind.Node || endpoint.entity.groupId === undefined) return false;
-	const parent = graph.endpointsById.get(endpoint.entity.groupId);
-	return parent?.kind === EndpointKind.Group && parent.entity.groupId === undefined;
-}
-
-function ordinaryDirectGridCell(
-	model: RegionCompositionModel,
-	gridId: string,
-	leafId: string,
-): boolean {
-	const region = model.regionsById.get(leafId);
-	if (region?.parentId !== gridId || region.childIds.length !== 0) return false;
-	return region.definition.lanePresentation === undefined;
-}
-
-function directGridGroupCrossing(input: {
-	readonly graph: LogicGraph;
-	readonly model: RegionCompositionModel;
-	readonly owned: RegionRelationOwnership;
-	readonly source: RelationEndpoint;
-	readonly target: RelationEndpoint;
-}): boolean {
-	const { graph, model, owned, source, target } = input;
-	const owner = model.regionsById.get(owned.ownerId);
-	if (owner?.definition.grid === undefined) return false;
-	if (!ordinaryDirectGridCell(model, owned.ownerId, owned.sourceLeafId)) return false;
-	if (!ordinaryDirectGridCell(model, owned.ownerId, owned.targetLeafId)) return false;
-	const sourceGroup = source.kind === EndpointKind.Group && source.entity.groupId === undefined;
-	const targetGroup = target.kind === EndpointKind.Group && target.entity.groupId === undefined;
-	if (sourceGroup && ungroupedNode(target)) return true;
-	if (targetGroup && ungroupedNode(source)) return true;
-	if (graph.document.persistenceFormat !== REGION_COMPOSITION_PERSISTENCE_FORMAT) return false;
-	if (directGroupMember(graph, source) && ungroupedNode(target)) return true;
-	return directGroupMember(graph, target) && ungroupedNode(source);
-}
-
-function gridHasOuterIncident(model: RegionCompositionModel, gridId: string): boolean {
-	return model.relations.some((owned) => {
-		if (owned.ownerId === gridId) return false;
-		if (owned.sourcePathToOwner.includes(gridId)) return true;
-		return owned.targetPathToOwner.includes(gridId);
-	});
+/** Resolve source provenance before the local policy sees the incident contract. */
+export function leafIncidentContracts(
+	context: RecursiveContext,
+	regionId: string,
+	incidentSides: IncidentSides,
+): readonly RegionIncidentContract[] {
+	const contracts: RegionIncidentContract[] = [];
+	for (const [relationId, sides] of incidentSides) {
+		const owned = defined(context.ownershipByRelationId.get(relationId));
+		const sourceHere = owned.sourceLeafId === regionId;
+		const targetHere = owned.targetLeafId === regionId;
+		if (sourceHere === targetHere)
+			throw new Error(`Incident ${relationId} has no unique endpoint in leaf ${regionId}.`);
+		let endpointId = owned.relation.to;
+		let role = RegionIncidentRole.Target;
+		if (sourceHere) {
+			endpointId = owned.relation.from;
+			role = RegionIncidentRole.Source;
+		}
+		contracts.push({
+			relation: owned.relation,
+			endpointId,
+			role,
+			allowedSides: sides,
+		});
+	}
+	return normalizeRegionIncidentContracts(contracts);
 }
 
 export interface RecursiveContext {
@@ -83,7 +67,6 @@ export interface RecursiveContext {
 	readonly cache: NestedRegionLocalLayoutCache | undefined;
 	readonly ownershipByRelationId: ReadonlyMap<string, RegionRelationOwnership>;
 	readonly dispositionSideByRegionId?: ReadonlyMap<string, NestedPortalSide>;
-	readonly ghostLeafIds?: ReadonlySet<string>;
 }
 
 function regionPolicyFailure(
@@ -108,26 +91,6 @@ function regionPolicyFailure(
 	return undefined;
 }
 
-function crossingPolicyFailure(
-	graph: LogicGraph,
-	model: RegionCompositionModel,
-): string | undefined {
-	const directGroupGrids = new Set<string>();
-	for (const owned of model.relations) {
-		if (owned.kind !== RegionRelationKind.Crossing) continue;
-		const source = defined(graph.endpointsById.get(owned.relation.from));
-		const target = defined(graph.endpointsById.get(owned.relation.to));
-		if (ungroupedNode(source) && ungroupedNode(target)) continue;
-		if (!directGridGroupCrossing({ graph, model, owned, source, target }))
-			return 'Cross-region relations currently require ungrouped node endpoints.';
-		directGroupGrids.add(owned.ownerId);
-	}
-	for (const gridId of directGroupGrids)
-		if (gridHasOuterIncident(model, gridId))
-			return `Grid region ${gridId} does not combine direct group crossings with outer incidents.`;
-	return undefined;
-}
-
 export function policyFailure(
 	graph: LogicGraph,
 	model: RegionCompositionModel,
@@ -136,8 +99,6 @@ export function policyFailure(
 		return 'Lanes are outside the bounded nested-region envelope.';
 	if (graph.endpointsById.size > 12 || graph.document.relations.length > 16)
 		return 'This bounded composition accepts at most twelve endpoints and sixteen relations.';
-	const crossing = crossingPolicyFailure(graph, model);
-	if (crossing !== undefined) return crossing;
 	const root = defined(model.regionsById.get(model.rootId));
 	if (root.childIds.length === 0)
 		return 'This bounded composition requires two or three direct child regions.';
@@ -163,11 +124,12 @@ export function directChild(
 	endpointId: string,
 ): string {
 	let childId = defined(context.model.leafByEndpointId.get(endpointId));
-	for (;;) {
+	for (let depth = 0; depth < context.model.regionsById.size; depth += 1) {
 		const parentId = defined(context.model.regionsById.get(childId)).parentId;
 		if (parentId === regionId) return childId;
 		childId = defined(parentId);
 	}
+	throw new Error(`Endpoint ${endpointId} is not below region ${regionId}.`);
 }
 
 export function leafDocument(context: RecursiveContext, regionId: string): LogicDocument {
@@ -208,18 +170,18 @@ export function childSides(input: {
 	readonly localSide: NestedPortalSide;
 }): IncidentSides {
 	const { context, regionId, childId, incidentSides, localSide } = input;
-	const sides = new Map<string, NestedPortalSide>();
+	const sides = new Map<string, readonly RegionPortalSide[]>();
 	for (const owned of context.model.relations) {
 		const inherited = incidentSides.get(owned.relation.id);
 		if (owned.ownerId !== regionId && inherited === undefined) continue;
-		let side = localSide;
-		if (inherited !== undefined) side = inherited;
+		let allowedSides: readonly RegionPortalSide[] = [REGION_SIDE[localSide]];
+		if (inherited !== undefined) allowedSides = inherited;
 		const sourceHere = owned.ownerId === regionId || owned.sourcePathToOwner.includes(regionId);
 		if (sourceHere && directChild(context, regionId, owned.relation.from) === childId)
-			sides.set(owned.relation.id, side);
+			sides.set(owned.relation.id, allowedSides);
 		const targetHere = owned.ownerId === regionId || owned.targetPathToOwner.includes(regionId);
 		if (targetHere && directChild(context, regionId, owned.relation.to) === childId)
-			sides.set(owned.relation.id, side);
+			sides.set(owned.relation.id, allowedSides);
 	}
 	return sides;
 }

@@ -21,6 +21,7 @@ import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function graphFor(document: LogicDocument): LogicGraph {
@@ -229,13 +230,17 @@ describe('grid model envelope', () => {
 		);
 	});
 
-	it('keeps grouped nodes, nested groups, and pairs of groups outside the direct portal proof', () => {
+	it('submits grouped endpoints to the same geometry proof as other crossings', () => {
 		const base = gridDocument();
-		rejected(
-			graphFor({ ...base, relations: [{ id: 'grouped-node-cross', from: 'b', to: 'd' }] }),
-			input,
-			'Cross-cell routes currently require ungrouped node endpoints.',
-		);
+		const cases: { readonly document: LogicDocument; readonly input: GridCellInput }[] = [
+			{
+				document: {
+					...base,
+					relations: [{ id: 'grouped-node-cross', from: 'b', to: 'd' }],
+				},
+				input,
+			},
+		];
 		const nested: LogicGroup = {
 			kind: EndpointKind.Group,
 			id: 'nested',
@@ -243,29 +248,41 @@ describe('grid model envelope', () => {
 			groupId: 'oversized',
 			layoutOrder: orderKey('a6'),
 		};
-		rejected(
-			graphFor({
+		cases.push({
+			document: {
 				...base,
 				groups: [...base.groups, nested],
 				relations: [{ id: 'nested-cross', from: 'nested', to: 'd' }],
-			}),
-			{ ...input, cellByEndpointId: new Map(input.cellByEndpointId).set('nested', 'b') },
-			'Cross-cell routes to nested groups are outside this bounded grid proof.',
-		);
+			},
+			input: { ...input, cellByEndpointId: new Map(input.cellByEndpointId).set('nested', 'b') },
+		});
 		const other: LogicGroup = {
 			kind: EndpointKind.Group,
 			id: 'other-group',
 			label: 'Other',
 			layoutOrder: orderKey('a7'),
 		};
-		rejected(
-			graphFor({
+		cases.push({
+			document: {
 				...base,
 				groups: [...base.groups, other],
 				relations: [{ id: 'group-pair', from: 'oversized', to: 'other-group' }],
-			}),
-			{ ...input, cellByEndpointId: new Map(input.cellByEndpointId).set('other-group', 'd') },
-			'Cross-cell routes currently require ungrouped node endpoints.',
-		);
+			},
+			input: {
+				...input,
+				cellByEndpointId: new Map(input.cellByEndpointId).set('other-group', 'd'),
+			},
+		});
+		for (const fixture of cases) {
+			const preparedCase = prepareGrid(fixture.document);
+			const result = solveGridCellLayout(
+				preparedCase.graph,
+				preparedCase.measurements,
+				fixture.input,
+			);
+			expect(result.status).toBe(GridCellLayoutStatus.Selected);
+			if (result.status !== GridCellLayoutStatus.Selected) continue;
+			expect(validateGridCellGeometry(result, preparedCase.graph, fixture.input)).toBeUndefined();
+		}
 	});
 });

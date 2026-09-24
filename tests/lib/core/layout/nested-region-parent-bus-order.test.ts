@@ -12,6 +12,7 @@ import {
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
@@ -151,19 +152,25 @@ describe('parent bus rails for two grid exits', () => {
 		expect(defined(left.points[1]).y).toBeGreaterThan(defined(right.points[1]).y);
 	});
 
-	it('keeps interleaved arcs unknown and a third grid incident unsupported', () => {
+	it('keeps interleaved arcs and three conflicting exits unknown', () => {
 		const interleaved = exits({ leftOutside: 'outside-2', rightOutside: 'outside' });
-		expect(solve(interleaved).candidate).toEqual({
+		expect(solve(interleaved).candidate).toMatchObject({
 			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: '@root',
+			relationId: 'a-left-exit',
 			reason: 'Region @root routes a-left-exit and z-right-exit intersect without a bridge.',
 		});
 		const third = {
 			...interleaved,
 			relations: [...interleaved.relations, { id: 'third-exit', from: 'c', to: 'outside' }],
 		};
-		expect(solve(third).candidate).toEqual({
-			status: NestedRegionLayoutStatus.Unsupported,
-			reason: 'Grid region grid accepts at most two outer incidents.',
+		expect(solve(third).candidate).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: 'grid',
+			relationId: 'a-left-exit',
+			reason: 'Region grid routes a-left-exit and third-exit intersect without a bridge.',
 		});
 	});
 });

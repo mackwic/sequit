@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -18,8 +19,15 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/region-incident-contract';
 import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
-import { validateSharedLaneOutgoingIncident } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
+import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/shared-lane-incident-paths';
+import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
@@ -86,7 +94,11 @@ function laneDocument(
 			policy: LayoutPolicy.Layered,
 			laneOrientation: LaneOrientation.Parallel,
 			growth: LaneGrowth.Auto,
-			lanes: ids.map((id, index) => ({ id, label: id, layoutOrder: orderKey(`a${index}`) })),
+			lanes: ids.map((id, index) => ({
+				id,
+				label: id,
+				layoutOrder: orderKey(`a${index}`),
+			})),
 		},
 		natures: [{ id: 'task', label: 'Task', color: '#000000' }],
 		groups: [],
@@ -131,48 +143,414 @@ describe('shared lane layout', () => {
 			],
 		};
 		const prepared = prepareLayoutDocument(document);
-		const incident = { relationId: 'outer-incident', endpointId: 'a1', side: 1 } as const;
+		const incident = {
+			relation: { id: 'outer-incident', from: 'a1', to: 'external' },
+			endpointId: 'a1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Right],
+		};
 		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
-			outgoingIncident: incident,
+			incidents: [incident],
 		});
 		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
 		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
 		expect(selected.layout.relations.map(({ id }) => id)).toEqual(['inside', 'outer-local']);
-		expect(validateSharedLaneOutgoingIncident(selected.geometry, incident)).toBeUndefined();
+		expect(selected.incidents).toHaveLength(1);
+		expect(
+			validateSharedLaneIncidentPath(selected.geometry, incident, defined(selected.incidents[0])),
+		).toBeUndefined();
 	});
 
-	it('refuses an outgoing incident contract with the wrong axis or a missing source', () => {
+	it('accepts an incident on a horizontal lane leaf and reports a missing endpoint', () => {
 		const relation = [{ id: 'inside', from: 'a1', to: 'b1' }];
 		const horizontal = laneDocument(LayoutDirection.LeftToRight, LayoutBias.Left, relation, 2);
 		const horizontalPrepared = prepareLayoutDocument(horizontal);
-		expect(
-			solveSharedLaneLayout(
-				horizontalPrepared.graph,
-				horizontalPrepared.ranks,
-				horizontalPrepared.measurements,
-				{
-					outgoingIncident: { relationId: 'leaves-a', endpointId: 'a1', side: 1 },
-				},
-			),
-		).toEqual({
-			status: SharedLaneLayoutStatus.Unsupported,
-			reason: 'A right-facing lane incident requires top-to-bottom parallel lanes.',
-		});
+		const horizontalIncident = {
+			relation: { id: 'leaves-a', from: 'a1', to: 'external' },
+			endpointId: 'a1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Top],
+		};
+		const horizontalAttempt = solveSharedLaneLayout(
+			horizontalPrepared.graph,
+			horizontalPrepared.ranks,
+			horizontalPrepared.measurements,
+			{ incidents: [horizontalIncident] },
+		);
+		expect(horizontalAttempt.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (horizontalAttempt.status === SharedLaneLayoutStatus.Selected)
+			expect(horizontalAttempt.incidents[0]?.side).toBe(RegionPortalSide.Top);
 		const vertical = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, relation, 2);
 		const verticalPrepared = prepareLayoutDocument(vertical);
+		const missingEndpoint = solveSharedLaneLayout(
+			verticalPrepared.graph,
+			verticalPrepared.ranks,
+			verticalPrepared.measurements,
+			{
+				incidents: [
+					{
+						relation: { id: 'missing-a', from: 'removed-a1', to: 'external' },
+						endpointId: 'removed-a1',
+						role: RegionIncidentRole.Source,
+						allowedSides: [RegionPortalSide.Right],
+					},
+				],
+			},
+		);
+		expect(missingEndpoint.status).toBe(SharedLaneLayoutStatus.Unknown);
+		if (missingEndpoint.status !== SharedLaneLayoutStatus.Unknown) return;
+		expect(missingEndpoint.code).toBe(RegionIncidentUnknownCode.NoValidAlternative);
+		expect(missingEndpoint.witness.rejectedAlternatives[0]?.code).toBe(
+			RegionIncidentRejectionCode.InvalidAttachment,
+		);
+	});
+
+	it.each([
+		[RegionPortalSide.Left, 'a1'],
+		[RegionPortalSide.Right, 'b1'],
+		[RegionPortalSide.Top, 'a1'],
+		[RegionPortalSide.Bottom, 'b1'],
+	] as const)('materializes a validated %s incident', (side, endpointId) => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const contract = {
+			relation: { id: 'outer', from: endpointId, to: 'external' },
+			endpointId,
+			role: RegionIncidentRole.Source,
+			allowedSides: [side],
+		};
+		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents: [contract],
+		});
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		const path = defined(selected.incidents[0]);
+		expect(path.side).toBe(side);
+		expect(validateSharedLaneIncidentPath(selected.geometry, contract, path)).toBeUndefined();
+	});
+
+	it('rejects falsified lane incident identity, attachment, boundary and sharing', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const contract = {
+			relation: { id: 'outer', from: 'a1', to: 'external' },
+			endpointId: 'a1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Left],
+		};
+		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents: [contract],
+		});
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		const path = defined(selected.incidents[0]);
+		const { geometry } = selected;
+		expect(validateSharedLaneIncidentPath(geometry, contract, path)).toBeUndefined();
 		expect(
-			solveSharedLaneLayout(
-				verticalPrepared.graph,
-				verticalPrepared.ranks,
-				verticalPrepared.measurements,
+			validateSharedLaneIncidentPath(geometry, { ...contract, endpointId: 'missing' }, path),
+		).toMatchObject({ code: RegionIncidentRejectionCode.InvalidAttachment });
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				relationId: 'different',
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.InvalidAttachment });
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				points: [path.anchor],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				points: [],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				points: [path.anchor, { x: path.portal.x, y: path.portal.y + 1 }],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		const shiftedAnchor = { ...path.anchor, x: path.anchor.x + 1 };
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				anchor: shiftedAnchor,
+				points: [shiftedAnchor, path.portal],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		const inward = { x: path.anchor.x + 1, y: path.anchor.y };
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				points: [path.anchor, inward, path.portal],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		const outside = { x: -1, y: path.portal.y };
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, {
+				...path,
+				portal: outside,
+				points: [path.anchor, outside],
+			}),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		const source = defined(geometry.elements.find(({ id }) => id === contract.endpointId));
+		const blocker = {
+			...source,
+			id: 'blocker',
+			bounds: {
+				x: (path.anchor.x + path.portal.x) / 2 - 2,
+				y: path.anchor.y - 2,
+				width: 4,
+				height: 4,
+			},
+		};
+		expect(
+			validateSharedLaneIncidentPath(
+				{ ...geometry, elements: [...geometry.elements, blocker] },
+				contract,
+				path,
+			),
+		).toMatchObject({ code: RegionIncidentRejectionCode.RouteObstructed });
+		expect(
+			validateSharedLaneIncidentPath(
 				{
-					outgoingIncident: { relationId: 'leaves-a', endpointId: 'removed-a1', side: 1 },
+					...geometry,
+					relations: [
+						{
+							id: 'local-port',
+							from: 'a1',
+							to: 'other',
+							points: [path.anchor, path.portal],
+						},
+					],
+				},
+				contract,
+				path,
+			),
+		).toMatchObject({ code: RegionIncidentRejectionCode.PortUnavailable });
+		expect(
+			validateSharedLaneIncidentPath(
+				{
+					...geometry,
+					relations: [
+						{
+							id: 'local-crossing',
+							from: 'other',
+							to: 'far',
+							points: [path.anchor, path.portal],
+						},
+					],
+				},
+				contract,
+				path,
+			),
+		).toMatchObject({ code: RegionIncidentRejectionCode.RouteObstructed });
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, path, [
+				{ ...path, relationId: 'previous' },
+			]),
+		).toMatchObject({ code: RegionIncidentRejectionCode.RouteObstructed });
+		const cramped = {
+			...geometry,
+			elements: geometry.elements.map((element) => {
+				if (element.id === source.id) return { ...element, bounds: { ...element.bounds, x: 4 } };
+				return element;
+			}),
+		};
+		expect(
+			laneIncidentPathCandidates(
+				cramped,
+				{
+					offsetByIncidence: new Map(),
+					demandByEndpoint: new Map(),
+					incidentOffsetByFace: new Map(),
+				},
+				contract,
+				RegionPortalSide.Left,
+			),
+		).toHaveLength(1);
+	});
+
+	it('tries a bounded detour before changing the requested side', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents: [
+				{
+					relation: { id: 'outer', from: 'a1', to: 'external' },
+					endpointId: 'a1',
+					role: RegionIncidentRole.Source,
+					allowedSides: [RegionPortalSide.Right, RegionPortalSide.Left],
+				},
+			],
+		});
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(selected.incidents[0]?.side).toBe(RegionPortalSide.Right);
+		expect(selected.incidents[0]?.points).toHaveLength(4);
+		expect(selected.witness.attempted).toBeGreaterThan(1);
+		expect(selected.witness.exhaustive).toBe(false);
+		expect(selected.witness.rejectedAlternatives[0]).toMatchObject({
+			side: RegionPortalSide.Right,
+			candidateId: 'parallel/reserved-top-passage/direct',
+			code: RegionIncidentRejectionCode.RouteObstructed,
+		});
+	});
+
+	it('reserves distinct ports for source and target incidents on one face', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const source = {
+			relation: { id: 'outer-source', from: 'b1', to: 'external-a' },
+			endpointId: 'b1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Right],
+		};
+		const target = {
+			relation: { id: 'outer-target', from: 'external-b', to: 'b1' },
+			endpointId: 'b1',
+			role: RegionIncidentRole.Target,
+			allowedSides: [RegionPortalSide.Right],
+		};
+		const solveIncidents = (incidents: readonly (typeof source | typeof target)[]) =>
+			solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, { incidents });
+		const selected = solveIncidents([target, source]);
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		expect(solveIncidents([source, target])).toEqual(selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(selected.incidents.map(({ relationId }) => relationId)).toEqual([
+			'outer-source',
+			'outer-target',
+		]);
+		const [first, second] = selected.incidents;
+		expect(Math.abs(defined(first).anchor.y - defined(second).anchor.y)).toBe(48);
+		expect(
+			validateSharedLaneIncidentPath(selected.geometry, source, defined(first)),
+		).toBeUndefined();
+		expect(
+			validateSharedLaneIncidentPath(selected.geometry, target, defined(second), [defined(first)]),
+		).toBeUndefined();
+	});
+
+	it.each([
+		[LaneOrientation.Parallel, RegionPortalSide.Left],
+		[LaneOrientation.Transverse, RegionPortalSide.Top],
+	] as const)('reports an incomplete %s incident search', (orientation, side) => {
+		const base = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const document: LogicDocument = {
+			...base,
+			presentation: { ...defined(base.presentation), laneOrientation: orientation },
+		};
+		const prepared = prepareLayoutDocument(document);
+		const incidents = Array.from({ length: 257 }, (_, index) => ({
+			relation: { id: `outer-${index}`, from: 'a1', to: `external-${index}` },
+			endpointId: 'a1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [side],
+		}));
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents,
+		});
+		expect(result.status).toBe(SharedLaneLayoutStatus.Unknown);
+		if (result.status !== SharedLaneLayoutStatus.Unknown) return;
+		expect(result.code).toBe(RegionIncidentUnknownCode.SearchBudgetExceeded);
+		expect(result.witness.attempted).toBe(256);
+		expect(result.witness.exhaustive).toBe(false);
+	});
+
+	it('exhausts earlier routes when a later incident has no local endpoint', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents: [
+				{
+					relation: { id: 'a-valid', from: 'a1', to: 'external' },
+					endpointId: 'a1',
+					role: RegionIncidentRole.Source,
+					allowedSides: [RegionPortalSide.Left],
+				},
+				{
+					relation: { id: 'z-missing', from: 'missing', to: 'external' },
+					endpointId: 'missing',
+					role: RegionIncidentRole.Source,
+					allowedSides: [RegionPortalSide.Right],
+				},
+			],
+		});
+		expect(result.status).toBe(SharedLaneLayoutStatus.Unknown);
+		if (result.status !== SharedLaneLayoutStatus.Unknown) return;
+		expect(result.code).toBe(RegionIncidentUnknownCode.NoValidAlternative);
+		expect(result.witness.exhaustive).toBe(true);
+		expect(result.witness.rejectedAlternatives).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					relationId: 'z-missing',
+					code: RegionIncidentRejectionCode.InvalidAttachment,
+				}),
+				expect.objectContaining({
+					relationId: 'a-valid',
+					code: RegionIncidentRejectionCode.RouteObstructed,
+				}),
+			]),
+		);
+	});
+
+	it('keeps two incident paths deterministic under measured sizes and collection order', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 56, max: 220 }),
+				fc.integer({ min: 56, max: 220 }),
+				(width, height) => {
+					const original = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+					const permuted = {
+						...original,
+						nodes: [...original.nodes].reverse(),
+					};
+					const contracts = [
+						{
+							relation: { id: 'out-a', from: 'b1', to: 'external-a' },
+							endpointId: 'b1',
+							role: RegionIncidentRole.Source,
+							allowedSides: [RegionPortalSide.Right],
+						},
+						{
+							relation: { id: 'out-b', from: 'external-b', to: 'b1' },
+							endpointId: 'b1',
+							role: RegionIncidentRole.Target,
+							allowedSides: [RegionPortalSide.Right],
+						},
+					] as const;
+					const solveVariant = (document: LogicDocument, reverse: boolean) => {
+						const prepared = prepareLayoutDocument(document);
+						const nodes = new Map(prepared.measurements.nodes);
+						nodes.set('b1', { width, height });
+						let incidents: readonly (typeof contracts)[number][] = contracts;
+						if (reverse) incidents = [...contracts].reverse();
+						return solveSharedLaneLayout(
+							prepared.graph,
+							prepared.ranks,
+							{ ...prepared.measurements, nodes },
+							{ incidents },
+						);
+					};
+					const selected = solveVariant(original, false);
+					expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+					expect(solveVariant(permuted, true)).toEqual(selected);
+					if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+					for (const [index, path] of selected.incidents.entries()) {
+						const contract = defined(contracts[index]);
+						const earlier = selected.incidents.slice(0, index);
+						expect(
+							validateSharedLaneIncidentPath(selected.geometry, contract, path, earlier),
+						).toBeUndefined();
+					}
 				},
 			),
-		).toEqual({
-			status: SharedLaneLayoutStatus.Unsupported,
-			reason: 'Incident leaves-a has no local source endpoint.',
-		});
+			{ numRuns: 100 },
+		);
 	});
 
 	it('keeps an unresolved three-dependency crossing typed as unknown', () => {
@@ -203,7 +581,12 @@ describe('shared lane layout', () => {
 		};
 		const prepared = prepareLayoutDocument(withObstacle, {
 			groups: {
-				obstacle: { minimumWidth: 180, minimumHeight: 180, headerHeight: 36, padding: 24 },
+				obstacle: {
+					minimumWidth: 180,
+					minimumHeight: 180,
+					headerHeight: 36,
+					padding: 24,
+				},
 			},
 		});
 		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
@@ -429,7 +812,12 @@ describe('shared lane layout', () => {
 
 	it('keeps two empty auto-growing lanes and ranks parallel dependencies deterministically', () => {
 		const base = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, []);
-		const empty: LogicDocument = { ...base, nodes: [], groups: [], relations: [] };
+		const empty: LogicDocument = {
+			...base,
+			nodes: [],
+			groups: [],
+			relations: [],
+		};
 		expect(solveRaw(empty).status).toBe(SharedLaneLayoutStatus.Selected);
 		const parallel: LogicDocument = {
 			...base,
@@ -440,7 +828,10 @@ describe('shared lane layout', () => {
 			],
 		};
 		const first = solveRaw(parallel);
-		const reversed = solveRaw({ ...parallel, relations: [...parallel.relations].reverse() });
+		const reversed = solveRaw({
+			...parallel,
+			relations: [...parallel.relations].reverse(),
+		});
 		expect(reversed).toEqual(first);
 	});
 
@@ -464,7 +855,10 @@ describe('shared lane layout', () => {
 				...defined(base.presentation),
 				lanes: lanes.map((lane) => ({ ...lane, layoutOrder: orderKey('a0') })),
 			},
-			nodes: base.nodes.map((node) => ({ ...node, layoutOrder: orderKey('a0') })),
+			nodes: base.nodes.map((node) => ({
+				...node,
+				layoutOrder: orderKey('a0'),
+			})),
 		};
 		expect(solve(equalOrders).status).toBe(SharedLaneLayoutStatus.Selected);
 	});
@@ -498,7 +892,12 @@ describe('shared lane layout', () => {
 		const first = defined(route.points[0]);
 		const altered = {
 			...result.geometry,
-			relations: [{ ...route, points: [{ ...first, x: first.x + 1 }, ...route.points.slice(1)] }],
+			relations: [
+				{
+					...route,
+					points: [{ ...first, x: first.x + 1 }, ...route.points.slice(1)],
+				},
+			],
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, altered)).toContain('wrong source face');
 	});

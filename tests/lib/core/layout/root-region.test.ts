@@ -12,6 +12,15 @@ import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-l
 import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
+import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
+import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	LayoutRegionKind,
 	LayoutRegionPolicy,
@@ -19,7 +28,6 @@ import {
 	nestedRegionInput,
 	normalizeRootRegion,
 	UnknownGridCellLayoutError,
-	UnknownNestedRegionLayoutError,
 	UnsupportedGridCellLayoutError,
 	UnsupportedLayoutPresentationError,
 	UnsupportedNestedRegionLayoutError,
@@ -110,6 +118,10 @@ describe('implicit root layout region', () => {
 			LayoutRegionPolicy.GridCells,
 		);
 		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		const direct = solveGridCellLayout(prepared.graph, prepared.measurements, gridInput());
+		if (direct.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`Expected direct grid layout: ${direct.status}: ${direct.reason}`);
+		expect(layout).toEqual(direct.layout);
 		expect(layout.regions?.map(({ id }) => id)).toEqual(['a', 'b', 'c', 'd']);
 		expect(layout.elements.map(({ id }) => id)).toEqual([
 			'a-bottom',
@@ -164,17 +176,25 @@ describe('implicit root layout region', () => {
 		expect(layout.relations.map(({ id }) => id)).toEqual(['across-grid', 'inside-a', 'inside-b']);
 	});
 
-	it('selects a direct group portal, while retaining unsupported and unresolved grid diagnostics', () => {
+	it('rejects an unbridged group crossing that the old grid checker accepted', () => {
 		const source = persistedGridDocument();
 		const extraCrossing = prepareGrid({
 			...source,
 			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 		});
-		const layout = layoutWithRootRegion(
+		const attempt = solveNestedRegionLayout(
 			extraCrossing.graph,
-			extraCrossing.ranks,
 			extraCrossing.measurements,
+			nestedRegionInput(extraCrossing.graph),
 		);
+		expect(attempt).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: '@root',
+		});
+		expect(() =>
+			layoutWithRootRegion(extraCrossing.graph, extraCrossing.ranks, extraCrossing.measurements),
+		).toThrow(UnknownGridCellLayoutError);
 		const baseInput = gridInput();
 		const input = {
 			...baseInput,
@@ -188,8 +208,13 @@ describe('implicit root layout region', () => {
 		const selected = solveGridCellLayout(extraCrossing.graph, extraCrossing.measurements, input);
 		expect(selected.status).toBe(GridCellLayoutStatus.Selected);
 		if (selected.status !== GridCellLayoutStatus.Selected) return;
-		expect(layout).toEqual(selected.layout);
 		expect(validateGridCellGeometry(selected, extraCrossing.graph, input)).toBeUndefined();
+		const layout = selected.layout;
+		const across = layout.relations.find(({ id }) => id === 'across-grid');
+		const groupCrossing = layout.relations.find(({ id }) => id === 'group-crossing');
+		if (across === undefined || groupCrossing === undefined)
+			throw new Error('Expected both grid crossings');
+		expect(pathsTouchWithoutBridge(across.points, groupCrossing.points)).toBe(true);
 		const group = layout.elements.find(({ id }) => id === 'oversized');
 		const member = layout.elements.find(({ id }) => id === 'b');
 		const port = layout.relations.find(({ id }) => id === 'group-crossing')?.points[0];
@@ -205,13 +230,21 @@ describe('implicit root layout region', () => {
 			...source,
 			relations: [...source.relations, { id: 'grouped-crossing', from: 'b', to: 'd' }],
 		});
-		expect(() =>
+		let groupedFailure: unknown;
+		try {
 			layoutWithRootRegion(
 				groupedEndpoint.graph,
 				groupedEndpoint.ranks,
 				groupedEndpoint.measurements,
-			),
-		).toThrow(UnsupportedGridCellLayoutError);
+			);
+		} catch (error) {
+			groupedFailure = error;
+		}
+		expect(groupedFailure).toBeInstanceOf(UnknownGridCellLayoutError);
+		expect(groupedFailure).toMatchObject({
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: '@root',
+		});
 
 		const blocked = prepareGrid({
 			...source,
@@ -268,11 +301,19 @@ describe('implicit root layout region', () => {
 		}
 	});
 
-	it('reports a geometrically unresolved crossing without publishing a layout', () => {
+	it('selects a crossing after the bounded side retry and validates its geometry', () => {
 		const prepared = prepareLayoutDocument(persistedRegionDocument(regionDocument('a-source')));
-		expect(() =>
-			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements),
-		).toThrow(UnknownNestedRegionLayoutError);
+		const input = nestedRegionInput(prepared.graph);
+		const selected = solveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== NestedRegionLayoutStatus.Selected)
+			throw new Error(`Expected selected crossing: ${selected.status}: ${selected.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, selected)).toBeUndefined();
+		expect(
+			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements).relations,
+		).toEqual(selected.layout.relations);
 	});
 
 	it('reports a fourth direct child as outside the bounded composition', () => {

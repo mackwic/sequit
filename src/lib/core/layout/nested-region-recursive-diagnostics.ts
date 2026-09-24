@@ -1,11 +1,16 @@
-import { defined } from '../document/logic-document';
 import type { RegionCompositionModel } from './region-composition-model';
 import {
 	type RegionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from './region-geometry-diagnostic';
+import {
+	RegionIncidentRejectionCode,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+} from './region-incident-contract';
 
 const RETRYABLE_INCIDENT_CODES = new Set([
+	RegionGeometryDiagnosticCode.ParentRouteContact,
 	RegionGeometryDiagnosticCode.IncidentCrossesForeignNode,
 	RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
 	RegionGeometryDiagnosticCode.IncidentWrongAttachment,
@@ -34,19 +39,27 @@ export function retryOwnerForIncidentFailure(
 	const ownerId = owned?.ownerId;
 	if (ownerId === undefined) return undefined;
 	const owner = model.regionsById.get(ownerId);
-	if (owner?.childIds.length === 0) return undefined;
-	if (ownerId === model.rootId) {
-		const relation = defined(owned);
-		const sourceLanes = model.regionsById.get(relation.sourceLeafId)?.definition.lanePresentation;
-		const targetLanes = model.regionsById.get(relation.targetLeafId)?.definition.lanePresentation;
-		if (sourceLanes === undefined && targetLanes === undefined) return undefined;
-	}
-	if (ownerId !== model.rootId && owner?.definition.layout === undefined) return undefined;
+	if (owner === undefined || owner.childIds.length === 0) return undefined;
+	if (owner.definition.grid !== undefined) return undefined;
 	return ownerId;
 }
 
-export function retryGhostLeafForCompositionFailure(
-	failure: RegionGeometryDiagnostic | undefined,
-): boolean {
-	return failure?.code === RegionGeometryDiagnosticCode.ParentRouteContact;
+/** A rejected leaf route may be resolved by one alternate side of its owning row. */
+export function retryOwnerForLeafContractFailure(
+	model: RegionCompositionModel,
+	code: RegionIncidentUnknownCode | RegionGeometryDiagnosticCode | undefined,
+	witness: RegionIncidentSearchWitness | undefined,
+): string | undefined {
+	if (code !== RegionIncidentUnknownCode.NoValidAlternative) return undefined;
+	for (const rejected of witness?.rejectedAlternatives ?? []) {
+		if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) continue;
+		const owned = model.relations.find(({ relation }) => relation.id === rejected.relationId);
+		const ownerId = owned?.ownerId;
+		if (ownerId === undefined) continue;
+		const owner = model.regionsById.get(ownerId);
+		if (owner === undefined || owner.childIds.length === 0) continue;
+		if (owner.definition.grid !== undefined) continue;
+		return ownerId;
+	}
+	return undefined;
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	probeRegionContactScenario,
 	RegionContactCaseId,
 	RegionContactPanelStatus,
 	requireRejectedRegionContactCandidate,
@@ -8,7 +9,9 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { NestedRegionLayoutStatus } from '../../../../src/lib/core/layout/nested-region-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 
 describe('observable contacts at region boundaries', () => {
 	const cases = runRegionContactWitnesses();
@@ -91,11 +94,30 @@ describe('observable contacts at region boundaries', () => {
 		const bend = defined(incident.points.at(-2));
 		const boundary = defined(incident.points.at(-1));
 		expect(probe.crossing.x).toBe(boundary.x);
-		expect(probe.crossing.y).toBeGreaterThan(bend.y);
-		expect(probe.crossing.y).toBeLessThan(boundary.y);
+		expect(probe.crossing.y).toBeGreaterThan(Math.min(bend.y, boundary.y));
+		expect(probe.crossing.y).toBeLessThan(Math.max(bend.y, boundary.y));
 		expect(probePanel.status).toBe(RegionContactPanelStatus.Rejected);
 		expect(probePanel.validator).toContain('sonde géométrique');
 		expect(probePanel.description).toContain('Aucun pont');
+	});
+
+	it('reports the original three-relation grid contact as an unresolved bridge-free crossing', () => {
+		const source = defined(cases.find(({ id }) => id === RegionContactCaseId.Grid)).source;
+		const originalContact = {
+			...source,
+			document: {
+				...source.document,
+				relations: [...source.document.relations, { id: 'across-grid', from: 'a-target', to: 'd' }],
+			},
+		};
+		const { attempt } = probeRegionContactScenario(originalContact);
+		expect(attempt).toMatchObject({
+			status: NestedRegionLayoutStatus.Unknown,
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+			regionId: 'grid',
+			relationId: 'across-grid',
+			reason: 'Region grid routes across-grid and leaves-grid intersect without a bridge.',
+		});
 	});
 
 	it('reports invalid graph and region ownership from mutations of a real workshop document', () => {

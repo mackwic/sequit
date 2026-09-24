@@ -35,6 +35,7 @@ import {
 	normalizedRegions,
 	parentCycle,
 } from '../../../../src/lib/core/layout/region-composition-tree';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 const emptyMeasurements: LayoutMeasurements = {
@@ -198,12 +199,12 @@ describe('direct region composition contracts', () => {
 			localSide: NestedPortalSide.Top,
 		});
 		expect([...rootToBranch]).toEqual([
-			['at-root', NestedPortalSide.Top],
-			['root-to-branch', NestedPortalSide.Top],
+			['at-root', [RegionPortalSide.Top]],
+			['root-to-branch', [RegionPortalSide.Top]],
 		]);
 		const inherited = new Map([
-			['at-root', NestedPortalSide.Bottom],
-			['root-to-branch', NestedPortalSide.Bottom],
+			['at-root', [RegionPortalSide.Bottom]],
+			['root-to-branch', [RegionPortalSide.Bottom]],
 		]);
 		const sourceLeaf = childSides({
 			context,
@@ -213,8 +214,8 @@ describe('direct region composition contracts', () => {
 			localSide: NestedPortalSide.Top,
 		});
 		expect([...sourceLeaf]).toEqual([
-			['at-root', NestedPortalSide.Bottom],
-			['inside-branch', NestedPortalSide.Top],
+			['at-root', [RegionPortalSide.Bottom]],
+			['inside-branch', [RegionPortalSide.Top]],
 		]);
 		const targetLeaf = childSides({
 			context,
@@ -224,8 +225,8 @@ describe('direct region composition contracts', () => {
 			localSide: NestedPortalSide.Top,
 		});
 		expect([...targetLeaf]).toEqual([
-			['inside-branch', NestedPortalSide.Top],
-			['root-to-branch', NestedPortalSide.Bottom],
+			['inside-branch', [RegionPortalSide.Top]],
+			['root-to-branch', [RegionPortalSide.Bottom]],
 		]);
 		const unrelatedLeaf = childSides({
 			context,
