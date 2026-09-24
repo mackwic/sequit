@@ -240,6 +240,8 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 
 /** Grid placement and routing implement the same contract as the row arrangement. */
 export const gridCellArrangement: RegionArrangement<GridPlaced> = {
+	// Grid rails are fixed; retryable side alternatives arrive with the grid disposition.
+	alternativeSides: [],
 	incidentSides: gridIncidentSides,
 	place: placeGrid,
 	route: routeGrid,

@@ -1,6 +1,5 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import { gridCellArrangement } from './grid-cell-recursive-region';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
@@ -14,6 +13,7 @@ import {
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
+import { regionArrangementFor } from './region-arrangement-selection';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
@@ -41,7 +41,6 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from './region-recursive-outcome';
-import { rowRegionArrangement } from './region-row-arrangement';
 
 function solveLeaf(
 	context: RecursiveContext,
@@ -100,20 +99,13 @@ function solveRegion(
 	incidentSides: IncidentSides,
 ): SolvedRecursiveRegion {
 	const region = defined(context.model.regionsById.get(regionId));
-	if (region.definition.grid !== undefined)
-		return solveArrangedRegion({
-			context,
-			regionId,
-			incidentSides,
-			arrangement: gridCellArrangement,
-			solveChild: solveRegion,
-		});
-	if (region.childIds.length === 0) return solveLeaf(context, regionId, incidentSides);
+	const arrangement = regionArrangementFor(region);
+	if (arrangement === undefined) return solveLeaf(context, regionId, incidentSides);
 	return solveArrangedRegion({
 		context,
 		regionId,
 		incidentSides,
-		arrangement: rowRegionArrangement,
+		arrangement,
 		solveChild: solveRegion,
 	});
 }
@@ -152,7 +144,8 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandi
 		dispositionSides: dispositionSideByRegionId,
 	};
 	// One initial candidate plus at most one side retry per normalized region.
-	for (let attempt = 0; attempt <= model.regionsById.size; attempt += 1) {
+	const retryBudget = model.regionsById.size + 1;
+	for (let attempt = 0; attempt < retryBudget; attempt += 1) {
 		let solved: SolvedRecursiveRegion;
 		try {
 			solved = solveRegion(context, model.rootId, new Map());

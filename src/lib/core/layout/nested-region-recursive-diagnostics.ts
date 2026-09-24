@@ -1,3 +1,4 @@
+import { regionArrangementFor } from './region-arrangement-selection';
 import type { RegionCompositionModel } from './region-composition-model';
 import {
 	type RegionGeometryDiagnostic,
@@ -30,6 +31,15 @@ export function regionQualifiedFailure(
 	return `Region ${owner}: ${failure.message}`;
 }
 
+/** Only an arrangement that declares alternate sides can own a retry. */
+function retryableOwner(model: RegionCompositionModel, ownerId: string): string | undefined {
+	const owner = model.regionsById.get(ownerId);
+	if (owner === undefined) return undefined;
+	const arrangement = regionArrangementFor(owner);
+	if (arrangement === undefined || arrangement.alternativeSides.length === 0) return undefined;
+	return ownerId;
+}
+
 export function retryOwnerForIncidentFailure(
 	model: RegionCompositionModel,
 	failure: RegionGeometryDiagnostic,
@@ -38,10 +48,7 @@ export function retryOwnerForIncidentFailure(
 	const owned = model.relations.find(({ relation }) => relation.id === failure.relationId);
 	const ownerId = owned?.ownerId;
 	if (ownerId === undefined) return undefined;
-	const owner = model.regionsById.get(ownerId);
-	if (owner === undefined || owner.childIds.length === 0) return undefined;
-	if (owner.definition.grid !== undefined) return undefined;
-	return ownerId;
+	return retryableOwner(model, ownerId);
 }
 
 /** A rejected leaf route may be resolved by one alternate side of its owning row. */
@@ -56,10 +63,9 @@ export function retryOwnerForLeafContractFailure(
 		const owned = model.relations.find(({ relation }) => relation.id === rejected.relationId);
 		const ownerId = owned?.ownerId;
 		if (ownerId === undefined) continue;
-		const owner = model.regionsById.get(ownerId);
-		if (owner === undefined || owner.childIds.length === 0) continue;
-		if (owner.definition.grid !== undefined) continue;
-		return ownerId;
+		const retryOwner = retryableOwner(model, ownerId);
+		if (retryOwner === undefined) continue;
+		return retryOwner;
 	}
 	return undefined;
 }

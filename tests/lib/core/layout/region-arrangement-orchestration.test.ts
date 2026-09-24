@@ -58,6 +58,7 @@ describe('common region arrangement orchestration', () => {
 			}[] = [];
 			const childRequests = new Map<string, ReadonlyMap<string, readonly RegionPortalSide[]>>();
 			const arrangement: RegionArrangement<number> = {
+				alternativeSides: [],
 				incidentSides(input) {
 					requests.push({
 						relationId: input.relation.id,

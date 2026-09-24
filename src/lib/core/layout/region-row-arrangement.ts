@@ -96,6 +96,7 @@ function route(input: ArrangementRouteInput<RowPlaced>): SolvedRecursiveRegion {
 
 /** The row disposition preserves the established placement and bus route order. */
 export const rowRegionArrangement: RegionArrangement<RowPlaced> = {
+	alternativeSides: [RegionPortalSide.Top, RegionPortalSide.Bottom],
 	incidentSides,
 	place,
 	route,

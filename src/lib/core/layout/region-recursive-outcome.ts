@@ -1,12 +1,14 @@
+import { defined } from '../document/logic-document';
 import {
 	retryOwnerForIncidentFailure,
 	retryOwnerForLeafContractFailure,
 } from './nested-region-recursive-diagnostics';
 import { type RecursiveContext, sideForRegion } from './nested-region-recursive-model-adapter';
+import { regionArrangementFor } from './region-arrangement-selection';
 import {
 	RegionCompositionStatus,
 	type RegionLayoutAttempt,
-	RegionPortalSide,
+	type RegionPortalSide,
 } from './region-composition-types';
 import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import {
@@ -25,15 +27,17 @@ export interface RegionRetryState {
 	readonly dispositionSides: Map<string, RegionPortalSide>;
 }
 
-function alternateSide(side: RegionPortalSide): RegionPortalSide {
-	if (side === RegionPortalSide.Top) return RegionPortalSide.Bottom;
-	return RegionPortalSide.Top;
+function nextRetrySide(state: RegionRetryState, ownerId: string): RegionPortalSide {
+	const region = defined(state.context.model.regionsById.get(ownerId));
+	const sides = defined(regionArrangementFor(region)).alternativeSides;
+	const current = sideForRegion(state.context, ownerId);
+	return defined(sides.find((side) => side !== current));
 }
 
 function retrySide(state: RegionRetryState, ownerId: string | undefined): boolean {
 	if (ownerId === undefined || state.retriedOwners.has(ownerId)) return false;
 	state.retriedOwners.add(ownerId);
-	state.dispositionSides.set(ownerId, alternateSide(sideForRegion(state.context, ownerId)));
+	state.dispositionSides.set(ownerId, nextRetrySide(state, ownerId));
 	return true;
 }
 

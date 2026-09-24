@@ -37,6 +37,8 @@ export interface ArrangementRouteInput<Placement> extends ArrangementPlaceInput 
 
 /** Region arrangement owns admissible sides, child placement, and owned routes. */
 export interface RegionArrangement<Placement> {
+	/** Ordered disposition sides this arrangement may retry; empty when its rails are fixed. */
+	readonly alternativeSides: readonly RegionPortalSide[];
 	incidentSides(input: ArrangementIncidentInput): readonly RegionPortalSide[];
 	place(input: ArrangementPlaceInput): Placement;
 	route(input: ArrangementRouteInput<Placement>): SolvedRecursiveRegion;
