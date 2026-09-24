@@ -23,6 +23,7 @@ const component = filename('src/app/web/ui/components/canvas/LogicCanvas.svelte'
 
 beforeAll(async () => {
 	// Initialize both the real configuration and the typed Svelte project before policy assertions.
+	await eslint.calculateConfigForFile(component);
 	const initialized = await eslint.lintText(
 		'<script lang="ts">const label = "Ready";</script><p>{label}</p>',
 		{ filePath: component },
