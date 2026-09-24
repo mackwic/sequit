@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import { bestWithinBudget, validatedSearchBudget } from '../bounded-search';
 import { layoutWithDedicatedEngine } from '../layout-engine';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
 import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
@@ -151,9 +152,7 @@ export function resolveAdjacentLayoutContract(
 	measurements: LayoutMeasurements,
 	options: { readonly maxBranches?: number } = {},
 ): LayoutContractResolution {
-	const budget = options.maxBranches ?? 256;
-	if (!Number.isSafeInteger(budget) || budget < 0)
-		throw new Error('Layout contract budget must be a non-negative safe integer');
+	const budget = validatedSearchBudget(options.maxBranches ?? 256);
 	const built = buildAdjacentLayoutContract(graph, ranks, measurements);
 	if (built.status === LayoutContractBuildStatus.Unknown)
 		return {
@@ -180,22 +179,18 @@ export function resolveAdjacentLayoutContract(
 			evaluations: [],
 		};
 	}
-	const branches = contract.candidates.flatMap(candidateFaceBranches);
-	const evaluations: ContractBranchEvaluation[] = [];
 	const materialized = new Map<string, LayoutResult | undefined>();
-	let incumbent: SelectedContractBranch | undefined;
-	for (const branch of branches.slice(0, budget)) {
-		const result = evaluateBranch({ branch, graph, measurements, baseline, materialized });
-		evaluations.push(result.evaluation);
-		if (result.selection === undefined) continue;
-		if (incumbent === undefined || better(result.selection, incumbent))
-			incumbent = result.selection;
-	}
-	if (branches.length > budget) {
+	const { evaluations, explored, exhaustive, incumbent } = bestWithinBudget({
+		alternatives: contract.candidates.flatMap(candidateFaceBranches),
+		budget,
+		evaluate: (branch) => evaluateBranch({ branch, graph, measurements, baseline, materialized }),
+		better,
+	});
+	if (!exhaustive) {
 		const incomplete: IncompleteLayoutContractResolution = {
 			status: LayoutContractResolutionStatus.Incomplete,
 			contract,
-			exploredBranches: evaluations.length,
+			exploredBranches: explored,
 			budget,
 			evaluations,
 		};

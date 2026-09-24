@@ -1,5 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import type { LogicRelation } from '../document/logic-document';
+import type { BoundedSearchWitness } from './bounded-search';
 import type { Point } from './layout-types';
 import { RegionPortalSide } from './region-portal-side';
 
@@ -54,11 +55,7 @@ export interface RegionIncidentRejectedAlternative {
 }
 
 /** A bounded search reports whether its listed attempts exhaust the declared alternatives. */
-export interface RegionIncidentSearchWitness {
-	readonly attempted: number;
-	readonly exhaustive: boolean;
-	readonly rejectedAlternatives: readonly RegionIncidentRejectedAlternative[];
-}
+export type RegionIncidentSearchWitness = BoundedSearchWitness<RegionIncidentRejectedAlternative>;
 
 const ALL_SIDES = new Set<RegionPortalSide>(Object.values(RegionPortalSide));
 const ALL_ROLES = new Set<string>(Object.values(RegionIncidentRole));

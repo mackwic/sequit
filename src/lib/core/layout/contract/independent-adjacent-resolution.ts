@@ -2,8 +2,9 @@ import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import { bestWithinBudget, validatedSearchBudget } from '../bounded-search';
 import type { LayoutMeasurements, LayoutResult, Point } from '../layout-types';
-import { candidateFaceBranches } from './candidate-face-branches';
+import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
 import { materializeIndependentAdjacentGeometry } from './independent-adjacent-geometry';
 import {
 	type AdjacentContractShape,
@@ -121,6 +122,63 @@ function better(left: IndependentAdjacentSelection, right: IndependentAdjacentSe
 	return compareCanonicalStrings(left.branchId, right.branchId) < 0;
 }
 
+interface IndependentBranchResult {
+	readonly evaluation: IndependentAdjacentEvaluation;
+	readonly selection?: IndependentAdjacentSelection;
+}
+
+function evaluateBranch(input: {
+	readonly branch: CandidateFaceBranch;
+	readonly graph: LogicGraph;
+	readonly measurements: LayoutMeasurements;
+}): IndependentBranchResult {
+	const { branch, graph, measurements } = input;
+	const layout = materializeIndependentAdjacentGeometry(
+		graph,
+		measurements,
+		branch.candidate,
+		branch.choices,
+	);
+	if (layout === undefined)
+		return {
+			evaluation: {
+				branchId: branch.id,
+				status: IndependentAdjacentBranchStatus.MaterializationFailed,
+			},
+		};
+	const checked = validateContractCandidate({
+		graph,
+		measurements,
+		candidate: branch.candidate,
+		choices: branch.choices,
+		layout,
+	});
+	if (!checked.valid)
+		return {
+			evaluation: {
+				branchId: branch.id,
+				status: IndependentAdjacentBranchStatus.GeometryRejected,
+			},
+		};
+	if (hasStrictCrossing(layout))
+		return {
+			evaluation: {
+				branchId: branch.id,
+				status: IndependentAdjacentBranchStatus.CrossingRejected,
+			},
+		};
+	return {
+		evaluation: { branchId: branch.id, status: IndependentAdjacentBranchStatus.Accepted },
+		selection: {
+			candidateId: branch.candidate.id,
+			branchId: branch.id,
+			choices: branch.choices,
+			growth: branch.growth,
+			layout,
+		},
+	};
+}
+
 /** Resolves the independently materialized adjacent contract, including inverted orders. */
 export function resolveIndependentAdjacentContract(
 	graph: LogicGraph,
@@ -128,72 +186,29 @@ export function resolveIndependentAdjacentContract(
 	measurements: LayoutMeasurements,
 	options: { readonly maxBranches?: number } = {},
 ): IndependentAdjacentResolution {
-	const budget = options.maxBranches ?? 256;
-	if (!Number.isSafeInteger(budget) || budget < 0)
-		throw new Error('Layout contract budget must be a non-negative safe integer');
+	const budget = validatedSearchBudget(options.maxBranches ?? 256);
 	const built = buildAdjacentLayoutContract(graph, ranks, measurements);
 	if (built.status === LayoutContractBuildStatus.Unknown)
 		return { status: IndependentAdjacentStatus.Unknown, reason: built.reason, evaluations: [] };
 	const { contract } = built;
 	const omittedCrossingCandidates = 0;
 	const alternatives = contract.candidates.flatMap(candidateFaceBranches);
-	const evaluations: IndependentAdjacentEvaluation[] = [];
-	let incumbent: IndependentAdjacentSelection | undefined;
-	for (const branch of alternatives.slice(0, budget)) {
-		const layout = materializeIndependentAdjacentGeometry(
-			graph,
-			measurements,
-			branch.candidate,
-			branch.choices,
-		);
-		if (layout === undefined) {
-			evaluations.push({
-				branchId: branch.id,
-				status: IndependentAdjacentBranchStatus.MaterializationFailed,
-			});
-			continue;
-		}
-		const checked = validateContractCandidate({
-			graph,
-			measurements,
-			candidate: branch.candidate,
-			choices: branch.choices,
-			layout,
-		});
-		if (!checked.valid) {
-			evaluations.push({
-				branchId: branch.id,
-				status: IndependentAdjacentBranchStatus.GeometryRejected,
-			});
-			continue;
-		}
-		if (hasStrictCrossing(layout)) {
-			evaluations.push({
-				branchId: branch.id,
-				status: IndependentAdjacentBranchStatus.CrossingRejected,
-			});
-			continue;
-		}
-		evaluations.push({ branchId: branch.id, status: IndependentAdjacentBranchStatus.Accepted });
-		const selection: IndependentAdjacentSelection = {
-			candidateId: branch.candidate.id,
-			branchId: branch.id,
-			choices: branch.choices,
-			growth: branch.growth,
-			layout,
-		};
-		if (incumbent === undefined || better(selection, incumbent)) incumbent = selection;
-	}
+	const { evaluations, explored, exhaustive, incumbent } = bestWithinBudget({
+		alternatives,
+		budget,
+		evaluate: (branch) => evaluateBranch({ branch, graph, measurements }),
+		better,
+	});
 	const trace: SearchTrace = {
 		contract,
 		scope: contract.shape,
 		globalStatus: IndependentAdjacentGlobalStatus.Undetermined,
 		omittedCrossingCandidates,
-		exploredBranches: evaluations.length,
+		exploredBranches: explored,
 		totalBranches: alternatives.length,
 		evaluations,
 	};
-	if (evaluations.length < alternatives.length) {
+	if (!exhaustive) {
 		if (incumbent === undefined) return { ...trace, status: IndependentAdjacentStatus.Incomplete };
 		return { ...trace, status: IndependentAdjacentStatus.Incomplete, incumbent };
 	}
