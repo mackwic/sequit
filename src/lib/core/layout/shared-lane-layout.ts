@@ -23,6 +23,7 @@ import { interiorPassageAllocation } from './shared-lane-interior-passage';
 import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
+import { twoPassStrategies } from './shared-lane-route-strategies';
 import {
 	allocateParallelRoutes,
 	ParallelRouteOrder,
@@ -66,6 +67,12 @@ export type SharedLaneLayoutOutcome =
 
 export interface SharedLaneSolveOptions extends LayoutOptions {
 	readonly incidents?: readonly RegionIncidentContract[];
+	/**
+	 * Whether the solver's second pass may accept a contact carried by a validated bridge. Root
+	 * shared lanes adopt it; a region leaf keeps it forbidden until leaf bridge support lands, so
+	 * every leaf lane layout stays exactly as before.
+	 */
+	readonly acceptBridges?: boolean;
 }
 
 function geometryDimensions(
@@ -176,12 +183,13 @@ interface GeometryAttemptInput {
 	readonly geometry: SharedLaneGeometry;
 	readonly ports: SharedLanePorts;
 	readonly contracts: readonly RegionIncidentContract[];
+	readonly acceptBridges: boolean;
 	readonly state: IncidentSearchState;
 }
 
 function geometryAttempt(input: GeometryAttemptInput): SelectedSharedLaneLayout | string {
-	const { graph, geometry, ports, contracts, state } = input;
-	const issue = validateSharedLaneGeometry(graph, geometry, SHARED_LANE_CLEARANCE);
+	const { graph, geometry, ports, contracts, acceptBridges, state } = input;
+	const issue = validateSharedLaneGeometry(graph, geometry, SHARED_LANE_CLEARANCE, acceptBridges);
 	if (issue !== undefined) {
 		const first = contracts[0];
 		const side = first?.allowedSides[0];
@@ -203,12 +211,21 @@ function geometryAttempt(input: GeometryAttemptInput): SelectedSharedLaneLayout 
 	return selectedLayout(geometry, incidents, witness);
 }
 
-function parallelAttempt(
-	graph: LogicGraph,
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-	contracts: readonly RegionIncidentContract[],
-): SharedLaneLayoutOutcome {
+interface LaneAttemptInput {
+	readonly graph: LogicGraph;
+	readonly input: SharedLaneInput;
+	readonly ports: SharedLanePorts;
+	readonly contracts: readonly RegionIncidentContract[];
+	readonly acceptBridges: boolean;
+}
+
+function parallelAttempt({
+	graph,
+	input,
+	ports,
+	contracts,
+	acceptBridges,
+}: LaneAttemptInput): SharedLaneLayoutOutcome {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
 		attempted: 0,
@@ -226,11 +243,18 @@ function parallelAttempt(
 			firstIssue = issue;
 		}
 	}
-	for (const order of parallelOrders(contracts)) {
-		state.strategyId = `parallel/${order}`;
-		state.candidateId = state.strategyId;
-		const geometry = parallelGeometry(input, ports, order);
-		const attempt = geometryAttempt({ graph, geometry, ports, contracts, state });
+	for (const strategy of twoPassStrategies('parallel', parallelOrders(contracts), acceptBridges)) {
+		state.strategyId = strategy.id;
+		state.candidateId = strategy.id;
+		const geometry = parallelGeometry(input, ports, strategy.order);
+		const attempt = geometryAttempt({
+			graph,
+			geometry,
+			ports,
+			contracts,
+			acceptBridges: strategy.acceptBridges,
+			state,
+		});
 		if (typeof attempt !== 'string') return attempt;
 		firstIssue ??= attempt;
 		if (!state.exhaustive) break;
@@ -243,12 +267,13 @@ function parallelAttempt(
 	};
 }
 
-function transverseAttempt(
-	graph: LogicGraph,
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-	contracts: readonly RegionIncidentContract[],
-): SharedLaneLayoutOutcome {
+function transverseAttempt({
+	graph,
+	input,
+	ports,
+	contracts,
+	acceptBridges,
+}: LaneAttemptInput): SharedLaneLayoutOutcome {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
 		attempted: 0,
@@ -257,11 +282,22 @@ function transverseAttempt(
 		candidateId: '',
 		rejectedAlternatives: [],
 	};
-	for (const order of [TransverseRouteOrder.Canonical, TransverseRouteOrder.Nested]) {
-		state.strategyId = `transverse/${order}`;
-		state.candidateId = state.strategyId;
-		const geometry = transverseGeometry(input, ports, order);
-		const attempt = geometryAttempt({ graph, geometry, ports, contracts, state });
+	for (const strategy of twoPassStrategies(
+		'transverse',
+		[TransverseRouteOrder.Canonical, TransverseRouteOrder.Nested],
+		acceptBridges,
+	)) {
+		state.strategyId = strategy.id;
+		state.candidateId = strategy.id;
+		const geometry = transverseGeometry(input, ports, strategy.order);
+		const attempt = geometryAttempt({
+			graph,
+			geometry,
+			ports,
+			contracts,
+			acceptBridges: strategy.acceptBridges,
+			state,
+		});
 		if (typeof attempt !== 'string') return attempt;
 		firstIssue ??= attempt;
 		if (!state.exhaustive) break;
@@ -299,7 +335,8 @@ export function solveSharedLaneLayout(
 	if (input === undefined)
 		return { status: SharedLaneLayoutStatus.Unsupported, reason: defined(prepared.reason) };
 	const ports = planSharedLanePorts(input, contracts);
-	if (input.orientation === LaneOrientation.Parallel)
-		return parallelAttempt(graph, input, ports, contracts);
-	return transverseAttempt(graph, input, ports, contracts);
+	const acceptBridges = options.acceptBridges ?? true;
+	const attempt = { graph, input, ports, contracts, acceptBridges };
+	if (input.orientation === LaneOrientation.Parallel) return parallelAttempt(attempt);
+	return transverseAttempt(attempt);
 }

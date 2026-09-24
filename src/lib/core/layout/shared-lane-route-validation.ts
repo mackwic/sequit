@@ -1,5 +1,7 @@
 import { defined, LaneOrientation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import { unbridgedContacts } from './bridge-contact';
+import { type LayoutBridge, validatedBridges } from './bridge-oracle';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, Point } from './layout-types';
 import {
@@ -236,12 +238,25 @@ function routesCross(a: LayoutRelation, b: LayoutRelation): boolean {
 	return false;
 }
 
-function validateRouteSeparation(routes: readonly LayoutRelation[]): string | undefined {
+/**
+ * The lane route separation rule. The first pass rejects any contact; the bridged pass accepts a
+ * pair only when every contact between the two routes is a strict crossing carried by a validated
+ * bridge of the same relation set, exactly as the composition validators accept a bridged parent
+ * contact. A T-contact and a collinear overlap are never covered, so they keep their rejection.
+ */
+function validateRouteSeparation(
+	routes: readonly LayoutRelation[],
+	acceptBridges: boolean,
+): string | undefined {
+	let bridges: readonly LayoutBridge[] | undefined;
+	if (acceptBridges) bridges = validatedBridges(routes);
 	for (let first = 0; first < routes.length; first += 1) {
 		const a = defined(routes[first]);
 		for (let second = first + 1; second < routes.length; second += 1) {
 			const b = defined(routes[second]);
-			if (routesCross(a, b)) return `Routes ${a.id} and ${b.id} cross without a bridge.`;
+			let touching = routesCross(a, b);
+			if (bridges !== undefined) touching = unbridgedContacts(a, b, bridges).length > 0;
+			if (touching) return `Routes ${a.id} and ${b.id} cross without a bridge.`;
 		}
 	}
 	return undefined;
@@ -251,6 +266,7 @@ export function validateSharedLaneRoutes(
 	graph: LogicGraph,
 	geometry: SharedLaneGeometry,
 	clearance: number,
+	acceptBridges: boolean,
 ): string | undefined {
 	const relationById = new Map(graph.relations.map(({ relation }) => [relation.id, relation]));
 	if (geometry.relations.length !== relationById.size) return 'The relation set is incomplete.';
@@ -278,5 +294,5 @@ export function validateSharedLaneRoutes(
 	}
 	const portIssue = validatePortSeparation(context.ports);
 	if (portIssue !== undefined) return portIssue;
-	return validateRouteSeparation(geometry.relations);
+	return validateRouteSeparation(geometry.relations, acceptBridges);
 }

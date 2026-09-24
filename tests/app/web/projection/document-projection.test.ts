@@ -28,6 +28,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import * as graph from '../../../../src/lib/core/graph/create-graph';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -490,7 +492,7 @@ describe('live document projection', () => {
 		expect(canvas.lanes?.map(({ id }) => id)).toEqual(['left', 'middle', 'right']);
 		expect(canvas.relations.map(({ id }) => id)).toEqual(['a-to-c', 'b-to-c']);
 	});
-	it('reports an unresolved same-lane and inter-lane crossing from the real projection', async () => {
+	it('resolves the same-lane and inter-lane crossing through validated bridges from the real projection', async () => {
 		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 		const first = defined(source.nodes[0]);
 		const document: LogicDocument = {
@@ -517,12 +519,20 @@ describe('live document projection', () => {
 			],
 		};
 		const projection = createSharedCanvasProjection(document);
-		await expect(
-			projection.createCanvasModel(layoutMeasurementsForCanvas(projection.measurementModel)),
-		).rejects.toMatchObject({
-			name: LayoutProjectionError.name,
-			diagnostic: { reason: { code: LayoutFailureReasonCode.UnknownLaneLayout } },
-		});
+		const canvas = await projection.createCanvasModel(
+			layoutMeasurementsForCanvas(projection.measurementModel),
+		);
+		expect(canvas.relations.map(({ id }) => id).sort()).toEqual([
+			'first-cross',
+			'internal',
+			'second-cross',
+		]);
+		// The root lane solver accepts the crossing in its second pass, carried by a validated bridge.
+		const bridges = validatedBridges(canvas.relations);
+		expect(bridges.length).toBeGreaterThan(0);
+		for (const [index, route] of canvas.relations.entries())
+			for (const other of canvas.relations.slice(index + 1))
+				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
 	});
 	it('reuses geometry for text/style changes of equal measured size and keeps each result immutable', async () => {
 		const calculate = vi.spyOn(layout, 'layoutGraph');

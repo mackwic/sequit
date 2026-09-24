@@ -85,6 +85,7 @@ export function validateSharedLaneGeometry(
 	graph: LogicGraph,
 	geometry: SharedLaneGeometry,
 	clearance = 12,
+	acceptBridges = false,
 ): string | undefined {
 	if (graph.document.presentation === undefined) return 'Explicit lanes are required.';
 	if (!Number.isFinite(geometry.width) || !Number.isFinite(geometry.height))
@@ -96,5 +97,5 @@ export function validateSharedLaneGeometry(
 	if (boxIssue !== undefined) return boxIssue;
 	const overlapIssue = validateBoxSeparation(geometry);
 	if (overlapIssue !== undefined) return overlapIssue;
-	return validateSharedLaneRoutes(graph, geometry, clearance);
+	return validateSharedLaneRoutes(graph, geometry, clearance, acceptBridges);
 }

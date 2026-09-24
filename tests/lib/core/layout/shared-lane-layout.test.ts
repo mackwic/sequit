@@ -19,12 +19,15 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/region-incident-contract';
+import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
 import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
 import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/shared-lane-incident-paths';
 import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
@@ -553,17 +556,67 @@ describe('shared lane layout', () => {
 		);
 	});
 
-	it('keeps an unresolved three-dependency crossing typed as unknown', () => {
-		const result = solve(
-			laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
-				{ id: 'within-a', from: 'a1', to: 'a2' },
-				{ id: 'a1-to-b', from: 'a1', to: 'b1' },
-				{ id: 'a2-to-b', from: 'a2', to: 'b1' },
-			]),
-		);
+	it('selects a three-dependency crossing through validated bridges in the second pass', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'within-a', from: 'a1', to: 'a2' },
+			{ id: 'a1-to-b', from: 'a1', to: 'b1' },
+			{ id: 'a2-to-b', from: 'a2', to: 'b1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(result.status, JSON.stringify(result)).toBe(SharedLaneLayoutStatus.Selected);
+		if (result.status !== SharedLaneLayoutStatus.Selected) return;
+		// The first pass still forbids the very same geometry: bridges are only admitted by pass 2.
+		expect(
+			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE),
+		).toContain('cross without a bridge');
+		expect(
+			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
+		).toBeUndefined();
+		const bridges = validatedBridges(result.geometry.relations);
+		expect(bridges.length).toBeGreaterThan(0);
+		for (const [index, route] of result.geometry.relations.entries())
+			for (const other of result.geometry.relations.slice(index + 1))
+				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
+	});
+
+	it('keeps the three-dependency crossing unknown when bridges are forbidden', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'within-a', from: 'a1', to: 'a2' },
+			{ id: 'a1-to-b', from: 'a1', to: 'b1' },
+			{ id: 'a2-to-b', from: 'a2', to: 'b1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			acceptBridges: false,
+		});
 		expect(result.status).toBe(SharedLaneLayoutStatus.Unknown);
 		if (result.status !== SharedLaneLayoutStatus.Unknown) return;
 		expect(result.reason).toContain('cross without a bridge');
+	});
+
+	it('types an invalid incident contract before any geometry', () => {
+		const prepared = prepareLayoutDocument(
+			laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+				{ id: 'a-to-b', from: 'a1', to: 'b1' },
+			]),
+		);
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents: [
+				{
+					relation: { id: 'a-to-b', from: 'a1', to: 'b1' },
+					endpointId: 'a1',
+					role: RegionIncidentRole.Source,
+					allowedSides: [],
+				},
+			],
+		});
+		expect(result).toMatchObject({
+			status: SharedLaneLayoutStatus.Unknown,
+			code: RegionIncidentUnknownCode.InvalidContract,
+			reason: 'An incident must admit at least one frame side.',
+			witness: { attempted: 0, exhaustive: true, rejectedAlternatives: [] },
+		});
 	});
 	it.each(DIRECTIONS)('places and routes A→C through the shared frame in %s', (direction, bias) => {
 		const document = laneDocument(direction, bias, [{ id: 'a-to-c', from: 'a1', to: 'c1' }]);
