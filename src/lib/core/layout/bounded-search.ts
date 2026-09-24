@@ -1,5 +1,5 @@
 /** One alternative's typed outcome: always an evaluation, and a selection when the alternative is accepted. */
-export interface BoundedSearchAttempt<Evaluation, Selection> {
+interface BoundedSearchAttempt<Evaluation, Selection> {
 	readonly evaluation: Evaluation;
 	readonly selection?: Selection;
 }
