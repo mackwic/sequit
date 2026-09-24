@@ -49,6 +49,25 @@ describe('canvas measurement boundary', () => {
 		expect(measurements.groups.size).toBe(0);
 	});
 
+	it('ignores empty identifiers and lets a wide group header grow its measured width', () => {
+		const root = measurementRoot({
+			'[data-measure-node]': [measurable({ measureNode: '' }, 220, 100)],
+			'[data-measure-junction]': [measurable({ measureJunction: '' }, 32, 32)],
+			'[data-measure-group]': [
+				measurable({ measureGroup: '' }, 88, 14),
+				measurable({ measureGroup: 'wide-group' }, 200, 20),
+			],
+		});
+
+		expect(collectLayoutMeasurements(root)).toEqual({
+			nodes: new Map(),
+			junctions: new Map(),
+			groups: new Map([
+				['wide-group', { minimumWidth: 248, minimumHeight: 72, headerHeight: 44, padding: 24 }],
+			]),
+		});
+	});
+
 	it('changes its signature only when a measured collection changes', () => {
 		const original = collectLayoutMeasurements(
 			measurementRoot({
@@ -68,5 +87,28 @@ describe('canvas measurement boundary', () => {
 
 		expect(layoutMeasurementSignature(identical)).toBe(layoutMeasurementSignature(original));
 		expect(layoutMeasurementSignature(changed)).not.toBe(layoutMeasurementSignature(original));
+	});
+
+	it('normalizes insertion order independently for nodes, junctions, and groups', () => {
+		const first = {
+			nodes: new Map([
+				['b', { width: 200, height: 100 }],
+				['a', { width: 220, height: 120 }],
+			]),
+			junctions: new Map([
+				['j2', { width: 24, height: 24 }],
+				['j1', { width: 28, height: 28 }],
+			]),
+			groups: new Map([
+				['g2', { minimumWidth: 160, minimumHeight: 72, headerHeight: 36, padding: 24 }],
+				['g1', { minimumWidth: 180, minimumHeight: 72, headerHeight: 40, padding: 24 }],
+			]),
+		};
+		const reversed = {
+			nodes: new Map([...first.nodes].reverse()),
+			junctions: new Map([...first.junctions].reverse()),
+			groups: new Map([...first.groups].reverse()),
+		};
+		expect(layoutMeasurementSignature(reversed)).toBe(layoutMeasurementSignature(first));
 	});
 });

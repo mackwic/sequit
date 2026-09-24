@@ -23,6 +23,8 @@ function checkEnums(properties: Readonly<Record<string, string>>): void {
 			'Unknown junction operator',
 		);
 	if (properties[SharedProperty.GroupId] !== undefined) wireId(properties[SharedProperty.GroupId]);
+	if (properties[SharedProperty.RegionId] !== undefined)
+		wireId(properties[SharedProperty.RegionId]);
 }
 
 export function readElementCreation(
@@ -113,6 +115,7 @@ export function readElementUpdate(
 				set,
 				unset: optionalKeys(unset, [
 					SharedProperty.GroupId,
+					SharedProperty.RegionId,
 					SharedProperty.Color,
 					SharedProperty.Icon,
 				]),
@@ -125,6 +128,7 @@ export function readElementUpdate(
 				unset: optionalKeys(unset, [
 					SharedProperty.Color,
 					SharedProperty.GroupId,
+					SharedProperty.RegionId,
 					SharedProperty.State,
 				]),
 			};
@@ -140,7 +144,7 @@ export function readElementUpdate(
 				op,
 				target: { ...target, kind: Kind.Junction },
 				set,
-				unset: optionalKeys(unset, [SharedProperty.GroupId]),
+				unset: optionalKeys(unset, [SharedProperty.GroupId, SharedProperty.RegionId]),
 			};
 		case Kind.Relation:
 			return {

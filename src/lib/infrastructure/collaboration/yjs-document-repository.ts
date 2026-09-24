@@ -80,6 +80,7 @@ function markdownTarget(document: Y.Doc, nodeId: string): Y.Text {
 }
 
 type GroupAdditions = NonNullable<DocumentChangeSet['groupAdditions']>;
+type NodeAdditions = DocumentChangeSet['nodeAdditions'];
 type GroupReplacements = NonNullable<DocumentChangeSet['groupReplacements']>;
 type EndpointGroupChanges = NonNullable<DocumentChangeSet['endpointGroupChanges']>;
 
@@ -98,7 +99,24 @@ function applyGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAddi
 			layoutOrder: group.layoutOrder,
 		};
 		if (group.groupId !== undefined) values['groupId'] = group.groupId;
+		if (group.laneId !== undefined) values['laneId'] = group.laneId;
+		if (group.regionId !== undefined) values['regionId'] = group.regionId;
 		groups.set(group.id, createYjsEntityMap(values));
+	}
+}
+
+function applyNodeAdditions(nodes: Y.Map<Y.Map<unknown>>, additions: NodeAdditions): void {
+	for (const node of additions) {
+		const values: Record<string, unknown> = {
+			natureId: node.natureId,
+			...contentStyleFields(node.color, node.icon),
+			layoutOrder: node.layoutOrder,
+			markdown: new Y.Text(node.markdown),
+		};
+		if (node.groupId !== undefined) values['groupId'] = node.groupId;
+		if (node.laneId !== undefined) values['laneId'] = node.laneId;
+		if (node.regionId !== undefined) values['regionId'] = node.regionId;
+		nodes.set(node.id, createYjsEntityMap(values));
 	}
 }
 
@@ -271,17 +289,7 @@ export class YjsDocumentRepository {
 			...replacement,
 			text: markdownTarget(this.document, replacement.nodeId),
 		}));
-		for (const node of changes.nodeAdditions) {
-			const markdown = new Y.Text(node.markdown);
-			const values: Record<string, unknown> = {
-				natureId: node.natureId,
-				...contentStyleFields(node.color, node.icon),
-				layoutOrder: node.layoutOrder,
-				markdown,
-			};
-			if (node.groupId !== undefined) values['groupId'] = node.groupId;
-			nodes.set(node.id, createYjsEntityMap(values));
-		}
+		applyNodeAdditions(nodes, changes.nodeAdditions);
 		applyGroupAdditions(groups, changes.groupAdditions ?? []);
 		applyGroupReplacements(groups, changes.groupReplacements ?? []);
 		for (const relation of changes.relationAdditions) {

@@ -13,6 +13,8 @@ import {
 	type CollaborativeDocumentSession,
 	type ProposalDecision,
 	ProposalDecisionKind,
+	type SourceDocumentState,
+	SourceDocumentStateKind,
 } from './collaborative-document-session-types';
 import { notifySubscribers } from './notify-subscribers';
 import { InvalidPresenceError } from './participant-presence';
@@ -26,6 +28,7 @@ import {
 } from './session-wire';
 import { sharedElement } from './shared-element';
 import { spliceSharedText } from './shared-text';
+import { readSourceDocumentState } from './source-document-state';
 import { readSyncStep, SyncStepKind, writeSyncRequest, writeSyncResponse } from './sync-steps';
 import { TextUpdateBuffer } from './text-update-buffer';
 import { importLogicDocument, readLogicDocument } from './yjs-document-codec';
@@ -33,6 +36,7 @@ import { importLogicDocument, readLogicDocument } from './yjs-document-codec';
 export class CollaborativeSession implements CollaborativeDocumentSession {
 	readonly document = new Y.Doc();
 	readonly #subscribers = new Set<DocumentSessionSubscriber>();
+	readonly #sourceStateListeners = new Set<(state: SourceDocumentState) => void>();
 	readonly #decisionListeners = new Set<(decision: ProposalDecision) => void>();
 	readonly #presenceListeners = new Set<(participants: readonly ParticipantPresence[]) => void>();
 	readonly #rejectionListeners = new Set<(message: string) => void>();
@@ -40,6 +44,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	readonly #textOrigin = Symbol('local text');
 	readonly #sessionId = crypto.randomUUID();
 	#sequence = 0;
+	#sourceState: SourceDocumentState;
 	#retryTimer: ReturnType<typeof setTimeout> | undefined;
 	readonly #buffer: TextUpdateBuffer;
 	readonly #stopFrames: () => void;
@@ -60,6 +65,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.#buffer = new TextUpdateBuffer((update) => {
 			if (this.#ready) this.#send({ type: SessionMessageKind.Change, update });
 		});
+		this.#sourceState = { kind: SourceDocumentStateKind.Uninitialized, revision: 0 };
 		this.document.on('update', this.#updated);
 		this.#stopFrames = transport.subscribeToFrames(this.#receive);
 		this.#stopStatus = transport.subscribeToStatus(this.#status);
@@ -73,9 +79,19 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		return this.initialDocument;
 	}
 
+	readSourceState(): SourceDocumentState {
+		if (this.#destroyed) throw new Error('Document session has been destroyed');
+		return this.#sourceState;
+	}
+
 	subscribe(listener: DocumentSessionSubscriber): () => void {
 		this.#subscribers.add(listener);
 		return () => this.#subscribers.delete(listener);
+	}
+
+	subscribeToSourceState(listener: (state: SourceDocumentState) => void): () => void {
+		this.#sourceStateListeners.add(listener);
+		return () => this.#sourceStateListeners.delete(listener);
 	}
 
 	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void {
@@ -183,6 +199,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.document.off('update', this.#updated);
 		this.document.destroy();
 		this.#subscribers.clear();
+		this.#sourceStateListeners.clear();
 		this.#decisionListeners.clear();
 		this.#presenceListeners.clear();
 		this.#rejectionListeners.clear();
@@ -191,10 +208,19 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 
 	readonly #updated = (update: Uint8Array, origin: unknown): void => {
 		if (origin === this.#textOrigin) this.#buffer.push(update);
-		const result = readLogicDocument(this.document);
-		if (!result.ok) return;
-		this.#initialized = true;
-		notifySubscribers(this.#subscribers, result.value);
+		const revision = this.#sourceState.revision + 1;
+		const decoded = readSourceDocumentState(this.document, revision);
+		if (!this.#initialized && decoded.kind === SourceDocumentStateKind.Invalid)
+			this.#sourceState = {
+				kind: SourceDocumentStateKind.Uninitialized,
+				revision,
+			};
+		else this.#sourceState = decoded;
+		const state = this.#sourceState;
+		if (state.kind === SourceDocumentStateKind.Valid) this.#initialized = true;
+		notifySubscribers(this.#sourceStateListeners, state);
+		if (state.kind !== SourceDocumentStateKind.Valid) return;
+		notifySubscribers(this.#subscribers, state.document);
 	};
 
 	readonly #status = (status: TransportStatus): void => {

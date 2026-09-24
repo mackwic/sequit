@@ -43,6 +43,13 @@ export interface LayoutRelation {
 
 export interface LayoutResult {
 	readonly routingInspection?: RoutingInspection | undefined;
+	readonly lanes?: readonly {
+		readonly id: string;
+		readonly bounds: Bounds;
+		readonly regionId?: string;
+		readonly label?: string;
+	}[];
+	readonly regions?: readonly { readonly id: string; readonly bounds: Bounds }[];
 	readonly width: number;
 	readonly height: number;
 	readonly elements: readonly LayoutElement[];

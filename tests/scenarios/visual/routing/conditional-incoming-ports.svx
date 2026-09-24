@@ -1,0 +1,22 @@
+<script>
+ import { scenario } from './conditional-incoming-ports.scenario';
+ import source from './conditional-incoming-ports.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Ordre des cibles et capacité des ports entrants
+
+Les sources **A, B et C** pointent vers **D** ; **A** pointe aussi vers **E**. Les cinq nœuds gardent les mêmes relations et les mêmes rangs dans les deux variantes. Seul l'ordre documentaire de **D** et **E** change. Le graphe, les rangs, les dimensions et les routes proviennent du pipeline réel.
+
+## D avant E
+
+La route **A → E** croise celles de **B → D** et **C → D**. Ces arrivées croisées ne peuvent partager le port entrant de D avec aucune autre arrivée. D reçoit **trois ports distincts** : avec une marge de 24 et un espacement de 48, sa dimension transversale passe de **80 à 144**. Les croisements visibles portent leurs ponts.
+
+## E avant D
+
+Les mêmes relations ne se croisent plus. Les trois arrivées vers D partagent **un port central**, et D garde sa dimension transversale intrinsèque de **80**.
+
+Les deux variantes vérifient les ports, les tailles, les attaches et les routes dans les quatre directions et leurs biais compatibles. Ce sont deux documents de référence avec des préférences d'ordre différentes ; ce test n'affirme pas que le moteur actuel explore les deux ordres pour un seul document.
+
+<VisualTest {scenario} {source} bind:settings />

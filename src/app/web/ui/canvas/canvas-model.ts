@@ -71,10 +71,25 @@ export interface RenderedCanvasRelation extends Partial<CanvasRelationProjection
 	readonly points: readonly Point[];
 }
 
+interface RenderedCanvasLane {
+	readonly id: string;
+	readonly label: string;
+	readonly bounds: Bounds;
+	readonly regionId?: string;
+}
+
+interface RenderedCanvasRegion {
+	readonly id: string;
+	readonly label: string;
+	readonly bounds: Bounds;
+}
+
 export interface CanvasModel {
 	readonly width: number;
 	readonly height: number;
 	readonly direction?: LayoutDirection;
+	readonly lanes?: readonly RenderedCanvasLane[];
+	readonly regions?: readonly RenderedCanvasRegion[];
 	readonly nodes: readonly RenderedCanvasNode[];
 	readonly groups: readonly RenderedCanvasGroup[];
 	readonly junctions: readonly RenderedCanvasJunction[];
@@ -128,10 +143,37 @@ export function createCanvasModel(
 	const direction = navigation?.document.layout.direction;
 	let directionProjection: { readonly direction?: LayoutDirection } = {};
 	if (direction !== undefined) directionProjection = { direction };
+	const laneLabels = new Map(
+		navigation?.document.presentation?.lanes.map(({ id, label }) => [id, label]) ?? [],
+	);
+	let laneProjection: { readonly lanes?: readonly RenderedCanvasLane[] } = {};
+	if (layout.lanes !== undefined)
+		laneProjection = {
+			lanes: layout.lanes.map(({ id, bounds: laneBounds, label, regionId }) => {
+				const rendered: RenderedCanvasLane = {
+					id,
+					label: label ?? laneLabels.get(id) ?? id,
+					bounds: laneBounds,
+				};
+				if (regionId === undefined) return rendered;
+				return { ...rendered, regionId };
+			}),
+		};
+	let regionProjection: { readonly regions?: readonly RenderedCanvasRegion[] } = {};
+	if (layout.regions !== undefined)
+		regionProjection = {
+			regions: layout.regions.map(({ id, bounds: regionBounds }) => ({
+				id,
+				label: id,
+				bounds: regionBounds,
+			})),
+		};
 	return {
 		width: layout.width,
 		height: layout.height,
 		...directionProjection,
+		...laneProjection,
+		...regionProjection,
 		nodes: measurement.nodes.map((node) => {
 			const semanticNode = nodes.get(node.id);
 			const rank = navigation?.ranks.byEndpointId.get(node.id);

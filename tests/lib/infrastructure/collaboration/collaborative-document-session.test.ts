@@ -6,7 +6,10 @@ import { TransportStatus } from '../../../../src/lib/infrastructure/collaboratio
 import {
 	CollaborationStatus,
 	createCollaborativeDocumentSession,
+	readSourceDocumentState,
+	SourceDocumentStateKind,
 } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session';
+import type { SourceDocumentState } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
 import {
 	RetryableSessionFailure,
 	SessionFailureCode,
@@ -431,6 +434,75 @@ it('merges the textarea composition update locally and ignores edits after shutd
 	clone.destroy();
 });
 
+it('publishes uninitialized before the first sync and valid when the physical Yjs document arrives', () => {
+	const room = setup();
+	expect(room.client.readSourceState()).toEqual({
+		kind: SourceDocumentStateKind.Uninitialized,
+		revision: 0,
+	});
+	expect(readSourceDocumentState(room.client.document, 0).kind).toBe(
+		SourceDocumentStateKind.Invalid,
+	);
+	const states: SourceDocumentState[] = [];
+	const stop = room.client.subscribeToSourceState((state) => states.push(state));
+	room.sync();
+	expect(states).toHaveLength(1);
+	expect(states[0]).toMatchObject({
+		kind: SourceDocumentStateKind.Valid,
+		revision: 1,
+		document: { id: 'room' },
+	});
+	expect(room.client.readSourceState()).toBe(states[0]);
+	stop();
+	room.destroy();
+});
+
+it('publishes valid, invalid and healed physical Yjs source states in revision order', () => {
+	const room = setup();
+	room.sync();
+	const initial = room.client.readSourceState();
+	expect(initial.kind).toBe(SourceDocumentStateKind.Valid);
+	const states: SourceDocumentState[] = [];
+	const accepted = vi.fn();
+	const stopSource = room.client.subscribeToSourceState((state) => states.push(state));
+	const stopAccepted = room.client.subscribe(accepted);
+	const nodes = room.client.document.getMap<Y.Map<unknown>>('sequit.nodes');
+	const node = nodes.get('A');
+	if (!node) throw new Error('Expected node A');
+	const markdown = node.get('markdown');
+	if (!(markdown instanceof Y.Text)) throw new Error('Expected node Markdown');
+	room.client.document.transact(() => {
+		markdown.insert(0, 'private-node-text ');
+		node.set('natureId', 'missing');
+		nodes.set('0-broken', new Y.Map());
+	});
+	const invalid = states[0];
+	if (invalid?.kind !== SourceDocumentStateKind.Invalid)
+		throw new Error('Expected invalid source state');
+	expect(invalid.revision).toBe(initial.revision + 1);
+	expect(invalid.snapshot.nodeIds).toEqual(['0-broken', 'A', 'B']);
+	expect(invalid.snapshot.id).toBe('room');
+	expect(invalid.diagnostics.length).toBeGreaterThan(0);
+	expect(invalid.snapshot).not.toHaveProperty('markdown');
+	expect(JSON.stringify(invalid.snapshot)).not.toContain('private-node-text');
+	expect(accepted).not.toHaveBeenCalled();
+	expect(room.client.readSourceState()).toBe(invalid);
+	expect(readSourceDocumentState(room.client.document, invalid.revision)).toEqual(invalid);
+	room.client.document.transact(() => {
+		node.set('natureId', 'N');
+		nodes.delete('0-broken');
+	});
+	const healed = states[1];
+	if (healed?.kind !== SourceDocumentStateKind.Valid)
+		throw new Error('Expected healed source state');
+	expect(healed.revision).toBe(invalid.revision + 1);
+	expect(healed.document.nodes.map(({ id }) => id)).toEqual(['A', 'B']);
+	expect(accepted).toHaveBeenCalledOnce();
+	stopSource();
+	stopAccepted();
+	room.destroy();
+});
+
 it.each([Message.Change, Message.Initialize])(
 	'rejects client-only %s frames received from the server',
 	(kind) => {
@@ -462,8 +534,30 @@ it('ignores transport callbacks delivered late after destroy', () => {
 	const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 	const client = createCollaborativeDocumentSession(initial, pair.client);
 	client.destroy();
+	expect(() => client.readSourceState()).toThrow('Document session has been destroyed');
 	frame?.(new Uint8Array([255]));
 	status?.(TransportStatus.Connected);
+	expect(client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
+	pair.server.close();
+});
+
+it('does not send queued presence when a transport send closes the session synchronously', () => {
+	const pair = createMemoryTransportPair();
+	pair.client.setStatus(TransportStatus.Disconnected);
+	const sent: SessionMessage[] = [];
+	const holder: { client?: ReturnType<typeof createCollaborativeDocumentSession> } = {};
+	vi.spyOn(pair.client, 'send').mockImplementation((frame) => {
+		sent.push(decodeSessionMessage(frame));
+		holder.client?.destroy();
+	});
+	const client = createCollaborativeDocumentSession(
+		collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room'),
+		pair.client,
+	);
+	holder.client = client;
+	client.setPresence({ selected: [{ kind: Kind.Node, id: 'A' }] });
+	pair.client.setStatus(TransportStatus.Connected);
+	expect(sent.map(({ type }) => type)).toEqual([Message.Sync]);
 	expect(client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
 	pair.server.close();
 });

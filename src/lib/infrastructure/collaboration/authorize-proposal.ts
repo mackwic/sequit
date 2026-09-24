@@ -6,7 +6,6 @@ import type { ProtocolDiagnostic } from './protocol';
 import { applyTextUpdate } from './text-update-validation';
 import { runUpdateGuards, type UpdateGuard } from './update-guards';
 import { readStructuralLogicDocument } from './yjs-document-reader';
-import { YJS_LIVE_DOCUMENT_FORMAT } from './yjs-document-schema';
 
 export enum AuthorizationDiagnosticCode {
 	MalformedYjsUpdate = 'malformed-yjs-update',
@@ -64,7 +63,7 @@ export async function authorizeProposal(input: AuthorizationInput): Promise<Auth
 			return malformedUpdateFailure();
 		}
 
-		const document = readStructuralLogicDocument(candidate, YJS_LIVE_DOCUMENT_FORMAT);
+		const document = readStructuralLogicDocument(candidate);
 		if (!document.ok) {
 			candidate.destroy();
 			return { ok: false, diagnostics: document.diagnostics };

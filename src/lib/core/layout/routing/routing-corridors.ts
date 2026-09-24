@@ -8,10 +8,22 @@ export interface CorridorLink {
 	readonly relation: LogicRelation;
 	readonly source: number;
 	readonly target: number;
+	readonly relationIndex?: number;
 }
+const canonicalGraph = Symbol('canonical corridor graph');
+
 export interface RoutingCorridor {
 	readonly rank: number;
 	readonly links: readonly CorridorLink[];
+	readonly [canonicalGraph]?: LogicGraph;
+}
+
+/** Only a corridor emitted from this canonical graph can address routes by relation index. */
+export function corridorCarriesCanonicalIndexes(
+	corridor: RoutingCorridor,
+	graph: LogicGraph,
+): boolean {
+	return corridor[canonicalGraph] === graph;
 }
 
 function compareLinks(a: CorridorLink, b: CorridorLink): number {
@@ -65,6 +77,23 @@ function intersectingClusters(links: readonly CorridorLink[]): CorridorLink[][] 
 	return groups;
 }
 
+function collectCorridors(
+	byRank: ReadonlyMap<number, CorridorLink[]>,
+	graph: LogicGraph,
+	canonicalIds: boolean,
+): RoutingCorridor[] {
+	const result: RoutingCorridor[] = [];
+	for (const [rank, links] of byRank) {
+		for (const cluster of intersectingClusters(links)) {
+			if (!inverted(cluster)) continue;
+			const corridor: RoutingCorridor = { rank, links: cluster };
+			if (canonicalIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
+			result.push(corridor);
+		}
+	}
+	return result;
+}
+
 /** Adjacent ordinary-node corridors; group and junction attachments retain their own geometry. */
 export function crossingCorridors(input: {
 	readonly graph: LogicGraph;
@@ -81,7 +110,12 @@ export function crossingCorridors(input: {
 	});
 	if (aligned) return [];
 	const byRank = new Map<number, CorridorLink[]>();
-	for (const { relation, source, target } of input.graph.relations) {
+	let canonicalIds = true;
+	let previousId: string | undefined;
+	for (const [relationIndex, { relation, source, target }] of input.graph.relations.entries()) {
+		if (previousId !== undefined && compareCanonicalStrings(previousId, relation.id) >= 0)
+			canonicalIds = false;
+		previousId = relation.id;
 		if (source.kind === EndpointKind.Group || target.kind === EndpointKind.Group) continue;
 		const hasJunction =
 			source.kind === EndpointKind.Junction || target.kind === EndpointKind.Junction;
@@ -93,14 +127,9 @@ export function crossingCorridors(input: {
 			relation,
 			source: transverseCenter(defined(input.bounds.get(relation.from)), input.vertical),
 			target: transverseCenter(defined(input.bounds.get(relation.to)), input.vertical),
+			relationIndex,
 		});
 		byRank.set(rank, links);
 	}
-	const result: RoutingCorridor[] = [];
-	for (const [rank, links] of byRank) {
-		for (const cluster of intersectingClusters(links)) {
-			if (inverted(cluster)) result.push({ rank, links: cluster });
-		}
-	}
-	return result;
+	return collectCorridors(byRank, input.graph, canonicalIds);
 }

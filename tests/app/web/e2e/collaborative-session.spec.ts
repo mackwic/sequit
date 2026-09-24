@@ -251,7 +251,9 @@ test('Canvas gestures: ghost connection, cancellation, cycle rejection and delet
 		await Promise.all(
 			[originNode, destinationNode].map((node) =>
 				node.evaluate(async (element) => {
-					await Promise.all(element.getAnimations().map((animation) => animation.finished));
+					await Promise.allSettled(
+						element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+					);
 				}),
 			),
 		);

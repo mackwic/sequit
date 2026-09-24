@@ -1,0 +1,309 @@
+import { describe, expect, it } from 'vitest';
+
+import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
+import type { NestedRegionInput } from '../../../../src/lib/core/layout/nested-region-types';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionDiagnosticCode,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
+import { gridDocument, gridInput } from './grid-cell-fixture';
+import {
+	depthTwoRegionDocument,
+	depthTwoRegionInput,
+	nestedRegionInput,
+	regionDocument,
+} from './nested-region-fixture';
+
+function graph(document = depthTwoRegionDocument()): LogicGraph {
+	const result = createGraph(document);
+	if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+	return result.value;
+}
+
+function ready(source = graph(), input = depthTwoRegionInput()) {
+	const result = normalizeRegionCompositionModel(source, input);
+	if (result.status !== RegionCompositionModelStatus.Ready)
+		throw new Error(result.diagnostic.message);
+	return result.model;
+}
+
+function thirdLevelInput(): NestedRegionInput {
+	const input = depthTwoRegionInput();
+	return {
+		regions: [...input.regions, { id: 'deep', parentId: 'left', layoutOrder: 'a' }],
+		regionByEndpointId: new Map(
+			[...input.regionByEndpointId].map(([id, regionId]) => {
+				if (regionId === 'left') return [id, 'deep'];
+				return [id, regionId];
+			}),
+		),
+	};
+}
+
+describe('recursive region composition model', () => {
+	it('normalizes one level with local ranks and root-owned crossings', () => {
+		const model = ready(graph(regionDocument()), nestedRegionInput());
+		expect(model.preorderIds).toEqual(['@root', 'left', 'middle', 'right']);
+		expect(model.regionsById.get('left')).toMatchObject({
+			parentId: '@root',
+			childIds: [],
+			depth: 1,
+		});
+		expect(
+			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
+		).toEqual([
+			['across-middle', '@root', 'crossing'],
+			['inside-a', 'left', 'local'],
+		]);
+		expect(model.localRelationsByOwner.get('left')?.map(({ id }) => id)).toEqual(['inside-a']);
+		expect(model.crossingRelationsByOwner.get('@root')?.map(({ id }) => id)).toEqual([
+			'across-middle',
+		]);
+	});
+
+	it('assigns two-level crossings to their least common ancestor', () => {
+		const model = ready();
+		expect(model.regionsById.get('branch')?.childIds).toEqual(['left', 'middle', 'branch-right']);
+		expect(
+			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
+		).toEqual([
+			['at-root', '@root', 'crossing'],
+			['inside-a', 'left', 'local'],
+			['inside-branch', 'branch', 'crossing'],
+		]);
+		expect(model.crossingRelationsByOwner.get('branch')?.map(({ id }) => id)).toEqual([
+			'inside-branch',
+		]);
+		expect(model.crossingRelationsByOwner.get('right')).toEqual([]);
+	});
+
+	it('keeps every boundary of a depth-three incident and has no depth guard', () => {
+		const model = ready(graph(), thirdLevelInput());
+		expect(model.regionsById.get('deep')?.depth).toBe(3);
+		expect(model.leafByEndpointId.get('a-source')).toBe('deep');
+		expect(model.relations.map(({ relation, ownerId }) => [relation.id, ownerId])).toEqual([
+			['at-root', '@root'],
+			['inside-a', 'deep'],
+			['inside-branch', 'branch'],
+		]);
+		const incident = model.relations.find(({ relation }) => relation.id === 'inside-branch');
+		expect(incident?.sourcePathToOwner).toEqual(['deep', 'left']);
+		expect(incident?.targetPathToOwner).toEqual(['branch-right']);
+	});
+
+	it('is canonical under region, endpoint, relation, and assignment permutations', () => {
+		const source = depthTwoRegionDocument();
+		const input = depthTwoRegionInput();
+		const expected = ready(graph(source), input);
+		const permuted = ready(
+			graph({
+				...source,
+				nodes: [...source.nodes].reverse(),
+				relations: [...source.relations].reverse(),
+			}),
+			{
+				regions: [...input.regions].reverse(),
+				regionByEndpointId: new Map([...input.regionByEndpointId].reverse()),
+			},
+		);
+		expect(permuted).toEqual(expected);
+	});
+
+	it.each([
+		[
+			'duplicate region',
+			(input: NestedRegionInput) => ({
+				...input,
+				regions: [...input.regions, { id: 'left', parentId: '@root', layoutOrder: 'z' }],
+			}),
+			RegionCompositionDiagnosticCode.DuplicateRegionId,
+		],
+		[
+			'unknown parent',
+			(input: NestedRegionInput) => ({
+				...input,
+				regions: input.regions.map((region) => {
+					if (region.id === 'branch') return { ...region, parentId: 'absent' };
+					return region;
+				}),
+			}),
+			RegionCompositionDiagnosticCode.UnknownParent,
+		],
+		[
+			'parent cycle',
+			(input: NestedRegionInput) => ({
+				...input,
+				regions: input.regions.map((region) => {
+					if (region.id === 'branch') return { ...region, parentId: 'left' };
+					return region;
+				}),
+			}),
+			RegionCompositionDiagnosticCode.ParentCycle,
+		],
+		[
+			'multiple roots',
+			(input: NestedRegionInput) => ({
+				...input,
+				regions: [...input.regions, { id: 'other-root', layoutOrder: 'z' }],
+			}),
+			RegionCompositionDiagnosticCode.InvalidRootCount,
+		],
+		[
+			'missing endpoint assignment',
+			(input: NestedRegionInput) => ({
+				...input,
+				regionByEndpointId: new Map([...input.regionByEndpointId].filter(([id]) => id !== 'c')),
+			}),
+			RegionCompositionDiagnosticCode.MissingEndpointAssignment,
+		],
+		[
+			'unknown endpoint assignment',
+			(input: NestedRegionInput) => ({
+				...input,
+				regionByEndpointId: new Map([...input.regionByEndpointId, ['ghost', 'left']]),
+			}),
+			RegionCompositionDiagnosticCode.UnknownEndpointAssignment,
+		],
+		[
+			'unknown region assignment',
+			(input: NestedRegionInput) => ({
+				...input,
+				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'absent']]),
+			}),
+			RegionCompositionDiagnosticCode.UnknownRegionAssignment,
+		],
+		[
+			'internal region assignment',
+			(input: NestedRegionInput) => ({
+				...input,
+				regionByEndpointId: new Map([...input.regionByEndpointId, ['c', 'branch']]),
+			}),
+			RegionCompositionDiagnosticCode.NonLeafAssignment,
+		],
+	] as const)('reports a structured diagnostic for %s', (_, change, code) => {
+		const result = normalizeRegionCompositionModel(graph(), change(depthTwoRegionInput()));
+		expect(result).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: { code },
+		});
+		if (result.status === RegionCompositionModelStatus.Ready) return;
+		expect(result.diagnostic.path.length).toBeGreaterThan(0);
+		expect(result.diagnostic.message.length).toBeGreaterThan(0);
+	});
+
+	it('reports a cycle path and keeps resource limits separate from depth', () => {
+		const input = thirdLevelInput();
+		const cycle = normalizeRegionCompositionModel(graph(), {
+			...input,
+			regions: input.regions.map((region) => {
+				if (region.id === 'left') return { ...region, parentId: 'deep' };
+				return region;
+			}),
+		});
+		expect(cycle).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ParentCycle,
+				cycle: ['deep', 'left', 'deep'],
+			},
+		});
+		const bounded = normalizeRegionCompositionModel(graph(), input, {
+			maxRegions: 7,
+		});
+		expect(bounded).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: ['regions'],
+				actual: 8,
+				limit: 7,
+			},
+		});
+	});
+
+	it('keeps an indivisible group in one leaf and diagnoses a split assignment', () => {
+		const input = gridInput();
+		const regions: NestedRegionInput['regions'] = [
+			{ id: '@root', layoutOrder: '0' },
+			...input.cells.map(({ id }) => ({
+				id,
+				parentId: '@root',
+				layoutOrder: id,
+			})),
+		];
+		const grouped = graph(gridDocument());
+		const valid = normalizeRegionCompositionModel(grouped, {
+			regions,
+			regionByEndpointId: input.cellByEndpointId,
+		});
+		expect(valid.status).toBe(RegionCompositionModelStatus.Ready);
+		const split = new Map(input.cellByEndpointId);
+		split.set('b', 'a');
+		expect(
+			normalizeRegionCompositionModel(grouped, {
+				regions,
+				regionByEndpointId: split,
+			}),
+		).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.SplitGroup,
+				path: ['endpoints', 'b', 'regionId'],
+			},
+		});
+	});
+
+	it('rejects duplicate relation identities before ownership partitions can overwrite them', () => {
+		const source = graph();
+		const first = source.relations[0];
+		if (first === undefined) throw new Error('Expected at least one relation.');
+		const duplicated = { ...source, relations: [...source.relations, first] };
+		expect(normalizeRegionCompositionModel(duplicated, depthTwoRegionInput())).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.DuplicateRelationId,
+				path: ['relations', first.relation.id],
+			},
+		});
+	});
+
+	it('rejects an empty region identity with a precise diagnostic', () => {
+		const input = depthTwoRegionInput();
+		expect(
+			normalizeRegionCompositionModel(graph(), {
+				...input,
+				regions: [...input.regions, { id: '', parentId: '@root', layoutOrder: 'z' }],
+			}),
+		).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.EmptyRegionId,
+				path: ['regions'],
+			},
+		});
+	});
+
+	it.each([
+		[{ maxEndpoints: 5 }, 'endpoints', 6, 5],
+		[{ maxRelations: 2 }, 'relations', 3, 2],
+	] as const)('reports a resource budget for %s', (limits, resource, actual, limit) => {
+		expect(normalizeRegionCompositionModel(graph(), depthTwoRegionInput(), limits)).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: [resource],
+				actual,
+				limit,
+			},
+		});
+	});
+
+	it.each([-1, 1.5, Number.NaN])('rejects the invalid resource limit %s', (maxRegions) => {
+		expect(() =>
+			normalizeRegionCompositionModel(graph(), depthTwoRegionInput(), {
+				maxRegions,
+			}),
+		).toThrow('Region composition limits must be non-negative safe integers.');
+	});
+});

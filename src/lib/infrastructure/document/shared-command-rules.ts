@@ -40,6 +40,8 @@ export function finalizeSharedCommand(
 			...contentStyleFields(node.color, node.icon),
 		};
 		if (node.groupId !== undefined) newNode = Object.assign(newNode, { groupId: node.groupId });
+		if (node.laneId !== undefined) newNode = Object.assign(newNode, { laneId: node.laneId });
+		if (node.regionId !== undefined) newNode = Object.assign(newNode, { regionId: node.regionId });
 		result = projectNodeAddition(before, newNode, fractionalOrderKeySpace);
 	}
 	if (command.target.kind === SharedElementKind.Relation) {

@@ -10,7 +10,10 @@
 	import { projectDeletion } from '../../../../../lib/core/document/topology-deletions';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
 	import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
-	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
+	import {
+		type CollaborativeDocumentSession,
+		SourceDocumentStateKind,
+	} from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import {
 		SharedCommandKind as Op,
 		type SharedDocumentCommand,
@@ -71,6 +74,18 @@
 		return { groupId: creationGroupId };
 	}
 	const projection = untrack(() => createSharedCanvasProjection(model));
+	let sourceState = $state.raw(untrack(() => client.readSourceState()));
+	let sourceValid = $derived(sourceState.kind === SourceDocumentStateKind.Valid);
+	onMount(() => {
+		const stop = client.subscribeToSourceState((state) => {
+			sourceState = state;
+			projection.updateSourceState(state);
+		});
+		const initial = client.readSourceState();
+		sourceState = initial;
+		projection.updateSourceState(initial);
+		return stop;
+	});
 	let visible = $state.raw(projection.visible);
 	$effect(() => {
 		try {
@@ -85,6 +100,7 @@
 		dispatchMany([command]);
 	}
 	function dispatchMany(commands: readonly SharedDocumentCommand[]): boolean {
+		if (!sourceValid) return false;
 		try {
 			client.dispatch(commands);
 			error = '';
@@ -95,7 +111,7 @@
 		}
 	}
 	function connect(from: string, to: string) {
-		if (!connected) return;
+		if (!connected || !sourceValid) return;
 		const relation = { id: crypto.randomUUID(), from, to };
 		const candidate = projectRelationAddition(model, relation, fractionalOrderKeySpace);
 		if (!candidate.ok) {
@@ -109,7 +125,7 @@
 		});
 	}
 	function deleteSelection() {
-		if (!connected || canvas.editing) return;
+		if (!connected || !sourceValid || canvas.editing) return;
 		const selected = sharedSelection(canvas.selection.values());
 		const relationIds = selected
 			.filter(({ kind }) => kind === Kind.Relation)
@@ -142,7 +158,7 @@
 	}
 	function createRelativeNode(position: RelativeNodePosition): void {
 		const target = canvas.relativeNodeCreationTarget;
-		if (!connected || target === undefined) return;
+		if (!connected || !sourceValid || target === undefined) return;
 		const plan = planRelativeNodeCreation(model, target, position, {
 			nodeId: crypto.randomUUID(),
 			relationId: () => crypto.randomUUID(),
@@ -172,7 +188,7 @@
 		});
 	}
 	function groupSelection(): void {
-		if (!connected) return;
+		if (!connected || !sourceValid) return;
 		const members = [...canvas.selection.values()]
 			.filter(({ kind }) => kind === EntityKind.Node)
 			.map(({ id }) => id);
@@ -203,7 +219,7 @@
 	<div class="canvas">
 		<CanvasGestures
 			session={canvas}
-			enabled={connected && !creating && editingGroupId === undefined}
+			enabled={connected && sourceValid && !creating && editingGroupId === undefined}
 			oncreate={(groupId: string | undefined) => {
 				creationGroupId = groupId;
 				creating = true;
@@ -245,7 +261,7 @@
 				{/snippet}
 			</LogicCanvas>
 		</CanvasGestures>
-		{#if editingGroup}<SharedEditDialog
+		{#if sourceValid && editingGroup}<SharedEditDialog
 				label={`Groupe ${editingGroup.label}`}
 				description="Le titre et la couleur sont partagés en direct."
 				onclose={() => {
@@ -254,7 +270,7 @@
 			>
 				<SharedGroupFields group={editingGroup} {client} {connected} {dispatch} />
 			</SharedEditDialog>{/if}
-		{#if creating}<CreateNodeDialog
+		{#if sourceValid && creating}<CreateNodeDialog
 				natures={model.natures}
 				{connected}
 				onclose={() => {
@@ -276,146 +292,150 @@
 			/>{/if}
 	</div>
 	<aside aria-label="Document partagé">
-		<SharedElementCard label="Titre du document">
-			<SharedTextField
-				{client}
-				target={{ kind: Kind.Document, id: model.id }}
-				field="title"
-				label="Titre du document"
-			/>
-		</SharedElementCard>
-		<SharedStructureControls model={visible.document} {connected} {dispatch} />
-		{#if error}<p role="alert">{error}</p>{/if}
-		{#each visible.document.nodes as node (node.id)}
-			<section aria-label={`Boîte ${node.id}`}>
-				<SharedElementCard label={`Boîte ${node.id}`}>
-					<SharedNodeFields {node} {client} {connected} {dispatch} label={`Contenu ${node.id}`} />
-				</SharedElementCard>
-			</section>
-		{/each}
-		{#each visible.document.groups as group (group.id)}
-			<section aria-label={`Groupe ${group.id}`}>
-				<SharedElementCard label={`Groupe ${group.id}`}>
-					<SharedTextField
-						{client}
-						target={{ kind: Kind.Group, id: group.id }}
-						field="label"
-						label={`Libellé du groupe ${group.id}`}
-					/>
-					<SharedPropertyFields
-						target={{ kind: Kind.Group, id: group.id }}
-						properties={{ color: group.color, groupId: group.groupId }}
-						{connected}
-						{dispatch}
-					/>
-					<p>
-						{model.nodes
-							.filter((node) => node.groupId === group.id)
-							.map((node) => node.id)
-							.join(', ')}
-					</p>
-					<button
-						type="button"
-						disabled={!connected}
-						onclick={() => {
-							dispatch({
-								op: Op.Update,
-								target: { kind: Kind.Group, id: group.id },
-								set: { state: GroupState.Closed },
-								unset: [],
-							});
-						}}>Replier {group.id}</button
-					>
-					<button
-						type="button"
-						disabled={!connected}
-						onclick={() => {
-							dispatch({
-								op: Op.Update,
-								target: { kind: Kind.Group, id: group.id },
-								set: { state: GroupState.Expanded },
-								unset: [],
-							});
-						}}>Déplier {group.id}</button
-					>
-					<output aria-label={`État de ${group.id}`}>{group.state ?? GroupState.Expanded}</output>
-					<button
-						type="button"
-						disabled={!connected}
-						onclick={() => {
-							dispatch({ op: Op.Ungroup, id: group.id });
-						}}>Dissoudre {group.id}</button
-					>
-				</SharedElementCard>
-			</section>
-		{/each}
-		{#each model.natures as nature (nature.id)}
-			<section aria-label={`Nature ${nature.id}`}>
-				<SharedElementCard label={`Nature ${nature.id}`}>
-					<SharedTextField
-						{client}
-						target={{ kind: Kind.Nature, id: nature.id }}
-						field="label"
-						label={`Libellé de la nature ${nature.id}`}
-					/>
-					<SharedPropertyFields
-						target={{ kind: Kind.Nature, id: nature.id }}
-						properties={{ color: nature.color, icon: nature.icon }}
-						{connected}
-						{dispatch}
-					/>
-					<button
-						type="button"
-						disabled={!connected}
-						onclick={() => {
-							dispatch({ op: Op.Delete, target: { kind: Kind.Nature, id: nature.id } });
-						}}>Supprimer la nature {nature.id}</button
-					>
-				</SharedElementCard>
-			</section>
-		{/each}
-		{#each visible.document.junctions as junction (junction.id)}
-			<section aria-label={`Jonction ${junction.id}`}>
-				<SharedElementCard label={`Jonction ${junction.id}`}>
-					<strong>{junction.id}</strong>
-					<SharedPropertyFields
-						target={{ kind: Kind.Junction, id: junction.id }}
-						properties={{ operator: junction.operator, groupId: junction.groupId }}
-						{connected}
-						{dispatch}
-					/>
-					<button
-						type="button"
-						disabled={!connected}
-						onclick={() => {
-							dispatch({ op: Op.Delete, target: { kind: Kind.Junction, id: junction.id } });
-						}}>Supprimer la jonction {junction.id}</button
-					>
-				</SharedElementCard>
-			</section>
-		{/each}
-		<ul aria-label="Relations">
-			{#each visible.document.relations as relation (relation.id)}
-				{@const provenance = defined(visible.relations.get(relation.id))}
-				<li>
-					{relation.from} → {relation.to}
-					<SharedElementCard label={`Relation ${relation.id}`}
-						><SharedPropertyFields
-							target={{ kind: Kind.Relation, id: relation.id }}
-							properties={{ from: relation.from, to: relation.to }}
-							disabledFields={hiddenRelationFields(provenance)}
+		{#if !sourceValid}
+			<p>Le document courant ne peut pas être édité tant que sa source est invalide.</p>
+		{:else}
+			<SharedElementCard label="Titre du document">
+				<SharedTextField
+					{client}
+					target={{ kind: Kind.Document, id: model.id }}
+					field="title"
+					label="Titre du document"
+				/>
+			</SharedElementCard>
+			<SharedStructureControls model={visible.document} {connected} {dispatch} />
+			{#if error}<p role="alert">{error}</p>{/if}
+			{#each visible.document.nodes as node (node.id)}
+				<section aria-label={`Boîte ${node.id}`}>
+					<SharedElementCard label={`Boîte ${node.id}`}>
+						<SharedNodeFields {node} {client} {connected} {dispatch} label={`Contenu ${node.id}`} />
+					</SharedElementCard>
+				</section>
+			{/each}
+			{#each visible.document.groups as group (group.id)}
+				<section aria-label={`Groupe ${group.id}`}>
+					<SharedElementCard label={`Groupe ${group.id}`}>
+						<SharedTextField
+							{client}
+							target={{ kind: Kind.Group, id: group.id }}
+							field="label"
+							label={`Libellé du groupe ${group.id}`}
+						/>
+						<SharedPropertyFields
+							target={{ kind: Kind.Group, id: group.id }}
+							properties={{ color: group.color, groupId: group.groupId }}
 							{connected}
 							{dispatch}
-						/><button
+						/>
+						<p>
+							{model.nodes
+								.filter((node) => node.groupId === group.id)
+								.map((node) => node.id)
+								.join(', ')}
+						</p>
+						<button
 							type="button"
 							disabled={!connected}
 							onclick={() => {
-								dispatchMany(deleteVisibleRelation(provenance));
-							}}>Supprimer la relation {relation.id}</button
+								dispatch({
+									op: Op.Update,
+									target: { kind: Kind.Group, id: group.id },
+									set: { state: GroupState.Closed },
+									unset: [],
+								});
+							}}>Replier {group.id}</button
+						>
+						<button
+							type="button"
+							disabled={!connected}
+							onclick={() => {
+								dispatch({
+									op: Op.Update,
+									target: { kind: Kind.Group, id: group.id },
+									set: { state: GroupState.Expanded },
+									unset: [],
+								});
+							}}>Déplier {group.id}</button
+						>
+						<output aria-label={`État de ${group.id}`}>{group.state ?? GroupState.Expanded}</output>
+						<button
+							type="button"
+							disabled={!connected}
+							onclick={() => {
+								dispatch({ op: Op.Ungroup, id: group.id });
+							}}>Dissoudre {group.id}</button
 						>
 					</SharedElementCard>
-				</li>{/each}
-		</ul>
+				</section>
+			{/each}
+			{#each model.natures as nature (nature.id)}
+				<section aria-label={`Nature ${nature.id}`}>
+					<SharedElementCard label={`Nature ${nature.id}`}>
+						<SharedTextField
+							{client}
+							target={{ kind: Kind.Nature, id: nature.id }}
+							field="label"
+							label={`Libellé de la nature ${nature.id}`}
+						/>
+						<SharedPropertyFields
+							target={{ kind: Kind.Nature, id: nature.id }}
+							properties={{ color: nature.color, icon: nature.icon }}
+							{connected}
+							{dispatch}
+						/>
+						<button
+							type="button"
+							disabled={!connected}
+							onclick={() => {
+								dispatch({ op: Op.Delete, target: { kind: Kind.Nature, id: nature.id } });
+							}}>Supprimer la nature {nature.id}</button
+						>
+					</SharedElementCard>
+				</section>
+			{/each}
+			{#each visible.document.junctions as junction (junction.id)}
+				<section aria-label={`Jonction ${junction.id}`}>
+					<SharedElementCard label={`Jonction ${junction.id}`}>
+						<strong>{junction.id}</strong>
+						<SharedPropertyFields
+							target={{ kind: Kind.Junction, id: junction.id }}
+							properties={{ operator: junction.operator, groupId: junction.groupId }}
+							{connected}
+							{dispatch}
+						/>
+						<button
+							type="button"
+							disabled={!connected}
+							onclick={() => {
+								dispatch({ op: Op.Delete, target: { kind: Kind.Junction, id: junction.id } });
+							}}>Supprimer la jonction {junction.id}</button
+						>
+					</SharedElementCard>
+				</section>
+			{/each}
+			<ul aria-label="Relations">
+				{#each visible.document.relations as relation (relation.id)}
+					{@const provenance = defined(visible.relations.get(relation.id))}
+					<li>
+						{relation.from} → {relation.to}
+						<SharedElementCard label={`Relation ${relation.id}`}
+							><SharedPropertyFields
+								target={{ kind: Kind.Relation, id: relation.id }}
+								properties={{ from: relation.from, to: relation.to }}
+								disabledFields={hiddenRelationFields(provenance)}
+								{connected}
+								{dispatch}
+							/><button
+								type="button"
+								disabled={!connected}
+								onclick={() => {
+									dispatchMany(deleteVisibleRelation(provenance));
+								}}>Supprimer la relation {relation.id}</button
+							>
+						</SharedElementCard>
+					</li>{/each}
+			</ul>
+		{/if}
 	</aside>
 </div>
 

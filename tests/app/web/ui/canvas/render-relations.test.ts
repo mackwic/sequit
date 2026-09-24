@@ -61,6 +61,21 @@ describe('renderRelationPaths', () => {
 		expect(rendered[1]?.path).not.toContain(' A ');
 	});
 
+	it('keeps a short crossing straight when neither segment has room for a bridge', () => {
+		const paths = renderRelationPaths([
+			relation('horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 15, y: 50 },
+			]),
+			relation('vertical', [
+				{ x: 10, y: 45 },
+				{ x: 10, y: 60 },
+			]),
+		]);
+		expect(paths.map(({ path }) => path)).toEqual(['M 0 50 L 15 50', 'M 10 45 L 10 60']);
+		expect(paths[0]?.color).not.toBe(paths[1]?.color);
+	});
+
 	it('does not mistake a collinear intermediate point for an elbow', () => {
 		const rendered = renderRelationPaths([
 			relation('horizontal', [
@@ -218,6 +233,26 @@ describe('renderRelationPaths', () => {
 		expect(paths[2]?.path).toBe('M 0 50 L 24 50 A 6 6 0 0 1 36 50 L 100 50');
 		expect(paths[1]?.path).toContain('A 6 6 0 0 1 44 56');
 		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
+	});
+
+	it('draws two bridges on one carrier when their centers are exactly eighteen pixels apart', () => {
+		const paths = renderRelationPaths([
+			relation('left', [
+				{ x: 30, y: 0 },
+				{ x: 30, y: 100 },
+			]),
+			relation('right', [
+				{ x: 48, y: 0 },
+				{ x: 48, y: 100 },
+			]),
+			relation('horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+		]);
+		expect(paths[2]?.path).toBe(
+			'M 0 50 L 24 50 A 6 6 0 0 1 36 50 L 42 50 A 6 6 0 0 1 54 50 L 100 50',
+		);
 	});
 
 	it.each([0, 1, 2, 3])(

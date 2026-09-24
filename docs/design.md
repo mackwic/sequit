@@ -99,7 +99,7 @@ La signification exacte d'une relation reste à définir : dépendance, contribu
 
 ## Représentation textuelle
 
-La représentation textuelle est la forme lisible et portable du document. L’encodage courant est TOML sous `persistenceFormat = 2`.
+La représentation textuelle est la forme lisible et portable du document. Les documents sans lanes explicites restent lisibles sous TOML `persistenceFormat = 2` ; le format 3 porte les lanes explicites, le format 4 les vraies régions, le format 5 une grille racine 2 × 2, le format 6 des lanes locales à une feuille de région et le format 7 une grille 2 × 2 à l'intérieur d'une région. Ces préférences et les affectations des éléments sont persistées sans coordonnées.
 
 ```text
 TOML versionné
@@ -111,7 +111,7 @@ LogicDocument courant
 Canvas interactif
 ```
 
-`persistenceFormat` appartient à la frontière textuelle. `LogicDocument` ne porte ni l’encodage ni sa version : un futur encodage compatible pourra produire le même modèle sémantique.
+`persistenceFormat` sélectionne actuellement la sérialisation TOML dans `LogicDocument`. Ce champ n’intervient pas dans le calcul de layout ; la présentation persistée porte la politique, l’orientation, l’ordre des lanes et leurs affectations, puis la hiérarchie, l’ordre et l’appartenance des régions. Une région racine virtuelle est dérivée, et les membres d'un groupe héritent de sa région.
 
 Le document contient des identifiants stables, une bibliothèque locale de natures, des groupes, des nœuds, des junctions, des relations et des préférences de layout. Corps et descriptions restent du Markdown dans le TOML. L’édition visuelle peut normaliser une syntaxe équivalente, mais doit conserver le contenu et la mise en forme ; un contenu non représentable sans perte reste éditable en source. Le souligné est représenté par `<u>texte</u>`. L’import/export conserve le Markdown décodé sans convertir globalement les documents en HTML.
 
@@ -361,12 +361,12 @@ Aucune décision n'est encore prise concernant :
 - Les boîtes sont reliées par des relations orientées.
 - Un tri topologique participe à leur réorganisation automatique.
 - Le canvas est dérivé d'une représentation logique sérialisable sous forme textuelle.
-- TOML est l’encodage courant, sous `persistenceFormat = 2`.
-- `LogicDocument` reste indépendant de la version et de l’encodage persistants.
-- `yjsLiveDocumentFormat = 3` versionne le schéma partagé indépendamment de `persistenceFormat`.
+- Les formats TOML 2 à 7 restent lisibles : lanes explicites (3), vraies régions (4), grille racine (5), lanes locales (6) et grille interne (7).
+- `LogicDocument` porte actuellement `persistenceFormat` pour sélectionner la sérialisation TOML.
+- Les formats Yjs live 3 à 8 restent lisibles : lanes explicites (4), vraies régions (5), grille racine (6), lanes locales (7) et grille interne (8), indépendamment de `persistenceFormat`.
 - `DocumentSession` est l’unique façade applicative vers le document Yjs live.
 - Les cycles sont rejetés avant le calcul des rangs.
-- Toutes les relations s’attachent aux faces perpendiculaires à l’axe principal, avec des segments de départ et d’arrivée dans cet axe. Aucune attache transversale, y compris pour les groupes et leurs en-têtes.
+- Les relations ordinaires s’attachent aux faces perpendiculaires à l’axe principal, avec des segments de départ et d’arrivée dans cet axe. Le cas source valide `G = {A, B}`, `B → x → A`, lorsque G est replié, possède une politique bornée d’attaches latérales dérivées des membres masqués ; ces attaches conservent leur provenance et ne changent pas la règle des relations ordinaires.
 - Une relation longue dont les deux extrémités appartiennent au même groupe emprunte un passage dans le padding de leur groupe commun le plus profond ; sa route ne sort pas de cette enveloppe.
 - Un groupe non vide occupe l’intervalle des rangs de son contenu ; un groupe vide endpoint est atomique.
 - ELK a été écarté après sa gate de compatibilité ; `layoutGraph(...)` utilise un moteur dédié déterministe.

@@ -1,8 +1,13 @@
 import {
 	EndpointKind,
 	JunctionOperator,
+	LANE_PERSISTENCE_FORMAT,
+	LaneGrowth,
+	LaneOrientation,
+	LAYOUT_PRESENTATION_SCHEMA,
 	LayoutBias,
 	LayoutDirection,
+	LayoutPolicy,
 	type LogicDocument,
 	PERSISTENCE_FORMAT,
 } from '../../../src/lib/core/document/logic-document';
@@ -82,5 +87,34 @@ export function validLogicDocument(): LogicDocument {
 			{ id: 'choice-to-target', from: 'choice', to: 'target' },
 			{ id: 'group-to-target', from: 'endpoint-group', to: 'target' },
 		],
+	};
+}
+
+export function explicitLaneLogicDocument(): LogicDocument {
+	const document = validLogicDocument();
+	return {
+		...document,
+		persistenceFormat: LANE_PERSISTENCE_FORMAT,
+		presentation: {
+			schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
+			policy: LayoutPolicy.Layered,
+			laneOrientation: LaneOrientation.Parallel,
+			growth: LaneGrowth.Auto,
+			lanes: [
+				{ id: 'left', label: 'Left', layoutOrder: orderKey('a0') },
+				{ id: 'right', label: 'Right', layoutOrder: orderKey('a1') },
+			],
+		},
+		groups: document.groups.map((group) => {
+			let laneId = 'left';
+			if (group.id === 'orphan-group') laneId = 'right';
+			return { ...group, laneId };
+		}),
+		nodes: document.nodes.map((node) => {
+			if (node.groupId !== undefined) return node;
+			let laneId = 'left';
+			if (node.id === 'isolated') laneId = 'right';
+			return { ...node, laneId };
+		}),
 	};
 }

@@ -2,6 +2,10 @@ import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../../lib/core/document/logic-document';
 import {
+	readSourceDocumentState,
+	type SourceDocumentState,
+} from '../../../lib/infrastructure/collaboration/source-document-state';
+import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../lib/infrastructure/collaboration/yjs-document-codec';
@@ -23,9 +27,12 @@ class YjsSessionGateway implements DocumentCommandGateway {
 	readonly #repository: YjsDocumentRepository;
 	readonly #commands: LocalDocumentCommandGateway;
 	readonly #observers = new Set<(outcome: DocumentCommandOutcome) => void>();
+	readonly #sourceObservers = new Set<(state: SourceDocumentState) => void>();
 	readonly #stopRepository: () => void;
 	readonly #localCommandOrigin = Symbol('sequit local document command');
 	#current: LogicDocument;
+	#sourceState: SourceDocumentState;
+	#revision = 0;
 
 	constructor(
 		document: Y.Doc,
@@ -33,6 +40,7 @@ class YjsSessionGateway implements DocumentCommandGateway {
 		private readonly ownsDocument: boolean,
 	) {
 		this.#current = initial;
+		this.#sourceState = readSourceDocumentState(document, this.#revision);
 		this.#repository = new YjsDocumentRepository(document);
 		// This composed gateway owns publication. Accepted states flow exactly once from the
 		// repository observer, which is also the path used for remote Yjs transactions.
@@ -45,6 +53,15 @@ class YjsSessionGateway implements DocumentCommandGateway {
 			},
 		);
 		this.#stopRepository = this.#repository.observe((result, origin) => {
+			this.#revision += 1;
+			this.#sourceState = readSourceDocumentState(document, this.#revision);
+			for (const observer of [...this.#sourceObservers]) {
+				try {
+					observer(this.#sourceState);
+				} catch {
+					// Every source observer receives the current physical revision.
+				}
+			}
 			if (!result.ok && origin === this.#localCommandOrigin) return;
 			// FIXME: An invalid remote merge remains in the physical Y.Doc. Although #current
 			// stays valid, subsequent commands still persist against the invalid CRDT state.
@@ -68,6 +85,13 @@ class YjsSessionGateway implements DocumentCommandGateway {
 	readAccepted(): LogicDocument {
 		return this.#current;
 	}
+	readSourceState(): SourceDocumentState {
+		return this.#sourceState;
+	}
+	subscribeSourceState(observer: (state: SourceDocumentState) => void): () => void {
+		this.#sourceObservers.add(observer);
+		return () => this.#sourceObservers.delete(observer);
+	}
 	dispatch: DocumentCommandGateway['dispatch'] = (command) => this.#commands.dispatch(command);
 	subscribe(observer: (outcome: DocumentCommandOutcome) => void): () => void {
 		this.#observers.add(observer);
@@ -78,6 +102,7 @@ class YjsSessionGateway implements DocumentCommandGateway {
 		this.#commands.destroy();
 		this.#repository.destroy();
 		this.#observers.clear();
+		this.#sourceObservers.clear();
 		if (this.ownsDocument) this.#repository.document.destroy();
 	}
 }

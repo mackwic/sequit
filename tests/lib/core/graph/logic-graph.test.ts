@@ -5,6 +5,7 @@ import { EndpointKind, type LogicDocument } from '../../../../src/lib/core/docum
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
 	createGraph,
+	GraphDiagnosticCode,
 	type LogicGraph,
 	MAX_CACHED_EXPANDED_GROUP_MEMBERSHIPS,
 	MAX_EFFECTIVE_DEPENDENCY_PAIRS,
@@ -57,6 +58,33 @@ it('rejects a cyclic graph passed directly to the ranker', () => {
 });
 
 describe('LogicGraph', () => {
+	it('rejects duplicate relation IDs before graph materialization and keeps distinct parallel IDs', () => {
+		const source = validLogicDocument();
+		const duplicate: LogicDocument = {
+			...source,
+			relations: [
+				...source.relations,
+				{ id: 'choice-to-target', from: 'source-a', to: 'isolated' },
+				{ id: 'choice-to-target', from: 'source-b', to: 'isolated' },
+			],
+		};
+		const result = createGraph(duplicate);
+		expect(result).toEqual({
+			ok: false,
+			diagnostics: [
+				{
+					code: GraphDiagnosticCode.DuplicateRelationId,
+					message: 'Duplicate relation id: choice-to-target',
+					path: ['relations', 'choice-to-target'],
+				},
+			],
+		});
+		const parallel = {
+			...source,
+			relations: [...source.relations, { id: 'parallel-2', from: 'choice', to: 'target' }],
+		};
+		expect(createGraph(parallel).ok).toBe(true);
+	});
 	it('builds a deeply nested acyclic graph without exhausting the call stack', () => {
 		const depth = 15_000;
 		const base = validLogicDocument();

@@ -12,11 +12,13 @@
 		layout,
 		guides,
 		reservations = false,
+		frame,
 		targets = {},
 	}: {
 		layout: VisualLayout;
 		guides: boolean;
 		reservations?: boolean;
+		frame?: { readonly width: number; readonly height: number };
 		targets?: AssertionTargets;
 	} = $props();
 	const markerId = $props.id();
@@ -29,7 +31,7 @@
 	<svg
 		role="img"
 		aria-label="Géométrie du scénario"
-		viewBox={`0 0 ${layout.width} ${layout.height}`}
+		viewBox={`0 0 ${frame?.width ?? layout.width} ${frame?.height ?? layout.height}`}
 	>
 		<RelationArrow id={markerId} />
 		{#each renderRelationPaths(layout.relations) as relation (relation.id)}

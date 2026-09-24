@@ -157,11 +157,13 @@ module.exports = {
 		{
 			name: 'domain-model-has-no-outward-dependencies',
 			severity: 'error',
-			from: { path: '^src/lib/core/document/(logic-document|validate-logic-document)[.]ts$' },
+			from: {
+				path: '^src/lib/core/document/(logic-document|region-leaf-lane-presentation|region-presentation|region-presentation-issues|validate-grid-presentation|validate-lane-document|validate-logic-document|validate-region-document)[.]ts$',
+			},
 			to: {
 				path: '^src/',
 				pathNot:
-					'^src/lib/core/(canonical-string|document/(logic-document|order-key|validate-logic-document))[.]ts$',
+					'^src/lib/core/(canonical-string|document/(logic-document|order-key|region-leaf-lane-presentation|region-presentation|region-presentation-issues|validate-grid-presentation|validate-lane-document|validate-logic-document|validate-region-document))[.]ts$',
 			},
 		},
 		{
@@ -173,7 +175,7 @@ module.exports = {
 				pathNot: [
 					'^src/lib/core/graph/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},
@@ -186,7 +188,7 @@ module.exports = {
 				pathNot: [
 					'^src/lib/core/ordering/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation)[.]ts$',
 				],
 			},
 		},
@@ -199,7 +201,7 @@ module.exports = {
 				pathNot: [
 					'^src/lib/infrastructure/toml/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},
@@ -212,7 +214,7 @@ module.exports = {
 				pathNot: [
 					'^src/lib/core/(layout|ordering|graph)/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},
@@ -229,7 +231,7 @@ module.exports = {
 				pathNot: [
 					'^src/lib/infrastructure/(collaboration|document)/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key|topology-edits|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation|topology-edits|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},
@@ -245,7 +247,7 @@ module.exports = {
 					'^src/lib/infrastructure/collaboration/',
 					'^src/lib/core/graph/',
 					'^src/lib/core/canonical-string[.]ts$',
-					'^src/lib/core/document/(logic-document|order-key|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|order-key|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},
@@ -259,7 +261,7 @@ module.exports = {
 					'^src/app/web/ui/canvas/',
 					'^src/app/web/projection/layout-graph[.]ts$',
 					'^src/lib/core/layout/',
-					'^src/lib/core/document/(logic-document|validate-logic-document)[.]ts$',
+					'^src/lib/core/document/(logic-document|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
 				],
 			},
 		},

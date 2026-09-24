@@ -6,7 +6,9 @@ import { CollaborativeSession } from './collaborative-session';
 export {
 	CollaborationStatus,
 	type CollaborativeDocumentSession,
+	SourceDocumentStateKind,
 } from './collaborative-document-session-types';
+export { readSourceDocumentState } from './source-document-state';
 
 export function createCollaborativeDocumentSession(
 	initialDocument: LogicDocument,

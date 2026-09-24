@@ -21,13 +21,18 @@ import {
 	readLogicDocument,
 	YJS_LIVE_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
+import {
+	replaceNodeMarkdown,
+	YjsDocumentRepository,
+} from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
+import { createYjsEntityMap } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import {
 	type DocumentCommand,
 	DocumentCommandKind,
 	DocumentCommandOutcomeKind,
 } from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
+import { explicitLaneLogicDocument } from '../../../support/builders/logic-document';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
 
 async function referenceDocument(): Promise<LogicDocument> {
@@ -1401,5 +1406,102 @@ describe('yjsLiveDocumentFormat', () => {
 		expect(readDocument(deleting)).toEqual(readDocument(moving));
 		expect(ordered(readDocument(deleting))).not.toContain('discarded');
 		expect(Y.encodeStateVector(deleting)).toEqual(stateBeforeRead);
+	});
+});
+
+describe('repository presentation and recovery boundaries', () => {
+	it('preserves a new top-level group lane through a guarded Yjs transaction', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, explicitLaneLogicDocument());
+		const repository = new YjsDocumentRepository(ydoc);
+		const change: DocumentChangeSet = {
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupAdditions: [
+				{
+					kind: EndpointKind.Group,
+					id: 'new-lane-owner',
+					label: 'New lane owner',
+					layoutOrder: orderKey('a8'),
+					laneId: 'right',
+				},
+			],
+		};
+
+		const result = await repository.persist(change);
+
+		expect(result.ok).toBe(true);
+		expect(readDocument(ydoc).groups.find(({ id }) => id === 'new-lane-owner')).toMatchObject({
+			laneId: 'right',
+		});
+		repository.destroy();
+		ydoc.destroy();
+	});
+
+	it('leaves the shared state untouched when a Markdown target is not Y.Text', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, await referenceDocument());
+		const node = ydoc.getMap<Y.Map<unknown>>('sequit.nodes').get('traceable-edits');
+		if (!node) throw new Error('Fixture needs traceable-edits');
+		node.set('markdown', 'corrupt text');
+		const stateBefore = Y.encodeStateVector(ydoc);
+
+		expect(replaceNodeMarkdown(ydoc, 'traceable-edits', 'Ignored')).toBe(false);
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		ydoc.destroy();
+	});
+
+	it('does not overwrite a group whose shared label was replaced by a malformed value', () => {
+		const source = explicitLaneLogicDocument();
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, source);
+		const repository = new YjsDocumentRepository(ydoc);
+		const group = source.groups.find(({ id }) => id === 'container');
+		const entity = ydoc.getMap<Y.Map<unknown>>('sequit.groups').get('container');
+		if (!group || !entity) throw new Error('Fixture needs container');
+		entity.set('label', 'malformed shared label');
+		const stateBefore = Y.encodeStateVector(ydoc);
+		const change: DocumentChangeSet = {
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupReplacements: [{ ...group, label: 'Attempted replacement' }],
+		};
+
+		expect(() => repository.persist(change)).toThrow('Group label is unavailable: container');
+		expect(entity.get('label')).toBe('malformed shared label');
+		expect(Y.encodeStateVector(ydoc)).toEqual(stateBefore);
+		repository.destroy();
+		ydoc.destroy();
+	});
+
+	it('retains the last valid checkpoint after a failed recovery command', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, crossingDocument());
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+		const remoteState = Y.encodeStateVector(local);
+		const repository = new YjsDocumentRepository(local);
+		remote
+			.getMap<Y.Map<unknown>>('sequit.relations')
+			.set('dangling-remote', createYjsEntityMap({ from: 'source-a', to: 'missing-node' }));
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, remoteState));
+		expect(repository.read().ok).toBe(false);
+
+		const failed = await repository.persist(markdownChanges('missing-node', 'Ignored'));
+		expect(failed.ok).toBe(false);
+		const recovered = await repository.persist(markdownChanges('source-a', 'Recovered text'));
+		expect(recovered).toMatchObject({ ok: true });
+		if (!recovered.ok) throw new Error('Expected a command on the last valid checkpoint');
+		expect(recovered.value.nodes.find(({ id }) => id === 'source-a')?.markdown).toBe(
+			'Recovered text',
+		);
+		expect(repository.read().ok).toBe(false);
+		repository.destroy();
+		local.destroy();
+		remote.destroy();
 	});
 });

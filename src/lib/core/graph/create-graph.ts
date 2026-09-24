@@ -58,6 +58,7 @@ export interface GraphDiagnostic {
 }
 
 export enum GraphDiagnosticCode {
+	DuplicateRelationId = 'duplicate-relation-id',
 	UnknownEndpoint = 'unknown-endpoint',
 	Cycle = 'cycle',
 	GroupCycle = 'group-cycle',
@@ -85,9 +86,22 @@ function collectRelations(
 	diagnostics: GraphDiagnostic[],
 ): GraphRelation[] {
 	const relations: GraphRelation[] = [];
+	let previousId: string | undefined;
+	let reportedDuplicateId: string | undefined;
 	for (const relation of [...document.relations].sort((left, right) =>
 		compareCanonicalStrings(left.id, right.id),
 	)) {
+		if (relation.id === previousId) {
+			if (relation.id !== reportedDuplicateId)
+				diagnostics.push({
+					code: GraphDiagnosticCode.DuplicateRelationId,
+					message: `Duplicate relation id: ${relation.id}`,
+					path: ['relations', relation.id],
+				});
+			reportedDuplicateId = relation.id;
+			continue;
+		}
+		previousId = relation.id;
 		const source = endpointsById.get(relation.from);
 		const target = endpointsById.get(relation.to);
 		if (!source) diagnostics.push(unknownEndpointDiagnostic(relation, 'from'));

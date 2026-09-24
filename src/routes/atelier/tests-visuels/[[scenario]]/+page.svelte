@@ -11,7 +11,9 @@
 {#if import.meta.env.DEV}
 	<main class="visual-doc">
 		<header>
-			<a href={resolve('/atelier')}>← Atelier Sequit</a><span>ASSERTIONS VISUELLES</span>
+			<a href={resolve('/atelier')}>← Atelier Sequit</a>
+			<a href={resolve('/atelier/solveur')}>Explorer le prototype de solveur →</a>
+			<span>ASSERTIONS VISUELLES</span>
 		</header>
 		{#await import('../../../../app/workshop/visual-tests/ScenarioGallery.svelte') then page}
 			<page.default />

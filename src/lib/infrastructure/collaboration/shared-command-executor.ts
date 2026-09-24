@@ -1,6 +1,15 @@
 import type * as Y from 'yjs';
 
-import { GroupState, type LogicDocument } from '../../core/document/logic-document';
+import {
+	GRID_PERSISTENCE_FORMAT,
+	GroupState,
+	LANE_PERSISTENCE_FORMAT,
+	type LogicDocument,
+	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_PERSISTENCE_FORMAT,
+} from '../../core/document/logic-document';
+import { ROOT_LAYOUT_REGION_ID } from '../../core/document/region-presentation';
 import { dissolveDocumentGroup } from '../document/document-group-operations';
 import { finalizeSharedCommand, sharedElementOrder } from '../document/shared-command-rules';
 import {
@@ -40,11 +49,8 @@ function createElement(
 	collection.set(target.id, createYjsEntityMap(properties));
 }
 
-function groupElements(
-	document: Y.Doc,
-	command: Extract<SharedDocumentCommand, { op: SharedCommandKind.Group }>,
-): void {
-	const members = command.members.map((id) => {
+function groupingMembers(document: Y.Doc, ids: readonly string[]): readonly Y.Map<unknown>[] {
+	return ids.map((id) => {
 		for (const kind of [
 			SharedElementKind.Node,
 			SharedElementKind.Group,
@@ -55,18 +61,89 @@ function groupElements(
 		}
 		throw new Error('Un élément à regrouper est introuvable.');
 	});
+}
+
+function regionOwner(member: Y.Map<unknown>): string {
+	const id = member.get('regionId');
+	if (typeof id === 'string') return id;
+	return ROOT_LAYOUT_REGION_ID;
+}
+
+interface GroupProperties {
+	label: string;
+	groupId?: string;
+	laneId?: string;
+	regionId?: string;
+}
+
+function rootGroupOwnership(
+	document: Y.Doc,
+	members: readonly Y.Map<unknown>[],
+	properties: GroupProperties,
+): void {
+	const meta = document.getMap(YjsCollection.Meta);
+	const format = meta.get('persistenceFormat');
+	const lanes = format === LANE_PERSISTENCE_FORMAT;
+	const regionFormats: readonly number[] = [
+		REGION_PERSISTENCE_FORMAT,
+		GRID_PERSISTENCE_FORMAT,
+		REGION_LANE_PERSISTENCE_FORMAT,
+		REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	];
+	const regionFormat = typeof format === 'number' && regionFormats.includes(format);
+	const first = members[0];
+	let owner = ROOT_LAYOUT_REGION_ID;
+	if (first !== undefined) owner = regionOwner(first);
+	if (regionFormat && members.some((member) => regionOwner(member) !== owner))
+		throw new Error('Les éléments doivent appartenir à la même région.');
+	const regionLanes =
+		regionFormat &&
+		(meta.has('layoutPresentationSchema') || document.getMap(YjsCollection.RegionLanes).has(owner));
+	if (lanes || regionLanes) {
+		const laneId = members[0]?.get('laneId');
+		if (typeof laneId !== 'string' || members.some((member) => member.get('laneId') !== laneId))
+			throw new Error('Les éléments doivent appartenir à la même voie.');
+		properties.laneId = laneId;
+	}
+	if (!regionFormat) return;
+	if (first === undefined) return;
+	if (owner !== ROOT_LAYOUT_REGION_ID) properties.regionId = owner;
+}
+
+function groupProperties(
+	document: Y.Doc,
+	members: readonly Y.Map<unknown>[],
+	label: string,
+): GroupProperties {
 	if (members.length === 0) throw new Error('Sélectionnez les éléments à regrouper.');
 	const parent = members[0]?.get('groupId');
 	if (members.some((member) => member.get('groupId') !== parent))
 		throw new Error('Les éléments doivent appartenir au même groupe.');
-	const properties: { label: string; groupId?: string } = { label: command.label };
-	if (typeof parent === 'string') properties.groupId = parent;
+	const properties: GroupProperties = { label };
+	if (typeof parent === 'string') {
+		properties.groupId = parent;
+		return properties;
+	}
+	rootGroupOwnership(document, members, properties);
+	return properties;
+}
+
+function groupElements(
+	document: Y.Doc,
+	command: Extract<SharedDocumentCommand, { op: SharedCommandKind.Group }>,
+): void {
+	const members = groupingMembers(document, command.members);
+	const properties = groupProperties(document, members, command.label);
 	createElement(document, {
 		op: SharedCommandKind.Create,
 		target: { kind: SharedElementKind.Group, id: command.id },
 		properties,
 	});
-	for (const member of members) member.set('groupId', command.id);
+	for (const member of members) {
+		member.set('groupId', command.id);
+		member.delete('laneId');
+		member.delete('regionId');
+	}
 }
 
 function replaceNature(

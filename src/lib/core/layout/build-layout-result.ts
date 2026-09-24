@@ -5,8 +5,9 @@ import type { LayoutFrame } from './geometry/layout-frame';
 import { OUTER_MARGIN } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
 import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint-routes';
-import { applyNodeRouting } from './routing/materialize-node-routes';
+import { applyNodeRouting, type PlannedNodeRoutes } from './routing/materialize-node-routes';
 import type { NodeRouting } from './routing/reserve-node-routing';
+import { corridorCarriesCanonicalIndexes } from './routing/routing-corridors';
 import { directRouteRail, type RoutingSpace } from './routing/routing-space';
 
 interface ResultInput {
@@ -21,7 +22,8 @@ interface ResultInput {
 function layoutRelation(
 	input: ResultInput,
 	entry: LogicGraph['relations'][number],
-	planned: ReadonlyMap<string, readonly Point[]> | undefined,
+	index: number,
+	planned: PlannedNodeRoutes | undefined,
 ): LayoutRelation {
 	const { relation } = entry;
 	const source = defined(input.bounds.get(relation.from));
@@ -35,7 +37,8 @@ function layoutRelation(
 	});
 	const points =
 		input.routes?.get(relation.id) ??
-		planned?.get(relation.id) ??
+		planned?.byIndex?.[index] ??
+		planned?.byId?.get(relation.id) ??
 		routePoints({
 			source,
 			target,
@@ -48,14 +51,26 @@ function layoutRelation(
 }
 
 export function buildLayoutResult(input: ResultInput): LayoutResult {
-	let planned: ReadonlyMap<string, readonly Point[]> | undefined;
-	if (input.routing !== undefined)
+	let planned: PlannedNodeRoutes | undefined;
+	if (input.routing !== undefined) {
+		let relationCount: number | undefined;
+		if (
+			input.routing.corridors.length > 0 &&
+			input.routing.corridors.every(({ corridor }) =>
+				corridorCarriesCanonicalIndexes(corridor, input.graph),
+			)
+		)
+			relationCount = input.graph.relations.length;
 		planned = applyNodeRouting({
 			plan: input.routing,
 			bounds: input.bounds,
 			direction: input.frame.direction,
+			relationCount,
 		});
-	const relations = input.graph.relations.map((entry) => layoutRelation(input, entry, planned));
+	}
+	const relations = input.graph.relations.map((entry, index) =>
+		layoutRelation(input, entry, index, planned),
+	);
 	const elements: LayoutElement[] = [];
 	let width = OUTER_MARGIN * 2;
 	let height = OUTER_MARGIN * 2;

@@ -1,10 +1,16 @@
-import type { LogicDocument } from '../../../lib/core/document/logic-document';
+import { compareCanonicalStrings } from '../../../lib/core/canonical-string';
+import type {
+	GridLayoutPresentation,
+	LogicDocument,
+	RegionLanePresentation,
+} from '../../../lib/core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../../lib/core/graph/create-graph';
 import {
 	topologicallyRank,
 	type TopologicalRanks,
 } from '../../../lib/core/graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
+import { NestedRegionLocalLayoutCache } from '../../../lib/core/layout/nested-region-local-cache';
 import {
 	type CanvasMeasurementModel,
 	type CanvasModel,
@@ -13,21 +19,90 @@ import {
 	createCanvasModel,
 } from '../ui/canvas/canvas-model';
 import { layoutMeasurementSignature } from '../ui/canvas/measure-canvas';
-import { layoutGraph } from './layout-graph';
+import { layoutGraph, layoutGraphForProjection } from './layout-graph';
+import { partialRegionFailure } from './partial-region-layout';
+
+function regionLaneSignature(presentation: RegionLanePresentation | undefined): unknown {
+	if (presentation === undefined) return null;
+	return [
+		presentation.laneOrientation,
+		presentation.growth,
+		[...presentation.lanes]
+			.sort((left, right) => compareCanonicalStrings(left.id, right.id))
+			.map(({ id, label, layoutOrder }) => [id, label, layoutOrder]),
+	];
+}
+
+function gridSignature(grid: GridLayoutPresentation | undefined): unknown {
+	if (grid === undefined) return null;
+	return [
+		grid.minimumColumnWidths,
+		grid.minimumRowHeights,
+		[...grid.cells]
+			.sort((left, right) => compareCanonicalStrings(left.regionId, right.regionId))
+			.map(({ regionId, row, column }) => [regionId, row, column]),
+	];
+}
 
 /** Only topology/order/direction affect graph preparation. Text is measured separately. */
 function topologySignature(document: LogicDocument): string {
+	const byId = <T extends { readonly id: string }>(items: readonly T[]): T[] =>
+		[...items].sort((left, right) => compareCanonicalStrings(left.id, right.id));
+	let presentation: unknown = null;
+	if (document.presentation !== undefined)
+		presentation = [
+			[document.presentation.schemaVersion, document.presentation.policy],
+			[document.presentation.laneOrientation, document.presentation.growth],
+			byId(document.presentation.lanes).map(({ id, label, layoutOrder }) => [
+				id,
+				label,
+				layoutOrder,
+			]),
+		];
+	let regionPresentation: unknown = null;
+	if (document.regionPresentation !== undefined) {
+		regionPresentation = [
+			document.regionPresentation.schemaVersion,
+			byId(document.regionPresentation.regions).map(
+				({ id, parentId, layoutOrder, policy, lanePresentation, grid }) => [
+					id,
+					parentId,
+					layoutOrder,
+					policy,
+					regionLaneSignature(lanePresentation),
+					gridSignature(grid),
+				],
+			),
+			gridSignature(document.regionPresentation.grid),
+		];
+	}
 	return JSON.stringify([
-		document.layout,
-		document.nodes.map(({ id, groupId, layoutOrder }) => [id, groupId, layoutOrder]),
-		document.groups.map(({ id, groupId, layoutOrder }) => [id, groupId, layoutOrder]),
-		document.junctions.map(({ id, groupId, layoutOrder, operator }) => [
+		[document.layout.direction, document.layout.bias],
+		presentation,
+		regionPresentation,
+		byId(document.nodes).map(({ id, groupId, laneId, regionId, layoutOrder }) => [
 			id,
 			groupId,
+			laneId,
+			regionId,
+			layoutOrder,
+		]),
+		byId(document.groups).map(({ id, groupId, laneId, regionId, layoutOrder }) => [
+			id,
+			groupId,
+			laneId,
+			regionId,
+			layoutOrder,
+		]),
+		byId(document.junctions).map(({ id, groupId, laneId, regionId, layoutOrder, operator }) => [
+			id,
+			groupId,
+			laneId,
+			regionId,
 			layoutOrder,
 			operator,
 		]),
-		document.relations,
+		byId(document.relations).map(({ id, from, to }) => [id, from, to]),
 	]);
 }
 
@@ -70,6 +145,7 @@ export class DocumentProjection {
 	#measurementModel: CanvasMeasurementModel;
 	#measurementSignature: string;
 	#layout: MeasuredLayout | undefined;
+	readonly #nestedRegionCache = new NestedRegionLocalLayoutCache();
 
 	constructor(document: LogicDocument, graph?: LogicGraph) {
 		this.#document = document;
@@ -82,10 +158,10 @@ export class DocumentProjection {
 		return this.#measurementModel;
 	}
 
-	update(document: LogicDocument): boolean {
+	update(document: LogicDocument, graph?: LogicGraph): boolean {
 		const signature = topologySignature(document);
 		let topology = this.#topology;
-		if (signature !== topology.signature) topology = this.prepare(document);
+		if (signature !== topology.signature) topology = this.prepare(document, graph);
 		const measurement = createCanvasMeasurementModel(document);
 		const measurementSignature = JSON.stringify(measurement);
 		const changed =
@@ -110,21 +186,39 @@ export class DocumentProjection {
 		const signature = layoutMeasurementSignature(measurements);
 		let layout = this.#layout;
 		if (layout?.topology !== topology || layout.signature !== signature) {
+			let result: Promise<LayoutResult>;
+			if (topology.graph.document.regionPresentation === undefined)
+				result = layoutGraph(topology.graph, topology.ranks, measurements);
+			else
+				result = layoutGraphForProjection(
+					topology.graph,
+					topology.ranks,
+					measurements,
+					this.#nestedRegionCache,
+				);
 			layout = {
 				topology,
 				signature,
-				result: layoutGraph(topology.graph, topology.ranks, measurements),
+				result,
 			};
 			this.#layout = layout;
 		}
 		try {
-			let navigation: CanvasNavigationProjection = { document, ranks: topology.ranks };
+			let navigation: CanvasNavigationProjection = {
+				document,
+				ranks: topology.ranks,
+			};
 			if (relationProjections !== undefined) navigation = { ...navigation, relationProjections };
 			const canvas = createCanvasModel(measurement, await layout.result, navigation);
 			return reuseRelations(layout, canvas);
 		} catch (error) {
 			if (this.#layout === layout) this.#layout = undefined;
-			throw error;
+			throw partialRegionFailure(
+				error,
+				{ ...topology.graph, document },
+				measurements,
+				this.#nestedRegionCache,
+			);
 		}
 	}
 
@@ -135,6 +229,10 @@ export class DocumentProjection {
 			if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
 			next = result.value;
 		}
-		return { signature: topologySignature(document), graph: next, ranks: topologicallyRank(next) };
+		return {
+			signature: topologySignature(document),
+			graph: next,
+			ranks: topologicallyRank(next),
+		};
 	}
 }

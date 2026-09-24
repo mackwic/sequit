@@ -4,6 +4,9 @@ import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
 import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import type { LocalPresence, ParticipantPresence } from './session-wire';
+import type { SourceDocumentState } from './source-document-state';
+
+export { type SourceDocumentState, SourceDocumentStateKind } from './source-document-state';
 
 export enum CollaborationStatus {
 	Connecting = 'connecting',
@@ -32,7 +35,9 @@ export interface CollaborativeDocumentSession {
 	subscribeToPresence(listener: (participants: readonly ParticipantPresence[]) => void): () => void;
 	subscribeToRejection(listener: (message: string) => void): () => void;
 	read(): LogicDocument;
+	readSourceState(): SourceDocumentState;
 	subscribe(listener: DocumentSessionSubscriber): () => void;
+	subscribeToSourceState(listener: (state: SourceDocumentState) => void): () => void;
 	replaceNodeMarkdown(nodeId: string, markdown: string): boolean;
 	connectionStatus(): CollaborationStatus;
 	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void;

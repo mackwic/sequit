@@ -1,15 +1,11 @@
-import {
-	type CollapsedDocumentProjection,
-	projectCollapsedDocument,
-} from '../../../lib/core/document/collapsed-document';
 import type {
 	LogicDocument,
 	LogicGroup,
 	LogicRelation,
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
-import { GroupState } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
+import { SourceDocumentStateKind } from '../../../lib/infrastructure/collaboration/source-document-state';
 import type { DocumentCommandOutcome } from '../../../lib/infrastructure/document/document-command-contracts';
 import { parseSequitToml } from '../../../lib/infrastructure/toml/parse-sequit-toml';
 import type { DocumentSession } from '../document/document-session';
@@ -17,7 +13,9 @@ import { createDocumentSession } from '../document/yjs-document-session';
 import type { CanvasMeasurementModel, CanvasModel } from '../ui/canvas/canvas-model';
 import type { CanvasProjection } from './canvas-projection';
 import { DocumentProjection } from './document-projection';
+import { LayoutProjectionError } from './layout-diagnostic';
 import type { LayoutMeasurements } from './layout-graph';
+import { SourceDocumentProjectionError } from './source-document-diagnostic';
 
 interface OpenDocumentDiagnostic {
 	readonly code: string;
@@ -30,6 +28,7 @@ interface OpenDocumentDiagnostic {
 class OpenedDocument implements CanvasProjection {
 	readonly #projection: DocumentProjection;
 	readonly #unsubscribe: () => void;
+	readonly #unsubscribeSource: () => void;
 	readonly #subscribers = new Set<() => void>();
 	#destroyed = false;
 
@@ -40,14 +39,21 @@ class OpenedDocument implements CanvasProjection {
 		this.#projection = projection;
 		this.#unsubscribe = this.session.subscribe((document) => {
 			this.#projection.update(document);
-			for (const subscriber of [...this.#subscribers]) {
-				try {
-					subscriber();
-				} catch {
-					// Projection publication must reach every opened-document subscriber.
-				}
-			}
+			this.#notify();
 		});
+		this.#unsubscribeSource = this.session.subscribeSourceState((state) => {
+			if (state.kind === SourceDocumentStateKind.Invalid) this.#notify();
+		});
+	}
+
+	#notify(): void {
+		for (const subscriber of [...this.#subscribers]) {
+			try {
+				subscriber();
+			} catch {
+				// Projection publication must reach every opened-document subscriber.
+			}
+		}
 	}
 
 	get measurementModel(): CanvasMeasurementModel {
@@ -55,7 +61,23 @@ class OpenedDocument implements CanvasProjection {
 	}
 
 	async createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel> {
-		return this.#projection.createCanvasModel(measurements);
+		const source = this.session.readSourceState();
+		if (source?.kind === SourceDocumentStateKind.Invalid)
+			throw new SourceDocumentProjectionError(source);
+		const document = this.session.read();
+		let canvas: CanvasModel;
+		try {
+			canvas = await this.#projection.createCanvasModel(measurements);
+		} catch (cause) {
+			const current = this.session.readSourceState();
+			if (current?.kind === SourceDocumentStateKind.Invalid)
+				throw new SourceDocumentProjectionError(current);
+			throw new LayoutProjectionError(document, cause);
+		}
+		const current = this.session.readSourceState();
+		if (current?.kind === SourceDocumentStateKind.Invalid)
+			throw new SourceDocumentProjectionError(current);
+		return canvas;
 	}
 
 	read(): LogicDocument {
@@ -109,6 +131,7 @@ class OpenedDocument implements CanvasProjection {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
 		this.#unsubscribe();
+		this.#unsubscribeSource();
 		this.#subscribers.clear();
 		this.session.destroy();
 	}
@@ -173,91 +196,4 @@ export function openDocument(
 	}
 }
 
-/** Canvas projection of one accepted/shared snapshot; editing stays on the source document. */
-function sharedDocument(document: LogicDocument) {
-	const closed = document.groups
-		.filter((group) => group.state === GroupState.Closed)
-		.map((group) => group.id);
-	return projectCollapsedDocument(document, closed);
-}
-
-interface SharedProjectionUpdate {
-	readonly visible: CollapsedDocumentProjection;
-	readonly changed: boolean;
-	readonly warning: string | undefined;
-}
-
-/** A valid source can acquire a false cycle only in its collapsed view. Keep it expanded. */
-function projectSharedSnapshot(
-	document: LogicDocument,
-	accept: (visible: LogicDocument) => boolean,
-): SharedProjectionUpdate {
-	const visible = sharedDocument(document);
-	try {
-		return { visible, changed: accept(visible.document), warning: undefined };
-	} catch {
-		const expanded = projectCollapsedDocument(document, []);
-		return {
-			visible: expanded,
-			changed: accept(expanded.document),
-			warning: 'Ce repli crée une ambiguïté. La vue reste dépliée ; le document est conservé.',
-		};
-	}
-}
-
-class SharedCanvasProjection implements CanvasProjection {
-	readonly #projection: DocumentProjection;
-	#visible: ReturnType<typeof sharedDocument>;
-	#warning: string | undefined;
-	readonly #subscribers = new Set<() => void>();
-
-	constructor(document: LogicDocument) {
-		this.#projection = new DocumentProjection(document);
-		const result = projectSharedSnapshot(document, (visible) => this.#projection.update(visible));
-		this.#visible = result.visible;
-		this.#warning = result.warning;
-	}
-
-	get measurementModel(): CanvasMeasurementModel {
-		return this.#projection.measurementModel;
-	}
-
-	get visible(): ReturnType<typeof sharedDocument> {
-		return this.#visible;
-	}
-
-	get warning(): string | undefined {
-		return this.#warning;
-	}
-
-	update(document: LogicDocument): void {
-		const { visible, changed, warning } = projectSharedSnapshot(document, (next) =>
-			this.#projection.update(next),
-		);
-		const provenanceChanged =
-			JSON.stringify([...visible.relations]) !== JSON.stringify([...this.#visible.relations]);
-		this.#visible = visible;
-		this.#warning = warning;
-		if (!changed && !provenanceChanged) return;
-		for (const subscriber of [...this.#subscribers]) {
-			try {
-				subscriber();
-			} catch {
-				/* Isolate view subscribers. */
-			}
-		}
-	}
-
-	subscribe(subscriber: () => void): () => void {
-		this.#subscribers.add(subscriber);
-		return () => this.#subscribers.delete(subscriber);
-	}
-
-	createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel> {
-		return this.#projection.createCanvasModel(measurements, this.#visible.relations);
-	}
-}
-
-export function createSharedCanvasProjection(document: LogicDocument): SharedCanvasProjection {
-	return new SharedCanvasProjection(document);
-}
+export { createSharedCanvasProjection } from './shared-canvas-projection';

@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest';
+
+import { localDocument, normalize } from '../../../../src/lib/core/layout/grid-cell-model';
+import {
+	gridCellRegionLeafDocument,
+	normalizeGridCellRegionModel,
+} from '../../../../src/lib/core/layout/grid-cell-region-model';
+import type { GridCellInput } from '../../../../src/lib/core/layout/grid-cell-types';
+import {
+	RegionCompositionDiagnosticCode,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/region-composition-model';
+import { gridInput, prepareGrid } from './grid-cell-fixture';
+
+function normalizedGrid(input: GridCellInput = gridInput()) {
+	const { graph } = prepareGrid();
+	const grid = normalize(graph, input);
+	if (typeof grid === 'string') throw new Error(grid);
+	return { graph, grid };
+}
+
+describe('grid cells in the common region ownership model', () => {
+	it('keeps spatial child order, indivisible group ownership, and the crossing LCA', () => {
+		const input = gridInput();
+		const { graph, grid } = normalizedGrid(input);
+		const result = normalizeGridCellRegionModel(graph, input, grid);
+		expect(result.status).toBe(RegionCompositionModelStatus.Ready);
+		if (result.status !== RegionCompositionModelStatus.Ready) return;
+		const { model } = result;
+		for (const cell of grid.cells)
+			expect(gridCellRegionLeafDocument(graph, model, cell.id)).toEqual(
+				localDocument(graph, input, grid, cell),
+			);
+		expect(model.preorderIds).toEqual(['@root', 'a', 'b', 'c', 'd']);
+		expect(model.leafByEndpointId).toEqual(
+			new Map([
+				['a-bottom', 'a'],
+				['a-top', 'a'],
+				['b', 'b'],
+				['c', 'c'],
+				['d', 'd'],
+				['oversized', 'b'],
+			]),
+		);
+		expect(model.regionsById.get('b')?.definition.layout).toEqual(input.cells[1]?.layout);
+		expect(model.localRelationsByOwner.get('a')?.map(({ id }) => id)).toEqual(['inside-a']);
+		expect(model.crossingRelationsByOwner.get('@root')?.map(({ id }) => id)).toEqual([
+			'across-grid',
+		]);
+		expect(
+			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
+		).toEqual([
+			['across-grid', '@root', 'crossing'],
+			['inside-a', 'a', 'local'],
+		]);
+		expect(model.relations[0]).toMatchObject({
+			sourceLeafId: 'a',
+			targetLeafId: 'd',
+			sourcePathToOwner: ['a'],
+			targetPathToOwner: ['d'],
+		});
+	});
+
+	it('normalizes cell and assignment permutations to the same model', () => {
+		const input = gridInput();
+		const { graph, grid } = normalizedGrid(input);
+		const baseline = normalizeGridCellRegionModel(graph, input, grid);
+		const permuted: GridCellInput = {
+			...input,
+			cells: [...input.cells].reverse(),
+			cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+		};
+		const normalized = normalize(graph, permuted);
+		if (typeof normalized === 'string') throw new Error(normalized);
+		expect(normalizeGridCellRegionModel(graph, permuted, normalized)).toEqual(baseline);
+	});
+
+	it('passes common assignment and resource diagnostics through the adapter', () => {
+		const input = gridInput();
+		const { graph, grid } = normalizedGrid(input);
+		const split = new Map(input.cellByEndpointId);
+		split.set('b', 'a');
+		expect(
+			normalizeGridCellRegionModel(graph, { ...input, cellByEndpointId: split }, grid),
+		).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.SplitGroup,
+				path: ['endpoints', 'b', 'regionId'],
+			},
+		});
+		const unassigned = new Map(input.cellByEndpointId);
+		unassigned.delete('d');
+		expect(
+			normalizeGridCellRegionModel(graph, { ...input, cellByEndpointId: unassigned }, grid),
+		).toMatchObject({
+			status: RegionCompositionModelStatus.Invalid,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.MissingEndpointAssignment,
+				path: ['endpoints', 'd', 'regionId'],
+			},
+		});
+		expect(normalizeGridCellRegionModel(graph, input, grid, { maxRegions: 4 })).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: ['regions'],
+				actual: 5,
+				limit: 4,
+			},
+		});
+	});
+});

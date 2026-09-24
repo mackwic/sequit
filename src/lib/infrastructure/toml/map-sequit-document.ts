@@ -1,85 +1,45 @@
-import { compareCanonicalStrings } from '../../core/canonical-string';
 import {
 	type ContentStyle,
 	contentStyleFields,
 	type DocumentResult,
 	EndpointKind,
+	GRID_PERSISTENCE_FORMAT,
+	GRID_REGION_PRESENTATION_SCHEMA,
 	groupStateFields,
-	JunctionOperator,
+	LANE_PERSISTENCE_FORMAT,
 	LAYOUT_BIASES,
 	LAYOUT_DIRECTIONS,
 	type LayoutConfiguration,
 	layoutConfiguration,
 	type LogicDocument,
 	type LogicGroup,
-	type LogicJunction,
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
 	nodeDescriptionFields,
-	type OrderKey,
 	PERSISTENCE_FORMAT,
-	type SequitDiagnostic,
+	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PRESENTATION_SCHEMA,
+	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_LANE_PRESENTATION_SCHEMA,
+	REGION_PERSISTENCE_FORMAT,
+	REGION_PRESENTATION_SCHEMA,
+	type RegionLayoutPresentation,
+	type RootLayoutPresentation,
 	SequitDiagnosticCode,
 } from '../../core/document/logic-document';
-import { parseOrderKey } from '../../core/document/order-key';
-
-interface MappingContext {
-	readonly diagnostics: SequitDiagnostic[];
-}
-
-type UnknownTable = Record<string, unknown>;
-
-const junctionOperatorByValue: Readonly<Record<string, JunctionOperator>> = {
-	[JunctionOperator.Xor]: JunctionOperator.Xor,
-};
-
-function isTable(value: unknown): value is UnknownTable {
-	if (typeof value !== 'object') return false;
-	return value !== null && !Array.isArray(value);
-}
-
-function table(
-	value: unknown,
-	path: readonly string[],
-	context: MappingContext,
-): UnknownTable | undefined {
-	if (isTable(value)) return value;
-	context.diagnostics.push({
-		code: diagnosticCode(value),
-		message: `${path.join('.')} must be a table`,
-		path,
-	});
-	return undefined;
-}
-
-function string(
-	value: unknown,
-	path: readonly string[],
-	context: MappingContext,
-): string | undefined {
-	if (typeof value === 'string') return value;
-	context.diagnostics.push({
-		code: diagnosticCode(value),
-		message: `${path.join('.')} must be a string`,
-		path,
-	});
-	return undefined;
-}
-
-function optionalString(
-	value: unknown,
-	path: readonly string[],
-	context: MappingContext,
-): string | undefined {
-	if (value === undefined) return undefined;
-	return string(value, path, context);
-}
-
-function diagnosticCode(value: unknown): SequitDiagnostic['code'] {
-	if (value === undefined) return SequitDiagnosticCode.MissingField;
-	return SequitDiagnosticCode.InvalidType;
-}
+import { mapPresentation } from './map-layout-presentation';
+import { mapRegionPresentation } from './map-region-presentation';
+import {
+	entries,
+	type MappingContext,
+	optionalString,
+	requiredLayoutOrder,
+	string,
+	table,
+	type UnknownTable,
+} from './map-sequit-fields';
+import { mapJunctions } from './map-sequit-junctions';
 
 function mapContentStyle(
 	entity: UnknownTable,
@@ -114,42 +74,14 @@ function optionalGroupId(groupId: string | undefined): { readonly groupId?: stri
 	return { groupId };
 }
 
-function requiredLayoutOrder(
-	value: unknown,
-	path: readonly string[],
-	context: MappingContext,
-): OrderKey | undefined {
-	const key = string(value, path, context);
-	if (key === undefined) return undefined;
-	const parsed = parseOrderKey(key);
-	if (parsed !== undefined) return parsed;
-	context.diagnostics.push({
-		code: SequitDiagnosticCode.InvalidValue,
-		message: `${path.join('.')} must be a valid fractional order key`,
-		path,
-	});
-	return undefined;
+function optionalLaneId(laneId: string | undefined): { readonly laneId?: string } {
+	if (laneId === undefined) return {};
+	return { laneId };
 }
 
-function mapJunctionOperator(
-	value: unknown,
-	path: readonly string[],
-	context: MappingContext,
-): JunctionOperator | undefined {
-	const operatorValue = string(value, path, context);
-	if (operatorValue === undefined) return undefined;
-	const operator = junctionOperatorByValue[operatorValue];
-	if (operator !== undefined) return operator;
-	context.diagnostics.push({
-		code: SequitDiagnosticCode.InvalidValue,
-		message: `Unsupported junction operator: ${operatorValue}`,
-		path,
-	});
-	return undefined;
-}
-
-function entries(value: UnknownTable): readonly (readonly [string, unknown])[] {
-	return Object.entries(value).sort(([left], [right]) => compareCanonicalStrings(left, right));
+function optionalRegionId(regionId: string | undefined): { readonly regionId?: string } {
+	if (regionId === undefined) return {};
+	return { regionId };
 }
 
 function mapLayout(
@@ -187,15 +119,81 @@ function mapLayout(
 	return layout;
 }
 
+function mapVersionedPresentation(
+	root: UnknownTable,
+	format: unknown,
+	context: MappingContext,
+): RootLayoutPresentation | undefined {
+	if (format === LANE_PERSISTENCE_FORMAT) return mapPresentation(root['presentation'], context);
+	if (isRegionFormat(format)) {
+		if (root['presentation'] === undefined) return undefined;
+		return mapPresentation(root['presentation'], context);
+	}
+	if (root['presentation'] !== undefined)
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: 'Legacy documents cannot persist explicit lanes',
+			path: ['presentation'],
+		});
+	return undefined;
+}
+
+function isRegionFormat(format: unknown): boolean {
+	if (format === REGION_PERSISTENCE_FORMAT) return true;
+	if (format === GRID_PERSISTENCE_FORMAT) return true;
+	if (format === REGION_LANE_PERSISTENCE_FORMAT) return true;
+	return format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
+}
+
+function mapVersionedRegionPresentation(
+	root: UnknownTable,
+	format: unknown,
+	context: MappingContext,
+): RegionLayoutPresentation | undefined {
+	if (format === REGION_PERSISTENCE_FORMAT)
+		return mapRegionPresentation(root['regionPresentation'], context, REGION_PRESENTATION_SCHEMA);
+	if (format === GRID_PERSISTENCE_FORMAT)
+		return mapRegionPresentation(
+			root['regionPresentation'],
+			context,
+			GRID_REGION_PRESENTATION_SCHEMA,
+		);
+	if (format === REGION_LANE_PERSISTENCE_FORMAT)
+		return mapRegionPresentation(
+			root['regionPresentation'],
+			context,
+			REGION_LANE_PRESENTATION_SCHEMA,
+		);
+	if (format === REGION_COMPOSITION_PERSISTENCE_FORMAT)
+		return mapRegionPresentation(
+			root['regionPresentation'],
+			context,
+			REGION_COMPOSITION_PRESENTATION_SCHEMA,
+		);
+	if (root['regionPresentation'] !== undefined)
+		context.diagnostics.push({
+			code: SequitDiagnosticCode.InvalidValue,
+			message: 'This format cannot persist explicit regions',
+			path: ['regionPresentation'],
+		});
+	return undefined;
+}
+
+function supportedPersistenceFormat(format: unknown): format is LogicDocument['persistenceFormat'] {
+	if (format === PERSISTENCE_FORMAT || format === LANE_PERSISTENCE_FORMAT) return true;
+	return isRegionFormat(format);
+}
+
 export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocument> {
 	const context: MappingContext = { diagnostics: [] };
 	const root = table(rootValue, [], context);
 	if (!root) return { ok: false, diagnostics: context.diagnostics };
 
-	if (root['persistenceFormat'] !== PERSISTENCE_FORMAT) {
+	const format = root['persistenceFormat'];
+	if (!supportedPersistenceFormat(format)) {
 		context.diagnostics.push({
 			code: SequitDiagnosticCode.UnsupportedPersistenceFormat,
-			message: `Unsupported persistenceFormat: ${String(root['persistenceFormat'])}`,
+			message: `Unsupported persistenceFormat: ${String(format)}`,
 			path: ['persistenceFormat'],
 		});
 	}
@@ -207,6 +205,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 	const nodeTable = table(root['nodes'], ['nodes'], context);
 	const junctionTable = table(root['junctions'], ['junctions'], context);
 	const relationTable = table(root['relations'], ['relations'], context);
+	const presentation = mapVersionedPresentation(root, format, context);
+	const regionPresentation = mapVersionedRegionPresentation(root, format, context);
 
 	const id = documentTable && string(documentTable['id'], ['document', 'id'], context);
 	const title = documentTable && string(documentTable['title'], ['document', 'title'], context);
@@ -235,6 +235,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const label = string(entity['label'], [...path, 'label'], context);
 			const color = optionalString(entity['color'], [...path, 'color'], context);
 			const parentGroupId = optionalString(entity['group'], [...path, 'group'], context);
+			const laneId = optionalString(entity['lane'], [...path, 'lane'], context);
+			const regionId = optionalString(entity['regionId'], [...path, 'regionId'], context);
 			const layoutOrder = requiredLayoutOrder(
 				entity['layoutOrder'],
 				[...path, 'layoutOrder'],
@@ -247,6 +249,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 					label,
 					...contentStyleFields(color, undefined),
 					...optionalGroupId(parentGroupId),
+					...optionalLaneId(laneId),
+					...optionalRegionId(regionId),
 					...mapGroupState(entity['state'], [...path, 'state'], context),
 					layoutOrder,
 				});
@@ -263,6 +267,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const natureId = string(entity['nature'], [...path, 'nature'], context);
 			const style = mapContentStyle(entity, path, context);
 			const groupId = optionalString(entity['group'], [...path, 'group'], context);
+			const laneId = optionalString(entity['lane'], [...path, 'lane'], context);
+			const regionId = optionalString(entity['regionId'], [...path, 'regionId'], context);
 			const markdown = string(entity['markdown'], [...path, 'markdown'], context);
 			const description = optionalString(entity['description'], [...path, 'description'], context);
 			const layoutOrder = requiredLayoutOrder(
@@ -278,6 +284,8 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 					id: nodeId,
 					natureId,
 					...optionalGroupId(groupId),
+					...optionalLaneId(laneId),
+					...optionalRegionId(regionId),
 					markdown,
 					...nodeDescriptionFields(description),
 					layoutOrder,
@@ -286,30 +294,7 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 		}
 	}
 
-	const junctions: LogicJunction[] = [];
-	if (junctionTable) {
-		for (const [junctionId, value] of entries(junctionTable)) {
-			const path = ['junctions', junctionId] as const;
-			const entity = table(value, path, context);
-			if (!entity) continue;
-			const operator = mapJunctionOperator(entity['operator'], [...path, 'operator'], context);
-			const groupId = optionalString(entity['group'], [...path, 'group'], context);
-			const layoutOrder = requiredLayoutOrder(
-				entity['layoutOrder'],
-				[...path, 'layoutOrder'],
-				context,
-			);
-			if (operator !== undefined && layoutOrder !== undefined) {
-				junctions.push({
-					kind: EndpointKind.Junction,
-					id: junctionId,
-					operator,
-					...optionalGroupId(groupId),
-					layoutOrder,
-				});
-			}
-		}
-	}
+	const junctions = mapJunctions(junctionTable, context);
 
 	const relations: LogicRelation[] = [];
 	if (relationTable) {
@@ -325,16 +310,28 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 
 	const hasDiagnostics = context.diagnostics.length > 0;
 	const missingDocumentIdentity = id === undefined || title === undefined;
-	if (hasDiagnostics || missingDocumentIdentity || !layout) {
+	if (hasDiagnostics || missingDocumentIdentity || layout === undefined)
 		return { ok: false, diagnostics: context.diagnostics };
-	}
+	if (!supportedPersistenceFormat(format)) return { ok: false, diagnostics: context.diagnostics };
+	if (format === LANE_PERSISTENCE_FORMAT && presentation === undefined)
+		return { ok: false, diagnostics: context.diagnostics };
+	const regionFormat = isRegionFormat(format);
+	if (regionFormat && regionPresentation === undefined)
+		return { ok: false, diagnostics: context.diagnostics };
+	const presentationField: { presentation?: RootLayoutPresentation } = {};
+	if (presentation !== undefined) presentationField.presentation = presentation;
+	const regionPresentationField: { regionPresentation?: RegionLayoutPresentation } = {};
+	if (regionPresentation !== undefined)
+		regionPresentationField.regionPresentation = regionPresentation;
 	return {
 		ok: true,
 		value: {
-			persistenceFormat: PERSISTENCE_FORMAT,
+			persistenceFormat: format,
 			id,
 			title,
 			layout,
+			...presentationField,
+			...regionPresentationField,
 			natures,
 			groups,
 			nodes,

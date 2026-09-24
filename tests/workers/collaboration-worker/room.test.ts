@@ -10,6 +10,10 @@ import {
 	planPersistence,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
 import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
+import {
+	importLogicDocument,
+	readLogicDocument,
+} from '../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import worker from '../../../src/workers/collaboration-worker/index';
 import {
 	decodeStoredRoomState,
@@ -18,6 +22,10 @@ import {
 	restoreRoomState,
 } from '../../../src/workers/collaboration-worker/room-storage';
 import { collaborativeDocument, encodeFullUpdate } from '../../support/builders/collaboration';
+import {
+	explicitLaneLogicDocument,
+	validLogicDocument,
+} from '../../support/builders/logic-document';
 import { connectRoom } from './room-client';
 
 it('serves health, routing, and upgrade errors through the worker handler', async () => {
@@ -148,6 +156,33 @@ it('rejects corrupted stored document chunks and semantic state', () => {
 		expect(() => decodeStoredRoomState(meta, storedChunks, roomName)).toThrow();
 	}
 });
+
+it.each([false, true])(
+	'decodes stored legacy and lane documents before text upgrade (lanes=%s)',
+	(lanes) => {
+		const source = new Y.Doc();
+		let document = validLogicDocument();
+		if (lanes) document = explicitLaneLogicDocument();
+		importLogicDocument(source, document);
+		const plan = planPersistence({
+			fullUpdate: Y.encodeStateAsUpdate(source),
+			commit: 1,
+			currentChunkCount: 0,
+			acceptedProposals: new Map(),
+		});
+		const chunks = new Map(
+			chunkKeys(plan.chunks.length).map((key, index) => [key, plan.chunks[index]]),
+		);
+		const restored = decodeStoredRoomState(plan.meta, chunks, document.id);
+		const result = readLogicDocument(restored.doc);
+		expect(result).toMatchObject({
+			ok: true,
+			value: { persistenceFormat: document.persistenceFormat },
+		});
+		source.destroy();
+		restored.doc.destroy();
+	},
+);
 
 it('destroys the provisional document when storage metadata cannot be read', async () => {
 	const room = env.COLLABORATION_ROOMS.getByName('restore-read-failure');

@@ -20,6 +20,9 @@ export default defineConfig({
 				'**/shared-editor.spec.ts',
 				'**/canvas-live-projection.spec.ts',
 				'**/canvas-interactions.spec.ts',
+				'**/nested-region-layout.spec.ts',
+				'**/nested-region-depth-three.spec.ts',
+				'**/grid-cell-layout.spec.ts',
 			],
 		},
 		{
@@ -29,6 +32,9 @@ export default defineConfig({
 				'**/shared-editor.spec.ts',
 				'**/canvas-live-projection.spec.ts',
 				'**/canvas-interactions.spec.ts',
+				'**/nested-region-layout.spec.ts',
+				'**/nested-region-depth-three.spec.ts',
+				'**/grid-cell-layout.spec.ts',
 			],
 		},
 		{

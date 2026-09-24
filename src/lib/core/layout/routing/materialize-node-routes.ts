@@ -23,19 +23,31 @@ export function channelPoints(
 	if (wire.first === undefined) return [start, end];
 	const first = railStart + wire.first.rail * railStep;
 	const last = railStart + defined(wire.last).rail * railStep;
-	const points = [start, pointOnAxes(wire.source, first, vertical)];
-	if (wire.middle !== undefined)
-		points.push(
-			pointOnAxes(wire.middle, first, vertical),
-			pointOnAxes(wire.middle, last, vertical),
-		);
-	points.push(pointOnAxes(wire.target, last, vertical), end);
-	return points;
+	if (wire.middle === undefined)
+		return [
+			start,
+			pointOnAxes(wire.source, first, vertical),
+			pointOnAxes(wire.target, last, vertical),
+			end,
+		];
+	return [
+		start,
+		pointOnAxes(wire.source, first, vertical),
+		pointOnAxes(wire.middle, first, vertical),
+		pointOnAxes(wire.middle, last, vertical),
+		pointOnAxes(wire.target, last, vertical),
+		end,
+	];
 }
 
 interface PrincipalFaces {
 	readonly departure: number;
 	readonly arrival: number;
+}
+
+export interface PlannedNodeRoutes {
+	readonly byIndex: readonly (readonly Point[] | undefined)[] | undefined;
+	readonly byId: ReadonlyMap<string, readonly Point[]> | undefined;
 }
 
 function nodeFaces(box: Bounds, vertical: boolean, sign: number): PrincipalFaces {
@@ -54,7 +66,10 @@ function principalFaces(input: {
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
 	readonly sign: number;
-}): { nodes: ReadonlyMap<string, PrincipalFaces>; rows: ReadonlyMap<number, PrincipalFaces> } {
+}): {
+	nodes: ReadonlyMap<string, PrincipalFaces>;
+	rows: ReadonlyMap<number, PrincipalFaces>;
+} {
 	const nodes = new Map<string, PrincipalFaces>();
 	const rows = new Map<number, PrincipalFaces>();
 	for (const id of input.plan.ports.sizes.keys()) {
@@ -78,7 +93,8 @@ export function applyNodeRouting(input: {
 	readonly plan: NodeRouting;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly direction: LayoutDirection;
-}): ReadonlyMap<string, readonly Point[]> {
+	readonly relationCount: number | undefined;
+}): PlannedNodeRoutes {
 	const vertical = [LayoutDirection.TopToBottom, LayoutDirection.BottomToTop].includes(
 		input.direction,
 	);
@@ -88,7 +104,10 @@ export function applyNodeRouting(input: {
 	let sign = 1;
 	if (decreasing) sign = -1;
 	const faces = principalFaces({ ...input, vertical, sign });
-	const points = new Map<string, readonly Point[]>();
+	let byIndex: (readonly Point[] | undefined)[] | undefined;
+	let byId: Map<string, readonly Point[]> | undefined;
+	if (input.relationCount === undefined) byId = new Map();
+	else byIndex = new Array<readonly Point[] | undefined>(input.relationCount);
 	for (const channel of input.plan.corridors) {
 		const rank = channel.corridor.rank;
 		const count = defined(input.plan.railCounts.get(rank));
@@ -101,12 +120,16 @@ export function applyNodeRouting(input: {
 			railStart: center - sign * halfSpan,
 			railStep: sign * RAIL_SPACING,
 		};
-		for (const [index, wire] of channel.wires.entries()) {
-			const { relation } = defined(channel.corridor.links[index]);
+		for (let index = 0; index < channel.wires.length; index += 1) {
+			const wire = defined(channel.wires[index]);
+			const link = defined(channel.corridor.links[index]);
+			const { relation } = link;
 			const departure = defined(faces.nodes.get(relation.from)).departure;
 			const arrival = defined(faces.nodes.get(relation.to)).arrival;
-			points.set(wire.id, channelPoints(wire, departure, arrival, geometry));
+			const points = channelPoints(wire, departure, arrival, geometry);
+			if (byIndex !== undefined) byIndex[defined(link.relationIndex)] = points;
+			else defined(byId).set(wire.id, points);
 		}
 	}
-	return points;
+	return { byIndex, byId };
 }

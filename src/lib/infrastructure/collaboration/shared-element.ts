@@ -17,10 +17,19 @@ const COLLECTIONS: Readonly<Record<SharedElementKind, YjsCollection>> = {
 
 const FIELDS: Readonly<Record<SharedElementKind, readonly string[]>> = {
 	[SharedElementKind.Document]: ['title'],
-	[SharedElementKind.Node]: ['markdown', 'description', 'natureId', 'groupId', 'color', 'icon'],
-	[SharedElementKind.Group]: ['label', 'color', 'groupId', 'state'],
+	[SharedElementKind.Node]: [
+		'markdown',
+		'description',
+		'natureId',
+		'groupId',
+		'laneId',
+		'regionId',
+		'color',
+		'icon',
+	],
+	[SharedElementKind.Group]: ['label', 'color', 'groupId', 'laneId', 'regionId', 'state'],
 	[SharedElementKind.Nature]: ['label', 'color', 'icon'],
-	[SharedElementKind.Junction]: ['operator', 'groupId'],
+	[SharedElementKind.Junction]: ['operator', 'groupId', 'laneId', 'regionId'],
 	[SharedElementKind.Relation]: ['from', 'to'],
 };
 

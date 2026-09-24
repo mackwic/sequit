@@ -1,3 +1,4 @@
+import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 
 import type { LayoutResult } from '../../../../../src/app/web/projection/layout-graph';
@@ -5,8 +6,13 @@ import {
 	createCanvasMeasurementModel,
 	createCanvasModel,
 } from '../../../../../src/app/web/ui/canvas/canvas-model';
+import RenderedCanvas from '../../../../../src/app/web/ui/components/canvas/RenderedCanvas.svelte';
+import { CanvasSession } from '../../../../../src/app/web/ui/session/canvas-session.svelte';
 import { EndpointKind } from '../../../../../src/lib/core/document/logic-document';
-import { validLogicDocument } from '../../../../support/builders/logic-document';
+import {
+	explicitLaneLogicDocument,
+	validLogicDocument,
+} from '../../../../support/builders/logic-document';
 
 function completeLayout(): LayoutResult {
 	const document = validLogicDocument();
@@ -72,6 +78,7 @@ describe('CanvasModel projection', () => {
 		const canvas = createCanvasModel(measurement, layout);
 
 		expect(canvas).toMatchObject({ width: 800, height: 600 });
+		expect(canvas).not.toHaveProperty('regions');
 		expect(canvas.nodes).toHaveLength(4);
 		expect(canvas.groups).toHaveLength(3);
 		expect(canvas.junctions).toHaveLength(1);
@@ -114,6 +121,70 @@ describe('CanvasModel projection', () => {
 		expect(canvas.groups.find(({ id }) => id === 'endpoint-group')?.navigation).toEqual({
 			layoutOrder: 'a1',
 		});
+	});
+
+	it('projects the validated lane bounds with their document labels', () => {
+		const document = explicitLaneLogicDocument();
+		const left = { x: 0, y: 0, width: 200, height: 600 };
+		const right = { x: 240, y: 0, width: 200, height: 600 };
+		const canvas = createCanvasModel(
+			createCanvasMeasurementModel(document),
+			{
+				...completeLayout(),
+				lanes: [
+					{ id: 'left', bounds: left },
+					{ id: 'right', bounds: right },
+				],
+			},
+			{ document, ranks: { byEndpointId: new Map() } },
+		);
+		expect(canvas.lanes).toEqual([
+			{ id: 'left', label: 'Left', bounds: left },
+			{ id: 'right', label: 'Right', bounds: right },
+		]);
+	});
+
+	it('projects nested region frames without changing validated bounds', () => {
+		const outer = { x: 12, y: 20, width: 560, height: 460 };
+		const inner = { x: 36, y: 72, width: 210, height: 320 };
+		const canvas = createCanvasModel(createCanvasMeasurementModel(validLogicDocument()), {
+			...completeLayout(),
+			regions: [
+				{ id: 'workspace', bounds: outer },
+				{ id: 'draft', bounds: inner },
+			],
+		});
+
+		expect(canvas.regions).toEqual([
+			{ id: 'workspace', label: 'workspace', bounds: outer },
+			{ id: 'draft', label: 'draft', bounds: inner },
+		]);
+		expect(canvas.regions?.[0]?.bounds).toBe(outer);
+		expect(canvas.regions?.[1]?.bounds).toBe(inner);
+	});
+
+	it('renders region frames at their projected bounds only when present', () => {
+		const measurement = createCanvasMeasurementModel(validLogicDocument());
+		const legacy = createCanvasModel(measurement, completeLayout());
+		const layout = {
+			...completeLayout(),
+			regions: [{ id: 'workspace', bounds: { x: 12, y: 20, width: 560, height: 460 } }],
+		};
+		const canvas = createCanvasModel(measurement, layout);
+		const session = new CanvasSession();
+		const legacyMarkup = render(RenderedCanvas, {
+			props: { canvas: legacy, zoom: 1, session },
+		}).body;
+		const markup = render(RenderedCanvas, { props: { canvas, zoom: 1, session } }).body;
+		const frame = /<div[^>]*data-region-id="workspace"[^>]*>/.exec(markup)?.[0];
+
+		expect(legacyMarkup).not.toContain('data-region-id=');
+		expect(frame).toContain('aria-hidden="true"');
+		expect(frame).toContain('left: 12px');
+		expect(frame).toContain('top: 20px');
+		expect(frame).toContain('width: 560px');
+		expect(frame).toContain('height: 460px');
+		expect(markup).toContain('>workspace</span>');
 	});
 
 	it('fails at the projection boundary when any semantic endpoint lacks bounds', () => {

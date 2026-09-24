@@ -1,18 +1,161 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
+import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
+	allocatePorts,
+	PortMetricDemandKind,
 	sharedSourcePorts,
 	sharedTargetPorts,
 } from '../../../../src/lib/core/layout/routing/port-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
+import { crossingCorridors } from '../../../../src/lib/core/layout/routing/routing-corridors';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
 
 describe('rail and port reservations', () => {
+	it('preserves face order from crossing corridors, including direct-link fallback', () => {
+		const base = validLogicDocument();
+		const document = {
+			...base,
+			groups: [],
+			junctions: [],
+			nodes: base.nodes.map((node) => {
+				const ordinary = { ...node };
+				delete ordinary.groupId;
+				return ordinary;
+			}),
+			relations: ['source-a', 'source-b'].flatMap((from) =>
+				['target', 'isolated'].map((to) => ({ id: `${from}-${to}`, from, to })),
+			),
+		};
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected a valid crossing graph');
+		const firstRelation = graph.value.relations[0];
+		if (firstRelation === undefined) throw new Error('Expected a relation to duplicate');
+		const duplicateGraph = {
+			...graph.value,
+			relations: [firstRelation, ...graph.value.relations],
+		};
+		const ranks = new Map<string, number>([
+			['source-a', 1],
+			['source-b', 1],
+			['target', 0],
+			['isolated', 0],
+		]);
+		for (const vertical of [true, false])
+			for (const reversed of [true, false]) {
+				let targetCross = 100;
+				let isolatedCross = 0;
+				if (reversed) {
+					targetCross = 0;
+					isolatedCross = 100;
+				}
+				const transverse = new Map<string, number>([
+					['source-a', 0],
+					['source-b', 100],
+					['target', targetCross],
+					['isolated', isolatedCross],
+				]);
+				const bounds = new Map(
+					[...transverse].map(([id, cross]) => {
+						let main = 0;
+						if (ranks.get(id) === 1) main = 120;
+						let box = { x: cross, y: main, width: 80, height: 60 };
+						if (!vertical) box = { x: main, y: cross, width: 60, height: 80 };
+						return [id, box] as const;
+					}),
+				);
+				const corridors = crossingCorridors({ graph: graph.value, ranks, bounds, vertical });
+				expect(corridors.length).toBeGreaterThan(0);
+				const sizes = new Map(
+					[...bounds].map(([id, box]) => [id, { width: box.width, height: box.height }] as const),
+				);
+				const compare = (links: typeof corridors) => {
+					const input = { corridors: links, sizes, vertical, graph: graph.value, bounds };
+					expect(allocatePorts({ ...input, fromCrossingCorridors: true })).toEqual(
+						allocatePorts(input),
+					);
+				};
+				compare(corridors);
+				const duplicateInput = {
+					corridors: crossingCorridors({ graph: duplicateGraph, ranks, bounds, vertical }),
+					sizes,
+					vertical,
+					graph: duplicateGraph,
+					bounds,
+				};
+				expect(allocatePorts({ ...duplicateInput, fromCrossingCorridors: true })).toEqual(
+					allocatePorts(duplicateInput),
+				);
+				compare(
+					corridors.map((corridor) => ({
+						...corridor,
+						links: corridor.links.filter(({ relation }) => relation.id !== 'source-a-isolated'),
+					})),
+				);
+			}
+	});
+	it('exposes face capacity before applying its size demand in either orientation', () => {
+		const document = {
+			...validLogicDocument(),
+			relations: ['source-a', 'source-b', 'isolated'].map((from) => ({
+				id: `${from}-target`,
+				from,
+				to: 'target',
+			})),
+		};
+		const result = createGraph(document);
+		if (!result.ok) throw new Error('The port capacity fixture must be a valid graph.');
+		const links = result.value.relations.map(({ relation }, index) => ({
+			relation,
+			source: index * 48,
+			target: 0,
+		}));
+		const bounds = new Map<string, Bounds>([
+			['source-a', { x: 0, y: 100, width: 80, height: 60 }],
+			['source-b', { x: 48, y: 100, width: 80, height: 60 }],
+			['isolated', { x: 96, y: 100, width: 80, height: 60 }],
+			['target', { x: 48, y: 0, width: 80, height: 60 }],
+		]);
+		for (const vertical of [true, false]) {
+			const sizes = new Map(
+				['source-a', 'source-b', 'isolated', 'target'].map(
+					(id) => [id, { width: 80, height: 80 }] as const,
+				),
+			);
+			const allocation = allocatePorts({
+				corridors: [{ rank: 0, links }],
+				sizes,
+				vertical,
+				graph: result.value,
+				bounds,
+			});
+			const permuted = allocatePorts({
+				corridors: [{ rank: 0, links: links.toReversed() }],
+				sizes,
+				vertical,
+				graph: result.value,
+				bounds,
+			});
+			expect(permuted.metricDemands).toEqual(allocation.metricDemands);
+			expect(allocation.metricDemands).toContainEqual({
+				kind: PortMetricDemandKind.FaceCapacity,
+				endpointId: 'target',
+				role: RoutingPortRole.Incoming,
+				portCount: 3,
+				minimumCrossSize: 144,
+			});
+			let expected = { width: 80, height: 144 };
+			if (vertical) expected = { width: 144, height: 80 };
+			expect(allocation.sizes.get('target')).toEqual(expected);
+			expect(sizes.get('target')).toEqual({ width: 80, height: 80 });
+		}
+	});
 	it('ignores cached measurements for nodes no longer present in the document', async () => {
 		const fixture = await layoutDocument({
 			...validLogicDocument(),

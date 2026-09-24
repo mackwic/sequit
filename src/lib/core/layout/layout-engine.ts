@@ -64,6 +64,7 @@ function withChainAlignment(
 ): PortAllocation {
 	if (alignment === undefined) return ports;
 	return {
+		...ports,
 		sizes: new Map([...ports.sizes, ...alignment.sizes]),
 		sourceOffsets: new Map([...ports.sourceOffsets, ...alignment.sourceOffsets]),
 		targetOffsets: new Map([...ports.targetOffsets, ...alignment.targetOffsets]),
@@ -169,6 +170,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 	if (corridors.length === 0) return;
 	const ports = allocatePorts({
 		corridors,
+		fromCrossingCorridors: true,
 		sizes: measurements.content.nodes,
 		vertical: frame.vertical,
 		graph,

@@ -19,6 +19,12 @@ function measuredSizes(
 	return result;
 }
 
+function compareIds(left: string, right: string): number {
+	if (left < right) return -1;
+	if (left > right) return 1;
+	return 0;
+}
+
 export function collectLayoutMeasurements(layer: HTMLDivElement): LayoutMeasurements {
 	const nodes = measuredSizes(
 		layer.querySelectorAll<HTMLElement>('[data-measure-node]'),
@@ -44,9 +50,11 @@ export function collectLayoutMeasurements(layer: HTMLDivElement): LayoutMeasurem
 }
 
 export function layoutMeasurementSignature(measurements: LayoutMeasurements): string {
+	const byId = <T>(items: ReadonlyMap<string, T>): readonly (readonly [string, T])[] =>
+		[...items].sort(([left], [right]) => compareIds(left, right));
 	return JSON.stringify([
-		[...measurements.nodes],
-		[...measurements.junctions],
-		[...measurements.groups],
+		byId(measurements.nodes),
+		byId(measurements.junctions),
+		byId(measurements.groups),
 	]);
 }

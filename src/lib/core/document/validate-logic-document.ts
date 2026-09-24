@@ -4,8 +4,10 @@ import type {
 	LogicDocument,
 	SequitDiagnostic,
 } from './logic-document';
-import { defined, groupStateFields } from './logic-document';
+import { defined, duplicateRelationIds, groupStateFields } from './logic-document';
 import { SequitDiagnosticCode } from './logic-document';
+import { validateLaneDocument } from './validate-lane-document';
+import { validateRegionDocument } from './validate-region-document';
 
 enum GroupVisitState {
 	Visiting = 'visiting',
@@ -148,6 +150,8 @@ function validateContent(document: LogicDocument, diagnostics: SequitDiagnostic[
 export function validateLogicDocument(document: LogicDocument): DocumentResult<LogicDocument> {
 	const diagnostics: SequitDiagnostic[] = [];
 	validateContent(document, diagnostics);
+	validateLaneDocument(document, diagnostics);
+	validateRegionDocument(document, diagnostics);
 	const natureIds = new Set(document.natures.map(({ id }) => id));
 	const groupIds = new Set(document.groups.map(({ id }) => id));
 	const endpointOwners = collectEndpointOwners(document, diagnostics);
@@ -192,6 +196,12 @@ export function validateLogicDocument(document: LogicDocument): DocumentResult<L
 	}
 
 	const endpointIds = new Set(endpointOwners.keys());
+	for (const id of duplicateRelationIds(document.relations))
+		diagnostics.push({
+			code: SequitDiagnosticCode.DuplicateRelationId,
+			message: `Duplicate relation id: ${id}`,
+			path: ['relations', id],
+		});
 	for (const relation of document.relations) {
 		if (!endpointIds.has(relation.from)) {
 			diagnostics.push({

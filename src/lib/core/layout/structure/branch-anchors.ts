@@ -6,18 +6,36 @@ export interface BranchAnchor {
 	readonly relationId: string;
 }
 
+function recordSingleOutgoing(
+	candidates: Map<string, BranchAnchor | null>,
+	entry: LogicGraph['relations'][number],
+): void {
+	const { relation, target } = entry;
+	const first = candidates.get(relation.from);
+	if (first === null) return;
+	if (first !== undefined) {
+		candidates.set(relation.from, null);
+		return;
+	}
+	let anchor: BranchAnchor | null = null;
+	if (target.kind === EndpointKind.Node && target.entity.groupId === undefined)
+		anchor = { parentId: relation.to, relationId: relation.id };
+	candidates.set(relation.from, anchor);
+}
+
 /** Only direct, adjacent ordinary branches may move independently of their neighbors. */
 export function branchAnchors(
 	graph: LogicGraph,
 	ranks: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, BranchAnchor> {
 	const fixed = new Set<string>();
-	const outgoing = new Map<string, number>();
+	const singleOutgoing = new Map<string, BranchAnchor | null>();
 	for (const [id, endpoint] of graph.endpointsById) {
 		if (endpoint.kind !== EndpointKind.Node || endpoint.entity.groupId !== undefined) fixed.add(id);
 	}
-	for (const { relation, source, target } of graph.relations) {
-		outgoing.set(relation.from, (outgoing.get(relation.from) ?? 0) + 1);
+	for (const entry of graph.relations) {
+		const { relation, source, target } = entry;
+		recordSingleOutgoing(singleOutgoing, entry);
 		const adjacent = ranks.get(relation.from) === defined(ranks.get(relation.to)) + 1;
 		const junction = source.kind === EndpointKind.Junction || target.kind === EndpointKind.Junction;
 		if (!adjacent || junction) {
@@ -26,10 +44,7 @@ export function branchAnchors(
 		}
 	}
 	const result = new Map<string, BranchAnchor>();
-	for (const { relation, target } of graph.relations) {
-		if (fixed.has(relation.from) || target.kind !== EndpointKind.Node) continue;
-		if (target.entity.groupId !== undefined || outgoing.get(relation.from) !== 1) continue;
-		result.set(relation.from, { parentId: relation.to, relationId: relation.id });
-	}
+	for (const [id, anchor] of singleOutgoing)
+		if (anchor !== null && !fixed.has(id)) result.set(id, anchor);
 	return result;
 }

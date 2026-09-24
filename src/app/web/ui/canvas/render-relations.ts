@@ -1,3 +1,4 @@
+import { defined } from '../../../../lib/core/document/logic-document';
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
 import { parallelSegmentsAreClose, relationColors } from './relation-colors';
 import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
@@ -11,6 +12,7 @@ enum Orientation {
 }
 
 interface Segment {
+	readonly relationId: string;
 	readonly start: Point;
 	readonly end: Point;
 	readonly orientation: Orientation;
@@ -21,12 +23,12 @@ export interface RenderedRelation extends LayoutRelation {
 	readonly color: string;
 }
 
-function segmentBetween(start: Point, end: Point): Segment | undefined {
+function segmentBetween(relationId: string, start: Point, end: Point): Segment | undefined {
 	if (start.x === end.x && start.y !== end.y) {
-		return { start, end, orientation: Orientation.Vertical };
+		return { relationId, start, end, orientation: Orientation.Vertical };
 	}
 	if (start.y === end.y && start.x !== end.x) {
-		return { start, end, orientation: Orientation.Horizontal };
+		return { relationId, start, end, orientation: Orientation.Horizontal };
 	}
 	return undefined;
 }
@@ -57,7 +59,7 @@ function segmentsFor(relation: LayoutRelation): readonly Segment[] {
 	let start: Point | undefined;
 	for (const end of relation.points) {
 		if (start) {
-			const segment = segmentBetween(start, end);
+			const segment = segmentBetween(relation.id, start, end);
 			if (segment) appendSegment(segments, segment);
 		}
 		start = end;
@@ -151,15 +153,12 @@ function pathFor(
 			.map((point) => distanceAlong(segment, point))
 			.filter((distance) => distance >= BRIDGE_RADIUS && distance <= lastBridgeCenter)
 			.sort((left, right) => left - right);
-		let coveredUntil = 0;
 		for (const distance of distances) {
-			if (distance - BRIDGE_RADIUS < coveredUntil) continue;
 			const before = pointAlong(segment, distance - BRIDGE_RADIUS);
 			const after = pointAlong(segment, distance + BRIDGE_RADIUS);
 			commands.push(pointCommand(PathCommand.Line, before));
 			const sweep = bridgeSweep(segment, pointAlong(segment, distance), allSegments);
 			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 ${sweep} ${after.x} ${after.y}`);
-			coveredUntil = distance + BRIDGE_RADIUS;
 		}
 		commands.push(pointCommand(PathCommand.Line, segment.end));
 		cursor = segment.end;
@@ -245,17 +244,12 @@ export function renderRelationPaths(
 	const colorContacts: [string, string][] = [];
 	const previousSegments: Segment[] = [];
 	const crossings = new Map<Segment, Point[]>();
-	const byRelation = relations.map(segmentsFor);
-	const allSegments = byRelation.flat();
-	const owners = new Map(
-		byRelation.flatMap((segments, index) =>
-			segments.map((segment) => [segment, relations[index]?.id ?? ''] as const),
-		),
-	);
-	for (const segments of byRelation) {
+	const byRelation = relations.map((relation) => ({ relation, segments: segmentsFor(relation) }));
+	const allSegments = byRelation.flatMap(({ segments }) => segments);
+	for (const { segments } of byRelation) {
 		for (const segment of segments) {
 			for (const previous of previousSegments) {
-				const pair: [string, string] = [owners.get(segment) ?? '', owners.get(previous) ?? ''];
+				const pair: [string, string] = [segment.relationId, previous.relationId];
 				const needsContrast =
 					intersection(segment, previous) !== undefined ||
 					parallelSegmentsAreClose(segment, previous);
@@ -266,12 +260,11 @@ export function renderRelationPaths(
 		previousSegments.push(...segments);
 	}
 	const colors = relationColors(relations, colorContacts, palette);
-	return relations.map((relation, relationIndex) => {
-		const segments = byRelation[relationIndex] ?? [];
+	return byRelation.map(({ relation, segments }) => {
 		return {
 			...relation,
 			path: pathFor(segments, crossings, allSegments),
-			color: colors.get(relation.id) ?? palette[0],
+			color: defined(colors.get(relation.id)),
 		};
 	});
 }

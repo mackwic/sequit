@@ -1,12 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDocumentSession } from '../../../../src/app/web/document/yjs-document-session';
+import { LayoutProjectionError } from '../../../../src/app/web/projection/layout-diagnostic';
 import {
 	createSharedCanvasProjection,
 	openDocument,
 } from '../../../../src/app/web/projection/open-document';
-import { GroupState, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	GroupState,
+	LANE_PERSISTENCE_FORMAT,
+	LaneGrowth,
+	LaneOrientation,
+	LAYOUT_PRESENTATION_SCHEMA,
+	LayoutPolicy,
+	type LogicDocument,
+} from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { crossingDocument } from '../../../support/fixtures';
 import {
@@ -16,6 +27,41 @@ import {
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
 
 describe('openDocument', () => {
+	it('opens persisted lanes and projects their shared geometry', async () => {
+		const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'lane-open');
+		const document: LogicDocument = {
+			...source,
+			persistenceFormat: LANE_PERSISTENCE_FORMAT,
+			presentation: {
+				schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
+				policy: LayoutPolicy.Layered,
+				laneOrientation: LaneOrientation.Parallel,
+				growth: LaneGrowth.Auto,
+				lanes: [
+					{ id: 'left', label: 'Left', layoutOrder: orderKey('a0') },
+					{ id: 'right', label: 'Right', layoutOrder: orderKey('a1') },
+				],
+			},
+			nodes: source.nodes.map((node) => {
+				let laneId = 'right';
+				if (node.id === 'B') laneId = 'left';
+				return { ...node, laneId };
+			}),
+		};
+		const result = openDocument(serializeSequitToml(document));
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		try {
+			const canvas = await result.value.createCanvasModel(
+				layoutMeasurementsForCanvas(result.value.measurementModel),
+			);
+			expect(canvas.lanes?.map(({ id }) => id)).toEqual(['left', 'right']);
+			expect(canvas.relations.map(({ id }) => id)).toEqual(['R']);
+		} finally {
+			result.value.destroy();
+		}
+	});
+
 	it('returns normalized parser diagnostics without starting downstream projections', () => {
 		const result = openDocument('persistenceFormat = [');
 		expect(result.ok).toBe(false);
@@ -61,14 +107,20 @@ describe('openDocument', () => {
 		});
 	});
 
-	it('normalizes a non-Error session creation failure', async () => {
+	it('preserves the message from a session creation error', async () => {
 		expect(
 			openDocument(await aiDocumentaryEffortScenario(), () => {
 				throw new Error('Session unavailable');
 			}),
 		).toMatchObject({
 			ok: false,
-			diagnostics: [{ code: 'open-document-failed', message: 'Session unavailable', path: [] }],
+			diagnostics: [
+				{
+					code: 'open-document-failed',
+					message: 'Session unavailable',
+					path: [],
+				},
+			],
 		});
 	});
 
@@ -105,8 +157,16 @@ describe('openDocument', () => {
 		expect(result).toEqual({
 			ok: false,
 			diagnostics: [
-				{ code: 'open-document-failed', message: 'Subscription unavailable', path: [] },
-				{ code: 'open-document-cleanup-failed', message: 'Cleanup unavailable', path: [] },
+				{
+					code: 'open-document-failed',
+					message: 'Subscription unavailable',
+					path: [],
+				},
+				{
+					code: 'open-document-cleanup-failed',
+					message: 'Cleanup unavailable',
+					path: [],
+				},
 			],
 		});
 	});
@@ -137,6 +197,41 @@ describe('openDocument', () => {
 		await expect(result.value.createCanvasModel(incomplete)).rejects.toThrow(
 			'Missing node measurement: traceable-edits',
 		);
+	});
+
+	it('reports the current valid document on layout failure and recovers on the next measurement', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const initial = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		await result.value.addNode({
+			id: 'current-node',
+			natureId: 'goal',
+			markdown: 'Current',
+		});
+		const complete = layoutMeasurementsForCanvas(result.value.measurementModel);
+		const incomplete = { ...complete, nodes: new Map(complete.nodes) };
+		incomplete.nodes.delete('current-node');
+
+		let failure: unknown;
+		try {
+			await result.value.createCanvasModel(incomplete);
+		} catch (cause) {
+			failure = cause;
+		}
+		expect(failure).toBeInstanceOf(LayoutProjectionError);
+		if (!(failure instanceof LayoutProjectionError)) throw new Error('Expected layout diagnostic');
+		expect(failure.diagnostic.nodeIds).toContain('current-node');
+		expect(failure.diagnostic.reason).toMatchObject({
+			code: 'missing-node-measurement',
+			elementId: 'current-node',
+		});
+		expect(failure.diagnostic.nodeIds).not.toContain('missing-node');
+		expect(initial.nodes.map(({ id }) => id)).not.toContain('current-node');
+
+		const recovered = await result.value.createCanvasModel(complete);
+		expect(recovered.nodes.map(({ id }) => id)).toContain('current-node');
 	});
 
 	it('refreshes the projection and renders added independent peers in operation order', async () => {
@@ -220,7 +315,11 @@ describe('openDocument', () => {
 		const original = result.value.read().groups.find(({ id }) => id === 'use-cases');
 		if (original === undefined) throw new Error('Expected the use-cases group');
 
-		await result.value.updateGroup({ ...original, label: 'Cas d’usage', color: '#2563eb' });
+		await result.value.updateGroup({
+			...original,
+			label: 'Cas d’usage',
+			color: '#2563eb',
+		});
 		const canvas = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
@@ -308,7 +407,10 @@ it('projects shared group state without removing the original members', async ()
 	expect(open.measurementModel.nodes).toHaveLength(2);
 	const closed = createSharedCanvasProjection({
 		...source,
-		groups: source.groups.map((group) => ({ ...group, state: GroupState.Closed })),
+		groups: source.groups.map((group) => ({
+			...group,
+			state: GroupState.Closed,
+		})),
 	});
 	expect(closed.measurementModel.nodes).toEqual([]);
 	const stop = closed.subscribe(() => undefined);
@@ -328,4 +430,22 @@ it('reports an invalid shared snapshot instead of rendering dangling relations',
 			relations: [{ id: 'dangling', from: 'missing', to: 'A' }],
 		}),
 	).toThrow();
+});
+
+it('keeps a shared projection invalid until the physical source heals', async () => {
+	const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'room');
+	const projection = createSharedCanvasProjection(source);
+	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
+	const before = await projection.createCanvasModel(measurements);
+	const incomplete = { ...measurements, nodes: new Map(measurements.nodes) };
+	incomplete.nodes.delete('A');
+	const subscriber = vi.fn();
+	projection.subscribe(subscriber);
+
+	await expect(projection.createCanvasModel(incomplete)).rejects.toBeInstanceOf(
+		LayoutProjectionError,
+	);
+	projection.update(source);
+	expect(subscriber).toHaveBeenCalledOnce();
+	expect(await projection.createCanvasModel(measurements)).toEqual(before);
 });

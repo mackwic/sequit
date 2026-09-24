@@ -1,14 +1,12 @@
 import * as Y from 'yjs';
 
-import { compareCanonicalStrings } from '../../core/canonical-string';
 import {
 	type ContentStyle,
 	contentStyleFields,
 	EndpointKind,
+	GRID_PERSISTENCE_FORMAT,
 	JUNCTION_OPERATORS,
-	LAYOUT_BIASES,
-	LAYOUT_DIRECTIONS,
-	layoutConfiguration,
+	LANE_PERSISTENCE_FORMAT,
 	type LogicDocument,
 	type LogicGroup,
 	type LogicJunction,
@@ -17,9 +15,25 @@ import {
 	type LogicRelation,
 	nodeDescriptionFields,
 	PERSISTENCE_FORMAT,
+	REGION_COMPOSITION_PERSISTENCE_FORMAT,
+	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_PERSISTENCE_FORMAT,
+	type RegionLayoutPresentation,
+	type RootLayoutPresentation,
 } from '../../core/document/logic-document';
 import { validateLogicDocument } from '../../core/document/validate-logic-document';
-import { YjsCollection } from './yjs-document-schema';
+import { readSharedLayout } from './yjs-document-layout';
+import { readCollection, readVersionedPresentation } from './yjs-document-presentation';
+import { readVersionedRegionPresentation } from './yjs-document-regions';
+import {
+	YJS_GRID_DOCUMENT_FORMAT,
+	YJS_LANE_DOCUMENT_FORMAT,
+	YJS_LIVE_DOCUMENT_FORMAT,
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+	YJS_REGION_DOCUMENT_FORMAT,
+	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YjsCollection,
+} from './yjs-document-schema';
 import {
 	readOptionalString,
 	readOptionalText,
@@ -36,31 +50,6 @@ import {
 	type YjsLiveDocumentFailure,
 	type YjsLiveDocumentResult,
 } from './yjs-document-result';
-
-interface CollectionOptions<T> {
-	readonly sharedName: string;
-	readonly collectionName: string;
-	readonly project: (entity: Y.Map<unknown>, id: string, context: ReadContext) => T | undefined;
-}
-
-function readCollection<T>(ydoc: Y.Doc, context: ReadContext, options: CollectionOptions<T>): T[] {
-	const collection = ydoc.getMap<Y.Map<unknown>>(options.sharedName);
-	const result: T[] = [];
-	for (const id of [...collection.keys()].sort(compareCanonicalStrings)) {
-		const entity = collection.get(id);
-		if (!(entity instanceof Y.Map)) {
-			context.diagnostics.push({
-				code: YjsLiveDocumentDiagnosticCode.Invalid,
-				message: `${options.collectionName}.${id} must be a Y.Map`,
-				path: [options.collectionName, id],
-			});
-			continue;
-		}
-		const value = options.project(entity, id, context);
-		if (value !== undefined) result.push(value);
-	}
-	return result;
-}
 
 function readContentStyle(
 	entity: Y.Map<unknown>,
@@ -93,6 +82,8 @@ function readGroup(
 	const label = readText(entity.get('label'), ['groups', id, 'label'], context);
 	const color = readOptionalString(entity.get('color'), ['groups', id, 'color'], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['groups', id, 'group'], context);
+	const laneId = readOptionalString(entity.get('laneId'), ['groups', id, 'lane'], context);
+	const regionId = readOptionalString(entity.get('regionId'), ['groups', id, 'regionId'], context);
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['groups', id, 'layoutOrder'],
@@ -107,14 +98,19 @@ function readGroup(
 		layoutOrder,
 		...readGroupState(entity, id, context),
 	};
-	if (groupId === undefined) return group;
-	return { ...group, groupId };
+	const ownership: { groupId?: string; laneId?: string; regionId?: string } = {};
+	if (groupId !== undefined) ownership.groupId = groupId;
+	if (laneId !== undefined) ownership.laneId = laneId;
+	if (regionId !== undefined) ownership.regionId = regionId;
+	return { ...group, ...ownership };
 }
 
 function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): LogicNode | undefined {
 	const natureId = readString(entity.get('natureId'), ['nodes', id, 'nature'], context);
 	const style = readContentStyle(entity, ['nodes', id], context);
 	const groupId = readOptionalString(entity.get('groupId'), ['nodes', id, 'group'], context);
+	const laneId = readOptionalString(entity.get('laneId'), ['nodes', id, 'lane'], context);
+	const regionId = readOptionalString(entity.get('regionId'), ['nodes', id, 'regionId'], context);
 	const markdown = entity.get('markdown');
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
@@ -141,8 +137,11 @@ function readNode(entity: Y.Map<unknown>, id: string, context: ReadContext): Log
 		markdown: markdown.toJSON(),
 		layoutOrder,
 	};
-	if (groupId === undefined) return node;
-	return { ...node, groupId };
+	const ownership: { groupId?: string; laneId?: string; regionId?: string } = {};
+	if (groupId !== undefined) ownership.groupId = groupId;
+	if (laneId !== undefined) ownership.laneId = laneId;
+	if (regionId !== undefined) ownership.regionId = regionId;
+	return { ...node, ...ownership };
 }
 
 function readJunction(
@@ -153,6 +152,12 @@ function readJunction(
 	const operatorValue = readString(entity.get('operator'), ['junctions', id, 'operator'], context);
 	const operator = JUNCTION_OPERATORS.find((candidate: string) => candidate === operatorValue);
 	const groupId = readOptionalString(entity.get('groupId'), ['junctions', id, 'group'], context);
+	const laneId = readOptionalString(entity.get('laneId'), ['junctions', id, 'lane'], context);
+	const regionId = readOptionalString(
+		entity.get('regionId'),
+		['junctions', id, 'regionId'],
+		context,
+	);
 	const layoutOrder = readRequiredLayoutOrder(
 		entity.get('layoutOrder'),
 		['junctions', id, 'layoutOrder'],
@@ -165,8 +170,11 @@ function readJunction(
 			operator,
 			layoutOrder,
 		};
-		if (groupId === undefined) return junction;
-		return { ...junction, groupId };
+		const ownership: { groupId?: string; laneId?: string; regionId?: string } = {};
+		if (groupId !== undefined) ownership.groupId = groupId;
+		if (laneId !== undefined) ownership.laneId = laneId;
+		if (regionId !== undefined) ownership.regionId = regionId;
+		return { ...junction, ...ownership };
 	}
 	if (operatorValue !== undefined && operator === undefined) {
 		context.diagnostics.push({
@@ -205,13 +213,37 @@ function validationFailure(
 	};
 }
 
-export function readStructuralLogicDocument(
-	ydoc: Y.Doc,
-	liveDocumentFormat: number,
-): YjsLiveDocumentResult<LogicDocument> {
+const SUPPORTED_YJS_FORMATS = new Set<number>([
+	YJS_LIVE_DOCUMENT_FORMAT,
+	YJS_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_DOCUMENT_FORMAT,
+	YJS_GRID_DOCUMENT_FORMAT,
+	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+]);
+
+const REGION_YJS_FORMATS = new Set<number>([
+	YJS_REGION_DOCUMENT_FORMAT,
+	YJS_GRID_DOCUMENT_FORMAT,
+	YJS_REGION_LANE_DOCUMENT_FORMAT,
+	YJS_REGION_COMPOSITION_DOCUMENT_FORMAT,
+]);
+
+function persistenceFormatFor(version: number): LogicDocument['persistenceFormat'] {
+	if (version === YJS_LANE_DOCUMENT_FORMAT) return LANE_PERSISTENCE_FORMAT;
+	if (version === YJS_REGION_DOCUMENT_FORMAT) return REGION_PERSISTENCE_FORMAT;
+	if (version === YJS_GRID_DOCUMENT_FORMAT) return GRID_PERSISTENCE_FORMAT;
+	if (version === YJS_REGION_LANE_DOCUMENT_FORMAT) return REGION_LANE_PERSISTENCE_FORMAT;
+	if (version === YJS_REGION_COMPOSITION_DOCUMENT_FORMAT)
+		return REGION_COMPOSITION_PERSISTENCE_FORMAT;
+	return PERSISTENCE_FORMAT;
+}
+
+export function readStructuralLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocument> {
 	const meta = ydoc.getMap<unknown>(YjsCollection.Meta);
 	const version = meta.get('yjsLiveDocumentFormat');
-	if (version !== liveDocumentFormat) {
+	const supportedVersion = typeof version === 'number' && SUPPORTED_YJS_FORMATS.has(version);
+	if (!supportedVersion) {
 		return {
 			ok: false,
 			diagnostics: [
@@ -226,39 +258,14 @@ export function readStructuralLogicDocument(
 	const context: ReadContext = { diagnostics: [] };
 	const id = readString(meta.get('id'), ['document', 'id'], context);
 	const title = readText(meta.get('title'), ['document', 'title'], context);
-	const layoutDirection = readString(meta.get('layoutDirection'), ['layout', 'direction'], context);
-	const layoutBias = readString(meta.get('layoutBias'), ['layout', 'bias'], context);
-	if (meta.get('persistenceFormat') !== PERSISTENCE_FORMAT) {
+	const layout = readSharedLayout(meta, context);
+	const persistenceFormat = meta.get('persistenceFormat');
+	const expectedPersistenceFormat = persistenceFormatFor(version);
+	if (persistenceFormat !== expectedPersistenceFormat) {
 		context.diagnostics.push({
 			code: YjsLiveDocumentDiagnosticCode.Invalid,
-			message: `Unsupported imported persistenceFormat: ${String(meta.get('persistenceFormat'))}`,
+			message: `Unsupported imported persistenceFormat: ${String(persistenceFormat)}`,
 			path: ['persistenceFormat'],
-		});
-	}
-	const direction = LAYOUT_DIRECTIONS.find((candidate) => candidate === layoutDirection);
-	const bias = LAYOUT_BIASES.find((candidate) => candidate === layoutBias);
-	if (layoutDirection !== undefined && direction === undefined) {
-		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.Invalid,
-			message: `Unsupported layout direction: ${layoutDirection}`,
-			path: ['layout', 'direction'],
-		});
-	}
-	if (layoutBias !== undefined && bias === undefined) {
-		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.Invalid,
-			message: `Unsupported layout bias: ${layoutBias}`,
-			path: ['layout', 'bias'],
-		});
-	}
-	let layout;
-	if (direction !== undefined && bias !== undefined) layout = layoutConfiguration(direction, bias);
-	const recognizedLayoutValues = direction !== undefined && bias !== undefined;
-	if (recognizedLayoutValues && layout === undefined) {
-		context.diagnostics.push({
-			code: YjsLiveDocumentDiagnosticCode.Invalid,
-			message: `Layout bias ${bias} is incompatible with direction ${direction}`,
-			path: ['layout', 'bias'],
 		});
 	}
 	const natures = readCollection(ydoc, context, {
@@ -286,16 +293,30 @@ export function readStructuralLogicDocument(
 		collectionName: 'relations',
 		project: readRelation,
 	});
-	const hasDiagnostics = context.diagnostics.length > 0;
-	const missingDocumentIdentity = id === undefined || title === undefined;
-	if (hasDiagnostics || missingDocumentIdentity || layout === undefined) {
+	const presentation = readVersionedPresentation(ydoc, meta, version, context);
+	const regionPresentation = readVersionedRegionPresentation(ydoc, meta, version, context);
+	const missingPresentation = version === YJS_LANE_DOCUMENT_FORMAT && presentation === undefined;
+	const regionVersion = REGION_YJS_FORMATS.has(version);
+	const missingRegions = regionVersion && regionPresentation === undefined;
+	if (context.diagnostics.length > 0 || missingPresentation || missingRegions)
+		return { ok: false, diagnostics: context.diagnostics };
+	if (id === undefined) return { ok: false, diagnostics: context.diagnostics };
+	if (title === undefined) return { ok: false, diagnostics: context.diagnostics };
+	if (layout === undefined) {
 		return { ok: false, diagnostics: context.diagnostics };
 	}
+	const presentationField: { presentation?: RootLayoutPresentation } = {};
+	if (presentation !== undefined) presentationField.presentation = presentation;
+	const regionPresentationField: { regionPresentation?: RegionLayoutPresentation } = {};
+	if (regionPresentation !== undefined)
+		regionPresentationField.regionPresentation = regionPresentation;
 	const document: LogicDocument = {
-		persistenceFormat: PERSISTENCE_FORMAT,
+		persistenceFormat: expectedPersistenceFormat,
 		id,
 		title,
 		layout,
+		...presentationField,
+		...regionPresentationField,
 		natures,
 		groups,
 		nodes,

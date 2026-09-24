@@ -7,6 +7,10 @@ import {
 	createDocumentSession,
 } from '../../../../src/app/web/document/yjs-document-session';
 import { EndpointKind } from '../../../../src/lib/core/document/logic-document';
+import {
+	type SourceDocumentState,
+	SourceDocumentStateKind,
+} from '../../../../src/lib/infrastructure/collaboration/source-document-state';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import {
 	type DocumentCommandGateway,
@@ -79,7 +83,113 @@ class FakeDocumentCommandGateway implements DocumentCommandGateway {
 	}
 }
 
+class SourceAwareFakeGateway extends FakeDocumentCommandGateway {
+	readonly sourceSubscribers = new Set<(state: SourceDocumentState) => void>();
+	sourceState: SourceDocumentState;
+	sourceUnsubscribeCalls = 0;
+
+	constructor(document: ReturnType<DocumentSession['read']>) {
+		super(document);
+		this.sourceState = { kind: SourceDocumentStateKind.Valid, document, revision: 0 };
+	}
+
+	readSourceState(): SourceDocumentState {
+		return this.sourceState;
+	}
+
+	subscribeSourceState(subscriber: (state: SourceDocumentState) => void): () => void {
+		this.sourceSubscribers.add(subscriber);
+		return () => {
+			this.sourceUnsubscribeCalls += 1;
+			this.sourceSubscribers.delete(subscriber);
+		};
+	}
+
+	publishSourceState(state: SourceDocumentState): void {
+		this.sourceState = state;
+		for (const subscriber of [...this.sourceSubscribers]) subscriber(state);
+	}
+}
+
 describe('document session', () => {
+	it('isolates source-state subscriber failures while preserving the accepted document', async () => {
+		const document = await referenceForDelayedTest();
+		const gateway = new SourceAwareFakeGateway(document);
+		const report = vi.fn();
+		const session = new DocumentSession(gateway, report);
+		const later = vi.fn();
+		session.subscribeSourceState(() => {
+			throw new Error('source listener failed');
+		});
+		session.subscribeSourceState(later);
+		const invalid: SourceDocumentState = {
+			kind: SourceDocumentStateKind.Invalid,
+			revision: 1,
+			diagnostics: [],
+			snapshot: {
+				natureIds: [],
+				laneIds: [],
+				regionIds: [],
+				groupIds: [],
+				nodeIds: [],
+				junctionIds: [],
+				relationIds: [],
+			},
+		};
+
+		gateway.publishSourceState(invalid);
+
+		expect(session.readSourceState()).toBe(invalid);
+		expect(session.read()).toBe(document);
+		expect(later).toHaveBeenCalledExactlyOnceWith(invalid);
+		expect(report).toHaveBeenCalledWith(
+			expect.objectContaining({ kind: DocumentSessionErrorKind.Subscriber }),
+		);
+		session.destroy();
+		expect(gateway.sourceUnsubscribeCalls).toBe(1);
+	});
+
+	it('stops source-state delivery if its first subscriber destroys the session', async () => {
+		const document = await referenceForDelayedTest();
+		const gateway = new SourceAwareFakeGateway(document);
+		const session = new DocumentSession(gateway);
+		const later = vi.fn();
+		session.subscribeSourceState(() => {
+			session.destroy();
+		});
+		session.subscribeSourceState(later);
+		const state: SourceDocumentState = {
+			kind: SourceDocumentStateKind.Valid,
+			document,
+			revision: 1,
+		};
+
+		gateway.publishSourceState(state);
+
+		expect(later).not.toHaveBeenCalled();
+		expect(gateway.sourceUnsubscribeCalls).toBe(1);
+	});
+
+	it('discards queued accepted publications after destruction during a reentrant notification', async () => {
+		const document = await referenceForDelayedTest();
+		const gateway = new FakeDocumentCommandGateway(document);
+		const session = new DocumentSession(gateway);
+		const first = { ...document, title: 'First' };
+		const queued = { ...document, title: 'Queued' };
+		const later = vi.fn();
+		session.subscribe((published) => {
+			if (published !== first) return;
+			gateway.publish({ kind: DocumentCommandOutcomeKind.Accepted, document: queued });
+			session.destroy();
+		});
+		session.subscribe(later);
+
+		gateway.publish({ kind: DocumentCommandOutcomeKind.Accepted, document: first });
+
+		expect(later).not.toHaveBeenCalled();
+		expect(gateway.destroyCalls).toBe(1);
+	});
+
 	it('rejects invalid session construction arguments and tolerates repeated destruction', async () => {
 		const document = await referenceForDelayedTest();
 		expect(() => {

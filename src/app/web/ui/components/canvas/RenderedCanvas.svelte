@@ -149,6 +149,32 @@
 		onkeydown={handleKeyboardNavigation}
 		onfocusin={rememberFocus}
 	>
+		{#each canvas.regions ?? [] as region (region.id)}
+			<div
+				class="canvas-region"
+				data-region-id={region.id}
+				style:left={`${region.bounds.x}px`}
+				style:top={`${region.bounds.y}px`}
+				style:width={`${region.bounds.width}px`}
+				style:height={`${region.bounds.height}px`}
+				aria-hidden="true"
+			>
+				<span class="canvas-region-label">{region.label}</span>
+			</div>
+		{/each}
+		{#each canvas.lanes ?? [] as lane (JSON.stringify([lane.regionId ?? null, lane.id]))}
+			<div
+				class="canvas-lane"
+				data-lane-id={lane.id}
+				data-lane-region-id={lane.regionId}
+				style:left={`${lane.bounds.x}px`}
+				style:top={`${lane.bounds.y}px`}
+				style:width={`${lane.bounds.width}px`}
+				style:height={`${lane.bounds.height}px`}
+			>
+				<span class="canvas-lane-label">{lane.label}</span>
+			</div>
+		{/each}
 		{#each canvas.groups as group (group.id)}
 			{@const ref = entityRef(EntityKind.Group, group.id)}
 			<button
@@ -237,6 +263,42 @@
 </div>
 
 <style>
+	.canvas-region {
+		position: absolute;
+		box-sizing: border-box;
+		border: 1px solid color-mix(in srgb, #64748b 35%, transparent);
+		border-radius: 1rem;
+		background: color-mix(in srgb, #cbd5e1 8%, transparent);
+		pointer-events: none;
+	}
+
+	.canvas-region-label {
+		position: absolute;
+		top: 4px;
+		left: 12px;
+		color: #475569;
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+
+	.canvas-lane {
+		position: absolute;
+		box-sizing: border-box;
+		border: 1px dashed #cbd5e1;
+		border-radius: 0.875rem;
+		background: color-mix(in srgb, #e2e8f0 20%, transparent);
+		pointer-events: none;
+	}
+
+	.canvas-lane-label {
+		position: absolute;
+		top: 4px;
+		left: 12px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #64748b;
+	}
+
 	[data-graph-stage] {
 		--canvas-motion-duration: 260ms;
 		--canvas-motion-easing: cubic-bezier(0.22, 1, 0.36, 1);

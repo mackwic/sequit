@@ -48,10 +48,11 @@ function precedes(first: ChannelRun, last: ChannelRun): void {
 	last.remaining += 1;
 }
 
-function makeRuns(wires: readonly ChannelWire[]): ChannelRun[] {
-	const moving = wires.filter((wire) => wire.source !== wire.target);
+function makeRuns(wires: readonly ChannelWire[], sharedEndpoints: boolean): ChannelRun[] {
+	let moving = wires;
+	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
 	let breaks = cycleBreaks(moving);
-	if (wires.some(hasSharedEndpoint)) {
+	if (sharedEndpoints) {
 		// Shared endpoint families can turn independent column dependencies into a cycle.
 		// Leave coincident columns first, then join the shared arrival traverse.
 		const targets = new Set(wires.map((wire) => wire.target));
@@ -116,8 +117,13 @@ function runFamilies(wires: readonly ChannelWire[], side: RunSide): readonly Cha
 	return [...families.values()].filter((family) => family.length > 1);
 }
 
-function mergeRuns(wires: readonly ChannelWire[], runs: ChannelRun[], side: RunSide): ChannelRun[] {
-	if (!wires.some(hasSharedEndpoint)) return runs;
+function mergeRuns(
+	wires: readonly ChannelWire[],
+	runs: ChannelRun[],
+	side: RunSide,
+	sharedEndpoints: boolean,
+): ChannelRun[] {
+	if (!sharedEndpoints) return runs;
 	const replaced = new Map<ChannelRun, ChannelRun>();
 	for (const family of runFamilies(wires, side)) {
 		const shared = defined(defined(family[0])[side]);
@@ -168,22 +174,26 @@ function assignRails(runs: readonly ChannelRun[]): number {
 	return count;
 }
 
-/** Share traverses at a common port, preserve distinct nets, then color transverse runs. */
-export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting {
-	const wires: ChannelWire[] = input.map((endpoint) => ({
-		...endpoint,
-		first: undefined,
-		last: undefined,
-		middle: undefined,
-	}));
+/** The caller owns these fresh wires; routing fills in their run references in place. */
+export function routeOwnedChannel(wires: ChannelWire[]): ChannelRouting {
+	let sharedEndpoints = false;
 	const moving = wires
-		.filter((wire) => wire.source !== wire.target || hasSharedEndpoint(wire))
+		.filter((wire) => {
+			const shared = hasSharedEndpoint(wire);
+			if (shared) sharedEndpoints = true;
+			return wire.source !== wire.target || shared;
+		})
 		.sort((a, b) => {
 			const difference = a.source - b.source || a.target - b.target;
 			return difference || compareCanonicalStrings(a.id, b.id);
 		});
-	const arrivals = mergeRuns(moving, makeRuns(moving), RunSide.Last);
-	const runs = mergeRuns(moving, arrivals, RunSide.First);
+	const arrivals = mergeRuns(
+		moving,
+		makeRuns(moving, sharedEndpoints),
+		RunSide.Last,
+		sharedEndpoints,
+	);
+	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
 	const bySource = new Map<number, ChannelWire[]>();
 	for (const wire of moving) {
 		const departures = bySource.get(wire.source) ?? [];
@@ -196,4 +206,15 @@ export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting 
 		}
 	}
 	return { wires, railCount: assignRails(runs) };
+}
+
+/** Share traverses at a common port, preserve distinct nets, then color transverse runs. */
+export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting {
+	const wires: ChannelWire[] = input.map((endpoint) => ({
+		...endpoint,
+		first: undefined,
+		last: undefined,
+		middle: undefined,
+	}));
+	return routeOwnedChannel(wires);
 }

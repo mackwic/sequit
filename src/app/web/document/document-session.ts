@@ -5,6 +5,7 @@ import type {
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
 import { defined } from '../../../lib/core/document/logic-document';
+import type { SourceDocumentState } from '../../../lib/infrastructure/collaboration/source-document-state';
 import type {
 	DocumentCommandGateway,
 	DocumentCommandOutcome,
@@ -24,25 +25,41 @@ import {
 
 const ignoreError: DocumentSessionErrorReporter = () => undefined;
 
+interface SourceAwareDocumentCommandGateway extends DocumentCommandGateway {
+	readSourceState?(): SourceDocumentState;
+	subscribeSourceState?(subscriber: (state: SourceDocumentState) => void): () => void;
+}
+
 export class DocumentSession {
 	readonly #subscribers = new Set<DocumentSessionSubscriber>();
+	readonly #sourceSubscribers = new Set<(state: SourceDocumentState) => void>();
 	readonly #stopObserving: () => void;
+	readonly #stopObservingSource: () => void;
 	#publishedDocument: LogicDocument;
+	#sourceState: SourceDocumentState | undefined;
 	#destroyed = false;
 	#publishing = false;
 	readonly #publicationQueue: DocumentCommandOutcome[] = [];
 
 	constructor(
-		private readonly gateway: DocumentCommandGateway,
+		private readonly gateway: SourceAwareDocumentCommandGateway,
 		private readonly reportError: DocumentSessionErrorReporter = ignoreError,
 	) {
 		this.#publishedDocument = gateway.readAccepted();
+		this.#sourceState = gateway.readSourceState?.();
+		this.#stopObservingSource =
+			gateway.subscribeSourceState?.(this.#publishSourceState) ?? (() => undefined);
 		this.#stopObserving = gateway.subscribe(this.#publish);
 	}
 
 	read(): LogicDocument {
 		this.#assertActive();
 		return this.#publishedDocument;
+	}
+
+	readSourceState(): SourceDocumentState | undefined {
+		this.#assertActive();
+		return this.#sourceState;
 	}
 
 	async deleteElements(
@@ -133,11 +150,19 @@ export class DocumentSession {
 		return () => this.#subscribers.delete(subscriber);
 	}
 
+	subscribeSourceState(subscriber: (state: SourceDocumentState) => void): () => void {
+		this.#assertActive();
+		this.#sourceSubscribers.add(subscriber);
+		return () => this.#sourceSubscribers.delete(subscriber);
+	}
+
 	destroy(): void {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
 		this.#stopObserving();
+		this.#stopObservingSource();
 		this.#subscribers.clear();
+		this.#sourceSubscribers.clear();
 		this.gateway.destroy();
 	}
 
@@ -168,6 +193,19 @@ export class DocumentSession {
 			}
 		} finally {
 			this.#publishing = false;
+		}
+	};
+
+	readonly #publishSourceState = (state: SourceDocumentState): void => {
+		if (this.#destroyed) return;
+		this.#sourceState = state;
+		for (const subscriber of [...this.#sourceSubscribers]) {
+			if (this.#isDestroyed()) break;
+			try {
+				subscriber(state);
+			} catch (error) {
+				this.#report({ kind: DocumentSessionErrorKind.Subscriber, error });
+			}
 		}
 	};
 

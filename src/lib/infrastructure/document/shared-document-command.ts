@@ -36,6 +36,8 @@ export enum SharedProperty {
 	Description = 'description',
 	NatureId = 'natureId',
 	GroupId = 'groupId',
+	LaneId = 'laneId',
+	RegionId = 'regionId',
 	Color = 'color',
 	Icon = 'icon',
 	Label = 'label',
@@ -53,12 +55,19 @@ interface SharedCreateProperties {
 		| SharedProperty.Markdown
 		| SharedProperty.Description
 		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
 		| SharedProperty.Color
 		| SharedProperty.Icon
 	>;
 	readonly [SharedElementKind.Group]: Pick<
 		LogicGroup,
-		SharedProperty.Label | SharedProperty.Color | SharedProperty.GroupId | SharedProperty.State
+		| SharedProperty.Label
+		| SharedProperty.Color
+		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
+		| SharedProperty.State
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,
@@ -66,7 +75,10 @@ interface SharedCreateProperties {
 	>;
 	readonly [SharedElementKind.Junction]: Pick<
 		LogicJunction,
-		SharedProperty.Operator | SharedProperty.GroupId
+		| SharedProperty.Operator
+		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
 	>;
 	readonly [SharedElementKind.Relation]: Pick<
 		LogicRelation,
@@ -77,11 +89,20 @@ interface SharedCreateProperties {
 interface SharedUpdateProperties {
 	readonly [SharedElementKind.Node]: Pick<
 		LogicNode,
-		SharedProperty.NatureId | SharedProperty.GroupId | SharedProperty.Color | SharedProperty.Icon
+		| SharedProperty.NatureId
+		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
+		| SharedProperty.Color
+		| SharedProperty.Icon
 	>;
 	readonly [SharedElementKind.Group]: Pick<
 		LogicGroup,
-		SharedProperty.Color | SharedProperty.GroupId | SharedProperty.State
+		| SharedProperty.Color
+		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
+		| SharedProperty.State
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,
@@ -89,7 +110,10 @@ interface SharedUpdateProperties {
 	>;
 	readonly [SharedElementKind.Junction]: Pick<
 		LogicJunction,
-		SharedProperty.Operator | SharedProperty.GroupId
+		| SharedProperty.Operator
+		| SharedProperty.GroupId
+		| SharedProperty.LaneId
+		| SharedProperty.RegionId
 	>;
 	readonly [SharedElementKind.Relation]: Pick<
 		LogicRelation,
