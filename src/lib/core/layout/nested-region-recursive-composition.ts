@@ -1,10 +1,10 @@
-import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LayoutRelation } from './layout-types';
 import {
 	boundaryPortal,
 	type RegionIncidentPath,
 	rowBus,
+	rowBusEdge,
 	type SolvedRecursiveRegion,
 	stitchedRoute,
 	translatedIncidentPath,
@@ -20,6 +20,11 @@ import type {
 	RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
+import {
+	allocateNestedTracks,
+	type RoutingTrackDemand,
+	trackOffset,
+} from './routing-resource-allocation';
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;
@@ -64,42 +69,12 @@ function crossingDraft(input: PositionedChildren, relation: LogicRelation): Cros
 	};
 }
 
-function strictlyContains(outer: CrossingDraft, inner: CrossingDraft): boolean {
-	const outerMin = Math.min(outer.sourcePortal.point.x, outer.targetPortal.point.x);
-	const outerMax = Math.max(outer.sourcePortal.point.x, outer.targetPortal.point.x);
-	const innerMin = Math.min(inner.sourcePortal.point.x, inner.targetPortal.point.x);
-	const innerMax = Math.max(inner.sourcePortal.point.x, inner.targetPortal.point.x);
-	return outerMin < innerMin && innerMax < outerMax;
-}
-
-function busRailIndices(drafts: readonly CrossingDraft[]): readonly number[] {
-	const canonicalIndices = drafts
-		.map((_, index) => index)
-		.sort((left, right) =>
-			compareCanonicalStrings(
-				defined(drafts[left]).relation.id,
-				defined(drafts[right]).relation.id,
-			),
-		);
-	const pendingInnerCount = drafts.map((outer) =>
-		drafts.reduce((count, inner) => count + Number(strictlyContains(outer, inner)), 0),
-	);
-	const railIndices = Array<number>(drafts.length).fill(-1);
-	for (let rail = 0; rail < drafts.length; rail += 1) {
-		const ready = defined(
-			canonicalIndices.find((index) => {
-				const unassigned = railIndices[index] === -1;
-				return unassigned && pendingInnerCount[index] === 0;
-			}),
-			'Portal interval containment must be acyclic.',
-		);
-		railIndices[ready] = rail;
-		for (const [index, outer] of drafts.entries()) {
-			if (strictlyContains(outer, defined(drafts[ready])))
-				pendingInnerCount[index] = defined(pendingInnerCount[index]) - 1;
-		}
-	}
-	return railIndices;
+function trackDemand(draft: CrossingDraft): RoutingTrackDemand {
+	return {
+		relationId: draft.relation.id,
+		start: draft.sourcePortal.point.x,
+		end: draft.targetPortal.point.x,
+	};
 }
 
 export function composeCrossings(
@@ -114,13 +89,14 @@ export function composeCrossings(
 ): void {
 	const { regionId } = input;
 	const drafts = input.crossings.map((relation) => crossingDraft(input, relation));
-	const railIndices = busRailIndices(drafts);
-	for (const [index, draft] of drafts.entries()) {
+	const edge = rowBusEdge(regionId, input.crossings.length);
+	const allocation = allocateNestedTracks(edge, drafts.map(trackDemand));
+	for (const draft of drafts) {
 		const { relation, sourcePath, targetPath, sourcePortal, targetPortal } = draft;
 		const bus = rowBus({
 			relation,
 			regionId,
-			index: defined(railIndices[index]),
+			offset: trackOffset(edge, defined(allocation.trackByRelationId.get(relation.id))),
 			source: sourcePortal.point,
 			target: targetPortal.point,
 			childTop: defined(input.placements[0]).bounds.y,

@@ -2,6 +2,7 @@ import type { LayoutRelation, LayoutResult } from './layout-types';
 import { composeCrossings, inheritedIncidentPaths } from './nested-region-recursive-composition';
 import {
 	childPlacements,
+	rowBusEdge,
 	rowSize,
 	type SolvedRecursiveRegion,
 	sortedElements,
@@ -35,10 +36,11 @@ function incidentSides(input: ArrangementIncidentInput): readonly RegionPortalSi
 
 function place(input: ArrangementPlaceInput): RowPlaced {
 	const side = rowSide(input.preferredSide);
-	const placements = childPlacements(input.regionId, input.children, side, input.crossings.length);
+	const edge = rowBusEdge(input.regionId, input.crossings.length);
+	const placements = childPlacements(input.regionId, input.children, side, edge);
 	return {
 		placements,
-		size: rowSize(placements, side, input.crossings.length),
+		size: rowSize(placements, side, edge),
 	};
 }
 

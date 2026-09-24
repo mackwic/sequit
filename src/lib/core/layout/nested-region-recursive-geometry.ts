@@ -9,6 +9,7 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
+import { edgeExtent, type RoutingEdge } from './routing-resource-allocation';
 
 const REGION_GAP = 96;
 const ROOT_MARGIN = 48;
@@ -41,7 +42,7 @@ interface TranslatedChildrenResult {
 interface RowBusInput {
 	readonly relation: LogicRelation;
 	readonly regionId: string;
-	readonly index: number;
+	readonly offset: number;
 	readonly source: Point;
 	readonly target: Point;
 	readonly childTop: number;
@@ -151,6 +152,15 @@ export function translatedChildren(
 	return { regions, portals, ownedRoutes, elements, relations, lanes };
 }
 
+/** The single bus edge definition shared by row placement, its size and its routing. */
+export function rowBusEdge(regionId: string, crossingCount: number): RoutingEdge {
+	return {
+		ownerId: regionId,
+		capacity: crossingCount,
+		spacing: PARENT_BUS_SPACING,
+	};
+}
+
 export function childPlacements(
 	parentId: string,
 	children: readonly {
@@ -158,10 +168,10 @@ export function childPlacements(
 		readonly solved: SolvedRecursiveRegion;
 	}[],
 	portalSide: RegionPortalSide,
-	crossingCount: number,
+	edge: RoutingEdge,
 ): readonly RegionChildPlacement[] {
 	let top = 64;
-	if (portalSide === RegionPortalSide.Top) top += crossingCount * PARENT_BUS_SPACING;
+	if (portalSide === RegionPortalSide.Top) top += edgeExtent(edge);
 	let left = ROOT_MARGIN;
 	return children.map(({ id, solved }) => {
 		const bounds = {
@@ -188,7 +198,7 @@ export function childPlacements(
 export function rowSize(
 	placements: readonly RegionChildPlacement[],
 	portalSide: RegionPortalSide,
-	crossingCount: number,
+	edge: RoutingEdge,
 ): {
 	readonly width: number;
 	readonly height: number;
@@ -197,21 +207,20 @@ export function rowSize(
 	const bottomBusEdge = Math.max(...placements.map(({ bounds }) => bounds.y + bounds.height));
 	const width = Math.max(...placements.map(({ bounds }) => bounds.x + bounds.width)) + ROOT_MARGIN;
 	let height = bottomBusEdge + ROOT_MARGIN;
-	if (portalSide === RegionPortalSide.Bottom) height += crossingCount * PARENT_BUS_SPACING;
+	if (portalSide === RegionPortalSide.Bottom) height += edgeExtent(edge);
 	return { width, height, bottomBusEdge };
 }
 
 export function rowBus({
 	relation,
 	regionId,
-	index,
+	offset,
 	source,
 	target,
 	childTop,
 	bottomBusEdge,
 	portalSide,
 }: RowBusInput): RegionOwnedRoute {
-	const offset = PARENT_BUS_SPACING * (index + 1);
 	let y = childTop - offset;
 	if (portalSide === RegionPortalSide.Bottom) y = bottomBusEdge + offset;
 	return {
