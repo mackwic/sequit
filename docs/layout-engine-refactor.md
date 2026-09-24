@@ -1,8 +1,14 @@
 # Refonte du moteur de layout
 
+Le [handoff du 19 septembre 2026](layout-engine-refactor-handoff-2026-09-19.md) conserve l'état de départ historique. Le [journal du 24 septembre](layout-engine-refactor-journal-2026-09-24.md) conserve les preuves, mesures et portes détaillées retirées de ce plan.
+
 ## Statut
 
-Cadre de décision au 17 septembre 2026. Cette note décrit la cible et les risques ; elle ne prétend pas que les IR, les lanes ou les régions sont déjà implémentées.
+État des capacités au 24 septembre 2026. Le pipeline de production normalise une région racine, persiste les présentations de lanes, régions et grilles, compose récursivement des rangées de régions et prend en charge une grille 2 × 2. Une feuille peut utiliser le moteur dédié ou la politique bornée de lanes partagées. Les routes inter-régions portent des portails et des morceaux attribués à chaque propriétaire ; les régions étrangères restent opaques. Les caches locaux de feuilles et les sorties partielles de la projection conservent l'égalité entre calcul incrémental et calcul froid dans les enveloppes vérifiées.
+
+La composition générale reste **partielle**. La grille interne enveloppe encore l'ancien solveur. Le contrat incident n'est matérialisé qu'en reprise sur certaines feuilles et combinaisons bornées ; il ne gouverne pas par défaut toutes les politiques ni les quatre côtés. Les diagnostics textuels commandent encore des reprises, des types `Nested*` subsistent, la politique de feuille est déduite de la présentation et la vue partielle parcourt encore l'arbre dans la projection. Le `LayoutContract` sait matérialiser indépendamment deux corridors adjacents bornés, avec `globalStatus: undetermined` ; il ne remplace pas le moteur général.
+
+La suite immédiate est la généralisation du contrat et de la disposition, dans l'ordre indiqué à l'[étape 5](#5-composer-les-vraies-régions-puis-la-grille). Les validations antérieures et leurs limites sont consignées dans le [journal](layout-engine-refactor-journal-2026-09-24.md) ; elles ne prouvent pas la porte du checkout après les prochaines modifications.
 
 ## Intention
 
@@ -144,9 +150,9 @@ Une relation inter-régions est décomposée par le plus petit ancêtre commun :
 
 ```text
 port de l’extrémité locale
-→ portail dérivé sur la frontière de la région
-→ route dans la région ancêtre commune
-→ portail de la région cible
+→ pour chaque frontière jusqu’au plus petit ancêtre commun : portail dérivé, puis segment possédé par le parent
+→ route dans l’ancêtre commun
+→ séquence symétrique de segments possédés et de portails vers la cible
 → port de l’extrémité locale
 ```
 
@@ -163,6 +169,47 @@ Si aucun passage continu lisible ne se dégage malgré ces libertés, faut-il in
 **Scénario métier témoin :** lanes `S | SD | C` (sales, service delivery, customer). C demande un devis à S ; S accuse réception et étudie faisabilité et montants ; SD décide GO/NOGO ; en NOGO, S répond à C et le processus s’arrête ; en GO, S prépare et envoie le devis à C, C signe l’intention, SD propose livrables et calendrier, C signe le calendrier, SD fournit le service puis signale à S les changements intervenus depuis la demande. Les messages explicites C → S et S → C traversent l’espace de SD sans toucher ses tâches ni ses groupes ; les échanges SD ↔ S et SD ↔ C sont adjacents. La destination des signatures reste à préciser plutôt que d’inventer une relation. Ce scénario doit être routable dans les deux orientations de lanes et servir de témoin de capacité, partage de bus et invalidation globale du layout.
 
 Une lane n’est pas une région ELK indépendante. Une `partition` ELK pourrait aider à son affectation, sans garantir à elle seule le confinement, les passages transversaux ou les groupes indivisibles. Les vraies régions imbriquées, notamment les cellules, restent un problème de composition distinct.
+
+### Composition récursive : politiques de feuille et dispositions
+
+Constat initial à l’origine de cette tranche. Les politiques de régions et de grille reproduisaient chacune le même squelette : document local, graphe, rangs, moteur dédié, disposition des enfants, translation, routage des traversées, assemblage et validation. Chacune possédait ses types de portails (haut/bas pour les régions, gauche/droite pour la grille), de placements, de statuts et d’erreurs. Trois défauts de structure guidaient la migration :
+
+1. La racine choisit une seule politique par document (`normalizeRootRegion`) ; lanes, régions et grille ne se combinent pas, et une feuille de région appelle toujours le moteur dédié.
+2. La profondeur deux n’est pas une récursion : la route racine descend jusqu’au port du nœud, puis un portail est inséré à l’intersection avec le cadre du petit-enfant. Le corridor possédé par le parent intermédiaire n’est jamais calculé.
+3. La feuille standard ignore encore ses relations incidentes. Dans le sous-ensemble fantôme borné, deux à quatre incidents entrent au contraire dans son graphe et dans la clé `materialized-local-incidents-v2` ; la feuille publie les chemins réservés. Hors de cette enveloppe, un contact avec une route locale reste `unknown`. La demande de hauteur des traversées de grille demeure un contrat propre à cette politique.
+
+Les points 1 et 2 sont désormais résolus pour les combinaisons bornées de feuilles, rangées et grilles détaillées aux étapes 5 à 7. Le contrat fantôme du point 3 reste limité aux feuilles et contacts explicitement prouvés. La cible générale demeure une composition récursive sur l’arbre des régions, selon deux axes indépendants :
+
+| Axe                  | Rôle                                                                                                     | Instances                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Politique de feuille | Met en page le contenu d’une région sans région enfant, dans un layout partagé                           | moteur dédié, lanes partagées, groupe replié |
+| Disposition          | Place des régions enfants opaques et route les relations dont la région est le plus petit ancêtre commun | rangée, grille                               |
+
+Une lane reste une politique de feuille : elle contraint un layout partagé et n’est pas une disposition de régions. Les deux axes se combinent sans code dédié, par exemple des lanes dans une cellule ou une grille dans une région.
+
+Le contrat entre deux niveaux est explicite :
+
+```text
+parent → enfant : contrat incident
+  pour chaque relation incidente au sous-arbre : relation, extrémité interne,
+  rôle (incoming/outgoing), côtés admis fixés par la disposition parente
+enfant → parent : empreinte
+  taille, layout local, un portail par incident sur son propre cadre,
+  descendants et morceaux de route possédés, en coordonnées locales
+```
+
+La résolution d’une région suit toujours les mêmes étapes :
+
+1. Une feuille résout avec sa politique son document local augmenté du contrat.
+2. Sinon, chaque relation est attribuée à son plus petit ancêtre commun. Le contrat d’un enfant réunit les incidents reçus et les traversées possédées ici qui ont une extrémité dans cet enfant.
+3. Les enfants sont résolus récursivement.
+4. La disposition place les empreintes, route les traversées possédées entre les portails des enfants, puis prolonge chaque incident transmis jusqu’au cadre de la région, qui publie son propre portail.
+
+La chaîne d’un portail par frontière décrite plus haut découle alors de la construction ; aucun niveau n’est traité à part.
+
+**Matérialisation du contrat dans la feuille, à éprouver.** Chaque incident ajoute au document local une extrémité auxiliaire, avec provenance stable, épinglée au bord admis : `fantôme → nœud` pour une extrémité entrante, `nœud → fantôme` pour une extrémité sortante. La politique de feuille route ce morceau comme une relation ordinaire (ports, obstacles, ponts avec les routes locales), et la position du fantôme sur le cadre devient le portail. Le conflit aujourd’hui `unknown` se traite ainsi dans le solveur capable de le résoudre. Un fantôme peut décaler le rang local de son nœud ; c’est admissible puisque les rangs sont esthétiques et locaux et qu’aucune progression n’est partagée avec la région opposée, mais l’effet visuel doit être jugé dans l’atelier avant de figer la règle. Le moteur dédié devra accepter un rang extrême imposé à ces extrémités.
+
+**Conséquences.** Le contrat fait partie du document local, donc de la clé de cache : une relation étrangère ne change aucun contrat et réutilise l’enfant ; un incident modifié n’invalide que la chaîne des régions concernées. Un validateur de composition unique, indépendant du solveur et piloté par l’arbre, vérifie pour chaque relation la suite alternée de morceaux possédés et de portails le long du chemin feuille → ancêtre commun → feuille, l’opacité et le confinement des cadres ; les validateurs géométriques propres à chaque politique de feuille restent distincts. Le contrat incident est aussi la première vue par région du `LayoutContract` : côtés admis et demande de capacité. Les enveloppes bornées actuelles (nombre d’enfants, de nœuds, de relations) peuvent rester des gardes de ressources pendant la migration ; elles ne prennent plus la forme de limites de structure comme une profondeur maximale.
 
 ## Contraintes et objectifs
 
@@ -189,7 +236,9 @@ Les contraintes dures éliminent une solution. Les objectifs classent les soluti
 6. **Ordre des lanes ou route courte.** Inverser deux lanes raccourcirait plusieurs relations, mais l’ordre fixé par l’utilisateur prime ; l’ordre des boîtes, leurs rangs visuels et les espacements restent ajustables.
 7. **Route continue ou tunnel hypothétique.** Un groupe bloque les passages envisagés : comparer réordonnancement, rang vide, croissance et détour lisible ; examiner ensuite si un tunnel apporterait quelque chose, sans le présupposer.
 
-Une première hiérarchie à éprouver est : validité et confinement, évitement des obstacles, ordre fixé des lanes et des préférences verrouillées, **lisibilité des chemins et des attaches**, réduction des croisements, continuité des chemins partagés, réduction des détours et coudes, puis aire. La place d’un éventuel tunnel dans cette hiérarchie n’est pas décidée. La continuité par rapport à une image précédente non partagée relève de l’animation, pas de cet ordre d’optimisation du résultat stabilisé.
+Le [prototype du contrat](layout-solver-prototype.md) ajoute un témoin exécutable au premier arbitrage : avec les mêmes quatre relations et les mêmes rangs, l’ordre `d < e` force trois ports entrants et une face de 144 sur d, tandis que `e < d` permet un port et une face de 80. Le pipeline actuel confirme les deux résultats sur deux documents qui diffèrent seulement par cet ordre. Les conflits de ports et la demande de taille doivent donc être calculés **par candidat d’ordre et de passage** ; une liste fixe de conflits produite avant ces décisions serait insuffisante. Le score du prototype ne contient pas encore la préférence d’ordre documentaire proposée ci-dessus.
+
+Une première hiérarchie à éprouver est : validité et confinement, évitement des obstacles, ordre fixé des lanes et des préférences verrouillées, **lisibilité des chemins et des attaches**, continuité des chemins partagés, puis coût des croisements, des détours et de l'aire. Le comparatif adjacent 3+1 montre que l'évitement des ponts ne peut être placé avant la compacité sans condition : son détour sans pont augmente l'aire de 46,52 % et la longueur des routes de 37,95 %. La décision produit est d'utiliser un **seuil explicite** entre ces coûts. Pour une forme bornée, les solutions croisées ne sont admissibles que si chaque croisement possède un pont rendu et validé ; les solutions sans croisement sont comparées à une solution croisée non dominée sur aire et longueur. Un détour n'est préféré que si ses deux surcoûts restent sous les seuils choisis ; à égalité, il évite le pont. La valeur des seuils est en cours de calibration. Le nombre de coudes, la croissance des boîtes et un tie-break canonique départagent ensuite les candidats admissibles. La place d’un éventuel tunnel dans cette hiérarchie n’est pas décidée. La continuité par rapport à une image précédente non partagée relève de l’animation, pas de cet ordre d’optimisation du résultat stabilisé.
 
 ## Faisabilité et diagnostics
 
@@ -204,7 +253,7 @@ Avec une racine et des lanes auto-extensibles, les boîtes larges, les relations
 
 Une impossibilité doit produire un diagnostic structuré avec la contrainte, les éléments concernés, la région et les tentatives de dégradation autorisées. Elle ne doit jamais être résolue en laissant silencieusement déborder un groupe.
 
-La **vue stabilisée** ne conserve pas le dernier layout valide. Un tel fallback rendrait l’affichage dépendant de l’historique local : deux pairs ayant le même document et les mêmes mesures pourraient voir deux dessins différents. La cible est une vue partielle diagnostique calculée depuis l’état courant, par exemple les régions encore valides et un emplacement d’erreur déterministe pour celle qui échoue. Une ancienne géométrie peut servir uniquement d’image de départ éphémère à une animation, jamais de résultat final ou de fallback silencieux. Le comportement actuel qui redéplie de façon déterministe une projection de groupe créant un faux cycle doit être réexaminé séparément : il ne réutilise pas le dernier layout, mais ce n’est pas encore la vue diagnostique visée. Le contrat de projection actuel conserve effectivement la scène précédente lors de certains snapshots invalides ; sa migration et celle des tests associés sont donc un travail explicite, non un simple réglage du routeur.
+La **vue stabilisée** ne conserve pas le dernier layout valide : elle dépend du document et des mesures courants, jamais de l'historique local d'un pair. En cas d'échec, la projection affiche un diagnostic issu de l'état courant et peut montrer des feuilles indépendantes ou des sous-arbres fermés déjà résolus. Aucun morceau incomplet de route inter-régions n'est publié. Cette vue partielle est encore calculée dans la projection ; la composition doit la fournir depuis le cœur. Les parcours et leurs limites sont consignés dans le [journal](layout-engine-refactor-journal-2026-09-24.md).
 
 ## Mémoïsation et incrémentalité
 
@@ -220,7 +269,9 @@ Un cache par nom de passe ne suffit pas. Chaque artefact doit déclarer son empr
 - empreinte des régions enfant opaques et corridors de l’ancêtre commun pour le routage inter-régions ;
 - options de layout et tie-breaks.
 
-Le futur fingerprint doit normaliser l’ordre des collections avant sérialisation. La signature de topologie actuelle suit encore l’ordre brut des tableaux : le moteur peut donner le même layout sous permutation tout en manquant son cache.
+Le fingerprint de topologie normalise désormais l’ordre des collections avant sérialisation, tout en conservant les `layoutOrder`, les extrémités des relations, les présentations de lanes et de régions, ainsi que leurs affectations explicites. La signature des mesures normalise aussi l'ordre d'insertion des `Map`. Une permutation seule peut réutiliser la géométrie ; une modification de hiérarchie, d’ordre ou d’appartenance à une vraie région invalide le résultat de projection.
+
+Les tests de projection vérifient les réutilisations, invalidations et l'égalité du résultat incrémental au calcul froid ; leurs séquences et profils sont dans le [journal](layout-engine-refactor-journal-2026-09-24.md).
 
 | Modification                            | Recalcul minimal attendu                                                                                               |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -270,73 +321,64 @@ Les assertions de projection et de géométrie appartiennent au pipeline réel ;
 
 ### Cas témoin avant de figer la projection : `B → x → A`, `G = {A, B}`
 
-Le document source est acyclique, mais la projection actuelle d’un G replié remplace A et B par le même sommet et crée `G → x → G`. La vue revient alors à l’état déplié avec un avertissement. La cible est de garder les contraintes de rang et la provenance des membres masqués : G reste visible comme une seule enveloppe couvrant les trois rangs, tandis que A et B restent deux ancrages logiques distincts.
+Le document source est acyclique, mais la projection visible d’un G replié remplace A et B par le même sommet et crée `G → x → G`. La politique bornée conserve désormais G replié et les contraintes de rang issues du graphe source : G reste visible comme une seule enveloppe couvrant les trois rangs, tandis que A et B restent deux ancrages logiques distincts. Cette preuve porte sur `G = {A, B}`, deux relations et un seul élément extérieur ; la généralisation reste ouverte.
 
 Cette conservation évite le faux cycle **de classement**, pas automatiquement le conflit **de routage**. Pour `B → x → A`, le groupe replié emploie des **attaches latérales dérivées**, liées par provenance aux deux membres masqués. C’est une exception ciblée aux faces ordinaires, non une permission générale d’attacher latéralement toutes les boîtes. Le témoin plus dense `G = {A, B, C, D}`, `D → x → B` et `C → y → B` vérifie que x et y restent visuellement dans les rangs de G et que les attaches restent lisibles. Les dessins de l’atelier doivent montrer ouvert/replié et les deux orientations avant l’étape de projection ; ne pas masquer un échec derrière un `catch` général. La règle actuelle de faces principales dans `docs/design.md` devra être amendée au moment de l’implémentation, pas anticipée ici comme si le moteur la respectait déjà.
 
 ## Plan de migration
 
-### 0. Aligner le vocabulaire sans changer le comportement — en cours
+### 0. Aligner le vocabulaire — partiel
 
-- **Fait dans le checkout courant :** `quay` → `port` dans le noyau, l’inspection, l’atelier, les assertions et les scénarios ; `RoutingPortRole` (`incoming`/`outgoing`) distinct de la face géométrique ; `Port` distinct de `PortAnchor` dans le lexique.
-- **Reste un audit de sens, pas un préalable à coder les IR :** `rail`, `corridor`, `row/rank/layer`, `relation/edge` et `junction`. Ces couples ne sont pas synonymes ; ne les renommer qu’après avoir nommé leur rôle exact et les usages à migrer.
+`quay` a été remplacé par `port` dans le noyau, l'inspection et les témoins. Les rôles `incoming`/`outgoing` restent distincts de la face géométrique. L'audit de sens de `rail`, `corridor`, `row/rank/layer`, `relation/edge` et `junction` reste ouvert ; aucun renommage mécanique n'est prévu avant cet audit.
 
-### Préconditions des deux nouvelles capacités
+### 1. Prouver les frontières nécessaires sur le pipeline actuel — partiel
 
-- Avant les lanes multiples : figurer `A | B | C` et le processus `S | SD | C` dans l’atelier. Une relation entre lanes non adjacentes doit avoir un chemin dans le layout commun, éventuellement après changement des rangs visuels, insertion d’un rang vide et croissance des espacements.
-- Avant les vraies régions imbriquées : définir le contrat de frontière, l’opacité étrangère, les portails incidents et la composition au plus petit ancêtre commun, sans progression ni rangs partagés entre régions.
-- Ne promettre ni cache indépendant par lane, ni cache intérieur de vraie région avant une mesure de hits et une preuve d’invalidation correcte.
+Le harnais différentiel compare le `LayoutResult` entier sur les chemins enveloppés et le corpus visuel. La racine reste un normaliseur léger. L'inventaire des assertions et caches justifiant chaque IR candidate reste à terminer ; ne créer une frontière que si sa preuve propre le demande.
 
-### 1. Prouver les frontières nécessaires sur le pipeline actuel
+### 2. Séparer mesures, contraintes et matérialisation — partiel
 
-- Inventorier une assertion ou un cache indépendant pour chaque IR candidate ; fusionner les autres avec les données ou résultats existants.
-- Commencer par une vue immuable du graphe et un contrat de contraintes symboliques seulement si les tests d’existence ci-dessus sont satisfaits.
-- Garder les algorithmes et le `LayoutResult` observables inchangés.
-- Ajouter un comparateur différentiel entre ancien chemin et chemin enveloppé.
+La capacité de face est une demande métrique distincte. Un `LayoutContract` énumère les choix de ports et d'ordre sur les corridors adjacents 3+1 et 2+2, et un matérialiseur indépendant vérifie leurs géométries dans cette enveloppe. Les passages non monotones, les ponts comme alternatives de la même recherche et le remplacement du feedback général restent à faire. Une recherche bornée conserve ses branches omises et `globalStatus: undetermined`. Le compromis pont/détour sera décidé avec des seuils explicites d'aire et de longueur, encore à calibrer.
 
-### 2. Séparer mesures, contraintes et matérialisation
+### 3. Introduire une région racine unique — fait pour la normalisation
 
-- Faire produire aux allocations de ports et de routage des `MetricDemand` explicites à l’intérieur d’un contrat contenant aussi les alternatives de passage et les choix discrets.
-- Résoudre ces contraintes de manière bornée et déterministe avant de matérialiser les coordonnées ; supprimer le feedback entre artefacts de passes.
-- Supprimer les mutations transversales qui ne sont pas possédées par le workspace de l’appel.
+Les anciens documents reçoivent une racine virtuelle dérivée et le moteur dédié y est exécuté comme politique. Le repli du groupe `G={A,B}` dans `B → x → A` possède une politique bornée qui préserve les identifiants sources. Les autres formes non résolues gardent leur diagnostic courant.
 
-### 3. Introduire une région racine unique
+### 4. Ajouter plusieurs lanes au layout partagé — partiel
 
-- Normaliser tous les documents existants vers une région racine.
-- Exécuter le moteur actuel comme politique de cette région.
-- Prouver l’équivalence différentielle avant d’ajouter une seconde région.
-- Vérifier le pli/dépli existant sur la projection visible avant de figer le contrat de frontière.
+Les présentations de deux ou trois lanes parallèles ou transverses sont persistées et résolues ensemble dans les enveloppes couvertes. Une relation entre lanes extrêmes peut emprunter l'espace libre de la lane médiane ; le processus `S | SD | C` et un passage intérieur monotone borné sont pris en charge. Les groupes à membres, les jonctions, l'insertion générale de rangs vides et les contacts sans pont défini restent ouverts.
 
-### 4. Ajouter plusieurs lanes au layout partagé
+### 5. Composer les vraies régions, puis la grille — partiel
 
-- Persister affectation, ordre fixe, orientation et croissance auto-extensible des lanes.
-- Calculer les rangs, l’ordre, la géométrie et les routes des lanes ensemble ; réserver des gouttières et passages dans l’espace libre des lanes intermédiaires.
-- Commencer par deux lanes, puis trois avec une relation qui franchit la lane intermédiaire, puis les deux orientations et le processus `S | SD | C`.
-- Réordonner les éléments dans les rangs, déplacer les rangs visuels ou en insérer un vide et élargir les passages pour éviter de couper les groupes ; éprouver les cas où cela ne suffit pas.
+Les régions opaques disposent de rangs locaux et d'une chaîne de portails par frontière traversée. Une rangée récursive, une grille 2 × 2 et certaines combinaisons de feuilles ordinaires ou à lanes sont branchées. Les gardes de ressources et les validations géométriques restent nécessaires tant que les contrats ne couvrent pas les autres formes. Les résultats et limites détaillés sont dans le [journal](layout-engine-refactor-journal-2026-09-24.md).
 
-### 5. Composer les vraies régions, puis la grille
+Les **sept sous-étapes de composition** qui figuraient dans le plan initial ont l'état suivant :
 
-- Ajouter une vue normalisée des régions, des coordonnées locales et des transformations parentales, sans créer automatiquement une IR supplémentaire.
-- Implémenter l’opacité des vraies régions, les contrats de frontière et le routage au plus petit ancêtre commun.
-- Vérifier qu’une relation entre cellules relie deux layouts locaux indépendants sans aligner leurs rangs ni leur imposer un sens de progression.
-- Ajouter les cellules de grille comme sous-layouts ; leurs pistes ont des minima extensibles, pas une borne qui ferait déborder un groupe.
-- Vérifier systématiquement le confinement des groupes et de leurs descendants.
+| Sous-étape                                                  | État                              | Ce qui manque pour la clore                                                                                                         |
+| ----------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Unifier portails, placements, statuts et erreurs         | **Partielle**                     | Les types `Nested*` coexistent avec `Region*` ; les quatre côtés ne sont pas utilisés uniformément.                                 |
+| 2. Résoudre les feuilles par un chemin commun et leur cache | **Partielle**                     | La feuille commune et son cache existent, mais le choix de politique reste implicite et le contrat incident n'est pas systématique. |
+| 3. Introduire la récursion avec disposition en rangée       | **Faite dans l'enveloppe bornée** | La rangée doit encore implémenter l'interface `Arrangement` commune.                                                                |
+| 4. Migrer la profondeur deux et retirer ses modules dédiés  | **Faite**                         | Les modules dédiés sont retirés ; les arbres plus profonds restent soumis aux politiques de feuilles et dispositions admises.       |
+| 5. Matérialiser le contrat incident dans les feuilles       | **Partielle**                     | Les fantômes ne sont qu'une reprise bornée après échec, pour certaines feuilles ; généraliser rôles, côtés, recherche et cache.     |
+| 6. Réécrire la grille comme disposition                     | **Partielle**                     | La grille réutilise le modèle et les feuilles, mais enveloppe encore l'ancien solveur et conserve des demandes spécialisées.        |
+| 7. Combiner lanes et régions ou cellules                    | **Partielle**                     | Les premières combinaisons sont sélectionnées ; les autres sources, faces et incidents simultanés restent hors contrat.             |
 
-### 6. Ajouter les caches fins
+**Ordre du prochain chantier :** (1) diagnostics typés et reprises sur codes ; (2) contrat incident par défaut pour toute politique de feuille, quatre côtés, alternatives bornées et `unknown` codé ; (3) interface `Arrangement` avec `incidentSides`, `place` et `route`, implémentée par rangée et grille sans prédicats propres aux témoins ; (4) types `Region*` partout, politique de feuille explicite et suppression du solveur fantôme à incident unique ; (5) tentative de vue partielle par sous-arbre produite dans le cœur. Aucun nouveau témoin de forme ni prédicat dédié ne doit précéder les points 1 à 4. Un ancien témoin peut devenir `unknown` avec un code précis pendant cette généralisation.
 
-- Commencer par les frontières structurelles et métriques intrinsèques qui montrent un gain réel.
-- Ajouter le cache par vraie région seulement après stabilisation des contrats incidents ; ne pas promettre de cache par lane.
-- Comparer chaque chemin incrémental à un recalcul froid dans les tests de propriétés.
-- Mesurer séparément temps, mémoire, taux de réutilisation et coût d’invalidation des ancêtres.
+### 6. Ajouter les caches fins — partiel
+
+Un cache LRU local de feuilles appartient à chaque projection. Sa clé tient compte du document local, des mesures, de la politique et du contrat incident matérialisé ; les séquences couvertes vérifient `incrémental === froid`. Un essai de cache de sous-arbre fermé a été retiré faute de gain global reproductible. Étendre les caches fins seulement après stabilisation du contrat incident, avec invalidation prouvée et profils de bout en bout ; aucune indépendance de cache n'est promise par lane.
 
 ## Vérification attendue à chaque étape
 
 - Tests différentiels du `LayoutResult` sur le corpus visuel existant.
-- Propriétés sur déterminisme, immuabilité, permutations d’entrée et équivalence incrémental/froid.
+- Propriétés sur déterminisme, immuabilité, permutations d'entrée et équivalence incrémental/froid.
 - Contre-exemples injectés pour chaque contrainte dure et chaque diagnostic.
 - Scénarios réels pour groupes imbriqués, relations longues, jonctions, lanes parallèles/transverses et grilles.
-- Tests de performance qui distinguent préparation froide, hit de cache, invalidation locale et invalidation remontant aux ancêtres.
-- Aucun changement de qualité globale déclaré vert sans exécution fraîche des portes définies dans `package.json`.
+- Tests de performance séparant préparation froide, hit de cache, invalidation locale et invalidation des ancêtres.
+- `mise exec -- pnpm quality:fast` à chaque étape et `mise exec -- pnpm check` à la fin, sans abaisser les seuils.
+
+Le [journal de preuves](layout-engine-refactor-journal-2026-09-24.md) conserve les résultats historiques et leurs limites. Une porte verte antérieure ne vaut pas pour une source modifiée.
 
 ## Cahier des règles visuelles et atelier
 
@@ -360,9 +402,11 @@ L’atelier possède déjà un catalogue déterministe de scénarios illustrés,
 
 Le catalogue manuel reste stable et relisible en revue. Les échecs aléatoires **réduits** rejoignent ce catalogue comme nouveaux scénarios nommés ; l’exécution aléatoire et le rejeu vivent dans un panneau ou un outil séparé. Il faut aussi noter pour chaque objectif esthétique un cas où le privilégier dégrade un autre objectif, afin de décider l’ordre lexicographique avec des dessins concrets.
 
+L'atelier compare des contacts de régions sur des documents réels, et distingue les routes validées des hypothèses de pont rejetées. Le [journal](layout-engine-refactor-journal-2026-09-24.md) conserve les variantes, captures et parcours navigateur. L'arbitrage entre corridor distinct, tronc partagé explicitement sémantique et pont reste ouvert.
+
 ## Générateur de cas et fuzzing
 
-La base actuelle de tests de propriétés parcourt déjà le pipeline réel et couvre plusieurs invariants géométriques, permutations et changements d’échelle. Elle ne génère pas encore les arbres de régions ni les séquences d’éditions nécessaires pour éprouver la composition et les caches. Le générateur visé est **structuré**, pas une distribution uniforme de rectangles et d’arêtes :
+La base actuelle de tests de propriétés parcourt déjà le pipeline réel et couvre plusieurs invariants géométriques, permutations et changements d’échelle. Un générateur varie de vrais arbres bornés de profondeur un à trois : nombre variable de frères et de branches, quatre directions, mesures fractionnaires et permutations. Une propriété compare aussi cache et calcul froid après redimensionnement, édition de relation locale ou traversante et permutation, avec rejeu sérialisé du contre-exemple. Elle ne couvre pas encore les séquences mêlant groupes, lanes, grilles et contraintes contradictoires nécessaires pour éprouver tous les contrats. Le générateur visé est **structuré**, pas une distribution uniforme de rectangles et d’arêtes :
 
 1. Composer des motifs topologiques nommés (chaîne, diamant, éventail, relation longue, jonction, composantes indépendantes), des groupes, une affectation de lanes au sein d’un layout partagé et, séparément, un arbre de vraies régions.
 2. Varier les orientations et affectations de lanes, notamment la bande séparatrice avec passage déjà disponible ou exigeant croissance/réordonnancement ; varier aussi les minima de cellules et générer des contraintes contradictoires ciblées pour les diagnostics.
@@ -373,12 +417,12 @@ Les oracles exécutent le **vrai pipeline**. Ils vérifient le confinement des l
 
 Chaque échec doit enregistrer le document, les préférences, les mesures, la séquence d’opérations, la version d’algorithme, les tags de motifs, la seed et le chemin de rejeu, puis être **réduit** en conservant autant que possible la propriété fautive et les identifiants. Le cas sérialisé est indispensable : une seed seule peut rejouer autre chose après évolution du générateur. La couverture se juge par motifs et combinaisons structurantes (par exemple `lane-séparatrice × relation-traversante × passage-à-allouer`), pas par nombre brut de tirages.
 
-Première tranche exécutable sur le moteur actuel : enrichir les motifs du générateur mono-région, canoniser le rejeu des contre-exemples et vérifier les permutations de collections et les mesures fractionnaires. Concevoir séparément le générateur `A | B | C` de lanes partagées et le générateur de deux ou trois vraies régions avec oracle d’opacité ; les exécuter contre le vrai pipeline lors de chaque capacité correspondante. Les tests de continuité temporelle du pli/dépli restent E2E : un fuzzer de géométrie statique ne peut pas prouver une animation agréable.
+Première tranche exécutable sur le moteur actuel : enrichir les motifs du générateur mono-région, canoniser le rejeu des contre-exemples et vérifier les permutations de collections et les mesures fractionnaires. Étendre les générateurs déjà branchés pour `A | B | C` et les vraies régions aux motifs structurels encore absents, aux arbres plus profonds et aux séquences d’éditions, en conservant leurs oracles sur le vrai pipeline. Les tests de continuité temporelle du pli/dépli restent E2E : un fuzzer de géométrie statique ne peut pas prouver une animation agréable.
 
 ## Questions restant à trancher par exemples
 
 1. Quelle grammaire minimale de contraintes et d’alternatives suffit au routage sans transformer le moteur en solveur général ? Un premier prototype sur les ports saturés, `S | SD | C` et le groupe replié doit éprouver cette frontière.
 2. Après réordonnancement, déplacement des rangs visuels, insertion de rangs vides et croissance du layout, existe-t-il un motif pour lequel un tunnel serait préférable à toute route continue ? Si oui seulement, quelle forme d’extrémités et quelles étiquettes seraient lisibles ?
-3. Pour les vraies régions imbriquées, quel contrat incident minimal permet le layout local, les portails partagés lisibles et un cache sans dépendance aux routes étrangères ?
+3. Pour les vraies régions imbriquées, le contrat incident proposé (rôle, côtés admis, extrémité fantôme dans la feuille) suffit-il au layout local, à des portails partagés lisibles et à un cache sans dépendance aux routes étrangères ? Quel rang imposer aux fantômes, et quand plusieurs incidents doivent-ils partager un portail ?
 
 L’ordre fixe et l’auto-extension des lanes, les minima extensibles de grille, les attaches latérales ciblées du groupe replié, l’ancre de caméra près du curseur, la liberté d’insérer un rang visuel vide, l’absence de progression entre vraies régions, l’opacité des seules vraies régions et l’absence de fallback vers le dernier layout valide ne sont plus des questions ouvertes. L’existence même d’un tunnel, elle, reste interrogative. Les choix restants se jugent sur les exemples du cahier visuel avant de figer les contrats de résolution et de composition.
