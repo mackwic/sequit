@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
+	allocateCenteredTrack,
 	allocateNestedTracks,
+	centeredTrackOffset,
 	edgeExtent,
 	type RoutingEdge,
 	type RoutingTrackAllocation,
@@ -40,6 +42,21 @@ function demandsOf(values: readonly Interval[]): readonly RoutingTrackDemand[] {
 function edgeFor(capacity: number): RoutingEdge {
 	return { ownerId: 'region', capacity, spacing: 20 };
 }
+
+/** Declared-rank demands of one edge: identical intervals, so only the ordinal can order them. */
+function declaredDemands(ordinals: readonly number[]): readonly RoutingTrackDemand[] {
+	return ordinals.map((order, index) => ({
+		relationId: `r-${index}`,
+		start: 0,
+		end: 100,
+		order,
+	}));
+}
+
+/** A free interval a centred edge owns, generated with a strict order and a positive length. */
+const freeIntervals = fc
+	.tuple(fc.integer({ min: -60, max: 20 }), fc.integer({ min: 1, max: 40 }))
+	.map(([start, length]) => ({ start, end: start + length }));
 
 /** A deterministic Fisher–Yates order so a permutation is replayable from its seed. */
 function permutation(count: number, seed: number): readonly number[] {
@@ -139,6 +156,109 @@ describe('routing resource allocation', () => {
 				expect(() => allocateNestedTracks(edgeFor(demands.length - 1), demands)).toThrow(
 					/tracks for/,
 				);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+	it('orders a declared ordinal ahead of the canonical identifier', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.integer({ min: 0, max: 40 }), { minLength: 0, maxLength: 8 }),
+				(ordinals) => {
+					const allocation = allocateNestedTracks(
+						edgeFor(ordinals.length),
+						declaredDemands(ordinals),
+					);
+					for (const [left, leftOrder] of ordinals.entries())
+						for (const [right, rightOrder] of ordinals.entries()) {
+							if (leftOrder === rightOrder) continue;
+							const difference =
+								trackOf(allocation, `r-${left}`) - trackOf(allocation, `r-${right}`);
+							expect(Math.sign(difference)).toBe(Math.sign(leftOrder - rightOrder));
+						}
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('keeps the canonical identifier order for identical intervals without an ordinal', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 0, max: 8 }), (count) => {
+				const demands: readonly RoutingTrackDemand[] = Array.from(
+					{ length: count },
+					(_value, index) => ({ relationId: `r-${index}`, start: 0, end: 100 }),
+				);
+				const allocation = allocateNestedTracks(edgeFor(count), demands);
+				for (const index of demands.keys()) expect(trackOf(allocation, `r-${index}`)).toBe(index);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('sorts a demand that declares no ordinal after the declared ones', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.tuple(fc.boolean(), fc.integer({ min: 0, max: 20 })), {
+					minLength: 1,
+					maxLength: 8,
+				}),
+				(entries) => {
+					const demands: RoutingTrackDemand[] = [];
+					const declaredIds: string[] = [];
+					const plainIds: string[] = [];
+					for (const [index, [declared, order]] of entries.entries()) {
+						const relationId = `r-${index}`;
+						if (!declared) {
+							plainIds.push(relationId);
+							demands.push({ relationId, start: 0, end: 10 });
+							continue;
+						}
+						declaredIds.push(relationId);
+						demands.push({ relationId, start: 0, end: 10, order });
+					}
+					const allocation = allocateNestedTracks(edgeFor(demands.length), demands);
+					for (const declaredId of declaredIds)
+						for (const plainId of plainIds)
+							expect(trackOf(allocation, declaredId)).toBeLessThan(trackOf(allocation, plainId));
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('keeps a declared ordinal allocation invariant under permutation', () => {
+		fc.assert(
+			fc.property(
+				fc.array(fc.integer({ min: 0, max: 40 }), { minLength: 0, maxLength: 8 }),
+				fc.integer({ min: 0, max: 2_000_000_000 }),
+				(ordinals, seed) => {
+					const demands = declaredDemands(ordinals);
+					const allocation = allocateNestedTracks(edgeFor(demands.length), demands);
+					const shuffled = allocateNestedTracks(edgeFor(demands.length), permute(demands, seed));
+					for (const { relationId } of demands)
+						expect(trackOf(shuffled, relationId)).toBe(trackOf(allocation, relationId));
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('centres the single track of an interval edge strictly inside its free interval', () => {
+		fc.assert(
+			fc.property(freeIntervals, ({ start, end }) => {
+				const edge: RoutingEdge = { ownerId: 'passage', capacity: 1, spacing: 20 };
+				const allocation = allocateCenteredTrack(edge, { relationId: 'passage', start, end });
+				expect(allocation.track).toBe(0);
+				const coordinate = centeredTrackOffset(allocation);
+				expect(coordinate).toBeGreaterThan(start);
+				expect(coordinate).toBeLessThan(end);
+				const reversed = allocateCenteredTrack(edge, {
+					relationId: 'passage',
+					start: end,
+					end: start,
+				});
+				expect(centeredTrackOffset(reversed)).toBe(coordinate);
 			}),
 			PROPERTY_PARAMETERS,
 		);
