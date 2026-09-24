@@ -18,6 +18,7 @@
 	import FoldedRoutePreview from './FoldedRoutePreview.svelte';
 	import GridCellExplorer from './GridCellExplorer.svelte';
 	import JointK32Explorer from './JointK32Explorer.svelte';
+	import RankOrderComparisonExplorer from './RankOrderComparisonExplorer.svelte';
 	import RegionContactExplorer from './RegionContactExplorer.svelte';
 	import RegionLaneLeafExplorer from './RegionLaneLeafExplorer.svelte';
 	import SharedLanePassageExplorer from './SharedLanePassageExplorer.svelte';
@@ -29,6 +30,7 @@
 		| 'conditional-conflicts'
 		| 'joint-k32'
 		| 'adjacent-bridge-comparison'
+		| 'rank-order-comparison'
 		| 'composed'
 		| 'folded-group'
 		| 'grid-cells'
@@ -275,6 +277,12 @@
 		>
 		<button
 			type="button"
+			class:active={witnessId === 'rank-order-comparison'}
+			aria-pressed={witnessId === 'rank-order-comparison'}
+			onclick={() => (witnessId = 'rank-order-comparison')}>Ordres dans le rang</button
+		>
+		<button
+			type="button"
 			class:active={witnessId === 'folded-group'}
 			aria-pressed={witnessId === 'folded-group'}
 			onclick={() => (witnessId = 'folded-group')}>G replié</button
@@ -307,6 +315,8 @@
 
 	{#if witnessId === 'adjacent-bridge-comparison'}
 		<AdjacentBridgeComparisonExplorer />
+	{:else if witnessId === 'rank-order-comparison'}
+		<RankOrderComparisonExplorer />
 	{:else if witnessId === 'shared-lane-passage'}
 		<SharedLanePassageExplorer />
 	{:else if witnessId === 'region-contact'}

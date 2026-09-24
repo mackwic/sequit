@@ -4,6 +4,7 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import { type LayoutMeasurements, RoutingPortRole, type Size } from '../layout-types';
+import { enumerateRankOrders, permutations, type RankDomain } from '../rank-order';
 import type { ConditionalPortConflicts } from '../routing/conditional-port-conflicts';
 import { threeIncidenceFaceCapacity } from '../routing/face-capacity';
 import {
@@ -69,12 +70,8 @@ interface UnknownLayoutContract {
 
 export type LayoutContractBuild = ReadyLayoutContract | UnknownLayoutContract;
 
-function permutations<T>(values: readonly T[]): readonly (readonly T[])[] {
-	if (values.length === 0) return [[]];
-	return values.flatMap((value, index) =>
-		permutations(values.filter((_, other) => other !== index)).map((rest) => [value, ...rest]),
-	);
-}
+/** `adjacentShape` admits exactly three sources and two targets, so the product is 3!·2!. */
+const ADJACENT_RANK_ORDER_BUDGET = 12;
 
 function physicalOrders(
 	groups: readonly (readonly string[])[],
@@ -272,32 +269,33 @@ export function buildAdjacentLayoutContract(
 		};
 	const outgoingDemands = sourceFaceDemands(graph, measurements, sourceIds);
 	const candidates: LayoutContractCandidate[] = [];
-	for (const sourceOrder of permutations(sourceIds)) {
-		for (const targetOrder of permutations(targetIds)) {
-			const order: GraphCorridorCandidate = {
-				sourceRank: 1,
-				targetRank: 0,
-				sourceOrder,
-				targetOrder,
-				passage: 'monotone-adjacent-corridor',
+	const domain: RankDomain = { bands: [sourceIds, targetIds] };
+	for (const rankOrder of enumerateRankOrders(domain, ADJACENT_RANK_ORDER_BUDGET)) {
+		const sourceOrder = defined(rankOrder[0]);
+		const targetOrder = defined(rankOrder[1]);
+		const order: GraphCorridorCandidate = {
+			sourceRank: 1,
+			targetRank: 0,
+			sourceOrder,
+			targetOrder,
+			passage: 'monotone-adjacent-corridor',
+		};
+		const deduction = graphCorridorConflicts(graph, ranks, order);
+		if (deduction.status === GraphCorridorStatus.Unknown)
+			return {
+				status: LayoutContractBuildStatus.Unknown,
+				reason: LayoutContractUnknownReason.UnsupportedCorridor,
 			};
-			const deduction = graphCorridorConflicts(graph, ranks, order);
-			if (deduction.status === GraphCorridorStatus.Unknown)
-				return {
-					status: LayoutContractBuildStatus.Unknown,
-					reason: LayoutContractUnknownReason.UnsupportedCorridor,
-				};
-			const faces = targetOrder.map((targetId) =>
-				faceContract(graph, measurements, deduction.conflicts, targetId),
-			);
-			candidates.push({
-				...order,
-				id: JSON.stringify([sourceOrder, targetOrder]),
-				conflicts: deduction.conflicts,
-				faces,
-				sourceFaceDemands: outgoingDemands,
-			});
-		}
+		const faces = targetOrder.map((targetId) =>
+			faceContract(graph, measurements, deduction.conflicts, targetId),
+		);
+		candidates.push({
+			...order,
+			id: JSON.stringify([sourceOrder, targetOrder]),
+			conflicts: deduction.conflicts,
+			faces,
+			sourceFaceDemands: outgoingDemands,
+		});
 	}
 	return {
 		status: LayoutContractBuildStatus.Ready,
