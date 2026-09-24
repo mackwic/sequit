@@ -1,3 +1,4 @@
+import { strictCrossing } from '../../../src/lib/core/layout/geometry/strict-crossing';
 import type { LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
 
 export interface RouteSegment {
@@ -59,11 +60,14 @@ export function routeCrossings(routes: readonly LayoutRelation[]): readonly Rout
 	for (const horizontal of segments.filter(({ axis }) => axis === 'x')) {
 		for (const vertical of segments.filter(({ axis }) => axis === 'y')) {
 			if (horizontal.routeId === vertical.routeId) continue;
-			const x = vertical.fixed;
-			const y = horizontal.fixed;
-			if (x <= horizontal.start || x >= horizontal.end || y <= vertical.start || y >= vertical.end)
-				continue;
-			const crossing = { x, y, horizontalId: horizontal.routeId, verticalId: vertical.routeId };
+			const point = strictCrossing(
+				{ x: horizontal.start, y: horizontal.fixed },
+				{ x: horizontal.end, y: horizontal.fixed },
+				{ x: vertical.fixed, y: vertical.start },
+				{ x: vertical.fixed, y: vertical.end },
+			);
+			if (point === undefined) continue;
+			const crossing = { ...point, horizontalId: horizontal.routeId, verticalId: vertical.routeId };
 			crossings.set(JSON.stringify(crossing), crossing);
 		}
 	}

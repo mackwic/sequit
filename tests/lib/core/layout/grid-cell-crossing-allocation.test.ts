@@ -19,6 +19,8 @@ import {
 	crossingAllocationCandidates,
 	crossingAllocationCandidatesWithExtraTrack,
 	type CrossingAllocationInput,
+	CrossingAllocationPhaseId,
+	crossingAllocationPhases,
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
@@ -166,6 +168,22 @@ describe('grid crossing allocation', () => {
 			expect(new Set(left).size).toBe(left.length);
 			expect(Math.max(...left)).toBeLessThanOrEqual(reserved);
 		}
+	});
+
+	it('declares the reallocation, extra-track and bridge issues in that order', () => {
+		const input = allocationInput();
+		const phases = crossingAllocationPhases(input);
+		expect(phases.map(({ id }) => id)).toEqual([
+			CrossingAllocationPhaseId.Reallocate,
+			CrossingAllocationPhaseId.ExtraTrack,
+			CrossingAllocationPhaseId.Bridge,
+		]);
+		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, true]);
+		expect(phases.map(({ sharesBudget }) => sharesBudget)).toEqual([false, true, false]);
+		expect([...defined(phases[2]).candidates(input)]).toEqual([
+			...crossingAllocationCandidates(input),
+		]);
+		for (const phase of phases) expect([...phase.candidates(input)].length).toBeGreaterThan(0);
 	});
 
 	it('is deterministic across calls', () => {

@@ -1,3 +1,4 @@
+import { strictCrossing } from '../geometry/strict-crossing';
 import type { LayoutRelation, LayoutResult, Point } from '../layout-types';
 
 interface Segment {
@@ -75,22 +76,14 @@ function segments(paths: ReadonlyMap<string, readonly Point[]>): Segment[] {
 	return result;
 }
 
-function between(value: number, a: number, b: number): boolean {
-	return value > Math.min(a, b) && value < Math.max(a, b);
-}
-
 /** Count physical crossings once even when several relations share a trunk. */
 function crossings(lines: readonly Segment[]): number {
 	const positions = new Set<string>();
 	for (const horizontal of lines.filter(({ start, end }) => start.y === end.y)) {
 		for (const vertical of lines.filter(({ start, end }) => start.x === end.x)) {
-			const x = vertical.start.x;
-			const y = horizontal.start.y;
-			if (
-				between(x, horizontal.start.x, horizontal.end.x) &&
-				between(y, vertical.start.y, vertical.end.y)
-			)
-				positions.add(`${x},${y}`);
+			const point = strictCrossing(horizontal.start, horizontal.end, vertical.start, vertical.end);
+			if (point === undefined) continue;
+			positions.add(`${point.x},${point.y}`);
 		}
 	}
 	return positions.size;

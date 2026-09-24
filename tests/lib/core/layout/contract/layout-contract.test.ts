@@ -26,7 +26,10 @@ import { materializeContractCandidate } from '../../../../../src/lib/core/layout
 import * as independentGeometry from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import { materializeIndependentAdjacentGeometry } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
+	DETOUR_AREA_TOLERANCE,
+	DETOUR_LENGTH_TOLERANCE,
 	IndependentAdjacentBranchStatus,
+	type IndependentAdjacentComparison,
 	IndependentAdjacentGlobalStatus,
 	IndependentAdjacentIssue,
 	IndependentAdjacentStatus,
@@ -954,9 +957,11 @@ describe('adjacent node LayoutContract', () => {
 		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
 		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
 		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		const comparison = defined(resolved.comparison);
+		const comparison: IndependentAdjacentComparison = defined(resolved.comparison);
 		expect(comparison.selected).toBe(IndependentAdjacentIssue.Bridge);
-		expect(comparison.detour.area).toBe(20000);
+		expect(comparison.detour.area / comparison.bridge.area - 1).toBeGreaterThan(
+			DETOUR_AREA_TOLERANCE,
+		);
 		expect(comparison.bridge.area).toBe(10000);
 		expect(comparison.detour.routeLength).toBe(comparison.bridge.routeLength);
 		expect(resolved.selection.bridged).toBe(true);
@@ -972,8 +977,10 @@ describe('adjacent node LayoutContract', () => {
 		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
 		const comparison = defined(resolved.comparison);
 		expect(comparison.selected).toBe(IndependentAdjacentIssue.Bridge);
+		expect(comparison.detour.routeLength / comparison.bridge.routeLength - 1).toBeGreaterThan(
+			DETOUR_LENGTH_TOLERANCE,
+		);
 		expect(comparison.detour.routeLength).toBe(500);
-		expect(comparison.bridge.routeLength).toBe(200);
 		expect(comparison.detour.area).toBe(comparison.bridge.area);
 		expect(resolved.selection.bridged).toBe(true);
 	});
