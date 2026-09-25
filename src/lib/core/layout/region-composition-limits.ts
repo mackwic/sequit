@@ -45,12 +45,13 @@ export interface RegionCompositionLimits {
 }
 
 /**
- * Declared resource envelope of the bounded recursive composition. Every bound is a
- * resource, never a structure: a single-child pass-through frame and a wider row are the
- * same row. Eight children keeps the row bus linear in its children (`PARENT_BUS_SPACING`
- * per allocated track) while admitting rows wider than the historical three.
+ * Declared resource envelope of the bounded recursive composition. The region budget
+ * also bounds recursive solver depth; the remaining bounds protect graph and row work.
+ * Eight children keeps the row bus linear in its children (`PARENT_BUS_SPACING` per
+ * allocated track) while admitting rows wider than the historical three.
  */
 export const NESTED_REGION_COMPOSITION_LIMITS: RegionCompositionLimits = {
+	maxRegions: 256,
 	maxEndpoints: 12,
 	maxRelations: 16,
 	maxChildrenPerRegion: 8,

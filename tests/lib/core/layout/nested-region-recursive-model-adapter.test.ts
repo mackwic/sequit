@@ -291,6 +291,64 @@ describe('recursive region model and row policy', () => {
 			reason: 'children exceed the configured limit of 8.',
 		});
 	});
+	it('bounds deep pass-through chains before recursive solving', () => {
+		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
+		const endpointIds = [...prepared.graph.endpointsById.keys()];
+		const maxRegions = NESTED_REGION_COMPOSITION_LIMITS.maxRegions ?? 0;
+		const inputAtLimit: RegionInput = {
+			regions: Array.from({ length: maxRegions }, (_, index) => {
+				const region: RegionInput['regions'][number] = {
+					id: `depth-${index}`,
+					layoutOrder: 'a0',
+				};
+				if (index > 0) return { ...region, parentId: `depth-${index - 1}` };
+				return region;
+			}),
+			regionByEndpointId: new Map(
+				endpointIds.map((id) => [id, `depth-${maxRegions - 1}`]),
+			),
+		};
+		expect(
+			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, inputAtLimit).status,
+		).toBe(RegionCompositionStatus.Selected);
+
+		const tooDeep: RegionInput = {
+			...inputAtLimit,
+			regions: Array.from({ length: 5000 }, (_, index) => {
+				const region: RegionInput['regions'][number] = {
+					id: `deep-${index}`,
+					layoutOrder: 'a0',
+				};
+				if (index > 0) return { ...region, parentId: `deep-${index - 1}` };
+				return region;
+			}),
+			regionByEndpointId: new Map(endpointIds.map((id) => [id, 'deep-4999'])),
+		};
+		const rejected = solveRecursiveNestedRegionLayout(
+			prepared.graph,
+			prepared.measurements,
+			tooDeep,
+		);
+		const normalized = normalizeRegionCompositionModel(
+			prepared.graph,
+			tooDeep,
+			NESTED_REGION_COMPOSITION_LIMITS,
+		);
+		expect(normalized).toMatchObject({
+			status: RegionCompositionModelStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				path: ['regions'],
+				actual: 5000,
+				limit: maxRegions,
+			},
+		});
+		expect(rejected).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			reason: `regions exceed the configured limit of ${maxRegions}.`,
+		});
+
+	});
 
 	it.each([
 		[
