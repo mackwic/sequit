@@ -135,6 +135,16 @@ function* trackOrders(ids: readonly string[], trackCount: number): Generator<rea
 	yield* permutations([...slots].sort(compareCanonicalStrings));
 }
 
+function* preferredTrackOrders(
+	ids: readonly string[],
+	trackCount: number,
+): Generator<readonly string[]> {
+	yield ids;
+	for (const order of trackOrders(ids, trackCount)) {
+		if (order.some((id, index) => id !== ids[index])) yield order;
+	}
+}
+
 function* portOrders(
 	incidence: ReadonlyMap<string, readonly string[]>,
 ): Generator<ReadonlyMap<string, readonly string[]>> {
@@ -194,6 +204,7 @@ function* permutationCandidates(
 	excluded: Set<string>,
 ): Generator<GridCrossingAllocation> {
 	const factories: TrackOrderFactory[] = [
+		() => preferredTrackOrders(input.crossingIds, input.edges.topBus.capacity),
 		...input.gutterIds.map(
 			(_ids, column) => (): Generator<readonly string[]> =>
 				trackOrders(
@@ -205,7 +216,7 @@ function* permutationCandidates(
 	const seen = new Set(excluded);
 	for (const orders of combineOrders(factories, 0, []))
 		for (const portOrderByEndpointId of portOrders(input.incidence)) {
-			const allocation = allocationOf(orders, input.crossingIds, portOrderByEndpointId);
+			const allocation = allocationOf(orders.slice(1), defined(orders[0]), portOrderByEndpointId);
 			const key = allocationKey(allocation);
 			if (seen.has(key)) continue;
 			seen.add(key);

@@ -52,6 +52,63 @@ const SHAPES: readonly NxmShape[] = [
 	},
 ];
 
+describe('grid bus allocation', () => {
+	it('uses a non-canonical bus order after rejecting every canonical-bus allocation', () => {
+		const source = {
+			...nxmThreeByTwoDocument(),
+			relations: [
+				{ id: 'a-b', from: 'a', to: 'b' },
+				{ id: 'a-c', from: 'a', to: 'c' },
+				{ id: 'a-d', from: 'a', to: 'd' },
+			],
+		};
+		const base = nxmThreeByTwoInput();
+		const input: GridCellInput = {
+			...base,
+			cellByEndpointId: new Map([
+				['a', 'a'],
+				['b', 'd'],
+				['c', 'c'],
+				['d', 'f'],
+				['e', 'b'],
+				['f', 'e'],
+			]),
+		};
+		const prepared = prepareLayoutDocument(source);
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`${result.status}: ${result.reason}`);
+
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
+		expect(
+			[...result.allocation.busTrackByRelationId]
+				.sort((left, right) => left[1] - right[1])
+				.map(([relationId]) => relationId),
+		).toEqual(['a-b', 'a-d', 'a-c']);
+		const reallocation = result.witness.phases[0];
+		if (reallocation === undefined) throw new Error('Expected reallocation phase evidence.');
+		const canonicalBus = ['a-b', 'a-c', 'a-d'];
+		const canonicalBusRejections = result.witness.rejectedAlternatives.filter(
+			({ phaseId, busOrder }) =>
+				phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === canonicalBus.join(),
+		);
+		expect(canonicalBusRejections).toHaveLength(Number(BigInt(reallocation.total) / 6n));
+		expect(reallocation.explored).toBeGreaterThanOrEqual(canonicalBusRejections.length);
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+		const permuted = prepareLayoutDocument({
+			...source,
+			relations: [...source.relations].reverse(),
+		});
+		expect(
+			solveGridCellLayout(permuted.graph, permuted.measurements, {
+				...input,
+				cells: [...input.cells].reverse(),
+				cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+			}),
+		).toEqual(result);
+	});
+});
+
 describe('N by M grid composition', () => {
 	it.each(SHAPES)(
 		'places and routes the $name grid through the production composition and validators',
@@ -91,7 +148,7 @@ describe('N by M grid composition', () => {
 				id: CrossingAllocationPhaseId.Reallocate,
 				attempted: true,
 				explored: 256,
-				total: '432',
+				total: '2592',
 				exhaustive: false,
 				truncated: true,
 				selected: false,
@@ -100,7 +157,7 @@ describe('N by M grid composition', () => {
 				id: CrossingAllocationPhaseId.ExtraTrack,
 				attempted: true,
 				explored: 256,
-				total: '2304',
+				total: '13824',
 				exhaustive: false,
 				truncated: true,
 				selected: false,
@@ -109,7 +166,7 @@ describe('N by M grid composition', () => {
 				id: CrossingAllocationPhaseId.Bridge,
 				attempted: true,
 				explored: 1,
-				total: '432',
+				total: '2592',
 				exhaustive: false,
 				truncated: false,
 				selected: true,

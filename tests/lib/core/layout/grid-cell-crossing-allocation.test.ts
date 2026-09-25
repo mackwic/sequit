@@ -63,6 +63,12 @@ function gutterTracks(
 	);
 }
 
+function busOrder(allocation: GridCrossingAllocation): readonly string[] {
+	return [...allocation.busTrackByRelationId]
+		.sort(([, left], [, right]) => left - right)
+		.map(([relationId]) => relationId);
+}
+
 describe('grid crossing allocation', () => {
 	it('keeps the declared track formulas', () => {
 		const edges = gridRoutingEdges('grid', 2, 3);
@@ -138,6 +144,16 @@ describe('grid crossing allocation', () => {
 		]);
 	});
 
+	it('keeps the canonical bus order first, then explores every distinct bus order', () => {
+		const input = allocationInput();
+		const candidates = [...crossingAllocationCandidates(input)];
+		const orders = candidates.map(busOrder);
+
+		expect(orders[0]).toEqual([...CROSSING_IDS]);
+		expect(new Set(orders.map((order) => JSON.stringify(order))).size).toBe(6);
+		expect(orders).toContainEqual(['a-c', 'a-b', 'a-d']);
+	});
+
 	it('declares its candidates in order, without repeating an allocation', () => {
 		const input = allocationInput();
 		const candidates = [...crossingAllocationCandidates(input)];
@@ -155,6 +171,7 @@ describe('grid crossing allocation', () => {
 			]),
 		);
 		expect(new Set(keys).size).toBe(keys.length);
+		expect(candidates.length).toBeGreaterThan(GRID_CROSSING_REALLOCATION_BUDGET);
 		for (const allocation of candidates) {
 			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
 			expect(new Set(left).size).toBe(left.length);

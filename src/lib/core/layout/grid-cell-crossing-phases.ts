@@ -77,7 +77,7 @@ export function crossingAllocationCandidateCount(
 	input: CrossingAllocationInput,
 	extraTracks = 0,
 ): bigint {
-	let count = 1n;
+	let count = factorial(input.crossingIds.length);
 	for (const [column, ids] of input.gutterIds.entries())
 		count *= permutationCount(
 			ids.length,
