@@ -11,7 +11,6 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../lib/core/document/logic-document';
 import { orderKey } from '../../../../lib/core/document/order-key';
-import { applyLayoutPerformanceInsertion } from './apply-layout-performance-insertion';
 import type { LayoutPerformanceScenarioName } from './scenario-name';
 import type { LayoutPerformanceInsertion, LayoutPerformanceSnapshot } from './scenario-types';
 
@@ -35,6 +34,11 @@ export abstract class LayoutPerformanceScenarioBuilder {
 	abstract readonly name: LayoutPerformanceScenarioName;
 
 	private document: LogicDocument = initialDocument('long-queue');
+	private readonly groups: LogicGroup[] = [];
+	private readonly nodes: LogicNode[] = [];
+	private readonly junctions: LogicJunction[] = [];
+	private readonly relations: LogicRelation[] = [];
+	private readonly existingIds = new Set<string>();
 	private readonly ranks: string[][] = [];
 
 	buildInitialDocument(): LogicDocument {
@@ -154,13 +158,25 @@ export abstract class LayoutPerformanceScenarioBuilder {
 	}
 
 	private reset(): void {
-		this.document = initialDocument(this.name);
+		const initial = initialDocument(this.name);
+		this.groups.length = 0;
+		this.nodes.length = 0;
+		this.junctions.length = 0;
+		this.relations.length = 0;
+		this.existingIds.clear();
+		this.document = {
+			...initial,
+			groups: this.groups,
+			nodes: this.nodes,
+			junctions: this.junctions,
+			relations: this.relations,
+		};
 		this.ranks.length = 0;
 		this.resetTopology();
 	}
 
 	private insertNextNode(): LayoutPerformanceInsertion {
-		const nodeIndex = this.document.nodes.length;
+		const nodeIndex = this.nodes.length;
 		const insertion = this.insertNode(nodeIndex);
 		if (insertion.name !== this.name || insertion.nodeIndex !== nodeIndex) {
 			throw new Error(`Invalid insertion identity for ${this.name} at node ${nodeIndex}`);
@@ -169,23 +185,37 @@ export abstract class LayoutPerformanceScenarioBuilder {
 			throw new Error(`Insertion must add stable node id ${this.nodeId(nodeIndex)}`);
 		}
 
-		const beforeIds = new Set([
-			...this.document.groups.map(({ id }) => id),
-			...this.document.nodes.map(({ id }) => id),
-			...this.document.junctions.map(({ id }) => id),
-			...this.document.relations.map(({ id }) => id),
-		]);
+		const addedIds = new Set<string>();
 		for (const entity of [
 			insertion.node,
 			...insertion.groups,
 			...insertion.junctions,
 			...insertion.addedRelations,
 		]) {
-			if (beforeIds.has(entity.id)) throw new Error(`Duplicate insertion id: ${entity.id}`);
-			beforeIds.add(entity.id);
+			if (this.existingIds.has(entity.id) || addedIds.has(entity.id))
+				throw new Error(`Duplicate insertion id: ${entity.id}`);
+			addedIds.add(entity.id);
 		}
 
-		this.document = applyLayoutPerformanceInsertion(this.document, insertion);
+		if (insertion.removedRelationIds.length > 0) {
+			const removedRelationIds = new Set(insertion.removedRelationIds);
+			let retained = 0;
+			for (const relation of this.relations) {
+				if (removedRelationIds.has(relation.id)) {
+					this.existingIds.delete(relation.id);
+					continue;
+				}
+				this.relations[retained] = relation;
+				retained += 1;
+			}
+			this.relations.length = retained;
+		}
+
+		this.groups.push(...insertion.groups);
+		this.nodes.push(insertion.node);
+		this.junctions.push(...insertion.junctions);
+		this.relations.push(...insertion.addedRelations);
+		for (const id of addedIds) this.existingIds.add(id);
 		(this.ranks[insertion.nodeRank] ??= []).push(insertion.node.id);
 		return insertion;
 	}
