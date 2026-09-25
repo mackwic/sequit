@@ -208,7 +208,7 @@ function* permutationCandidates(
 	input: CrossingAllocationInput,
 	extraTracks: number,
 	excluded: Set<string>,
-): Generator<GridCrossingAllocation> {
+): Generator<GridCrossingAllocation, undefined, undefined> {
 	const factories: TrackOrderFactory[] = [
 		() => preferredTrackOrders(input.crossingIds, input.edges.topBus.capacity),
 		...input.gutterIds.map(
@@ -237,7 +237,7 @@ function* permutationCandidates(
  */
 export function* crossingAllocationCandidates(
 	input: CrossingAllocationInput,
-): Generator<GridCrossingAllocation> {
+): Generator<GridCrossingAllocation, undefined, undefined> {
 	const canonical = canonicalCrossingAllocation(input);
 	const excluded = new Set([geometryKey(input, canonical)]);
 	yield canonical;
@@ -253,7 +253,7 @@ export function* crossingAllocationCandidates(
 /** Only allocations using the newly reserved gutter track add a new route geometry. */
 export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
-): Generator<GridCrossingAllocation> {
+): Generator<GridCrossingAllocation, undefined, undefined> {
 	for (const allocation of permutationCandidates(input, 1, new Set())) {
 		const reservesNewTrack = allocation.gutterTrackByRelationId.some((tracks, column) => {
 			const reservedTrack = defined(input.edges.gutters[column]).capacity - 1;

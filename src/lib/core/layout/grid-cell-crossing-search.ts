@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
@@ -57,24 +58,18 @@ function searchGridCrossingPhase<Candidate>(
 	// The exact phase total makes the final boundary observable without pulling one item
 	// beyond the budget from a lazy candidate generator.
 	while (explored < phase.budget && BigInt(explored) < total) {
-		const next = iterator.next();
-		if (next.done === true) {
-			if (BigInt(explored) !== total)
-				throw new Error('Grid allocation phase ended before its declared total.');
-			exhaustive = true;
-			break;
-		}
+		const allocation = defined(iterator.next().value);
 		explored += 1;
-		const attempt = route(next.value, phase.acceptBridges);
+		const attempt = route(allocation, phase.acceptBridges);
 		if (attempt.failure === undefined) {
-			selection = { candidate: attempt.candidate, allocation: next.value };
+			selection = { candidate: attempt.candidate, allocation };
 			exhaustive = BigInt(explored) === total;
 			break;
 		}
 		failure = attempt.failure;
 		rejectedAlternatives.push({
 			phaseId: phase.id,
-			busOrder: [...next.value.busTrackByRelationId]
+			busOrder: [...allocation.busTrackByRelationId]
 				.sort((left, right) => left[1] - right[1])
 				.map(([relationId]) => relationId),
 			code: attempt.failure.code,
@@ -140,7 +135,5 @@ export function searchGridCrossingAllocations<Candidate>(
 	};
 	if (selection !== undefined && winningPhase !== undefined)
 		return { selected: selection, witness: { ...witness, winningPhase } };
-	if (failure === undefined)
-		throw new Error('Grid allocation search ended without a route diagnostic.');
-	return { failure, witness };
+	return { failure: defined(failure), witness };
 }

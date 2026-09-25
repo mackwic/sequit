@@ -33,7 +33,9 @@ export interface CrossingAllocationPhase {
 	readonly acceptBridges: boolean;
 	/** Exact number of distinct effective route geometries declared in this phase. */
 	readonly totalGeometries: (input: CrossingAllocationInput) => bigint;
-	readonly candidates: (input: CrossingAllocationInput) => Generator<GridCrossingAllocation>;
+	readonly candidates: (
+		input: CrossingAllocationInput,
+	) => Generator<GridCrossingAllocation, undefined, undefined>;
 }
 
 interface GridCrossingAllocationPhaseWitness {
