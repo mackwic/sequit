@@ -104,6 +104,11 @@ function declaredOrdinals(
 	return ordinals;
 }
 
+export interface TransverseRouteTrackOverrides {
+	readonly gutter?: RoutingTrackAllocation;
+	readonly rail?: RoutingTrackAllocation;
+}
+
 /**
  * The transverse allocation: every plan owns its declared track on the shared gutter corridor and
  * on the lane rails. The canonical order declares the identifier rank the frame has always placed;
@@ -115,7 +120,10 @@ export function allocateTransverseRoutes(
 	input: SharedLaneInput,
 	frame: TransverseLaneFrame,
 	order: TransverseRouteOrder,
+	overrides?: TransverseRouteTrackOverrides,
 ): TransverseRouteAllocation {
+	if (overrides?.gutter !== undefined && overrides.rail !== undefined)
+		return { gutter: overrides.gutter, rail: overrides.rail };
 	const ordinals = declaredOrdinals(input, order);
 	const ranked = input.plans.map((plan) => ({ plan, ordinal: defined(ordinals.get(plan.id)) }));
 	const demandOf = (plan: SharedLanePlan, declaredOrder: number) => ({
@@ -125,14 +133,18 @@ export function allocateTransverseRoutes(
 		order: declaredOrder,
 	});
 	return {
-		gutter: allocateNestedTracks(
-			frame.gutterEdge,
-			ranked.map(({ plan, ordinal }) => demandOf(plan, ordinal.gutter)),
-		),
-		rail: allocateNestedTracks(
-			frame.railEdge,
-			ranked.map(({ plan, ordinal }) => demandOf(plan, ordinal.rail)),
-		),
+		gutter:
+			overrides?.gutter ??
+			allocateNestedTracks(
+				frame.gutterEdge,
+				ranked.map(({ plan, ordinal }) => demandOf(plan, ordinal.gutter)),
+			),
+		rail:
+			overrides?.rail ??
+			allocateNestedTracks(
+				frame.railEdge,
+				ranked.map(({ plan, ordinal }) => demandOf(plan, ordinal.rail)),
+			),
 	};
 }
 

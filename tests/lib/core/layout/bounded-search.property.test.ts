@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	bestWithinBudget,
+	bestWithinBudgetStream,
 	boundedCounter,
 	type BoundedSearchResult,
 	firstValidDepthFirst,
@@ -153,6 +154,55 @@ describe('bounded best search', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
+	});
+
+	it('keeps the historical baseline when a lazy stream is cut after it', () => {
+		const evaluated: string[] = [];
+		function* alternatives() {
+			yield { id: 'canonical', score: 9 };
+			yield { id: 'shorter', score: 5 };
+			yield { id: 'best', score: 1 };
+		}
+		const result = bestWithinBudgetStream({
+			alternatives: alternatives(),
+			budget: 1,
+			total: '3',
+			evaluate: (candidate) => {
+				evaluated.push(candidate.id);
+				return candidate;
+			},
+			better: (candidate, incumbent) => candidate.score < incumbent.score,
+		});
+		expect(evaluated).toEqual(['canonical']);
+		expect(result).toEqual({
+			attempted: 1,
+			total: '3',
+			exhaustive: false,
+			truncated: true,
+			incumbent: { id: 'canonical', score: 9 },
+		});
+	});
+
+	it('keeps the exact best valid stream candidate and the first candidate on ties', () => {
+		function* alternatives() {
+			yield { id: 'canonical', score: 9 };
+			yield { id: 'shorter', score: 5 };
+			yield { id: 'same-score', score: 5 };
+		}
+		const result = bestWithinBudgetStream({
+			alternatives: alternatives(),
+			budget: 3,
+			total: '3',
+			evaluate: (candidate) => candidate,
+			better: (candidate, incumbent) => candidate.score < incumbent.score,
+		});
+		expect(result).toEqual({
+			attempted: 3,
+			total: '3',
+			exhaustive: true,
+			truncated: false,
+			incumbent: { id: 'shorter', score: 5 },
+		});
 	});
 
 	it('accepts non-negative safe integers as budgets', () => {

@@ -61,6 +61,50 @@ export function bestWithinBudget<Alternative, Evaluation, Selection>(
 	return { ...result, incumbent };
 }
 
+export interface StreamBestSearchInput<Alternative, Selection> {
+	readonly alternatives: Iterable<Alternative>;
+	readonly budget: number;
+	/** Exact decimal cardinality, allowing products larger than Number.MAX_SAFE_INTEGER. */
+	readonly total: string;
+	readonly evaluate: (alternative: Alternative) => Selection | undefined;
+	readonly better: (candidate: Selection, incumbent: Selection) => boolean;
+}
+
+export interface StreamBestSearchResult<Selection> {
+	readonly attempted: number;
+	readonly total: string;
+	readonly exhaustive: boolean;
+	readonly truncated: boolean;
+	readonly incumbent?: Selection;
+}
+
+/** Scores a lazy prefix without allocating the candidate product or its evaluation list. */
+export function bestWithinBudgetStream<Alternative, Selection>(
+	input: StreamBestSearchInput<Alternative, Selection>,
+): StreamBestSearchResult<Selection> {
+	const counter = boundedCounter(validatedSearchBudget(input.budget));
+	let incumbent: Selection | undefined;
+	let exhaustive = true;
+	for (const alternative of input.alternatives) {
+		if (!counter.take()) {
+			exhaustive = false;
+			break;
+		}
+		const candidate = input.evaluate(alternative);
+		if (candidate !== undefined) {
+			if (incumbent === undefined || input.better(candidate, incumbent)) incumbent = candidate;
+		}
+	}
+	const result: StreamBestSearchResult<Selection> = {
+		attempted: counter.attempted,
+		total: input.total,
+		exhaustive,
+		truncated: !exhaustive,
+	};
+	if (incumbent === undefined) return result;
+	return { ...result, incumbent };
+}
+
 /** One bounded counter's evidence: the alternatives it spent and whether it refused one. */
 export interface SearchBudgetEvidence {
 	attempted: number;

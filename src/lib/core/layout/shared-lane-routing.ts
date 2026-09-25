@@ -66,6 +66,11 @@ export enum ParallelRouteOrder {
 	ReservedTopPassage = 'reserved-top-passage',
 }
 
+export interface ParallelRouteTrackOverrides {
+	readonly gutter?: RoutingTrackAllocation;
+	readonly railTrackByRelationId?: ReadonlyMap<string, number>;
+}
+
 /**
  * The canonical parallel allocation: every plan owns its canonical gutter track — both gutters of a
  * plan share the ordinal, as the frame has always placed them — and every relation that crosses a
@@ -76,6 +81,7 @@ export enum ParallelRouteOrder {
 export function allocateParallelRoutes(
 	input: SharedLaneInput,
 	frame: SharedLaneFrame,
+	overrides?: ParallelRouteTrackOverrides,
 ): ParallelRouteAllocation {
 	const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
 		relationId: plan.id,
@@ -83,18 +89,27 @@ export function allocateParallelRoutes(
 		end: frame.contentLongEnd,
 		order,
 	}));
-	return {
-		gutter: allocateNestedTracks(
+	const gutter =
+		overrides?.gutter ??
+		allocateNestedTracks(
 			frame.gutterEdge,
 			input.plans.map((plan) => ({
 				relationId: plan.id,
 				start: frame.contentLongStart,
 				end: frame.contentLongEnd,
 			})),
-		),
-		exteriorRail: allocateNestedTracks(frame.exteriorRailEdge, crossingDemands),
-		topExteriorRail: allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands),
-	};
+		);
+	const railTracks = overrides?.railTrackByRelationId;
+	let exteriorRail: RoutingTrackAllocation;
+	let topExteriorRail: RoutingTrackAllocation;
+	if (railTracks === undefined) {
+		exteriorRail = allocateNestedTracks(frame.exteriorRailEdge, crossingDemands);
+		topExteriorRail = allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands);
+	} else {
+		exteriorRail = { edge: frame.exteriorRailEdge, trackByRelationId: railTracks };
+		topExteriorRail = { edge: frame.topExteriorRailEdge, trackByRelationId: railTracks };
+	}
+	return { gutter, exteriorRail, topExteriorRail };
 }
 
 function adjacentPoints(
