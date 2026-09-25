@@ -84,6 +84,34 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 		expect(validatedBridges(resolution.selection.layout.relations)).toEqual([]);
 	});
 
+	it('selects a real bridge when only detour route length exceeds its tolerance', () => {
+		const fixture = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse');
+		const created = createGraph(fixture.document);
+		if (!created.ok) throw new Error('Expected the real 3+1 fixture graph');
+		const measurements = {
+			...fixture.measurements,
+			nodes: new Map(
+				[...fixture.measurements.nodes.keys()].map((id) => [id, { width: 96, height: 400 }]),
+			),
+		};
+		const resolution = resolveIndependentAdjacentContract(
+			created.value,
+			topologicallyRank(created.value),
+			measurements,
+		);
+		expect(resolution.status).toBe(IndependentAdjacentStatus.Selected);
+		if (resolution.status !== IndependentAdjacentStatus.Selected) return;
+		const costs = resolution.comparison;
+		if (costs === undefined) throw new Error('Expected both measured issue costs');
+		expect(costs.detour.area / costs.bridge.area - 1).toBeLessThanOrEqual(DETOUR_AREA_TOLERANCE);
+		expect(costs.detour.routeLength / costs.bridge.routeLength - 1).toBeGreaterThan(
+			DETOUR_LENGTH_TOLERANCE,
+		);
+		expect(costs.selected).toBe(IndependentAdjacentIssue.Bridge);
+		expect(resolution.selection.bridged).toBe(true);
+		expect(validatedBridges(resolution.selection.layout.relations)).not.toHaveLength(0);
+	});
+
 	it('renders each validated strict crossing as an actual canvas bridge arc', async () => {
 		const comparison = await compareAdjacentBridgeAndDetour();
 		for (const result of [comparison.dedicated, comparison.independent]) {
