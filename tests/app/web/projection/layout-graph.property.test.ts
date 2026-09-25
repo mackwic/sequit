@@ -13,6 +13,11 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
+import {
+	PORT_INSET,
+	PORT_SPACING,
+	RAIL_SPACING,
+} from '../../../../src/lib/core/layout/layout-settings';
 import { richAcyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
@@ -203,11 +208,74 @@ function canonicalIds(layout: LayoutResult): object {
 	};
 }
 
+function bypassedCorridorEndpoints(document: LogicDocument): ReadonlySet<string> {
+	const groupById = new Map(document.nodes.map(({ id, groupId }) => [id, groupId] as const));
+	const outgoing = new Map<string, string[]>();
+	for (const { from, to } of document.relations) {
+		const targets = outgoing.get(from) ?? [];
+		targets.push(to);
+		outgoing.set(from, targets);
+	}
+
+	const endpoints = new Set<string>();
+	for (const bypass of document.relations) {
+		if (!groupById.has(bypass.from) || !groupById.has(bypass.to)) continue;
+		const path = [bypass.from];
+		const visited = new Set(path);
+		let current = bypass.from;
+		let validChain = true;
+		while (current !== bypass.to) {
+			const targets = outgoing.get(current) ?? [];
+			let next: string | undefined;
+			if (current === bypass.from) {
+				if (targets.length !== 2) {
+					validChain = false;
+					break;
+				}
+				next = targets.find((id) => id !== bypass.to);
+			} else {
+				if (targets.length !== 1) {
+					validChain = false;
+					break;
+				}
+				next = targets[0];
+			}
+			if (next === undefined || visited.has(next)) {
+				validChain = false;
+				break;
+			}
+			path.push(next);
+			visited.add(next);
+			current = next;
+		}
+		if (!validChain || path.length < 3 || (outgoing.get(bypass.to)?.length ?? 0) !== 0) continue;
+
+		const pathIds = new Set(path);
+		if (path.some((id) => !groupById.has(id))) continue;
+		const first = path[0];
+		if (first === undefined) continue;
+		const groupId = groupById.get(first);
+		if (path.some((id) => groupById.get(id) !== groupId)) continue;
+		const connectedRelations = document.relations.filter(
+			({ from, to }) => pathIds.has(from) || pathIds.has(to),
+		);
+		if (
+			connectedRelations.length !== path.length ||
+			connectedRelations.some(({ from, to }) => !pathIds.has(from) || !pathIds.has(to))
+		)
+			continue;
+		endpoints.add(bypass.from);
+		endpoints.add(bypass.to);
+	}
+	return endpoints;
+}
+
 function expectMeasuredNode(
 	layout: LayoutResult,
 	id: string,
 	measured: Size,
 	direction: LayoutDirection,
+	bypassed: boolean,
 ): void {
 	const box = boundsFor(layout, id);
 	const vertical = [LayoutDirection.TopToBottom, LayoutDirection.BottomToTop].includes(direction);
@@ -238,12 +306,13 @@ function expectMeasuredNode(
 	const reserved = Math.max(content, required);
 	if (vertical) expect(box.height).toBe(measured.height);
 	else expect(box.width).toBe(measured.width);
-	// A bypassed chain may reserve a side corridor beyond the face-only port extent.
 	if (count === 1) expect([content, reserved]).toContain(actual);
-	else
-		expect(actual, 'Measured node dimensions must cover required clearance').toBeGreaterThanOrEqual(
-			reserved,
-		);
+	else {
+		const corridorExtent = 2 * (PORT_SPACING + RAIL_SPACING + PORT_INSET);
+		let expected = reserved;
+		if (bypassed) expected = Math.max(reserved, corridorExtent);
+		expect(actual, 'Measured node dimensions must match required clearance').toBe(expected);
+	}
 }
 
 describe('generated layouts', () => {
@@ -433,6 +502,7 @@ describe('generated layouts', () => {
 					});
 					expect(canonicalIds(scaled.layout)).toEqual(canonicalIds(original.layout));
 					const originalBounds = boundsById(original.layout);
+					const bypassedEndpoints = bypassedCorridorEndpoints(generated.document);
 					for (const node of [...generated.document.nodes, ...generated.document.junctions]) {
 						const measured = generated.nodes[node.id] ?? generated.junctions[node.id];
 						if (measured === undefined) throw new Error(`Missing node measurement: ${node.id}`);
@@ -441,12 +511,14 @@ describe('generated layouts', () => {
 							node.id,
 							measured,
 							generated.document.layout.direction,
+							bypassedEndpoints.has(node.id),
 						);
 						expectMeasuredNode(
 							scaled.layout,
 							node.id,
 							{ width: measured.width * factor, height: measured.height * factor },
 							generated.document.layout.direction,
+							bypassedEndpoints.has(node.id),
 						);
 					}
 					const parentGroupIds = new Set(
