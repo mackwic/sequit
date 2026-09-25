@@ -49,7 +49,7 @@ function assignmentKey(domain: TrackAssignmentDomain, allocation: RoutingTrackAl
 }
 
 /** Exact number of injective assignments of the active routes to their used tracks. */
-export function trackAssignmentCount(domain: TrackAssignmentDomain): bigint {
+function trackAssignmentCount(domain: TrackAssignmentDomain): bigint {
 	const ids = domainRelationIds(domain);
 	let count = 1n;
 	for (let index = 0; index < ids.length; index += 1) count *= BigInt(domain.trackCount - index);

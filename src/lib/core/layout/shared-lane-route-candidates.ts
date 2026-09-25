@@ -20,7 +20,7 @@ import {
 	routeSharedLanes,
 } from './shared-lane-routing';
 
-export interface SharedLaneAllocationPassWitness {
+interface SharedLaneAllocationPassWitness {
 	readonly acceptBridges: boolean;
 	readonly attempted: number;
 	/** Exact decimal count, including products larger than Number.MAX_SAFE_INTEGER. */
@@ -62,7 +62,7 @@ export interface RankedParallelSelection<Selection> {
 	readonly bends: number;
 }
 
-export function parallelOrders(
+function parallelOrders(
 	contracts: readonly RegionIncidentContract[],
 ): readonly ParallelRouteOrder[] {
 	if (contracts.length === 0)

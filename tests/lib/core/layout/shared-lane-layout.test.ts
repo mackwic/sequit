@@ -44,6 +44,13 @@ import {
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
 import {
+	type ParallelRouteCandidate,
+	parallelRouteCandidates,
+	parallelSelectionIsBetter,
+	parallelStrategyPlans,
+	type RankedParallelSelection,
+} from '../../../../src/lib/core/layout/shared-lane-route-candidates';
+import {
 	allocateParallelRoutes,
 	ParallelRouteOrder,
 	routeSharedLanes,
@@ -600,6 +607,128 @@ describe('shared lane layout', () => {
 			),
 			{ numRuns: 100 },
 		);
+	});
+
+	it('orders equal lane candidates by route costs, history, and canonical identity', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'a-to-b', from: 'a1', to: 'b1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const routing = prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {});
+		const input = defined(routing.input);
+		const ports = planSharedLanePorts(input);
+		const plans = parallelStrategyPlans(input, ports, []);
+		let baseline: ParallelRouteCandidate | undefined;
+		for (const candidate of parallelRouteCandidates(input, plans, false)) {
+			baseline = candidate;
+			break;
+		}
+		if (baseline === undefined) throw new Error('Expected a baseline lane route candidate.');
+		type Metrics = Pick<RankedParallelSelection<undefined>, 'bridges' | 'length' | 'bends'>;
+		const rank = (
+			candidate: ParallelRouteCandidate,
+			metrics: Partial<Metrics> = {},
+		): RankedParallelSelection<undefined> => ({
+			selected: undefined,
+			candidate,
+			bridges: metrics.bridges ?? 0,
+			length: metrics.length ?? 0,
+			bends: metrics.bends ?? 0,
+		});
+		const betterThan = (
+			candidate: Partial<ParallelRouteCandidate>,
+			candidateMetrics: Partial<Metrics>,
+			incumbent: Partial<ParallelRouteCandidate>,
+			incumbentMetrics: Partial<Metrics>,
+		) =>
+			parallelSelectionIsBetter(
+				rank({ ...baseline, ...candidate }, candidateMetrics),
+				rank({ ...baseline, ...incumbent }, incumbentMetrics),
+			);
+
+		expect(
+			betterThan({}, { bridges: 0, length: 100 }, { historicalRank: -1 }, { bridges: 1 }),
+		).toBe(true);
+		expect(
+			betterThan({ historicalRank: -1 }, { bridges: 1 }, {}, { bridges: 0, length: 100 }),
+		).toBe(false);
+		expect(betterThan({}, { length: 10, bends: 10 }, {}, { length: 11 })).toBe(true);
+		expect(betterThan({}, { length: 11 }, {}, { length: 10, bends: 10 })).toBe(false);
+		expect(betterThan({}, { bends: 0 }, {}, { bends: 1 })).toBe(true);
+		expect(betterThan({}, { bends: 1 }, {}, { bends: 0 })).toBe(false);
+		expect(betterThan({ historicalRank: 0 }, {}, { historicalRank: 1 }, {})).toBe(true);
+		expect(betterThan({ historicalRank: 1 }, {}, { historicalRank: 0 }, {})).toBe(false);
+		expect(betterThan({ historicalRank: 0 }, {}, { historicalRank: undefined }, {})).toBe(true);
+		expect(betterThan({ historicalRank: undefined }, {}, { historicalRank: 0 }, {})).toBe(false);
+		expect(
+			betterThan(
+				{ historicalRank: undefined, allocationKey: 'a' },
+				{},
+				{ historicalRank: undefined, allocationKey: 'b' },
+				{},
+			),
+		).toBe(true);
+		expect(
+			betterThan(
+				{ historicalRank: undefined, allocationKey: 'b' },
+				{},
+				{ historicalRank: undefined, allocationKey: 'a' },
+				{},
+			),
+		).toBe(false);
+		expect(
+			betterThan(
+				{ historicalRank: undefined, allocationKey: 'same', strategyId: 'a' },
+				{},
+				{ historicalRank: undefined, allocationKey: 'same', strategyId: 'b' },
+				{},
+			),
+		).toBe(true);
+		expect(
+			betterThan(
+				{ historicalRank: undefined, allocationKey: 'same', strategyId: 'b' },
+				{},
+				{ historicalRank: undefined, allocationKey: 'same', strategyId: 'a' },
+				{},
+			),
+		).toBe(false);
+		expect(
+			betterThan(
+				{
+					historicalRank: undefined,
+					allocationKey: 'same',
+					strategyId: 'same',
+					candidateId: 'a',
+				},
+				{},
+				{
+					historicalRank: undefined,
+					allocationKey: 'same',
+					strategyId: 'same',
+					candidateId: 'b',
+				},
+				{},
+			),
+		).toBe(true);
+		expect(
+			betterThan(
+				{
+					historicalRank: undefined,
+					allocationKey: 'same',
+					strategyId: 'same',
+					candidateId: 'b',
+				},
+				{},
+				{
+					historicalRank: undefined,
+					allocationKey: 'same',
+					strategyId: 'same',
+					candidateId: 'a',
+				},
+				{},
+			),
+		).toBe(false);
+		expect(betterThan({ candidateId: 'same' }, {}, { candidateId: 'same' }, {})).toBe(false);
 	});
 
 	it('selects a three-dependency crossing through validated bridges in the second pass', () => {
