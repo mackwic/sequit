@@ -238,9 +238,12 @@ function expectMeasuredNode(
 	const reserved = Math.max(content, required);
 	if (vertical) expect(box.height).toBe(measured.height);
 	else expect(box.width).toBe(measured.width);
-	// The default central port may remain unreserved; additional ports require their full space.
+	// A bypassed chain may reserve a side corridor beyond the face-only port extent.
 	if (count === 1) expect([content, reserved]).toContain(actual);
-	else expect(actual).toBe(reserved);
+	else
+		expect(actual, 'Measured node dimensions must cover required clearance').toBeGreaterThanOrEqual(
+			reserved,
+		);
 }
 
 describe('generated layouts', () => {
@@ -416,7 +419,7 @@ describe('generated layouts', () => {
 		);
 	});
 
-	it('scales content while preserving topology and fixed port clearances', async () => {
+	it('scales content while preserving topology and required port clearances', async () => {
 		await fc.assert(
 			fc.asyncProperty(
 				layoutCaseArbitrary,
