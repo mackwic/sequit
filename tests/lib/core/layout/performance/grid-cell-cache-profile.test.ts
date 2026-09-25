@@ -104,7 +104,7 @@ it('profiles root recomposition through distinct local group measurement edits',
 	const { graph, measurements } = prepareGrid();
 	const input = gridInput();
 	const cache = new RegionLocalLayoutCache();
-	const initial = solveGridCellLayout(graph, measurements, input, cache);
+	const initial = solveGridCellLayout(graph, measurements, input, { cache });
 	expect(initial.status).toBe(GridCellLayoutStatus.Selected);
 	const cached: number[] = [];
 	const cold: number[] = [];
@@ -113,7 +113,7 @@ it('profiles root recomposition through distinct local group measurement edits',
 	for (let index = 0; index < warmup + samples; index += 1) {
 		const edited = withGroupWidth(measurements, 621 + index);
 		const cachedStart = performance.now();
-		const incremental = solveGridCellLayout(graph, edited, input, cache);
+		const incremental = solveGridCellLayout(graph, edited, input, { cache });
 		const cachedDuration = performance.now() - cachedStart;
 		const coldStart = performance.now();
 		const fresh = solveGridCellLayout(graph, edited, input);
@@ -140,7 +140,7 @@ it('profiles root recomposition through distinct local group measurement edits',
 			const retained = new RegionLocalLayoutCache();
 			for (let variant = 0; variant < 12; variant += 1) {
 				const edited = withGroupWidth(measurements, 1000 + cacheIndex * 12 + variant);
-				const result = solveGridCellLayout(graph, edited, input, retained);
+				const result = solveGridCellLayout(graph, edited, input, { cache: retained });
 				expect(result.status).toBe(GridCellLayoutStatus.Selected);
 			}
 			expect(retained.stats.entries).toBe(12);

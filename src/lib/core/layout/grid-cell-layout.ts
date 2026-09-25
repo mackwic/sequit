@@ -64,7 +64,8 @@ function unknown(
 	reason: string,
 	evidence?: Extract<RegionSearchEvidence, { readonly provenance: RegionSearchProvenance.Grid }>,
 ): GridCellLayoutAttempt {
-	return { status: GridCellLayoutStatus.Unknown, reason, ...evidence };
+	if (evidence !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, ...evidence };
+	return { status: GridCellLayoutStatus.Unknown, reason };
 }
 
 function offset(point: Point, delta: Point): Point {
@@ -82,7 +83,7 @@ function moveRelation(relation: LayoutRelation, delta: Point): LayoutRelation {
 /** Bounded root grid proof. Each cell gets an independent graph, rank set, and dedicated layout. */
 export interface GridCellLayoutOptions {
 	readonly cache?: RegionLocalLayoutCache;
-	readonly allocationBudgets?: GridCrossingAllocationBudgets;
+	readonly allocationBudgets?: GridCrossingAllocationBudgets | undefined;
 }
 
 export function solveGridCellLayout(
@@ -124,7 +125,7 @@ interface GridCellDispositionInput {
 	readonly input: GridCellInput;
 	readonly model: RegionCompositionModel;
 	readonly children: readonly SolvedGridCell[];
-	readonly allocationBudgets?: GridCrossingAllocationBudgets;
+	readonly allocationBudgets?: GridCrossingAllocationBudgets | undefined;
 }
 
 /** Place already solved child leaves and compose the crossings owned by this grid region. */
@@ -151,7 +152,7 @@ interface PlacedGridCellInput {
 	readonly input: GridCellInput;
 	readonly model: RegionCompositionModel;
 	readonly disposition: GridCellDisposition;
-	readonly allocationBudgets?: GridCrossingAllocationBudgets;
+	readonly allocationBudgets?: GridCrossingAllocationBudgets | undefined;
 }
 
 interface RoutedGridCrossing {

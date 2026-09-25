@@ -27,7 +27,7 @@ function selected(
 	input: GridCellInput,
 	cache: RegionLocalLayoutCache,
 ) {
-	const incremental = solveGridCellLayout(graph, measurements, input, cache);
+	const incremental = solveGridCellLayout(graph, measurements, input, { cache });
 	expect(incremental).toEqual(solveGridCellLayout(graph, measurements, input));
 	if (incremental.status !== GridCellLayoutStatus.Selected)
 		throw new Error(`Expected selected grid: ${incremental.status}: ${incremental.reason}`);
