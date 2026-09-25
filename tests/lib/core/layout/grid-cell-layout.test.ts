@@ -26,6 +26,7 @@ import {
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
@@ -434,7 +435,7 @@ describe('bounded two by two grid composition', () => {
 		);
 	});
 
-	it('reports unresolved geometry when a local sibling blocks the cell exit', () => {
+	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
 		const prepared = prepareGrid();
 		const input = gridInput();
 		const blockedFlow: LayoutConfiguration = {
@@ -445,27 +446,63 @@ describe('bounded two by two grid composition', () => {
 			if (cell.id !== 'a') return cell;
 			return { ...cell, layout: blockedFlow };
 		});
-		const attempt = solveGridCellLayout(prepared.graph, prepared.measurements, {
-			...input,
-			cells,
-		});
+		const attempt = solveGridCellLayout(
+			prepared.graph,
+			prepared.measurements,
+			{ ...input, cells },
+			{ allocationBudgets: { reallocate: 1, extraTrack: 1, bridge: 1 } },
+		);
 		if (attempt.status !== GridCellLayoutStatus.Unknown)
 			throw new Error('The blocked crossing should be reported as unknown.');
+		if (attempt.provenance !== RegionSearchProvenance.Grid)
+			throw new Error('Expected grid allocation evidence.');
 		const witness = attempt.witness;
-		expect(attempt.code).toBe('grid-crossing-enters-element');
-		expect(witness?.attempted).toBeGreaterThan(0);
-		expect(witness?.exhaustive).toBe(true);
+		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
+		expect(witness.attempted).toBe(3);
+		expect(witness.exhaustive).toBe(false);
 		expect(
-			witness?.rejectedAlternatives.some(
+			witness.rejectedAlternatives.some(
 				({ phaseId, code }) =>
 					phaseId === CrossingAllocationPhaseId.Reallocate &&
 					code === RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 			),
 		).toBe(true);
-		expect(witness?.phases.map(({ id, attempted }) => [id, attempted])).toEqual([
-			[CrossingAllocationPhaseId.Reallocate, true],
-			[CrossingAllocationPhaseId.ExtraTrack, true],
-			[CrossingAllocationPhaseId.Bridge, true],
+		expect(
+			witness.phases.map(
+				({ id, attempted, exploredGeometries, totalGeometries, exhaustive, truncated }) => ({
+					id,
+					attempted,
+					exploredGeometries,
+					totalGeometries: Number(totalGeometries),
+					exhaustive,
+					truncated,
+				}),
+			),
+		).toEqual([
+			{
+				id: CrossingAllocationPhaseId.Reallocate,
+				attempted: true,
+				exploredGeometries: 1,
+				totalGeometries: 1,
+				exhaustive: true,
+				truncated: false,
+			},
+			{
+				id: CrossingAllocationPhaseId.ExtraTrack,
+				attempted: true,
+				exploredGeometries: 1,
+				totalGeometries: 3,
+				exhaustive: false,
+				truncated: true,
+			},
+			{
+				id: CrossingAllocationPhaseId.Bridge,
+				attempted: true,
+				exploredGeometries: 1,
+				totalGeometries: 1,
+				exhaustive: true,
+				truncated: false,
+			},
 		]);
 	});
 });

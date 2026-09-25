@@ -14,7 +14,7 @@ import {
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
-import type { GridCrossingAllocationWitness } from './grid-cell-crossing-phases';
+import type { GridCrossingAllocationBudgets } from './grid-cell-crossing-phases';
 import {
 	crossingPortalSpans,
 	crossingRoute,
@@ -52,11 +52,9 @@ import {
 	RegionRelationKind,
 } from './region-composition-model';
 import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
-import type {
-	RegionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from './region-geometry-diagnostic';
+import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import type { RegionLocalLayoutCache } from './region-local-cache';
+import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };
@@ -64,10 +62,7 @@ function unsupported(reason: string): GridCellLayoutAttempt {
 
 function unknown(
 	reason: string,
-	evidence?: {
-		readonly code: RegionGeometryDiagnosticCode;
-		readonly witness: GridCrossingAllocationWitness;
-	},
+	evidence?: Extract<RegionSearchEvidence, { readonly provenance: RegionSearchProvenance.Grid }>,
 ): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unknown, reason, ...evidence };
 }
@@ -85,12 +80,18 @@ function moveRelation(relation: LayoutRelation, delta: Point): LayoutRelation {
 }
 
 /** Bounded root grid proof. Each cell gets an independent graph, rank set, and dedicated layout. */
+export interface GridCellLayoutOptions {
+	readonly cache?: RegionLocalLayoutCache;
+	readonly allocationBudgets?: GridCrossingAllocationBudgets;
+}
+
 export function solveGridCellLayout(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	input: GridCellInput,
-	cache?: RegionLocalLayoutCache,
+	options: GridCellLayoutOptions = {},
 ): GridCellLayoutAttempt {
+	const { cache, allocationBudgets } = options;
 	const grid = normalize(graph, input);
 	if (typeof grid === 'string') return unsupported(grid);
 	const normalized = normalizeGridCellRegionModel(graph, input, grid);
@@ -115,16 +116,25 @@ export function solveGridCellLayout(
 		cache,
 	});
 	if (children === undefined) return unknown('A child graph could not be solved independently.');
-	return composeGridCellDisposition(graph, input, model, children);
+	return composeGridCellDisposition({ graph, input, model, children, allocationBudgets });
+}
+
+interface GridCellDispositionInput {
+	readonly graph: LogicGraph;
+	readonly input: GridCellInput;
+	readonly model: RegionCompositionModel;
+	readonly children: readonly SolvedGridCell[];
+	readonly allocationBudgets?: GridCrossingAllocationBudgets;
 }
 
 /** Place already solved child leaves and compose the crossings owned by this grid region. */
-export function composeGridCellDisposition(
-	graph: LogicGraph,
-	input: GridCellInput,
-	model: RegionCompositionModel,
-	children: readonly SolvedGridCell[],
-): GridCellLayoutAttempt {
+export function composeGridCellDisposition({
+	graph,
+	input,
+	model,
+	children,
+	allocationBudgets,
+}: GridCellDispositionInput): GridCellLayoutAttempt {
 	const margin = gridMargin(
 		gridRoutingEdges(
 			input.rootId,
@@ -133,7 +143,7 @@ export function composeGridCellDisposition(
 		),
 	);
 	const disposition = layoutGridCellDisposition(children, input, margin);
-	return routePlacedGridCellDisposition({ graph, input, model, disposition });
+	return routePlacedGridCellDisposition({ graph, input, model, disposition, allocationBudgets });
 }
 
 interface PlacedGridCellInput {
@@ -141,6 +151,7 @@ interface PlacedGridCellInput {
 	readonly input: GridCellInput;
 	readonly model: RegionCompositionModel;
 	readonly disposition: GridCellDisposition;
+	readonly allocationBudgets?: GridCrossingAllocationBudgets;
 }
 
 interface RoutedGridCrossing {
@@ -268,7 +279,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		...allocationInput,
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
-	const search = searchGridCrossingAllocations(withSpans, routed);
+	const search = searchGridCrossingAllocations(withSpans, routed, placed.allocationBudgets);
 	if ('selected' in search)
 		return {
 			...search.selected.candidate,
@@ -276,6 +287,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			witness: search.witness,
 		} satisfies GridCellAllocationSelected;
 	return unknown(search.failure.message, {
+		provenance: RegionSearchProvenance.Grid,
 		code: search.failure.code,
 		witness: search.witness,
 	});

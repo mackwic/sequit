@@ -28,6 +28,7 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from '../../../../src/lib/core/layout/region-recursive-outcome';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
@@ -119,13 +120,17 @@ describe('recursive composition outcome', () => {
 			leafErrorAttempt(
 				new UnknownRegionLeafLayoutError(
 					'All routes blocked.',
-					RegionIncidentUnknownCode.NoValidAlternative,
-					blockedLeafWitness,
+					{
+						provenance: RegionSearchProvenance.Incident,
+						code: RegionIncidentUnknownCode.NoValidAlternative,
+						witness: blockedLeafWitness,
+					},
 					'left',
 				),
 			),
 		).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
+			provenance: RegionSearchProvenance.Incident,
 			code: RegionIncidentUnknownCode.NoValidAlternative,
 			witness: blockedLeafWitness,
 			regionId: 'left',
@@ -138,11 +143,11 @@ describe('recursive composition outcome', () => {
 		expect(
 			retryLeafContractFailure(
 				state,
-				new UnknownRegionLeafLayoutError(
-					'No alternative.',
-					RegionIncidentUnknownCode.NoValidAlternative,
-					blockedLeafWitness,
-				),
+				new UnknownRegionLeafLayoutError('No alternative.', {
+					provenance: RegionSearchProvenance.Incident,
+					code: RegionIncidentUnknownCode.NoValidAlternative,
+					witness: blockedLeafWitness,
+				}),
 			),
 		).toBe(true);
 		expect(state.dispositionSides.get('branch')).toBe(RegionPortalSide.Top);

@@ -169,7 +169,12 @@ describe('recursive grid boundaries', () => {
 				ranks: defined(region.localRanks),
 			};
 		});
-		const composed = composeGridCellDisposition(graph.value, gridInput, modelBuild.model, children);
+		const composed = composeGridCellDisposition({
+			graph: graph.value,
+			input: gridInput,
+			model: modelBuild.model,
+			children,
+		});
 		if (composed.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`Expected a selected grid: ${composed.status}: ${composed.reason}`);
 		expect(validateGridCellGeometry(composed, graph.value, gridInput)).toBeUndefined();

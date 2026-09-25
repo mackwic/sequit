@@ -51,7 +51,4 @@ export interface GridCellAllocationSelected extends GridCellSelected {
 	readonly witness: GridCrossingAllocationWitness;
 }
 
-export type GridCellLayoutAttempt = RegionCompositionAttempt<
-	GridCellAllocationSelected,
-	GridCrossingAllocationWitness
->;
+export type GridCellLayoutAttempt = RegionCompositionAttempt<GridCellAllocationSelected>;

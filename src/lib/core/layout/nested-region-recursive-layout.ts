@@ -42,6 +42,7 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from './region-recursive-outcome';
+import { RegionSearchProvenance } from './region-search-evidence';
 
 function solveLeaf(
 	context: RecursiveContext,
@@ -61,8 +62,7 @@ function solveLeaf(
 	if (solved.status === RegionCompositionStatus.Unknown)
 		throw new UnknownRegionLeafLayoutError(
 			`Region ${regionId}: ${solved.reason}`,
-			solved.code,
-			solved.witness,
+			{ provenance: RegionSearchProvenance.Incident, code: solved.code, witness: solved.witness },
 			regionId,
 		);
 	const ranks = solved.ranks;

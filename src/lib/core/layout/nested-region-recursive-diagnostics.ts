@@ -1,5 +1,4 @@
 import { defined } from '../document/logic-document';
-import type { BoundedSearchWitness } from './bounded-search';
 import { regionArrangementFor } from './region-arrangement-selection';
 import type { RegionCompositionModel } from './region-composition-model';
 import {
@@ -7,6 +6,7 @@ import {
 	RegionGeometryDiagnosticCode,
 } from './region-geometry-diagnostic';
 import { RegionIncidentRejectionCode, RegionIncidentUnknownCode } from './region-incident-contract';
+import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
 
 const RETRYABLE_INCIDENT_CODES = new Set([
 	RegionGeometryDiagnosticCode.ParentRouteContact,
@@ -50,27 +50,19 @@ export function retryOwnerForIncidentFailure(
 	return retryableOwner(model, ownerId);
 }
 
-function routeObstructionRelationId(rejected: unknown): string | undefined {
-	if (typeof rejected !== 'object') return undefined;
-	if (rejected === null) return undefined;
-	if (!('code' in rejected)) return undefined;
-	if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) return undefined;
-	if (!('relationId' in rejected)) return undefined;
-	if (typeof rejected.relationId !== 'string') return undefined;
-	return rejected.relationId;
-}
-
 /** A rejected leaf route may be resolved by one alternate side of its owning row. */
 export function retryOwnerForLeafContractFailure(
 	model: RegionCompositionModel,
-	code: RegionIncidentUnknownCode | RegionGeometryDiagnosticCode | undefined,
-	witness: BoundedSearchWitness<unknown> | undefined,
+	evidence: RegionSearchEvidence | undefined,
 ): string | undefined {
-	if (code !== RegionIncidentUnknownCode.NoValidAlternative) return undefined;
-	for (const rejected of witness?.rejectedAlternatives ?? []) {
-		const relationId = routeObstructionRelationId(rejected);
-		if (relationId === undefined) continue;
-		const owned = model.relations.find(({ relation }) => relation.id === relationId);
+	if (
+		evidence?.provenance !== RegionSearchProvenance.Incident ||
+		evidence.code !== RegionIncidentUnknownCode.NoValidAlternative
+	)
+		return undefined;
+	for (const rejected of evidence.witness.rejectedAlternatives) {
+		if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) continue;
+		const owned = model.relations.find(({ relation }) => relation.id === rejected.relationId);
 		const ownerId = owned?.ownerId;
 		if (ownerId === undefined) continue;
 		const retryOwner = retryableOwner(model, ownerId);

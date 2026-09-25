@@ -2,7 +2,6 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { BoundedSearchWitness } from './bounded-search';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
@@ -11,9 +10,11 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from './region-composition-model';
-import { RegionCompositionStatus, type RegionInput } from './region-composition-types';
-import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
-import type { RegionIncidentUnknownCode } from './region-incident-contract';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+} from './region-composition-types';
 import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
@@ -29,6 +30,10 @@ import {
 	subtreeInput,
 	subtreeRegionIds,
 } from './region-partial-composition-scope';
+import {
+	type RegionCompositionFailureEvidence,
+	RegionSearchProvenance,
+} from './region-search-evidence';
 
 export enum RegionSubtreeScope {
 	Leaf = 'leaf',
@@ -53,28 +58,27 @@ interface RegionClosedSubtreeSelected extends RegionSubtreeSelectedBase {
 	readonly scope: RegionSubtreeScope.ClosedSubtree;
 }
 
-export interface RegionSubtreeFailure {
-	readonly status:
-		| RegionCompositionStatus.Unknown
-		| RegionCompositionStatus.Unsupported
-		| typeof REGION_SUBTREE_CALCULATION_FAILED;
+interface RegionSubtreeFailureBase {
 	readonly regionId: string;
 	readonly scope: RegionSubtreeScope;
 	readonly reason: string;
-	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
 	readonly failureRegionId?: string | undefined;
 	readonly relationId?: string | undefined;
-	readonly witness?: BoundedSearchWitness<unknown> | undefined;
 	readonly endpointIds: readonly string[];
 	readonly relationIds: readonly string[];
 }
 
-interface FailureProvenance {
-	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
-	readonly failureRegionId?: string | undefined;
-	readonly relationId?: string | undefined;
-	readonly witness?: BoundedSearchWitness<unknown> | undefined;
-}
+export type RegionSubtreeFailure =
+	| (RegionSubtreeFailureBase & {
+			readonly status: RegionCompositionStatus.Unknown;
+	  } & RegionCompositionFailureEvidence)
+	| (RegionSubtreeFailureBase & {
+			readonly status:
+				RegionCompositionStatus.Unsupported | typeof REGION_SUBTREE_CALCULATION_FAILED;
+			readonly provenance?: undefined;
+			readonly code?: undefined;
+			readonly witness?: undefined;
+	  });
 
 export type RegionSubtreeAttempt =
 	RegionLeafSubtreeSelected | RegionClosedSubtreeSelected | RegionSubtreeFailure;
@@ -86,34 +90,62 @@ export interface RegionSubtreeAttemptInput {
 	readonly cache: RegionLocalLayoutCache;
 }
 
-interface FailureInput {
-	readonly status: RegionSubtreeFailure['status'];
+type FailureProvenance = RegionCompositionFailureEvidence & {
+	readonly failureRegionId?: string | undefined;
+	readonly relationId?: string | undefined;
+};
+
+interface FailureInputBase {
 	readonly regionId: string;
 	readonly scope: RegionSubtreeScope;
 	readonly document: LogicDocument;
 	readonly reason: string;
-	readonly provenance?: FailureProvenance;
 }
 
-function failure({
-	status,
-	regionId,
-	scope,
-	document,
-	reason,
-	provenance = {},
-}: FailureInput): RegionSubtreeFailure {
-	return {
-		status,
-		regionId,
-		scope,
-		reason,
-		...provenance,
-		endpointIds: [...document.nodes, ...document.groups, ...document.junctions]
+interface UnknownFailureInput extends FailureInputBase {
+	readonly status: RegionCompositionStatus.Unknown;
+	readonly provenance: FailureProvenance;
+}
+
+interface UnsupportedFailureInput extends FailureInputBase {
+	readonly status: RegionCompositionStatus.Unsupported | typeof REGION_SUBTREE_CALCULATION_FAILED;
+}
+
+type FailureInput = UnknownFailureInput | UnsupportedFailureInput;
+
+function failure(input: FailureInput): RegionSubtreeFailure {
+	const relationIds = input.document.relations.map(({ id }) => id).sort(compareCanonicalStrings);
+	const base = {
+		regionId: input.regionId,
+		scope: input.scope,
+		reason: input.reason,
+		endpointIds: [...input.document.nodes, ...input.document.groups, ...input.document.junctions]
 			.map(({ id }) => id)
 			.sort(compareCanonicalStrings),
-		relationIds: document.relations.map(({ id }) => id).sort(compareCanonicalStrings),
+		relationIds,
 	};
+	if (input.status === RegionCompositionStatus.Unknown)
+		return { ...base, status: input.status, ...input.provenance };
+	return { ...base, status: input.status };
+}
+
+function failureEvidence(
+	attempt: Extract<RegionLayoutAttempt, { status: RegionCompositionStatus.Unknown }>,
+): RegionCompositionFailureEvidence {
+	if (attempt.provenance === RegionSearchProvenance.Incident)
+		return {
+			provenance: RegionSearchProvenance.Incident,
+			code: attempt.code,
+			witness: attempt.witness,
+		};
+	if (attempt.provenance === RegionSearchProvenance.Grid)
+		return {
+			provenance: RegionSearchProvenance.Grid,
+			code: attempt.code,
+			witness: attempt.witness,
+		};
+	if (attempt.code !== undefined) return { code: attempt.code };
+	return {};
 }
 
 function reasonFor(error: unknown): string {
@@ -134,8 +166,7 @@ function leafFailure(
 			document,
 			reason: error.reason,
 			provenance: {
-				code: error.code,
-				witness: error.witness,
+				...(error.evidence ?? {}),
 				failureRegionId: error.regionId,
 			},
 		});
@@ -224,18 +255,18 @@ function attemptClosedSubtree(
 				document,
 				reason: attempt.reason,
 			});
+		let provenance: FailureProvenance = { ...failureEvidence(attempt) };
+		if (attempt.regionId !== undefined)
+			provenance = { ...provenance, failureRegionId: attempt.regionId };
+		if (attempt.relationId !== undefined)
+			provenance = { ...provenance, relationId: attempt.relationId };
 		return failure({
 			status: RegionCompositionStatus.Unknown,
 			regionId,
 			scope: RegionSubtreeScope.ClosedSubtree,
 			document,
 			reason: attempt.reason,
-			provenance: {
-				code: attempt.code,
-				failureRegionId: attempt.regionId,
-				relationId: attempt.relationId,
-				witness: attempt.witness,
-			},
+			provenance,
 		});
 	} catch (error) {
 		return failure({

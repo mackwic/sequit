@@ -6,6 +6,7 @@ import type {
 import {
 	type CrossingAllocationPhase,
 	crossingAllocationPhases,
+	type GridCrossingAllocationBudgets,
 	type GridCrossingAllocationWitness,
 } from './grid-cell-crossing-phases';
 import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
@@ -100,12 +101,13 @@ export function searchGridCrossingAllocations<Candidate>(
 		allocation: GridCrossingAllocation,
 		acceptBridges: boolean,
 	) => GridCrossingRouteAttempt<Candidate>,
+	budgets?: GridCrossingAllocationBudgets,
 ): GridCrossingAllocationSearchResult<Candidate> {
 	let selection: GridCrossingAllocationSelection<Candidate> | undefined;
 	let winningPhase: CrossingAllocationPhase['id'] | undefined;
 	let failure: RegionGeometryDiagnostic | undefined;
 	const rejectedAlternatives: GridCrossingAllocationWitness['rejectedAlternatives'][number][] = [];
-	const phases = crossingAllocationPhases(input);
+	const phases = crossingAllocationPhases(input, budgets);
 	const phaseEvidence: GridCrossingAllocationWitness['phases'][number][] = [];
 	for (const phase of phases) {
 		const result = searchGridCrossingPhase(input, phase, route);

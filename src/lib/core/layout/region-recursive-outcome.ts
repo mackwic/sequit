@@ -43,7 +43,7 @@ function retrySide(state: RegionRetryState, ownerId: string | undefined): boolea
 
 export function retryLeafContractFailure(state: RegionRetryState, error: unknown): boolean {
 	if (!(error instanceof UnknownRegionLeafLayoutError)) return false;
-	const ownerId = retryOwnerForLeafContractFailure(state.context.model, error.code, error.witness);
+	const ownerId = retryOwnerForLeafContractFailure(state.context.model, error.evidence);
 	return retrySide(state, ownerId);
 }
 
@@ -86,17 +86,12 @@ export function leafErrorAttempt(error: unknown): RegionLayoutAttempt | undefine
 	if (error instanceof UnsupportedRegionLeafLayoutError)
 		return { status: RegionCompositionStatus.Unsupported, reason: error.reason };
 	if (!(error instanceof UnknownRegionLeafLayoutError)) return undefined;
-	let code = {};
-	let witness = {};
-	let region = {};
-	if (error.code !== undefined) code = { code: error.code };
-	if (error.witness !== undefined) witness = { witness: error.witness };
+	let region: { readonly regionId?: string } = {};
 	if (error.regionId !== undefined) region = { regionId: error.regionId };
 	return {
 		status: RegionCompositionStatus.Unknown,
 		reason: error.reason,
-		...code,
-		...witness,
+		...(error.evidence ?? {}),
 		...region,
 	};
 }
