@@ -304,9 +304,7 @@ describe('recursive region model and row policy', () => {
 				if (index > 0) return { ...region, parentId: `depth-${index - 1}` };
 				return region;
 			}),
-			regionByEndpointId: new Map(
-				endpointIds.map((id) => [id, `depth-${maxRegions - 1}`]),
-			),
+			regionByEndpointId: new Map(endpointIds.map((id) => [id, `depth-${maxRegions - 1}`])),
 		};
 		expect(
 			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, inputAtLimit).status,
@@ -347,7 +345,6 @@ describe('recursive region model and row policy', () => {
 			status: RegionCompositionStatus.Unsupported,
 			reason: `regions exceed the configured limit of ${maxRegions}.`,
 		});
-
 	});
 
 	it.each([
