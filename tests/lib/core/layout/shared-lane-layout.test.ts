@@ -20,21 +20,34 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/region-incident-contract';
-import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import {
+	makeSharedLaneFrame,
+	SHARED_LANE_CLEARANCE,
+} from '../../../../src/lib/core/layout/shared-lane-frame';
+import {
+	type SharedLaneGeometry,
+	validateSharedLaneGeometry,
+} from '../../../../src/lib/core/layout/shared-lane-geometry';
 import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/shared-lane-incident-paths';
 import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/shared-lane-layout';
+import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
+import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
+import {
+	allocateParallelRoutes,
+	ParallelRouteOrder,
+	routeSharedLanes,
+} from '../../../../src/lib/core/layout/shared-lane-routing';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
@@ -114,6 +127,39 @@ function laneDocument(
 function solve(document: LogicDocument) {
 	const prepared = prepareLayoutDocument(document);
 	return solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+}
+
+function parallelCandidate(document: LogicDocument, order: ParallelRouteOrder) {
+	const prepared = prepareLayoutDocument(document);
+	const routing = prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {});
+	const input = defined(routing.input);
+	const ports = planSharedLanePorts(input);
+	const frame = makeSharedLaneFrame(input, ports, order !== ParallelRouteOrder.Canonical);
+	let dimensions = { width: frame.longExtent, height: frame.crossExtent };
+	if (input.vertical) dimensions = { width: frame.crossExtent, height: frame.longExtent };
+	return {
+		graph: prepared.graph,
+		geometry: {
+			...dimensions,
+			lanes: frame.lanes,
+			elements: frame.elements,
+			relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame), order),
+		},
+	};
+}
+
+function laneRouteMetrics(geometry: SharedLaneGeometry) {
+	let length = 0;
+	let bends = 0;
+	for (const route of geometry.relations) {
+		for (let index = 1; index < route.points.length; index += 1) {
+			const previous = defined(route.points[index - 1]);
+			const current = defined(route.points[index]);
+			length += Math.abs(current.x - previous.x) + Math.abs(current.y - previous.y);
+		}
+		bends += Math.max(0, routeRuns(route).length - 1);
+	}
+	return { bridges: validatedBridges(geometry.relations).length, length, bends };
 }
 
 function solveRaw(document: LogicDocument) {
@@ -574,7 +620,10 @@ describe('shared lane layout', () => {
 			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
 		const bridges = validatedBridges(result.geometry.relations);
-		expect(bridges.length).toBeGreaterThan(0);
+		expect(bridges).toHaveLength(1);
+		const metrics = laneRouteMetrics(result.geometry);
+		expect(metrics.length).toBeLessThanOrEqual(2392);
+		expect(metrics.bends).toBeLessThanOrEqual(10);
 		for (const [index, route] of result.geometry.relations.entries())
 			for (const other of result.geometry.relations.slice(index + 1))
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
@@ -938,5 +987,27 @@ describe('shared lane layout', () => {
 			],
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, altered)).toContain('wrong source face');
+	});
+	it('chooses the shorter bridge-free LocalPassages candidate over Canonical', () => {
+		const document = laneDocument(
+			LayoutDirection.TopToBottom,
+			LayoutBias.Top,
+			[{ id: 'a-to-b', from: 'a1', to: 'b1' }],
+			2,
+		);
+		const canonical = parallelCandidate(document, ParallelRouteOrder.Canonical);
+		const local = parallelCandidate(document, ParallelRouteOrder.LocalPassages);
+		const canonicalMetrics = laneRouteMetrics(canonical.geometry);
+		const localMetrics = laneRouteMetrics(local.geometry);
+		expect(validateSharedLaneGeometry(canonical.graph, canonical.geometry)).toBeUndefined();
+		expect(validateSharedLaneGeometry(local.graph, local.geometry)).toBeUndefined();
+		expect(canonicalMetrics.bridges).toBe(0);
+		expect(localMetrics.bridges).toBe(0);
+		expect(localMetrics.length).toBeLessThan(canonicalMetrics.length);
+		expect(localMetrics.bends).toBeLessThan(canonicalMetrics.bends);
+		const selected = solve(document);
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(laneRouteMetrics(selected.geometry)).toEqual(localMetrics);
 	});
 });
