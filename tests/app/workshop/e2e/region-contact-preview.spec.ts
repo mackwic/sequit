@@ -80,3 +80,44 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 	await expect(gridZoom).toHaveAttribute('aria-pressed', 'false');
 	expect(await gridValid.locator('svg').getAttribute('viewBox')).toBe(gridFull);
 });
+
+test('the grid allocation workshop shows selected routes and phase exhaustivity', async ({
+	page,
+}) => {
+	await page.goto('/atelier/solveur');
+	await page.getByRole('button', { name: 'Allocation de grille', exact: true }).click();
+
+	const explorer = page.getByRole('region', { name: 'Allocation de grille' });
+	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
+	await expect(twoByTwo.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
+	await expect(twoByTwo.locator('svg')).toHaveAttribute('aria-label', /4 cellules/);
+	await expect(twoByTwo.getByTestId('grid-allocation-route-a-d')).toBeVisible();
+	await expect(twoByTwo.getByTestId('grid-allocation-track-a-d')).toContainText('bus 0');
+
+	const truncated = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-truncated');
+	await expect(truncated.getByTestId('grid-allocation-winner')).toContainText('Pont validé');
+	await expect(truncated.getByTestId('grid-allocation-phase-reallocate')).toContainText(
+		'256 / 2592',
+	);
+	await expect(truncated.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
+		'data-truncated',
+		'true',
+	);
+	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toContainText(
+		'256 / 13824',
+	);
+	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toHaveAttribute(
+		'data-truncated',
+		'true',
+	);
+	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('1 / 2592');
+	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('Retenue');
+
+	const noncanonical = explorer.getByTestId(
+		'grid-allocation-case-grid-allocation-noncanonical-bus',
+	);
+	await expect(noncanonical.getByTestId('grid-allocation-retained')).toContainText(
+		'Bus : a-b → a-d → a-c',
+	);
+	await expect(noncanonical.getByTestId('grid-allocation-track-a-c')).toBeVisible();
+});

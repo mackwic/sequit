@@ -16,6 +16,7 @@
 	import ConditionalConflictsExplorer from './ConditionalConflictsExplorer.svelte';
 	import { type FoldedGroupWitness, runFoldedGroupWitness } from './folded-group';
 	import FoldedRoutePreview from './FoldedRoutePreview.svelte';
+	import GridCellAllocationExplorer from './GridCellAllocationExplorer.svelte';
 	import GridCellExplorer from './GridCellExplorer.svelte';
 	import JointK32Explorer from './JointK32Explorer.svelte';
 	import RankOrderComparisonExplorer from './RankOrderComparisonExplorer.svelte';
@@ -34,6 +35,7 @@
 		| 'composed'
 		| 'folded-group'
 		| 'grid-cells'
+		| 'grid-crossing-allocation'
 		| 'region-contact'
 		| 'region-lane-leaf'
 		| 'shared-lane-passage';
@@ -295,6 +297,12 @@
 		>
 		<button
 			type="button"
+			class:active={witnessId === 'grid-crossing-allocation'}
+			aria-pressed={witnessId === 'grid-crossing-allocation'}
+			onclick={() => (witnessId = 'grid-crossing-allocation')}>Allocation de grille</button
+		>
+		<button
+			type="button"
 			class:active={witnessId === 'region-lane-leaf'}
 			aria-pressed={witnessId === 'region-lane-leaf'}
 			onclick={() => (witnessId = 'region-lane-leaf')}>Lanes dans région</button
@@ -323,6 +331,8 @@
 		<RegionContactExplorer />
 	{:else if witnessId === 'region-lane-leaf'}
 		<RegionLaneLeafExplorer />
+	{:else if witnessId === 'grid-crossing-allocation'}
+		<GridCellAllocationExplorer />
 	{:else if witnessId === 'grid-cells'}
 		<GridCellExplorer />
 	{:else if witnessId === 'composed'}
