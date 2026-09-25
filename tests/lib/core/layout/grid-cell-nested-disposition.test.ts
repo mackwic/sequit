@@ -34,6 +34,10 @@ import { validateRegionCompositionGeometryMessage as validateRegionCompositionGe
 import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import {
+	RegionSubtreeScope,
+	solveRegionSubtreeAttempts,
+} from '../../../../src/lib/core/layout/region-partial-composition';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridDocument, regionDocument } from './nested-region-fixture';
@@ -796,14 +800,43 @@ describe('a grid disposition inside the recursive region tree', () => {
 			),
 		};
 		const prepared = prepareLayoutDocument(document);
-		expect(
-			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, nested),
-		).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
-			reason: 'Cross-cell relation across-grid enters element a-source.',
-			regionId: 'grid',
-		});
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, nested);
+		if (attempt.status !== RegionCompositionStatus.Unknown)
+			throw new Error('Expected the recursive grid disposition to be unknown.');
+		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
+		expect(attempt.reason).toBe('Cross-cell relation across-grid enters element a-source.');
+		expect(attempt.regionId).toBe('grid');
+		const recursiveWitness = attempt.witness;
+		if (recursiveWitness === undefined || !('phases' in recursiveWitness))
+			throw new Error('Expected recursive grid phase evidence.');
+		if (!Array.isArray(recursiveWitness.phases)) throw new Error('Expected recursive grid phases.');
+		expect(recursiveWitness.attempted).toBeGreaterThan(0);
+		expect(recursiveWitness.phases).toMatchObject([
+			{ attempted: true, exhaustive: true },
+			{ attempted: true, exhaustive: true },
+			{ attempted: true, exhaustive: true },
+		]);
+		const subtree = solveRegionSubtreeAttempts({
+			graph: prepared.graph,
+			measurements: prepared.measurements,
+			input: nested,
+			cache: new RegionLocalLayoutCache(),
+		}).find(
+			({ regionId, scope }) => regionId === 'grid' && scope === RegionSubtreeScope.ClosedSubtree,
+		);
+		if (subtree?.status !== RegionCompositionStatus.Unknown)
+			throw new Error('Expected the grid subtree disposition to be unknown.');
+		expect(subtree.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
+		const subtreeWitness = subtree.witness;
+		if (subtreeWitness === undefined || !('phases' in subtreeWitness))
+			throw new Error('Expected grid subtree phase evidence.');
+		if (!Array.isArray(subtreeWitness.phases)) throw new Error('Expected grid subtree phases.');
+		expect(subtreeWitness.attempted).toBeGreaterThan(0);
+		expect(subtreeWitness.phases).toMatchObject([
+			{ attempted: true, exhaustive: true },
+			{ attempted: true, exhaustive: true },
+			{ attempted: true, exhaustive: true },
+		]);
 	});
 
 	it('translates and confines two shared lanes in one grid cell beside ordinary leaves', () => {

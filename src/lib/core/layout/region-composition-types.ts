@@ -8,10 +8,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { BoundedSearchWitness } from './bounded-search';
 import type { Bounds, LayoutResult, Point } from './layout-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
-import type {
-	RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-} from './region-incident-contract';
+import type { RegionIncidentUnknownCode } from './region-incident-contract';
 import type { RegionPortalSide } from './region-portal-side';
 
 export { RegionPortalSide } from './region-portal-side';
@@ -85,7 +82,7 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 }
 
 interface RegionCompositionUnknown<
-	Witness extends BoundedSearchWitness<unknown> = RegionIncidentSearchWitness,
+	Witness extends BoundedSearchWitness<unknown> = BoundedSearchWitness<unknown>,
 > {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
@@ -102,7 +99,7 @@ interface RegionCompositionUnsupported {
 
 export type RegionCompositionAttempt<
 	Selected extends RegionCompositionSelected,
-	Witness extends BoundedSearchWitness<unknown> = RegionIncidentSearchWitness,
+	Witness extends BoundedSearchWitness<unknown> = BoundedSearchWitness<unknown>,
 > = Selected | RegionCompositionUnknown<Witness> | RegionCompositionUnsupported;
 
 export interface RegionLayoutSelected extends RegionCompositionSelected<RegionPortal> {

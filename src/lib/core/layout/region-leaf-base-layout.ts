@@ -1,13 +1,11 @@
 import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
+import type { BoundedSearchWitness } from './bounded-search';
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements } from './layout-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
-import type {
-	RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-} from './region-incident-contract';
+import type { RegionIncidentUnknownCode } from './region-incident-contract';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
@@ -30,7 +28,7 @@ export class UnknownRegionLeafLayoutError extends Error {
 	constructor(
 		readonly reason: string,
 		readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode,
-		readonly witness?: RegionIncidentSearchWitness,
+		readonly witness?: BoundedSearchWitness<unknown>,
 		readonly regionId?: string,
 	) {
 		super(reason);

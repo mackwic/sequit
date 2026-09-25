@@ -2,6 +2,7 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import type { BoundedSearchWitness } from './bounded-search';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
@@ -12,10 +13,7 @@ import {
 } from './region-composition-model';
 import { RegionCompositionStatus, type RegionInput } from './region-composition-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
-import type {
-	RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-} from './region-incident-contract';
+import type { RegionIncidentUnknownCode } from './region-incident-contract';
 import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
@@ -66,7 +64,7 @@ export interface RegionSubtreeFailure {
 	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
 	readonly failureRegionId?: string | undefined;
 	readonly relationId?: string | undefined;
-	readonly witness?: RegionIncidentSearchWitness | undefined;
+	readonly witness?: BoundedSearchWitness<unknown> | undefined;
 	readonly endpointIds: readonly string[];
 	readonly relationIds: readonly string[];
 }
@@ -75,7 +73,7 @@ interface FailureProvenance {
 	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
 	readonly failureRegionId?: string | undefined;
 	readonly relationId?: string | undefined;
-	readonly witness?: RegionIncidentSearchWitness | undefined;
+	readonly witness?: BoundedSearchWitness<unknown> | undefined;
 }
 
 export type RegionSubtreeAttempt =

@@ -186,7 +186,7 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 	if (attempt.status === GridCellLayoutStatus.Unsupported)
 		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
 	if (attempt.status === GridCellLayoutStatus.Unknown)
-		throw new UnknownRegionLeafLayoutError(attempt.reason, attempt.code, undefined, regionId);
+		throw new UnknownRegionLeafLayoutError(attempt.reason, attempt.code, attempt.witness, regionId);
 	const incidentPaths = gridCellInheritedIncidentPaths({
 		context,
 		regionId,
