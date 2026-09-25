@@ -10,6 +10,7 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import {
+	acyclicLogicDocumentArbitrary,
 	nodeId,
 	richAcyclicLogicDocumentArbitrary,
 } from '../../../support/builders/logic-document-arbitrary';
@@ -53,12 +54,20 @@ function baselineFor(document: LogicDocument): Uint8Array {
 	return Y.encodeStateAsUpdate(origin);
 }
 
+async function replaceMarkdown(
+	session: ReturnType<typeof attachDocumentSession>,
+	index: number,
+	markdown: string,
+): Promise<void> {
+	expect((await session.replaceNodeMarkdown(nodeId(index), markdown)).kind).toBe(
+		DocumentCommandOutcomeKind.Accepted,
+	);
+}
+
 async function applyMarkdown(ydoc: Y.Doc, index: number, markdown: string): Promise<void> {
 	const session = attachDocumentSession(ydoc);
 	try {
-		expect((await session.replaceNodeMarkdown(nodeId(index), markdown)).kind).toBe(
-			DocumentCommandOutcomeKind.Accepted,
-		);
+		await replaceMarkdown(session, index, markdown);
 	} finally {
 		session.destroy();
 	}
@@ -70,8 +79,13 @@ async function localUpdate(
 ): Promise<Uint8Array> {
 	const replica = replicaFrom(baseline);
 	const baselineState = Y.encodeStateVector(replica);
-	for (const [index, markdown] of operations) await applyMarkdown(replica, index, markdown);
-	return Y.encodeStateAsUpdate(replica, baselineState);
+	const session = attachDocumentSession(replica);
+	try {
+		for (const [index, markdown] of operations) await replaceMarkdown(session, index, markdown);
+		return Y.encodeStateAsUpdate(replica, baselineState);
+	} finally {
+		session.destroy();
+	}
 }
 
 function replicaWithUpdates(baseline: Uint8Array, updates: readonly Uint8Array[]): Y.Doc {
@@ -111,6 +125,17 @@ const collaborationCaseArbitrary: fc.Arbitrary<CollaborationCase> =
 			)
 			.map(([nodeIndexes, markdown]) => ({ document, nodeIndexes, markdown })),
 	);
+
+const mixedOperationCaseArbitrary: fc.Arbitrary<CollaborationCase> = acyclicLogicDocumentArbitrary({
+	minNodes: 3,
+	maxNodes: 3,
+	maxEdges: 3,
+}).chain((document) => {
+	const markdown = fc.string({ maxLength: 32, unit: 'grapheme' });
+	return fc
+		.tuple(markdown, markdown, markdown, markdown, markdown, markdown)
+		.map((values) => ({ document, nodeIndexes: [0, 1, 2] as const, markdown: values }));
+});
 
 const updateOrders: readonly (readonly [number, number, number])[] = [
 	[0, 1, 2],
@@ -224,7 +249,7 @@ describe('generated Yjs live documents', () => {
 
 	it('converges mixed operation sequences spanning several nodes', async () => {
 		await fc.assert(
-			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
+			fc.asyncProperty(mixedOperationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
 				const updates = await Promise.all([
 					localUpdate(baseline, [
@@ -256,7 +281,7 @@ describe('generated Yjs live documents', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
-	}, 10_000);
+	});
 
 	it('converges concurrent replacements of the same Markdown value', async () => {
 		await fc.assert(
