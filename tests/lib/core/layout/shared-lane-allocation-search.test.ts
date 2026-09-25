@@ -68,6 +68,17 @@ describe('shared lane allocation search', () => {
 		);
 	});
 
+	it('enumerates deep route bands without recursive stack growth', () => {
+		const ids = Array.from({ length: 1000 }, (_, index) => `r-${index}`);
+		const tracks = ids.map((relationId, track): readonly [string, number] => [relationId, track]);
+		const products = trackAllocationProducts([domain('gutter', ids, tracks, ids.length)]);
+		const baseline = products.next();
+		const alternative = products.next();
+		if (baseline.done === true || alternative.done === true)
+			throw new Error('Expected a baseline followed by an alternate allocation.');
+		expect(alternative.value.key).not.toBe(baseline.value.key);
+	});
+
 	it('counts factorial products exactly beyond safe number cardinality', () => {
 		const ids = Array.from({ length: 16 }, (_, index) => `r-${index}`);
 		const tracks = ids.map((relationId, track): readonly [string, number] => [relationId, track]);

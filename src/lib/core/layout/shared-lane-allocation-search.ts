@@ -63,6 +63,29 @@ export function trackAllocationProductCount(domains: readonly TrackAssignmentDom
 	return count;
 }
 
+function firstUnusedTrack(trackCount: number, used: ReadonlySet<number>): number {
+	for (let track = 0; track < trackCount; track += 1) if (!used.has(track)) return track;
+	throw new Error('No free route track remains.');
+}
+
+function advanceTracks(tracks: number[], trackCount: number): boolean {
+	for (let index = tracks.length - 1; index >= 0; index -= 1) {
+		const used = new Set(tracks.slice(0, index));
+		let track = defined(tracks[index]) + 1;
+		while (track < trackCount && used.has(track)) track += 1;
+		if (track >= trackCount) continue;
+		tracks[index] = track;
+		used.add(track);
+		for (let suffix = index + 1; suffix < tracks.length; suffix += 1) {
+			const next = firstUnusedTrack(trackCount, used);
+			tracks[suffix] = next;
+			used.add(next);
+		}
+		return true;
+	}
+	return false;
+}
+
 /** Assignments for one band: its historical map first, then canonical-ID/track-order injections. */
 function* assignments(domain: TrackAssignmentDomain): Generator<RoutingTrackAllocation> {
 	const ids = domainRelationIds(domain);
@@ -70,25 +93,15 @@ function* assignments(domain: TrackAssignmentDomain): Generator<RoutingTrackAllo
 	const baselineKey = assignmentKey(domain, baseline);
 	yield baseline;
 
-	const assigned = new Map<string, number>();
-	const usedTracks = new Set<number>();
-	function* visit(index: number): Generator<RoutingTrackAllocation> {
-		if (index === ids.length) {
-			const candidate = allocationFor(domain, new Map(assigned));
-			if (assignmentKey(domain, candidate) !== baselineKey) yield candidate;
-			return;
-		}
-		const id = defined(ids[index]);
-		for (let track = 0; track < domain.trackCount; track += 1) {
-			if (usedTracks.has(track)) continue;
-			assigned.set(id, track);
-			usedTracks.add(track);
-			yield* visit(index + 1);
-			assigned.delete(id);
-			usedTracks.delete(track);
-		}
+	const tracks = Array.from({ length: ids.length }, (_, index) => index);
+	let hasNext = true;
+	while (hasNext) {
+		const assignment = new Map<string, number>();
+		for (const [index, id] of ids.entries()) assignment.set(id, defined(tracks[index]));
+		const candidate = allocationFor(domain, assignment);
+		if (assignmentKey(domain, candidate) !== baselineKey) yield candidate;
+		hasNext = advanceTracks(tracks, domain.trackCount);
 	}
-	yield* visit(0);
 }
 
 function productKey(
