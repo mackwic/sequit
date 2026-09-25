@@ -12,6 +12,11 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import {
+	GRID_CROSSING_BRIDGE_BUDGET,
+	GRID_CROSSING_EXTRA_TRACK_BUDGET,
+	GRID_CROSSING_REALLOCATION_BUDGET,
+} from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -166,6 +171,38 @@ describe('grid-cell real-pipeline properties', () => {
 					if (solved.status !== GridCellLayoutStatus.Selected)
 						throw new Error(`Expected selected grid: ${solved.status}: ${solved.reason}`);
 					expect(validateGridCellGeometry(solved, cold.graph, input)).toBeUndefined();
+					const budgets = new Map([
+						['reallocate', GRID_CROSSING_REALLOCATION_BUDGET],
+						['extra-track', GRID_CROSSING_EXTRA_TRACK_BUDGET],
+						['bridge', GRID_CROSSING_BRIDGE_BUDGET],
+					]);
+					expect(solved.witness.attempted).toBe(
+						solved.witness.phases.reduce((sum, phase) => sum + phase.exploredGeometries, 0),
+					);
+					for (const phase of solved.witness.phases) {
+						const explored = phase.exploredGeometries;
+						const total = BigInt(phase.totalGeometries);
+						const budget = budgets.get(phase.id);
+						if (budget === undefined) throw new Error('Missing grid phase budget.');
+						expect(explored).toBeLessThanOrEqual(budget);
+						if (!phase.attempted) {
+							expect([explored, phase.exhaustive, phase.truncated, phase.selected]).toEqual([
+								0,
+								false,
+								false,
+								false,
+							]);
+							continue;
+						}
+						if (phase.exhaustive) expect(BigInt(explored)).toBe(total);
+						if (phase.truncated) {
+							expect(explored).toBe(budget);
+							expect(BigInt(explored)).toBeLessThan(total);
+							expect(phase.selected).toBe(false);
+						}
+						if (!phase.exhaustive && !phase.selected) expect(phase.truncated).toBe(true);
+						if (phase.selected) expect(phase.id).toBe(solved.witness.winningPhase);
+					}
 					expect(gridOwnedUnbridgedContact(solved.layout, input)).toBeUndefined();
 					expect(solved.portals).toHaveLength(2 * document.relations.length);
 					for (const [index, minimum] of input.minimumColumnWidths.entries())

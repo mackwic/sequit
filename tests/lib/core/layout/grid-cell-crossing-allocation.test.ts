@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
@@ -21,14 +22,12 @@ import {
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
 import {
-	crossingAllocationCandidateCount,
+	crossingAllocationGeometryCount,
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
-	GRID_CROSSING_BRIDGE_BUDGET,
-	GRID_CROSSING_EXTRA_TRACK_BUDGET,
-	GRID_CROSSING_REALLOCATION_BUDGET,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 const CROSSING_IDS = ['a-b', 'a-c', 'a-d'] as const;
 
@@ -36,6 +35,7 @@ function allocationInput(): CrossingAllocationInput {
 	return {
 		edges: gridRoutingEdges('grid', 2, CROSSING_IDS.length),
 		crossingIds: [...CROSSING_IDS],
+		busRelevantRelationIds: [...CROSSING_IDS],
 		gutterIds: [
 			['a-b', 'a-c'],
 			['a-b', 'a-d'],
@@ -52,6 +52,57 @@ function allocationInput(): CrossingAllocationInput {
 			['a-d', { source: { x: 100, y: 300 }, target: { x: 900, y: 500 } }],
 		]),
 	};
+}
+
+function variedAllocationInput(
+	crossingCount: number,
+	columnCount: number,
+	seed: number,
+): CrossingAllocationInput {
+	const crossingIds = Array.from({ length: crossingCount }, (_, index) => `route-${index}`);
+	const incidence = new Map<string, string[]>();
+	for (const [index, relationId] of crossingIds.entries()) {
+		for (const endpointId of [`source-${(index + seed) % 2}`, `target-${index % 2}`]) {
+			const relations = incidence.get(endpointId) ?? [];
+			relations.push(relationId);
+			incidence.set(endpointId, relations);
+		}
+	}
+	return {
+		edges: gridRoutingEdges('property-grid', columnCount, crossingCount),
+		crossingIds,
+		busRelevantRelationIds: crossingIds.filter((_, index) => (index + seed) % 2 === 0),
+		gutterIds: Array.from({ length: columnCount }, (_, column) =>
+			crossingIds.filter((_, index) => (index + column + seed) % 2 === 0),
+		),
+		incidence,
+		portalByRelationId: new Map(
+			crossingIds.map((relationId, index) => [
+				relationId,
+				{
+					source: { x: 100 + index * 20, y: 100 + ((index + seed) % crossingCount) * 30 },
+					target: { x: 700 - index * 20, y: 300 + ((index + seed) % crossingCount) * 30 },
+				},
+			]),
+		),
+	};
+}
+
+function geometryKey(input: CrossingAllocationInput, allocation: GridCrossingAllocation): string {
+	const entries = (tracks: ReadonlyMap<string, number>) =>
+		[...tracks].sort(([left], [right]) => compareCanonicalStrings(left, right));
+	const busRelevant = new Set(input.busRelevantRelationIds);
+	return JSON.stringify([
+		allocation.gutterTrackByRelationId.map(entries),
+		entries(
+			new Map(
+				[...allocation.busTrackByRelationId].filter(([relationId]) => busRelevant.has(relationId)),
+			),
+		),
+		[...allocation.portTrackByEndpointId]
+			.sort(([left], [right]) => compareCanonicalStrings(left, right))
+			.map(([endpointId, tracks]) => [endpointId, entries(tracks)]),
+	]);
 }
 
 function gutterTracks(
@@ -154,10 +205,22 @@ describe('grid crossing allocation', () => {
 		expect(orders).toContainEqual(['a-c', 'a-b', 'a-d']);
 	});
 
+	it('deduplicates bus permutations that cannot change same-rail routes', () => {
+		const sharedRail = { ...allocationInput(), busRelevantRelationIds: [] };
+		const allRails = { ...sharedRail, busRelevantRelationIds: [...CROSSING_IDS] };
+		const sharedRailCandidates = [...crossingAllocationCandidates(sharedRail)];
+		const allRailCandidates = [...crossingAllocationCandidates(allRails)];
+		expect(BigInt(sharedRailCandidates.length)).toBe(crossingAllocationGeometryCount(sharedRail));
+		expect(sharedRailCandidates.length).toBeLessThan(allRailCandidates.length);
+		expect(
+			new Set(sharedRailCandidates.map((allocation) => geometryKey(sharedRail, allocation))).size,
+		).toBe(sharedRailCandidates.length);
+	});
+
 	it('declares its candidates in order, without repeating an allocation', () => {
 		const input = allocationInput();
 		const candidates = [...crossingAllocationCandidates(input)];
-		expect(BigInt(candidates.length)).toBe(crossingAllocationCandidateCount(input));
+		expect(BigInt(candidates.length)).toBe(crossingAllocationGeometryCount(input));
 		expect(candidates[0]).toEqual(canonicalCrossingAllocation(input));
 		expect(candidates[1]).toEqual(containmentCrossingAllocation(input));
 		const keys = candidates.map((allocation) =>
@@ -171,7 +234,7 @@ describe('grid crossing allocation', () => {
 			]),
 		);
 		expect(new Set(keys).size).toBe(keys.length);
-		expect(candidates.length).toBeGreaterThan(GRID_CROSSING_REALLOCATION_BUDGET);
+
 		for (const allocation of candidates) {
 			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
 			expect(new Set(left).size).toBe(left.length);
@@ -209,19 +272,54 @@ describe('grid crossing allocation', () => {
 			CrossingAllocationPhaseId.Bridge,
 		]);
 		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, true]);
-		expect(phases.map(({ budget }) => budget)).toEqual([
-			GRID_CROSSING_REALLOCATION_BUDGET,
-			GRID_CROSSING_EXTRA_TRACK_BUDGET,
-			GRID_CROSSING_BRIDGE_BUDGET,
-		]);
 		expect([...defined(phases[2]).candidates(input)]).toEqual([
 			...crossingAllocationCandidates(input),
 		]);
 		for (const phase of phases) {
 			const candidates = [...phase.candidates(input)];
 			expect(candidates.length).toBeGreaterThan(0);
-			expect(BigInt(candidates.length)).toBe(phase.total(input));
+			expect(BigInt(candidates.length)).toBe(phase.totalGeometries(input));
 		}
+	});
+
+	it('counts unique route geometries over varied small allocation spaces', () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					crossingCount: fc.integer({ min: 1, max: 3 }),
+					columnCount: fc.integer({ min: 1, max: 2 }),
+					seed: fc.integer({ min: 0, max: 5 }),
+				}),
+				({ crossingCount, columnCount, seed }) => {
+					const input = variedAllocationInput(crossingCount, columnCount, seed);
+					const phases = crossingAllocationPhases(input);
+					const reallocation = [...defined(phases[0]).candidates(input)];
+					const extraTrack = [...defined(phases[1]).candidates(input)];
+					const bridge = [...defined(phases[2]).candidates(input)];
+					expect(reallocation[0]).toEqual(canonicalCrossingAllocation(input));
+					for (const [phaseIndex, candidates] of [reallocation, extraTrack, bridge].entries()) {
+						const phase = defined(phases[phaseIndex]);
+						const keys = candidates.map((allocation) => geometryKey(input, allocation));
+						expect(new Set(keys).size).toBe(candidates.length);
+						expect(BigInt(candidates.length)).toBe(phase.totalGeometries(input));
+					}
+					const oldGeometry = new Set(
+						reallocation.map((allocation) => geometryKey(input, allocation)),
+					);
+					expect(
+						extraTrack.every((allocation) => !oldGeometry.has(geometryKey(input, allocation))),
+					).toBe(true);
+					for (const allocation of extraTrack)
+						expect(
+							allocation.gutterTrackByRelationId.some((tracks, column) =>
+								[...tracks.values()].includes(defined(input.edges.gutters[column]).capacity - 1),
+							),
+						).toBe(true);
+					expect(bridge).toEqual(reallocation);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
 	});
 
 	it('is deterministic across calls', () => {
