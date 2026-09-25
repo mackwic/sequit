@@ -21,9 +21,9 @@
 		phase: (typeof demos)[number]['selected']['witness']['phases'][number],
 	): string {
 		if (!phase.attempted) return 'Non tentée';
-		if (phase.selected) return 'Retenue';
 		if (phase.truncated) return 'Tronquée';
 		if (phase.exhaustive) return 'Exhaustive';
+		if (phase.selected) return 'Retenue';
 		return 'Arrêtée';
 	}
 
@@ -43,7 +43,7 @@
 		<p>
 			Chaque carte exécute le solveur de grille et son oracle géométrique. Les rails et bus
 			reprennent la couleur de leur relation ; les tableaux rendent visible le candidat
-			effectivement retenu et le budget consommé par chaque phase.
+			effectivement retenu et le nombre exact de géométries explorées par phase.
 		</p>
 	</header>
 	<div class="examples">
@@ -115,7 +115,7 @@
 						</ul>
 					</section>
 					<section aria-label="Exploration par phase">
-						<h4>Explorés / total · exhaustivité</h4>
+						<h4>Géométries explorées / total exact</h4>
 						<ul class="phases">
 							{#each demo.selected.witness.phases as phase (phase.id)}
 								<li
@@ -124,7 +124,7 @@
 									data-truncated={phase.truncated}
 								>
 									<span>{phaseLabel(phase.id)}</span>
-									<strong>{phase.explored} / {phase.total}</strong>
+									<strong>{phase.exploredGeometries} / {phase.totalGeometries}</strong>
 									<span>{phaseOutcome(phase)}</span>
 								</li>
 							{/each}

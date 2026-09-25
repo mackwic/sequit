@@ -81,20 +81,38 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 	expect(await gridValid.locator('svg').getAttribute('viewBox')).toBe(gridFull);
 });
 
-test('the grid allocation workshop shows selected routes and phase exhaustivity', async ({
+test('the grid allocation workshop explains exact route geometry search', async ({
 	page,
-}) => {
+}, testInfo) => {
 	await page.goto('/atelier/solveur');
 	await page.getByRole('button', { name: 'Allocation de grille', exact: true }).click();
 
 	const explorer = page.getByRole('region', { name: 'Allocation de grille' });
 	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
+	const truncated = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-truncated');
+	const noncanonical = explorer.getByTestId(
+		'grid-allocation-case-grid-allocation-noncanonical-bus',
+	);
 	await expect(twoByTwo.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
 	await expect(twoByTwo.locator('svg')).toHaveAttribute('aria-label', /4 cellules/);
-	await expect(twoByTwo.getByTestId('grid-allocation-route-a-d')).toBeVisible();
-	await expect(twoByTwo.getByTestId('grid-allocation-track-a-d')).toContainText('bus 0');
+	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
+		'data-exhaustive',
+		'true',
+	);
+	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
+		'data-truncated',
+		'false',
+	);
+	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toContainText(
+		'Exhaustive',
+	);
+	for (const phaseId of ['extra-track', 'bridge']) {
+		const phase = twoByTwo.getByTestId(`grid-allocation-phase-${phaseId}`);
+		await expect(phase).toContainText('Non tentée');
+		await expect(phase).toHaveAttribute('data-exhaustive', 'false');
+		await expect(phase).toHaveAttribute('data-truncated', 'false');
+	}
 
-	const truncated = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-truncated');
 	await expect(truncated.getByTestId('grid-allocation-winner')).toContainText('Pont validé');
 	await expect(truncated.getByTestId('grid-allocation-phase-reallocate')).toContainText(
 		'256 / 2592',
@@ -104,7 +122,7 @@ test('the grid allocation workshop shows selected routes and phase exhaustivity'
 		'true',
 	);
 	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toContainText(
-		'256 / 13824',
+		'256 / 11232',
 	);
 	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toHaveAttribute(
 		'data-truncated',
@@ -113,11 +131,36 @@ test('the grid allocation workshop shows selected routes and phase exhaustivity'
 	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('1 / 2592');
 	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('Retenue');
 
-	const noncanonical = explorer.getByTestId(
-		'grid-allocation-case-grid-allocation-noncanonical-bus',
-	);
 	await expect(noncanonical.getByTestId('grid-allocation-retained')).toContainText(
 		'Bus : a-b → a-d → a-c',
 	);
-	await expect(noncanonical.getByTestId('grid-allocation-track-a-c')).toBeVisible();
+
+	for (const [card, relationIds] of [
+		[twoByTwo, ['a-d']],
+		[truncated, ['a-b', 'a-c', 'c-f']],
+		[noncanonical, ['a-b', 'a-c', 'a-d']],
+	] as const) {
+		for (const relationId of relationIds) {
+			const track = card.getByTestId(`grid-allocation-track-${relationId}`);
+			const route = card.getByTestId(`grid-allocation-route-${relationId}`);
+			await expect(track).toBeVisible();
+			await expect(route).toBeVisible();
+			const legendColor = await track
+				.locator('.swatch')
+				.evaluate(
+					(element) => element.getAttribute('style')?.match(/--track-color:\s*([^;]+)/)?.[1],
+				);
+			if (legendColor === undefined)
+				throw new Error('Missing relation color in the allocation legend.');
+			await expect(route).toHaveAttribute('stroke', legendColor.trim());
+			const points = await route.getAttribute('points');
+			expect(points?.trim().split(/\s+/).length ?? 0).toBeGreaterThan(3);
+		}
+	}
+
+	const screenshotDirectory = process.env['SEQUIT_LAYOUT_SCREENSHOT_DIR'];
+	if (screenshotDirectory !== undefined && testInfo.project.name === 'chromium')
+		await explorer.screenshot({
+			path: `${screenshotDirectory}/grid-cell-allocation-workshop.png`,
+		});
 });

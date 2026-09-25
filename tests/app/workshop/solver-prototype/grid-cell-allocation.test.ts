@@ -21,6 +21,16 @@ describe('grid crossing allocation workshop model', () => {
 		if (basic === undefined || truncated === undefined || noncanonical === undefined)
 			throw new Error('Expected the three grid allocation demos.');
 		expect(basic.selected.cells).toHaveLength(4);
+		expect(basic.selected.witness.phases[0]).toMatchObject({
+			exploredGeometries: 1,
+			totalGeometries: '1',
+			exhaustive: true,
+			selected: true,
+		});
+		expect(basic.selected.witness.phases.slice(1).map(({ attempted }) => attempted)).toEqual([
+			false,
+			false,
+		]);
 		expect(truncated.selected.cells).toHaveLength(6);
 		expect(truncated.selected.witness.phases.slice(0, 2).map(({ truncated: cut }) => cut)).toEqual([
 			true,
@@ -32,10 +42,10 @@ describe('grid crossing allocation workshop model', () => {
 			selected: true,
 		});
 		expect(noncanonical.busOrder).toEqual(['a-b', 'a-d', 'a-c']);
-		for (const demo of demos) {
-			expect(demo.tracks).toHaveLength(demo.selected.layout.relations.length);
-			for (const route of demo.selected.layout.relations)
-				expect(demo.colorsByRelationId.get(route.id)).toBeDefined();
-		}
+		expect(noncanonical.tracks).toEqual([
+			{ relationId: 'a-b', color: '#bf4f36', busTrack: 0, railLabel: 'G1·0' },
+			{ relationId: 'a-c', color: '#287b65', busTrack: 2, railLabel: 'G1·1 / G3·1' },
+			{ relationId: 'a-d', color: '#4c5fb5', busTrack: 1, railLabel: 'G1·2 / G3·2' },
+		]);
 	});
 });
