@@ -7,9 +7,13 @@ import { routeBridgeAnalysis } from '../bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
 import { layoutRouteCost, type RouteCost } from '../routing/route-cost';
 import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
-import { materializeIndependentAdjacentGeometry } from './independent-adjacent-geometry';
 import {
-	type AdjacentContractShape,
+	AdjacentGeometryMode,
+	materializeIndependentAdjacentBridgeGeometry,
+	materializeIndependentAdjacentGeometry,
+} from './independent-adjacent-geometry';
+import {
+	AdjacentContractShape,
 	buildAdjacentLayoutContract,
 	type LayoutContract,
 	LayoutContractBuildStatus,
@@ -27,6 +31,7 @@ export enum IndependentAdjacentBranchStatus {
 	Accepted = 'accepted',
 	MaterializationFailed = 'materialization-failed',
 	GeometryRejected = 'geometry-rejected',
+	BridgeUnavailable = 'bridge-unavailable',
 	CrossingRejected = 'crossing-rejected',
 }
 
@@ -117,18 +122,33 @@ interface IndependentBranchResult {
 	readonly selection?: IndependentAdjacentSelection;
 }
 
-function evaluateBranch(input: {
+interface IndependentAdjacentGeometryBranch {
 	readonly branch: CandidateFaceBranch;
+	readonly id: string;
+	readonly geometry: AdjacentGeometryMode;
+}
+
+function evaluateBranch(input: {
+	readonly branch: IndependentAdjacentGeometryBranch;
 	readonly graph: LogicGraph;
 	readonly measurements: LayoutMeasurements;
 }): IndependentBranchResult {
 	const { branch, graph, measurements } = input;
-	const layout = materializeIndependentAdjacentGeometry(
-		graph,
-		measurements,
-		branch.candidate,
-		branch.choices,
-	);
+	let layout: LayoutResult | undefined;
+	if (branch.geometry === AdjacentGeometryMode.Bridge)
+		layout = materializeIndependentAdjacentBridgeGeometry(
+			graph,
+			measurements,
+			branch.branch.candidate,
+			branch.branch.choices,
+		);
+	else
+		layout = materializeIndependentAdjacentGeometry(
+			graph,
+			measurements,
+			branch.branch.candidate,
+			branch.branch.choices,
+		);
 	if (layout === undefined)
 		return {
 			evaluation: {
@@ -139,8 +159,8 @@ function evaluateBranch(input: {
 	const checked = validateContractCandidate({
 		graph,
 		measurements,
-		candidate: branch.candidate,
-		choices: branch.choices,
+		candidate: branch.branch.candidate,
+		choices: branch.branch.choices,
 		layout,
 	});
 	if (!checked.valid)
@@ -151,6 +171,13 @@ function evaluateBranch(input: {
 			},
 		};
 	const analysis = routeBridgeAnalysis(layout.relations);
+	if (branch.geometry === AdjacentGeometryMode.Bridge && analysis.bridges.length === 0)
+		return {
+			evaluation: {
+				branchId: branch.id,
+				status: IndependentAdjacentBranchStatus.BridgeUnavailable,
+			},
+		};
 	if (unbridgedCrossings(analysis).length > 0)
 		return {
 			evaluation: {
@@ -161,10 +188,10 @@ function evaluateBranch(input: {
 	return {
 		evaluation: { branchId: branch.id, status: IndependentAdjacentBranchStatus.Accepted },
 		selection: {
-			candidateId: branch.candidate.id,
+			candidateId: branch.branch.candidate.id,
 			branchId: branch.id,
-			choices: branch.choices,
-			growth: branch.growth,
+			choices: branch.branch.choices,
+			growth: branch.branch.growth,
 			bridged: analysis.crossings.length > 0,
 			cost: layoutRouteCost(layout),
 			layout,
@@ -216,7 +243,14 @@ export function resolveIndependentAdjacentContract(
 		return { status: IndependentAdjacentStatus.Unknown, reason: built.reason, evaluations: [] };
 	const { contract } = built;
 	const omittedCrossingCandidates = 0;
-	const alternatives = contract.candidates.flatMap(candidateFaceBranches);
+	const alternatives = contract.candidates.flatMap(candidateFaceBranches).flatMap((branch) => {
+		if (contract.shape !== AdjacentContractShape.ThreePlusOne)
+			return [{ branch, id: branch.id, geometry: AdjacentGeometryMode.Detour }];
+		return [
+			{ branch, id: `${branch.id}:bridge`, geometry: AdjacentGeometryMode.Bridge },
+			{ branch, id: branch.id, geometry: AdjacentGeometryMode.Detour },
+		];
+	});
 	const selections: IndependentAdjacentSelection[] = [];
 	const { evaluations, explored, exhaustive, incumbent } = bestWithinBudget({
 		alternatives,

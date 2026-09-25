@@ -16,9 +16,24 @@ import type {
 	LayoutResult,
 	Point,
 } from '../layout-types';
+import type { ChannelRouting } from '../routing/channel-types';
+import {
+	channelFor,
+	channelMaterializedRelations,
+	compactCenters,
+	indexById,
+	legacyMaterializedRelations,
+	orderedCenters,
+	rails,
+} from './independent-adjacent-channel-routing';
 import { type AdjacentAxes, measuredAdjacentAxes } from './independent-adjacent-measurements';
 import type { LayoutContractCandidate } from './layout-contract';
 import type { CandidateFaceChoice } from './validate-candidate';
+
+export enum AdjacentGeometryMode {
+	Detour = 'detour',
+	Bridge = 'bridge',
+}
 
 interface CanonicalBox {
 	readonly u: number;
@@ -63,10 +78,6 @@ function screenBounds(box: CanonicalBox, frame: CanonicalFrame): Bounds {
 	if (frame.reversed) flow = frame.flowExtent - box.v - box.flowSize;
 	if (frame.vertical) return { x: box.u, y: flow, width: box.crossSize, height: box.flowSize };
 	return { x: flow, y: box.u, width: box.flowSize, height: box.crossSize };
-}
-
-function indexById(ids: readonly string[]): ReadonlyMap<string, number> {
-	return new Map(ids.map((id, index) => [id, index]));
 }
 
 function relationPortOffsets(ids: readonly string[]): ReadonlyMap<string, number> {
@@ -129,49 +140,6 @@ function recordTargetPortGroup(
 	return true;
 }
 
-function rails(
-	graph: LogicGraph,
-	candidate: LayoutContractCandidate,
-	centers: ReadonlyMap<string, number>,
-): readonly string[] {
-	const sourceIndex = indexById(candidate.sourceOrder);
-	const targetIndex = indexById(candidate.targetOrder);
-	const incidences = new Map(candidate.targetOrder.map((id) => [id, 0]));
-	for (const { relation } of graph.relations)
-		incidences.set(relation.to, defined(incidences.get(relation.to)) + 1);
-	const firstSource = defined(candidate.sourceOrder[0]);
-	const lastSource = defined(candidate.sourceOrder.at(-1));
-	const midpoint = (defined(centers.get(firstSource)) + defined(centers.get(lastSource))) / 2;
-	return graph.relations
-		.map(({ relation }) => relation)
-		.sort((a, b) => {
-			const degree = defined(incidences.get(a.to)) - defined(incidences.get(b.to));
-			if (degree !== 0) return degree;
-			const target = defined(centers.get(a.to));
-			let sourceOrder = defined(sourceIndex.get(a.from)) - defined(sourceIndex.get(b.from));
-			if (target < midpoint) sourceOrder = -sourceOrder;
-			if (sourceOrder !== 0) return sourceOrder;
-			return (
-				defined(targetIndex.get(a.to)) - defined(targetIndex.get(b.to)) ||
-				compareCanonicalStrings(a.id, b.id)
-			);
-		})
-		.map(({ id }) => id);
-}
-
-function orderedCenters(
-	candidate: LayoutContractCandidate,
-	firstCenter: number,
-	step: number,
-): ReadonlyMap<string, number> {
-	const centers = new Map<string, number>();
-	for (const [index, id] of candidate.sourceOrder.entries())
-		centers.set(id, firstCenter + index * step);
-	for (const [index, id] of candidate.targetOrder.entries())
-		centers.set(id, firstCenter + index * step * 2);
-	return centers;
-}
-
 function canonicalBoxes(input: {
 	readonly candidate: LayoutContractCandidate;
 	readonly axes: ReadonlyMap<string, AdjacentAxes>;
@@ -202,45 +170,45 @@ function canonicalBoxes(input: {
 	return boxes;
 }
 
-function materializedRelations(input: {
+function rankExtents(input: {
+	readonly candidate: LayoutContractCandidate;
+	readonly axes: ReadonlyMap<string, AdjacentAxes>;
+	readonly gap: number;
+}): { targetBottom: number; sourceTop: number; flowExtent: number } {
+	const { candidate, axes, gap } = input;
+	const maximumTargetFlow = Math.max(
+		...candidate.targetOrder.map((id) => defined(axes.get(id)).flowSize),
+	);
+	const maximumSourceFlow = Math.max(
+		...candidate.sourceOrder.map((id) => defined(axes.get(id)).flowSize),
+	);
+	const targetBottom = OUTER_MARGIN + maximumTargetFlow;
+	const sourceTop = targetBottom + BASE_RANK_GAP + gap;
+	const flowExtent = sourceTop + maximumSourceFlow + OUTER_MARGIN;
+	return { targetBottom, sourceTop, flowExtent };
+}
+
+function layoutDimensions(input: {
+	readonly vertical: boolean;
+	readonly crossExtent: number;
+	readonly flowExtent: number;
+}): { width: number; height: number } {
+	const { vertical, crossExtent, flowExtent } = input;
+	if (vertical) return { width: crossExtent, height: flowExtent };
+	return { width: flowExtent, height: crossExtent };
+}
+
+interface AdjacentGeometryInput {
 	readonly graph: LogicGraph;
-	readonly outputFrame: CanonicalFrame;
-	readonly sourceByRelation: ReadonlyMap<string, number>;
-	readonly targetByRelation: ReadonlyMap<string, number>;
-	readonly railByRelation: ReadonlyMap<string, number>;
-	readonly sourceTop: number;
-	readonly targetBottom: number;
-}): readonly LayoutRelation[] {
-	const {
-		graph,
-		outputFrame,
-		sourceByRelation,
-		targetByRelation,
-		railByRelation,
-		sourceTop,
-		targetBottom,
-	} = input;
-	return graph.relations.map(({ relation }) => {
-		const sourceU = defined(sourceByRelation.get(relation.id));
-		const targetU = defined(targetByRelation.get(relation.id));
-		const rail = defined(railByRelation.get(relation.id));
-		const points: CanonicalPoint[] = [
-			{ u: sourceU, v: sourceTop },
-			{ u: sourceU, v: rail },
-			{ u: targetU, v: rail },
-			{ u: targetU, v: targetBottom },
-		];
-		return { ...relation, points: points.map((point) => screenPoint(point, outputFrame)) };
-	});
+	readonly measurements: LayoutMeasurements;
+	readonly candidate: LayoutContractCandidate;
+	readonly choices: readonly CandidateFaceChoice[];
+	readonly geometry: AdjacentGeometryMode;
 }
 
 /** A deliberately bounded, independent materializer for adjacent 3+1 and 2+2 contracts. */
-export function materializeIndependentAdjacentGeometry(
-	graph: LogicGraph,
-	measurements: LayoutMeasurements,
-	candidate: LayoutContractCandidate,
-	choices: readonly CandidateFaceChoice[],
-): LayoutResult | undefined {
+function materializeAdjacentGeometry(input: AdjacentGeometryInput): LayoutResult | undefined {
+	const { graph, measurements, candidate, choices, geometry } = input;
 	if (candidate.sourceOrder.length !== 3 || candidate.targetOrder.length !== 2) return undefined;
 	const direction = graph.document.layout.direction;
 	const vertical =
@@ -250,52 +218,92 @@ export function materializeIndependentAdjacentGeometry(
 	const axes = measuredAdjacentAxes({ graph, measurements, candidate, chosen, vertical });
 	if (axes === undefined) return undefined;
 	const maximumCrossSize = Math.max(...[...axes.values()].map(({ crossSize }) => crossSize));
-	const step = maximumCrossSize + ITEM_GAP + RAIL_SPACING;
-	const firstCenter = OUTER_MARGIN + maximumCrossSize / 2;
-	const centers = orderedCenters(candidate, firstCenter, step);
-	const maxTargetFlow = Math.max(
-		...candidate.targetOrder.map((id) => defined(axes.get(id)).flowSize),
-	);
-	const maxSourceFlow = Math.max(
-		...candidate.sourceOrder.map((id) => defined(axes.get(id)).flowSize),
-	);
-	const targetBottom = OUTER_MARGIN + maxTargetFlow;
-	const orderedRails = rails(graph, candidate, centers);
-	const railHeight = (orderedRails.length + 1) * RAIL_SPACING;
-	const sourceTop = targetBottom + BASE_RANK_GAP + railHeight;
-	const boxes = canonicalBoxes({ candidate, axes, centers, targetBottom, sourceTop });
-	const lastCenter = firstCenter + 2 * step;
-	const crossExtent = lastCenter + maximumCrossSize / 2 + OUTER_MARGIN;
-	const flowExtent = sourceTop + maxSourceFlow + OUTER_MARGIN;
-	const outputFrame = frame(direction, crossExtent, flowExtent);
+	let centers: ReadonlyMap<string, number>;
+	let crossExtent: number;
+	if (geometry === AdjacentGeometryMode.Bridge) {
+		({ centers, crossExtent } = compactCenters(candidate, axes));
+	} else {
+		const step = maximumCrossSize + ITEM_GAP + RAIL_SPACING;
+		const firstCenter = OUTER_MARGIN + maximumCrossSize / 2;
+		centers = orderedCenters(candidate, firstCenter, step);
+		const lastCenter = firstCenter + 2 * step;
+		const lastExtent = lastCenter + maximumCrossSize / 2;
+		crossExtent = lastExtent + OUTER_MARGIN;
+	}
 	const sourceByRelation = sourcePorts(graph, candidate, centers);
 	const targetByRelation = targetPorts(graph, choices, centers);
 	if (targetByRelation === undefined) return undefined;
-	const railByRelation = new Map(
-		orderedRails.map((id, index) => [id, targetBottom + (index + 1) * RAIL_SPACING]),
-	);
+	let channel: ChannelRouting | undefined;
+	let orderedRails: readonly string[] = [];
+	if (geometry === AdjacentGeometryMode.Bridge)
+		channel = channelFor({ graph, sourceByRelation, targetByRelation });
+	else orderedRails = rails(graph, candidate, centers);
+	let gap = (orderedRails.length + 1) * RAIL_SPACING;
+	if (channel !== undefined) gap = Math.max(0, channel.railCount - 1) * RAIL_SPACING;
+	const { targetBottom, sourceTop, flowExtent } = rankExtents({ candidate, axes, gap });
+	const boxes = canonicalBoxes({ candidate, axes, centers, targetBottom, sourceTop });
+	const outputFrame = frame(direction, crossExtent, flowExtent);
 	const elements: LayoutElement[] = [...boxes]
 		.sort(([a], [b]) => compareCanonicalStrings(a, b))
 		.map(([id, box]) => ({ id, kind: EndpointKind.Node, bounds: screenBounds(box, outputFrame) }));
-	const relations = materializedRelations({
-		graph,
-		outputFrame,
-		sourceByRelation,
-		targetByRelation,
-		railByRelation,
-		sourceTop,
-		targetBottom,
-	});
-	let width = crossExtent;
-	let height = flowExtent;
-	if (!vertical) {
-		width = flowExtent;
-		height = crossExtent;
+	let relations: readonly LayoutRelation[];
+	if (channel !== undefined)
+		relations = channelMaterializedRelations({
+			graph,
+			channel,
+			sourceTop,
+			targetBottom,
+			projectPoint: (point) => screenPoint({ u: point.x, v: point.y }, outputFrame),
+		});
+	else {
+		const railByRelation = new Map(
+			orderedRails.map((id, index) => [id, targetBottom + (index + 1) * RAIL_SPACING]),
+		);
+		relations = legacyMaterializedRelations({
+			graph,
+			projectPoint: (point) => screenPoint(point, outputFrame),
+			sourceByRelation,
+			targetByRelation,
+			railByRelation,
+			sourceTop,
+			targetBottom,
+		});
 	}
+	const { width, height } = layoutDimensions({ vertical, crossExtent, flowExtent });
 	return {
 		width,
 		height,
 		elements,
 		relations,
 	};
+}
+
+export function materializeIndependentAdjacentGeometry(
+	graph: LogicGraph,
+	measurements: LayoutMeasurements,
+	candidate: LayoutContractCandidate,
+	choices: readonly CandidateFaceChoice[],
+): LayoutResult | undefined {
+	return materializeAdjacentGeometry({
+		graph,
+		measurements,
+		candidate,
+		choices,
+		geometry: AdjacentGeometryMode.Detour,
+	});
+}
+
+export function materializeIndependentAdjacentBridgeGeometry(
+	graph: LogicGraph,
+	measurements: LayoutMeasurements,
+	candidate: LayoutContractCandidate,
+	choices: readonly CandidateFaceChoice[],
+): LayoutResult | undefined {
+	return materializeAdjacentGeometry({
+		graph,
+		measurements,
+		candidate,
+		choices,
+		geometry: AdjacentGeometryMode.Bridge,
+	});
 }
