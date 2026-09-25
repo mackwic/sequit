@@ -619,6 +619,22 @@ describe('shared lane layout', () => {
 		expect(
 			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
+		expect(result.allocationWitness?.passes).toEqual([
+			{
+				acceptBridges: false,
+				attempted: 18,
+				total: '18',
+				exhaustive: true,
+				truncated: false,
+			},
+			{
+				acceptBridges: true,
+				attempted: 18,
+				total: '18',
+				exhaustive: true,
+				truncated: false,
+			},
+		]);
 		const bridges = validatedBridges(result.geometry.relations);
 		expect(bridges).toHaveLength(1);
 		const metrics = laneRouteMetrics(result.geometry);
@@ -627,6 +643,34 @@ describe('shared lane layout', () => {
 		for (const [index, route] of result.geometry.relations.entries())
 			for (const other of result.geometry.relations.slice(index + 1))
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
+	});
+
+	it('reports exact allocation counts when route search stops at its candidate budget', () => {
+		const base = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const b1 = defined(base.nodes.find(({ id }) => id === 'b1'));
+		const document: LogicDocument = {
+			...base,
+			nodes: [...base.nodes, { ...b1, id: 'b2', markdown: 'B2', layoutOrder: orderKey('a3') }],
+			relations: [
+				{ id: 'a1-to-b1', from: 'a1', to: 'b1' },
+				{ id: 'a1-to-b2', from: 'a1', to: 'b2' },
+				{ id: 'a2-to-b1', from: 'a2', to: 'b1' },
+				{ id: 'a2-to-b2', from: 'a2', to: 'b2' },
+			],
+		};
+		const prepared = prepareLayoutDocument(document);
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(result.status).not.toBe(SharedLaneLayoutStatus.Unsupported);
+		if (result.status === SharedLaneLayoutStatus.Unsupported) return;
+		expect(result.allocationWitness?.passes).toEqual([
+			{
+				acceptBridges: false,
+				attempted: 64,
+				total: '600',
+				exhaustive: false,
+				truncated: true,
+			},
+		]);
 	});
 
 	it('types an invalid incident contract before any geometry', () => {

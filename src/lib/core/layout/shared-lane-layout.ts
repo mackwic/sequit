@@ -23,12 +23,13 @@ import { interiorPassageAllocation } from './shared-lane-interior-passage';
 import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
-import { twoPassStrategies } from './shared-lane-route-strategies';
 import {
-	allocateParallelRoutes,
-	ParallelRouteOrder,
-	routeSharedLanes,
-} from './shared-lane-routing';
+	materializeParallelGeometry,
+	type SharedLaneAllocationSearchWitness,
+} from './shared-lane-route-candidates';
+import { searchParallelRouteAllocations } from './shared-lane-route-search';
+import { twoPassStrategies } from './shared-lane-route-strategies';
+import { allocateParallelRoutes, routeSharedLanes } from './shared-lane-routing';
 import { makeTransverseLaneFrame } from './shared-transverse-frame';
 import {
 	allocateTransverseRoutes,
@@ -48,6 +49,7 @@ interface SelectedSharedLaneLayout {
 	readonly geometry: SharedLaneGeometry;
 	readonly incidents: readonly RegionSolvedIncident[];
 	readonly witness: RegionIncidentSearchWitness;
+	readonly allocationWitness?: SharedLaneAllocationSearchWitness;
 }
 
 interface UnknownSharedLaneLayout {
@@ -55,6 +57,7 @@ interface UnknownSharedLaneLayout {
 	readonly reason: string;
 	readonly code: RegionIncidentUnknownCode;
 	readonly witness: RegionIncidentSearchWitness;
+	readonly allocationWitness?: SharedLaneAllocationSearchWitness;
 }
 
 interface UnsupportedSharedLaneLayout {
@@ -79,22 +82,6 @@ function geometryDimensions(
 } {
 	if (input.vertical) return { width: crossExtent, height: longExtent };
 	return { width: longExtent, height: crossExtent };
-}
-
-function parallelGeometry(
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-	order: ParallelRouteOrder,
-): SharedLaneGeometry {
-	const reserveTop = order !== ParallelRouteOrder.Canonical;
-	const frame = makeSharedLaneFrame(input, ports, reserveTop);
-	const dimensions = geometryDimensions(input, frame.crossExtent, frame.longExtent);
-	return {
-		...dimensions,
-		lanes: frame.lanes,
-		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame), order),
-	};
 }
 
 function interiorParallelGeometry(
@@ -140,8 +127,9 @@ function selectedLayout(
 	geometry: SharedLaneGeometry,
 	incidents: readonly RegionSolvedIncident[],
 	witness: RegionIncidentSearchWitness,
+	allocationWitness?: SharedLaneAllocationSearchWitness,
 ): SelectedSharedLaneLayout {
-	return {
+	const selected: SelectedSharedLaneLayout = {
 		status: SharedLaneLayoutStatus.Selected,
 		layout: {
 			width: geometry.width,
@@ -154,22 +142,12 @@ function selectedLayout(
 		incidents,
 		witness,
 	};
+	if (allocationWitness !== undefined) return { ...selected, allocationWitness };
+	return selected;
 }
 
 function emptyWitness(): RegionIncidentSearchWitness {
 	return { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
-}
-
-function parallelOrders(
-	contracts: readonly RegionIncidentContract[],
-): readonly ParallelRouteOrder[] {
-	if (contracts.length === 0)
-		return [ParallelRouteOrder.Canonical, ParallelRouteOrder.LocalPassages];
-	return [
-		ParallelRouteOrder.ReservedTopPassage,
-		ParallelRouteOrder.Canonical,
-		ParallelRouteOrder.LocalPassages,
-	];
 }
 
 interface GeometryAttemptInput {
@@ -235,27 +213,39 @@ function parallelAttempt({
 			firstIssue = issue;
 		}
 	}
-	for (const strategy of twoPassStrategies('parallel', parallelOrders(contracts))) {
-		state.strategyId = strategy.id;
-		state.candidateId = strategy.id;
-		const geometry = parallelGeometry(input, ports, strategy.order);
-		const attempt = geometryAttempt({
-			graph,
-			geometry,
-			ports,
-			contracts,
-			acceptBridges: strategy.acceptBridges,
-			state,
-		});
-		if (typeof attempt !== 'string') return attempt;
-		firstIssue ??= attempt;
-		if (!state.exhaustive) break;
-	}
+	const search = searchParallelRouteAllocations({
+		input,
+		ports,
+		contracts,
+		state,
+		evaluate: (candidate, acceptBridges) => {
+			const geometry = materializeParallelGeometry(
+				input,
+				candidate.frame,
+				candidate.order,
+				candidate.allocation,
+			);
+			const attempt = geometryAttempt({ graph, geometry, ports, contracts, acceptBridges, state });
+			if (typeof attempt !== 'string') return attempt;
+			firstIssue ??= attempt;
+			return undefined;
+		},
+	});
+	if (search.selected !== undefined)
+		return selectedLayout(
+			search.selected.geometry,
+			search.selected.incidents,
+			search.selected.witness,
+			search.allocationWitness,
+		);
+	let code = unknownCode(state);
+	if (search.allocationTruncated) code = RegionIncidentUnknownCode.SearchBudgetExceeded;
 	return {
 		status: SharedLaneLayoutStatus.Unknown,
-		code: unknownCode(state),
+		code,
 		reason: defined(firstIssue),
 		witness: searchWitness(state),
+		allocationWitness: search.allocationWitness,
 	};
 }
 
