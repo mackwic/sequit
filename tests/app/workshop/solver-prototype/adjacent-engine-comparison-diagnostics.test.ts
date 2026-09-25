@@ -135,20 +135,20 @@ describe('adjacent bridge comparison diagnostics', () => {
 		);
 	});
 
-	it('refuses a bridge rendered on a crossing-free independent detour', async () => {
+	it('refuses a validated independent crossing whose bridge arc is not rendered', async () => {
 		const realRender = canvas.renderRelationPaths;
 		let renderedPanels = 0;
 		vi.spyOn(canvas, 'renderRelationPaths').mockImplementation((routes) => {
 			renderedPanels += 1;
 			const rendered = realRender(routes);
 			if (renderedPanels !== 2) return rendered;
-			return rendered.map((relation, index) => {
-				if (index === 0) return { ...relation, path: `${relation.path} A 6 6 0 0 0 1 1` };
-				return relation;
-			});
+			return rendered.map((relation) => ({
+				...relation,
+				path: relation.path.replaceAll(/\bA 6 6 /g, 'L '),
+			}));
 		});
 		await expect(compareAdjacentBridgeAndDetour()).rejects.toThrow(
-			'The independent adjacent witness unexpectedly renders a bridge.',
+			'The independent adjacent bridge mark differs from the selected issue.',
 		);
 	});
 });

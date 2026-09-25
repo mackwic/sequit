@@ -24,14 +24,14 @@ import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contra
 import * as candidateLayout from '../../../../../src/lib/core/layout/contract/candidate-layout';
 import { materializeContractCandidate } from '../../../../../src/lib/core/layout/contract/candidate-layout';
 import * as independentGeometry from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
-import { materializeIndependentAdjacentGeometry } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
-	DETOUR_AREA_TOLERANCE,
-	DETOUR_LENGTH_TOLERANCE,
+	AdjacentGeometryMode,
+	materializeIndependentAdjacentBridgeGeometry,
+	materializeIndependentAdjacentGeometry,
+} from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
+import {
 	IndependentAdjacentBranchStatus,
-	type IndependentAdjacentComparison,
 	IndependentAdjacentGlobalStatus,
-	IndependentAdjacentIssue,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../../../src/lib/core/layout/contract/independent-adjacent-resolution';
@@ -191,32 +191,6 @@ interface BranchCost {
 	readonly bends: number;
 }
 
-/** A layout whose first two routes cross strictly, with room for the bridge arc. */
-function bridgedCrossingLayout(base: LayoutResult): LayoutResult {
-	const first = defined(base.relations[0]);
-	const second = defined(base.relations[1]);
-	return {
-		...base,
-		relations: [
-			{
-				...first,
-				points: [
-					{ x: 0, y: 0 },
-					{ x: 0, y: 100 },
-				],
-			},
-			{
-				...second,
-				points: [
-					{ x: -10, y: 50 },
-					{ x: 10, y: 50 },
-				],
-			},
-			...base.relations.slice(2),
-		],
-	};
-}
-
 /** The same strict crossing with less than the clearance on every side: no arc can carry it. */
 function crowdedCrossingLayout(base: LayoutResult): LayoutResult {
 	const first = defined(base.relations[0]);
@@ -241,67 +215,6 @@ function crowdedCrossingLayout(base: LayoutResult): LayoutResult {
 			...base.relations.slice(2),
 		],
 	};
-}
-
-/** A minimal bridged layout: one strict crossing with the clearance on every side. */
-function bridgedMockLayout(): LayoutResult {
-	return {
-		width: 100,
-		height: 100,
-		elements: [],
-		relations: [
-			{
-				id: 'first',
-				from: 'a',
-				to: 'd',
-				points: [
-					{ x: 50, y: 0 },
-					{ x: 50, y: 100 },
-				],
-			},
-			{
-				id: 'second',
-				from: 'a',
-				to: 'e',
-				points: [
-					{ x: 0, y: 50 },
-					{ x: 100, y: 50 },
-				],
-			},
-		],
-	};
-}
-
-/** The same frame without a crossing: the second route runs beside the first one. */
-function detourMockLayout(width: number, horizontalLength: number): LayoutResult {
-	const relations = bridgedMockLayout().relations;
-	const second = defined(relations[1]);
-	return {
-		width,
-		height: 100,
-		elements: [],
-		relations: [
-			defined(relations[0]),
-			{
-				...second,
-				points: [
-					{ x: 200, y: 50 },
-					{ x: 200 + horizontalLength, y: 50 },
-				],
-			},
-		],
-	};
-}
-
-/** Materializes the first evaluated branch as `first`, every later one as `rest()`. */
-function mockMaterials(first: LayoutResult, rest: () => LayoutResult): void {
-	let calls = 0;
-	vi.spyOn(independentGeometry, 'materializeIndependentAdjacentGeometry').mockImplementation(() => {
-		calls += 1;
-		if (calls === 1) return first;
-		return rest();
-	});
-	vi.spyOn(geometryValidation, 'validateContractCandidate').mockReturnValue({ valid: true });
 }
 
 function branchCost(branchId: string, growth: number, layout: LayoutResult): BranchCost {
@@ -458,26 +371,34 @@ describe('adjacent node LayoutContract', () => {
 							branchId: dedicatedBranch.id,
 							status: IndependentAdjacentBranchStatus.Accepted,
 						});
+						if (shape === '3+1')
+							expect(
+								independent.evaluations.some(
+									({ branchId, status }) =>
+										branchId.endsWith(':bridge') &&
+										status === IndependentAdjacentBranchStatus.Accepted,
+								),
+							).toBe(true);
 						expect(hasStrictRouteCrossing(dedicated)).toBe(true);
-						expect(hasStrictRouteCrossing(independent.selection.layout)).toBe(false);
-						expect(dedicatedBranch.id).not.toBe(independent.selection.branchId);
-						expect(independent.selection.growth).toBeLessThanOrEqual(dedicatedBranch.growth);
+						const selectedAnalysis = routeBridgeAnalysis(independent.selection.layout.relations);
+						expect(independent.selection.bridged).toBe(selectedAnalysis.crossings.length > 0);
+						if (independent.selection.bridged)
+							expect(unbridgedCrossings(selectedAnalysis)).toEqual([]);
+						else expect(selectedAnalysis.crossings).toEqual([]);
+						const selectedCandidate = defined(
+							independent.contract.candidates.find(
+								({ id }) => id === independent.selection.candidateId,
+							),
+						);
 						expect(
-							independent.selection.layout.width * independent.selection.layout.height,
-						).toBeGreaterThan(dedicated.width * dedicated.height);
-						expect(JSON.stringify(independent.selection.layout)).not.toBe(
-							JSON.stringify(dedicated),
-						);
-						// Both declared issues have the same frame here, and the bridged routes are one
-						// detour hop longer: the arbitration keeps the crossing-free candidate.
-						expect(independent.selection.bridged).toBe(false);
-						expect(defined(independent.comparison).selected).toBe(IndependentAdjacentIssue.Detour);
-						expect(defined(independent.comparison).bridge.area).toBe(
-							defined(independent.comparison).detour.area,
-						);
-						expect(defined(independent.comparison).bridge.routeLength).toBeGreaterThan(
-							defined(independent.comparison).detour.routeLength,
-						);
+							validateContractCandidate({
+								graph: source,
+								measurements: measured,
+								candidate: selectedCandidate,
+								choices: independent.selection.choices,
+								layout: independent.selection.layout,
+							}),
+						).toEqual({ valid: true });
 						return {
 							independent: independent.selection.layout,
 							dedicated,
@@ -528,21 +449,48 @@ describe('adjacent node LayoutContract', () => {
 								.filter(({ status }) => status === IndependentAdjacentBranchStatus.Accepted)
 								.map(({ branchId }) => branchId),
 						);
-						const costs = result.contract.candidates
-							.flatMap(candidateFaceBranches)
-							.filter(({ id }) => acceptedIds.has(id))
-							.map((branch) => {
-								const layout = materializeIndependentAdjacentGeometry(
+						const branches = new Map<
+							string,
+							{
+								branch: ReturnType<typeof candidateFaceBranches>[number];
+								geometry: AdjacentGeometryMode;
+							}
+						>(
+							result.contract.candidates.flatMap(candidateFaceBranches).flatMap((branch) => {
+								const detour = [
+									branch.id,
+									{ branch, geometry: AdjacentGeometryMode.Detour },
+								] as const;
+								if (shape !== '3+1') return [detour];
+								return [
+									detour,
+									[
+										`${branch.id}:bridge`,
+										{ branch, geometry: AdjacentGeometryMode.Bridge },
+									] as const,
+								];
+							}),
+						);
+						const costs = [...acceptedIds].map((branchId) => {
+							const { branch, geometry } = defined(branches.get(branchId));
+							let layout: LayoutResult | undefined;
+							if (geometry === AdjacentGeometryMode.Bridge)
+								layout = materializeIndependentAdjacentBridgeGeometry(
 									source,
 									measured,
 									branch.candidate,
 									branch.choices,
 								);
-								if (layout === undefined) throw new Error(`Accepted branch ${branch.id} vanished`);
-								return branchCost(branch.id, branch.growth, layout);
-							});
-						// A validated bridge admits every evaluated branch, not only the crossing-free ones.
-						expect(costs).toHaveLength(result.evaluations.length);
+							else
+								layout = materializeIndependentAdjacentGeometry(
+									source,
+									measured,
+									branch.candidate,
+									branch.choices,
+								);
+							if (layout === undefined) throw new Error(`Accepted branch ${branchId} vanished`);
+							return branchCost(branchId, branch.growth, layout);
+						});
 						expect(costs).toHaveLength(acceptedIds.size);
 						const incumbent = defined(
 							costs.find(({ branchId }) => branchId === result.selection.branchId),
@@ -552,7 +500,6 @@ describe('adjacent node LayoutContract', () => {
 						const witness = { direction, shape, sample, permuted, incumbent, dominators };
 						expect(dominators, JSON.stringify(witness)).toEqual([]);
 						expect(frontier.map(({ branchId }) => branchId)).toContain(result.selection.branchId);
-						expect(result.selection.bridged).toBe(false);
 						return { costs, frontier: frontier.map(({ branchId }) => branchId), incumbent };
 					});
 					expect(variants[1]).toEqual(variants[0]);
@@ -759,7 +706,6 @@ describe('adjacent node LayoutContract', () => {
 			const candidate = defined(
 				result.contract.candidates.find(({ id }) => id === result.selection.candidateId),
 			);
-			expect(candidate.conflicts.inversions).toEqual([]);
 			expect(
 				validateContractCandidate({
 					graph: source,
@@ -769,7 +715,10 @@ describe('adjacent node LayoutContract', () => {
 					layout: result.selection.layout,
 				}),
 			).toEqual({ valid: true });
-			expect(hasStrictRouteCrossing(result.selection.layout)).toBe(false);
+			const selectedAnalysis = routeBridgeAnalysis(result.selection.layout.relations);
+			expect(result.selection.bridged).toBe(selectedAnalysis.crossings.length > 0);
+			if (result.selection.bridged) expect(unbridgedCrossings(selectedAnalysis)).toEqual([]);
+			else expect(selectedAnalysis.crossings).toEqual([]);
 		},
 	);
 
@@ -869,6 +818,9 @@ describe('adjacent node LayoutContract', () => {
 		const materialize = vi
 			.spyOn(independentGeometry, 'materializeIndependentAdjacentGeometry')
 			.mockReturnValue(undefined);
+		const materializeBridge = vi
+			.spyOn(independentGeometry, 'materializeIndependentAdjacentBridgeGeometry')
+			.mockReturnValue(undefined);
 		const failed = resolveIndependentAdjacentContract(source, ranks, measured);
 		expect(failed.status).toBe(IndependentAdjacentStatus.Unknown);
 		expect(failed.evaluations).not.toHaveLength(0);
@@ -878,6 +830,7 @@ describe('adjacent node LayoutContract', () => {
 			),
 		).toBe(true);
 		materialize.mockRestore();
+		materializeBridge.mockRestore();
 		const validate = vi.spyOn(geometryValidation, 'validateContractCandidate').mockReturnValue({
 			valid: false,
 			reason: CandidateGeometryReason.Obstacle,
@@ -892,28 +845,6 @@ describe('adjacent node LayoutContract', () => {
 		validate.mockRestore();
 	});
 
-	it('accepts a strict route crossing that a validated bridge can carry', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		const full = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(full.status).toBe(IndependentAdjacentStatus.Selected);
-		if (full.status !== IndependentAdjacentStatus.Selected) return;
-		const crossing = bridgedCrossingLayout(full.selection.layout);
-		vi.spyOn(independentGeometry, 'materializeIndependentAdjacentGeometry').mockReturnValue(
-			crossing,
-		);
-		vi.spyOn(geometryValidation, 'validateContractCandidate').mockReturnValue({
-			valid: true,
-		});
-		const accepted = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(accepted.status).toBe(IndependentAdjacentStatus.Selected);
-		if (accepted.status !== IndependentAdjacentStatus.Selected) return;
-		// A single issue is admissible here: no arbitration happened.
-		expect(accepted.selection.bridged).toBe(true);
-		expect(accepted.comparison).toBeUndefined();
-	});
-
 	it('keeps a strict route crossing that no bridge can carry unknown', () => {
 		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
 		const ranks = topologicallyRank(source);
@@ -921,8 +852,12 @@ describe('adjacent node LayoutContract', () => {
 		const full = resolveIndependentAdjacentContract(source, ranks, measured);
 		expect(full.status).toBe(IndependentAdjacentStatus.Selected);
 		if (full.status !== IndependentAdjacentStatus.Selected) return;
+		const crowded = crowdedCrossingLayout(full.selection.layout);
 		vi.spyOn(independentGeometry, 'materializeIndependentAdjacentGeometry').mockReturnValue(
-			crowdedCrossingLayout(full.selection.layout),
+			crowded,
+		);
+		vi.spyOn(independentGeometry, 'materializeIndependentAdjacentBridgeGeometry').mockReturnValue(
+			crowded,
 		);
 		vi.spyOn(geometryValidation, 'validateContractCandidate').mockReturnValue({
 			valid: true,
@@ -931,85 +866,15 @@ describe('adjacent node LayoutContract', () => {
 		expect(rejected.status).toBe(IndependentAdjacentStatus.Unknown);
 		if (rejected.status !== IndependentAdjacentStatus.Unknown) return;
 		expect(
-			rejected.evaluations.every(
+			rejected.evaluations.some(
 				({ status }) => status === IndependentAdjacentBranchStatus.CrossingRejected,
 			),
 		).toBe(true);
-	});
-
-	it('selects a validated bridge when every candidate keeps a strict crossing', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		mockMaterials(bridgedMockLayout(), () => bridgedMockLayout());
-		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
-		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		expect(resolved.selection.bridged).toBe(true);
-		expect(resolved.comparison).toBeUndefined();
-	});
-
-	it('prefers the validated bridge when the detour exceeds the area tolerance', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		mockMaterials(bridgedMockLayout(), () => detourMockLayout(200, 100));
-		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
-		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		const comparison: IndependentAdjacentComparison = defined(resolved.comparison);
-		expect(comparison.selected).toBe(IndependentAdjacentIssue.Bridge);
-		expect(comparison.detour.area / comparison.bridge.area - 1).toBeGreaterThan(
-			DETOUR_AREA_TOLERANCE,
-		);
-		expect(comparison.bridge.area).toBe(10000);
-		expect(comparison.detour.routeLength).toBe(comparison.bridge.routeLength);
-		expect(resolved.selection.bridged).toBe(true);
-	});
-
-	it('prefers the validated bridge when the detour exceeds the length tolerance', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		mockMaterials(bridgedMockLayout(), () => detourMockLayout(100, 400));
-		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
-		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		const comparison = defined(resolved.comparison);
-		expect(comparison.selected).toBe(IndependentAdjacentIssue.Bridge);
-		expect(comparison.detour.routeLength / comparison.bridge.routeLength - 1).toBeGreaterThan(
-			DETOUR_LENGTH_TOLERANCE,
-		);
-		expect(comparison.detour.routeLength).toBe(500);
-		expect(comparison.detour.area).toBe(comparison.bridge.area);
-		expect(resolved.selection.bridged).toBe(true);
-	});
-
-	it('keeps the crossing-free detour when it stays within both tolerances', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		mockMaterials(bridgedMockLayout(), () => detourMockLayout(100, 100));
-		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
-		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		const comparison = defined(resolved.comparison);
-		expect(comparison.selected).toBe(IndependentAdjacentIssue.Detour);
-		expect(comparison.detour.area).toBe(comparison.bridge.area);
-		expect(comparison.detour.routeLength).toBe(comparison.bridge.routeLength);
-		expect(resolved.selection.bridged).toBe(false);
-	});
-
-	it('reports no comparison when no candidate keeps a bridged crossing', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		mockMaterials(detourMockLayout(100, 100), () => detourMockLayout(100, 100));
-		const resolved = resolveIndependentAdjacentContract(source, ranks, measured);
-		expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
-		if (resolved.status !== IndependentAdjacentStatus.Selected) return;
-		expect(resolved.selection.bridged).toBe(false);
-		expect(resolved.comparison).toBeUndefined();
+		expect(
+			rejected.evaluations.some(
+				({ status }) => status === IndependentAdjacentBranchStatus.BridgeUnavailable,
+			),
+		).toBe(true);
 	});
 
 	it('does not materialize a malformed adjacent face contract', () => {
@@ -1185,7 +1050,10 @@ describe('adjacent node LayoutContract', () => {
 					);
 					expect(resolved.status).toBe(IndependentAdjacentStatus.Selected);
 					if (resolved.status !== IndependentAdjacentStatus.Selected) continue;
-					expect(hasStrictRouteCrossing(resolved.selection.layout)).toBe(false);
+					const selectedAnalysis = routeBridgeAnalysis(resolved.selection.layout.relations);
+					expect(resolved.selection.bridged).toBe(selectedAnalysis.crossings.length > 0);
+					if (resolved.selection.bridged) expect(unbridgedCrossings(selectedAnalysis)).toEqual([]);
+					else expect(selectedAnalysis.crossings).toEqual([]);
 					expect(
 						resolveIndependentAdjacentContract(permuted, topologicallyRank(permuted), measured),
 					).toEqual(resolved);

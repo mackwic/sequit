@@ -5,9 +5,12 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
+import { routeBridgeAnalysis } from '../../../lib/core/layout/bridge-oracle';
 import { candidateFaceBranches } from '../../../lib/core/layout/contract/candidate-face-branches';
 import {
+	type IndependentAdjacentComparison,
 	type IndependentAdjacentGlobalStatus,
+	IndependentAdjacentIssue,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../lib/core/layout/contract/independent-adjacent-resolution';
@@ -51,6 +54,8 @@ export interface AdjacentEngineComparison {
 	readonly independent: AdjacentComparisonPanel & {
 		readonly candidateId: string;
 		readonly globalStatus: IndependentAdjacentGlobalStatus.Undetermined;
+		readonly selectedIssue: IndependentAdjacentIssue;
+		readonly comparison?: IndependentAdjacentComparison | undefined;
 	};
 }
 
@@ -104,11 +109,7 @@ function targetOrder(layout: LayoutResult): string {
 		.join(' < ');
 }
 
-function panel(
-	layout: LayoutResult,
-	measurements: LayoutMeasurements,
-	crossings: number,
-): AdjacentComparisonPanel {
+function panel(layout: LayoutResult, measurements: LayoutMeasurements): AdjacentComparisonPanel {
 	return {
 		layout,
 		targetOrder: targetOrder(layout),
@@ -117,7 +118,7 @@ function panel(
 			area: layout.width * layout.height,
 			growth: growth(layout, measurements),
 			...routeMetrics(layout.relations),
-			crossings,
+			crossings: routeBridgeAnalysis(layout.relations).crossings.length,
 			bridges: renderedBridgeCount(layout),
 		},
 	};
@@ -188,16 +189,14 @@ export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineCo
 		)
 	)
 		throw new Error('An adjacent comparison layout failed its geometric contract.');
-	const enginePanel = panel(
-		dedicated.layout,
-		fixture.measurements,
-		dedicated.summary.crossings.length,
-	);
-	const independentPanel = panel(resolution.selection.layout, fixture.measurements, 0);
+	const enginePanel = panel(dedicated.layout, fixture.measurements);
+	const independentPanel = panel(resolution.selection.layout, fixture.measurements);
 	if (enginePanel.metrics.crossings === 0 || enginePanel.metrics.bridges === 0)
 		throw new Error('The dedicated adjacent witness has no rendered bridge.');
-	if (independentPanel.metrics.bridges !== 0)
-		throw new Error('The independent adjacent witness unexpectedly renders a bridge.');
+	if (independentPanel.metrics.bridges > 0 !== resolution.selection.bridged)
+		throw new Error('The independent adjacent bridge mark differs from the selected issue.');
+	let selectedIssue = IndependentAdjacentIssue.Detour;
+	if (resolution.selection.bridged) selectedIssue = IndependentAdjacentIssue.Bridge;
 	return {
 		document: fixture.document,
 		measurements: fixture.measurements,
@@ -211,6 +210,8 @@ export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineCo
 			...independentPanel,
 			candidateId: resolution.selection.candidateId,
 			globalStatus: resolution.globalStatus,
+			selectedIssue,
+			comparison: resolution.comparison,
 		},
 	};
 }

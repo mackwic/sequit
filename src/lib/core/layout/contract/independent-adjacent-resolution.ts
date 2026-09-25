@@ -43,11 +43,7 @@ enum IndependentAdjacentUnknownReason {
 	NoValidatedCandidate = 'no-validated-candidate',
 }
 
-/**
- * The detour tolerances over the best bridged candidate. The 3+1 witness measures the crossing-free
- * detour at +46.52 % of area and +37.95 % of route length over the bridged layout, so both reject
- * that detour with a factor of about two, while a cheap detour keeps its crossings unwarranted.
- */
+/** The detour tolerances over the best bridged candidate, exercised on measured 3+1 layouts. */
 export const DETOUR_AREA_TOLERANCE = 0.25;
 export const DETOUR_LENGTH_TOLERANCE = 0.2;
 
@@ -114,6 +110,22 @@ export type IndependentAdjacentResolution =
 
 function better(left: IndependentAdjacentSelection, right: IndependentAdjacentSelection): boolean {
 	if (left.growth !== right.growth) return left.growth < right.growth;
+	return compareCanonicalStrings(left.branchId, right.branchId) < 0;
+}
+
+/** Resolve equal-growth 3+1 alternatives by their actual geometry, not branch-name order. */
+function betterIssueCandidate(
+	left: IndependentAdjacentSelection,
+	right: IndependentAdjacentSelection,
+	shape: AdjacentContractShape,
+): boolean {
+	if (left.growth !== right.growth) return left.growth < right.growth;
+	if (shape === AdjacentContractShape.ThreePlusOne) {
+		if (left.cost.area !== right.cost.area) return left.cost.area < right.cost.area;
+		if (left.cost.routeLength !== right.cost.routeLength)
+			return left.cost.routeLength < right.cost.routeLength;
+		if (left.cost.bends !== right.cost.bends) return left.cost.bends < right.cost.bends;
+	}
 	return compareCanonicalStrings(left.branchId, right.branchId) < 0;
 }
 
@@ -203,12 +215,14 @@ function evaluateBranch(input: {
 function bestOfIssue(
 	selections: readonly IndependentAdjacentSelection[],
 	issue: IndependentAdjacentIssue,
+	shape: AdjacentContractShape,
 ): IndependentAdjacentSelection | undefined {
 	const wanted = issue === IndependentAdjacentIssue.Bridge;
 	let incumbent: IndependentAdjacentSelection | undefined;
 	for (const selection of selections) {
 		if (selection.bridged !== wanted) continue;
-		if (incumbent === undefined || better(selection, incumbent)) incumbent = selection;
+		if (incumbent === undefined || betterIssueCandidate(selection, incumbent, shape))
+			incumbent = selection;
 	}
 	return incumbent;
 }
@@ -262,8 +276,8 @@ export function resolveIndependentAdjacentContract(
 		},
 		better,
 	});
-	const detour = bestOfIssue(selections, IndependentAdjacentIssue.Detour);
-	const bridge = bestOfIssue(selections, IndependentAdjacentIssue.Bridge);
+	const detour = bestOfIssue(selections, IndependentAdjacentIssue.Detour, contract.shape);
+	const bridge = bestOfIssue(selections, IndependentAdjacentIssue.Bridge, contract.shape);
 	const selected = arbitrateIssue(detour, bridge);
 	let comparison: IndependentAdjacentComparison | undefined;
 	if (selected !== undefined) comparison = compareIssues(detour, bridge, selected);
