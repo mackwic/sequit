@@ -21,7 +21,7 @@ import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
 
 const ROUTE_COLORS = ['#bf4f36', '#287b65', '#4c5fb5', '#a34e91', '#b17b26', '#317c9e'];
 
-export interface GridAllocationTrackView {
+interface GridAllocationTrackView {
 	readonly relationId: string;
 	readonly color: string;
 	readonly busTrack: number;
@@ -146,7 +146,7 @@ function threeByTwo(truncated: boolean): GridDefinition {
 			['d', 'f'],
 			['e', 'b'],
 			['f', 'e'],
-		])
+		] as const)
 			cellByEndpointId.set(endpointId, cellId);
 	}
 	return {

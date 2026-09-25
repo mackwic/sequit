@@ -15,7 +15,7 @@ export interface GridCrossingRouteAttempt<Candidate> {
 	readonly failure?: RegionGeometryDiagnostic;
 }
 
-export interface GridCrossingAllocationSelection<Candidate> {
+interface GridCrossingAllocationSelection<Candidate> {
 	readonly candidate: Candidate;
 	readonly allocation: GridCrossingAllocation;
 }
@@ -99,6 +99,7 @@ export function searchGridCrossingAllocations<Candidate>(
 		rejectedAlternatives,
 		phases: phaseEvidence,
 	};
-	if (winningPhase !== undefined) return { selected, witness: { ...witness, winningPhase } };
-	return { selected, witness };
+	if (selected !== undefined && winningPhase !== undefined)
+		return { selected, witness: { ...witness, winningPhase } };
+	return { witness };
 }

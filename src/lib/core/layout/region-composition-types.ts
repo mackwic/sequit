@@ -84,7 +84,7 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 	readonly portals: readonly Portal[];
 }
 
-export interface RegionCompositionUnknown<
+interface RegionCompositionUnknown<
 	Witness extends BoundedSearchWitness<unknown> = RegionIncidentSearchWitness,
 > {
 	readonly status: RegionCompositionStatus.Unknown;

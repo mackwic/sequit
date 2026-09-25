@@ -36,18 +36,19 @@ export interface CrossingAllocationPhase {
 	readonly candidates: (input: CrossingAllocationInput) => Generator<GridCrossingAllocation>;
 }
 
-export interface GridCrossingAllocationPhaseWitness {
+interface GridCrossingAllocationPhaseWitness {
 	readonly id: CrossingAllocationPhaseId;
 	readonly attempted: boolean;
 	readonly explored: number;
 	readonly total: string;
-	/** False when the phase hit its own candidate budget before finding or exhausting a result. */
+	/** True only when every candidate declared for this phase was examined. */
 	readonly exhaustive: boolean;
+	/** True when the phase stopped at its budget before selecting or exhausting its candidates. */
 	readonly truncated: boolean;
 	readonly selected: boolean;
 }
 
-export interface GridCrossingAllocationRejectedAlternative {
+interface GridCrossingAllocationRejectedAlternative {
 	readonly phaseId: CrossingAllocationPhaseId;
 	readonly busOrder: readonly string[];
 	readonly code: RegionGeometryDiagnosticCode;
