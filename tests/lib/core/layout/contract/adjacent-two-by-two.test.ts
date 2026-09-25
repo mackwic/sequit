@@ -14,11 +14,20 @@ import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridge-contact';
-import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridge-oracle';
-import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contract/candidate-face-branches';
-import { materializeIndependentAdjacentGeometry } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
+	routeBridgeAnalysis,
+	validatedBridges,
+} from '../../../../../src/lib/core/layout/bridge-oracle';
+import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contract/candidate-face-branches';
+import {
+	AdjacentGeometryMode,
+	materializeIndependentAdjacentBridgeGeometry,
+	materializeIndependentAdjacentGeometry,
+} from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
+import {
+	arbitrateIssue,
 	IndependentAdjacentBranchStatus,
+	type IndependentAdjacentCostCandidate,
 	IndependentAdjacentGlobalStatus,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
@@ -41,6 +50,7 @@ import {
 	type LayoutMeasurements,
 	RoutingPortRole,
 } from '../../../../../src/lib/core/layout/layout-types';
+import { layoutRouteCost } from '../../../../../src/lib/core/layout/routing/route-cost';
 import { routeCrossings } from '../../../../support/assertions/route-geometry';
 
 const nodeIds = ['a', 'b', 'c', 'd', 'e'] as const;
@@ -80,6 +90,22 @@ function document(direction: LayoutDirection): LogicDocument {
 	};
 }
 
+function documentForShape(direction: LayoutDirection, shape: '2+2' | '3+1'): LogicDocument {
+	const source = document(direction);
+	if (shape === '2+2') return source;
+	return {
+		...source,
+		id: 'adjacent-three-plus-one',
+		title: 'Adjacent 3+1',
+		relations: [
+			{ id: 'a-d', from: 'a', to: 'd' },
+			{ id: 'b-d', from: 'b', to: 'd' },
+			{ id: 'c-d', from: 'c', to: 'd' },
+			{ id: 'a-e', from: 'a', to: 'e' },
+		],
+	};
+}
+
 function graph(source: LogicDocument): LogicGraph {
 	const built = createGraph(source);
 	if (!built.ok) throw new Error(JSON.stringify(built.diagnostics));
@@ -112,6 +138,23 @@ function readyContract(source: LogicGraph, measured: LayoutMeasurements) {
 }
 
 describe('independent adjacent 2+2 contract', () => {
+	it('chooses lower allocated growth before comparing route costs', () => {
+		const detour: IndependentAdjacentCostCandidate = {
+			growth: 104,
+			cost: { area: 100, routeLength: 80, bends: 2 },
+		};
+		const bridge: IndependentAdjacentCostCandidate = {
+			growth: 56,
+			cost: { area: 500, routeLength: 300, bends: 6 },
+		};
+		expect(
+			arbitrateIssue(detour, bridge, {
+				detourAreaTolerance: 0.25,
+				detourLengthTolerance: 0.2,
+			}),
+		).toBe(bridge);
+	});
+
 	it('couples the two target faces to each inverted order and publishes outgoing capacity', () => {
 		const source = graph(document(LayoutDirection.TopToBottom));
 		const contract = readyContract(source, measurements());
@@ -418,7 +461,69 @@ describe('independent adjacent 2+2 contract', () => {
 		},
 	);
 
-	it('keeps a zero budget incomplete and preserves the full answer under collection permutations', () => {
+	it('breaks a real equal-growth area and length tie by fewer bends', () => {
+		const source = graph(document(LayoutDirection.TopToBottom));
+		const measured = measurements(1);
+		const ranks = topologicallyRank(source);
+		const resolution = resolveIndependentAdjacentContract(source, ranks, measured);
+		expect(resolution.status).toBe(IndependentAdjacentStatus.Selected);
+		if (resolution.status !== IndependentAdjacentStatus.Selected) return;
+		const comparison = resolution.comparison;
+		if (comparison === undefined) throw new Error('Expected both measured 2+2 issue candidates');
+		const accepted = new Set(
+			resolution.evaluations
+				.filter((evaluation) => evaluation.status === IndependentAdjacentBranchStatus.Accepted)
+				.map(({ branchId }) => branchId),
+		);
+		const contract = readyContract(source, measured);
+		const detourTies = contract.candidates
+			.flatMap(candidateFaceBranches)
+			.flatMap((branch) =>
+				[AdjacentGeometryMode.Bridge, AdjacentGeometryMode.Detour].flatMap((geometry) => {
+					let branchId = branch.id;
+					if (geometry === AdjacentGeometryMode.Bridge) branchId = `${branch.id}:bridge`;
+					if (!accepted.has(branchId)) return [];
+					let layout: ReturnType<typeof materializeIndependentAdjacentGeometry>;
+					if (geometry === AdjacentGeometryMode.Bridge)
+						layout = materializeIndependentAdjacentBridgeGeometry(
+							source,
+							measured,
+							branch.candidate,
+							branch.choices,
+						);
+					else
+						layout = materializeIndependentAdjacentGeometry(
+							source,
+							measured,
+							branch.candidate,
+							branch.choices,
+						);
+					if (layout === undefined) return [];
+					const analysis = routeBridgeAnalysis(layout.relations);
+					if (unbridgedCrossings(analysis).length > 0) return [];
+					if (geometry === AdjacentGeometryMode.Bridge && analysis.bridges.length === 0) return [];
+					return [
+						{
+							bridged: analysis.crossings.length > 0,
+							growth: branch.growth,
+							cost: layoutRouteCost(layout),
+							branchId,
+						},
+					];
+				}),
+			)
+			.filter(
+				(candidate) =>
+					!candidate.bridged &&
+					candidate.growth === comparison.detourGrowth &&
+					candidate.cost.area === comparison.detour.area &&
+					candidate.cost.routeLength === comparison.detour.routeLength,
+			);
+		expect(new Set(detourTies.map(({ cost }) => cost.bends)).size).toBeGreaterThan(1);
+		expect(comparison.detour.bends).toBe(Math.min(...detourTies.map(({ cost }) => cost.bends)));
+	});
+
+	it('keeps a zero budget incomplete and preserves both adjacent shapes under collection permutations', () => {
 		const source = graph(document(LayoutDirection.TopToBottom));
 		const empty = resolveIndependentAdjacentContract(
 			source,
@@ -435,18 +540,16 @@ describe('independent adjacent 2+2 contract', () => {
 			fc.property(
 				fc.constantFrom(...directions),
 				fc.integer({ min: 1, max: 200 }),
+				fc.constantFrom<'2+2' | '3+1'>('2+2', '3+1'),
 				fc.shuffledSubarray([...nodeIds], { minLength: 5, maxLength: 5 }),
-				fc.shuffledSubarray([...document(LayoutDirection.TopToBottom).relations], {
-					minLength: 4,
-					maxLength: 4,
-				}),
+				fc.shuffledSubarray([0, 1, 2, 3], { minLength: 4, maxLength: 4 }),
 				fc.shuffledSubarray([...nodeIds], { minLength: 5, maxLength: 5 }),
-				(direction, sample, nodes, relations, measurementOrder) => {
-					const original = document(direction);
+				(direction, sample, shape, nodes, relationOrder, measurementOrder) => {
+					const original = documentForShape(direction, shape);
 					const permuted = {
 						...original,
 						nodes: nodes.map((id) => defined(original.nodes.find((node) => node.id === id))),
-						relations,
+						relations: relationOrder.map((index) => defined(original.relations[index])),
 					};
 					const measured = measurements(sample, measurementOrder);
 					const first = graph(original);
@@ -460,8 +563,15 @@ describe('independent adjacent 2+2 contract', () => {
 					const secondResult = resolveIndependentAdjacentContract(second, secondRanks, measured);
 					expect(secondResult).toEqual(firstResult);
 					expect(firstResult.status).toBe(IndependentAdjacentStatus.Selected);
-					if (firstResult.status === IndependentAdjacentStatus.Selected)
-						expect(routeCrossings(firstResult.selection.layout.relations)).toEqual([]);
+					if (firstResult.status !== IndependentAdjacentStatus.Selected) return;
+					const analysis = routeBridgeAnalysis(firstResult.selection.layout.relations);
+					expect(unbridgedCrossings(analysis)).toEqual([]);
+					if (firstResult.selection.bridged) {
+						expect(analysis.bridges.length).toBeGreaterThan(0);
+						expect(validatedBridges(firstResult.selection.layout.relations)).toHaveLength(
+							analysis.crossings.length,
+						);
+					} else expect(analysis.crossings).toEqual([]);
 				},
 			),
 			{ numRuns: 48, seed: 220024 },

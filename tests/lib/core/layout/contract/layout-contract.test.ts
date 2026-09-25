@@ -371,14 +371,6 @@ describe('adjacent node LayoutContract', () => {
 							branchId: dedicatedBranch.id,
 							status: IndependentAdjacentBranchStatus.Accepted,
 						});
-						if (shape === '3+1')
-							expect(
-								independent.evaluations.some(
-									({ branchId, status }) =>
-										branchId.endsWith(':bridge') &&
-										status === IndependentAdjacentBranchStatus.Accepted,
-								),
-							).toBe(true);
 						expect(hasStrictRouteCrossing(dedicated)).toBe(true);
 						const selectedAnalysis = routeBridgeAnalysis(independent.selection.layout.relations);
 						expect(independent.selection.bridged).toBe(selectedAnalysis.crossings.length > 0);
@@ -461,7 +453,6 @@ describe('adjacent node LayoutContract', () => {
 									branch.id,
 									{ branch, geometry: AdjacentGeometryMode.Detour },
 								] as const;
-								if (shape !== '3+1') return [detour];
 								return [
 									detour,
 									[

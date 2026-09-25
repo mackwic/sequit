@@ -115,8 +115,7 @@ function targetPorts(
 ): ReadonlyMap<string, number> | undefined {
 	const result = new Map<string, number>();
 	for (const choice of choices) {
-		const center = centers.get(choice.endpointId);
-		if (center === undefined) return undefined;
+		const center = defined(centers.get(choice.endpointId));
 		const offsets = relationPortOffsets(choice.physicalPortGroups.map((_, index) => String(index)));
 		for (const [index, group] of choice.physicalPortGroups.entries()) {
 			const offset = defined(offsets.get(String(index)));

@@ -13,7 +13,7 @@ import {
 	materializeIndependentAdjacentGeometry,
 } from './independent-adjacent-geometry';
 import {
-	AdjacentContractShape,
+	type AdjacentContractShape,
 	buildAdjacentLayoutContract,
 	type LayoutContract,
 	LayoutContractBuildStatus,
@@ -43,9 +43,19 @@ enum IndependentAdjacentUnknownReason {
 	NoValidatedCandidate = 'no-validated-candidate',
 }
 
-/** The detour tolerances over the best bridged candidate, exercised on measured 3+1 layouts. */
+/** The default detour tolerances over the best bridged candidate. */
 export const DETOUR_AREA_TOLERANCE = 0.25;
 export const DETOUR_LENGTH_TOLERANCE = 0.2;
+
+export interface IndependentAdjacentPolicy {
+	readonly detourAreaTolerance: number;
+	readonly detourLengthTolerance: number;
+}
+
+const DEFAULT_INDEPENDENT_ADJACENT_POLICY: IndependentAdjacentPolicy = {
+	detourAreaTolerance: DETOUR_AREA_TOLERANCE,
+	detourLengthTolerance: DETOUR_LENGTH_TOLERANCE,
+};
 
 /** The two admissible issues of an adjacent crossing: the detour and the validated bridge. */
 export enum IndependentAdjacentIssue {
@@ -53,21 +63,29 @@ export enum IndependentAdjacentIssue {
 	Bridge = 'bridge',
 }
 
-/** Both declared costs when a search compares a detour with a bridged candidate. */
+/** Both declared costs and their source candidates when a search compares the issues. */
 export interface IndependentAdjacentComparison {
 	readonly selected: IndependentAdjacentIssue;
 	readonly detour: RouteCost;
 	readonly bridge: RouteCost;
+	readonly detourGrowth: number;
+	readonly bridgeGrowth: number;
+	readonly detourBranchId: string;
+	readonly bridgeBranchId: string;
+	readonly policy: IndependentAdjacentPolicy;
 }
 
-export interface IndependentAdjacentSelection {
+export interface IndependentAdjacentCostCandidate {
+	readonly growth: number;
+	readonly cost: RouteCost;
+}
+
+export interface IndependentAdjacentSelection extends IndependentAdjacentCostCandidate {
 	readonly candidateId: string;
 	readonly branchId: string;
 	readonly choices: readonly CandidateFaceChoice[];
-	readonly growth: number;
 	/** True when the selection keeps a strict crossing that a validated bridge carries. */
 	readonly bridged: boolean;
-	readonly cost: RouteCost;
 	readonly layout: LayoutResult;
 }
 
@@ -110,22 +128,10 @@ export type IndependentAdjacentResolution =
 
 function better(left: IndependentAdjacentSelection, right: IndependentAdjacentSelection): boolean {
 	if (left.growth !== right.growth) return left.growth < right.growth;
-	return compareCanonicalStrings(left.branchId, right.branchId) < 0;
-}
-
-/** Resolve equal-growth 3+1 alternatives by their actual geometry, not branch-name order. */
-function betterIssueCandidate(
-	left: IndependentAdjacentSelection,
-	right: IndependentAdjacentSelection,
-	shape: AdjacentContractShape,
-): boolean {
-	if (left.growth !== right.growth) return left.growth < right.growth;
-	if (shape === AdjacentContractShape.ThreePlusOne) {
-		if (left.cost.area !== right.cost.area) return left.cost.area < right.cost.area;
-		if (left.cost.routeLength !== right.cost.routeLength)
-			return left.cost.routeLength < right.cost.routeLength;
-		if (left.cost.bends !== right.cost.bends) return left.cost.bends < right.cost.bends;
-	}
+	if (left.cost.area !== right.cost.area) return left.cost.area < right.cost.area;
+	if (left.cost.routeLength !== right.cost.routeLength)
+		return left.cost.routeLength < right.cost.routeLength;
+	if (left.cost.bends !== right.cost.bends) return left.cost.bends < right.cost.bends;
 	return compareCanonicalStrings(left.branchId, right.branchId) < 0;
 }
 
@@ -215,32 +221,32 @@ function evaluateBranch(input: {
 function bestOfIssue(
 	selections: readonly IndependentAdjacentSelection[],
 	issue: IndependentAdjacentIssue,
-	shape: AdjacentContractShape,
 ): IndependentAdjacentSelection | undefined {
 	const wanted = issue === IndependentAdjacentIssue.Bridge;
 	let incumbent: IndependentAdjacentSelection | undefined;
 	for (const selection of selections) {
 		if (selection.bridged !== wanted) continue;
-		if (incumbent === undefined || betterIssueCandidate(selection, incumbent, shape))
-			incumbent = selection;
+		if (incumbent === undefined || better(selection, incumbent)) incumbent = selection;
 	}
 	return incumbent;
 }
 
-/**
- * The declared arbitration: the crossing-free detour stays in charge, and the validated bridge wins
- * only when there is no detour or when the detour pays more than one of the two tolerances.
- */
-function arbitrateIssue(
-	detour: IndependentAdjacentSelection | undefined,
-	bridge: IndependentAdjacentSelection | undefined,
-): IndependentAdjacentSelection | undefined {
+/** Growth is decisive across issues; cost tolerances arbitrate only equal-growth candidates. */
+export function arbitrateIssue<T extends IndependentAdjacentCostCandidate>(
+	detour: T | undefined,
+	bridge: T | undefined,
+	policy: IndependentAdjacentPolicy,
+): T | undefined {
 	if (bridge === undefined) return detour;
 	if (detour === undefined) return bridge;
+	if (detour.growth !== bridge.growth) {
+		if (detour.growth < bridge.growth) return detour;
+		return bridge;
+	}
 	const areaOverhead = detour.cost.area / bridge.cost.area - 1;
 	const lengthOverhead = detour.cost.routeLength / bridge.cost.routeLength - 1;
-	if (areaOverhead > DETOUR_AREA_TOLERANCE) return bridge;
-	if (lengthOverhead > DETOUR_LENGTH_TOLERANCE) return bridge;
+	if (areaOverhead > policy.detourAreaTolerance) return bridge;
+	if (lengthOverhead > policy.detourLengthTolerance) return bridge;
 	return detour;
 }
 
@@ -249,22 +255,22 @@ export function resolveIndependentAdjacentContract(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	options: { readonly maxBranches?: number } = {},
+	options: {
+		readonly maxBranches?: number;
+		readonly policy?: IndependentAdjacentPolicy;
+	} = {},
 ): IndependentAdjacentResolution {
 	const budget = validatedSearchBudget(options.maxBranches ?? 256);
+	const policy = options.policy ?? DEFAULT_INDEPENDENT_ADJACENT_POLICY;
 	const built = buildAdjacentLayoutContract(graph, ranks, measurements);
 	if (built.status === LayoutContractBuildStatus.Unknown)
 		return { status: IndependentAdjacentStatus.Unknown, reason: built.reason, evaluations: [] };
 	const { contract } = built;
 	const omittedCrossingCandidates = 0;
-	const alternatives = contract.candidates.flatMap(candidateFaceBranches).flatMap((branch) => {
-		if (contract.shape !== AdjacentContractShape.ThreePlusOne)
-			return [{ branch, id: branch.id, geometry: AdjacentGeometryMode.Detour }];
-		return [
-			{ branch, id: `${branch.id}:bridge`, geometry: AdjacentGeometryMode.Bridge },
-			{ branch, id: branch.id, geometry: AdjacentGeometryMode.Detour },
-		];
-	});
+	const alternatives = contract.candidates.flatMap(candidateFaceBranches).flatMap((branch) => [
+		{ branch, id: `${branch.id}:bridge`, geometry: AdjacentGeometryMode.Bridge },
+		{ branch, id: branch.id, geometry: AdjacentGeometryMode.Detour },
+	]);
 	const selections: IndependentAdjacentSelection[] = [];
 	const { evaluations, explored, exhaustive, incumbent } = bestWithinBudget({
 		alternatives,
@@ -276,11 +282,11 @@ export function resolveIndependentAdjacentContract(
 		},
 		better,
 	});
-	const detour = bestOfIssue(selections, IndependentAdjacentIssue.Detour, contract.shape);
-	const bridge = bestOfIssue(selections, IndependentAdjacentIssue.Bridge, contract.shape);
-	const selected = arbitrateIssue(detour, bridge);
+	const detour = bestOfIssue(selections, IndependentAdjacentIssue.Detour);
+	const bridge = bestOfIssue(selections, IndependentAdjacentIssue.Bridge);
+	const selected = arbitrateIssue(detour, bridge, policy);
 	let comparison: IndependentAdjacentComparison | undefined;
-	if (selected !== undefined) comparison = compareIssues(detour, bridge, selected);
+	if (selected !== undefined) comparison = compareIssues(detour, bridge, selected, policy);
 	let trace: SearchTrace = {
 		contract,
 		scope: contract.shape,
@@ -310,9 +316,19 @@ function compareIssues(
 	detour: IndependentAdjacentSelection | undefined,
 	bridge: IndependentAdjacentSelection | undefined,
 	selected: IndependentAdjacentSelection,
+	policy: IndependentAdjacentPolicy,
 ): IndependentAdjacentComparison | undefined {
 	if (detour === undefined || bridge === undefined) return undefined;
 	let issue = IndependentAdjacentIssue.Detour;
 	if (selected.bridged) issue = IndependentAdjacentIssue.Bridge;
-	return { selected: issue, detour: detour.cost, bridge: bridge.cost };
+	return {
+		selected: issue,
+		detour: detour.cost,
+		bridge: bridge.cost,
+		detourGrowth: detour.growth,
+		bridgeGrowth: bridge.growth,
+		detourBranchId: detour.branchId,
+		bridgeBranchId: bridge.branchId,
+		policy,
+	};
 }
