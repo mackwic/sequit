@@ -136,20 +136,20 @@ describe('routing resource allocation', () => {
 		);
 	});
 
-	it('uses canonical order when interval bounds are shared', () => {
+	it('orders a strict inner interval before its outer despite shared-bound demands', () => {
 		const demands: readonly RoutingTrackDemand[] = [
-			{ relationId: 'z-outer', start: 0, end: 100 },
-			{ relationId: 'a-shared-start', start: 0, end: 40 },
-			{ relationId: 'b-shared-end', start: 60, end: 100 },
-			{ relationId: 'c-inner', start: 25, end: 75 },
+			{ relationId: 'a-outer', start: 0, end: 100 },
+			{ relationId: 'b-inner', start: 25, end: 75 },
+			{ relationId: 'c-shared-start', start: 0, end: 40 },
+			{ relationId: 'd-shared-end', start: 60, end: 100 },
 		];
 		const edge = edgeFor(demands.length);
 		const allocation = allocateNestedTracks(edge, demands);
 		const shuffled = allocateNestedTracks(edge, [...demands].reverse());
-		expect(trackOf(allocation, 'a-shared-start')).toBe(0);
-		expect(trackOf(allocation, 'b-shared-end')).toBe(1);
-		expect(trackOf(allocation, 'c-inner')).toBe(2);
-		expect(trackOf(allocation, 'z-outer')).toBe(3);
+		expect(trackOf(allocation, 'b-inner')).toBe(0);
+		expect(trackOf(allocation, 'a-outer')).toBe(1);
+		expect(trackOf(allocation, 'c-shared-start')).toBe(2);
+		expect(trackOf(allocation, 'd-shared-end')).toBe(3);
 		for (const { relationId } of demands)
 			expect(trackOf(shuffled, relationId)).toBe(trackOf(allocation, relationId));
 	});
