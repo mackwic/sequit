@@ -4,7 +4,12 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import { type LayoutMeasurements, RoutingPortRole, type Size } from '../layout-types';
-import { enumerateRankOrders, permutations, type RankDomain } from '../rank-order';
+import {
+	enumerateRankOrders,
+	permutations,
+	type RankDomain,
+	rankOrderEnumerationSize,
+} from '../rank-order';
 import type { ConditionalPortConflicts } from '../routing/conditional-port-conflicts';
 import { threeIncidenceFaceCapacity } from '../routing/face-capacity';
 import {
@@ -69,9 +74,6 @@ interface UnknownLayoutContract {
 }
 
 export type LayoutContractBuild = ReadyLayoutContract | UnknownLayoutContract;
-
-/** `adjacentShape` admits exactly three sources and two targets, so the product is 3!·2!. */
-const ADJACENT_RANK_ORDER_BUDGET = 12;
 
 function physicalOrders(
 	groups: readonly (readonly string[])[],
@@ -270,6 +272,7 @@ export function buildAdjacentLayoutContract(
 	const outgoingDemands = sourceFaceDemands(graph, measurements, sourceIds);
 	const candidates: LayoutContractCandidate[] = [];
 	const domain: RankDomain = { bands: [sourceIds, targetIds] };
+	const ADJACENT_RANK_ORDER_BUDGET = rankOrderEnumerationSize(domain);
 	for (const rankOrder of enumerateRankOrders(domain, ADJACENT_RANK_ORDER_BUDGET)) {
 		const sourceOrder = defined(rankOrder[0]);
 		const targetOrder = defined(rankOrder[1]);
