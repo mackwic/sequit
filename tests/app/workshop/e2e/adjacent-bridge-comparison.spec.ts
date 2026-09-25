@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('compares the real adjacent bridge with an independently validated detour on one frame', async ({
+test('compares the real adjacent bridge with an independently validated compact bridge candidate', async ({
 	page,
 }, testInfo) => {
 	await page.setViewportSize({ width: 1920, height: 1200 });
@@ -17,10 +17,20 @@ test('compares the real adjacent bridge with an independently validated detour o
 		'Valide géométriquement selon la politique du moteur dédié',
 	);
 	await expect(independent).toContainText(
-		'Admet les croisements portés par un pont validé puis arbitre détour et pont par les tolérances déclarées',
+		'Compare le détour sans croisement au candidat compact du graphe de canaux ; chaque pont admis est validé par l’oracle commun',
 	);
 	await expect(dedicated).toContainText('Ordre cible : d < e');
 	await expect(independent).toContainText('Ordre cible : e < d');
+	await expect(independent).toContainText('Contrat indépendant · pont retenu');
+	const costs = comparison.getByRole('region', {
+		name: 'Coûts comparés par le contrat adjacent',
+	});
+	await expect(costs).toContainText('Arbitrage du contrat : bridge');
+	await expect(costs).toContainText('Tolérances de surcoût : aire +25 %, longueur +20 %.');
+	await expect(costs).toContainText('Aire du détour');
+	await expect(costs).toContainText('Routes du détour');
+	await expect(costs).toContainText('Aire du pont');
+	await expect(costs).toContainText('Routes du pont');
 	await expect(dedicated.locator('[data-box-id]')).toHaveCount(5);
 	await expect(independent.locator('[data-box-id]')).toHaveCount(5);
 	const dedicatedSvg = dedicated.getByRole('img', { name: 'Géométrie du scénario' });
@@ -42,7 +52,7 @@ test('compares the real adjacent bridge with an independently validated detour o
 		.locator('[data-rendered-relation-id]')
 		.evaluateAll((paths) => paths.map((path) => path.getAttribute('d') ?? ''));
 	expect(dedicatedPaths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
-	expect(independentPaths.some((path) => /\bA 6 6 /.test(path))).toBe(false);
+	expect(independentPaths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
 	await expect(dedicated).toContainText('Croisements stricts');
 	await expect(dedicated).toContainText('Ponts rendus');
 	await expect(independent).toContainText('Croisements stricts');
@@ -52,7 +62,7 @@ test('compares the real adjacent bridge with an independently validated detour o
 			path: `${screenshotDirectory}/adjacent-dedicated-bridge-before.png`,
 		});
 		await independent.screenshot({
-			path: `${screenshotDirectory}/adjacent-independent-detour-after.png`,
+			path: `${screenshotDirectory}/adjacent-independent-bridge-after.png`,
 		});
 	}
 });

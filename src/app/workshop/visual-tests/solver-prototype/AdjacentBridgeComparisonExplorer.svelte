@@ -2,6 +2,11 @@
 	import { VisualLayout } from '../../../../../tests/support/harnesses/visual-layout';
 	import { LayoutDirection } from '../../../../lib/core/document/logic-document';
 	import {
+		DETOUR_AREA_TOLERANCE,
+		DETOUR_LENGTH_TOLERANCE,
+		IndependentAdjacentIssue,
+	} from '../../../../lib/core/layout/contract/independent-adjacent-resolution';
+	import {
 		type AdjacentEngineComparison,
 		compareAdjacentBridgeAndDetour,
 	} from '../../solver-prototype/adjacent-engine-comparison';
@@ -26,6 +31,9 @@
 
 	const panels = $derived.by(() => {
 		if (comparison === null) return [];
+		let independentTitle = 'Contrat indépendant · détour retenu';
+		if (comparison.independent.selectedIssue === IndependentAdjacentIssue.Bridge)
+			independentTitle = 'Contrat indépendant · pont retenu';
 		return [
 			{
 				id: 'dedicated',
@@ -35,9 +43,9 @@
 			},
 			{
 				id: 'independent',
-				title: 'Matérialiseur indépendant · détour sans croisement',
+				title: independentTitle,
 				policy:
-					'Admet les croisements portés par un pont validé puis arbitre détour et pont par les tolérances déclarées ; statut global undetermined.',
+					'Compare le détour sans croisement au candidat compact du graphe de canaux ; chaque pont admis est validé par l’oracle commun.',
 				result: comparison.independent,
 			},
 		];
@@ -50,10 +58,10 @@
 		<h2>Un pont ou un détour pour le corridor adjacent 3+1</h2>
 		<p>
 			Les relations a→d, b→d, c→d et a→e partagent les mêmes rangs et les mêmes mesures dans les
-			deux dessins. Le moteur dédié accepte et ponte ses croisements stricts. Le matérialiseur
-			indépendant admet désormais les mêmes croisements pontés ; sur ce témoin son meilleur candidat
-			ponté garde l’aire du détour et allonge les routes, donc les tolérances déclarées gardent le
-			détour sans croisement. Sa recherche globale reste indéterminée.
+			deux dessins. Le moteur dédié valide ses croisements stricts. Le contrat indépendant compare
+			son détour sans croisement à un candidat compact routé par le graphe de canaux partagé ; il ne
+			retient un pont que si l’oracle le valide et si le détour dépasse l’un des deux seuils. Sa
+			recherche globale reste indéterminée.
 		</p>
 	</header>
 	{#if error}
@@ -65,10 +73,42 @@
 			{comparison.frame.height} px · candidat indépendant {comparison.independent.candidateId} · globalStatus:
 			{comparison.independent.globalStatus}
 		</p>
+		{#if comparison.independent.comparison}
+			<section class="arbitration" aria-label="Coûts comparés par le contrat adjacent">
+				<h3>Arbitrage du contrat : {comparison.independent.comparison.selected}</h3>
+				<p>
+					Tolérances de surcoût : aire +{DETOUR_AREA_TOLERANCE * 100} %, longueur +{DETOUR_LENGTH_TOLERANCE *
+						100} %.
+				</p>
+				<dl>
+					<div>
+						<dt>Aire du détour</dt>
+						<dd>{comparison.independent.comparison.detour.area} px²</dd>
+					</div>
+					<div>
+						<dt>Routes du détour</dt>
+						<dd>{comparison.independent.comparison.detour.routeLength} px</dd>
+					</div>
+					<div>
+						<dt>Aire du pont</dt>
+						<dd>{comparison.independent.comparison.bridge.area} px²</dd>
+					</div>
+					<div>
+						<dt>Routes du pont</dt>
+						<dd>{comparison.independent.comparison.bridge.routeLength} px</dd>
+					</div>
+				</dl>
+			</section>
+		{/if}
 		<div class="panels">
 			{#each panels as panel (panel.id)}
 				<article class="panel" data-adjacent-panel={panel.id}>
 					<h3>{panel.title}</h3>
+					{#if panel.id === 'independent'}
+						<p class="decision" data-selected-issue={comparison.independent.selectedIssue}>
+							Choix effectif : {comparison.independent.selectedIssue}
+						</p>
+					{/if}
 					<p class="policy">{panel.policy}</p>
 					<p class="target-order">Ordre cible : {panel.result.targetOrder}</p>
 					<figure data-comparison-figure={panel.id}>
@@ -141,6 +181,27 @@
 		border-radius: 8px;
 		background: #e8f3e9;
 		color: #285448;
+	}
+	.arbitration {
+		margin-block: 1rem;
+		padding: 0.75rem;
+		border: 1px solid #d8ded2;
+		border-radius: 8px;
+		background: #f5f7f2;
+	}
+	.arbitration dl {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+		gap: 0.5rem 1.5rem;
+		margin: 0;
+	}
+	.arbitration dd {
+		margin: 0.15rem 0 0;
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
+	}
+	.decision {
+		font-weight: 700;
 	}
 	.panels {
 		display: grid;
