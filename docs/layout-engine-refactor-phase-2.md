@@ -111,7 +111,19 @@ Les étapes 1 à 5 ne touchent pas le moteur dédié : l'absence de régression 
 
 **Propositions pour une phase 3.** Réduction des croisements par réordonnancement dans le rang en production, derrière une décision produit explicite (sert la lisibilité des chaînes de raisonnement ; registre n° 35) ; ponts pour les incidents de feuille (registre n° 17) ; gouttières horizontales dans les grilles (`GridRowGutterMissing` ; registre n° 20) ; retrait des limites de ressources au profit de budgets mesurés (registre n° 12, 13, 37, 38).
 
-**Décisions ouvertes après relecture.** Budget de grille par phase (registre n° 41, avec n° 6) ; ordre des bus de lanes, ordinal ou inclusion (n° 8) ; calibration des seuils de pont (n° 32) ; 98,05 % de branches, objectif ou porte (n° 30) ; capacité des gouttières N × M (n° 19). Restent aussi ouverts deux échecs fuzz préexistants (n° 28) et le délai intermittent du test dense (n° 29).
+**Décisions prises après relecture (25 septembre 2026).**
+
+- **Budget de grille (n° 41, n° 6)** : **1A puis 1C**. 1A : un budget déclaré par phase (réaffecter, piste, pont), poursuite de la phase suivante après une troncature notée dans le témoin, ordres du bus ajoutés aux candidats, `unknown` de grille doté d'un `BoundedSearchWitness`. 1C ensuite : élagage limité aux routes en conflit, validé contre 1A comme oracle par une propriété en fuzz (« C sélectionne chaque fois que A sélectionne »). Un panneau d'atelier d'allocation de grille (pistes colorées, candidat retenu, phase gagnante, exploré/total) accompagne 1A.
+- **Capacité des gouttières N × M (n° 19)** : **4B**, après 1A/1C : capacité par charge réelle de chaque gouttière ; les empreintes qui changent sont ré-épinglées et consignées.
+
+**Proposé, à confirmer par l'utilisateur.**
+
+- **Seuils de pont (n° 32)** : 2B, admettre la solution compacte pontée du moteur dédié comme candidat du contrat, afin que l'arbitrage 3+1 réel fasse jouer les seuils 0,25/0,20, visible dans le panneau `AdjacentBridgeComparisonExplorer`.
+- **Couverture (n° 30)** : garder le seuil bloquant à 98 % et abandonner l'objectif de 98,05 %, qui pousse à réécrire du code pour le compteur (`19d24f6`, `ea10b86`) sans gain.
+
+**Restent ouverts.** Ordre des bus de lanes, ordinal ou inclusion (n° 8) ; deux échecs fuzz préexistants (n° 28) ; délai intermittent du test dense sous charge parallèle (n° 29 : `quality:fast` passe avec `VITEST_MAX_WORKERS=1`).
+
+**Consignes aux sous-agents.** Formater uniquement avec `mise exec -- pnpm exec prettier --config config/prettier.config.js --ignore-path config/prettier.ignore --write <fichiers>` ; messages de commit conventionnels (`fix(layout): …`) ; en worktree parallèle, écrire par shell (les outils d'édition à chemin absolu atterrissent dans le worktree principal).
 
 ## Règles transverses
 
