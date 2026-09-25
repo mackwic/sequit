@@ -23,7 +23,7 @@ export interface GridCrossingAllocationBudgets {
 	readonly bridge: number;
 }
 
-export const DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS: GridCrossingAllocationBudgets = {
+const DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS: GridCrossingAllocationBudgets = {
 	reallocate: GRID_CROSSING_REALLOCATION_BUDGET,
 	extraTrack: GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	bridge: GRID_CROSSING_BRIDGE_BUDGET,

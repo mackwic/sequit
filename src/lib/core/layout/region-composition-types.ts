@@ -79,7 +79,7 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 	readonly portals: readonly Portal[];
 }
 
-export type RegionCompositionUnknown = {
+type RegionCompositionUnknown = {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
 	readonly regionId?: string;

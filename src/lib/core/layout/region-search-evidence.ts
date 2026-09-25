@@ -10,19 +10,19 @@ export enum RegionSearchProvenance {
 	Grid = 'grid',
 }
 
-export interface IncidentSearchEvidence {
+interface IncidentSearchEvidence {
 	readonly provenance: RegionSearchProvenance.Incident;
 	readonly code: RegionIncidentUnknownCode;
 	readonly witness: RegionIncidentSearchWitness;
 }
 
-export interface GridSearchEvidence {
+interface GridSearchEvidence {
 	readonly provenance: RegionSearchProvenance.Grid;
 	readonly code: RegionGeometryDiagnosticCode;
 	readonly witness: GridCrossingAllocationWitness;
 }
 
-export interface DiagnosticOnlyFailureEvidence {
+interface DiagnosticOnlyFailureEvidence {
 	readonly provenance?: undefined;
 	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
 	readonly witness?: undefined;
