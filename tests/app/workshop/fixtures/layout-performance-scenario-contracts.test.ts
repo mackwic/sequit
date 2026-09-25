@@ -112,6 +112,21 @@ describe('layout performance scenario contracts', () => {
 				);
 			});
 
+			it('keeps returned documents and ranks isolated across builder resets', () => {
+				const builder = scenario.createBuilder();
+				const initialDocument = builder.buildInitialDocument();
+				const initialBefore = structuredClone(initialDocument);
+				const snapshot = builder.buildSnapshot(50);
+				const snapshotDocumentBefore = structuredClone(snapshot.document);
+				const snapshotRanksBefore = snapshot.nodeRanks.map((rank) => [...rank]);
+
+				builder.buildSnapshot(1);
+
+				expect(initialDocument).toEqual(initialBefore);
+				expect(snapshot.document).toEqual(snapshotDocumentBefore);
+				expect(snapshot.nodeRanks).toEqual(snapshotRanksBefore);
+			});
+
 			it.each(nodeCounts)(
 				'keeps snapshot and insertion prefixes identical at %i nodes',
 				(nodeCount) => {
