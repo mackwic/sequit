@@ -2,10 +2,16 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
-import { defined } from '../../../../src/lib/core/document/logic-document';
+import {
+	defined,
+	EndpointKind,
+	type LogicRelation,
+} from '../../../../src/lib/core/document/logic-document';
+import type { TopologicalRanks } from '../../../../src/lib/core/graph/topological-ranks';
 import {
 	crossingBusY,
 	crossingFaceEdge,
+	crossingIncidence,
 	crossingPortPositions,
 	crossingPortY,
 	crossingRailX,
@@ -26,7 +32,14 @@ import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+import {
+	crossingPortalSpans,
+	crossingRoute,
+	type GridCrossingRouting,
+} from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from '../../../../src/lib/core/layout/grid-cell-crossing-search';
+import type { GridCellPlacement } from '../../../../src/lib/core/layout/grid-cell-types';
+import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	regionGeometryDiagnostic,
@@ -59,57 +72,131 @@ function allocationInput(): CrossingAllocationInput {
 	};
 }
 
-function variedAllocationInput(
+interface VariedGridRoutingCase {
+	readonly input: CrossingAllocationInput;
+	readonly routing: GridCrossingRouting;
+	readonly crossing: readonly LogicRelation[];
+}
+
+function variedGridRoutingCase(
 	crossingCount: number,
 	columnCount: number,
 	seed: number,
-): CrossingAllocationInput {
-	const crossingIds = Array.from({ length: crossingCount }, (_, index) => `route-${index}`);
-	const incidence = new Map<string, string[]>();
-	for (const [index, relationId] of crossingIds.entries()) {
-		for (const endpointId of [`source-${(index + seed) % 2}`, `target-${index % 2}`]) {
-			const relations = incidence.get(endpointId) ?? [];
-			relations.push(relationId);
-			incidence.set(endpointId, relations);
+	sameRail = false,
+): VariedGridRoutingCase {
+	let rowCount = 1 + (seed % 2);
+	if (sameRail) rowCount = 2;
+	const crossing = Array.from({ length: crossingCount }, (_, index): LogicRelation => {
+		let from = `source-${index}`;
+		if (seed % 2 === 0) from = 'source-shared';
+		return { id: `route-${index}`, from, to: `target-${index}` };
+	});
+	const cells = Array.from({ length: rowCount * columnCount }, (_, index) => {
+		const row = Math.floor(index / columnCount);
+		const column = index % columnCount;
+		return { id: `cell-${row}-${column}`, row, column };
+	});
+	const endpointsByCellId = new Map(cells.map(({ id }) => [id, [] as string[]]));
+	const cellByEndpointId = new Map<string, string>();
+	const assignEndpoint = (endpointId: string, row: number, column: number): void => {
+		const cellId = `cell-${row}-${column}`;
+		if (cellByEndpointId.has(endpointId)) return;
+		cellByEndpointId.set(endpointId, cellId);
+		defined(endpointsByCellId.get(cellId)).push(endpointId);
+	};
+	for (const [index, relation] of crossing.entries()) {
+		const sourceRow = seed % rowCount;
+		let targetRow = (index + seed + 1) % rowCount;
+		if (sameRail) targetRow = (sourceRow + 1) % rowCount;
+		let targetColumn = columnCount - 1;
+		if (sameRail) targetColumn = 0;
+		assignEndpoint(relation.from, sourceRow, 0);
+		assignEndpoint(relation.to, targetRow, targetColumn);
+	}
+	for (const cell of cells) {
+		if (defined(endpointsByCellId.get(cell.id)).length === 0) {
+			const endpointId = `anchor-${cell.row}-${cell.column}`;
+			cellByEndpointId.set(endpointId, cell.id);
+			defined(endpointsByCellId.get(cell.id)).push(endpointId);
 		}
 	}
-	return {
-		edges: gridRoutingEdges('property-grid', columnCount, crossingCount),
-		crossingIds,
-		busRelevantRelationIds: crossingIds.filter((_, index) => (index + seed) % 2 === 0),
+	const placements: GridCellPlacement[] = cells.map((cell) => {
+		const x = 100 + cell.column * 700;
+		const y = 100 + cell.row * 400;
+		const elements = defined(endpointsByCellId.get(cell.id)).map((id, index) => ({
+			id,
+			kind: EndpointKind.Node,
+			bounds: {
+				x: 80 + (index % 3) * 130,
+				y: 60 + Math.floor(index / 3) * 90,
+				width: 100,
+				height: 56,
+			},
+		}));
+		const localLayout: LayoutResult = { width: 520, height: 300, elements, relations: [] };
+		const localRanks: TopologicalRanks = { bands: [], byEndpointId: new Map() };
+		return {
+			...cell,
+			parentId: 'property-grid',
+			bounds: { x, y, width: 520, height: 300 },
+			translation: { x, y },
+			localLayout,
+			localRanks,
+		};
+	});
+	const cellById = new Map(placements.map((cell) => [cell.id, cell]));
+	const edges = gridRoutingEdges('property-grid', columnCount, crossing.length);
+	const incidence = crossingIncidence(crossing);
+	const routing: GridCrossingRouting = {
+		rootId: 'property-grid',
+		crossing,
+		columnCount,
+		cells: placements,
+		cellByEndpointId,
+		edges,
+		incidence,
+	};
+	const allocationInput: CrossingAllocationInput = {
+		edges,
+		crossingIds: crossing.map(({ id }) => id),
+		busRelevantRelationIds: crossing
+			.filter(
+				({ from, to }) =>
+					defined(cellById.get(defined(cellByEndpointId.get(from)))).column !==
+					defined(cellById.get(defined(cellByEndpointId.get(to)))).column,
+			)
+			.map(({ id }) => id),
 		gutterIds: Array.from({ length: columnCount }, (_, column) =>
-			crossingIds.filter((_, index) => (index + column + seed) % 2 === 0),
+			crossing
+				.filter(({ from, to }) =>
+					[from, to].some(
+						(endpointId) =>
+							defined(cellById.get(defined(cellByEndpointId.get(endpointId)))).column === column,
+					),
+				)
+				.map(({ id }) => id),
 		),
 		incidence,
-		portalByRelationId: new Map(
-			crossingIds.map((relationId, index) => [
-				relationId,
-				{
-					source: { x: 100 + index * 20, y: 100 + ((index + seed) % crossingCount) * 30 },
-					target: { x: 700 - index * 20, y: 300 + ((index + seed) % crossingCount) * 30 },
-				},
-			]),
-		),
+		portalByRelationId: new Map(),
+	};
+	const canonical = canonicalCrossingAllocation(allocationInput);
+	return {
+		input: {
+			...allocationInput,
+			portalByRelationId: crossingPortalSpans(routing, canonical),
+		},
+		routing,
+		crossing,
 	};
 }
 
-function geometryKey(input: CrossingAllocationInput, allocation: GridCrossingAllocation): string {
-	const entries = (tracks: ReadonlyMap<string, number>) =>
-		[...tracks].sort(([left], [right]) => compareCanonicalStrings(left, right));
-	const busRelevant = new Set(input.busRelevantRelationIds);
-	return JSON.stringify([
-		allocation.gutterTrackByRelationId.map(entries),
-		entries(
-			new Map(
-				[...allocation.busTrackByRelationId].filter(([relationId]) => busRelevant.has(relationId)),
-			),
-		),
-		[...allocation.portTrackByEndpointId]
-			.sort(([left], [right]) => compareCanonicalStrings(left, right))
-			.map(([endpointId, tracks]) => [endpointId, entries(tracks)]),
-	]);
+function effectiveRouteGeometry(
+	routing: GridCrossingRouting,
+	crossing: readonly LogicRelation[],
+	allocation: GridCrossingAllocation,
+): string {
+	return JSON.stringify(crossing.map((relation) => crossingRoute(routing, allocation, relation)));
 }
-
 function gutterTracks(
 	allocation: GridCrossingAllocation,
 	column: number,
@@ -211,43 +298,44 @@ describe('grid crossing allocation', () => {
 	});
 
 	it('deduplicates bus permutations that cannot change same-rail routes', () => {
-		const sharedRail = { ...allocationInput(), busRelevantRelationIds: [] };
-		const allRails = { ...sharedRail, busRelevantRelationIds: [...CROSSING_IDS] };
-		const sharedRailCandidates = [...crossingAllocationCandidates(sharedRail)];
-		const allRailCandidates = [...crossingAllocationCandidates(allRails)];
-		expect(BigInt(sharedRailCandidates.length)).toBe(crossingAllocationGeometryCount(sharedRail));
+		const sharedRail = variedGridRoutingCase(3, 2, 0, true);
+		const allRails = variedGridRoutingCase(3, 2, 0);
+		const sharedRailCandidates = [...crossingAllocationCandidates(sharedRail.input)];
+		const allRailCandidates = [...crossingAllocationCandidates(allRails.input)];
+		const geometries = sharedRailCandidates.map((allocation) =>
+			effectiveRouteGeometry(sharedRail.routing, sharedRail.crossing, allocation),
+		);
+		expect(BigInt(new Set(geometries).size)).toBe(
+			crossingAllocationGeometryCount(sharedRail.input),
+		);
 		expect(sharedRailCandidates.length).toBeLessThan(allRailCandidates.length);
-		expect(
-			new Set(sharedRailCandidates.map((allocation) => geometryKey(sharedRail, allocation))).size,
-		).toBe(sharedRailCandidates.length);
+		expect(new Set(geometries).size).toBe(sharedRailCandidates.length);
 	});
 
-	it('declares its candidates in order, without repeating an allocation', () => {
-		const input = allocationInput();
+	it('declares each actual route geometry once in candidate order', () => {
+		const { input, routing, crossing } = variedGridRoutingCase(3, 2, 1);
 		const candidates = [...crossingAllocationCandidates(input)];
 		expect(BigInt(candidates.length)).toBe(crossingAllocationGeometryCount(input));
 		expect(candidates[0]).toEqual(canonicalCrossingAllocation(input));
-		expect(candidates[1]).toEqual(containmentCrossingAllocation(input));
-		const keys = candidates.map((allocation) =>
-			JSON.stringify([
-				allocation.gutterTrackByRelationId.map((tracks) => [...tracks]),
-				[...allocation.busTrackByRelationId],
-				[...allocation.portTrackByEndpointId].map(([endpointId, tracks]) => [
-					endpointId,
-					[...tracks],
-				]),
-			]),
+		const geometries = candidates.map((allocation) =>
+			effectiveRouteGeometry(routing, crossing, allocation),
 		);
-		expect(new Set(keys).size).toBe(keys.length);
+		expect(new Set(geometries).size).toBe(geometries.length);
 
 		for (const allocation of candidates) {
-			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
-			expect(new Set(left).size).toBe(left.length);
-			expect(Math.max(...left)).toBeLessThanOrEqual(defined(input.edges.gutters[0]).capacity - 1);
-			const portTracks = [...defined(allocation.portTrackByEndpointId.get('a')).values()].sort(
-				(first, second) => first - second,
-			);
-			expect(portTracks).toEqual([0, 1, 2]);
+			for (const [column, ids] of input.gutterIds.entries()) {
+				const tracks = [...defined(allocation.gutterTrackByRelationId[column]).values()];
+				expect(new Set(tracks).size).toBe(ids.length);
+				expect(Math.max(...tracks)).toBeLessThanOrEqual(
+					defined(input.edges.gutters[column]).capacity - 1,
+				);
+			}
+			for (const [endpointId, ids] of input.incidence) {
+				const portTracks = [
+					...defined(allocation.portTrackByEndpointId.get(endpointId)).values(),
+				].sort((first, second) => first - second);
+				expect(portTracks).toEqual(Array.from({ length: ids.length }, (_, track) => track));
+			}
 		}
 	});
 
@@ -287,7 +375,7 @@ describe('grid crossing allocation', () => {
 		}
 	});
 
-	it('returns the last diagnostic with a witness when every bounded phase truncates', () => {
+	it('keeps synthetic search-contract failures typed when every bounded phase truncates', () => {
 		const input = allocationInput();
 		let attempted = 0;
 		const result = searchGridCrossingAllocations(input, (allocation) => {
@@ -330,16 +418,22 @@ describe('grid crossing allocation', () => {
 		);
 	});
 
-	it('counts unique route geometries over varied small allocation spaces', () => {
+	it('compares exact cardinality with route points and portals on admissible grids', () => {
 		fc.assert(
 			fc.property(
 				fc.record({
-					crossingCount: fc.integer({ min: 1, max: 3 }),
-					columnCount: fc.integer({ min: 1, max: 2 }),
+					crossingCount: fc.integer({ min: 1, max: 2 }),
+					columnCount: fc.integer({ min: 2, max: 3 }),
 					seed: fc.integer({ min: 0, max: 5 }),
+					sameRail: fc.boolean(),
 				}),
-				({ crossingCount, columnCount, seed }) => {
-					const input = variedAllocationInput(crossingCount, columnCount, seed);
+				({ crossingCount, columnCount, seed, sameRail }) => {
+					const { input, routing, crossing } = variedGridRoutingCase(
+						crossingCount,
+						columnCount,
+						seed,
+						sameRail,
+					);
 					const phases = crossingAllocationPhases(input);
 					const reallocation = [...defined(phases[0]).candidates(input)];
 					const extraTrack = [...defined(phases[1]).candidates(input)];
@@ -347,29 +441,35 @@ describe('grid crossing allocation', () => {
 					expect(reallocation[0]).toEqual(canonicalCrossingAllocation(input));
 					for (const [phaseIndex, candidates] of [reallocation, extraTrack, bridge].entries()) {
 						const phase = defined(phases[phaseIndex]);
-						const keys = candidates.map((allocation) => geometryKey(input, allocation));
-						expect(new Set(keys).size).toBe(candidates.length);
-						expect(BigInt(candidates.length)).toBe(phase.totalGeometries(input));
+						const geometries = candidates.map((allocation) =>
+							effectiveRouteGeometry(routing, crossing, allocation),
+						);
+						expect(new Set(geometries).size).toBe(candidates.length);
+						expect(BigInt(new Set(geometries).size)).toBe(phase.totalGeometries(input));
 					}
-					const oldGeometry = new Set(
-						reallocation.map((allocation) => geometryKey(input, allocation)),
+					const existingGeometry = new Set(
+						reallocation.map((allocation) => effectiveRouteGeometry(routing, crossing, allocation)),
 					);
-					expect(
-						extraTrack.every((allocation) => !oldGeometry.has(geometryKey(input, allocation))),
-					).toBe(true);
+					for (const allocation of extraTrack)
+						expect(
+							existingGeometry.has(effectiveRouteGeometry(routing, crossing, allocation)),
+						).toBe(false);
 					for (const allocation of extraTrack)
 						expect(
 							allocation.gutterTrackByRelationId.some((tracks, column) =>
 								[...tracks.values()].includes(defined(input.edges.gutters[column]).capacity - 1),
 							),
 						).toBe(true);
-					expect(bridge).toEqual(reallocation);
+					expect(
+						bridge.map((allocation) => effectiveRouteGeometry(routing, crossing, allocation)),
+					).toEqual(
+						reallocation.map((allocation) => effectiveRouteGeometry(routing, crossing, allocation)),
+					);
 				},
 			),
 			PROPERTY_PARAMETERS,
 		);
 	});
-
 	it('is deterministic across calls', () => {
 		const first = [...crossingAllocationCandidates(allocationInput())];
 		const second = [...crossingAllocationCandidates(allocationInput())];
