@@ -25,6 +25,8 @@ export interface CrossingAllocationInput {
 	readonly edges: GridRoutingEdges;
 	/** Crossing relation identities in canonical order. */
 	readonly crossingIds: readonly string[];
+	/** Relations whose endpoints use different rails and therefore use a bus track geometrically. */
+	readonly busRelevantRelationIds: readonly string[];
 	/** Crossing relations with an endpoint in each column, in canonical order, per column. */
 	readonly gutterIds: readonly (readonly string[])[];
 	/** Canonical port order per endpoint. */
@@ -168,13 +170,17 @@ function* combinePortOrders(
 	}
 }
 
-/** The identity of an allocation, so a declared candidate is never evaluated twice. */
-function allocationKey(allocation: GridCrossingAllocation): string {
+/** Geometry identity omits bus tracks that no route reaches because both endpoints share a rail. */
+function geometryKey(input: CrossingAllocationInput, allocation: GridCrossingAllocation): string {
 	const entries = (tracks: ReadonlyMap<string, number>): readonly (readonly [string, number])[] =>
 		[...tracks].sort(([left], [right]) => compareCanonicalStrings(left, right));
+	const busRelevant = new Set(input.busRelevantRelationIds);
+	const busTracks = new Map(
+		[...allocation.busTrackByRelationId].filter(([relationId]) => busRelevant.has(relationId)),
+	);
 	return JSON.stringify([
 		allocation.gutterTrackByRelationId.map(entries),
-		entries(allocation.busTrackByRelationId),
+		entries(busTracks),
 		[...allocation.portTrackByEndpointId]
 			.sort(([left], [right]) => compareCanonicalStrings(left, right))
 			.map(([endpointId, tracks]) => [endpointId, entries(tracks)]),
@@ -217,7 +223,7 @@ function* permutationCandidates(
 	for (const orders of combineOrders(factories, 0, []))
 		for (const portOrderByEndpointId of portOrders(input.incidence)) {
 			const allocation = allocationOf(orders.slice(1), defined(orders[0]), portOrderByEndpointId);
-			const key = allocationKey(allocation);
+			const key = geometryKey(input, allocation);
 			if (seen.has(key)) continue;
 			seen.add(key);
 			yield allocation;
@@ -233,10 +239,10 @@ export function* crossingAllocationCandidates(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation> {
 	const canonical = canonicalCrossingAllocation(input);
-	const excluded = new Set([allocationKey(canonical)]);
+	const excluded = new Set([geometryKey(input, canonical)]);
 	yield canonical;
 	const containment = containmentCrossingAllocation(input);
-	const containmentKey = allocationKey(containment);
+	const containmentKey = geometryKey(input, containment);
 	if (!excluded.has(containmentKey)) {
 		excluded.add(containmentKey);
 		yield containment;
@@ -244,9 +250,15 @@ export function* crossingAllocationCandidates(
 	yield* permutationCandidates(input, 0, excluded);
 }
 
-/** The same list once each gutter edge owns one extra track, which the margin already reserves. */
+/** Only allocations using the newly reserved gutter track add a new route geometry. */
 export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation> {
-	yield* permutationCandidates(input, 1, new Set());
+	for (const allocation of permutationCandidates(input, 1, new Set())) {
+		const reservesNewTrack = allocation.gutterTrackByRelationId.some((tracks, column) => {
+			const reservedTrack = defined(input.edges.gutters[column]).capacity - 1;
+			return [...tracks.values()].includes(reservedTrack);
+		});
+		if (reservesNewTrack) yield allocation;
+	}
 }

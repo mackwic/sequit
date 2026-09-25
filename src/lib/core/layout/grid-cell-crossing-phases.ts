@@ -8,11 +8,11 @@ import {
 } from './grid-cell-crossing-allocation';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 
-/** Maximum allocations examined while permuting the existing gutter, bus, and port tracks. */
+/** Maximum route geometries examined while permuting the existing gutter, bus, and port tracks. */
 export const GRID_CROSSING_REALLOCATION_BUDGET = 256;
-/** Maximum allocations examined after adding one reserved gutter track. */
+/** Maximum route geometries examined using a newly reserved gutter track. */
 export const GRID_CROSSING_EXTRA_TRACK_BUDGET = 256;
-/** Maximum existing-track allocations examined with validated bridge contacts accepted. */
+/** Maximum existing-track route geometries examined with validated bridge contacts accepted. */
 export const GRID_CROSSING_BRIDGE_BUDGET = 256;
 
 /** One declared attempt of the crossing allocation search, in the order the search tries them. */
@@ -31,16 +31,16 @@ export interface CrossingAllocationPhase {
 	readonly budget: number;
 	/** True when a contact between two parent routes is admissible if a validated bridge carries it. */
 	readonly acceptBridges: boolean;
-	/** Number of distinct allocations declared in this phase. */
-	readonly total: (input: CrossingAllocationInput) => bigint;
+	/** Exact number of distinct effective route geometries declared in this phase. */
+	readonly totalGeometries: (input: CrossingAllocationInput) => bigint;
 	readonly candidates: (input: CrossingAllocationInput) => Generator<GridCrossingAllocation>;
 }
 
 interface GridCrossingAllocationPhaseWitness {
 	readonly id: CrossingAllocationPhaseId;
 	readonly attempted: boolean;
-	readonly explored: number;
-	readonly total: string;
+	readonly exploredGeometries: number;
+	readonly totalGeometries: string;
 	/** True only when every candidate declared for this phase was examined. */
 	readonly exhaustive: boolean;
 	/** True when the phase stopped at its budget before selecting or exhausting its candidates. */
@@ -55,7 +55,7 @@ interface GridCrossingAllocationRejectedAlternative {
 	readonly reason: string;
 }
 
-/** Shared bounded-search evidence plus per-issue counts for diagnostics and the workshop panel. */
+/** Shared bounded-search evidence plus per-phase route geometry counts for diagnostics and the workshop panel. */
 export interface GridCrossingAllocationWitness extends BoundedSearchWitness<GridCrossingAllocationRejectedAlternative> {
 	readonly phases: readonly GridCrossingAllocationPhaseWitness[];
 	readonly winningPhase?: CrossingAllocationPhaseId;
@@ -73,19 +73,27 @@ function factorial(value: number): bigint {
 	return count;
 }
 
-/** Exact size of the deduplicated allocation space, without constructing candidate allocations. */
-export function crossingAllocationCandidateCount(
-	input: CrossingAllocationInput,
-	extraTracks = 0,
-): bigint {
-	let count = factorial(input.crossingIds.length);
+function allocationGeometrySpaceSize(input: CrossingAllocationInput, extraTracks: number): bigint {
+	let count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
+	let gutterAssignments = 1n;
 	for (const [column, ids] of input.gutterIds.entries())
-		count *= permutationCount(
+		gutterAssignments *= permutationCount(
 			ids.length,
 			defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
 		);
+	count *= gutterAssignments;
 	for (const relations of input.incidence.values()) count *= factorial(relations.length);
 	return count;
+}
+
+/** Exact number of geometries after ignoring unused bus tracks and assignments without a new track. */
+export function crossingAllocationGeometryCount(
+	input: CrossingAllocationInput,
+	extraTracks = 0,
+): bigint {
+	const extended = allocationGeometrySpaceSize(input, extraTracks);
+	if (extraTracks === 0) return extended;
+	return extended - allocationGeometrySpaceSize(input, 0);
 }
 
 /**
@@ -103,21 +111,21 @@ export function crossingAllocationPhases(
 			id: CrossingAllocationPhaseId.Reallocate,
 			budget: GRID_CROSSING_REALLOCATION_BUDGET,
 			acceptBridges: false,
-			total: crossingAllocationCandidateCount,
+			totalGeometries: crossingAllocationGeometryCount,
 			candidates: () => crossingAllocationCandidates(input),
 		},
 		{
 			id: CrossingAllocationPhaseId.ExtraTrack,
 			budget: GRID_CROSSING_EXTRA_TRACK_BUDGET,
 			acceptBridges: false,
-			total: (allocationInput) => crossingAllocationCandidateCount(allocationInput, 1),
+			totalGeometries: (allocationInput) => crossingAllocationGeometryCount(allocationInput, 1),
 			candidates: () => crossingAllocationCandidatesWithExtraTrack(input),
 		},
 		{
 			id: CrossingAllocationPhaseId.Bridge,
 			budget: GRID_CROSSING_BRIDGE_BUDGET,
 			acceptBridges: true,
-			total: crossingAllocationCandidateCount,
+			totalGeometries: crossingAllocationGeometryCount,
 			candidates: () => crossingAllocationCandidates(input),
 		},
 	];

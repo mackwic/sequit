@@ -75,14 +75,14 @@ export function crossingRoute(
 ): { readonly route: LayoutRelation; readonly portals: readonly [GridCellPortal, GridCellPortal] } {
 	const source = crossingEndpoint(routing, allocation, relation, relation.from);
 	const target = crossingEndpoint(routing, allocation, relation, relation.to);
-	const busY = crossingBusY(
-		routing.edges.topBus,
-		defined(allocation.busTrackByRelationId.get(relation.id)),
-	);
 	const points: Point[] = [source.port, source.portal.point, { x: source.railX, y: source.port.y }];
 	if (source.railX === target.railX) {
 		points.push({ x: target.railX, y: target.port.y });
 	} else {
+		const busY = crossingBusY(
+			routing.edges.topBus,
+			defined(allocation.busTrackByRelationId.get(relation.id)),
+		);
 		points.push(
 			{ x: source.railX, y: busY },
 			{ x: target.railX, y: busY },

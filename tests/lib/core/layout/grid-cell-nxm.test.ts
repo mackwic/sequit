@@ -92,8 +92,8 @@ describe('grid bus allocation', () => {
 			({ phaseId, busOrder }) =>
 				phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === canonicalBus.join(),
 		);
-		expect(canonicalBusRejections).toHaveLength(Number(BigInt(reallocation.total) / 6n));
-		expect(reallocation.explored).toBeGreaterThanOrEqual(canonicalBusRejections.length);
+		expect(canonicalBusRejections).toHaveLength(Number(BigInt(reallocation.totalGeometries) / 6n));
+		expect(reallocation.exploredGeometries).toBeGreaterThanOrEqual(canonicalBusRejections.length);
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
 		const permuted = prepareLayoutDocument({
 			...source,
@@ -147,8 +147,8 @@ describe('N by M grid composition', () => {
 			{
 				id: CrossingAllocationPhaseId.Reallocate,
 				attempted: true,
-				explored: 256,
-				total: '2592',
+				exploredGeometries: 256,
+				totalGeometries: '2592',
 				exhaustive: false,
 				truncated: true,
 				selected: false,
@@ -156,8 +156,8 @@ describe('N by M grid composition', () => {
 			{
 				id: CrossingAllocationPhaseId.ExtraTrack,
 				attempted: true,
-				explored: 256,
-				total: '13824',
+				exploredGeometries: 256,
+				totalGeometries: '11232',
 				exhaustive: false,
 				truncated: true,
 				selected: false,
@@ -165,8 +165,8 @@ describe('N by M grid composition', () => {
 			{
 				id: CrossingAllocationPhaseId.Bridge,
 				attempted: true,
-				explored: 1,
-				total: '2592',
+				exploredGeometries: 1,
+				totalGeometries: '2592',
 				exhaustive: false,
 				truncated: false,
 				selected: true,

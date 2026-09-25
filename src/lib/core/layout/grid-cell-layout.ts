@@ -52,8 +52,8 @@ import {
 	RegionRelationKind,
 } from './region-composition-model';
 import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
-import {
-	type RegionGeometryDiagnostic,
+import type {
+	RegionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from './region-geometry-diagnostic';
 import type { RegionLocalLayoutCache } from './region-local-cache';
@@ -64,14 +64,12 @@ function unsupported(reason: string): GridCellLayoutAttempt {
 
 function unknown(
 	reason: string,
-	code?: RegionGeometryDiagnosticCode,
-	witness?: GridCrossingAllocationWitness,
+	evidence?: {
+		readonly code: RegionGeometryDiagnosticCode;
+		readonly witness: GridCrossingAllocationWitness;
+	},
 ): GridCellLayoutAttempt {
-	if (code !== undefined && witness !== undefined)
-		return { status: GridCellLayoutStatus.Unknown, reason, code, witness };
-	if (code !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, code };
-	if (witness !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, witness };
-	return { status: GridCellLayoutStatus.Unknown, reason };
+	return { status: GridCellLayoutStatus.Unknown, reason, ...evidence };
 }
 
 function offset(point: Point, delta: Point): Point {
@@ -249,6 +247,17 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 	const allocationInput: CrossingAllocationInput = {
 		edges,
 		crossingIds,
+		busRelevantRelationIds: crossing
+			.filter((relation) => {
+				const sourceColumn = defined(
+					cellById.get(defined(input.cellByEndpointId.get(relation.from))),
+				).column;
+				const targetColumn = defined(
+					cellById.get(defined(input.cellByEndpointId.get(relation.to))),
+				).column;
+				return sourceColumn !== targetColumn;
+			})
+			.map(({ id }) => id),
 		gutterIds,
 		incidence,
 		portalByRelationId: new Map(),
@@ -260,24 +269,14 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
 	const search = searchGridCrossingAllocations(withSpans, routed);
-	if (search.selected !== undefined)
+	if ('selected' in search)
 		return {
 			...search.selected.candidate,
 			allocation: search.selected.allocation,
 			witness: search.witness,
 		} satisfies GridCellAllocationSelected;
-	// Nothing validates: keep the canonical allocation and today's diagnostic, so the composition
-	// validator reports the contact that no reallocation resolved.
-	const fallback = routed(canonical, false);
-	const witness = search.witness;
-	if (
-		fallback.failure !== undefined &&
-		fallback.failure.code !== RegionGeometryDiagnosticCode.ParentRouteContact
-	)
-		return unknown(fallback.failure.message, fallback.failure.code, witness);
-	return {
-		...fallback.candidate,
-		allocation: canonical,
-		witness,
-	} satisfies GridCellAllocationSelected;
+	return unknown(search.failure.message, {
+		code: search.failure.code,
+		witness: search.witness,
+	});
 }

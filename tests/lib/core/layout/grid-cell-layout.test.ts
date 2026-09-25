@@ -8,7 +8,16 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import {
+	crossingIncidence,
+	gridRoutingEdges,
+} from '../../../../src/lib/core/layout/grid-cell-crossing';
+import {
+	canonicalCrossingAllocation,
+	type CrossingAllocationInput,
+} from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+import { crossingRoute } from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -135,6 +144,53 @@ describe('bounded two by two grid composition', () => {
 		expect(result.status).toBe(GridCellLayoutStatus.Selected);
 		if (result.status !== GridCellLayoutStatus.Selected) return;
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+	});
+
+	it('does not require or route through a bus when both endpoints share a rail', () => {
+		const source = gridDocument();
+		const document = {
+			...source,
+			relations: [
+				{ id: 'inside-a', from: 'a-bottom', to: 'a-top' },
+				{ id: 'a-c', from: 'a-bottom', to: 'c' },
+				{ id: 'top-c', from: 'a-top', to: 'c' },
+			],
+		};
+		const prepared = prepareGrid(document);
+		const input = gridInput();
+		const selected = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== GridCellLayoutStatus.Selected)
+			throw new Error('Expected same-rail crossing routes to be selected.');
+		const crossing = prepared.graph.relations
+			.map(({ relation }) => relation)
+			.filter(
+				({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to),
+			);
+		const edges = gridRoutingEdges(input.rootId, 2, crossing.length);
+		const incidence = crossingIncidence(crossing);
+		const allocationInput: CrossingAllocationInput = {
+			edges,
+			crossingIds: crossing.map(({ id }) => id),
+			busRelevantRelationIds: [],
+			gutterIds: [crossing.map(({ id }) => id), []],
+			incidence,
+			portalByRelationId: new Map(),
+		};
+		const routing = {
+			rootId: input.rootId,
+			crossing,
+			columnCount: 2,
+			cells: selected.cells,
+			cellByEndpointId: input.cellByEndpointId,
+			edges,
+			incidence,
+		};
+		const canonical = canonicalCrossingAllocation(allocationInput);
+		const busless = { ...canonical, busTrackByRelationId: new Map<string, number>() };
+		for (const relation of crossing)
+			expect(crossingRoute(routing, busless, relation).route).toEqual(
+				crossingRoute(routing, canonical, relation).route,
+			);
 	});
 
 	it('allocates distinct ports and exterior tracks to multiple crossing relations', () => {
