@@ -10,7 +10,6 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import {
-	acyclicLogicDocumentArbitrary,
 	nodeId,
 	richAcyclicLogicDocumentArbitrary,
 } from '../../../support/builders/logic-document-arbitrary';
@@ -126,17 +125,6 @@ const collaborationCaseArbitrary: fc.Arbitrary<CollaborationCase> =
 			.map(([nodeIndexes, markdown]) => ({ document, nodeIndexes, markdown })),
 	);
 
-const mixedOperationCaseArbitrary: fc.Arbitrary<CollaborationCase> = acyclicLogicDocumentArbitrary({
-	minNodes: 3,
-	maxNodes: 3,
-	maxEdges: 3,
-}).chain((document) => {
-	const markdown = fc.string({ maxLength: 32, unit: 'grapheme' });
-	return fc
-		.tuple(markdown, markdown, markdown, markdown, markdown, markdown)
-		.map((values) => ({ document, nodeIndexes: [0, 1, 2] as const, markdown: values }));
-});
-
 const updateOrders: readonly (readonly [number, number, number])[] = [
 	[0, 1, 2],
 	[0, 2, 1],
@@ -249,20 +237,20 @@ describe('generated Yjs live documents', () => {
 
 	it('converges mixed operation sequences spanning several nodes', async () => {
 		await fc.assert(
-			fc.asyncProperty(mixedOperationCaseArbitrary, async (generated) => {
+			fc.asyncProperty(collaborationCaseArbitrary, async (generated) => {
 				const baseline = baselineFor(generated.document);
 				const updates = await Promise.all([
 					localUpdate(baseline, [
-						[0, generated.markdown[0]],
-						[1, generated.markdown[1]],
+						[generated.nodeIndexes[0], generated.markdown[0]],
+						[generated.nodeIndexes[1], generated.markdown[1]],
 					]),
 					localUpdate(baseline, [
-						[1, generated.markdown[2]],
-						[2, generated.markdown[3]],
+						[generated.nodeIndexes[1], generated.markdown[2]],
+						[generated.nodeIndexes[2], generated.markdown[3]],
 					]),
 					localUpdate(baseline, [
-						[2, generated.markdown[4]],
-						[0, generated.markdown[5]],
+						[generated.nodeIndexes[2], generated.markdown[4]],
+						[generated.nodeIndexes[0], generated.markdown[5]],
 					]),
 				]);
 				expectConverged([
