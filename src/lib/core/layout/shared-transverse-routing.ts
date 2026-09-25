@@ -96,8 +96,11 @@ function declaredOrdinals(
 ): ReadonlyMap<string, { readonly gutter: number; readonly rail: number }> {
 	const ranked = [...input.plans].sort(planOrder(order));
 	const ordinals = new Map<string, { readonly gutter: number; readonly rail: number }>();
-	for (const [index, plan] of ranked.entries())
-		ordinals.set(plan.id, { gutter: index, rail: ranked.length - index - 1 });
+	for (const [index, plan] of ranked.entries()) {
+		let rail = index;
+		if (order === TransverseRouteOrder.Nested) rail = ranked.length - index - 1;
+		ordinals.set(plan.id, { gutter: index, rail });
+	}
 	return ordinals;
 }
 

@@ -138,7 +138,7 @@ describe('S | SD | C shared process', () => {
 		expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
 	});
 
-	it('resolves the four-message crossing through a validated alternate rail order', () => {
+	it('preserves pre-refactor canonical geometry for the four-message crossing', () => {
 		const prepared = prepareLayoutDocument(
 			processDocument(LayoutDirection.TopToBottom, LayoutBias.Top),
 		);
@@ -158,6 +158,52 @@ describe('S | SD | C shared process', () => {
 				TransverseRouteOrder.Canonical,
 			),
 		};
+		expect(canonical.relations.map(({ id, points }) => ({ id, points }))).toEqual([
+			{
+				id: 'completion',
+				points: [
+					{ x: 416, y: 648 },
+					{ x: 416, y: 588 },
+					{ x: 136, y: 588 },
+					{ x: 136, y: 372 },
+					{ x: 330, y: 372 },
+					{ x: 330, y: 312 },
+				],
+			},
+			{
+				id: 'dispatch',
+				points: [
+					{ x: 550, y: 312 },
+					{ x: 550, y: 396 },
+					{ x: 768, y: 396 },
+					{ x: 768, y: 564 },
+					{ x: 464, y: 564 },
+					{ x: 464, y: 648 },
+				],
+			},
+			{
+				id: 'request',
+				points: [
+					{ x: 574, y: 1100 },
+					{ x: 574, y: 992 },
+					{ x: 88, y: 992 },
+					{ x: 88, y: 420 },
+					{ x: 598, y: 420 },
+					{ x: 598, y: 312 },
+				],
+			},
+			{
+				id: 'response',
+				points: [
+					{ x: 282, y: 312 },
+					{ x: 282, y: 444 },
+					{ x: 816, y: 444 },
+					{ x: 816, y: 968 },
+					{ x: 306, y: 968 },
+					{ x: 306, y: 1100 },
+				],
+			},
+		]);
 		const nested = {
 			...base,
 			relations: routeTransverseLanes(
