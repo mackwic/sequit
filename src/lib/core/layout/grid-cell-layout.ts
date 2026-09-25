@@ -1,7 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import { boundedCounter, firstValidDepthFirst, type SearchBudgetCounter } from './bounded-search';
 import type { RoutedPath } from './bridge-oracle';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import {
@@ -12,18 +11,17 @@ import {
 } from './grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
-	CROSSING_ALLOCATION_BUDGET,
 	type CrossingAllocationInput,
-	type CrossingAllocationPhase,
-	crossingAllocationPhases,
 	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
+import type { GridCrossingAllocationWitness } from './grid-cell-crossing-phases';
 import {
 	crossingPortalSpans,
 	crossingRoute,
 	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
 } from './grid-cell-crossing-routing';
+import { searchGridCrossingAllocations } from './grid-cell-crossing-search';
 import {
 	type GridCellDisposition,
 	layoutGridCellDisposition,
@@ -33,6 +31,7 @@ import { normalize } from './grid-cell-model';
 import { normalizeGridCellRegionModel } from './grid-cell-region-model';
 import { solveGridCellRegionLeaves } from './grid-cell-region-solver';
 import {
+	type GridCellAllocationSelected,
 	type GridCellInput,
 	type GridCellLayoutAttempt,
 	GridCellLayoutStatus,
@@ -63,8 +62,15 @@ function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };
 }
 
-function unknown(reason: string, code?: RegionGeometryDiagnosticCode): GridCellLayoutAttempt {
+function unknown(
+	reason: string,
+	code?: RegionGeometryDiagnosticCode,
+	witness?: GridCrossingAllocationWitness,
+): GridCellLayoutAttempt {
+	if (code !== undefined && witness !== undefined)
+		return { status: GridCellLayoutStatus.Unknown, reason, code, witness };
 	if (code !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, code };
+	if (witness !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, witness };
 	return { status: GridCellLayoutStatus.Unknown, reason };
 }
 
@@ -253,36 +259,25 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		...allocationInput,
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
-	let selected: GridCellSelected | undefined;
-	let counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
-	const search = (phase: CrossingAllocationPhase, phaseCounter: SearchBudgetCounter): boolean => {
-		const result = firstValidDepthFirst<GridCrossingAllocation, RegionGeometryDiagnostic>({
-			levels: 1,
-			counter: phaseCounter,
-			// The declared list is the only level: the search evaluates it in order.
-			choices: () => phase.candidates(withSpans),
-			accept: (_, allocation) => {
-				const attempt = routed(allocation, phase.acceptBridges);
-				if (attempt.failure === undefined) selected = attempt.candidate;
-				return attempt.failure;
-			},
-			onReject: () => undefined,
-		});
-		return result.exhaustive;
-	};
-	for (const phase of crossingAllocationPhases(withSpans)) {
-		if (!phase.sharesBudget) counter = boundedCounter(CROSSING_ALLOCATION_BUDGET);
-		const exhaustive = search(phase, counter);
-		if (selected !== undefined || !exhaustive) break;
-	}
-	if (selected !== undefined) return selected;
+	const search = searchGridCrossingAllocations(withSpans, routed);
+	if (search.selected !== undefined)
+		return {
+			...search.selected.candidate,
+			allocation: search.selected.allocation,
+			witness: search.witness,
+		} satisfies GridCellAllocationSelected;
 	// Nothing validates: keep the canonical allocation and today's diagnostic, so the composition
 	// validator reports the contact that no reallocation resolved.
 	const fallback = routed(canonical, false);
+	const witness = search.witness;
 	if (
 		fallback.failure !== undefined &&
 		fallback.failure.code !== RegionGeometryDiagnosticCode.ParentRouteContact
 	)
-		return unknown(fallback.failure.message, fallback.failure.code);
-	return fallback.candidate;
+		return unknown(fallback.failure.message, fallback.failure.code, witness);
+	return {
+		...fallback.candidate,
+		allocation: canonical,
+		witness,
+	} satisfies GridCellAllocationSelected;
 }

@@ -5,6 +5,7 @@ import type {
 	RegionLanePresentation,
 } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import type { BoundedSearchWitness } from './bounded-search';
 import type { Bounds, LayoutResult, Point } from './layout-types';
 import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 import type {
@@ -83,11 +84,13 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 	readonly portals: readonly Portal[];
 }
 
-interface RegionCompositionUnknown {
+export interface RegionCompositionUnknown<
+	Witness extends BoundedSearchWitness<unknown> = RegionIncidentSearchWitness,
+> {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
 	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
-	readonly witness?: RegionIncidentSearchWitness;
+	readonly witness?: Witness;
 	readonly regionId?: string;
 	readonly relationId?: string;
 }
@@ -97,8 +100,10 @@ interface RegionCompositionUnsupported {
 	readonly reason: string;
 }
 
-export type RegionCompositionAttempt<Selected extends RegionCompositionSelected> =
-	Selected | RegionCompositionUnknown | RegionCompositionUnsupported;
+export type RegionCompositionAttempt<
+	Selected extends RegionCompositionSelected,
+	Witness extends BoundedSearchWitness<unknown> = RegionIncidentSearchWitness,
+> = Selected | RegionCompositionUnknown<Witness> | RegionCompositionUnsupported;
 
 export interface RegionLayoutSelected extends RegionCompositionSelected<RegionPortal> {
 	readonly regions: readonly RegionChildPlacement[];

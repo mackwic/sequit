@@ -8,6 +8,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -15,6 +16,7 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
@@ -391,6 +393,23 @@ describe('bounded two by two grid composition', () => {
 			...input,
 			cells,
 		});
-		expect(attempt.status).toBe(GridCellLayoutStatus.Unknown);
+		if (attempt.status !== GridCellLayoutStatus.Unknown)
+			throw new Error('The blocked crossing should be reported as unknown.');
+		const witness = attempt.witness;
+		expect(attempt.code).toBe('grid-crossing-enters-element');
+		expect(witness?.attempted).toBeGreaterThan(0);
+		expect(witness?.exhaustive).toBe(true);
+		expect(
+			witness?.rejectedAlternatives.some(
+				({ phaseId, code }) =>
+					phaseId === CrossingAllocationPhaseId.Reallocate &&
+					code === RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+			),
+		).toBe(true);
+		expect(witness?.phases.map(({ id, attempted }) => [id, attempted])).toEqual([
+			[CrossingAllocationPhaseId.Reallocate, true],
+			[CrossingAllocationPhaseId.ExtraTrack, true],
+			[CrossingAllocationPhaseId.Bridge, true],
+		]);
 	});
 });

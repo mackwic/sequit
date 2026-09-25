@@ -4,13 +4,6 @@ import type { GridRoutingEdges } from './grid-cell-crossing';
 import type { Point } from './layout-types';
 import { allocateNestedTracks, type RoutingEdge } from './routing-resource-allocation';
 
-/**
- * The declared budget of the grid crossing reallocation. The reallocation space of an admitted
- * grid is exhaustive below it: the resource limit admits three crossings, so the product of the
- * gutters and the shared endpoint faces is bounded, and the remainder starts the extra-track phase.
- */
-export const CROSSING_ALLOCATION_BUDGET = 256;
-
 /** A gutter track that no crossing relation uses: the edge owns one more track than it carries. */
 const FREE_TRACK = '';
 
@@ -200,25 +193,29 @@ function* permutationCandidates(
 	extraTracks: number,
 	excluded: Set<string>,
 ): Generator<GridCrossingAllocation> {
-	const factories = input.gutterIds.map(
-		(_ids, column) => (): Generator<readonly string[]> =>
-			trackOrders(
-				defined(input.gutterIds[column]),
-				defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
-			),
-	);
-	for (const gutterOrders of combineOrders(factories, 0, []))
+	const factories: TrackOrderFactory[] = [
+		...input.gutterIds.map(
+			(_ids, column) => (): Generator<readonly string[]> =>
+				trackOrders(
+					defined(input.gutterIds[column]),
+					defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
+				),
+		),
+	];
+	const seen = new Set(excluded);
+	for (const orders of combineOrders(factories, 0, []))
 		for (const portOrderByEndpointId of portOrders(input.incidence)) {
-			const allocation = allocationOf(gutterOrders, input.crossingIds, portOrderByEndpointId);
+			const allocation = allocationOf(orders, input.crossingIds, portOrderByEndpointId);
 			const key = allocationKey(allocation);
-			if (excluded.has(key)) continue;
+			if (seen.has(key)) continue;
+			seen.add(key);
 			yield allocation;
 		}
 }
 
 /**
  * The declared allocation candidates: the canonical allocation, the containment allocation, then
- * the remaining gutter and port permutations in lexicographic order. The list is lazy, so a
+ * the remaining bus, gutter, and port permutations in lexicographic order. The list is lazy, so a
  * bounded search never materializes more than the candidates it evaluates.
  */
 export function* crossingAllocationCandidates(
@@ -241,59 +238,4 @@ export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation> {
 	yield* permutationCandidates(input, 1, new Set());
-}
-
-/** One declared attempt of the crossing allocation search, in the order the search tries them. */
-export enum CrossingAllocationPhaseId {
-	/** Permute tracks and portals: the reallocation issue of the routing resource graph. */
-	Reallocate = 'reallocate',
-	/** Add one rail track: the growth issue, already reserved by the margin. */
-	ExtraTrack = 'extra-track',
-	/** Reallocate again, now accepting a crossing that a validated bridge carries. */
-	Bridge = 'bridge',
-}
-
-export interface CrossingAllocationPhase {
-	readonly id: CrossingAllocationPhaseId;
-	/** True when a contact between two parent routes is admissible if a validated bridge carries it. */
-	readonly acceptBridges: boolean;
-	/**
-	 * True when the phase keeps spending the declared budget of the previous one: the added track
-	 * is a growth of the same allocation, not a second reallocation space. A phase with its own
-	 * budget re-opens the declared list under its own exhaustiveness bound.
-	 */
-	readonly sharesBudget: boolean;
-	readonly candidates: (input: CrossingAllocationInput) => Generator<GridCrossingAllocation>;
-}
-
-/**
- * The declared issue order of a grid conflict: reallocate, then add a track, then accept a
- * validated bridge, then `unknown`. A grid crossing relation has exactly one geometry per
- * allocation and the arrangement declares no alternative side (`alternativeSides: []`), so the
- * grid owns no detour: the detour/bridge thresholds of the contract search are vacuous here, and
- * the bridge phase is the last resource before a coded `unknown`.
- */
-export function crossingAllocationPhases(
-	input: CrossingAllocationInput,
-): readonly CrossingAllocationPhase[] {
-	return [
-		{
-			id: CrossingAllocationPhaseId.Reallocate,
-			acceptBridges: false,
-			sharesBudget: false,
-			candidates: () => crossingAllocationCandidates(input),
-		},
-		{
-			id: CrossingAllocationPhaseId.ExtraTrack,
-			acceptBridges: false,
-			sharesBudget: true,
-			candidates: () => crossingAllocationCandidatesWithExtraTrack(input),
-		},
-		{
-			id: CrossingAllocationPhaseId.Bridge,
-			acceptBridges: true,
-			sharesBudget: false,
-			candidates: () => crossingAllocationCandidates(input),
-		},
-	];
 }

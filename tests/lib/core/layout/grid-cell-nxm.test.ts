@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -83,6 +85,37 @@ describe('N by M grid composition', () => {
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, cellInput);
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
+		expect(result.witness.phases).toEqual([
+			{
+				id: CrossingAllocationPhaseId.Reallocate,
+				attempted: true,
+				explored: 256,
+				total: '432',
+				exhaustive: false,
+				truncated: true,
+				selected: false,
+			},
+			{
+				id: CrossingAllocationPhaseId.ExtraTrack,
+				attempted: true,
+				explored: 256,
+				total: '2304',
+				exhaustive: false,
+				truncated: true,
+				selected: false,
+			},
+			{
+				id: CrossingAllocationPhaseId.Bridge,
+				attempted: true,
+				explored: 1,
+				total: '432',
+				exhaustive: false,
+				truncated: false,
+				selected: true,
+			},
+		]);
+		expect(validatedBridges(result.layout.relations).length).toBeGreaterThan(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);
 		const secondColumn = result.cells.find(({ column }) => column === 1);
 		if (firstColumn === undefined || secondColumn === undefined)

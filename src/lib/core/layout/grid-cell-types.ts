@@ -1,4 +1,6 @@
 import type { LayoutConfiguration } from '../document/logic-document';
+import type { GridCrossingAllocation } from './grid-cell-crossing-allocation';
+import type { GridCrossingAllocationWitness } from './grid-cell-crossing-phases';
 import type {
 	RegionChildPlacement,
 	RegionCompositionAttempt,
@@ -43,4 +45,13 @@ export interface GridCellSelected extends RegionCompositionSelected<GridCellPort
 	readonly rowHeights: readonly number[];
 }
 
-export type GridCellLayoutAttempt = RegionCompositionAttempt<GridCellSelected>;
+/** The grid solver's selected candidate carries its actual allocation and bounded-search evidence. */
+export interface GridCellAllocationSelected extends GridCellSelected {
+	readonly allocation: GridCrossingAllocation;
+	readonly witness: GridCrossingAllocationWitness;
+}
+
+export type GridCellLayoutAttempt = RegionCompositionAttempt<
+	GridCellAllocationSelected,
+	GridCrossingAllocationWitness
+>;

@@ -15,14 +15,19 @@ import {
 import {
 	canonicalCrossingAllocation,
 	containmentCrossingAllocation,
-	CROSSING_ALLOCATION_BUDGET,
 	crossingAllocationCandidates,
 	crossingAllocationCandidatesWithExtraTrack,
 	type CrossingAllocationInput,
-	CrossingAllocationPhaseId,
-	crossingAllocationPhases,
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
+import {
+	crossingAllocationCandidateCount,
+	CrossingAllocationPhaseId,
+	crossingAllocationPhases,
+	GRID_CROSSING_BRIDGE_BUDGET,
+	GRID_CROSSING_EXTRA_TRACK_BUDGET,
+	GRID_CROSSING_REALLOCATION_BUDGET,
+} from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 
 const CROSSING_IDS = ['a-b', 'a-c', 'a-d'] as const;
@@ -136,6 +141,7 @@ describe('grid crossing allocation', () => {
 	it('declares its candidates in order, without repeating an allocation', () => {
 		const input = allocationInput();
 		const candidates = [...crossingAllocationCandidates(input)];
+		expect(BigInt(candidates.length)).toBe(crossingAllocationCandidateCount(input));
 		expect(candidates[0]).toEqual(canonicalCrossingAllocation(input));
 		expect(candidates[1]).toEqual(containmentCrossingAllocation(input));
 		const keys = candidates.map((allocation) =>
@@ -149,7 +155,6 @@ describe('grid crossing allocation', () => {
 			]),
 		);
 		expect(new Set(keys).size).toBe(keys.length);
-		expect(candidates.length).toBeLessThanOrEqual(CROSSING_ALLOCATION_BUDGET);
 		for (const allocation of candidates) {
 			const left = [...defined(allocation.gutterTrackByRelationId[0]).values()];
 			expect(new Set(left).size).toBe(left.length);
@@ -187,11 +192,19 @@ describe('grid crossing allocation', () => {
 			CrossingAllocationPhaseId.Bridge,
 		]);
 		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, true]);
-		expect(phases.map(({ sharesBudget }) => sharesBudget)).toEqual([false, true, false]);
+		expect(phases.map(({ budget }) => budget)).toEqual([
+			GRID_CROSSING_REALLOCATION_BUDGET,
+			GRID_CROSSING_EXTRA_TRACK_BUDGET,
+			GRID_CROSSING_BRIDGE_BUDGET,
+		]);
 		expect([...defined(phases[2]).candidates(input)]).toEqual([
 			...crossingAllocationCandidates(input),
 		]);
-		for (const phase of phases) expect([...phase.candidates(input)].length).toBeGreaterThan(0);
+		for (const phase of phases) {
+			const candidates = [...phase.candidates(input)];
+			expect(candidates.length).toBeGreaterThan(0);
+			expect(BigInt(candidates.length)).toBe(phase.total(input));
+		}
 	});
 
 	it('is deterministic across calls', () => {
