@@ -91,7 +91,7 @@ function selectedBranch(branch: CandidateFaceBranch, layout: LayoutResult): Sele
 		branchId: branch.id,
 		candidateId: branch.candidate.id,
 		choices: branch.choices,
-		totalGrowth: branch.growth,
+		totalGrowth: branch.totalGrowth,
 		forcedInversions: branch.candidate.conflicts.inversions.length,
 		layout,
 	};

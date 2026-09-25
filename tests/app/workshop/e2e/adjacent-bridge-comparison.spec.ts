@@ -20,6 +20,9 @@ test('compares the real adjacent bridge with an independently validated compact 
 		'Compare le détour sans croisement au candidat compact du graphe de canaux ; chaque pont admis est validé par l’oracle commun',
 	);
 	await expect(dedicated).toContainText('Ordre cible : d < e');
+	await expect(dedicated).toContainText('130560 px²');
+	await expect(dedicated).toContainText('896 px');
+	await expect(dedicated).toContainText('Ponts rendus');
 	await expect(independent).toContainText('Ordre cible : e < d');
 	await expect(independent).toContainText('Contrat indépendant · pont retenu');
 	const costs = comparison.getByRole('region', {
@@ -31,6 +34,12 @@ test('compares the real adjacent bridge with an independently validated compact 
 	await expect(costs).toContainText('Routes du détour');
 	await expect(costs).toContainText('Aire du pont');
 	await expect(costs).toContainText('Routes du pont');
+	await expect(costs).toContainText('Croissance totale allouée du détour');
+	await expect(costs).toContainText('Croissance différentielle des faces cibles du détour');
+	await expect(costs).toContainText('Croissance totale allouée du pont');
+	await expect(costs).toContainText('Croissance différentielle des faces cibles du pont');
+	await expect(costs).toContainText('16 px');
+	await expect(costs).toContainText('0 px');
 	await expect(costs).toContainText('191296 px²');
 	await expect(costs).toContainText('1236 px');
 	await expect(costs).toContainText('120768 px²');
@@ -58,6 +67,9 @@ test('compares the real adjacent bridge with an independently validated compact 
 	const arcCount = (paths: readonly string[]) =>
 		paths.reduce((count, path) => count + (path.match(/\bA 6 6 /g)?.length ?? 0), 0);
 	expect(arcCount(dedicatedPaths)).toBe(2);
+	await expect(dedicated.locator('dl > div').filter({ hasText: 'Ponts rendus' })).toContainText(
+		'2',
+	);
 	expect(arcCount(independentPaths)).toBe(2);
 	await expect(dedicated).toContainText('Croisements stricts');
 	await expect(dedicated).toContainText('Ponts rendus');
@@ -65,7 +77,8 @@ test('compares the real adjacent bridge with an independently validated compact 
 	const twoByTwo = comparison.locator('[data-adjacent-panel="two-by-two"]');
 	await expect(twoByTwo).toContainText('2+2, bridge retenu');
 	await expect(twoByTwo).toContainText('96 × 400 px');
-	await expect(twoByTwo).toContainText('Croissance allouée du détour');
+	await expect(twoByTwo).toContainText('Croissance totale allouée du détour');
+	await expect(twoByTwo).toContainText('Croissance différentielle des faces cibles du détour');
 	await expect(twoByTwo).toContainText('523136 px²');
 	await expect(twoByTwo).toContainText('429440 px²');
 	await expect(twoByTwo).toContainText('1032 px');
@@ -74,6 +87,8 @@ test('compares the real adjacent bridge with an independently validated compact 
 		.locator('[data-rendered-relation-id]')
 		.evaluateAll((paths) => paths.map((path) => path.getAttribute('d') ?? ''));
 	expect(arcCount(twoByTwoPaths)).toBe(1);
+	const independentSource = independentSvg.locator('[data-box-id="a"] rect');
+	await expect(independentSource).toHaveAttribute('width', '96');
 	const screenshotDirectory = process.env['SEQUIT_LAYOUT_SCREENSHOT_DIR'];
 	if (screenshotDirectory !== undefined && testInfo.project.name === 'chromium') {
 		await dedicated.screenshot({

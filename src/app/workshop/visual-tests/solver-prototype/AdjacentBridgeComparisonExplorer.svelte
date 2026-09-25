@@ -56,9 +56,9 @@
 			Les relations a→d, b→d, c→d et a→e partagent les mêmes rangs et les mêmes mesures dans les
 			deux dessins. Le moteur dédié valide ses croisements stricts. Le contrat indépendant compare
 			son détour sans croisement à un candidat compact routé par le graphe de canaux partagé. Parmi
-			les candidats validés, la croissance allouée prime ; à croissance allouée égale, le pont ne
-			l’emporte que si l’oracle le valide et si le détour dépasse l’un des deux seuils. Sa recherche
-			globale reste indéterminée.
+			les candidats validés, la croissance totale allouée prime ; à croissance totale allouée égale,
+			le pont ne l’emporte que si l’oracle le valide et si le détour dépasse l’un des deux seuils.
+			Sa recherche globale reste indéterminée.
 		</p>
 	</header>
 	{#if error}
@@ -80,12 +80,20 @@
 				</p>
 				<dl>
 					<div>
-						<dt>Croissance allouée du détour</dt>
-						<dd>{comparison.independent.comparison.detourGrowth} px</dd>
+						<dt>Croissance totale allouée du détour</dt>
+						<dd>{comparison.independent.comparison.detourTotalGrowth} px</dd>
 					</div>
 					<div>
-						<dt>Croissance allouée du pont</dt>
-						<dd>{comparison.independent.comparison.bridgeGrowth} px</dd>
+						<dt>Croissance différentielle des faces cibles du détour</dt>
+						<dd>{comparison.independent.comparison.detourDifferentialGrowth} px</dd>
+					</div>
+					<div>
+						<dt>Croissance totale allouée du pont</dt>
+						<dd>{comparison.independent.comparison.bridgeTotalGrowth} px</dd>
+					</div>
+					<div>
+						<dt>Croissance différentielle des faces cibles du pont</dt>
+						<dd>{comparison.independent.comparison.bridgeDifferentialGrowth} px</dd>
 					</div>
 					<div>
 						<dt>Aire du détour</dt>
@@ -134,7 +142,7 @@
 							<dd>{panel.result.metrics.area} px²</dd>
 						</div>
 						<div>
-							<dt>Extension géométrique des boîtes</dt>
+							<dt>Croissance totale allouée des boîtes</dt>
 							<dd>{panel.result.metrics.growth} px</dd>
 						</div>
 						<div>
@@ -161,8 +169,8 @@
 			<h3>Contrat indépendant · 2+2, {comparison.twoByTwo.independent.selectedIssue} retenu</h3>
 			<p class="policy">
 				Document {comparison.twoByTwo.document.id} · mesures uniformes 96 × 400 px · candidat {comparison
-					.twoByTwo.independent.candidateId}. À croissance allouée égale, les coûts réellement
-				mesurés dépassent les tolérances du détour.
+					.twoByTwo.independent.candidateId}. À croissance totale allouée égale, les coûts
+				réellement mesurés dépassent les tolérances du détour.
 			</p>
 			<figure data-comparison-figure="two-by-two">
 				<LayoutPreview
@@ -177,12 +185,20 @@
 			</figure>
 			<dl aria-label="Coûts comparés du contrat 2+2">
 				<div>
-					<dt>Croissance allouée du détour</dt>
-					<dd>{comparison.twoByTwo.independent.comparison.detourGrowth} px</dd>
+					<dt>Croissance totale allouée du détour</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.detourTotalGrowth} px</dd>
 				</div>
 				<div>
-					<dt>Croissance allouée du pont</dt>
-					<dd>{comparison.twoByTwo.independent.comparison.bridgeGrowth} px</dd>
+					<dt>Croissance différentielle des faces cibles du détour</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.detourDifferentialGrowth} px</dd>
+				</div>
+				<div>
+					<dt>Croissance totale allouée du pont</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.bridgeTotalGrowth} px</dd>
+				</div>
+				<div>
+					<dt>Croissance différentielle des faces cibles du pont</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.bridgeDifferentialGrowth} px</dd>
 				</div>
 				<div>
 					<dt>Aire du détour</dt>
@@ -211,7 +227,7 @@
 					<dd>{comparison.twoByTwo.independent.metrics.area} px²</dd>
 				</div>
 				<div>
-					<dt>Extension géométrique des boîtes</dt>
+					<dt>Croissance totale allouée des boîtes</dt>
 					<dd>{comparison.twoByTwo.independent.metrics.growth} px</dd>
 				</div>
 				<div>

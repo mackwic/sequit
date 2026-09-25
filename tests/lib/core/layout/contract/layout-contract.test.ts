@@ -480,7 +480,7 @@ describe('adjacent node LayoutContract', () => {
 									branch.choices,
 								);
 							if (layout === undefined) throw new Error(`Accepted branch ${branchId} vanished`);
-							return branchCost(branchId, branch.growth, layout);
+							return branchCost(branchId, branch.totalGrowth, layout);
 						});
 						expect(costs).toHaveLength(acceptedIds.size);
 						const incumbent = defined(
@@ -693,7 +693,10 @@ describe('adjacent node LayoutContract', () => {
 					({ status }) => status === IndependentAdjacentBranchStatus.Accepted,
 				),
 			).toBe(true);
-			expect(result.selection.growth).toBe(0);
+			let expectedGrowth = 36;
+			if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop)
+				expectedGrowth = 16;
+			expect(result.selection.totalGrowth).toBe(expectedGrowth);
 			const candidate = defined(
 				result.contract.candidates.find(({ id }) => id === result.selection.candidateId),
 			);
@@ -1567,12 +1570,14 @@ describe('adjacent node LayoutContract', () => {
 			resolved.evaluations.every(({ status }) => status === ContractBranchStatus.Accepted),
 		).toBe(true);
 		const costs = resolved.contract.candidates.map((candidate) => ({
-			growth: candidate.faces.reduce((sum, face) => {
-				const admissible = face.alternatives.filter(
-					({ respectsRequiredSeparations }) => respectsRequiredSeparations,
-				);
-				return sum + Math.min(...admissible.map(({ metricDemand }) => metricDemand.growth));
-			}, 0),
+			growth:
+				candidate.sourceFaceDemands.reduce((sum, demand) => sum + demand.growth, 0) +
+				candidate.faces.reduce((sum, face) => {
+					const admissible = face.alternatives.filter(
+						({ respectsRequiredSeparations }) => respectsRequiredSeparations,
+					);
+					return sum + Math.min(...admissible.map(({ metricDemand }) => metricDemand.growth));
+				}, 0),
 			inversions: candidate.conflicts.inversions.length,
 		}));
 		const leastGrowth = Math.min(...costs.map(({ growth }) => growth));
@@ -1602,7 +1607,7 @@ describe('adjacent node LayoutContract', () => {
 		const resolved = resolveAdjacentLayoutContract(source, ranks, measured);
 		expect(resolved.status).toBe(LayoutContractResolutionStatus.Selected);
 		if (resolved.status !== LayoutContractResolutionStatus.Selected) return;
-		expect(resolved.selection.totalGrowth).toBe(16);
+		expect(resolved.selection.totalGrowth).toBe(32);
 		expect(resolved.selection.forcedInversions).toBe(0);
 		expect(
 			resolved.evaluations.filter(({ status }) => status === ContractBranchStatus.Accepted).length,

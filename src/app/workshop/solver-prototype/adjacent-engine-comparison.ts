@@ -30,7 +30,7 @@ import { realK32Fixture, runRealK32Witness } from './real-k32-witness';
 
 interface AdjacentComparisonMetrics {
 	readonly area: number;
-	/** Sum of node width and height added beyond the shared intrinsic measurements. */
+	/** Total allocated node extent beyond intrinsic measurements, including source-face growth. */
 	readonly growth: number;
 	readonly routeLength: number;
 	readonly bends: number;
@@ -92,7 +92,7 @@ export function requireSelectedAdjacentResolution(
 	return resolution;
 }
 
-export function assertBridgeMarkMatchesSelection(
+function assertBridgeMarkMatchesSelection(
 	renderedBridgeCount: number,
 	bridged: boolean,
 	description: string,

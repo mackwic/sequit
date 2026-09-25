@@ -140,11 +140,13 @@ function readyContract(source: LogicGraph, measured: LayoutMeasurements) {
 describe('independent adjacent 2+2 contract', () => {
 	it('chooses lower allocated growth before comparing route costs', () => {
 		const detour: IndependentAdjacentCostCandidate = {
-			growth: 104,
+			totalGrowth: 104,
+			differentialGrowth: 104,
 			cost: { area: 100, routeLength: 80, bends: 2 },
 		};
 		const bridge: IndependentAdjacentCostCandidate = {
-			growth: 56,
+			totalGrowth: 56,
+			differentialGrowth: 56,
 			cost: { area: 500, routeLength: 300, bends: 6 },
 		};
 		expect(
@@ -505,7 +507,8 @@ describe('independent adjacent 2+2 contract', () => {
 					return [
 						{
 							bridged: analysis.crossings.length > 0,
-							growth: branch.growth,
+							totalGrowth: branch.totalGrowth,
+							differentialGrowth: branch.differentialGrowth,
 							cost: layoutRouteCost(layout),
 							branchId,
 						},
@@ -515,7 +518,8 @@ describe('independent adjacent 2+2 contract', () => {
 			.filter(
 				(candidate) =>
 					!candidate.bridged &&
-					candidate.growth === comparison.detourGrowth &&
+					candidate.totalGrowth === comparison.detourTotalGrowth &&
+					candidate.differentialGrowth === comparison.detourDifferentialGrowth &&
 					candidate.cost.area === comparison.detour.area &&
 					candidate.cost.routeLength === comparison.detour.routeLength,
 			);
@@ -551,16 +555,25 @@ describe('independent adjacent 2+2 contract', () => {
 						nodes: nodes.map((id) => defined(original.nodes.find((node) => node.id === id))),
 						relations: relationOrder.map((index) => defined(original.relations[index])),
 					};
-					const measured = measurements(sample, measurementOrder);
+					const originalMeasurements = measurements(sample, nodeIds);
+					const permutedMeasurements = measurements(sample, measurementOrder);
 					const first = graph(original);
 					const second = graph(permuted);
 					const firstRanks = topologicallyRank(first);
 					const secondRanks = topologicallyRank(second);
-					expect(buildAdjacentLayoutContract(second, secondRanks, measured)).toEqual(
-						buildAdjacentLayoutContract(first, firstRanks, measured),
+					expect(buildAdjacentLayoutContract(second, secondRanks, permutedMeasurements)).toEqual(
+						buildAdjacentLayoutContract(first, firstRanks, originalMeasurements),
 					);
-					const firstResult = resolveIndependentAdjacentContract(first, firstRanks, measured);
-					const secondResult = resolveIndependentAdjacentContract(second, secondRanks, measured);
+					const firstResult = resolveIndependentAdjacentContract(
+						first,
+						firstRanks,
+						originalMeasurements,
+					);
+					const secondResult = resolveIndependentAdjacentContract(
+						second,
+						secondRanks,
+						permutedMeasurements,
+					);
 					expect(secondResult).toEqual(firstResult);
 					expect(firstResult.status).toBe(IndependentAdjacentStatus.Selected);
 					if (firstResult.status !== IndependentAdjacentStatus.Selected) return;

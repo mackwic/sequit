@@ -311,8 +311,9 @@
 			</p>
 			{#if independentLayout && independentSelection}
 				<p>
-					Candidat retenu dans cette tranche : {independentSelection.candidateId}, croissance
-					{independentSelection.growth} px.
+					Candidat retenu dans cette tranche : {independentSelection.candidateId}, croissance totale
+					allouée
+					{independentSelection.totalGrowth} px.
 				</p>
 				<LayoutPreview layout={independentLayout} guides={false} />
 			{/if}

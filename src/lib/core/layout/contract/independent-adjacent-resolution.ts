@@ -68,15 +68,18 @@ export interface IndependentAdjacentComparison {
 	readonly selected: IndependentAdjacentIssue;
 	readonly detour: RouteCost;
 	readonly bridge: RouteCost;
-	readonly detourGrowth: number;
-	readonly bridgeGrowth: number;
+	readonly detourTotalGrowth: number;
+	readonly bridgeTotalGrowth: number;
+	readonly detourDifferentialGrowth: number;
+	readonly bridgeDifferentialGrowth: number;
 	readonly detourBranchId: string;
 	readonly bridgeBranchId: string;
 	readonly policy: IndependentAdjacentPolicy;
 }
 
 export interface IndependentAdjacentCostCandidate {
-	readonly growth: number;
+	readonly totalGrowth: number;
+	readonly differentialGrowth: number;
 	readonly cost: RouteCost;
 }
 
@@ -127,7 +130,7 @@ export type IndependentAdjacentResolution =
 	SelectedResolution | IncompleteResolution | UnknownResolution;
 
 function better(left: IndependentAdjacentSelection, right: IndependentAdjacentSelection): boolean {
-	if (left.growth !== right.growth) return left.growth < right.growth;
+	if (left.totalGrowth !== right.totalGrowth) return left.totalGrowth < right.totalGrowth;
 	if (left.cost.area !== right.cost.area) return left.cost.area < right.cost.area;
 	if (left.cost.routeLength !== right.cost.routeLength)
 		return left.cost.routeLength < right.cost.routeLength;
@@ -209,7 +212,8 @@ function evaluateBranch(input: {
 			candidateId: branch.branch.candidate.id,
 			branchId: branch.id,
 			choices: branch.branch.choices,
-			growth: branch.branch.growth,
+			totalGrowth: branch.branch.totalGrowth,
+			differentialGrowth: branch.branch.differentialGrowth,
 			bridged: analysis.crossings.length > 0,
 			cost: layoutRouteCost(layout),
 			layout,
@@ -239,8 +243,8 @@ export function arbitrateIssue<T extends IndependentAdjacentCostCandidate>(
 ): T | undefined {
 	if (bridge === undefined) return detour;
 	if (detour === undefined) return bridge;
-	if (detour.growth !== bridge.growth) {
-		if (detour.growth < bridge.growth) return detour;
+	if (detour.totalGrowth !== bridge.totalGrowth) {
+		if (detour.totalGrowth < bridge.totalGrowth) return detour;
 		return bridge;
 	}
 	const areaOverhead = detour.cost.area / bridge.cost.area - 1;
@@ -325,8 +329,10 @@ function compareIssues(
 		selected: issue,
 		detour: detour.cost,
 		bridge: bridge.cost,
-		detourGrowth: detour.growth,
-		bridgeGrowth: bridge.growth,
+		detourTotalGrowth: detour.totalGrowth,
+		bridgeTotalGrowth: bridge.totalGrowth,
+		detourDifferentialGrowth: detour.differentialGrowth,
+		bridgeDifferentialGrowth: bridge.differentialGrowth,
 		detourBranchId: detour.branchId,
 		bridgeBranchId: bridge.branchId,
 		policy,
