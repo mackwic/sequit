@@ -3,7 +3,7 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../lib/core/document/logic-document';
-import { createGraph } from '../../../lib/core/graph/create-graph';
+import { createGraph, type LogicGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../lib/core/layout/bridge-oracle';
 import { candidateFaceBranches } from '../../../lib/core/layout/contract/candidate-face-branches';
@@ -11,6 +11,7 @@ import {
 	type IndependentAdjacentComparison,
 	type IndependentAdjacentGlobalStatus,
 	IndependentAdjacentIssue,
+	type IndependentAdjacentResolution,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../lib/core/layout/contract/independent-adjacent-resolution';
@@ -45,18 +46,59 @@ interface AdjacentComparisonPanel {
 	readonly validation: 'valid';
 }
 
+interface IndependentComparisonPanel extends AdjacentComparisonPanel {
+	readonly candidateId: string;
+	readonly selectedIssue: IndependentAdjacentIssue;
+	readonly comparison?: IndependentAdjacentComparison | undefined;
+}
+
+interface AdjacentTwoByTwoComparison {
+	readonly document: LogicDocument;
+	readonly measurements: LayoutMeasurements;
+	readonly ranks: ReadonlyMap<string, number>;
+	readonly frame: { readonly width: number; readonly height: number };
+	readonly independent: IndependentComparisonPanel & {
+		readonly comparison: IndependentAdjacentComparison;
+	};
+}
+
 export interface AdjacentEngineComparison {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly frame: { readonly width: number; readonly height: number };
 	readonly dedicated: AdjacentComparisonPanel;
-	readonly independent: AdjacentComparisonPanel & {
-		readonly candidateId: string;
+	readonly independent: IndependentComparisonPanel & {
 		readonly globalStatus: IndependentAdjacentGlobalStatus.Undetermined;
-		readonly selectedIssue: IndependentAdjacentIssue;
-		readonly comparison?: IndependentAdjacentComparison | undefined;
 	};
+	readonly twoByTwo: AdjacentTwoByTwoComparison;
+}
+
+export function requireAdjacentGraph(document: LogicDocument, description: string): LogicGraph {
+	const created = createGraph(document);
+	if (!created.ok)
+		throw new Error(
+			`${description} could not be created: ${created.diagnostics.map(({ message }) => message).join('; ')}`,
+		);
+	return created.value;
+}
+
+export function requireSelectedAdjacentResolution(
+	resolution: IndependentAdjacentResolution,
+	description: string,
+): Extract<IndependentAdjacentResolution, { status: IndependentAdjacentStatus.Selected }> {
+	if (resolution.status !== IndependentAdjacentStatus.Selected)
+		throw new Error(`${description} is ${resolution.status}.`);
+	return resolution;
+}
+
+export function assertBridgeMarkMatchesSelection(
+	renderedBridgeCount: number,
+	bridged: boolean,
+	description: string,
+): void {
+	if (renderedBridgeCount > 0 !== bridged)
+		throw new Error(`${description} bridge mark differs from the selected issue.`);
 }
 
 function routeMetrics(routes: readonly LayoutRelation[]): { routeLength: number; bends: number } {
@@ -124,6 +166,31 @@ function panel(layout: LayoutResult, measurements: LayoutMeasurements): Adjacent
 	};
 }
 
+function twoByTwoDocument(source: LogicDocument): LogicDocument {
+	return {
+		...source,
+		id: 'adjacent-2+2-bridge-witness',
+		title: 'Adjacent 2+2 bridge witness',
+		relations: [
+			{ id: 'a-to-d', from: 'a', to: 'd' },
+			{ id: 'b-to-d', from: 'b', to: 'd' },
+			{ id: 'a-to-e', from: 'a', to: 'e' },
+			{ id: 'c-to-e', from: 'c', to: 'e' },
+		],
+	};
+}
+
+function uniformMeasurements(
+	measurements: LayoutMeasurements,
+	width: number,
+	height: number,
+): LayoutMeasurements {
+	return {
+		...measurements,
+		nodes: new Map([...measurements.nodes.keys()].map((id) => [id, { width, height }])),
+	};
+}
+
 function sameRanks(
 	first: ReadonlyMap<string, number>,
 	second: ReadonlyMap<string, number>,
@@ -132,18 +199,18 @@ function sameRanks(
 }
 
 function geometricallyValidUnderAdjacentContract(
-	graph: ReturnType<typeof createGraph> & { ok: true },
+	graph: LogicGraph,
 	ranks: ReturnType<typeof topologicallyRank>,
 	measurements: LayoutMeasurements,
 	layout: LayoutResult,
 ): boolean {
-	const built = buildAdjacentLayoutContract(graph.value, ranks, measurements);
+	const built = buildAdjacentLayoutContract(graph, ranks, measurements);
 	if (built.status !== LayoutContractBuildStatus.Ready) return false;
 	return built.contract.candidates.some((candidate) =>
 		candidateFaceBranches(candidate).some(
 			(branch) =>
 				validateContractCandidate({
-					graph: graph.value,
+					graph,
 					candidate,
 					choices: branch.choices,
 					measurements,
@@ -153,21 +220,18 @@ function geometricallyValidUnderAdjacentContract(
 	);
 }
 
-/** Compares one real 3+1 document through the current engine and independent materializer. */
+/** Compares the real 3+1 engine witness and an independent 2+2 bridge witness. */
 export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineComparison> {
 	const direction = LayoutDirection.TopToBottom;
 	const fixture = realK32Fixture(direction, 'd-e', 'sparse');
-	const created = createGraph(fixture.document);
-	if (!created.ok) throw new Error('The adjacent comparison document did not create a graph.');
-	const ranked = topologicallyRank(created.value);
+	const graph = requireAdjacentGraph(fixture.document, 'The adjacent comparison document');
+	const ranked = topologicallyRank(graph);
 	const dedicated = await runRealK32Witness(direction, 'd-e', 'sparse', fixture);
-	const resolution = resolveIndependentAdjacentContract(
-		created.value,
-		ranked,
-		fixture.measurements,
+	const resolution = resolveIndependentAdjacentContract(graph, ranked, fixture.measurements);
+	const selectedResolution = requireSelectedAdjacentResolution(
+		resolution,
+		'Independent adjacent comparison',
 	);
-	if (resolution.status !== IndependentAdjacentStatus.Selected)
-		throw new Error(`Independent adjacent comparison is ${resolution.status}.`);
 	if (dedicated.summary.assessment !== 'confirmed')
 		throw new Error(
 			`Dedicated adjacent witness is unproven: ${dedicated.summary.diagnostics.join('; ')}`,
@@ -176,27 +240,51 @@ export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineCo
 		throw new Error('Dedicated and independent adjacent ranks differ.');
 	if (
 		!geometricallyValidUnderAdjacentContract(
-			created,
+			graph,
 			ranked,
 			fixture.measurements,
 			dedicated.layout,
 		) ||
 		!geometricallyValidUnderAdjacentContract(
-			created,
+			graph,
 			ranked,
 			fixture.measurements,
-			resolution.selection.layout,
+			selectedResolution.selection.layout,
 		)
 	)
 		throw new Error('An adjacent comparison layout failed its geometric contract.');
+	const twoByTwoSource = twoByTwoDocument(fixture.document);
+	const twoByTwoMeasurements = uniformMeasurements(fixture.measurements, 96, 400);
+	const twoByTwoGraph = requireAdjacentGraph(
+		twoByTwoSource,
+		'The adjacent 2+2 comparison document',
+	);
+	const twoByTwoRanks = topologicallyRank(twoByTwoGraph);
+	const twoByTwoResolution = requireSelectedAdjacentResolution(
+		resolveIndependentAdjacentContract(twoByTwoGraph, twoByTwoRanks, twoByTwoMeasurements),
+		'Independent adjacent 2+2 comparison',
+	);
+	const twoByTwoComparison = defined(
+		twoByTwoResolution.comparison,
+		'The adjacent 2+2 comparison did not produce both issue costs.',
+	);
 	const enginePanel = panel(dedicated.layout, fixture.measurements);
-	const independentPanel = panel(resolution.selection.layout, fixture.measurements);
+	const independentPanel = panel(selectedResolution.selection.layout, fixture.measurements);
 	if (enginePanel.metrics.crossings === 0 || enginePanel.metrics.bridges === 0)
 		throw new Error('The dedicated adjacent witness has no rendered bridge.');
-	if (independentPanel.metrics.bridges > 0 !== resolution.selection.bridged)
-		throw new Error('The independent adjacent bridge mark differs from the selected issue.');
+	assertBridgeMarkMatchesSelection(
+		independentPanel.metrics.bridges,
+		selectedResolution.selection.bridged,
+		'The independent adjacent',
+	);
+	const twoByTwoPanel = panel(twoByTwoResolution.selection.layout, twoByTwoMeasurements);
+	assertBridgeMarkMatchesSelection(
+		twoByTwoPanel.metrics.bridges,
+		twoByTwoResolution.selection.bridged,
+		'The adjacent 2+2',
+	);
 	let selectedIssue = IndependentAdjacentIssue.Detour;
-	if (resolution.selection.bridged) selectedIssue = IndependentAdjacentIssue.Bridge;
+	if (selectedResolution.selection.bridged) selectedIssue = IndependentAdjacentIssue.Bridge;
 	return {
 		document: fixture.document,
 		measurements: fixture.measurements,
@@ -208,10 +296,22 @@ export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineCo
 		dedicated: enginePanel,
 		independent: {
 			...independentPanel,
-			candidateId: resolution.selection.candidateId,
-			globalStatus: resolution.globalStatus,
+			candidateId: selectedResolution.selection.candidateId,
+			globalStatus: selectedResolution.globalStatus,
 			selectedIssue,
-			comparison: resolution.comparison,
+			comparison: selectedResolution.comparison,
+		},
+		twoByTwo: {
+			document: twoByTwoSource,
+			measurements: twoByTwoMeasurements,
+			ranks: twoByTwoRanks.byEndpointId,
+			frame: { width: twoByTwoPanel.layout.width, height: twoByTwoPanel.layout.height },
+			independent: {
+				...twoByTwoPanel,
+				candidateId: twoByTwoResolution.selection.candidateId,
+				selectedIssue: twoByTwoComparison.selected,
+				comparison: twoByTwoComparison,
+			},
 		},
 	};
 }

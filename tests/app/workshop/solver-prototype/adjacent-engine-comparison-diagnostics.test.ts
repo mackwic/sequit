@@ -23,7 +23,7 @@ describe('adjacent bridge comparison diagnostics', () => {
 			};
 		});
 		await expect(compareAdjacentBridgeAndDetour()).rejects.toThrow(
-			'The adjacent comparison document did not create a graph.',
+			'The adjacent comparison document could not be created: Cycle detected: a -> d -> a',
 		);
 	});
 

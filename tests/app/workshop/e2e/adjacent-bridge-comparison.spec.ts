@@ -31,6 +31,10 @@ test('compares the real adjacent bridge with an independently validated compact 
 	await expect(costs).toContainText('Routes du détour');
 	await expect(costs).toContainText('Aire du pont');
 	await expect(costs).toContainText('Routes du pont');
+	await expect(costs).toContainText('191296 px²');
+	await expect(costs).toContainText('1236 px');
+	await expect(costs).toContainText('120768 px²');
+	await expect(costs).toContainText('732 px');
 	await expect(dedicated.locator('[data-box-id]')).toHaveCount(5);
 	await expect(independent.locator('[data-box-id]')).toHaveCount(5);
 	const dedicatedSvg = dedicated.getByRole('img', { name: 'Géométrie du scénario' });
@@ -51,11 +55,25 @@ test('compares the real adjacent bridge with an independently validated compact 
 	const independentPaths = await independent
 		.locator('[data-rendered-relation-id]')
 		.evaluateAll((paths) => paths.map((path) => path.getAttribute('d') ?? ''));
-	expect(dedicatedPaths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
-	expect(independentPaths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
+	const arcCount = (paths: readonly string[]) =>
+		paths.reduce((count, path) => count + (path.match(/\bA 6 6 /g)?.length ?? 0), 0);
+	expect(arcCount(dedicatedPaths)).toBe(2);
+	expect(arcCount(independentPaths)).toBe(2);
 	await expect(dedicated).toContainText('Croisements stricts');
 	await expect(dedicated).toContainText('Ponts rendus');
 	await expect(independent).toContainText('Croisements stricts');
+	const twoByTwo = comparison.locator('[data-adjacent-panel="two-by-two"]');
+	await expect(twoByTwo).toContainText('2+2, bridge retenu');
+	await expect(twoByTwo).toContainText('96 × 400 px');
+	await expect(twoByTwo).toContainText('Croissance allouée du détour');
+	await expect(twoByTwo).toContainText('523136 px²');
+	await expect(twoByTwo).toContainText('429440 px²');
+	await expect(twoByTwo).toContainText('1032 px');
+	await expect(twoByTwo).toContainText('600 px');
+	const twoByTwoPaths = await twoByTwo
+		.locator('[data-rendered-relation-id]')
+		.evaluateAll((paths) => paths.map((path) => path.getAttribute('d') ?? ''));
+	expect(arcCount(twoByTwoPaths)).toBe(1);
 	const screenshotDirectory = process.env['SEQUIT_LAYOUT_SCREENSHOT_DIR'];
 	if (screenshotDirectory !== undefined && testInfo.project.name === 'chromium') {
 		await dedicated.screenshot({

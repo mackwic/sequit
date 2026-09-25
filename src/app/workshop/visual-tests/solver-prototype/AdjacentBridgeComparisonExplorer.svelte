@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { VisualLayout } from '../../../../../tests/support/harnesses/visual-layout';
 	import { LayoutDirection } from '../../../../lib/core/document/logic-document';
-	import {
-		DETOUR_AREA_TOLERANCE,
-		DETOUR_LENGTH_TOLERANCE,
-		IndependentAdjacentIssue,
-	} from '../../../../lib/core/layout/contract/independent-adjacent-resolution';
+	import { IndependentAdjacentIssue } from '../../../../lib/core/layout/contract/independent-adjacent-resolution';
 	import {
 		type AdjacentEngineComparison,
 		compareAdjacentBridgeAndDetour,
@@ -59,9 +55,10 @@
 		<p>
 			Les relations a→d, b→d, c→d et a→e partagent les mêmes rangs et les mêmes mesures dans les
 			deux dessins. Le moteur dédié valide ses croisements stricts. Le contrat indépendant compare
-			son détour sans croisement à un candidat compact routé par le graphe de canaux partagé ; il ne
-			retient un pont que si l’oracle le valide et si le détour dépasse l’un des deux seuils. Sa
-			recherche globale reste indéterminée.
+			son détour sans croisement à un candidat compact routé par le graphe de canaux partagé. Parmi
+			les candidats validés, la croissance allouée prime ; à croissance allouée égale, le pont ne
+			l’emporte que si l’oracle le valide et si le détour dépasse l’un des deux seuils. Sa recherche
+			globale reste indéterminée.
 		</p>
 	</header>
 	{#if error}
@@ -77,10 +74,19 @@
 			<section class="arbitration" aria-label="Coûts comparés par le contrat adjacent">
 				<h3>Arbitrage du contrat : {comparison.independent.comparison.selected}</h3>
 				<p>
-					Tolérances de surcoût : aire +{DETOUR_AREA_TOLERANCE * 100} %, longueur +{DETOUR_LENGTH_TOLERANCE *
-						100} %.
+					Tolérances de surcoût : aire +{comparison.independent.comparison.policy
+						.detourAreaTolerance * 100} %, longueur +{comparison.independent.comparison.policy
+						.detourLengthTolerance * 100} %.
 				</p>
 				<dl>
+					<div>
+						<dt>Croissance allouée du détour</dt>
+						<dd>{comparison.independent.comparison.detourGrowth} px</dd>
+					</div>
+					<div>
+						<dt>Croissance allouée du pont</dt>
+						<dd>{comparison.independent.comparison.bridgeGrowth} px</dd>
+					</div>
 					<div>
 						<dt>Aire du détour</dt>
 						<dd>{comparison.independent.comparison.detour.area} px²</dd>
@@ -128,7 +134,7 @@
 							<dd>{panel.result.metrics.area} px²</dd>
 						</div>
 						<div>
-							<dt>Croissance</dt>
+							<dt>Extension géométrique des boîtes</dt>
 							<dd>{panel.result.metrics.growth} px</dd>
 						</div>
 						<div>
@@ -151,6 +157,77 @@
 				</article>
 			{/each}
 		</div>
+		<article class="panel two-by-two" data-adjacent-panel="two-by-two">
+			<h3>Contrat indépendant · 2+2, {comparison.twoByTwo.independent.selectedIssue} retenu</h3>
+			<p class="policy">
+				Document {comparison.twoByTwo.document.id} · mesures uniformes 96 × 400 px · candidat {comparison
+					.twoByTwo.independent.candidateId}. À croissance allouée égale, les coûts réellement
+				mesurés dépassent les tolérances du détour.
+			</p>
+			<figure data-comparison-figure="two-by-two">
+				<LayoutPreview
+					layout={new VisualLayout(
+						comparison.twoByTwo.independent.layout,
+						comparison.twoByTwo.ranks,
+						LayoutDirection.TopToBottom,
+					)}
+					guides={false}
+					frame={comparison.twoByTwo.frame}
+				/>
+			</figure>
+			<dl aria-label="Coûts comparés du contrat 2+2">
+				<div>
+					<dt>Croissance allouée du détour</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.detourGrowth} px</dd>
+				</div>
+				<div>
+					<dt>Croissance allouée du pont</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.bridgeGrowth} px</dd>
+				</div>
+				<div>
+					<dt>Aire du détour</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.detour.area} px²</dd>
+				</div>
+				<div>
+					<dt>Aire du pont</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.bridge.area} px²</dd>
+				</div>
+				<div>
+					<dt>Routes du détour</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.detour.routeLength} px</dd>
+				</div>
+				<div>
+					<dt>Routes du pont</dt>
+					<dd>{comparison.twoByTwo.independent.comparison.bridge.routeLength} px</dd>
+				</div>
+			</dl>
+			<dl>
+				<div>
+					<dt>Issues retenues</dt>
+					<dd>{comparison.twoByTwo.independent.selectedIssue}</dd>
+				</div>
+				<div>
+					<dt>Aire</dt>
+					<dd>{comparison.twoByTwo.independent.metrics.area} px²</dd>
+				</div>
+				<div>
+					<dt>Extension géométrique des boîtes</dt>
+					<dd>{comparison.twoByTwo.independent.metrics.growth} px</dd>
+				</div>
+				<div>
+					<dt>Longueur des routes</dt>
+					<dd>{comparison.twoByTwo.independent.metrics.routeLength} px</dd>
+				</div>
+				<div>
+					<dt>Croisements stricts</dt>
+					<dd>{comparison.twoByTwo.independent.metrics.crossings}</dd>
+				</div>
+				<div>
+					<dt>Ponts rendus</dt>
+					<dd>{comparison.twoByTwo.independent.metrics.bridges}</dd>
+				</div>
+			</dl>
+		</article>
 	{:else}
 		<p role="status">Calcul des deux géométries adjacentes…</p>
 	{/if}
