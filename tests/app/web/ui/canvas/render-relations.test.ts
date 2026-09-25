@@ -131,6 +131,8 @@ describe('renderRelationPaths', () => {
 		);
 	});
 
+	// These legacy arrays are intentionally not ID-sorted; the oracle now scans canonically.
+
 	it('moves a crowded bridge to the other arrow instead of losing the crossing', () => {
 		const paths = renderRelationPaths([
 			relation('left', [
@@ -148,7 +150,8 @@ describe('renderRelationPaths', () => {
 		]);
 		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
 		expect(paths[0]?.path).toContain('A 6 6 0 0 0 10 56');
-		expect(paths[2]?.path).toContain('A 6 6 0 0 1 18 50');
+		expect(paths[1]?.path).toContain('A 6 6 0 0 1 12 56');
+		expect(paths[2]?.path).not.toContain(' A ');
 	});
 
 	it('draws the same bridge on every branch of a shared trunk', () => {
@@ -215,7 +218,7 @@ describe('renderRelationPaths', () => {
 		expect(paths[1]?.path).not.toContain(' A ');
 	});
 
-	it('leaves six pixels between successive bridges', () => {
+	it('keeps close crossings on their canonical vertical carriers', () => {
 		const paths = renderRelationPaths([
 			relation('left', [
 				{ x: 30, y: 0 },
@@ -230,12 +233,13 @@ describe('renderRelationPaths', () => {
 				{ x: 100, y: 50 },
 			]),
 		]);
-		expect(paths[2]?.path).toBe('M 0 50 L 24 50 A 6 6 0 0 1 36 50 L 100 50');
+		expect(paths[2]?.path).not.toContain(' A ');
+		expect(paths[0]?.path).toContain('A 6 6 0 0 1 30 56');
 		expect(paths[1]?.path).toContain('A 6 6 0 0 1 44 56');
 		AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
 	});
 
-	it('draws two bridges on one carrier when their centers are exactly eighteen pixels apart', () => {
+	it('keeps exactly eighteen-pixel crossings on their canonical carriers', () => {
 		const paths = renderRelationPaths([
 			relation('left', [
 				{ x: 30, y: 0 },
@@ -250,13 +254,13 @@ describe('renderRelationPaths', () => {
 				{ x: 100, y: 50 },
 			]),
 		]);
-		expect(paths[2]?.path).toBe(
-			'M 0 50 L 24 50 A 6 6 0 0 1 36 50 L 42 50 A 6 6 0 0 1 54 50 L 100 50',
-		);
+		expect(paths[0]?.path).toContain('A 6 6 0 0 1 30 56');
+		expect(paths[1]?.path).toContain('A 6 6 0 0 1 48 56');
+		expect(paths[2]?.path).not.toContain(' A ');
 	});
 
 	it.each([0, 1, 2, 3])(
-		'turns a bridge away from a nearby parallel trunk after %s quarter turns',
+		'keeps the canonical crossing route as carrier near a parallel trunk after %s quarter turns',
 		(turns) => {
 			function rotate(points: LayoutRelation['points']): LayoutRelation['points'] {
 				return points.map((point) => {
@@ -288,8 +292,8 @@ describe('renderRelationPaths', () => {
 					]),
 				),
 			]);
-			// The usual bulge leaves only 4px; the opposite side is clear.
-			expect(paths[1]?.path).toContain('A 6 6 0 0 0 ');
+			// The non-canonical array order does not override the route-ID carrier choice.
+			expect(paths[0]?.path).toContain('A 6 6 0 0 1 ');
 			AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
 		},
 	);

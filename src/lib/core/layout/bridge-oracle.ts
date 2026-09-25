@@ -161,8 +161,9 @@ function canonicalBridgeKey(bridge: LayoutBridge): string {
 }
 
 /**
- * Records a bridge of one strict crossing. If both orientations can carry it, prefer the group
- * with the lexicographically greatest route IDs, independent of declaration order.
+ * Records one strict crossing's bridge, preferring the current run's orientation before the
+ * previous run's. Routes are scanned canonically, preserving the historical choice while making
+ * it independent of input permutation.
  */
 function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previous: RouteRun): void {
 	const groups = [current, previous].map((run) => overlappingCarriers(run, point, scan.runs));
@@ -172,19 +173,9 @@ function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previou
 			(scan.carried.get(run) ?? []).some((placed) => placed.x === point.x && placed.y === point.y),
 		);
 	if (taken) return;
-	const carriers = groups
-		.sort((left, right) => {
-			const leftIds = left.map(({ pathId }) => pathId).sort(compareCanonicalStrings);
-			const rightIds = right.map(({ pathId }) => pathId).sort(compareCanonicalStrings);
-			for (let index = 0; index < Math.min(leftIds.length, rightIds.length); index += 1) {
-				const leftId = leftIds[leftIds.length - index - 1] ?? '';
-				const rightId = rightIds[rightIds.length - index - 1] ?? '';
-				const byId = compareCanonicalStrings(leftId, rightId);
-				if (byId !== 0) return -byId;
-			}
-			return rightIds.length - leftIds.length;
-		})
-		.find((group) => group.every((run) => canCarryBridge(run, point, scan.carried)));
+	const carriers = groups.find((group) =>
+		group.every((run) => canCarryBridge(run, point, scan.carried)),
+	);
 	if (carriers === undefined) return;
 	for (const carrier of carriers) {
 		const points = scan.carried.get(carrier) ?? [];
