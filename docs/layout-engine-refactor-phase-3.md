@@ -4,9 +4,9 @@ Ce plan prolonge le [plan de refonte](layout-engine-refactor.md), qui reste la r
 
 ## Point de reprise
 
-La phase 3 reprend sur la clôture effective de la phase 2, après intégration et consignation des travaux de finition déjà engagés : budgets séparés par phase de recherche de grille (1A), élagage validé contre 1A (1C), capacité des gouttières fondée sur leur charge réelle (4B), candidat ponté compact dans le contrat adjacent (2B), ordre des bus de lanes (n° 8), et clôture des travaux de fuzz, du test dense et de la porte de couverture (n° 28–30). La tête de reprise sera celle du journal de clôture ; aucun hachage n'est avancé ici avant ces commits.
+La phase 3 reprend provisoirement sur la tête intégrée `5b249f1` : 2B et les n° 28–30 sont consignés ; les mesures des worktrees de travail sont au journal. Les décisions 1A/1C (budgets de grille) et 4B (capacité des gouttières selon la charge réelle) restent à implémenter et à consigner avant de devenir prérequis clos. Le n° 8 (ordre des bus de lanes) reste également en cours.
 
-Ces éléments sont des prérequis, pas des étapes à refaire : 1A/1C/4B pour étendre les ressources de grille ; 2B pour éprouver la décision pont/détour sur un témoin réel ; n° 8 pour ne pas confondre ordre visuel dans un rang et ordre déclaré des lanes. Avant tout changement de comportement, l'étape 0 ajoute et fige des empreintes indépendantes de `LayoutResult` du moteur dédié, capturées sur la tête de reprise. Le test `layout-differential-corpus.test.ts` reste une preuve de cohérence entre `layoutGraph` et le moteur dédié courant ; il ne constitue pas une référence figée du résultat. Si un prérequis manque, la phase 3 ne le contourne pas : il est terminé et consigné d'abord.
+2B et la clôture des n° 28–30 sont intégrés. Avant l’étape 0, terminer et consigner 1A/1C/4B selon les décisions du plan de phase 2 ; ne pas les tenir pour acquis. Le n° 8 reste ouvert ; ne pas confondre l'ordre visuel dans un rang avec l'ordre déclaré des lanes. Avant tout changement de comportement, l'étape 0 ajoute et fige des empreintes indépendantes de `LayoutResult` du moteur dédié, capturées sur la tête de reprise. Le test `layout-differential-corpus.test.ts` reste une preuve de cohérence entre `layoutGraph` et le moteur dédié courant ; il ne constitue pas une référence figée du résultat. Si un prérequis manque, la phase 3 ne le contourne pas : il est terminé et consigné d'abord.
 
 ## Diagnostic
 
@@ -31,7 +31,7 @@ Les écarts acceptés qui ne bloquent pas la lisibilité (traces spécifiques d'
 
 ### 0. Fermer les prérequis et figer les références indépendantes
 
-**Départ.** Le journal de clôture, ses sections sur 1A/1C/4B/2B et les entrées n° 8, 28–30 ; `tests/lib/core/layout/indexed-route-materialization.test.ts`, `tests/app/workshop/solver-prototype/rank-order-comparison.test.ts`, `tests/scenarios/visual/layout-differential-corpus.test.ts` et `tests/lib/core/layout/grid-cell-layout-identity.test.ts`.
+**Départ.** Le journal de clôture, les décisions 1A/1C/4B à intégrer, la section 2B et les entrées n° 8, 28–30 ; `tests/lib/core/layout/indexed-route-materialization.test.ts`, `tests/app/workshop/solver-prototype/rank-order-comparison.test.ts`, `tests/scenarios/visual/layout-differential-corpus.test.ts` et `tests/lib/core/layout/grid-cell-layout-identity.test.ts`.
 
 **Travail.** Vérifier que les prérequis et preuves correspondent à la tête de reprise. Ajouter des références statiques SHA-256 de `LayoutResult` complet, calculé par `layoutWithDedicatedEngine`, sur un corpus indépendant couvrant canaux et runs scindés, runs/familles partagés, contraintes de précédence, égalités exactes de `start/end` et réemploi de rail à la limite de dégagement. La valeur attendue est une constante capturée avant la phase 3, jamais un second appel courant au même moteur dans l'assertion. L'empreinte dense ne couvre qu'un témoin ; elle ne remplace pas ce corpus. Le test différentiel, lui, ne prouve que `layoutGraph` === moteur dédié courant : le garder dans ce rôle, sans le présenter ni le ré-épingler comme oracle indépendant. Relever aussi les empreintes déjà statiques du comparatif et de la grille. Aucun résultat n'est ré-épinglé à cette étape.
 
@@ -75,7 +75,7 @@ L'oracle actuel retourne un point, ce qui ne suffit pas à distinguer un raccord
 
 ### 3. Éprouver, ou fermer, l'hypothèse des gouttières horizontales
 
-**Prérequis.** 1A, 1C et 4B sont clôturés. 1A/1C fournit la recherche déclarée et son témoin, 4B la capacité par charge réelle ; cette étape n'ajoute pas une seconde politique d'allocation.
+**Prérequis.** Terminer et consigner les décisions 1A, 1C et 4B avant cette étape. 1A/1C doit fournir la recherche déclarée et son témoin, 4B la capacité par charge réelle ; cette étape n'ajoute pas une seconde politique d'allocation.
 
 **Départ.** `grid-cell-crossing.ts:gridRoutingEdges` / `GridRoutingEdges`, `grid-cell-crossing-allocation.ts:crossingAllocationPhases`, `grid-cell-crossing-routing.ts:crossingEndpoint` / `crossingRoute`, puis `grid-cell-layout.ts:routePlacedGridCellDisposition` et `grid-cell-disposition.ts:layoutGridCellDisposition`. Le test existant `grid-cell.property.test.ts` génère déjà `down-leading` entre la première et la dernière rangée ; son succès avec le bus supérieur est un contre-exemple à l'idée que toute relation inter-rangées exige une nouvelle ressource, pas une preuve de son utilité.
 
