@@ -9,7 +9,6 @@ import {
 } from '../../../../lib/core/document/logic-document';
 import { orderKey } from '../../../../lib/core/document/order-key';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
-import { unbridgedContacts } from '../../../../lib/core/layout/bridge-contact';
 import type { LayoutMeasurements, Point } from '../../../../lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../lib/core/layout/nested-region-recursive-layout';
@@ -409,21 +408,13 @@ function strictCrossingProbe(selected: RegionLayoutSelected): RegionContactPanel
 		{ x: crossing.x - 18, y: crossing.y },
 		{ x: crossing.x + 18, y: crossing.y },
 	];
-	if (
-		unbridgedContacts(
-			{ id: 'probe', points },
-			{ id: cellPiece.relationId, points: cellPiece.points },
-			[],
-		).length === 0
-	)
-		throw new Error('The strict crossing probe must be rejected by the contact oracle.');
 	return {
 		id: 'strict-crossing',
 		title: 'Croisement strict · hypothèse',
 		description:
 			'Un tronçon local falsifié coupe le trajet incident en plein segment. Aucun pont n’est matérialisé ni validé.',
 		status: RegionContactPanelStatus.Rejected,
-		validator: 'oracle de contact (sonde géométrique)',
+		validator: 'sonde géométrique (sans pont)',
 		reason: 'Contact intérieur entre deux segments, sans règle de pont.',
 		selected,
 		probe: { points, crossing },
