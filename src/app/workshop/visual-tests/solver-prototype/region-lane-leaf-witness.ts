@@ -14,6 +14,10 @@ import {
 import { orderKey } from '../../../../lib/core/document/order-key';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../lib/core/graph/topological-ranks';
+import {
+	SharedLaneLayoutStatus,
+	solveSharedLaneLayout,
+} from '../../../../lib/core/layout/lanes/shared-lane-layout';
 import type {
 	Bounds,
 	LayoutMeasurements,
@@ -32,10 +36,6 @@ import {
 	type RegionInput,
 	type RegionLayoutSelected,
 } from '../../../../lib/core/layout/regions/model/region-composition-types';
-import {
-	SharedLaneLayoutStatus,
-	solveSharedLaneLayout,
-} from '../../../../lib/core/layout/shared-lane-layout';
 
 const PADDING = 32;
 const GAP = 96;

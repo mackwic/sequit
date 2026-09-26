@@ -1,6 +1,7 @@
 import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
+import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
 import type { LayoutMeasurements } from './layout-types';
 import {
 	InvalidRegionLeafGraphError,
@@ -16,7 +17,6 @@ import {
 	RegionIncidentUnknownCode,
 } from './regions/model/region-incident-contract';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export {
 	InvalidRegionLeafGraphError,

@@ -18,12 +18,12 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 

@@ -15,13 +15,13 @@ import {
 	type LogicRelation,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import type { Point } from '../../../../src/lib/core/layout/layout-types';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
-import { transverseRouteSides } from '../../../../src/lib/core/layout/shared-transverse-sides';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { transverseRouteSides } from '../../../../src/lib/core/layout/lanes/shared-transverse-sides';
+import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
 const DIRECTIONS = [

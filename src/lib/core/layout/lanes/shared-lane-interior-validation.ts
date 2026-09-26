@@ -1,4 +1,4 @@
-import type { LogicGraph } from '../graph/create-graph';
+import type { LogicGraph } from '../../graph/create-graph';
 import { SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import { validateSharedLaneGeometry } from './shared-lane-geometry';
 import type { SharedLaneGeometry } from './shared-lane-types';

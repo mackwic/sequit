@@ -1,4 +1,4 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../document/logic-document';
 import {
 	type RegionIncidentContract,
 	type RegionIncidentRejectedAlternative,
@@ -6,8 +6,8 @@ import {
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
-import { boundedCounter, firstValidDepthFirst } from './search/bounded-search';
+} from '../regions/model/region-incident-contract';
+import { boundedCounter, firstValidDepthFirst } from '../search/bounded-search';
 import {
 	type LaneIncidentPathCandidate,
 	laneIncidentPathCandidates,

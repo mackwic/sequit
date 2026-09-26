@@ -1,5 +1,5 @@
-import type { LogicGraph } from '../graph/create-graph';
-import type { RouteWorkCharge } from './bridges/bridge-oracle';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { RouteWorkCharge } from '../bridges/bridge-oracle';
 import { SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import type { SharedLaneGeometry, SharedLaneGeometryCertificate } from './shared-lane-geometry';
 import {

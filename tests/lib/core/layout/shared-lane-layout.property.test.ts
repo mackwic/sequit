@@ -14,22 +14,22 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
+import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
 import {
 	type SharedLaneGeometry,
 	validateSharedLaneGeometry,
-} from '../../../../src/lib/core/layout/shared-lane-geometry';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
-import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
-import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
+import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
 import {
 	materializeParallelGeometry,
 	parallelStrategyPlans,
-} from '../../../../src/lib/core/layout/shared-lane-route-candidates';
-import type { ParallelRouteAllocation } from '../../../../src/lib/core/layout/shared-lane-routing';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
+import type { ParallelRouteAllocation } from '../../../../src/lib/core/layout/lanes/shared-lane-routing';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 

@@ -2,6 +2,7 @@ import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { topologicallyRank } from '../graph/topological-ranks';
+import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
 import { evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { selectDedicatedRankLayout } from './rank/rank-order-selection';
@@ -11,7 +12,6 @@ import {
 	type RegionSearchEvidence,
 	RegionSearchProvenance,
 } from './regions/model/region-search-evidence';
-import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export class InvalidRegionLeafGraphError extends Error {
 	constructor() {

@@ -14,24 +14,24 @@ import { orderKey } from '../../../../lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../lib/core/document/validate-logic-document';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../lib/core/graph/topological-ranks';
-import type { LayoutMeasurements, Point } from '../../../../lib/core/layout/layout-types';
 import {
 	makeSharedLaneFrame,
 	SHARED_LANE_CLEARANCE,
-} from '../../../../lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../lib/core/layout/shared-lane-geometry';
-import { validateSharedLaneInteriorPassage } from '../../../../lib/core/layout/shared-lane-interior-validation';
+} from '../../../../lib/core/layout/lanes/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../lib/core/layout/lanes/shared-lane-geometry';
+import { validateSharedLaneInteriorPassage } from '../../../../lib/core/layout/lanes/shared-lane-interior-validation';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../lib/core/layout/shared-lane-layout';
-import { prepareSharedLanes } from '../../../../lib/core/layout/shared-lane-model';
-import { planSharedLanePorts } from '../../../../lib/core/layout/shared-lane-ports';
+} from '../../../../lib/core/layout/lanes/shared-lane-layout';
+import { prepareSharedLanes } from '../../../../lib/core/layout/lanes/shared-lane-model';
+import { planSharedLanePorts } from '../../../../lib/core/layout/lanes/shared-lane-ports';
 import {
 	allocateParallelRoutes,
 	routeSharedLanes,
-} from '../../../../lib/core/layout/shared-lane-routing';
-import type { SharedLaneGeometry } from '../../../../lib/core/layout/shared-lane-types';
+} from '../../../../lib/core/layout/lanes/shared-lane-routing';
+import type { SharedLaneGeometry } from '../../../../lib/core/layout/lanes/shared-lane-types';
+import type { LayoutMeasurements, Point } from '../../../../lib/core/layout/layout-types';
 
 export enum PassageCandidateId {
 	Exterior = 'exterior',

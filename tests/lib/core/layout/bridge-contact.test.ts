@@ -16,8 +16,8 @@ import {
 } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { contactFailure } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-contacts';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { validateSharedLaneRouteContacts } from '../../../../src/lib/core/layout/lanes/shared-lane-route-contact-validation';
 import type { LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';
-import { validateSharedLaneRouteContacts } from '../../../../src/lib/core/layout/shared-lane-route-contact-validation';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 function path(id: string, ...coordinates: readonly [number, number][]): RoutedPath {

@@ -22,49 +22,49 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import {
-	RegionIncidentRejectionCode,
-	RegionIncidentRole,
-	RegionIncidentUnknownCode,
-} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import {
 	makeSharedLaneFrame,
 	SHARED_LANE_CLEARANCE,
-} from '../../../../src/lib/core/layout/shared-lane-frame';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
 import {
 	certifySharedLaneGeometry,
 	type SharedLaneGeometry,
 	validateSharedLaneGeometry,
 	validateSharedLaneGeometryWithCertificate,
-} from '../../../../src/lib/core/layout/shared-lane-geometry';
-import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/shared-lane-incident-paths';
-import { searchLaneIncidentPaths } from '../../../../src/lib/core/layout/shared-lane-incident-search';
-import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-paths';
+import { searchLaneIncidentPaths } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-search';
+import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-validation';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
-import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
-import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
+import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
 import {
 	laneRouteSelectionIsBetter,
 	materializeParallelGeometry,
 	parallelRouteCandidates,
 	parallelStrategyPlans,
 	rankLaneRouteSelection,
-} from '../../../../src/lib/core/layout/shared-lane-route-candidates';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
 import {
 	certifySharedLaneRouteGeometry,
 	materializeParallelGeometryDelta,
 	validateSharedLaneGeometryDelta,
-} from '../../../../src/lib/core/layout/shared-lane-route-delta';
-import { searchParallelRouteAllocations } from '../../../../src/lib/core/layout/shared-lane-route-search';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-route-delta';
+import { searchParallelRouteAllocations } from '../../../../src/lib/core/layout/lanes/shared-lane-route-search';
 import {
 	allocateParallelRoutes,
 	ParallelRouteOrder,
 	routeSharedLanes,
-} from '../../../../src/lib/core/layout/shared-lane-routing';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-routing';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 

@@ -1,11 +1,11 @@
-import type { LogicGraph } from '../graph/create-graph';
-import type { RouteWorkCharge } from './bridges/bridge-oracle';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { RouteWorkCharge } from '../bridges/bridge-oracle';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
 	type RegionIncidentSearchWitness,
 	type RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
+} from '../regions/model/region-incident-contract';
 import type { SharedLaneGeometry, SharedLaneGeometryCertificate } from './shared-lane-geometry';
 import { validateSharedLaneGeometryWithCertificate } from './shared-lane-geometry';
 import {

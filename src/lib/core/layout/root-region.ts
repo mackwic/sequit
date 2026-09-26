@@ -7,6 +7,7 @@ import {
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { RegionGeometryDiagnosticCode } from './geometry/region-geometry-diagnostic';
+import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
@@ -21,7 +22,6 @@ import {
 } from './regions/model/region-composition-types';
 import type { RegionIncidentUnknownCode } from './regions/model/region-incident-contract';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export enum LayoutRegionKind {
 	Root = 'root',

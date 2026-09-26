@@ -9,27 +9,27 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { makeSharedLaneFrame } from '../../../../src/lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
-import { interiorPassageTrack } from '../../../../src/lib/core/layout/shared-lane-interior-passage';
-import { validateSharedLaneInteriorPassage } from '../../../../src/lib/core/layout/shared-lane-interior-validation';
+import { makeSharedLaneFrame } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import { interiorPassageTrack } from '../../../../src/lib/core/layout/lanes/shared-lane-interior-passage';
+import { validateSharedLaneInteriorPassage } from '../../../../src/lib/core/layout/lanes/shared-lane-interior-validation';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
-import { prepareSharedLanes } from '../../../../src/lib/core/layout/shared-lane-model';
-import { planSharedLanePorts } from '../../../../src/lib/core/layout/shared-lane-ports';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
+import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
 import {
 	allocateParallelRoutes,
 	routeSharedLanes,
-} from '../../../../src/lib/core/layout/shared-lane-routing';
-import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-types';
-import { makeTransverseLaneFrame } from '../../../../src/lib/core/layout/shared-transverse-frame';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-routing';
+import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-types';
+import { makeTransverseLaneFrame } from '../../../../src/lib/core/layout/lanes/shared-transverse-frame';
 import {
 	allocateTransverseRoutes,
 	routeTransverseLanes,
 	TransverseRouteOrder,
-} from '../../../../src/lib/core/layout/shared-transverse-routing';
+} from '../../../../src/lib/core/layout/lanes/shared-transverse-routing';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { interiorPassageDocument } from './shared-lane-interior-fixture';
 

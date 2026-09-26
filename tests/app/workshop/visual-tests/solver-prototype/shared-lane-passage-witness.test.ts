@@ -5,9 +5,9 @@ import {
 	PassageCandidateId,
 } from '../../../../../src/app/workshop/visual-tests/solver-prototype/shared-lane-passage-witness';
 import { createGraph } from '../../../../../src/lib/core/graph/create-graph';
-import { SHARED_LANE_CLEARANCE } from '../../../../../src/lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../../src/lib/core/layout/shared-lane-geometry';
-import { validateSharedLaneInteriorPassage } from '../../../../../src/lib/core/layout/shared-lane-interior-validation';
+import { SHARED_LANE_CLEARANCE } from '../../../../../src/lib/core/layout/lanes/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import { validateSharedLaneInteriorPassage } from '../../../../../src/lib/core/layout/lanes/shared-lane-interior-validation';
 
 describe('S | SD | C passage comparison', () => {
 	it('uses one real document, one measurement set and an identical frame for two valid routes', () => {

@@ -1,10 +1,10 @@
-import { defined } from '../document/logic-document';
-import type { RouteWorkCharge } from './bridges/bridge-oracle';
+import { defined } from '../../document/logic-document';
+import type { RouteWorkCharge } from '../bridges/bridge-oracle';
 import type {
 	RegionIncidentContract,
 	RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
-import { bestWithinBudgetStream } from './search/bounded-search';
+} from '../regions/model/region-incident-contract';
+import { bestWithinBudgetStream } from '../search/bounded-search';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import type { IncidentSearchState } from './shared-lane-incident-search';
 import type { SharedLaneInput } from './shared-lane-model';

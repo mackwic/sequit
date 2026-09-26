@@ -1,15 +1,15 @@
-import { defined, LaneOrientation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { RouteWorkCharge } from './bridges/bridge-oracle';
-import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
+import { defined, LaneOrientation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { RouteWorkCharge } from '../bridges/bridge-oracle';
+import type { LayoutMeasurements, LayoutOptions, LayoutResult } from '../layout-types';
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
+} from '../regions/model/region-incident-contract';
 import type { SharedLaneFrame } from './shared-lane-frame';
 import {
 	certifySharedLaneGeometry,

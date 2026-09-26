@@ -13,6 +13,11 @@ import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
+import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import {
+	directSharedLaneIncidentPath,
+	validateSharedLaneIncidentPath,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-incident-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
@@ -36,11 +41,6 @@ import {
 	regionLocalLayoutKey,
 } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { layoutWithRootRegionForProjection } from '../../../../src/lib/core/layout/root-region';
-import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
-import {
-	directSharedLaneIncidentPath,
-	validateSharedLaneIncidentPath,
-} from '../../../../src/lib/core/layout/shared-lane-incident-validation';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {

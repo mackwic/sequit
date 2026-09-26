@@ -1,6 +1,6 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, LaneOrientation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, LaneOrientation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
 import {
 	crossEnd,
 	crossStart,
@@ -9,8 +9,8 @@ import {
 	longEnd,
 	longStart,
 	overlapping,
-} from './geometry/shared-lane-geometry-primitives';
-import type { Bounds, LayoutElement } from './layout-types';
+} from '../geometry/shared-lane-geometry-primitives';
+import type { Bounds, LayoutElement } from '../layout-types';
 import { SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import { orderedLaneIds, reverseDirection, verticalDirection } from './shared-lane-model';
 import { validateSharedLaneRoutes } from './shared-lane-route-validation';

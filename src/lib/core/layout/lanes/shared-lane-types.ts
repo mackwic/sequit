@@ -1,4 +1,4 @@
-import type { Bounds, LayoutElement, LayoutRelation } from './layout-types';
+import type { Bounds, LayoutElement, LayoutRelation } from '../layout-types';
 
 export interface SharedLaneBounds {
 	readonly id: string;

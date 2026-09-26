@@ -1,13 +1,13 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
-import type { LayoutRelation, Point } from './layout-types';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import type { LayoutRelation, Point } from '../layout-types';
 import {
 	allocateNestedTracks,
 	type CenteredTrackAllocation,
 	centeredTrackOffset,
 	type RoutingTrackAllocation,
 	trackOffset,
-} from './resources/routing-resource-allocation';
+} from '../resources/routing-resource-allocation';
 import {
 	type LogicalBox,
 	physicalPoint,

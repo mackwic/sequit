@@ -14,19 +14,19 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import type { LogicGraph } from '../../../../src/lib/core/graph/create-graph';
+import {
+	type SharedLaneGeometry,
+	validateSharedLaneGeometry,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import {
+	SharedLaneLayoutStatus,
+	solveSharedLaneLayout,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import type {
 	LayoutElement,
 	LayoutRelation,
 	Point,
 } from '../../../../src/lib/core/layout/layout-types';
-import {
-	type SharedLaneGeometry,
-	validateSharedLaneGeometry,
-} from '../../../../src/lib/core/layout/shared-lane-geometry';
-import {
-	SharedLaneLayoutStatus,
-	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 

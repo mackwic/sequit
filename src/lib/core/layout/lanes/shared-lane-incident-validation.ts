@@ -1,16 +1,16 @@
-import { defined } from '../document/logic-document';
-import { disallowedProvisionalRouteContacts } from './bridges/bridge-contact';
-import { orthogonal, samePoint } from './geometry/nested-region-geometry-primitives';
-import { hitsBox } from './geometry/shared-lane-geometry-primitives';
-import { PORT_INSET, PORT_SPACING } from './layout-settings';
-import type { Bounds, Point } from './layout-types';
-import { RegionPortalSide } from './regions/model/region-composition-types';
-import { incidentEndpointRoute } from './regions/model/region-incident-contact';
+import { defined } from '../../document/logic-document';
+import { disallowedProvisionalRouteContacts } from '../bridges/bridge-contact';
+import { orthogonal, samePoint } from '../geometry/nested-region-geometry-primitives';
+import { hitsBox } from '../geometry/shared-lane-geometry-primitives';
+import { PORT_INSET, PORT_SPACING } from '../layout-settings';
+import type { Bounds, Point } from '../layout-types';
+import { RegionPortalSide } from '../regions/model/region-composition-types';
+import { incidentEndpointRoute } from '../regions/model/region-incident-contact';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
 	type RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
+} from '../regions/model/region-incident-contract';
 import { facePortEdge, incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneGeometry } from './shared-lane-types';
 

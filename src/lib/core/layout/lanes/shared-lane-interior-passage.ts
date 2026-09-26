@@ -1,11 +1,11 @@
-import { defined, EndpointKind, LaneOrientation } from '../document/logic-document';
-import { RAIL_SPACING } from './layout-settings';
+import { defined, EndpointKind, LaneOrientation } from '../../document/logic-document';
+import { RAIL_SPACING } from '../layout-settings';
 import {
 	allocateCenteredTrack,
 	type CenteredTrackAllocation,
 	centeredTrackOffset,
 	type RoutingTrackDemand,
-} from './resources/routing-resource-allocation';
+} from '../resources/routing-resource-allocation';
 import { SHARED_LANE_CLEARANCE, type SharedLaneFrame } from './shared-lane-frame';
 import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
 import { incidenceKey, PortRole, type SharedLanePorts } from './shared-lane-ports';

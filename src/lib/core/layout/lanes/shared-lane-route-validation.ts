@@ -1,6 +1,6 @@
-import { defined, LaneOrientation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { RouteWorkCharge } from './bridges/bridge-oracle';
+import { defined, LaneOrientation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { RouteWorkCharge } from '../bridges/bridge-oracle';
 import {
 	cross,
 	crossEnd,
@@ -12,9 +12,9 @@ import {
 	longitudinal,
 	longStart,
 	segmentsSelfContact,
-} from './geometry/shared-lane-geometry-primitives';
-import { PORT_INSET, PORT_SPACING } from './layout-settings';
-import type { Bounds, LayoutElement, LayoutRelation, Point } from './layout-types';
+} from '../geometry/shared-lane-geometry-primitives';
+import { PORT_INSET, PORT_SPACING } from '../layout-settings';
+import type { Bounds, LayoutElement, LayoutRelation, Point } from '../layout-types';
 import { type LaneSide, laneSide, reverseDirection, verticalDirection } from './shared-lane-model';
 import { validateSharedLaneRouteContacts } from './shared-lane-route-contact-validation';
 import type { SharedLaneGeometry } from './shared-lane-types';

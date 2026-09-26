@@ -1,5 +1,5 @@
-import { crossEnd, crossStart } from './geometry/shared-lane-geometry-primitives';
-import type { Bounds } from './layout-types';
+import { crossEnd, crossStart } from '../geometry/shared-lane-geometry-primitives';
+import type { Bounds } from '../layout-types';
 import type { LaneSide } from './shared-lane-model';
 
 export interface TransverseSideInput {

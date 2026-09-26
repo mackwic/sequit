@@ -1,15 +1,15 @@
-import { compareCanonicalStrings } from '../canonical-string';
+import { compareCanonicalStrings } from '../../canonical-string';
 import {
 	defined,
 	EndpointKind,
 	LaneOrientation,
 	LayoutDirection,
 	type LogicDocument,
-} from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { LayoutMeasurements, LayoutOptions, Size } from './layout-types';
-import { validateGroupMeasurement, validateSize } from './placement/validate-measurements';
+} from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { LayoutMeasurements, LayoutOptions, Size } from '../layout-types';
+import { validateGroupMeasurement, validateSize } from '../placement/validate-measurements';
 
 export type LaneSide = -1 | 1;
 

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import type {
-	RoutingEdge,
-	RoutingTrackAllocation,
-} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 import {
 	trackAllocationProductCount,
 	trackAllocationProducts,
 	type TrackAssignmentDomain,
-} from '../../../../src/lib/core/layout/shared-lane-allocation-search';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-allocation-search';
+import type {
+	RoutingEdge,
+	RoutingTrackAllocation,
+} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 
 function domain(
 	id: string,

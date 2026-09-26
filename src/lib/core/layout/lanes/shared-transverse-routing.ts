@@ -1,11 +1,11 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
-import type { LayoutRelation, Point } from './layout-types';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import type { LayoutRelation, Point } from '../layout-types';
 import {
 	allocateNestedTracks,
 	type RoutingTrackAllocation,
 	trackOffset,
-} from './resources/routing-resource-allocation';
+} from '../resources/routing-resource-allocation';
 import { type LogicalBox, physicalPoint, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import type { LaneSide, SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import { incidenceKey, PortRole } from './shared-lane-ports';

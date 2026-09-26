@@ -11,12 +11,12 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
-import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
-} from '../../../../src/lib/core/layout/shared-lane-layout';
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
