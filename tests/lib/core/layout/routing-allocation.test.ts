@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
@@ -14,6 +15,7 @@ import {
 } from '../../../../src/lib/core/layout/routing/port-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import { crossingCorridors } from '../../../../src/lib/core/layout/routing/routing-corridors';
+import { settleGroupCorridorPorts } from '../../../../src/lib/core/layout/routing/settle-group-corridors';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { layoutDocument } from '../../../support/harnesses/layout';
 
@@ -155,6 +157,85 @@ describe('rail and port reservations', () => {
 			expect(allocation.sizes.get('target')).toEqual(expected);
 			expect(sizes.get('target')).toEqual({ width: 80, height: 80 });
 		}
+	});
+	it('preserves a grouped fork and its face size when placement exposes a corner corridor', () => {
+		const base = validLogicDocument();
+		const target = base.nodes.find(({ id }) => id === 'target');
+		if (target === undefined) throw new Error('The fixture requires a target node');
+		const document = {
+			...base,
+			nodes: [...base.nodes, { ...target, id: 'target-c', layoutOrder: orderKey('a8') }],
+			junctions: [],
+			relations: [
+				{ id: 'fork-a', from: 'source-a', to: 'target' },
+				{ id: 'fork-b', from: 'source-a', to: 'isolated' },
+				{ id: 'independent', from: 'source-b', to: 'target-c' },
+			],
+		};
+		const graphResult = createGraph(document);
+		if (!graphResult.ok) throw new Error('Expected a valid grouped fork graph');
+		const graph = graphResult.value;
+		const ranks = new Map([
+			['source-a', 1],
+			['source-b', 1],
+			['target', 0],
+			['isolated', 0],
+			['target-c', 0],
+		]);
+		const bounds = new Map<string, Bounds>([
+			['source-a', { x: 0, y: 100, width: 48, height: 80 }],
+			['source-b', { x: 130, y: 100, width: 80, height: 80 }],
+			['target', { x: 30, y: 0, width: 80, height: 80 }],
+			['isolated', { x: 70, y: 0, width: 80, height: 80 }],
+			['target-c', { x: 170, y: 0, width: 80, height: 80 }],
+		]);
+		const sizes = new Map(
+			[...bounds].map(([id, box]) => [id, { width: box.width, height: box.height }]),
+		);
+		const input = { graph, ranks, bounds, vertical: true, sizes };
+		const initial = crossingCorridors(input);
+		expect(initial).toEqual([]);
+		const initialPorts = allocatePorts({ ...input, corridors: initial });
+		// Packing the group moves its member and the far leaf into the fork's transverse run.
+		bounds.set('source-b', { x: 50, y: 100, width: 80, height: 80 });
+		bounds.set('target-c', { x: 100, y: 0, width: 80, height: 80 });
+		expect(crossingCorridors(input)).toMatchObject([{ cornerOnly: true }]);
+		let placements = 0;
+		const settled = settleGroupCorridorPorts({
+			...input,
+			initial,
+			initialPorts,
+			place(ports) {
+				placements += 1;
+				for (const [id, size] of ports.sizes) {
+					const box = bounds.get(id);
+					if (box !== undefined) bounds.set(id, { ...box, width: size.width });
+				}
+			},
+		});
+		expect(placements).toBe(1);
+		expect(settled.ports.sourceOffsets.get('fork-a')).toBe(0);
+		expect(settled.ports.sourceOffsets.get('fork-b')).toBe(0);
+		expect(settled.ports.sizes.get('source-a')?.width).toBe(48);
+		expect(bounds.get('source-a')?.width).toBe(48);
+
+		// A second group movement can turn the same face request into a true crossing.
+		bounds.set('target-c', { x: -10, y: 0, width: 80, height: 80 });
+		expect(crossingCorridors(input)[0]?.cornerOnly).toBeUndefined();
+		const crossed = settleGroupCorridorPorts({
+			...input,
+			initial: settled.corridors,
+			initialPorts: settled.ports,
+			place(ports) {
+				const box = bounds.get('source-a');
+				const size = ports.sizes.get('source-a');
+				if (box !== undefined && size !== undefined)
+					bounds.set('source-a', { ...box, width: size.width });
+			},
+		});
+		expect(crossed.ports.sourceOffsets.get('fork-a')).toBe(-24);
+		expect(crossed.ports.sourceOffsets.get('fork-b')).toBe(24);
+		expect(crossed.ports.sizes.get('source-a')?.width).toBe(96);
 	});
 	it('ignores cached measurements for nodes no longer present in the document', async () => {
 		const fixture = await layoutDocument({

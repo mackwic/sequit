@@ -3,11 +3,36 @@ import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
 import type { Bounds, Size } from '../layout-types';
 import { allocatePorts, type PortAllocation } from './port-allocation';
-import { crossingCorridors, type RoutingCorridor } from './routing-corridors';
+import {
+	cornerPortSharing,
+	type CorridorLink,
+	crossingCorridors,
+	type RoutingCorridor,
+} from './routing-corridors';
 
 interface PortDemand {
 	readonly rank: number;
 	readonly relation: LogicRelation;
+	readonly cornerOnly: boolean;
+}
+
+function recordPortDemand(
+	demanded: Map<string, PortDemand>,
+	corridor: RoutingCorridor,
+	relation: LogicRelation,
+): boolean {
+	const previous = demanded.get(relation.id);
+	if (previous !== undefined) {
+		if (!previous.cornerOnly || corridor.cornerOnly === true) return false;
+		demanded.set(relation.id, { ...previous, cornerOnly: false });
+		return true;
+	}
+	demanded.set(relation.id, {
+		rank: corridor.rank,
+		relation,
+		cornerOnly: corridor.cornerOnly === true,
+	});
+	return true;
 }
 
 function includeCorridorLinks(
@@ -16,11 +41,8 @@ function includeCorridorLinks(
 ): boolean {
 	let added = false;
 	for (const corridor of corridors)
-		for (const { relation } of corridor.links) {
-			if (demanded.has(relation.id)) continue;
-			demanded.set(relation.id, { rank: corridor.rank, relation });
-			added = true;
-		}
+		for (const { relation } of corridor.links)
+			if (recordPortDemand(demanded, corridor, relation)) added = true;
 	return added;
 }
 
@@ -30,17 +52,27 @@ function faceDemands(
 	bounds: ReadonlyMap<string, Bounds>,
 	vertical: boolean,
 ): RoutingCorridor[] {
-	const byRank = new Map<number, RoutingCorridor['links'][number][]>();
-	for (const { rank, relation } of demanded.values()) {
-		const links = byRank.get(rank) ?? [];
+	const byRank = new Map<number, { crossing: CorridorLink[]; corners: CorridorLink[] }>();
+	for (const { rank, relation, cornerOnly } of demanded.values()) {
+		let faces = byRank.get(rank);
+		if (faces === undefined) {
+			faces = { crossing: [], corners: [] };
+			byRank.set(rank, faces);
+		}
+		let links = faces.crossing;
+		if (cornerOnly) links = faces.corners;
 		links.push({
 			relation,
 			source: transverseCenter(defined(bounds.get(relation.from)), vertical),
 			target: transverseCenter(defined(bounds.get(relation.to)), vertical),
 		});
-		byRank.set(rank, links);
 	}
-	return [...byRank].map(([rank, links]) => ({ rank, links }));
+	const result: RoutingCorridor[] = [];
+	for (const [rank, { crossing, corners }] of byRank) {
+		if (crossing.length > 0) result.push({ rank, links: crossing });
+		if (corners.length > 0) result.push({ rank, links: corners, cornerOnly: true });
+	}
+	return result;
 }
 
 /** Grow only the set of face demands; never replan routes with ports from an older corridor set. */
@@ -66,8 +98,10 @@ export function settleGroupCorridorPorts(input: {
 			return { ports, corridors: current };
 		}
 		grew = true;
+		const requests = faceDemands(demanded, bounds, vertical);
 		ports = allocatePorts({
-			corridors: faceDemands(demanded, bounds, vertical),
+			corridors: requests,
+			...cornerPortSharing(requests),
 			sizes,
 			vertical,
 			graph,
