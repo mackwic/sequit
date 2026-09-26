@@ -18,7 +18,6 @@ function variant(input: {
 			'Une relation croisée sépare son arrivée afin que les trois relations ne dessinent pas une quatrième relation inexistante.',
 		group: 'Rails et ports',
 		order: 250,
-		expectedFailure: true,
 		arrange(direction = LayoutDirection.TopToBottom, bias) {
 			return layoutNodes({
 				...graphFixtures

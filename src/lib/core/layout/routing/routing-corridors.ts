@@ -62,6 +62,34 @@ function neighborInversion(links: readonly CorridorLink[]): boolean {
 	return false;
 }
 
+/** A diagonal completing three of four connections must not share both of its endpoint trunks. */
+function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<string> {
+	const targets = new Set<string>();
+	if (cluster.length < 3) return targets;
+	const firstTargetBySource = new Map<string, string>();
+	const firstSourceByTarget = new Map<string, string>();
+	const branchingSources = new Set<string>();
+	const convergingTargets = new Set<string>();
+	const outgoingCounts = new Map<string, number>();
+	const incomingCounts = new Map<string, number>();
+	for (const { relation } of cluster) {
+		outgoingCounts.set(relation.from, (outgoingCounts.get(relation.from) ?? 0) + 1);
+		incomingCounts.set(relation.to, (incomingCounts.get(relation.to) ?? 0) + 1);
+		const firstTarget = firstTargetBySource.get(relation.from);
+		if (firstTarget === undefined) firstTargetBySource.set(relation.from, relation.to);
+		else if (firstTarget !== relation.to) branchingSources.add(relation.from);
+		const firstSource = firstSourceByTarget.get(relation.to);
+		if (firstSource === undefined) firstSourceByTarget.set(relation.to, relation.from);
+		else if (firstSource !== relation.from) convergingTargets.add(relation.to);
+	}
+	for (const { relation, source, target } of cluster) {
+		const branch = branchingSources.has(relation.from) && outgoingCounts.get(relation.from) === 2;
+		const join = convergingTargets.has(relation.to) && incomingCounts.get(relation.to) === 2;
+		if (source !== target && branch && join) targets.add(relation.to);
+	}
+	return targets;
+}
+
 /** Overlapping transverse runs need rail allocation even when they keep their rank order. */
 function independentTurns(cluster: readonly CorridorLink[]): boolean {
 	const turns = cluster.filter(({ source, target }) => source !== target);
@@ -82,7 +110,9 @@ function collectCorridors(
 		for (const cluster of intersectingClusters(links)) {
 			// Interval-start ordering makes any source/target inversion visible between neighbors.
 			const crossing = neighborInversion(cluster);
-			if (!crossing && !independentTurns(cluster)) continue;
+			const needsCorridor =
+				crossing || independentTurns(cluster) || partialBipartiteTargets(cluster).size > 0;
+			if (!needsCorridor) continue;
 			let corridor: RoutingCorridor = { rank, links: cluster };
 			if (!crossing) corridor = { rank, links: cluster, cornerOnly: true };
 			if (canonicalIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
@@ -137,6 +167,15 @@ interface CornerPortSharing {
 	readonly sharedTargets: ReadonlySet<string>;
 }
 
+function excludePartialBipartiteTargets(
+	corridors: readonly RoutingCorridor[],
+	sharedTargets: Set<string>,
+): void {
+	for (const corridor of corridors)
+		if (corridor.cornerOnly === true)
+			for (const target of partialBipartiteTargets(corridor.links)) sharedTargets.delete(target);
+}
+
 /** Keep shared endpoints of new non-inverted corridors unless a crossing already separates them. */
 export function cornerPortSharing(
 	corridors: readonly RoutingCorridor[],
@@ -159,5 +198,6 @@ export function cornerPortSharing(
 	}
 	for (const source of crossingSources) sharedSources.delete(source);
 	for (const target of crossingTargets) sharedTargets.delete(target);
+	excludePartialBipartiteTargets(corridors, sharedTargets);
 	return { sharedSources, sharedTargets };
 }
