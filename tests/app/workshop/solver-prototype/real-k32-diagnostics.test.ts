@@ -1,29 +1,64 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import * as layout from '../../../../src/app/web/projection/layout-graph';
-import { runRealK32Witness } from '../../../../src/app/workshop/solver-prototype/real-k32-witness';
+import {
+	realK32Fixture,
+	runRealK32Witness,
+} from '../../../../src/app/workshop/solver-prototype/real-k32-witness';
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import * as layout from '../../../../src/lib/core/layout/layout-engine';
 import { type LayoutResult, RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import * as corridor from '../../../../src/lib/core/layout/routing/graph-corridor-conflicts';
 
 const direction = LayoutDirection.TopToBottom;
 
 function alterPipelineResult(alter: (result: LayoutResult) => LayoutResult): void {
-	const realLayoutGraph = layout.layoutGraph;
-	vi.spyOn(layout, 'layoutGraph').mockImplementation(async (...args) =>
-		alter(await realLayoutGraph(...args)),
+	const realEvaluate = layout.evaluateDedicatedLayout;
+	vi.spyOn(layout, 'evaluateDedicatedLayout').mockImplementation(
+		(structure, measurements, options) => {
+			const evaluation = realEvaluate(structure, measurements, options, true);
+			return { ...evaluation, complete: () => alter(evaluation.complete()) };
+		},
 	);
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('real K3,2 witness diagnostics', () => {
+	it('rejects a fixed-order result materialized in a different target order', async () => {
+		alterPipelineResult((result) => ({
+			...result,
+			elements: result.elements.map((element) => {
+				if (element.id !== 'd') return element;
+				return { ...element, bounds: { ...element.bounds, x: result.width + 100 } };
+			}),
+		}));
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
+		expect(witness.summary.targetOrder).toEqual(['d', 'e']);
+		expect(witness.summary.observedTargetOrder).toEqual(['e', 'd']);
+		expect(witness.summary.assessment).toBe('unproven');
+		expect(witness.summary.diagnostics).toContain(
+			'L’ordre documentaire demandé ne correspond pas à l’ordre transversal matérialisé.',
+		);
+	});
+
 	it('keeps an unknown symbolic corridor unproven', async () => {
 		vi.spyOn(corridor, 'graphCorridorConflicts').mockReturnValue({
 			status: corridor.GraphCorridorStatus.Unknown,
 			reason: corridor.GraphCorridorUnknownReason.OtherPassage,
 		});
-		const witness = await runRealK32Witness(direction);
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
 		expect(witness.summary.conditionalConflicts).toBeUndefined();
 		expect(witness.summary.assessment).toBe('unproven');
 		expect(witness.summary.diagnostics).toContain(
@@ -46,7 +81,13 @@ describe('real K3,2 witness diagnostics', () => {
 				},
 			};
 		});
-		const witness = await runRealK32Witness(direction);
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
 		expect(witness.summary.conditionalConflicts?.inversions.length).toBeGreaterThan(0);
 		expect(witness.summary.assessment).toBe('unproven');
 		expect(witness.summary.diagnostics).toContain(
@@ -56,7 +97,13 @@ describe('real K3,2 witness diagnostics', () => {
 
 	it('withholds confirmation when a predicted inversion has no observed route crossing', async () => {
 		alterPipelineResult((result) => ({ ...result, relations: [] }));
-		const witness = await runRealK32Witness(direction);
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
 		expect(witness.summary.conditionalConflicts?.inversions.length).toBeGreaterThan(0);
 		expect(witness.summary.crossings).toEqual([]);
 		expect(witness.summary.assessment).toBe('unproven');
@@ -89,7 +136,13 @@ describe('real K3,2 witness diagnostics', () => {
 				},
 			],
 		}));
-		const witness = await runRealK32Witness(direction);
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
 		expect(witness.summary.crossings).toEqual([
 			{ firstRelationId: 'a-to-d', secondRelationId: 'b-to-d', point: { x: 50, y: 10 } },
 			{ firstRelationId: 'a-to-d', secondRelationId: 'b-to-d', point: { x: 50, y: 20 } },
@@ -117,7 +170,13 @@ describe('real K3,2 witness diagnostics', () => {
 				},
 			};
 		});
-		const witness = await runRealK32Witness(direction);
+		const witness = await runRealK32Witness(
+			direction,
+			'd-e',
+			'sparse',
+			realK32Fixture(direction),
+			'documentary',
+		);
 		expect(witness.summary.conditionalConflicts?.requiredSeparations.length).toBeGreaterThan(0);
 		expect(witness.summary.assessment).toBe('unproven');
 		expect(witness.summary.diagnostics).toContain('Port partagé malgré conflit : a-to-d, b-to-d.');

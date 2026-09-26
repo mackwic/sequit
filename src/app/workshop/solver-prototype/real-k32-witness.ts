@@ -17,6 +17,7 @@ import {
 	transverseCenter,
 	transverseSize,
 } from '../../../lib/core/layout/geometry/layout-frame';
+import { evaluateDedicatedLayout } from '../../../lib/core/layout/layout-engine';
 import type {
 	LayoutMeasurements,
 	LayoutRelation,
@@ -30,6 +31,7 @@ import {
 	graphCorridorConflicts,
 	GraphCorridorStatus,
 } from '../../../lib/core/layout/routing/graph-corridor-conflicts';
+import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import { orderEndpoints } from '../../../lib/core/ordering/endpoint-order';
 import { fractionalOrderKeySpace } from '../../../lib/core/ordering/order-key-space';
 import { layoutGraph } from '../../web/projection/layout-graph';
@@ -262,6 +264,7 @@ export async function runRealK32Witness(
 	requestedTargetOrder: K32TargetOrder = 'd-e',
 	variant: K32Variant = 'sparse',
 	fixture: RealK32Fixture = realK32Fixture(direction, requestedTargetOrder, variant),
+	orderEvaluation: 'selected' | 'documentary' = 'selected',
 ): Promise<RealK32Witness> {
 	const { document, measurements } = fixture;
 	const created = createGraph(document);
@@ -279,9 +282,15 @@ export async function runRealK32Witness(
 	const targetOrder = orderedIds.filter((id) => targetSet.has(id));
 	const sourceRank = rankOf(sources, ranks);
 	const targetRank = rankOf(targets, ranks);
-	const layout = await layoutGraph(graph, rankResult, measurements, {
-		inspectRouting: true,
-	});
+	let layout: LayoutResult;
+	if (orderEvaluation === 'documentary')
+		layout = evaluateDedicatedLayout(
+			prepareLayout(graph, rankResult),
+			measurements,
+			{ inspectRouting: true },
+			true,
+		).complete();
+	else layout = await layoutGraph(graph, rankResult, measurements, { inspectRouting: true });
 	const vertical = isVerticalDirection(direction);
 	const observedSourceOrder = rowOrder(sources, layout, vertical);
 	const observedTargetOrder = rowOrder(targets, layout, vertical);
@@ -294,15 +303,20 @@ export async function runRealK32Witness(
 		diagnostic.push(`Le graphe ne forme pas la variante ${variant} attendue.`);
 	if (sourceRank === undefined || targetRank === undefined || sourceRank !== targetRank + 1)
 		diagnostic.push('Les deux rangs source et cible ne sont pas adjacents.');
-	if (!sameOrder(sourceOrder, observedSourceOrder) || !sameOrder(targetOrder, observedTargetOrder))
-		diagnostic.push('L’ordre documentaire ne correspond pas à l’ordre transversal matérialisé.');
+	if (
+		orderEvaluation === 'documentary' &&
+		(!sameOrder(sourceOrder, observedSourceOrder) || !sameOrder(targetOrder, observedTargetOrder))
+	)
+		diagnostic.push(
+			'L’ordre documentaire demandé ne correspond pas à l’ordre transversal matérialisé.',
+		);
 	let conditionalConflicts: ConditionalPortConflicts | undefined;
 	if (diagnostic.length === 0 && sourceRank !== undefined && targetRank !== undefined) {
 		const analyzed = graphCorridorConflicts(graph, rankResult, {
 			sourceRank,
 			targetRank,
-			sourceOrder,
-			targetOrder,
+			sourceOrder: observedSourceOrder,
+			targetOrder: observedTargetOrder,
 			passage: 'monotone-adjacent-corridor',
 		});
 		if (analyzed.status === GraphCorridorStatus.Deduced) conditionalConflicts = analyzed.conflicts;

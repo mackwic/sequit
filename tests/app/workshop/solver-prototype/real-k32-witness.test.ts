@@ -50,6 +50,11 @@ describe('real K3,2 pipeline witness', () => {
 		const witness = await runRealK32Witness(direction);
 		expect(witness.summary.targetOrder).toEqual(['d', 'e']);
 		expect(witness.summary.variant).toBe('sparse');
+		expect(witness.summary.sourceOrder).toEqual(['a', 'b', 'c']);
+		expect(witness.summary.observedSourceOrder).toEqual(witness.summary.sourceOrder);
+		expect(witness.summary.observedTargetOrder).toEqual(['e', 'd']);
+		expect(witness.summary.conditionalConflicts?.inversions).toEqual([]);
+		expect(witness.summary.crossings).toEqual([]);
 		expect(witness.summary.assessment).toBe('confirmed');
 	});
 
@@ -98,9 +103,15 @@ describe('real K3,2 pipeline witness', () => {
 			(['d-e', 'e-d'] as const).map((order) => ({ direction, order })),
 		),
 	)(
-		'sparse $direction, $order changes the observed demand without a fabricated position',
+		'fixed sparse $direction, $order changes the observed demand without a fabricated position',
 		async ({ direction, order }: { direction: LayoutDirection; order: K32TargetOrder }) => {
-			const witness = await runRealK32Witness(direction, order);
+			const witness = await runRealK32Witness(
+				direction,
+				order,
+				'sparse',
+				realK32Fixture(direction, order),
+				'documentary',
+			);
 			const d = witness.summary.targets.find(({ id }) => id === 'd');
 			const e = witness.summary.targets.find(({ id }) => id === 'e');
 			expect(witness.summary.assessment).toBe('confirmed');
