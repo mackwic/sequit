@@ -6,13 +6,10 @@ import { describe, expect, it } from 'vitest';
 import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
 	EndpointKind,
-	JunctionOperator,
 	LayoutBias,
 	LayoutDirection,
 	type LogicDocument,
-	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
-import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
@@ -31,6 +28,10 @@ import {
 } from '../../../support/builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
 import {
+	groupedJunction,
+	junctionNetworkDocument,
+	multirankOne,
+	multirankTwo,
 	railClearanceDocument,
 	railClearanceMeasurements,
 	railReuseDocument,
@@ -66,73 +67,6 @@ function intersects(
 	);
 }
 
-function makeDocument(
-	id: string,
-	ids: readonly string[],
-	relations: LogicDocument['relations'],
-): LogicDocument {
-	return {
-		persistenceFormat: PERSISTENCE_FORMAT,
-		id,
-		title: id,
-		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-		natures: [{ id: 'task', label: 'Task', color: '#456858' }],
-		groups: [],
-		junctions: [],
-		nodes: ids.map((nodeId, index) => ({
-			id: nodeId,
-			kind: EndpointKind.Node,
-			natureId: 'task',
-			markdown: nodeId,
-			layoutOrder: orderKey(['a1', 'a2', 'a3', 'a4', 'a5', 'a6'][index] ?? 'a6'),
-		})),
-		relations,
-	};
-}
-
-function groupedJunction(
-	id: string,
-	relations: LogicDocument['relations'],
-	groupedNodeIds: readonly string[] = ['a', 'b', 'd'],
-): LogicDocument {
-	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
-	return {
-		...base,
-		groups: [
-			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a0') },
-		],
-		nodes: base.nodes.map((node) => {
-			if (groupedNodeIds.includes(node.id)) return { ...node, groupId: 'group' };
-			return node;
-		}),
-		junctions: [
-			{
-				kind: EndpointKind.Junction,
-				id: 'join',
-				operator: JunctionOperator.Xor,
-				layoutOrder: orderKey('a7'),
-			},
-		],
-		relations,
-	};
-}
-
-const multirankOne = groupedJunction('multirank-group-junction-one', [
-	{ id: 'a-to-d', from: 'a', to: 'd' },
-	{ id: 'b-to-c', from: 'b', to: 'c' },
-	{ id: 'c-to-e', from: 'c', to: 'e' },
-	{ id: 'd-to-f', from: 'd', to: 'f' },
-	{ id: 'e-to-join', from: 'e', to: 'join' },
-	{ id: 'f-to-join', from: 'f', to: 'join' },
-]);
-const multirankTwo = groupedJunction('multirank-group-junction-two', [
-	{ id: 'a-to-c', from: 'a', to: 'c' },
-	{ id: 'b-to-d', from: 'b', to: 'd' },
-	{ id: 'c-to-f', from: 'c', to: 'f' },
-	{ id: 'd-to-e', from: 'd', to: 'e' },
-	{ id: 'e-to-join', from: 'e', to: 'join' },
-	{ id: 'f-to-join', from: 'f', to: 'join' },
-]);
 const groupEndpoint: LogicDocument = {
 	...multirankOne,
 	id: 'group-endpoint-route',
@@ -140,29 +74,7 @@ const groupEndpoint: LogicDocument = {
 	relations: [...multirankOne.relations, { id: 'group-to-e', from: 'group', to: 'e' }],
 };
 
-const junctionNetwork: LogicDocument = {
-	...makeDocument(
-		'junction-network-layout',
-		['a', 'b', 'c', 'd'],
-		[
-			{ id: 'j-to-a', from: 'j', to: 'a' },
-			{ id: 'j-to-d-one', from: 'j', to: 'd' },
-			{ id: 'j-to-d-two', from: 'j', to: 'd' },
-			{ id: 'k-to-b', from: 'k', to: 'b' },
-			{ id: 'k-to-a', from: 'k', to: 'a' },
-			{ id: 'a-to-sink', from: 'a', to: 'sink' },
-			{ id: 'b-to-sink', from: 'b', to: 'sink' },
-			{ id: 'j-to-sink', from: 'j', to: 'sink' },
-			{ id: 'k-to-sink', from: 'k', to: 'sink' },
-		],
-	),
-	junctions: ['j', 'k', 'sink'].map((id, index) => ({
-		kind: EndpointKind.Junction as const,
-		id,
-		operator: JunctionOperator.Xor,
-		layoutOrder: orderKey(['a0', 'a1', 'a2'][index] ?? 'a2'),
-	})),
-};
+const junctionNetwork = junctionNetworkDocument('junction-network-layout');
 
 function assertFiniteLayout(layout: LayoutResult): void {
 	const values = [layout.width, layout.height];
@@ -392,7 +304,29 @@ describe('dedicated engine LayoutResult identity', () => {
 			const documentary = evaluateDedicatedLayout(
 				prepareLayout(created.value, ranks),
 				layoutMeasurementsFor(source.document, source.measurementOverrides),
+				{ inspectRouting: true },
 			);
+			const pairIds: readonly string[] = relationIds;
+			const firstRelation = source.document.relations.find(({ id: relationId }) =>
+				pairIds.includes(relationId),
+			);
+			if (firstRelation === undefined) throw new Error(`Missing documentary crossing in ${id}`);
+			const firstRoute = documentary.relations.find(
+				({ id: relationId }) => relationId === firstRelation.id,
+			);
+			const attachment = firstRoute?.points[0];
+			if (attachment === undefined) throw new Error(`Missing documentary attachment in ${id}`);
+			const inspectedSource = documentary.routingInspection?.nodes.find(
+				({ id: endpointId }) => endpointId === firstRelation.from,
+			);
+			expect(
+				inspectedSource?.ports.some(
+					({ point, relations }) =>
+						relations.includes(firstRelation.id) &&
+						point.x === attachment.x &&
+						point.y === attachment.y,
+				),
+			).toBe(true);
 			const bridgePairs = (layout: LayoutResult) =>
 				routeBridgeAnalysis(layout.relations).bridges.map(({ carrierIds, crossedIds }) =>
 					[...new Set([...carrierIds, ...crossedIds])].toSorted(),

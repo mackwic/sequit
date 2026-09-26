@@ -87,3 +87,96 @@ export function railClearanceMeasurements(clearance: 12 | 13): LayoutMeasurement
 		),
 	};
 }
+
+function makeDocument(
+	id: string,
+	ids: readonly string[],
+	relations: LogicDocument['relations'],
+): LogicDocument {
+	return {
+		persistenceFormat: PERSISTENCE_FORMAT,
+		id,
+		title: id,
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		natures: [{ id: 'task', label: 'Task', color: '#456858' }],
+		groups: [],
+		junctions: [],
+		nodes: ids.map((nodeId, index) => ({
+			id: nodeId,
+			kind: EndpointKind.Node,
+			natureId: 'task',
+			markdown: nodeId,
+			layoutOrder: orderKey(['a1', 'a2', 'a3', 'a4', 'a5', 'a6'][index] ?? 'a6'),
+		})),
+		relations,
+	};
+}
+
+export function groupedJunction(
+	id: string,
+	relations: LogicDocument['relations'],
+	groupedNodeIds: readonly string[] = ['a', 'b', 'd'],
+): LogicDocument {
+	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
+	return {
+		...base,
+		groups: [
+			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a0') },
+		],
+		nodes: base.nodes.map((node) => {
+			if (groupedNodeIds.includes(node.id)) return { ...node, groupId: 'group' };
+			return node;
+		}),
+		junctions: [
+			{
+				kind: EndpointKind.Junction,
+				id: 'join',
+				operator: JunctionOperator.Xor,
+				layoutOrder: orderKey('a7'),
+			},
+		],
+		relations,
+	};
+}
+
+export const multirankOne = groupedJunction('multirank-group-junction-one', [
+	{ id: 'a-to-d', from: 'a', to: 'd' },
+	{ id: 'b-to-c', from: 'b', to: 'c' },
+	{ id: 'c-to-e', from: 'c', to: 'e' },
+	{ id: 'd-to-f', from: 'd', to: 'f' },
+	{ id: 'e-to-join', from: 'e', to: 'join' },
+	{ id: 'f-to-join', from: 'f', to: 'join' },
+]);
+export const multirankTwo = groupedJunction('multirank-group-junction-two', [
+	{ id: 'a-to-c', from: 'a', to: 'c' },
+	{ id: 'b-to-d', from: 'b', to: 'd' },
+	{ id: 'c-to-f', from: 'c', to: 'f' },
+	{ id: 'd-to-e', from: 'd', to: 'e' },
+	{ id: 'e-to-join', from: 'e', to: 'join' },
+	{ id: 'f-to-join', from: 'f', to: 'join' },
+]);
+export function junctionNetworkDocument(id: string): LogicDocument {
+	return {
+		...makeDocument(
+			id,
+			['a', 'b', 'c', 'd'],
+			[
+				{ id: 'j-to-a', from: 'j', to: 'a' },
+				{ id: 'j-to-d-one', from: 'j', to: 'd' },
+				{ id: 'j-to-d-two', from: 'j', to: 'd' },
+				{ id: 'k-to-b', from: 'k', to: 'b' },
+				{ id: 'k-to-a', from: 'k', to: 'a' },
+				{ id: 'a-to-sink', from: 'a', to: 'sink' },
+				{ id: 'b-to-sink', from: 'b', to: 'sink' },
+				{ id: 'j-to-sink', from: 'j', to: 'sink' },
+				{ id: 'k-to-sink', from: 'k', to: 'sink' },
+			],
+		),
+		junctions: ['j', 'k', 'sink'].map((id, index) => ({
+			kind: EndpointKind.Junction as const,
+			id,
+			operator: JunctionOperator.Xor,
+			layoutOrder: orderKey(['a0', 'a1', 'a2'][index] ?? 'a2'),
+		})),
+	};
+}
