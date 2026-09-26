@@ -12,10 +12,11 @@ import {
 	transverseSize,
 	transverseStart,
 } from '../geometry/layout-frame';
-import { COMPONENT_GAP, ITEM_GAP, OUTER_MARGIN } from '../layout-settings';
+import { COMPONENT_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
 import type { PackingCursor } from './pack-components';
+import { packGroupSiblings } from './pack-group-siblings';
 
 function enclosure(
 	measurement: GroupMeasurement,
@@ -31,36 +32,6 @@ function enclosure(
 		width: Math.max(measurement.minimumWidth, envelope.right - x + measurement.padding),
 		height: Math.max(measurement.minimumHeight, envelope.bottom - y + measurement.padding),
 	};
-}
-
-/** A group is packed as one transverse interval, so no foreign node can enter its frame. */
-interface PackingItem {
-	readonly id: string;
-	readonly bounds: MutableBounds;
-}
-
-function packedChildren(
-	children: readonly string[],
-	bounds: ReadonlyMap<string, MutableBounds>,
-	pending: Map<string, number>,
-	vertical: boolean,
-): void {
-	const items: PackingItem[] = children.map((id) => ({ id, bounds: defined(bounds.get(id)) }));
-	items.sort(
-		(left, right) =>
-			transverseStart(left.bounds, vertical) - transverseStart(right.bounds, vertical) ||
-			compareCanonicalStrings(left.id, right.id),
-	);
-	let end = Number.NEGATIVE_INFINITY;
-	for (const { id, bounds: box } of items) {
-		const start = transverseStart(box, vertical);
-		const shift = Math.max(0, end + ITEM_GAP - start);
-		if (shift > 0) {
-			translateTransversely(box, shift, vertical);
-			pending.set(id, (pending.get(id) ?? 0) + shift);
-		}
-		end = transverseStart(box, vertical) + transverseSize(box, vertical);
-	}
 }
 
 interface NodeIndex {
@@ -84,7 +55,8 @@ function indexNodes(
 	bounds: ReadonlyMap<string, MutableBounds>,
 	vertical: boolean,
 ): NodeIndex {
-	const nodes = graph.document.nodes.map((node) => {
+	const endpoints = [...graph.document.nodes, ...graph.document.junctions];
+	const nodes = endpoints.map((node) => {
 		let groupIndex = -1;
 		if (node.groupId !== undefined)
 			groupIndex = defined(hierarchy.preorderIndexById.get(node.groupId));
@@ -166,7 +138,7 @@ function hasForeignIntersection(
 	bounds: ReadonlyMap<string, MutableBounds>,
 	vertical: boolean,
 ): boolean {
-	if (graph.document.nodes.length === 0) return false;
+	if (graph.document.nodes.length === 0 && graph.document.junctions.length === 0) return false;
 	const index = indexNodes(graph, hierarchy, bounds, vertical);
 	for (const group of hierarchy.deepestFirst) {
 		const box = defined(bounds.get(group.id));
@@ -203,7 +175,7 @@ export function separateInterleavedGroupNodes(input: {
 	for (const group of hierarchy.deepestFirst) {
 		const children = hierarchy.membersById.get(group.id) ?? [];
 		if (children.length === 0) continue;
-		packedChildren(children, bounds, pending, frame.vertical);
+		packGroupSiblings(children, bounds, { groupIds: hierarchy.byId, pending }, frame.vertical);
 		bounds.set(group.id, enclosure(defined(measurements.get(group.id)), children, bounds));
 	}
 	const roots = [
@@ -215,7 +187,7 @@ export function separateInterleavedGroupNodes(input: {
 			.filter((group) => group.groupId === undefined)
 			.map((group) => group.id),
 	];
-	packedChildren(roots, bounds, pending, frame.vertical);
+	packGroupSiblings(roots, bounds, { groupIds: hierarchy.byId, pending }, frame.vertical);
 
 	// Parent translations have already moved the child frame, not its contents.
 	const queue = graph.document.groups

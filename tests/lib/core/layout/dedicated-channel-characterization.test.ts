@@ -88,7 +88,7 @@ function groupedJunction(id: string, relations: LogicDocument['relations']): Log
 	};
 }
 
-const productionCycleDocuments = [
+const correctedGroupDocuments = [
 	groupedJunction('multirank-group-junction-one', [
 		{ id: 'a-to-d', from: 'a', to: 'd' },
 		{ id: 'b-to-c', from: 'b', to: 'c' },
@@ -152,6 +152,50 @@ function channelFor(
 	return channel;
 }
 
+/** Select observations whose allocated ports coincide with the returned route attachments. */
+function finalChannelFor(
+	document: LogicDocument,
+	relationIds: readonly string[],
+): ChannelObservation {
+	const prepared = prepareLayoutDocument(document);
+	channelObservations.calls.length = 0;
+	const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements, {
+		inspectRouting: true,
+	});
+	const matches = channelObservations.calls.filter(({ endpoints }) =>
+		relationIds.every((id) => {
+			const endpoint = endpoints.find((candidate) => candidate.id === id);
+			const route = layout.relations.find((candidate) => candidate.id === id);
+			return (
+				endpoint !== undefined &&
+				route !== undefined &&
+				endpoint.source === route.points[0]?.x &&
+				endpoint.target === route.points.at(-1)?.x
+			);
+		}),
+	);
+	if (matches.length === 0) throw new Error('No routed channel matches the returned attachments');
+	const signatures = matches.map(({ routing }) =>
+		JSON.stringify(
+			relationIds.map((id) => {
+				const wire = routing.wires.find((candidate) => candidate.id === id);
+				return [
+					wire?.middle,
+					wire?.first?.depth,
+					wire?.first?.rail,
+					wire?.last?.depth,
+					wire?.last?.rail,
+				];
+			}),
+		),
+	);
+	if (new Set(signatures).size !== 1)
+		throw new Error('Port-identical candidate channels disagree on allocated runs');
+	const selected = matches.at(-1);
+	if (selected === undefined) throw new Error('A final channel must exist');
+	return selected;
+}
+
 function wireFor(channel: ChannelObservation, id: string) {
 	const wire = channel.routing.wires.find((candidate) => candidate.id === id);
 	if (wire === undefined) throw new Error(`Missing channel wire ${id}`);
@@ -189,34 +233,34 @@ describe('dedicated engine channel characterization (replaceable during channel 
 		it('characterizes actual endpoints and unsplit rails on both corrected crossing layouts', () => {
 			const observations = [
 				{
-					document: productionCycleDocuments[0],
+					document: correctedGroupDocuments[0],
 					ids: ['a-to-d', 'b-to-c'],
 					ports: [
-						[174, 686],
-						[430, 966],
-					],
-					rails: [0, 1],
-				},
-				{
-					document: productionCycleDocuments[1],
-					ids: ['c-to-f', 'd-to-e'],
-					ports: [
-						[966, 1542],
-						[686, 1222],
+						[454, 710],
+						[710, 174],
 					],
 					rails: [1, 0],
+				},
+				{
+					document: correctedGroupDocuments[1],
+					ids: ['c-to-f', 'd-to-e'],
+					ports: [
+						[174, 430],
+						[710, 174],
+					],
+					rails: [0, 1],
 				},
 			];
 			for (const { document, ids, ports, rails } of observations) {
 				if (document === undefined) throw new Error('Both corrected documents must exist');
-				const channel = channelFor(channelsFromProductionLayout(document), ids);
+				const channel = finalChannelFor(document, ids);
 				for (const [index, id] of ids.entries()) {
 					const endpoint = channel.endpoints.find((candidate) => candidate.id === id);
 					const wire = wireFor(channel, id);
 					expect([endpoint?.source, endpoint?.target]).toEqual(ports[index]);
 					expect(wire.middle).toBeUndefined();
 					expect(wire.first).toBe(wire.last);
-					expect([wire.first?.depth, wire.first?.rail]).toEqual([0, rails[index]]);
+					expect([wire.first?.depth, wire.first?.rail]).toEqual([rails[index], rails[index]]);
 				}
 			}
 		});
@@ -233,7 +277,7 @@ describe('dedicated engine channel characterization (replaceable during channel 
 					{ id: 'd-f', from: 'd', to: 'f' },
 				],
 			);
-			const channel = channelFor(channelsFromProductionLayout(document), ['a-d', 'b-c']);
+			const channel = finalChannelFor(document, ['a-d', 'b-c']);
 			const splitInput = channel.endpoints.find(({ id }) => id === 'a-d');
 			const inverseInput = channel.endpoints.find(({ id }) => id === 'b-c');
 			const split = wireFor(channel, 'a-d');

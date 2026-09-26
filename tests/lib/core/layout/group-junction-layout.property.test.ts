@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
 	EndpointKind,
 	LayoutDirection,
@@ -135,6 +136,53 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 					.followLayoutFlow();
 			},
 		);
+	},
+);
+
+it.each(LAYOUT_CONFIGURATIONS)(
+	'keeps a junction linked to a member outside its group ($direction)',
+	async (configuration) => {
+		const fixture = groupJunctionFixture(configuration, false, false);
+		const document: LogicDocument = {
+			...fixture,
+			nodes: fixture.nodes.filter(({ id }) => id === 'member'),
+			relations: [{ id: 'junction-member', from: 'junction', to: 'member' }],
+		};
+		const { layout, ranks } = await layoutDocument(document, {
+			nodes: { member: { width: 100, height: 50 } },
+			groups: { group: { minimumWidth: 340, minimumHeight: 420, headerHeight: 35, padding: 48 } },
+		});
+		expect(overlaps(boundsFor(layout, 'group'), boundsFor(layout, 'junction'))).toBe(false);
+		AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+			.routes()
+			.areOrthogonal()
+			.areAttachedToEndpoints();
+	},
+);
+
+it.each(LAYOUT_CONFIGURATIONS)(
+	'keeps reserved route endpoints on their final boxes ($direction)',
+	async (configuration) => {
+		const fixture = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
+		if (fixture === undefined) throw new Error('Adjacent 2+2 document must exist');
+		const group = groupJunctionFixture(configuration, false, false).groups[0];
+		if (group === undefined) throw new Error('Group must exist');
+		const document: LogicDocument = {
+			...fixture.document,
+			layout: configuration,
+			groups: [group],
+			nodes: fixture.document.nodes.map((node) => {
+				if (node.id === 'd') return { ...node, groupId: 'group' };
+				return node;
+			}),
+		};
+		const { layout, ranks } = await layoutDocument(document, {
+			groups: { group: { minimumWidth: 180, minimumHeight: 270, headerHeight: 48, padding: 26 } },
+		});
+		AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+			.routes()
+			.areOrthogonal()
+			.areAttachedToEndpoints();
 	},
 );
 
@@ -285,63 +333,125 @@ it('keeps generated non-descendant nodes outside every group envelope', async ()
 	);
 });
 
-it('separates a tall nested child, empty sibling and interleaved row across distant ranks', async () => {
-	await fc.assert(
-		fc.asyncProperty(
-			fc.constantFrom(...LAYOUT_CONFIGURATIONS),
-			fc.integer({ min: 100, max: 230 }),
-			fc.integer({ min: 35, max: 125 }),
-			fc.boolean(),
-			async (configuration, nodeWidth, padding, reverse) => {
-				const document = tallNestedInterleaving(configuration);
-				let variant = document;
-				if (reverse)
-					variant = {
-						...document,
-						groups: document.groups.toReversed(),
-						nodes: document.nodes.toReversed(),
-						relations: document.relations.toReversed(),
+it.each(LAYOUT_CONFIGURATIONS)(
+	'separates tall nested, empty and interleaved groups across distant ranks ($direction / $bias)',
+	async (configuration) => {
+		await fc.assert(
+			fc.asyncProperty(
+				fc.integer({ min: 100, max: 230 }),
+				fc.integer({ min: 35, max: 125 }),
+				fc.boolean(),
+				async (nodeWidth, padding, reverse) => {
+					const document = tallNestedInterleaving(configuration);
+					let variant = document;
+					if (reverse)
+						variant = {
+							...document,
+							groups: document.groups.toReversed(),
+							nodes: document.nodes.toReversed(),
+							relations: document.relations.toReversed(),
+						};
+					const overrides = {
+						nodes: Object.fromEntries(
+							document.nodes.map((node, index) => [
+								node.id,
+								{ width: nodeWidth + (index % 3) * 17, height: 45 + (index % 4) * 13 },
+							]),
+						),
+						groups: {
+							parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
+							child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
+							empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
+						},
 					};
-				const overrides = {
-					nodes: Object.fromEntries(
-						document.nodes.map((node, index) => [
-							node.id,
-							{ width: nodeWidth + (index % 3) * 17, height: 45 + (index % 4) * 13 },
-						]),
-					),
-					groups: {
-						parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
-						child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
-						empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
-					},
-				};
-				const { layout, ranks } = await layoutDocument(variant, overrides);
-				assertDisjointNodesAndForeignGroups(variant, layout);
-				expect(
-					(ranks.byEndpointId.get('t0') ?? 0) - (ranks.byEndpointId.get('sink') ?? 0),
-				).toBeGreaterThanOrEqual(8);
-				const parent = boundsFor(layout, 'parent');
-				if (configuration.direction === LayoutDirection.TopToBottom) {
-					const distant = boundsFor(layout, 't0');
-					expect(parent.y).toBeLessThan(distant.y + distant.height);
-					expect(distant.y).toBeLessThan(parent.y + parent.height);
-				}
-				expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
-				expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
-				const { layout: reordered } = await layoutDocument(
-					{
-						...variant,
-						groups: variant.groups.toReversed(),
-						nodes: variant.nodes.toReversed(),
-						relations: variant.relations.toReversed(),
-					},
-					overrides,
-				);
-				expect(reordered).toEqual(layout);
-			},
-		),
-		PROPERTY_PARAMETERS,
-	);
+					const { layout, ranks } = await layoutDocument(variant, overrides);
+					assertDisjointNodesAndForeignGroups(variant, layout);
+					expect(
+						(ranks.byEndpointId.get('t0') ?? 0) - (ranks.byEndpointId.get('sink') ?? 0),
+					).toBeGreaterThanOrEqual(8);
+					const parent = boundsFor(layout, 'parent');
+					if (configuration.direction === LayoutDirection.TopToBottom) {
+						const distant = boundsFor(layout, 't0');
+						expect(parent.y).toBeLessThan(distant.y + distant.height);
+						expect(distant.y).toBeLessThan(parent.y + parent.height);
+					}
+					expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
+					expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
+					const { layout: reordered } = await layoutDocument(
+						{
+							...variant,
+							groups: variant.groups.toReversed(),
+							nodes: variant.nodes.toReversed(),
+							relations: variant.relations.toReversed(),
+						},
+						overrides,
+					);
+					expect(reordered).toEqual(layout);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	},
+);
+
+it('keeps an unrelated six-rank chain aligned and its routes short after local separation', async () => {
+	const configuration = LAYOUT_CONFIGURATIONS[0];
+	const base = tallNestedInterleaving(configuration);
+	const chain = Array.from({ length: 6 }, (_, index) => `u${index}`);
+	const document: LogicDocument = {
+		...base,
+		nodes: [
+			...base.nodes,
+			...chain.map((id, index) => ({
+				kind: EndpointKind.Node as const,
+				id,
+				natureId: 'goal',
+				markdown: id,
+				layoutOrder: orderKey(`b2${index}`),
+			})),
+		],
+		relations: [
+			...base.relations,
+			...chain.slice(1).map((id, index) => {
+				const target = chain[index];
+				if (target === undefined) throw new Error('Chain predecessor must exist');
+				return { id: `chain-${index}`, from: id, to: target };
+			}),
+		],
+	};
+	const baseline = await layoutDocument(document, {
+		groups: {
+			parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding: 35 },
+			child: { minimumWidth: 220, minimumHeight: 100, headerHeight: 25, padding: 20 },
+			empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
+		},
+	});
+	const expanded = await layoutDocument(document, {
+		groups: {
+			parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding: 35 },
+			child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
+			empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
+		},
+	});
+	assertDisjointNodesAndForeignGroups(document, expanded.layout);
+	const xs = chain.map((id) => boundsFor(expanded.layout, id).x);
+	const baselineXs = chain.map((id) => boundsFor(baseline.layout, id).x);
+	expect(
+		Math.max(...xs) - Math.min(...xs) - (Math.max(...baselineXs) - Math.min(...baselineXs)),
+	).toBeLessThan(36);
+	const routeLength = (layout: typeof expanded.layout): number =>
+		layout.relations
+			.filter(({ id }) => id.startsWith('chain-'))
+			.flatMap(({ points }) =>
+				points.slice(1).map((point, index) => {
+					const previous = points[index];
+					if (previous === undefined) throw new Error('Every route segment has a predecessor');
+					return Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y);
+				}),
+			)
+			.reduce((sum, length) => sum + length, 0);
+	expect(routeLength(expanded.layout) - routeLength(baseline.layout)).toBeLessThan(100);
+	expect(expanded.layout.width - baseline.layout.width).toBeLessThan(10000);
 });
 
 it('reserves actual nested envelopes with varied minimum sizes, padding and header measurements', async () => {
