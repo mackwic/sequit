@@ -26,6 +26,9 @@ import {
 } from '../../lib/infrastructure/collaboration/sync-steps';
 import {
 	assertKnownTextDeletions,
+	assertTextStructParents,
+} from '../../lib/infrastructure/collaboration/text-parent-validation';
+import {
 	assertSyntacticTextProposal,
 	isLiveTextTarget,
 } from '../../lib/infrastructure/collaboration/text-update-validation';
@@ -241,7 +244,8 @@ export class CollaborationRoom extends DurableObject<Env> {
 			textTarget = message;
 			assertSyntacticTextProposal(message, decoded);
 			if (!isLiveTextTarget(this.roomState.doc, message)) {
-				assertKnownTextDeletions(this.roomState.doc, decoded.ds.clients);
+				assertTextStructParents(this.roomState.doc, message, decoded.structs);
+				assertKnownTextDeletions(this.roomState.doc, message, decoded.ds.clients);
 				refuseTextTarget(socket, message, this.refusalBudget);
 				return;
 			}

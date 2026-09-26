@@ -338,7 +338,7 @@ describe('room authority', () => {
 				textId,
 				update,
 			});
-			if (variant === 'unrelated-field' || variant === 'invented-incarnation') {
+			if (variant === 'invented-incarnation') {
 				expect(await alice.next(Message.Conflict)).toMatchObject({
 					code: 'text-target-gone',
 					id: 'forged-A',

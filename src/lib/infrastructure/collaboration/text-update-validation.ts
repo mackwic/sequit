@@ -24,11 +24,6 @@ interface DecodedTextProposal {
 	readonly ds: { readonly clients: ReadonlyMap<number, unknown> };
 }
 
-interface TextDeletionRange {
-	readonly clock: number;
-	readonly len: number;
-}
-
 function plainTextContent(item: Y.AbstractStruct): item is Y.Item {
 	if (!(item instanceof Y.Item)) return false;
 	if (item.content instanceof Y.ContentString) return true;
@@ -57,34 +52,6 @@ export function assertSyntacticTextProposal(
 			throw new Error('La proposition contient une modification structurelle.');
 		if (typeof struct.parent === 'string')
 			throw new Error('La proposition contient une modification structurelle.');
-	}
-}
-
-function assertKnownDeletionRange(
-	structs: readonly Y.AbstractStruct[],
-	range: TextDeletionRange,
-): void {
-	const end = range.clock + range.len;
-	for (const item of structs) {
-		if (item.id.clock >= end) break;
-		if (item.id.clock + item.length <= range.clock) continue;
-		if (item instanceof Y.GC) continue;
-		if (!plainTextContent(item))
-			throw new Error('La proposition supprime une structure du document.');
-		if (!(item.parent instanceof Y.Text))
-			throw new Error('La proposition supprime une structure du document.');
-	}
-}
-
-/** Reject delete-only changes to known structural items; compacted tombstones remain unknown. */
-export function assertKnownTextDeletions(
-	document: Y.Doc,
-	deletions: ReadonlyMap<number, readonly TextDeletionRange[]>,
-): void {
-	for (const [client, ranges] of deletions) {
-		const structs = document.store.clients.get(client);
-		if (structs === undefined) continue;
-		for (const range of ranges) assertKnownDeletionRange(structs, range);
 	}
 }
 

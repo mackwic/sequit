@@ -44,6 +44,18 @@ persiste le candidat compacté avant d'appliquer et de diffuser le commit. Il
 compacte également son document actif après application. L'undo du texte reste
 local au client et son `UndoManager` conserve les contenus dont il a besoin.
 
+Lorsqu'un client propose une ancienne édition de texte dont la cible a été
+supprimée, le serveur vérifie les parents encore résolubles dans son document
+actif, y compris les types supprimés mais non collectés. Un parent `Y.Array` ou
+un `Y.Text` étranger au type, à l'identifiant, au champ et à l'incarnation
+déclarés produit un refus terminal. Après collecte Yjs, certains types de
+parents ne sont plus résolubles (`GC` ou `ContentDeleted`, même si la map qui
+contenait le type reste connue) : le serveur ne peut alors vérifier que la forme
+de la proposition et refuse temporairement la cible, sans appliquer ni diffuser
+l'édition. Ces refus sont bornés à 6 par proposition, 24 par socket et 64 par
+room (recharge d'un jeton par seconde) ; ils ne sont pas persistés. Le client
+abandonne cette incarnation de texte et resynchronise le document.
+
 Cette collecte borne l'accumulation des contenus supprimés dans les scénarios
 testés. Elle ne garantit pas une taille constante pour une histoire infinie de
 clients, d'identifiants ou de mutations structurelles. La limite existante de

@@ -4,8 +4,11 @@ import * as Y from 'yjs';
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
-	applyTextUpdate,
 	assertKnownTextDeletions,
+	assertTextStructParents,
+} from '../../../../src/lib/infrastructure/collaboration/text-parent-validation';
+import {
+	applyTextUpdate,
 	assertSyntacticTextProposal,
 	isLiveTextTarget,
 } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
@@ -84,23 +87,17 @@ describe('server text boundary', () => {
 		const text = node(client).get('markdown');
 		if (!(text instanceof Y.Text) || text._item === null) throw new Error('Missing text');
 		const textId = text._item.id;
+		const reference = { target: { kind: Kind.Node, id: 'source-a' }, field: 'markdown', textId };
 		const state = Y.encodeStateVector(server);
 		text.delete(0, 1);
 		const update = Y.decodeUpdate(Y.encodeStateAsUpdate(client, state));
 		expect(update.structs).toHaveLength(0);
 		expect(update.ds.clients.size).toBeGreaterThan(0);
 		expect(() => {
-			assertSyntacticTextProposal(
-				{
-					target: { kind: Kind.Node, id: 'source-a' },
-					field: 'markdown',
-					textId,
-				},
-				update,
-			);
+			assertSyntacticTextProposal(reference, update);
 		}).not.toThrow();
 		expect(() => {
-			assertKnownTextDeletions(server, update.ds.clients);
+			assertKnownTextDeletions(server, reference, update.ds.clients);
 		}).not.toThrow();
 		const structural = new Y.Doc({ gc: false });
 		Y.applyUpdate(structural, Y.encodeStateAsUpdate(server));
@@ -108,7 +105,7 @@ describe('server text boundary', () => {
 		const deletion = Y.decodeUpdate(Y.encodeStateAsUpdate(structural, Y.encodeStateVector(server)));
 		expect(deletion.structs).toHaveLength(0);
 		expect(() => {
-			assertKnownTextDeletions(server, deletion.ds.clients);
+			assertKnownTextDeletions(server, reference, deletion.ds.clients);
 		}).toThrow();
 		const embedded = node(server).get('markdown');
 		if (!(embedded instanceof Y.Text)) throw new Error('Missing embedded text');
@@ -123,13 +120,13 @@ describe('server text boundary', () => {
 		);
 		expect(embedDeletion.structs).toHaveLength(0);
 		expect(() => {
-			assertKnownTextDeletions(server, embedDeletion.ds.clients);
+			assertKnownTextDeletions(server, reference, embedDeletion.ds.clients);
 		}).toThrow();
 		withEmbed.destroy();
 		executeSharedCommands(server, [{ op: Op.Delete, target: { kind: Kind.Node, id: 'source-a' } }]);
 		compactRoomDocument(server);
 		expect(() => {
-			assertKnownTextDeletions(server, update.ds.clients);
+			assertKnownTextDeletions(server, reference, update.ds.clients);
 		}).not.toThrow();
 		const unknown = new Y.Doc({ gc: false });
 		const remoteText = unknown.getText('unseen');
@@ -138,10 +135,420 @@ describe('server text boundary', () => {
 		const unseen = Y.decodeUpdate(Y.encodeStateAsUpdate(unknown)).ds.clients;
 		expect(unseen.size).toBeGreaterThan(0);
 		expect(() => {
-			assertKnownTextDeletions(server, unseen);
-		}).not.toThrow();
+			assertKnownTextDeletions(server, reference, unseen);
+		}).toThrow();
 		unknown.destroy();
 		structural.destroy();
+		client.destroy();
+		server.destroy();
+	});
+
+	it('terminates a deletion-only proposal against another known text field', () => {
+		const { server, client } = replicas();
+		const target = node(server).get('markdown');
+		const other = client.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b');
+		const otherText = other?.get('markdown');
+		if (!(target instanceof Y.Text) || target._item === null)
+			throw new Error('Missing target text');
+		if (!(otherText instanceof Y.Text)) throw new Error('Missing foreign text');
+		const reference = {
+			target: { kind: Kind.Node, id: 'source-a' },
+			field: 'markdown',
+			textId: target._item.id,
+		};
+		otherText.delete(0, 1);
+		const update = Y.decodeUpdate(Y.encodeStateAsUpdate(client, Y.encodeStateVector(server)));
+		expect(update.structs).toHaveLength(0);
+		expect(() => {
+			assertSyntacticTextProposal(reference, update);
+		}).not.toThrow();
+		expect(() => {
+			assertKnownTextDeletions(server, reference, update.ds.clients);
+		}).toThrow();
+		client.destroy();
+		server.destroy();
+	});
+
+	it.each(['string', 'deleted'] as const)(
+		'terminates forged %s content under a known Y.Array despite claiming an old text',
+		(kind) => {
+			const { server, client } = replicas();
+			const oldText = node(client).get('markdown');
+			if (!(oldText instanceof Y.Text) || oldText._item === null)
+				throw new Error('Missing old text');
+			const reference = {
+				target: { kind: Kind.Node as const, id: 'source-a' },
+				field: 'markdown',
+				textId: oldText._item.id,
+			};
+			executeSharedCommands(server, [{ op: Op.Delete, target: reference.target }]);
+			const other = server.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b');
+			if (other === undefined) throw new Error('Missing survivor');
+			const array = new Y.Array();
+			other.set('rogue', array);
+			if (array._item === null) throw new Error('Missing integrated array');
+			let content: Y.ContentString | Y.ContentDeleted = new Y.ContentString('bad');
+			if (kind === 'deleted') content = new Y.ContentDeleted(1);
+			const item = new Y.Item(
+				{ client: 999, clock: 0 },
+				null,
+				null,
+				null,
+				null,
+				array._item.id,
+				null,
+				content,
+			);
+			const decoded = { structs: [item], ds: { clients: new Map() } };
+			expect(() => {
+				assertSyntacticTextProposal(reference, decoded);
+			}).not.toThrow();
+			expect(() => {
+				assertTextStructParents(server, reference, decoded.structs);
+			}).toThrow();
+			other.delete('rogue');
+			expect(() => {
+				assertTextStructParents(server, reference, decoded.structs);
+			}).toThrow();
+			compactRoomDocument(server);
+			expect(() => {
+				assertTextStructParents(server, reference, decoded.structs);
+			}).not.toThrow();
+			client.destroy();
+			server.destroy();
+		},
+	);
+
+	it('checks the exact old text incarnation, field, element, and document when ancestry remains known', () => {
+		const { server, client } = replicas();
+		const text = node(server).get('markdown');
+		const other = server.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b');
+		const otherText = other?.get('markdown');
+		const title = server.getMap(YjsCollection.Meta).get('title');
+		if (!(text instanceof Y.Text) || text._item === null) throw new Error('Missing original text');
+		if (!(otherText instanceof Y.Text) || otherText._item === null)
+			throw new Error('Missing other text');
+		if (!(title instanceof Y.Text) || title._item === null)
+			throw new Error('Missing document title');
+		const reference = {
+			target: { kind: Kind.Node as const, id: 'source-a' },
+			field: 'markdown',
+			textId: text._item.id,
+		};
+		const proposed = new Y.Item(
+			{ client: 998, clock: 0 },
+			null,
+			null,
+			null,
+			null,
+			text._item.id,
+			null,
+			new Y.ContentString('old text'),
+		);
+		executeSharedCommands(server, [{ op: Op.Delete, target: reference.target }]);
+		expect(() => {
+			assertTextStructParents(server, reference, [proposed]);
+		}).not.toThrow();
+		for (const invalid of [
+			{ ...reference, textId: otherText._item.id },
+			{ ...reference, field: 'description' },
+			{ ...reference, target: { kind: Kind.Node, id: 'source-b' } },
+			{ ...reference, target: { kind: Kind.Group, id: 'source-a' } },
+			{ ...reference, target: { kind: Kind.Document, id: 'source-a' } },
+		]) {
+			expect(() => {
+				assertTextStructParents(server, invalid, [proposed]);
+			}).toThrow();
+		}
+		const documentId = server.getMap(YjsCollection.Meta).get('id');
+		if (typeof documentId !== 'string') throw new Error('Missing document ID');
+		const documentReference = {
+			target: { kind: Kind.Document, id: documentId },
+			field: 'title',
+			textId: title._item.id,
+		};
+		const titleProposal = new Y.Item(
+			{ client: 998, clock: 1 },
+			null,
+			null,
+			null,
+			null,
+			title._item.id,
+			null,
+			new Y.ContentString('title'),
+		);
+		expect(() => {
+			assertTextStructParents(server, documentReference, [titleProposal]);
+		}).not.toThrow();
+		expect(() => {
+			assertTextStructParents(
+				server,
+				{ ...documentReference, target: { kind: Kind.Document, id: 'wrong-document' } },
+				[titleProposal],
+			);
+		}).toThrow();
+		client.destroy();
+		server.destroy();
+	});
+
+	it('resolves causal origins across proposed items and rejects a second anchor into a known foreign container', () => {
+		const { server, client } = replicas();
+		const text = node(server).get('markdown');
+		const other = server.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b');
+		if (
+			!(text instanceof Y.Text) ||
+			text._item === null ||
+			text._start === null ||
+			other === undefined
+		)
+			throw new Error('Missing text characters or other node');
+		const array = new Y.Array();
+		other.set('rogue', array);
+		if (array._item === null) throw new Error('Missing integrated array');
+		const reference = {
+			target: { kind: Kind.Node, id: 'source-a' },
+			field: 'markdown',
+			textId: text._item.id,
+		};
+		const oldCharacterAnchor = new Y.Item(
+			{ client: 997, clock: 0 },
+			null,
+			text._start.id,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('causal old text'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [oldCharacterAnchor]);
+		}).not.toThrow();
+		const circularFirstId = { client: 996, clock: 0 };
+		const circularSecondId = { client: 996, clock: 1 };
+		const circularFirst = new Y.Item(
+			circularFirstId,
+			null,
+			circularSecondId,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('cycle'),
+		);
+		const circularSecond = new Y.Item(
+			circularSecondId,
+			null,
+			circularFirstId,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('cycle'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [circularFirst, circularSecond]);
+		}).toThrow();
+		const firstId = { client: 998, clock: 0 };
+		const first = new Y.Item(
+			firstId,
+			null,
+			null,
+			null,
+			null,
+			text._item.id,
+			null,
+			new Y.ContentString('a'),
+		);
+		const next = new Y.Item(
+			{ client: 998, clock: 1 },
+			null,
+			firstId,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('b'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [first, next]);
+		}).not.toThrow();
+		const earlierAnchor = new Y.Item(
+			{ client: 998, clock: 2 },
+			null,
+			firstId,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('still first'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [first, next, earlierAnchor]);
+		}).not.toThrow();
+		const omittedClock = new Y.Item(
+			{ client: 998, clock: 4 },
+			null,
+			{ client: 998, clock: 3 },
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('missing causal item'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [first, next, omittedClock]);
+		}).toThrow();
+		const erasedContent = new Y.Item(
+			{ client: 996, clock: 0 },
+			null,
+			null,
+			null,
+			null,
+			text._item.id,
+			null,
+			new Y.ContentDeleted(1),
+		);
+		const afterErasure = new Y.Item(
+			{ client: 996, clock: 1 },
+			null,
+			erasedContent.id,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('follows erased payload'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [erasedContent, afterErasure]);
+		}).not.toThrow();
+		const nestedUnderDeletion = new Y.Item(
+			{ client: 996, clock: 1 },
+			null,
+			null,
+			null,
+			null,
+			erasedContent.id,
+			null,
+			new Y.ContentString('deleted content is not a type'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [erasedContent, nestedUnderDeletion]);
+		}).toThrow();
+		const crossContainer = new Y.Item(
+			{ client: 998, clock: 1 },
+			null,
+			firstId,
+			null,
+			array._item.id,
+			null,
+			null,
+			new Y.ContentDeleted(1),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [first, crossContainer]);
+		}).toThrow();
+		const deletedAnchor = new Y.Item(
+			{ client: 998, clock: 1 },
+			null,
+			firstId,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentDeleted(1),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [first, deletedAnchor]);
+		}).not.toThrow();
+		const missingOrigin = new Y.Item(
+			{ client: 999, clock: 1 },
+			null,
+			null,
+			null,
+			{ client: 701, clock: 0 },
+			null,
+			null,
+			new Y.ContentString('unresolved origin'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [missingOrigin]);
+		}).toThrow();
+		server.store.clients.set(701, [new Y.GC({ client: 701, clock: 0 }, 1)]);
+		expect(() => {
+			assertTextStructParents(server, reference, [missingOrigin]);
+		}).not.toThrow();
+		const unanchored = new Y.Item(
+			{ client: 999, clock: 2 },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			new Y.ContentString('no GC evidence'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [unanchored]);
+		}).toThrow();
+		const missing = new Y.Item(
+			{ client: 999, clock: 0 },
+			null,
+			null,
+			null,
+			null,
+			{ client: 700, clock: 0 },
+			null,
+			new Y.ContentString('unknown parent'),
+		);
+		expect(() => {
+			assertTextStructParents(server, reference, [missing]);
+		}).toThrow();
+		server.store.clients.set(700, [new Y.GC({ client: 700, clock: 0 }, 1)]);
+		expect(() => {
+			assertTextStructParents(server, reference, [missing]);
+		}).not.toThrow();
+		client.destroy();
+		server.destroy();
+	});
+
+	it('terminates text claims attached to rooted metadata, embedded array text or a plain character', () => {
+		const { server, client } = replicas();
+		const title = server.getMap(YjsCollection.Meta).get('title');
+		const target = node(server).get('markdown');
+		const other = server.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b');
+		if (!(title instanceof Y.Text) || title._item === null)
+			throw new Error('Missing document title');
+		if (!(target instanceof Y.Text) || target._item === null || target._start === null)
+			throw new Error('Missing target text characters');
+		if (other === undefined) throw new Error('Missing other node');
+		const array = new Y.Array<Y.Text>();
+		other.set('embedded', array);
+		const nested = new Y.Text('embedded');
+		array.push([nested]);
+		if (nested._item === null) throw new Error('Missing nested text');
+		for (const [parent, field, textId] of [
+			[title._item.id, 'title', title._item.id],
+			[nested._item.id, 'markdown', nested._item.id],
+			[target._start.id, 'markdown', target._item.id],
+		] as const) {
+			const proposal = new Y.Item(
+				{ client: 999, clock: 0 },
+				null,
+				null,
+				null,
+				null,
+				parent,
+				null,
+				new Y.ContentString('bad container'),
+			);
+			expect(() => {
+				assertTextStructParents(
+					server,
+					{ target: { kind: Kind.Node, id: 'source-a' }, field, textId },
+					[proposal],
+				);
+			}).toThrow();
+		}
 		client.destroy();
 		server.destroy();
 	});
