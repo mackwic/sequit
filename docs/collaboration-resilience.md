@@ -98,16 +98,18 @@ commandes Markdown pures sont projetées depuis le document accepté sans clone
 Yjs, décodage du document ni recalcul du graphe lors du préflight. Les commandes
 structurelles et mixtes sont projetées immuablement, validées puis appliquées
 comme une seule transaction. Après une fusion distante invalide, une commande
-valide réconcilie le même `Y.Doc` depuis le checkpoint avant d'être acceptée ;
-les `Y.Text` existants sont conservés lorsque leur identité et leur type
-permettent de les réutiliser. Un échec de préflight conserve le checkpoint.
-Cette reprise n'est automatique que si aucune autre transaction n'a été reçue
-pendant l'invalidité : une seconde mise à jour, même indépendante et valide sur
-sa réplique d'origine, produit `recovery-conflict`. Il faut d'abord réparer
-l'état physique par une mise à jour externe valide ; le dépôt ne rétablit pas
-silencieusement le checkpoint au prix de cette édition concurrente. Une
-commande réentrante depuis un observateur est refusée, et non annoncée acceptée
-avant le contrôle final de sa transaction.
+ne réconcilie le même `Y.Doc` depuis le checkpoint que si les seules divergences
+à rétablir correspondent aux champs diagnostiqués invalides ; les `Y.Text`
+existants sont conservés lorsque leur identité et leur type le permettent.
+Une édition potentiellement valide, même contenue dans la **première** fusion
+invalide et même située sur la même entité qu'un champ invalide, entraîne
+`recovery-conflict` avec le nom des entités concernées : le dépôt ne peut pas
+l'écraser silencieusement. Une transaction supplémentaire pendant l'invalidité
+bloque aussi la reprise. Dans ces cas, il faut d'abord réparer l'état physique
+par une mise à jour externe valide. Un échec de préflight conserve le checkpoint.
+Toute commande lancée pendant une transaction Yjs locale ou distante, ses
+observateurs ou son nettoyage est refusée jusqu'à `afterAllTransactions`,
+plutôt qu'annoncée acceptée avant le contrôle de sa transaction.
 
 Une application locale qui expose directement son `Y.Doc` ne peut pas garantir
 qu'un observer arbitraire ne l'invalidera pas après le début d'une transaction
@@ -129,22 +131,18 @@ onze remplacements distincts. Le chronométrage porte sur chaque remplacement
 après l'attachement initial de la session ; l'initialisation, le worker et la
 latence réseau sont exclus. Machine : Apple M1 Max (`arm64`, macOS Darwin
 27.0.0) ; mise 2026.9.12, Node.js 24.20.0 et pnpm 12.3.4. Le fingerprint du
-protocole de mesure est
-`4ccfbc00c8aa258dbee7d703981c5df57a183566ec7bb65d81e6efb0298e8000`.
+protocole actuel est
+`edf736657f0db2f37759eb078c03f728109e8ab21a20bc97ce4359b105c67ffd`.
 La cible est une médiane locale d'environ 15 ms, non un seuil CI strict.
 
-Médianes observées : dépôt, 6,36 ms (baseline avant redesign : 186,46 ms) ;
-participant local prêt, 6,36 ms (baseline : 4,99 ms). Les mesures baseline
-et finales utilisent la même fixture et le même parcours de remplacement.
-L'instrumentation des compteurs de clones, `readLogicDocument` et `createGraph`
-n'est pas activée ; aucune valeur estimée n'est présentée comme un comptage.
-
-Échantillons finaux en millisecondes :
-
-```text
-dépôt:     [7.870, 7.835, 7.366, 5.777, 6.572, 5.610, 6.568, 5.477, 6.357, 5.527, 5.297]
-participant: [7.291, 7.330, 8.267, 5.957, 6.372, 6.138, 6.310, 6.999, 5.740, 6.363, 5.978]
-```
+Mesures **locales ciblées**, non rapports officiels comparables : médianes
+dépôt 6,01 ms et participant prêt 5,72 ms sur la branche ; mesures historiques
+avant redesign 186,46 ms et 4,99 ms respectivement, sous un protocole antérieur.
+Aucun gain chiffré avant/après ne peut en être déduit. La comparaison attend deux
+rapports `performance:record` complets, baseline et branche, avec la même
+empreinte de protocole et sans validation concurrente. L'instrumentation des
+compteurs de clones, `readLogicDocument` et `createGraph` n'est pas activée ;
+aucune valeur estimée n'est présentée comme un comptage.
 
 Le test écrit aussi ces échantillons en JSON lorsque
 `SEQUIT_PERFORMANCE_MEASUREMENTS` indique un chemin de sortie.
