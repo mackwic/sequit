@@ -52,8 +52,8 @@ class YjsSessionGateway implements DocumentCommandGateway {
 				publicationMode: DocumentCommandPublicationMode.ObserverOwned,
 			},
 		);
-		this.#stopRepository = this.#repository.observe((result, origin) => {
-			this.#revision += 1;
+		this.#stopRepository = this.#repository.observe((result, origin, revision) => {
+			this.#revision = revision;
 			this.#sourceState = readSourceDocumentState(document, this.#revision);
 			for (const observer of [...this.#sourceObservers]) {
 				try {
@@ -63,8 +63,6 @@ class YjsSessionGateway implements DocumentCommandGateway {
 				}
 			}
 			if (!result.ok && origin === this.#localCommandOrigin) return;
-			// FIXME: An invalid remote merge remains in the physical Y.Doc. Although #current
-			// stays valid, subsequent commands still persist against the invalid CRDT state.
 			let outcome: DocumentCommandOutcome;
 			if (result.ok) {
 				this.#current = result.value;

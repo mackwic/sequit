@@ -267,6 +267,12 @@ export function importLogicDocument(
 	}, origin);
 }
 
+export function validateLogicDocumentGraph(
+	document: LogicDocument,
+): ReturnType<typeof createGraph> {
+	return createGraph(document);
+}
+
 export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocument> {
 	const document = readStructuralLogicDocument(ydoc);
 	if (!document.ok) return document;

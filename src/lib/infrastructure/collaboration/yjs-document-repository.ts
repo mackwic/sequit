@@ -1,26 +1,28 @@
 import * as Y from 'yjs';
 
-import { contentStyleFields, defined } from '../../core/document/logic-document';
-import { EndpointKind, type LogicDocument } from '../../core/document/logic-document';
+import { defined, type LogicDocument } from '../../core/document/logic-document';
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
-import {
-	type DocumentChangeResult,
-	type DocumentCommandDiagnostic,
-	DocumentCommandDiagnosticCode,
-} from '../document/document-command-contracts';
+import type { DocumentChangeResult } from '../document/document-command-contracts';
+import { reconcileYjsDocument } from './reconcile-yjs-document';
 import { spliceSharedText } from './shared-text';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
-import { createYjsEntityMap, YjsCollection } from './yjs-document-schema';
+import {
+	applyYjsDocumentChanges,
+	type MarkdownTarget,
+	markdownTarget,
+	validateYjsAdditionConflicts,
+	YjsDocumentRepositoryRejection,
+} from './yjs-document-mutations';
+import { isMarkdownOnly, projectYjsDocumentChange } from './yjs-document-projection';
+import { YjsCollection } from './yjs-document-schema';
 
 export type YjsDocumentRepositoryObserver = (
 	result: YjsLiveDocumentResult<LogicDocument>,
 	origin: unknown,
+	revision: number,
 ) => void;
 
-const GROUPS = YjsCollection.Groups;
-const JUNCTIONS = YjsCollection.Junctions;
 const NODES = YjsCollection.Nodes;
-const RELATIONS = YjsCollection.Relations;
 const REPLACE_MARKDOWN_ORIGIN = Symbol('sequit replace node markdown');
 
 export function replaceNodeMarkdown(
@@ -37,127 +39,72 @@ export function replaceNodeMarkdown(
 	return true;
 }
 
-const COLLECTION_BY_ENDPOINT_KIND: Readonly<Record<EndpointKind, YjsCollection>> = {
-	[EndpointKind.Group]: GROUPS,
-	[EndpointKind.Node]: NODES,
-	[EndpointKind.Junction]: JUNCTIONS,
-};
-
 interface PersistenceCapture {
-	result: YjsLiveDocumentResult<LogicDocument> | undefined;
+	result: DocumentChangeResult | undefined;
+	projected: LogicDocument | undefined;
+	markdownOnly: boolean;
+	targets: readonly MarkdownTarget[];
+	recovery: boolean;
 }
 
-class YjsDocumentRepositoryRejection extends Error {
-	constructor(readonly diagnostics: readonly DocumentCommandDiagnostic[]) {
-		super(diagnostics.map(({ message }) => message).join('; '));
-		this.name = 'YjsDocumentRepositoryRejection';
-	}
+interface MarkdownTargetCapture {
+	readonly targets: readonly MarkdownTarget[];
 }
 
-function markdownTarget(document: Y.Doc, nodeId: string): Y.Text {
-	const node = document.getMap<Y.Map<unknown>>(NODES).get(nodeId);
-	if (node === undefined) {
-		throw new YjsDocumentRepositoryRejection([
-			{
-				code: DocumentCommandDiagnosticCode.NodeNotFound,
-				message: `Node no longer exists: ${nodeId}`,
-				path: ['nodes', nodeId],
-			},
-		]);
-	}
-	let markdown: unknown;
-	if (node instanceof Y.Map) markdown = node.get('markdown');
-	if (!(markdown instanceof Y.Text)) {
-		throw new YjsDocumentRepositoryRejection([
-			{
-				code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
-				message: `Node Markdown is unavailable: ${nodeId}`,
-				path: ['nodes', nodeId, 'markdown'],
-			},
-		]);
-	}
-	return markdown;
+interface MarkdownTargetFailure {
+	readonly failure: DocumentChangeResult;
 }
 
-type GroupAdditions = NonNullable<DocumentChangeSet['groupAdditions']>;
-type NodeAdditions = DocumentChangeSet['nodeAdditions'];
-type GroupReplacements = NonNullable<DocumentChangeSet['groupReplacements']>;
-type EndpointGroupChanges = NonNullable<DocumentChangeSet['endpointGroupChanges']>;
-
-function validateGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {
-	for (const group of additions) {
-		if (groups.has(group.id))
-			throw new Error(`Group addition conflicts with existing id: ${group.id}`);
-	}
+interface PersistencePlan {
+	readonly changes: DocumentChangeSet;
+	readonly projection: LogicDocument;
+	readonly targets: readonly MarkdownTarget[];
+	readonly checkpoint: Y.Doc | undefined;
+	readonly recovering: boolean;
+	readonly origin: unknown;
 }
 
-function applyGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {
-	for (const group of additions) {
-		const values: Record<string, unknown> = {
-			label: new Y.Text(group.label),
-			...contentStyleFields(group.color, undefined),
-			layoutOrder: group.layoutOrder,
-		};
-		if (group.groupId !== undefined) values['groupId'] = group.groupId;
-		if (group.laneId !== undefined) values['laneId'] = group.laneId;
-		if (group.regionId !== undefined) values['regionId'] = group.regionId;
-		groups.set(group.id, createYjsEntityMap(values));
-	}
-}
-
-function applyNodeAdditions(nodes: Y.Map<Y.Map<unknown>>, additions: NodeAdditions): void {
-	for (const node of additions) {
-		const values: Record<string, unknown> = {
-			natureId: node.natureId,
-			...contentStyleFields(node.color, node.icon),
-			layoutOrder: node.layoutOrder,
-			markdown: new Y.Text(node.markdown),
-		};
-		if (node.groupId !== undefined) values['groupId'] = node.groupId;
-		if (node.laneId !== undefined) values['laneId'] = node.laneId;
-		if (node.regionId !== undefined) values['regionId'] = node.regionId;
-		nodes.set(node.id, createYjsEntityMap(values));
-	}
-}
-
-function applyGroupReplacements(
-	groups: Y.Map<Y.Map<unknown>>,
-	replacements: GroupReplacements,
-): void {
-	for (const group of replacements) {
-		const entity = defined(groups.get(group.id), `Group no longer exists: ${group.id}`);
-		const label = entity.get('label');
-		if (!(label instanceof Y.Text)) throw new Error(`Group label is unavailable: ${group.id}`);
-		spliceSharedText(label, group.label);
-		if (group.color === undefined) entity.delete('color');
-		else entity.set('color', group.color);
-	}
-}
-
-function applyEndpointGroupChanges(document: Y.Doc, changes: EndpointGroupChanges): void {
-	for (const change of changes) {
-		const endpoint = defined(
-			document
-				.getMap<Y.Map<unknown>>(COLLECTION_BY_ENDPOINT_KIND[change.endpointKind])
-				.get(change.endpointId),
-		);
-		endpoint.set('groupId', change.groupId);
-	}
+interface GuardedPersistencePlan extends PersistencePlan {
+	readonly validationRevision: number;
 }
 
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
+	readonly #validTransactions = new WeakSet<Y.Transaction>();
+	readonly #checkpointedTransactions = new WeakSet<Y.Transaction>();
 	#persistenceCapture: PersistenceCapture | undefined;
-	#lastValidDocument: Y.Doc | undefined;
+	#lastValidDocument: LogicDocument | undefined;
+	#lastPhysicalResult: YjsLiveDocumentResult<LogicDocument>;
+	#checkpointDocument: Y.Doc | undefined;
 	#canRecoverFromLastValid = false;
+	#physicalValid = false;
+	#revision = 0;
+	#acceptedRevision = 0;
 
 	constructor(readonly document: Y.Doc) {
 		document.on('afterTransaction', this.#afterTransaction);
-		if (readLogicDocument(document).ok) this.#lastValidDocument = this.#clone(document);
+		document.on('update', this.#afterUpdate);
+		const initial = readLogicDocument(document);
+		this.#lastPhysicalResult = initial;
+		if (initial.ok) {
+			this.#lastValidDocument = initial.value;
+			this.#checkpointDocument = this.#clone(document);
+			this.#physicalValid = true;
+		}
 	}
 
 	read(): YjsLiveDocumentResult<LogicDocument> {
 		return readLogicDocument(this.document);
+	}
+
+	readAccepted(): YjsLiveDocumentResult<LogicDocument> {
+		const accepted = this.#lastValidDocument;
+		if (accepted !== undefined) return { ok: true, value: accepted };
+		return this.#lastPhysicalResult;
+	}
+
+	get acceptedRevision(): number {
+		return this.#acceptedRevision;
 	}
 
 	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult> {
@@ -165,90 +112,154 @@ export class YjsDocumentRepository {
 	}
 
 	#persist(changes: DocumentChangeSet, origin?: unknown): DocumentChangeResult {
-		const invalidDocument = !this.read().ok;
-		const lastValidDocument = this.#lastValidDocument;
-		const recoveryAvailable = this.#canRecoverFromLastValid && lastValidDocument !== undefined;
-		if (invalidDocument && recoveryAvailable) {
-			const recovery = new YjsDocumentRepository(lastValidDocument);
-			try {
-				const result = recovery.#persist(changes, origin);
-				if (result.ok) this.#lastValidDocument = this.#clone(recovery.document);
-				return result;
-			} finally {
-				recovery.destroy();
-			}
+		const checkpoint = this.#checkpointDocument;
+		const allowedRecovery = !this.#physicalValid && this.#canRecoverFromLastValid;
+		const recovering = allowedRecovery && checkpoint !== undefined;
+		const accepted = this.#lastValidDocument;
+		if (accepted === undefined) return this.#lastPhysicalResult;
+		if (!this.#physicalValid && !recovering) return this.#invalidPhysicalFailure(changes);
+		let targetSource = this.document;
+		if (recovering) targetSource = defined(checkpoint);
+		const targetCapture = this.#captureMarkdownTargets(changes, targetSource);
+		if ('failure' in targetCapture) return targetCapture.failure;
+		let targets: readonly MarkdownTarget[] = [];
+		if (!recovering) targets = targetCapture.targets;
+		const projection = projectYjsDocumentChange(accepted, changes);
+		if (!projection.ok) return projection;
+		return this.#commitProjection({
+			changes,
+			projection: projection.value,
+			targets,
+			checkpoint,
+			recovering,
+			origin,
+		});
+	}
+
+	#invalidPhysicalFailure(changes: DocumentChangeSet): DocumentChangeResult {
+		try {
+			for (const { nodeId } of changes.nodeMarkdownReplacements)
+				markdownTarget(this.document, nodeId);
+		} catch (error) {
+			if (error instanceof YjsDocumentRepositoryRejection)
+				return { ok: false, diagnostics: error.diagnostics };
+			throw error;
 		}
-		// TODO: Avoid cloning and fully decoding the Y.Doc twice per accepted command while
-		// preserving the guarded validation against synchronous transaction hooks.
-		const preflight = this.#validate(changes);
-		if (!preflight.ok) return preflight;
-		const capture: PersistenceCapture = { result: undefined };
-		let guardedValidation: DocumentChangeResult | undefined;
-		const stateBefore = Y.decodeStateVector(Y.encodeStateVector(this.document));
-		const undo = new Y.UndoManager(
-			Object.values(YjsCollection).map((collection) => this.document.getMap(collection)),
-			{ trackedOrigins: new Set([origin ?? null]) },
-		);
+		return this.#lastPhysicalResult;
+	}
+
+	#captureMarkdownTargets(
+		changes: DocumentChangeSet,
+		document: Y.Doc,
+	): MarkdownTargetCapture | MarkdownTargetFailure {
+		try {
+			const targets = changes.nodeMarkdownReplacements.map(({ nodeId }) =>
+				markdownTarget(document, nodeId),
+			);
+			return { targets };
+		} catch (error) {
+			if (error instanceof YjsDocumentRepositoryRejection)
+				return { failure: { ok: false, diagnostics: error.diagnostics } };
+			throw error;
+		}
+	}
+
+	#commitProjection(plan: PersistencePlan): DocumentChangeResult {
+		const guardedPlan: GuardedPersistencePlan = {
+			...plan,
+			validationRevision: this.#revision,
+		};
+		const capture: PersistenceCapture = {
+			result: undefined,
+			projected: undefined,
+			markdownOnly: isMarkdownOnly(plan.changes),
+			targets: plan.targets,
+			recovery: plan.recovering,
+		};
+		let transactionChangedBeforeCommand = false;
+		const inspectBeforeTransaction = (transaction: Y.Transaction) => {
+			transactionChangedBeforeCommand = transaction.changed.size > 0;
+		};
+		this.document.on('beforeTransaction', inspectBeforeTransaction);
 		this.#persistenceCapture = capture;
 		try {
 			this.document.transact(() => {
-				guardedValidation = this.#validate(changes);
-				if (!guardedValidation.ok) return;
-				this.#apply(changes);
-			}, origin);
-			if (guardedValidation !== undefined && !guardedValidation.ok) return guardedValidation;
-			const result = defined(capture.result);
-			if (!result.ok) {
-				undo.undo();
-				this.#discardRolledBackStructs(stateBefore);
-				return result;
-			}
-			return result;
+				this.#applyProjection(capture, guardedPlan, transactionChangedBeforeCommand);
+			}, plan.origin);
+			const commandResult = defined(capture.result);
+			if (!commandResult.ok) return commandResult;
+			const physicalResult = this.#lastPhysicalResult;
+			if (!physicalResult.ok) return physicalResult;
+			return { ok: true, value: defined(this.#lastValidDocument) };
 		} finally {
-			undo.destroy();
+			this.document.off('beforeTransaction', inspectBeforeTransaction);
 			this.#persistenceCapture = undefined;
 		}
 	}
 
-	#clone(source: Y.Doc): Y.Doc {
-		const clone = new Y.Doc();
-		Y.applyUpdate(clone, Y.encodeStateAsUpdate(source));
-		return clone;
-	}
-
-	#discardRolledBackStructs(stateBefore: Map<number, number>): void {
-		// Undo restores the shared types, but its tombstones would still advance this
-		// replica's state vector. No update escaped a rejected synchronous command, so
-		// discard precisely those unobservable local structs as part of the rollback.
-		const store = this.document.store;
-		for (const [client, structs] of store.clients) {
-			const clock = stateBefore.get(client) ?? 0;
-			const firstRolledBack = structs.findIndex(
-				(struct) => struct.id.clock + struct.length > clock,
-			);
-			if (firstRolledBack >= 0) structs.splice(firstRolledBack);
-			if (structs.length === 0) store.clients.delete(client);
+	#applyProjection(
+		capture: PersistenceCapture,
+		plan: GuardedPersistencePlan,
+		transactionChangedBeforeCommand: boolean,
+	): void {
+		if (!plan.recovering) {
+			const targetFailure = this.#targetFailure(plan.targets);
+			if (targetFailure !== undefined) {
+				capture.result = targetFailure;
+				return;
+			}
+		}
+		if (!plan.recovering && transactionChangedBeforeCommand)
+			validateYjsAdditionConflicts(this.document, plan.changes);
+		const revisionChanged = this.#revision !== plan.validationRevision;
+		if (revisionChanged || transactionChangedBeforeCommand) {
+			capture.result = this.#staleTargetFailure();
+			return;
+		}
+		capture.result = { ok: true, value: plan.projection };
+		if (plan.recovering) reconcileYjsDocument(this.document, defined(plan.checkpoint));
+		else capture.projected = plan.projection;
+		try {
+			applyYjsDocumentChanges(this.document, plan.changes);
+		} catch (error) {
+			capture.projected = undefined;
+			throw error;
 		}
 	}
 
-	#validate(changes: DocumentChangeSet): DocumentChangeResult {
-		const candidate = new Y.Doc();
-		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.document));
-		const candidateRepository = new YjsDocumentRepository(candidate);
-		try {
+	#targetFailure(targets: readonly MarkdownTarget[]): DocumentChangeResult | undefined {
+		for (const target of targets) {
+			let current: MarkdownTarget;
 			try {
-				candidateRepository.#apply(changes);
+				current = markdownTarget(this.document, target.nodeId);
 			} catch (error) {
-				if (error instanceof YjsDocumentRepositoryRejection) {
+				if (error instanceof YjsDocumentRepositoryRejection)
 					return { ok: false, diagnostics: error.diagnostics };
-				}
 				throw error;
 			}
-			return candidateRepository.read();
-		} finally {
-			candidateRepository.destroy();
-			candidate.destroy();
+			if (current.node !== target.node || current.text !== target.text)
+				return this.#staleTargetFailure();
 		}
+		return undefined;
+	}
+
+	#staleTargetFailure(): DocumentChangeResult {
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					code: 'document-changed-during-command',
+					message: 'The document changed before the command could be applied',
+					path: [],
+				},
+			],
+		};
+	}
+
+	#clone(source: Y.Doc): Y.Doc {
+		const clone = new Y.Doc({ gc: false });
+		Y.applyUpdate(clone, Y.encodeStateAsUpdate(source));
+		return clone;
 	}
 
 	observe(observer: YjsDocumentRepositoryObserver): () => void {
@@ -258,77 +269,85 @@ export class YjsDocumentRepository {
 
 	destroy(): void {
 		this.document.off('afterTransaction', this.#afterTransaction);
+		this.document.off('update', this.#afterUpdate);
 		this.#observers.clear();
-		this.#lastValidDocument?.destroy();
+		this.#checkpointDocument?.destroy();
 		this.#lastValidDocument = undefined;
 	}
 
-	#apply(changes: DocumentChangeSet): void {
-		const groups = this.document.getMap<Y.Map<unknown>>(GROUPS);
+	readonly #afterUpdate = (
+		update: Uint8Array,
+		_origin: unknown,
+		_document: Y.Doc,
+		transaction: Y.Transaction,
+	): void => {
+		if (!this.#validTransactions.has(transaction)) return;
+		const checkpoint = this.#checkpointDocument;
+		if (checkpoint !== undefined && !this.#checkpointedTransactions.has(transaction))
+			Y.applyUpdate(checkpoint, update);
+	};
+
+	#matchesMarkdownTransaction(
+		transaction: Y.Transaction,
+		capture: PersistenceCapture,
+		expected: LogicDocument,
+	): boolean {
+		const targets = new Map(
+			capture.targets.map(({ nodeId, node, text }) => [text, { nodeId, node }]),
+		);
+		const targetTypes = new Set<unknown>(targets.keys());
+		for (const changed of transaction.changed.keys()) if (!targetTypes.has(changed)) return false;
 		const nodes = this.document.getMap<Y.Map<unknown>>(NODES);
-		const relations = this.document.getMap<Y.Map<unknown>>(RELATIONS);
-		for (const node of changes.nodeAdditions) {
-			if (nodes.has(node.id))
-				throw new Error(`Node addition conflicts with existing id: ${node.id}`);
+		for (const [text, { nodeId, node }] of targets) {
+			if (nodes.get(nodeId) !== node || node.get('markdown') !== text) return false;
+			if (text.toJSON() !== expected.nodes.find(({ id }) => id === nodeId)?.markdown) return false;
 		}
-		for (const relation of changes.relationAdditions) {
-			if (relations.has(relation.id)) {
-				throw new Error(`Relation addition conflicts with existing id: ${relation.id}`);
-			}
-		}
-		validateGroupAdditions(groups, changes.groupAdditions ?? []);
-		for (const group of changes.groupReplacements ?? [])
-			defined(groups.get(group.id), `Group no longer exists: ${group.id}`);
-		const orderChanges = changes.endpointOrderChanges.map((change) => {
-			const endpoint = this.document
-				.getMap<Y.Map<unknown>>(COLLECTION_BY_ENDPOINT_KIND[change.endpointKind])
-				.get(change.endpointId);
-			return { endpoint: defined(endpoint), order: change.layoutOrder };
-		});
-		const markdownReplacements = changes.nodeMarkdownReplacements.map((replacement) => ({
-			...replacement,
-			text: markdownTarget(this.document, replacement.nodeId),
-		}));
-		applyNodeAdditions(nodes, changes.nodeAdditions);
-		applyGroupAdditions(groups, changes.groupAdditions ?? []);
-		applyGroupReplacements(groups, changes.groupReplacements ?? []);
-		for (const relation of changes.relationAdditions) {
-			relations.set(relation.id, createYjsEntityMap({ from: relation.from, to: relation.to }));
-		}
-		for (const removal of changes.endpointRemovals ?? []) {
-			this.document
-				.getMap(COLLECTION_BY_ENDPOINT_KIND[removal.endpointKind])
-				.delete(removal.endpointId);
-		}
-		for (const id of changes.relationRemovals ?? []) relations.delete(id);
-		for (const { endpoint, order } of orderChanges) endpoint.set('layoutOrder', order);
-		applyEndpointGroupChanges(this.document, changes.endpointGroupChanges ?? []);
-		for (const { text, markdown } of markdownReplacements) {
-			spliceSharedText(text, markdown);
+		return true;
+	}
+
+	#recordPhysicalResult(
+		result: YjsLiveDocumentResult<LogicDocument>,
+		transaction: Y.Transaction,
+		revision: number,
+	): void {
+		this.#lastPhysicalResult = result;
+		if (result.ok) {
+			const wasInvalid = !this.#physicalValid;
+			this.#lastValidDocument = result.value;
+			this.#acceptedRevision = revision;
+			this.#physicalValid = true;
+			this.#canRecoverFromLastValid = false;
+			if (wasInvalid) {
+				this.#checkpointDocument?.destroy();
+				this.#checkpointDocument = this.#clone(this.document);
+				this.#checkpointedTransactions.add(transaction);
+			} else this.#validTransactions.add(transaction);
+		} else {
+			this.#physicalValid = false;
+			const external = !transaction.local;
+			this.#canRecoverFromLastValid = external && this.#persistenceCapture === undefined;
 		}
 	}
 
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {
-		const result = this.read();
-		if (result.ok && this.#persistenceCapture === undefined) {
-			this.#canRecoverFromLastValid = false;
-			this.#lastValidDocument?.destroy();
-			this.#lastValidDocument = this.#clone(this.document);
-		} else if (!result.ok) {
-			// Recovery is only valid after observing a rejected remote merge. A document
-			// invalidated locally is an invalid command base and must not be bypassed.
-			const remoteTransaction = !transaction.local;
-			this.#canRecoverFromLastValid = remoteTransaction && this.#persistenceCapture === undefined;
-		}
-		if (this.#persistenceCapture !== undefined && this.#persistenceCapture.result === undefined) {
-			this.#persistenceCapture.result = result;
-		}
+		const revision = ++this.#revision;
+		const capture = this.#persistenceCapture;
+		const projection = capture?.projected;
+		if (capture !== undefined) capture.projected = undefined;
+		let result: YjsLiveDocumentResult<LogicDocument>;
+		const validFastPath = projection !== undefined && capture?.markdownOnly === true;
+		const matches =
+			validFastPath && this.#matchesMarkdownTransaction(transaction, capture, projection);
+		if (!matches || capture.recovery) result = this.read();
+		else result = { ok: true, value: projection };
+		this.#recordPhysicalResult(result, transaction, revision);
+		const applied = projection !== undefined || capture?.recovery === true;
+		if (capture !== undefined && applied) capture.result = result;
 		for (const observer of [...this.#observers]) {
 			try {
-				observer(result, transaction.origin);
+				observer(result, transaction.origin, revision);
 			} catch {
 				// Repository observers cannot interrupt Yjs transaction delivery.
-				// TODO: Report observer failures through an isolated diagnostics channel.
 			}
 		}
 	};
