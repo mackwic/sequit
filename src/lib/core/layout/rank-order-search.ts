@@ -31,7 +31,7 @@ export enum RankSearchStop {
 	ShapeEnvelope = 'shape-envelope',
 	NoBand = 'no-band',
 	NoRelevantCrossing = 'no-relevant-crossing',
-	BaselineRejected = 'baseline-rejected',
+	BaselineFallback = 'baseline-fallback',
 	Complete = 'complete',
 	OptimalBound = 'optimal-bound',
 	EvaluationBudget = 'evaluation-budget',
@@ -59,6 +59,8 @@ export interface RankOrderSearchWitness {
 		readonly reason: RankSearchRejection;
 	}[];
 	readonly unverified: number;
+	/** Whole weak components whose documentary order was retained by the work bound. */
+	readonly skippedComponents?: number;
 	readonly prunedByLowerBound: number;
 	readonly work: {
 		readonly completePipelines: number;
@@ -74,7 +76,6 @@ export interface ValidRankOrderCandidate {
 	readonly evaluation: DedicatedLayoutEvaluation;
 	readonly routeScore: DedicatedRouteScore;
 	readonly kendall: number;
-	readonly documentary: boolean;
 }
 
 export interface RankOrderSearchInput {
@@ -200,7 +201,6 @@ class RankOrderSearch {
 			evaluation,
 			routeScore: outcome.score,
 			kendall: rankOrderKendallDistance(order, this.input.domain.bands),
-			documentary,
 		};
 		if (this.selected === undefined || compareCandidates(candidate, this.selected) < 0)
 			this.selected = candidate;
@@ -271,7 +271,8 @@ class RankOrderSearch {
 		let changed = true;
 		while (changed) {
 			changed = false;
-			const best = defined(this.selected);
+			const best = this.selected;
+			if (best === undefined) return;
 			for (const order of adjacentOrders(best.order)) {
 				if (!this.propose(order)) return;
 				if (this.selected !== best) changed = true;
@@ -283,18 +284,9 @@ class RankOrderSearch {
 /** Scores only complete, independently validated LayoutResults; the baseline is never rerun. */
 export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrderSearchResult {
 	const search = new RankOrderSearch(input);
-	if (input.domain.bands.length === 0) {
-		search.unverified = 1;
-		return search.result();
-	}
 	search.verify(input.domain.bands, input.baseline, true);
-	const baseline = search.selected;
-	if (baseline === undefined) {
-		search.stop = RankSearchStop.BaselineRejected;
-		search.exhaustive = false;
-		return search.result();
-	}
-	if (zeroRoutes(baseline) && baseline.kendall === 0) {
+	const documentary = search.selected;
+	if (documentary !== undefined && zeroRoutes(documentary)) {
 		search.stop = RankSearchStop.OptimalBound;
 		search.exhaustive = true;
 		return search.result();
@@ -303,5 +295,6 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 	if (boundedRankOrderEnumerationSize(input.domain, input.limits.completePipelines) !== undefined)
 		search.runExact();
 	else search.runHeuristic();
+	if (search.selected === undefined) search.stop = RankSearchStop.BaselineFallback;
 	return search.result();
 }

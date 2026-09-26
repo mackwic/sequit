@@ -22,21 +22,63 @@ function estimatedRouteWork(
 	structure: LayoutStructure,
 	domain: RankOrderDomain,
 ): number {
-	const totalRelations = graph.relations.length;
-	if (domain.bands.length === 0) return totalRelations * totalRelations;
-	const selected = new Set(
-		domain.locations.flatMap(
-			({ componentIndex }) => defined(structure.components[componentIndex]).ids,
-		),
-	);
-	let relevantRelations = 0;
-	for (const { relation } of graph.relations)
-		if (selected.has(relation.from) || selected.has(relation.to)) relevantRelations += 1;
+	const byEndpoint = new Map<string, number>();
+	for (const componentIndex of new Set(
+		domain.locations.map(({ componentIndex }) => componentIndex),
+	))
+		for (const id of defined(structure.components[componentIndex]).ids)
+			byEndpoint.set(id, componentIndex);
+	const counts = new Map<number, number>();
+	for (const { relation } of graph.relations) {
+		const componentIndex = byEndpoint.get(relation.from);
+		if (componentIndex !== undefined)
+			counts.set(componentIndex, (counts.get(componentIndex) ?? 0) + 1);
+	}
+	let pairwiseWork = 0;
+	for (const count of counts.values()) pairwiseWork += count * count;
 	const product =
 		boundedRankOrderEnumerationSize(domain, MAX_COMPLETE_PIPELINES) ?? MAX_COMPLETE_PIPELINES;
-	// Each candidate routes every edge; only edges in permutable components influence alternatives.
-	// The total edge count still bounds global port planning and route-contact validation.
-	return product * totalRelations * (1 + relevantRelations);
+	// One full-document pipeline per candidate, but changing one weak component never
+	// introduces route comparisons between two unrelated weak components.
+	return product * (graph.relations.length + pairwiseWork);
+}
+
+/** Keep affordable components' exchange bands; an expensive component stays documentary. */
+function affordableDomain(
+	graph: LogicGraph,
+	structure: LayoutStructure,
+	domain: RankOrderDomain,
+): { readonly domain: RankOrderDomain; readonly skippedComponents: number } {
+	const groups = new Map<number, number[]>();
+	for (const [index, location] of domain.locations.entries()) {
+		let indices = groups.get(location.componentIndex);
+		if (indices === undefined) {
+			indices = [];
+			groups.set(location.componentIndex, indices);
+		}
+		indices.push(index);
+	}
+	const selected: number[] = [];
+	let skippedComponents = 0;
+	for (const indices of groups.values()) {
+		const proposed = [...selected, ...indices];
+		const candidate: RankOrderDomain = {
+			bands: proposed.map((index) => defined(domain.bands[index])),
+			locations: proposed.map((index) => defined(domain.locations[index])),
+		};
+		if (estimatedRouteWork(graph, structure, candidate) > MAX_ESTIMATED_ROUTE_WORK) {
+			skippedComponents += 1;
+			continue;
+		}
+		selected.push(...indices);
+	}
+	return {
+		domain: {
+			bands: selected.map((index) => defined(domain.bands[index])),
+			locations: selected.map((index) => defined(domain.locations[index])),
+		},
+		skippedComponents,
+	};
 }
 
 export function selectDedicatedRankLayout(
@@ -51,19 +93,30 @@ export function selectDedicatedRankLayout(
 ): { readonly layout: LayoutResult; readonly witness: RankOrderSearchWitness } {
 	const { options, evaluate } = services;
 	const structure = prepareLayout(graph, ranks);
-	const domain = collectRankOrderDomain(structure);
-	if (estimatedRouteWork(graph, structure, domain) > MAX_ESTIMATED_ROUTE_WORK) {
+	const completeDomain = collectRankOrderDomain(structure);
+	const noBand = completeDomain.bands.length === 0;
+	let domain = completeDomain;
+	let skippedComponents = 0;
+	if (!noBand && estimatedRouteWork(graph, structure, completeDomain) > MAX_ESTIMATED_ROUTE_WORK) {
+		const affordable = affordableDomain(graph, structure, completeDomain);
+		domain = affordable.domain;
+		skippedComponents = affordable.skippedComponents;
+	}
+	if (domain.bands.length === 0) {
 		const layout = evaluate(structure, measurements, options);
+		let stop = RankSearchStop.NoBand;
+		if (!noBand) stop = RankSearchStop.ShapeEnvelope;
 		return {
 			layout,
 			witness: {
 				mode: RankSearchMode.Skipped,
-				stop: RankSearchStop.ShapeEnvelope,
+				stop,
 				proposed: 1,
 				evaluated: 1,
 				valid: 0,
 				rejected: [],
 				unverified: 1,
+				...(skippedComponents > 0 && { skippedComponents }),
 				prunedByLowerBound: 0,
 				work: { completePipelines: 1, validations: 0, routeRunsInspected: 0 },
 				exhaustive: false,
@@ -82,5 +135,10 @@ export function selectDedicatedRankLayout(
 		limits: { completePipelines: MAX_COMPLETE_PIPELINES, uniqueProposals: 48 },
 		admit: services.admit,
 	});
-	return { layout: (search.selected?.evaluation ?? baseline).complete(), witness: search.witness };
+	const layout = (search.selected?.evaluation ?? baseline).complete();
+	if (skippedComponents === 0) return { layout, witness: search.witness };
+	return {
+		layout,
+		witness: { ...search.witness, skippedComponents, exhaustive: false },
+	};
 }

@@ -874,13 +874,6 @@ describe('dedicated bounded geometric rank search', () => {
 						junctions: new Map(),
 						groups: new Map(),
 					};
-					const baseline = evaluateDedicatedLayout(structure, measurements);
-					const baselineValidation = validateDedicatedCandidate({
-						graph,
-						ranks,
-						measurements,
-						layout: baseline,
-					});
 					const options = { inspectRouting: true };
 					const actual = layoutWithDedicatedEngineAndRankOrderWitness(
 						graph,
@@ -888,13 +881,6 @@ describe('dedicated bounded geometric rank search', () => {
 						measurements,
 						options,
 					);
-					if (!baselineValidation.valid) {
-						expect(actual.witness.stop).toBe('baseline-rejected');
-						expect(actual.layout).toEqual(
-							evaluateDedicatedLayout(structure, measurements, options),
-						);
-						return;
-					}
 					const valid = enumerateRankOrders(domain, 12).flatMap((order) => {
 						const layout = evaluateDedicatedLayout(
 							applyRankOrder(structure, domain, order),
@@ -906,7 +892,15 @@ describe('dedicated bounded geometric rank search', () => {
 						return [];
 					});
 					valid.sort((left, right) => compareOracleLayouts(left, right, domain.bands));
-					expect(actual.layout).toEqual(defined(valid[0]).layout);
+					if (valid.length === 0) {
+						expect(actual.witness.stop).toBe('baseline-fallback');
+						expect(actual.layout).toEqual(
+							evaluateDedicatedLayout(structure, measurements, options),
+						);
+					} else {
+						expect(actual.layout).toEqual(defined(valid[0]).layout);
+						expect(actual.witness.valid).toBeGreaterThan(0);
+					}
 					expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
 				},
 			),
@@ -940,6 +934,33 @@ describe('dedicated bounded geometric rank search', () => {
 			valid: 0,
 			unverified: 1,
 			work: { validations: 0, routeRunsInspected: 0 },
+		});
+		const chainIds = Array.from({ length: 68 }, (_, index) => `chain-${index}`);
+		const chain = corpusDocument(
+			chainIds,
+			chainIds,
+			chainIds.slice(1).map((id, index) => ({
+				id: `chain-route-${index}`,
+				from: defined(chainIds[index]),
+				to: id,
+			})),
+		);
+		const connected = createGraph(chain);
+		if (!connected.ok) throw new Error('Invalid long chain');
+		const connectedResult = layoutWithDedicatedEngineAndRankOrderWitness(
+			connected.value,
+			topologicallyRank(connected.value),
+			{
+				nodes: new Map(chainIds.map((id) => [id, { width: 80, height: 40 }])),
+				groups: new Map(),
+				junctions: new Map(),
+			},
+		);
+		expect(connectedResult.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'no-band',
+			evaluated: 1,
+			work: { validations: 0 },
 		});
 		const single = corpusDocument(['only'], ['only'], []);
 		const one = createGraph(single);
@@ -985,47 +1006,148 @@ describe('dedicated bounded geometric rank search', () => {
 			groups: new Map(),
 		});
 		expect(result.witness.stop).not.toBe('shape-envelope');
+		expect(result.witness.valid).toBeGreaterThanOrEqual(1);
+		expect(['complete', 'optimal-bound', 'evaluation-budget', 'proposal-budget']).toContain(
+			result.witness.stop,
+		);
 		expect(result.witness.evaluated).toBeLessThanOrEqual(12);
 		expect(result.witness.work.completePipelines).toBe(result.witness.evaluated);
 	});
-	it('recomputes the complete layout when one added relation crosses the work frontier', () => {
-		const ids = Array.from({ length: 15 }, (_, index) => `n${index}`);
-		const tree = ids.slice(1).map((id, index) => ({
-			id: `tree-${index}`,
-			from: defined(ids[Math.floor(index / 2)]),
-			to: id,
-		}));
-		const extras = [3, 4, 5, 6].map((index) => ({
-			id: `extra-${index}`,
-			from: 'n0',
-			to: `n${index}`,
-		}));
-		const measure = {
-			nodes: new Map(ids.map((id) => [id, { width: 80, height: 40 }])),
-			junctions: new Map(),
-			groups: new Map(),
+	it('preserves an optimized rank order across an unrelated one-relation work frontier', () => {
+		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2');
+		if (entry === undefined) throw new Error('Missing optimized crossing witness');
+		const ids = Array.from({ length: 65 }, (_, index) => `chain-${index}`);
+		const before: LogicDocument = {
+			...entry.document,
+			nodes: [
+				...entry.document.nodes,
+				...ids.map((id) => ({
+					id,
+					kind: EndpointKind.Node as const,
+					natureId: 'task',
+					markdown: id,
+					layoutOrder: orderKey('a6'),
+				})),
+			],
+			relations: [
+				...entry.document.relations,
+				...ids.slice(1).map((id, index) => ({
+					id: `chain-route-${index}`,
+					from: defined(ids[index]),
+					to: id,
+				})),
+			],
 		};
-		const before = corpusDocument(ids, ids, [...tree, ...extras.slice(0, 3)]);
-		const after = corpusDocument(ids, ids, [...tree, ...extras]);
+		const after: LogicDocument = {
+			...before,
+			relations: [
+				...before.relations,
+				{ id: 'extra-shortcut', from: defined(ids[0]), to: defined(ids[2]) },
+			],
+		};
+		const measurements = {
+			...entry.measurements,
+			nodes: new Map([
+				...entry.measurements.nodes,
+				...ids.map((id) => [id, { width: 80, height: 40 }] as const),
+			]),
+		};
 		const first = createGraph(before);
 		const second = createGraph(after);
-		if (!first.ok || !second.ok) throw new Error('Invalid boundary graph');
+		if (!first.ok || !second.ok) throw new Error('Invalid edit at local rank boundary');
 		const beforeRanks = topologicallyRank(first.value);
 		const afterRanks = topologicallyRank(second.value);
-		const prior = layoutWithDedicatedEngineAndRankOrderWitness(first.value, beforeRanks, measure);
-		const edited = layoutWithDedicatedEngineAndRankOrderWitness(second.value, afterRanks, measure);
-		expect(prior.witness.stop).not.toBe('shape-envelope');
-		expect(edited.witness).toMatchObject({
-			mode: 'skipped',
-			stop: 'shape-envelope',
-			evaluated: 1,
-			work: { completePipelines: 1, validations: 0 },
-		});
-		expect(edited.layout).toEqual(
-			evaluateDedicatedLayout(prepareLayout(second.value, afterRanks), measure),
+		const prior = layoutWithDedicatedEngineAndRankOrderWitness(
+			first.value,
+			beforeRanks,
+			measurements,
 		);
-		expect(edited.layout.relations.map(({ id }) => id)).toContain('extra-6');
-		expect(prior.layout.relations.map(({ id }) => id)).not.toContain('extra-6');
+		const edited = layoutWithDedicatedEngineAndRankOrderWitness(
+			second.value,
+			afterRanks,
+			measurements,
+		);
+		const documentary = evaluateDedicatedLayout(
+			prepareLayout(first.value, beforeRanks),
+			measurements,
+		);
+		const causalIds = new Set(entry.document.relations.map(({ id }) => id));
+		const crossings = (layout: LayoutResult) =>
+			routeBridgeAnalysis(layout.relations.filter(({ id }) => causalIds.has(id))).crossings.length;
+		const order = (layout: LayoutResult, ids: readonly string[]) =>
+			[...ids].sort(
+				(left, right) =>
+					defined(layout.elements.find(({ id }) => id === left)).bounds.x -
+					defined(layout.elements.find(({ id }) => id === right)).bounds.x,
+			);
+		expect(prior.witness.valid).toBeGreaterThan(0);
+		expect(prior.layout).not.toEqual(documentary);
+		expect(crossings(documentary)).toBe(1);
+		expect(crossings(prior.layout)).toBe(0);
+		expect(crossings(edited.layout)).toBe(0);
+		expect(edited.witness.stop).not.toBe('shape-envelope');
+		expect(edited.witness.evaluated).toBeGreaterThan(1);
+		expect(order(edited.layout, ['a', 'b', 'c'])).toEqual(order(prior.layout, ['a', 'b', 'c']));
+		expect(order(edited.layout, ['d', 'e'])).toEqual(order(prior.layout, ['d', 'e']));
+		expect(edited.layout.relations.map(({ id }) => id)).toContain('extra-shortcut');
+	});
+
+	it('keeps a small crossing component optimized beside an oversized documentary star', () => {
+		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2');
+		if (entry === undefined) throw new Error('Missing optimized crossing witness');
+		const starIds = Array.from({ length: 21 }, (_, index) => `wide-${index}`);
+		const document: LogicDocument = {
+			...entry.document,
+			nodes: [
+				...entry.document.nodes,
+				...starIds.map((id) => ({
+					id,
+					kind: EndpointKind.Node as const,
+					natureId: 'task',
+					markdown: id,
+					layoutOrder: orderKey('a6'),
+				})),
+			],
+			relations: [
+				...entry.document.relations,
+				...starIds.slice(1).map((id, index) => ({
+					id: `wide-route-${index}`,
+					from: id,
+					to: defined(starIds[0]),
+				})),
+			],
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Invalid disconnected star document');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const measurements = {
+			...entry.measurements,
+			nodes: new Map([
+				...entry.measurements.nodes,
+				...starIds.map((id) => [id, { width: 80, height: 40 }] as const),
+			]),
+		};
+		const documentary = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
+		const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+		const crossingIds = new Set(entry.document.relations.map(({ id }) => id));
+		const crossings = (layout: LayoutResult) =>
+			routeBridgeAnalysis(layout.relations.filter(({ id }) => crossingIds.has(id))).crossings
+				.length;
+		const starOrder = (layout: LayoutResult) =>
+			starIds
+				.slice(1)
+				.sort(
+					(left, right) =>
+						defined(layout.elements.find(({ id }) => id === left)).bounds.x -
+						defined(layout.elements.find(({ id }) => id === right)).bounds.x,
+				);
+		expect(result.witness.skippedComponents).toBe(1);
+		expect(result.witness.exhaustive).toBe(false);
+		expect(result.witness.valid).toBeGreaterThan(0);
+		expect(crossings(documentary)).toBe(1);
+		expect(crossings(result.layout)).toBe(0);
+		expect(starOrder(result.layout)).toEqual(starOrder(documentary));
 	});
 
 	it('proves the documentary zero-route baseline optimal without another pipeline', () => {
@@ -1128,7 +1250,7 @@ describe('dedicated bounded geometric rank search', () => {
 		});
 	});
 
-	it('keeps an invalid documentary baseline unchanged and never spends an alternative pipeline', () => {
+	it('falls back explicitly when an invalid documentary baseline exhausts its budget', () => {
 		const entry = rankOrderComparisonCorpus()[0];
 		if (entry === undefined) throw new Error('Missing rank corpus');
 		const created = createGraph(entry.document);
@@ -1149,10 +1271,43 @@ describe('dedicated bounded geometric rank search', () => {
 			},
 			limits: { completePipelines: 1, uniqueProposals: 1 },
 		});
-		expect(result.witness.stop).toBe('baseline-rejected');
+		expect(result.witness.stop).toBe('baseline-fallback');
 		expect(result.selected).toBeUndefined();
 		expect(result.unchangedBaseline).toBe(invalid);
 		expect(evaluations).toBe(0);
+	});
+
+	it('searches alternatives after an invalid baseline and accepts an incident-feasible permutation', () => {
+		const entry = rankOrderComparisonCorpus()[0];
+		if (entry === undefined) throw new Error('Missing rank corpus');
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid rank corpus graph');
+		const structure = prepareLayout(created.value, topologicallyRank(created.value));
+		const domain = collectRankOrderDomain(structure);
+		const baseline = evaluateDedicatedLayout(structure, entry.measurements, undefined, true);
+		let evaluations = 0;
+		const selected = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements: entry.measurements,
+			baseline,
+			evaluate: (order) => {
+				evaluations += 1;
+				return evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					entry.measurements,
+					undefined,
+					true,
+				);
+			},
+			admit: (layout) => layout !== baseline.result,
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(evaluations).toBeGreaterThan(0);
+		expect(selected.witness.rejected[0]?.reason).toMatchObject({ code: 'incident-infeasible' });
+		expect(selected.witness.valid).toBeGreaterThan(0);
+		expect(selected.selected?.evaluation.result).not.toBe(baseline.result);
+		expect(selected.witness.stop).not.toBe('baseline-fallback');
 	});
 });
 
