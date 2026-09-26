@@ -22,8 +22,8 @@ function interleavedGroupJunctionFixture(
 	nested: boolean,
 ): LogicDocument {
 	const document = groupJunctionFixture(configuration, groupAsTarget, nested);
-	let groupId = 'separate-group';
-	if (nested) groupId = 'separate-inner';
+	let lastGroupId = 'separate-group';
+	if (nested) lastGroupId = 'separate-inner';
 	let nestedGroups: LogicDocument['groups'] = [];
 	if (nested)
 		nestedGroups = [
@@ -34,9 +34,22 @@ function interleavedGroupJunctionFixture(
 				groupId: 'separate-group',
 				layoutOrder: orderKey('a5'),
 			},
+			{
+				kind: EndpointKind.Group,
+				id: 'empty-inner',
+				label: 'Empty inner group',
+				groupId: 'separate-group',
+				layoutOrder: orderKey('a9'),
+			},
 		];
 	const groups: LogicDocument['groups'] = [
 		...document.groups,
+		{
+			kind: EndpointKind.Group,
+			id: 'empty-group',
+			label: 'Empty group',
+			layoutOrder: orderKey('a8'),
+		},
 		{
 			kind: EndpointKind.Group,
 			id: 'separate-group',
@@ -55,7 +68,7 @@ function interleavedGroupJunctionFixture(
 				id: 'chain-first',
 				natureId: 'goal',
 				markdown: 'First member',
-				groupId,
+				groupId: 'separate-group',
 				layoutOrder: orderKey('a6'),
 			},
 			{
@@ -63,7 +76,7 @@ function interleavedGroupJunctionFixture(
 				id: 'chain-last',
 				natureId: 'goal',
 				markdown: 'Last member',
-				groupId,
+				groupId: lastGroupId,
 				layoutOrder: orderKey('a7'),
 			},
 		],
@@ -121,6 +134,25 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 	},
 );
 
+it('keeps an empty group document on the no-separation path', async () => {
+	const configuration = LAYOUT_CONFIGURATIONS[0];
+	const fixture = groupJunctionFixture(configuration, false, false);
+	const group = fixture.groups[0];
+	if (group === undefined) throw new Error('The empty-group fixture needs a group');
+	const document: LogicDocument = {
+		...fixture,
+		groups: [{ ...group, id: 'empty-group' }],
+		nodes: [],
+		junctions: [],
+		relations: [],
+	};
+	const { layout } = await layoutDocument(document);
+	const bounds = boundsFor(layout, 'empty-group');
+	expect(bounds.width).toBeGreaterThan(0);
+	expect(bounds.height).toBeGreaterThan(0);
+	expect(layout.elements).toHaveLength(1);
+});
+
 it('keeps generated non-descendant nodes outside every group envelope', async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -143,6 +175,8 @@ it('keeps generated non-descendant nodes outside every group envelope', async ()
 						'chain-last': { width: 100, height: 50 },
 					},
 					groups: {
+						'empty-group': measurement,
+						'empty-inner': measurement,
 						group: measurement,
 						inner: measurement,
 						'separate-group': measurement,

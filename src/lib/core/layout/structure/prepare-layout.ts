@@ -3,6 +3,8 @@ import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { orderEndpoints } from '../../ordering/endpoint-order';
+import { BASE_RANK_GAP } from '../layout-settings';
+import type { GroupMeasurement, LayoutMeasurements } from '../layout-types';
 import { type BranchAnchor, branchAnchors } from './branch-anchors';
 import { type GroupHierarchy, prepareGroupHierarchy } from './group-hierarchy';
 import { type JunctionPlacement, prepareJunctions } from './junction-structure';
@@ -125,11 +127,10 @@ function rankedNodeIndex(
 ): RankedNodeIndex | undefined {
 	const nodes: RankedNode[] = [];
 	for (const node of graph.document.nodes) {
-		const rank = ranks.get(node.id);
-		if (rank === undefined) continue;
+		const rank = defined(ranks.get(node.id));
 		let membershipIndex = -1;
 		if (node.groupId !== undefined)
-			membershipIndex = hierarchy.preorderIndexById.get(node.groupId) ?? -1;
+			membershipIndex = defined(hierarchy.preorderIndexById.get(node.groupId));
 		nodes.push({ id: node.id, rank, membershipIndex });
 	}
 	if (nodes.length === 0) return undefined;
@@ -182,8 +183,7 @@ function appendOutsideGroupNodes(
 ): void {
 	if (segmentContainsOnlyMembers(index, range, nodeIndex)) return;
 	if (index >= nodeIndex.treeSize) {
-		const node = nodeIndex.nodes[index - nodeIndex.treeSize];
-		if (node === undefined) return;
+		const node = defined(nodeIndex.nodes[index - nodeIndex.treeSize]);
 		if (membershipOutsideGroup(node, range)) nodeIds.push(node.id);
 		return;
 	}
@@ -213,23 +213,44 @@ function outsideGroupNodesInRankRange(
 	return nodeIds;
 }
 
+interface GroupSeparationContext {
+	readonly rankRanges: ReadonlyMap<string, RankRange>;
+	readonly hierarchy: GroupHierarchy;
+	readonly nodeIndex: RankedNodeIndex;
+	readonly measurements: ReadonlyMap<string, GroupMeasurement> | undefined;
+}
+
+function separationRankRadius(range: RankRange, measurement: GroupMeasurement | undefined): number {
+	if (measurement === undefined) return 1;
+	let extent = measurement.minimumWidth;
+	if (measurement.minimumHeight > extent) extent = measurement.minimumHeight;
+	extent += measurement.headerHeight;
+	extent += measurement.padding * 2;
+	const coveredRanks = range.end - range.start + 1;
+	const minimumExtent = coveredRanks * BASE_RANK_GAP;
+	if (extent <= minimumExtent) return 1;
+	return Math.ceil((extent - minimumExtent) / BASE_RANK_GAP) + 1;
+}
+
 function groupSeparationCandidate(
 	groupId: string,
-	rankRanges: ReadonlyMap<string, RankRange>,
-	hierarchy: GroupHierarchy,
-	nodeIndex: RankedNodeIndex,
+	context: GroupSeparationContext,
 ): GroupSeparationCandidate | undefined {
-	const rankRange = rankRanges.get(groupId);
-	if (rankRange === undefined) return undefined;
-	const subtreeStart = hierarchy.preorderIndexById.get(groupId);
-	if (subtreeStart === undefined) return undefined;
-	const subtreeEnd = hierarchy.subtreeEndById.get(groupId);
-	if (subtreeEnd === undefined) return undefined;
-	let candidateRange = rankRange;
-	if (rankRange.start === rankRange.end)
-		candidateRange = { start: rankRange.start - 1, end: rankRange.end + 1 };
+	const rankRange = context.rankRanges.get(groupId);
+	let candidateRange: RankRange;
+	if (rankRange === undefined) {
+		candidateRange = {
+			start: Number.NEGATIVE_INFINITY,
+			end: Number.POSITIVE_INFINITY,
+		};
+	} else {
+		const radius = separationRankRadius(rankRange, context.measurements?.get(groupId));
+		candidateRange = { start: rankRange.start - radius, end: rankRange.end + radius };
+	}
+	const subtreeStart = defined(context.hierarchy.preorderIndexById.get(groupId));
+	const subtreeEnd = defined(context.hierarchy.subtreeEndById.get(groupId));
 	const membershipRange = { start: subtreeStart, end: subtreeEnd };
-	const nodeIds = outsideGroupNodesInRankRange(candidateRange, membershipRange, nodeIndex);
+	const nodeIds = outsideGroupNodesInRankRange(candidateRange, membershipRange, context.nodeIndex);
 	if (nodeIds.length === 0) return undefined;
 	nodeIds.sort(compareCanonicalStrings);
 	return { groupId, nodeIds };
@@ -238,22 +259,32 @@ function groupSeparationCandidate(
 function groupSeparationCandidates(
 	graph: LogicGraph,
 	ranks: ReadonlyMap<string, number>,
-	hierarchy: GroupHierarchy | undefined,
+	hierarchy: GroupHierarchy,
+	measurements: LayoutMeasurements | undefined,
 ): readonly GroupSeparationCandidate[] | undefined {
-	if (hierarchy === undefined) return undefined;
 	const rankRanges = groupRankRanges(hierarchy, ranks);
 	const nodeIndex = rankedNodeIndex(graph, ranks, hierarchy);
 	if (nodeIndex === undefined) return undefined;
+	const context = {
+		rankRanges,
+		hierarchy,
+		nodeIndex,
+		measurements: measurements?.groups,
+	};
 	const candidates: GroupSeparationCandidate[] = [];
 	for (const group of hierarchy.deepestFirst) {
-		const candidate = groupSeparationCandidate(group.id, rankRanges, hierarchy, nodeIndex);
+		const candidate = groupSeparationCandidate(group.id, context);
 		if (candidate !== undefined) candidates.push(candidate);
 	}
 	if (candidates.length === 0) return undefined;
 	return candidates;
 }
 
-export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): LayoutStructure {
+export function prepareLayout(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements?: LayoutMeasurements,
+): LayoutStructure {
 	const hierarchy = prepareGroupHierarchy(graph.document);
 	const maximumRank = Math.max(0, ...ranks.byEndpointId.values());
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
@@ -293,7 +324,9 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	let containment: LayoutStructure['containment'];
 	if (hierarchy !== undefined)
 		containment = containmentComponents(graph, packingOrder(components, hierarchy));
-	const groupSeparations = groupSeparationCandidates(graph, placementRanks, hierarchy);
+	let groupSeparations: readonly GroupSeparationCandidate[] | undefined;
+	if (hierarchy !== undefined)
+		groupSeparations = groupSeparationCandidates(graph, placementRanks, hierarchy, measurements);
 	return {
 		graph,
 		ranks,

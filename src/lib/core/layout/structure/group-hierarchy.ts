@@ -70,7 +70,7 @@ function indexGroupSubtrees(groups: ReadonlyMap<string, LogicGroup>): {
 		const children = childrenById.get(current.id) ?? [];
 		for (let index = children.length - 1; index >= 0; index -= 1) {
 			const childId = children[index];
-			if (childId !== undefined) pending.push({ id: childId, exiting: false });
+			pending.push({ id: defined(childId), exiting: false });
 		}
 	}
 	return { preorderIndexById, subtreeEndById };

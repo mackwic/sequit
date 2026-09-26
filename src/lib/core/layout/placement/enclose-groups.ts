@@ -116,8 +116,7 @@ function displacementOutsideGroups(
 	const intervals: SeparationInterval[] = [];
 	for (const member of members) {
 		for (const groupId of groupIds) {
-			const group = bounds.get(groupId);
-			if (group === undefined) continue;
+			const group = defined(bounds.get(groupId));
 			const interval = forbiddenDisplacement(member, group, vertical);
 			if (interval !== undefined) intervals.push(interval);
 		}
@@ -132,8 +131,7 @@ function targetIsInsideGroup(
 	hierarchy: GroupHierarchy,
 ): boolean {
 	for (const groupId of groupIds) {
-		const targetIndex = hierarchy.preorderIndexById.get(groupId);
-		if (targetIndex === undefined) continue;
+		const targetIndex = defined(hierarchy.preorderIndexById.get(groupId));
 		if (targetIndex < groupStart) continue;
 		if (targetIndex <= groupEnd) return true;
 	}
@@ -149,32 +147,15 @@ function groupSubtreeBounds(
 	const members: MutableBounds[] = [];
 	while (pending.length > 0) {
 		const groupId = defined(pending.pop());
-		const groupBounds = bounds.get(groupId);
-		if (groupBounds !== undefined) members.push(groupBounds);
+		const groupBounds = defined(bounds.get(groupId));
+		members.push(groupBounds);
 		for (const memberId of hierarchy.membersById.get(groupId) ?? []) {
-			const memberBounds = bounds.get(memberId);
-			if (memberBounds !== undefined) members.push(memberBounds);
+			const memberBounds = defined(bounds.get(memberId));
+			members.push(memberBounds);
 			if (hierarchy.byId.has(memberId)) pending.push(memberId);
 		}
 	}
 	return members;
-}
-
-function movableBounds(
-	nodeId: string,
-	groupIds: readonly string[],
-	context: SeparationContext,
-): readonly MutableBounds[] {
-	const { hierarchy, graph, bounds } = context;
-	const node = bounds.get(nodeId);
-	if (node === undefined) return [];
-	const directGroupId = graph.endpointsById.get(nodeId)?.entity.groupId;
-	if (directGroupId === undefined) return [node];
-	const groupStart = hierarchy.preorderIndexById.get(directGroupId);
-	const groupEnd = hierarchy.subtreeEndById.get(directGroupId);
-	if (groupStart === undefined || groupEnd === undefined) return [node];
-	if (targetIsInsideGroup(groupIds, groupStart, groupEnd, hierarchy)) return [node];
-	return groupSubtreeBounds(directGroupId, hierarchy, bounds);
 }
 
 function overlappingTargetsByNode(
@@ -184,11 +165,9 @@ function overlappingTargetsByNode(
 ): Map<string, string[]> | undefined {
 	let targetsByNode: Map<string, string[]> | undefined;
 	for (const { groupId, nodeIds } of candidates) {
-		const group = bounds.get(groupId);
-		if (group === undefined) continue;
+		const group = defined(bounds.get(groupId));
 		for (const nodeId of nodeIds) {
-			const node = bounds.get(nodeId);
-			if (node === undefined) continue;
+			const node = defined(bounds.get(nodeId));
 			if (!overlapsMainAxes(node, group, vertical)) continue;
 			targetsByNode ??= new Map();
 			const targets = targetsByNode.get(nodeId) ?? [];
@@ -206,13 +185,44 @@ interface SeparationExecution {
 	readonly cursor: PackingCursor;
 }
 
-function moveNodeOutsideTargets(
-	nodeId: string,
+interface SeparationUnits {
+	readonly groups: ReadonlyMap<string, ReadonlySet<string>>;
+	readonly nodes: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+function separationUnits(
+	targetsByNode: ReadonlyMap<string, readonly string[]>,
+	context: SeparationContext,
+): SeparationUnits {
+	const groupTargets = new Map<string, Set<string>>();
+	const nodeTargets = new Map<string, Set<string>>();
+	const nodeIds = [...targetsByNode.keys()].sort(compareCanonicalStrings);
+	for (const nodeId of nodeIds) {
+		const targets = defined(targetsByNode.get(nodeId));
+		const directGroupId = context.graph.endpointsById.get(nodeId)?.entity.groupId;
+		if (directGroupId === undefined) {
+			nodeTargets.set(nodeId, new Set(targets));
+			continue;
+		}
+		const groupStart = defined(context.hierarchy.preorderIndexById.get(directGroupId));
+		const groupEnd = defined(context.hierarchy.subtreeEndById.get(directGroupId));
+		if (targetIsInsideGroup(targets, groupStart, groupEnd, context.hierarchy)) {
+			nodeTargets.set(nodeId, new Set(targets));
+			continue;
+		}
+		const groupTargetsForUnit = groupTargets.get(directGroupId) ?? new Set<string>();
+		for (const target of targets) groupTargetsForUnit.add(target);
+		groupTargets.set(directGroupId, groupTargetsForUnit);
+	}
+	return { groups: groupTargets, nodes: nodeTargets };
+}
+
+function moveMembersOutsideTargets(
+	members: readonly MutableBounds[],
 	targets: readonly string[],
 	execution: SeparationExecution,
 ): void {
 	const { context, measurements, frame, cursor } = execution;
-	const members = movableBounds(nodeId, targets, context);
 	const displacement = displacementOutsideGroups(members, targets, context.bounds, frame.vertical);
 	if (displacement === undefined) return;
 	for (const member of members) translateTransversely(member, displacement, frame.vertical);
@@ -235,14 +245,21 @@ export function separateInterleavedGroupNodes(
 	cursor: PackingCursor,
 ): void {
 	const { candidates, hierarchy, graph, measurements, bounds, frame } = input;
-	if (candidates.length === 0) return;
 	const targetsByNode = overlappingTargetsByNode(candidates, bounds, frame.vertical);
 	if (targetsByNode === undefined) return;
-	const execution = { context: { hierarchy, graph, bounds }, measurements, frame, cursor };
-	const nodeIds = [...targetsByNode.keys()].sort(compareCanonicalStrings);
+	const context = { hierarchy, graph, bounds };
+	const execution = { context, measurements, frame, cursor };
+	const units = separationUnits(targetsByNode, context);
+	const groupIds = [...units.groups.keys()].sort(compareCanonicalStrings);
+	for (const groupId of groupIds) {
+		const targets = [...defined(units.groups.get(groupId))].sort(compareCanonicalStrings);
+		const members = groupSubtreeBounds(groupId, hierarchy, bounds);
+		moveMembersOutsideTargets(members, targets, execution);
+	}
+	const nodeIds = [...units.nodes.keys()].sort(compareCanonicalStrings);
 	for (const nodeId of nodeIds) {
-		const targets = defined(targetsByNode.get(nodeId));
-		moveNodeOutsideTargets(nodeId, targets, execution);
+		const targets = [...defined(units.nodes.get(nodeId))].sort(compareCanonicalStrings);
+		moveMembersOutsideTargets([defined(bounds.get(nodeId))], targets, execution);
 	}
 }
 
