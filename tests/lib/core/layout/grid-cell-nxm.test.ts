@@ -79,6 +79,12 @@ describe('grid bus allocation', () => {
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
 
+		const firstDiagnostic = result.witness.rejectedAlternatives[0];
+		expect(firstDiagnostic?.reason).toContain('a-b');
+		expect(firstDiagnostic?.reason).toContain('a-c');
+		expect(firstDiagnostic?.reason).not.toContain('a-d');
+		// The initially uninvolved route must trade its canonical bus track to repair the pair.
+		expect(result.allocation.busTrackByRelationId.get('a-d')).toBe(1);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
 		expect(
 			[...result.allocation.busTrackByRelationId]
