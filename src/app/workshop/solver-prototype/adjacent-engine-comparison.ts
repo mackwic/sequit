@@ -26,7 +26,12 @@ import type {
 } from '../../../lib/core/layout/layout-types';
 import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
 import { requireDemoGraph, requireSelectedDemoResult } from './demo-result';
-import { realK32Fixture, runRealK32Witness } from './real-k32-witness';
+import {
+	type K32TargetOrder,
+	type K32Variant,
+	realK32Fixture,
+	runRealK32Witness,
+} from './real-k32-witness';
 
 interface AdjacentComparisonMetrics {
 	readonly area: number;
@@ -203,12 +208,20 @@ function geometricallyValidUnderAdjacentContract(
 }
 
 /** Compares the real 3+1 engine witness and an independent 2+2 bridge witness. */
-export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineComparison> {
-	const direction = LayoutDirection.TopToBottom;
-	const fixture = realK32Fixture(direction, 'd-e', 'sparse');
+export async function compareAdjacentBridgeAndDetour(
+	direction = LayoutDirection.TopToBottom,
+	targetOrder: K32TargetOrder = 'd-e',
+	variant: K32Variant = 'sparse',
+	measurementOverride?: LayoutMeasurements,
+): Promise<AdjacentEngineComparison> {
+	const baseFixture = realK32Fixture(direction, targetOrder, variant);
+	const fixture = {
+		...baseFixture,
+		measurements: measurementOverride ?? baseFixture.measurements,
+	};
 	const graph = requireDemoGraph(fixture.document, 'The adjacent comparison document');
 	const ranked = topologicallyRank(graph);
-	const dedicated = await runRealK32Witness(direction, 'd-e', 'sparse', fixture);
+	const dedicated = await runRealK32Witness(direction, targetOrder, variant, fixture);
 	const resolution = resolveIndependentAdjacentContract(graph, ranked, fixture.measurements);
 	requireSelectedDemoResult(
 		resolution,

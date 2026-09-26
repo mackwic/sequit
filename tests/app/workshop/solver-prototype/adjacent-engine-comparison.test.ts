@@ -107,6 +107,22 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			);
 		}).toThrow('Independent adjacent witness is unknown.');
 	});
+	it('classifies a real measured K32 detour', async () => {
+		const fixture = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse');
+		const measurements = {
+			...fixture.measurements,
+			nodes: new Map(
+				[...fixture.measurements.nodes.keys()].map((id) => [id, { width: 1000, height: 1000 }]),
+			),
+		};
+		const comparison = await compareAdjacentBridgeAndDetour(
+			LayoutDirection.TopToBottom,
+			'd-e',
+			'sparse',
+			measurements,
+		);
+		expect(comparison.independent.selectedIssue).toBe(IndependentAdjacentIssue.Detour);
+	});
 
 	it('compares the real graph on shared measurements and reports both issue costs', async () => {
 		const comparison = await compareAdjacentBridgeAndDetour();
