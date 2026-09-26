@@ -25,6 +25,12 @@ function bridgeCovers(
 	return forward || backward;
 }
 
+function chargeBridgeCoverage(bridge: LayoutBridge, charge: RouteWorkCharge | undefined): void {
+	if (charge === undefined) return;
+	const routeIds = bridge.carrierIds.length + bridge.crossedIds.length;
+	charge(1 + 2 * routeIds);
+}
+
 /** The crossings of an analysis that no validated bridge of the same analysis covers. */
 export function unbridgedCrossings(analysis: RouteBridgeAnalysis): readonly RouteCrossing[] {
 	return analysis.crossings.filter(
@@ -78,8 +84,7 @@ export function unbridgedContacts(
 			const point = runContact(firstRun, secondRun);
 			if (point === undefined) continue;
 			const covered = bridges.some((bridge) => {
-				const routeIds = bridge.carrierIds.length + bridge.crossedIds.length;
-				charge?.(1 + 2 * routeIds);
+				chargeBridgeCoverage(bridge, charge);
 				return bridgeCovers(bridge, point, first.id, second.id);
 			});
 			if (!covered) contacts.set(`${point.x}:${point.y}`, point);

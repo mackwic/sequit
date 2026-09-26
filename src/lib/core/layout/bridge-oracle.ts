@@ -3,9 +3,10 @@ import { strictCrossing, strictlyBetween } from './geometry/strict-crossing';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from './layout-settings';
 import type { Point } from './layout-types';
 
-/** The route shape the oracle reads: a stable identity and orthogonal waypoints. */
+/** Optional elementary geometry-work charge for bounded route searches. */
 export type RouteWorkCharge = (units: number) => void;
 
+/** The route shape the oracle reads: a stable identity and orthogonal waypoints. */
 export interface RoutedPath {
 	readonly id: string;
 	readonly points: readonly Point[];
@@ -175,10 +176,13 @@ function canonicalBridgeKey(bridge: LayoutBridge): string {
  */
 function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previous: RouteRun): void {
 	const { charge } = scan;
-	const groups = [current, previous].map((run) =>
-		overlappingCarriers(run, point, scan.runs, charge),
-	);
-	charge?.((groups[0]?.length ?? 0) + (groups[1]?.length ?? 0));
+	let groupSize = 0;
+	const groups = [current, previous].map((run) => {
+		const group = overlappingCarriers(run, point, scan.runs, charge);
+		if (charge !== undefined) groupSize += group.length;
+		return group;
+	});
+	charge?.(groupSize);
 	const taken = groups.flat().some((run) => {
 		charge?.(1);
 		return (scan.carried.get(run) ?? []).some((placed) => {
