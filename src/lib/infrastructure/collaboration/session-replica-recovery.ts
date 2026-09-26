@@ -27,6 +27,6 @@ export function replaceReplicaAfterTextRefusal(
 	return {
 		document,
 		sourceState: { kind: SourceDocumentStateKind.Uninitialized, revision: state.revision + 1 },
-		notice: `Les saisies non acquittées ${location} ont été abandonnées : une boîte a été supprimée ou remplacée. Synchronisation en cours.`,
+		notice: `Les saisies non acquittées ${location} ont été abandonnées : une boîte a été supprimée ou remplacée.`,
 	};
 }
