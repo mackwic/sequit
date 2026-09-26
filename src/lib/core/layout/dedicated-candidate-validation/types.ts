@@ -30,8 +30,6 @@ export interface DedicatedCandidateValidationInput {
 export interface DedicatedRouteScore {
 	readonly strictCrossings: number;
 	readonly validatedBridges: number;
-	readonly length: number;
-	readonly bends: number;
 }
 
 interface ValidDedicatedCandidate {

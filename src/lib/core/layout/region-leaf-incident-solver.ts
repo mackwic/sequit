@@ -210,14 +210,19 @@ function solveOnLayout(
 	);
 }
 
+/** Ignore inspection metadata, which completion may attach on a distinct result object. */
+function incidentLayoutKey(layout: LayoutResult): string {
+	return JSON.stringify([layout.width, layout.height, layout.elements, layout.relations]);
+}
+
 function admitIncidentLayout(
 	contracts: readonly RegionIncidentContract[],
-	accepted: Map<LayoutResult, DedicatedRegionLeafIncidentSelected>,
+	accepted: Map<string, DedicatedRegionLeafIncidentSelected>,
 ): (layout: LayoutResult, ranks: TopologicalRanks) => boolean {
 	return (layout, ranks) => {
 		const attempt = solveOnLayout(contracts, layout, ranks);
 		if (attempt.status !== RegionCompositionStatus.Selected) return false;
-		accepted.set(layout, attempt);
+		accepted.set(incidentLayoutKey(layout), attempt);
 		return true;
 	};
 }
@@ -262,7 +267,7 @@ export function solveDedicatedRegionLeafWithIncidents(
 			demands,
 			input.document.layout.direction,
 		);
-		const accepted = new Map<LayoutResult, DedicatedRegionLeafIncidentSelected>();
+		const accepted = new Map<string, DedicatedRegionLeafIncidentSelected>();
 		let admitDedicatedLayout:
 			((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 		if (contracts.length > 0) admitDedicatedLayout = admitIncidentLayout(contracts, accepted);
@@ -272,7 +277,9 @@ export function solveDedicatedRegionLeafWithIncidents(
 			leafPolicy: LayoutPolicy.Layered,
 			admitDedicatedLayout,
 		});
-		const attempt = accepted.get(raw.layout) ?? solveOnLayout(contracts, raw.layout, raw.ranks);
+		const attempt =
+			accepted.get(incidentLayoutKey(raw.layout)) ??
+			solveOnLayout(contracts, raw.layout, raw.ranks);
 		if (attempt.status === RegionCompositionStatus.Unknown)
 			throw new UncacheableIncidentFailure(attempt);
 		return {

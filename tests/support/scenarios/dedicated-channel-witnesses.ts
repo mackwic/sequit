@@ -47,10 +47,10 @@ export function railReuseDocument(): LogicDocument {
 	};
 }
 
-/** A disconnected tree raises bounded validation work without modifying the channel under test. */
-export function outsideRankSearchEnvelope(base: LogicDocument): LogicDocument {
+/** A single-column downstream chain bounds rank work without widening the tested channel. */
+export function railClearanceDocument(): LogicDocument {
+	const base = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse').document;
 	const ids = Array.from({ length: 15 }, (_, index) => `wide-${index}`);
-	const natureId = defined(base.natures[0]).id;
 	return {
 		...base,
 		nodes: [
@@ -58,27 +58,21 @@ export function outsideRankSearchEnvelope(base: LogicDocument): LogicDocument {
 			...ids.map((id) => ({
 				id,
 				kind: EndpointKind.Node as const,
-				natureId,
+				natureId: defined(base.natures[0]).id,
 				markdown: id,
 				layoutOrder: orderKey('a6'),
 			})),
 		],
 		relations: [
 			...base.relations,
+			{ id: 'wide-anchor', from: defined(ids[0]), to: 'a' },
 			...ids.slice(1).map((id, index) => ({
 				id: `wide-route-${index}`,
-				from: defined(ids[Math.floor(index / 2)]),
-				to: id,
+				from: id,
+				to: defined(ids[index]),
 			})),
 		],
 	};
-}
-
-/** Keep the original inverted channel rather than searching for a no-crossing permutation. */
-export function railClearanceDocument(): LogicDocument {
-	return outsideRankSearchEnvelope(
-		realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse').document,
-	);
 }
 
 export function railClearanceMeasurements(clearance: 12 | 13): LayoutMeasurementOverrides {

@@ -63,5 +63,5 @@ export function validateDedicatedCandidate(
 	const contactRejection = contactFailure(routes, analysis);
 	if (contactRejection !== undefined)
 		return { ...contactRejection, inspectedRuns: analysis.inspectedRuns };
-	return { valid: true, score: routeScore(input.layout, analysis), analysis };
+	return { valid: true, score: routeScore(analysis), analysis };
 }

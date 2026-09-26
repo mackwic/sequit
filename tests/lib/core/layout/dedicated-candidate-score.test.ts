@@ -8,8 +8,9 @@ import {
 	scoreDedicatedCandidateRoutes,
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
-import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 
 const crossingLayout: LayoutResult = {
@@ -39,12 +40,10 @@ const crossingLayout: LayoutResult = {
 };
 
 describe('dedicated candidate route scoring', () => {
-	it('scores materialized crossings, validated bridges, Manhattan length, and bends', () => {
+	it('scores materialized crossings and validated bridges', () => {
 		expect(scoreDedicatedCandidateRoutes(crossingLayout)).toEqual({
 			strictCrossings: 1,
 			validatedBridges: 1,
-			length: 160,
-			bends: 0,
 		});
 	});
 
@@ -57,7 +56,7 @@ describe('dedicated candidate route scoring', () => {
 				const graph = created.value;
 				const ranks = topologicallyRank(graph);
 				const measurements = layoutMeasurementsFor(document);
-				const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+				const layout = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
 				const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
 				if (!validation.valid)
 					throw new Error(`Expected validated candidate, got ${validation.code}`);
@@ -65,33 +64,12 @@ describe('dedicated candidate route scoring', () => {
 				return validation.score;
 			});
 		expect(scores).toEqual([
-			{ strictCrossings: 4, validatedBridges: 4, length: 1408, bends: 8 },
-			{ strictCrossings: 3, validatedBridges: 3, length: 1056, bends: 8 },
+			{ strictCrossings: 4, validatedBridges: 4 },
+			{ strictCrossings: 3, validatedBridges: 3 },
 		]);
 		const first = scores[0];
 		const second = scores[1];
 		if (first === undefined || second === undefined) throw new Error('Expected two scores');
 		expect(compareDedicatedRouteScores(first, second)).toBe(1);
-	});
-
-	it('compares crossings and bridges lexicographically, not observed length or bends', () => {
-		expect(
-			compareDedicatedRouteScores(
-				{ strictCrossings: 2, validatedBridges: 1, length: 1, bends: 1 },
-				{ strictCrossings: 2, validatedBridges: 1, length: 100, bends: 100 },
-			),
-		).toBe(0);
-		expect(
-			compareDedicatedRouteScores(
-				{ strictCrossings: 2, validatedBridges: 2, length: 1, bends: 1 },
-				{ strictCrossings: 2, validatedBridges: 1, length: 100, bends: 100 },
-			),
-		).toBe(1);
-		expect(
-			compareDedicatedRouteScores(
-				{ strictCrossings: 1, validatedBridges: 9, length: 1, bends: 1 },
-				{ strictCrossings: 2, validatedBridges: 0, length: 100, bends: 100 },
-			),
-		).toBe(-1);
 	});
 });

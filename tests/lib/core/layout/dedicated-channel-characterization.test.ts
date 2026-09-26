@@ -9,17 +9,21 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngineAndRankOrderWitness,
+} from '../../../../src/lib/core/layout/layout-engine';
+import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import type * as ChannelRoutingModule from '../../../../src/lib/core/layout/routing/channel-routing';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import type {
 	ChannelEndpoint,
 	ChannelRouting,
 } from '../../../../src/lib/core/layout/routing/channel-types';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import type { LayoutMeasurementOverrides } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
-	outsideRankSearchEnvelope,
 	railClearanceDocument,
 	railClearanceMeasurements,
 	railReuseDocument,
@@ -111,7 +115,7 @@ const correctedGroupDocuments = [
 		{ id: 'e-to-join', from: 'e', to: 'join' },
 		{ id: 'f-to-join', from: 'f', to: 'join' },
 	]),
-].map(outsideRankSearchEnvelope);
+];
 
 const junctionNetwork: LogicDocument = {
 	...makeDocument(
@@ -166,21 +170,33 @@ function channelFor(
 	return channel;
 }
 
-/** Select observations whose allocated ports coincide with the returned route attachments. */
+/** Select the routed channel matching the returned route attachments. */
 function finalChannelFor(
 	document: LogicDocument,
 	relationIds: readonly string[],
+	overrides?: LayoutMeasurementOverrides,
+	requireSinglePipeline = false,
+	documentary = false,
 ): ChannelObservation {
-	const prepared = prepareLayoutDocument(document);
+	const prepared = prepareLayoutDocument(document, overrides);
 	channelObservations.calls.length = 0;
-	const production = layoutWithDedicatedEngineAndRankOrderWitness(
-		prepared.graph,
-		prepared.ranks,
-		prepared.measurements,
-		{ inspectRouting: true },
-	);
-	expect(production.witness.evaluated).toBe(1);
-	const layout = production.layout;
+	let layout: LayoutResult;
+	if (documentary)
+		layout = evaluateDedicatedLayout(
+			prepareLayout(prepared.graph, prepared.ranks),
+			prepared.measurements,
+			{ inspectRouting: true },
+		);
+	else {
+		const production = layoutWithDedicatedEngineAndRankOrderWitness(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+			{ inspectRouting: true },
+		);
+		if (requireSinglePipeline) expect(production.witness.evaluated).toBe(1);
+		layout = production.layout;
+	}
 	const matches = channelObservations.calls.filter(({ endpoints }) =>
 		relationIds.every((id) => {
 			const endpoint = endpoints.find((candidate) => candidate.id === id);
@@ -224,11 +240,7 @@ function wireFor(channel: ChannelObservation, id: string) {
 describe('dedicated engine channel characterization (replaceable during channel migration)', () => {
 	describe('actual port allocations from LogicDocument layouts', () => {
 		it('reuses a retained production rail only after its prior interval clears', () => {
-			const document = railReuseDocument();
-			const channel = channelFor(channelsFromProductionLayout(document, undefined, true), [
-				'c-to-e',
-				'd-to-e',
-			]);
+			const channel = finalChannelFor(railReuseDocument(), ['c-to-e', 'd-to-e'], undefined, true);
 			const earlier = wireFor(channel, 'c-to-e').first;
 			const later = wireFor(channel, 'd-to-e').first;
 			if (earlier === undefined || later === undefined)
@@ -238,13 +250,11 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			expect(later.rail).toBe(earlier.rail);
 		});
 		it.each([12, 13] as const)('keeps a %i-unit gap on the retained channel', (clearance) => {
-			const channel = channelFor(
-				channelsFromProductionLayout(
-					railClearanceDocument(),
-					railClearanceMeasurements(clearance),
-					true,
-				),
+			const channel = finalChannelFor(
+				railClearanceDocument(),
 				['a-to-d', 'a-to-e'],
+				railClearanceMeasurements(clearance),
+				true,
 			);
 			const earlier = wireFor(channel, 'a-to-d').first;
 			const later = wireFor(channel, 'a-to-e').first;
@@ -279,7 +289,7 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			];
 			for (const { document, ids, ports, rails } of observations) {
 				if (document === undefined) throw new Error('Both corrected documents must exist');
-				const channel = finalChannelFor(document, ids);
+				const channel = finalChannelFor(document, ids, undefined, false, true);
 				for (const [index, id] of ids.entries()) {
 					const endpoint = channel.endpoints.find((candidate) => candidate.id === id);
 					const wire = wireFor(channel, id);
@@ -292,20 +302,18 @@ describe('dedicated engine channel characterization (replaceable during channel 
 		});
 
 		it('observes split-run cycle and precedence on an allocated document without groups', () => {
-			const document = outsideRankSearchEnvelope(
-				makeDocument(
-					'allocated-cycle',
-					['a', 'b', 'c', 'd', 'e', 'f'],
-					[
-						{ id: 'a-d', from: 'a', to: 'd' },
-						{ id: 'b-c', from: 'b', to: 'c' },
-						{ id: 'b-d', from: 'b', to: 'd' },
-						{ id: 'c-f', from: 'c', to: 'f' },
-						{ id: 'd-f', from: 'd', to: 'f' },
-					],
-				),
+			const document = makeDocument(
+				'allocated-cycle',
+				['a', 'b', 'c', 'd', 'e', 'f'],
+				[
+					{ id: 'a-d', from: 'a', to: 'd' },
+					{ id: 'b-c', from: 'b', to: 'c' },
+					{ id: 'b-d', from: 'b', to: 'd' },
+					{ id: 'c-f', from: 'c', to: 'f' },
+					{ id: 'd-f', from: 'd', to: 'f' },
+				],
 			);
-			const channel = finalChannelFor(document, ['a-d', 'b-c']);
+			const channel = finalChannelFor(document, ['a-d', 'b-c'], undefined, false, true);
 			const splitInput = channel.endpoints.find(({ id }) => id === 'a-d');
 			const inverseInput = channel.endpoints.find(({ id }) => id === 'b-c');
 			const split = wireFor(channel, 'a-d');

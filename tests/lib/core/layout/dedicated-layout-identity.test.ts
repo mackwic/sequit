@@ -322,18 +322,6 @@ describe('dedicated engine LayoutResult identity', () => {
 				.map(([id]) => id)
 				.toSorted(),
 		).toEqual(expectedAcceptedIds.toSorted());
-		for (const id of expectedAcceptedIds) {
-			const validation = validationById.get(id);
-			if (validation?.valid !== true) throw new Error(`Expected accepted score for ${id}`);
-			expect(
-				[
-					validation.score.strictCrossings,
-					validation.score.validatedBridges,
-					validation.score.length,
-					validation.score.bends,
-				].every(Number.isFinite),
-			).toBe(true);
-		}
 
 		const hashes = Object.fromEntries(
 			Object.entries(results).map(([id, result]) => [id, digest(result)]),
@@ -378,8 +366,8 @@ describe('dedicated engine LayoutResult identity', () => {
 				'a630fe9ae19dfd906835eebbe7900a74eb6284723ecf19d7f8382bac419fa7ad',
 			'multirank-group-junction-two':
 				'af0c04a049f78553929819f5e5ed553f4d41f3bcd6fa95df18725c5869194280',
-			'rail-clearance-12': 'bf2632bc7e6a31d2f3a8bb40a9010a80723a5b236d7d6c072048d458f3ad26b5',
-			'rail-clearance-13': 'f2292e0ea488f38806f26c2c97eae4759b6981db71452660e215ba092013e750',
+			'rail-clearance-12': '8338dd7eade68aaa23a9cc844163e69af8bc7dd6555a0b1d3c84723ecc13e5ce',
+			'rail-clearance-13': '5f7012acee87b27e45cdd70169d743814bbe4b529d0449ebd2bac32ac8f84dc6',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
 			'workshop-branching': '007f50ba4f616a515f8c8d08e082536958b139ee39d6ad2cb5ef12236c0e58c4',
 			'workshop-navigation': '8d830ff4b6e4ffa33df6499b0684748a4a38c1cf62bbe10d2960bf7934894438',
