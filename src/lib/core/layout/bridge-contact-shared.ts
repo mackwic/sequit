@@ -136,9 +136,8 @@ export function sharedAttachmentPoint(
 		for (const fromSecond of [true, false]) {
 			const firstId = endpointId(first, fromFirst);
 			if (firstId === undefined || firstId !== endpointId(second, fromSecond)) continue;
-			const firstAnchor = endpointPoint(first, fromFirst);
-			const secondAnchor = endpointPoint(second, fromSecond);
-			if (firstAnchor === undefined || secondAnchor === undefined) continue;
+			const firstAnchor = defined(endpointPoint(first, fromFirst));
+			const secondAnchor = defined(endpointPoint(second, fromSecond));
 			if (samePoint(firstAnchor, point) && samePoint(secondAnchor, point)) return true;
 		}
 	return false;

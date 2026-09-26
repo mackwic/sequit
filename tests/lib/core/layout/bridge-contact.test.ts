@@ -192,6 +192,27 @@ describe('one route-contact rule', () => {
 		]);
 	});
 
+	it('does not confuse a later validated bridge with a closer unbridgeable crossing', () => {
+		const shortHorizontal = path('short-h', [40, 50], [60, 50]);
+		const shortVertical = path('short-v', [50, 40], [50, 60]);
+		const laterHorizontal = path('later-h', [50, 80], [100, 80]);
+		const laterVertical = path('later-v', [75, 60], [75, 100]);
+		const bridges = validatedBridges([
+			shortHorizontal,
+			shortVertical,
+			laterHorizontal,
+			laterVertical,
+		]);
+		expect(bridges).toHaveLength(1);
+		expect(bridges[0]).toMatchObject({ x: 75, y: 80 });
+		expect(
+			unbridgedContacts(shortHorizontal, shortVertical, bridges, { sortedByPoint: true }),
+		).toEqual([point(50, 50)]);
+		expect(
+			unbridgedContacts(laterHorizontal, laterVertical, bridges, { sortedByPoint: true }),
+		).toEqual([]);
+	});
+
 	it('gives dedicated and lane validators the same typed refusal and canonical relation pair', () => {
 		const a: LayoutRelation = { ...path('a', [0, 0], [50, 0]), from: 'one', to: 'two' };
 		const z: LayoutRelation = { ...path('z', [0, 0], [20, 0]), from: 'another', to: 'three' };
