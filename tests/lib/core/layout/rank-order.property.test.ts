@@ -23,15 +23,18 @@ import {
 } from '../../../../src/lib/core/layout/layout-engine';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import {
+	boundedRankOrderEnumerationSize,
 	compareRankOrders,
 	countRankOrderCrossings,
 	documentaryRankOrder,
 	enumerateRankOrders,
+	lazyRankOrders,
 	type RankDomain,
 	type RankOrder,
 	type RankOrderAlgorithm,
 	rankOrderEnumerationSize,
 	type RankOrderInput,
+	rankOrderKendallDistance,
 	validateRankOrder,
 } from '../../../../src/lib/core/layout/rank-order';
 import {
@@ -610,5 +613,58 @@ describe('dedicated layout evaluation with candidate row orders', () => {
 		expect(document).toEqual(documentSnapshot);
 		expect(graph).toEqual(graphSnapshot);
 		expect(measurements).toEqual(measurementsSnapshot);
+	});
+});
+
+describe('bounded lazy rank orders', () => {
+	it('distinguishes the exact twelve-order boundary from twenty-four without factorial overflow', () => {
+		expect(
+			boundedRankOrderEnumerationSize(
+				{
+					bands: [
+						['a', 'b', 'c'],
+						['d', 'e'],
+					],
+				},
+				12,
+			),
+		).toBe(12);
+		expect(boundedRankOrderEnumerationSize({ bands: [['a', 'b', 'c', 'd']] }, 12)).toBeUndefined();
+		expect(boundedRankOrderEnumerationSize({ bands: [] }, 0)).toBeUndefined();
+		expect(() => boundedRankOrderEnumerationSize({ bands: [] }, -1)).toThrow(/cap/);
+		expect(
+			boundedRankOrderEnumerationSize(
+				{ bands: [Array.from({ length: 200 }, (_, index) => `${index}`)] },
+				12,
+			),
+		).toBeUndefined();
+	});
+
+	it('visits documentary first, then every alternative exactly once, and measures inversions within bands', () => {
+		const domain = {
+			bands: [
+				['c', 'a', 'b'],
+				['y', 'x'],
+			],
+		};
+		const documentary = [
+			['b', 'c', 'a'],
+			['x', 'y'],
+		];
+		const orders = [...lazyRankOrders(domain, documentary)];
+		expect(() => [...lazyRankOrders(domain, [['x'], ['y']])]).toThrow(/documentary/);
+		expect(orders[0]).toEqual(documentary);
+		expect(orders).toHaveLength(12);
+		expect(new Set(orders.map((order) => JSON.stringify(order))).size).toBe(12);
+		expect(rankOrderKendallDistance(documentary, documentary)).toBe(0);
+		expect(
+			rankOrderKendallDistance(
+				[
+					['a', 'c', 'b'],
+					['y', 'x'],
+				],
+				documentary,
+			),
+		).toBe(4);
 	});
 });

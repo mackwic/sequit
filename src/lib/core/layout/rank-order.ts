@@ -174,3 +174,75 @@ export function compareRankOrders(left: RankOrder, right: RankOrder): number {
 	}
 	return left.length - right.length;
 }
+
+/** Bound the factorial product before multiplication, including domains too large for a number. */
+export function boundedRankOrderEnumerationSize(
+	domain: RankDomain,
+	cap: number,
+): number | undefined {
+	if (!Number.isSafeInteger(cap) || cap < 0) throw new Error('Invalid rank-order cap');
+	let product = 1;
+	for (const band of domain.bands) {
+		for (let factor = 2; factor <= band.length; factor += 1) {
+			if (product > Math.floor(cap / factor)) return undefined;
+			product *= factor;
+		}
+	}
+	if (product > cap) return undefined;
+	return product;
+}
+
+function* lazyBandPermutations(
+	available: readonly string[],
+	chosen: readonly string[] = [],
+): IterableIterator<readonly string[]> {
+	if (available.length === 0) {
+		yield chosen;
+		return;
+	}
+	for (let index = 0; index < available.length; index += 1)
+		yield* lazyBandPermutations(
+			available.filter((_, other) => index !== other),
+			[...chosen, defined(available[index])],
+		);
+}
+
+function* lazyBandProduct(
+	bands: readonly (readonly string[])[],
+	prefix: RankOrder = [],
+): IterableIterator<RankOrder> {
+	if (bands.length === 0) {
+		yield prefix;
+		return;
+	}
+	const [band, ...rest] = bands;
+	for (const permutation of lazyBandPermutations(defined(band)))
+		yield* lazyBandProduct(rest, [...prefix, permutation]);
+}
+
+/** Yield the documentary order first, followed by the canonical permutation product, lazily. */
+export function* lazyRankOrders(
+	domain: RankDomain,
+	documentary: RankOrder,
+): IterableIterator<RankOrder> {
+	if (!validateRankOrder(domain, documentary)) throw new Error('Invalid documentary rank order');
+	yield documentary;
+	const bands = domain.bands.map((band) => [...band].sort(compareCanonicalStrings));
+	for (const order of lazyBandProduct(bands))
+		if (compareRankOrders(order, documentary) !== 0) yield order;
+}
+
+/** Number of inversions relative to documentary order, independently within every band. */
+export function rankOrderKendallDistance(order: RankOrder, documentary: RankOrder): number {
+	return order.reduce((distance, band, index) => {
+		const positions = new Map(defined(documentary[index]).map((id, ordinal) => [id, ordinal]));
+		let inversions = 0;
+		for (let first = 0; first < band.length; first += 1)
+			for (let second = first + 1; second < band.length; second += 1)
+				inversions += Number(
+					defined(positions.get(defined(band[first]))) >
+						defined(positions.get(defined(band[second]))),
+				);
+		return distance + inversions;
+	}, 0);
+}
