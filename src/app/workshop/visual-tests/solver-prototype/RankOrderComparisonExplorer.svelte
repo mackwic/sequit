@@ -40,6 +40,8 @@
 				<th scope="col">Entrée</th>
 				<th scope="col">Ordre documentaire</th>
 				<th scope="col">Meilleur ordre énuméré</th>
+				<th scope="col">Ordre retenu</th>
+				<th scope="col">Kendall retenu / documentaire</th>
 				<th scope="col">Proxy doc → énum</th>
 				<th scope="col">Croisements réels doc → retenu (minimum)</th>
 				<th scope="col">Ponts validés doc → retenu</th>
@@ -54,6 +56,8 @@
 					<th scope="row">{entry.label}</th>
 					<td><code>{orderLabel(entry.documentary)}</code></td>
 					<td><code>{orderLabel(entry.enumerated)}</code></td>
+					<td><code>{orderLabel(entry.selectedOrder)}</code></td>
+					<td>{entry.selectedKendall}</td>
 					<td>{entry.documentaryCrossings} → {entry.enumeratedCrossings}</td>
 					<td
 						>{entry.documentaryRouteScore?.strictCrossings ?? 'rejeté'} → {entry.selectedRouteScore

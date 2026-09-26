@@ -95,6 +95,18 @@ describe('rank order comparison', () => {
 			);
 		}
 	});
+	it('reports the chosen geometric rank displacement, not the abstract enumerated proxy', () => {
+		const geometric = comparison.entries.find(({ id }) => id === 'geometric-2+2');
+		const neutral = comparison.entries.find(({ id }) => id === 'two-predecessors');
+		expect(geometric?.selectedOrder).toEqual([
+			['d', 'e'],
+			['a', 'c', 'b'],
+		]);
+		expect(geometric?.selectedKendall).toBe(1);
+		expect(geometric?.selectedRouteScore?.strictCrossings).toBe(0);
+		expect(neutral?.selectedOrder).toEqual(neutral?.documentary);
+		expect(neutral?.selectedKendall).toBe(0);
+	});
 
 	it('matches pinned dedicated-engine layout fingerprints for every corpus entry', () => {
 		const expected: Record<string, string> = {

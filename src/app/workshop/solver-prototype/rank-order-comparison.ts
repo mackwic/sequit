@@ -26,6 +26,7 @@ import {
 	type RankDomain,
 	type RankOrder,
 	rankOrderEnumerationSize,
+	rankOrderKendallDistance,
 	type RankOrderRelation,
 	validateRankOrder,
 } from '../../../lib/core/layout/rank-order';
@@ -54,6 +55,8 @@ export interface RankOrderComparisonEntry {
 	readonly domain: RankDomain;
 	readonly documentary: RankOrder;
 	readonly enumerated: RankOrder;
+	readonly selectedOrder: RankOrder;
+	readonly selectedKendall: number;
 	readonly documentaryCrossings: number;
 	readonly enumeratedCrossings: number;
 	readonly documentaryValid: boolean;
@@ -259,6 +262,18 @@ function compareRankOrderEntry(entry: RankOrderCorpusEntry): RankOrderComparison
 		measurements: entry.measurements,
 		layout: selected.layout,
 	});
+	const byId = new Map(selected.layout.elements.map(({ id, bounds }) => [id, bounds]));
+	let transverse: 'x' | 'y' = 'x';
+	if (
+		entry.document.layout.direction === LayoutDirection.LeftToRight ||
+		entry.document.layout.direction === LayoutDirection.RightToLeft
+	)
+		transverse = 'y';
+	const selectedOrder = domain.bands.map((band) =>
+		[...band].sort(
+			(left, right) => defined(byId.get(left))[transverse] - defined(byId.get(right))[transverse],
+		),
+	);
 	return {
 		id: entry.id,
 		label: entry.label,
@@ -268,6 +283,8 @@ function compareRankOrderEntry(entry: RankOrderCorpusEntry): RankOrderComparison
 		domain,
 		documentary,
 		enumerated: best.order,
+		selectedOrder,
+		selectedKendall: rankOrderKendallDistance(selectedOrder, documentary),
 		documentaryCrossings,
 		enumeratedCrossings: best.crossings,
 		documentaryValid: validateRankOrder(domain, documentary),
