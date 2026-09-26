@@ -1,6 +1,7 @@
 import { defined, LaneOrientation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import type { RouteWorkCharge } from './bridge-oracle';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
 	normalizeRegionIncidentContracts,
@@ -156,7 +157,7 @@ function parallelAttempt({
 		ports,
 		contracts,
 		state,
-		evaluate: (candidate, acceptBridges) => {
+		evaluate: (candidate, acceptBridges, charge: RouteWorkCharge) => {
 			let base = certificatesByFrame.get(candidate.frame);
 			if (base === undefined) {
 				const geometry = materializeParallelGeometry(
@@ -173,6 +174,7 @@ function parallelAttempt({
 				};
 				certificatesByFrame.set(candidate.frame, base);
 			}
+			charge(input.plans.length);
 			const { geometry, changedRouteIds } = materializeParallelGeometryDelta(
 				input,
 				candidate,
@@ -189,12 +191,13 @@ function parallelAttempt({
 				certificate: base.staticCertificate,
 				routeCertificate: base.routeCertificate,
 				changedRouteIds,
+				charge,
 			});
 			if (typeof attempt === 'string') {
 				firstIssue ??= attempt;
 				return undefined;
 			}
-			return { geometry, incidents: attempt.incidents };
+			return { geometry, incidents: attempt.incidents, bridges: attempt.bridges };
 		},
 	});
 	if (search.selected !== undefined)

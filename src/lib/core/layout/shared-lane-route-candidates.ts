@@ -1,6 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import { routeRuns, validatedBridges } from './bridge-oracle';
+import { routeRuns, type RouteWorkCharge, validatedBridges } from './bridge-oracle';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
 import {
 	type TrackAllocationProduct,
@@ -28,8 +28,9 @@ interface SharedLaneAllocationPassWitness {
 	readonly exhaustive: boolean;
 	readonly truncated: boolean;
 	readonly searchStarted: boolean;
-	/** Charged upper-bound route/box and route/route segment probes. */
+	/** Measured candidate work, excluding separately reserved baselines. */
 	readonly work: number;
+	readonly baselineWork?: number;
 	readonly workBudget: number;
 }
 
@@ -269,22 +270,29 @@ export function rankLaneRouteSelection<
 		readonly geometry: SharedLaneGeometry;
 		readonly incidents: readonly RegionSolvedIncident[];
 	},
->(selected: Selection, candidate: LaneRouteCandidateIdentity): RankedLaneRouteSelection<Selection> {
+>(
+	selected: Selection,
+	candidate: LaneRouteCandidateIdentity,
+	bridgesValidated?: number,
+	charge?: RouteWorkCharge,
+): RankedLaneRouteSelection<Selection> {
 	let length = 0;
 	let bends = 0;
 	for (const route of selected.geometry.relations) {
+		charge?.(route.points.length);
 		length += pathLength(route.points);
-		bends += Math.max(0, routeRuns(route).length - 1);
+		bends += Math.max(0, routeRuns(route, charge).length - 1);
 	}
 	for (const incident of selected.incidents) {
+		charge?.(incident.points.length);
 		length += pathLength(incident.points);
 		const route = {
 			id: `${incident.relationId}/${incident.endpointId}`,
 			points: incident.points,
 		};
-		bends += Math.max(0, routeRuns(route).length - 1);
+		bends += Math.max(0, routeRuns(route, charge).length - 1);
 	}
-	const bridges = validatedBridges(selected.geometry.relations).length;
+	const bridges = bridgesValidated ?? validatedBridges(selected.geometry.relations, charge).length;
 	return {
 		selected,
 		candidate,

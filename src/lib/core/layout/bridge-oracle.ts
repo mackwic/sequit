@@ -4,6 +4,8 @@ import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from './layout-settings';
 import type { Point } from './layout-types';
 
 /** The route shape the oracle reads: a stable identity and orthogonal waypoints. */
+export type RouteWorkCharge = (units: number) => void;
+
 export interface RoutedPath {
 	readonly id: string;
 	readonly points: readonly Point[];
@@ -56,6 +58,7 @@ interface BridgeScan {
 	readonly crossings: Map<string, RouteCrossing>;
 	readonly carried: Map<RouteRun, Point[]>;
 	readonly bridges: Map<string, LayoutBridge>;
+	readonly charge?: RouteWorkCharge | undefined;
 }
 
 /** Reads a run on the axis it extends along. */
@@ -101,10 +104,11 @@ function collectRun(runs: RouteRun[], pathId: string, start: Point, end: Point):
 }
 
 /** The maximal collinear runs of one route. A collinear intermediate point is never a bend. */
-export function routeRuns(path: RoutedPath): readonly RouteRun[] {
+export function routeRuns(path: RoutedPath, charge?: RouteWorkCharge): readonly RouteRun[] {
 	const runs: RouteRun[] = [];
 	let start: Point | undefined;
 	for (const end of path.points) {
+		charge?.(1);
 		if (start !== undefined) collectRun(runs, path.id, start, end);
 		start = end;
 	}
@@ -116,6 +120,7 @@ function canCarryBridge(
 	run: RouteRun,
 	point: Point,
 	carried: ReadonlyMap<RouteRun, readonly Point[]>,
+	charge?: RouteWorkCharge,
 ): boolean {
 	const interval = runInterval(run);
 	let coordinate = point.y;
@@ -126,6 +131,7 @@ function canCarryBridge(
 	if (distance < minimum || remaining < minimum) return false;
 	const diameter = BRIDGE_RADIUS * 2 + BRIDGE_CLEARANCE;
 	return (carried.get(run) ?? []).every((previous) => {
+		charge?.(1);
 		let previousCoordinate = previous.y;
 		if (run.orientation === RouteOrientation.Horizontal) previousCoordinate = previous.x;
 		const separation = Math.abs(previousCoordinate - coordinate);
@@ -138,8 +144,10 @@ function overlappingCarriers(
 	run: RouteRun,
 	point: Point,
 	runs: readonly RouteRun[],
+	charge?: RouteWorkCharge,
 ): readonly RouteRun[] {
 	return runs.filter((candidate) => {
+		charge?.(1);
 		if (candidate.orientation !== run.orientation) return false;
 		if (run.orientation === RouteOrientation.Horizontal)
 			return (
@@ -166,15 +174,24 @@ function canonicalBridgeKey(bridge: LayoutBridge): string {
  * it independent of input permutation.
  */
 function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previous: RouteRun): void {
-	const groups = [current, previous].map((run) => overlappingCarriers(run, point, scan.runs));
-	const taken = groups
-		.flat()
-		.some((run) =>
-			(scan.carried.get(run) ?? []).some((placed) => placed.x === point.x && placed.y === point.y),
-		);
+	const { charge } = scan;
+	const groups = [current, previous].map((run) =>
+		overlappingCarriers(run, point, scan.runs, charge),
+	);
+	charge?.((groups[0]?.length ?? 0) + (groups[1]?.length ?? 0));
+	const taken = groups.flat().some((run) => {
+		charge?.(1);
+		return (scan.carried.get(run) ?? []).some((placed) => {
+			charge?.(1);
+			return placed.x === point.x && placed.y === point.y;
+		});
+	});
 	if (taken) return;
 	const carriers = groups.find((group) =>
-		group.every((run) => canCarryBridge(run, point, scan.carried)),
+		group.every((run) => {
+			charge?.(1);
+			return canCarryBridge(run, point, scan.carried, charge);
+		}),
 	);
 	if (carriers === undefined) return;
 	for (const carrier of carriers) {
@@ -183,17 +200,30 @@ function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previou
 		scan.carried.set(carrier, points);
 	}
 	const crossed = groups.filter((group) => group !== carriers).flat();
+	charge?.(carriers.length + crossed.length);
 	const bridge: LayoutBridge = {
 		...point,
-		carrierIds: [...new Set(carriers.map(({ pathId }) => pathId))].sort(compareCanonicalStrings),
-		crossedIds: [...new Set(crossed.map(({ pathId }) => pathId))].sort(compareCanonicalStrings),
+		carrierIds: [...new Set(carriers.map(({ pathId }) => pathId))].sort((left, right) => {
+			charge?.(1);
+			return compareCanonicalStrings(left, right);
+		}),
+		crossedIds: [...new Set(crossed.map(({ pathId }) => pathId))].sort((left, right) => {
+			charge?.(1);
+			return compareCanonicalStrings(left, right);
+		}),
 	};
 	scan.bridges.set(canonicalBridgeKey(bridge), bridge);
 }
 
 /** Reads one strict crossing of a run pair and records the bridge it can carry. */
-function recordPairs(scan: BridgeScan, run: RouteRun, previousRuns: readonly RouteRun[]): void {
+function recordPairs(
+	scan: BridgeScan,
+	run: RouteRun,
+	previousRuns: readonly RouteRun[],
+	charge?: RouteWorkCharge,
+): void {
 	for (const previous of previousRuns) {
+		charge?.(1);
 		const point = strictCrossing(run.start, run.end, previous.start, previous.end);
 		if (point === undefined) continue;
 		let horizontal = previous;
@@ -219,22 +249,30 @@ function recordPairs(scan: BridgeScan, run: RouteRun, previousRuns: readonly Rou
  * The bridges are the derived mark shared by the rendering, the validators and the searches: no
  * layout result stores them.
  */
-export function routeBridgeAnalysis(paths: readonly RoutedPath[]): RouteBridgeAnalysis {
-	const sortedPaths = [...paths].sort((left, right) => compareCanonicalStrings(left.id, right.id));
-	const runsByPath = sortedPaths.map((path) => routeRuns(path));
+export function routeBridgeAnalysis(
+	paths: readonly RoutedPath[],
+	charge?: RouteWorkCharge,
+): RouteBridgeAnalysis {
+	const sortedPaths = [...paths].sort((left, right) => {
+		charge?.(1);
+		return compareCanonicalStrings(left.id, right.id);
+	});
+	const runsByPath = sortedPaths.map((path) => routeRuns(path, charge));
 	const scan: BridgeScan = {
 		runs: runsByPath.flat(),
 		crossings: new Map(),
 		carried: new Map(),
 		bridges: new Map(),
+		charge,
 	};
 	const previousRuns: RouteRun[] = [];
 	for (const pathRuns of runsByPath) {
-		for (const run of pathRuns) recordPairs(scan, run, previousRuns);
+		for (const run of pathRuns) recordPairs(scan, run, previousRuns, charge);
 		previousRuns.push(...pathRuns);
 	}
 	return {
 		crossings: [...scan.crossings.values()].sort((left, right) => {
+			charge?.(1);
 			const byPoint = left.x - right.x || left.y - right.y;
 			if (byPoint !== 0) return byPoint;
 			const byHorizontal = compareCanonicalStrings(left.horizontalId, right.horizontalId);
@@ -242,6 +280,7 @@ export function routeBridgeAnalysis(paths: readonly RoutedPath[]): RouteBridgeAn
 			return compareCanonicalStrings(left.verticalId, right.verticalId);
 		}),
 		bridges: [...scan.bridges.values()].sort((left, right) => {
+			charge?.(1);
 			const byPoint = left.x - right.x || left.y - right.y;
 			if (byPoint !== 0) return byPoint;
 			return compareCanonicalStrings(canonicalBridgeKey(left), canonicalBridgeKey(right));
@@ -255,6 +294,9 @@ export function strictCrossings(paths: readonly RoutedPath[]): readonly RouteCro
 }
 
 /** The validated bridges of the declared routes, in canonical order: the derived bridge mark. */
-export function validatedBridges(paths: readonly RoutedPath[]): readonly LayoutBridge[] {
-	return routeBridgeAnalysis(paths).bridges;
+export function validatedBridges(
+	paths: readonly RoutedPath[],
+	charge?: RouteWorkCharge,
+): readonly LayoutBridge[] {
+	return routeBridgeAnalysis(paths, charge).bridges;
 }

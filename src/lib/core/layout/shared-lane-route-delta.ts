@@ -1,4 +1,5 @@
 import type { LogicGraph } from '../graph/create-graph';
+import type { RouteWorkCharge } from './bridge-oracle';
 import { SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import type { SharedLaneGeometry, SharedLaneGeometryCertificate } from './shared-lane-geometry';
 import {
@@ -36,6 +37,8 @@ interface SharedLaneGeometryDeltaValidationInput {
 	readonly changedRouteIds: ReadonlySet<string>;
 	readonly acceptBridges: boolean;
 	readonly clearance?: number;
+	readonly charge?: RouteWorkCharge | undefined;
+	readonly onBridgeCount?: (count: number) => void;
 }
 
 export function materializeParallelGeometryDelta(
@@ -106,6 +109,8 @@ export function validateSharedLaneGeometryDelta({
 	routeCertificate,
 	changedRouteIds,
 	acceptBridges,
+	charge,
+	onBridgeCount,
 	clearance = SHARED_LANE_CLEARANCE,
 }: SharedLaneGeometryDeltaValidationInput): string | undefined {
 	const staticIssue = validateSharedLaneStaticGeometryWithCertificate(
@@ -115,11 +120,14 @@ export function validateSharedLaneGeometryDelta({
 	);
 	if (staticIssue !== undefined) return staticIssue;
 	// A malformed historical route or a different frame cannot certify unchanged routes.
-	const sameFrame = routeCertificate.geometry.lanes === geometry.lanes &&
+	const sameFrame =
+		routeCertificate.geometry.lanes === geometry.lanes &&
 		routeCertificate.geometry.elements === geometry.elements;
-	if (!sameFrame || routeCertificate.issue !== undefined)
-		return validateSharedLaneGeometry(graph, geometry, clearance, acceptBridges);
-	const routeIssue = validateChangedSharedLaneRoutes(geometry, clearance, changedRouteIds);
+	if (!sameFrame) return validateSharedLaneGeometry(graph, geometry, clearance, acceptBridges);
+	let routeIssue: string | undefined;
+	if (routeCertificate.issue !== undefined)
+		routeIssue = validateSharedLaneRouteShapes(graph, geometry, clearance, charge);
+	else routeIssue = validateChangedSharedLaneRoutes(geometry, clearance, changedRouteIds, charge);
 	if (routeIssue !== undefined) return routeIssue;
-	return validateSharedLaneRouteContacts(geometry.relations, acceptBridges);
+	return validateSharedLaneRouteContacts(geometry.relations, acceptBridges, charge, onBridgeCount);
 }

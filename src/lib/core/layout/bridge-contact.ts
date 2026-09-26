@@ -6,6 +6,7 @@ import {
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
+	type RouteWorkCharge,
 	runInterval,
 } from './bridge-oracle';
 import type { Point } from './layout-types';
@@ -67,13 +68,20 @@ export function unbridgedContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
+	charge?: RouteWorkCharge,
 ): readonly Point[] {
 	const contacts = new Map<string, Point>();
-	for (const firstRun of routeRuns(first)) {
-		for (const secondRun of routeRuns(second)) {
+	const secondRuns = routeRuns(second, charge);
+	for (const firstRun of routeRuns(first, charge)) {
+		for (const secondRun of secondRuns) {
+			charge?.(1);
 			const point = runContact(firstRun, secondRun);
 			if (point === undefined) continue;
-			const covered = bridges.some((bridge) => bridgeCovers(bridge, point, first.id, second.id));
+			const covered = bridges.some((bridge) => {
+				const routeIds = bridge.carrierIds.length + bridge.crossedIds.length;
+				charge?.(1 + 2 * routeIds);
+				return bridgeCovers(bridge, point, first.id, second.id);
+			});
 			if (!covered) contacts.set(`${point.x}:${point.y}`, point);
 		}
 	}

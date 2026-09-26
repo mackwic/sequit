@@ -1,5 +1,6 @@
 import { defined } from '../document/logic-document';
 import { bestWithinBudgetStream } from './bounded-search';
+import type { RouteWorkCharge } from './bridge-oracle';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import type { IncidentSearchState } from './shared-lane-incident-search';
@@ -20,19 +21,13 @@ import { TransverseRouteOrder } from './shared-transverse-routing';
 
 const MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS = 20_000;
 
-/** Bound the route-segment/box and pairwise contact probes before evaluating an allocation. */
-function parallelCandidateWork(input: SharedLaneInput, elementCount: number): number {
-	const routes = input.plans.length;
-	const boxProbes = routes * 5 * elementCount;
-	const routePairs = (routes * (routes - 1)) / 2;
-	const contactProbes = routePairs * 25;
-	const routeWork = boxProbes + contactProbes;
-	return Math.max(1, routeWork + routes * 10);
-}
+/** Baselines are always evaluated; only alternatives share the fixed per-pass ceiling. */
+class AllocationWorkExceeded extends Error {}
 
 interface ParallelSelectionEvidence {
 	readonly geometry: SharedLaneGeometry;
 	readonly incidents: readonly RegionSolvedIncident[];
+	readonly bridges?: number | undefined;
 }
 
 export interface ParallelRouteSearchResult<Selection> {
@@ -49,20 +44,21 @@ interface ParallelRouteSearchInput<Selection extends ParallelSelectionEvidence> 
 	readonly evaluate: (
 		candidate: ParallelRouteCandidate,
 		acceptBridges: boolean,
+		charge: RouteWorkCharge,
 	) => Selection | undefined;
 }
 
 function rankEvaluatedCandidate<Selection extends ParallelSelectionEvidence>(
 	candidate: ParallelRouteCandidate,
 	acceptBridges: boolean,
-	state: IncidentSearchState,
-	evaluate: ParallelRouteSearchInput<Selection>['evaluate'],
+	input: ParallelRouteSearchInput<Selection>,
+	charge: RouteWorkCharge,
 ): RankedLaneRouteSelection<Selection> | undefined {
-	state.strategyId = candidate.strategyId;
-	state.candidateId = candidate.candidateId;
-	const selected = evaluate(candidate, acceptBridges);
+	input.state.strategyId = candidate.strategyId;
+	input.state.candidateId = candidate.candidateId;
+	const selected = input.evaluate(candidate, acceptBridges, charge);
 	if (selected === undefined) return undefined;
-	return rankLaneRouteSelection(selected, candidate);
+	return rankLaneRouteSelection(selected, candidate, selected.bridges, charge);
 }
 function preferredCandidate<Selection>(
 	best: RankedLaneRouteSelection<Selection> | undefined,
@@ -89,10 +85,12 @@ function bestBaselineSelection<Selection extends ParallelSelectionEvidence>(
 	candidates: Iterable<ParallelRouteCandidate>,
 	input: ParallelRouteSearchInput<Selection>,
 	acceptBridges: boolean,
+	charge: RouteWorkCharge,
 ): RankedLaneRouteSelection<Selection> | undefined {
 	let best: RankedLaneRouteSelection<Selection> | undefined;
 	for (const candidate of candidates) {
-		const ranked = rankEvaluatedCandidate(candidate, acceptBridges, input.state, input.evaluate);
+		charge(input.input.plans.length * 10);
+		const ranked = rankEvaluatedCandidate(candidate, acceptBridges, input, charge);
 		if (ranked === undefined) continue;
 		if (best === undefined || laneRouteSelectionIsBetter(ranked, best)) best = ranked;
 	}
@@ -132,28 +130,64 @@ function laneSearchCanStop<Selection extends ParallelSelectionEvidence>(
 	return laneRouteSelectionMeetsLowerBound(ranked);
 }
 
+interface AlternativeSearch<Selection> {
+	readonly best: RankedLaneRouteSelection<Selection> | undefined;
+	readonly attempted: number;
+	readonly work: number;
+}
+
+function evaluateAlternatives<Selection extends ParallelSelectionEvidence>(
+	candidates: Generator<ParallelRouteCandidate, undefined, void>,
+	input: ParallelRouteSearchInput<Selection>,
+	acceptBridges: boolean,
+	baseline: RankedLaneRouteSelection<Selection> | undefined,
+): AlternativeSearch<Selection> {
+	let best = baseline;
+	let work = 0;
+	let attempted = 0;
+	const charge: RouteWorkCharge = (units) => {
+		if (work + units > MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS) throw new AllocationWorkExceeded();
+		work += units;
+	};
+	const generationWork = Math.max(1, input.input.plans.length * 10);
+	while (work + generationWork <= MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS) {
+		const next = candidates.next();
+		if (next.done === true) break;
+		try {
+			charge(generationWork);
+			const ranked = rankEvaluatedCandidate(next.value, acceptBridges, input, charge);
+			attempted += 1;
+			best = preferredCandidate(best, ranked);
+		} catch (error) {
+			if (!(error instanceof AllocationWorkExceeded)) throw error;
+			return { best, attempted, work };
+		}
+	}
+	return { best, attempted, work };
+}
+
 export function searchParallelRouteAllocations<Selection extends ParallelSelectionEvidence>(
 	input: ParallelRouteSearchInput<Selection>,
 ): ParallelRouteSearchResult<Selection> {
-	const { input: lanes, ports, contracts, state, evaluate } = input;
+	const { input: lanes, ports, contracts } = input;
 	const plans = parallelStrategyPlans(lanes, ports, contracts);
 	const total = parallelCandidateTotal(plans);
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
-	const candidateWork = parallelCandidateWork(lanes, defined(plans[0]).frame.elements.length);
-	const workBudget = Math.max(
-		MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS,
-		plans.length * candidateWork,
-	);
+	const workBudget = MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS;
 	let allocationTruncated = false;
 	for (const acceptBridges of [false, true]) {
 		const candidates = parallelRouteCandidates(lanes, plans, acceptBridges);
 		const baselineCount = plans.length;
-		let attempted = baselineCount;
-		let work = baselineCount * candidateWork;
-		let best = bestBaselineSelection(
+		const attempted = baselineCount;
+		let baselineWork = 0;
+		const chargeBaseline: RouteWorkCharge = (units) => {
+			baselineWork += units;
+		};
+		const best = bestBaselineSelection(
 			baselineCandidates(candidates, baselineCount),
 			input,
 			acceptBridges,
+			chargeBaseline,
 		);
 		if (best !== undefined && laneSearchCanStop(contracts, best)) {
 			const exhaustive = BigInt(attempted) === BigInt(total);
@@ -164,34 +198,34 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 				exhaustive,
 				truncated: false,
 				searchStarted: false,
-				work,
+				work: 0,
+				baselineWork,
 				workBudget,
 			});
 			return { selected: best.selected, allocationWitness: { passes }, allocationTruncated };
 		}
-		while (work + candidateWork <= workBudget) {
-			const next = candidates.next();
-			if (next.done === true) break;
-			attempted += 1;
-			work += candidateWork;
-			const ranked = rankEvaluatedCandidate(next.value, acceptBridges, state, evaluate);
-			best = preferredCandidate(best, ranked);
-		}
-		const exhaustive = BigInt(attempted) === BigInt(total);
+		const alternatives = evaluateAlternatives(candidates, input, acceptBridges, best);
+		const completed = attempted + alternatives.attempted;
+		const exhaustive = BigInt(completed) === BigInt(total);
 		const truncated = !exhaustive;
 		passes.push({
 			acceptBridges,
-			attempted,
+			attempted: completed,
 			total,
 			exhaustive,
 			truncated,
 			searchStarted: true,
-			work,
+			work: alternatives.work,
+			baselineWork,
 			workBudget,
 		});
 		allocationTruncated ||= truncated;
-		if (best !== undefined)
-			return { selected: best.selected, allocationWitness: { passes }, allocationTruncated };
+		if (alternatives.best !== undefined)
+			return {
+				selected: alternatives.best.selected,
+				allocationWitness: { passes },
+				allocationTruncated,
+			};
 	}
 	return { allocationWitness: { passes }, allocationTruncated };
 }

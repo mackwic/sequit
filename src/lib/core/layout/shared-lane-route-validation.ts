@@ -1,5 +1,6 @@
 import { defined, LaneOrientation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import type { RouteWorkCharge } from './bridge-oracle';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, Point } from './layout-types';
 import {
@@ -23,6 +24,7 @@ interface RouteGeometryContext {
 	readonly geometry: SharedLaneGeometry;
 	readonly boxes: ReadonlyMap<string, LayoutElement>;
 	readonly clearance: number;
+	readonly charge?: RouteWorkCharge | undefined;
 }
 
 interface RouteContext extends RouteGeometryContext {
@@ -169,6 +171,7 @@ function segmentHitsBox(
 ): string | undefined {
 	const lastIndex = route.points.length - 1;
 	for (const box of context.boxes.values()) {
+		context.charge?.(1);
 		if (box.id === route.from && segment.index === 1) continue;
 		if (box.id === route.to && segment.index === lastIndex) continue;
 		if (hitsBox(segment.start, segment.end, box.bounds, context.clearance))
@@ -179,15 +182,15 @@ function segmentHitsBox(
 
 function segmentCrossesItself(
 	route: LayoutRelation,
-	index: number,
-	start: Point,
-	end: Point,
+	segment: RouteSegment,
+	charge?: RouteWorkCharge,
 ): boolean {
-	for (let other = index + 2; other < route.points.length; other += 1) {
+	for (let other = segment.index + 2; other < route.points.length; other += 1) {
+		charge?.(1);
 		const otherStart = route.points[other - 1];
 		const otherEnd = route.points[other];
 		if (otherStart === undefined || otherEnd === undefined) continue;
-		if (segmentsContact(start, end, otherStart, otherEnd)) return true;
+		if (segmentsContact(segment.start, segment.end, otherStart, otherEnd)) return true;
 	}
 	return false;
 }
@@ -209,7 +212,8 @@ function routeSegments(route: LayoutRelation, context: RouteGeometryContext): st
 			return `Route ${route.id} escapes the canvas.`;
 		const obstacle = segmentHitsBox(route, { index, start, end }, context);
 		if (obstacle !== undefined) return obstacle;
-		if (segmentCrossesItself(route, index, start, end)) return `Route ${route.id} crosses itself.`;
+		if (segmentCrossesItself(route, { index, start, end }, context.charge))
+			return `Route ${route.id} crosses itself.`;
 	}
 	return undefined;
 }
@@ -231,7 +235,9 @@ export function validateSharedLaneRouteShapes(
 	graph: LogicGraph,
 	geometry: SharedLaneGeometry,
 	clearance: number,
+	charge?: RouteWorkCharge,
 ): string | undefined {
+	charge?.(graph.relations.length + geometry.elements.length);
 	const relationById = new Map(graph.relations.map(({ relation }) => [relation.id, relation]));
 	if (geometry.relations.length !== relationById.size) return 'The relation set is incomplete.';
 	const context: RouteContext = {
@@ -242,9 +248,11 @@ export function validateSharedLaneRouteShapes(
 		boxes: new Map(geometry.elements.map((box) => [box.id, box])),
 		clearance,
 		ports: new Map(),
+		charge,
 	};
 	const seen = new Set<string>();
 	for (const route of geometry.relations) {
+		charge?.(2 * geometry.lanes.length + route.points.length);
 		if (seen.has(route.id)) return `Route identity differs at ${route.id}.`;
 		seen.add(route.id);
 		const relation = relationById.get(route.id);
@@ -264,11 +272,14 @@ export function validateChangedSharedLaneRoutes(
 	geometry: SharedLaneGeometry,
 	clearance: number,
 	changedRouteIds: ReadonlySet<string>,
+	charge?: RouteWorkCharge,
 ): string | undefined {
+	charge?.(geometry.elements.length + geometry.relations.length);
 	const context = {
 		geometry,
 		boxes: new Map(geometry.elements.map((box) => [box.id, box])),
 		clearance,
+		charge,
 	};
 	for (const route of geometry.relations) {
 		if (changedRouteIds.has(route.id)) {

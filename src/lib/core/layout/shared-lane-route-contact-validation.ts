@@ -1,16 +1,17 @@
 import { defined } from '../document/logic-document';
 import { unbridgedContacts } from './bridge-contact';
-import { type LayoutBridge, validatedBridges } from './bridge-oracle';
+import { type LayoutBridge, type RouteWorkCharge, validatedBridges } from './bridge-oracle';
 import type { LayoutRelation } from './layout-types';
 import { segmentsContact } from './shared-lane-geometry-primitives';
 
-function routesCross(a: LayoutRelation, b: LayoutRelation): boolean {
+function routesCross(a: LayoutRelation, b: LayoutRelation, charge?: RouteWorkCharge): boolean {
 	for (let first = 1; first < a.points.length; first += 1) {
 		const aStart = defined(a.points[first - 1]);
 		const aEnd = defined(a.points[first]);
 		for (let second = 1; second < b.points.length; second += 1) {
 			const bStart = defined(b.points[second - 1]);
 			const bEnd = defined(b.points[second]);
+			charge?.(1);
 			if (segmentsContact(aStart, aEnd, bStart, bEnd)) return true;
 		}
 	}
@@ -21,17 +22,21 @@ function routesCross(a: LayoutRelation, b: LayoutRelation): boolean {
 export function validateSharedLaneRouteContacts(
 	routes: readonly LayoutRelation[],
 	acceptBridges: boolean,
+	charge?: RouteWorkCharge,
+	onBridgeCount?: (count: number) => void,
 ): string | undefined {
 	let bridges: readonly LayoutBridge[] | undefined;
-	if (acceptBridges) bridges = validatedBridges(routes);
+	if (acceptBridges) bridges = validatedBridges(routes, charge);
 	for (let first = 0; first < routes.length; first += 1) {
 		const a = defined(routes[first]);
 		for (let second = first + 1; second < routes.length; second += 1) {
 			const b = defined(routes[second]);
-			let touching = routesCross(a, b);
-			if (bridges !== undefined) touching = unbridgedContacts(a, b, bridges).length > 0;
+			let touching: boolean;
+			if (bridges === undefined) touching = routesCross(a, b, charge);
+			else touching = unbridgedContacts(a, b, bridges, charge).length > 0;
 			if (touching) return `Routes ${a.id} and ${b.id} cross without a bridge.`;
 		}
 	}
+	onBridgeCount?.(bridges?.length ?? 0);
 	return undefined;
 }

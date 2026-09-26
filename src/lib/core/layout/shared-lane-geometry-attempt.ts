@@ -1,4 +1,5 @@
 import type { LogicGraph } from '../graph/create-graph';
+import type { RouteWorkCharge } from './bridge-oracle';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
@@ -19,6 +20,7 @@ import { validateSharedLaneGeometryDelta } from './shared-lane-route-delta';
 
 export interface SharedLaneGeometryAttemptSelection {
 	readonly incidents: readonly RegionSolvedIncident[];
+	readonly bridges?: number | undefined;
 	readonly witness: RegionIncidentSearchWitness;
 }
 
@@ -32,6 +34,7 @@ interface SharedLaneGeometryAttemptInput {
 	readonly certificate: SharedLaneGeometryCertificate;
 	readonly routeCertificate?: SharedLaneRouteCertificate;
 	readonly changedRouteIds?: ReadonlySet<string>;
+	readonly charge?: RouteWorkCharge | undefined;
 }
 
 export function attemptSharedLaneGeometry(
@@ -47,7 +50,9 @@ export function attemptSharedLaneGeometry(
 		certificate,
 		routeCertificate,
 		changedRouteIds,
+		charge,
 	} = input;
+	let bridges: number | undefined;
 	let issue: string | undefined;
 	if (routeCertificate !== undefined && changedRouteIds !== undefined) {
 		issue = validateSharedLaneGeometryDelta({
@@ -57,6 +62,10 @@ export function attemptSharedLaneGeometry(
 			routeCertificate,
 			changedRouteIds,
 			acceptBridges,
+			charge,
+			onBridgeCount: (count) => {
+				bridges = count;
+			},
 		});
 	} else
 		issue = validateSharedLaneGeometryWithCertificate(graph, geometry, certificate, acceptBridges);
@@ -76,5 +85,5 @@ export function attemptSharedLaneGeometry(
 		return state.rejectedAlternatives[0]?.reason ?? 'No lane incident side remains valid.';
 	let witness = searchWitness(state);
 	if (contracts.length > 0) witness = { ...witness, exhaustive: false };
-	return { incidents, witness };
+	return { incidents, witness, bridges };
 }
