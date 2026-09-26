@@ -325,6 +325,43 @@ describe('N by M grid region arrangement', () => {
 		expect(route.points.some(({ x }) => x === localRail)).toBe(true);
 	});
 
+	it('keeps the reserved outer track in an empty crossing gutter for an inherited incident', () => {
+		const source = persistedNxmInnerGridDocument();
+		const withCrossing = {
+			...source,
+			relations: [
+				{ id: 'a-b', from: 'a', to: 'b' },
+				{ id: 'c-out', from: 'c', to: 'outside' },
+			],
+		};
+		const prepared = prepareLayoutDocument(withCrossing);
+		const input = nestedRegionInput(prepared.graph);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`${attempt.status}: ${attempt.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized grid.');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+		const cell = attempt.regions.find(({ id }) => id === 'c');
+		const route = attempt.layout.relations.find(({ id }) => id === 'c-out');
+		if (cell === undefined || route === undefined) throw new Error('Missing outer incident.');
+		const resources = gridCrossingResources(nxmThreeByTwoInput(), [
+			{ id: 'a-b', from: 'a', to: 'b' },
+		]);
+		const gutter = resources.edges.gutters[2];
+		if (gutter === undefined) throw new Error('Missing outer gutter.');
+		expect(gutter.capacity).toBe(1);
+		const railX = crossingRailX(
+			gutter,
+			cell.bounds.x + cell.bounds.width,
+			RegionPortalSide.Right,
+			reservedRailTrack(gutter),
+		);
+		expect(route.points.some(({ x }) => x === railX)).toBe(true);
+	});
+
 	it('carries an inner-grid incident from its middle column to the sibling leaf', () => {
 		const source = persistedNxmInnerGridDocument();
 		const prepared = prepareLayoutDocument(source, undefined);
