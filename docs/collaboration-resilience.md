@@ -92,21 +92,18 @@ mise exec -- pnpm run test:coverage:collaboration
 
 ## Garantie de validation et limites locales
 
-Le dépôt garde séparément le `Y.Doc` physique, le dernier `LogicDocument` valide
-et le checkpoint Yjs correspondant au dernier état physique valide. Les
-commandes Markdown pures sont projetées depuis le document accepté sans clone
-Yjs, décodage du document ni recalcul du graphe lors du préflight. Les commandes
-structurelles et mixtes sont projetées immuablement, validées puis appliquées
-comme une seule transaction. Après une fusion distante invalide, une commande
-ne réconcilie le même `Y.Doc` depuis le checkpoint que si les seules divergences
-à rétablir correspondent aux champs diagnostiqués invalides ; les `Y.Text`
-existants sont conservés lorsque leur identité et leur type le permettent.
-Une édition potentiellement valide, même contenue dans la **première** fusion
-invalide et même située sur la même entité qu'un champ invalide, entraîne
-`recovery-conflict` avec le nom des entités concernées : le dépôt ne peut pas
-l'écraser silencieusement. Une transaction supplémentaire pendant l'invalidité
-bloque aussi la reprise. Dans ces cas, il faut d'abord réparer l'état physique
-par une mise à jour externe valide. Un échec de préflight conserve le checkpoint.
+Le dépôt distingue le `Y.Doc` physique du dernier `LogicDocument` validé et
+publié. Les commandes Markdown pures sont projetées depuis cet état accepté sans
+clonage Yjs, décodage intégral ni recalcul du graphe lors du préflight ; les
+commandes structurelles et mixtes sont projetées immuablement, validées, puis
+appliquées dans une seule transaction. Si le document physique est invalide,
+`persist` refuse toute nouvelle commande avec les diagnostics de lecture (ou
+un diagnostic ciblé si la cible Markdown elle-même est absente). Il ne restaure
+pas de checkpoint et ne retire aucune modification du journal Yjs ; seule une
+réparation explicite du document physique par son propriétaire peut le rendre
+à nouveau éditable. `readAccepted` continue de présenter le dernier état valide
+sans prétendre que le document physique a été réparé. Les erreurs de commande
+sont retournées comme diagnostics typés dans la promesse, sans levée synchrone.
 Toute commande lancée pendant une transaction Yjs locale ou distante, ses
 observateurs ou son nettoyage est refusée jusqu'à `afterAllTransactions`,
 plutôt qu'annoncée acceptée avant le contrôle de sa transaction.
@@ -136,7 +133,7 @@ protocole actuel est
 La cible est une médiane locale d'environ 15 ms, non un seuil CI strict.
 
 Mesures **locales ciblées**, non rapports officiels comparables : médianes
-dépôt 6,01 ms et participant prêt 5,72 ms sur la branche ; mesures historiques
+dépôt 6,15 ms et participant prêt 6,00 ms sur la branche ; mesures historiques
 avant redesign 186,46 ms et 4,99 ms respectivement, sous un protocole antérieur.
 Aucun gain chiffré avant/après ne peut en être déduit. La comparaison attend deux
 rapports `performance:record` complets, baseline et branche, avec la même
