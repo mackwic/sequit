@@ -154,5 +154,5 @@ export function referenceRouteBridgeAnalysis(paths: readonly RoutedPath[]): Rout
 		const secondKey = `${right.x}:${right.y}:${right.carrierIds.join(',')}:${right.crossedIds.join(',')}`;
 		return compareCanonicalStrings(firstKey, secondKey);
 	});
-	return { crossings, bridges };
+	return { crossings, bridges, inspectedRuns: scan.runs.length };
 }
