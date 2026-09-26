@@ -13,6 +13,21 @@ interface RankOrderDomain {
 	readonly bands: readonly (readonly string[])[];
 }
 
+function sameOrder(
+	left: readonly (readonly string[])[],
+	right: readonly (readonly string[])[],
+): boolean {
+	if (left.length !== right.length) return false;
+	for (const [index, band] of left.entries()) {
+		const other = right[index];
+		if (other?.length !== band.length) return false;
+		for (const [position, id] of band.entries()) {
+			if (other[position] !== id) return false;
+		}
+	}
+	return true;
+}
+
 function validOrder(domain: RankOrderDomain, order: readonly (readonly string[])[]): boolean {
 	if (domain.bands.length !== order.length) return false;
 	for (const [index, band] of order.entries()) {
@@ -111,12 +126,14 @@ export function prepareLayout(
 	const rankOrderDomain: RankOrderDomain = {
 		bands: components.flatMap((component) => component.rows.ordinary),
 	};
-	if (order !== undefined) {
-		if (!validOrder(rankOrderDomain, order)) throw new Error('Invalid ordinary-row rank order');
+	const effectiveOrder = order ?? rankOrderDomain.bands;
+	if (!validOrder(rankOrderDomain, effectiveOrder))
+		throw new Error('Invalid ordinary-row rank order');
+	if (!sameOrder(rankOrderDomain.bands, effectiveOrder)) {
 		let bandIndex = 0;
 		components = components.map((component) => {
 			const bandCount = component.rows.ordinary.length;
-			const ordinaryOrder = order.slice(bandIndex, bandIndex + bandCount).flat();
+			const ordinaryOrder = effectiveOrder.slice(bandIndex, bandIndex + bandCount).flat();
 			bandIndex += bandCount;
 			return {
 				...component,
