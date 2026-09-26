@@ -260,6 +260,10 @@ describe('projected Yjs change differential', () => {
 			},
 		],
 	});
+	const groupedClosed = () => ({
+		...grouped(),
+		groups: [{ ...defined(grouped().groups[0]), state: GroupState.Closed }],
+	});
 	const baseChanges = (): DocumentChangeSet => ({
 		nodeAdditions: [],
 		relationAdditions: [],
@@ -330,6 +334,23 @@ describe('projected Yjs change differential', () => {
 					{ ...defined(grouped().groups[0]), label: 'Changed group', color: '#aa4455' },
 				],
 			},
+		],
+		[
+			'group state addition',
+			grouped,
+			{ groupReplacements: [{ ...defined(grouped().groups[0]), state: GroupState.Closed }] },
+		],
+		[
+			'group state modification',
+			groupedClosed,
+			{
+				groupReplacements: [{ ...defined(groupedClosed().groups[0]), state: GroupState.Expanded }],
+			},
+		],
+		[
+			'group state removal',
+			groupedClosed,
+			{ groupReplacements: [{ ...defined(grouped().groups[0]) }] },
 		],
 		[
 			'endpoint assignment',
@@ -2134,6 +2155,39 @@ describe('yjsLiveDocumentFormat', () => {
 });
 
 describe('repository presentation and recovery boundaries', () => {
+	it('rejects an invalid group state before an update reaches a peer', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, explicitLaneLogicDocument());
+		const peer = new Y.Doc();
+		Y.applyUpdate(peer, Y.encodeStateAsUpdate(local));
+		const repository = new YjsDocumentRepository(local);
+		const group = defined(readDocument(local).groups.find(({ id }) => id === 'container'));
+		const before = Y.encodeStateVector(local);
+		const peerBefore = Y.encodeStateVector(peer);
+		const received: Uint8Array[] = [];
+		local.on('update', (update) => {
+			received.push(update);
+			Y.applyUpdate(peer, update);
+		});
+		const invalid = { ...group, state: GroupState.Closed };
+		Reflect.set(invalid, 'state', 'invalid');
+		const rejected = await repository.persist({
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupReplacements: [invalid],
+		});
+		expect(rejected).toMatchObject({ ok: false });
+		expect(received).toEqual([]);
+		expect(Y.encodeStateVector(local)).toEqual(before);
+		expect(Y.encodeStateVector(peer)).toEqual(peerBefore);
+		expect(readDocument(peer).groups.find(({ id }) => id === group.id)?.state).toBeUndefined();
+		repository.destroy();
+		local.destroy();
+		peer.destroy();
+	});
+
 	it('persists a group state replacement without changing its shared label identity', async () => {
 		const ydoc = new Y.Doc();
 		importLogicDocument(ydoc, explicitLaneLogicDocument());

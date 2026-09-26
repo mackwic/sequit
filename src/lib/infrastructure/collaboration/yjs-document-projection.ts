@@ -46,6 +46,8 @@ function updateGroup(group: LogicGroup, changes: DocumentChangeSet): LogicGroup 
 		const next = { ...updated, label: replacement.label };
 		if (replacement.color === undefined) delete next.color;
 		else next.color = replacement.color;
+		if (replacement.state === undefined) delete next.state;
+		else next.state = replacement.state;
 		updated = next;
 	}
 	return updated;
