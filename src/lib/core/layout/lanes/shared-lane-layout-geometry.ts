@@ -1,6 +1,9 @@
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
 import { makeSharedLaneFrame } from './shared-lane-frame';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import { interiorPassageAllocation } from './shared-lane-interior-passage';
+import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import { allocateParallelRoutes, routeSharedLanes } from './shared-lane-routing';
@@ -20,15 +23,16 @@ function geometryDimensions(
 	return { width: longExtent, height: crossExtent };
 }
 
-export function interiorParallelGeometry(
+export function validatedInteriorParallelGeometry(
+	graph: LogicGraph,
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
-): SharedLaneGeometry | undefined {
+): SharedLaneGeometry | string | undefined {
 	const frame = makeSharedLaneFrame(input, ports);
 	const passage = interiorPassageAllocation(input, frame, ports);
 	if (passage === undefined) return undefined;
 	const dimensions = geometryDimensions(input, frame.crossExtent, frame.longExtent);
-	return {
+	const geometry: SharedLaneGeometry = {
 		...dimensions,
 		lanes: frame.lanes,
 		elements: frame.elements,
@@ -37,6 +41,10 @@ export function interiorParallelGeometry(
 			passage,
 		}),
 	};
+	const relationId = defined(input.plans[0]).id;
+	const issue = validateSharedLaneInteriorPassage(graph, geometry, relationId);
+	if (issue !== undefined) return issue;
+	return geometry;
 }
 
 export function transverseGeometry(

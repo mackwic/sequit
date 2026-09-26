@@ -23,6 +23,7 @@ import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ra
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { routeRuns } from '../../../../src/lib/core/layout/bridges/route-runs';
+import { enumerateSharedLaneLayouts } from '../../../../src/lib/core/layout/lanes/shared-lane-candidate-enumeration';
 import {
 	makeSharedLaneFrame,
 	SHARED_LANE_CLEARANCE,
@@ -1570,6 +1571,22 @@ describe('shared lane layout', () => {
 				inspectRouting: true,
 			}).status,
 		).toBe(SharedLaneLayoutStatus.Unsupported);
+		const search = enumerateSharedLaneLayouts(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+			{ inspectRouting: true },
+		);
+		expect(search.next()).toEqual({
+			done: true,
+			value: {
+				attempted: 0,
+				exhaustive: true,
+				rejectedAlternatives: [],
+				rejectedAllocations: [],
+				allocationWitness: undefined,
+			},
+		});
 	});
 
 	it('reports descendants and missing measurements at their input boundary', () => {
@@ -2011,6 +2028,45 @@ describe('shared lane layout', () => {
 			) < 0,
 		);
 		expect(secondBetter).toBe(!firstBetter);
+	});
+
+	it('enumerates distinct accepted parallel allocations after the existing selection', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'a-to-b', from: 'a1', to: 'b1' },
+			{ id: 'a-to-c', from: 'a2', to: 'c1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const current = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(current.status).toBe(SharedLaneLayoutStatus.Selected);
+		const search = enumerateSharedLaneLayouts(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+		);
+		const first = search.next();
+		expect(first.done).toBe(false);
+		if (first.done === true) throw new Error('Missing baseline lane allocation');
+		expect(first.value).toEqual(current);
+		const second = search.next();
+		expect(second.done).toBe(false);
+		if (second.done === true) throw new Error('Missing alternative lane allocation');
+		expect(second.value.layout.relations).not.toEqual(first.value.layout.relations);
+		expect(
+			second.value.allocationWitness?.passes.every(({ work, workBudget }) => work <= workBudget),
+		).toBe(true);
+		let final = search.next();
+		while (final.done === false) final = search.next();
+		if (final.done !== true) throw new Error('Incomplete allocation search');
+		expect(
+			final.value.rejectedAllocations.some(
+				({ strategyId, reason }) =>
+					strategyId === 'parallel/canonical' &&
+					reason === 'Routes a-to-b and a-to-c cross without a bridge.',
+			),
+		).toBe(true);
+		expect(
+			final.value.allocationWitness?.passes.every(({ work, workBudget }) => work <= workBudget),
+		).toBe(true);
 	});
 
 	it('chooses the shorter bridge-free LocalPassages candidate over Canonical', () => {

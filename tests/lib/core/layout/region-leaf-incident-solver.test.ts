@@ -18,7 +18,10 @@ import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-
 import { incidentEndpointRoute } from '../../../../src/lib/core/layout/regions/composition/region-incident-contact';
 import { incidentMetricDemands } from '../../../../src/lib/core/layout/regions/leaf/region-incident-metric-demand';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-base-layout';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
+import {
+	enumerateDedicatedRegionLeafWithIncidents,
+	solveDedicatedRegionLeafWithIncidents,
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -154,11 +157,11 @@ describe('dedicated leaf incident contracts', () => {
 		const input = { document, measurements, contracts };
 		const cold = solveDedicatedRegionLeafWithIncidents(input);
 		const miss = solveDedicatedRegionLeafWithIncidents({ ...input, cache });
-		const hit = solveDedicatedRegionLeafWithIncidents({
+		const hit = enumerateDedicatedRegionLeafWithIncidents({
 			...input,
 			contracts: contracts.toReversed(),
 			cache,
-		});
+		}).next().value;
 		expect(miss).toEqual(cold);
 		expect(hit).toEqual(cold);
 		if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);

@@ -5,6 +5,7 @@ import {
 	boundedCounter,
 	firstValidDepthFirst,
 	scopedCounter,
+	validDepthFirst,
 } from '../../../../src/lib/core/layout/search/bounded-search';
 
 describe('bounded layout search examples', () => {
@@ -56,6 +57,31 @@ describe('bounded layout search examples', () => {
 		]);
 		expect(backtracked).toEqual(['a']);
 		expect(exhausted).toEqual([['a']]);
+	});
+
+	it('suspends accepted prefixes and resumes until a bounded refusal with rejection provenance', () => {
+		const counter = boundedCounter(4);
+		const rejected: string[] = [];
+		const search = validDepthFirst({
+			levels: 2,
+			counter,
+			choices: (level: number) => {
+				if (level === 0) return ['a', 'b'];
+				return ['blocked', 'one', 'two'];
+			},
+			accept: (_level, choice: string) => {
+				if (choice === 'blocked') return 'obstructed';
+				return undefined;
+			},
+			onReject: (_level, choice, reason) => rejected.push(`${choice}:${reason}`),
+		});
+		expect(search.next()).toEqual({ done: false, value: ['a', 'one'] });
+		expect(counter.attempted).toBe(3);
+		expect(rejected).toEqual(['blocked:obstructed']);
+		expect(search.next()).toEqual({ done: false, value: ['a', 'two'] });
+		expect(search.next()).toEqual({ done: true, value: false });
+		expect(counter.attempted).toBe(4);
+		expect(counter.exhausted).toBe(true);
 	});
 
 	it('keeps a phase cap local and exposes global exhaustion only from the parent', () => {

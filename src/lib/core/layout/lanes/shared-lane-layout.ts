@@ -18,12 +18,16 @@ import {
 } from './shared-lane-geometry';
 import { attemptSharedLaneGeometry } from './shared-lane-geometry-attempt';
 import {
+	completedIncidentWitness,
+	emptyWitness,
 	type IncidentSearchState,
 	searchWitness,
 	unknownCode,
 } from './shared-lane-incident-search';
-import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
-import { interiorParallelGeometry, transverseGeometry } from './shared-lane-layout-geometry';
+import {
+	transverseGeometry,
+	validatedInteriorParallelGeometry,
+} from './shared-lane-layout-geometry';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import {
@@ -36,7 +40,9 @@ import {
 	certifySharedLaneRouteGeometry,
 	materializeParallelGeometryDelta,
 } from './shared-lane-route-delta';
+import { type RankedLaneRouteSelection, rankLaneRouteSelection } from './shared-lane-route-ranking';
 import {
+	laneSelectionCollector,
 	searchParallelRouteAllocations,
 	searchTransverseRouteOrders,
 } from './shared-lane-route-search';
@@ -48,7 +54,7 @@ export enum SharedLaneLayoutStatus {
 	Unsupported = 'unsupported',
 }
 
-interface SelectedSharedLaneLayout {
+export interface SelectedSharedLaneLayout {
 	readonly status: SharedLaneLayoutStatus.Selected;
 	readonly layout: LayoutResult;
 	readonly geometry: SharedLaneGeometry;
@@ -72,12 +78,13 @@ interface UnsupportedSharedLaneLayout {
 
 export type SharedLaneLayoutOutcome =
 	SelectedSharedLaneLayout | UnknownSharedLaneLayout | UnsupportedSharedLaneLayout;
+export type SharedLaneAttempt = SelectedSharedLaneLayout | UnknownSharedLaneLayout;
 
 export interface SharedLaneSolveOptions extends LayoutOptions {
 	readonly incidents?: readonly RegionIncidentContract[];
 }
 
-function selectedLayout(
+export function selectedLayout(
 	geometry: SharedLaneGeometry,
 	incidents: readonly RegionSolvedIncident[],
 	witness: RegionIncidentSearchWitness,
@@ -100,32 +107,34 @@ function selectedLayout(
 	return selected;
 }
 
-function emptyWitness(): RegionIncidentSearchWitness {
-	return { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
-}
-
-function completedIncidentWitness(
-	state: IncidentSearchState,
-	contracts: readonly RegionIncidentContract[],
-): RegionIncidentSearchWitness {
-	const witness = searchWitness(state);
-	if (contracts.length === 0) return witness;
-	return { ...witness, exhaustive: false };
-}
-
-interface LaneAttemptInput {
+export interface LaneAttemptInput {
 	readonly graph: LogicGraph;
 	readonly input: SharedLaneInput;
 	readonly ports: SharedLanePorts;
 	readonly contracts: readonly RegionIncidentContract[];
+	readonly collect?:
+		| ((
+				selection: RankedLaneRouteSelection<LaneCandidate>,
+				witness: RegionIncidentSearchWitness,
+		  ) => void)
+		| undefined;
+	readonly onAllocationReject?:
+		((strategyId: string, candidateId: string, reason: string) => void) | undefined;
 }
 
-function parallelAttempt({
+export interface LaneCandidate {
+	readonly geometry: SharedLaneGeometry;
+	readonly incidents: readonly RegionSolvedIncident[];
+	readonly bridges?: number | undefined;
+}
+export function parallelAttempt({
 	graph,
 	input,
 	ports,
 	contracts,
-}: LaneAttemptInput): SharedLaneLayoutOutcome {
+	collect,
+	onAllocationReject,
+}: LaneAttemptInput): SharedLaneAttempt {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
 		attempted: 0,
@@ -134,14 +143,25 @@ function parallelAttempt({
 		candidateId: '',
 		rejectedAlternatives: [],
 	};
-	if (contracts.length === 0) {
-		const interior = interiorParallelGeometry(input, ports);
-		if (interior !== undefined) {
-			const relationId = defined(input.plans[0]).id;
-			const issue = validateSharedLaneInteriorPassage(graph, interior, relationId);
-			if (issue === undefined) return selectedLayout(interior, [], emptyWitness());
-			firstIssue = issue;
-		}
+	let interior: SharedLaneGeometry | string | undefined;
+	if (contracts.length === 0) interior = validatedInteriorParallelGeometry(graph, input, ports);
+	if (typeof interior === 'string') {
+		firstIssue = interior;
+		onAllocationReject?.('interior', 'interior', interior);
+	} else if (interior !== undefined) {
+		if (collect === undefined) return selectedLayout(interior, [], emptyWitness());
+		collect(
+			rankLaneRouteSelection(
+				{ geometry: interior, incidents: [] },
+				{
+					historicalRank: -1,
+					allocationKey: '[]',
+					strategyId: 'interior',
+					candidateId: 'interior',
+				},
+			),
+			emptyWitness(),
+		);
 	}
 	const certificatesByFrame = new WeakMap<
 		SharedLaneFrame,
@@ -157,6 +177,7 @@ function parallelAttempt({
 		ports,
 		contracts,
 		state,
+		collect: laneSelectionCollector(state, collect),
 		evaluate: (candidate, acceptBridges, charge: RouteWorkCharge) => {
 			let base = certificatesByFrame.get(candidate.frame);
 			if (base === undefined) {
@@ -195,6 +216,7 @@ function parallelAttempt({
 			});
 			if (typeof attempt === 'string') {
 				firstIssue ??= attempt;
+				onAllocationReject?.(candidate.strategyId, candidate.candidateId, attempt);
 				return undefined;
 			}
 			return { geometry, incidents: attempt.incidents, bridges: attempt.bridges };
@@ -218,12 +240,14 @@ function parallelAttempt({
 	};
 }
 
-function transverseAttempt({
+export function transverseAttempt({
 	graph,
 	input,
 	ports,
 	contracts,
-}: LaneAttemptInput): SharedLaneLayoutOutcome {
+	collect,
+	onAllocationReject,
+}: LaneAttemptInput): SharedLaneAttempt {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
 		attempted: 0,
@@ -237,6 +261,7 @@ function transverseAttempt({
 		{ readonly geometry: SharedLaneGeometry; readonly certificate: SharedLaneGeometryCertificate }
 	>();
 	const search = searchTransverseRouteOrders({
+		collect: laneSelectionCollector(state, collect),
 		evaluate: (strategy) => {
 			state.strategyId = strategy.id;
 			state.candidateId = strategy.id;
@@ -257,6 +282,7 @@ function transverseAttempt({
 			});
 			if (typeof selected === 'string') {
 				firstIssue ??= selected;
+				onAllocationReject?.(strategy.id, strategy.order, selected);
 				return undefined;
 			}
 			return { geometry: prepared.geometry, incidents: selected.incidents };

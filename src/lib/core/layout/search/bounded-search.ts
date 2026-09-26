@@ -186,6 +186,8 @@ export interface FirstValidSearchInput<Choice, Rejection> {
 	) => Rejection | undefined;
 	readonly onReject: (level: number, choice: Choice, rejection: Rejection) => void;
 	readonly onBacktrack?: ((level: number, choice: Choice) => void) | undefined;
+	/** Restore caller-owned prefix state when resuming past an accepted choice. */
+	readonly onUnselect?: ((level: number, choice: Choice) => void) | undefined;
 	readonly onExhausted?: ((level: number, prefix: readonly Choice[]) => void) | undefined;
 }
 
@@ -195,25 +197,28 @@ export interface FirstValidSearchResult<Choice> {
 }
 
 /**
- * `firstValid` + `bounded(budget)`: a depth-first search whose acceptance depends on the selected
- * prefix. Levels are walked in the iteration order of `choices`, and every examined choice reserves
- * one alternative before its acceptance is evaluated, so a refused reservation stops the search
- * non-exhaustively. A level whose choices are all rejected reports it to `onExhausted`, and a choice
- * whose fully explored subtree failed reports it to `onBacktrack`.
+ * Enumerates accepted complete prefixes in depth-first order. The counter and callbacks retain
+ * their evidence across suspensions. The terminal return value distinguishes exhaustion from a
+ * budget cutoff.
  */
-export function firstValidDepthFirst<Choice, Rejection>(
+export function* validDepthFirst<Choice, Rejection>(
 	input: FirstValidSearchInput<Choice, Rejection>,
-): FirstValidSearchResult<Choice> {
-	const { levels, counter, choices, accept, onReject, onBacktrack, onExhausted } = input;
+): Generator<readonly Choice[], boolean, void> {
+	const { levels, counter, choices, accept, onReject, onBacktrack, onUnselect, onExhausted } =
+		input;
 	const selected: Choice[] = [];
 	let stopped = false;
 
-	function descend(level: number): boolean {
-		if (level === levels) return true;
+	function* descend(level: number): Generator<readonly Choice[], boolean, void> {
+		if (level === levels) {
+			yield [...selected];
+			return true;
+		}
+		let found = false;
 		for (const choice of choices(level, selected)) {
 			if (!counter.take()) {
 				stopped = true;
-				return false;
+				return found;
 			}
 			const rejection = accept(level, choice, selected);
 			if (rejection !== undefined) {
@@ -221,17 +226,27 @@ export function firstValidDepthFirst<Choice, Rejection>(
 				continue;
 			}
 			selected.push(choice);
-			const found = descend(level + 1);
-			if (found) return true;
+			const childFound = yield* descend(level + 1);
+			found ||= childFound;
 			selected.pop();
-			if (stopped) return false;
-			onBacktrack?.(level, choice);
+			onUnselect?.(level, choice);
+			if (stopped) return found;
+			if (!childFound) onBacktrack?.(level, choice);
 		}
-		onExhausted?.(level, selected);
-		return false;
+		if (!found) onExhausted?.(level, selected);
+		return found;
 	}
 
-	const found = descend(0);
-	if (!found) return { exhaustive: !stopped };
-	return { selected: [...selected], exhaustive: !stopped };
+	yield* descend(0);
+	return !stopped;
+}
+
+/** Returns the first accepted complete prefix without eagerly exploring later alternatives. */
+export function firstValidDepthFirst<Choice, Rejection>(
+	input: FirstValidSearchInput<Choice, Rejection>,
+): FirstValidSearchResult<Choice> {
+	const search = validDepthFirst(input);
+	const first = search.next();
+	if (first.done === true) return { exhaustive: first.value };
+	return { selected: first.value, exhaustive: !input.counter.exhausted };
 }

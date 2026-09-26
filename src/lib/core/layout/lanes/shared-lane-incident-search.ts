@@ -7,7 +7,7 @@ import {
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
 } from '../regions/model/region-incident-contract';
-import { boundedCounter, firstValidDepthFirst } from '../search/bounded-search';
+import { boundedCounter, validDepthFirst } from '../search/bounded-search';
 import {
 	type LaneIncidentPathCandidate,
 	laneIncidentPathCandidates,
@@ -35,6 +35,19 @@ export function searchWitness(state: IncidentSearchState): RegionIncidentSearchW
 		exhaustive: state.exhaustive,
 		rejectedAlternatives: [...state.rejectedAlternatives],
 	};
+}
+
+export function emptyWitness(): RegionIncidentSearchWitness {
+	return { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
+}
+
+export function completedIncidentWitness(
+	state: IncidentSearchState,
+	contracts: readonly RegionIncidentContract[],
+): RegionIncidentSearchWitness {
+	const witness = searchWitness(state);
+	if (contracts.length === 0) return witness;
+	return { ...witness, exhaustive: false };
 }
 
 export function unknownCode(state: IncidentSearchState): RegionIncidentUnknownCode {
@@ -83,17 +96,17 @@ function* laneIncidentChoices(
 			yield { side, candidate };
 }
 
-/** Bounded depth-first search over declared sides in canonical contract order. */
-export function searchLaneIncidentPaths(
+/** Bounded depth-first stream of every accepted incident route set for this lane geometry. */
+export function* enumerateLaneIncidentPaths(
 	input: IncidentSearchInput,
-): readonly RegionSolvedIncident[] | undefined {
+): Generator<readonly RegionSolvedIncident[], void, void> {
 	const { geometry, ports, contracts, state } = input;
 	const budget = boundedCounter(MAX_INCIDENT_ALTERNATIVES, {
 		attempted: state.attempted,
 		exhausted: !state.exhaustive,
 	});
 	const earlier: RegionSolvedIncident[] = [];
-	const found = firstValidDepthFirst<LaneIncidentChoice, SharedLaneIncidentFailure>({
+	const found = validDepthFirst<LaneIncidentChoice, SharedLaneIncidentFailure>({
 		levels: contracts.length,
 		counter: budget,
 		choices: (level) => laneIncidentChoices(geometry, ports, defined(contracts[level])),
@@ -114,8 +127,10 @@ export function searchLaneIncidentPaths(
 		onReject: (level, choice, rejection) => {
 			rejectIncidentAlternative(state, defined(contracts[level]), choice.side, rejection);
 		},
-		onBacktrack: (level, choice) => {
+		onUnselect: () => {
 			earlier.pop();
+		},
+		onBacktrack: (level, choice) => {
 			rejectIncidentAlternative(state, defined(contracts[level]), choice.side, {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `Incident ${defined(contracts[level]).relation.id} has no compatible side assignment with later incidents.`,
@@ -125,8 +140,22 @@ export function searchLaneIncidentPaths(
 			state.candidateId = state.strategyId;
 		},
 	});
+	let next = found.next();
+	while (next.done === false) {
+		state.attempted = budget.attempted;
+		state.exhaustive = !budget.exhausted;
+		yield [...earlier];
+		next = found.next();
+	}
 	state.attempted = budget.attempted;
 	state.exhaustive = !budget.exhausted;
-	if (found.selected === undefined) return undefined;
-	return earlier;
+}
+
+/** First selected route retains the original producer's lazy stopping point. */
+export function searchLaneIncidentPaths(
+	input: IncidentSearchInput,
+): readonly RegionSolvedIncident[] | undefined {
+	const first = enumerateLaneIncidentPaths(input).next();
+	if (first.done === true) return undefined;
+	return first.value;
 }

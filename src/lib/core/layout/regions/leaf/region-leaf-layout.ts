@@ -1,6 +1,10 @@
 import { defined, LayoutPolicy, type LogicDocument } from '../../../document/logic-document';
 import { createGraph } from '../../../graph/create-graph';
 import { topologicallyRank } from '../../../graph/topological-ranks';
+import {
+	enumerateSharedLaneLayouts,
+	type LaneCandidateSearchWitness,
+} from '../../lanes/shared-lane-candidate-enumeration';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from '../../lanes/shared-lane-layout';
 import type { LayoutMeasurements } from '../../layout-types';
 import { RegionCompositionStatus } from '../model/region-composition-types';
@@ -15,7 +19,10 @@ import {
 	InvalidRegionLeafGraphError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-base-layout';
-import { solveDedicatedRegionLeafWithIncidents } from './region-leaf-incident-solver';
+import {
+	enumerateDedicatedRegionLeafWithIncidents,
+	solveDedicatedRegionLeafWithIncidents,
+} from './region-leaf-incident-solver';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 
 export {
@@ -33,7 +40,7 @@ export interface RegionLeafIncidentInput {
 	readonly contracts: readonly RegionIncidentContract[];
 }
 
-interface RegionLeafIncidentSelected {
+export interface RegionLeafIncidentSelected {
 	readonly status: RegionCompositionStatus.Selected;
 	readonly layout: RegionLocalLayout['layout'];
 	readonly ranks: RegionLocalLayout['ranks'];
@@ -135,4 +142,45 @@ export function solveRegionLeafLayoutWithIncidents(
 		if (error instanceof UncacheableLaneIncidentFailure) return error.attempt;
 		throw error;
 	}
+}
+
+function* laneLeafAlternatives(
+	input: RegionLeafIncidentInput,
+): Generator<RegionLeafIncidentSelected, LaneCandidateSearchWitness, void> {
+	const graph = createGraph(input.document);
+	if (!graph.ok) throw new InvalidRegionLeafGraphError();
+	const ranks = topologicallyRank(graph.value);
+	const search = enumerateSharedLaneLayouts(graph.value, ranks, input.measurements, {
+		incidents: input.contracts,
+	});
+	for (;;) {
+		const candidate = search.next();
+		if (candidate.done === true) return candidate.value;
+		yield {
+			status: RegionCompositionStatus.Selected,
+			layout: candidate.value.layout,
+			ranks,
+			incidents: candidate.value.incidents,
+			witness: candidate.value.witness,
+		};
+	}
+}
+
+/** The first pull follows the existing cached policy. Further local alternatives are explored
+ * only when the composition asks for them; neither policy changes production selection here. */
+export function* enumerateRegionLeafLayoutsWithIncidents(
+	input: RegionLeafIncidentInput,
+): Generator<
+	RegionLeafIncidentSelected,
+	RegionIncidentSearchWitness | LaneCandidateSearchWitness,
+	void
+> {
+	if (input.leafPolicy === LayoutPolicy.Layered)
+		return yield* enumerateDedicatedRegionLeafWithIncidents(input);
+	const first = solveRegionLeafLayoutWithIncidents(input);
+	if (first.status === RegionCompositionStatus.Unknown) return first.witness;
+	yield first;
+	const search = laneLeafAlternatives(input);
+	search.next();
+	return yield* search;
 }

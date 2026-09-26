@@ -2,11 +2,12 @@ import { defined } from '../../document/logic-document';
 import type { RouteWorkCharge } from '../bridges/route-runs';
 import type {
 	RegionIncidentContract,
+	RegionIncidentSearchWitness,
 	RegionSolvedIncident,
 } from '../regions/model/region-incident-contract';
 import { bestWithinBudgetStream } from '../search/bounded-search';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
-import type { IncidentSearchState } from './shared-lane-incident-search';
+import { type IncidentSearchState, searchWitness } from './shared-lane-incident-search';
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import {
@@ -23,6 +24,22 @@ import {
 } from './shared-lane-route-ranking';
 import { type LaneRouteStrategy, twoPassStrategies } from './shared-lane-route-strategies';
 import { TransverseRouteOrder } from './shared-transverse-routing';
+
+/** Snapshot rejection provenance when an accepted geometry is ranked. */
+export function laneSelectionCollector<Selection>(
+	state: IncidentSearchState,
+	collect:
+		| ((
+				selection: RankedLaneRouteSelection<Selection>,
+				witness: RegionIncidentSearchWitness,
+		  ) => void)
+		| undefined,
+): ((selection: RankedLaneRouteSelection<Selection>) => void) | undefined {
+	if (collect === undefined) return undefined;
+	return (selection) => {
+		collect(selection, searchWitness(state));
+	};
+}
 
 const MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS = 20_000;
 
@@ -51,6 +68,8 @@ interface ParallelRouteSearchInput<Selection extends ParallelSelectionEvidence> 
 		acceptBridges: boolean,
 		charge: RouteWorkCharge,
 	) => Selection | undefined;
+	/** Only candidate enumeration supplies this; production never materializes the accepted list. */
+	readonly collect?: ((selection: RankedLaneRouteSelection<Selection>) => void) | undefined;
 }
 
 function rankEvaluatedCandidate<Selection extends ParallelSelectionEvidence>(
@@ -63,7 +82,9 @@ function rankEvaluatedCandidate<Selection extends ParallelSelectionEvidence>(
 	input.state.candidateId = candidate.candidateId;
 	const selected = input.evaluate(candidate, acceptBridges, charge);
 	if (selected === undefined) return undefined;
-	return rankLaneRouteSelection(selected, candidate, selected.bridges, charge);
+	const ranked = rankLaneRouteSelection(selected, candidate, selected.bridges, charge);
+	input.collect?.(ranked);
+	return ranked;
 }
 function preferredCandidate<Selection>(
 	best: RankedLaneRouteSelection<Selection> | undefined,
@@ -180,6 +201,7 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
 	const workBudget = MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS;
 	let allocationTruncated = false;
+	let firstSelected: Selection | undefined;
 	for (const acceptBridges of [false, true]) {
 		const candidates = parallelRouteCandidates(lanes, plans, acceptBridges);
 		const baselineCount = plans.length;
@@ -194,7 +216,8 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 			acceptBridges,
 			chargeBaseline,
 		);
-		if (best !== undefined && laneSearchCanStop(contracts, best)) {
+		const stopsAtBaseline = input.collect === undefined && laneSearchCanStop(contracts, best);
+		if (best !== undefined && stopsAtBaseline) {
 			const exhaustive = BigInt(attempted) === BigInt(total);
 			passes.push({
 				acceptBridges,
@@ -225,14 +248,18 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 			workBudget,
 		});
 		allocationTruncated ||= truncated;
-		if (alternatives.best !== undefined)
-			return {
-				selected: alternatives.best.selected,
-				allocationWitness: { passes },
-				allocationTruncated,
-			};
+		if (alternatives.best !== undefined) {
+			firstSelected ??= alternatives.best.selected;
+			if (input.collect === undefined)
+				return {
+					selected: firstSelected,
+					allocationWitness: { passes },
+					allocationTruncated,
+				};
+		}
 	}
-	return { allocationWitness: { passes }, allocationTruncated };
+	if (firstSelected === undefined) return { allocationWitness: { passes }, allocationTruncated };
+	return { selected: firstSelected, allocationWitness: { passes }, allocationTruncated };
 }
 export interface TransverseRouteSearchResult<Selection> {
 	readonly selected?: Selection;
@@ -241,6 +268,7 @@ export interface TransverseRouteSearchResult<Selection> {
 
 interface TransverseRouteSearchInput<Selection extends ParallelSelectionEvidence> {
 	readonly evaluate: (strategy: LaneRouteStrategy<TransverseRouteOrder>) => Selection | undefined;
+	readonly collect?: ((selection: RankedLaneRouteSelection<Selection>) => void) | undefined;
 }
 
 export function searchTransverseRouteOrders<Selection extends ParallelSelectionEvidence>(
@@ -251,6 +279,7 @@ export function searchTransverseRouteOrders<Selection extends ParallelSelectionE
 		TransverseRouteOrder.Nested,
 	]);
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
+	let firstSelected: Selection | undefined;
 	for (const acceptBridges of [false, true]) {
 		const alternatives = strategies.filter((strategy) => strategy.acceptBridges === acceptBridges);
 		const pass = bestWithinBudgetStream({
@@ -262,12 +291,14 @@ export function searchTransverseRouteOrders<Selection extends ParallelSelectionE
 				if (selected === undefined) return undefined;
 				let historicalRank = 1;
 				if (strategy.order === TransverseRouteOrder.Canonical) historicalRank = 0;
-				return rankLaneRouteSelection(selected, {
+				const ranked = rankLaneRouteSelection(selected, {
 					historicalRank,
 					allocationKey: '[]',
 					strategyId: strategy.id,
 					candidateId: strategy.order,
 				});
+				input.collect?.(ranked);
+				return ranked;
 			},
 			better: laneRouteSelectionIsBetter,
 		});
@@ -281,8 +312,12 @@ export function searchTransverseRouteOrders<Selection extends ParallelSelectionE
 			work: pass.attempted,
 			workBudget: alternatives.length,
 		});
-		if (pass.incumbent !== undefined)
-			return { selected: pass.incumbent.selected, allocationWitness: { passes } };
+		if (pass.incumbent !== undefined) {
+			firstSelected ??= pass.incumbent.selected;
+			if (input.collect === undefined)
+				return { selected: firstSelected, allocationWitness: { passes } };
+		}
 	}
-	return { allocationWitness: { passes } };
+	if (firstSelected === undefined) return { allocationWitness: { passes } };
+	return { selected: firstSelected, allocationWitness: { passes } };
 }

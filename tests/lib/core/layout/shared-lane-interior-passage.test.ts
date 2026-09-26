@@ -9,6 +9,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { enumerateSharedLaneLayouts } from '../../../../src/lib/core/layout/lanes/shared-lane-candidate-enumeration';
 import { makeSharedLaneFrame } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
 import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import { interiorPassageTrack } from '../../../../src/lib/core/layout/lanes/shared-lane-interior-passage';
@@ -140,6 +141,15 @@ describe('interior passage through S | SD | C', () => {
 		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
 		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
 		expect(selected.geometry.relations).not.toEqual(exterior.relations);
+		const candidates = [
+			...enumerateSharedLaneLayouts(prepared.graph, prepared.ranks, prepared.measurements),
+		];
+		expect(candidates[0]).toEqual(selected);
+		expect(
+			candidates.some(
+				({ geometry }) => JSON.stringify(geometry.relations) === JSON.stringify(exterior.relations),
+			),
+		).toBe(true);
 	});
 
 	it('rejects obstacle contact, broken attachment, and escaped group confinement', () => {

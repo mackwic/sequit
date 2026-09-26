@@ -2,7 +2,7 @@ import { defined, LayoutPolicy, type LogicDocument } from '../../../document/log
 import type { TopologicalRanks } from '../../../graph/topological-ranks';
 import { satisfyMetricDemands } from '../../contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
-import { firstValidDepthFirst } from '../../search/bounded-search';
+import { validDepthFirst } from '../../search/bounded-search';
 import { RegionCompositionStatus, type RegionPortalSide } from '../model/region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
@@ -93,6 +93,63 @@ function* routeChoices(
 	}
 }
 
+/** Shared local route search for the initial selection and its subsequent alternatives. */
+function* routesOnLayout(
+	contracts: readonly RegionIncidentContract[],
+	layout: LayoutResult,
+	endpoints: readonly LayoutResult['elements'][number][],
+	state: SearchState,
+): Generator<readonly RegionSolvedIncident[], void, void> {
+	const sides: RegionPortalSide[] = [];
+	function* routeAt(
+		slotSides: readonly RegionPortalSide[],
+	): Generator<readonly RegionSolvedIncident[]> {
+		const slots = slotsForAssignment(contracts, slotSides);
+		yield* validDepthFirst<RegionSolvedIncident, RegionLeafIncidentGeometryFailure>({
+			levels: contracts.length,
+			counter: state.budget,
+			choices: (level) =>
+				routeChoices(
+					defined(contracts[level]),
+					defined(slots[level]),
+					defined(endpoints[level]),
+					layout,
+				),
+			accept: (level, path, selected) =>
+				geometryFailure(layout, defined(endpoints[level]), path, selected),
+			onReject: (level, path, failure) => {
+				recordRejection(state, defined(contracts[level]), path.side, {
+					...failure,
+					candidateId: candidateId(path.points),
+				});
+			},
+			onExhausted: (level) => {
+				recordRejection(state, defined(contracts[level]), defined(slots[level]).side, {
+					code: RegionIncidentRejectionCode.GeometryInvalid,
+					reason: 'This incident side has no joint route with the other contracts.',
+					exhausted: true,
+				});
+			},
+		});
+	}
+	function* assignSides(index: number): Generator<readonly RegionSolvedIncident[]> {
+		if (index === contracts.length) {
+			state.assignmentAttempts = 0;
+			state.assignmentLimitReached = false;
+			yield* routeAt(sides);
+			return;
+		}
+		const contract = defined(contracts[index]);
+		for (const side of contract.allowedSides) {
+			sides.push(side);
+			yield* assignSides(index + 1);
+			sides.pop();
+			if (state.budgetExceeded) return;
+		}
+	}
+	yield* assignSides(0);
+}
+
 function solveOnLayout(
 	contracts: readonly RegionIncidentContract[],
 	layout: LayoutResult,
@@ -133,61 +190,7 @@ function solveOnLayout(
 			true,
 		);
 	const endpoints = contracts.map((contract) => defined(elements.get(contract.endpointId)));
-	const sides: RegionPortalSide[] = [];
-
-	function routeAt(
-		slotSides: readonly RegionPortalSide[],
-	): readonly RegionSolvedIncident[] | undefined {
-		const slots = slotsForAssignment(contracts, slotSides);
-		const found = firstValidDepthFirst<RegionSolvedIncident, RegionLeafIncidentGeometryFailure>({
-			levels: contracts.length,
-			counter: state.budget,
-			choices: (level) =>
-				routeChoices(
-					defined(contracts[level]),
-					defined(slots[level]),
-					defined(endpoints[level]),
-					layout,
-				),
-			accept: (level, path, selected) =>
-				geometryFailure(layout, defined(endpoints[level]), path, selected),
-			onReject: (level, path, failure) => {
-				recordRejection(state, defined(contracts[level]), path.side, {
-					...failure,
-					candidateId: candidateId(path.points),
-				});
-			},
-			onExhausted: (level) => {
-				recordRejection(state, defined(contracts[level]), defined(slots[level]).side, {
-					code: RegionIncidentRejectionCode.GeometryInvalid,
-					reason: 'This incident side has no joint route with the other contracts.',
-					exhausted: true,
-				});
-			},
-		});
-		return found.selected;
-	}
-
-	function assignSides(index: number): readonly RegionSolvedIncident[] | undefined {
-		if (index === contracts.length) {
-			// A hard side combination must not consume the search reserved for later
-			// admitted sides. The witness remains incomplete if this cap is reached.
-			state.assignmentAttempts = 0;
-			state.assignmentLimitReached = false;
-			return routeAt(sides);
-		}
-		const contract = defined(contracts[index]);
-		for (const side of contract.allowedSides) {
-			sides.push(side);
-			const result = assignSides(index + 1);
-			if (result !== undefined) return result;
-			sides.pop();
-			if (state.budgetExceeded) return undefined;
-		}
-		return undefined;
-	}
-
-	const incidents = assignSides(0);
+	const incidents = routesOnLayout(contracts, layout, endpoints, state).next().value;
 	if (incidents !== undefined)
 		return {
 			status: RegionCompositionStatus.Selected,
@@ -314,4 +317,31 @@ export function solveDedicatedRegionLeafWithIncidents(
 		if (error instanceof UncacheableIncidentFailure) return error.attempt;
 		throw error;
 	}
+}
+
+/**
+ * Candidate stream for composition. The first pull uses exactly the cached production selection;
+ * only a subsequent pull explores other route assignments on that selected rank layout.
+ * The return value is the final bounded-search witness (including rejected route provenance).
+ */
+export function* enumerateDedicatedRegionLeafWithIncidents(
+	input: DedicatedRegionLeafIncidentInput,
+): Generator<DedicatedRegionLeafIncidentSelected, RegionIncidentSearchWitness, void> {
+	const first = solveDedicatedRegionLeafWithIncidents(input);
+	if (first.status !== RegionCompositionStatus.Selected) return first.witness;
+	yield first;
+	if (first.incidents.length === 0) return first.witness;
+	const contracts = normalizeRegionIncidentContracts(input.contracts);
+	const elements = new Map(first.layout.elements.map((element) => [element.id, element]));
+	const endpoints = contracts.map((contract) => defined(elements.get(contract.endpointId)));
+	const state = newSearchState();
+	let skippedFirst = false;
+	for (const incidents of routesOnLayout(contracts, first.layout, endpoints, state)) {
+		if (!skippedFirst) {
+			skippedFirst = true;
+			continue;
+		}
+		yield { ...first, incidents, witness: witness(state, false) };
+	}
+	return witness(state, !state.budgetExceeded && !state.incomplete);
 }

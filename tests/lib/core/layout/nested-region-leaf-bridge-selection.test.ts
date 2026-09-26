@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
+import { LayoutPolicy } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { enumerateSharedLaneLayouts } from '../../../../src/lib/core/layout/lanes/shared-lane-candidate-enumeration';
+import {
+	SharedLaneLayoutStatus,
+	solveSharedLaneLayout,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
+import {
+	leafDocument,
+	leafIncidentContracts,
+} from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
+import {
+	enumerateRegionLeafLayoutsWithIncidents,
+	solveRegionLeafLayoutWithIncidents,
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -10,7 +26,10 @@ import {
 import {
 	RegionCompositionStatus,
 	type RegionLayoutSelected,
+	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
@@ -132,6 +151,142 @@ describe('persisted composed incident bridge selection', () => {
 			routeLength: 1631,
 			bends: 10,
 		});
+	});
+
+	it('enumerates both leaf policies deterministically with the current selection first', () => {
+		const context = {
+			graph: preparedGraph,
+			model: model.model,
+			measurements,
+			cache: undefined,
+			ownershipByRelationId: new Map(
+				model.model.relations.map((owned) => [owned.relation.id, owned]),
+			),
+		};
+		const sides = new Map([['cross', [RegionPortalSide.Top]]]);
+		const lane = leafDocument(context, 'lane');
+		const laneGraph = createGraph(lane);
+		if (!laneGraph.ok) throw new Error('Invalid lane witness graph');
+		const laneMeasurements = nestedRegionLocalMeasurements(lane, measurements);
+		const laneContracts = leafIncidentContracts(context, 'lane', sides);
+		const laneOptions = { incidents: laneContracts };
+		const originalLane = solveSharedLaneLayout(
+			laneGraph.value,
+			topologicallyRank(laneGraph.value),
+			laneMeasurements,
+			laneOptions,
+		);
+		expect(originalLane.status).toBe(SharedLaneLayoutStatus.Selected);
+		const laneSearch = enumerateSharedLaneLayouts(
+			laneGraph.value,
+			topologicallyRank(laneGraph.value),
+			laneMeasurements,
+			laneOptions,
+		);
+		const firstLane = laneSearch.next();
+		expect(firstLane.done).toBe(false);
+		if (firstLane.done === true) throw new Error('Missing first lane candidate');
+		expect(firstLane.value).toEqual(originalLane);
+		const lanes = [firstLane.value];
+		let laneResult = laneSearch.next();
+		while (laneResult.done === false) {
+			lanes.push(laneResult.value);
+			laneResult = laneSearch.next();
+		}
+		if (laneResult.done !== true) throw new Error('Incomplete lane search');
+		const distinctPortalXs = new Set(lanes.map(({ incidents }) => incidents[0]?.portal.x));
+		const a = firstLane.value.layout.elements.find(({ id }) => id === 'a');
+		if (a === undefined) throw new Error('Missing lane source');
+		const noBridgeRail = a.bounds.x + a.bounds.width + 12;
+		expect(distinctPortalXs.has(noBridgeRail)).toBe(true);
+		expect(
+			lanes.some(
+				(candidate) =>
+					JSON.stringify(candidate.layout.relations) ===
+						JSON.stringify(firstLane.value.layout.relations) &&
+					candidate.incidents[0]?.portal.x === noBridgeRail,
+			),
+		).toBe(true);
+		expect(laneResult.value.attempted).toBeGreaterThan(0);
+		expect(laneResult.value.attempted).toBeLessThanOrEqual(4 * 256);
+		expect(
+			laneResult.value.rejectedAlternatives.some(
+				({ candidateId, relationId, reason }) =>
+					candidateId === 'transverse/canonical/direct' &&
+					relationId === 'cross' &&
+					reason?.includes('crosses node a') === true,
+			),
+		).toBe(true);
+		expect(
+			new Set(lanes.map(({ layout, incidents }) => JSON.stringify([layout, incidents]))).size,
+		).toBe(lanes.length);
+		const repeat = [
+			...enumerateSharedLaneLayouts(
+				laneGraph.value,
+				topologicallyRank(laneGraph.value),
+				laneMeasurements,
+				laneOptions,
+			),
+		];
+		expect(repeat.map(({ layout, incidents }) => JSON.stringify([layout, incidents]))).toEqual(
+			lanes.map(({ layout, incidents }) => JSON.stringify([layout, incidents])),
+		);
+
+		const cache = new RegionLocalLayoutCache();
+		const input = {
+			document: lane,
+			measurements: laneMeasurements,
+			leafPolicy: LayoutPolicy.SharedLanes,
+			contracts: laneContracts,
+			cache,
+		};
+		const cached = solveRegionLeafLayoutWithIncidents(input);
+		const policySearch = enumerateRegionLeafLayoutsWithIncidents(input);
+		expect(policySearch.next().value).toEqual(cached);
+		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
+		expect([...policySearch].some(({ incidents }) => incidents[0]?.portal.x === noBridgeRail)).toBe(
+			true,
+		);
+		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
+
+		const ordinary = leafDocument(context, 'ordinary');
+		const ordinaryInput = {
+			document: ordinary,
+			measurements: nestedRegionLocalMeasurements(ordinary, measurements),
+			contracts: leafIncidentContracts(context, 'ordinary', sides),
+		};
+		const originalOrdinary = solveDedicatedRegionLeafWithIncidents(ordinaryInput);
+		expect(originalOrdinary.status).toBe(RegionCompositionStatus.Selected);
+		const ordinarySearch = enumerateRegionLeafLayoutsWithIncidents({
+			...ordinaryInput,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		expect(ordinarySearch.next().value).toEqual(originalOrdinary);
+		const secondOrdinary = ordinarySearch.next();
+		expect(secondOrdinary.done).toBe(false);
+		if (
+			secondOrdinary.done === true ||
+			originalOrdinary.status !== RegionCompositionStatus.Selected
+		)
+			throw new Error('Expected two accepted dedicated alternatives');
+		expect(secondOrdinary.value.incidents).not.toEqual(originalOrdinary.incidents);
+		expect(secondOrdinary.value.witness.attempted).toBeGreaterThan(
+			originalOrdinary.witness.attempted,
+		);
+		let dedicatedResult = ordinarySearch.next();
+		let accepted = 2;
+		while (dedicatedResult.done === false) {
+			accepted += 1;
+			dedicatedResult = ordinarySearch.next();
+		}
+		if (dedicatedResult.done !== true) throw new Error('Incomplete dedicated search');
+		expect(accepted).toBeGreaterThan(2);
+		expect(dedicatedResult.value.attempted).toBeLessThanOrEqual(8_192);
+		expect(
+			dedicatedResult.value.rejectedAlternatives.some(
+				({ relationId, candidateId }) => relationId === 'cross' && candidateId !== undefined,
+			),
+		).toBe(true);
 	});
 
 	it.fails('selects the valid, shorter no-bridge composed route before a bridge', () => {
