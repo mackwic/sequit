@@ -203,16 +203,28 @@ function* combineOrders(
 	factories: readonly TrackOrderFactory[],
 	index: number,
 	prefix: (readonly string[])[],
+	constraints: { readonly input: CrossingAllocationInput; readonly extraTracks: number },
 ): Generator<readonly (readonly string[])[]> {
 	const factory = factories[index];
-	if (factory === undefined) {
+	if (factory !== undefined) {
+		for (const order of factory()) {
+			prefix.push(order);
+			yield* combineOrders(factories, index + 1, prefix, constraints);
+			prefix.pop();
+		}
+		return;
+	}
+	if (constraints.extraTracks === 0) {
 		yield [...prefix];
 		return;
 	}
-	for (const order of factory()) {
-		prefix.push(order);
-		yield* combineOrders(factories, index + 1, prefix);
-		prefix.pop();
+	for (let column = 0; column < constraints.input.gutterIds.length; column += 1) {
+		const order = defined(prefix[column + 1]);
+		const reservedTrack = defined(constraints.input.edges.gutters[column]).capacity - 1;
+		if (order[reservedTrack] !== FREE_TRACK) {
+			yield [...prefix];
+			return;
+		}
 	}
 }
 
@@ -233,10 +245,11 @@ function* permutationCandidates(
 		),
 	];
 	const seen = new Set(excluded);
-	for (const orders of combineOrders(factories, 0, []))
+	const constraints = { input, extraTracks };
+	for (const orders of combineOrders(factories, 0, [], constraints)) {
+		const busOrder = defined(orders[0]);
+		const gutterOrders = orders.slice(1);
 		for (const portOrderByEndpointId of portOrders(input.incidence)) {
-			const busOrder = defined(orders[0]);
-			const gutterOrders = orders.slice(1);
 			const key = geometryKeyFromOrders(
 				gutterOrders,
 				busOrder,
@@ -247,6 +260,7 @@ function* permutationCandidates(
 			seen.add(key);
 			yield allocationOf(gutterOrders, busOrder, portOrderByEndpointId);
 		}
+	}
 }
 
 /**
@@ -283,16 +297,10 @@ export function* crossingAllocationCandidates(
 	yield* permutationCandidates(input, 0, excluded, busRelevantRelationIds);
 }
 
-/** Only allocations using the newly reserved gutter track add a new route geometry. */
+/** Only raw orders using the newly reserved gutter track are materialized as candidates. */
 export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
 	const busRelevantRelationIds = new Set(input.busRelevantRelationIds);
-	for (const allocation of permutationCandidates(input, 1, new Set(), busRelevantRelationIds)) {
-		const reservesNewTrack = allocation.gutterTrackByRelationId.some((tracks, column) => {
-			const reservedTrack = defined(input.edges.gutters[column]).capacity - 1;
-			return [...tracks.values()].includes(reservedTrack);
-		});
-		if (reservesNewTrack) yield allocation;
-	}
+	yield* permutationCandidates(input, 1, new Set(), busRelevantRelationIds);
 }

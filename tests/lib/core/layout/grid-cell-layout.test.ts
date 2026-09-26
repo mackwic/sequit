@@ -435,6 +435,20 @@ describe('bounded two by two grid composition', () => {
 		);
 	});
 
+	it.each([
+		{ phase: 'reallocate', budgets: { reallocate: 0, extraTrack: 1, bridge: 1 } },
+		{ phase: 'extraTrack', budgets: { reallocate: 1, extraTrack: 0, bridge: 1 } },
+		{ phase: 'bridge', budgets: { reallocate: 1, extraTrack: 1, bridge: 0 } },
+		{ phase: 'extraTrack', budgets: { reallocate: 1, extraTrack: 1.5, bridge: 1 } },
+	])('rejects a non-positive or fractional $phase budget at the public entry', ({ budgets }) => {
+		const prepared = prepareGrid();
+		expect(() =>
+			solveGridCellLayout(prepared.graph, prepared.measurements, gridInput(), {
+				allocationBudgets: budgets,
+			}),
+		).toThrow('Grid crossing allocation budgets must be positive safe integers.');
+	});
+
 	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
 		const prepared = prepareGrid();
 		const input = gridInput();

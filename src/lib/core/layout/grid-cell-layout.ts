@@ -14,7 +14,10 @@ import {
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
-import type { GridCrossingAllocationBudgets } from './grid-cell-crossing-phases';
+import {
+	type GridCrossingAllocationBudgets,
+	validatedGridCrossingAllocationBudgets,
+} from './grid-cell-crossing-phases';
 import {
 	crossingPortalSpans,
 	crossingRoute,
@@ -89,7 +92,10 @@ export function solveGridCellLayout(
 	input: GridCellInput,
 	options: GridCellLayoutOptions = {},
 ): GridCellLayoutAttempt {
-	const { cache, allocationBudgets } = options;
+	const { cache } = options;
+	let allocationBudgets: GridCrossingAllocationBudgets | undefined;
+	if (options.allocationBudgets !== undefined)
+		allocationBudgets = validatedGridCrossingAllocationBudgets(options.allocationBudgets);
 	const grid = normalize(graph, input);
 	if (typeof grid === 'string') return unsupported(grid);
 	const normalized = normalizeGridCellRegionModel(graph, input, grid);
