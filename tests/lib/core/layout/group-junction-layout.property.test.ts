@@ -1,7 +1,11 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { EndpointKind, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	EndpointKind,
+	LayoutDirection,
+	type LogicDocument,
+} from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
@@ -154,7 +158,7 @@ it('keeps an empty group document on the no-separation path', async () => {
 });
 
 function groupForTallNode(id: string): string | undefined {
-	if (id === 'a') return 'child';
+	if (id === 'a' || id === 'sink') return 'child';
 	if (id === 'b') return 'parent';
 	return undefined;
 }
@@ -307,13 +311,22 @@ it('separates a tall nested child, empty sibling and interleaved row across dist
 					),
 					groups: {
 						parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
-						child: { minimumWidth: 220, minimumHeight: 10000, headerHeight: 25, padding: 20 },
+						child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
 						empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
 					},
 				};
-				const { layout } = await layoutDocument(variant, overrides);
+				const { layout, ranks } = await layoutDocument(variant, overrides);
 				assertDisjointNodesAndForeignGroups(variant, layout);
-				expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'child'))).toBe(true);
+				expect(
+					(ranks.byEndpointId.get('t0') ?? 0) - (ranks.byEndpointId.get('sink') ?? 0),
+				).toBeGreaterThanOrEqual(8);
+				const parent = boundsFor(layout, 'parent');
+				if (configuration.direction === LayoutDirection.TopToBottom) {
+					const distant = boundsFor(layout, 't0');
+					expect(parent.y).toBeLessThan(distant.y + distant.height);
+					expect(distant.y).toBeLessThan(parent.y + parent.height);
+				}
+				expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
 				expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
 				const { layout: reordered } = await layoutDocument(
 					{
