@@ -17,9 +17,13 @@ export interface TrackAllocationProduct {
 	readonly key: string;
 }
 
-function domainRelationIds(domain: TrackAssignmentDomain): readonly string[] {
-	const ids = [...domain.relationIds].sort(compareCanonicalStrings);
-	return ids;
+interface CanonicalDomain {
+	readonly domain: TrackAssignmentDomain;
+	readonly ids: readonly string[];
+}
+
+function canonicalDomain(domain: TrackAssignmentDomain): CanonicalDomain {
+	return { domain, ids: [...domain.relationIds].sort(compareCanonicalStrings) };
 }
 
 function allocationFor(
@@ -29,24 +33,21 @@ function allocationFor(
 	return { edge: domain.edge, trackByRelationId: tracks };
 }
 
-function baselineFor(domain: TrackAssignmentDomain): RoutingTrackAllocation {
+function baselineFor({ domain, ids }: CanonicalDomain): RoutingTrackAllocation {
 	const tracks = new Map<string, number>();
-	for (const id of domainRelationIds(domain))
-		tracks.set(id, defined(domain.baseline.trackByRelationId.get(id)));
+	for (const id of ids) tracks.set(id, defined(domain.baseline.trackByRelationId.get(id)));
 	return allocationFor(domain, tracks);
 }
 
-function assignmentKey(domain: TrackAssignmentDomain, allocation: RoutingTrackAllocation): string {
-	return JSON.stringify(
-		domainRelationIds(domain).map((id) => [id, defined(allocation.trackByRelationId.get(id))]),
-	);
+function assignmentKey(ids: readonly string[], allocation: RoutingTrackAllocation): string {
+	return JSON.stringify(ids.map((id) => [id, defined(allocation.trackByRelationId.get(id))]));
 }
 
 /** Exact number of injective assignments of the active routes to their used tracks. */
 function trackAssignmentCount(domain: TrackAssignmentDomain): bigint {
-	const ids = domainRelationIds(domain);
+	const { length } = domain.relationIds;
 	let count = 1n;
-	for (let index = 0; index < ids.length; index += 1) count *= BigInt(domain.trackCount - index);
+	for (let index = 0; index < length; index += 1) count *= BigInt(domain.trackCount - index);
 	return count;
 }
 
@@ -81,10 +82,10 @@ function advanceTracks(tracks: number[], trackCount: number): boolean {
 }
 
 /** Assignments for one band: its historical map first, then canonical-ID/track-order injections. */
-function* assignments(domain: TrackAssignmentDomain): Generator<RoutingTrackAllocation> {
-	const ids = domainRelationIds(domain);
-	const baseline = baselineFor(domain);
-	const baselineKey = assignmentKey(domain, baseline);
+function* assignments(canonical: CanonicalDomain): Generator<RoutingTrackAllocation> {
+	const { domain, ids } = canonical;
+	const baseline = baselineFor(canonical);
+	const baselineKey = assignmentKey(ids, baseline);
 	yield baseline;
 
 	const tracks = Array.from({ length: ids.length }, (_, index) => index);
@@ -93,17 +94,20 @@ function* assignments(domain: TrackAssignmentDomain): Generator<RoutingTrackAllo
 		const assignment = new Map<string, number>();
 		for (const [index, id] of ids.entries()) assignment.set(id, defined(tracks[index]));
 		const candidate = allocationFor(domain, assignment);
-		if (assignmentKey(domain, candidate) !== baselineKey) yield candidate;
+		if (assignmentKey(ids, candidate) !== baselineKey) yield candidate;
 		hasNext = advanceTracks(tracks, domain.trackCount);
 	}
 }
 
 function productKey(
-	domains: readonly TrackAssignmentDomain[],
+	domains: readonly CanonicalDomain[],
 	allocations: readonly RoutingTrackAllocation[],
 ): string {
 	return JSON.stringify(
-		domains.map((domain, index) => [domain.id, assignmentKey(domain, defined(allocations[index]))]),
+		domains.map((domain, index) => [
+			domain.domain.id,
+			assignmentKey(domain.ids, defined(allocations[index])),
+		]),
 	);
 }
 
@@ -111,19 +115,20 @@ function productKey(
 export function* trackAllocationProducts(
 	domains: readonly TrackAssignmentDomain[],
 ): Generator<TrackAllocationProduct, undefined, void> {
-	const baseline = domains.map(baselineFor);
-	const baselineKey = productKey(domains, baseline);
+	const canonical = domains.map(canonicalDomain);
+	const baseline = canonical.map(baselineFor);
+	const baselineKey = productKey(canonical, baseline);
 	yield { allocations: baseline, key: baselineKey };
 
 	const selected: RoutingTrackAllocation[] = [];
 	function* extend(index: number): Generator<TrackAllocationProduct> {
 		if (index === domains.length) {
 			const allocations = [...selected];
-			const key = productKey(domains, allocations);
+			const key = productKey(canonical, allocations);
 			if (key !== baselineKey) yield { allocations, key };
 			return;
 		}
-		for (const allocation of assignments(defined(domains[index]))) {
+		for (const allocation of assignments(defined(canonical[index]))) {
 			selected.push(allocation);
 			yield* extend(index + 1);
 			selected.pop();
