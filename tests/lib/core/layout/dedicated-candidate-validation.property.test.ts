@@ -165,6 +165,8 @@ describe('dedicated candidate validation properties', () => {
 		expect(expected).toMatchObject({
 			valid: false,
 			code: DedicatedCandidateRejectionCode.ElementOverlap,
+			endpointId: 'isolated',
+			otherEndpointId: 'target',
 		});
 		const elementsOrder = fc.shuffledSubarray([...overlapLayout.elements], {
 			minLength: overlapLayout.elements.length,

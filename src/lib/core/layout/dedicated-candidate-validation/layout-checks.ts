@@ -164,11 +164,13 @@ export function validateElementOverlap(
 		for (let otherIndex = index + 1; otherIndex < ordered.length; otherIndex += 1) {
 			const second = defined(ordered[otherIndex]);
 			if (second.bounds.x >= firstRight) break;
-			if (unrelatedOverlap(input.graph, first, second))
+			if (unrelatedOverlap(input.graph, first, second)) {
+				const ids = [first.id, second.id].sort(compareCanonicalStrings);
 				return {
-					...rejected(DedicatedCandidateRejectionCode.ElementOverlap, second.id),
-					otherEndpointId: first.id,
+					...rejected(DedicatedCandidateRejectionCode.ElementOverlap, defined(ids[0])),
+					otherEndpointId: defined(ids[1]),
 				};
+			}
 		}
 	}
 	return undefined;
