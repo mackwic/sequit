@@ -1,12 +1,7 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
 import type { GridRoutingEdges } from './grid-cell-crossing';
-import {
-	FREE_TRACK,
-	portOrders,
-	preferredTrackOrders,
-	trackOrders,
-} from './grid-cell-crossing-orders';
+import { FREE_TRACK, portOrders, trackOrders } from './grid-cell-crossing-orders';
 import type { Point } from './layout-types';
 import { allocateNestedTracks, type RoutingEdge } from './routing-resource-allocation';
 
@@ -178,6 +173,66 @@ function* combineOrders(
 	}
 }
 
+/** Lexicographic first representative of each effective bus geometry: irrelevant routes retain
+ * their relative canonical order rather than multiplying the same geometry factorially. */
+function* distinctBusOrders(
+	relevant: readonly string[],
+	context: { readonly inert: readonly string[]; readonly capacity: number },
+	inertIndex: number,
+	prefix: string[],
+): Generator<readonly string[], undefined, undefined> {
+	if (prefix.length === context.capacity) {
+		yield [...prefix];
+		return;
+	}
+	const nextInert = context.inert[inertIndex];
+	let choices = relevant;
+	if (nextInert !== undefined) choices = [...relevant, nextInert].sort(compareCanonicalStrings);
+	for (const id of choices) {
+		prefix.push(id);
+		if (id === nextInert) yield* distinctBusOrders(relevant, context, inertIndex + 1, prefix);
+		else
+			yield* distinctBusOrders(
+				relevant.filter((candidate) => candidate !== id),
+				context,
+				inertIndex,
+				prefix,
+			);
+		prefix.pop();
+	}
+}
+
+/** Exactly one constructed bus proposal per effective assignment, canonical first. A priority
+ * frontier freezes inert and nonconflicting relations; the complete suffix permits relevant
+ * relations to occupy any bus slot while fixing inert routes in canonical relative order. */
+export function* crossingBusOrderCandidates(
+	input: CrossingAllocationInput,
+	active?: ReadonlySet<string>,
+): Generator<readonly string[], undefined, undefined> {
+	const canonical = input.crossingIds;
+	yield canonical;
+	const relevant = new Set(input.busRelevantRelationIds);
+	let orders: Iterable<readonly string[]>;
+	if (active === undefined)
+		orders = distinctBusOrders(
+			input.busRelevantRelationIds,
+			{
+				inert: input.crossingIds.filter((id) => !relevant.has(id)),
+				capacity: input.edges.topBus.capacity,
+			},
+			0,
+			[],
+		);
+	else
+		orders = trackOrders(
+			input.busRelevantRelationIds,
+			input.edges.topBus.capacity,
+			new Set(input.busRelevantRelationIds.filter((id) => active.has(id))),
+			canonical,
+		);
+	for (const order of orders) if (order.some((id, index) => id !== canonical[index])) yield order;
+}
+
 function* permutationCandidates(
 	input: CrossingAllocationInput,
 	extraTracks: number,
@@ -196,13 +251,7 @@ function* permutationCandidates(
 		return order;
 	};
 	const factories: TrackOrderFactory[] = [
-		() =>
-			preferredTrackOrders(
-				input.crossingIds,
-				input.edges.topBus.capacity,
-				active,
-				baseline(input.crossingIds, canonical.busTrackByRelationId, input.edges.topBus.capacity),
-			),
+		() => crossingBusOrderCandidates(input, active),
 		...input.gutterIds.map(
 			(_ids, column) => (): Generator<readonly string[]> =>
 				trackOrders(
@@ -300,12 +349,7 @@ export function* crossingAllocationCandidates(
 	// prefix, the Cartesian product of gutters hides a valid bus order beyond the budget.
 	if (prioritizeBus) {
 		const gutterOrders = input.gutterIds.map((ids) => canonicalGutterOrder(ids, input.crossingIds));
-		for (const busOrder of preferredTrackOrders(
-			input.crossingIds,
-			input.edges.topBus.capacity,
-			active,
-			input.crossingIds,
-		)) {
+		for (const busOrder of crossingBusOrderCandidates(input, active)) {
 			const proposal = allocationOf(gutterOrders, busOrder, input.incidence);
 			const key = geometryKeyFromAllocation(proposal);
 			if (excluded.has(key)) continue;

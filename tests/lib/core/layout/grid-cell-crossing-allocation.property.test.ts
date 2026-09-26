@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
 	canonicalCrossingAllocation,
+	crossingBusOrderCandidates,
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
 import {
@@ -82,6 +83,29 @@ describe('grid crossing allocation route geometry properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	});
+	it('constructs only effective bus proposals even when eight routes stay in one column', () => {
+		const sameColumn = variedGridRoutingCase(8, 2, 0, true).input;
+		expect(sameColumn.busRelevantRelationIds).toEqual([]);
+		const allConflicting = new Set(sameColumn.crossingIds);
+		let priorityProposals = 0;
+		for (const busOrder of crossingBusOrderCandidates(sameColumn, allConflicting)) {
+			expect(busOrder).toEqual(sameColumn.crossingIds);
+			priorityProposals += 1;
+		}
+		expect(priorityProposals).toBe(1);
+		expect([...crossingBusOrderCandidates(sameColumn)]).toHaveLength(1);
+
+		const mixed = variedGridRoutingCase(9, 2, 0, 8).input;
+		expect(mixed.busRelevantRelationIds).toHaveLength(1);
+		let completeProposals = 0;
+		for (const busOrder of crossingBusOrderCandidates(mixed)) {
+			expect(new Set(busOrder).size).toBe(9);
+			completeProposals += 1;
+		}
+		expect(completeProposals).toBe(9);
+		expect([...crossingBusOrderCandidates(mixed, new Set(mixed.crossingIds))]).toHaveLength(1);
+	});
+
 	it('keeps unrelated tracks and ports fixed in each conflict-first prefix', () => {
 		fc.assert(
 			fc.property(

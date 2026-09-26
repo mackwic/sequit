@@ -52,10 +52,10 @@ export function variedGridRoutingCase(
 	crossingCount: number,
 	columnCount: number,
 	seed: number,
-	sameRail = false,
+	sameRail: boolean | number = false,
 ): VariedGridRoutingCase {
 	let rowCount = 1 + (seed % 3);
-	if (sameRail) rowCount = 2;
+	if (sameRail === true || (typeof sameRail === 'number' && sameRail > 0)) rowCount = 2;
 	const crossing = Array.from({ length: crossingCount }, (_, index): LogicRelation => {
 		let from = `source-${index}`;
 		if (seed % 2 === 0) from = 'source-shared';
@@ -77,9 +77,10 @@ export function variedGridRoutingCase(
 	for (const [index, relation] of crossing.entries()) {
 		const sourceRow = seed % rowCount;
 		let targetRow = (index + seed + 1) % rowCount;
-		if (sameRail) targetRow = (sourceRow + 1) % rowCount;
+		const sameColumn = sameRail === true || (typeof sameRail === 'number' && index < sameRail);
+		if (sameColumn) targetRow = (sourceRow + 1) % rowCount;
 		let targetColumn = columnCount - 1;
-		if (sameRail) targetColumn = 0;
+		if (sameColumn) targetColumn = 0;
 		assignEndpoint(relation.from, sourceRow, 0);
 		assignEndpoint(relation.to, targetRow, targetColumn);
 	}
