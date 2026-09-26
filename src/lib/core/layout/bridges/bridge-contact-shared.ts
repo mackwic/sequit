@@ -95,7 +95,7 @@ function continuationPoint(run: RouteRun, from: boolean): Point {
 	return run.start;
 }
 
-export interface SharedRouteRuns {
+interface SharedRouteRuns {
 	readonly first: readonly RouteRun[];
 	readonly second: readonly RouteRun[];
 }

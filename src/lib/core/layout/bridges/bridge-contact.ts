@@ -5,7 +5,6 @@ import {
 	type EndpointRoute,
 	sharedAtEndpoint,
 	sharedAttachmentPoint,
-	type SharedRouteRuns,
 } from './bridge-contact-shared';
 import type { LayoutBridge, RouteBridgeAnalysis, RouteCrossing } from './bridge-oracle';
 import {
@@ -18,6 +17,8 @@ import {
 } from './route-runs';
 
 export type { EndpointRoute } from './bridge-contact-shared';
+
+type SharedRouteRuns = NonNullable<Parameters<typeof sharedAtEndpoint>[3]['runs']>;
 
 /** True when a validated bridge carries the contact point between the two declared paths. */
 function bridgeCovers(
@@ -53,12 +54,14 @@ export function unbridgedCrossings(analysis: {
 		}
 		atPoint.push(bridge);
 	}
-	return analysis.crossings.filter(
-		(crossing) =>
-			!(bridgesByPoint.get(`${crossing.x}:${crossing.y}`) ?? []).some((bridge) =>
+	return analysis.crossings.filter((crossing) => {
+		const atPoint = bridgesByPoint.get(`${crossing.x}:${crossing.y}`);
+		return (
+			atPoint?.some((bridge) =>
 				bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
-			),
-	);
+			) !== true
+		);
+	});
 }
 
 export enum RouteContactKind {
@@ -254,14 +257,17 @@ function permittedRouteContact(
 	first: EndpointRoute,
 	second: EndpointRoute,
 	contact: RouteContact,
-	runs: SharedRouteRuns,
+	endpoints: {
+		readonly source: Parameters<typeof sharedAtEndpoint>[3];
+		readonly target: Parameters<typeof sharedAtEndpoint>[3];
+	},
 ): boolean {
 	const sharedSource =
-		sharedAtEndpoint(first, second, contact.from, { from: true, runs }) &&
-		sharedAtEndpoint(first, second, contact.to, { from: true, runs });
+		sharedAtEndpoint(first, second, contact.from, endpoints.source) &&
+		sharedAtEndpoint(first, second, contact.to, endpoints.source);
 	const sharedTarget =
-		sharedAtEndpoint(first, second, contact.from, { from: false, runs }) &&
-		sharedAtEndpoint(first, second, contact.to, { from: false, runs });
+		sharedAtEndpoint(first, second, contact.from, endpoints.target) &&
+		sharedAtEndpoint(first, second, contact.to, endpoints.target);
 	if (sharedSource || sharedTarget) return true;
 	if (contact.kind === RouteContactKind.Overlap) return false;
 	return sharedAttachmentPoint(first, second, contact.from);
@@ -280,7 +286,8 @@ export function disallowedRouteContacts(
 	};
 	const contacts = routeContacts(first, second, bridges, { bridges: options, runs });
 	if (contacts.length === 0) return contacts;
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, runs));
+	const endpoints = { source: { from: true, runs }, target: { from: false, runs } };
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, endpoints));
 }
 
 /**
@@ -298,5 +305,6 @@ export function disallowedProvisionalRouteContacts(
 		runs,
 	});
 	if (contacts.length === 0) return contacts;
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, runs));
+	const endpoints = { source: { from: true, runs }, target: { from: false, runs } };
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, endpoints));
 }
