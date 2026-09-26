@@ -42,6 +42,55 @@ describe('dedicated candidate route scoring', () => {
 		});
 	});
 
+	it('counts changes between maximal route runs as bends', () => {
+		const layout: LayoutResult = {
+			...crossingLayout,
+			relations: [
+				{
+					id: 'detour',
+					from: 'west',
+					to: 'south',
+					points: [
+						{ x: 0, y: 0 },
+						{ x: 10, y: 0 },
+						{ x: 20, y: 0 },
+						{ x: 10, y: 0 },
+						{ x: 10, y: 10 },
+					],
+				},
+			],
+		};
+		expect(scoreDedicatedCandidateRoutes(layout)).toEqual({
+			strictCrossings: 0,
+			validatedBridges: 0,
+			length: 40,
+			bends: 2,
+		});
+	});
+
+	it('counts Manhattan length while ignoring non-orthogonal spans as bends', () => {
+		const layout: LayoutResult = {
+			...crossingLayout,
+			relations: [
+				{
+					id: 'diagonal',
+					from: 'west',
+					to: 'south',
+					points: [
+						{ x: 0, y: 0 },
+						{ x: 10, y: 10 },
+					],
+				},
+			],
+		};
+		expect(scoreDedicatedCandidateRoutes(layout)).toEqual({
+			strictCrossings: 0,
+			validatedBridges: 0,
+			length: 20,
+			bends: 0,
+		});
+	});
+
 	it('compares crossings and bridges lexicographically, not observed length or bends', () => {
 		expect(
 			compareDedicatedRouteScores(
