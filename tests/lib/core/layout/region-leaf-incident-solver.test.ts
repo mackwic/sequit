@@ -4,6 +4,7 @@ import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-p
 import {
 	defined,
 	EndpointKind,
+	JunctionOperator,
 	LayoutPolicy,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -99,6 +100,45 @@ describe('dedicated leaf incident contracts', () => {
 			}
 		},
 	);
+
+	it('routes a junction boundary incident clear of its internal causal route', () => {
+		const base = oneNodeLeaf();
+		const document: LogicDocument = {
+			...base,
+			junctions: [
+				{
+					kind: EndpointKind.Junction,
+					id: 'join',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('a7'),
+				},
+			],
+			relations: [{ id: 'c-to-join', from: 'c', to: 'join' }],
+		};
+		const measurements = prepareLayoutDocument(document).measurements;
+		const contracts = [
+			{
+				relation: { id: 'outside-join', from: 'join', to: 'outside' },
+				endpointId: 'join',
+				role: RegionIncidentRole.Source,
+				allowedSides: [RegionPortalSide.Bottom],
+			},
+		];
+		const cache = new RegionLocalLayoutCache();
+		const input = { document, measurements, contracts, cache };
+		const cold = solveDedicatedRegionLeafWithIncidents(input);
+		const hit = solveDedicatedRegionLeafWithIncidents(input);
+		expect(hit).toEqual(cold);
+		if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);
+		const portal = defined(cold.incidents[0]);
+		const junction = defined(cold.layout.elements.find(({ id }) => id === 'join'));
+		const internal = defined(cold.layout.relations.find(({ id }) => id === 'c-to-join'));
+		expect(portal.side).toBe(RegionPortalSide.Bottom);
+		expect(portal.anchor.y).toBe(junction.bounds.y + junction.bounds.height);
+		expect(portal.portal.y).toBe(cold.layout.height);
+		expect(pathsTouchWithoutBridge(portal.points, internal.points)).toBe(false);
+		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
+	});
 
 	it('solves concurrent incidents together, independently of contract order and cache state', () => {
 		const document = oneNodeLeaf();
