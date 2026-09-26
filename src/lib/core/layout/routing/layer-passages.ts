@@ -25,7 +25,7 @@ interface PassageWorkspace extends PassageInput {
 	readonly intervalCache: Map<string, readonly Interval[]>;
 	readonly obstacles: Map<number, RouteObstacles | undefined>;
 	readonly reservations: PassageReservation[];
-	readonly exteriorCandidates: ReadonlyMap<number, ExteriorCandidates>;
+	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
 }
 
 interface Interval {
@@ -260,6 +260,7 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		}
 		occupied = scoped;
 	}
+	input.exteriorCandidates ??= componentExteriorCandidates(input);
 	const exterior = exteriorFor(
 		relation.from,
 		input.componentByEndpointId,
@@ -287,14 +288,12 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 export function layerPassages(
 	input: PassageInput,
 ): (relation: LogicRelation) => number | undefined {
-	const exteriorCandidates = componentExteriorCandidates(input);
 	const workspace: PassageWorkspace = {
 		...input,
 		ancestorCache: new Map(),
 		intervalCache: new Map(),
 		obstacles: new Map(),
 		reservations: [],
-		exteriorCandidates,
 	};
 	return (relation) => reservePassage(workspace, relation);
 }
