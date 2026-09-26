@@ -1,12 +1,15 @@
 import { defined } from '../../../document/logic-document';
-import type { SolvedRecursiveRegion } from '../model/nested-region-recursive-geometry';
+import type { SolvedRecursiveRegion } from '../composition/nested-region-recursive-geometry';
 import {
 	directChild,
 	type IncidentSides,
 	type RecursiveContext,
 	sideForRegion,
-} from '../model/nested-region-recursive-model-adapter';
-import type { ArrangementIncidentInput, RegionArrangement } from '../model/region-arrangement';
+} from '../composition/nested-region-recursive-model-adapter';
+import type {
+	ArrangementIncidentInput,
+	RegionArrangement,
+} from '../composition/region-arrangement';
 import type { RegionPortalSide } from '../model/region-composition-types';
 import { RegionIncidentRole } from '../model/region-incident-contract';
 

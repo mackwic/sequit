@@ -4,15 +4,15 @@ import { createGraph, type LogicGraph } from '../../../graph/create-graph';
 import type { TopologicalRanks } from '../../../graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
 import {
+	leafDocument,
+	type RecursiveContext,
+} from '../composition/nested-region-recursive-model-adapter';
+import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
 import { regionLeafPolicy } from '../leaf/region-leaf-policy';
-import {
-	leafDocument,
-	type RecursiveContext,
-} from '../model/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,

@@ -6,12 +6,12 @@ import {
 	type RegionIncidentPath,
 	type SolvedRecursiveRegion,
 	translatedIncidentPath,
-} from '../regions/model/nested-region-recursive-geometry';
+} from '../regions/composition/nested-region-recursive-geometry';
 import {
 	directChild,
 	type IncidentSides,
 	type RecursiveContext,
-} from '../regions/model/nested-region-recursive-model-adapter';
+} from '../regions/composition/nested-region-recursive-model-adapter';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import {
 	CROSSING_SPACING,

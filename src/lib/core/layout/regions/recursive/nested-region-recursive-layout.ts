@@ -2,23 +2,23 @@ import { defined } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
 import type { RouteBridgeCache } from '../../bridges/bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
-import { regionLeafIncidentPath } from '../leaf/region-leaf-incident-path';
-import {
-	solveRegionLeafLayoutWithIncidents,
-	UnknownRegionLeafLayoutError,
-} from '../leaf/region-leaf-layout';
-import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import type {
 	RegionIncidentPath,
 	SolvedRecursiveRegion,
-} from '../model/nested-region-recursive-geometry';
+} from '../composition/nested-region-recursive-geometry';
 import {
 	type IncidentSides,
 	leafDocument,
 	leafIncidentContracts,
 	policyFailure,
 	type RecursiveContext,
-} from '../model/nested-region-recursive-model-adapter';
+} from '../composition/nested-region-recursive-model-adapter';
+import { regionLeafIncidentPath } from '../leaf/region-leaf-incident-path';
+import {
+	solveRegionLeafLayoutWithIncidents,
+	UnknownRegionLeafLayoutError,
+} from '../leaf/region-leaf-layout';
+import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import { NESTED_REGION_COMPOSITION_LIMITS } from '../model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,

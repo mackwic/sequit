@@ -18,7 +18,7 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,

@@ -9,13 +9,13 @@ import type {
 	Point,
 } from '../../layout-types';
 import { edgeExtent, type RoutingEdge } from '../../resources/routing-resource-allocation';
-import { PARENT_BUS_SPACING, REGION_PADDING } from './nested-region-crossing-routing';
 import {
 	type RegionChildPlacement,
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './region-composition-types';
+} from '../model/region-composition-types';
+import { PARENT_BUS_SPACING, REGION_PADDING } from './nested-region-crossing-routing';
 
 const REGION_GAP = 96;
 const ROOT_MARGIN = 48;

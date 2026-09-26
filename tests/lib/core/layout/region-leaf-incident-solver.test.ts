@@ -15,6 +15,7 @@ import {
 } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import { incidentEndpointRoute } from '../../../../src/lib/core/layout/regions/composition/region-incident-contact';
 import { incidentMetricDemands } from '../../../../src/lib/core/layout/regions/leaf/region-incident-metric-demand';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-base-layout';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
@@ -22,7 +23,6 @@ import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { incidentEndpointRoute } from '../../../../src/lib/core/layout/regions/model/region-incident-contact';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,

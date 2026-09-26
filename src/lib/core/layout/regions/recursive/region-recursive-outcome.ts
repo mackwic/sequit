@@ -1,13 +1,13 @@
 import { defined } from '../../../document/logic-document';
 import type { RegionGeometryDiagnostic } from '../../geometry/region-geometry-diagnostic';
 import {
+	type RecursiveContext,
+	sideForRegion,
+} from '../composition/nested-region-recursive-model-adapter';
+import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
-import {
-	type RecursiveContext,
-	sideForRegion,
-} from '../model/nested-region-recursive-model-adapter';
 import {
 	RegionCompositionStatus,
 	type RegionLayoutAttempt,

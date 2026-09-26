@@ -2,7 +2,7 @@ import type { LayoutRelation, LayoutResult } from '../../layout-types';
 import {
 	composeCrossings,
 	inheritedIncidentPaths,
-} from '../model/nested-region-recursive-composition';
+} from '../composition/nested-region-recursive-composition';
 import {
 	childPlacements,
 	rowBusEdge,
@@ -10,13 +10,13 @@ import {
 	type SolvedRecursiveRegion,
 	sortedElements,
 	translatedChildren,
-} from '../model/nested-region-recursive-geometry';
+} from '../composition/nested-region-recursive-geometry';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
-} from '../model/region-arrangement';
+} from '../composition/region-arrangement';
 import { RegionPortalSide } from '../model/region-composition-types';
 import { UnsupportedRegionLeafLayoutError } from './region-leaf-base-layout';
 

@@ -4,8 +4,8 @@ import { orthogonal, samePoint } from '../geometry/nested-region-geometry-primit
 import { hitsBox } from '../geometry/shared-lane-geometry-primitives';
 import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import type { Bounds, Point } from '../layout-types';
+import { incidentEndpointRoute } from '../regions/composition/region-incident-contact';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
-import { incidentEndpointRoute } from '../regions/model/region-incident-contact';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,

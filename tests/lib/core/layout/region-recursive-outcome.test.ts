@@ -17,14 +17,14 @@ import {
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
+	leafDocument,
+	leafIncidentContracts,
+} from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
+import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import { solveRegionLeafLayoutWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
-import {
-	leafDocument,
-	leafIncidentContracts,
-} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,

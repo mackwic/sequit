@@ -6,8 +6,8 @@ import {
 	segmentEnters,
 } from '../../geometry/nested-region-geometry-primitives';
 import type { Bounds, LayoutElement, LayoutResult, Point } from '../../layout-types';
+import { incidentEndpointRoute } from '../composition/region-incident-contact';
 import { RegionPortalSide } from '../model/region-composition-types';
-import { incidentEndpointRoute } from '../model/region-incident-contact';
 import type {
 	RegionIncidentContract,
 	RegionSolvedIncident,

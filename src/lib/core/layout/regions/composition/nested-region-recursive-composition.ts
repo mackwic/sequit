@@ -5,6 +5,12 @@ import {
 	type RoutingTrackDemand,
 	trackOffset,
 } from '../../resources/routing-resource-allocation';
+import type {
+	RegionChildPlacement,
+	RegionOwnedRoute,
+	RegionPortal,
+	RegionPortalSide,
+} from '../model/region-composition-types';
 import {
 	boundaryPortal,
 	type RegionIncidentPath,
@@ -19,12 +25,6 @@ import {
 	type IncidentSides,
 	type RecursiveContext,
 } from './nested-region-recursive-model-adapter';
-import type {
-	RegionChildPlacement,
-	RegionOwnedRoute,
-	RegionPortal,
-	RegionPortalSide,
-} from './region-composition-types';
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;

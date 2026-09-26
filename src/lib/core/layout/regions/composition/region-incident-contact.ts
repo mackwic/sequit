@@ -1,5 +1,5 @@
 import type { EndpointRoute } from '../../bridges/bridge-contact';
-import { RegionIncidentRole, type RegionSolvedIncident } from './region-incident-contract';
+import { RegionIncidentRole, type RegionSolvedIncident } from '../model/region-incident-contract';
 
 /** A leaf piece declares only the endpoint actually attached inside this leaf. */
 export function incidentEndpointRoute(path: RegionSolvedIncident): EndpointRoute {

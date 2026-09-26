@@ -13,7 +13,7 @@ import {
 	leafDocument,
 	leafIncidentContracts,
 	type RecursiveContext,
-} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+} from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
 import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,

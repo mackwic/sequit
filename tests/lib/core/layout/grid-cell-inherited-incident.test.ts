@@ -13,8 +13,8 @@ import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import type {
 	RegionIncidentPath,
 	SolvedRecursiveRegion,
-} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+} from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-geometry';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
-import type { RegionArrangement } from '../../../../src/lib/core/layout/regions/model/region-arrangement';
+import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-geometry';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
+import type { RegionArrangement } from '../../../../src/lib/core/layout/regions/composition/region-arrangement';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,

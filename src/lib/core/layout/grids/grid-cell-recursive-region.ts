@@ -1,20 +1,20 @@
 import { defined, type LogicDocument } from '../../document/logic-document';
 import { createGraph, type LogicGraph } from '../../graph/create-graph';
 import {
-	UnknownRegionLeafLayoutError,
-	UnsupportedRegionLeafLayoutError,
-} from '../regions/leaf/region-leaf-layout';
-import {
 	type SolvedRecursiveRegion,
 	translatedChildren,
-} from '../regions/model/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../regions/model/nested-region-recursive-model-adapter';
+} from '../regions/composition/nested-region-recursive-geometry';
+import type { RecursiveContext } from '../regions/composition/nested-region-recursive-model-adapter';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
-} from '../regions/model/region-arrangement';
+} from '../regions/composition/region-arrangement';
+import {
+	UnknownRegionLeafLayoutError,
+	UnsupportedRegionLeafLayoutError,
+} from '../regions/leaf/region-leaf-layout';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import { RegionSearchProvenance } from '../regions/model/region-search-evidence';
 import { crossingEndpointSide } from './grid-cell-crossing';

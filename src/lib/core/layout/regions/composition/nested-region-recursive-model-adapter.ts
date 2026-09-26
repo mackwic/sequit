@@ -11,14 +11,14 @@ import type {
 	RegionCompositionModel,
 	RegionCompositionNode,
 	RegionRelationOwnership,
-} from './region-composition-model';
-import { RegionPortalSide } from './region-composition-types';
+} from '../model/region-composition-model';
+import { RegionPortalSide } from '../model/region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,
 	RegionIncidentRole,
-} from './region-incident-contract';
-import type { RegionLocalLayoutCache } from './region-local-cache';
+} from '../model/region-incident-contract';
+import type { RegionLocalLayoutCache } from '../model/region-local-cache';
 
 export type IncidentSides = ReadonlyMap<string, readonly RegionPortalSide[]>;
 
