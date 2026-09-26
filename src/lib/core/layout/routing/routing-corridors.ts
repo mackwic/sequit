@@ -15,6 +15,7 @@ const canonicalGraph = Symbol('canonical corridor graph');
 export interface RoutingCorridor {
 	readonly rank: number;
 	readonly links: readonly CorridorLink[];
+	readonly cornerOnly?: boolean;
 	readonly [canonicalGraph]?: LogicGraph;
 }
 
@@ -50,11 +51,41 @@ function intersectingClusters(links: readonly CorridorLink[]): CorridorLink[][] 
 	return groups;
 }
 
-function needsRouting(cluster: readonly CorridorLink[]): boolean {
-	// Midpoint bends of overlapping (including endpoint-touching) transverse spans
-	// can meet even when the links preserve order. Reserve rails for the whole
-	// connected interval cluster; unrelated paths cannot share its midpoint.
-	return cluster.length >= 2 && cluster.some(({ source, target }) => source !== target);
+function neighborInversion(links: readonly CorridorLink[]): boolean {
+	for (let index = 1; index < links.length; index += 1) {
+		const a = defined(links[index - 1]);
+		const b = defined(links[index]);
+		const source = a.source - b.source;
+		const target = a.target - b.target;
+		if (source * target < 0) return true;
+	}
+	return false;
+}
+
+function inverted(links: readonly CorridorLink[]): boolean {
+	if (neighborInversion(links)) return true;
+	let previousSource = Number.NEGATIVE_INFINITY;
+	let previousMaximum = Number.NEGATIVE_INFINITY;
+	let maximum = Number.NEGATIVE_INFINITY;
+	for (const link of [...links].sort(compareLinks)) {
+		if (link.source !== previousSource) {
+			previousMaximum = maximum;
+			previousSource = link.source;
+		}
+		if (link.target < previousMaximum) return true;
+		maximum = Math.max(maximum, link.target);
+	}
+	return false;
+}
+
+/** Overlapping transverse runs need rail allocation even when they keep their rank order. */
+function independentTurns(cluster: readonly CorridorLink[]): boolean {
+	const turns = cluster.filter(({ source, target }) => source !== target);
+	if (turns.length < 2) return false;
+	const first = defined(turns[0]).relation;
+	if (turns.every(({ relation }) => relation.from === first.from)) return false;
+	if (turns.every(({ relation }) => relation.to === first.to)) return false;
+	return true;
 }
 
 function collectCorridors(
@@ -65,8 +96,10 @@ function collectCorridors(
 	const result: RoutingCorridor[] = [];
 	for (const [rank, links] of byRank) {
 		for (const cluster of intersectingClusters(links)) {
-			if (!needsRouting(cluster)) continue;
-			const corridor: RoutingCorridor = { rank, links: cluster };
+			const crossing = inverted(cluster);
+			if (!crossing && !independentTurns(cluster)) continue;
+			let corridor: RoutingCorridor = { rank, links: cluster };
+			if (!crossing) corridor = { rank, links: cluster, cornerOnly: true };
 			if (canonicalIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
 			result.push(corridor);
 		}
@@ -112,4 +145,34 @@ export function crossingCorridors(input: {
 		byRank.set(rank, links);
 	}
 	return collectCorridors(byRank, input.graph, canonicalIds);
+}
+
+interface CornerPortSharing {
+	readonly sharedSources: ReadonlySet<string>;
+	readonly sharedTargets: ReadonlySet<string>;
+}
+
+/** Keep shared endpoints of new non-inverted corridors unless a crossing already separates them. */
+export function cornerPortSharing(
+	corridors: readonly RoutingCorridor[],
+): CornerPortSharing | undefined {
+	if (!corridors.some(({ cornerOnly }) => cornerOnly === true)) return undefined;
+	const sharedSources = new Set<string>();
+	const sharedTargets = new Set<string>();
+	const crossingSources = new Set<string>();
+	const crossingTargets = new Set<string>();
+	for (const corridor of corridors) {
+		for (const { relation } of corridor.links) {
+			if (corridor.cornerOnly === true) {
+				sharedSources.add(relation.from);
+				sharedTargets.add(relation.to);
+			} else {
+				crossingSources.add(relation.from);
+				crossingTargets.add(relation.to);
+			}
+		}
+	}
+	for (const source of crossingSources) sharedSources.delete(source);
+	for (const target of crossingTargets) sharedTargets.delete(target);
+	return { sharedSources, sharedTargets };
 }

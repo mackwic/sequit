@@ -64,9 +64,16 @@ describe('dedicated candidate validation properties', () => {
 					const ranks = topologicallyRank(graph);
 					const measurements = layoutMeasurementsFor(document);
 					const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
-					expect(validateDedicatedCandidate({ graph, ranks, measurements, layout })).toMatchObject({
-						valid: true,
-					});
+					const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
+					expect(
+						validation,
+						JSON.stringify({
+							validation,
+							routes: layout.relations.filter(
+								({ id }) => id === 'relation-003' || id === 'relation-006',
+							),
+						}),
+					).toMatchObject({ valid: true });
 				},
 			),
 			PROPERTY_PARAMETERS,

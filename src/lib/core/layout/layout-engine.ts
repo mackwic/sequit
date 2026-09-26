@@ -26,7 +26,11 @@ import {
 import { allocatePorts, type PortAllocation } from './routing/port-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
-import { crossingCorridors, type RoutingCorridor } from './routing/routing-corridors';
+import {
+	cornerPortSharing,
+	crossingCorridors,
+	type RoutingCorridor,
+} from './routing/routing-corridors';
 import { directRoutingSpace, routingSpace } from './routing/routing-space';
 import { settleGroupCorridorPorts } from './routing/settle-group-corridors';
 import { bypassedChains } from './structure/bypassed-chains';
@@ -169,10 +173,12 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		vertical: frame.vertical,
 	});
 	if (corridors.length === 0) return;
+	const sharing = cornerPortSharing(corridors);
 	let ports = allocatePorts({
 		corridors,
+		...sharing,
 		fromCrossingCorridors: true,
-		sizes: measurements.content.nodes,
+		sizes: measurements.sizes,
 		vertical: frame.vertical,
 		graph,
 		bounds: placement.bounds,
@@ -184,7 +190,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 			ranks: ranks.byEndpointId,
 			bounds: placement.bounds,
 			vertical: frame.vertical,
-			sizes: measurements.content.nodes,
+			sizes: measurements.sizes,
 			initial: corridors,
 			initialPorts: ports,
 			place: (candidate) => {

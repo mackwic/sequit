@@ -1,7 +1,7 @@
 import { defined, EndpointKind } from '../../document/logic-document';
 import type { LayoutFrame } from '../geometry/layout-frame';
-import { mainSize } from '../geometry/layout-frame';
-import { BASE_RANK_GAP } from '../layout-settings';
+import { mainSize, transverseSize } from '../geometry/layout-frame';
+import { BASE_RANK_GAP, PORT_INSET } from '../layout-settings';
 import type { GroupMeasurement, LayoutMeasurements, Size } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { validateGroupMeasurement, validateSize } from './validate-measurements';
@@ -108,6 +108,20 @@ function relationGroupRankGap(
 	return gap;
 }
 
+function needsNodePortInset(
+	structure: LayoutStructure,
+	frame: LayoutFrame,
+	id: string,
+	size: Size,
+): boolean {
+	if (transverseSize(size, frame.vertical) >= 2 * PORT_INSET) return false;
+	if (defined(structure.graph.endpointsById.get(id)).kind !== EndpointKind.Node) return false;
+	return (
+		defined(structure.graph.outgoingByEndpointId.get(id)).length > 0 ||
+		defined(structure.graph.predecessorsByEndpointId.get(id)).length > 0
+	);
+}
+
 export function prepareMeasurements(
 	structure: LayoutStructure,
 	content: LayoutMeasurements,
@@ -115,8 +129,12 @@ export function prepareMeasurements(
 ): PreparedMeasurements {
 	const sizes = new Map<string, Size>();
 	const groups = groupReader(content);
-	for (const id of structure.graph.rankableEndpointIds)
-		sizes.set(id, endpointSize(structure, content, groups, id));
+	for (const id of structure.graph.rankableEndpointIds) {
+		const size = endpointSize(structure, content, groups, id);
+		if (!needsNodePortInset(structure, frame, id, size)) sizes.set(id, size);
+		else if (frame.vertical) sizes.set(id, { ...size, width: 2 * PORT_INSET });
+		else sizes.set(id, { ...size, height: 2 * PORT_INSET });
+	}
 	const primaryBandSizes = Array.from({ length: structure.maximumRank + 1 }, () => 1);
 	for (const [id, size] of sizes) {
 		if (structure.junctionIds.has(id)) continue;

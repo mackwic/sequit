@@ -207,10 +207,57 @@ describe('dedicated candidate validation: boxes and groups', () => {
 					nodes: Object.fromEntries(ids.map((id) => [id, { width: 80, height: 40 }])),
 				});
 				const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+				const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
 				expect(
-					validateDedicatedCandidate({ graph, ranks, measurements, layout }),
-					`${count} nodes, ${direction}`,
-				).toMatchObject({ valid: true });
+					validation,
+					`${count} nodes, ${direction}: ${JSON.stringify(validation)}`,
+				).toMatchObject({
+					valid: true,
+				});
+				if (count === 15 && direction === LayoutDirection.TopToBottom) {
+					const crossingIds = ['a', 'b', 'c', 'd'];
+					const combined: LogicDocument = {
+						...document,
+						nodes: [
+							...document.nodes,
+							...crossingIds.map((id, index) => ({
+								id,
+								kind: EndpointKind.Node as const,
+								natureId: defined(document.nodes[0]).natureId,
+								markdown: id,
+								layoutOrder: orderKey(`b0${index + 1}`),
+							})),
+						],
+						relations: [
+							...document.relations,
+							{ id: 'cross-a-c', from: 'a', to: 'c' },
+							{ id: 'cross-a-d', from: 'a', to: 'd' },
+							{ id: 'cross-b-c', from: 'b', to: 'c' },
+							{ id: 'cross-b-d', from: 'b', to: 'd' },
+						],
+					};
+					const combinedGraph = createGraph(combined);
+					if (!combinedGraph.ok) throw new Error('Invalid mixed routing graph');
+					const mixedRanks = topologicallyRank(combinedGraph.value);
+					const mixedMeasurements = layoutMeasurementsFor(combined, {
+						nodes: Object.fromEntries(
+							combined.nodes.map(({ id }) => [id, { width: 80, height: 40 }]),
+						),
+					});
+					const mixed = layoutWithDedicatedEngine(
+						combinedGraph.value,
+						mixedRanks,
+						mixedMeasurements,
+					);
+					expect(
+						validateDedicatedCandidate({
+							graph: combinedGraph.value,
+							ranks: mixedRanks,
+							measurements: mixedMeasurements,
+							layout: mixed,
+						}),
+					).toMatchObject({ valid: true });
+				}
 			}
 		},
 	);

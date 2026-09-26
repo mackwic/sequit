@@ -15,6 +15,7 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { PORT_INSET } from '../../../../src/lib/core/layout/layout-settings';
 import type {
 	Bounds,
 	GroupMeasurement,
@@ -433,8 +434,29 @@ describe('dedicated layout components', () => {
 					for (const id of MULTI_COMPONENT_IDS) {
 						const before = boundsFor(original.layout, id);
 						const after = boundsFor(scaled.layout, id);
-						expect(after.width).toBe(before.width * factor);
-						expect(after.height).toBe(before.height * factor);
+						const intrinsic = generated.nodes[id];
+						if (intrinsic === undefined) throw new Error(`Missing node size ${id}`);
+						const incident = generated.document.relations.some(
+							({ from, to }) => from === id || to === id,
+						);
+						if (
+							incident &&
+							[LayoutDirection.TopToBottom, LayoutDirection.BottomToTop].includes(
+								generated.document.layout.direction,
+							)
+						) {
+							expect(before.width).toBe(Math.max(intrinsic.width, 2 * PORT_INSET));
+							expect(after.width).toBe(Math.max(intrinsic.width * factor, 2 * PORT_INSET));
+						} else expect(after.width).toBe(before.width * factor);
+						if (
+							incident &&
+							[LayoutDirection.LeftToRight, LayoutDirection.RightToLeft].includes(
+								generated.document.layout.direction,
+							)
+						) {
+							expect(before.height).toBe(Math.max(intrinsic.height, 2 * PORT_INSET));
+							expect(after.height).toBe(Math.max(intrinsic.height * factor, 2 * PORT_INSET));
+						} else expect(after.height).toBe(before.height * factor);
 					}
 					expectOrderedComponents(
 						scaled.layout,
