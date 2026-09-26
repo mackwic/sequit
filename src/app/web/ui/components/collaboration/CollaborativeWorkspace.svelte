@@ -316,13 +316,15 @@
 			{#each visible.document.groups as group (group.id)}
 				<section aria-label={`Groupe ${group.id}`}>
 					<SharedElementCard label={`Groupe ${group.id}`}>
-						<SharedTextField
-							{client}
-							{connected}
-							target={{ kind: Kind.Group, id: group.id }}
-							field="label"
-							label={`Libellé du groupe ${group.id}`}
-						/>
+						{#key client.text({ kind: Kind.Group, id: group.id }, 'label')}
+							<SharedTextField
+								{client}
+								{connected}
+								target={{ kind: Kind.Group, id: group.id }}
+								field="label"
+								label={`Libellé du groupe ${group.id}`}
+							/>
+						{/key}
 						<SharedPropertyFields
 							target={{ kind: Kind.Group, id: group.id }}
 							properties={{ color: group.color, groupId: group.groupId }}

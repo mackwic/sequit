@@ -7,6 +7,7 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/session-wire';
 import {
 	SharedCommandKind as Op,
+	type SharedDocumentCommand,
 	SharedElementKind as Kind,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
@@ -23,30 +24,17 @@ async function closeEditor(page: Page): Promise<void> {
 	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
 }
 
-test('A recreated box remounts its editor before typing can alter the new incarnation', async ({
-	page,
-}) => {
-	const room = `e2e-${crypto.randomUUID()}`;
-	await seedRoom(room, CollaborativeFixture.TwoBoxes);
-	await page.goto(`/atelier/collaboration?room=${room}&name=Alice`);
-	await edit(page);
-	const field = page.getByLabel('Contenu A', { exact: true });
-	await expect(field).toHaveText('Alpha');
-	const previous = await field.elementHandle();
+async function externalCommands(
+	room: string,
+	commands: readonly SharedDocumentCommand[],
+): Promise<void> {
 	const proposal = `replace-${crypto.randomUUID()}`;
 	const frame = encodeSessionMessage({
 		type: Message.Change,
 		id: proposal,
 		sessionId: `peer-${crypto.randomUUID()}`,
 		sequence: 1,
-		commands: [
-			{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } },
-			{
-				op: Op.Create,
-				target: { kind: Kind.Node, id: 'A' },
-				properties: { natureId: 'N', markdown: 'Fresh incarnation' },
-			},
-		],
+		commands,
 	});
 	const peer = new WebSocket(`ws://127.0.0.1:8788/collab/${room}`);
 	peer.binaryType = 'arraybuffer';
@@ -68,6 +56,26 @@ test('A recreated box remounts its editor before typing can alter the new incarn
 	} finally {
 		peer.close();
 	}
+}
+
+test('A recreated box remounts its editor before typing can alter the new incarnation', async ({
+	page,
+}) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.TwoBoxes);
+	await page.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+	await edit(page);
+	const field = page.getByLabel('Contenu A', { exact: true });
+	await expect(field).toHaveText('Alpha');
+	const previous = await field.elementHandle();
+	await externalCommands(room, [
+		{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } },
+		{
+			op: Op.Create,
+			target: { kind: Kind.Node, id: 'A' },
+			properties: { natureId: 'N', markdown: 'Fresh incarnation' },
+		},
+	]);
 	await expect(field).toHaveText('Fresh incarnation');
 	expect(await field.elementHandle()).not.toBe(previous);
 	await field.fill('Edited fresh incarnation');
@@ -82,6 +90,35 @@ test('A recreated box remounts its editor before typing can alter the new incarn
 	await page.reload();
 	await edit(page);
 	await expect(field).toHaveText('Edited fresh incarnation');
+});
+
+test('A recreated group remounts the sidebar label editor and persists its new text', async ({
+	page,
+}) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.OpenGroup);
+	await page.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+	await edit(page, 'Groupe G');
+	const field = page.getByLabel('Libellé du groupe G', { exact: true });
+	await expect(field).toHaveText('Groupe');
+	const previous = await field.elementHandle();
+	await externalCommands(room, [
+		{ op: Op.Ungroup, id: 'G' },
+		{ op: Op.Group, id: 'G', label: 'Groupe recréé', members: ['A', 'B'] },
+	]);
+	await expect(field).toHaveText('Groupe recréé');
+	expect(await field.elementHandle()).not.toBe(previous);
+	await field.fill('Libellé modifié');
+	const observer = await page.context().newPage();
+	await observer.goto(`/atelier/collaboration?room=${room}&name=Bob`);
+	await edit(observer, 'Groupe G');
+	await expect(observer.getByLabel('Libellé du groupe G', { exact: true })).toHaveText(
+		'Libellé modifié',
+	);
+	await observer.close();
+	await page.reload();
+	await edit(page, 'Groupe G');
+	await expect(field).toHaveText('Libellé modifié');
 });
 
 test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs', async ({
