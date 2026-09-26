@@ -42,17 +42,19 @@ import {
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
 import {
-	laneRouteSelectionIsBetter,
 	materializeParallelGeometry,
 	parallelRouteCandidates,
 	parallelStrategyPlans,
-	rankLaneRouteSelection,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
 import {
 	certifySharedLaneRouteGeometry,
 	materializeParallelGeometryDelta,
 	validateSharedLaneGeometryDelta,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-delta';
+import {
+	laneRouteSelectionIsBetter,
+	rankLaneRouteSelection,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-route-ranking';
 import { searchParallelRouteAllocations } from '../../../../src/lib/core/layout/lanes/shared-lane-route-search';
 import {
 	allocateParallelRoutes,

@@ -10,15 +10,17 @@ import type { IncidentSearchState } from './shared-lane-incident-search';
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import {
-	laneRouteSelectionIsBetter,
 	parallelCandidateTotal,
 	type ParallelRouteCandidate,
 	parallelRouteCandidates,
 	parallelStrategyPlans,
-	type RankedLaneRouteSelection,
-	rankLaneRouteSelection,
 	type SharedLaneAllocationSearchWitness,
 } from './shared-lane-route-candidates';
+import {
+	laneRouteSelectionIsBetter,
+	type RankedLaneRouteSelection,
+	rankLaneRouteSelection,
+} from './shared-lane-route-ranking';
 import { type LaneRouteStrategy, twoPassStrategies } from './shared-lane-route-strategies';
 import { TransverseRouteOrder } from './shared-transverse-routing';
 
