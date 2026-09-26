@@ -61,23 +61,22 @@ function addConflictingRoutes(
 /** Rebuild the priority prefix when a rejection reveals a new route; then visit every remaining
  * allocation in canonical 1A order. This generator changes order, never the phase's space. */
 function* orderedPhaseCandidates(
-	input: CrossingAllocationInput,
 	phase: CrossingAllocationPhase,
 	active: ReadonlySet<string>,
 	conflictsFirst: boolean,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
 	if (conflictsFirst) {
 		let known = active.size;
-		let priority = phase.candidates(input, active, true);
+		let priority = phase.candidates(active, true);
 		for (let next = priority.next(); next.done === false; next = priority.next()) {
 			yield next.value;
 			if (active.size !== known) {
 				known = active.size;
-				priority = phase.candidates(input, active, true);
+				priority = phase.candidates(active, true);
 			}
 		}
 	}
-	yield* phase.candidates(input);
+	yield* phase.candidates();
 }
 
 function searchGridCrossingPhase<Candidate>(
@@ -94,10 +93,10 @@ function searchGridCrossingPhase<Candidate>(
 	const rejectedAlternatives: GridCrossingAllocationWitness['rejectedAlternatives'][number][] = [];
 	const explored = boundedCounter(phase.budget);
 	const { active, conflictsFirst } = frontier;
-	const total = phase.totalGeometries(input);
+	const total = phase.totalGeometries();
 	const seen = new Set<string>();
 	const busRelevant = new Set(input.busRelevantRelationIds);
-	for (const allocation of orderedPhaseCandidates(input, phase, active, conflictsFirst)) {
+	for (const allocation of orderedPhaseCandidates(phase, active, conflictsFirst)) {
 		const key = geometryKeyFromAllocation(
 			allocation.gutterTrackByRelationId,
 			allocation.busTrackByRelationId,
@@ -196,7 +195,7 @@ export function searchGridCrossingAllocations<Candidate>(
 			id: phase.id,
 			attempted: false,
 			exploredGeometries: 0,
-			totalGeometries: phase.totalGeometries(input).toString(),
+			totalGeometries: phase.totalGeometries().toString(),
 			exhaustive: false,
 			truncated: false,
 			selected: false,

@@ -48,9 +48,9 @@ describe('grid crossing allocation route geometry properties', () => {
 						sameRail,
 					);
 					const phases = crossingAllocationPhases(input);
-					const reallocation = [...defined(phases[0]).candidates(input)];
-					const extraTrack = [...defined(phases[1]).candidates(input)];
-					const bridge = [...defined(phases[2]).candidates(input)];
+					const reallocation = [...defined(phases[0]).candidates()];
+					const extraTrack = [...defined(phases[1]).candidates()];
+					const bridge = [...defined(phases[2]).candidates()];
 					expect(reallocation[0]).toEqual(canonicalCrossingAllocation(input));
 					for (const [phaseIndex, candidates] of [reallocation, extraTrack, bridge].entries()) {
 						const phase = defined(phases[phaseIndex]);
@@ -58,7 +58,7 @@ describe('grid crossing allocation route geometry properties', () => {
 							effectiveRouteGeometry(routing, crossing, allocation),
 						);
 						expect(new Set(geometries).size).toBe(candidates.length);
-						expect(BigInt(new Set(geometries).size)).toBe(phase.totalGeometries(input));
+						expect(BigInt(new Set(geometries).size)).toBe(phase.totalGeometries());
 					}
 					const existingGeometry = new Set(
 						reallocation.map((allocation) => effectiveRouteGeometry(routing, crossing, allocation)),
@@ -117,7 +117,7 @@ describe('grid crossing allocation route geometry properties', () => {
 					const active = new Set([defined(input.crossingIds[activeIndex])]);
 					const canonical = canonicalCrossingAllocation(input);
 					for (const phase of crossingAllocationPhases(input)) {
-						const candidates = [...phase.candidates(input, active, true)];
+						const candidates = [...phase.candidates(active, true)];
 						const geometries = candidates.map((candidate) =>
 							effectiveRouteGeometry(routing, crossing, candidate),
 						);
@@ -168,9 +168,9 @@ describe('grid crossing allocation route geometry properties', () => {
 					const { input } = fixture;
 					const phases = crossingAllocationPhases(input);
 					const budgets = {
-						reallocate: Number(defined(phases[0]).totalGeometries(input)),
-						extraTrack: Number(defined(phases[1]).totalGeometries(input)),
-						bridge: Number(defined(phases[2]).totalGeometries(input)),
+						reallocate: Number(defined(phases[0]).totalGeometries()),
+						extraTrack: Number(defined(phases[1]).totalGeometries()),
+						bridge: Number(defined(phases[2]).totalGeometries()),
 					};
 					const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
 						routeGridFixture(fixture, allocation, acceptBridges);
@@ -235,9 +235,9 @@ describe('grid crossing allocation route geometry properties', () => {
 				};
 				const phases = crossingAllocationPhases(input);
 				const budgets = {
-					reallocate: Number(defined(phases[0]).totalGeometries(input)),
-					extraTrack: Number(defined(phases[1]).totalGeometries(input)),
-					bridge: Number(defined(phases[2]).totalGeometries(input)),
+					reallocate: Number(defined(phases[0]).totalGeometries()),
+					extraTrack: Number(defined(phases[1]).totalGeometries()),
+					bridge: Number(defined(phases[2]).totalGeometries()),
 				};
 				const oracle = searchGridCrossingAllocations(
 					input,

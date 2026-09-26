@@ -306,13 +306,11 @@ describe('grid crossing allocation', () => {
 			CrossingAllocationPhaseId.Bridge,
 		]);
 		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, true]);
-		expect([...defined(phases[2]).candidates(input)]).toEqual([
-			...crossingAllocationCandidates(input),
-		]);
+		expect([...defined(phases[2]).candidates()]).toEqual([...crossingAllocationCandidates(input)]);
 		for (const phase of phases) {
-			const candidates = [...phase.candidates(input)];
+			const candidates = [...phase.candidates()];
 			expect(candidates.length).toBeGreaterThan(0);
-			expect(BigInt(candidates.length)).toBe(phase.totalGeometries(input));
+			expect(BigInt(candidates.length)).toBe(phase.totalGeometries());
 		}
 	});
 

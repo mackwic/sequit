@@ -54,9 +54,8 @@ export interface CrossingAllocationPhase {
 	/** True when a contact between two parent routes is admissible if a validated bridge carries it. */
 	readonly acceptBridges: boolean;
 	/** Exact number of distinct effective route geometries declared in this phase. */
-	readonly totalGeometries: (input: CrossingAllocationInput) => bigint;
+	readonly totalGeometries: () => bigint;
 	readonly candidates: (
-		input: CrossingAllocationInput,
 		active?: ReadonlySet<string>,
 		prioritizeBus?: boolean,
 	) => Generator<GridCrossingAllocation, undefined, undefined>;
@@ -131,23 +130,23 @@ export function crossingAllocationPhases(
 			id: CrossingAllocationPhaseId.Reallocate,
 			budget: budgets.reallocate,
 			acceptBridges: false,
-			totalGeometries: crossingAllocationGeometryCount,
-			candidates: (_input, active, prioritizeBus) =>
+			totalGeometries: () => crossingAllocationGeometryCount(input),
+			candidates: (active, prioritizeBus) =>
 				crossingAllocationCandidates(input, active, prioritizeBus),
 		},
 		{
 			id: CrossingAllocationPhaseId.ExtraTrack,
 			budget: budgets.extraTrack,
 			acceptBridges: false,
-			totalGeometries: (allocationInput) => crossingAllocationGeometryCount(allocationInput, 1),
-			candidates: (_input, active) => crossingAllocationCandidatesWithExtraTrack(input, active),
+			totalGeometries: () => crossingAllocationGeometryCount(input, 1),
+			candidates: (active) => crossingAllocationCandidatesWithExtraTrack(input, active),
 		},
 		{
 			id: CrossingAllocationPhaseId.Bridge,
 			budget: budgets.bridge,
 			acceptBridges: true,
-			totalGeometries: crossingAllocationGeometryCount,
-			candidates: (_input, active, prioritizeBus) =>
+			totalGeometries: () => crossingAllocationGeometryCount(input),
+			candidates: (active, prioritizeBus) =>
 				crossingAllocationCandidates(input, active, prioritizeBus),
 		},
 	];
