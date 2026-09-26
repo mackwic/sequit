@@ -69,10 +69,12 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			check.route('d-to-a').usesPositiveSideOf(layout.envelopeOf(['b', 'c']), {
 				axis: axesFor(configuration.direction).transverse,
 				clearance: 24,
+				component: layout.envelopeOf(['a', 'b', 'c', 'd']),
 			});
 			check.route('g-to-e').usesPositiveSideOf(layout.getById('f'), {
 				axis: axesFor(configuration.direction).transverse,
 				clearance: 24,
+				component: layout.envelopeOf(['e', 'f', 'g']),
 			});
 			check.envelope(['e', 'f', 'g']).isAfter(layout.envelopeOf(['a', 'b', 'c', 'd']), {
 				direction: 'transverse-positive',
@@ -103,6 +105,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 				.usesPositiveSideOf(before.getById('b'), {
 					axis: axesFor(configuration.direction).transverse,
 					clearance: 24,
+					component: before.envelopeOf(['a', 'b', 'c']),
 				});
 			const removed = await layoutNodes({
 				...fixture,
@@ -179,6 +182,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 				.usesPositiveSideOf(layout.envelopeOf(['b', 'c']), {
 					axis: axesFor(configuration.direction).transverse,
 					clearance: 24,
+					component: layout.envelopeOf(['a', 'b', 'c', 'd']),
 				});
 			for (const id of Object.keys(fixture.nodes))
 				expect(contains(layout.getById('group').bounds, layout.getById(id).bounds)).toBe(true);

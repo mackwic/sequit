@@ -63,12 +63,14 @@ function chainVariant(input: {
 			check.route('new-4-to-new-1').usesPositiveSideOf(layout.envelopeOf(['new-2', 'new-3']), {
 				axis,
 				clearance: railPolicy.inset,
+				component: layout.envelopeOf(['new-1', 'new-2', 'new-3', 'new-4']),
 			});
 			if (input.twoShortcuts) {
 				shortcuts.push('new-3-to-new-1');
 				check.route('new-3-to-new-1').usesPositiveSideOf(layout.getById('new-2'), {
 					axis,
 					clearance: railPolicy.inset,
+					component: layout.envelopeOf(['new-1', 'new-2', 'new-3', 'new-4']),
 				});
 			}
 			check.routes(shortcuts).haveNoCrossingWith(direct);
@@ -112,6 +114,7 @@ function branchVariant(): LayoutScenario {
 			check.route('node-32-to-new-1').usesPositiveSideOf(layout.getById('new-2'), {
 				axis: axesFor(layout.direction).transverse,
 				clearance: railPolicy.inset,
+				component: layout.envelopeOf(['new-1', 'new-2', 'new-3', 'node-32']),
 			});
 			check
 				.routes()

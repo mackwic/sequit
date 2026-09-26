@@ -35,6 +35,7 @@ export const scenario: LayoutScenario = {
 		check.route('c-to-a').usesPositiveSideOf(layout.getById('b'), {
 			axis: axesFor(layout.direction).transverse,
 			clearance: 24,
+			component: layout.envelopeOf(['a', 'b', 'c']),
 		});
 	},
 };

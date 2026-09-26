@@ -199,13 +199,43 @@ it.each(['x', 'y'] as const)('checks a passage on the positive side along %s', (
 	];
 	if (axis === 'y') points = points.map(({ x, y }) => ({ x: y, y: x }));
 	const assertions = AssertRoute({ ...route, points });
-	expect(assertions.usesPositiveSideOf(obstacle, { axis, clearance: 24 })).toBe(assertions);
-	expect(() => assertions.usesPositiveSideOf(obstacle, { axis, clearance: 31 })).toThrow(
-		'côté positif',
-	);
-	expect(() => assertions.usesPositiveSideOf(obstacle, { axis, clearance: Number.NaN })).toThrow(
-		'finite and non-negative',
-	);
+	expect(
+		assertions.usesPositiveSideOf(obstacle, { axis, clearance: 24, component: obstacle }),
+	).toBe(assertions);
+	const distant = points.map((point) => {
+		if (axis === 'x' && point.x === 160) return { ...point, x: 240 };
+		if (axis === 'y' && point.y === 160) return { ...point, y: 240 };
+		return point;
+	});
+	expect(() =>
+		AssertRoute({ ...route, points: distant }).usesPositiveSideOf(obstacle, {
+			axis,
+			clearance: 24,
+			component: obstacle,
+		}),
+	).toThrow('côté positif local');
+	let opposite = [
+		{ x: 50, y: 220 },
+		{ x: 160, y: 220 },
+		{ x: 160, y: 170 },
+		{ x: 40, y: 170 },
+		{ x: 40, y: 0 },
+		{ x: 50, y: 0 },
+	];
+	if (axis === 'y') opposite = opposite.map(({ x, y }) => ({ x: y, y: x }));
+	expect(() =>
+		AssertRoute({ ...route, points: opposite }).usesPositiveSideOf(obstacle, {
+			axis,
+			clearance: 24,
+			component: obstacle,
+		}),
+	).toThrow('côté positif local');
+	expect(() =>
+		assertions.usesPositiveSideOf(obstacle, { axis, clearance: 31, component: obstacle }),
+	).toThrow('côté positif');
+	expect(() =>
+		assertions.usesPositiveSideOf(obstacle, { axis, clearance: Number.NaN, component: obstacle }),
+	).toThrow('finite and non-negative');
 	let noPassage = [
 		{ x: 0, y: 0 },
 		{ x: 100, y: 0 },
@@ -215,6 +245,7 @@ it.each(['x', 'y'] as const)('checks a passage on the positive side along %s', (
 		AssertRoute({ ...route, points: noPassage }).usesPositiveSideOf(obstacle, {
 			axis,
 			clearance: 24,
+			component: obstacle,
 		}),
 	).toThrow('aucun passage');
 });

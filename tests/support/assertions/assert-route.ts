@@ -32,7 +32,11 @@ interface RouteAssertions {
 	): RouteAssertions;
 	usesPositiveSideOf(
 		obstacle: BoxGeometry,
-		options: { readonly axis: 'x' | 'y'; readonly clearance: number },
+		options: {
+			readonly axis: 'x' | 'y';
+			readonly clearance: number;
+			readonly component: BoxGeometry;
+		},
 	): RouteAssertions;
 }
 
@@ -117,21 +121,28 @@ export function AssertRoute(route: LayoutRelation): RouteAssertions {
 			}
 			return assertions;
 		},
-		usesPositiveSideOf(obstacle, { axis, clearance }) {
+		usesPositiveSideOf(obstacle, { axis, clearance, component }) {
 			validateBox(obstacle);
+			validateBox(component);
 			if (!Number.isFinite(clearance) || clearance < 0)
 				throw new Error('Side clearance must be finite and non-negative.');
 			let passageAxis: 'x' | 'y' = 'y';
 			if (axis === 'y') passageAxis = 'x';
 			const minimum = obstacle.bounds[axis] + extent(obstacle.bounds, axis) + clearance;
-			const coordinates = routeSegments(route)
-				.filter((segment) => segment.axis === passageAxis)
-				.map(({ fixed }) => fixed);
-			if (!coordinates.some((coordinate) => coordinate >= minimum))
+			const maximum = component.bounds[axis] + extent(component.bounds, axis) + 2 * clearance;
+			const obstacleStart = obstacle.bounds[passageAxis];
+			const obstacleEnd = obstacleStart + extent(obstacle.bounds, passageAxis);
+			const passages = routeSegments(route).filter(
+				(segment) =>
+					segment.axis === passageAxis &&
+					segment.start < obstacleEnd &&
+					segment.end > obstacleStart,
+			);
+			if (passages.length === 0 || passages.some(({ fixed }) => fixed < minimum || fixed > maximum))
 				throw new VisualAssertionError(
-					`Route "${route.id}" · côté positif de ${obstacle.id}`,
-					`un passage sur ${passageAxis} à partir de ${minimum}`,
-					coordinates.join(', ') || 'aucun passage',
+					`Route "${route.id}" · côté positif local de ${obstacle.id}`,
+					`passages sur ${passageAxis} entre ${minimum} et ${maximum}`,
+					passages.map(({ fixed }) => fixed).join(', ') || 'aucun passage',
 					{ routes: [route.id], referenceBoxes: identityOf(obstacle).ids },
 				);
 			return assertions;

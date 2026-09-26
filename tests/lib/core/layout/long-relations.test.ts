@@ -42,6 +42,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			check.route('c-a').usesPositiveSideOf(layout.getById('b'), {
 				axis: axesFor(direction).transverse,
 				clearance: 24,
+				component: layout.envelopeOf(['a', 'b', 'c']),
 			});
 		});
 
@@ -67,6 +68,7 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			check.route('c-a').usesPositiveSideOf(wide.getById('b'), {
 				axis: axesFor(direction).transverse,
 				clearance: 24,
+				component: wide.envelopeOf(['a', 'b', 'c']),
 			});
 			const clearance = { spacing: 72, inset: portPolicy.inset };
 			check.ports('a', { role: 'incoming' }).haveCount(2).haveClearance(clearance);
@@ -108,6 +110,7 @@ it('keeps unequal chains centered with a positive bypass regardless of IDs and i
 				check.route(longId).usesPositiveSideOf(layout.envelopeOf(ids.slice(1, -1)), {
 					axis: axesFor(direction).transverse,
 					clearance: 24,
+					component: layout.envelopeOf(ids),
 				});
 				for (const [index, id] of ids.entries()) check.node(id).hasRank(index + 1);
 				const reversed = await layoutNodes({
