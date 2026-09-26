@@ -32,14 +32,16 @@
 	}
 </script>
 
-<SharedTextField
-	{client}
-	{connected}
-	target={{ kind: Kind.Group, id: group.id }}
-	field="label"
-	label="Titre du groupe"
-	autofocus
-/>
+{#key client.text({ kind: Kind.Group, id: group.id }, 'label')}
+	<SharedTextField
+		{client}
+		{connected}
+		target={{ kind: Kind.Group, id: group.id }}
+		field="label"
+		label="Titre du groupe"
+		autofocus
+	/>
+{/key}
 <div class:disabled={!connected}>
 	<strong>Couleur</strong>
 	<ContentColorPicker value={group.color ?? '#78716c'} onchange={updateColor} />

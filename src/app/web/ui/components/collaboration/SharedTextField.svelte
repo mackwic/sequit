@@ -59,10 +59,10 @@
 				{
 					text,
 					edit: (markdown) => {
-						client.updateText(target, field, markdown);
+						client.updateText(target, field, markdown, text);
 					},
 					merge: (update) => {
-						client.applyLocalTextUpdate(target, field, update);
+						client.applyLocalTextUpdate(target, field, update, text);
 					},
 				},
 				profile,

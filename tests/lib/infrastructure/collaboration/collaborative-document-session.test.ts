@@ -22,6 +22,7 @@ import {
 	type SessionMessage,
 	SessionMessageKind as Message,
 } from '../../../../src/lib/infrastructure/collaboration/session-wire';
+import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	writeSyncRequest,
 	writeSyncResponse,
@@ -231,6 +232,139 @@ it('flushes on target switch then resets a stale replica without replaying unack
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Alpha' }]);
 	expect(room.client.replaceNodeMarkdown('A', 'Encore modifiable')).toBe(true);
+	room.destroy();
+});
+
+it('names the document title when its sole pending edit is refused as stale', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.updateText({ kind: Kind.Document, id: 'room' }, 'title', 'Titre abandonné');
+	vi.advanceTimersByTime(50);
+	const stale = room.sent.find((message) => message.type === Message.Change && 'update' in message);
+	if (stale?.type !== Message.Change || !('update' in stale) || stale.id === undefined)
+		throw new Error('Expected title proposal');
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: stale.id,
+		target: stale.target,
+		message: 'Titre remplacé',
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('titre du document'));
+	room.sync();
+	expect(room.client.read().title).toBe('Deux boîtes');
+	room.destroy();
+});
+
+it('does not apply a stale Quill binding to a node recreated with the same identifier', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const target = { kind: Kind.Node, id: 'A' } as const;
+	const old = room.client.text(target, 'markdown');
+	if (!(old instanceof Y.Text)) throw new Error('Expected old editor binding');
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	executeSharedCommands(room.authoritative, [
+		{ op: Op.Delete, target },
+		{ op: Op.Create, target, properties: { natureId: 'N', markdown: 'Fresh incarnation' } },
+	]);
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	const current = room.client.text(target, 'markdown');
+	expect(current).not.toBe(old);
+	expect(room.client.updateText(target, 'markdown', 'Old editor content', old)).toBe(false);
+	room.client.applyLocalTextUpdate(
+		target,
+		'markdown',
+		Y.encodeStateAsUpdate(room.authoritative),
+		old,
+	);
+	vi.advanceTimersByTime(50);
+	expect(
+		room.sent.filter((message) => message.type === Message.Change && 'update' in message),
+	).toEqual([]);
+	expect(room.client.read().nodes.find(({ id }) => id === 'A')?.markdown).toBe('Fresh incarnation');
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
+	expect(room.client.updateText(target, 'markdown', 'New editor content', current)).toBe(true);
+	vi.advanceTimersByTime(50);
+	const proposal = room.sent.find(
+		(message) => message.type === Message.Change && 'update' in message,
+	);
+	if (proposal?.type !== Message.Change || !('textId' in proposal))
+		throw new Error('Expected new binding edit');
+	applyTextUpdate(room.authoritative, proposal.update, proposal);
+	const authoritative = readLogicDocument(room.authoritative);
+	if (!authoritative.ok) throw new Error('Expected valid shared document');
+	expect(authoritative.value.nodes.find(({ id }) => id === 'A')?.markdown).toBe(
+		'New editor content',
+	);
+	room.destroy();
+});
+
+it.each([
+	['group', Kind.Group, 'G'],
+	['nature', Kind.Nature, 'N'],
+] as const)('drops a stale %s label edit after a legal reincarnation', (_, kind, id) => {
+	vi.useFakeTimers();
+	const room = setup();
+	if (kind === Kind.Group)
+		executeSharedCommands(room.authoritative, [
+			{ op: Op.Group, id, label: 'Ancien groupe', members: ['A', 'B'] },
+		]);
+	room.sync();
+	room.sent.length = 0;
+	const target = { kind, id };
+	const old = room.client.text(target, 'label');
+	if (!(old instanceof Y.Text)) throw new Error('Expected old label editor');
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	if (kind === Kind.Group) {
+		executeSharedCommands(room.authoritative, [
+			{ op: Op.Ungroup, id },
+			{ op: Op.Group, id, label: 'Nouveau groupe', members: ['A', 'B'] },
+		]);
+	} else {
+		executeSharedCommands(room.authoritative, [
+			{
+				op: Op.Create,
+				target: { kind: Kind.Nature, id: 'M' },
+				properties: { label: 'Autre', color: '#00aa44' },
+			},
+			{ op: Op.Delete, target: { kind: Kind.Nature, id }, replacementId: 'M' },
+			{
+				op: Op.Create,
+				target: { kind: Kind.Nature, id },
+				properties: { label: 'Nouvelle nature', color: '#00aa44' },
+			},
+		]);
+	}
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(room.client.text(target, 'label')).not.toBe(old);
+	expect(room.client.updateText(target, 'label', 'Saisie de l’ancien éditeur', old)).toBe(false);
+	vi.advanceTimersByTime(50);
+	expect(
+		room.sent.filter((message) => message.type === Message.Change && 'update' in message),
+	).toEqual([]);
+	let label = 'nature';
+	if (kind === Kind.Group) label = 'groupe';
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(`${label} ${id}`));
+	const document = room.client.read();
+	if (kind === Kind.Group)
+		expect(document.groups.find((group) => group.id === id)?.label).toBe('Nouveau groupe');
+	else expect(document.natures.find((nature) => nature.id === id)?.label).toBe('Nouvelle nature');
 	room.destroy();
 });
 

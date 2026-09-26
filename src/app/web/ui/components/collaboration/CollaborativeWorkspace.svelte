@@ -245,7 +245,7 @@
 							oncancel={() => canvas.cancel()}
 							oncommitclose={() => canvas.cancel(true)}
 						>
-							{#key editing.nodeId}
+							{#key client.text({ kind: Kind.Node, id: node.id }, 'markdown')}
 								<div class="editor-step">
 									<SharedNodeFields
 										{node}
@@ -373,13 +373,15 @@
 			{#each model.natures as nature (nature.id)}
 				<section aria-label={`Nature ${nature.id}`}>
 					<SharedElementCard label={`Nature ${nature.id}`}>
-						<SharedTextField
-							{client}
-							{connected}
-							target={{ kind: Kind.Nature, id: nature.id }}
-							field="label"
-							label={`Libellé de la nature ${nature.id}`}
-						/>
+						{#key client.text({ kind: Kind.Nature, id: nature.id }, 'label')}
+							<SharedTextField
+								{client}
+								{connected}
+								target={{ kind: Kind.Nature, id: nature.id }}
+								field="label"
+								label={`Libellé de la nature ${nature.id}`}
+							/>
+						{/key}
 						<SharedPropertyFields
 							target={{ kind: Kind.Nature, id: nature.id }}
 							properties={{ color: nature.color, icon: nature.icon }}

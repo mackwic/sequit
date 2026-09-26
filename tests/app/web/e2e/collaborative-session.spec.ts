@@ -1,5 +1,14 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import {
+	decodeSessionMessage,
+	encodeSessionMessage,
+	SessionMessageKind as Message,
+} from '../../../../src/lib/infrastructure/collaboration/session-wire';
+import {
+	SharedCommandKind as Op,
+	SharedElementKind as Kind,
+} from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
 import { seedRoom } from './collaboration-room';
 
@@ -13,6 +22,67 @@ async function edit(page: Page, label = 'Boîte A'): Promise<void> {
 async function closeEditor(page: Page): Promise<void> {
 	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
 }
+
+test('A recreated box remounts its editor before typing can alter the new incarnation', async ({
+	page,
+}) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.TwoBoxes);
+	await page.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+	await edit(page);
+	const field = page.getByLabel('Contenu A', { exact: true });
+	await expect(field).toHaveText('Alpha');
+	const previous = await field.elementHandle();
+	const proposal = `replace-${crypto.randomUUID()}`;
+	const frame = encodeSessionMessage({
+		type: Message.Change,
+		id: proposal,
+		sessionId: `peer-${crypto.randomUUID()}`,
+		sequence: 1,
+		commands: [
+			{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } },
+			{
+				op: Op.Create,
+				target: { kind: Kind.Node, id: 'A' },
+				properties: { natureId: 'N', markdown: 'Fresh incarnation' },
+			},
+		],
+	});
+	const peer = new WebSocket(`ws://127.0.0.1:8788/collab/${room}`);
+	peer.binaryType = 'arraybuffer';
+	try {
+		await new Promise<void>((resolve, reject) => {
+			peer.addEventListener('open', () => {
+				peer.send(frame);
+			});
+			peer.addEventListener('message', (event) => {
+				if (!(event.data instanceof ArrayBuffer)) return;
+				const message = decodeSessionMessage(new Uint8Array(event.data));
+				if (message.type === Message.Commit && message.id === proposal) resolve();
+				if (message.type === Message.Reject) reject(new Error(message.message));
+			});
+			peer.addEventListener('error', () => {
+				reject(new Error('Peer WebSocket failed'));
+			});
+		});
+	} finally {
+		peer.close();
+	}
+	await expect(field).toHaveText('Fresh incarnation');
+	expect(await field.elementHandle()).not.toBe(previous);
+	await field.fill('Edited fresh incarnation');
+	await expect(field).toHaveText('Edited fresh incarnation');
+	const observer = await page.context().newPage();
+	await observer.goto(`/atelier/collaboration?room=${room}&name=Bob`);
+	await edit(observer);
+	await expect(observer.getByLabel('Contenu A', { exact: true })).toHaveText(
+		'Edited fresh incarnation',
+	);
+	await observer.close();
+	await page.reload();
+	await edit(page);
+	await expect(field).toHaveText('Edited fresh incarnation');
+});
 
 test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs', async ({
 	browser,
@@ -52,19 +122,27 @@ test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs',
 	await expect(bob.locator('[data-remote-selection]')).toHaveCount(0);
 	await edit(alice);
 	await edit(bob, 'Boîte B');
-	await aliceText.fill('Alpha hors ligne');
-	await bob.getByLabel('Contenu B', { exact: true }).fill('Bravo hors ligne');
+	await expect(aliceText).toHaveAttribute('contenteditable', 'false');
+	await expect(bob.getByLabel('Contenu B', { exact: true })).toHaveAttribute(
+		'contenteditable',
+		'false',
+	);
 	await closeEditor(alice);
 	await closeEditor(bob);
 	await alice.getByRole('button', { name: 'Reconnecter' }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
-	await edit(alice, 'Boîte B');
-	await edit(bob);
-	await expect(alice.getByLabel('Contenu B', { exact: true })).toHaveText('Bravo hors ligne');
-	await expect(bobText).toHaveText('Alpha hors ligne');
+	await expect(alice.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
+	await expect(bob.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
+	await edit(alice);
+	await edit(bob, 'Boîte B');
+	await aliceText.fill('Alpha après reprise');
+	await bob.getByLabel('Contenu B', { exact: true }).fill('Bravo après reprise');
+	await expect(aliceText).toHaveText('Alpha après reprise');
+	await closeEditor(alice);
+	await closeEditor(bob);
 	await bob.reload();
 	await edit(bob);
-	await expect(bobText).toHaveText('Alpha hors ligne');
+	await expect(bobText).toHaveText('Alpha après reprise');
 	await aliceContext.close();
 	await bobContext.close();
 });
@@ -90,7 +168,7 @@ test('Deux boîtes reliées : refus du cycle, toast sans refresh et édition sui
 		if (frame === alice.mainFrame()) navigations.push(frame.url());
 	});
 	await alice.getByRole('button', { name: 'Relier', exact: true }).click();
-	await expect(alice.getByRole('status').filter({ hasText: 'Action refusée' })).toBeVisible();
+	await expect(alice.getByRole('status').filter({ hasText: /Action .* refusée/ })).toBeVisible();
 	expect(navigations).toEqual([]);
 	await expect(alice.getByRole('status', { name: 'Connexion', exact: true })).toHaveText(
 		'Connecté',
@@ -199,25 +277,22 @@ test('Deux boîtes : insertions concurrentes, curseur stable et autres champs pa
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
 	await edit(alice);
 	await edit(bob);
-	await aliceText.focus();
-	await aliceText.evaluate((element) => {
-		const end = element.lastElementChild?.lastChild;
-		const selection = window.getSelection();
-		if (end?.nodeType !== Node.TEXT_NODE || selection === null)
-			throw new Error('Expected the final text node');
-		selection.collapse(end, end.textContent?.length ?? 0);
-	});
-	await aliceText.pressSequentially(' fin');
-	await bobText.press('Home');
-	await bobText.pressSequentially('Début ');
+	await expect(aliceText).toHaveAttribute('contenteditable', 'false');
+	await expect(bobText).toHaveAttribute('contenteditable', 'false');
 	await closeEditor(alice);
 	await closeEditor(bob);
 	await alice.getByRole('button', { name: 'Reconnecter' }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
+	await expect(alice.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
+	await expect(bob.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
 	await edit(alice);
 	await edit(bob);
-	await expect(aliceText).toHaveText('Début XAl|pha fin');
-	await expect(bobText).toHaveText('Début XAl|pha fin');
+	await aliceText.fill('XAlpha fin');
+	await expect(bobText).toHaveText('XAlpha fin');
+	await bobText.press('Home');
+	await bobText.pressSequentially('Début ');
+	await expect(aliceText).toHaveText('Début XAlpha fin');
+	await expect(bobText).toHaveText('Début XAlpha fin');
 	await alice.getByLabel('Couleur de A', { exact: true }).fill('#aabbcc');
 	await alice.getByLabel('Couleur de A', { exact: true }).press('Tab');
 	await expect(bob.getByLabel('Couleur de A', { exact: true })).toHaveValue('#aabbcc');

@@ -21,13 +21,13 @@ export enum ProposalDecisionKind {
 	Refused = 'refused',
 }
 
-export interface AcceptedProposalDecision {
+interface AcceptedProposalDecision {
 	readonly type: ProposalDecisionKind.Accepted;
 	readonly proposalId: string;
 	readonly commit: number;
 }
 
-export interface RefusedProposalDecision {
+interface RefusedProposalDecision {
 	readonly type: ProposalDecisionKind.Refused;
 	readonly proposalId: string;
 	readonly code: ConflictCode;
@@ -40,10 +40,15 @@ export interface CollaborativeDocumentSession {
 	readonly document: Y.Doc;
 	replica(): number;
 	subscribeToConflict(listener: (message: string) => void): () => void;
-	applyLocalTextUpdate(target: SharedTarget, field: string, update: Uint8Array): void;
+	applyLocalTextUpdate(
+		target: SharedTarget,
+		field: string,
+		update: Uint8Array,
+		bound?: Y.Text,
+	): void;
 	dispatch(commands: readonly SharedDocumentCommand[]): string;
 	text(target: SharedTarget, field: string): Y.Text | undefined;
-	updateText(target: SharedTarget, field: string, next: string): boolean;
+	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean;
 	setPresence(presence: Partial<LocalPresence>): void;
 	subscribeToPresence(listener: (participants: readonly ParticipantPresence[]) => void): () => void;
 	subscribeToRejection(listener: (message: string) => void): () => void;

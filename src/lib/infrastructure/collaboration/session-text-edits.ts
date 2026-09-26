@@ -1,6 +1,7 @@
 import type * as Y from 'yjs';
 
 import { SharedElementKind, type SharedTarget } from '../document/shared-document-command';
+import { notifySubscribers } from './notify-subscribers';
 import { createTextProposalBuffer } from './session-incoming';
 import {
 	type IdentifiedTextMessage,
@@ -68,20 +69,32 @@ function sameTextTarget(
 	return previous.textId.clock === id.clock;
 }
 
+function abandonedTextNotice(target: SharedTarget): string {
+	let label: string = target.kind;
+	if (target.kind === SharedElementKind.Node) label = 'boîte';
+	else if (target.kind === SharedElementKind.Group) label = 'groupe';
+	else if (target.kind === SharedElementKind.Nature) label = 'nature';
+	return `La saisie non envoyée pour ${label} ${target.id} a été abandonnée : ce texte a été remplacé.`;
+}
+
 /** One proposal holds edits to exactly one integrated Y.Text; frames survive disconnects. */
 export class SessionTextFlow {
 	readonly edits = new SessionTextEdits();
 	readonly pending = new Map<string, IdentifiedTextMessage>();
 	readonly buffer: TextUpdateBuffer;
 	readonly #send: (message: IdentifiedTextMessage) => void;
+	readonly #abandoned: Iterable<(message: string) => void>;
+	readonly #reported = new WeakSet<Y.Text>();
 	#target: TextTargetReference | undefined;
 
 	constructor(
 		sessionId: string,
 		ready: () => boolean,
 		send: (message: IdentifiedTextMessage) => void,
+		abandoned: Iterable<(message: string) => void>,
 	) {
 		this.#send = send;
+		this.#abandoned = abandoned;
 		this.buffer = createTextProposalBuffer((update) => {
 			const reference = this.#target;
 			if (reference === undefined) throw new Error('A text update has no target');
@@ -96,6 +109,20 @@ export class SessionTextFlow {
 			this.edits.sent(message.id);
 			if (ready() && this.pending.size === 1) this.#send(message);
 		});
+	}
+
+	boundText(
+		target: SharedTarget,
+		current: Y.Text | undefined,
+		expected?: Y.Text,
+	): current is Y.Text {
+		if (expected === undefined) return current !== undefined;
+		if (current === expected) return true;
+		if (!this.#reported.has(expected)) {
+			this.#reported.add(expected);
+			notifySubscribers(this.#abandoned, abandonedTextNotice(target));
+		}
+		return false;
 	}
 
 	prepare(target: SharedTarget, field: string, text: Y.Text): void {

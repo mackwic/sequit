@@ -171,18 +171,23 @@ export class CollaborativeSession
 		return sharedTextAt(this.document, target, field);
 	}
 
-	applyLocalTextUpdate(target: SharedTarget, field: string, update: Uint8Array): void {
+	applyLocalTextUpdate(
+		target: SharedTarget,
+		field: string,
+		update: Uint8Array,
+		bound?: Y.Text,
+	): void {
 		if (!this.#ready || this.#rejected || this.#destroyed) return;
 		const text = sharedTextAt(this.document, target, field);
-		if (text === undefined) return;
+		if (!this.#textFlow.boundText(target, text, bound)) return;
 		this.#textFlow.prepare(target, field, text);
 		Y.applyUpdate(this.document, update, this.#textOrigin);
 	}
 
-	updateText(target: SharedTarget, field: string, next: string): boolean {
+	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean {
 		if (!this.#ready || this.#destroyed || this.#rejected) return false;
 		const text = sharedTextAt(this.document, target, field);
-		if (text === undefined) return false;
+		if (!this.#textFlow.boundText(target, text, bound)) return false;
 		if (text.toJSON() === next) return true;
 		this.#textFlow.prepare(target, field, text);
 		this.document.transact(() => {
@@ -282,9 +287,8 @@ export class CollaborativeSession
 		return new SessionTextFlow(
 			this.#sessionId,
 			() => this.#ready && !this.#resumingText,
-			(message) => {
-				this.#send(message);
-			},
+			this.#send.bind(this),
+			this.conflictListeners,
 		);
 	}
 

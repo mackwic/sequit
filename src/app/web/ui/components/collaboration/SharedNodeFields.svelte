@@ -34,21 +34,25 @@
 		}}>Supprimer {node.id}</button
 	>
 </header>
-<SharedTextField
-	{client}
-	{connected}
-	target={{ kind: Kind.Node, id: node.id }}
-	field="markdown"
-	{label}
-	autofocus={autofocusMarkdown}
-/>
-<SharedTextField
-	{client}
-	{connected}
-	target={{ kind: Kind.Node, id: node.id }}
-	field="description"
-	label={`Description de ${node.id}`}
-/>
+{#key client.text({ kind: Kind.Node, id: node.id }, 'markdown')}
+	<SharedTextField
+		{client}
+		{connected}
+		target={{ kind: Kind.Node, id: node.id }}
+		field="markdown"
+		{label}
+		autofocus={autofocusMarkdown}
+	/>
+{/key}
+{#key client.text({ kind: Kind.Node, id: node.id }, 'description')}
+	<SharedTextField
+		{client}
+		{connected}
+		target={{ kind: Kind.Node, id: node.id }}
+		field="description"
+		label={`Description de ${node.id}`}
+	/>
+{/key}
 <SharedPropertyFields
 	target={{ kind: Kind.Node, id: node.id }}
 	properties={{
