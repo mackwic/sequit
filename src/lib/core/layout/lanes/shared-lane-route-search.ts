@@ -1,5 +1,5 @@
 import { defined } from '../../document/logic-document';
-import type { RouteWorkCharge } from '../bridges/bridge-oracle';
+import type { RouteWorkCharge } from '../bridges/route-runs';
 import type {
 	RegionIncidentContract,
 	RegionSolvedIncident,

@@ -1,6 +1,7 @@
 import { defined } from '../../../document/logic-document';
 import { unbridgedContacts } from '../../bridges/bridge-contact';
-import { type LayoutBridge, type RoutedPath, validatedBridges } from '../../bridges/bridge-oracle';
+import { type LayoutBridge, validatedBridges } from '../../bridges/bridge-oracle';
+import type { RoutedPath } from '../../bridges/route-runs';
 import { finiteBounds, inside, within } from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,

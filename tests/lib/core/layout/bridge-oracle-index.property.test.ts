@@ -1,10 +1,8 @@
 import fc from 'fast-check';
 import { expect, it } from 'vitest';
 
-import {
-	routeBridgeAnalysis,
-	type RoutedPath,
-} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import type { RoutedPath } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { referenceRouteBridgeAnalysis } from './bridge-oracle-reference';
 

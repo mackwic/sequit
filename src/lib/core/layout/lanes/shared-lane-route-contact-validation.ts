@@ -1,11 +1,8 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import { type BridgeContactOptions, disallowedRouteContacts } from '../bridges/bridge-contact';
-import {
-	type LayoutBridge,
-	type RouteWorkCharge,
-	validatedBridges,
-} from '../bridges/bridge-oracle';
+import { type LayoutBridge, validatedBridges } from '../bridges/bridge-oracle';
+import type { RouteWorkCharge } from '../bridges/route-runs';
 import type { LayoutRelation } from '../layout-types';
 
 /** Accept contacts only when every one is a strict crossing carried by a validated bridge. */

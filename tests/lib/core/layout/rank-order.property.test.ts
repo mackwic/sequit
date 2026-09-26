@@ -20,10 +20,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import {
-	routeBridgeAnalysis,
-	routeRuns,
-} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeRuns } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import {

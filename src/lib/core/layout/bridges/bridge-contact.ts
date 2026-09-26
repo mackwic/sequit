@@ -7,17 +7,15 @@ import {
 	sharedAttachmentPoint,
 	type SharedRouteRuns,
 } from './bridge-contact-shared';
+import type { LayoutBridge, RouteBridgeAnalysis, RouteCrossing } from './bridge-oracle';
 import {
-	type LayoutBridge,
-	type RouteBridgeAnalysis,
-	type RouteCrossing,
 	type RoutedPath,
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
 	type RouteWorkCharge,
 	runInterval,
-} from './bridge-oracle';
+} from './route-runs';
 
 export type { EndpointRoute } from './bridge-contact-shared';
 
@@ -294,7 +292,11 @@ export function disallowedProvisionalRouteContacts(
 	second: EndpointRoute,
 ): readonly RouteContact[] {
 	const runs = { first: routeRuns(first), second: routeRuns(second) };
-	const contacts = routeContacts(first, second, [], { bridges: undefined, mode: ContactScanMode.Provisional, runs });
+	const contacts = routeContacts(first, second, [], {
+		bridges: undefined,
+		mode: ContactScanMode.Provisional,
+		runs,
+	});
 	if (contacts.length === 0) return contacts;
 	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, runs));
 }

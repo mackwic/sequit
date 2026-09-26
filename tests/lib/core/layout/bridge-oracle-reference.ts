@@ -1,13 +1,15 @@
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
+import type {
+	LayoutBridge,
+	RouteBridgeAnalysis,
+	RouteCrossing,
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
-	type LayoutBridge,
-	type RouteBridgeAnalysis,
-	type RouteCrossing,
 	type RoutedPath,
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
-} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/route-runs';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../src/lib/core/layout/layout-settings';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 

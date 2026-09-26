@@ -13,7 +13,8 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeRuns } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
 import {
 	type SharedLaneGeometry,

@@ -3,36 +3,14 @@ import { defined } from '../../document/logic-document';
 import { strictCrossing, strictlyBetween } from '../geometry/strict-crossing';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../layout-settings';
 import type { Point } from '../layout-types';
-
-/** Optional elementary geometry-work charge for bounded route searches. */
-export type RouteWorkCharge = (units: number) => void;
-
-/** The route shape the oracle reads: a stable identity and orthogonal waypoints. */
-export interface RoutedPath {
-	readonly id: string;
-	readonly points: readonly Point[];
-}
-
-/** The orientation of one route run, as the canvas draws it. */
-export enum RouteOrientation {
-	Horizontal = 'horizontal',
-	Vertical = 'vertical',
-}
-
-/** One maximal collinear run of a route: what the canvas draws and what the oracle measures. */
-export interface RouteRun {
-	readonly pathId: string;
-	readonly start: Point;
-	readonly end: Point;
-	readonly orientation: RouteOrientation;
-}
-
-/** A run read on its own axis: the fixed cross coordinate and the low and high extent. */
-export interface RunInterval {
-	readonly fixed: number;
-	readonly low: number;
-	readonly high: number;
-}
+import {
+	type RoutedPath,
+	RouteOrientation,
+	type RouteRun,
+	routeRuns,
+	type RouteWorkCharge,
+	runInterval,
+} from './route-runs';
 
 /** A strict perpendicular crossing: interior to both runs, so never a port, a bend or a portal. */
 export interface RouteCrossing extends Point {
@@ -63,7 +41,7 @@ export interface RouteBridgeCache {
 
 /** The mutable state of one bridge analysis: the runs, the crossings and the arcs already placed. */
 interface BridgeScan {
-	readonly runs: readonly RouteRun[];
+	readonly runsByPath: readonly (readonly RouteRun[])[];
 	readonly crossings: Map<string, RouteCrossing>;
 	readonly carried: Map<RouteRun, Point[]>;
 	readonly bridges: Map<string, LayoutBridge>;
@@ -72,60 +50,6 @@ interface BridgeScan {
 		readonly vertical: ReadonlyMap<number, readonly RouteRun[]>;
 	};
 	readonly charge?: RouteWorkCharge | undefined;
-}
-
-/** Reads a run on the axis it extends along. */
-export function runInterval(run: RouteRun): RunInterval {
-	if (run.orientation === RouteOrientation.Vertical)
-		return {
-			fixed: run.start.x,
-			low: Math.min(run.start.y, run.end.y),
-			high: Math.max(run.start.y, run.end.y),
-		};
-	return {
-		fixed: run.start.y,
-		low: Math.min(run.start.x, run.end.x),
-		high: Math.max(run.start.x, run.end.x),
-	};
-}
-
-/** A collinear contiguous run going the same way as the previous one merges into it. */
-function continuesRun(last: RouteRun, run: RouteRun): boolean {
-	if (last.orientation !== run.orientation) return false;
-	if (last.end.x !== run.start.x || last.end.y !== run.start.y) return false;
-	const previousDirection =
-		Math.sign(last.end.x - last.start.x) + Math.sign(last.end.y - last.start.y);
-	const nextDirection = Math.sign(run.end.x - run.start.x) + Math.sign(run.end.y - run.start.y);
-	return previousDirection === nextDirection;
-}
-
-/** Appends the run between two waypoints, merging a collinear continuation into the last run. */
-function collectRun(runs: RouteRun[], pathId: string, start: Point, end: Point): void {
-	const vertical = start.x === end.x && start.y !== end.y;
-	const horizontal = start.y === end.y && start.x !== end.x;
-	if (!vertical && !horizontal) return;
-	let orientation = RouteOrientation.Horizontal;
-	if (vertical) orientation = RouteOrientation.Vertical;
-	const run: RouteRun = { pathId, start, end, orientation };
-	const last = runs.at(-1);
-	if (last !== undefined && continuesRun(last, run)) {
-		runs.pop();
-		runs.push({ ...run, start: last.start });
-		return;
-	}
-	runs.push(run);
-}
-
-/** The maximal collinear runs of one route. A collinear intermediate point is never a bend. */
-export function routeRuns(path: RoutedPath, charge?: RouteWorkCharge): readonly RouteRun[] {
-	const runs: RouteRun[] = [];
-	let start: Point | undefined;
-	for (const end of path.points) {
-		charge?.(1);
-		if (start !== undefined) collectRun(runs, path.id, start, end);
-		start = end;
-	}
-	return runs;
 }
 
 /** A bridge needs BRIDGE_CLEARANCE beyond its radius from both ends, and from its neighbours. */
@@ -157,22 +81,23 @@ function carrierRuns(scan: BridgeScan): NonNullable<BridgeScan['carrierRuns']> {
 	if (scan.carrierRuns !== undefined) return scan.carrierRuns;
 	const horizontal = new Map<number, RouteRun[]>();
 	const vertical = new Map<number, RouteRun[]>();
-	for (const run of scan.runs) {
-		scan.charge?.(1);
-		const isHorizontal = run.orientation === RouteOrientation.Horizontal;
-		let buckets = vertical;
-		let fixed = run.start.x;
-		if (isHorizontal) {
-			buckets = horizontal;
-			fixed = run.start.y;
+	for (const pathRuns of scan.runsByPath)
+		for (const run of pathRuns) {
+			scan.charge?.(1);
+			const isHorizontal = run.orientation === RouteOrientation.Horizontal;
+			let buckets = vertical;
+			let fixed = run.start.x;
+			if (isHorizontal) {
+				buckets = horizontal;
+				fixed = run.start.y;
+			}
+			let group = buckets.get(fixed);
+			if (group === undefined) {
+				group = [];
+				buckets.set(fixed, group);
+			}
+			group.push(run);
 		}
-		let group = buckets.get(fixed);
-		if (group === undefined) {
-			group = [];
-			buckets.set(fixed, group);
-		}
-		group.push(run);
-	}
 	scan.carrierRuns = { horizontal, vertical };
 	return scan.carrierRuns;
 }
@@ -298,7 +223,7 @@ export function routeBridgeAnalysis(
 	});
 	const runsByPath = sortedPaths.map((path) => routeRuns(path, charge));
 	const scan: BridgeScan = {
-		runs: runsByPath.flat(),
+		runsByPath,
 		crossings: new Map(),
 		carried: new Map(),
 		bridges: new Map(),
@@ -310,7 +235,7 @@ export function routeBridgeAnalysis(
 		previousRuns.push(...pathRuns);
 	}
 	return {
-		inspectedRuns: scan.runs.length,
+		inspectedRuns: previousRuns.length,
 		crossings: [...scan.crossings.values()].sort((left, right) => {
 			charge?.(1);
 			const byPoint = left.x - right.x || left.y - right.y;
@@ -326,11 +251,6 @@ export function routeBridgeAnalysis(
 			return compareCanonicalStrings(canonicalBridgeKey(left), canonicalBridgeKey(right));
 		}),
 	};
-}
-
-/** The strict crossings of the declared routes, in canonical order. */
-export function strictCrossings(paths: readonly RoutedPath[]): readonly RouteCrossing[] {
-	return routeBridgeAnalysis(paths).crossings;
 }
 
 /** The validated bridges of the declared routes, in canonical order: the derived bridge mark. */

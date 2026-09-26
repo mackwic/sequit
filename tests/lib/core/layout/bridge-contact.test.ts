@@ -12,9 +12,9 @@ import {
 import {
 	type LayoutBridge,
 	routeBridgeAnalysis,
-	type RoutedPath,
 	validatedBridges,
 } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import type { RoutedPath } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { contactFailure } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-contacts';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateSharedLaneRouteContacts } from '../../../../src/lib/core/layout/lanes/shared-lane-route-contact-validation';

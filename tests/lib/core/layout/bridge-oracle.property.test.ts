@@ -7,14 +7,16 @@ import {
 } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import {
 	type LayoutBridge,
+	routeBridgeAnalysis,
+	validatedBridges,
+	validatedBridgesCached,
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import {
 	type RoutedPath,
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
-	strictCrossings,
-	validatedBridges,
-	validatedBridgesCached,
-} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/route-runs';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
@@ -77,20 +79,20 @@ describe('the bridge oracle', () => {
 			{ x: 50, y: 100 },
 		]);
 		const routes = [horizontalCrossing, verticalCrossing, third] as const;
-		const expected = routeBridgeAnalysisIn(routes);
+		const expected = routeBridgeAnalysis(routes);
 		const permutations: readonly (readonly RoutedPath[])[] = [
 			[...routes].reverse(),
 			[routes[1], routes[2], routes[0]],
 			[routes[2], routes[0], routes[1]],
 		];
 		for (const permutation of permutations)
-			expect(routeBridgeAnalysisIn(permutation)).toEqual(expected);
+			expect(routeBridgeAnalysis(permutation)).toEqual(expected);
 	});
 	it('draws one bridge on the later route of a strict crossing with room on both runs', () => {
 		expect(validatedBridges([horizontalCrossing, verticalCrossing])).toEqual([
 			{ x: 50, y: 50, carrierIds: ['vertical'], crossedIds: ['horizontal'] },
 		]);
-		expect(strictCrossings([horizontalCrossing, verticalCrossing])).toEqual([
+		expect(routeBridgeAnalysis([horizontalCrossing, verticalCrossing]).crossings).toEqual([
 			{ x: 50, y: 50, horizontalId: 'horizontal', verticalId: 'vertical' },
 		]);
 	});
@@ -179,7 +181,7 @@ describe('the bridge oracle', () => {
 		]);
 		expect(
 			unbridgedCrossings({
-				crossings: strictCrossings([shortHorizontal, shortVertical]),
+				crossings: routeBridgeAnalysis([shortHorizontal, shortVertical]).crossings,
 				bridges: [],
 			}),
 		).toHaveLength(1);
@@ -214,9 +216,8 @@ describe('the bridge oracle', () => {
 	it('places every bridge on a strict crossing with the declared clearances', () => {
 		fc.assert(
 			fc.property(routeSet(), (relations) => {
-				const { bridges } = routeBridgeAnalysisIn(relations);
+				const { bridges, crossings } = routeBridgeAnalysis(relations);
 				const byId = new Map(relations.map((path) => [path.id, path]));
-				const crossings = strictCrossings(relations);
 				for (const bridge of bridges) {
 					expect(bridge.carrierIds.length).toBeGreaterThan(0);
 					expect(bridge.crossedIds.length).toBeGreaterThan(0);
@@ -279,7 +280,7 @@ describe('the bridge oracle', () => {
 	it('accepts a pair only when every contact is a bridged strict crossing', () => {
 		fc.assert(
 			fc.property(routeSet(), (relations) => {
-				const { bridges } = routeBridgeAnalysisIn(relations);
+				const { bridges } = routeBridgeAnalysis(relations);
 				for (const [index, first] of relations.entries())
 					for (const second of relations.slice(index + 1)) {
 						const contacts = unbridgedContacts(first, second, []);
@@ -326,12 +327,4 @@ function routeSet(): fc.Arbitrary<readonly RoutedPath[]> {
 			return relation(route.id, points);
 		}),
 	);
-}
-
-/** Read through the public entry point: the property never inspects a private decision. */
-function routeBridgeAnalysisIn(relations: readonly RoutedPath[]) {
-	return {
-		crossings: strictCrossings(relations),
-		bridges: validatedBridges(relations),
-	};
 }
