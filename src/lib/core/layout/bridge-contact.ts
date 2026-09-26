@@ -201,7 +201,7 @@ export function unbridgedContacts(
 }
 
 /** An attachment point is allowed, but an extent needs a continuous shared family trunk. */
-export function permittedRouteContact(
+function permittedRouteContact(
 	first: EndpointRoute,
 	second: EndpointRoute,
 	contact: RouteContact,

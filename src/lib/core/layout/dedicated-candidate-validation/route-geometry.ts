@@ -13,7 +13,7 @@ interface RouteObstacles {
 	readonly groups: readonly LayoutResult['elements'][number][];
 }
 
-export function samePoint(first: Point, second: Point): boolean {
+function samePoint(first: Point, second: Point): boolean {
 	return first.x === second.x && first.y === second.y;
 }
 

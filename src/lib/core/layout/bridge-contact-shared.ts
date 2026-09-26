@@ -80,12 +80,12 @@ function pointOnSharedRun(first: RouteRun, second: RouteRun, point: Point, from:
 	);
 }
 
-export function endpointId(route: EndpointRoute, from: boolean): string | undefined {
+function endpointId(route: EndpointRoute, from: boolean): string | undefined {
 	if (from) return route.from;
 	return route.to;
 }
 
-export function endpointPoint(route: EndpointRoute, from: boolean): Point | undefined {
+function endpointPoint(route: EndpointRoute, from: boolean): Point | undefined {
 	if (from) return route.points[0];
 	return route.points.at(-1);
 }
