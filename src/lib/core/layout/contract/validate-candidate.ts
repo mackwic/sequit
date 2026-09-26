@@ -1,6 +1,12 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, LayoutDirection } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
+import {
+	boundsOverlap,
+	finitePositiveBounds,
+	segmentEntersInterior,
+	strictlyWithin,
+} from '../geometry/box-geometry';
 import type {
 	Bounds,
 	LayoutMeasurements,
@@ -8,7 +14,6 @@ import type {
 	LayoutResult,
 	Point,
 } from '../layout-types';
-import { boundsOverlap, finitePositiveBounds } from './contract-box-geometry';
 import type { LayoutContractCandidate } from './layout-contract';
 import type { FaceCapacityMetricDemand } from './metric-demand';
 import { SourceFaceDemandFailure, validateSourceFaceDemands } from './validate-source-face-demand';
@@ -72,11 +77,6 @@ function actualOrder(
 	return located.map(({ id }) => id);
 }
 
-function strictlyWithin(value: number, start: number, size: number): boolean {
-	const end = start + size;
-	return value > start && value < end;
-}
-
 function onPrincipalFace(
 	point: Point,
 	box: Bounds,
@@ -93,23 +93,6 @@ function onPrincipalFace(
 	if (direction === LayoutDirection.LeftToRight && !source) faceX += box.width;
 	if (direction === LayoutDirection.RightToLeft && source) faceX += box.width;
 	return point.x === faceX && strictlyWithin(point.y, box.y, box.height);
-}
-
-function overlapsOpen(first: number, second: number, start: number, size: number): boolean {
-	const low = Math.min(first, second);
-	const high = Math.max(first, second);
-	const end = start + size;
-	return high > start && low < end;
-}
-
-function segmentEntersInterior(first: Point, second: Point, box: Bounds): boolean {
-	if (first.x === second.x) {
-		if (!strictlyWithin(first.x, box.x, box.width)) return false;
-		return overlapsOpen(first.y, second.y, box.y, box.height);
-	}
-	// Route segments are proven orthogonal before this obstacle query.
-	if (!strictlyWithin(first.y, box.y, box.height)) return false;
-	return overlapsOpen(first.x, second.x, box.x, box.width);
 }
 
 function validateRoute(
