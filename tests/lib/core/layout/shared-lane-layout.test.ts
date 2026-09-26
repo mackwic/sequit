@@ -458,7 +458,12 @@ describe('shared lane layout', () => {
 					relation: { id: 'outer', from: 'a1', to: 'external' },
 					endpointId: 'a1',
 					role: RegionIncidentRole.Source,
-					allowedSides: [RegionPortalSide.Right, RegionPortalSide.Left],
+					allowedSides: [
+						RegionPortalSide.Right,
+						RegionPortalSide.Left,
+						RegionPortalSide.Top,
+						RegionPortalSide.Bottom,
+					],
 				},
 			],
 		});
@@ -707,9 +712,10 @@ describe('shared lane layout', () => {
 			},
 		];
 		const plans = parallelStrategyPlans(input, ports, contracts);
-		const exhaustiveCandidates = [...parallelRouteCandidates(input, plans, false)];
+		const exhaustiveCandidateTotal = [...parallelRouteCandidates(input, plans, false)].length;
 		let exhaustiveBest: ReturnType<typeof rankLaneRouteSelection> | undefined;
 		for (const acceptBridges of [false, true]) {
+			const exhaustiveCandidates = [...parallelRouteCandidates(input, plans, acceptBridges)];
 			const oracleState = {
 				attempted: 0,
 				exhaustive: true,
@@ -742,7 +748,10 @@ describe('shared lane layout', () => {
 					state: oracleState,
 				});
 				if (incidents === undefined) continue;
-				const ranked = rankLaneRouteSelection({ geometry, incidents }, candidate);
+				const ranked = rankLaneRouteSelection(
+					{ geometry, incidents, id: candidate.candidateId },
+					candidate,
+				);
 				if (exhaustiveBest === undefined || laneRouteSelectionIsBetter(ranked, exhaustiveBest))
 					exhaustiveBest = ranked;
 			}
@@ -784,16 +793,26 @@ describe('shared lane layout', () => {
 					state: searchState,
 				});
 				if (incidents === undefined) return undefined;
-				return { geometry, incidents };
+				return { geometry, incidents, id: candidate.candidateId };
 			},
 		});
 		const pass = defined(result.allocationWitness.passes[0]);
 		expect(pass).toMatchObject({
 			acceptBridges: false,
-			attempted: exhaustiveCandidates.length,
+			attempted: exhaustiveCandidateTotal,
 			searchStarted: true,
 		});
 		expect(result.selected?.geometry).toEqual(exhaustiveBest?.selected.geometry);
+		expect(result.selected?.incidents).toEqual(exhaustiveBest?.selected.incidents);
+		expect(result.selected?.id).toBe(exhaustiveBest?.candidate.candidateId);
+		if (result.selected !== undefined && exhaustiveBest !== undefined) {
+			const score = rankLaneRouteSelection(result.selected, exhaustiveBest.candidate);
+			expect({ bridges: score.bridges, length: score.length, bends: score.bends }).toEqual({
+				bridges: exhaustiveBest.bridges,
+				length: exhaustiveBest.length,
+				bends: exhaustiveBest.bends,
+			});
+		}
 		const noIncidentState = {
 			attempted: 0,
 			exhaustive: true,
@@ -1395,7 +1414,7 @@ describe('shared lane layout', () => {
 		};
 		expect(
 			validateSharedLaneGeometryWithCertificate(prepared.graph, corrupted, certificate, true),
-		).toBeDefined();
+		).toContain('wrong source face');
 	});
 
 	it.each([
