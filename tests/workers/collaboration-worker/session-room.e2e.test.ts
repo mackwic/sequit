@@ -6,6 +6,10 @@ import {
 	createCollaborativeDocumentSession,
 } from '../../../src/lib/infrastructure/collaboration/collaborative-document-session';
 import {
+	decodeSessionMessage,
+	SessionMessageKind as Message,
+} from '../../../src/lib/infrastructure/collaboration/session-wire';
+import {
 	type CollaborationWebSocket,
 	type CollaborationWebSocketFactory,
 	createWebSocketCollaborationTransport,
@@ -27,6 +31,11 @@ class WorkerdWebSocket implements CollaborationWebSocket {
 	readonly #listeners = new Map<string, Set<SocketListener>>();
 	#socket: WebSocket | undefined;
 	#closed = false;
+	readonly held: Uint8Array[] = [];
+	hold: ((data: Uint8Array) => boolean) | undefined;
+	release(): void {
+		for (const frame of this.held.splice(0)) this.#socket?.send(frame);
+	}
 
 	constructor(url: string) {
 		void this.connect(url);
@@ -37,6 +46,12 @@ class WorkerdWebSocket implements CollaborationWebSocket {
 	}
 
 	send(data: Uint8Array | string): void {
+		if (data instanceof Uint8Array && this.hold !== undefined) {
+			if (this.hold(data)) {
+				this.held.push(data);
+				return;
+			}
+		}
 		this.#socket?.send(data);
 	}
 
@@ -127,7 +142,126 @@ describe('real sessions through the Durable Object', () => {
 		}
 	});
 
-	it('closes the rejected session and notifies its refresh callback', async () => {
+	it('drops Alice’s unsent text in Bob’s deleted box and preserves her other buffered typing', async () => {
+		const room = 'real-text-race';
+		const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, room);
+		let socket: WorkerdWebSocket | undefined;
+		const alice = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', (url) => {
+				socket = new WorkerdWebSocket(url);
+				return socket;
+			}),
+		);
+		const bob = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', workerdWebSocketFactory),
+		);
+		const notice = vi.fn();
+		alice.subscribeToConflict(notice);
+		try {
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+				expect(bob.connectionStatus()).toBe(CollaborationStatus.Ready);
+			});
+			if (socket === undefined) throw new Error('Expected Alice socket');
+			socket.hold = (frame) => {
+				const message = decodeSessionMessage(frame);
+				return message.type === Message.Change && 'update' in message;
+			};
+			alice.replaceNodeMarkdown('B', 'Brouillon perdu');
+			alice.replaceNodeMarkdown('A', 'Saisie préservée');
+			await vi.waitFor(() => {
+				expect(socket?.held).toHaveLength(1);
+			});
+			bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			await vi.waitFor(() => {
+				expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
+			});
+			socket.hold = undefined;
+			socket.release();
+			await vi.waitFor(
+				() => {
+					expect(notice).toHaveBeenCalledWith(expect.stringContaining('pas été enregistrée'));
+				},
+				{ timeout: 1000 },
+			);
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+				expect(bob.read().nodes[0]?.markdown).toBe('Saisie préservée');
+			});
+			expect(alice.read().nodes.map(({ id }) => id)).toEqual(['A']);
+			alice.replaceNodeMarkdown('A', 'Encore modifiable');
+			await vi.waitFor(() => {
+				expect(bob.read().nodes[0]?.markdown).toBe('Encore modifiable');
+			});
+		} finally {
+			alice.destroy();
+			bob.destroy();
+		}
+	});
+
+	it('refuses a delayed grouping after Bob moves A and accepts Alice’s next command', async () => {
+		const room = 'real-command-race';
+		const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, room);
+		let socket: WorkerdWebSocket | undefined;
+		const alice = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', (url) => {
+				socket = new WorkerdWebSocket(url);
+				return socket;
+			}),
+		);
+		const bob = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', workerdWebSocketFactory),
+		);
+		const decisions = vi.fn();
+		alice.subscribeToDecisions(decisions);
+		try {
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+				expect(bob.connectionStatus()).toBe(CollaborationStatus.Ready);
+			});
+			if (socket === undefined) throw new Error('Expected Alice socket');
+			socket.hold = (frame) => {
+				const message = decodeSessionMessage(frame);
+				return message.type === Message.Change && 'commands' in message;
+			};
+			const refused = alice.dispatch([
+				{ op: Op.Group, id: 'stale', label: 'Stale', members: ['A', 'B'] },
+			]);
+			await vi.waitFor(() => {
+				expect(socket?.held).toHaveLength(1);
+			});
+			bob.dispatch([{ op: Op.Group, id: 'moved', label: 'Moved', members: ['A'] }]);
+			await vi.waitFor(() => {
+				expect(bob.read().groups.map(({ id }) => id)).toContain('moved');
+			});
+			socket.hold = undefined;
+			socket.release();
+			await vi.waitFor(() => {
+				expect(decisions).toHaveBeenCalledWith(
+					expect.objectContaining({ type: 'refused', proposalId: refused }),
+				);
+			});
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+			});
+			const accepted = alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			await vi.waitFor(() => {
+				expect(decisions).toHaveBeenCalledWith(
+					expect.objectContaining({ type: 'accepted', proposalId: accepted }),
+				);
+			});
+			expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
+		} finally {
+			alice.destroy();
+			bob.destroy();
+		}
+	});
+
+	it('keeps a business rejection nonterminal and permits a later command', async () => {
 		const room = 'real-rejection';
 		const client = createCollaborativeDocumentSession(
 			collaborativeFixture(CollaborativeFixture.LinkedBoxes, room),
@@ -138,8 +272,10 @@ describe('real sessions through the Durable Object', () => {
 				expect(client.connectionStatus()).toBe(CollaborationStatus.Ready);
 			});
 			const refresh = vi.fn();
+			const decisions = vi.fn();
 			client.subscribeToRejection(refresh);
-			client.dispatch([
+			client.subscribeToDecisions(decisions);
+			const refused = client.dispatch([
 				{
 					op: Op.Create,
 					target: { kind: Kind.Relation, id: 'cycle' },
@@ -147,9 +283,12 @@ describe('real sessions through the Durable Object', () => {
 				},
 			]);
 			await vi.waitFor(() => {
-				expect(refresh).toHaveBeenCalledOnce();
+				expect(decisions).toHaveBeenCalledWith(
+					expect.objectContaining({ type: 'refused', proposalId: refused }),
+				);
 			});
-			expect(client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
+			expect(client.connectionStatus()).toBe(CollaborationStatus.Ready);
+			expect(refresh).not.toHaveBeenCalled();
 			expect(client.read().relations).toHaveLength(1);
 		} finally {
 			client.destroy();

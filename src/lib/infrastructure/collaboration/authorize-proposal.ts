@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import type { LogicDocument } from '../../core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../core/graph/create-graph';
 import type { ProtocolDiagnostic } from './protocol';
+import { TextTargetGoneError } from './text-update-validation';
 import { applyTextUpdate } from './text-update-validation';
 import { runUpdateGuards, type UpdateGuard } from './update-guards';
 import { readStructuralLogicDocument } from './yjs-document-reader';
@@ -58,8 +59,9 @@ export async function authorizeProposal(input: AuthorizationInput): Promise<Auth
 			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(input.authoritative));
 			if (input.textOnly === true) applyTextUpdate(candidate, input.proposedUpdate);
 			else Y.applyUpdate(candidate, input.proposedUpdate);
-		} catch {
+		} catch (error) {
 			candidate.destroy();
+			if (error instanceof TextTargetGoneError) throw error;
 			return malformedUpdateFailure();
 		}
 

@@ -3,6 +3,12 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
+import { META_KEY } from '../../../src/lib/infrastructure/collaboration/room-persistence';
+import {
+	encodeSessionMessage,
+	LEGACY_SESSION_WIRE_VERSION,
+	SessionMessageKind as Message,
+} from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
 	CHUNK_KEY_PREFIX,
 	META_KEY,
@@ -59,7 +65,8 @@ describe('room authority', () => {
 		alice.send(command);
 		const accepted = await alice.next(Message.Commit);
 		const remote = await bob.next(Message.Commit);
-		expect(remote).toEqual(accepted);
+		expect(remote).toMatchObject({ commit: accepted.commit, update: accepted.update });
+		expect(remote.id).toBeUndefined();
 		Y.applyUpdate(doc, remote.update);
 		expect(readLogicDocument(doc)).toMatchObject({
 			ok: true,
@@ -185,7 +192,12 @@ describe('room authority', () => {
 				},
 			],
 		});
-		await alice.next(Message.Reject);
+		expect(await alice.next(Message.Conflict)).toMatchObject({
+			id: 'cycle',
+			code: 'invalid-command',
+			lastAcceptedSequence: 0,
+		});
+		expect(alice.socket.readyState).toBe(WebSocket.OPEN);
 		bob.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
 		expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
 		bob.socket.close();
@@ -230,6 +242,47 @@ describe('room authority', () => {
 		invalid.destroy();
 		initialized.destroy();
 		peerDocument.destroy();
+	});
+
+	it('uses legacy v4 rejection for an old socket while preserving newer participants', async () => {
+		const name = 'mixed-protocol';
+		const legacy = await connectRoom(name);
+		const modern = await connectRoom(name);
+		const doc = await initializeRoom(name, modern, CollaborativeFixture.LinkedBoxes);
+		await legacy.next(Message.Commit);
+		const closed = new Promise<CloseEvent>((resolve) => {
+			legacy.socket.addEventListener('close', resolve, { once: true });
+		});
+		legacy.socket.send(
+			encodeSessionMessage(
+				{
+					type: Message.Change,
+					id: 'old-cycle',
+					sessionId: 'old-session',
+					sequence: 1,
+					commands: [
+						{
+							op: Op.Create,
+							target: { kind: Kind.Relation, id: 'cycle' },
+							properties: { from: 'A', to: 'B' },
+						},
+					],
+				},
+				LEGACY_SESSION_WIRE_VERSION,
+			),
+		);
+		expect((await legacy.next(Message.Reject)).message).toBeTruthy();
+		expect((await closed).code).toBe(1008);
+		modern.send({
+			type: Message.Change,
+			id: 'still-valid',
+			sessionId: 'modern-session',
+			sequence: 1,
+			commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
+		});
+		expect((await modern.next(Message.Commit)).id).toBe('still-valid');
+		modern.socket.close();
+		doc.destroy();
 	});
 
 	it('does not merge two initial documents racing for the same room', async () => {
@@ -316,7 +369,7 @@ it('rejects malformed initialization and empty-room text but ignores malformed p
 	presence.socket.close();
 });
 
-it('keeps the batch atomic when a later command fails and ignores messages queued after rejection', async () => {
+it('keeps the rejected batch atomic and accepts the corrected next command', async () => {
 	const name = 'atomic-batch';
 	const client = await connectRoom(name);
 	const doc = await initializeRoom(name, client);
@@ -337,10 +390,15 @@ it('keeps the batch atomic when a later command fails and ignores messages queue
 		sequence: 1,
 		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
 	});
-	await client.next(Message.Reject);
-	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), async (_instance, state) => {
-		expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
+	expect(await client.next(Message.Conflict)).toMatchObject({
+		id: 'batch',
+		lastAcceptedSequence: 0,
 	});
+	expect((await client.next(Message.Commit)).id).toBe('after-rejection');
+	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), async (_instance, state) => {
+		expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 2 });
+	});
+	client.socket.close();
 	doc.destroy();
 });
 

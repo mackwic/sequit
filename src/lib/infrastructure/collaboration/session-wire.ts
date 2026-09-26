@@ -1,6 +1,6 @@
 import { decode, encode } from 'cborg';
 
-import type { SharedDocumentCommand } from '../document/shared-document-command';
+import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import { type CommandSequence, readCommandSequence } from './command-sequence';
 import {
 	InvalidPresenceError,
@@ -8,12 +8,14 @@ import {
 	type ParticipantPresence,
 	readParticipantPresence,
 } from './participant-presence';
-import { SessionFailureCode } from './session-failure';
+import { ConflictCode, SessionFailureCode } from './session-failure';
+export type { SharedTarget } from '../document/shared-document-command';
 export type { LocalPresence, ParticipantPresence } from './participant-presence';
-import { readSharedCommand } from './shared-command-codec';
+import { readSharedCommand, readSharedTarget } from './shared-command-codec';
 import { wireBytes, wireId, wireInteger, wireKeys, wireObject, wireString } from './wire-values';
 
-export const SESSION_WIRE_VERSION = 4;
+export const SESSION_WIRE_VERSION = 5;
+export const LEGACY_SESSION_WIRE_VERSION = 4;
 export const SESSION_FRAME_LIMIT = 1024 * 1024;
 
 export enum SessionMessageKind {
@@ -23,6 +25,7 @@ export enum SessionMessageKind {
 	Commit = 'commit',
 	Reject = 'reject',
 	Retry = 'retry',
+	Conflict = 'conflict',
 	Presence = 'presence',
 }
 
@@ -46,6 +49,8 @@ interface CommandMessage extends CommandSequence {
 interface TextMessage {
 	readonly type: SessionMessageKind.Change;
 	readonly update: Uint8Array;
+	readonly id?: string;
+	readonly targets?: readonly SharedTarget[];
 }
 
 interface CommitMessage {
@@ -67,6 +72,20 @@ interface RetryMessage {
 	readonly code: SessionFailureCode;
 }
 
+interface LegacyTextMessage {
+	readonly type: SessionMessageKind.Change;
+	readonly update: Uint8Array;
+}
+
+interface ConflictMessage {
+	readonly type: SessionMessageKind.Conflict;
+	readonly code: ConflictCode;
+	readonly message: string;
+	readonly id?: string;
+	readonly targetId?: string;
+	readonly lastAcceptedSequence?: number;
+}
+
 interface PresenceMessage {
 	readonly type: SessionMessageKind.Presence;
 	readonly participants: readonly ParticipantPresence[];
@@ -80,12 +99,29 @@ export type SessionMessage =
 	| CommitMessage
 	| RejectMessage
 	| RetryMessage
+	| ConflictMessage
 	| PresenceMessage;
+
+function readTextTargets(value: unknown): readonly SharedTarget[] {
+	if (!Array.isArray(value) || value.length > 100) throw new Error('Invalid text targets');
+	return value.map(readSharedTarget);
+}
 
 function readChange(message: Record<string, unknown>): CommandMessage | TextMessage {
 	if ('update' in message) {
-		wireKeys(message, ['type', 'update']);
-		return { type: SessionMessageKind.Change, update: wireBytes(message['update']) };
+		wireKeys(message, ['type', 'update', 'id', 'targets']);
+		const result: {
+			type: SessionMessageKind.Change;
+			update: Uint8Array;
+			id?: string;
+			targets?: readonly SharedTarget[];
+		} = {
+			type: SessionMessageKind.Change,
+			update: wireBytes(message['update']),
+		};
+		if (message['id'] !== undefined) result.id = wireId(message['id']);
+		if (message['targets'] !== undefined) result.targets = readTextTargets(message['targets']);
+		return result;
 	}
 	wireKeys(message, ['type', 'id', 'commands', 'sessionId', 'sequence']);
 	const commands: unknown = message['commands'];
@@ -97,6 +133,29 @@ function readChange(message: Record<string, unknown>): CommandMessage | TextMess
 		...readCommandSequence(message),
 		commands: commands.map((command: unknown) => readSharedCommand(command)),
 	};
+}
+
+function readConflict(message: Record<string, unknown>): ConflictMessage {
+	wireKeys(message, ['type', 'code', 'message', 'id', 'targetId', 'lastAcceptedSequence']);
+	const code = Object.values(ConflictCode).find((value) => value === message['code']);
+	if (code === undefined) throw new Error('Unknown conflict code');
+	const result: {
+		type: SessionMessageKind.Conflict;
+		code: ConflictCode;
+		message: string;
+		id?: string;
+		targetId?: string;
+		lastAcceptedSequence?: number;
+	} = {
+		type: SessionMessageKind.Conflict,
+		code,
+		message: wireString(message['message']),
+	};
+	if (message['id'] !== undefined) result.id = wireId(message['id']);
+	if (message['targetId'] !== undefined) result.targetId = wireId(message['targetId']);
+	if (message['lastAcceptedSequence'] !== undefined)
+		result.lastAcceptedSequence = wireInteger(message['lastAcceptedSequence']);
+	return result;
 }
 
 function readMessage(value: unknown): SessionMessage {
@@ -134,6 +193,8 @@ function readMessage(value: unknown): SessionMessage {
 			if (code === undefined) throw new Error('Unknown session failure code');
 			return { ...result, code };
 		}
+		case SessionMessageKind.Conflict:
+			return readConflict(message);
 		case SessionMessageKind.Presence:
 			try {
 				wireKeys(message, ['type', 'participants']);
@@ -152,13 +213,26 @@ function readMessage(value: unknown): SessionMessage {
 	}
 }
 
-export function encodeSessionMessage(message: SessionMessage): Uint8Array {
-	const frame = encode([SESSION_WIRE_VERSION, readMessage(message)]);
+export function encodeSessionMessage(
+	message: SessionMessage,
+	version: typeof SESSION_WIRE_VERSION | typeof LEGACY_SESSION_WIRE_VERSION = SESSION_WIRE_VERSION,
+): Uint8Array {
+	if (version === LEGACY_SESSION_WIRE_VERSION && message.type === SessionMessageKind.Conflict)
+		throw new Error('Legacy clients do not support conflicts');
+	const value = readMessage(message);
+	let encoded: SessionMessage | LegacyTextMessage = value;
+	if (version === LEGACY_SESSION_WIRE_VERSION && value.type === SessionMessageKind.Change) {
+		if ('update' in value) encoded = { type: value.type, update: value.update };
+	}
+	const frame = encode([version, encoded]);
 	if (frame.byteLength > SESSION_FRAME_LIMIT) throw new Error('Session frame too large');
 	return frame;
 }
 
-export function decodeSessionMessage(frame: Uint8Array): SessionMessage {
+export function decodeSessionEnvelope(frame: Uint8Array): {
+	version: 4 | 5;
+	message: SessionMessage;
+} {
 	if (frame.byteLength > SESSION_FRAME_LIMIT) throw new Error('Session frame too large');
 	const envelope: unknown = decode(frame, {
 		strict: true,
@@ -171,6 +245,19 @@ export function decodeSessionMessage(frame: Uint8Array): SessionMessage {
 	});
 	if (!Array.isArray(envelope) || envelope.length !== 2)
 		throw new Error('Expected versioned session envelope');
-	if (envelope[0] !== SESSION_WIRE_VERSION) throw new Error('Unsupported session version');
-	return readMessage(envelope[1]);
+	const version: unknown = envelope[0];
+	if (version !== SESSION_WIRE_VERSION && version !== LEGACY_SESSION_WIRE_VERSION)
+		throw new Error('Unsupported session version');
+	const message = readMessage(envelope[1]);
+	if (version === LEGACY_SESSION_WIRE_VERSION) {
+		if (message.type === SessionMessageKind.Conflict) throw new Error('Unsupported legacy message');
+		if (message.type === SessionMessageKind.Change && 'update' in message) {
+			if (message.id !== undefined) throw new Error('Unsupported legacy message');
+		}
+	}
+	return { version, message };
+}
+
+export function decodeSessionMessage(frame: Uint8Array): SessionMessage {
+	return decodeSessionEnvelope(frame).message;
 }

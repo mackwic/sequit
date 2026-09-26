@@ -8,3 +8,11 @@ export function notifySubscribers<T>(listeners: Iterable<(value: T) => void>, va
 		}
 	}
 }
+
+export function subscribeToSet<T>(
+	listeners: Set<(value: T) => void>,
+	listener: (value: T) => void,
+): () => void {
+	listeners.add(listener);
+	return () => listeners.delete(listener);
+}

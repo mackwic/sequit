@@ -69,7 +69,7 @@ test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs',
 	await bobContext.close();
 });
 
-test('Deux boîtes reliées : refus du cycle, refresh et toast, sans mutation chez Bob', async ({
+test('Deux boîtes reliées : refus du cycle, toast sans refresh et édition suivante partagée', async ({
 	browser,
 }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
@@ -85,16 +85,24 @@ test('Deux boîtes reliées : refus du cycle, refresh et toast, sans mutation ch
 	);
 	await alice.getByLabel('Origine de la relation').selectOption('A');
 	await alice.getByLabel('Destination de la relation').selectOption('B');
-	const navigation = alice.waitForEvent('framenavigated', (frame) => frame === alice.mainFrame());
+	const navigations: string[] = [];
+	alice.on('framenavigated', (frame) => {
+		if (frame === alice.mainFrame()) navigations.push(frame.url());
+	});
 	await alice.getByRole('button', { name: 'Relier', exact: true }).click();
-	await navigation;
-	await expect(alice.getByRole('alert')).toBeVisible();
+	await expect(alice.getByRole('alert')).toContainText('Action refusée');
+	expect(navigations).toEqual([]);
 	await expect(alice.getByRole('status', { name: 'Connexion', exact: true })).toHaveText(
 		'Connecté',
 	);
 	await expect(alice).not.toHaveURL(/collaboration-error/);
 	await expect(alice.getByLabel('Relations').getByRole('listitem')).toHaveCount(1);
 	await expect(bob.getByLabel('Relations').getByRole('listitem')).toHaveCount(1);
+	await edit(alice);
+	await edit(bob);
+	await alice.getByLabel('Contenu A', { exact: true }).fill('Après le refus');
+	await expect(bob.getByLabel('Contenu A', { exact: true })).toHaveText('Après le refus');
+	expect(navigations).toEqual([]);
 	await aliceContext.close();
 	await bobContext.close();
 });

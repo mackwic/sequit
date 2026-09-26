@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import { applyTextUpdate } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
+import {
+	applyTextUpdate,
+	TextTargetGoneError,
+} from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -72,7 +75,7 @@ describe('server text boundary', () => {
 		server.getMap(YjsCollection.Nodes).delete('source-a');
 		expect(() => {
 			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-		}).toThrow();
+		}).toThrow(TextTargetGoneError);
 		expect(server.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
 		client.destroy();
 		server.destroy();

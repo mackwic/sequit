@@ -115,3 +115,16 @@ export function readSourceDocumentState(
 ): DecodedSourceDocumentState {
 	return sourceDocumentState(document, readLogicDocument(document), revision);
 }
+
+/** Before the first authoritative snapshot arrives, incomplete physical state is not an error. */
+export function readSessionSourceState(
+	document: Y.Doc,
+	previous: SourceDocumentState,
+	initialized: boolean,
+): SourceDocumentState {
+	const revision = previous.revision + 1;
+	const decoded = readSourceDocumentState(document, revision);
+	if (!initialized && decoded.kind === SourceDocumentStateKind.Invalid)
+		return { kind: SourceDocumentStateKind.Uninitialized, revision };
+	return decoded;
+}

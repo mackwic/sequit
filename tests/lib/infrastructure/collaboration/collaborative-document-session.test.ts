@@ -11,6 +11,7 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session';
 import type { SourceDocumentState } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
 import {
+	ConflictCode,
 	RetryableSessionFailure,
 	SessionFailureCode,
 } from '../../../../src/lib/infrastructure/collaboration/session-failure';
@@ -98,6 +99,161 @@ it('keeps unsent text and command identity through a retryable service failure',
 			(message) => message.type === Message.Change && 'id' in message && message.id === id,
 		),
 	).toBe(true);
+	room.destroy();
+});
+
+it('refuses only the stale command and renumbers the next gesture without closing', () => {
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const decisions = vi.fn();
+	room.client.subscribeToDecisions(decisions);
+	const first = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	const second = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.CommandConflict,
+		message: 'Élément déplacé',
+		id: first,
+		lastAcceptedSequence: 0,
+	});
+	expect(room.pair.client.status()).toBe(TransportStatus.Connected);
+	expect(decisions).toHaveBeenCalledWith(
+		expect.objectContaining({ type: 'refused', proposalId: first }),
+	);
+	room.sync();
+	expect(
+		room.sent.filter((message) => message.type === Message.Change && 'commands' in message).at(-1),
+	).toMatchObject({ id: second, sequence: 1 });
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	room.destroy();
+});
+
+it('rebases buffered text on a surviving box after a peer deletes another box', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const original = room.client.document;
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.replaceNodeMarkdown('B', 'Texte orphelin');
+	room.client.replaceNodeMarkdown('A', 'Texte à conserver');
+	room.authoritative.getMap('sequit.nodes').delete('B');
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	vi.advanceTimersByTime(50);
+	const oldText = room.sent.find(
+		(message) => message.type === Message.Change && 'update' in message,
+	);
+	if (oldText?.type !== Message.Change || !('update' in oldText) || oldText.id === undefined)
+		throw new Error('Expected identified buffered text');
+	room.receive({
+		type: Message.Conflict,
+		id: oldText.id,
+		targetId: 'B',
+		code: ConflictCode.TextTargetGone,
+		message: 'Text target is no longer available',
+	});
+	expect(room.client.document).not.toBe(original);
+	expect(room.pair.client.status()).toBe(TransportStatus.Connected);
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('pas été enregistrée'));
+	room.sync();
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Texte à conserver' }]);
+	const response = room.sent.filter((message) => message.type === Message.Sync).at(-1);
+	if (response?.type !== Message.Sync) throw new Error('Expected sync reply');
+	const step = readSyncStep(response.payload);
+	if (step.kind !== SyncStepKind.Response) throw new Error('Expected native response');
+	Y.applyUpdate(room.authoritative, step.update);
+	expect(readSourceDocumentState(room.authoritative, 0)).toMatchObject({
+		kind: SourceDocumentStateKind.Valid,
+		document: { nodes: [{ id: 'A', markdown: 'Texte à conserver' }] },
+	});
+	expect(room.client.replaceNodeMarkdown('A', 'Nouvelle frappe')).toBe(true);
+	room.destroy();
+});
+
+it.each([
+	{
+		name: 'keeps a nonoverlapping local replacement',
+		remote: 'ZAlpha',
+		local: 'AlPHa',
+		expected: 'ZAlPHa',
+		draft: false,
+	},
+	{
+		name: 'exposes an overlapping local replacement as a recoverable draft',
+		remote: 'Omega',
+		local: 'AlPHa',
+		expected: 'Omega',
+		draft: true,
+	},
+])('$name after another box is removed', ({ remote, local, expected, draft }) => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.replaceNodeMarkdown('B', 'Discarded');
+	room.client.replaceNodeMarkdown('A', local);
+	const nodes = room.authoritative.getMap<Y.Map<unknown>>('sequit.nodes');
+	nodes.delete('B');
+	const authoritative = nodes.get('A')?.get('markdown');
+	if (!(authoritative instanceof Y.Text)) throw new Error('Expected text on remaining box');
+	authoritative.delete(0, authoritative.length);
+	authoritative.insert(0, remote);
+	vi.advanceTimersByTime(50);
+	const oldText = room.sent.find(
+		(message) => message.type === Message.Change && 'update' in message,
+	);
+	if (oldText?.type !== Message.Change || !('update' in oldText) || oldText.id === undefined)
+		throw new Error('Expected identified text proposal');
+	room.receive({
+		type: Message.Conflict,
+		id: oldText.id,
+		code: ConflictCode.TextTargetGone,
+		message: 'Text target is no longer available',
+	});
+	room.sync();
+	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: expected }]);
+	if (draft)
+		expect(notices).toHaveBeenCalledWith(
+			expect.stringContaining(`Brouillon à récupérer : ${local}`),
+		);
+	else expect(notices).not.toHaveBeenCalledWith(expect.stringContaining('Brouillon à récupérer'));
+	room.destroy();
+});
+
+it('stops retrying a persistent service failure instead of looping forever', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	const rejected = vi.fn();
+	room.client.subscribeToRejection(rejected);
+	for (let attempt = 0; attempt < 4; attempt++) {
+		room.receive({
+			type: Message.Retry,
+			code: SessionFailureCode.StorageUnavailable,
+			message: 'Service unavailable',
+		});
+		if (attempt < 3) {
+			room.receive({
+				type: Message.Commit,
+				commit: attempt + 2,
+				update: Y.encodeStateAsUpdate(room.authoritative),
+			});
+			vi.advanceTimersByTime(1_000);
+			room.sync();
+		}
+	}
+	expect(rejected).toHaveBeenCalledOnce();
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
+	vi.advanceTimersByTime(10_000);
 	room.destroy();
 });
 
@@ -191,11 +347,12 @@ it('isolates failing document, presence, decision and rejection subscribers', ()
 	const rejection = vi.fn();
 	room.client.subscribeToRejection(rejection);
 	room.client.replaceNodeMarkdown('A', 'Local');
+	const ownedId = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 	room.receive({ type: Message.Presence, participants: [] });
 	room.receive({
 		type: Message.Commit,
 		commit: 2,
-		id: 'command',
+		id: ownedId,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
@@ -259,7 +416,7 @@ describe('collaborative document session', () => {
 		if (message?.type !== Message.Change || !('update' in message))
 			throw new Error('Expected text update');
 		expect(message.update).toBeInstanceOf(Uint8Array);
-		expect(room.sent[0]).not.toHaveProperty('id');
+		expect(message).toHaveProperty('id', expect.any(String));
 		room.destroy();
 	});
 
@@ -587,7 +744,7 @@ it('sends buffered typing before deleting the edited node, without a later text 
 	if (text?.type !== Message.Change || !('update' in text))
 		throw new Error('Expected the text update before the command');
 	expect(text.update).toBeInstanceOf(Uint8Array);
-	expect(text).not.toHaveProperty('id');
+	expect(text).toHaveProperty('id', expect.any(String));
 	expect(command).toMatchObject({
 		type: Message.Change,
 		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],

@@ -6,6 +6,8 @@ import { isSharedTextField, sharedFieldValue } from './shared-text';
 import { wireKeys } from './wire-values';
 import { YjsCollection } from './yjs-document-schema';
 
+export { SharedElementKind } from '../document/shared-document-command';
+
 const COLLECTIONS: Readonly<Record<SharedElementKind, YjsCollection>> = {
 	[SharedElementKind.Document]: YjsCollection.Meta,
 	[SharedElementKind.Node]: YjsCollection.Nodes,

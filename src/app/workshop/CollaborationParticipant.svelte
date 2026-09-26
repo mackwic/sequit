@@ -9,6 +9,7 @@
 		type CollaborativeDocumentSession,
 		createCollaborativeDocumentSession,
 	} from '../../lib/infrastructure/collaboration/collaborative-document-session';
+	import { SourceDocumentStateKind } from '../../lib/infrastructure/collaboration/collaborative-document-session';
 	import type { ParticipantPresence } from '../../lib/infrastructure/collaboration/session-wire';
 	import { createWebSocketCollaborationTransport } from '../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { parseSequitToml } from '../../lib/infrastructure/toml/parse-sequit-toml';
@@ -32,6 +33,7 @@
 	let initialized = $state(false);
 	let paused = $state(false);
 	let toast = $state<string>();
+	let replica = $state(0);
 	onMount(() => {
 		toast = consumeCollaborationError(path);
 		const parsed = parseSequitToml(source);
@@ -42,6 +44,7 @@
 		transport = socket;
 		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
 		client = current;
+		let boundDocument = current.document;
 		const updateStatus = (): void => {
 			status = current.connectionStatus();
 			if (status === CollaborationStatus.Ready) {
@@ -54,6 +57,17 @@
 				model = value;
 			}),
 			current.subscribeToRejection(refreshRejectedSession),
+			current.subscribeToConflict((message) => {
+				toast = message;
+				updateStatus();
+			}),
+			current.subscribeToSourceState((state) => {
+				if (state.kind === SourceDocumentStateKind.Valid && boundDocument !== current.document) {
+					boundDocument = current.document;
+					replica++;
+				}
+				updateStatus();
+			}),
 			current.subscribeToPresence((value) => {
 				participants = value;
 			}),
@@ -99,12 +113,16 @@
 				}}>×</button
 			>
 		</div>{/if}
-	{#if client && model && initialized}<CollaborativeWorkspace
-			{client}
-			{model}
-			{name}
-			connected={status === CollaborationStatus.Ready}
-		/>{/if}
+	{#if client && model && initialized}
+		{#key replica}
+			<CollaborativeWorkspace
+				{client}
+				{model}
+				{name}
+				connected={status === CollaborationStatus.Ready}
+			/>
+		{/key}
+	{/if}
 </section>
 
 <style>

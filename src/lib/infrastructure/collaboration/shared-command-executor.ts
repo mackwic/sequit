@@ -50,6 +50,8 @@ function createElement(
 	collection.set(target.id, createYjsEntityMap(properties));
 }
 
+export class StaleSharedCommandError extends Error {}
+
 function groupingMembers(document: Y.Doc, ids: readonly string[]): readonly Y.Map<unknown>[] {
 	return ids.map((id) => {
 		for (const kind of [
@@ -60,7 +62,7 @@ function groupingMembers(document: Y.Doc, ids: readonly string[]): readonly Y.Ma
 			const member = elementCollection(document, kind).get(id);
 			if (member !== undefined) return member;
 		}
-		throw new Error('Un élément à regrouper est introuvable.');
+		throw new StaleSharedCommandError('Un élément à regrouper est introuvable.');
 	});
 }
 
@@ -97,14 +99,14 @@ function rootGroupOwnership(
 	let owner = ROOT_LAYOUT_REGION_ID;
 	if (first !== undefined) owner = regionOwner(first);
 	if (regionFormat && members.some((member) => regionOwner(member) !== owner))
-		throw new Error('Les éléments doivent appartenir à la même région.');
+		throw new StaleSharedCommandError('Les éléments doivent appartenir à la même région.');
 	const regionLanes =
 		regionFormat &&
 		(meta.has('layoutPresentationSchema') || document.getMap(YjsCollection.RegionLanes).has(owner));
 	if (lanes || regionLanes) {
 		const laneId = members[0]?.get('laneId');
 		if (typeof laneId !== 'string' || members.some((member) => member.get('laneId') !== laneId))
-			throw new Error('Les éléments doivent appartenir à la même voie.');
+			throw new StaleSharedCommandError('Les éléments doivent appartenir à la même voie.');
 		properties.laneId = laneId;
 	}
 	if (!regionFormat) return;
@@ -120,7 +122,7 @@ function groupProperties(
 	if (members.length === 0) throw new Error('Sélectionnez les éléments à regrouper.');
 	const parent = members[0]?.get('groupId');
 	if (members.some((member) => member.get('groupId') !== parent))
-		throw new Error('Les éléments doivent appartenir au même groupe.');
+		throw new StaleSharedCommandError('Les éléments doivent appartenir au même groupe.');
 	const properties: GroupProperties = { label };
 	if (typeof parent === 'string') {
 		properties.groupId = parent;

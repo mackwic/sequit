@@ -174,8 +174,21 @@ it.each(['invalid', 0, 1.5])(
 			await state.storage.put('command-session:author', value);
 		});
 		client.send(color('author', 1, '#abcdef'));
-		expect((await client.next(Message.Retry)).code).toBe(SessionFailureCode.StorageUnavailable);
-		client.socket.close();
+		expect((await client.next(Message.Reject)).code).toBe(SessionFailureCode.CorruptCommandReceipt);
+		await new Promise<void>((resolve) => {
+			client.socket.addEventListener(
+				'close',
+				() => {
+					resolve();
+				},
+				{ once: true },
+			);
+		});
+		expect(client.socket.readyState).toBe(WebSocket.CLOSED);
+		const unaffected = await connectRoom(name);
+		unaffected.send(color('different-session', 1, '#abcdef'));
+		expect((await unaffected.next(Message.Commit)).commit).toBe(2);
+		unaffected.socket.close();
 		doc.destroy();
 	},
 );

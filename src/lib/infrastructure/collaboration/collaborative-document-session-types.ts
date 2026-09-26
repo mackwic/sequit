@@ -3,6 +3,7 @@ import type * as Y from 'yjs';
 import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
 import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
+import type { ConflictCode } from './session-failure';
 import type { LocalPresence, ParticipantPresence } from './session-wire';
 import type { SourceDocumentState } from './source-document-state';
 
@@ -17,16 +18,27 @@ export enum CollaborationStatus {
 
 export enum ProposalDecisionKind {
 	Accepted = 'accepted',
+	Refused = 'refused',
 }
 
-export interface ProposalDecision {
+export interface AcceptedProposalDecision {
 	readonly type: ProposalDecisionKind.Accepted;
 	readonly proposalId: string;
 	readonly commit: number;
 }
 
+export interface RefusedProposalDecision {
+	readonly type: ProposalDecisionKind.Refused;
+	readonly proposalId: string;
+	readonly code: ConflictCode;
+	readonly message: string;
+}
+
+export type ProposalDecision = AcceptedProposalDecision | RefusedProposalDecision;
+
 export interface CollaborativeDocumentSession {
 	readonly document: Y.Doc;
+	subscribeToConflict(listener: (message: string) => void): () => void;
 	applyLocalTextUpdate(update: Uint8Array): void;
 	dispatch(commands: readonly SharedDocumentCommand[]): string;
 	text(target: SharedTarget, field: string): Y.Text | undefined;

@@ -6,10 +6,15 @@ import {
 	LayoutBias,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { SessionFailureCode } from '../../../../src/lib/infrastructure/collaboration/session-failure';
 import {
+	ConflictCode,
+	SessionFailureCode,
+} from '../../../../src/lib/infrastructure/collaboration/session-failure';
+import {
+	decodeSessionEnvelope,
 	decodeSessionMessage,
 	encodeSessionMessage,
+	LEGACY_SESSION_WIRE_VERSION,
 	SESSION_FRAME_LIMIT,
 	SESSION_WIRE_VERSION,
 	type SessionMessage,
@@ -113,11 +118,44 @@ describe('CBOR session protocol', () => {
 		},
 	);
 
-	it('requires IDs for commands but rejects IDs on text updates', () => {
+	it('accepts versioned conflicts while preserving the v4 terminal contract', () => {
+		const refusal = {
+			type: SessionMessageKind.Conflict,
+			id: 'command',
+			code: ConflictCode.CommandConflict,
+			message: 'Moved',
+			lastAcceptedSequence: 3,
+		} as const;
+		expect(decodeSessionMessage(encodeSessionMessage(refusal))).toEqual(refusal);
+		expect(() => encodeSessionMessage(refusal, LEGACY_SESSION_WIRE_VERSION)).toThrow(
+			'Legacy clients',
+		);
+		const oldText = encodeSessionMessage(
+			{
+				type: SessionMessageKind.Change,
+				id: 'text',
+				update: new Uint8Array([0, 0]),
+				targets: [{ kind: SharedElementKind.Node, id: 'A' }],
+			},
+			LEGACY_SESSION_WIRE_VERSION,
+		);
+		expect(decodeSessionEnvelope(oldText)).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: { type: SessionMessageKind.Change, update: new Uint8Array([0, 0]) },
+		});
+		expect(() =>
+			decodeSessionMessage(frame({ type: 'conflict', code: 'unknown', message: 'Moved' })),
+		).toThrow('Unknown conflict code');
+		expect(() => decodeSessionEnvelope(encode([LEGACY_SESSION_WIRE_VERSION, refusal]))).toThrow(
+			'Unsupported legacy message',
+		);
+	});
+
+	it('requires IDs for commands and validates IDs on text updates', () => {
 		expect(() => decodeSessionMessage(frame({ type: 'change', commands: [] }))).toThrow();
 		expect(() =>
-			decodeSessionMessage(frame({ type: 'change', id: 'unexpected', update: new Uint8Array() })),
-		).toThrow('Unexpected message property');
+			decodeSessionMessage(frame({ type: 'change', id: 'é'.repeat(65), update: new Uint8Array() })),
+		).toThrow('ID must contain');
 		for (const id of ['', 'é'.repeat(65)]) {
 			expect(() =>
 				decodeSessionMessage(frame({ type: 'change', id, commands: [{ op: 'ungroup', id: 'G' }] })),
