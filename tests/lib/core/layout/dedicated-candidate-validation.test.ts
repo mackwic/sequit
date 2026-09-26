@@ -439,6 +439,74 @@ describe('dedicated candidate validation: boxes and groups', () => {
 		});
 	});
 
+	it('rejects interleaved ordinary bands even when their centers retain rank order', () => {
+		const input = directionFixture(LayoutDirection.TopToBottom);
+		const first = defined(input.layout.elements.find(({ id }) => id === 'source-a'));
+		const second = defined(input.layout.elements.find(({ id }) => id === 'target'));
+		let earlier = first;
+		let later = second;
+		if (second.bounds.y < first.bounds.y) {
+			earlier = second;
+			later = first;
+		}
+		const moved = replaceElement(input.layout, later.id, (element) => ({
+			...element,
+			bounds: {
+				...element.bounds,
+				y: earlier.bounds.y + earlier.bounds.height - later.bounds.height / 3,
+			},
+		}));
+		const shifted = defined(moved.elements.find(({ id }) => id === later.id));
+		expect(shifted.bounds.y + shifted.bounds.height / 2).toBeGreaterThan(
+			earlier.bounds.y + earlier.bounds.height / 2,
+		);
+		expect(validateDedicatedCandidate({ ...input, layout: moved })).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.RankOrder,
+		});
+	});
+
+	it('rejects a junction moved into its neighboring ordinary rank', () => {
+		const input = fixture();
+		const junction = defined(input.layout.elements.find(({ id }) => id === 'choice'));
+		const source = defined(input.layout.elements.find(({ id }) => id === 'source-a'));
+		const moved = replaceElement(input.layout, junction.id, (element) => ({
+			...element,
+			bounds: { ...element.bounds, y: source.bounds.y + source.bounds.height / 2 },
+		}));
+		expect(validateDedicatedCandidate({ ...input, layout: moved })).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.RankOrder,
+		});
+	});
+
+	it('keeps connected junction rails in their interval and depth order', () => {
+		const base = validLogicDocument();
+		const choice = defined(base.junctions.find(({ id }) => id === 'choice'));
+		const document = {
+			...base,
+			junctions: [...base.junctions, { ...choice, id: 'gate' }],
+			relations: [
+				...base.relations.filter(({ id }) => id !== 'choice-to-target' && id !== 'group-to-target'),
+				{ id: 'choice-to-gate', from: 'choice', to: 'gate' },
+				{ id: 'gate-to-target', from: 'gate', to: 'target' },
+			],
+		};
+		const prepared = prepareLayoutDocument(document);
+		const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
+		const first = defined(layout.elements.find(({ id }) => id === 'choice'));
+		const second = defined(layout.elements.find(({ id }) => id === 'gate'));
+		const moved = replaceElement(layout, first.id, (element) => ({
+			...element,
+			bounds: { ...element.bounds, y: second.bounds.y },
+		}));
+		expect(validateDedicatedCandidate({ ...prepared, layout: moved })).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.RankOrder,
+		});
+	});
+
 	it('rejects overlap between unrelated elements', () => {
 		const input = fixture();
 		const target = input.layout.elements.find(({ id }) => id === 'target');

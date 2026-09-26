@@ -3,6 +3,7 @@ import { defined, EndpointKind, LayoutDirection } from '../../document/logic-doc
 import type { LogicGraph } from '../../graph/create-graph';
 import { boundsOverlap, finitePositiveBounds } from '../geometry/box-geometry';
 import type { Bounds, LayoutResult } from '../layout-types';
+import { prepareJunctions } from '../structure/junction-structure';
 import type { EndpointMinimumSize } from './element-checks';
 import { minimumElementSize, sameOwnerGroup } from './element-checks';
 import type { DedicatedCandidateValidationInput, RejectedDedicatedCandidate } from './types';
@@ -36,7 +37,9 @@ export function validateElementBounds(
 ): RejectedDedicatedCandidate | undefined {
 	const { width, height } = input.layout;
 	if (!validCanvas(width, height)) return rejected(DedicatedCandidateRejectionCode.InvalidCanvas);
-	for (const [id, endpoint] of input.graph.endpointsById) {
+	for (const [id, endpoint] of [...input.graph.endpointsById].sort(([a], [b]) =>
+		compareCanonicalStrings(a, b),
+	)) {
 		const box = defined(elements.get(id)).bounds;
 		if (!validBoxBounds(box)) return rejected(DedicatedCandidateRejectionCode.InvalidBounds, id);
 		if (outsideCanvas(box, width, height))
@@ -48,46 +51,88 @@ export function validateElementBounds(
 	return undefined;
 }
 
-function mainCoordinate(bounds: Bounds, direction: LayoutDirection): number {
-	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop)
-		return bounds.y + bounds.height / 2;
-	return bounds.x + bounds.width / 2;
+interface PrimaryInterval {
+	readonly start: number;
+	readonly end: number;
 }
 
-function forwardDirection(direction: LayoutDirection): boolean {
-	return direction === LayoutDirection.TopToBottom || direction === LayoutDirection.LeftToRight;
+function physicalInterval(bounds: Bounds, direction: LayoutDirection): PrimaryInterval {
+	let start = bounds.x;
+	let end = bounds.x + bounds.width;
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
+		start = bounds.y;
+		end = bounds.y + bounds.height;
+	}
+	if (direction === LayoutDirection.BottomToTop || direction === LayoutDirection.RightToLeft)
+		return { start: -end, end: -start };
+	return { start, end };
 }
 
+function ordinaryBands(
+	input: DedicatedCandidateValidationInput,
+	elements: ReadonlyMap<string, LayoutResult['elements'][number]>,
+): Map<number, { start: number; end: number; id: string }> {
+	const bands = new Map<number, { start: number; end: number; id: string }>();
+	const nodes = [...input.graph.endpointsById]
+		.filter(([, endpoint]) => endpoint.kind === EndpointKind.Node)
+		.sort(([a], [b]) => compareCanonicalStrings(a, b));
+	for (const [id] of nodes) {
+		const rank = defined(input.ranks.byEndpointId.get(id));
+		const interval = physicalInterval(
+			defined(elements.get(id)).bounds,
+			input.graph.document.layout.direction,
+		);
+		const band = bands.get(rank);
+		if (band === undefined) bands.set(rank, { ...interval, id });
+		else {
+			band.start = Math.min(band.start, interval.start);
+			band.end = Math.max(band.end, interval.end);
+		}
+	}
+	return bands;
+}
+
+function junctionRankFailure(
+	input: DedicatedCandidateValidationInput,
+	elements: ReadonlyMap<string, LayoutResult['elements'][number]>,
+	bands: ReadonlyMap<number, PrimaryInterval>,
+	ordered: readonly (readonly [number, PrimaryInterval])[],
+): RejectedDedicatedCandidate | undefined {
+	const direction = input.graph.document.layout.direction;
+	const junctions = prepareJunctions(input.graph, input.ranks.byEndpointId);
+	for (const id of [...junctions.keys()].sort(compareCanonicalStrings)) {
+		const junction = defined(junctions.get(id));
+		const interval = physicalInterval(defined(elements.get(id)).bounds, direction);
+		const before = bands.get(junction.interval);
+		const after = ordered.find(([rank]) => rank > junction.interval)?.[1];
+		const overlapsPreviousRow = before !== undefined && interval.start < before.end;
+		const overlapsNextRow = after !== undefined && interval.end > after.start;
+		if (overlapsPreviousRow || overlapsNextRow)
+			return rejected(DedicatedCandidateRejectionCode.RankOrder, id);
+		for (const parentId of defined(input.graph.outgoingByEndpointId.get(id))) {
+			if (junctions.get(parentId)?.interval !== junction.interval) continue;
+			const parentInterval = physicalInterval(defined(elements.get(parentId)).bounds, direction);
+			if (parentInterval.end > interval.start)
+				return rejected(DedicatedCandidateRejectionCode.RankOrder, id);
+		}
+	}
+	return undefined;
+}
+
+/** Ordinary ranks occupy disjoint physical bands; junction rails live in their intervening interval. */
 export function validateRankRows(
 	input: DedicatedCandidateValidationInput,
 	elements: ReadonlyMap<string, LayoutResult['elements'][number]>,
 ): RejectedDedicatedCandidate | undefined {
-	const direction = input.graph.document.layout.direction;
-	let sign = -1;
-	if (forwardDirection(direction)) sign = 1;
-	const rows = [...input.graph.endpointsById]
-		.filter(
-			([id, endpoint]) => endpoint.kind === EndpointKind.Node && input.ranks.byEndpointId.has(id),
-		)
-		.map(([id]) => {
-			const element = defined(elements.get(id));
-			return {
-				id,
-				rank: defined(input.ranks.byEndpointId.get(id)),
-				progress: sign * mainCoordinate(element.bounds, direction),
-			};
-		})
-		.sort((left, right) => left.progress - right.progress || left.rank - right.rank);
-	for (let index = 1; index < rows.length; index += 1) {
-		const previous = defined(rows[index - 1]);
-		const current = defined(rows[index]);
-		const rankDecreases = current.rank < previous.rank;
-		const samePositionHasDifferentRank =
-			current.progress === previous.progress && current.rank !== previous.rank;
-		if (rankDecreases || samePositionHasDifferentRank)
+	const bands = ordinaryBands(input, elements);
+	const ordered = [...bands].sort(([left], [right]) => left - right);
+	for (let index = 1; index < ordered.length; index += 1) {
+		const previous = defined(ordered[index - 1])[1];
+		const current = defined(ordered[index])[1];
+		if (previous.end > current.start)
 			return rejected(DedicatedCandidateRejectionCode.RankOrder, current.id);
 	}
-	return undefined;
+	return junctionRankFailure(input, elements, bands, ordered);
 }
 
 function relatedByGroup(graph: LogicGraph, firstId: string, secondId: string): boolean {
