@@ -1,7 +1,6 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
-import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
 import {
 	type SharedDocumentCommand,
 	SharedElementKind,
@@ -11,24 +10,25 @@ import { type CollaborationTransport, TransportStatus } from './collaboration-tr
 import {
 	CollaborationStatus,
 	type CollaborativeDocumentSession,
-	type ProposalDecision,
 	type SourceDocumentState,
 	SourceDocumentStateKind,
 } from './collaborative-document-session-types';
-import { notifySubscribers, subscribeToSet } from './notify-subscribers';
+import { notifySubscribers } from './notify-subscribers';
 import { type PendingCommandFrame, prepareSessionCommand } from './session-command-frame';
 import { recoverSessionCommandConflict } from './session-conflict-recovery';
+import { ConflictCode } from './session-failure';
 import {
 	announceAcceptedReceipt,
 	createInitializationMessage,
-	createTextProposalBuffer,
 	handleIncomingMessage,
 	receiveSessionFrame,
 	resolveCommitReceipt,
 } from './session-incoming';
+import { SessionNotifications } from './session-notifications';
 import { SessionPresence } from './session-presence';
+import { replaceReplicaAfterTextRefusal } from './session-replica-recovery';
 import { SessionSynchronizer } from './session-synchronizer';
-import { SessionTextEdits } from './session-text-edits';
+import { SessionTextFlow } from './session-text-edits';
 import {
 	encodeSessionMessage,
 	type LocalPresence,
@@ -39,23 +39,21 @@ import {
 import { sharedTextAt } from './shared-element';
 import { spliceSharedText } from './shared-text';
 import { readSessionSourceState } from './source-document-state';
-import type { TextUpdateBuffer } from './text-update-buffer';
 import { readLogicDocument } from './yjs-document-codec';
 
-export class CollaborativeSession implements CollaborativeDocumentSession {
-	readonly document = new Y.Doc();
-	readonly #subscribers = new Set<DocumentSessionSubscriber>();
-	readonly #sourceStateListeners = new Set<(state: SourceDocumentState) => void>();
-	readonly #decisionListeners = new Set<(decision: ProposalDecision) => void>();
-	readonly #rejectionListeners = new Set<(message: string) => void>();
-	readonly #conflictListeners = new Set<(message: string) => void>();
+export class CollaborativeSession
+	extends SessionNotifications
+	implements CollaborativeDocumentSession
+{
+	document = new Y.Doc();
+	#replica = 0;
 	readonly #pending = new Map<string, PendingCommandFrame>();
-	readonly #textEdits = new SessionTextEdits();
+	#textFlow: SessionTextFlow;
+	#resumingText = false;
 	readonly #textOrigin = Symbol('local text');
 	readonly #sessionId = crypto.randomUUID();
 	#sequence = 0;
 	#sourceState: SourceDocumentState;
-	readonly #buffer: TextUpdateBuffer;
 	readonly #synchronizer: SessionSynchronizer;
 	readonly #stopFrames: () => void;
 	readonly #stopStatus: () => void;
@@ -70,18 +68,19 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		private readonly initialDocument: LogicDocument,
 		private readonly transport: CollaborationTransport,
 	) {
+		super();
 		this.#presence = new SessionPresence(
 			() => this.document.clientID,
 			(message) => {
 				this.#send(message);
 			},
 		);
-		this.#buffer = this.#createBuffer();
+		this.#textFlow = this.#createTextFlow();
 		this.#sourceState = { kind: SourceDocumentStateKind.Uninitialized, revision: 0 };
 		this.#synchronizer = new SessionSynchronizer({
-			document: this.document,
+			document: () => this.document,
 			initialized: () => this.#initialized,
-			buffer: this.#buffer,
+			buffer: () => this.#textFlow.buffer,
 			pending: this.#pending,
 			send: (message) => {
 				this.#send(message);
@@ -90,7 +89,8 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 				this.transport.send(frame);
 			},
 			initialize: () => {
-				this.#initialize();
+				this.#initialization ??= createInitializationMessage(this.initialDocument);
+				this.#send(this.#initialization);
 			},
 			clearInitialization: () => {
 				this.#initialization = undefined;
@@ -104,11 +104,21 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 			presence: () => {
 				this.#presence.send();
 			},
+			resumeText: () => {
+				if (!this.#resumingText) return false;
+				this.#textFlow.buffer.flush();
+				this.#sendNextPendingText();
+				return true;
+			},
 		});
 		this.document.on('update', this.#updated);
 		this.#stopFrames = transport.subscribeToFrames(this.#receive);
 		this.#stopStatus = transport.subscribeToStatus(this.#status);
 		if (transport.status() === TransportStatus.Connected) this.#synchronizer.start();
+	}
+
+	replica(): number {
+		return this.#replica;
 	}
 
 	read(): LogicDocument {
@@ -121,26 +131,6 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	readSourceState(): SourceDocumentState {
 		if (this.#destroyed) throw new Error('Document session has been destroyed');
 		return this.#sourceState;
-	}
-
-	subscribe(listener: DocumentSessionSubscriber): () => void {
-		return subscribeToSet(this.#subscribers, listener);
-	}
-
-	subscribeToSourceState(listener: (state: SourceDocumentState) => void): () => void {
-		return subscribeToSet(this.#sourceStateListeners, listener);
-	}
-
-	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void {
-		return subscribeToSet(this.#decisionListeners, listener);
-	}
-
-	subscribeToRejection(listener: (message: string) => void): () => void {
-		return subscribeToSet(this.#rejectionListeners, listener);
-	}
-
-	subscribeToConflict(listener: (message: string) => void): () => void {
-		return subscribeToSet(this.#conflictListeners, listener);
 	}
 
 	subscribeToPresence(
@@ -170,7 +160,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		const pending = prepareSessionCommand(commands, this.#sessionId, this.#sequence);
 		// Invalid local commands cannot consume a sequence; retain the exact frame for retries.
 		// Preserve gesture order: a deletion must not overtake buffered edits to its target.
-		this.#buffer.flush();
+		this.#textFlow.buffer.flush();
 		this.#sequence = pending.sequence;
 		this.#pending.set(pending.id, pending);
 		this.transport.send(pending.frame);
@@ -183,7 +173,9 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 
 	applyLocalTextUpdate(target: SharedTarget, field: string, update: Uint8Array): void {
 		if (!this.#ready || this.#rejected || this.#destroyed) return;
-		this.#textEdits.record(target, field);
+		const text = sharedTextAt(this.document, target, field);
+		if (text === undefined) return;
+		this.#textFlow.prepare(target, field, text);
 		Y.applyUpdate(this.document, update, this.#textOrigin);
 	}
 
@@ -192,7 +184,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		const text = sharedTextAt(this.document, target, field);
 		if (text === undefined) return false;
 		if (text.toJSON() === next) return true;
-		this.#textEdits.record(target, field);
+		this.#textFlow.prepare(target, field, text);
 		this.document.transact(() => {
 			spliceSharedText(text, next);
 		}, this.#textOrigin);
@@ -206,7 +198,7 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	destroy(): void {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
-		this.#buffer.close();
+		this.#textFlow.close();
 		this.#presence.destroy();
 		this.#synchronizer.stop();
 		this.#stopFrames();
@@ -214,50 +206,39 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 		this.transport.close();
 		this.document.off('update', this.#updated);
 		this.document.destroy();
-		this.#subscribers.clear();
-		this.#sourceStateListeners.clear();
-		this.#decisionListeners.clear();
-		this.#rejectionListeners.clear();
-		this.#conflictListeners.clear();
+		this.clearNotifications();
 		this.#pending.clear();
-		this.#textEdits.clear();
 	}
 
 	readonly #updated = (update: Uint8Array, origin: unknown): void => {
-		if (origin === this.#textOrigin) this.#buffer.push(update);
-		else
-			this.#textEdits.deletedNodes(this.document, (id) => {
-				notifySubscribers(
-					this.#conflictListeners,
-					`La boîte ${id} a été supprimée par un autre participant ; votre dernière saisie dans cette boîte n’est plus visible.`,
-				);
-			});
+		if (origin === this.#textOrigin) this.#textFlow.buffer.push(update);
 		this.#sourceState = readSessionSourceState(this.document, this.#sourceState, this.#initialized);
-		const state = this.#sourceState;
-		if (state.kind === SourceDocumentStateKind.Valid) this.#initialized = true;
-		notifySubscribers(this.#sourceStateListeners, state);
-		if (state.kind === SourceDocumentStateKind.Valid)
-			notifySubscribers(this.#subscribers, state.document);
+		if (this.#sourceState.kind === SourceDocumentStateKind.Valid) this.#initialized = true;
+		notifySubscribers(this.sourceStateListeners, this.#sourceState);
+		if (this.#sourceState.kind === SourceDocumentStateKind.Valid)
+			notifySubscribers(this.subscribers, this.#sourceState.document);
 	};
 
 	readonly #status = (status: TransportStatus): void => {
 		if (this.#rejected || this.#destroyed) return;
 		this.#ready = false;
-		if (status === TransportStatus.Connected) this.#synchronizer.start();
-		else this.#presence.receive([]);
+		if (status === TransportStatus.Connected) {
+			this.#resumingText = true;
+			this.#textFlow.buffer.flush();
+			this.#sendNextPendingText();
+		} else {
+			this.#resumingText = false;
+			this.#presence.receive([]);
+		}
 	};
 
 	readonly #receive = (frame: Uint8Array): void => {
 		if (this.#destroyed || this.#rejected) return;
-		if (
-			!receiveSessionFrame(frame, (message) => {
-				this.#handle(message);
-			})
-		)
+		if (!receiveSessionFrame(frame, this.#handle))
 			this.#reject('La session a reçu un message invalide.');
 	};
 
-	#handle(message: SessionMessage): void {
+	readonly #handle = (message: SessionMessage): void => {
 		handleIncomingMessage(message, {
 			document: this.document,
 			onSync: (payload) => {
@@ -267,14 +248,18 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 				const receipt = resolveCommitReceipt(
 					id,
 					this.#pending,
-					this.#textEdits,
+					this.#textFlow.edits,
 					this.#initialization?.id,
 				);
 				if (receipt.acknowledged) this.#synchronizer.acknowledge();
-				if (this.#synchronizer.attempts === 0) this.#ready = true;
+				const textAccepted = id !== undefined && this.#textFlow.pending.delete(id);
+				if (textAccepted && this.#resumingText) this.#sendNextPendingText();
+				else if (textAccepted) this.#textFlow.sendNext();
+				const synchronized = this.#initialized && !this.#resumingText;
+				if (synchronized && this.#synchronizer.attempts === 0) this.#ready = true;
 				if (receipt.initialization) this.#initialization = undefined;
 				if (receipt.decision && id !== undefined)
-					announceAcceptedReceipt(this.#decisionListeners, id, commit);
+					announceAcceptedReceipt(this.decisionListeners, id, commit);
 			},
 			onReject: (reason) => {
 				this.#reject(reason);
@@ -283,37 +268,65 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 				this.#conflict(conflict);
 			},
 			onRetry: (reason) => {
+				if (this.#textFlow.pending.size > 0 || this.#textFlow.buffer.hasPending())
+					this.#resumingText = true;
 				this.#synchronizer.retry(reason);
 			},
 			onPresence: (participants) => {
 				this.#presence.receive(participants);
 			},
 		});
-	}
+	};
 
-	#createBuffer(): TextUpdateBuffer {
-		return createTextProposalBuffer(
-			() => this.#ready,
+	#createTextFlow(): SessionTextFlow {
+		return new SessionTextFlow(
+			this.#sessionId,
+			() => this.#ready && !this.#resumingText,
 			(message) => {
-				this.#textEdits.sent(message.id);
 				this.#send(message);
 			},
 		);
 	}
 
+	#sendNextPendingText(): void {
+		if (this.#textFlow.sendNext()) return;
+		this.#resumingText = false;
+		this.#synchronizer.start();
+	}
+
 	#conflict(message: Extract<SessionMessage, { type: SessionMessageKind.Conflict }>): void {
+		if (message.code === ConflictCode.TextTargetGone) {
+			if (!this.#textFlow.pending.has(message.id)) return;
+			this.#resetReplica();
+			return;
+		}
 		const recovered = recoverSessionCommandConflict(message, this.#pending);
 		if (recovered === undefined) return;
 		this.#sequence = recovered.sequence;
 		this.#ready = false;
-		notifySubscribers(this.#decisionListeners, recovered.decision);
-		notifySubscribers(this.#conflictListeners, recovered.notice);
+		notifySubscribers(this.decisionListeners, recovered.decision);
+		notifySubscribers(this.conflictListeners, recovered.notice);
 		this.#synchronizer.start();
 	}
 
-	#initialize(): void {
-		this.#initialization ??= createInitializationMessage(this.initialDocument);
-		this.#send(this.#initialization);
+	#resetReplica(): void {
+		this.#ready = false;
+		this.#resumingText = false;
+		this.#synchronizer.stop();
+		const reset = replaceReplicaAfterTextRefusal(
+			this.document,
+			this.#sourceState,
+			this.#textFlow,
+			this.#updated,
+		);
+		this.document = reset.document;
+		this.#sourceState = reset.sourceState;
+		this.#textFlow = this.#createTextFlow();
+		this.#initialized = false;
+		this.#replica++;
+		notifySubscribers(this.sourceStateListeners, reset.sourceState);
+		notifySubscribers(this.conflictListeners, reset.notice);
+		this.#synchronizer.start();
 	}
 
 	#send(message: SessionMessage): void {
@@ -325,11 +338,12 @@ export class CollaborativeSession implements CollaborativeDocumentSession {
 	#reject(message: string): void {
 		this.#rejected = true;
 		this.#ready = false;
-		this.#buffer.close();
+		this.#textFlow.close();
 		this.#presence.destroy();
 		this.#synchronizer.stop();
 		this.#pending.clear();
+
 		this.transport.close();
-		notifySubscribers(this.#rejectionListeners, message);
+		notifySubscribers(this.rejectionListeners, message);
 	}
 }

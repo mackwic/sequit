@@ -74,14 +74,8 @@ export function createInitializationMessage(
 	}
 }
 
-export function createTextProposalBuffer(
-	ready: () => boolean,
-	send: (message: Extract<SessionMessage, { update: Uint8Array }> & { id: string }) => void,
-): TextUpdateBuffer {
-	return new TextUpdateBuffer((update) => {
-		if (!ready()) return;
-		send({ type: SessionMessageKind.Change, id: crypto.randomUUID(), update });
-	});
+export function createTextProposalBuffer(send: (update: Uint8Array) => void): TextUpdateBuffer {
+	return new TextUpdateBuffer(send);
 }
 
 export function sendPresenceSafely(

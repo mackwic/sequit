@@ -6,17 +6,16 @@ import type { CommandSequence } from '../../lib/infrastructure/collaboration/com
 import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
+	BusinessCommandRefusal,
 	ConflictCode,
 	RetryableSessionFailure,
 	SessionFailureCode,
-} from '../../lib/infrastructure/collaboration/session-failure';
-import {
-	BusinessCommandRefusal,
 	StaleSharedCommandError,
 	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
 import {
 	decodeSessionEnvelope,
+	type IdentifiedTextMessage,
 	type SessionMessage,
 	SessionMessageKind,
 } from '../../lib/infrastructure/collaboration/session-wire';
@@ -27,6 +26,10 @@ import {
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../lib/infrastructure/collaboration/sync-steps';
+import {
+	assertLiveTextTarget,
+	TextTargetGoneError,
+} from '../../lib/infrastructure/collaboration/text-update-validation';
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
@@ -46,7 +49,9 @@ function emptyRoomState(): RoomState {
 	return { doc: new Y.Doc({ gc: false }), commit: 0, chunkCount: 0, acceptedProposals: new Map() };
 }
 
-function commandConflictCode(error: unknown): ConflictCode {
+function commandConflictCode(
+	error: unknown,
+): ConflictCode.CommandConflict | ConflictCode.InvalidCommand {
 	if (error instanceof StaleSharedCommandError) return ConflictCode.CommandConflict;
 	return ConflictCode.InvalidCommand;
 }
@@ -127,7 +132,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				await this.initialize(socket, message);
 				return;
 			case SessionMessageKind.Change:
-				if ('update' in message) await this.acceptUpdate(socket, message.update, message.id);
+				if ('update' in message) await this.acceptUpdate(socket, message.update, message);
 				else await this.acceptCommands(socket, message);
 				return;
 			case SessionMessageKind.Presence:
@@ -213,11 +218,10 @@ export class CollaborationRoom extends DurableObject<Env> {
 						SessionFailureCode.RepeatedCommandRefusal,
 						'Cette proposition a été refusée trop souvent.',
 					);
-				const explanation = error.message;
 				sendRoomMessage(socket, {
 					type: SessionMessageKind.Conflict,
 					code: commandConflictCode(error),
-					message: explanation,
+					message: error.message,
 					id: message.id,
 					lastAcceptedSequence: acceptedSequence,
 				});
@@ -229,8 +233,26 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	private async acceptUpdate(socket: WebSocket, update: Uint8Array, id?: string): Promise<void> {
+	private async acceptUpdate(
+		socket: WebSocket,
+		update: Uint8Array,
+		message?: Extract<
+			SessionMessage,
+			{ readonly update: Uint8Array; readonly type: SessionMessageKind.Change }
+		>,
+	): Promise<void> {
 		const decoded = Y.decodeUpdate(update);
+		let textTarget: IdentifiedTextMessage | undefined;
+		if (message?.id !== undefined) {
+			textTarget = message;
+			try {
+				assertLiveTextTarget(this.roomState.doc, message);
+			} catch (error) {
+				if (!(error instanceof TextTargetGoneError)) throw error;
+				await this.refuseTextTarget(socket, message);
+				return;
+			}
+		}
 		if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return;
 		const accepted = readLogicDocument(this.roomState.doc);
 		if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
@@ -240,14 +262,15 @@ export class CollaborationRoom extends DurableObject<Env> {
 			proposedUpdate: update,
 			guards: defaultUpdateGuards,
 			textOnly: true,
+			textTarget,
 		});
 		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
 		try {
 			await this.commit(result.value.candidate);
-			if (id !== undefined)
+			if (message?.id !== undefined)
 				sendRoomMessage(socket, {
 					type: SessionMessageKind.Commit,
-					id,
+					id: message.id,
 					commit: this.roomState.commit,
 					update: Y.encodeStateAsUpdate(
 						this.roomState.doc,
@@ -257,6 +280,21 @@ export class CollaborationRoom extends DurableObject<Env> {
 		} finally {
 			result.value.candidate.destroy();
 		}
+	}
+
+	private async refuseTextTarget(socket: WebSocket, message: IdentifiedTextMessage): Promise<void> {
+		if (!(await allowSessionRefusal(this.ctx.storage, message.sessionId, message.id)))
+			throw new TerminalSessionFailure(
+				SessionFailureCode.RepeatedCommandRefusal,
+				'Cette proposition a été refusée trop souvent.',
+			);
+		sendRoomMessage(socket, {
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.TextTargetGone,
+			message: 'La cible de texte a été supprimée ou remplacée.',
+			id: message.id,
+			target: message.target,
+		});
 	}
 
 	private async commit(

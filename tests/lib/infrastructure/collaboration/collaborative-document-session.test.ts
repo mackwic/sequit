@@ -23,8 +23,6 @@ import {
 	SessionMessageKind as Message,
 } from '../../../../src/lib/infrastructure/collaboration/session-wire';
 import {
-	readSyncStep,
-	SyncStepKind,
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../../../src/lib/infrastructure/collaboration/sync-steps';
@@ -119,7 +117,7 @@ it('does not send a text proposal when the requested content already matches', (
 	room.destroy();
 });
 
-it('synchronizes an unsent text gesture after a retry without replaying stale intent', () => {
+it('resends a queued text gesture before syncing after a transient retry', () => {
 	vi.useFakeTimers();
 	vi.spyOn(Math, 'random').mockReturnValue(0.5);
 	const room = setup();
@@ -134,13 +132,19 @@ it('synchronizes an unsent text gesture after a retry without replaying stale in
 	vi.advanceTimersByTime(50);
 	expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(false);
 	vi.advanceTimersByTime(950);
-	room.sent.length = 0;
+	const queued = room.sent.find((frame) => frame.type === Message.Change && 'update' in frame);
+	if (queued?.type !== Message.Change || !('update' in queued) || queued.id === undefined)
+		throw new Error('Expected an identified text proposal before synchronization');
+	expect(room.sent.some((frame) => frame.type === Message.Sync)).toBe(false);
+	applyTextUpdate(room.authoritative, queued.update);
+	room.receive({
+		type: Message.Commit,
+		id: queued.id,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(room.sent.some((frame) => frame.type === Message.Sync)).toBe(true);
 	room.sync();
-	for (const frame of room.sent) {
-		if (frame.type !== Message.Sync) continue;
-		const step = readSyncStep(frame.payload);
-		if (step.kind === SyncStepKind.Response) Y.applyUpdate(room.authoritative, step.update);
-	}
 	const result = readLogicDocument(room.authoritative);
 	if (!result.ok) throw new Error('Expected synchronized document');
 	expect(result.value.nodes.find((node) => node.id === 'A')?.markdown).toBe(
@@ -176,7 +180,7 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	room.destroy();
 });
 
-it('integrates mixed buffered text after peer deletion without replacing the replica', () => {
+it('flushes on target switch then resets a stale replica without replaying unacknowledged edits', () => {
 	vi.useFakeTimers();
 	const room = setup();
 	room.sync();
@@ -184,35 +188,42 @@ it('integrates mixed buffered text after peer deletion without replacing the rep
 	const original = room.client.document;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('B', 'Texte devenu invisible');
-	room.client.replaceNodeMarkdown('A', 'Texte à conserver');
+	room.client.replaceNodeMarkdown('B', 'Brouillon perdu');
+	room.client.replaceNodeMarkdown('A', 'Saisie non acquittée');
+	const stale = room.sent.find((message) => message.type === Message.Change && 'update' in message);
+	if (stale?.type !== Message.Change || !('update' in stale) || stale.id === undefined)
+		throw new Error('Expected flushed B text proposal');
+	expect(stale.target).toEqual({ kind: Kind.Node, id: 'B' });
+	vi.advanceTimersByTime(50);
+	expect(
+		room.sent.filter((frame) => frame.type === Message.Change && 'update' in frame),
+	).toHaveLength(1);
 	room.authoritative.getMap('sequit.nodes').delete('B');
 	room.receive({
 		type: Message.Commit,
 		commit: 2,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	expect(room.sent).not.toContainEqual(expect.objectContaining({ type: Message.Change }));
-	expect(room.client.document).toBe(original);
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte B'));
-	vi.advanceTimersByTime(50);
-	const batch = room.sent.find((message) => message.type === Message.Change && 'update' in message);
-	if (batch?.type !== Message.Change || !('update' in batch) || batch.id === undefined)
-		throw new Error('Expected identified text proposal');
-	applyTextUpdate(room.authoritative, batch.update);
+	expect(notices).not.toHaveBeenCalled();
 	room.receive({
-		type: Message.Commit,
-		id: batch.id,
-		commit: 3,
-		update: Y.encodeStateAsUpdate(room.authoritative),
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: stale.id,
+		target: stale.target,
+		message: 'Boîte supprimée',
 	});
+	expect(room.client.document).not.toBe(original);
+	expect(room.client.replica()).toBe(1);
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+	room.sync();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
-	expect(room.authoritative.getMap('sequit.nodes').has('B')).toBe(false);
-	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Texte à conserver' }]);
+	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Alpha' }]);
+	expect(room.client.replaceNodeMarkdown('A', 'Encore modifiable')).toBe(true);
 	room.destroy();
 });
 
-it('never replays an acknowledged edit over a later remote replacement', () => {
+it('does not replay an acknowledged edit over a remote replacement after losing another target', () => {
 	vi.useFakeTimers();
 	const room = setup();
 	room.sync();
@@ -232,6 +243,12 @@ it('never replays an acknowledged edit over a later remote replacement', () => {
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
 	room.client.replaceNodeMarkdown('B', 'Pending');
+	vi.advanceTimersByTime(50);
+	const stale = room.sent
+		.filter((message) => message.type === Message.Change && 'update' in message)
+		.at(-1);
+	if (stale?.type !== Message.Change || !('update' in stale) || stale.id === undefined)
+		throw new Error('Expected B proposal');
 	const authoritative = room.authoritative
 		.getMap<Y.Map<unknown>>('sequit.nodes')
 		.get('A')
@@ -245,13 +262,14 @@ it('never replays an acknowledged edit over a later remote replacement', () => {
 		commit: 3,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	vi.advanceTimersByTime(50);
-	const pending = room.sent
-		.filter((message) => message.type === Message.Change && 'update' in message)
-		.at(-1);
-	if (pending?.type !== Message.Change || !('update' in pending))
-		throw new Error('Expected pending text');
-	applyTextUpdate(room.authoritative, pending.update);
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: stale.id,
+		target: stale.target,
+		message: 'Deleted',
+	});
+	room.sync();
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Remote replacement' }]);
 	expect(readSourceDocumentState(room.authoritative, 0)).toMatchObject({
 		kind: SourceDocumentStateKind.Valid,
@@ -275,39 +293,6 @@ it('ignores a delayed refusal for a proposal that is no longer pending', () => {
 	expect(notices).not.toHaveBeenCalled();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	expect(room.client.replaceNodeMarkdown('A', 'Still connected')).toBe(true);
-	room.destroy();
-});
-
-it('retains an older text gesture when a newer independent text receipt arrives first', () => {
-	vi.useFakeTimers();
-	const room = setup();
-	room.sync();
-	room.sent.length = 0;
-	const notices = vi.fn();
-	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('A', 'Older pending edit');
-	vi.advanceTimersByTime(50);
-	room.client.replaceNodeMarkdown('B', 'Newer accepted edit');
-	vi.advanceTimersByTime(50);
-	const batches = room.sent.filter(
-		(message) => message.type === Message.Change && 'update' in message,
-	);
-	const newer = batches[1];
-	if (newer?.type !== Message.Change || !('update' in newer) || newer.id === undefined)
-		throw new Error('Expected a second text proposal');
-	room.receive({
-		type: Message.Commit,
-		id: newer.id,
-		commit: 2,
-		update: Y.encodeStateAsUpdate(room.authoritative),
-	});
-	room.authoritative.getMap('sequit.nodes').delete('A');
-	room.receive({
-		type: Message.Commit,
-		commit: 3,
-		update: Y.encodeStateAsUpdate(room.authoritative),
-	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
 	room.destroy();
 });
 
@@ -337,7 +322,19 @@ it('keeps a newer same-field edit pending when an older receipt arrives', () => 
 		commit: 3,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
+	const newer = room.sent
+		.filter((message) => message.type === Message.Change && 'update' in message)
+		.at(-1);
+	if (newer?.type !== Message.Change || !('update' in newer) || newer.id === undefined)
+		throw new Error('Expected newer proposal');
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: newer.id,
+		target: newer.target,
+		message: 'Deleted',
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('A'));
 	room.destroy();
 });
 
@@ -348,13 +345,23 @@ it('announces one deleted box even when two of its text fields had pending edits
 	room.client.subscribeToConflict(notices);
 	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Pending body');
 	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'description', 'Pending description');
+	const first = room.sent.find((message) => message.type === Message.Change && 'update' in message);
+	if (first?.type !== Message.Change || !('update' in first) || first.id === undefined)
+		throw new Error('Expected first field');
 	room.authoritative.getMap('sequit.nodes').delete('B');
 	room.receive({
 		type: Message.Commit,
 		commit: 2,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte B'));
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: first.id,
+		target: first.target,
+		message: 'Deleted',
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B'));
 	room.destroy();
 });
 

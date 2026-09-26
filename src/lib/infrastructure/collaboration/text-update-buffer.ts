@@ -24,6 +24,10 @@ export class TextUpdateBuffer {
 		}, TEXT_MAX_WAIT_MS);
 	}
 
+	hasPending(): boolean {
+		return this.#updates.length > 0;
+	}
+
 	flush(): void {
 		this.#clearTimers();
 		if (this.#updates.length === 0) return;

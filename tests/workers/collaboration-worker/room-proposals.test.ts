@@ -173,6 +173,71 @@ describe('room authority', () => {
 		},
 	);
 
+	it('refuses a text proposal for a deleted and recreated node ID without committing or closing peers', async () => {
+		const room = 'reused-text-target';
+		const alice = await connectRoom(room);
+		const bob = await connectRoom(room);
+		const doc = await initializeRoom(room, alice);
+		await bob.next(Message.Commit);
+		const old = doc.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+		if (!(old instanceof Y.Text) || old._item === null) throw new Error('Expected integrated text');
+		const update = proposeChange(doc, (candidate) => {
+			const text = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+			if (!(text instanceof Y.Text)) throw new Error('Expected candidate text');
+			text.insert(0, 'Obsolete ');
+		});
+		const target = { kind: Kind.Node, id: 'A' } as const;
+		const sessionId = 'recreated-target-session';
+		bob.send({
+			type: Message.Change,
+			id: 'delete-A',
+			sessionId,
+			sequence: 1,
+			commands: [{ op: Op.Delete, target }],
+		});
+		await bob.next(Message.Commit);
+		await alice.next(Message.Commit);
+		bob.send({
+			type: Message.Change,
+			id: 'recreate-A',
+			sessionId,
+			sequence: 2,
+			commands: [{ op: Op.Create, target, properties: { natureId: 'N', markdown: 'Fresh' } }],
+		});
+		await bob.next(Message.Commit);
+		await alice.next(Message.Commit);
+		const obsolete = {
+			type: Message.Change,
+			id: 'late-original-A',
+			sessionId: 'alice-session',
+			target,
+			field: 'markdown',
+			textId: { client: old._item.id.client, clock: old._item.id.clock },
+			update,
+		} as const;
+		alice.send(obsolete);
+		expect(await alice.next(Message.Conflict)).toMatchObject({
+			code: 'text-target-gone',
+			id: 'late-original-A',
+			target,
+		});
+		expect(alice.socket.readyState).toBe(WebSocket.OPEN);
+		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
+			expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 3 });
+		});
+		for (let attempt = 1; attempt < 6; attempt++) {
+			alice.send(obsolete);
+			expect((await alice.next(Message.Conflict)).id).toBe(obsolete.id);
+		}
+		alice.send(obsolete);
+		expect((await alice.next(Message.Reject)).code).toBe('repeated-command-refusal');
+		bob.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
+		expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
+		bob.socket.close();
+		alice.socket.close();
+		doc.destroy();
+	});
+
 	it('rejects a cycle and continues serving the unaffected participant', async () => {
 		const room = 'cycle';
 		const alice = await connectRoom(room);
@@ -268,7 +333,7 @@ describe('room authority', () => {
 		});
 		for (let attempt = 0; attempt < 6; attempt++) {
 			alice.send(refused);
-			expect((await alice.next(Message.Conflict)).lastAcceptedSequence).toBe(0);
+			expect(await alice.next(Message.Conflict)).toMatchObject({ lastAcceptedSequence: 0 });
 			if (attempt === 0)
 				alice.send({
 					type: Message.Presence,

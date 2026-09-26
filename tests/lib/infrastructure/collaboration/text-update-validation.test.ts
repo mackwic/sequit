@@ -2,9 +2,18 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
-import { applyTextUpdate } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
+import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
+import {
+	applyTextUpdate,
+	assertLiveTextTarget,
+	TextTargetGoneError,
+} from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import {
+	SharedCommandKind as Op,
+	SharedElementKind as Kind,
+} from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 
 function replicas() {
@@ -65,46 +74,96 @@ describe('server text boundary', () => {
 		},
 	);
 
-	it('integrates stale text on a deleted node while preserving a surviving concurrent edit', () => {
+	it('refuses an obsolete text incarnation after deletion, compaction and legal ID reuse', () => {
 		const { server, client } = replicas();
-		const deleted = node(client).get('markdown');
-		const survivor = client
+		const old = node(client).get('markdown');
+		if (!(old instanceof Y.Text) || old._item === null) throw new Error('Expected integrated text');
+		old.insert(0, 'Late ');
+		const reference = {
+			target: { kind: Kind.Node as const, id: 'source-a' },
+			field: 'markdown',
+			textId: { client: old._item.id.client, clock: old._item.id.clock },
+		};
+		expect(() => {
+			assertLiveTextTarget(server, reference);
+		}).not.toThrow();
+		executeSharedCommands(server, [{ op: Op.Delete, target: reference.target }]);
+		compactRoomDocument(server);
+		expect(() => {
+			assertLiveTextTarget(server, reference);
+		}).toThrow(TextTargetGoneError);
+		executeSharedCommands(server, [
+			{
+				op: Op.Create,
+				target: reference.target,
+				properties: { natureId: 'goal', markdown: 'Nouvelle incarnation' },
+			},
+		]);
+		expect(() => {
+			assertLiveTextTarget(server, reference);
+		}).toThrow(TextTargetGoneError);
+		expect(node(server).get('markdown')).toBeInstanceOf(Y.Text);
+		client.destroy();
+		server.destroy();
+	});
+
+	it('rejects a mixed-field update even when its claimed target is still live', () => {
+		const { server, client } = replicas();
+		const claimed = node(client).get('markdown');
+		const other = client
 			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
 			.get('source-b')
 			?.get('markdown');
-		if (!(deleted instanceof Y.Text) || !(survivor instanceof Y.Text))
-			throw new Error('Expected two editable boxes');
-		deleted.insert(0, 'Late ');
-		survivor.insert(0, 'Safe ');
-		server.getMap(YjsCollection.Nodes).delete('source-a');
+		if (!(claimed instanceof Y.Text) || claimed._item === null || !(other instanceof Y.Text))
+			throw new Error('Expected two integrated fields');
+		const oldId = claimed._item.id;
+		claimed.insert(0, 'Claimed ');
+		other.insert(0, 'Hidden ');
+		const candidate = new Y.Doc({ gc: false });
+		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(server));
 		expect(() => {
-			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-		}).not.toThrow();
-		expect(server.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
+			applyTextUpdate(candidate, Y.encodeStateAsUpdate(client), {
+				target: { kind: Kind.Node, id: 'source-a' },
+				field: 'markdown',
+				textId: { client: oldId.client, clock: oldId.clock },
+			});
+		}).toThrow();
 		const accepted = server
 			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
 			.get('source-b')
 			?.get('markdown');
-		if (!(accepted instanceof Y.Text)) throw new Error('Expected surviving box');
-		expect(accepted.toJSON()).toContain('Safe ');
-		const fresh = new Y.Doc();
-		Y.applyUpdate(fresh, Y.encodeStateAsUpdate(server));
-		expect(fresh.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
-		fresh.destroy();
+		if (!(accepted instanceof Y.Text)) throw new Error('Expected authoritative sibling');
+		expect(accepted.toJSON()).not.toContain('Hidden ');
+		candidate.destroy();
 		client.destroy();
 		server.destroy();
 	});
-	it('integrates delayed description text after its node has been compacted', () => {
+
+	it('rejects untyped late text with a surviving sibling edit instead of committing a partial batch', () => {
 		const { server, client } = replicas();
-		const description = node(client).get('description');
-		if (!(description instanceof Y.Text)) throw new Error('Expected node description');
-		description.insert(0, 'Unsent detail');
+		const old = node(client).get('markdown');
+		const survivor = client
+			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+			.get('source-b')
+			?.get('markdown');
+		if (!(old instanceof Y.Text) || !(survivor instanceof Y.Text))
+			throw new Error('Expected two text fields');
+		old.insert(0, 'Late ');
+		survivor.insert(0, 'Unsent ');
 		server.getMap(YjsCollection.Nodes).delete('source-a');
 		compactRoomDocument(server);
+		const candidate = new Y.Doc({ gc: false });
+		Y.applyUpdate(candidate, Y.encodeStateAsUpdate(server));
 		expect(() => {
-			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-		}).not.toThrow();
-		expect(server.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
+			applyTextUpdate(candidate, Y.encodeStateAsUpdate(client));
+		}).toThrow();
+		const accepted = server
+			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+			.get('source-b')
+			?.get('markdown');
+		if (!(accepted instanceof Y.Text)) throw new Error('Expected sibling');
+		expect(accepted.toJSON()).not.toContain('Unsent ');
+		candidate.destroy();
 		client.destroy();
 		server.destroy();
 	});

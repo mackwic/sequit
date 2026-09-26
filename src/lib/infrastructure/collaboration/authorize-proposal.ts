@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import type { LogicDocument } from '../../core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../core/graph/create-graph';
 import type { ProtocolDiagnostic } from './protocol';
+import type { TextTargetReference } from './session-wire';
 import { applyTextUpdate } from './text-update-validation';
 import { runUpdateGuards, type UpdateGuard } from './update-guards';
 import { readStructuralLogicDocument } from './yjs-document-reader';
@@ -18,6 +19,7 @@ export interface AuthorizationInput {
 	readonly proposedUpdate: Uint8Array;
 	readonly guards: readonly UpdateGuard[];
 	readonly textOnly?: boolean;
+	readonly textTarget?: TextTargetReference | undefined;
 }
 
 interface AuthorizedProposal {
@@ -56,7 +58,8 @@ export async function authorizeProposal(input: AuthorizationInput): Promise<Auth
 	try {
 		try {
 			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(input.authoritative));
-			if (input.textOnly === true) applyTextUpdate(candidate, input.proposedUpdate);
+			if (input.textOnly === true)
+				applyTextUpdate(candidate, input.proposedUpdate, input.textTarget);
 			else Y.applyUpdate(candidate, input.proposedUpdate);
 		} catch {
 			candidate.destroy();

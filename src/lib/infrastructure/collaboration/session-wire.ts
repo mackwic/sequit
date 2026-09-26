@@ -1,6 +1,6 @@
 import { decode, encode } from 'cborg';
 
-import type { SharedDocumentCommand } from '../document/shared-document-command';
+import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import { type CommandSequence, readCommandSequence } from './command-sequence';
 import {
 	InvalidPresenceError,
@@ -10,7 +10,7 @@ import {
 } from './participant-presence';
 import { ConflictCode, SessionFailureCode } from './session-failure';
 export type { LocalPresence, ParticipantPresence } from './participant-presence';
-import { readSharedCommand } from './shared-command-codec';
+import { readSharedCommand, readSharedTarget } from './shared-command-codec';
 import { wireBytes, wireId, wireInteger, wireKeys, wireObject, wireString } from './wire-values';
 
 export const SESSION_WIRE_VERSION = 5;
@@ -45,10 +45,17 @@ interface CommandMessage extends CommandSequence {
 	readonly commands: readonly SharedDocumentCommand[];
 }
 
-interface TextMessage {
+export interface TextTargetReference {
+	readonly target: SharedTarget;
+	readonly field: string;
+	readonly textId: { readonly client: number; readonly clock: number };
+}
+
+export interface IdentifiedTextMessage extends TextTargetReference {
 	readonly type: SessionMessageKind.Change;
 	readonly update: Uint8Array;
-	readonly id?: string;
+	readonly id: string;
+	readonly sessionId: string;
 }
 
 interface CommitMessage {
@@ -73,14 +80,23 @@ interface RetryMessage {
 interface LegacyTextMessage {
 	readonly type: SessionMessageKind.Change;
 	readonly update: Uint8Array;
+	readonly id?: never;
 }
 
-interface ConflictMessage {
+export interface CommandConflictMessage {
 	readonly type: SessionMessageKind.Conflict;
-	readonly code: ConflictCode;
+	readonly code: ConflictCode.CommandConflict | ConflictCode.InvalidCommand;
 	readonly message: string;
 	readonly id: string;
 	readonly lastAcceptedSequence: number;
+}
+
+interface TextTargetGoneMessage {
+	readonly type: SessionMessageKind.Conflict;
+	readonly code: ConflictCode.TextTargetGone;
+	readonly message: string;
+	readonly id: string;
+	readonly target: SharedTarget;
 }
 
 interface PresenceMessage {
@@ -92,26 +108,42 @@ export type SessionMessage =
 	| InitializeMessage
 	| SyncMessage
 	| CommandMessage
-	| TextMessage
+	| IdentifiedTextMessage
+	| LegacyTextMessage
 	| CommitMessage
 	| RejectMessage
 	| RetryMessage
-	| ConflictMessage
+	| CommandConflictMessage
+	| TextTargetGoneMessage
 	| PresenceMessage;
 
-function readChange(message: Record<string, unknown>): CommandMessage | TextMessage {
+function readTextTargetReference(message: Record<string, unknown>): TextTargetReference {
+	const textId = wireObject(message['textId']);
+	wireKeys(textId, ['client', 'clock']);
+	return {
+		target: readSharedTarget(message['target']),
+		field: wireString(message['field']),
+		textId: { client: wireInteger(textId['client']), clock: wireInteger(textId['clock']) },
+	};
+}
+
+function readChange(
+	message: Record<string, unknown>,
+): CommandMessage | IdentifiedTextMessage | LegacyTextMessage {
 	if ('update' in message) {
-		wireKeys(message, ['type', 'update', 'id']);
-		const result: {
-			type: SessionMessageKind.Change;
-			update: Uint8Array;
-			id?: string;
-		} = {
+		const update = wireBytes(message['update']);
+		if (message['id'] === undefined) {
+			wireKeys(message, ['type', 'update']);
+			return { type: SessionMessageKind.Change, update };
+		}
+		wireKeys(message, ['type', 'update', 'id', 'sessionId', 'target', 'field', 'textId']);
+		return {
 			type: SessionMessageKind.Change,
-			update: wireBytes(message['update']),
+			update,
+			id: wireId(message['id']),
+			sessionId: wireId(message['sessionId']),
+			...readTextTargetReference(message),
 		};
-		if (message['id'] !== undefined) result.id = wireId(message['id']);
-		return result;
 	}
 	wireKeys(message, ['type', 'id', 'commands', 'sessionId', 'sequence']);
 	const commands: unknown = message['commands'];
@@ -125,10 +157,22 @@ function readChange(message: Record<string, unknown>): CommandMessage | TextMess
 	};
 }
 
-function readConflict(message: Record<string, unknown>): ConflictMessage {
-	wireKeys(message, ['type', 'code', 'message', 'id', 'lastAcceptedSequence']);
+function readConflict(
+	message: Record<string, unknown>,
+): CommandConflictMessage | TextTargetGoneMessage {
 	const code = Object.values(ConflictCode).find((value) => value === message['code']);
 	if (code === undefined) throw new Error('Unknown conflict code');
+	if (code === ConflictCode.TextTargetGone) {
+		wireKeys(message, ['type', 'code', 'message', 'id', 'target']);
+		return {
+			type: SessionMessageKind.Conflict,
+			code,
+			message: wireString(message['message']),
+			id: wireId(message['id']),
+			target: readSharedTarget(message['target']),
+		};
+	}
+	wireKeys(message, ['type', 'code', 'message', 'id', 'lastAcceptedSequence']);
 	return {
 		type: SessionMessageKind.Conflict,
 		code,
@@ -200,7 +244,7 @@ export function encodeSessionMessage(
 	if (version === LEGACY_SESSION_WIRE_VERSION && message.type === SessionMessageKind.Conflict)
 		throw new Error('Legacy clients do not support conflicts');
 	const value = readMessage(message);
-	let encoded: SessionMessage | LegacyTextMessage = value;
+	let encoded: SessionMessage = value;
 	if (version === LEGACY_SESSION_WIRE_VERSION && value.type === SessionMessageKind.Change) {
 		if ('update' in value) encoded = { type: value.type, update: value.update };
 	}

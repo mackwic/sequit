@@ -23,6 +23,7 @@ export class RetryableSessionFailure extends Error {
 export enum ConflictCode {
 	CommandConflict = 'command-conflict',
 	InvalidCommand = 'invalid-command',
+	TextTargetGone = 'text-target-gone',
 }
 
 export class TerminalSessionFailure extends Error {

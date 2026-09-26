@@ -98,7 +98,7 @@ it('preserves local text undo/redo after server GC without undoing a remote part
 	for (const doc of [server, alice, bob]) doc.destroy();
 });
 
-it('accepts late text after compaction and restoration without reviving a deleted node', async () => {
+it('refuses repeated deleted-node text without growing a compacted restored room', async () => {
 	const server = new Y.Doc({ gc: false });
 	importLogicDocument(server, collaborativeFixture(CollaborativeFixture.TwoBoxes, 'boundary-room'));
 	const client = clone(server);
@@ -107,7 +107,12 @@ it('accepts late text after compaction and restoration without reviving a delete
 	compactRoomDocument(server);
 	const restored = new Y.Doc({ gc: false });
 	Y.applyUpdate(restored, Y.encodeStateAsUpdate(server));
-	await accept(restored, client);
+	const before = Y.encodeStateAsUpdate(restored).byteLength;
+	for (let attempt = 0; attempt < 24; attempt++) {
+		text(client).insert(0, 'x'.repeat(8_192));
+		await expect(accept(restored, client)).rejects.toThrow();
+	}
+	expect(Y.encodeStateAsUpdate(restored).byteLength).toBe(before);
 	expect(restored.getMap('sequit.nodes').has('A')).toBe(false);
 	expect(readLogicDocument(restored)).toMatchObject({ ok: true });
 	client.destroy();

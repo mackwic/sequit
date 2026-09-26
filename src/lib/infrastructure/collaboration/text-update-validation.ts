@@ -1,5 +1,7 @@
 import * as Y from 'yjs';
 
+import type { TextTargetReference } from './session-wire';
+import { sharedTextAt } from './shared-element';
 import { isSharedTextField } from './shared-text';
 import { YjsCollection } from './yjs-document-schema';
 
@@ -15,48 +17,43 @@ function collectTexts(document: Y.Doc): ReadonlySet<Y.Text> {
 	return texts;
 }
 
-/** Deleted node content stays in Yjs history with gc:false; it cannot recreate the node. */
-function isDeletedNodeText(candidate: Y.Doc, text: Y.Text): boolean {
-	const field = text._item;
-	if (field === null) return false;
-	if (!['markdown', 'description'].includes(field.parentSub ?? '')) return false;
-	if (!field.deleted) return false;
-	const node = field.parent;
-	if (!(node instanceof Y.Map)) return false;
-	const owner = node._item;
-	if (owner?.deleted !== true) return false;
-	const nodes = candidate.getMap(YjsCollection.Nodes);
-	if (owner.parent !== nodes) return false;
-	if (typeof owner.parentSub !== 'string') return false;
-	return !nodes.has(owner.parentSub);
+export class TextTargetGoneError extends Error {}
+
+/** A reused node ID cannot authorize updates to the old Y.Text incarnation. */
+export function assertLiveTextTarget(document: Y.Doc, reference: TextTargetReference): void {
+	const current = sharedTextAt(document, reference.target, reference.field);
+	const id = current?._item?.id;
+	if (id?.client !== reference.textId.client || id.clock !== reference.textId.clock)
+		throw new TextTargetGoneError('La cible de texte a été supprimée ou remplacée.');
 }
 
-function assertTextItem(
-	item: Y.AbstractStruct,
-	texts: ReadonlySet<Y.Text>,
-	candidate: Y.Doc,
-): void {
+function assertTextItem(item: Y.AbstractStruct, texts: ReadonlySet<Y.Text>): void {
 	if (!(item instanceof Y.Item)) throw new Error('Text update contains non-text data');
 	const plainText =
 		item.content instanceof Y.ContentString || item.content instanceof Y.ContentDeleted;
 	if (!plainText || item.parentSub !== null) throw new Error('Only plain text edits are allowed');
 	if (!(item.parent instanceof Y.Text))
 		throw new Error('Use a command to change document properties');
-	if (!texts.has(item.parent)) {
-		if (isDeletedNodeText(candidate, item.parent)) return;
+	if (!texts.has(item.parent))
 		throw new Error('Text update targets an undeclared or live-inaccessible field');
-	}
 }
 
 /** Run on an isolated candidate. Rejected structs never enter the room's document. */
-export function applyTextUpdate(candidate: Y.Doc, update: Uint8Array): void {
-	const texts = collectTexts(candidate);
+export function applyTextUpdate(
+	candidate: Y.Doc,
+	update: Uint8Array,
+	reference?: TextTargetReference,
+): void {
+	const text = reference && sharedTextAt(candidate, reference.target, reference.field);
+	if (reference !== undefined && text === undefined) throw new TextTargetGoneError();
+	let texts: ReadonlySet<Y.Text>;
+	if (text === undefined) texts = collectTexts(candidate);
+	else texts = new Set([text]);
 	const before = Y.decodeStateVector(Y.encodeStateVector(candidate));
 	const check = (transaction: Y.Transaction): void => {
 		for (const type of transaction.changed.keys()) {
 			if (!(type instanceof Y.Text)) throw new Error('Use a command to change document structure');
-			if (!texts.has(type) && !isDeletedNodeText(candidate, type))
-				throw new Error('Text update targets an undeclared field');
+			if (!texts.has(type)) throw new Error('Text update targets an undeclared field');
 		}
 	};
 	candidate.on('afterTransaction', check);
@@ -70,7 +67,7 @@ export function applyTextUpdate(candidate: Y.Doc, update: Uint8Array): void {
 	for (const [client, structs] of candidate.store.clients) {
 		const clock = before.get(client) ?? 0;
 		for (const item of structs) {
-			if (item.id.clock + item.length > clock) assertTextItem(item, texts, candidate);
+			if (item.id.clock + item.length > clock) assertTextItem(item, texts);
 		}
 	}
 }

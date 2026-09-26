@@ -142,7 +142,7 @@ describe('real sessions through the Durable Object', () => {
 		}
 	});
 
-	it('integrates Alice’s delayed mixed text after Bob deletes B without replacing her replica', async () => {
+	it('refuses Alice’s unacknowledged deleted-box text, drops the other box edit and remounts her replica', async () => {
 		const room = 'real-text-race';
 		const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, room);
 		let socket: WorkerdWebSocket | undefined;
@@ -174,7 +174,7 @@ describe('real sessions through the Durable Object', () => {
 			};
 			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 			alice.replaceNodeMarkdown('B', 'Brouillon perdu');
-			alice.replaceNodeMarkdown('A', 'Saisie préservée');
+			alice.replaceNodeMarkdown('A', 'Saisie abandonnée');
 			const deleted = new Promise<void>((resolve) => {
 				const stop = bob.subscribe((document) => {
 					if (document.nodes.some(({ id }) => id === 'B')) return;
@@ -184,7 +184,7 @@ describe('real sessions through the Durable Object', () => {
 			});
 			bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await deleted;
-			expect(socket.held).toHaveLength(0); // Alice has not flushed her 50 ms text batch.
+			expect(socket.held).toHaveLength(1); // Switching boxes flushed B before deletion.
 			vi.advanceTimersByTime(50);
 			vi.useRealTimers();
 			await vi.waitFor(() => {
@@ -194,16 +194,17 @@ describe('real sessions through the Durable Object', () => {
 			socket.release();
 			await vi.waitFor(
 				() => {
-					expect(notice).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte B'));
+					expect(notice).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
 				},
 				{ timeout: 1000 },
 			);
 			await vi.waitFor(() => {
 				expect(rejected.mock.calls).toEqual([]);
 				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
-				expect(bob.read().nodes[0]?.markdown).toBe('Saisie préservée');
+				expect(bob.read().nodes[0]?.markdown).toBe('Alpha');
 			});
-			expect(alice.document).toBe(replica);
+			expect(alice.document).not.toBe(replica);
+			expect(alice.replica()).toBe(1);
 			expect(alice.read().nodes.map(({ id }) => id)).toEqual(['A']);
 			alice.replaceNodeMarkdown('A', 'Encore modifiable');
 			await vi.waitFor(() => {
@@ -215,6 +216,66 @@ describe('real sessions through the Durable Object', () => {
 			bob.destroy();
 		}
 	});
+
+	it('drops unsent text for both boxes after reconnect when Bob deleted its target offline', async () => {
+		const room = 'real-offline-text-race';
+		const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, room);
+		let socket: WorkerdWebSocket | undefined;
+		const alice = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', (url) => {
+				socket = new WorkerdWebSocket(url);
+				return socket;
+			}),
+		);
+		const bob = createCollaborativeDocumentSession(
+			initial,
+			createWebSocketCollaborationTransport(room, 'https://sequit.local', workerdWebSocketFactory),
+		);
+		const notice = vi.fn();
+		alice.subscribeToConflict(notice);
+		try {
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+				expect(bob.connectionStatus()).toBe(CollaborationStatus.Ready);
+			});
+			const old = socket;
+			if (old === undefined) throw new Error('Expected Alice socket');
+			old.hold = (frame) => {
+				const message = decodeSessionMessage(frame);
+				return message.type === Message.Change && 'update' in message;
+			};
+			alice.replaceNodeMarkdown('B', 'Brouillon hors ligne');
+			alice.replaceNodeMarkdown('A', 'Autre brouillon hors ligne');
+			expect(old.held).toHaveLength(1);
+			old.close();
+			await vi.waitFor(() => {
+				expect(alice.connectionStatus()).toBe(CollaborationStatus.Disconnected);
+			});
+			bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			await vi.waitFor(() => {
+				expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
+			});
+			await vi.waitFor(
+				() => {
+					expect(socket).not.toBe(old);
+					expect(notice).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+					expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
+				},
+				{ timeout: 4_000 },
+			);
+			expect(alice.replica()).toBe(1);
+			expect(bob.read().nodes[0]?.markdown).toBe('Alpha');
+			expect(alice.read().nodes[0]?.markdown).toBe('Alpha');
+			alice.replaceNodeMarkdown('A', 'Après reconnexion');
+			await vi.waitFor(() => {
+				expect(bob.read().nodes[0]?.markdown).toBe('Après reconnexion');
+			});
+		} finally {
+			alice.destroy();
+			bob.destroy();
+		}
+	}, 10_000);
 
 	it('refuses a delayed grouping after Bob moves A and accepts Alice’s next command', async () => {
 		const room = 'real-command-race';

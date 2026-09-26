@@ -3,7 +3,7 @@ import {
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
 import type { PendingCommandFrame } from './session-command-frame';
-import { encodeSessionMessage, type SessionMessage, type SessionMessageKind } from './session-wire';
+import { type CommandConflictMessage, encodeSessionMessage } from './session-wire';
 
 interface CommandRecovery {
 	readonly sequence: number;
@@ -13,7 +13,7 @@ interface CommandRecovery {
 
 /** Preserve later proposal IDs while repairing sequence numbers from the durable receipt. */
 export function recoverSessionCommandConflict(
-	message: Extract<SessionMessage, { type: SessionMessageKind.Conflict }>,
+	message: CommandConflictMessage,
 	pending: Map<string, PendingCommandFrame>,
 ): CommandRecovery | undefined {
 	if (!pending.delete(message.id)) return undefined;

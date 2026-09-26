@@ -30,6 +30,7 @@
 	let transport: WorkshopTransport | undefined;
 	let status = $state(CollaborationStatus.Connecting);
 	let initialized = $state(false);
+	let replica = $state(0);
 	let paused = $state(false);
 	let toast = $state<string>();
 	onMount(() => {
@@ -43,6 +44,11 @@
 		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
 		client = current;
 		const updateStatus = (): void => {
+			if (replica !== current.replica()) {
+				replica = current.replica();
+				model = undefined;
+				initialized = false;
+			}
 			status = current.connectionStatus();
 			if (status === CollaborationStatus.Ready) {
 				model ??= current.read();
@@ -104,14 +110,16 @@
 				}}>×</button
 			>
 		</div>{/if}
-	{#if client && model && initialized}
-		<CollaborativeWorkspace
-			{client}
-			{model}
-			{name}
-			connected={status === CollaborationStatus.Ready}
-		/>
-	{/if}
+	{#key replica}
+		{#if client && model && initialized}
+			<CollaborativeWorkspace
+				{client}
+				{model}
+				{name}
+				connected={status === CollaborationStatus.Ready}
+			/>
+		{/if}
+	{/key}
 </section>
 
 <style>

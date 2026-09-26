@@ -32,6 +32,15 @@ const commandMessages: SessionMessage[] = [
 	{ type: SessionMessageKind.Change, update: new Uint8Array([0, 0]) },
 	{
 		type: SessionMessageKind.Change,
+		id: 'text',
+		sessionId: 'session',
+		update: new Uint8Array([0, 0]),
+		target: { kind: SharedElementKind.Node, id: 'A' },
+		field: 'markdown',
+		textId: { client: 7, clock: 42 },
+	},
+	{
+		type: SessionMessageKind.Change,
 		id: 'gesture',
 		sessionId: 'session',
 		sequence: 1,
@@ -126,6 +135,14 @@ describe('CBOR session protocol', () => {
 			message: 'Moved',
 			lastAcceptedSequence: 3,
 		} as const;
+		const staleText = {
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.TextTargetGone,
+			id: 'text',
+			message: 'Deleted box',
+			target: { kind: SharedElementKind.Node, id: 'A' },
+		} as const;
+		expect(decodeSessionMessage(encodeSessionMessage(staleText))).toEqual(staleText);
 		expect(decodeSessionMessage(encodeSessionMessage(refusal))).toEqual(refusal);
 		expect(() => encodeSessionMessage(refusal, LEGACY_SESSION_WIRE_VERSION)).toThrow(
 			'Legacy clients',
@@ -134,7 +151,11 @@ describe('CBOR session protocol', () => {
 			{
 				type: SessionMessageKind.Change,
 				id: 'text',
+				sessionId: 'session',
 				update: new Uint8Array([0, 0]),
+				target: { kind: SharedElementKind.Node, id: 'A' },
+				field: 'markdown',
+				textId: { client: 7, clock: 42 },
 			},
 			LEGACY_SESSION_WIRE_VERSION,
 		);
@@ -169,6 +190,10 @@ describe('CBOR session protocol', () => {
 						type: SessionMessageKind.Change,
 						id: 'not-a-legacy-text-id',
 						update: new Uint8Array([0, 0]),
+						sessionId: 'session',
+						target: { kind: SharedElementKind.Node, id: 'A' },
+						field: 'markdown',
+						textId: { client: 7, clock: 42 },
 					},
 				]),
 			),

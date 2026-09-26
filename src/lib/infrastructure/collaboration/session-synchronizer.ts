@@ -9,9 +9,9 @@ const MAX_RETRY_ATTEMPTS = 6;
 const MAX_RETRY_DELAY_MS = 16_000;
 
 interface SyncHost {
-	readonly document: Y.Doc;
+	readonly document: () => Y.Doc;
 	readonly initialized: () => boolean;
-	readonly buffer: TextUpdateBuffer;
+	readonly buffer: () => TextUpdateBuffer;
 	readonly pending: ReadonlyMap<string, PendingCommandFrame>;
 	readonly send: (message: SessionMessage) => void;
 	readonly replay: (frame: Uint8Array) => void;
@@ -20,6 +20,7 @@ interface SyncHost {
 	readonly setReady: (value: boolean) => void;
 	readonly terminal: (message: string) => void;
 	readonly presence: () => void;
+	readonly resumeText: () => boolean;
 }
 
 /** Owns retry deadlines and native Yjs sync against one persistent replica. */
@@ -46,7 +47,7 @@ export class SessionSynchronizer {
 		this.stop();
 		this.host.send({
 			type: SessionMessageKind.Sync,
-			payload: writeSyncRequest(this.host.document),
+			payload: writeSyncRequest(this.host.document()),
 		});
 		this.host.presence();
 	}
@@ -62,12 +63,13 @@ export class SessionSynchronizer {
 		const jitter = 0.75 + Math.random() * 0.5;
 		const delay = Math.min(MAX_RETRY_DELAY_MS, Math.round(exponential * jitter));
 		this.#timer ??= setTimeout(() => {
-			this.start();
+			this.stop();
+			if (!this.host.resumeText()) this.start();
 		}, delay);
 	}
 
 	receive(payload: Uint8Array): void {
-		const document = this.host.document;
+		const document = this.host.document();
 		const step = readSyncStep(payload);
 		if (step.kind === SyncStepKind.Response) {
 			Y.applyUpdate(document, step.update);
@@ -82,6 +84,6 @@ export class SessionSynchronizer {
 		for (const pending of this.host.pending.values()) this.host.replay(pending.frame);
 		const ready = this.host.initialized();
 		this.host.setReady(ready);
-		if (ready) this.host.buffer.flush();
+		if (ready) this.host.buffer().flush();
 	}
 }
