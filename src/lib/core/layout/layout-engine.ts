@@ -207,8 +207,20 @@ export interface DedicatedLayoutEvaluation {
 export function evaluateDedicatedLayout(
 	structure: LayoutStructure,
 	measurements: LayoutMeasurements,
+	options?: LayoutOptions,
+): LayoutResult;
+export function evaluateDedicatedLayout(
+	structure: LayoutStructure,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions | undefined,
+	retainForCompletion: true,
+): DedicatedLayoutEvaluation;
+export function evaluateDedicatedLayout(
+	structure: LayoutStructure,
+	measurements: LayoutMeasurements,
 	options: LayoutOptions = {},
-): DedicatedLayoutEvaluation {
+	retainForCompletion = false,
+): LayoutResult | DedicatedLayoutEvaluation {
 	const graph = structure.graph;
 	const ranks = structure.ranks;
 	const frame = createLayoutFrame(graph.document.layout.direction, graph.document.layout.bias);
@@ -248,22 +260,22 @@ export function evaluateDedicatedLayout(
 		routes,
 		space,
 	});
-	return {
-		result,
-		complete: () => {
-			if (options.inspectRouting !== true) return result;
-			return {
-				...result,
-				routingInspection: inspectRouting({
-					layout: result,
-					measurements,
-					ranks: ranks.byEndpointId,
-					direction: frame.direction,
-					plan: workspace.routing,
-				}),
-			};
-		},
-	};
+	if (options.inspectRouting !== true) {
+		if (!retainForCompletion) return result;
+		return { result, complete: () => result };
+	}
+	const complete = (): LayoutResult => ({
+		...result,
+		routingInspection: inspectRouting({
+			layout: result,
+			measurements,
+			ranks: ranks.byEndpointId,
+			direction: frame.direction,
+			plan: workspace.routing,
+		}),
+	});
+	if (!retainForCompletion) return complete();
+	return { result, complete };
 }
 
 export function layoutWithDedicatedEngine(
@@ -273,5 +285,5 @@ export function layoutWithDedicatedEngine(
 	options: LayoutOptions = {},
 ): LayoutResult {
 	const structure = prepareLayout(graph, ranks);
-	return evaluateDedicatedLayout(structure, measurements, options).complete();
+	return evaluateDedicatedLayout(structure, measurements, options);
 }

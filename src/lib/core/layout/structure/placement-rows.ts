@@ -17,16 +17,11 @@ export function preparePlacementRows(input: {
 	readonly ranks: ReadonlyMap<string, number>;
 	readonly junctionIds: ReadonlySet<string>;
 	readonly maximumRank: number;
-	readonly ordinaryOrder?: readonly string[];
 }): PlacementRows {
-	const documentaryOrder = [...input.ids].sort(
-		(left, right) => defined(input.orderById.get(left)) - defined(input.orderById.get(right)),
-	);
-	const ordinaryIds =
-		input.ordinaryOrder ?? documentaryOrder.filter((id) => !input.junctionIds.has(id));
-	const junctionIds = documentaryOrder.filter((id) => input.junctionIds.has(id));
 	return deriveEndpointRows({
-		effectiveEndpointOrder: [...ordinaryIds, ...junctionIds],
+		effectiveEndpointOrder: [...input.ids].sort(
+			(left, right) => defined(input.orderById.get(left)) - defined(input.orderById.get(right)),
+		),
 		componentIds: input.ids,
 		ranks: input.ranks,
 		junctionIds: input.junctionIds,

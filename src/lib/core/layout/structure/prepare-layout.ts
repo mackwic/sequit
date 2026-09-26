@@ -9,37 +9,6 @@ import { type JunctionPlacement, prepareJunctions } from './junction-structure';
 import { containmentComponents, weaklyConnectedComponents } from './layout-components';
 import { preparePlacementRows, type RankedComponent } from './placement-rows';
 
-interface RankOrderDomain {
-	readonly bands: readonly (readonly string[])[];
-}
-
-function sameOrder(
-	left: readonly (readonly string[])[],
-	right: readonly (readonly string[])[],
-): boolean {
-	for (const [index, band] of left.entries()) {
-		const other = defined(right[index]);
-		for (const [position, id] of band.entries()) {
-			if (other[position] !== id) return false;
-		}
-	}
-	return true;
-}
-
-function validOrder(domain: RankOrderDomain, order: readonly (readonly string[])[]): boolean {
-	if (domain.bands.length !== order.length) return false;
-	for (const [index, band] of order.entries()) {
-		const expected = domain.bands[index];
-		if (expected?.length !== band.length) return false;
-		const remaining = new Set(expected);
-		for (const id of band) {
-			if (!remaining.delete(id)) return false;
-		}
-		if (remaining.size !== 0) return false;
-	}
-	return true;
-}
-
 export interface LayoutStructure {
 	readonly graph: LogicGraph;
 	readonly ranks: TopologicalRanks;
@@ -49,7 +18,6 @@ export interface LayoutStructure {
 	readonly branchAnchors: ReadonlyMap<string, BranchAnchor>;
 	readonly hierarchy: GroupHierarchy | undefined;
 	readonly components: readonly RankedComponent[];
-	readonly rankOrderDomain: RankOrderDomain;
 	readonly containment: readonly (readonly string[])[] | undefined;
 }
 
@@ -81,11 +49,7 @@ function packingOrder(
 	return [...ids];
 }
 
-export function prepareLayout(
-	graph: LogicGraph,
-	ranks: TopologicalRanks,
-	order?: readonly (readonly string[])[],
-): LayoutStructure {
+export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): LayoutStructure {
 	const hierarchy = prepareGroupHierarchy(graph.document);
 	const maximumRank = Math.max(0, ...ranks.byEndpointId.values());
 	const junctionIds = new Set(graph.document.junctions.map(({ id }) => id));
@@ -100,7 +64,7 @@ export function prepareLayout(
 	const orderById = new Map(endpointOrder.map((id, index) => [id, index]));
 	// A target-local order edit can still move a whole disconnected component. Preserving
 	// this policy leaves stable component intent to a separate behavioral change.
-	let components = weaklyConnectedComponents(graph).map((ids): RankedComponent => ({
+	const components = weaklyConnectedComponents(graph).map((ids): RankedComponent => ({
 		ids,
 		context: componentContext(graph, ids, hierarchy),
 		effectiveOrder: Math.min(
@@ -121,33 +85,7 @@ export function prepareLayout(
 			compareCanonicalStrings(left.context, right.context) ||
 			left.effectiveOrder - right.effectiveOrder,
 	);
-	const rankOrderDomain: RankOrderDomain = {
-		bands: components.flatMap((component) => component.rows.ordinary),
-	};
-	if (order !== undefined) {
-		if (!validOrder(rankOrderDomain, order)) throw new Error('Invalid ordinary-row rank order');
-	}
-	if (order !== undefined && !sameOrder(rankOrderDomain.bands, order)) {
-		let bandIndex = 0;
-		components = components.map((component) => {
-			const bandCount = component.rows.ordinary.length;
-			const ordinaryOrder = defined(order)
-				.slice(bandIndex, bandIndex + bandCount)
-				.flat();
-			bandIndex += bandCount;
-			return {
-				...component,
-				rows: preparePlacementRows({
-					ids: component.ids,
-					orderById,
-					ranks: placementRanks,
-					junctionIds,
-					maximumRank,
-					ordinaryOrder,
-				}),
-			};
-		});
-	}
+
 	let containment: LayoutStructure['containment'];
 	if (hierarchy !== undefined)
 		containment = containmentComponents(graph, packingOrder(components, hierarchy));
@@ -159,7 +97,6 @@ export function prepareLayout(
 		junctions,
 		hierarchy,
 		components,
-		rankOrderDomain,
 		containment,
 		branchAnchors: branchAnchors(graph, ranks.byEndpointId),
 	};
