@@ -26,8 +26,16 @@ export interface DedicatedCandidateValidationInput {
 	readonly layout: LayoutResult;
 }
 
+export interface DedicatedRouteScore {
+	readonly strictCrossings: number;
+	readonly validatedBridges: number;
+	readonly length: number;
+	readonly bends: number;
+}
+
 export interface ValidDedicatedCandidate {
 	readonly valid: true;
+	readonly score: DedicatedRouteScore;
 }
 
 export interface RejectedDedicatedCandidate {

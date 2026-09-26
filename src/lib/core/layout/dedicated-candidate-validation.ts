@@ -13,12 +13,17 @@ import {
 import { validatePorts } from './dedicated-candidate-validation/ports';
 import { contactFailure } from './dedicated-candidate-validation/route-contacts';
 import { routeFailure } from './dedicated-candidate-validation/route-geometry';
+import { routeScore } from './dedicated-candidate-validation/route-score';
 import type {
 	DedicatedCandidateValidation,
 	DedicatedCandidateValidationInput,
 } from './dedicated-candidate-validation/types';
 import { prepareRouteObstacles } from './routing/route-obstacles';
 
+export {
+	compareDedicatedRouteScores,
+	scoreDedicatedCandidateRoutes,
+} from './dedicated-candidate-validation/route-score';
 export type {
 	DedicatedCandidateValidation,
 	DedicatedCandidateValidationInput,
@@ -57,5 +62,5 @@ export function validateDedicatedCandidate(
 	const analysis = routeBridgeAnalysis(input.layout.relations);
 	const contactRejection = contactFailure(input.layout, analysis);
 	if (contactRejection !== undefined) return contactRejection;
-	return { valid: true };
+	return { valid: true, score: routeScore(input.layout, analysis) };
 }
