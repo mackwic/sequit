@@ -8,17 +8,17 @@ describe('grid crossing allocation workshop model', () => {
 		const demos = gridCrossingAllocationDemos();
 		expect(demos.map(({ id }) => id)).toEqual([
 			'grid-allocation-2x2',
-			'grid-allocation-3x2-truncated',
+			'grid-allocation-3x2-pruned',
 			'grid-allocation-noncanonical-bus',
 		]);
 		expect(demos.map(({ winningPhase }) => winningPhase)).toEqual([
 			CrossingAllocationPhaseId.Reallocate,
-			CrossingAllocationPhaseId.Bridge,
+			CrossingAllocationPhaseId.Reallocate,
 			CrossingAllocationPhaseId.Reallocate,
 		]);
 
-		const [basic, truncated, noncanonical] = demos;
-		if (basic === undefined || truncated === undefined || noncanonical === undefined)
+		const [basic, pruned, noncanonical] = demos;
+		if (basic === undefined || pruned === undefined || noncanonical === undefined)
 			throw new Error('Expected the three grid allocation demos.');
 		expect(basic.selected.cells).toHaveLength(4);
 		expect(basic.selected.witness.phases[0]).toMatchObject({
@@ -31,16 +31,18 @@ describe('grid crossing allocation workshop model', () => {
 			false,
 			false,
 		]);
-		expect(truncated.selected.cells).toHaveLength(6);
-		expect(truncated.selected.witness.phases.slice(0, 2).map(({ truncated: cut }) => cut)).toEqual([
-			true,
-			true,
-		]);
-		expect(truncated.selected.witness.phases[2]).toMatchObject({
-			id: CrossingAllocationPhaseId.Bridge,
-			attempted: true,
+		expect(pruned.selected.cells).toHaveLength(6);
+		expect(pruned.selected.witness.phases[0]).toMatchObject({
+			id: CrossingAllocationPhaseId.Reallocate,
+			exploredGeometries: 2,
+			totalGeometries: '144',
+			truncated: false,
 			selected: true,
 		});
+		expect(pruned.selected.witness.phases.slice(1).map(({ attempted }) => attempted)).toEqual([
+			false,
+			false,
+		]);
 		expect(noncanonical.busOrder).toEqual(['a-b', 'a-d', 'a-c']);
 		expect(noncanonical.tracks).toEqual([
 			{ relationId: 'a-b', color: '#bf4f36', busTrack: 0, railLabel: 'G1·0' },

@@ -25,13 +25,7 @@ import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import {} from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
-import { searchGridCrossingAllocations } from '../../../../src/lib/core/layout/grid-cell-crossing-search';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import {
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	effectiveRouteGeometry,
 	variedGridRoutingCase,
@@ -241,49 +235,6 @@ describe('grid crossing allocation', () => {
 			expect(candidates.length).toBeGreaterThan(0);
 			expect(BigInt(candidates.length)).toBe(phase.totalGeometries(input));
 		}
-	});
-
-	it('keeps synthetic search-contract failures typed when every bounded phase truncates', () => {
-		const input = allocationInput();
-		let attempted = 0;
-		const result = searchGridCrossingAllocations(input, (allocation) => {
-			attempted += 1;
-			return {
-				candidate: allocation,
-				failure: regionGeometryDiagnostic(
-					RegionGeometryDiagnosticCode.ParentRouteContact,
-					`Blocked geometry ${attempted}`,
-					{ relationId: 'a-b' },
-				),
-			};
-		});
-		if ('selected' in result) throw new Error('Rejected geometries cannot be selected.');
-		expect(attempted).toBe(3 * 256);
-		expect(result.failure).toMatchObject({
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			message: `Blocked geometry ${attempted}`,
-		});
-		expect(result.witness.attempted).toBe(attempted);
-		expect(result.witness.exhaustive).toBe(false);
-		expect(
-			result.witness.phases.map(
-				({ attempted: phaseAttempted, exploredGeometries, exhaustive, truncated, selected }) => ({
-					attempted: phaseAttempted,
-					exploredGeometries,
-					exhaustive,
-					truncated,
-					selected,
-				}),
-			),
-		).toEqual(
-			Array.from({ length: 3 }, () => ({
-				attempted: true,
-				exploredGeometries: 256,
-				exhaustive: false,
-				truncated: true,
-				selected: false,
-			})),
-		);
 	});
 
 	it('is deterministic across calls', () => {

@@ -33,7 +33,7 @@ export function variedGridRoutingCase(
 	seed: number,
 	sameRail = false,
 ): VariedGridRoutingCase {
-	let rowCount = 1 + (seed % 2);
+	let rowCount = 1 + (seed % 3);
 	if (sameRail) rowCount = 2;
 	const crossing = Array.from({ length: crossingCount }, (_, index): LogicRelation => {
 		let from = `source-${index}`;

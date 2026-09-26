@@ -57,6 +57,8 @@ export interface CrossingAllocationPhase {
 	readonly totalGeometries: (input: CrossingAllocationInput) => bigint;
 	readonly candidates: (
 		input: CrossingAllocationInput,
+		active?: ReadonlySet<string>,
+		prioritizeBus?: boolean,
 	) => Generator<GridCrossingAllocation, undefined, undefined>;
 }
 
@@ -113,21 +115,23 @@ export function crossingAllocationPhases(
 			budget: budgets.reallocate,
 			acceptBridges: false,
 			totalGeometries: crossingAllocationGeometryCount,
-			candidates: () => crossingAllocationCandidates(input),
+			candidates: (_input, active, prioritizeBus) =>
+				crossingAllocationCandidates(input, active, prioritizeBus),
 		},
 		{
 			id: CrossingAllocationPhaseId.ExtraTrack,
 			budget: budgets.extraTrack,
 			acceptBridges: false,
 			totalGeometries: (allocationInput) => crossingAllocationGeometryCount(allocationInput, 1),
-			candidates: () => crossingAllocationCandidatesWithExtraTrack(input),
+			candidates: (_input, active) => crossingAllocationCandidatesWithExtraTrack(input, active),
 		},
 		{
 			id: CrossingAllocationPhaseId.Bridge,
 			budget: budgets.bridge,
 			acceptBridges: true,
 			totalGeometries: crossingAllocationGeometryCount,
-			candidates: () => crossingAllocationCandidates(input),
+			candidates: (_input, active, prioritizeBus) =>
+				crossingAllocationCandidates(input, active, prioritizeBus),
 		},
 	];
 }

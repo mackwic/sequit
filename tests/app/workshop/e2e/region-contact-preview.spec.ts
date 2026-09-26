@@ -89,7 +89,7 @@ test('the grid allocation workshop explains exact route geometry search', async 
 
 	const explorer = page.getByRole('region', { name: 'Allocation de grille' });
 	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
-	const truncated = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-truncated');
+	const pruned = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-pruned');
 	const noncanonical = explorer.getByTestId(
 		'grid-allocation-case-grid-allocation-noncanonical-bus',
 	);
@@ -113,23 +113,16 @@ test('the grid allocation workshop explains exact route geometry search', async 
 		await expect(phase).toHaveAttribute('data-truncated', 'false');
 	}
 
-	await expect(truncated.getByTestId('grid-allocation-winner')).toContainText('Pont validé');
-	await expect(truncated.getByTestId('grid-allocation-phase-reallocate')).toContainText(
-		'256 / 2592',
-	);
-	await expect(truncated.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
+	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
+	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('2 / 144');
+	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
 		'data-truncated',
-		'true',
+		'false',
 	);
-	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toContainText(
-		'256 / 11232',
-	);
-	await expect(truncated.getByTestId('grid-allocation-phase-extra-track')).toHaveAttribute(
-		'data-truncated',
-		'true',
-	);
-	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('1 / 2592');
-	await expect(truncated.getByTestId('grid-allocation-phase-bridge')).toContainText('Retenue');
+	for (const phaseId of ['extra-track', 'bridge'])
+		await expect(pruned.getByTestId(`grid-allocation-phase-${phaseId}`)).toContainText(
+			'Non tentée',
+		);
 
 	await expect(noncanonical.getByTestId('grid-allocation-retained')).toContainText(
 		'Bus : a-b → a-d → a-c',
@@ -137,7 +130,7 @@ test('the grid allocation workshop explains exact route geometry search', async 
 
 	for (const [card, relationIds] of [
 		[twoByTwo, ['a-d']],
-		[truncated, ['a-b', 'a-c', 'c-f']],
+		[pruned, ['a-b', 'a-c', 'c-f']],
 		[noncanonical, ['a-b', 'a-c', 'a-d']],
 	] as const) {
 		for (const relationId of relationIds) {

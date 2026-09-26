@@ -113,7 +113,7 @@ function twoByTwo(): GridDefinition {
 	};
 }
 
-function threeByTwo(truncated: boolean): GridDefinition {
+function threeByTwo(conflicted: boolean): GridDefinition {
 	const endpointIds = ['a', 'b', 'c', 'd', 'e', 'f'];
 	const cellIds = ['a', 'b', 'c', 'd', 'e', 'f'];
 	const relations: LogicRelation[] = [];
@@ -121,11 +121,11 @@ function threeByTwo(truncated: boolean): GridDefinition {
 	let id: string;
 	let title: string;
 	let description: string;
-	if (truncated) {
-		id = 'grid-allocation-3x2-truncated';
-		title = 'Grille trois par deux · piste tronquée';
+	if (conflicted) {
+		id = 'grid-allocation-3x2-pruned';
+		title = 'Grille trois par deux · conflits ciblés';
 		description =
-			'La réaffectation puis la piste atteignent chacune leur budget ; le pont validé est tenté et retenu.';
+			'Les permutations ciblent les routes en conflit : la réaffectation suffit avant la piste et le pont.';
 		relations.push(
 			{ id: 'a-b', from: 'a', to: 'b' },
 			{ id: 'a-c', from: 'a', to: 'c' },

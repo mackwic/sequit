@@ -186,11 +186,21 @@ function routesOverlap(first: LayoutRelation, second: LayoutRelation): boolean {
 	return false;
 }
 
-export function crossingOverlap(routes: readonly LayoutRelation[]): string | undefined {
+export interface CrossingOverlap {
+	readonly firstId: string;
+	readonly secondId: string;
+	readonly message: string;
+}
+
+export function crossingOverlap(routes: readonly LayoutRelation[]): CrossingOverlap | undefined {
 	for (const [index, first] of routes.entries()) {
 		for (const second of routes.slice(index + 1)) {
 			if (routesOverlap(first, second))
-				return `Cross-cell relations ${first.id} and ${second.id} overlap.`;
+				return {
+					firstId: first.id,
+					secondId: second.id,
+					message: `Cross-cell relations ${first.id} and ${second.id} overlap.`,
+				};
 		}
 	}
 	return undefined;

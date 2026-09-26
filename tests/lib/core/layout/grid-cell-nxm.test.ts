@@ -142,37 +142,14 @@ describe('N by M grid composition', () => {
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, cellInput);
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		expect(result.witness.phases).toEqual([
-			{
-				id: CrossingAllocationPhaseId.Reallocate,
-				attempted: true,
-				exploredGeometries: 256,
-				totalGeometries: '2592',
-				exhaustive: false,
-				truncated: true,
-				selected: false,
-			},
-			{
-				id: CrossingAllocationPhaseId.ExtraTrack,
-				attempted: true,
-				exploredGeometries: 256,
-				totalGeometries: '11232',
-				exhaustive: false,
-				truncated: true,
-				selected: false,
-			},
-			{
-				id: CrossingAllocationPhaseId.Bridge,
-				attempted: true,
-				exploredGeometries: 1,
-				totalGeometries: '2592',
-				exhaustive: false,
-				truncated: false,
-				selected: true,
-			},
-		]);
-		expect(validatedBridges(result.layout.relations).length).toBeGreaterThan(0);
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
+		const reallocation = result.witness.phases[0];
+		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
+		expect(reallocation.selected).toBe(true);
+		expect(reallocation.exploredGeometries).toBeLessThan(256);
+		expect(Number(reallocation.totalGeometries)).toBeLessThan(256);
+		expect(result.witness.phases.slice(1).every(({ attempted }) => !attempted)).toBe(true);
+		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);
 		const secondColumn = result.cells.find(({ column }) => column === 1);
 		if (firstColumn === undefined || secondColumn === undefined)

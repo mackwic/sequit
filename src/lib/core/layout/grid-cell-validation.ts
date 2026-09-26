@@ -280,7 +280,14 @@ function relationGeometry(
 		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPort, stacking);
 	const overlap = crossingOverlap(crossing.map(({ id }) => defined(routes.get(id))));
 	if (overlap !== undefined)
-		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingOverlap, overlap);
+		return regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridCrossingOverlap,
+			overlap.message,
+			{
+				relationId: overlap.firstId,
+				relatedRelationId: overlap.secondId,
+			},
+		);
 	return undefined;
 }
 
