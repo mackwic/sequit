@@ -64,9 +64,15 @@ describe('joint symbolic contract versus real materialization', () => {
 			),
 		),
 	)(
-		'contains a branch realized by the real pipeline in $direction, $order, $variant',
+		'contains the fixed-order branch realized by the real pipeline in $direction, $order, $variant',
 		async ({ direction, order, variant }) => {
-			const witness = await runRealK32Witness(direction, order, variant);
+			const witness = await runRealK32Witness(
+				direction,
+				order,
+				variant,
+				realK32Fixture(direction, order, variant),
+				'documentary',
+			);
 			expect(witness.summary.assessment).toBe('confirmed');
 			const contract = solveJointK32Contract(
 				candidateInput(direction, order, variant, witness.ranks),

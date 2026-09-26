@@ -221,7 +221,17 @@ export async function compareAdjacentBridgeAndDetour(
 	};
 	const graph = requireDemoGraph(fixture.document, 'The adjacent comparison document');
 	const ranked = topologicallyRank(graph);
-	const dedicated = await runRealK32Witness(direction, targetOrder, variant, fixture);
+	const dedicated = await runRealK32Witness(
+		direction,
+		targetOrder,
+		variant,
+		fixture,
+		'documentary',
+	);
+	if (dedicated.summary.assessment !== 'confirmed')
+		throw new Error(
+			`Dedicated adjacent witness is unproven: ${dedicated.summary.diagnostics.join('; ')}`,
+		);
 	const resolution = resolveIndependentAdjacentContract(graph, ranked, fixture.measurements);
 	requireSelectedDemoResult(
 		resolution,
@@ -229,10 +239,6 @@ export async function compareAdjacentBridgeAndDetour(
 		'Independent adjacent comparison',
 	);
 	const selectedResolution = resolution;
-	if (dedicated.summary.assessment !== 'confirmed')
-		throw new Error(
-			`Dedicated adjacent witness is unproven: ${dedicated.summary.diagnostics.join('; ')}`,
-		);
 	if (!sameRanks(dedicated.ranks, ranked.byEndpointId))
 		throw new Error('Dedicated and independent adjacent ranks differ.');
 	if (

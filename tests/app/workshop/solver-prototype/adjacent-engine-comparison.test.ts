@@ -27,9 +27,10 @@ import {
 	buildAdjacentLayoutContract,
 	LayoutContractBuildStatus,
 } from '../../../../src/lib/core/layout/contract/layout-contract';
-import type {
-	LayoutMeasurements,
-	LayoutResult,
+import {
+	type LayoutMeasurements,
+	type LayoutResult,
+	RoutingPortRole,
 } from '../../../../src/lib/core/layout/layout-types';
 import { layoutRouteCost } from '../../../../src/lib/core/layout/routing/route-cost';
 import { routeCrossings } from '../../../support/assertions/route-geometry';
@@ -182,6 +183,12 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 		expect(comparison.dedicated.metrics.routeLength).toBe(896);
 		expect(comparison.dedicated.metrics.crossings).toBe(2);
 		expect(comparison.dedicated.metrics.bridges).toBe(2);
+		const dedicatedTarget = comparison.dedicated.layout.routingInspection?.nodes.find(
+			({ id }) => id === 'd',
+		);
+		expect(
+			dedicatedTarget?.ports.filter(({ role }) => role === RoutingPortRole.Incoming),
+		).toHaveLength(3);
 		expect(
 			renderRelationPaths(comparison.dedicated.layout.relations).reduce(
 				(count, relation) => count + (relation.path.match(/\bA /g)?.length ?? 0),
