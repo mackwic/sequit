@@ -702,6 +702,12 @@ it('keeps every relation attached when port growth exposes an independent corrid
 		groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
 	});
 	assertDisjointNodesAndForeignGroups(document, layout);
+	const newCorridor = layout.relations.find((route) => route.id === 'a-d');
+	const reusableRail = layout.relations.find((route) => route.id === 'c-e');
+	if (newCorridor === undefined || reusableRail === undefined)
+		throw new Error('The independent and reusable routes must exist');
+	// The independent link enters the allocated corridor instead of creating a private rail.
+	expect(newCorridor.points[1]?.x).toBe(reusableRail.points[1]?.x);
 	AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
 		.routes()
 		.areOrthogonal()

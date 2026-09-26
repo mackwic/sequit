@@ -26,8 +26,9 @@ import {
 import { allocatePorts, type PortAllocation } from './routing/port-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
-import { crossingCorridors } from './routing/routing-corridors';
+import { crossingCorridors, type RoutingCorridor } from './routing/routing-corridors';
 import { directRoutingSpace, routingSpace } from './routing/routing-space';
+import { settleGroupCorridorPorts } from './routing/settle-group-corridors';
 import { bypassedChains } from './structure/bypassed-chains';
 import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
@@ -161,14 +162,14 @@ function reserveLayeredRouting(
 function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number, number>): void {
 	const { structure, measurements, frame, placement } = workspace;
 	const { graph, ranks } = structure;
-	const corridors = crossingCorridors({
+	let corridors: readonly RoutingCorridor[] = crossingCorridors({
 		graph,
 		ranks: ranks.byEndpointId,
 		bounds: placement.bounds,
 		vertical: frame.vertical,
 	});
 	if (corridors.length === 0) return;
-	const ports = allocatePorts({
+	let ports = allocatePorts({
 		corridors,
 		fromCrossingCorridors: true,
 		sizes: measurements.content.nodes,
@@ -177,6 +178,19 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		bounds: placement.bounds,
 	});
 	placeWithPorts(workspace, ports, { gaps: baseGaps });
+	if (structure.hierarchy !== undefined)
+		({ corridors, ports } = settleGroupCorridorPorts({
+			graph,
+			ranks: ranks.byEndpointId,
+			bounds: placement.bounds,
+			vertical: frame.vertical,
+			sizes: measurements.content.nodes,
+			initial: corridors,
+			initialPorts: ports,
+			place: (candidate) => {
+				placeWithPorts(workspace, candidate, { gaps: baseGaps });
+			},
+		}));
 	const routing = planNodeRouting({
 		corridors,
 		ports,
