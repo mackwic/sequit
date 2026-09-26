@@ -102,12 +102,15 @@ function laneRouteSelectionMeetsLowerBound<Selection extends ParallelSelectionEv
 		minimumLength += lowerBound.length;
 		minimumBends += lowerBound.bends;
 	}
-	for (const incident of ranked.selected.incidents) {
-		const lowerBound = pathLowerBound(incident.points);
-		minimumLength += lowerBound.length;
-		minimumBends += lowerBound.bends;
-	}
 	return ranked.length === minimumLength && ranked.bends === minimumBends;
+}
+
+function laneSearchCanStop<Selection extends ParallelSelectionEvidence>(
+	contracts: readonly RegionIncidentContract[],
+	ranked: RankedLaneRouteSelection<Selection> | undefined,
+): boolean {
+	if (contracts.length > 0 || ranked === undefined) return false;
+	return laneRouteSelectionMeetsLowerBound(ranked);
 }
 
 export function searchParallelRouteAllocations<Selection extends ParallelSelectionEvidence>(
@@ -126,7 +129,7 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 			input,
 			acceptBridges,
 		);
-		if (best !== undefined && laneRouteSelectionMeetsLowerBound(best)) {
+		if (best !== undefined && laneSearchCanStop(contracts, best)) {
 			const exhaustive = BigInt(attempted) === BigInt(total);
 			passes.push({
 				acceptBridges,
