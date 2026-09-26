@@ -27,7 +27,7 @@ function topologyRows(structure: LayoutStructure, domain: RankOrderDomain) {
 	for (const component of structure.components) {
 		const offset = rows.length;
 		for (const [rank, ordinary] of component.rows.ordinary.entries()) {
-			const junction = component.rows.junction[rank] ?? [];
+			const junction = defined(component.rows.junction[rank]);
 			const ids = [...ordinary, ...junction];
 			rows.push(ids);
 			for (const id of ids) endpointRanks.set(id, offset + rank);
@@ -54,9 +54,8 @@ function appendSegments(
 	},
 ): void {
 	const { endpointRanks, relations, segments } = context;
-	const fromRank = endpointRanks.get(sourceId);
-	const toRank = endpointRanks.get(targetId);
-	if (fromRank === undefined || toRank === undefined) return;
+	const fromRank = defined(endpointRanks.get(sourceId));
+	const toRank = defined(endpointRanks.get(targetId));
 	if (fromRank === toRank) return;
 	const intermediate: { rank: number; id: string }[] = [];
 	const direction = Math.sign(toRank - fromRank);

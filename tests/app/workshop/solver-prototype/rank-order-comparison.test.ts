@@ -421,6 +421,13 @@ describe('rank order stability under document edits', () => {
 				medianTranslation: { x: 8, y: 0 },
 			},
 		});
+		const independent = unrelated?.components.find(({ ids }) => ids.includes('a'));
+		expect(independent).toMatchObject({ touched: false, selected: { invertedRankPairs: 0 } });
+		const optimizedBand = (bands: readonly (readonly string[])[] | undefined) =>
+			bands?.find((band) => band.includes('a'))?.filter((id) => ['a', 'b', 'c'].includes(id));
+		expect(optimizedBand(unrelated?.beforeWitness.selectedOrder)).toEqual(
+			optimizedBand(unrelated?.afterWitness.selectedOrder),
+		);
 		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.7);
 		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.8);
 		expect(unrelated?.meanRelativeNormalizedMovement).toBeCloseTo(0.04457);

@@ -28,11 +28,12 @@
 		<p class="eyebrow">Même domaine de rangs · proxy et géométrie validée</p>
 		<h2>Ordre documentaire contre meilleur ordre énuméré</h2>
 		<p>
-			L'énumération abstraite compte les inversions de relations, y compris les liaisons longues
-			projetées entre rangs, sans dimensions mesurées. La recherche classe les ordres par topologie,
-			puis proximité documentaire. Elle n'admet que les layouts géométriquement valides dont les
-			croisements réels (puis les ponts à égalité) ne dépassent pas ceux de l'ordre documentaire. Le
-			minimum géométrique est calculé séparément sur les petits cas.
+			Le petit corpus énumère les inversions de relations adjacentes. La recherche de production
+			compte aussi les liaisons longues projetées entre rangs, sans dimensions mesurées, puis classe
+			les ordres par topologie et proximité documentaire. Elle n'admet que les layouts
+			géométriquement valides dont les croisements réels (puis les ponts à égalité) ne dépassent pas
+			ceux de l'ordre documentaire. Le minimum géométrique est calculé séparément sur les petits
+			cas.
 		</p>
 	</header>
 	<table>
