@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
+import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import {
 	compareDedicatedRouteScores,
 	scoreDedicatedCandidateRoutes,
+	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 
 const crossingLayout: LayoutResult = {
 	width: 100,
@@ -42,53 +48,30 @@ describe('dedicated candidate route scoring', () => {
 		});
 	});
 
-	it('counts changes between maximal route runs as bends', () => {
-		const layout: LayoutResult = {
-			...crossingLayout,
-			relations: [
-				{
-					id: 'detour',
-					from: 'west',
-					to: 'south',
-					points: [
-						{ x: 0, y: 0 },
-						{ x: 10, y: 0 },
-						{ x: 20, y: 0 },
-						{ x: 10, y: 0 },
-						{ x: 10, y: 10 },
-					],
-				},
-			],
-		};
-		expect(scoreDedicatedCandidateRoutes(layout)).toEqual({
-			strictCrossings: 0,
-			validatedBridges: 0,
-			length: 40,
-			bends: 2,
-		});
-	});
-
-	it('counts Manhattan length while ignoring non-orthogonal spans as bends', () => {
-		const layout: LayoutResult = {
-			...crossingLayout,
-			relations: [
-				{
-					id: 'diagonal',
-					from: 'west',
-					to: 'south',
-					points: [
-						{ x: 0, y: 0 },
-						{ x: 10, y: 10 },
-					],
-				},
-			],
-		};
-		expect(scoreDedicatedCandidateRoutes(layout)).toEqual({
-			strictCrossings: 0,
-			validatedBridges: 0,
-			length: 20,
-			bends: 0,
-		});
+	it('scores two fully validated dedicated layouts by their materialized crossings', () => {
+		const scores = rankOrderComparisonCorpus()
+			.slice(0, 2)
+			.map(({ document }) => {
+				const created = createGraph(document);
+				if (!created.ok) throw new Error('Expected a valid rank-order case');
+				const graph = created.value;
+				const ranks = topologicallyRank(graph);
+				const measurements = layoutMeasurementsFor(document);
+				const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+				const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
+				if (!validation.valid)
+					throw new Error(`Expected validated candidate, got ${validation.code}`);
+				expect(scoreDedicatedCandidateRoutes(layout)).toEqual(validation.score);
+				return validation.score;
+			});
+		expect(scores).toEqual([
+			{ strictCrossings: 4, validatedBridges: 4, length: 1408, bends: 8 },
+			{ strictCrossings: 3, validatedBridges: 3, length: 1056, bends: 8 },
+		]);
+		const first = scores[0];
+		const second = scores[1];
+		if (first === undefined || second === undefined) throw new Error('Expected two scores');
+		expect(compareDedicatedRouteScores(first, second)).toBe(1);
 	});
 
 	it('compares crossings and bridges lexicographically, not observed length or bends', () => {
