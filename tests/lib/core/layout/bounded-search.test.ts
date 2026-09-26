@@ -19,10 +19,10 @@ describe('bounded layout search examples', () => {
 				{ id: 'later', score: 1 },
 			],
 			budget: 3,
-			evaluate: (alternative) => ({
-				evaluation: alternative.id,
-				...(alternative.id === 'rejected' ? {} : { selection: alternative }),
-			}),
+			evaluate: (alternative) => {
+				if (alternative.id === 'rejected') return { evaluation: alternative.id };
+				return { evaluation: alternative.id, selection: alternative };
+			},
 			better: (candidate, incumbent) => candidate.score < incumbent.score,
 		});
 
@@ -64,7 +64,8 @@ describe('bounded layout search examples', () => {
 			total: '100000000000000000000',
 			evaluate: (candidate) => {
 				visited.push(candidate);
-				return candidate === 9 ? undefined : candidate;
+				if (candidate === 9) return undefined;
+				return candidate;
 			},
 			better: (candidate, incumbent) => candidate < incumbent,
 		});
@@ -84,7 +85,7 @@ describe('bounded layout search examples', () => {
 		const result = bestWithinBudgetStream({
 			alternatives: [9, 4, 4],
 			budget: 3,
-			total: 3,
+			total: '3',
 			evaluate: (candidate) => {
 				visited.push(candidate);
 				return candidate;
@@ -94,7 +95,7 @@ describe('bounded layout search examples', () => {
 
 		expect(result).toEqual({
 			attempted: 3,
-			total: 3,
+			total: '3',
 			exhaustive: true,
 			truncated: false,
 			incumbent: 4,
@@ -107,15 +108,15 @@ describe('bounded layout search examples', () => {
 		const result = bestWithinBudgetStream({
 			alternatives: [2, 3],
 			budget: 2,
-			total: 2,
+			total: '2',
 			evaluate: (candidate) => {
 				visited.push(candidate);
 				return undefined;
 			},
-			better: (candidate, incumbent) => candidate < incumbent,
+			better: () => false,
 		});
 
-		expect(result).toEqual({ attempted: 2, total: 2, exhaustive: true, truncated: false });
+		expect(result).toEqual({ attempted: 2, total: '2', exhaustive: true, truncated: false });
 		expect(result).not.toHaveProperty('incumbent');
 		expect(visited).toEqual([2, 3]);
 	});
@@ -125,12 +126,13 @@ describe('bounded layout search examples', () => {
 		const rejected: string[] = [];
 		const backtracked: string[] = [];
 		const exhausted: string[][] = [];
-		const result = firstValidDepthFirst({
+		const result = firstValidDepthFirst<string, string>({
 			levels: 2,
 			counter,
 			choices: (level, prefix) => {
 				if (level === 0) return ['blocked', 'a', 'b'];
-				return prefix[0] === 'a' ? ['dead-1', 'dead-2'] : ['route-b'];
+				if (prefix[0] === 'a') return ['dead-1', 'dead-2'];
+				return ['route-b'];
 			},
 			accept: (level, _choice, prefix) => {
 				if (level === 0 && prefix.length === 0 && _choice === 'blocked') return 'port unavailable';
@@ -155,10 +157,13 @@ describe('bounded layout search examples', () => {
 
 	it('marks a first-valid search truncated when its next level cannot reserve work', () => {
 		const onBacktrack: string[] = [];
-		const result = firstValidDepthFirst({
+		const result = firstValidDepthFirst<string, string>({
 			levels: 2,
 			counter: boundedCounter(1),
-			choices: (level) => (level === 0 ? ['source'] : ['target']),
+			choices: (level) => {
+				if (level === 0) return ['source'];
+				return ['target'];
+			},
 			accept: () => undefined,
 			onReject: () => undefined,
 			onBacktrack: (_level, choice) => onBacktrack.push(choice),

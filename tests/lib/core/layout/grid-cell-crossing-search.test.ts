@@ -12,9 +12,9 @@ import {
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import {
-	crossingCanonicalBusGeometryCount,
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
+	crossingCanonicalBusGeometryCount,
 	type GridCrossingAllocationBudgets,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import {
@@ -92,14 +92,14 @@ describe('grid crossing allocation search examples', () => {
 		).length;
 		expect(crossingCanonicalBusGeometryCount(input)).toBe(BigInt(canonicalBlockSize));
 
-		const blockedColumns = new Set(
-			input.gutterIds.flatMap((ids, column) => (ids.length > 0 ? [column] : [])),
-		);
+		const blockedColumns = new Set<number>();
+		for (const [column, ids] of input.gutterIds.entries())
+			if (ids.length > 0) blockedColumns.add(column);
 		expect(blockedColumns.size).toBeGreaterThan(0);
 		const blockedInput = { ...input, blockedExtraGutterColumns: blockedColumns };
 		const extraTrack = defined(crossingAllocationPhases(blockedInput)[1]);
-		expect(extraTrack.totalGeometries(blockedInput)).toBe(0n);
-		expect([...extraTrack.candidates(blockedInput)]).toEqual([]);
+		expect(extraTrack.totalGeometries()).toBe(0n);
+		expect([...extraTrack.candidates()]).toEqual([]);
 	});
 
 	it('uses observed crossing conflicts to prioritize only the affected tracks before the bridge phase', () => {
@@ -224,9 +224,9 @@ describe('grid crossing allocation search examples', () => {
 		const fixture = variedGridRoutingCase(2, 2, 0);
 		const phases = crossingAllocationPhases(fixture.input);
 		const budgets: GridCrossingAllocationBudgets = {
-			reallocate: Number(defined(phases[0]).totalGeometries(fixture.input)),
-			extraTrack: Number(defined(phases[1]).totalGeometries(fixture.input)),
-			bridge: Number(defined(phases[2]).totalGeometries(fixture.input)),
+			reallocate: Number(defined(phases[0]).totalGeometries()),
+			extraTrack: Number(defined(phases[1]).totalGeometries()),
+			bridge: Number(defined(phases[2]).totalGeometries()),
 		};
 		const result = searchGridCrossingAllocations(
 			fixture.input,
