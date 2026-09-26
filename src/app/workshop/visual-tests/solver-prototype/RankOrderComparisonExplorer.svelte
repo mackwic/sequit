@@ -69,8 +69,9 @@
 							?.validatedBridges ?? 'rejeté'}</td
 					>
 					<td
-						>{entry.witness.mode} · {entry.witness.stop} · {entry.witness.evaluated} pipelines · {entry
-							.witness.rejected.length} rejets</td
+						>{entry.witness.mode} · {entry.witness.stop} · {entry.witness.work
+							.localCompletePipelines} pipelines locaux + {entry.witness.work
+							.globalCompletePipelines} globaux · {entry.witness.rejected.length} rejets</td
 					>
 					<td>{entry.enumeratedCount}</td>
 					<td>{verdict(entry)}</td>
@@ -84,10 +85,11 @@
 	<header>
 		<h2>Stabilité après modification du document</h2>
 		<p>
-			Déplacement du centre des boîtes communes, normalisé par leur diagonale précédente. Les ports
-			et les tracés sont comparés en coordonnées absolues : un déplacement d'une composante entière
-			les compte comme modifiés, même si son ordre interne reste identique. Longueur et coudes
-			comparent uniquement les relations présentes dans les deux documents.
+			Chaque mutation est aussi rendue en ordre documentaire (témoin). Les amplitudes brutes
+			comptent les translations de vue ; les amplitudes relatives soustraient la translation médiane
+			des centres communs avant de normaliser par leur ancienne diagonale. Les ports et tracés
+			restent comparés en coordonnées absolues. Longueur et coudes comparent seulement les relations
+			conservées.
 		</p>
 	</header>
 	<table>
@@ -96,8 +98,9 @@
 				<th scope="col">Modification</th>
 				<th scope="col">Éléments ± · relations ±</th>
 				<th scope="col">Croisements validés avant → après</th>
-				<th scope="col">Boîtes communes déplacées</th>
-				<th scope="col">Déplacement moyen · maximal</th>
+				<th scope="col">Boîtes déplacées, choisi / documentaire</th>
+				<th scope="col">Amplitude brute · relative, choisi / documentaire</th>
+				<th scope="col">Boîtes refluées après translation médiane, choisi / documentaire</th>
 				<th scope="col">Rangs modifiés</th>
 				<th scope="col">Ports · tracés modifiés</th>
 				<th scope="col">Longueur commune avant → après</th>
@@ -113,11 +116,20 @@
 						>+{mutation.addedElements} / −{mutation.removedElements} · +{mutation.addedRelations} / −{mutation.removedRelations}</td
 					>
 					<td>{mutation.beforeCrossings ?? 'rejeté'} → {mutation.afterCrossings ?? 'rejeté'}</td>
-					<td>{mutation.movedElements} / {mutation.commonElements}</td>
 					<td
-						>{mutation.meanNormalizedMovement.toFixed(2)} · {mutation.maxNormalizedMovement.toFixed(
+						>{mutation.movedElements} / {mutation.commonElements} · {mutation.documentary
+							.movedElements} / {mutation.documentary.commonElements}</td
+					>
+					<td
+						>{mutation.meanNormalizedMovement.toFixed(2)} · {mutation.meanRelativeNormalizedMovement.toFixed(
+							2,
+						)} / {mutation.documentary.meanNormalizedMovement.toFixed(2)} · {mutation.documentary.meanRelativeNormalizedMovement.toFixed(
 							2,
 						)}</td
+					>
+					<td
+						>{mutation.relativeMovedElements} / {mutation.commonElements} · {mutation.documentary
+							.relativeMovedElements} / {mutation.documentary.commonElements}</td
 					>
 					<td>{mutation.rankChanges} / {mutation.commonElements}</td>
 					<td>{mutation.portChanges} · {mutation.pathChanges} / {mutation.commonRelations}</td>
@@ -125,7 +137,12 @@
 					<td>{mutation.commonBendsBefore} → {mutation.commonBendsAfter}</td>
 					<td
 						>{mutation.beforeWitness.stop} → {mutation.afterWitness.stop} ({mutation.afterWitness
-							.evaluated} pipelines)</td
+							.work.localCompletePipelines} locaux + {mutation.afterWitness.work
+							.globalCompletePipelines} globaux) · budget local {mutation.beforeWitness.components
+							?.map((component) => component.pipelineLimit)
+							.join('+') ?? '—'} → {mutation.afterWitness.components
+							?.map((component) => component.pipelineLimit)
+							.join('+') ?? '—'}</td
 					>
 				</tr>
 			{/each}

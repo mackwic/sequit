@@ -103,7 +103,7 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 			nodes: new Map([...base.measurements.nodes].filter(([id]) => id !== 'c')),
 		},
 	);
-	const renamed = entry(base, document, {
+	const resized = entry(base, document, {
 		...base.measurements,
 		nodes: new Map([...base.measurements.nodes, ['b', { width: 144, height: 60 }]]),
 	});
@@ -137,6 +137,38 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 			]),
 		},
 	);
+	const frontierIds = Array.from({ length: 13 }, (_, index) => `frontier-${index}`);
+	const frontier = entry(
+		base,
+		{
+			...document,
+			nodes: [
+				...document.nodes,
+				...frontierIds.map((id) => ({
+					id,
+					kind: EndpointKind.Node as const,
+					natureId: 'task',
+					markdown: id,
+					layoutOrder: fractionalOrderKeySpace.keyFor({ before: lastKey }),
+				})),
+			],
+			relations: [
+				...document.relations,
+				...frontierIds.map((id, index) => {
+					let to = 'a';
+					if (index > 0) to = defined(frontierIds[index - 1]);
+					return { id: `frontier-route-${index}`, from: id, to };
+				}),
+			],
+		},
+		{
+			...base.measurements,
+			nodes: new Map([
+				...base.measurements.nodes,
+				...frontierIds.map((id) => [id, { width: 80, height: 40 }] as const),
+			]),
+		},
+	);
 	return [
 		{
 			id: 'add-relation',
@@ -157,10 +189,10 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 			}),
 		},
 		{
-			id: 'rename',
-			label: 'Renommer un nœud sans modifier le graphe',
+			id: 'measurement-change',
+			label: 'Modifier la largeur mesurée d’un nœud sans changer le graphe',
 			before: base,
-			after: renamed,
+			after: resized,
 		},
 		{ id: 'add-node', label: 'Ajouter un nœud et une relation', before: base, after: withNode },
 		{
@@ -174,6 +206,18 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 			label: 'Retirer un nœud et sa relation',
 			before: base,
 			after: withoutNode,
+		},
+		{
+			id: 'budget-frontier',
+			label: 'Ajouter une relation dans la composante optimisée au seuil local',
+			before: frontier,
+			after: entry(frontier, {
+				...frontier.document,
+				relations: [
+					...frontier.document.relations,
+					{ id: 'frontier-shortcut', from: defined(frontierIds[0]), to: 'b' },
+				],
+			}),
 		},
 		{
 			id: 'unrelated-shortcut',

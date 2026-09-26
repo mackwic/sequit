@@ -133,10 +133,11 @@ describe('rank order stability under document edits', () => {
 		expect(comparisons.map(({ id }) => id)).toEqual([
 			'add-relation',
 			'remove-relation',
-			'rename',
+			'measurement-change',
 			'add-node',
 			'add-isolated-node',
 			'remove-node',
+			'budget-frontier',
 			'unrelated-shortcut',
 		]);
 		const addition = comparisons.find(({ id }) => id === 'add-node');
@@ -180,9 +181,9 @@ describe('rank order stability under document edits', () => {
 		});
 	});
 
-	it('attributes a measurement-only rename and distinguishes relative motion from shared translation', () => {
-		const rename = comparisons.find(({ id }) => id === 'rename');
-		expect(rename).toMatchObject({
+	it('attributes a width-only measurement edit and distinguishes relative motion from shared translation', () => {
+		const resized = comparisons.find(({ id }) => id === 'measurement-change');
+		expect(resized).toMatchObject({
 			addedElements: 0,
 			removedElements: 0,
 			addedRelations: 0,
@@ -203,8 +204,8 @@ describe('rank order stability under document edits', () => {
 				relativeMovedElements: 2,
 			},
 		});
-		expect(rename?.meanRelativeNormalizedMovement).toBeCloseTo(0.328);
-		expect(rename?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.096);
+		expect(resized?.meanRelativeNormalizedMovement).toBeCloseTo(0.328);
+		expect(resized?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.096);
 	});
 
 	it('preserves the geometry and ports of an independent component under a node-only append', () => {
@@ -285,6 +286,54 @@ describe('rank order stability under document edits', () => {
 				{ id: 'invalid-edit', label: 'Duplicate relation', before, after: invalid },
 			]),
 		).toThrow(/duplicate-relation-id/);
+	});
+
+	it('crosses the local 17-to-18 relation frontier without resetting a valid optimum', () => {
+		const frontier = comparisons.find(({ id }) => id === 'budget-frontier');
+		expect(frontier).toMatchObject({
+			addedRelations: 1,
+			commonElements: 18,
+			rankChanges: 0,
+			commonRelations: 17,
+			movedElements: 13,
+			relativeMovedElements: 5,
+			medianTranslation: { x: 116, y: 0 },
+			portChanges: 13,
+			pathChanges: 13,
+			commonRouteLengthBefore: 1764,
+			commonRouteLengthAfter: 1880,
+			commonBendsBefore: 8,
+			commonBendsAfter: 10,
+			beforeCrossings: 0,
+			afterCrossings: 0,
+			beforeWitness: {
+				components: [
+					{
+						pipelineLimit: 12,
+						selected: [
+							['d', 'e'],
+							['a', 'c', 'b'],
+						],
+					},
+				],
+			},
+			afterWitness: {
+				components: [
+					{
+						pipelineLimit: 11,
+						selected: [
+							['d', 'e'],
+							['a', 'c', 'b'],
+						],
+					},
+				],
+			},
+			documentary: { movedElements: 13, relativeMovedElements: 5 },
+		});
+		expect(frontier?.meanNormalizedMovement).toBeCloseTo(0.937);
+		expect(frontier?.meanRelativeNormalizedMovement).toBeCloseTo(0.322);
+		expect(frontier?.documentary.meanNormalizedMovement).toBeCloseTo(0.533);
+		expect(frontier?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.166);
 	});
 
 	it('exposes a large physical packing shift without resetting the independent crossing optimum', () => {
