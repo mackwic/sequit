@@ -28,6 +28,7 @@ import {
 	type RankOrderInput,
 	validateRankOrder,
 } from '../../../../src/lib/core/layout/rank-order';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import {
 	deriveEndpointRows,
 	orderEndpoints,
@@ -303,6 +304,54 @@ describe('documentary rank order adapter', () => {
 				expect(documentary).toEqual(rows.ordinary);
 			}),
 			PROPERTY_PARAMETERS,
+		);
+	});
+});
+
+describe('explicit ordinary row preparation', () => {
+	it('preserves documentary packing while applying candidate order only within ordinary rows', () => {
+		fc.assert(
+			fc.property(documentCase, (document) => {
+				const created = createGraph(document);
+				if (!created.ok) return;
+				const graph = created.value;
+				const ranks = topologicallyRank(graph);
+				const documentary = prepareLayout(graph, ranks);
+				const candidate = documentary.rankOrderDomain.bands.map((band) => [...band].reverse());
+				const reordered = prepareLayout(graph, ranks, candidate);
+
+				expect(reordered.rankOrderDomain).toEqual(documentary.rankOrderDomain);
+				expect(
+					reordered.components.map(({ ids, effectiveOrder }) => ({ ids, effectiveOrder })),
+				).toEqual(
+					documentary.components.map(({ ids, effectiveOrder }) => ({ ids, effectiveOrder })),
+				);
+				expect(reordered.containment).toEqual(documentary.containment);
+				expect(reordered.components.flatMap(({ rows }) => rows.ordinary)).toEqual(candidate);
+				expect(reordered.components.map(({ rows }) => rows.junction)).toEqual(
+					documentary.components.map(({ rows }) => rows.junction),
+				);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('rejects an order that changes the row domains', () => {
+		const document = corpusDocument(
+			['a', 'b', 'c'],
+			['a', 'b', 'c'],
+			[{ id: 'r', from: 'a', to: 'c' }],
+		);
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected valid fixture graph');
+		const ranks = topologicallyRank(graph.value);
+		const structure = prepareLayout(graph.value, ranks);
+		const order = structure.rankOrderDomain.bands.map((band) => [...band]);
+		const firstBand = order[0];
+		if (firstBand === undefined) throw new Error('Expected a rank band');
+		order[0] = [...firstBand, 'outside-domain'];
+		expect(() => prepareLayout(graph.value, ranks, order)).toThrow(
+			/Invalid ordinary-row rank order/,
 		);
 	});
 });
