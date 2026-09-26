@@ -123,6 +123,9 @@ describe('layout workspace ownership', () => {
 				const preparedSnapshot = structuredClone(prepared);
 				const documentSnapshot = structuredClone(document);
 
+				const structureB = applyRankOrder(structure, domain, orderB);
+				const structureAAfterB = applyRankOrder(structureB, domain, orderA);
+				const structureBAfterA = applyRankOrder(structureAAfterB, domain, orderB);
 				const publicA = layoutWithDedicatedEngine(
 					prepared.graph,
 					prepared.ranks,
@@ -139,13 +142,13 @@ describe('layout workspace ownership', () => {
 					prepared.measurements,
 				);
 				const trialA1 = evaluateDedicatedLayout(
-					applyRankOrder(structure, domain, orderA),
+					structureAAfterB,
 					prepared.measurements,
 					{ inspectRouting: true },
 					true,
 				);
 				const trialB1 = evaluateDedicatedLayout(
-					applyRankOrder(structure, domain, orderB),
+					structureB,
 					prepared.measurements,
 					{ inspectRouting: true },
 					true,
@@ -157,7 +160,7 @@ describe('layout workspace ownership', () => {
 					true,
 				);
 				const trialB2 = evaluateDedicatedLayout(
-					applyRankOrder(structure, domain, orderB),
+					structureBAfterA,
 					prepared.measurements,
 					{ inspectRouting: true },
 					true,
@@ -166,6 +169,7 @@ describe('layout workspace ownership', () => {
 				expect(explicitA).toEqual(publicA);
 				expect(trialA1.result).toEqual(publicA);
 				expect(trialA1.complete()).toEqual(publicAInspected);
+				expect(trialB1.result).not.toEqual(trialA1.result);
 				expect(trialA1.result).toEqual(trialA2.result);
 				expect(trialA1.complete()).toEqual(trialA2.complete());
 				expect(trialB1.result).toEqual(trialB2.result);

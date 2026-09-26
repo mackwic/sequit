@@ -506,8 +506,8 @@ describe('ordinary node rank-order domains', () => {
 		expect(() => applyRankOrder(structure, domain, [])).toThrow(/Invalid ordinary-node rank order/);
 
 		const twoBandDocument = corpusDocument(
-			['a', 'b', 'c', 'd'],
-			['a', 'b', 'c', 'd'],
+			['a', 'b', 'c', 'd', 'isolated'],
+			['a', 'b', 'c', 'd', 'isolated'],
 			[
 				{ id: 'a-c', from: 'a', to: 'c' },
 				{ id: 'a-d', from: 'a', to: 'd' },
@@ -529,6 +529,29 @@ describe('ordinary node rank-order domains', () => {
 				['b', 'd'],
 			]),
 		).toThrow(/Invalid ordinary-node rank order/);
+		const connectedIndex = defined(twoBandDomain.locations[0]).componentIndex;
+		const connected = defined(twoBandStructure.components[connectedIndex]);
+		const firstRank = defined(twoBandDomain.locations[0]).rank;
+		const secondRank = defined(twoBandDomain.locations[1]).rank;
+		const unchangedBandRef = defined(connected.rows.ordinary[secondRank]);
+		const firstBand = defined(twoBandDomain.bands[0]);
+		const secondBand = defined(twoBandDomain.bands[1]);
+		const candidate: RankOrder = [[...firstBand].reverse(), secondBand];
+		const reordered = applyRankOrder(twoBandStructure, twoBandDomain, candidate);
+		const changedConnected = defined(reordered.components[connectedIndex]);
+		expect(changedConnected).not.toBe(connected);
+		expect(changedConnected.rows.ordinary[firstRank]).not.toBe(
+			defined(connected.rows.ordinary[firstRank]),
+		);
+		expect(changedConnected.rows.ordinary[secondRank]).toBe(unchangedBandRef);
+		const isolatedIndex = twoBandStructure.components.findIndex(({ ids }) =>
+			ids.includes('isolated'),
+		);
+		expect(reordered.components[isolatedIndex]).toBe(twoBandStructure.components[isolatedIndex]);
+		const returnedToDocumentary = applyRankOrder(reordered, twoBandDomain, twoBandDomain.bands);
+		expect(returnedToDocumentary.components[connectedIndex].rows.ordinary[firstRank]).toEqual(
+			connected.rows.ordinary[firstRank],
+		);
 	});
 });
 
