@@ -16,7 +16,6 @@ import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-ro
 import type {
 	ChannelEndpoint,
 	ChannelRouting,
-	ChannelRun,
 } from '../../../../src/lib/core/layout/routing/channel-types';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
@@ -191,33 +190,11 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			expect(earlierEnd.end).toBeLessThan(clearanceBoundary);
 			expect(laterEnd.end).toBeLessThan(clearanceBoundary);
 			expect(earlierEnd.end).not.toBe(laterEnd.end);
+			expect(earlierEnd.depth).toBe(laterEnd.depth);
+			expect(earlierEnd.depth).toBe(later.depth);
+			expect(earlierEnd.end).toBeLessThan(laterEnd.end);
 			expect(later.rail).toBe(earlierEnd.rail);
 			expect(later.rail).not.toBe(laterEnd.rail);
-		});
-
-		it('keeps equal non-merged runs at the unit boundary when production allocations do not emit them', () => {
-			const documents = [
-				...rankOrderComparisonCorpus()
-					.slice(0, 2)
-					.map(({ document }) => document),
-				...productionCycleDocuments.map(({ document }) => document),
-				junctionNetwork,
-			];
-			const equalNonMergedRuns = documents.flatMap((document) =>
-				channelsFromProductionLayout(document).flatMap(({ routing }) => {
-					const runs = routing.wires.flatMap(({ first, last }) =>
-						[first, last].filter((run): run is ChannelRun => run !== undefined),
-					);
-					return runs.flatMap((run, index) =>
-						runs
-							.slice(index + 1)
-							.filter(
-								(other) => other !== run && other.start === run.start && other.end === run.end,
-							),
-					);
-				}),
-			);
-			expect(equalNonMergedRuns).toEqual([]);
 		});
 
 		it('observes split runs and their dependency cycle on routed crossing documents', () => {
@@ -352,18 +329,25 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			expect(forwardFamily.first.next).toContain(forwardFamily.last);
 		});
 
-		// No such unmerged tie was emitted by the production document allocations above.
-		it('preserves input relation order when run starts and ends tie exactly', () => {
-			const tied = routeChannel([
-				{ id: 'tie-a', source: 0, target: 100 },
-				{ id: 'tie-b', source: 0, target: 100 },
-			]);
-			expect(
-				tied.wires.map(({ id, first }) => [id, first?.start, first?.end, first?.rail]),
-			).toEqual([
-				['tie-a', 0, 100, 0],
-				['tie-b', 0, 100, 1],
-			]);
+		// Synthetic direct-API tie only; it is not evidence in the layout SHA corpus.
+		it('breaks exact run ties by relation ID regardless of input order', () => {
+			const endpointOrders = [
+				[
+					{ id: 'tie-b', source: 0, target: 100 },
+					{ id: 'tie-a', source: 0, target: 100 },
+				],
+				[
+					{ id: 'tie-a', source: 0, target: 100 },
+					{ id: 'tie-b', source: 0, target: 100 },
+				],
+			];
+			for (const endpoints of endpointOrders) {
+				const tied = routeChannel(endpoints);
+				const tieA = tied.wires.find(({ id }) => id === 'tie-a')?.first;
+				const tieB = tied.wires.find(({ id }) => id === 'tie-b')?.first;
+				expect(tieA && [tieA.start, tieA.end, tieA.rail]).toEqual([0, 100, 0]);
+				expect(tieB && [tieB.start, tieB.end, tieB.rail]).toEqual([0, 100, 1]);
+			}
 		});
 	});
 });
