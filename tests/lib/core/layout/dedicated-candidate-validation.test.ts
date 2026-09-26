@@ -935,3 +935,42 @@ it('prefers fewer validated bridges at equal strict crossings regardless of rout
 	expect(compareDedicatedRouteScores(shorter, cleaner)).toBeGreaterThan(0);
 	expect(compareDedicatedRouteScores({ ...shorter, strictCrossings: 1 }, cleaner)).toBeLessThan(0);
 });
+
+it('accepts coincident nested group shells when the child ID sorts before its owner', () => {
+	const base = validLogicDocument();
+	const template = defined(base.nodes[0]);
+	const document: LogicDocument = {
+		...base,
+		groups: [
+			{
+				kind: EndpointKind.Group,
+				id: 'inner',
+				groupId: 'outer',
+				label: 'Inner',
+				layoutOrder: orderKey('a1'),
+			},
+			{
+				kind: EndpointKind.Group,
+				id: 'outer',
+				label: 'Outer',
+				layoutOrder: orderKey('a0'),
+			},
+		],
+		nodes: [
+			{ ...ungroupNode(template), id: 'member', groupId: 'inner', layoutOrder: orderKey('a2') },
+		],
+		junctions: [],
+		relations: [],
+	};
+	const measurement = { minimumWidth: 140, minimumHeight: 100, headerHeight: 0, padding: 0 };
+	const prepared = prepareLayoutDocument(document, {
+		nodes: { member: { width: 100, height: 60 } },
+		groups: { inner: measurement, outer: measurement },
+	});
+	const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
+	const inner = defined(layout.elements.find(({ id }) => id === 'inner'));
+	const outer = defined(layout.elements.find(({ id }) => id === 'outer'));
+
+	expect(inner.bounds).toEqual(outer.bounds);
+	expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
+});
