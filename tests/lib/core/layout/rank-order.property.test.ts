@@ -549,9 +549,9 @@ describe('ordinary node rank-order domains', () => {
 		);
 		expect(reordered.components[isolatedIndex]).toBe(twoBandStructure.components[isolatedIndex]);
 		const returnedToDocumentary = applyRankOrder(reordered, twoBandDomain, twoBandDomain.bands);
-		expect(returnedToDocumentary.components[connectedIndex].rows.ordinary[firstRank]).toEqual(
-			connected.rows.ordinary[firstRank],
-		);
+		expect(
+			defined(returnedToDocumentary.components[connectedIndex]).rows.ordinary[firstRank],
+		).toEqual(connected.rows.ordinary[firstRank]);
 	});
 });
 
