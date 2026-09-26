@@ -29,7 +29,7 @@ import { improvesRoutes } from './routing/route-cost';
 import { crossingCorridors } from './routing/routing-corridors';
 import { directRoutingSpace, routingSpace } from './routing/routing-space';
 import { bypassedChains } from './structure/bypassed-chains';
-import { prepareLayout } from './structure/prepare-layout';
+import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
 
 interface PlacementReservation {
@@ -198,13 +198,19 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 	placeWithPorts(workspace, ports, routing);
 }
 
-export function layoutWithDedicatedEngine(
-	graph: LogicGraph,
-	ranks: TopologicalRanks,
+export interface DedicatedLayoutEvaluation {
+	readonly result: LayoutResult;
+	/** Inspection is deferred so search trials can be discarded without building diagnostics. */
+	complete(): LayoutResult;
+}
+
+export function evaluateDedicatedLayout(
+	structure: LayoutStructure,
 	measurements: LayoutMeasurements,
 	options: LayoutOptions = {},
-): LayoutResult {
-	const structure = prepareLayout(graph, ranks);
+): DedicatedLayoutEvaluation {
+	const graph = structure.graph;
+	const ranks = structure.ranks;
 	const frame = createLayoutFrame(graph.document.layout.direction, graph.document.layout.bias);
 	const workspace: LayoutWorkspace = {
 		structure,
@@ -242,15 +248,30 @@ export function layoutWithDedicatedEngine(
 		routes,
 		space,
 	});
-	if (options.inspectRouting !== true) return result;
 	return {
-		...result,
-		routingInspection: inspectRouting({
-			layout: result,
-			measurements,
-			ranks: ranks.byEndpointId,
-			direction: frame.direction,
-			plan: workspace.routing,
-		}),
+		result,
+		complete: () => {
+			if (options.inspectRouting !== true) return result;
+			return {
+				...result,
+				routingInspection: inspectRouting({
+					layout: result,
+					measurements,
+					ranks: ranks.byEndpointId,
+					direction: frame.direction,
+					plan: workspace.routing,
+				}),
+			};
+		},
 	};
+}
+
+export function layoutWithDedicatedEngine(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions = {},
+): LayoutResult {
+	const structure = prepareLayout(graph, ranks);
+	return evaluateDedicatedLayout(structure, measurements, options).complete();
 }

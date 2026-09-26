@@ -9,7 +9,11 @@ import {
 	type LogicGroup,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngine,
+} from '../../../../src/lib/core/layout/layout-engine';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -97,6 +101,41 @@ describe('layout workspace ownership', () => {
 					nodes: Object.fromEntries(document.nodes.map((node) => [node.id, dimensions])),
 				});
 				assertIndependentCalculations(prepared);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('keeps candidate evaluations isolated from the baseline, graph and measurements', () => {
+		fc.assert(
+			fc.property(fc.constantFrom(...LAYOUT_CONFIGURATIONS), (layout) => {
+				const prepared = prepareLayoutDocument({ ...validLogicDocument(), layout });
+				const structure = prepareLayout(prepared.graph, prepared.ranks);
+				const order = structure.rankOrderDomain.bands.map((band) => [...band].reverse());
+				const inputSnapshot = structuredClone(prepared);
+				const first = layoutWithDedicatedEngine(
+					prepared.graph,
+					prepared.ranks,
+					prepared.measurements,
+				);
+				const saved = structuredClone(first);
+
+				evaluateDedicatedLayout(
+					prepareLayout(prepared.graph, prepared.ranks, order),
+					prepared.measurements,
+				);
+				const inspected = evaluateDedicatedLayout(structure, prepared.measurements, {
+					inspectRouting: true,
+				}).complete();
+
+				const { routingInspection, ...inspectedGeometry } = inspected;
+				expect(inspectedGeometry).toEqual(first);
+				expect(routingInspection).toBeDefined();
+				expect(first).toEqual(saved);
+				expect(prepared).toEqual(inputSnapshot);
+				expect(
+					layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements),
+				).toEqual(saved);
 			}),
 			PROPERTY_PARAMETERS,
 		);

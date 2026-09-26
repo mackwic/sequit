@@ -16,6 +16,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import {
 	compareRankOrders,
 	countRankOrderCrossings,
@@ -353,5 +354,55 @@ describe('explicit ordinary row preparation', () => {
 		expect(() => prepareLayout(graph.value, ranks, order)).toThrow(
 			/Invalid ordinary-row rank order/,
 		);
+	});
+});
+
+describe('dedicated layout evaluation with candidate row orders', () => {
+	it('moves 3+1 boxes without changing logical ranks, group membership or endpoint IDs', () => {
+		const base = corpusDocument(
+			['a', 'b', 'c', 'd'],
+			['a', 'b', 'c', 'd'],
+			[
+				{ id: 'r-a', from: 'a', to: 'd' },
+				{ id: 'r-b', from: 'b', to: 'd' },
+				{ id: 'r-c', from: 'c', to: 'd' },
+			],
+		);
+		const document: LogicDocument = {
+			...base,
+			groups: [{ kind: EndpointKind.Group, id: 'g', label: 'Group', layoutOrder: orderKey('a2') }],
+			nodes: base.nodes.map((node) => {
+				if (node.id === 'a' || node.id === 'b') return { ...node, groupId: 'g' };
+				return node;
+			}),
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Expected valid grouped graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const candidate = structure.rankOrderDomain.bands.map((band) => [...band].reverse());
+		const measurements = {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			junctions: new Map(),
+			groups: new Map([
+				['g', { minimumWidth: 80, minimumHeight: 50, headerHeight: 20, padding: 8 }],
+			]),
+		};
+		const baseline = evaluateDedicatedLayout(structure, measurements).result;
+		const reordered = evaluateDedicatedLayout(
+			prepareLayout(graph, ranks, candidate),
+			measurements,
+		).result;
+
+		const baselinePositions = new Map(baseline.elements.map(({ id, bounds }) => [id, bounds.x]));
+		const reorderedPositions = new Map(reordered.elements.map(({ id, bounds }) => [id, bounds.x]));
+		expect([...baselinePositions].some(([id, x]) => reorderedPositions.get(id) !== x)).toBe(true);
+		expect([...baselinePositions.keys()].sort(compareCanonicalStrings)).toEqual(
+			[...reorderedPositions.keys()].sort(compareCanonicalStrings),
+		);
+		expect(reordered.elements.find(({ id }) => id === 'g')).toBeDefined();
+		expect(ranks.byEndpointId).toEqual(topologicallyRank(graph).byEndpointId);
+		expect(graph.document).toBe(document);
 	});
 });
