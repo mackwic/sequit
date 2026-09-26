@@ -5,6 +5,7 @@ import {
 	type EndpointRoute,
 	sharedAtEndpoint,
 	sharedAttachmentPoint,
+	type SharedRouteRuns,
 } from './bridge-contact-shared';
 import {
 	type LayoutBridge,
@@ -192,16 +193,21 @@ function contactInsideOverlap(contact: RouteContact, other: RouteContact): boole
 	return x && y;
 }
 
+interface ContactScanOptions {
+	readonly bridges: BridgeContactOptions | undefined;
+	readonly mode?: ContactScanMode;
+	readonly runs?: SharedRouteRuns;
+}
+
 /** Collects the same contacts for complete and still-to-be-extended leaf routes. */
 function routeContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
-	options: BridgeContactOptions | ContactScanMode | undefined,
+	options: ContactScanOptions,
 ): readonly RouteContact[] {
-	let bridgeOptions: BridgeContactOptions | undefined;
-	if (typeof options === 'object') bridgeOptions = options;
-	const deferBridgeDecision = options === ContactScanMode.Provisional;
+	const bridgeOptions = options.bridges;
+	const deferBridgeDecision = options.mode === ContactScanMode.Provisional;
 	const charge = bridgeOptions?.charge;
 	const sortedByPoint = bridgeOptions?.sortedByPoint ?? false;
 	const lookup = {
@@ -213,8 +219,9 @@ function routeContacts(
 		deferBridgeDecision,
 	};
 	const contacts = new Map<string, RouteContact>();
-	const secondRuns = routeRuns(second, charge);
-	for (const firstRun of routeRuns(first, charge)) {
+	const secondRuns = options.runs?.second ?? routeRuns(second, charge);
+	const firstRuns = options.runs?.first ?? routeRuns(first, charge);
+	for (const firstRun of firstRuns) {
 		for (const secondRun of secondRuns) {
 			charge?.(1);
 			const contact = runContact(firstRun, secondRun);
@@ -241,7 +248,7 @@ export function unbridgedContacts(
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
-	return routeContacts(first, second, bridges, options);
+	return routeContacts(first, second, bridges, { bridges: options });
 }
 
 /** An attachment point is allowed, but an extent needs a continuous shared family trunk. */
@@ -249,13 +256,14 @@ function permittedRouteContact(
 	first: EndpointRoute,
 	second: EndpointRoute,
 	contact: RouteContact,
+	runs: SharedRouteRuns,
 ): boolean {
 	const sharedSource =
-		sharedAtEndpoint(first, second, contact.from, true) &&
-		sharedAtEndpoint(first, second, contact.to, true);
+		sharedAtEndpoint(first, second, contact.from, { from: true, runs }) &&
+		sharedAtEndpoint(first, second, contact.to, { from: true, runs });
 	const sharedTarget =
-		sharedAtEndpoint(first, second, contact.from, false) &&
-		sharedAtEndpoint(first, second, contact.to, false);
+		sharedAtEndpoint(first, second, contact.from, { from: false, runs }) &&
+		sharedAtEndpoint(first, second, contact.to, { from: false, runs });
 	if (sharedSource || sharedTarget) return true;
 	if (contact.kind === RouteContactKind.Overlap) return false;
 	return sharedAttachmentPoint(first, second, contact.from);
@@ -268,9 +276,13 @@ export function disallowedRouteContacts(
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
-	const contacts = unbridgedContacts(first, second, bridges, options);
+	const runs = {
+		first: routeRuns(first, options?.charge),
+		second: routeRuns(second, options?.charge),
+	};
+	const contacts = routeContacts(first, second, bridges, { bridges: options, runs });
 	if (contacts.length === 0) return contacts;
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, runs));
 }
 
 /**
@@ -281,7 +293,8 @@ export function disallowedProvisionalRouteContacts(
 	first: EndpointRoute,
 	second: EndpointRoute,
 ): readonly RouteContact[] {
-	const contacts = routeContacts(first, second, [], ContactScanMode.Provisional);
+	const runs = { first: routeRuns(first), second: routeRuns(second) };
+	const contacts = routeContacts(first, second, [], { bridges: undefined, mode: ContactScanMode.Provisional, runs });
 	if (contacts.length === 0) return contacts;
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, runs));
 }

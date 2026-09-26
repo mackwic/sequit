@@ -87,7 +87,7 @@ function validatePortInsets(
 }
 
 function sharedPortUse(previous: PortUse, current: PortUse): boolean {
-	return sharedAtEndpoint(previous.route, current.route, current.point, current.from);
+	return sharedAtEndpoint(previous.route, current.route, current.point, { from: current.from });
 }
 
 function validatePortSpacing(
