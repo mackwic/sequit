@@ -116,26 +116,35 @@ function validateRouteSegments(
 
 function physicalPortGroups(
 	relations: readonly LayoutRelation[],
-	targetId: string,
 	vertical: boolean,
-): readonly (readonly string[])[] {
-	const byCross = new Map<number, string[]>();
+): ReadonlyMap<string, readonly (readonly string[])[]> {
+	const byTarget = new Map<string, Map<number, string[]>>();
 	for (const relation of relations) {
-		if (relation.to !== targetId) continue;
 		const last = defined(relation.points.at(-1));
 		let cross = last.y;
 		if (vertical) cross = last.x;
+		let byCross = byTarget.get(relation.to);
+		if (byCross === undefined) {
+			byCross = new Map();
+			byTarget.set(relation.to, byCross);
+		}
 		const family = byCross.get(cross) ?? [];
 		family.push(relation.id);
 		byCross.set(cross, family);
 	}
-	return [...byCross].sort(([a], [b]) => a - b).map(([, ids]) => ids.sort(compareCanonicalStrings));
+	const groups = new Map<string, readonly (readonly string[])[]>();
+	for (const [target, byCross] of byTarget)
+		groups.set(
+			target,
+			[...byCross].sort(([a], [b]) => a - b).map(([, ids]) => ids.sort(compareCanonicalStrings)),
+		);
+	return groups;
 }
 
 function hasOverlappingBoxes(elements: LayoutResult['elements']): boolean {
 	for (const [index, first] of elements.entries()) {
-		for (const second of elements.slice(index + 1)) {
-			if (boundsOverlap(first.bounds, second.bounds)) return true;
+		for (let next = index + 1; next < elements.length; next += 1) {
+			if (boundsOverlap(first.bounds, defined(elements[next]).bounds)) return true;
 		}
 	}
 	return false;
@@ -199,10 +208,9 @@ function validateRelations(
 	const actualIds = layout.relations.map(({ id }) => id).sort(compareCanonicalStrings);
 	if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds))
 		return invalid(CandidateGeometryReason.Relations);
+	const sourceById = new Map(graph.relations.map(({ relation }) => [relation.id, relation]));
 	for (const route of layout.relations) {
-		const source = defined(
-			graph.relations.find(({ relation }) => relation.id === route.id),
-		).relation;
+		const source = defined(sourceById.get(route.id));
 		if (source.from !== route.from || source.to !== route.to)
 			return invalid(CandidateGeometryReason.Relations);
 		const checked = validateRoute(route, boxes, graph.document.layout.direction);
@@ -217,6 +225,7 @@ function validateChoices(
 	boxes: ReadonlyMap<string, Bounds>,
 	vertical: boolean,
 ): CandidateGeometryValidation {
+	let groups: ReadonlyMap<string, readonly (readonly string[])[]> | undefined;
 	for (const choice of choices) {
 		const box = boxes.get(choice.endpointId);
 		if (box === undefined) return invalid(CandidateGeometryReason.Elements);
@@ -224,7 +233,8 @@ function validateChoices(
 		if (vertical) crossSize = box.width;
 		if (crossSize < choice.metricDemand.minimumCrossSize)
 			return invalid(CandidateGeometryReason.MetricDemand);
-		const actual = physicalPortGroups(layout.relations, choice.endpointId, vertical);
+		groups ??= physicalPortGroups(layout.relations, vertical);
+		const actual = groups.get(choice.endpointId) ?? [];
 		if (JSON.stringify(actual) !== JSON.stringify(choice.physicalPortGroups))
 			return invalid(CandidateGeometryReason.Ports);
 	}
