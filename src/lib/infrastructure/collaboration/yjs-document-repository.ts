@@ -4,17 +4,15 @@ import { defined, type LogicDocument } from '../../core/document/logic-document'
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
 import type { DocumentChangeResult } from '../document/document-command-contracts';
 import { reconcileYjsDocument } from './reconcile-yjs-document';
-import { spliceSharedText } from './shared-text';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
 import {
 	applyYjsDocumentChanges,
+	lookupMarkdownTarget,
 	type MarkdownTarget,
-	markdownTarget,
+	type MarkdownTargetFailure,
 	validateYjsAdditionConflicts,
-	YjsDocumentRepositoryRejection,
 } from './yjs-document-mutations';
 import { isMarkdownOnly, projectYjsDocumentChange } from './yjs-document-projection';
-import { YjsCollection } from './yjs-document-schema';
 
 export type YjsDocumentRepositoryObserver = (
 	result: YjsLiveDocumentResult<LogicDocument>,
@@ -22,37 +20,18 @@ export type YjsDocumentRepositoryObserver = (
 	revision: number,
 ) => void;
 
-const NODES = YjsCollection.Nodes;
-const REPLACE_MARKDOWN_ORIGIN = Symbol('sequit replace node markdown');
-
-export function replaceNodeMarkdown(
-	document: Y.Doc,
-	nodeId: string,
-	markdown: string,
-	origin: unknown = REPLACE_MARKDOWN_ORIGIN,
-): boolean {
-	const text = document.getMap<Y.Map<unknown>>(NODES).get(nodeId)?.get('markdown');
-	if (!(text instanceof Y.Text)) return false;
-	document.transact(() => {
-		spliceSharedText(text, markdown);
-	}, origin);
-	return true;
-}
-
 interface PersistenceCapture {
 	result: DocumentChangeResult | undefined;
 	projected: LogicDocument | undefined;
 	markdownOnly: boolean;
 	targets: readonly MarkdownTarget[];
 	recovery: boolean;
+	transaction?: Y.Transaction;
+	secondaryTransactions: boolean;
 }
 
 interface MarkdownTargetCapture {
 	readonly targets: readonly MarkdownTarget[];
-}
-
-interface MarkdownTargetFailure {
-	readonly failure: DocumentChangeResult;
 }
 
 interface PersistencePlan {
@@ -71,17 +50,18 @@ interface GuardedPersistencePlan extends PersistencePlan {
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
 	readonly #validTransactions = new WeakSet<Y.Transaction>();
-	readonly #checkpointedTransactions = new WeakSet<Y.Transaction>();
 	#persistenceCapture: PersistenceCapture | undefined;
 	#lastValidDocument: LogicDocument | undefined;
 	#lastPhysicalResult: YjsLiveDocumentResult<LogicDocument>;
 	#checkpointDocument: Y.Doc | undefined;
 	#canRecoverFromLastValid = false;
+	#recoveryConflict = false;
 	#physicalValid = false;
 	#revision = 0;
 	#acceptedRevision = 0;
 
 	constructor(readonly document: Y.Doc) {
+		document.on('beforeTransaction', this.#beforeTransaction);
 		document.on('afterTransaction', this.#afterTransaction);
 		document.on('update', this.#afterUpdate);
 		const initial = readLogicDocument(document);
@@ -108,6 +88,17 @@ export class YjsDocumentRepository {
 	}
 
 	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult> {
+		if (this.#persistenceCapture !== undefined)
+			return Promise.resolve({
+				ok: false,
+				diagnostics: [
+					{
+						code: 'document-command-reentrant',
+						message: 'A document command is already in progress',
+						path: [],
+					},
+				],
+			});
 		return Promise.resolve(this.#persist(changes, origin));
 	}
 
@@ -137,13 +128,21 @@ export class YjsDocumentRepository {
 	}
 
 	#invalidPhysicalFailure(changes: DocumentChangeSet): DocumentChangeResult {
-		try {
-			for (const { nodeId } of changes.nodeMarkdownReplacements)
-				markdownTarget(this.document, nodeId);
-		} catch (error) {
-			if (error instanceof YjsDocumentRepositoryRejection)
-				return { ok: false, diagnostics: error.diagnostics };
-			throw error;
+		if (this.#recoveryConflict)
+			return {
+				ok: false,
+				diagnostics: [
+					{
+						code: 'recovery-conflict',
+						message:
+							'Further updates arrived while the document was invalid; automatic recovery would discard them',
+						path: [],
+					},
+				],
+			};
+		for (const { nodeId } of changes.nodeMarkdownReplacements) {
+			const result = lookupMarkdownTarget(this.document, nodeId);
+			if ('failure' in result) return result.failure;
 		}
 		return this.#lastPhysicalResult;
 	}
@@ -152,16 +151,13 @@ export class YjsDocumentRepository {
 		changes: DocumentChangeSet,
 		document: Y.Doc,
 	): MarkdownTargetCapture | MarkdownTargetFailure {
-		try {
-			const targets = changes.nodeMarkdownReplacements.map(({ nodeId }) =>
-				markdownTarget(document, nodeId),
-			);
-			return { targets };
-		} catch (error) {
-			if (error instanceof YjsDocumentRepositoryRejection)
-				return { failure: { ok: false, diagnostics: error.diagnostics } };
-			throw error;
+		const targets: MarkdownTarget[] = [];
+		for (const { nodeId } of changes.nodeMarkdownReplacements) {
+			const result = lookupMarkdownTarget(document, nodeId);
+			if ('failure' in result) return result;
+			targets.push(result.target);
 		}
+		return { targets };
 	}
 
 	#commitProjection(plan: PersistencePlan): DocumentChangeResult {
@@ -175,6 +171,7 @@ export class YjsDocumentRepository {
 			markdownOnly: isMarkdownOnly(plan.changes),
 			targets: plan.targets,
 			recovery: plan.recovering,
+			secondaryTransactions: false,
 		};
 		let transactionChangedBeforeCommand = false;
 		const inspectBeforeTransaction = (transaction: Y.Transaction) => {
@@ -229,15 +226,9 @@ export class YjsDocumentRepository {
 
 	#targetFailure(targets: readonly MarkdownTarget[]): DocumentChangeResult | undefined {
 		for (const target of targets) {
-			let current: MarkdownTarget;
-			try {
-				current = markdownTarget(this.document, target.nodeId);
-			} catch (error) {
-				if (error instanceof YjsDocumentRepositoryRejection)
-					return { ok: false, diagnostics: error.diagnostics };
-				throw error;
-			}
-			if (current.node !== target.node || current.text !== target.text)
+			const result = lookupMarkdownTarget(this.document, target.nodeId);
+			if ('failure' in result) return result.failure;
+			if (result.target.node !== target.node || result.target.text !== target.text)
 				return this.#staleTargetFailure();
 		}
 		return undefined;
@@ -268,12 +259,20 @@ export class YjsDocumentRepository {
 	}
 
 	destroy(): void {
+		this.document.off('beforeTransaction', this.#beforeTransaction);
 		this.document.off('afterTransaction', this.#afterTransaction);
 		this.document.off('update', this.#afterUpdate);
 		this.#observers.clear();
 		this.#checkpointDocument?.destroy();
 		this.#lastValidDocument = undefined;
 	}
+
+	readonly #beforeTransaction = (transaction: Y.Transaction): void => {
+		const capture = this.#persistenceCapture;
+		if (capture === undefined || capture.transaction === transaction) return;
+		if (capture.transaction === undefined) capture.transaction = transaction;
+		else capture.secondaryTransactions = true;
+	};
 
 	readonly #afterUpdate = (
 		update: Uint8Array,
@@ -282,28 +281,8 @@ export class YjsDocumentRepository {
 		transaction: Y.Transaction,
 	): void => {
 		if (!this.#validTransactions.has(transaction)) return;
-		const checkpoint = this.#checkpointDocument;
-		if (checkpoint !== undefined && !this.#checkpointedTransactions.has(transaction))
-			Y.applyUpdate(checkpoint, update);
+		Y.applyUpdate(defined(this.#checkpointDocument), update);
 	};
-
-	#matchesMarkdownTransaction(
-		transaction: Y.Transaction,
-		capture: PersistenceCapture,
-		expected: LogicDocument,
-	): boolean {
-		const targets = new Map(
-			capture.targets.map(({ nodeId, node, text }) => [text, { nodeId, node }]),
-		);
-		const targetTypes = new Set<unknown>(targets.keys());
-		for (const changed of transaction.changed.keys()) if (!targetTypes.has(changed)) return false;
-		const nodes = this.document.getMap<Y.Map<unknown>>(NODES);
-		for (const [text, { nodeId, node }] of targets) {
-			if (nodes.get(nodeId) !== node || node.get('markdown') !== text) return false;
-			if (text.toJSON() !== expected.nodes.find(({ id }) => id === nodeId)?.markdown) return false;
-		}
-		return true;
-	}
 
 	#recordPhysicalResult(
 		result: YjsLiveDocumentResult<LogicDocument>,
@@ -317,29 +296,36 @@ export class YjsDocumentRepository {
 			this.#acceptedRevision = revision;
 			this.#physicalValid = true;
 			this.#canRecoverFromLastValid = false;
+			this.#recoveryConflict = false;
 			if (wasInvalid) {
 				this.#checkpointDocument?.destroy();
 				this.#checkpointDocument = this.#clone(this.document);
-				this.#checkpointedTransactions.add(transaction);
 			} else this.#validTransactions.add(transaction);
 		} else {
+			if (!this.#physicalValid && this.#lastValidDocument !== undefined)
+				this.#recoveryConflict = true;
 			this.#physicalValid = false;
 			const external = !transaction.local;
-			this.#canRecoverFromLastValid = external && this.#persistenceCapture === undefined;
+			const capture = this.#persistenceCapture;
+			const noConflict = !this.#recoveryConflict;
+			const otherTransaction = capture?.transaction !== transaction;
+			this.#canRecoverFromLastValid = external && noConflict && otherTransaction;
 		}
 	}
 
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {
 		const revision = ++this.#revision;
-		const capture = this.#persistenceCapture;
+		const active = this.#persistenceCapture;
+		let capture = active;
+		if (active?.transaction !== transaction) capture = undefined;
 		const projection = capture?.projected;
 		if (capture !== undefined) capture.projected = undefined;
 		let result: YjsLiveDocumentResult<LogicDocument>;
-		const validFastPath = projection !== undefined && capture?.markdownOnly === true;
-		const matches =
-			validFastPath && this.#matchesMarkdownTransaction(transaction, capture, projection);
-		if (!matches || capture.recovery) result = this.read();
-		else result = { ok: true, value: projection };
+		const markdownProjection = projection !== undefined && capture?.markdownOnly === true;
+		const stableTransaction = capture?.secondaryTransactions === false;
+		const useProjection = markdownProjection && stableTransaction;
+		if (useProjection) result = { ok: true, value: projection };
+		else result = this.read();
 		this.#recordPhysicalResult(result, transaction, revision);
 		const applied = projection !== undefined || capture?.recovery === true;
 		if (capture !== undefined && applied) capture.result = result;

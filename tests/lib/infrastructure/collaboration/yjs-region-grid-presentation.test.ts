@@ -157,43 +157,6 @@ describe('Yjs region grid presentation', () => {
 		document.destroy();
 	});
 
-	it('rolls back a rejected edit on a restored replica without advancing its state vector', async () => {
-		const document = restored(compositionGridDocument());
-		const repository = new YjsDocumentRepository(document);
-		try {
-			const node = document.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('a-top');
-			if (!(node instanceof Y.Map)) throw new Error('Expected shared node');
-			const markdown = node.get('markdown');
-			if (!(markdown instanceof Y.Text)) throw new Error('Expected shared Markdown');
-			const before = Y.encodeStateVector(document);
-			const originalText = markdown.toJSON();
-			const originalNature = node.get('natureId');
-			expect(Y.decodeStateVector(before).has(document.clientID)).toBe(false);
-			let poison = true;
-			markdown.observe(() => {
-				if (!poison) return;
-				poison = false;
-				node.set('natureId', 'missing-nature');
-			});
-
-			const result = await repository.persist({
-				nodeAdditions: [],
-				relationAdditions: [],
-				endpointOrderChanges: [],
-				nodeMarkdownReplacements: [{ nodeId: 'a-top', markdown: 'Rejected edit' }],
-			});
-
-			expect(result.ok).toBe(false);
-			expect(markdown.toJSON()).toBe(originalText);
-			expect(node.get('natureId')).toBe(originalNature);
-			expect(Y.encodeStateVector(document)).toEqual(before);
-			expect(readLogicDocument(document)).toMatchObject({ ok: true });
-		} finally {
-			repository.destroy();
-			document.destroy();
-		}
-	});
-
 	it('reconciles 7 to 8 to 7 in place and preserves shared entity and text identities', () => {
 		const source = compositionGridDocument();
 		const previous = previousRegionDocument(source);

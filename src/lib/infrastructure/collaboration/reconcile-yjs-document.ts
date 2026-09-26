@@ -36,16 +36,7 @@ function cloneValue(value: unknown): unknown {
 		for (const [key, child] of value.entries()) map.set(key, cloneValue(child));
 		return map;
 	}
-	if (value instanceof Y.Array) {
-		const array = new Y.Array<unknown>();
-		array.insert(0, value.toArray().map(cloneValue));
-		return array;
-	}
 	if (Array.isArray(value)) return value.map(cloneValue);
-	if (typeof value === 'object') {
-		if (value === null) return value;
-		return structuredClone(value);
-	}
 	return value;
 }
 

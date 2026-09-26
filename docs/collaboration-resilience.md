@@ -101,13 +101,23 @@ comme une seule transaction. Après une fusion distante invalide, une commande
 valide réconcilie le même `Y.Doc` depuis le checkpoint avant d'être acceptée ;
 les `Y.Text` existants sont conservés lorsque leur identité et leur type
 permettent de les réutiliser. Un échec de préflight conserve le checkpoint.
+Cette reprise n'est automatique que si aucune autre transaction n'a été reçue
+pendant l'invalidité : une seconde mise à jour, même indépendante et valide sur
+sa réplique d'origine, produit `recovery-conflict`. Il faut d'abord réparer
+l'état physique par une mise à jour externe valide ; le dépôt ne rétablit pas
+silencieusement le checkpoint au prix de cette édition concurrente. Une
+commande réentrante depuis un observateur est refusée, et non annoncée acceptée
+avant le contrôle final de sa transaction.
 
 Une application locale qui expose directement son `Y.Doc` ne peut pas garantir
 qu'un observer arbitraire ne l'invalidera pas après le début d'une transaction
-Yjs. Un tel hook peut aussi s'exécuter après que Yjs a émis l'update : le dépôt
-n'annule pas l'historique, ne réutilise pas les horloges et ne publie pas cet
-état comme une commande acceptée, mais un pair abonné directement à ce `Y.Doc`
-peut avoir vu l'update avant le hook. Cette limite ne décrit pas le transport
+Yjs. Une transaction secondaire déclenchée avant l'observateur du dépôt désactive
+le raccourci Markdown : le document physique est relu avant publication.
+Un hook exécuté après une notification peut néanmoins rendre cette notification
+transitoirement périmée, ou intervenir après l'émission de l'update Yjs : le
+dépôt n'annule pas l'historique, ne réutilise pas les horloges et rapporte
+ensuite l'invalidation, mais un pair abonné directement à ce `Y.Doc` peut avoir
+vu cet état avant le diagnostic. Cette limite ne décrit pas le transport
 collaboratif officiel : `CollaborationRoom` autorise et valide un candidat
 isolé, persiste le commit, puis seulement l'applique au document de room et le
 diffuse. Un pair de ce transport ne reçoit donc pas de commit invalide.

@@ -7,9 +7,10 @@ import {
 	type LogicNode,
 } from '../../core/document/logic-document';
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
-import { validateLogicDocument } from '../../core/document/validate-logic-document';
 import type { DocumentChangeResult } from '../document/document-command-contracts';
-import { validateLogicDocumentGraph } from './yjs-document-codec';
+import { validateCandidateLogicDocument } from './yjs-document-codec';
+import type { ReadContext } from './yjs-document-result';
+import { readRequiredLayoutOrder } from './yjs-field-readers';
 
 export function isMarkdownOnly(changes: DocumentChangeSet): boolean {
 	if (changes.nodeMarkdownReplacements.length === 0) return false;
@@ -58,21 +59,18 @@ function updateNode(node: LogicNode, changes: DocumentChangeSet): LogicNode {
 	return updated;
 }
 
+const ENDPOINT_COLLECTION = {
+	[EndpointKind.Group]: 'groups',
+	[EndpointKind.Node]: 'nodes',
+	[EndpointKind.Junction]: 'junctions',
+} as const;
+
 function endpoint(
 	document: LogicDocument,
 	kind: EndpointKind,
 	id: string,
 ): LogicEndpoint | undefined {
-	switch (kind) {
-		case EndpointKind.Group:
-			return document.groups.find((candidate) => candidate.id === id);
-		case EndpointKind.Node:
-			return document.nodes.find((candidate) => candidate.id === id);
-		case EndpointKind.Junction:
-			return document.junctions.find((candidate) => candidate.id === id);
-		default:
-			return undefined;
-	}
+	return document[ENDPOINT_COLLECTION[kind]].find((candidate) => candidate.id === id);
 }
 
 function endpointRemovals(changes: DocumentChangeSet, kind: EndpointKind): ReadonlySet<string> {
@@ -81,6 +79,22 @@ function endpointRemovals(changes: DocumentChangeSet, kind: EndpointKind): Reado
 			.filter((removal) => removal.endpointKind === kind)
 			.map((removal) => removal.endpointId),
 	);
+}
+
+function validateChangedOrders(changes: DocumentChangeSet): DocumentChangeResult | undefined {
+	const context: ReadContext = { diagnostics: [] };
+	for (const node of changes.nodeAdditions)
+		readRequiredLayoutOrder(node.layoutOrder, ['nodes', node.id, 'layoutOrder'], context);
+	for (const group of changes.groupAdditions ?? [])
+		readRequiredLayoutOrder(group.layoutOrder, ['groups', group.id, 'layoutOrder'], context);
+	for (const change of changes.endpointOrderChanges)
+		readRequiredLayoutOrder(
+			change.layoutOrder,
+			[ENDPOINT_COLLECTION[change.endpointKind], change.endpointId, 'layoutOrder'],
+			context,
+		);
+	if (context.diagnostics.length === 0) return undefined;
+	return { ok: false, diagnostics: context.diagnostics };
 }
 
 export function projectYjsDocumentChange(
@@ -103,6 +117,8 @@ export function projectYjsDocumentChange(
 			},
 		};
 	}
+	const invalidOrder = validateChangedOrders(changes);
+	if (invalidOrder !== undefined) return invalidOrder;
 	for (const node of changes.nodeAdditions) {
 		if (current.nodes.some(({ id }) => id === node.id))
 			throw new Error(`Node addition conflicts with existing id: ${node.id}`);
@@ -151,9 +167,5 @@ export function projectYjsDocumentChange(
 			`Endpoint no longer exists: ${change.endpointId}`,
 		);
 
-	const validated = validateLogicDocument(projected);
-	if (!validated.ok) return { ok: false, diagnostics: validated.diagnostics };
-	const graph = validateLogicDocumentGraph(validated.value);
-	if (!graph.ok) return { ok: false, diagnostics: graph.diagnostics };
-	return { ok: true, value: validated.value };
+	return validateCandidateLogicDocument(projected);
 }

@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { contentStyleFields, defined, EndpointKind } from '../../core/document/logic-document';
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
 import {
+	type DocumentChangeResult,
 	type DocumentCommandDiagnostic,
 	DocumentCommandDiagnosticCode,
 } from '../document/document-command-contracts';
@@ -37,6 +38,14 @@ export class YjsDocumentRepositoryRejection extends Error {
 	}
 }
 
+export interface MarkdownTargetSuccess {
+	readonly target: MarkdownTarget;
+}
+
+export interface MarkdownTargetFailure {
+	readonly failure: DocumentChangeResult;
+}
+
 export function markdownTarget(document: Y.Doc, nodeId: string): MarkdownTarget {
 	const node = document.getMap<Y.Map<unknown>>(NODES).get(nodeId);
 	if (node === undefined) {
@@ -60,6 +69,19 @@ export function markdownTarget(document: Y.Doc, nodeId: string): MarkdownTarget 
 		]);
 	}
 	return { nodeId, node, text: markdown };
+}
+
+export function lookupMarkdownTarget(
+	document: Y.Doc,
+	nodeId: string,
+): MarkdownTargetSuccess | MarkdownTargetFailure {
+	try {
+		return { target: markdownTarget(document, nodeId) };
+	} catch (error) {
+		if (error instanceof YjsDocumentRepositoryRejection)
+			return { failure: { ok: false, diagnostics: error.diagnostics } };
+		throw error;
+	}
 }
 
 function validateGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {

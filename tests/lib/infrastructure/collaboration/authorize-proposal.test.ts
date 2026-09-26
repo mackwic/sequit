@@ -11,12 +11,11 @@ import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { replaceNodeMarkdown } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import {
 	createYjsEntityMap,
 	YjsCollection,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
-import { proposeChange } from '../../../support/builders/collaboration';
+import { proposeChange, replaceSharedNodeMarkdown } from '../../../support/builders/collaboration';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 
 function authoritativeDocument(): Y.Doc {
@@ -35,7 +34,7 @@ describe('authorizeProposal', () => {
 	it('a valid Markdown edit is accepted and reflected in the candidate document', async () => {
 		const authoritative = authoritativeDocument();
 		const proposedUpdate = proposeChange(authoritative, (candidate) => {
-			replaceNodeMarkdown(candidate, 'source-a', 'Authorized edit');
+			replaceSharedNodeMarkdown(candidate, 'source-a', 'Authorized edit');
 		});
 
 		const result = await authorizeProposal({
@@ -71,7 +70,7 @@ describe('authorizeProposal', () => {
 		expect(result.ok).toBe(true);
 		if (result.ok) {
 			expect(result.value.candidate).not.toBe(authoritative);
-			replaceNodeMarkdown(result.value.candidate, 'source-a', 'Candidate only');
+			replaceSharedNodeMarkdown(result.value.candidate, 'source-a', 'Candidate only');
 			expect(readAuthoritative(authoritative).nodes).toContainEqual(
 				expect.objectContaining({ id: 'source-a', markdown: 'Source A\n' }),
 			);
@@ -227,7 +226,7 @@ it('accepts plain text through the text-only authority and rejects a structural 
 		guards: defaultUpdateGuards,
 		textOnly: true,
 		proposedUpdate: proposeChange(authoritative, (candidate) => {
-			replaceNodeMarkdown(candidate, 'source-a', 'Fine edit');
+			replaceSharedNodeMarkdown(candidate, 'source-a', 'Fine edit');
 		}),
 	});
 	expect(valid.ok).toBe(true);
