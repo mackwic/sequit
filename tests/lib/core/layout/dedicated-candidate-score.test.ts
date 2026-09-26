@@ -4,11 +4,9 @@ import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-p
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { compareDedicatedRouteScores } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
 import { routeScore } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
-import {
-	compareDedicatedRouteScores,
-	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';

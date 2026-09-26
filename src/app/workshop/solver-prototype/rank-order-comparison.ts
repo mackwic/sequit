@@ -10,9 +10,9 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
+import { compareDedicatedRouteScores } from '../../../lib/core/layout/dedicated-candidate-validation/route-score';
 import type { DedicatedRouteScore } from '../../../lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation/validate';
-import { compareDedicatedRouteScores } from '../../../lib/core/layout/dedicated-candidate-validation/validate';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngineAndRankOrderWitness,

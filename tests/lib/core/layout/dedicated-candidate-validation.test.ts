@@ -13,11 +13,9 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { validateSelfContacts } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-contacts';
-import {
-	compareDedicatedRouteScores,
-	DedicatedCandidateRejectionCode,
-	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { compareDedicatedRouteScores } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
+import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { JUNCTION_PORT_INSET, PORT_INSET } from '../../../../src/lib/core/layout/layout-settings';
 import type { LayoutRelation } from '../../../../src/lib/core/layout/layout-types';

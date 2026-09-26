@@ -24,10 +24,8 @@ import {
 	routeBridgeAnalysis,
 	routeRuns,
 } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import {
-	DedicatedCandidateRejectionCode,
-	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngine,

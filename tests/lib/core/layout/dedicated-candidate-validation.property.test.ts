@@ -4,10 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import {
-	DedicatedCandidateRejectionCode,
-	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';

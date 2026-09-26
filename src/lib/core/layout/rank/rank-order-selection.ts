@@ -1,14 +1,12 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
 import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
 } from '../dedicated-candidate-validation/types';
-import {
-	compareDedicatedRouteScores,
-	validateDedicatedCandidate,
-} from '../dedicated-candidate-validation/validate';
+import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
 import type {
 	DedicatedLayoutEvaluation,
 	LayoutMeasurements,

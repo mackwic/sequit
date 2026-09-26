@@ -14,10 +14,6 @@ import { routeFailure } from './route-geometry';
 import { routeScore } from './route-score';
 import type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
 
-export { compareDedicatedRouteScores } from './route-score';
-export type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
-export { DedicatedCandidateRejectionCode } from './types';
-
 /** Independent geometry oracle for candidates produced by the dedicated engine. */
 export function validateDedicatedCandidate(
 	input: DedicatedCandidateValidationInput,

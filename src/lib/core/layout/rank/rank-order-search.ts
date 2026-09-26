@@ -1,11 +1,9 @@
+import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
 import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
 } from '../dedicated-candidate-validation/types';
-import {
-	compareDedicatedRouteScores,
-	validateDedicatedCandidate,
-} from '../dedicated-candidate-validation/validate';
+import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
 import type { DedicatedLayoutEvaluation, LayoutMeasurements, LayoutOptions } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import {
