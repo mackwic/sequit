@@ -33,7 +33,7 @@ export interface DedicatedRouteScore {
 	readonly bends: number;
 }
 
-export interface ValidDedicatedCandidate {
+interface ValidDedicatedCandidate {
 	readonly valid: true;
 	readonly score: DedicatedRouteScore;
 }

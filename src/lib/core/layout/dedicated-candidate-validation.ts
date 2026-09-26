@@ -28,8 +28,6 @@ export {
 export type {
 	DedicatedCandidateValidation,
 	DedicatedCandidateValidationInput,
-	RejectedDedicatedCandidate,
-	ValidDedicatedCandidate,
 } from './dedicated-candidate-validation/types';
 export { DedicatedCandidateRejectionCode } from './dedicated-candidate-validation/types';
 

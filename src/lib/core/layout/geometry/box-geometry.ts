@@ -34,7 +34,7 @@ export function onPrincipalFace(
 	return point.x === faceX && strictlyWithin(point.y, box.y, box.height);
 }
 
-export function strictlyWithin(value: number, start: number, size: number): boolean {
+function strictlyWithin(value: number, start: number, size: number): boolean {
 	const end = start + size;
 	return value > start && value < end;
 }
