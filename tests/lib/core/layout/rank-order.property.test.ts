@@ -45,6 +45,7 @@ import {
 	rankOrderKendallDistance,
 	validateRankOrder,
 } from '../../../../src/lib/core/layout/rank-order';
+import { barycentricSweep } from '../../../../src/lib/core/layout/rank-order-heuristic';
 import { searchDedicatedRankOrders } from '../../../../src/lib/core/layout/rank-order-search';
 import {
 	applyRankOrder,
@@ -1161,4 +1162,48 @@ describe('collaborative rank-order convergence', () => {
 		expect(firstLayout).toEqual(secondLayout);
 		expect(firstLayout.witness.mode).toBe('exact');
 	});
+});
+
+it('keeps a grouped member with no incident relation at documentary position', () => {
+	const base = corpusDocument(
+		['a', 'b', 'c'],
+		['a', 'b', 'c'],
+		[
+			{ id: 'g-c', from: 'g', to: 'c' },
+			{ id: 'a-c', from: 'a', to: 'c' },
+		],
+	);
+	const document = {
+		...base,
+		groups: [
+			{ kind: EndpointKind.Group as const, id: 'g', label: 'Group', layoutOrder: orderKey('a0') },
+		],
+		nodes: base.nodes.map((node) => {
+			if (node.id === 'c') return node;
+			return { ...node, groupId: 'g' };
+		}),
+	};
+	const created = createGraph(document);
+	if (!created.ok) throw new Error('Invalid grouped graph');
+	const graph = created.value;
+	const ranks = topologicallyRank(graph);
+	const structure = prepareLayout(graph, ranks);
+	const domain = collectRankOrderDomain(structure);
+	const measurements = {
+		nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+		groups: new Map([
+			['g', { minimumWidth: 100, minimumHeight: 60, headerHeight: 20, padding: 8 }],
+		]),
+		junctions: new Map(),
+	};
+	expect(
+		validateDedicatedCandidate({
+			graph,
+			ranks,
+			measurements,
+			layout: evaluateDedicatedLayout(structure, measurements),
+		}).valid,
+	).toBe(true);
+	expect(domain.bands).toEqual([['a', 'b']]);
+	expect(barycentricSweep({ structure, domain }, domain.bands, false)).toEqual(domain.bands);
 });
