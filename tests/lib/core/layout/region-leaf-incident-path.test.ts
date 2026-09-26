@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { regionLeafIncidentPath } from '../../../../src/lib/core/layout/region-leaf-incident-path';
+import { regionLeafIncidentPath } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-path';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,

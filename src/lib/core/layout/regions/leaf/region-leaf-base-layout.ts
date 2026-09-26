@@ -1,17 +1,14 @@
-import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
-import { createGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import { topologicallyRank } from '../graph/topological-ranks';
-import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
-import { evaluateDedicatedLayout } from './layout-engine';
-import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import { selectDedicatedRankLayout } from './rank/rank-order-selection';
+import { LayoutPolicy, type LogicDocument } from '../../../document/logic-document';
+import { createGraph } from '../../../graph/create-graph';
+import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import { topologicallyRank } from '../../../graph/topological-ranks';
+import { SharedLaneLayoutStatus, solveSharedLaneLayout } from '../../lanes/shared-lane-layout';
+import { evaluateDedicatedLayout } from '../../layout-engine';
+import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
+import { selectDedicatedRankLayout } from '../../rank/rank-order-selection';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from '../model/region-local-cache';
+import { type RegionSearchEvidence, RegionSearchProvenance } from '../model/region-search-evidence';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
-import type { RegionLocalLayout, RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import {
-	type RegionSearchEvidence,
-	RegionSearchProvenance,
-} from './regions/model/region-search-evidence';
 
 export class InvalidRegionLeafGraphError extends Error {
 	constructor() {

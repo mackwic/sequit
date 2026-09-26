@@ -2,10 +2,10 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { solveNestedRegionLayoutForProjection } from '../../../../src/lib/core/layout/nested-region-layout';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/regions/validation/nested-region-geometry';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';

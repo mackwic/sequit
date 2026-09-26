@@ -1,9 +1,8 @@
-import type { LayoutRelation, LayoutResult } from './layout-types';
-import { UnsupportedRegionLeafLayoutError } from './region-leaf-base-layout';
+import type { LayoutRelation, LayoutResult } from '../../layout-types';
 import {
 	composeCrossings,
 	inheritedIncidentPaths,
-} from './regions/model/nested-region-recursive-composition';
+} from '../model/nested-region-recursive-composition';
 import {
 	childPlacements,
 	rowBusEdge,
@@ -11,14 +10,15 @@ import {
 	type SolvedRecursiveRegion,
 	sortedElements,
 	translatedChildren,
-} from './regions/model/nested-region-recursive-geometry';
+} from '../model/nested-region-recursive-geometry';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
-} from './regions/model/region-arrangement';
-import { RegionPortalSide } from './regions/model/region-composition-types';
+} from '../model/region-arrangement';
+import { RegionPortalSide } from '../model/region-composition-types';
+import { UnsupportedRegionLeafLayoutError } from './region-leaf-base-layout';
 
 interface RowPlaced {
 	readonly placements: ReturnType<typeof childPlacements>;

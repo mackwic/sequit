@@ -19,9 +19,7 @@ import {
 	validateSharedLaneIncidentPath,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -40,6 +38,8 @@ import {
 	RegionLocalLayoutCache,
 	regionLocalLayoutKey,
 } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { layoutWithRootRegionForProjection } from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

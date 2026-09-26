@@ -1,14 +1,14 @@
-import { defined, type LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import { unbridgedContacts } from './bridges/bridge-contact';
-import { validatedBridges } from './bridges/bridge-oracle';
+import { defined, type LogicRelation } from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
+import { unbridgedContacts } from '../../bridges/bridge-contact';
+import { validatedBridges } from '../../bridges/bridge-oracle';
 import {
 	orthogonal,
 	samePoint,
 	segmentEnters,
 	within,
-} from './geometry/nested-region-geometry-primitives';
-import type { Bounds, LayoutRelation, Point } from './layout-types';
+} from '../../geometry/nested-region-geometry-primitives';
+import type { Bounds, LayoutRelation, Point } from '../../layout-types';
 import {
 	type RegionChildPlacement,
 	type RegionInput,
@@ -16,7 +16,7 @@ import {
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './regions/model/region-composition-types';
+} from '../model/region-composition-types';
 
 function portalOnBoundary(portal: RegionPortal, region: RegionChildPlacement): boolean {
 	if (portal.regionId !== region.id) return false;

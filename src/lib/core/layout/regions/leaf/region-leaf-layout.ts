@@ -1,22 +1,22 @@
-import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
-import { createGraph } from '../graph/create-graph';
-import { topologicallyRank } from '../graph/topological-ranks';
-import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
-import type { LayoutMeasurements } from './layout-types';
+import { defined, LayoutPolicy, type LogicDocument } from '../../../document/logic-document';
+import { createGraph } from '../../../graph/create-graph';
+import { topologicallyRank } from '../../../graph/topological-ranks';
+import { SharedLaneLayoutStatus, solveSharedLaneLayout } from '../../lanes/shared-lane-layout';
+import type { LayoutMeasurements } from '../../layout-types';
+import { RegionCompositionStatus } from '../model/region-composition-types';
+import {
+	normalizeRegionIncidentContracts,
+	type RegionIncidentContract,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+} from '../model/region-incident-contract';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from '../model/region-local-cache';
 import {
 	InvalidRegionLeafGraphError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-base-layout';
 import { solveDedicatedRegionLeafWithIncidents } from './region-leaf-incident-solver';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
-import { RegionCompositionStatus } from './regions/model/region-composition-types';
-import {
-	normalizeRegionIncidentContracts,
-	type RegionIncidentContract,
-	type RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-} from './regions/model/region-incident-contract';
-import type { RegionLocalLayout, RegionLocalLayoutCache } from './regions/model/region-local-cache';
 
 export {
 	InvalidRegionLeafGraphError,

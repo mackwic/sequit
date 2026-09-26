@@ -1,10 +1,7 @@
-import { defined } from '../document/logic-document';
-import { finiteBounds, inside, overlaps } from './geometry/nested-region-geometry-primitives';
-import type { LayoutElement } from './layout-types';
-import type {
-	RegionChildPlacement,
-	RegionLayoutSelected,
-} from './regions/model/region-composition-types';
+import { defined } from '../../../document/logic-document';
+import { finiteBounds, inside, overlaps } from '../../geometry/nested-region-geometry-primitives';
+import type { LayoutElement } from '../../layout-types';
+import type { RegionChildPlacement, RegionLayoutSelected } from '../model/region-composition-types';
 
 function childCanvasFits(region: RegionChildPlacement): boolean {
 	const { localLayout, translation, bounds } = region;

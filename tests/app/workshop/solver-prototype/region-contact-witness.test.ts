@@ -10,8 +10,8 @@ import {
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 
 describe('observable contacts at region boundaries', () => {
 	const cases = runRegionContactWitnesses();

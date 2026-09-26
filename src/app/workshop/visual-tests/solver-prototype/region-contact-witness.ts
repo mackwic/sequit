@@ -10,9 +10,7 @@ import {
 import { orderKey } from '../../../../lib/core/document/order-key';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
 import type { LayoutMeasurements, Point } from '../../../../lib/core/layout/layout-types';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../lib/core/layout/nested-region-recursive-layout';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
@@ -25,6 +23,8 @@ import {
 	type RegionLayoutSelected,
 	type RegionOwnedRoute,
 } from '../../../../lib/core/layout/regions/model/region-composition-types';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/regions/validation/region-composition-validation';
 
 export enum RegionContactCaseId {
 	Parent = 'parent-contact',

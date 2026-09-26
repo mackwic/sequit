@@ -52,7 +52,6 @@ import type {
 	LayoutResult,
 	Point,
 } from './layout-types';
-import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
 import {
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -60,6 +59,7 @@ import {
 } from './regions/model/region-composition-model';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
 import { RegionSearchProvenance } from './regions/model/region-search-evidence';
+import { diagnoseParentRouteContacts } from './regions/validation/region-composition-validation-detail';
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };

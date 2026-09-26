@@ -1,19 +1,25 @@
-import { defined } from '../document/logic-document';
-import { unbridgedContacts } from './bridges/bridge-contact';
-import { type LayoutBridge, type RoutedPath, validatedBridges } from './bridges/bridge-oracle';
-import { finiteBounds, inside, within } from './geometry/nested-region-geometry-primitives';
+import { defined } from '../../../document/logic-document';
+import { unbridgedContacts } from '../../bridges/bridge-contact';
+import { type LayoutBridge, type RoutedPath, validatedBridges } from '../../bridges/bridge-oracle';
+import { finiteBounds, inside, within } from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic as diagnostic,
 	RegionGeometryDiagnosticCode as Code,
-} from './geometry/region-geometry-diagnostic';
-import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
+} from '../../geometry/region-geometry-diagnostic';
+import type {
+	Bounds,
+	LayoutElement,
+	LayoutRelation,
+	LayoutResult,
+	Point,
+} from '../../layout-types';
+import type { RegionCompositionModel } from '../model/region-composition-model';
+import type { RegionOwnedRoute } from '../model/region-composition-types';
 import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
-import type { RegionCompositionModel } from './regions/model/region-composition-model';
-import type { RegionOwnedRoute } from './regions/model/region-composition-types';
 
 function translatedBoundsMatch(local: Bounds, global: Bounds, translation: Point): boolean {
 	if (global.x !== local.x + translation.x) return false;

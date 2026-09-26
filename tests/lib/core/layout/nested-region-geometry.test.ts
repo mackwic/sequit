@@ -16,13 +16,13 @@ import {
 	within,
 } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import type {
 	RegionChildPlacement,
 	RegionLayoutSelected,
 	RegionOwnedRoute,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/regions/validation/nested-region-geometry';
 import {
 	nestedRegionInput,
 	regionDocument,

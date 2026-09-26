@@ -24,8 +24,7 @@ import type {
 	LayoutRelation,
 	Point,
 } from '../../../../lib/core/layout/layout-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
-import { solveRegionLeafLayout } from '../../../../lib/core/layout/region-leaf-layout';
+import { solveRegionLeafLayout } from '../../../../lib/core/layout/regions/leaf/region-leaf-layout';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
@@ -36,6 +35,7 @@ import {
 	type RegionInput,
 	type RegionLayoutSelected,
 } from '../../../../lib/core/layout/regions/model/region-composition-types';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/regions/validation/region-composition-validation';
 
 const PADDING = 32;
 const GAP = 96;

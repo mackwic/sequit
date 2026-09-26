@@ -10,10 +10,6 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import type { Bounds, LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';
-import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
-import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -28,6 +24,10 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/regions/validation/nested-region-geometry';
+import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { regionDocument } from './nested-region-fixture';
 
 const NODE_BOUNDS = new Map<string, Bounds>([

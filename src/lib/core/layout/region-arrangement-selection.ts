@@ -1,5 +1,5 @@
 import { gridCellArrangement } from './grid-cell-recursive-region';
-import { rowRegionArrangement } from './region-row-arrangement';
+import { rowRegionArrangement } from './regions/leaf/region-row-arrangement';
 import type { RegionArrangement } from './regions/model/region-arrangement';
 import type { RegionCompositionNode } from './regions/model/region-composition-tree';
 

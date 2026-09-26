@@ -1,17 +1,18 @@
-import { EndpointKind } from '../document/logic-document';
-import { disallowedProvisionalRouteContacts } from './bridges/bridge-contact';
-import { inside, orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
-import type { Bounds, LayoutElement, LayoutResult, Point } from './layout-types';
-import { RegionPortalSide } from './regions/model/region-composition-types';
-import { incidentEndpointRoute } from './regions/model/region-incident-contact';
+import { EndpointKind } from '../../../document/logic-document';
+import { disallowedProvisionalRouteContacts } from '../../bridges/bridge-contact';
+import {
+	inside,
+	orthogonal,
+	segmentEnters,
+} from '../../geometry/nested-region-geometry-primitives';
+import type { Bounds, LayoutElement, LayoutResult, Point } from '../../layout-types';
+import { RegionPortalSide } from '../model/region-composition-types';
+import { incidentEndpointRoute } from '../model/region-incident-contact';
 import type {
 	RegionIncidentContract,
 	RegionSolvedIncident,
-} from './regions/model/region-incident-contract';
-import {
-	RegionIncidentRejectionCode,
-	RegionIncidentRole,
-} from './regions/model/region-incident-contract';
+} from '../model/region-incident-contract';
+import { RegionIncidentRejectionCode, RegionIncidentRole } from '../model/region-incident-contract';
 
 const CORRIDOR_CLEARANCE = 8;
 

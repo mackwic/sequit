@@ -1,5 +1,5 @@
-import type { Bounds, LayoutResult, Point } from './layout-types';
-import type { RegionOwnedRoute, RegionPortal } from './regions/model/region-composition-types';
+import type { Bounds, LayoutResult, Point } from '../../layout-types';
+import type { RegionOwnedRoute, RegionPortal } from '../model/region-composition-types';
 
 /** The geometry shared by row and grid dispositions, in root coordinates. */
 export interface RegionGeometryPlacement {

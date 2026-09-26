@@ -6,12 +6,6 @@ import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import {
-	solveRegionLeafLayout,
-	UnknownRegionLeafLayoutError,
-	UnsupportedRegionLeafLayoutError,
-} from './region-leaf-layout';
-import { regionLeafPolicy } from './region-leaf-policy';
-import {
 	closedSubtree,
 	incidentLeafIds,
 	subtreeDocument,
@@ -19,6 +13,12 @@ import {
 	subtreeInput,
 	subtreeRegionIds,
 } from './region-partial-composition-scope';
+import {
+	solveRegionLeafLayout,
+	UnknownRegionLeafLayoutError,
+	UnsupportedRegionLeafLayoutError,
+} from './regions/leaf/region-leaf-layout';
+import { regionLeafPolicy } from './regions/leaf/region-leaf-policy';
 import {
 	leafDocument,
 	type RecursiveContext,

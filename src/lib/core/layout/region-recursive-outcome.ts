@@ -8,7 +8,7 @@ import { regionArrangementFor } from './region-arrangement-selection';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
-} from './region-leaf-layout';
+} from './regions/leaf/region-leaf-layout';
 import {
 	type RecursiveContext,
 	sideForRegion,

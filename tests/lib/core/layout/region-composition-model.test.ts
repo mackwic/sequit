@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defined, LayoutPolicy } from '../../../../src/lib/core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
-import { regionLeafPolicy } from '../../../../src/lib/core/layout/region-leaf-policy';
+import { regionLeafPolicy } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-policy';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,

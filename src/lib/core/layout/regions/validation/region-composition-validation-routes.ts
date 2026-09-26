@@ -1,29 +1,29 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../../document/logic-document';
 import {
 	orthogonal,
 	samePoint,
 	segmentEnters,
 	within,
-} from './geometry/nested-region-geometry-primitives';
+} from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic as diagnostic,
 	RegionGeometryDiagnosticCode as Code,
-} from './geometry/region-geometry-diagnostic';
-import type { Bounds, Point } from './layout-types';
-import type {
-	RegionCompositionGeometryCandidate,
-	RegionGeometryPlacement,
-} from './region-composition-validation-types';
+} from '../../geometry/region-geometry-diagnostic';
+import type { Bounds, Point } from '../../layout-types';
 import type {
 	RegionCompositionModel,
 	RegionRelationOwnership,
-} from './regions/model/region-composition-model';
+} from '../model/region-composition-model';
 import {
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './regions/model/region-composition-types';
+} from '../model/region-composition-types';
+import type {
+	RegionCompositionGeometryCandidate,
+	RegionGeometryPlacement,
+} from './region-composition-validation-types';
 
 export interface GeometryContext {
 	readonly model: RegionCompositionModel;

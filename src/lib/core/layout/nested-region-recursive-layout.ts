@@ -2,18 +2,10 @@ import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { RouteBridgeCache } from './bridges/bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
 import { regionArrangementFor } from './region-arrangement-selection';
-import { validateRegionCompositionGeometry } from './region-composition-validation';
-import { regionLeafIncidentPath } from './region-leaf-incident-path';
-import {
-	solveRegionLeafLayoutWithIncidents,
-	UnknownRegionLeafLayoutError,
-} from './region-leaf-layout';
-import { regionLeafPolicy } from './region-leaf-policy';
 import {
 	type DiagnosedCandidate,
 	diagnosedFailure,
@@ -22,6 +14,12 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from './region-recursive-outcome';
+import { regionLeafIncidentPath } from './regions/leaf/region-leaf-incident-path';
+import {
+	solveRegionLeafLayoutWithIncidents,
+	UnknownRegionLeafLayoutError,
+} from './regions/leaf/region-leaf-layout';
+import { regionLeafPolicy } from './regions/leaf/region-leaf-policy';
 import type {
 	RegionIncidentPath,
 	SolvedRecursiveRegion,
@@ -47,6 +45,8 @@ import {
 } from './regions/model/region-composition-types';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
 import { RegionSearchProvenance } from './regions/model/region-search-evidence';
+import { validateNestedRegionLeafIncidents } from './regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometry } from './regions/validation/region-composition-validation';
 
 function solveLeaf(
 	context: RecursiveContext,

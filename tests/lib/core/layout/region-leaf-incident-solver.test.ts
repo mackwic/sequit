@@ -15,9 +15,9 @@ import {
 } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
-import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
-import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
+import { incidentMetricDemands } from '../../../../src/lib/core/layout/regions/leaf/region-incident-metric-demand';
+import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-base-layout';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,

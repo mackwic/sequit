@@ -10,17 +10,17 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
 import {
-	type RegionCompositionGeometryCandidate,
-	validateRegionCompositionGeometry as validateCompositionDiagnostic,
-	validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry,
-} from '../../../../src/lib/core/layout/region-composition-validation';
-import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import type { RegionInput } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	type RegionCompositionGeometryCandidate,
+	validateRegionCompositionGeometry as validateCompositionDiagnostic,
+	validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry,
+} from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import { validateParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
 import {
 	depthTwoRegionDocument,
 	depthTwoRegionInput,

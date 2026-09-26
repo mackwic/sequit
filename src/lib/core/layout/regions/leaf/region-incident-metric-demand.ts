@@ -1,14 +1,14 @@
-import { compareCanonicalStrings } from '../canonical-string';
+import { compareCanonicalStrings } from '../../../canonical-string';
 import {
 	MetricAxis,
 	MetricDemandKind,
 	type MinimumEndpointExtentMetricDemand,
-} from './contract/metric-demand';
-import { RegionPortalSide } from './regions/model/region-composition-types';
+} from '../../contract/metric-demand';
+import { RegionPortalSide } from '../model/region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,
-} from './regions/model/region-incident-contract';
+} from '../model/region-incident-contract';
 
 const PORT_INSET = 16;
 const PORT_SPACING = 24;

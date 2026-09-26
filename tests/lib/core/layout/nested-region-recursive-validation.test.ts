@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
@@ -14,6 +12,8 @@ import {
 	RegionCompositionStatus,
 	type RegionLayoutSelected,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import { validateParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 

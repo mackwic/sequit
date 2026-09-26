@@ -9,13 +9,13 @@ import {
 	LayoutPolicy,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
 	InvalidRegionLeafGraphError,
 	solveRegionLeafLayout,
 	solveRegionLeafLayoutWithIncidents,
 	UnsupportedRegionLeafLayoutError,
-} from '../../../../src/lib/core/layout/region-leaf-layout';
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';

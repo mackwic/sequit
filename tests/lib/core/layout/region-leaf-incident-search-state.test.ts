@@ -4,7 +4,7 @@ import {
 	newSearchState,
 	takeAttempt,
 	witness,
-} from '../../../../src/lib/core/layout/region-leaf-incident-search-state';
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-search-state';
 
 describe('bounded incident search evidence', () => {
 	it('preserves a turn for another side and never calls a truncated search exhaustive', () => {

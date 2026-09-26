@@ -4,11 +4,7 @@ import { defined, type LogicDocument } from '../../../../src/lib/core/document/l
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
-import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -18,6 +14,10 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import { validateParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
+import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {

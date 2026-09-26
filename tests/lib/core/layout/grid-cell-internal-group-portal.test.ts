@@ -14,9 +14,7 @@ import {
 	crossingMetricDemands,
 } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -27,6 +25,8 @@ import {
 	type RegionLayoutSelected,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import type { PreparedLayoutDocument } from '../../../support/harnesses/layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {

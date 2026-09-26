@@ -7,7 +7,7 @@ import {
 	routeCandidates,
 	routeFor,
 	slotsForAssignment,
-} from '../../../../src/lib/core/layout/region-leaf-incident-geometry';
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-geometry';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionIncidentRejectionCode,

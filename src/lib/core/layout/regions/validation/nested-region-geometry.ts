@@ -1,18 +1,18 @@
-import type { LogicGraph } from '../graph/create-graph';
-import type { RouteBridgeCache } from './bridges/bridge-oracle';
-import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
-import { validateNestedPlacements } from './nested-region-placement-validation';
-import { validateNestedRouteOwnership } from './nested-region-route-validation';
-import { validateRegionCompositionGeometry } from './region-composition-validation';
+import type { LogicGraph } from '../../../graph/create-graph';
+import type { RouteBridgeCache } from '../../bridges/bridge-oracle';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from './regions/model/region-composition-model';
+} from '../model/region-composition-model';
 import {
 	type RegionInput,
 	type RegionLayoutSelected,
 	RegionPortalSide,
-} from './regions/model/region-composition-types';
+} from '../model/region-composition-types';
+import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
+import { validateNestedPlacements } from './nested-region-placement-validation';
+import { validateNestedRouteOwnership } from './nested-region-route-validation';
+import { validateRegionCompositionGeometry } from './region-composition-validation';
 
 /** Separate materialization check: confinement, portals, ownership and opacity. */
 export function validateNestedRegionGeometry(

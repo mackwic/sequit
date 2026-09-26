@@ -1,11 +1,15 @@
-import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
-import type { RegionPortalSide } from './regions/model/region-composition-types';
+import {
+	boundedCounter,
+	scopedCounter,
+	type SearchBudgetCounter,
+} from '../../search/bounded-search';
+import type { RegionPortalSide } from '../model/region-composition-types';
 import type {
 	RegionIncidentContract,
 	RegionIncidentRejectedAlternative,
 	RegionIncidentSearchWitness,
-} from './regions/model/region-incident-contract';
-import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './search/bounded-search';
+} from '../model/region-incident-contract';
+import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
 
 const MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT = 1_024;
 const MAX_ALTERNATIVES = 8_192;

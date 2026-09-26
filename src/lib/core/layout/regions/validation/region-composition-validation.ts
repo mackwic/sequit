@@ -1,12 +1,13 @@
-import { defined } from '../document/logic-document';
-import { type RouteBridgeCache, validatedBridgesCached } from './bridges/bridge-oracle';
-import { finiteBounds, inside, overlaps } from './geometry/nested-region-geometry-primitives';
+import { defined } from '../../../document/logic-document';
+import { type RouteBridgeCache, validatedBridgesCached } from '../../bridges/bridge-oracle';
+import { finiteBounds, inside, overlaps } from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic as diagnostic,
 	RegionGeometryDiagnosticCode as Code,
-} from './geometry/region-geometry-diagnostic';
-import type { Bounds } from './layout-types';
+} from '../../geometry/region-geometry-diagnostic';
+import type { Bounds } from '../../layout-types';
+import type { RegionCompositionModel } from '../model/region-composition-model';
 import {
 	diagnoseParentRouteContacts,
 	validateLeafCompositionGeometry,
@@ -16,7 +17,6 @@ import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
-import type { RegionCompositionModel } from './regions/model/region-composition-model';
 
 export type { RegionCompositionGeometryCandidate } from './region-composition-validation-types';
 

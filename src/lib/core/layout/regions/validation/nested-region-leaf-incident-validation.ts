@@ -1,30 +1,30 @@
-import { defined, type LogicRelation } from '../document/logic-document';
-import { disallowedRouteContacts, type EndpointRoute } from './bridges/bridge-contact';
+import { defined, type LogicRelation } from '../../../document/logic-document';
+import { disallowedRouteContacts, type EndpointRoute } from '../../bridges/bridge-contact';
 import {
 	type LayoutBridge,
 	type RouteBridgeCache,
 	validatedBridgesCached,
-} from './bridges/bridge-oracle';
-import { orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
+} from '../../bridges/bridge-oracle';
+import { orthogonal, segmentEnters } from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 	type RegionGeometryProvenance,
 	RegionIncidentRole as IncidentRole,
-} from './geometry/region-geometry-diagnostic';
-import type { Bounds, LayoutElement, Point } from './layout-types';
+} from '../../geometry/region-geometry-diagnostic';
+import type { Bounds, LayoutElement, Point } from '../../layout-types';
 import {
 	type RegionCompositionModel,
 	RegionRelationKind,
 	type RegionRelationOwnership,
-} from './regions/model/region-composition-model';
+} from '../model/region-composition-model';
 import {
 	type RegionLayoutSelected,
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './regions/model/region-composition-types';
+} from '../model/region-composition-types';
 
 interface LeafIncident {
 	readonly relation: LogicRelation;
