@@ -47,10 +47,10 @@ export function railReuseDocument(): LogicDocument {
 	};
 }
 
-/** Keep the inverted channel intact; a disconnected tree puts validation outside the work envelope. */
-export function railClearanceDocument(): LogicDocument {
-	const base = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse').document;
+/** A disconnected tree raises bounded validation work without modifying the channel under test. */
+export function outsideRankSearchEnvelope(base: LogicDocument): LogicDocument {
 	const ids = Array.from({ length: 15 }, (_, index) => `wide-${index}`);
+	const natureId = defined(base.natures[0]).id;
 	return {
 		...base,
 		nodes: [
@@ -58,7 +58,7 @@ export function railClearanceDocument(): LogicDocument {
 			...ids.map((id) => ({
 				id,
 				kind: EndpointKind.Node as const,
-				natureId: 'goal',
+				natureId,
 				markdown: id,
 				layoutOrder: orderKey('a6'),
 			})),
@@ -72,6 +72,13 @@ export function railClearanceDocument(): LogicDocument {
 			})),
 		],
 	};
+}
+
+/** Keep the original inverted channel rather than searching for a no-crossing permutation. */
+export function railClearanceDocument(): LogicDocument {
+	return outsideRankSearchEnvelope(
+		realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse').document,
+	);
 }
 
 export function railClearanceMeasurements(clearance: 12 | 13): LayoutMeasurementOverrides {

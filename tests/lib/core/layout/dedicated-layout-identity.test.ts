@@ -266,7 +266,12 @@ describe('dedicated engine LayoutResult identity', () => {
 				const result = selected.layout;
 				if (id.startsWith('rail-')) expect(selected.witness.evaluated).toBe(1);
 				if (id.startsWith('rail-clearance-')) expect(selected.witness.stop).toBe('shape-envelope');
-				if (id === 'workshop-navigation') {
+				if (
+					id === 'workshop-navigation' ||
+					id === 'multirank-group-junction-one' ||
+					id === 'multirank-group-junction-two' ||
+					id === 'group-endpoint-route'
+				) {
 					const baseline = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements, {
 						inspectRouting: true,
 					});
@@ -283,7 +288,7 @@ describe('dedicated engine LayoutResult identity', () => {
 						layout: result,
 					});
 					if (!initial.valid || !optimized.valid)
-						throw new Error('Navigation routes must validate');
+						throw new Error(`${id} rank baseline and selected routes must validate`);
 					expect(compareDedicatedRouteScores(optimized.score, initial.score)).toBeLessThan(0);
 				}
 				validationById.set(
@@ -367,12 +372,12 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-2+2': 'ccb1e3f80999b722880c89fb9824cd87bf720e016207f62e6a80aafa13795201',
 			'adjacent-3+1': '03d7ab66e96afe3a72cb29c2474c95c758d6ec68e43f1b957736a658b9b089b7',
 			'ai-documentary-effort': 'efc78b3328e0fd53d68b5e26881580d51cdd98a2ebf24c6dbdd6b0d88cb4f1ee',
-			'group-endpoint-route': 'eae06e2335b8dae954695572827128a975df18dfb5f0a6ae723161f6700fb1c5',
+			'group-endpoint-route': 'bc431c08d86cd74f0baeeb20e2cb83118b739da0debe72d47b543dba908ed611',
 			'junction-network-layout': '45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
 			'multirank-group-junction-one':
-				'5d21370f3c46a5e10ff2c3825e8ab602a99ceb0063ce5615f1e236ca89d2dc5f',
+				'a630fe9ae19dfd906835eebbe7900a74eb6284723ecf19d7f8382bac419fa7ad',
 			'multirank-group-junction-two':
-				'1b6c7d41c5040f17de7f4a561290fd9a87e48f6e130d0eef108fe505a085a32f',
+				'af0c04a049f78553929819f5e5ed553f4d41f3bcd6fa95df18725c5869194280',
 			'rail-clearance-12': 'bf2632bc7e6a31d2f3a8bb40a9010a80723a5b236d7d6c072048d458f3ad26b5',
 			'rail-clearance-13': 'f2292e0ea488f38806f26c2c97eae4759b6981db71452660e215ba092013e750',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
@@ -417,12 +422,23 @@ describe('dedicated engine LayoutResult identity', () => {
 			['multirank-group-junction-two', ['c-to-f', 'd-to-e'] as const],
 		] as const;
 		for (const [id, relationIds] of crossingsByLayout) {
-			const layout = results[id];
-			if (layout === undefined) throw new Error(`Missing LayoutResult ${id}`);
-			const crossingBridgeIds = routeBridgeAnalysis(layout.relations).bridges.map(
-				({ carrierIds, crossedIds }) => [...new Set([...carrierIds, ...crossedIds])].toSorted(),
+			const selected = results[id];
+			const source = allCases.find((candidate) => candidate.id === id);
+			if (selected === undefined || source === undefined)
+				throw new Error(`Missing LayoutResult ${id}`);
+			const created = createGraph(source.document);
+			if (!created.ok) throw new Error(`Invalid grouped crossing ${id}`);
+			const ranks = topologicallyRank(created.value);
+			const documentary = evaluateDedicatedLayout(
+				prepareLayout(created.value, ranks),
+				layoutMeasurementsFor(source.document, source.measurementOverrides),
 			);
-			expect(crossingBridgeIds).toContainEqual([...relationIds].toSorted());
+			const bridgePairs = (layout: LayoutResult) =>
+				routeBridgeAnalysis(layout.relations).bridges.map(({ carrierIds, crossedIds }) =>
+					[...new Set([...carrierIds, ...crossedIds])].toSorted(),
+				);
+			expect(bridgePairs(documentary)).toContainEqual([...relationIds].toSorted());
+			expect(bridgePairs(selected)).not.toContainEqual([...relationIds].toSorted());
 		}
 
 		expect(

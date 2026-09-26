@@ -19,6 +19,7 @@ import type {
 import type { LayoutMeasurementOverrides } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
+	outsideRankSearchEnvelope,
 	railClearanceDocument,
 	railClearanceMeasurements,
 	railReuseDocument,
@@ -110,7 +111,7 @@ const correctedGroupDocuments = [
 		{ id: 'e-to-join', from: 'e', to: 'join' },
 		{ id: 'f-to-join', from: 'f', to: 'join' },
 	]),
-];
+].map(outsideRankSearchEnvelope);
 
 const junctionNetwork: LogicDocument = {
 	...makeDocument(
@@ -172,9 +173,14 @@ function finalChannelFor(
 ): ChannelObservation {
 	const prepared = prepareLayoutDocument(document);
 	channelObservations.calls.length = 0;
-	const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements, {
-		inspectRouting: true,
-	});
+	const production = layoutWithDedicatedEngineAndRankOrderWitness(
+		prepared.graph,
+		prepared.ranks,
+		prepared.measurements,
+		{ inspectRouting: true },
+	);
+	expect(production.witness.evaluated).toBe(1);
+	const layout = production.layout;
 	const matches = channelObservations.calls.filter(({ endpoints }) =>
 		relationIds.every((id) => {
 			const endpoint = endpoints.find((candidate) => candidate.id === id);
@@ -286,16 +292,18 @@ describe('dedicated engine channel characterization (replaceable during channel 
 		});
 
 		it('observes split-run cycle and precedence on an allocated document without groups', () => {
-			const document = makeDocument(
-				'allocated-cycle',
-				['a', 'b', 'c', 'd', 'e', 'f'],
-				[
-					{ id: 'a-d', from: 'a', to: 'd' },
-					{ id: 'b-c', from: 'b', to: 'c' },
-					{ id: 'b-d', from: 'b', to: 'd' },
-					{ id: 'c-f', from: 'c', to: 'f' },
-					{ id: 'd-f', from: 'd', to: 'f' },
-				],
+			const document = outsideRankSearchEnvelope(
+				makeDocument(
+					'allocated-cycle',
+					['a', 'b', 'c', 'd', 'e', 'f'],
+					[
+						{ id: 'a-d', from: 'a', to: 'd' },
+						{ id: 'b-c', from: 'b', to: 'c' },
+						{ id: 'b-d', from: 'b', to: 'd' },
+						{ id: 'c-f', from: 'c', to: 'f' },
+						{ id: 'd-f', from: 'd', to: 'f' },
+					],
+				),
 			);
 			const channel = finalChannelFor(document, ['a-d', 'b-c']);
 			const splitInput = channel.endpoints.find(({ id }) => id === 'a-d');
