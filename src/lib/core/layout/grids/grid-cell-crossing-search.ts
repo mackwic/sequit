@@ -6,6 +6,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
+import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
 import {
 	type CrossingAllocationPhase,
 	crossingAllocationPhases,
@@ -46,23 +47,6 @@ interface GridCrossingAllocationPhaseResult<Candidate> {
 	readonly failure: RegionGeometryDiagnostic | undefined;
 	readonly rejectedAlternatives: GridCrossingAllocationWitness['rejectedAlternatives'][number][];
 	readonly evidence: GridCrossingAllocationWitness['phases'][number];
-}
-
-function allocationIdentity(
-	allocation: GridCrossingAllocation,
-	input: CrossingAllocationInput,
-): string {
-	const tracks = (values: ReadonlyMap<string, number>, ids: readonly string[]): readonly number[] =>
-		ids.map((id) => defined(values.get(id)));
-	return JSON.stringify([
-		input.gutterIds.map((ids, column) =>
-			tracks(defined(allocation.gutterTrackByRelationId[column]), ids),
-		),
-		tracks(allocation.busTrackByRelationId, input.busRelevantRelationIds),
-		[...input.incidence].map(([id, ids]) =>
-			tracks(defined(allocation.portTrackByEndpointId.get(id)), ids),
-		),
-	]);
 }
 
 function addConflictingRoutes(
@@ -112,8 +96,14 @@ function searchGridCrossingPhase<Candidate>(
 	const { active, conflictsFirst } = frontier;
 	const total = phase.totalGeometries(input);
 	const seen = new Set<string>();
+	const busRelevant = new Set(input.busRelevantRelationIds);
 	for (const allocation of orderedPhaseCandidates(input, phase, active, conflictsFirst)) {
-		const key = allocationIdentity(allocation, input);
+		const key = geometryKeyFromAllocation(
+			allocation.gutterTrackByRelationId,
+			allocation.busTrackByRelationId,
+			allocation.portTrackByEndpointId,
+			busRelevant,
+		);
 		if (seen.has(key)) continue;
 		if (!explored.take()) break;
 		seen.add(key);

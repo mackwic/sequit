@@ -4,6 +4,17 @@ import { defined } from '../../document/logic-document';
 /** Empty routing track owned by an edge but unused by a relation. */
 export const FREE_TRACK = '';
 
+/** Preserve canonical relation order when converting allocated tracks back to proposal slots. */
+export function trackOrderFromMap(
+	ids: readonly string[],
+	tracks: ReadonlyMap<string, number>,
+	count: number,
+): readonly string[] {
+	const order = Array<string>(count).fill(FREE_TRACK);
+	for (const id of ids) order[defined(tracks.get(id))] = id;
+	return order;
+}
+
 function* permutations<T>(values: readonly T[]): Generator<readonly T[]> {
 	if (values.length === 0) {
 		yield [];
