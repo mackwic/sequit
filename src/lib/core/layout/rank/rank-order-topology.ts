@@ -1,9 +1,9 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, EndpointKind } from '../document/logic-document';
-import type { EffectiveSemanticRelation } from '../graph/create-graph';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, EndpointKind } from '../../document/logic-document';
+import type { EffectiveSemanticRelation } from '../../graph/create-graph';
+import type { LayoutStructure } from '../structure/prepare-layout';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
 import type { RankOrderDomain } from './rank-ordering';
-import type { LayoutStructure } from './structure/prepare-layout';
 
 interface OrderedEndpoint {
 	readonly id: string;

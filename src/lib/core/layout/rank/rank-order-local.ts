@@ -1,6 +1,7 @@
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { DedicatedLayoutEvaluation, LayoutMeasurements } from './layout-types';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { DedicatedLayoutEvaluation, LayoutMeasurements } from '../layout-types';
+import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
 import { type RankSearchComponent, rankSearchComponents } from './rank-order-components';
 import {
@@ -9,7 +10,6 @@ import {
 	searchDedicatedRankOrders,
 } from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
-import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
 /** Shape-only eligibility weight; not a bound on route segments or validation work. */
 const MAX_ELIGIBILITY_WEIGHT = 4096;

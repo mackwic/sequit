@@ -19,8 +19,8 @@ import { expandRowGaps } from './placement/expand-row-gaps';
 import { groupJunctionInsets } from './placement/group-junction-channels';
 import { placeElements } from './placement/place-elements';
 import { prepareMeasurements } from './placement/prepare-measurements';
-import type { RankOrderSearchWitness } from './rank-order-search';
-import { selectDedicatedRankLayout } from './rank-order-selection';
+import type { RankOrderSearchWitness } from './rank/rank-order-search';
+import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import { alignJunctionPorts } from './routing/align-junction-ports';
 import {
 	allocateLayerPorts,

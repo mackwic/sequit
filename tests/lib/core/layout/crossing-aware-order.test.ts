@@ -18,7 +18,7 @@ import {
 	scoreTargetInsertionSlots,
 	selectTargetInsertionSlot,
 	weightedInversionScore,
-} from '../../../../src/lib/core/layout/crossing-aware-order';
+} from '../../../../src/lib/core/layout/rank/crossing-aware-order';
 import { orderEndpoints } from '../../../../src/lib/core/ordering/endpoint-order';
 
 function metadata(

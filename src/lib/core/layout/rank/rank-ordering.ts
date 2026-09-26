@@ -1,7 +1,7 @@
-import { defined, EndpointKind } from '../document/logic-document';
+import { defined, EndpointKind } from '../../document/logic-document';
+import type { LayoutStructure } from '../structure/prepare-layout';
 import type { RankDomain, RankOrder } from './rank-order';
 import { validateRankOrder } from './rank-order';
-import type { LayoutStructure } from './structure/prepare-layout';
 
 export interface RankOrderDomain extends RankDomain {
 	readonly locations: readonly {

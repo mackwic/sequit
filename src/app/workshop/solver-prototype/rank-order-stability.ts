@@ -5,15 +5,15 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation';
+import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation/validate';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngineAndRankOrderWitness,
 } from '../../../lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult, Point } from '../../../lib/core/layout/layout-types';
-import type { RankOrder } from '../../../lib/core/layout/rank-order';
-import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank-order-search';
-import { collectRankOrderDomain } from '../../../lib/core/layout/rank-ordering';
+import type { RankOrder } from '../../../lib/core/layout/rank/rank-order';
+import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-search';
+import { collectRankOrderDomain } from '../../../lib/core/layout/rank/rank-ordering';
 import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import {
 	type EndpointSlot,

@@ -7,7 +7,7 @@ import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ra
 import {
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';

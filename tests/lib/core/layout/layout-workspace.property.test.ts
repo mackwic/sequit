@@ -16,7 +16,7 @@ import {
 import {
 	applyRankOrder,
 	collectRankOrderDomain,
-} from '../../../../src/lib/core/layout/rank-ordering';
+} from '../../../../src/lib/core/layout/rank/rank-ordering';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { validLogicDocument } from '../../../support/builders/logic-document';

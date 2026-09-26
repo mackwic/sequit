@@ -1,35 +1,22 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { EndpointKind } from '../document/logic-document';
-import { routeBridgeAnalysis } from './bridges/bridge-oracle';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { EndpointKind } from '../../document/logic-document';
+import { routeBridgeAnalysis } from '../bridges/bridge-oracle';
+import { prepareRouteObstacles } from '../routing/route-obstacles';
 import {
 	elementsById,
 	validateGroupContainment,
 	validateRelationInventory,
-} from './dedicated-candidate-validation/element-checks';
-import {
-	validateElementBounds,
-	validateElementOverlap,
-	validateRankRows,
-} from './dedicated-candidate-validation/layout-checks';
-import { validatePorts } from './dedicated-candidate-validation/ports';
-import { contactFailure } from './dedicated-candidate-validation/route-contacts';
-import { routeFailure } from './dedicated-candidate-validation/route-geometry';
-import { routeScore } from './dedicated-candidate-validation/route-score';
-import type {
-	DedicatedCandidateValidation,
-	DedicatedCandidateValidationInput,
-} from './dedicated-candidate-validation/types';
-import { prepareRouteObstacles } from './routing/route-obstacles';
+} from './element-checks';
+import { validateElementBounds, validateElementOverlap, validateRankRows } from './layout-checks';
+import { validatePorts } from './ports';
+import { contactFailure } from './route-contacts';
+import { routeFailure } from './route-geometry';
+import { routeScore } from './route-score';
+import type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
 
-export {
-	compareDedicatedRouteScores,
-	scoreDedicatedCandidateRoutes,
-} from './dedicated-candidate-validation/route-score';
-export type {
-	DedicatedCandidateValidation,
-	DedicatedCandidateValidationInput,
-} from './dedicated-candidate-validation/types';
-export { DedicatedCandidateRejectionCode } from './dedicated-candidate-validation/types';
+export { compareDedicatedRouteScores, scoreDedicatedCandidateRoutes } from './route-score';
+export type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
+export { DedicatedCandidateRejectionCode } from './types';
 
 /** Independent geometry oracle for candidates produced by the dedicated engine. */
 export function validateDedicatedCandidate(

@@ -10,9 +10,9 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation';
-import { compareDedicatedRouteScores } from '../../../lib/core/layout/dedicated-candidate-validation';
 import type { DedicatedRouteScore } from '../../../lib/core/layout/dedicated-candidate-validation/types';
+import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation/validate';
+import { compareDedicatedRouteScores } from '../../../lib/core/layout/dedicated-candidate-validation/validate';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngineAndRankOrderWitness,
@@ -29,9 +29,12 @@ import {
 	rankOrderKendallDistance,
 	type RankOrderRelation,
 	validateRankOrder,
-} from '../../../lib/core/layout/rank-order';
-import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank-order-search';
-import { applyRankOrder, collectRankOrderDomain } from '../../../lib/core/layout/rank-ordering';
+} from '../../../lib/core/layout/rank/rank-order';
+import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-search';
+import {
+	applyRankOrder,
+	collectRankOrderDomain,
+} from '../../../lib/core/layout/rank/rank-ordering';
 import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import {
 	type EndpointSlot,

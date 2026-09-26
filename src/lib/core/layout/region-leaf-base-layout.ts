@@ -4,7 +4,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import { selectDedicatedRankLayout } from './rank-order-selection';
+import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';

@@ -27,7 +27,7 @@ import {
 import {
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngine,
@@ -54,15 +54,15 @@ import {
 	type RankOrderInput,
 	rankOrderKendallDistance,
 	validateRankOrder,
-} from '../../../../src/lib/core/layout/rank-order';
-import { barycentricSweep } from '../../../../src/lib/core/layout/rank-order-heuristic';
-import { searchDedicatedRankOrders } from '../../../../src/lib/core/layout/rank-order-search';
-import { selectDedicatedRankLayout } from '../../../../src/lib/core/layout/rank-order-selection';
-import { RankTopologyOracle } from '../../../../src/lib/core/layout/rank-order-topology';
+} from '../../../../src/lib/core/layout/rank/rank-order';
+import { barycentricSweep } from '../../../../src/lib/core/layout/rank/rank-order-heuristic';
+import { searchDedicatedRankOrders } from '../../../../src/lib/core/layout/rank/rank-order-search';
+import { selectDedicatedRankLayout } from '../../../../src/lib/core/layout/rank/rank-order-selection';
+import { RankTopologyOracle } from '../../../../src/lib/core/layout/rank/rank-order-topology';
 import {
 	applyRankOrder,
 	collectRankOrderDomain,
-} from '../../../../src/lib/core/layout/rank-ordering';
+} from '../../../../src/lib/core/layout/rank/rank-ordering';
 import {
 	type LayoutStructure,
 	prepareLayout,

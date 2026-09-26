@@ -10,7 +10,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { groupSeparationWindows } from '../../../../src/lib/core/layout/placement/enclose-groups';

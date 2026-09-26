@@ -1,12 +1,13 @@
-import {
-	compareDedicatedRouteScores,
-	validateDedicatedCandidate,
-} from './dedicated-candidate-validation';
 import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
-} from './dedicated-candidate-validation/types';
-import type { DedicatedLayoutEvaluation, LayoutMeasurements, LayoutOptions } from './layout-types';
+} from '../dedicated-candidate-validation/types';
+import {
+	compareDedicatedRouteScores,
+	validateDedicatedCandidate,
+} from '../dedicated-candidate-validation/validate';
+import type { DedicatedLayoutEvaluation, LayoutMeasurements, LayoutOptions } from '../layout-types';
+import type { LayoutStructure } from '../structure/prepare-layout';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -17,7 +18,6 @@ import {
 import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
 import type { RankOrderDomain } from './rank-ordering';
-import type { LayoutStructure } from './structure/prepare-layout';
 
 /** Rank selection only needs the retained evaluation path of the dedicated engine. */
 export type DedicatedLayoutEvaluator = (

@@ -1,20 +1,21 @@
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import {
-	compareDedicatedRouteScores,
-	validateDedicatedCandidate,
-} from './dedicated-candidate-validation';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { TopologicalRanks } from '../../graph/topological-ranks';
 import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
-} from './dedicated-candidate-validation/types';
+} from '../dedicated-candidate-validation/types';
+import {
+	compareDedicatedRouteScores,
+	validateDedicatedCandidate,
+} from '../dedicated-candidate-validation/validate';
 import type {
 	DedicatedLayoutEvaluation,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
-} from './layout-types';
+} from '../layout-types';
+import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
 import {
 	chooseLocal,
@@ -29,7 +30,6 @@ import {
 	RankSearchStop,
 } from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
-import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
 interface GlobalChoice {
 	readonly evaluation: DedicatedLayoutEvaluation;

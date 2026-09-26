@@ -13,7 +13,7 @@ import {
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
-import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank-order';
+import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank/rank-order';
 
 describe('rank order comparison', () => {
 	const comparison = compareRankOrderCorpus(rankOrderComparisonCorpus());

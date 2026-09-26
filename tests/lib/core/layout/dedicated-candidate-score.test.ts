@@ -7,7 +7,7 @@ import {
 	compareDedicatedRouteScores,
 	scoreDedicatedCandidateRoutes,
 	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';

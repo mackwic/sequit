@@ -4,7 +4,7 @@ import {
 	crossingScoreTolerance,
 	scoreTargetInsertionSlots,
 	selectTargetInsertionSlot,
-} from '../layout/crossing-aware-order';
+} from '../layout/rank/crossing-aware-order';
 import { orderEndpoints } from '../ordering/endpoint-order';
 import type { EndpointSlot, OrderKeySpace } from '../ordering/order-key-space';
 import { defined } from './logic-document';

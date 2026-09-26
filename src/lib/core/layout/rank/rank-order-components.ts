@@ -4,11 +4,11 @@ import {
 	type LogicJunction,
 	type LogicNode,
 	type LogicRelation,
-} from '../document/logic-document';
-import { createGraph, type LogicGraph } from '../graph/create-graph';
-import { topologicallyRank, type TopologicalRanks } from '../graph/topological-ranks';
-import type { LayoutMeasurements } from './layout-types';
-import type { LayoutStructure } from './structure/prepare-layout';
+} from '../../document/logic-document';
+import { createGraph, type LogicGraph } from '../../graph/create-graph';
+import { topologicallyRank, type TopologicalRanks } from '../../graph/topological-ranks';
+import type { LayoutMeasurements } from '../layout-types';
+import type { LayoutStructure } from '../structure/prepare-layout';
 
 export interface RankSearchComponent {
 	readonly index: number;

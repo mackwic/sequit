@@ -1,8 +1,8 @@
-import type { LogicRelation } from '../document/logic-document';
-import { defined } from '../document/logic-document';
+import type { LogicRelation } from '../../document/logic-document';
+import { defined } from '../../document/logic-document';
+import type { LayoutStructure } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
 import type { RankOrderDomain } from './rank-ordering';
-import type { LayoutStructure } from './structure/prepare-layout';
 
 interface SweepInput {
 	readonly structure: LayoutStructure;

@@ -9,7 +9,7 @@ import {
 	permutations,
 	type RankDomain,
 	rankOrderEnumerationSize,
-} from '../rank-order';
+} from '../rank/rank-order';
 import type { ConditionalPortConflicts } from '../routing/conditional-port-conflicts';
 import { threeIncidenceFaceCapacity } from '../routing/face-capacity';
 import {

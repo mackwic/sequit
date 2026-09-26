@@ -1,5 +1,5 @@
-import { defined } from '../document/logic-document';
-import type { EffectiveSemanticRelation } from '../graph/create-graph';
+import { defined } from '../../document/logic-document';
+import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 
 enum VisualLayerKind {
 	Ordinary = 'ordinary',

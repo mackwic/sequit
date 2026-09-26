@@ -1,7 +1,7 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicEndpoint } from '../document/logic-document';
-import { orderEndpoints } from '../ordering/endpoint-order';
-import { fractionalOrderKeySpace, type OrderKeySpace } from '../ordering/order-key-space';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, type LogicEndpoint } from '../../document/logic-document';
+import { orderEndpoints } from '../../ordering/endpoint-order';
+import { fractionalOrderKeySpace, type OrderKeySpace } from '../../ordering/order-key-space';
 
 /** Bands of endpoint identifiers sharing one rank, in the caller's band order. */
 export interface RankDomain {
