@@ -45,7 +45,7 @@ describe('document content styles', () => {
 
 	it('rejects edits for nodes and natures that are not in the document', () => {
 		const document = validLogicDocument();
-		expect(() => styleDocumentNode(document, 'missing-node', {})).toThrow('Unknown node');
-		expect(() => styleDocumentNature(document, 'missing-nature', {})).toThrow('Unknown nature');
+		expect(() => styleDocumentNode(document, 'missing-node', {})).toThrow(/missing-node/);
+		expect(() => styleDocumentNature(document, 'missing-nature', {})).toThrow(/missing-nature/);
 	});
 });
