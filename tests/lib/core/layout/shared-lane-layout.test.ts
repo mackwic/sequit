@@ -960,7 +960,6 @@ describe('shared lane layout', () => {
 		const prepared = prepareLayoutDocument(document);
 		const routing = prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {});
 		const input = defined(routing.input);
-		const ports = planSharedLanePorts(input);
 		const contracts = [
 			{
 				relation: { id: 'outer-a1', from: 'a1', to: 'outside' },
@@ -969,6 +968,7 @@ describe('shared lane layout', () => {
 				allowedSides: [RegionPortalSide.Right, RegionPortalSide.Left],
 			},
 		];
+		const ports = planSharedLanePorts(input, contracts);
 		const plans = parallelStrategyPlans(input, ports, contracts);
 		const exhaustiveCandidateTotal = [...parallelRouteCandidates(input, plans, false)].length;
 		let exhaustiveBest: ReturnType<typeof rankLaneRouteSelection> | undefined;
@@ -1060,6 +1060,18 @@ describe('shared lane layout', () => {
 			attempted: exhaustiveCandidateTotal,
 			searchStarted: true,
 		});
+		const production = solveSharedLaneLayout(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+			{
+				incidents: contracts,
+			},
+		);
+		expect(production.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (production.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(production.geometry).toEqual(exhaustiveBest?.selected.geometry);
+		expect(production.incidents).toEqual(exhaustiveBest?.selected.incidents);
 		expect(result.selected?.geometry).toEqual(exhaustiveBest?.selected.geometry);
 		expect(result.selected?.incidents).toEqual(exhaustiveBest?.selected.incidents);
 		expect(result.selected?.id).toBe(exhaustiveBest?.candidate.candidateId);
