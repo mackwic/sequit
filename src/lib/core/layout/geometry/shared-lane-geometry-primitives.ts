@@ -1,4 +1,4 @@
-import type { Bounds, Point } from './layout-types';
+import type { Bounds, Point } from '../layout-types';
 
 export function cross(point: Point, vertical: boolean): number {
 	if (vertical) return point.x;

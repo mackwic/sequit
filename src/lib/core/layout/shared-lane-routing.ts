@@ -7,7 +7,7 @@ import {
 	centeredTrackOffset,
 	type RoutingTrackAllocation,
 	trackOffset,
-} from './routing-resource-allocation';
+} from './resources/routing-resource-allocation';
 import {
 	type LogicalBox,
 	physicalPoint,

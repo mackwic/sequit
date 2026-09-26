@@ -1,6 +1,16 @@
 import { defined } from '../document/logic-document';
+import {
+	orthogonal,
+	samePoint,
+	segmentEnters,
+	within,
+} from './geometry/nested-region-geometry-primitives';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic as diagnostic,
+	RegionGeometryDiagnosticCode as Code,
+} from './geometry/region-geometry-diagnostic';
 import type { Bounds, Point } from './layout-types';
-import { orthogonal, samePoint, segmentEnters, within } from './nested-region-geometry-primitives';
 import type { RegionCompositionModel, RegionRelationOwnership } from './region-composition-model';
 import {
 	type RegionOwnedRoute,
@@ -11,11 +21,6 @@ import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
-import {
-	type RegionGeometryDiagnostic,
-	regionGeometryDiagnostic as diagnostic,
-	RegionGeometryDiagnosticCode as Code,
-} from './region-geometry-diagnostic';
 
 export interface GeometryContext {
 	readonly model: RegionCompositionModel;

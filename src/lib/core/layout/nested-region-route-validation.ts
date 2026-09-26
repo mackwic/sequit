@@ -2,8 +2,13 @@ import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import { unbridgedContacts } from './bridge-contact';
 import { validatedBridges } from './bridge-oracle';
+import {
+	orthogonal,
+	samePoint,
+	segmentEnters,
+	within,
+} from './geometry/nested-region-geometry-primitives';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
-import { orthogonal, samePoint, segmentEnters, within } from './nested-region-geometry-primitives';
 import {
 	type RegionChildPlacement,
 	type RegionInput,

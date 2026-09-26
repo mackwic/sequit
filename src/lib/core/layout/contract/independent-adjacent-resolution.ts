@@ -1,11 +1,11 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
-import { bestWithinBudget, validatedSearchBudget } from '../bounded-search';
 import { unbridgedCrossings } from '../bridge-contact';
 import { routeBridgeAnalysis } from '../bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
 import { layoutRouteCost, type RouteCost } from '../routing/route-cost';
+import { bestWithinBudget, validatedSearchBudget } from '../search/bounded-search';
 import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
 import {
 	AdjacentGeometryMode,

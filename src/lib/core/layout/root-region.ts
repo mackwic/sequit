@@ -6,6 +6,7 @@ import {
 } from '../document/region-presentation';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import type { RegionGeometryDiagnosticCode } from './geometry/region-geometry-diagnostic';
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
@@ -18,7 +19,6 @@ import {
 	type RegionInput,
 	type RegionLayoutAttempt,
 } from './region-composition-types';
-import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 import type { RegionIncidentUnknownCode } from './region-incident-contract';
 import type { RegionLocalLayoutCache } from './region-local-cache';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';

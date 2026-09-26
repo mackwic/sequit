@@ -9,7 +9,7 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
-import { edgeExtent, type RoutingEdge } from './routing-resource-allocation';
+import { edgeExtent, type RoutingEdge } from './resources/routing-resource-allocation';
 
 const REGION_GAP = 96;
 const ROOT_MARGIN = 48;

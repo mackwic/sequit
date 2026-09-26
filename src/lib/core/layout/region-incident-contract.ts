@@ -1,8 +1,8 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import type { LogicRelation } from '../document/logic-document';
-import type { BoundedSearchWitness } from './bounded-search';
 import type { Point } from './layout-types';
 import { RegionPortalSide } from './region-portal-side';
+import type { BoundedSearchWitness } from './search/bounded-search';
 
 export enum RegionIncidentRole {
 	Source = 'source',

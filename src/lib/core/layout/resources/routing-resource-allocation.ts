@@ -1,5 +1,5 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
 
 /** An edge owns a bounded number of parallel tracks inside its region. */
 export interface RoutingEdge {

@@ -8,7 +8,7 @@ import {
 import { equal } from './grid-cell-geometry-primitives';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
 import { RegionPortalSide } from './region-composition-types';
-import { edgeExtent, type RoutingEdge, trackOffset } from './routing-resource-allocation';
+import { edgeExtent, type RoutingEdge, trackOffset } from './resources/routing-resource-allocation';
 
 const PORT_INSET = 16;
 /** Clearance between two adjacent crossing tracks. */

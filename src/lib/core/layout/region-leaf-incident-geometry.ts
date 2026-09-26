@@ -1,7 +1,7 @@
 import { EndpointKind } from '../document/logic-document';
 import { disallowedProvisionalRouteContacts } from './bridge-contact';
+import { inside, orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
 import type { Bounds, LayoutElement, LayoutResult, Point } from './layout-types';
-import { inside, orthogonal, segmentEnters } from './nested-region-geometry-primitives';
 import { RegionPortalSide } from './region-composition-types';
 import { incidentEndpointRoute } from './region-incident-contact';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';

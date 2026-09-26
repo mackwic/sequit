@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type {
 	RoutingEdge,
 	RoutingTrackAllocation,
-} from '../../../../src/lib/core/layout/routing-resource-allocation';
+} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 import {
 	trackAllocationProductCount,
 	trackAllocationProducts,

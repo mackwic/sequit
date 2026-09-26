@@ -6,6 +6,10 @@ import {
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
 import {
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode as Code,
+} from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
+import {
 	regionQualifiedFailure,
 	retryOwnerForIncidentFailure,
 } from '../../../../src/lib/core/layout/nested-region-recursive-diagnostics';
@@ -14,10 +18,6 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import {
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode as Code,
-} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,

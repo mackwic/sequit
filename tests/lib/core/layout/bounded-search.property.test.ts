@@ -12,7 +12,7 @@ import {
 	type SearchBudgetCounter,
 	type SearchBudgetEvidence,
 	validatedSearchBudget,
-} from '../../../../src/lib/core/layout/bounded-search';
+} from '../../../../src/lib/core/layout/search/bounded-search';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 interface Alternative {

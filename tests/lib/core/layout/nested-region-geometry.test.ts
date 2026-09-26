@@ -6,8 +6,6 @@ import {
 	layoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import {
 	entersInterior,
 	finiteBounds,
@@ -16,7 +14,9 @@ import {
 	overlaps,
 	segmentEnters,
 	within,
-} from '../../../../src/lib/core/layout/nested-region-geometry-primitives';
+} from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
+import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import type {
 	RegionChildPlacement,
 	RegionLayoutSelected,

@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
+import {
 	canonicalCrossingAllocation,
 	crossingBusOrderCandidates,
 	type GridCrossingAllocation,
@@ -19,10 +23,6 @@ import {
 	searchGridCrossingAllocations,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-search';
 import { entersInterior } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
-import {
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
 	effectiveRouteGeometry,

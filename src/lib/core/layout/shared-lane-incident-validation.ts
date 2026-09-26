@@ -1,8 +1,9 @@
 import { defined } from '../document/logic-document';
 import { disallowedProvisionalRouteContacts } from './bridge-contact';
+import { orthogonal, samePoint } from './geometry/nested-region-geometry-primitives';
+import { hitsBox } from './geometry/shared-lane-geometry-primitives';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, Point } from './layout-types';
-import { orthogonal, samePoint } from './nested-region-geometry-primitives';
 import { RegionPortalSide } from './region-composition-types';
 import { incidentEndpointRoute } from './region-incident-contact';
 import {
@@ -10,7 +11,6 @@ import {
 	RegionIncidentRejectionCode,
 	type RegionSolvedIncident,
 } from './region-incident-contract';
-import { hitsBox } from './shared-lane-geometry-primitives';
 import { facePortEdge, incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneGeometry } from './shared-lane-types';
 

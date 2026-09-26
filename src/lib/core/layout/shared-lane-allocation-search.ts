@@ -1,6 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import type { RoutingEdge, RoutingTrackAllocation } from './routing-resource-allocation';
+import type { RoutingEdge, RoutingTrackAllocation } from './resources/routing-resource-allocation';
 
 /** One route band and the track assignments the selected strategy actually reads from it. */
 export interface TrackAssignmentDomain {

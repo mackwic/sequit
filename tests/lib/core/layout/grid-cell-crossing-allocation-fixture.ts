@@ -12,6 +12,10 @@ import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/cre
 import type { TopologicalRanks } from '../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import {
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
@@ -33,10 +37,6 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometryDiagnostic } from '../../../../src/lib/core/layout/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import {
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 
 export interface VariedGridRoutingCase {
 	readonly input: CrossingAllocationInput;

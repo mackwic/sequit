@@ -12,6 +12,10 @@ import {
 	REGION_POLICY_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import {
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
 import {
 	leafDocument,
@@ -25,10 +29,6 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 } from '../../../../src/lib/core/layout/region-composition-types';
-import {
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	RegionIncidentRejectionCode,
 	type RegionIncidentSearchWitness,

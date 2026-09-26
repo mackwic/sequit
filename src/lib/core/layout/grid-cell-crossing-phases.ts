@@ -5,13 +5,13 @@ import {
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
-import { CrossingAllocationPhaseId } from './grid-cell-crossing-witness';
+import { CrossingAllocationPhaseId } from './search/grid-cell-crossing-witness';
 
 export type {
 	GridCrossingAllocationSelectedWitness,
 	GridCrossingAllocationWitness,
-} from './grid-cell-crossing-witness';
-export { CrossingAllocationPhaseId } from './grid-cell-crossing-witness';
+} from './search/grid-cell-crossing-witness';
+export { CrossingAllocationPhaseId } from './search/grid-cell-crossing-witness';
 
 /** Maximum route geometries examined while permuting the existing gutter, bus, and port tracks. */
 export const GRID_CROSSING_REALLOCATION_BUDGET = 256;

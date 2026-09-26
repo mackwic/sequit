@@ -1,7 +1,7 @@
 import { defined } from '../document/logic-document';
 import { type RoutedPath, type RouteRun, routeRuns } from './bridge-oracle';
+import { samePoint } from './geometry/nested-region-geometry-primitives';
 import type { Point } from './layout-types';
-import { samePoint } from './nested-region-geometry-primitives';
 
 /** Endpoint identity is optional for a route piece: only its attached end is declared. */
 export interface EndpointRoute extends RoutedPath {

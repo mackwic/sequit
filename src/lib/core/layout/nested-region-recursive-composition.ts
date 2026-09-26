@@ -24,7 +24,7 @@ import {
 	allocateNestedTracks,
 	type RoutingTrackDemand,
 	trackOffset,
-} from './routing-resource-allocation';
+} from './resources/routing-resource-allocation';
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;

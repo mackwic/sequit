@@ -1,4 +1,3 @@
-import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './bounded-search';
 import type { RegionPortalSide } from './region-composition-types';
 import type {
 	RegionIncidentContract,
@@ -6,6 +5,7 @@ import type {
 	RegionIncidentSearchWitness,
 } from './region-incident-contract';
 import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
+import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './search/bounded-search';
 
 const MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT = 1_024;
 const MAX_ALTERNATIVES = 8_192;

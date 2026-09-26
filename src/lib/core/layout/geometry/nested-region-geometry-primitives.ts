@@ -1,4 +1,4 @@
-import type { Bounds, Point } from './layout-types';
+import type { Bounds, Point } from '../layout-types';
 
 export function samePoint(left: Point, right: Point): boolean {
 	return left.x === right.x && left.y === right.y;

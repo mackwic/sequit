@@ -7,6 +7,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
 import {
 	normalizeRegionCompositionModel,
@@ -20,7 +21,6 @@ import {
 	validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry,
 } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	depthTwoRegionDocument,
 	depthTwoRegionInput,

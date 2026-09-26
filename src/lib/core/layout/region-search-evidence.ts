@@ -1,9 +1,9 @@
-import type { GridCrossingAllocationWitness } from './grid-cell-crossing-witness';
-import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
+import type { RegionGeometryDiagnosticCode } from './geometry/region-geometry-diagnostic';
 import type {
 	RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 } from './region-incident-contract';
+import type { GridCrossingAllocationWitness } from './search/grid-cell-crossing-witness';
 
 export enum RegionSearchProvenance {
 	Incident = 'incident',

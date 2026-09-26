@@ -1,5 +1,5 @@
+import type { RegionGeometryDiagnosticCode } from '../geometry/region-geometry-diagnostic';
 import type { BoundedSearchWitness } from './bounded-search';
-import type { RegionGeometryDiagnosticCode } from './region-geometry-diagnostic';
 
 /** One declared attempt of the crossing allocation search, in search order. */
 export enum CrossingAllocationPhaseId {

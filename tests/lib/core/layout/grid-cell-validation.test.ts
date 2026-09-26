@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import {
 	entersInterior,
@@ -23,7 +24,6 @@ import type {
 	LayoutRelation,
 } from '../../../../src/lib/core/layout/layout-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function fixture(): {

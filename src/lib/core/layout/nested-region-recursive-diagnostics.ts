@@ -1,10 +1,10 @@
 import { defined } from '../document/logic-document';
-import { regionArrangementFor } from './region-arrangement-selection';
-import type { RegionCompositionModel } from './region-composition-model';
 import {
 	type RegionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
-} from './region-geometry-diagnostic';
+} from './geometry/region-geometry-diagnostic';
+import { regionArrangementFor } from './region-arrangement-selection';
+import type { RegionCompositionModel } from './region-composition-model';
 import { RegionIncidentRejectionCode, RegionIncidentUnknownCode } from './region-incident-contract';
 import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
 

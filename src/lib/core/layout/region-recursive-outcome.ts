@@ -1,4 +1,5 @@
 import { defined } from '../document/logic-document';
+import type { RegionGeometryDiagnostic } from './geometry/region-geometry-diagnostic';
 import {
 	retryOwnerForIncidentFailure,
 	retryOwnerForLeafContractFailure,
@@ -10,7 +11,6 @@ import {
 	type RegionLayoutAttempt,
 	type RegionPortalSide,
 } from './region-composition-types';
-import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,

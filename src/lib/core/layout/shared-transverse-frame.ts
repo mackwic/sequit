@@ -1,7 +1,7 @@
 import { defined } from '../document/logic-document';
 import { OUTER_MARGIN } from './layout-settings';
 import type { LayoutElement } from './layout-types';
-import type { RoutingEdge } from './routing-resource-allocation';
+import type { RoutingEdge } from './resources/routing-resource-allocation';
 import {
 	frameEdgeBand,
 	frameExteriorRailEdge,

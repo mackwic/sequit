@@ -1,5 +1,4 @@
 import { defined } from '../document/logic-document';
-import { boundedCounter, firstValidDepthFirst } from './bounded-search';
 import {
 	type RegionIncidentContract,
 	type RegionIncidentRejectedAlternative,
@@ -8,6 +7,7 @@ import {
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
 } from './region-incident-contract';
+import { boundedCounter, firstValidDepthFirst } from './search/bounded-search';
 import {
 	type LaneIncidentPathCandidate,
 	laneIncidentPathCandidates,

@@ -11,7 +11,7 @@ import {
 	type RoutingTrackAllocation,
 	type RoutingTrackDemand,
 	trackOffset,
-} from '../../../../src/lib/core/layout/routing-resource-allocation';
+} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 interface Interval {

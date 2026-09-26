@@ -1,5 +1,10 @@
 import { defined, EndpointKind, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from './geometry/region-geometry-diagnostic';
 import { crossingIncidence, crossingOverlap } from './grid-cell-crossing';
 import {
 	entersInterior,
@@ -21,11 +26,6 @@ import {
 } from './grid-cell-port-validation';
 import type { GridCellInput, GridCellPlacement, GridCellSelected } from './grid-cell-types';
 import type { Bounds, LayoutRelation } from './layout-types';
-import {
-	type RegionGeometryDiagnostic,
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-} from './region-geometry-diagnostic';
 
 interface CrossContext {
 	readonly graph: LogicGraph;

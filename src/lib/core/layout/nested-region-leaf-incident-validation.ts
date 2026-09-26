@@ -1,8 +1,15 @@
 import { defined, type LogicRelation } from '../document/logic-document';
 import { disallowedRouteContacts, type EndpointRoute } from './bridge-contact';
 import { type LayoutBridge, type RouteBridgeCache, validatedBridgesCached } from './bridge-oracle';
+import { orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+	type RegionGeometryProvenance,
+	RegionIncidentRole as IncidentRole,
+} from './geometry/region-geometry-diagnostic';
 import type { Bounds, LayoutElement, Point } from './layout-types';
-import { orthogonal, segmentEnters } from './nested-region-geometry-primitives';
 import {
 	type RegionCompositionModel,
 	RegionRelationKind,
@@ -14,13 +21,6 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
-import {
-	type RegionGeometryDiagnostic,
-	regionGeometryDiagnostic,
-	RegionGeometryDiagnosticCode,
-	type RegionGeometryProvenance,
-	RegionIncidentRole as IncidentRole,
-} from './region-geometry-diagnostic';
 
 interface LeafIncident {
 	readonly relation: LogicRelation;

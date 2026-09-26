@@ -1,6 +1,5 @@
 import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import { firstValidDepthFirst } from './bounded-search';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
@@ -33,6 +32,7 @@ import {
 } from './region-leaf-incident-search-state';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
+import { firstValidDepthFirst } from './search/bounded-search';
 
 const MAX_INCIDENTS = 8;
 

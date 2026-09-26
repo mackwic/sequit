@@ -8,6 +8,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-presentation';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	crossingIncidence,
 	crossingMetricDemands,
@@ -25,7 +26,6 @@ import {
 	type RegionLayoutSelected,
 } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import type { PreparedLayoutDocument } from '../../../support/harnesses/layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

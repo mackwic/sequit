@@ -8,6 +8,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	crossingIncidence,
 	gridRoutingEdges,
@@ -25,7 +26,6 @@ import {
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 

@@ -3,7 +3,7 @@ import { defined } from '../document/logic-document';
 import type { GridRoutingEdges } from './grid-cell-crossing';
 import { FREE_TRACK, portOrders, trackOrders } from './grid-cell-crossing-orders';
 import type { Point } from './layout-types';
-import { allocateNestedTracks, type RoutingEdge } from './routing-resource-allocation';
+import { allocateNestedTracks, type RoutingEdge } from './resources/routing-resource-allocation';
 
 /** One allocated track per crossing relation, on each gutter edge and on the bus. */
 export interface GridCrossingAllocation {

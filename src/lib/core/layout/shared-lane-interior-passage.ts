@@ -5,7 +5,7 @@ import {
 	type CenteredTrackAllocation,
 	centeredTrackOffset,
 	type RoutingTrackDemand,
-} from './routing-resource-allocation';
+} from './resources/routing-resource-allocation';
 import { SHARED_LANE_CLEARANCE, type SharedLaneFrame } from './shared-lane-frame';
 import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
 import { incidenceKey, PortRole, type SharedLanePorts } from './shared-lane-ports';

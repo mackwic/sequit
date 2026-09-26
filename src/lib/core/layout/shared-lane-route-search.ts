@@ -1,7 +1,7 @@
 import { defined } from '../document/logic-document';
-import { bestWithinBudgetStream } from './bounded-search';
 import type { RouteWorkCharge } from './bridge-oracle';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
+import { bestWithinBudgetStream } from './search/bounded-search';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import type { IncidentSearchState } from './shared-lane-incident-search';
 import type { SharedLaneInput } from './shared-lane-model';

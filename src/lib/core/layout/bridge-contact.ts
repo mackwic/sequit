@@ -15,8 +15,8 @@ import {
 	type RouteWorkCharge,
 	runInterval,
 } from './bridge-oracle';
+import { samePoint } from './geometry/nested-region-geometry-primitives';
 import type { Point } from './layout-types';
-import { samePoint } from './nested-region-geometry-primitives';
 
 export type { EndpointRoute } from './bridge-contact-shared';
 

@@ -11,6 +11,7 @@ import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
@@ -25,7 +26,6 @@ import {
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
