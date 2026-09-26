@@ -4,8 +4,13 @@
 		rankOrderComparisonCorpus,
 		type RankOrderComparisonEntry,
 	} from '../../solver-prototype/rank-order-comparison';
+	import {
+		compareRankOrderMutations,
+		rankOrderMutationCorpus,
+	} from '../../solver-prototype/rank-order-stability';
 
 	const comparison = $derived(compareRankOrderCorpus(rankOrderComparisonCorpus()));
+	const mutations = $derived(compareRankOrderMutations(rankOrderMutationCorpus()));
 
 	function orderLabel(bands: readonly (readonly string[])[]): string {
 		return bands.map((band) => band.join(' < ')).join(' · ');
@@ -65,6 +70,54 @@
 					>
 					<td>{entry.enumeratedCount}</td>
 					<td>{verdict(entry)}</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</section>
+
+<section class="rank-order" aria-label="Stabilité du layout après modification">
+	<header>
+		<h2>Stabilité après modification du document</h2>
+		<p>
+			Déplacement du centre des boîtes communes, normalisé par leur diagonale précédente. Les ports
+			et les tracés sont comparés en coordonnées absolues : un déplacement d'une composante entière
+			les compte comme modifiés, même si son ordre interne reste identique.
+		</p>
+	</header>
+	<table>
+		<thead>
+			<tr>
+				<th scope="col">Modification</th>
+				<th scope="col">Éléments ± · relations ±</th>
+				<th scope="col">Croisements validés avant → après</th>
+				<th scope="col">Boîtes communes déplacées</th>
+				<th scope="col">Déplacement moyen · maximal</th>
+				<th scope="col">Rangs modifiés</th>
+				<th scope="col">Ports · tracés modifiés</th>
+				<th scope="col">Recherche avant → après</th>
+			</tr>
+		</thead>
+		<tbody>
+			{#each mutations as mutation (mutation.id)}
+				<tr data-rank-order-mutation={mutation.id}>
+					<th scope="row">{mutation.label}</th>
+					<td
+						>+{mutation.addedElements} / −{mutation.removedElements} · +{mutation.addedRelations} / −{mutation.removedRelations}</td
+					>
+					<td>{mutation.beforeCrossings ?? 'rejeté'} → {mutation.afterCrossings ?? 'rejeté'}</td>
+					<td>{mutation.movedElements} / {mutation.commonElements}</td>
+					<td
+						>{mutation.meanNormalizedMovement.toFixed(2)} · {mutation.maxNormalizedMovement.toFixed(
+							2,
+						)}</td
+					>
+					<td>{mutation.rankChanges} / {mutation.commonElements}</td>
+					<td>{mutation.portChanges} · {mutation.pathChanges} / {mutation.commonRelations}</td>
+					<td
+						>{mutation.beforeWitness.stop} → {mutation.afterWitness.stop} ({mutation.afterWitness
+							.evaluated} pipelines)</td
+					>
 				</tr>
 			{/each}
 		</tbody>

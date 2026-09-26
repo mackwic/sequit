@@ -6,6 +6,10 @@ import {
 	compareRankOrderCorpus,
 	rankOrderComparisonCorpus,
 } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
+import {
+	compareRankOrderMutations,
+	rankOrderMutationCorpus,
+} from '../../../../src/app/workshop/solver-prototype/rank-order-stability';
 import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank-order';
 
 describe('rank order comparison', () => {
@@ -107,5 +111,138 @@ describe('rank order comparison', () => {
 				expected[entry.id],
 			);
 		}
+	});
+});
+
+describe('rank order stability under document edits', () => {
+	const comparisons = compareRankOrderMutations(rankOrderMutationCorpus());
+
+	it('measures boxes, route endpoints, full paths and changed ranks after add/remove edits', () => {
+		expect(comparisons.map(({ id }) => id)).toEqual([
+			'add-relation',
+			'remove-relation',
+			'add-node',
+			'add-isolated-node',
+			'remove-node',
+			'unrelated-shortcut',
+		]);
+		const addition = comparisons.find(({ id }) => id === 'add-node');
+		const removal = comparisons.find(({ id }) => id === 'remove-relation');
+		const removedNode = comparisons.find(({ id }) => id === 'remove-node');
+		expect(addition).toMatchObject({
+			addedElements: 1,
+			addedRelations: 1,
+			commonElements: 5,
+			movedElements: 2,
+			rankChanges: 0,
+			commonRelations: 4,
+			portChanges: 4,
+			pathChanges: 4,
+			beforeCrossings: 0,
+			afterCrossings: 0,
+		});
+		expect(addition?.meanNormalizedMovement).toBeCloseTo(0.232);
+		expect(removal).toMatchObject({
+			removedRelations: 1,
+			commonElements: 5,
+			rankChanges: 1,
+			commonRelations: 3,
+			portChanges: 3,
+			pathChanges: 3,
+		});
+		expect(removedNode).toMatchObject({
+			removedElements: 1,
+			removedRelations: 1,
+			commonElements: 4,
+			movedElements: 3,
+			commonRelations: 3,
+		});
+	});
+
+	it('preserves the geometry and ports of an independent component under a node-only append', () => {
+		const isolated = comparisons.find(({ id }) => id === 'add-isolated-node');
+		expect(isolated).toMatchObject({
+			addedElements: 1,
+			commonElements: 5,
+			movedElements: 0,
+			rankChanges: 0,
+			commonRelations: 4,
+			portChanges: 0,
+			pathChanges: 0,
+			beforeCrossings: 0,
+			afterCrossings: 0,
+		});
+		expect(isolated?.meanNormalizedMovement).toBe(0);
+	});
+
+	it('compares a complete document replacement without dividing by zero or matching stale ids', () => {
+		const before = rankOrderMutationCorpus()[0]?.before;
+		if (before === undefined) throw new Error('Missing original mutation document');
+		const original = before.document.nodes[0];
+		if (original === undefined) throw new Error('Missing original node');
+		const after = {
+			...before,
+			document: {
+				...before.document,
+				nodes: [{ ...original, id: 'replacement' }],
+				relations: [],
+			},
+			measurements: {
+				...before.measurements,
+				nodes: new Map([['replacement', { width: 80, height: 60 }]]),
+			},
+		};
+		const replacement = compareRankOrderMutations([
+			{ id: 'replace-all', label: 'Replace all endpoints', before, after },
+		])[0];
+		expect(replacement).toMatchObject({
+			addedElements: 1,
+			removedElements: 5,
+			removedRelations: 4,
+			commonElements: 0,
+			movedElements: 0,
+			meanNormalizedMovement: 0,
+			maxNormalizedMovement: 0,
+			commonRelations: 0,
+			portChanges: 0,
+			pathChanges: 0,
+		});
+	});
+
+	it('reports an invalid edited graph instead of comparing invalid layouts', () => {
+		const before = rankOrderMutationCorpus()[0]?.before;
+		if (before === undefined) throw new Error('Missing original mutation document');
+		const duplicate = before.document.relations[0];
+		if (duplicate === undefined) throw new Error('Missing original relation');
+		const invalid = {
+			...before,
+			document: {
+				...before.document,
+				relations: [...before.document.relations, duplicate],
+			},
+		};
+		expect(() =>
+			compareRankOrderMutations([
+				{ id: 'invalid-edit', label: 'Duplicate relation', before, after: invalid },
+			]),
+		).toThrow(/duplicate-relation-id/);
+	});
+
+	it('exposes a large physical packing shift without resetting the independent crossing optimum', () => {
+		const unrelated = comparisons.find(({ id }) => id === 'unrelated-shortcut');
+		expect(unrelated).toMatchObject({
+			addedRelations: 1,
+			commonElements: 70,
+			movedElements: 70,
+			rankChanges: 0,
+			commonRelations: 68,
+			portChanges: 68,
+			pathChanges: 68,
+			beforeCrossings: 0,
+			afterCrossings: 0,
+			afterWitness: { stop: 'complete', valid: 4 },
+		});
+		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.8);
+		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.9);
 	});
 });
