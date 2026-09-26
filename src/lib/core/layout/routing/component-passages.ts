@@ -3,9 +3,11 @@ import type { LogicGraph } from '../../graph/create-graph';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, RoutingLayers } from '../layout-types';
 
-interface Interval {
+interface ComponentEnvelope {
 	readonly start: number;
 	readonly end: number;
+	readonly mainStart: number;
+	readonly mainEnd: number;
 }
 
 export interface ExteriorCandidates {
@@ -38,25 +40,74 @@ function longRelationCounts(input: ComponentPassageInput): ReadonlyMap<number, n
 	return counts;
 }
 
-function componentIntervals(input: ComponentPassageInput): ReadonlyMap<number, Interval> {
-	const intervals = new Map<number, Interval>();
+function componentIntervals(input: ComponentPassageInput): ReadonlyMap<number, ComponentEnvelope> {
+	const intervals = new Map<number, ComponentEnvelope>();
 	const owners = defined(input.componentByEndpointId);
 	for (const [id, box] of input.bounds) {
 		const owner = owners.get(id);
 		if (owner === undefined) continue;
 		let start = box.y;
 		let end = box.y + box.height;
+		let mainStart = box.x;
+		let mainEnd = box.x + box.width;
 		if (input.vertical) {
 			start = box.x;
 			end = box.x + box.width;
+			mainStart = box.y;
+			mainEnd = box.y + box.height;
 		}
 		const previous = intervals.get(owner);
 		intervals.set(owner, {
 			start: Math.min(previous?.start ?? start, start),
 			end: Math.max(previous?.end ?? end, end),
+			mainStart: Math.min(previous?.mainStart ?? mainStart, mainStart),
+			mainEnd: Math.max(previous?.mainEnd ?? mainEnd, mainEnd),
 		});
 	}
 	return intervals;
+}
+
+interface SideClearances {
+	readonly leadingClearance: number;
+	readonly trailingClearance: number;
+	readonly hasLeadingNeighbor: boolean;
+	readonly hasTrailingNeighbor: boolean;
+}
+
+function neighborClearances(
+	owner: number,
+	interval: ComponentEnvelope,
+	intervals: ReadonlyMap<number, ComponentEnvelope>,
+	leadingHasCandidate: boolean,
+): SideClearances {
+	let leadingClearance = 0;
+	if (leadingHasCandidate) leadingClearance = Infinity;
+	let trailingClearance = Infinity;
+	let hasLeadingNeighbor = false;
+	let hasTrailingNeighbor = false;
+	for (const [otherOwner, other] of intervals) {
+		if (owner === otherOwner) continue;
+		if (other.mainEnd <= interval.mainStart || interval.mainEnd <= other.mainStart) continue;
+		if (other.end <= interval.start) {
+			hasLeadingNeighbor = true;
+			leadingClearance = Math.min(leadingClearance, interval.start - other.end);
+			continue;
+		}
+		if (other.start >= interval.end) {
+			hasTrailingNeighbor = true;
+			trailingClearance = Math.min(trailingClearance, other.start - interval.end);
+			continue;
+		}
+		if (other.start < interval.start) {
+			hasLeadingNeighbor = true;
+			leadingClearance = 0;
+		}
+		if (other.end > interval.end) {
+			hasTrailingNeighbor = true;
+			trailingClearance = 0;
+		}
+	}
+	return { leadingClearance, trailingClearance, hasLeadingNeighbor, hasTrailingNeighbor };
 }
 
 /** Coordinates owned by one component, never the outermost coordinate of the whole canvas. */
@@ -68,27 +119,36 @@ export function componentExteriorCandidates(
 	if (counts.size === 0) return candidates;
 	const intervals = componentIntervals(input);
 	if (intervals.size < 2) return candidates;
-	let first = Infinity;
-	let last = -Infinity;
-	for (const interval of intervals.values()) {
-		first = Math.min(first, interval.start);
-		last = Math.max(last, interval.end);
-	}
 	for (const [owner, count] of counts) {
 		const interval = defined(intervals.get(owner));
 		const leading = Array.from(
 			{ length: count },
 			(_, index) => interval.start - (index + 1) * RAIL_SPACING,
-		);
+		).filter((coordinate) => coordinate >= 0);
 		const trailing = Array.from(
 			{ length: count },
 			(_, index) => interval.end + (index + 1) * RAIL_SPACING,
 		);
+		// Prefer leading tracks only if all fit a rail away from the canvas edge.
+		const lastLeading = leading.at(-1);
+		const fitsAll = leading.length === count;
+		let leadingHasRoom = false;
+		if (lastLeading !== undefined && fitsAll) leadingHasRoom = lastLeading >= RAIL_SPACING;
+		// Neighbors constrain a side only when their primary bands overlap.
+		const { leadingClearance, trailingClearance, hasLeadingNeighbor, hasTrailingNeighbor } =
+			neighborClearances(owner, interval, intervals, leading.length > 0);
 		let preferred: readonly number[] = [];
 		let fallback: readonly number[] = [...leading, ...trailing];
-		if (interval.end === last && interval.start > first) {
+		const trailingFreer = trailingClearance > leadingClearance;
+		const leadingFreer = leadingClearance > trailingClearance;
+		const trailingFits = trailingClearance >= RAIL_SPACING;
+		const leadingFits = leadingClearance >= RAIL_SPACING;
+		if (hasLeadingNeighbor && trailingFreer && trailingFits) {
 			preferred = trailing;
 			fallback = leading;
+		} else if (hasTrailingNeighbor && leadingHasRoom && leadingFreer && leadingFits) {
+			preferred = leading;
+			fallback = trailing;
 		}
 		candidates.set(owner, { preferred, fallback });
 	}

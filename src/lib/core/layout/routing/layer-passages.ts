@@ -8,6 +8,7 @@ import {
 	type ExteriorCandidates,
 	exteriorFor,
 } from './component-passages';
+import { commonGroupBounds, foreignGroupObstacles } from './group-passages';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 
 interface PassageInput {
@@ -25,6 +26,7 @@ interface PassageWorkspace extends PassageInput {
 	readonly intervalCache: Map<string, readonly Interval[]>;
 	readonly obstacles: Map<number, RouteObstacles | undefined>;
 	readonly reservations: PassageReservation[];
+	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
 	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
 }
 
@@ -45,6 +47,7 @@ interface PassageSelection {
 	readonly crossed: readonly RouteObstacles[];
 	readonly endpoints: readonly [source: Bounds, target: Bounds];
 	readonly group: Interval | undefined;
+	readonly foreignGroupObstacles: RouteObstacles | undefined;
 	readonly layerSpan: readonly [target: number, source: number];
 }
 
@@ -53,18 +56,15 @@ function column(coordinate: number, box: Bounds, vertical: boolean): Point {
 	return { x: box.x + box.width / 2, y: coordinate };
 }
 
-/** Position in a sorted reservation list, leaving one rail step between unrelated passages. */
-function insertionIndex(positions: readonly number[], coordinate: number): number | undefined {
+/** Lower bound in the sorted reservation index; equal coordinates stay adjacent. */
+function insertionIndex(reservations: readonly PassageReservation[], coordinate: number): number {
 	let start = 0;
-	let end = positions.length;
+	let end = reservations.length;
 	while (start < end) {
 		const middle = Math.floor((start + end) / 2);
-		if (defined(positions[middle]) < coordinate) start = middle + 1;
+		if (defined(reservations[middle]).coordinate < coordinate) start = middle + 1;
 		else end = middle;
 	}
-	const before = coordinate - (positions[start - 1] ?? Number.NEGATIVE_INFINITY);
-	const after = (positions[start] ?? Number.POSITIVE_INFINITY) - coordinate;
-	if (before < RAIL_SPACING || after < RAIL_SPACING) return undefined;
 	return start;
 }
 
@@ -81,28 +81,6 @@ function obstaclesIn(input: PassageWorkspace, layer: number): RouteObstacles | u
 		obstacles.set(layer, index);
 	}
 	return obstacles.get(layer);
-}
-
-function groupAncestors(input: PassageWorkspace, endpointId: string): readonly string[] {
-	const cached = input.ancestorCache.get(endpointId);
-	if (cached !== undefined) return cached;
-	const result: string[] = [];
-	let groupId = input.graph.endpointsById.get(endpointId)?.entity.groupId;
-	while (groupId !== undefined) {
-		result.push(groupId);
-		groupId = input.graph.endpointsById.get(groupId)?.entity.groupId;
-	}
-	input.ancestorCache.set(endpointId, result);
-	return result;
-}
-
-function commonGroupBounds(input: PassageWorkspace, relation: LogicRelation): Interval | undefined {
-	const targetGroups = new Set(groupAncestors(input, relation.to));
-	const groupId = groupAncestors(input, relation.from).find((id) => targetGroups.has(id));
-	if (groupId === undefined) return undefined;
-	const bounds = defined(input.bounds.get(groupId));
-	if (input.vertical) return { start: bounds.x, end: bounds.x + bounds.width };
-	return { start: bounds.y, end: bounds.y + bounds.height };
 }
 
 function transverseInterval(box: Bounds, vertical: boolean): Interval {
@@ -196,16 +174,19 @@ function reserveCoordinate(
 	targetLayer: number,
 	sourceLayer: number,
 ): boolean {
-	const positions = input.reservations
-		.filter((reservation) => {
-			const startsBeforeEnd = reservation.targetLayer < sourceLayer;
-			const endsAfterStart = targetLayer < reservation.sourceLayer;
-			return startsBeforeEnd && endsAfterStart;
-		})
-		.map((reservation) => reservation.coordinate)
-		.sort((left, right) => left - right);
-	if (insertionIndex(positions, coordinate) === undefined) return false;
-	input.reservations.push({ coordinate, sourceLayer, targetLayer });
+	const reservations = input.reservations;
+	const index = insertionIndex(reservations, coordinate);
+	for (let before = index - 1; before >= 0; before -= 1) {
+		const held = defined(reservations[before]);
+		if (coordinate - held.coordinate >= RAIL_SPACING) break;
+		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return false;
+	}
+	for (let after = index; after < reservations.length; after += 1) {
+		const held = defined(reservations[after]);
+		if (held.coordinate - coordinate >= RAIL_SPACING) break;
+		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return false;
+	}
+	reservations.splice(index, 0, { coordinate, sourceLayer, targetLayer });
 	return true;
 }
 
@@ -226,6 +207,11 @@ function selectPassage(input: PassageSelection): number | undefined {
 			column(candidate, target, workspace.vertical),
 		];
 		if (crossed.some((index) => routeHitsObstacles(points, index))) continue;
+		if (
+			input.foreignGroupObstacles !== undefined &&
+			routeHitsObstacles(points, input.foreignGroupObstacles)
+		)
+			continue;
 		if (!reserveCoordinate(workspace, candidate, targetLayer, sourceLayer)) continue;
 		return candidate;
 	}
@@ -250,6 +236,7 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	const sourceCoordinate = transverseCenter(source, input.vertical) + sourceOffset;
 	const targetCoordinate = transverseCenter(target, input.vertical) + targetOffset;
 	const group = commonGroupBounds(input, relation);
+	const foreignGroups = foreignGroupObstacles(input, relation);
 	let occupied = occupiedIntervals(input, targetLayer, sourceLayer);
 	if (group !== undefined) {
 		const scoped: Interval[] = [];
@@ -266,13 +253,19 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		input.componentByEndpointId,
 		input.exteriorCandidates,
 	);
+	let preferred: readonly number[] = [];
+	let fallback: readonly number[] = [];
+	if (group === undefined) {
+		preferred = exterior.preferred;
+		fallback = exterior.fallback;
+	}
 	const candidates = [
-		...exterior.preferred,
+		...preferred,
 		sourceCoordinate,
 		targetCoordinate,
 		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
 		...groupPaddingCandidates(occupied, group, sourceCoordinate, targetCoordinate),
-		...exterior.fallback,
+		...fallback,
 	];
 	return selectPassage({
 		workspace: input,
@@ -280,6 +273,7 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		crossed,
 		endpoints: [source, target],
 		group,
+		foreignGroupObstacles: foreignGroups,
 		layerSpan: [targetLayer, sourceLayer],
 	});
 }
@@ -294,6 +288,7 @@ export function layerPassages(
 		intervalCache: new Map(),
 		obstacles: new Map(),
 		reservations: [],
+		groupObstacleCache: new Map(),
 	};
 	return (relation) => reservePassage(workspace, relation);
 }

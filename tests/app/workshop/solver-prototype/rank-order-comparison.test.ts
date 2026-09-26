@@ -162,6 +162,24 @@ describe('rank order stability under document edits', () => {
 		expect(decision?.beforeCrossings).toBeLessThan(decision?.beforeDocumentaryCrossings ?? 0);
 	});
 
+	it('keeps the edited goal implementation free of selected route crossings', () => {
+		const goal = comparisons.find(({ id }) => id === 'goal-implementation');
+		if (goal === undefined) throw new Error('Missing goal implementation witness');
+		expect(goal.afterCrossings).toBe(0);
+		expect(goal.afterDocumentaryCrossings).toBeGreaterThan(0);
+		const mutation = rankOrderMutationCorpus().find(({ id }) => id === 'goal-implementation');
+		if (mutation === undefined) throw new Error('Missing edited goal document');
+		const graphResult = createGraph(mutation.after.document);
+		if (!graphResult.ok) throw new Error('Invalid edited goal document');
+		const graph = graphResult.value;
+		const layout = layoutWithDedicatedEngineAndRankOrderWitness(
+			graph,
+			topologicallyRank(graph),
+			mutation.after.measurements,
+		).layout;
+		AssertRoutes(layout.relations).haveNoForbiddenContacts();
+	});
+
 	it('measures boxes, route endpoints, full paths and changed ranks after add/remove edits', () => {
 		expect(comparisons.map(({ id }) => id)).toEqual([
 			'evaporating-cloud',

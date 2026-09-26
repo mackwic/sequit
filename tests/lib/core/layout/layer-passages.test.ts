@@ -48,6 +48,16 @@ const document: LogicDocument = {
 const graphResult = createGraph(document);
 if (!graphResult.ok) throw new Error('The passage fixture must have valid endpoints.');
 const graph = graphResult.value;
+const chainGraphResult = createGraph({
+	...document,
+	relations: [
+		firstRelation,
+		{ id: 'source-to-middle', from: 'source', to: 'other-target' },
+		{ id: 'middle-to-target', from: 'other-target', to: 'target' },
+	],
+});
+if (!chainGraphResult.ok) throw new Error('The middle-component fixture must be valid.');
+const chainGraph = chainGraphResult.value;
 const groupedGraphResult = createGraph({
 	...document,
 	nodes: document.nodes.map((node) => ({ ...node, groupId: 'group' })),
@@ -196,6 +206,76 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		});
 		expect(reserve(firstRelation)).toBe(64);
 		expect(reserve(secondRelation)).toBe(88);
+	});
+
+	it.each([
+		{ left: 200, right: 700, expected: 464 },
+		{ left: 100, right: 600, expected: 336 },
+	])(
+		'chooses the freer side of a middle component (left=$left, right=$right)',
+		({ left, right, expected }) => {
+			const reserve = layerPassages({
+				...input(
+					[['target'], ['ordinary', 'other-target', 'junction'], ['source']],
+					{
+						target: box(400, 0),
+						ordinary: box(left, 120),
+						'other-target': box(400, 120),
+						junction: box(right, 120),
+						source: box(400, 240),
+					},
+					chainGraph,
+				),
+				componentByEndpointId: new Map([
+					['ordinary', 0],
+					['target', 1],
+					['other-target', 1],
+					['source', 1],
+					['junction', 2],
+				]),
+			});
+			expect(reserve(firstRelation)).toBe(expected);
+		},
+	);
+
+	it('chooses a clear leading side when its tracks fit before a right-side neighbor', () => {
+		const reserve = layerPassages({
+			...input(
+				[
+					['target', 'other-target'],
+					['ordinary', 'junction'],
+					['source', 'other-source'],
+				],
+				{
+					target: box(480, 0),
+					'other-target': box(480, 0),
+					ordinary: box(400, 120),
+					junction: box(600, 120),
+					source: box(400, 240),
+					'other-source': box(400, 240),
+				},
+			),
+			componentByEndpointId: new Map([
+				['target', 1],
+				['other-target', 1],
+				['ordinary', 1],
+				['source', 1],
+				['other-source', 1],
+				['junction', 2],
+			]),
+		});
+		expect(reserve(firstRelation)).toBe(336);
+	});
+
+	it('rejects a foreign group frame across the positive column and chooses a clear fallback', () => {
+		const reserve = layerPassages(
+			input([['target'], [], ['source']], {
+				target: box(200, 0),
+				source: box(300, 240),
+				group: box(312, 120),
+			}),
+		);
+		expect(reserve(firstRelation)).toBe(200);
 	});
 
 	it('uses a clear endpoint column across ordinary intermediate boxes', () => {
