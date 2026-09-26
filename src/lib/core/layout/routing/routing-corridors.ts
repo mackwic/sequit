@@ -63,9 +63,11 @@ function neighborInversion(links: readonly CorridorLink[]): boolean {
 }
 
 /** A link shared by a branch and a convergence cannot share both of its endpoint trunks. */
+const noPartialBipartiteTargets: ReadonlySet<string> = new Set();
+
 function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<string> {
+	if (cluster.length < 3) return noPartialBipartiteTargets;
 	const targets = new Set<string>();
-	if (cluster.length < 3) return targets;
 	const firstTargetBySource = new Map<string, string>();
 	const firstSourceByTarget = new Map<string, string>();
 	const branchingSources = new Set<string>();
