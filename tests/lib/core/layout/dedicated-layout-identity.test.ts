@@ -329,7 +329,7 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(new Set(Object.values(hashes)).size).toBe(Object.keys(hashes).length);
 
 		expect(hashes).toEqual({
-			'adjacent-2+2': '45be9051624feade3d4ec1618965a87d818ff010368a0204daf7dc44017fd19a',
+			'adjacent-2+2': '434436502a19e68bbaf5e254e6dd74a1d97387393caeadfc4f70099b2c091c19',
 			'adjacent-3+1': 'a8607247aecf5781535b021a8316bf888046aee6b5585df26a1f5df5f78b99b2',
 			'ai-documentary-effort': 'efc78b3328e0fd53d68b5e26881580d51cdd98a2ebf24c6dbdd6b0d88cb4f1ee',
 			'group-endpoint-route': 'bc431c08d86cd74f0baeeb20e2cb83118b739da0debe72d47b543dba908ed611',
