@@ -28,7 +28,7 @@ export interface RankOrderMutation {
 	readonly after: RankOrderCorpusEntry;
 }
 
-export interface RankOrderStability {
+interface RankOrderStability {
 	readonly commonElements: number;
 	readonly movedElements: number;
 	/** Translation of each common box's center, divided by its previous box diagonal. */

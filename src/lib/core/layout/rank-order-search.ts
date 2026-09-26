@@ -77,7 +77,7 @@ export interface RankOrderSearchWitness {
 	readonly truncated: boolean;
 }
 
-export interface ValidRankOrderCandidate {
+interface ValidRankOrderCandidate {
 	readonly order: RankOrder;
 	readonly evaluation: DedicatedLayoutEvaluation;
 	readonly topologyCrossings: number;
