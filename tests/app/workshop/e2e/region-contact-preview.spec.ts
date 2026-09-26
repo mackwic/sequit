@@ -114,7 +114,10 @@ test('the grid allocation workshop explains exact route geometry search', async 
 	}
 
 	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('2 / 2592');
+	await expect(pruned.getByTestId('grid-allocation-dimensions')).toContainText(
+		'−96 px de largeur, −48 px de hauteur',
+	);
+	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('33 / 96');
 	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
 		'data-truncated',
 		'false',

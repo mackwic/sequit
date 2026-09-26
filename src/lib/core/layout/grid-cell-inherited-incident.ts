@@ -4,7 +4,7 @@ import {
 	CROSSING_SPACING,
 	crossingEndpointSide,
 	crossingRailX,
-	gridRoutingEdges,
+	type GridRoutingEdges,
 	reservedRailTrack,
 } from './grid-cell-crossing';
 import type { GridCellPlacement, GridCellSelected } from './grid-cell-types';
@@ -27,6 +27,7 @@ interface GridIncidentInput {
 	readonly regionId: string;
 	readonly incidentSides: IncidentSides;
 	readonly selected: GridCellSelected;
+	readonly edges: GridRoutingEdges;
 	readonly children: ReadonlyMap<string, SolvedRecursiveRegion>;
 }
 
@@ -94,10 +95,8 @@ interface ContinuationInput {
 }
 
 function outerRailX(grid: GridIncidentInput, cell: GridCellPlacement): number {
-	const crossingCount = grid.selected.portals.length / 2;
 	const columnCount = grid.selected.columnWidths.length;
-	const edges = gridRoutingEdges(grid.regionId, columnCount, crossingCount);
-	const edge = defined(edges.gutters[cell.column]);
+	const edge = defined(grid.edges.gutters[cell.column]);
 	const track = reservedRailTrack(edge);
 	const side = crossingEndpointSide(cell.column, columnCount);
 	let frameX = cell.bounds.x + cell.bounds.width;

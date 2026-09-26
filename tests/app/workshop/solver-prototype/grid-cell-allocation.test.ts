@@ -32,10 +32,12 @@ describe('grid crossing allocation workshop model', () => {
 			false,
 		]);
 		expect(pruned.selected.cells).toHaveLength(6);
+		expect(pruned.sizeBefore.width - pruned.selected.layout.width).toBe(96);
+		expect(pruned.sizeBefore.height - pruned.selected.layout.height).toBe(48);
 		expect(pruned.selected.witness.phases[0]).toMatchObject({
 			id: CrossingAllocationPhaseId.Reallocate,
-			exploredGeometries: 2,
-			totalGeometries: '2592',
+			exploredGeometries: 33,
+			totalGeometries: '96',
 			truncated: false,
 			selected: true,
 		});
@@ -46,8 +48,8 @@ describe('grid crossing allocation workshop model', () => {
 		expect(noncanonical.busOrder).toEqual(['a-b', 'a-d', 'a-c']);
 		expect(noncanonical.tracks).toEqual([
 			{ relationId: 'a-b', color: '#bf4f36', busTrack: 0, railLabel: 'G1·0' },
-			{ relationId: 'a-c', color: '#287b65', busTrack: 2, railLabel: 'G1·1 / G3·1' },
-			{ relationId: 'a-d', color: '#4c5fb5', busTrack: 1, railLabel: 'G1·2 / G3·2' },
+			{ relationId: 'a-c', color: '#287b65', busTrack: 2, railLabel: 'G1·1 / G3·0' },
+			{ relationId: 'a-d', color: '#4c5fb5', busTrack: 1, railLabel: 'G1·2 / G3·1' },
 		]);
 	});
 });

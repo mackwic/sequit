@@ -101,6 +101,12 @@
 						{/each}
 					</svg>
 				</div>
+				<p data-testid="grid-allocation-dimensions">
+					Avant {demo.sizeBefore.width} × {demo.sizeBefore.height} px → après
+					{demo.selected.layout.width} × {demo.selected.layout.height} px (−{demo.sizeBefore.width -
+						demo.selected.layout.width} px de largeur, −{demo.sizeBefore.height -
+						demo.selected.layout.height} px de hauteur)
+				</p>
 				<div class="details">
 					<section aria-label="Candidat d’allocation retenu">
 						<h4>Candidat retenu</h4>

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import {
+	crossingEndpointSide,
+	crossingRailX,
+	reservedRailTrack,
+} from '../../../../src/lib/core/layout/grid-cell-crossing';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grid-cell-crossing-resources';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -14,7 +20,10 @@ import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionCompositionStatus,
+	RegionPortalSide,
+} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
@@ -53,6 +62,25 @@ const SHAPES: readonly NxmShape[] = [
 ];
 
 describe('grid bus allocation', () => {
+	it('charges only endpoint gutters, once per relation in a shared column', () => {
+		const input = nxmThreeByTwoInput();
+		const crossing = nxmThreeByTwoDocument().relations;
+		const resources = gridCrossingResources(input, crossing);
+		expect(resources.gutterIds).toEqual([['a-b', 'a-c'], ['a-b'], ['a-c', 'c-f']]);
+		expect(resources.edges.gutters.map(({ capacity }) => capacity)).toEqual([3, 2, 3]);
+		expect(resources.edges.topBus.capacity).toBe(3);
+		const reversed = gridCrossingResources(
+			{
+				...input,
+				cells: [...input.cells].reverse(),
+				cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+			},
+			[...crossing].reverse(),
+		);
+		expect(reversed.edges).toEqual(resources.edges);
+		expect(reversed.gutterIds).toEqual(resources.gutterIds);
+	});
+
 	it('uses a non-canonical bus order after rejecting every canonical-bus allocation', () => {
 		const source = {
 			...nxmThreeByTwoDocument(),
@@ -142,6 +170,57 @@ describe('N by M grid composition', () => {
 		},
 	);
 
+	it('reserves each column gutter by its own crossing load without shrinking the global bus', () => {
+		const input = nxmThreeByTwoInput();
+		const prepared = prepareLayoutDocument(nxmThreeByTwoDocument());
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`${result.status}: ${result.reason}`);
+		const columns = [0, 1, 2].map((column) =>
+			result.cells.find((cell) => cell.row === 0 && cell.column === column),
+		);
+		const [first, middle, last] = columns;
+		if (first === undefined || middle === undefined || last === undefined)
+			throw new Error('Expected three top-row cells.');
+		const leftGap = middle.bounds.x - first.bounds.x - first.bounds.width;
+		const innerGap = last.bounds.x - middle.bounds.x - middle.bounds.width;
+		expect([
+			first.bounds.x,
+			leftGap,
+			innerGap,
+			result.layout.width - last.bounds.x - last.bounds.width,
+		]).toEqual([120, 96, 96, 120]);
+		expect(result.layout.width).toBe(result.columnWidths.reduce((sum, width) => sum + width, 432));
+		expect(result.layout.height).toBe(result.rowHeights.reduce((sum, height) => sum + height, 336));
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+		const resources = gridCrossingResources(input, nxmThreeByTwoDocument().relations);
+		for (const [column, ids] of resources.gutterIds.entries()) {
+			const cell = columns[column];
+			const edge = resources.edges.gutters[column];
+			const tracks = result.allocation.gutterTrackByRelationId[column];
+			if (cell === undefined || edge === undefined || tracks === undefined)
+				throw new Error('Expected a placed gutter.');
+			for (const id of ids) {
+				const side = crossingEndpointSide(column, columns.length);
+				let frameX = cell.bounds.x + cell.bounds.width;
+				if (side === RegionPortalSide.Left) frameX = cell.bounds.x;
+				const track = tracks.get(id);
+				if (track === undefined) throw new Error('Missing crossing track.');
+				const railX = crossingRailX(edge, frameX, side, track);
+				expect(
+					result.layout.relations
+						.find((route) => route.id === id)
+						?.points.some(({ x }) => x === railX),
+				).toBe(true);
+				expect(Math.abs(railX - frameX)).toBeGreaterThanOrEqual(24);
+			}
+		}
+		for (const route of result.layout.relations) {
+			const ports = result.portals.filter(({ relationId }) => relationId === route.id);
+			expect(ports).toHaveLength(2);
+		}
+	});
+
 	it('routes the inward crossing of a three by two grid through its inner gutter', () => {
 		const cellInput = nxmThreeByTwoInput();
 		const prepared = prepareLayoutDocument(nxmThreeByTwoDocument());
@@ -153,7 +232,7 @@ describe('N by M grid composition', () => {
 		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
 		expect(reallocation.selected).toBe(true);
 		expect(reallocation.exploredGeometries).toBeLessThan(256);
-		expect(reallocation.totalGeometries).toBe('2592');
+		expect(reallocation.totalGeometries).toBe('96');
 		expect(result.witness.phases.slice(1).every(({ attempted }) => !attempted)).toBe(true);
 		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);
@@ -210,6 +289,40 @@ describe('N by M grid region arrangement', () => {
 		expect(columns.get('c')).toBe(columns.get('f'));
 		expect(columns.get('a')).toBeLessThan(columns.get('b') ?? 0);
 		expect(columns.get('b')).toBeLessThan(columns.get('c') ?? 0);
+	});
+
+	it('continues an inherited middle-column incident on its own reserved gutter beside owned crossings', () => {
+		const source = persistedNxmInnerGridDocument();
+		const withCrossings = {
+			...source,
+			relations: [...source.relations, ...nxmThreeByTwoDocument().relations],
+		};
+		const prepared = prepareLayoutDocument(withCrossings);
+		const input = nestedRegionInput(prepared.graph);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`${attempt.status}: ${attempt.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized inner grid.');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, attempt)).toBeUndefined();
+		const middle = attempt.regions.find(({ id }) => id === 'b');
+		const route = attempt.layout.relations.find(({ id }) => id === 'b-out');
+		if (middle === undefined || route === undefined) throw new Error('Missing inherited rail.');
+		const cellInput = nxmThreeByTwoInput();
+		const resources = gridCrossingResources(cellInput, nxmThreeByTwoDocument().relations);
+		const edge = resources.edges.gutters[1];
+		if (edge === undefined) throw new Error('Missing middle-column gutter.');
+		const localRail = crossingRailX(
+			edge,
+			middle.bounds.x,
+			crossingEndpointSide(1, 3),
+			reservedRailTrack(edge),
+		);
+		const grid = attempt.regions.find(({ id }) => id === 'grid');
+		if (grid === undefined) throw new Error('Missing parent grid.');
+		expect(route.points.some(({ x }) => x === localRail)).toBe(true);
 	});
 
 	it('carries an inner-grid incident from its middle column to the sibling leaf', () => {

@@ -167,7 +167,11 @@ describe('bounded two by two grid composition', () => {
 			.filter(
 				({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to),
 			);
-		const edges = gridRoutingEdges(input.rootId, 2, crossing.length);
+		const edges = gridRoutingEdges(
+			input.rootId,
+			[crossing.map(({ id }) => id), []],
+			crossing.length,
+		);
 		const incidence = crossingIncidence(crossing);
 		const allocationInput: CrossingAllocationInput = {
 			edges,
@@ -505,7 +509,7 @@ describe('bounded two by two grid composition', () => {
 				id: CrossingAllocationPhaseId.ExtraTrack,
 				attempted: true,
 				exploredGeometries: 1,
-				totalGeometries: 3,
+				totalGeometries: 2,
 				exhaustive: false,
 				truncated: true,
 			},

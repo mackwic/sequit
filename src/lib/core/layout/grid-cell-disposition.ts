@@ -1,7 +1,8 @@
 import { defined } from '../document/logic-document';
 import type { TopologicalRanks } from '../graph/topological-ranks';
+import { gridGutterMargin, gridMargin, type GridRoutingEdges } from './grid-cell-crossing';
 import type { GridCellDefinition, GridCellInput, GridCellPlacement } from './grid-cell-types';
-import type { LayoutResult, Point } from './layout-types';
+import type { LayoutResult } from './layout-types';
 
 const CELL_PADDING = 32;
 const TRACK_GAP = 96;
@@ -38,34 +39,18 @@ function rowExtent(children: readonly SolvedGridCell[], row: number, minimum: nu
 	return Math.max(minimum, ...demands);
 }
 
-/**
- * The gap after column `column` hosts the gutter of column `column + 1`. A gutter between two
- * columns reserves the same clearance as the frame margin; the last gutters sit on the frame.
- */
-function columnGap(column: number, columnCount: number, margin: number): number {
-	if (column + 1 < columnCount - 1) return Math.max(TRACK_GAP, margin);
+/** The gap before an inner column carries that column's gutter. */
+function columnGap(column: number, edges: GridRoutingEdges): number {
+	if (column + 1 < edges.gutters.length - 1)
+		return Math.max(TRACK_GAP, gridGutterMargin(defined(edges.gutters[column + 1])));
 	return TRACK_GAP;
-}
-
-function cellOrigin(
-	cell: GridCellDefinition,
-	columnWidths: readonly number[],
-	rowHeights: readonly number[],
-	margin: number,
-): Point {
-	let x = margin;
-	for (let column = 0; column < cell.column; column += 1)
-		x += defined(columnWidths[column]) + columnGap(column, columnWidths.length, margin);
-	let y = margin;
-	for (let row = 0; row < cell.row; row += 1) y += defined(rowHeights[row]) + TRACK_GAP;
-	return { x, y };
 }
 
 /** Place solved children into extensible column and row tracks. */
 export function layoutGridCellDisposition(
 	children: readonly SolvedGridCell[],
 	input: GridCellInput,
-	margin: number,
+	edges: GridRoutingEdges,
 ): GridCellDisposition {
 	const columnWidths = input.minimumColumnWidths.map((minimum, column) =>
 		columnExtent(children, column, minimum),
@@ -73,14 +58,22 @@ export function layoutGridCellDisposition(
 	const rowHeights = input.minimumRowHeights.map((minimum, row) =>
 		rowExtent(children, row, minimum),
 	);
-	let gridRight = margin;
+	const columnOrigins: number[] = [];
+	let gridRight = gridGutterMargin(defined(edges.gutters[0]));
 	for (const [column, width] of columnWidths.entries()) {
+		columnOrigins.push(gridRight);
 		gridRight += width;
-		if (column + 1 < columnWidths.length)
-			gridRight += columnGap(column, columnWidths.length, margin);
+		if (column + 1 < columnWidths.length) gridRight += columnGap(column, edges);
+	}
+	const rowOrigins: number[] = [];
+	let gridBottom = gridMargin(edges);
+	for (const [row, height] of rowHeights.entries()) {
+		rowOrigins.push(gridBottom);
+		gridBottom += height;
+		if (row + 1 < rowHeights.length) gridBottom += TRACK_GAP;
 	}
 	const cells: GridCellPlacement[] = children.map(({ cell, layout, ranks }) => {
-		const origin = cellOrigin(cell, columnWidths, rowHeights, margin);
+		const origin = { x: defined(columnOrigins[cell.column]), y: defined(rowOrigins[cell.row]) };
 		const bounds = {
 			x: origin.x,
 			y: origin.y,
@@ -98,8 +91,5 @@ export function layoutGridCellDisposition(
 			localRanks: ranks,
 		};
 	});
-	const rowTotal = rowHeights.reduce((total, height) => total + height, 0);
-	const rowGaps = TRACK_GAP * Math.max(0, rowHeights.length - 1);
-	const gridBottom = margin + rowTotal + rowGaps;
 	return { cells, columnWidths, rowHeights, gridRight, gridBottom };
 }

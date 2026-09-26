@@ -63,16 +63,13 @@ export function canonicalCrossingAllocation(
 	input: CrossingAllocationInput,
 ): GridCrossingAllocation {
 	const restricted = (ids: readonly string[]): readonly string[] =>
-		input.crossingIds.map((relationId) => {
-			if (ids.includes(relationId)) return relationId;
-			return FREE_TRACK;
-		});
+		input.crossingIds.filter((relationId) => ids.includes(relationId));
 	return allocationOf(input.gutterIds.map(restricted), input.crossingIds, input.incidence);
 }
 
 /**
  * One order from the interval containment rule: the innermost interval takes track 0. The order
- * keeps one slot per crossing track, free when no relation of the edge uses it.
+ * keeps exactly one slot per relation using this gutter.
  */
 function containmentOrder(
 	input: CrossingAllocationInput,
@@ -86,7 +83,7 @@ function containmentOrder(
 			return { relationId, start: portal.source.y, end: portal.target.y };
 		}),
 	);
-	const order = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
+	const order = Array<string>(ids.length).fill(FREE_TRACK);
 	for (const relationId of ids)
 		order[defined(allocation.trackByRelationId.get(relationId))] = relationId;
 	return order;
@@ -148,7 +145,7 @@ function* combineOrders(
 	factories: readonly TrackOrderFactory[],
 	index: number,
 	prefix: (readonly string[])[],
-	constraints: { readonly input: CrossingAllocationInput; readonly extraTracks: number },
+	constraints: { readonly input: CrossingAllocationInput; readonly extraColumn: number | undefined },
 ): Generator<readonly (readonly string[])[]> {
 	const factory = factories[index];
 	if (factory !== undefined) {
@@ -159,18 +156,14 @@ function* combineOrders(
 		}
 		return;
 	}
-	if (constraints.extraTracks === 0) {
+	if (constraints.extraColumn === undefined) {
 		yield [...prefix];
 		return;
 	}
-	for (let column = 0; column < constraints.input.gutterIds.length; column += 1) {
-		const order = defined(prefix[column + 1]);
-		const reservedTrack = defined(constraints.input.edges.gutters[column]).capacity - 1;
-		if (order[reservedTrack] !== FREE_TRACK) {
-			yield [...prefix];
-			return;
-		}
-	}
+	const column = constraints.extraColumn;
+	const order = defined(prefix[column + 1]);
+	const reservedTrack = defined(constraints.input.edges.gutters[column]).capacity - 1;
+	if (order[reservedTrack] !== FREE_TRACK) yield [...prefix];
 }
 
 /** Lexicographic first representative of each effective bus geometry: irrelevant routes retain
@@ -235,7 +228,7 @@ export function* crossingBusOrderCandidates(
 
 function* permutationCandidates(
 	input: CrossingAllocationInput,
-	extraTracks: number,
+	extraColumn: number | undefined,
 	excluded: Set<string>,
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
@@ -252,22 +245,18 @@ function* permutationCandidates(
 	};
 	const factories: TrackOrderFactory[] = [
 		() => crossingBusOrderCandidates(input, active),
-		...input.gutterIds.map(
-			(_ids, column) => (): Generator<readonly string[]> =>
-				trackOrders(
-					defined(input.gutterIds[column]),
-					defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
-					active,
-					baseline(
-						defined(input.gutterIds[column]),
-						defined(canonical.gutterTrackByRelationId[column]),
-						defined(input.edges.gutters[column]).capacity - 1,
-					),
-				),
-		),
+		...input.gutterIds.map((ids, column) => (): Generator<readonly string[]> => {
+			const capacity = defined(input.edges.gutters[column]).capacity - 1;
+			return trackOrders(
+				ids,
+				capacity + Number(column === extraColumn),
+				active,
+				baseline(ids, defined(canonical.gutterTrackByRelationId[column]), capacity),
+			);
+		}),
 	];
 	const seen = new Set(excluded);
-	const constraints = { input, extraTracks };
+	const constraints = { input, extraColumn };
 	for (const orders of combineOrders(factories, 0, [], constraints)) {
 		const busOrder = defined(orders[0]);
 		const gutterOrders = orders.slice(1);
@@ -289,10 +278,7 @@ function canonicalGutterOrder(
 	ids: readonly string[],
 	crossingIds: readonly string[],
 ): readonly string[] {
-	return crossingIds.map((id) => {
-		if (ids.includes(id)) return id;
-		return FREE_TRACK;
-	});
+	return crossingIds.filter((id) => ids.includes(id));
 }
 
 function containmentMovesOnlyConflicts(
@@ -357,13 +343,14 @@ export function* crossingAllocationCandidates(
 			yield proposal;
 		}
 	}
-	yield* permutationCandidates(input, 0, excluded, active);
+	yield* permutationCandidates(input, undefined, excluded, active);
 }
 
-/** Only raw orders using the newly reserved gutter track are materialized as candidates. */
+/** Add one reserved crossing track to one loaded gutter at a time. */
 export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
-	yield* permutationCandidates(input, 1, new Set(), active);
+	for (const [column, ids] of input.gutterIds.entries())
+		if (ids.length > 0) yield* permutationCandidates(input, column, new Set(), active);
 }

@@ -1,6 +1,7 @@
 import { defined, type LogicDocument } from '../document/logic-document';
 import { createGraph, type LogicGraph } from '../graph/create-graph';
-import { crossingEndpointSide, gridMargin, gridRoutingEdges } from './grid-cell-crossing';
+import { crossingEndpointSide } from './grid-cell-crossing';
+import { type GridCrossingResources, gridCrossingResources } from './grid-cell-crossing-resources';
 import { gridCrossingOwnedRoutes } from './grid-cell-crossing-routing';
 import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
 import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
@@ -92,6 +93,7 @@ interface GridPlaced {
 	readonly graph: LogicGraph;
 	readonly input: GridCellInput;
 	readonly disposition: GridCellDisposition;
+	readonly resources: GridCrossingResources;
 }
 interface GridCellCoordinate {
 	readonly row: number;
@@ -166,13 +168,12 @@ function placeGrid(input: ArrangementPlaceInput): GridPlaced {
 			);
 		return { cell, layout: solved.layout, ranks: solved.ranks };
 	});
-	const margin = gridMargin(
-		gridRoutingEdges(input.regionId, gridInput.minimumColumnWidths.length, input.crossings.length),
-	);
+	const resources = gridCrossingResources(gridInput, input.crossings);
 	return {
 		graph,
 		input: gridInput,
-		disposition: layoutGridCellDisposition(solvedCells, gridInput, margin),
+		resources,
+		disposition: layoutGridCellDisposition(solvedCells, gridInput, resources.edges),
 	};
 }
 
@@ -184,6 +185,7 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 		input: placement.input,
 		model: context.model,
 		disposition: placement.disposition,
+		resources: placement.resources,
 	});
 	if (attempt.status === GridCellLayoutStatus.Unknown) {
 		throw new UnknownRegionLeafLayoutError(
@@ -201,6 +203,7 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 		regionId,
 		incidentSides: input.incidentSides,
 		selected: attempt,
+		edges: placement.resources.edges,
 		children: childrenById,
 	});
 	const placements = input.children.map(({ id }) =>

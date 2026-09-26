@@ -15,6 +15,7 @@ const PORT_INSET = 16;
 export const CROSSING_SPACING = 24;
 /** Distance from the grid frame to the first rail track. */
 const OUTER_RAIL_OFFSET = 48;
+export const GRID_GUTTER_MIN_MARGIN = OUTER_RAIL_OFFSET * 2;
 /** Distance from the canvas top to the first bus track. */
 const TOP_BUS_Y = 24;
 
@@ -31,29 +32,24 @@ export interface GridRoutingEdges {
 	 */
 	readonly gutters: readonly RoutingEdge[];
 	readonly topBus: RoutingEdge;
-	/** Total crossings the frame margin and every gutter reserve track space for. */
+	/** Total crossings reserved on the global top bus. */
 	readonly crossingCount: number;
 }
 
-/**
- * Gutters and bus of one grid region. Every gutter owns the crossing tracks plus one outermost
- * track: that reserved track is the one the margin pays for, and an inherited incident uses it to
- * leave the grid without entering the crossing tracks. The last gutter sits on the right frame, so
- * the leading columns all leave towards the left.
- */
+/** Each gutter reserves its own crossings plus one exterior track for inherited incidents or
+ * an additional crossing. The bus still reserves every crossing, across all columns. */
 export function gridRoutingEdges(
 	regionId: string,
-	columnCount: number,
+	gutterIds: readonly (readonly string[])[],
 	crossingCount: number,
 ): GridRoutingEdges {
-	const gutter: RoutingEdge = {
-		ownerId: regionId,
-		capacity: crossingCount + 1,
-		spacing: CROSSING_SPACING,
-	};
 	return {
-		gutters: Array.from({ length: Math.max(1, columnCount) }, () => gutter),
-		topBus: { ...gutter, capacity: crossingCount },
+		gutters: gutterIds.map((ids) => ({
+			ownerId: regionId,
+			capacity: ids.length + 1,
+			spacing: CROSSING_SPACING,
+		})),
+		topBus: { ownerId: regionId, capacity: crossingCount, spacing: CROSSING_SPACING },
 		crossingCount,
 	};
 }
@@ -70,7 +66,12 @@ export function reservedRailTrack(edge: RoutingEdge): number {
  */
 export function gridMargin({ crossingCount }: GridRoutingEdges): number {
 	const span = CROSSING_SPACING * Math.max(0, crossingCount - 1);
-	return OUTER_RAIL_OFFSET * 2 + span;
+	return GRID_GUTTER_MIN_MARGIN + span;
+}
+
+/** Clearance around the tracks of one column gutter, with a 96px minimum even when empty. */
+export function gridGutterMargin(edge: RoutingEdge): number {
+	return GRID_GUTTER_MIN_MARGIN + CROSSING_SPACING * Math.max(0, edge.capacity - 2);
 }
 
 /**

@@ -178,7 +178,7 @@ export function searchGridCrossingAllocations<Candidate>(
 	for (const phase of phases) {
 		// If one bus order fits the phase budget, keep 1A's canonical precedence. Otherwise
 		// front-load conflict permutations, then resume 1A's complete order without repeats.
-		let extraTracks = 0;
+		let extraTracks: 0 | 1 = 0;
 		if (phase.id === CrossingAllocationPhaseId.ExtraTrack) extraTracks = 1;
 		let standardBudget = GRID_CROSSING_REALLOCATION_BUDGET;
 		if (phase.id === CrossingAllocationPhaseId.ExtraTrack)

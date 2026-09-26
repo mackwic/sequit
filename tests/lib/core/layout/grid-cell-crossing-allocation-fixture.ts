@@ -12,15 +12,13 @@ import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/cre
 import type { TopologicalRanks } from '../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
-import {
-	crossingIncidence,
-	gridRoutingEdges,
-} from '../../../../src/lib/core/layout/grid-cell-crossing';
+import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
 	crossingRoute,
@@ -116,8 +114,15 @@ export function variedGridRoutingCase(
 		};
 	});
 	const cellById = new Map(placements.map((cell) => [cell.id, cell]));
-	const edges = gridRoutingEdges('property-grid', columnCount, crossing.length);
 	const incidence = crossingIncidence(crossing);
+	const gridInput: GridCellInput = {
+		rootId: 'property-grid',
+		cells: cells.map(({ id, row, column }) => ({ id, parentId: 'property-grid', row, column })),
+		cellByEndpointId,
+		minimumColumnWidths: Array<number>(columnCount).fill(520),
+		minimumRowHeights: Array<number>(rowCount).fill(300),
+	};
+	const { edges, gutterIds } = gridCrossingResources(gridInput, crossing);
 	const routing: GridCrossingRouting = {
 		rootId: 'property-grid',
 		crossing,
@@ -137,16 +142,7 @@ export function variedGridRoutingCase(
 					defined(cellById.get(defined(cellByEndpointId.get(to)))).column,
 			)
 			.map(({ id }) => id),
-		gutterIds: Array.from({ length: columnCount }, (_, column) =>
-			crossing
-				.filter(({ from, to }) =>
-					[from, to].some(
-						(endpointId) =>
-							defined(cellById.get(defined(cellByEndpointId.get(endpointId)))).column === column,
-					),
-				)
-				.map(({ id }) => id),
-		),
+		gutterIds,
 		incidence,
 		portalByRelationId: new Map(),
 	};
@@ -169,13 +165,7 @@ export function variedGridRoutingCase(
 	};
 	const prepared = createGraph(source);
 	if (!prepared.ok) throw new Error('Generated grid document must be a valid graph.');
-	const gridInput: GridCellInput = {
-		rootId: routing.rootId,
-		cells: cells.map(({ id, row, column }) => ({ id, parentId: routing.rootId, row, column })),
-		cellByEndpointId,
-		minimumColumnWidths: Array<number>(columnCount).fill(520),
-		minimumRowHeights: Array<number>(rowCount).fill(300),
-	};
+
 	const canonical = canonicalCrossingAllocation(allocationInput);
 	return {
 		input: {

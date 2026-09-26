@@ -8,7 +8,9 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../lib/core/document/logic-document';
 import { orderKey } from '../../../lib/core/document/order-key';
+import { gridMargin } from '../../../lib/core/layout/grid-cell-crossing';
 import type { CrossingAllocationPhaseId } from '../../../lib/core/layout/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../lib/core/layout/grid-cell-crossing-resources';
 import { solveGridCellLayout } from '../../../lib/core/layout/grid-cell-layout';
 import {
 	type GridCellAllocationSelected,
@@ -36,6 +38,7 @@ export interface GridAllocationDemo {
 	readonly tracks: readonly GridAllocationTrackView[];
 	readonly busOrder: readonly string[];
 	readonly winningPhase: CrossingAllocationPhaseId;
+	readonly sizeBefore: { readonly width: number; readonly height: number };
 }
 
 interface GridDefinition {
@@ -216,6 +219,21 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 			defined(ROUTE_COLORS[index % ROUTE_COLORS.length]),
 		]),
 	);
+	// Compare identical solved cell tracks against the former global crossing-count margin.
+	const globalMargin = gridMargin(gridCrossingResources(input, definition.relations).edges);
+	const columns = attempt.columnWidths.length;
+	const rows = attempt.rowHeights.length;
+	const sizeBefore = {
+		width:
+			attempt.columnWidths.reduce((sum, width) => sum + width, 0) +
+			2 * globalMargin +
+			96 +
+			Math.max(0, columns - 2) * Math.max(96, globalMargin),
+		height:
+			attempt.rowHeights.reduce((sum, height) => sum + height, 0) +
+			Math.max(0, rows - 1) * 96 +
+			2 * globalMargin,
+	};
 	const busOrder = [...attempt.allocation.busTrackByRelationId]
 		.sort((left, right) => left[1] - right[1])
 		.map(([relationId]) => relationId);
@@ -228,6 +246,7 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 		tracks: gridTracks(definition, attempt, colorsByRelationId),
 		busOrder,
 		winningPhase: attempt.witness.winningPhase,
+		sizeBefore,
 	};
 }
 

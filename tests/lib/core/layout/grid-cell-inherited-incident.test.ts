@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import { gridRoutingEdges } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import { gridCellInheritedIncidentPaths } from '../../../../src/lib/core/layout/grid-cell-inherited-incident';
 import { gridCellArrangement } from '../../../../src/lib/core/layout/grid-cell-recursive-region';
 import {
@@ -182,6 +183,11 @@ function inheritedPath(input: {
 		regionId: 'grid',
 		incidentSides: new Map([[input.relationId, [input.outerSide]]]),
 		selected: input.selected ?? selectedGrid(),
+		edges: gridRoutingEdges(
+			'grid',
+			(input.selected ?? selectedGrid()).columnWidths.map(() => []),
+			0,
+		),
 		children: new Map([[input.childId, child]]),
 	});
 	return defined(paths.get(input.relationId));

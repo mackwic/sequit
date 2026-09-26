@@ -74,13 +74,13 @@ function factorial(value: number): bigint {
 	return count;
 }
 
-function allocationGeometrySpaceSize(input: CrossingAllocationInput, extraTracks: number): bigint {
+function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
 	let count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
 	let gutterAssignments = 1n;
 	for (const [column, ids] of input.gutterIds.entries())
 		gutterAssignments *= permutationCount(
 			ids.length,
-			defined(input.edges.gutters[column]).capacity - 1 + extraTracks,
+			defined(input.edges.gutters[column]).capacity - 1,
 		);
 	count *= gutterAssignments;
 	for (const relations of input.incidence.values()) count *= factorial(relations.length);
@@ -90,7 +90,7 @@ function allocationGeometrySpaceSize(input: CrossingAllocationInput, extraTracks
 /** Number of geometries with the first bus assignment held fixed. */
 export function crossingCanonicalBusGeometryCount(
 	input: CrossingAllocationInput,
-	extraTracks = 0,
+	extraTracks: 0 | 1 = 0,
 ): bigint {
 	const busOrders = permutationCount(
 		input.busRelevantRelationIds.length,
@@ -99,14 +99,16 @@ export function crossingCanonicalBusGeometryCount(
 	return crossingAllocationGeometryCount(input, extraTracks) / busOrders;
 }
 
-/** Exact number of geometries after ignoring unused bus tracks and assignments without a new track. */
+/** An extra-track geometry grows exactly one gutter; its reserved slot must be occupied.
+ * With n existing relations on that gutter, there are n choices for the route taking the new
+ * slot and n! arrangements for the rest, i.e. n times the base gutter permutation count. */
 export function crossingAllocationGeometryCount(
 	input: CrossingAllocationInput,
-	extraTracks = 0,
+	extraTracks: 0 | 1 = 0,
 ): bigint {
-	const extended = allocationGeometrySpaceSize(input, extraTracks);
-	if (extraTracks === 0) return extended;
-	return extended - allocationGeometrySpaceSize(input, 0);
+	const base = allocationGeometrySpaceSize(input);
+	if (extraTracks === 0) return base;
+	return base * BigInt(input.gutterIds.reduce((sum, ids) => sum + ids.length, 0));
 }
 
 /**
