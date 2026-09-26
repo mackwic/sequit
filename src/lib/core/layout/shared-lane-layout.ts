@@ -5,7 +5,6 @@ import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-t
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,
-	RegionIncidentRejectionCode,
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
@@ -15,12 +14,10 @@ import {
 	certifySharedLaneGeometry,
 	type SharedLaneGeometry,
 	type SharedLaneGeometryCertificate,
-	validateSharedLaneGeometryWithCertificate,
 } from './shared-lane-geometry';
+import { attemptSharedLaneGeometry } from './shared-lane-geometry-attempt';
 import {
 	type IncidentSearchState,
-	rejectIncidentAlternative,
-	searchLaneIncidentPaths,
 	searchWitness,
 	unknownCode,
 } from './shared-lane-incident-search';
@@ -30,8 +27,14 @@ import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import {
 	materializeParallelGeometry,
+	type ParallelRouteCandidate,
 	type SharedLaneAllocationSearchWitness,
 } from './shared-lane-route-candidates';
+import type { SharedLaneRouteCertificate } from './shared-lane-route-delta';
+import {
+	certifySharedLaneRouteGeometry,
+	materializeParallelGeometryDelta,
+} from './shared-lane-route-delta';
 import {
 	searchParallelRouteAllocations,
 	searchTransverseRouteOrders,
@@ -109,44 +112,6 @@ function completedIncidentWitness(
 	return { ...witness, exhaustive: false };
 }
 
-interface GeometryAttemptInput {
-	readonly graph: LogicGraph;
-	readonly geometry: SharedLaneGeometry;
-	readonly ports: SharedLanePorts;
-	readonly contracts: readonly RegionIncidentContract[];
-	readonly acceptBridges: boolean;
-	readonly state: IncidentSearchState;
-	readonly certificate: SharedLaneGeometryCertificate;
-}
-
-function geometryAttempt(input: GeometryAttemptInput): SelectedSharedLaneLayout | string {
-	const { graph, geometry, ports, contracts, acceptBridges, state, certificate } = input;
-	const issue = validateSharedLaneGeometryWithCertificate(
-		graph,
-		geometry,
-		certificate,
-		acceptBridges,
-	);
-	if (issue !== undefined) {
-		const first = contracts[0];
-		const side = first?.allowedSides[0];
-		if (first !== undefined && side !== undefined) {
-			rejectIncidentAlternative(state, first, side, {
-				code: RegionIncidentRejectionCode.GeometryInvalid,
-				reason: issue,
-			});
-		}
-		return issue;
-	}
-	const incidents = searchLaneIncidentPaths({ geometry, ports, contracts, state });
-	if (incidents === undefined)
-		return state.rejectedAlternatives[0]?.reason ?? 'No lane incident side remains valid.';
-	const witness = searchWitness(state);
-	if (contracts.length > 0)
-		return selectedLayout(geometry, incidents, { ...witness, exhaustive: false });
-	return selectedLayout(geometry, incidents, witness);
-}
-
 interface LaneAttemptInput {
 	readonly graph: LogicGraph;
 	readonly input: SharedLaneInput;
@@ -177,36 +142,59 @@ function parallelAttempt({
 			firstIssue = issue;
 		}
 	}
-	const certificatesByFrame = new WeakMap<SharedLaneFrame, SharedLaneGeometryCertificate>();
+	const certificatesByFrame = new WeakMap<
+		SharedLaneFrame,
+		{
+			readonly candidate: ParallelRouteCandidate;
+			readonly geometry: SharedLaneGeometry;
+			readonly staticCertificate: SharedLaneGeometryCertificate;
+			readonly routeCertificate: SharedLaneRouteCertificate;
+		}
+	>();
 	const search = searchParallelRouteAllocations({
 		input,
 		ports,
 		contracts,
 		state,
 		evaluate: (candidate, acceptBridges) => {
-			const geometry = materializeParallelGeometry(
-				input,
-				candidate.frame,
-				candidate.order,
-				candidate.allocation,
-			);
-			let certificate = certificatesByFrame.get(candidate.frame);
-			if (certificate === undefined) {
-				certificate = certifySharedLaneGeometry(graph, geometry);
-				certificatesByFrame.set(candidate.frame, certificate);
+			let base = certificatesByFrame.get(candidate.frame);
+			if (base === undefined) {
+				const geometry = materializeParallelGeometry(
+					input,
+					candidate.frame,
+					candidate.order,
+					candidate.allocation,
+				);
+				base = {
+					candidate,
+					geometry,
+					staticCertificate: certifySharedLaneGeometry(graph, geometry),
+					routeCertificate: certifySharedLaneRouteGeometry(graph, geometry),
+				};
+				certificatesByFrame.set(candidate.frame, base);
 			}
-			const attempt = geometryAttempt({
+			const { geometry, changedRouteIds } = materializeParallelGeometryDelta(
+				input,
+				candidate,
+				base.candidate,
+				base.geometry,
+			);
+			const attempt = attemptSharedLaneGeometry({
 				graph,
 				geometry,
 				ports,
 				contracts,
 				acceptBridges,
 				state,
-				certificate,
+				certificate: base.staticCertificate,
+				routeCertificate: base.routeCertificate,
+				changedRouteIds,
 			});
-			if (typeof attempt !== 'string') return attempt;
-			firstIssue ??= attempt;
-			return undefined;
+			if (typeof attempt === 'string') {
+				firstIssue ??= attempt;
+				return undefined;
+			}
+			return { geometry, incidents: attempt.incidents };
 		},
 	});
 	if (search.selected !== undefined)
@@ -255,7 +243,7 @@ function transverseAttempt({
 				prepared = { geometry, certificate: certifySharedLaneGeometry(graph, geometry) };
 				preparedByOrder.set(strategy.order, prepared);
 			}
-			const selected = geometryAttempt({
+			const selected = attemptSharedLaneGeometry({
 				graph,
 				geometry: prepared.geometry,
 				ports,
@@ -268,7 +256,7 @@ function transverseAttempt({
 				firstIssue ??= selected;
 				return undefined;
 			}
-			return selected;
+			return { geometry: prepared.geometry, incidents: selected.incidents };
 		},
 	});
 	if (search.selected !== undefined)

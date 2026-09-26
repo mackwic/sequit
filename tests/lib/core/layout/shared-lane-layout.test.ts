@@ -53,6 +53,11 @@ import {
 	parallelStrategyPlans,
 	rankLaneRouteSelection,
 } from '../../../../src/lib/core/layout/shared-lane-route-candidates';
+import {
+	certifySharedLaneRouteGeometry,
+	materializeParallelGeometryDelta,
+	validateSharedLaneGeometryDelta,
+} from '../../../../src/lib/core/layout/shared-lane-route-delta';
 import { searchParallelRouteAllocations } from '../../../../src/lib/core/layout/shared-lane-route-search';
 import {
 	allocateParallelRoutes,
@@ -691,6 +696,256 @@ describe('shared lane layout', () => {
 		expect(selectedMetrics.bridges).toBe(0);
 		expect(shortestBridgedMetrics.bridges).toBeGreaterThan(0);
 		expect(shortestBridgedMetrics.length).toBeLessThan(selectedMetrics.length);
+	});
+
+	it('matches delta-routed candidates against full materialization and validation under ID permutations', () => {
+		const idOrders = [
+			['within-a', 'a1-to-b', 'a2-to-b'],
+			['within-a', 'a2-to-b', 'a1-to-b'],
+			['a1-to-b', 'within-a', 'a2-to-b'],
+			['a1-to-b', 'a2-to-b', 'within-a'],
+			['a2-to-b', 'within-a', 'a1-to-b'],
+			['a2-to-b', 'a1-to-b', 'within-a'],
+		] as const;
+		const endpoints = [
+			{ from: 'a1', to: 'a2' },
+			{ from: 'a1', to: 'b1' },
+			{ from: 'a2', to: 'b1' },
+		] as const;
+		for (const ids of idOrders) {
+			const relations = endpoints.map((relation, index) => ({
+				...relation,
+				id: defined(ids[index]),
+			}));
+			const prepared = prepareLayoutDocument(
+				laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, relations),
+			);
+			const input = defined(
+				prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+			);
+			const ports = planSharedLanePorts(input);
+			const plans = parallelStrategyPlans(input, ports, []);
+			for (const acceptBridges of [false, true]) {
+				const candidates = [...parallelRouteCandidates(input, plans, acceptBridges)];
+				expect(candidates).toHaveLength(18);
+				const canonical = defined(candidates[0]);
+				const local = defined(candidates[1]);
+				const canonicalGeometry = materializeParallelGeometry(
+					input,
+					canonical.frame,
+					canonical.order,
+					canonical.allocation,
+				);
+				const differentFrame = materializeParallelGeometryDelta(
+					input,
+					local,
+					canonical,
+					canonicalGeometry,
+				);
+				const fullLocal = materializeParallelGeometry(
+					input,
+					local.frame,
+					local.order,
+					local.allocation,
+				);
+				expect(differentFrame.geometry).toEqual(fullLocal);
+				expect(differentFrame.changedRouteIds).toEqual(new Set(input.plans.map(({ id }) => id)));
+				expect(
+					validateSharedLaneGeometryDelta({
+						graph: prepared.graph,
+						geometry: differentFrame.geometry,
+						staticCertificate: certifySharedLaneGeometry(prepared.graph, canonicalGeometry),
+						routeCertificate: certifySharedLaneRouteGeometry(prepared.graph, canonicalGeometry),
+						changedRouteIds: differentFrame.changedRouteIds,
+						acceptBridges,
+					}),
+				).toBe(
+					validateSharedLaneGeometry(
+						prepared.graph,
+						fullLocal,
+						SHARED_LANE_CLEARANCE,
+						acceptBridges,
+					),
+				);
+				for (const candidate of candidates) {
+					const baselineCandidate = defined(
+						candidates.find(
+							({ frame, historicalRank, strategyRank }) =>
+								frame === candidate.frame &&
+								historicalRank !== undefined &&
+								strategyRank === candidate.strategyRank,
+						),
+					);
+					const baseline = materializeParallelGeometry(
+						input,
+						baselineCandidate.frame,
+						baselineCandidate.order,
+						baselineCandidate.allocation,
+					);
+					const staticCertificate = certifySharedLaneGeometry(prepared.graph, baseline);
+					const routeCertificate = certifySharedLaneRouteGeometry(
+						prepared.graph,
+						baseline,
+						SHARED_LANE_CLEARANCE,
+					);
+					const delta = materializeParallelGeometryDelta(
+						input,
+						candidate,
+						baselineCandidate,
+						baseline,
+					);
+					const full = materializeParallelGeometry(
+						input,
+						candidate.frame,
+						candidate.order,
+						candidate.allocation,
+					);
+					const baselineById = new Map(baseline.relations.map((route) => [route.id, route]));
+					const expectedChangedIds: string[] = [];
+					for (const route of full.relations) {
+						const baselineRoute = defined(baselineById.get(route.id));
+						const deltaRoute = defined(delta.geometry.relations.find(({ id }) => id === route.id));
+						expect(deltaRoute.points).toEqual(route.points);
+						const changed =
+							route.points.length !== baselineRoute.points.length ||
+							route.points.some((point, index) => {
+								const originalPoint = defined(baselineRoute.points[index]);
+								return point.x !== originalPoint.x || point.y !== originalPoint.y;
+							});
+						if (changed) {
+							expectedChangedIds.push(route.id);
+							expect(deltaRoute).not.toBe(baselineRoute);
+						} else expect(deltaRoute).toBe(baselineRoute);
+					}
+					expect([...delta.changedRouteIds].sort()).toEqual(expectedChangedIds.sort());
+					const issue = validateSharedLaneGeometry(
+						prepared.graph,
+						full,
+						SHARED_LANE_CLEARANCE,
+						acceptBridges,
+					);
+					const deltaValidation = validateSharedLaneGeometryDelta({
+						graph: prepared.graph,
+						geometry: delta.geometry,
+						staticCertificate,
+						routeCertificate,
+						changedRouteIds: delta.changedRouteIds,
+						acceptBridges,
+						clearance: SHARED_LANE_CLEARANCE,
+					});
+					expect(deltaValidation).toBe(issue);
+					if (issue !== undefined) continue;
+
+					const deltaScore = rankLaneRouteSelection(
+						{
+							geometry: delta.geometry,
+							incidents: [],
+						},
+						candidate,
+					);
+					const fullScore = rankLaneRouteSelection({ geometry: full, incidents: [] }, candidate);
+					expect([deltaScore.bridges, deltaScore.length, deltaScore.bends]).toEqual([
+						fullScore.bridges,
+						fullScore.length,
+						fullScore.bends,
+					]);
+				}
+			}
+		}
+	});
+
+	it('revalidates malformed historical routes and rejects changed route segments independently', () => {
+		const prepared = prepareLayoutDocument(
+			laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+				{ id: 'within-a', from: 'a1', to: 'a2' },
+				{ id: 'a1-to-b', from: 'a1', to: 'b1' },
+				{ id: 'a2-to-b', from: 'a2', to: 'b1' },
+			]),
+		);
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const candidates = [
+			...parallelRouteCandidates(
+				input,
+				parallelStrategyPlans(input, planSharedLanePorts(input), []),
+				false,
+			),
+		];
+		const baseline = defined(candidates[0]);
+		const alternative = defined(
+			candidates.find(
+				(candidate) => candidate.order === baseline.order && candidate.historicalRank === undefined,
+			),
+		);
+		const original = materializeParallelGeometry(
+			input,
+			baseline.frame,
+			baseline.order,
+			baseline.allocation,
+		);
+		const delta = materializeParallelGeometryDelta(input, alternative, baseline, original);
+		const staticCertificate = certifySharedLaneGeometry(prepared.graph, original);
+		const routeCertificate = certifySharedLaneRouteGeometry(prepared.graph, original);
+		const staticFailure = { ...delta.geometry, width: -1 };
+		expect(
+			validateSharedLaneGeometryDelta({
+				graph: prepared.graph,
+				geometry: staticFailure,
+				staticCertificate,
+				routeCertificate,
+				changedRouteIds: delta.changedRouteIds,
+				acceptBridges: false,
+			}),
+		).toBe(validateSharedLaneGeometry(prepared.graph, staticFailure));
+		const changedId = defined([...delta.changedRouteIds][0]);
+		const malformedRoute = {
+			...delta.geometry,
+			relations: delta.geometry.relations.map((route) => {
+				if (route.id !== changedId) return route;
+				return {
+					...route,
+					points: route.points.map((point, index) =>
+						index === 2 ? defined(route.points[1]) : point,
+					),
+				};
+			}),
+		};
+		expect(
+			validateSharedLaneGeometryDelta({
+				graph: prepared.graph,
+				geometry: malformedRoute,
+				staticCertificate,
+				routeCertificate,
+				changedRouteIds: delta.changedRouteIds,
+				acceptBridges: false,
+			}),
+		).toBe(validateSharedLaneGeometry(prepared.graph, malformedRoute));
+		const historicalRoute = defined(original.relations[0]);
+		const malformedHistorical = {
+			...original,
+			relations: [
+				{
+					...historicalRoute,
+					points: historicalRoute.points.map((point, index) =>
+						index === 2 ? defined(historicalRoute.points[1]) : point,
+					),
+				},
+				...original.relations.slice(1),
+			],
+		};
+		const invalidCertificate = certifySharedLaneRouteGeometry(prepared.graph, malformedHistorical);
+		expect(invalidCertificate.issue).toBeDefined();
+		expect(
+			validateSharedLaneGeometryDelta({
+				graph: prepared.graph,
+				geometry: delta.geometry,
+				staticCertificate,
+				routeCertificate: invalidCertificate,
+				changedRouteIds: delta.changedRouteIds,
+				acceptBridges: false,
+			}),
+		).toBe(validateSharedLaneGeometry(prepared.graph, delta.geometry));
 	});
 
 	it('compares incident-bearing three-route geometries with an exhaustive allocation oracle', () => {

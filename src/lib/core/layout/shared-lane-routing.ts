@@ -152,6 +152,26 @@ function passageTrack(
 	}
 	return frame.exteriorBase + railOffset(allocation.exteriorRail, plan);
 }
+export function routeRailTrack(
+	frame: SharedLaneFrame,
+	allocation: ParallelRouteAllocation,
+	plan: SharedLanePlan,
+	order: ParallelRouteOrder,
+): number | undefined {
+	if (allocation.passage !== undefined) return undefined;
+	if (plan.sameLane) return undefined;
+	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
+	if (order === ParallelRouteOrder.LocalPassages && laneSpan === 1) return undefined;
+	const position = routePosition(frame, allocation, plan, order);
+	let rail = allocation.exteriorRail;
+	if (order === ParallelRouteOrder.ReservedTopPassage) rail = allocation.topExteriorRail;
+	if (order === ParallelRouteOrder.LocalPassages) {
+		const contentMidpoint = (frame.contentLongStart + frame.contentLongEnd) / 2;
+		const routeMidpoint = (position.sourceLong + position.targetLong) / 2;
+		if (routeMidpoint < contentMidpoint) rail = allocation.topExteriorRail;
+	}
+	return rail.trackByRelationId.get(plan.id);
+}
 
 function logicalPoints(
 	plan: SharedLanePlan,
@@ -202,6 +222,36 @@ function routePosition(
 	};
 }
 
+export interface SharedLaneRouteRequest {
+	readonly input: SharedLaneInput;
+	readonly frame: SharedLaneFrame;
+	readonly allocation: ParallelRouteAllocation;
+	readonly order: ParallelRouteOrder;
+	readonly plan: SharedLanePlan;
+}
+
+/** Materialize one route after its gutter or rail assignment changes. */
+export function routeSharedLane({
+	input,
+	frame,
+	allocation,
+	order,
+	plan,
+}: SharedLaneRouteRequest): LayoutRelation {
+	const points = logicalPoints(
+		plan,
+		frame,
+		allocation,
+		routePosition(frame, allocation, plan, order),
+	);
+	return {
+		id: plan.id,
+		from: plan.from,
+		to: plan.to,
+		points: points.map((point) => physicalPoint(point, input, frame.longExtent)),
+	};
+}
+
 /** The route of every plan of the frame, in the canonical plan order. */
 export function routeSharedLanes(
 	input: SharedLaneInput,
@@ -209,20 +259,7 @@ export function routeSharedLanes(
 	allocation: ParallelRouteAllocation,
 	order: ParallelRouteOrder = ParallelRouteOrder.Canonical,
 ): readonly LayoutRelation[] {
-	const routes: LayoutRelation[] = [];
-	for (const plan of canonicalPlans(input)) {
-		const points = logicalPoints(
-			plan,
-			frame,
-			allocation,
-			routePosition(frame, allocation, plan, order),
-		);
-		routes.push({
-			id: plan.id,
-			from: plan.from,
-			to: plan.to,
-			points: points.map((point) => physicalPoint(point, input, frame.longExtent)),
-		});
-	}
-	return routes;
+	return canonicalPlans(input).map((plan) =>
+		routeSharedLane({ input, frame, allocation, order, plan }),
+	);
 }

@@ -282,9 +282,16 @@ export function validateSharedLaneGeometryWithCertificate(
 	certificate: SharedLaneGeometryCertificate,
 	acceptBridges: boolean,
 ): string | undefined {
-	let validation: string | undefined;
-	if (certificateMatches(certificate, graph, geometry)) validation = certificate.issue;
-	else validation = validateStaticGeometry(graph, geometry);
+	const validation = validateSharedLaneStaticGeometryWithCertificate(graph, geometry, certificate);
 	if (validation !== undefined) return validation;
 	return validateSharedLaneRoutes(graph, geometry, SHARED_LANE_CLEARANCE, acceptBridges);
+}
+
+export function validateSharedLaneStaticGeometryWithCertificate(
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+	certificate: SharedLaneGeometryCertificate,
+): string | undefined {
+	if (certificateMatches(certificate, graph, geometry)) return certificate.issue;
+	return validateStaticGeometry(graph, geometry);
 }

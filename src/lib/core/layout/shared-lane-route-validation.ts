@@ -1,7 +1,5 @@
 import { defined, LaneOrientation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import { unbridgedContacts } from './bridge-contact';
-import { type LayoutBridge, validatedBridges } from './bridge-oracle';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, Point } from './layout-types';
 import {
@@ -17,16 +15,20 @@ import {
 	segmentsContact,
 } from './shared-lane-geometry-primitives';
 import { type LaneSide, laneSide, reverseDirection, verticalDirection } from './shared-lane-model';
+import { validateSharedLaneRouteContacts } from './shared-lane-route-contact-validation';
 import type { SharedLaneGeometry } from './shared-lane-types';
 import { physicalTransverseSide, transverseRouteSides } from './shared-transverse-sides';
 
-interface RouteContext {
+interface RouteGeometryContext {
 	readonly geometry: SharedLaneGeometry;
+	readonly boxes: ReadonlyMap<string, LayoutElement>;
+	readonly clearance: number;
+}
+
+interface RouteContext extends RouteGeometryContext {
 	readonly orientation: LaneOrientation;
 	readonly vertical: boolean;
 	readonly reverse: boolean;
-	readonly boxes: ReadonlyMap<string, LayoutElement>;
-	readonly clearance: number;
 	readonly ports: Map<string, number[]>;
 }
 
@@ -163,7 +165,7 @@ interface RouteSegment {
 function segmentHitsBox(
 	route: LayoutRelation,
 	segment: RouteSegment,
-	context: RouteContext,
+	context: RouteGeometryContext,
 ): string | undefined {
 	const lastIndex = route.points.length - 1;
 	for (const box of context.boxes.values()) {
@@ -190,7 +192,13 @@ function segmentCrossesItself(
 	return false;
 }
 
-function routeSegments(route: LayoutRelation, context: RouteContext): string | undefined {
+function withinCanvas(point: Point, geometry: SharedLaneGeometry): boolean {
+	const horizontal = point.x >= 0 && point.x <= geometry.width;
+	const vertical = point.y >= 0 && point.y <= geometry.height;
+	return horizontal && vertical;
+}
+
+function routeSegments(route: LayoutRelation, context: RouteGeometryContext): string | undefined {
 	for (let index = 1; index < route.points.length; index += 1) {
 		const start = route.points[index - 1];
 		const end = route.points[index];
@@ -206,12 +214,6 @@ function routeSegments(route: LayoutRelation, context: RouteContext): string | u
 	return undefined;
 }
 
-function withinCanvas(point: Point, geometry: SharedLaneGeometry): boolean {
-	const horizontal = point.x >= 0 && point.x <= geometry.width;
-	const vertical = point.y >= 0 && point.y <= geometry.height;
-	return horizontal && vertical;
-}
-
 function validatePortSeparation(ports: ReadonlyMap<string, number[]>): string | undefined {
 	for (const [key, positions] of ports) {
 		positions.sort((a, b) => a - b);
@@ -225,48 +227,10 @@ function validatePortSeparation(ports: ReadonlyMap<string, number[]>): string | 
 	return undefined;
 }
 
-function routesCross(a: LayoutRelation, b: LayoutRelation): boolean {
-	for (let first = 1; first < a.points.length; first += 1) {
-		const aStart = defined(a.points[first - 1]);
-		const aEnd = defined(a.points[first]);
-		for (let second = 1; second < b.points.length; second += 1) {
-			const bStart = defined(b.points[second - 1]);
-			const bEnd = defined(b.points[second]);
-			if (segmentsContact(aStart, aEnd, bStart, bEnd)) return true;
-		}
-	}
-	return false;
-}
-
-/**
- * The lane route separation rule. The first pass rejects any contact; the bridged pass accepts a
- * pair only when every contact between the two routes is a strict crossing carried by a validated
- * bridge of the same relation set, exactly as the composition validators accept a bridged parent
- * contact. A T-contact and a collinear overlap are never covered, so they keep their rejection.
- */
-function validateRouteSeparation(
-	routes: readonly LayoutRelation[],
-	acceptBridges: boolean,
-): string | undefined {
-	let bridges: readonly LayoutBridge[] | undefined;
-	if (acceptBridges) bridges = validatedBridges(routes);
-	for (let first = 0; first < routes.length; first += 1) {
-		const a = defined(routes[first]);
-		for (let second = first + 1; second < routes.length; second += 1) {
-			const b = defined(routes[second]);
-			let touching = routesCross(a, b);
-			if (bridges !== undefined) touching = unbridgedContacts(a, b, bridges).length > 0;
-			if (touching) return `Routes ${a.id} and ${b.id} cross without a bridge.`;
-		}
-	}
-	return undefined;
-}
-
-export function validateSharedLaneRoutes(
+export function validateSharedLaneRouteShapes(
 	graph: LogicGraph,
 	geometry: SharedLaneGeometry,
 	clearance: number,
-	acceptBridges: boolean,
 ): string | undefined {
 	const relationById = new Map(graph.relations.map(({ relation }) => [relation.id, relation]));
 	if (geometry.relations.length !== relationById.size) return 'The relation set is incomplete.';
@@ -281,10 +245,10 @@ export function validateSharedLaneRoutes(
 	};
 	const seen = new Set<string>();
 	for (const route of geometry.relations) {
-		const relation = relationById.get(route.id);
-		if (relation === undefined || seen.has(route.id))
-			return `Route identity differs at ${route.id}.`;
+		if (seen.has(route.id)) return `Route identity differs at ${route.id}.`;
 		seen.add(route.id);
+		const relation = relationById.get(route.id);
+		if (relation === undefined) return `Route identity differs at ${route.id}.`;
 		if (route.from !== relation.from || route.to !== relation.to)
 			return `Route endpoints differ at ${route.id}.`;
 		const endpointIssue = routeEndpoints(route, context, relation.from, relation.to);
@@ -292,7 +256,36 @@ export function validateSharedLaneRoutes(
 		const segmentIssue = routeSegments(route, context);
 		if (segmentIssue !== undefined) return segmentIssue;
 	}
-	const portIssue = validatePortSeparation(context.ports);
-	if (portIssue !== undefined) return portIssue;
-	return validateRouteSeparation(geometry.relations, acceptBridges);
+	return validatePortSeparation(context.ports);
+}
+
+/** Port positions and route identities are fixed by the frame; only track-dependent segments move. */
+export function validateChangedSharedLaneRoutes(
+	geometry: SharedLaneGeometry,
+	clearance: number,
+	changedRouteIds: ReadonlySet<string>,
+): string | undefined {
+	const context = {
+		geometry,
+		boxes: new Map(geometry.elements.map((box) => [box.id, box])),
+		clearance,
+	};
+	for (const route of geometry.relations) {
+		if (changedRouteIds.has(route.id)) {
+			const issue = routeSegments(route, context);
+			if (issue !== undefined) return issue;
+		}
+	}
+	return undefined;
+}
+
+export function validateSharedLaneRoutes(
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+	clearance: number,
+	acceptBridges: boolean,
+): string | undefined {
+	const shapeIssue = validateSharedLaneRouteShapes(graph, geometry, clearance);
+	if (shapeIssue !== undefined) return shapeIssue;
+	return validateSharedLaneRouteContacts(geometry.relations, acceptBridges);
 }
