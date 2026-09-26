@@ -441,6 +441,7 @@ test.describe('AI for documentary effort', () => {
 						touchesBoundary(firstPoint, endpoint(root, from)) &&
 						touchesBoundary(lastPoint, endpoint(root, to));
 					return {
+						bridgeArcs: d.match(/\bA 6 6 /g)?.length ?? 0,
 						validPath: validPathPattern.test(d),
 						orthogonal: points.slice(1).every((point, index) => {
 							const previous = points[index];
@@ -455,9 +456,8 @@ test.describe('AI for documentary effort', () => {
 			const before = state('before');
 			const after = state('after');
 			const stable = state('stable');
-			const peerIds = ['target-b', 'target-c'];
 			return {
-				initialOrder: ordered(state('initial'), ['source-a', 'source-b', 'target-a']),
+				initialCrossings: inversionCrossings(state('initial')),
 				firstAddedOrder: ordered(state('first-added'), ['source-a', 'source-b', 'zz-added-first']),
 				appendedOrder: ordered(state('appended'), [
 					'source-a',
@@ -468,17 +468,19 @@ test.describe('AI for documentary effort', () => {
 				beforeOrder: orderedTargets(before),
 				afterOrder: orderedTargets(after),
 				stableOrder: orderedTargets(stable),
-				peersBefore: ordered(before, peerIds),
-				peersAfter: ordered(after, peerIds),
 				beforeCrossings: inversionCrossings(before),
 				afterCrossings: inversionCrossings(after),
 				topBiasedRankAligned:
 					new Set(['source-a', 'source-b'].map((id) => endpoint(after, id).offsetTop)).size === 1,
-				routes: [...routeContract(before), ...routeContract(after), ...routeContract(stable)],
+				routes: [
+					...routeContract(state('initial')),
+					...routeContract(before),
+					...routeContract(after),
+					...routeContract(stable),
+				],
 			};
 		});
 
-		expect(rendererContract.initialOrder).toEqual(['target-a', 'source-a', 'source-b']);
 		expect(rendererContract.firstAddedOrder).toEqual(['source-a', 'source-b', 'zz-added-first']);
 		expect(rendererContract.appendedOrder).toEqual([
 			'source-a',
@@ -486,15 +488,16 @@ test.describe('AI for documentary effort', () => {
 			'zz-added-first',
 			'aa-added-second',
 		]);
-		expect(rendererContract.beforeOrder).toEqual(['target-a', 'target-b', 'target-c']);
-		expect(rendererContract.afterOrder).toEqual(['target-b', 'target-a', 'target-c']);
+		expect(rendererContract.beforeOrder).toEqual(rendererContract.afterOrder);
 		expect(rendererContract.stableOrder).toEqual(rendererContract.afterOrder);
-		expect(rendererContract.peersAfter).toEqual(rendererContract.peersBefore);
-		expect(rendererContract.afterCrossings).toBeLessThan(rendererContract.beforeCrossings);
+		expect(rendererContract.initialCrossings).toBe(0);
+		expect(rendererContract.beforeCrossings).toBe(0);
+		expect(rendererContract.afterCrossings).toBe(0);
 		expect(rendererContract.topBiasedRankAligned).toBe(true);
 		expect(rendererContract.routes).not.toHaveLength(0);
 		expect(rendererContract.routes.every(({ validPath }) => validPath)).toBe(true);
 		expect(rendererContract.routes.every(({ orthogonal }) => orthogonal)).toBe(true);
+		expect(rendererContract.routes.every(({ bridgeArcs }) => bridgeArcs === 0)).toBe(true);
 		expect(rendererContract.routes.every(({ endpointContact }) => endpointContact)).toBe(true);
 	});
 });
