@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
+import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
@@ -16,8 +17,11 @@ import {
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import { crossingCorridors } from '../../../../src/lib/core/layout/routing/routing-corridors';
 import { settleGroupCorridorPorts } from '../../../../src/lib/core/layout/routing/settle-group-corridors';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { validLogicDocument } from '../../../support/builders/logic-document';
+import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
 import { layoutDocument } from '../../../support/harnesses/layout';
+import { VisualLayout } from '../../../support/harnesses/visual-layout';
 
 describe('rail and port reservations', () => {
 	it('preserves face order from crossing corridors, including direct-link fallback', () => {
@@ -237,6 +241,60 @@ describe('rail and port reservations', () => {
 		expect(crossed.ports.sourceOffsets.get('fork-b')).toBe(24);
 		expect(crossed.ports.sizes.get('source-a')?.width).toBe(96);
 	});
+	it('keeps a grouped link attached when face growth opens an independent corridor', async () => {
+		const direction = LayoutDirection.LeftToRight;
+		const fixture = groupJunctionFixture({ direction, bias: LayoutBias.Right }, false, false);
+		const template = fixture.nodes[0];
+		if (template === undefined) throw new Error('A group member is required');
+		const ungrouped = { ...template };
+		delete ungrouped.groupId;
+		const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+		const sizes = [
+			{ width: 167, height: 129 },
+			{ width: 86, height: 46 },
+			{ width: 151, height: 124 },
+			{ width: 122, height: 103 },
+			{ width: 126, height: 80 },
+			{ width: 135, height: 42 },
+		];
+		const document = {
+			...fixture,
+			nodes: ids.map((id, index) => {
+				const node = { ...ungrouped, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
+				if (id === 'f') return { ...node, groupId: 'group' };
+				return node;
+			}),
+			junctions: [],
+			relations: [
+				{ id: 'a-d', from: 'a', to: 'd' },
+				{ id: 'b-e', from: 'b', to: 'e' },
+				{ id: 'b-f', from: 'b', to: 'f' },
+				{ id: 'c-e', from: 'c', to: 'e' },
+				{ id: 'c-f', from: 'c', to: 'f' },
+			],
+		};
+		const { layout, ranks } = await layoutDocument(document, {
+			nodes: Object.fromEntries(
+				ids.map((id, index) => {
+					const size = sizes[index];
+					if (size === undefined) throw new Error('Every node requires dimensions');
+					return [id, size];
+				}),
+			),
+			groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
+		});
+		const independent = layout.relations.find(({ id }) => id === 'a-d');
+		const reusable = layout.relations.find(({ id }) => id === 'c-e');
+		if (independent === undefined || reusable === undefined)
+			throw new Error('Both routes must be materialized');
+		expect(independent.points[1]?.x).toBe(reusable.points[1]?.x);
+		AssertLayout(new VisualLayout(layout, ranks.byEndpointId, direction))
+			.routes()
+			.areOrthogonal()
+			.areAttachedToEndpoints()
+			.haveOnlyAllowedSharedTrunks();
+	});
+
 	it('ignores cached measurements for nodes no longer present in the document', async () => {
 		const fixture = await layoutDocument({
 			...validLogicDocument(),
