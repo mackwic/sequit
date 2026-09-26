@@ -14,6 +14,7 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank/rank-order';
+import { AssertRoutes } from '../../../support/assertions/assert-routes';
 
 describe('rank order comparison', () => {
 	const comparison = compareRankOrderCorpus(rankOrderComparisonCorpus());
@@ -215,6 +216,29 @@ describe('rank order stability under document edits', () => {
 		});
 		expect(removal?.commonRouteLengthAfter).toBeLessThan(removal?.commonRouteLengthBefore ?? 0);
 		expect(removal?.commonBendsAfter).toBeLessThanOrEqual(removal?.commonBendsBefore ?? 0);
+		expect(removal?.commonRouteLengthAfter).toBeLessThanOrEqual(320);
+		expect(removal?.commonBendsAfter).toBeLessThanOrEqual(4);
+		const mutation = rankOrderMutationCorpus().find(({ id }) => id === 'remove-relation');
+		if (mutation === undefined) throw new Error('Missing removal witness');
+		const graphResult = createGraph(mutation.after.document);
+		if (!graphResult.ok) throw new Error('Invalid removal witness');
+		const graph = graphResult.value;
+		const after = layoutWithDedicatedEngineAndRankOrderWitness(
+			graph,
+			topologicallyRank(graph),
+			mutation.after.measurements,
+		).layout;
+		const route = (id: string) => {
+			const found = after.relations.find((candidate) => candidate.id === id);
+			if (found === undefined) throw new Error(`Missing removal route ${id}`);
+			return found;
+		};
+		const fromA = route('a-d');
+		const fromB = route('b-d');
+		const branch = route('b-e');
+		expect(fromB.points[0]).toEqual(branch.points[0]);
+		expect(fromA.points.at(-1)).not.toEqual(fromB.points.at(-1));
+		AssertRoutes(after.relations).haveOnlyAllowedSharedTrunks();
 		expect(removedNode).toMatchObject({
 			removedElements: 1,
 			removedRelations: 1,
