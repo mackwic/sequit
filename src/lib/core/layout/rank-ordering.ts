@@ -1,7 +1,6 @@
 import { defined, EndpointKind } from '../document/logic-document';
 import type { RankDomain, RankOrder } from './rank-order';
 import { validateRankOrder } from './rank-order';
-import type { RankedComponent } from './structure/placement-rows';
 import type { LayoutStructure } from './structure/prepare-layout';
 
 export interface RankOrderDomain extends RankDomain {
@@ -35,35 +34,40 @@ export function applyRankOrder(
 	order: RankOrder,
 ): LayoutStructure {
 	if (!validateRankOrder(domain, order)) throw new Error('Invalid ordinary-node rank order');
-	if (
-		domain.bands.every((band, index) =>
-			band.every((id, position) => order[index]?.[position] === id),
-		)
-	)
-		return structure;
-	const changed = new Map<number, RankedComponent>();
+	const changedRows = new Map<number, Map<number, readonly string[]>>();
 	for (const [bandIndex, location] of domain.locations.entries()) {
-		let component = changed.get(location.componentIndex);
-		component ??= defined(structure.components[location.componentIndex]);
-		const ordinaryRows = [...component.rows.ordinary];
-		const originalRow = defined(ordinaryRows[location.rank]);
+		const component = defined(structure.components[location.componentIndex]);
+		const row = defined(component.rows.ordinary[location.rank]);
 		const candidateBand = defined(order[bandIndex]);
+		let nodeIndex = 0;
+		let differs = false;
+		for (const id of row) {
+			if (structure.graph.endpointsById.get(id)?.entity.kind !== EndpointKind.Node) continue;
+			if (id !== candidateBand[nodeIndex]) differs = true;
+			nodeIndex += 1;
+		}
+		if (!differs) continue;
 		let candidateIndex = 0;
-		const reorderedRow = originalRow.map((id) => {
+		const reorderedRow = row.map((id) => {
 			if (structure.graph.endpointsById.get(id)?.entity.kind !== EndpointKind.Node) return id;
 			const candidateId = defined(candidateBand[candidateIndex]);
 			candidateIndex += 1;
 			return candidateId;
 		});
-		ordinaryRows[location.rank] = reorderedRow;
-		changed.set(location.componentIndex, {
-			...component,
-			rows: { ...component.rows, ordinary: ordinaryRows },
-		});
+		let componentRows = changedRows.get(location.componentIndex);
+		if (componentRows === undefined) {
+			componentRows = new Map<number, readonly string[]>();
+			changedRows.set(location.componentIndex, componentRows);
+		}
+		componentRows.set(location.rank, reorderedRow);
 	}
-	if (changed.size === 0) return structure;
-	const components = structure.components.map(
-		(component, index) => changed.get(index) ?? component,
-	);
+	if (changedRows.size === 0) return structure;
+	const components = structure.components.map((component, componentIndex) => {
+		const changedComponentRows = changedRows.get(componentIndex);
+		if (changedComponentRows === undefined) return component;
+		const ordinary = [...component.rows.ordinary];
+		for (const [rank, row] of changedComponentRows) ordinary[rank] = row;
+		return { ...component, rows: { ...component.rows, ordinary } };
+	});
 	return { ...structure, components };
 }

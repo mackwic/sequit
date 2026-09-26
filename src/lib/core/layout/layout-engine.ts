@@ -264,18 +264,22 @@ export function evaluateDedicatedLayout(
 		if (!retainForCompletion) return result;
 		return { result, complete: () => result };
 	}
-	const complete = (): LayoutResult => ({
-		...result,
-		routingInspection: inspectRouting({
-			layout: result,
-			measurements,
-			ranks: ranks.byEndpointId,
-			direction: frame.direction,
-			plan: workspace.routing,
+	const inspectionInput = {
+		layout: result,
+		measurements,
+		ranks: ranks.byEndpointId,
+		direction: frame.direction,
+		plan: workspace.routing,
+	};
+	if (!retainForCompletion)
+		return { ...result, routingInspection: inspectRouting(inspectionInput) };
+	return {
+		result,
+		complete: () => ({
+			...result,
+			routingInspection: inspectRouting(inspectionInput),
 		}),
-	});
-	if (!retainForCompletion) return complete();
-	return { result, complete };
+	};
 }
 
 export function layoutWithDedicatedEngine(
