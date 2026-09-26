@@ -140,12 +140,10 @@
 		border-radius: 6px;
 	}
 	.toast {
-		position: fixed;
-		top: 15px;
-		right: 15px;
 		max-width: 450px;
-		padding: 16px;
-		z-index: 100;
+		margin: 8px 12px 0;
+		padding: 8px 12px;
+		border-radius: 6px;
 		background: #fff0ec;
 		color: #8f2416;
 		box-shadow: 0 4px 24px #0002;
