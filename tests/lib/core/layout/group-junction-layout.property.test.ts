@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
 	EndpointKind,
+	JunctionOperator,
+	LayoutBias,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -498,4 +500,57 @@ it('reserves actual nested envelopes with varied minimum sizes, padding and head
 		),
 		PROPERTY_PARAMETERS,
 	);
+});
+
+it('keeps layered relations attached around a wide staggered group', async () => {
+	const configuration = { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right } as const;
+	const seed = groupJunctionFixture(configuration, false, false);
+	const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+	const heights = [143, 41, 150, 63, 82, 70];
+	const firstNode = seed.nodes[0];
+	if (firstNode === undefined) throw new Error('Group fixture requires a node');
+	const nodeTemplate = { ...firstNode };
+	delete nodeTemplate.groupId;
+	const document: LogicDocument = {
+		...seed,
+		nodes: ids.map((id, index) => {
+			const node = { ...nodeTemplate, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
+			if (index % 2 === 1) return { ...node, groupId: 'group' };
+			return node;
+		}),
+		junctions: [
+			{
+				kind: EndpointKind.Junction,
+				id: 'join',
+				operator: JunctionOperator.Xor,
+				layoutOrder: orderKey('a8'),
+			},
+		],
+		relations: [
+			{ id: 'r-0-4', from: 'a', to: 'e' },
+			{ id: 'r-1-2', from: 'b', to: 'c' },
+			{ id: 'r-1-3', from: 'b', to: 'd' },
+			{ id: 'r-3-5', from: 'd', to: 'f' },
+			{ id: 'r-4-5', from: 'e', to: 'f' },
+			{ id: 'j-a', from: 'join', to: 'a' },
+		],
+	};
+	const { layout, ranks } = await layoutDocument(document, {
+		nodes: Object.fromEntries(
+			ids.map((id, index) => {
+				const height = heights[index];
+				if (height === undefined) throw new Error('Every node needs a measured height');
+				return [id, { width: 133, height }];
+			}),
+		),
+		groups: { group: { minimumWidth: 1085, minimumHeight: 1085, headerHeight: 68, padding: 103 } },
+	});
+	assertDisjointNodesAndForeignGroups(document, layout);
+	expect(overlaps(boundsFor(layout, 'group'), boundsFor(layout, 'join'))).toBe(false);
+	AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+		.routes()
+		.areOrthogonal()
+		.areAttachedToEndpoints()
+		.followLayoutFlow()
+		.haveOnlyAllowedSharedTrunks();
 });
