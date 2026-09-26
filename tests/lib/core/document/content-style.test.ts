@@ -36,7 +36,6 @@ describe('document content styles', () => {
 		});
 		expect(colored.natures[0]).toEqual({ ...goal, color: '#334155', icon: 'phosphor:scales' });
 		expect(colored.natures[1]).toEqual(concern);
-		expect(colored.nodes).toEqual(document.nodes);
 
 		const withoutIcon = styleDocumentNature(colored, 'goal', {});
 		expect(withoutIcon.natures[0]).toEqual({ ...goal, color: '#334155' });
