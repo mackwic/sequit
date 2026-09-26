@@ -14,12 +14,12 @@ import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-
 import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import {
 	LayoutRegionKind,

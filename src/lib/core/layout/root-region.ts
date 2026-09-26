@@ -11,17 +11,17 @@ import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-la
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
-	type RegionExecutionContext,
-	solveNestedRegionLayout,
-	solveNestedRegionLayoutForProjection,
-} from './nested-region-layout';
-import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
 } from './regions/model/region-composition-types';
 import type { RegionIncidentUnknownCode } from './regions/model/region-incident-contract';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import {
+	type RegionExecutionContext,
+	solveNestedRegionLayout,
+	solveNestedRegionLayoutForProjection,
+} from './regions/recursive/nested-region-layout';
 
 export enum LayoutRegionKind {
 	Root = 'root',

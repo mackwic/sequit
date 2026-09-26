@@ -1,18 +1,15 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../../document/logic-document';
 import {
 	type RegionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
-} from './geometry/region-geometry-diagnostic';
-import { regionArrangementFor } from './region-arrangement-selection';
-import type { RegionCompositionModel } from './regions/model/region-composition-model';
+} from '../../geometry/region-geometry-diagnostic';
+import type { RegionCompositionModel } from '../model/region-composition-model';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentUnknownCode,
-} from './regions/model/region-incident-contract';
-import {
-	type RegionSearchEvidence,
-	RegionSearchProvenance,
-} from './regions/model/region-search-evidence';
+} from '../model/region-incident-contract';
+import { type RegionSearchEvidence, RegionSearchProvenance } from '../model/region-search-evidence';
+import { regionArrangementFor } from './region-arrangement-selection';
 
 const RETRYABLE_INCIDENT_CODES = new Set([
 	RegionGeometryDiagnosticCode.ParentRouteContact,

@@ -1,5 +1,5 @@
-import type { LogicDocument } from '../document/logic-document';
-import type { GroupMeasurement, LayoutMeasurements, Size } from './layout-types';
+import type { LogicDocument } from '../../../document/logic-document';
+import type { GroupMeasurement, LayoutMeasurements, Size } from '../../layout-types';
 
 /** Preserve only measurements owned by a local region graph. */
 export function nestedRegionLocalMeasurements(

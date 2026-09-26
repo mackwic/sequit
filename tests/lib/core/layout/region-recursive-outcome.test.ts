@@ -16,14 +16,6 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
-import {
-	diagnosedFailure,
-	leafErrorAttempt,
-	type RegionRetryState,
-	retryIncidentFailure,
-	retryLeafContractFailure,
-} from '../../../../src/lib/core/layout/region-recursive-outcome';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
@@ -48,6 +40,14 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-portal-side';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
+import {
+	diagnosedFailure,
+	leafErrorAttempt,
+	type RegionRetryState,
+	retryIncidentFailure,
+	retryLeafContractFailure,
+} from '../../../../src/lib/core/layout/regions/recursive/region-recursive-outcome';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 

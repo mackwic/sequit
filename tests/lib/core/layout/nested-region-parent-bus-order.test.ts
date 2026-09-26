@@ -4,7 +4,6 @@ import { defined, type LogicDocument } from '../../../../src/lib/core/document/l
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -14,6 +13,7 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';

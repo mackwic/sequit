@@ -9,7 +9,6 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import { UnsupportedRegionLeafLayoutError } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {
 	normalizeRegionCompositionModel,
@@ -20,6 +19,7 @@ import {
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithLaneCellDocument } from './nested-region-fixture';

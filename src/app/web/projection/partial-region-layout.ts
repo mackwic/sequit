@@ -1,13 +1,13 @@
 import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
+import { RegionCompositionStatus } from '../../../lib/core/layout/regions/model/region-composition-types';
+import type { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
 import {
 	type RegionSubtreeAttempt,
 	type RegionSubtreeFailure,
 	RegionSubtreeScope,
 	solveRegionSubtreeAttempts,
-} from '../../../lib/core/layout/region-partial-composition';
-import { RegionCompositionStatus } from '../../../lib/core/layout/regions/model/region-composition-types';
-import type { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
+} from '../../../lib/core/layout/regions/recursive/region-partial-composition';
 import {
 	nestedRegionInput,
 	UnknownRegionLayoutError,

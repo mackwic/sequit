@@ -1,7 +1,40 @@
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { RouteBridgeCache } from './bridges/bridge-oracle';
-import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import { defined } from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
+import type { RouteBridgeCache } from '../../bridges/bridge-oracle';
+import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
+import { regionLeafIncidentPath } from '../leaf/region-leaf-incident-path';
+import {
+	solveRegionLeafLayoutWithIncidents,
+	UnknownRegionLeafLayoutError,
+} from '../leaf/region-leaf-layout';
+import { regionLeafPolicy } from '../leaf/region-leaf-policy';
+import type {
+	RegionIncidentPath,
+	SolvedRecursiveRegion,
+} from '../model/nested-region-recursive-geometry';
+import {
+	type IncidentSides,
+	leafDocument,
+	leafIncidentContracts,
+	policyFailure,
+	type RecursiveContext,
+} from '../model/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from '../model/region-composition-limits';
+import {
+	normalizeRegionCompositionModel,
+	type RegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+	type RegionPortalSide,
+} from '../model/region-composition-types';
+import type { RegionLocalLayoutCache } from '../model/region-local-cache';
+import { RegionSearchProvenance } from '../model/region-search-evidence';
+import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
@@ -14,39 +47,6 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from './region-recursive-outcome';
-import { regionLeafIncidentPath } from './regions/leaf/region-leaf-incident-path';
-import {
-	solveRegionLeafLayoutWithIncidents,
-	UnknownRegionLeafLayoutError,
-} from './regions/leaf/region-leaf-layout';
-import { regionLeafPolicy } from './regions/leaf/region-leaf-policy';
-import type {
-	RegionIncidentPath,
-	SolvedRecursiveRegion,
-} from './regions/model/nested-region-recursive-geometry';
-import {
-	type IncidentSides,
-	leafDocument,
-	leafIncidentContracts,
-	policyFailure,
-	type RecursiveContext,
-} from './regions/model/nested-region-recursive-model-adapter';
-import { NESTED_REGION_COMPOSITION_LIMITS } from './regions/model/region-composition-limits';
-import {
-	normalizeRegionCompositionModel,
-	type RegionCompositionModel,
-	RegionCompositionModelStatus,
-} from './regions/model/region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-	type RegionLayoutAttempt,
-	type RegionPortalSide,
-} from './regions/model/region-composition-types';
-import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import { RegionSearchProvenance } from './regions/model/region-search-evidence';
-import { validateNestedRegionLeafIncidents } from './regions/validation/nested-region-leaf-incident-validation';
-import { validateRegionCompositionGeometry } from './regions/validation/region-composition-validation';
 
 function solveLeaf(
 	context: RecursiveContext,

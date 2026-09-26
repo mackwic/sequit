@@ -4,7 +4,6 @@ import { defined, type LogicDocument } from '../../../../src/lib/core/document/l
 import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-presentation';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-lane-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -14,6 +13,7 @@ import {
 	type RegionInput,
 	type RegionLayoutSelected,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithLaneCellDocument } from './nested-region-fixture';

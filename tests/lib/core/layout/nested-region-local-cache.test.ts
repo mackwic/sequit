@@ -9,7 +9,6 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {
 	RegionCompositionStatus,
@@ -24,6 +23,7 @@ import {
 	RegionLocalLayoutCache,
 	regionLocalLayoutKey,
 } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 

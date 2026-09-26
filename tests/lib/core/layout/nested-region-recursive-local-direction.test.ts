@@ -6,7 +6,6 @@ import {
 	layoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -15,6 +14,7 @@ import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

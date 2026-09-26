@@ -10,13 +10,13 @@ import {
 	RegionGeometryDiagnosticCode as Code,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
-	regionQualifiedFailure,
-	retryOwnerForIncidentFailure,
-} from '../../../../src/lib/core/layout/nested-region-recursive-diagnostics';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import {
+	regionQualifiedFailure,
+	retryOwnerForIncidentFailure,
+} from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-diagnostics';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {

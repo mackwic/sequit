@@ -18,7 +18,6 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
@@ -28,6 +27,7 @@ import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';

@@ -22,11 +22,6 @@ import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	RegionSubtreeScope,
-	solveRegionSubtreeAttempts,
-} from '../../../../src/lib/core/layout/region-partial-composition';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -37,6 +32,11 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import {
+	RegionSubtreeScope,
+	solveRegionSubtreeAttempts,
+} from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';

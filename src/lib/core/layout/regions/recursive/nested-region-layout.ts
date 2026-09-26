@@ -1,12 +1,12 @@
-import type { LogicGraph } from '../graph/create-graph';
-import type { LayoutMeasurements, LayoutOptions } from './layout-types';
-import { solveRecursiveNestedRegionLayout } from './nested-region-recursive-layout';
+import type { LogicGraph } from '../../../graph/create-graph';
+import type { LayoutMeasurements, LayoutOptions } from '../../layout-types';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
-} from './regions/model/region-composition-types';
-import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+} from '../model/region-composition-types';
+import type { RegionLocalLayoutCache } from '../model/region-local-cache';
+import { solveRecursiveNestedRegionLayout } from './nested-region-recursive-layout';
 
 /** A projection may supply its own bounded leaf-layout cache. */
 export interface RegionExecutionContext {

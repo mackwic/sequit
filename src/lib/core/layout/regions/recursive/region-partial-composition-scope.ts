@@ -1,10 +1,7 @@
-import { defined, type LogicDocument } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import {
-	type RegionCompositionModel,
-	RegionRelationKind,
-} from './regions/model/region-composition-model';
-import type { RegionInput } from './regions/model/region-composition-types';
+import { defined, type LogicDocument } from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
+import { type RegionCompositionModel, RegionRelationKind } from '../model/region-composition-model';
+import type { RegionInput } from '../model/region-composition-types';
 
 export function incidentLeafIds(model: RegionCompositionModel): ReadonlySet<string> {
 	const ids = new Set<string>();

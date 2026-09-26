@@ -9,11 +9,6 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
-	REGION_SUBTREE_CALCULATION_FAILED,
-	RegionSubtreeScope,
-	solveRegionSubtreeAttempts,
-} from '../../../../src/lib/core/layout/region-partial-composition';
-import {
 	RegionCompositionStatus,
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
@@ -23,6 +18,11 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import {
+	REGION_SUBTREE_CALCULATION_FAILED,
+	RegionSubtreeScope,
+	solveRegionSubtreeAttempts,
+} from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import {
 	regionLanePartialDocument,

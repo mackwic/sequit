@@ -16,12 +16,12 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutSelected,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import {
 	type PreparedLayoutDocument,
 	prepareLayoutDocument,

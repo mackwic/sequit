@@ -1,8 +1,29 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicDocument } from '../document/logic-document';
-import { createGraph, type LogicGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import { defined, type LogicDocument } from '../../../document/logic-document';
+import { createGraph, type LogicGraph } from '../../../graph/create-graph';
+import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
+import {
+	solveRegionLeafLayout,
+	UnknownRegionLeafLayoutError,
+	UnsupportedRegionLeafLayoutError,
+} from '../leaf/region-leaf-layout';
+import { regionLeafPolicy } from '../leaf/region-leaf-policy';
+import {
+	leafDocument,
+	type RecursiveContext,
+} from '../model/nested-region-recursive-model-adapter';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+} from '../model/region-composition-types';
+import type { RegionLocalLayoutCache } from '../model/region-local-cache';
+import type { RegionCompositionFailureEvidence } from '../model/region-search-evidence';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import {
@@ -13,27 +34,6 @@ import {
 	subtreeInput,
 	subtreeRegionIds,
 } from './region-partial-composition-scope';
-import {
-	solveRegionLeafLayout,
-	UnknownRegionLeafLayoutError,
-	UnsupportedRegionLeafLayoutError,
-} from './regions/leaf/region-leaf-layout';
-import { regionLeafPolicy } from './regions/leaf/region-leaf-policy';
-import {
-	leafDocument,
-	type RecursiveContext,
-} from './regions/model/nested-region-recursive-model-adapter';
-import {
-	normalizeRegionCompositionModel,
-	RegionCompositionModelStatus,
-} from './regions/model/region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-	type RegionLayoutAttempt,
-} from './regions/model/region-composition-types';
-import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import type { RegionCompositionFailureEvidence } from './regions/model/region-search-evidence';
 
 export enum RegionSubtreeScope {
 	Leaf = 'leaf',

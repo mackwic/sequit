@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { solveArrangedRegion } from '../../../../src/lib/core/layout/region-arrangement-orchestration';
 import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
 import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
 import type { RegionArrangement } from '../../../../src/lib/core/layout/regions/model/region-arrangement';
@@ -11,6 +10,7 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { solveArrangedRegion } from '../../../../src/lib/core/layout/regions/recursive/region-arrangement-orchestration';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';

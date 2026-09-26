@@ -10,10 +10,6 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import {
-	solveNestedRegionLayout,
-	solveNestedRegionLayoutForProjection,
-} from '../../../../src/lib/core/layout/nested-region-layout';
-import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
@@ -24,6 +20,10 @@ import {
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import {
+	solveNestedRegionLayout,
+	solveNestedRegionLayoutForProjection,
+} from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/regions/validation/nested-region-geometry';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
