@@ -87,7 +87,7 @@ afterAll(() => {
 });
 
 describe('collaborative live-edit performance', { concurrent: false }, () => {
-	it('replaces Markdown in a 3,200-node repository document', async () => {
+	it('Markdown replacement in a 3,200-node repository document', async () => {
 		const document = new Y.Doc();
 		importLogicDocument(document, largeLiveDocument());
 		const session = attachDocumentSession(document);
@@ -123,7 +123,7 @@ describe('collaborative live-edit performance', { concurrent: false }, () => {
 		}
 	}, 120_000);
 
-	it('replaces Markdown through a ready local participant', () => {
+	it('Markdown replacement through a ready local participant', () => {
 		const initialDocument = largeLiveDocument();
 		const { participant, destroy } = createReadyParticipant(initialDocument);
 		const scenario = 'Markdown replacement through a ready local participant';
