@@ -27,7 +27,7 @@ const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'junction-heavy': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'group-relations': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'shallow-groups': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
-	'lane-allocations': { 10: 12, 19: 12, 50: 20, 100: 40, 1000: undefined },
+	'lane-allocations': { 10: 12, 19: 12, 50: 20, 100: 40, 1000: 25 },
 } as const satisfies SnapshotLayoutBudgets;
 
 function assertExactKeys(

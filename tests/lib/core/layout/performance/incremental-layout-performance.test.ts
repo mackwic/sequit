@@ -15,9 +15,9 @@ import {
 } from '../../../../support/performance/replay-incremental-layout';
 
 const measurements: PerformanceMeasurement[] = [];
-const inputs = LAYOUT_PERFORMANCE_SCENARIOS.filter(
-	(scenario) => scenario.name !== 'lane-allocations',
-).map((scenario) => prepareIncrementalLayoutReplay(scenario, 1000));
+const inputs = LAYOUT_PERFORMANCE_SCENARIOS.map((scenario) =>
+	prepareIncrementalLayoutReplay(scenario, 1000),
+);
 const calibrationRows: string[] = [];
 const uxRows: string[] = [];
 
