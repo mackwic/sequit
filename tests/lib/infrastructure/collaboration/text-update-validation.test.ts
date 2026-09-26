@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
+import { RoomRetiredTexts } from '../../../../src/lib/infrastructure/collaboration/retired-text-evidence';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	applyTextUpdate,
@@ -46,6 +47,32 @@ describe('server text boundary', () => {
 		const accepted = node(server).get('markdown');
 		if (!(accepted instanceof Y.Text)) throw new Error('Missing accepted text');
 		expect(accepted.toJSON()).toBe('Edited source A\n');
+		client.destroy();
+		server.destroy();
+	});
+
+	it('allows current text but refuses fields belonging to another element kind', () => {
+		const { server, client } = replicas();
+		const text = node(client).get('markdown');
+		if (!(text instanceof Y.Text) || text._item === null)
+			throw new Error('Missing integrated text');
+		text.insert(0, 'Live ');
+		const update = Y.decodeUpdate(Y.encodeStateAsUpdate(client, Y.encodeStateVector(server)));
+		const reference = {
+			target: { kind: Kind.Node, id: 'source-a' },
+			field: 'markdown',
+			textId: text._item.id,
+		};
+		const retired = new RoomRetiredTexts();
+		expect(retired.liveOrRetired(server, reference, update)).toBe(true);
+		expect(() => retired.liveOrRetired(server, { ...reference, field: 'title' }, update)).toThrow();
+		expect(() =>
+			retired.liveOrRetired(
+				server,
+				{ ...reference, target: { kind: Kind.Relation, id: 'relation-a' }, field: 'label' },
+				update,
+			),
+		).toThrow();
 		client.destroy();
 		server.destroy();
 	});

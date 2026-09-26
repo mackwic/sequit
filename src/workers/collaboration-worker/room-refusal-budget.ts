@@ -1,59 +1,35 @@
-import {
-	RetryableSessionFailure,
-	SessionFailureCode,
-	TerminalSessionFailure,
-} from '../../lib/infrastructure/collaboration/session-failure';
-
 const MAX_PROPOSAL_REFUSALS = 6;
-const MAX_SESSION_REFUSALS = 24;
+const MAX_SOCKET_REFUSALS = 24;
+const ROOM_REFUSAL_TOKENS = 64;
+const TOKEN_REFILL_MS = 1_000;
 
-interface RefusalBudget {
-	readonly total: number;
-	readonly proposals: Readonly<Record<string, number>>;
+interface SocketBudget {
+	readonly proposals: Map<string, number>;
+	total: number;
 }
 
-function storageUnavailable(): RetryableSessionFailure {
-	return new RetryableSessionFailure(
-		SessionFailureCode.StorageUnavailable,
-		'Le service est temporairement indisponible. Nouvelle tentative en cours.',
-	);
-}
+/** Socket identity cannot be forged by a client; the room bucket bounds reconnect churn. */
+export class RoomRefusalBudget {
+	readonly #sockets = new WeakMap<WebSocket, SocketBudget>();
+	#tokens = ROOM_REFUSAL_TOKENS;
+	#lastRefill = Date.now();
 
-/** Stored per session, not per socket; unrelated proposal IDs cannot reset either limit. */
-export async function allowSessionRefusal(
-	storage: DurableObjectStorage,
-	sessionId: string,
-	id: string,
-): Promise<boolean> {
-	const key = `refusal-session:${sessionId}`;
-	let previous: RefusalBudget | undefined;
-	try {
-		previous = await storage.get<RefusalBudget>(key);
-	} catch {
-		throw storageUnavailable();
+	allow(socket: WebSocket, proposalId: string): boolean {
+		const now = Date.now();
+		const elapsed = Math.max(0, now - this.#lastRefill);
+		this.#tokens = Math.min(ROOM_REFUSAL_TOKENS, this.#tokens + elapsed / TOKEN_REFILL_MS);
+		this.#lastRefill = now;
+		let budget = this.#sockets.get(socket);
+		if (budget === undefined) {
+			budget = { proposals: new Map(), total: 0 };
+			this.#sockets.set(socket, budget);
+		}
+		const count = budget.proposals.get(proposalId) ?? 0;
+		const exhausted = budget.total >= MAX_SOCKET_REFUSALS || count >= MAX_PROPOSAL_REFUSALS;
+		if (this.#tokens < 1 || exhausted) return false;
+		this.#tokens--;
+		budget.total++;
+		budget.proposals.set(proposalId, count + 1);
+		return true;
 	}
-	const total = previous?.total ?? 0;
-	let count = 0;
-	if (previous !== undefined && Object.hasOwn(previous.proposals, id)) {
-		const stored = previous.proposals[id];
-		if (stored === undefined)
-			throw new TerminalSessionFailure(
-				SessionFailureCode.InvalidDocument,
-				'Le budget de refus persisté est invalide.',
-			);
-		count = stored;
-	}
-	if (!Number.isSafeInteger(total) || !Number.isSafeInteger(count))
-		throw new TerminalSessionFailure(
-			SessionFailureCode.InvalidDocument,
-			'Le budget de refus persisté est invalide.',
-		);
-	if (total >= MAX_SESSION_REFUSALS || count >= MAX_PROPOSAL_REFUSALS) return false;
-	const proposals = { ...previous?.proposals, [id]: count + 1 };
-	try {
-		await storage.put(key, { total: total + 1, proposals } satisfies RefusalBudget);
-	} catch {
-		throw storageUnavailable();
-	}
-	return true;
 }

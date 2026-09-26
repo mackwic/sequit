@@ -85,6 +85,10 @@ export function initialElementProperties(
 	);
 }
 
+export function isEditableSharedTextField(kind: SharedElementKind, field: string): boolean {
+	return isSharedTextField(field) && FIELDS[kind].includes(field);
+}
+
 export function sharedTextAt(
 	document: Y.Doc,
 	target: SharedTarget,

@@ -1,4 +1,4 @@
-import { evictDurableObject, runInDurableObject } from 'cloudflare:test';
+import { runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -234,6 +234,87 @@ describe('room authority', () => {
 		doc.destroy();
 	});
 
+	it.each([
+		'empty',
+		'unrelated-field',
+		'invented-field',
+		'invented-incarnation',
+		'structural-update',
+	] as const)(
+		'terminates %s text metadata after deletion without creating a soft refusal',
+		async (variant) => {
+			const room = `forged-stale-${variant}`;
+			const alice = await connectRoom(room);
+			const bob = await connectRoom(room);
+			const doc = await initializeRoom(room, alice);
+			await bob.next(Message.Commit);
+			const text = doc.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+			if (!(text instanceof Y.Text) || text._item === null) throw new Error('Expected old A text');
+			const actual = proposeChange(doc, (candidate) => {
+				const old = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+				if (!(old instanceof Y.Text)) throw new Error('Expected A text');
+				old.insert(0, 'Late ');
+			});
+			let update = actual;
+			if (variant === 'empty') {
+				const empty = new Y.Doc();
+				update = Y.encodeStateAsUpdate(empty);
+				empty.destroy();
+			}
+			if (variant === 'unrelated-field')
+				update = proposeChange(doc, (candidate) => {
+					const other = candidate
+						.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+						.get('B')
+						?.get('markdown');
+					if (!(other instanceof Y.Text)) throw new Error('Expected B text');
+					other.insert(0, 'Unrelated ');
+				});
+			if (variant === 'structural-update')
+				update = proposeChange(doc, (candidate) => {
+					candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('B')?.set('color', '#ff0000');
+				});
+			bob.send({
+				type: Message.Change,
+				id: 'delete-A',
+				sessionId: 'bob-session',
+				sequence: 1,
+				commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],
+			});
+			await bob.next(Message.Commit);
+			await alice.next(Message.Commit);
+			const textId = { client: text._item.id.client, clock: text._item.id.clock };
+			if (variant === 'invented-incarnation') textId.clock++;
+			let field = 'markdown';
+			if (variant === 'invented-field') field = 'invented';
+			const closed = new Promise<CloseEvent>((resolve) => {
+				alice.socket.addEventListener('close', resolve, { once: true });
+			});
+			alice.send({
+				type: Message.Change,
+				id: 'forged-A',
+				sessionId: `rotating-${variant}`,
+				target: { kind: Kind.Node, id: 'A' },
+				field,
+				textId,
+				update,
+			});
+			expect((await alice.next(Message.Reject)).code).toBe('invalid-document');
+			expect((await closed).code).toBe(1008);
+			await runInDurableObject(
+				env.COLLABORATION_ROOMS.getByName(room),
+				async (_instance, state) => {
+					expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 2 });
+				},
+			);
+			bob.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
+			expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
+			alice.socket.close();
+			bob.socket.close();
+			doc.destroy();
+		},
+	);
+
 	it('rejects a cycle and continues serving the unaffected participant', async () => {
 		const room = 'cycle';
 		const alice = await connectRoom(room);
@@ -354,7 +435,7 @@ describe('room authority', () => {
 		doc.destroy();
 	});
 
-	it('keeps each proposal budget through alternation and reconnects of the same session', async () => {
+	it('bounds alternating proposal IDs on one socket without storing client-controlled session keys', async () => {
 		const room = 'alternating-refusals';
 		const alice = await connectRoom(room);
 		const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
@@ -362,7 +443,7 @@ describe('room authority', () => {
 			({
 				type: Message.Change,
 				id,
-				sessionId: 'persistent-session',
+				sessionId: `rotating-${id}`,
 				sequence: 1,
 				commands: [
 					{
@@ -372,47 +453,32 @@ describe('room authority', () => {
 					},
 				],
 			}) as const;
-		for (let cycle = 0; cycle < 4; cycle++) {
+		for (let cycle = 0; cycle < 6; cycle++) {
 			for (const id of ['A', 'B']) {
 				alice.send(refused(id));
 				expect((await alice.next(Message.Conflict)).id).toBe(id);
 			}
 		}
-		alice.socket.close();
-		await evictDurableObject(env.COLLABORATION_ROOMS.getByName(room));
-		const reconnected = await connectRoom(room);
-		for (let cycle = 0; cycle < 2; cycle++) {
-			for (const id of ['B', 'A']) {
-				reconnected.send(refused(id));
-				expect((await reconnected.next(Message.Conflict)).id).toBe(id);
-			}
-		}
-		reconnected.send(refused('A'));
-		expect(await reconnected.next(Message.Reject)).toMatchObject({
-			code: 'repeated-command-refusal',
-		});
+		alice.send(refused('A'));
+		expect((await alice.next(Message.Reject)).code).toBe('repeated-command-refusal');
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
-			expect(await state.storage.get('command-session:persistent-session')).toBeUndefined();
-			expect(await state.storage.get('refusal-session:persistent-session')).toMatchObject({
-				total: 12,
-				proposals: { A: 6, B: 6 },
-			});
+			expect(await state.storage.get('refusal-session:rotating-A')).toBeUndefined();
+			expect(await state.storage.get('refusal-session:rotating-B')).toBeUndefined();
 		});
-		reconnected.socket.close();
+		alice.socket.close();
 		doc.destroy();
 	});
 
-	it('bounds rejection work even when a session rotates proposal identities', async () => {
-		const room = 'global-refusal-budget';
-		const alice = await connectRoom(room);
-		const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
-		for (let attempt = 0; attempt < 24; attempt++) {
-			let id = `refused-${attempt}`;
-			if (attempt === 0) id = 'constructor';
-			alice.send({
+	it('resets the socket quota on reconnect but limits rotating sessions by room tokens', async () => {
+		vi.spyOn(Date, 'now').mockReturnValue(1_000);
+		const room = 'room-token-refusals';
+		const first = await connectRoom(room);
+		const doc = await initializeRoom(room, first, CollaborativeFixture.LinkedBoxes);
+		const refused = (id: string) =>
+			({
 				type: Message.Change,
 				id,
-				sessionId: 'rotating-session',
+				sessionId: `new-session-${id}`,
 				sequence: 1,
 				commands: [
 					{
@@ -421,122 +487,30 @@ describe('room authority', () => {
 						properties: { from: 'A', to: 'B' },
 					},
 				],
-			});
-			expect((await alice.next(Message.Conflict)).id).toBe(id);
+			}) as const;
+		for (let attempt = 0; attempt < 24; attempt++) {
+			first.send(refused(`first-${attempt}`));
+			expect((await first.next(Message.Conflict)).id).toBe(`first-${attempt}`);
 		}
-		alice.socket.close();
-		const reconnected = await connectRoom(room);
-		reconnected.send({
-			type: Message.Change,
-			id: 'another-refusal',
-			sessionId: 'rotating-session',
-			sequence: 1,
-			commands: [
-				{
-					op: Op.Create,
-					target: { kind: Kind.Relation, id: 'cycle' },
-					properties: { from: 'A', to: 'B' },
-				},
-			],
-		});
-		expect(await reconnected.next(Message.Reject)).toMatchObject({
-			code: 'repeated-command-refusal',
-		});
-		reconnected.socket.close();
+		first.socket.close();
+		const sockets = [];
+		for (let peer = 0; peer < 2; peer++) {
+			const connected = await connectRoom(room);
+			sockets.push(connected);
+			for (let attempt = 0; attempt < 20; attempt++) {
+				const id = `peer-${peer}-${attempt}`;
+				connected.send(refused(id));
+				expect((await connected.next(Message.Conflict)).id).toBe(id);
+			}
+		}
+		const rotated = await connectRoom(room);
+		rotated.send(refused('after-room-budget'));
+		expect((await rotated.next(Message.Reject)).code).toBe('repeated-command-refusal');
+		for (const peer of sockets) peer.socket.close();
+		rotated.socket.close();
+		vi.restoreAllMocks();
 		doc.destroy();
 	});
-
-	it.each(['get', 'put'] as const)(
-		'retries without softening a business error if storing refusal budget %s fails',
-		async (operation) => {
-			const room = `refusal-storage-${operation}`;
-			const alice = await connectRoom(room);
-			const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
-			const refused = {
-				type: Message.Change,
-				id: 'cycle',
-				sessionId: 'budget-session',
-				sequence: 1,
-				commands: [
-					{
-						op: Op.Create,
-						target: { kind: Kind.Relation, id: 'cycle' },
-						properties: { from: 'A', to: 'B' },
-					},
-				],
-			} as const;
-			await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), (_instance, state) => {
-				if (operation === 'put') {
-					vi.spyOn(state.storage, 'put').mockRejectedValueOnce(new Error('Outage'));
-					return;
-				}
-				const original = state.storage.get.bind(state.storage);
-				vi.spyOn(state.storage, 'get').mockImplementation((key) => {
-					if (String(key) === 'refusal-session:budget-session')
-						return Promise.reject(new Error('Outage'));
-					return original(key);
-				});
-			});
-			alice.send(refused);
-			expect((await alice.next(Message.Retry)).code).toBe('storage-unavailable');
-			await runInDurableObject(
-				env.COLLABORATION_ROOMS.getByName(room),
-				async (_instance, state) => {
-					vi.restoreAllMocks();
-					expect(await state.storage.get('refusal-session:budget-session')).toBeUndefined();
-				},
-			);
-			alice.send(refused);
-			expect((await alice.next(Message.Conflict)).id).toBe(refused.id);
-			alice.socket.close();
-			doc.destroy();
-		},
-	);
-
-	it.each([
-		['total', { total: Number.NaN, proposals: { cycle: 1 } }],
-		['proposal', { total: 1, proposals: { cycle: Number.NaN } }],
-		['missing-count', { total: 1, proposals: { cycle: undefined } }],
-	])(
-		'treats a corrupt %s budget as terminal while preserving another session',
-		async (suffix, stored) => {
-			const room = `corrupt-budget-${suffix}`;
-			const alice = await connectRoom(room);
-			const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
-			await runInDurableObject(
-				env.COLLABORATION_ROOMS.getByName(room),
-				async (_instance, state) => {
-					await state.storage.put('refusal-session:corrupt-session', stored);
-				},
-			);
-			alice.send({
-				type: Message.Change,
-				id: 'cycle',
-				sessionId: 'corrupt-session',
-				sequence: 1,
-				commands: [
-					{
-						op: Op.Create,
-						target: { kind: Kind.Relation, id: 'cycle' },
-						properties: { from: 'A', to: 'B' },
-					},
-				],
-			});
-			expect((await alice.next(Message.Reject)).code).toBe('invalid-document');
-			const bob = await connectRoom(room);
-			bob.send({
-				type: Message.Change,
-				id: 'different',
-				sessionId: 'healthy-session',
-				sequence: 1,
-				commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
-			});
-			expect((await bob.next(Message.Commit)).id).toBe('different');
-			alice.socket.close();
-			bob.socket.close();
-			doc.destroy();
-		},
-	);
 
 	it('uses legacy v4 rejection for an old socket while preserving newer participants', async () => {
 		const name = 'mixed-protocol';

@@ -4,13 +4,12 @@ import * as Y from 'yjs';
 import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
 import type { CommandSequence } from '../../lib/infrastructure/collaboration/command-sequence';
 import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
+import { RoomRetiredTexts } from '../../lib/infrastructure/collaboration/retired-text-evidence';
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
 	BusinessCommandRefusal,
-	ConflictCode,
 	RetryableSessionFailure,
 	SessionFailureCode,
-	StaleSharedCommandError,
 	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
 import {
@@ -26,16 +25,12 @@ import {
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../lib/infrastructure/collaboration/sync-steps';
-import {
-	assertLiveTextTarget,
-	TextTargetGoneError,
-} from '../../lib/infrastructure/collaboration/text-update-validation';
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { readCommandReceipt } from './command-receipts';
-import { handleRoomFailure } from './room-failures';
-import { allowSessionRefusal } from './room-refusal-budget';
+import { commandConflictCode, handleRoomFailure, refuseTextTarget } from './room-failures';
+import { RoomRefusalBudget } from './room-refusal-budget';
 import {
 	broadcastRoomPresence,
 	rememberSocketVersion,
@@ -49,16 +44,11 @@ function emptyRoomState(): RoomState {
 	return { doc: new Y.Doc({ gc: false }), commit: 0, chunkCount: 0, acceptedProposals: new Map() };
 }
 
-function commandConflictCode(
-	error: unknown,
-): ConflictCode.CommandConflict | ConflictCode.InvalidCommand {
-	if (error instanceof StaleSharedCommandError) return ConflictCode.CommandConflict;
-	return ConflictCode.InvalidCommand;
-}
-
 export class CollaborationRoom extends DurableObject<Env> {
 	private roomState = emptyRoomState();
 	private processing: Promise<void> = Promise.resolve();
+	private readonly refusalBudget = new RoomRefusalBudget();
+	private readonly retiredText = new RoomRetiredTexts();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -213,7 +203,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				executeSharedCommands(candidate, message.commands);
 			} catch (error) {
 				if (!(error instanceof BusinessCommandRefusal)) throw error;
-				if (!(await allowSessionRefusal(this.ctx.storage, message.sessionId, message.id)))
+				if (!this.refusalBudget.allow(socket, message.id))
 					throw new TerminalSessionFailure(
 						SessionFailureCode.RepeatedCommandRefusal,
 						'Cette proposition a été refusée trop souvent.',
@@ -227,7 +217,9 @@ export class CollaborationRoom extends DurableObject<Env> {
 				});
 				return;
 			}
+			const retired = this.retiredText.capture(this.roomState.doc, candidate, message.commands);
 			await this.commit(candidate, message.id, message, socket);
+			this.retiredText.remember(retired);
 		} finally {
 			candidate.destroy();
 		}
@@ -242,18 +234,16 @@ export class CollaborationRoom extends DurableObject<Env> {
 		>,
 	): Promise<void> {
 		const decoded = Y.decodeUpdate(update);
+		const empty = decoded.structs.length === 0 && decoded.ds.clients.size === 0;
 		let textTarget: IdentifiedTextMessage | undefined;
 		if (message?.id !== undefined) {
 			textTarget = message;
-			try {
-				assertLiveTextTarget(this.roomState.doc, message);
-			} catch (error) {
-				if (!(error instanceof TextTargetGoneError)) throw error;
-				await this.refuseTextTarget(socket, message);
+			if (!this.retiredText.liveOrRetired(this.roomState.doc, message, decoded)) {
+				refuseTextTarget(socket, message, this.refusalBudget);
 				return;
 			}
 		}
-		if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return;
+		if (empty) return;
 		const accepted = readLogicDocument(this.roomState.doc);
 		if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
 		const result = await authorizeProposal({
@@ -280,21 +270,6 @@ export class CollaborationRoom extends DurableObject<Env> {
 		} finally {
 			result.value.candidate.destroy();
 		}
-	}
-
-	private async refuseTextTarget(socket: WebSocket, message: IdentifiedTextMessage): Promise<void> {
-		if (!(await allowSessionRefusal(this.ctx.storage, message.sessionId, message.id)))
-			throw new TerminalSessionFailure(
-				SessionFailureCode.RepeatedCommandRefusal,
-				'Cette proposition a été refusée trop souvent.',
-			);
-		sendRoomMessage(socket, {
-			type: SessionMessageKind.Conflict,
-			code: ConflictCode.TextTargetGone,
-			message: 'La cible de texte a été supprimée ou remplacée.',
-			id: message.id,
-			target: message.target,
-		});
 	}
 
 	private async commit(
