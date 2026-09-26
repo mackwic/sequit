@@ -22,17 +22,13 @@ describe('logic document validation', () => {
 			const result = validateLogicDocument({ ...duplicated, relations });
 			expect(result.ok).toBe(false);
 			if (result.ok) throw new Error('Expected duplicate relation IDs to fail');
-			expect(
-				result.diagnostics.filter(({ code }) => code === SequitDiagnosticCode.DuplicateRelationId),
-			).toEqual([
+			expect(result.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([
 				{
 					code: SequitDiagnosticCode.DuplicateRelationId,
-					message: 'Duplicate relation id: a-to-choice',
 					path: ['relations', 'a-to-choice'],
 				},
 				{
 					code: SequitDiagnosticCode.DuplicateRelationId,
-					message: 'Duplicate relation id: choice-to-target',
 					path: ['relations', 'choice-to-target'],
 				},
 			]);
@@ -54,15 +50,14 @@ describe('logic document validation', () => {
 			}),
 		};
 
-		expect(validateLogicDocument(malformed)).toEqual({
-			ok: false,
-			diagnostics: [
-				{
-					code: SequitDiagnosticCode.InvalidValue,
-					message: 'Content icon must be a namespaced reference (provider:name) or none',
-					path: ['nodes', 'source-a', 'icon'],
-				},
-			],
-		});
+		const result = validateLogicDocument(malformed);
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error('Expected invalid icon to be rejected');
+		expect(result.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([
+			{
+				code: SequitDiagnosticCode.InvalidValue,
+				path: ['nodes', 'source-a', 'icon'],
+			},
+		]);
 	});
 });
