@@ -13,6 +13,7 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
+	compareDedicatedRouteScores,
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
@@ -927,4 +928,12 @@ describe('dedicated candidate validation: boxes and groups', () => {
 			code: DedicatedCandidateRejectionCode.RouteContact,
 		});
 	});
+});
+
+it('prefers fewer validated bridges at equal strict crossings regardless of route length', () => {
+	const shorter = { strictCrossings: 2, validatedBridges: 2, length: 1, bends: 0 };
+	const cleaner = { strictCrossings: 2, validatedBridges: 1, length: 10_000, bends: 20 };
+	expect(compareDedicatedRouteScores(cleaner, shorter)).toBeLessThan(0);
+	expect(compareDedicatedRouteScores(shorter, cleaner)).toBeGreaterThan(0);
+	expect(compareDedicatedRouteScores({ ...shorter, strictCrossings: 1 }, cleaner)).toBeLessThan(0);
 });

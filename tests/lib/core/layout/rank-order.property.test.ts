@@ -773,6 +773,32 @@ describe('dedicated bounded geometric rank search', () => {
 	it('matches an independently enumerated valid-layout oracle, routes included', () => {
 		for (const entry of rankOrderComparisonCorpus().slice(0, 2))
 			assertCompleteOracle(entry.document, entry.measurements);
+		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-3+1'));
+		const tied = assertCompleteOracle(entry.document, entry.measurements);
+		expect(
+			tied.slice(1, 3).map(({ crossings, bridges, order }) => ({
+				crossings,
+				bridges,
+				order,
+			})),
+		).toEqual([
+			{
+				crossings: 0,
+				bridges: 0,
+				order: [
+					['d', 'e'],
+					['b', 'c', 'a'],
+				],
+			},
+			{
+				crossings: 0,
+				bridges: 0,
+				order: [
+					['e', 'd'],
+					['a', 'c', 'b'],
+				],
+			},
+		]);
 	});
 	it('checks every validated junction geometry, not just ordinary-node diagrams', () => {
 		const base = corpusDocument(
