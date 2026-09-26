@@ -8,6 +8,7 @@ import {
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	canonicalCrossingAllocation,
+	type CrossingAllocationInput,
 	crossingBusOrderCandidates,
 	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
@@ -29,6 +30,80 @@ import {
 	routeGridFixture,
 	variedGridRoutingCase,
 } from './grid-cell-crossing-allocation-fixture';
+
+/** Brute-force assignments for tiny cases; no phase candidate/size/search implementation is used. */
+function slotAssignments(ids: readonly string[], slots: number): ReadonlyMap<string, number>[] {
+	if (ids.length === 0) return [new Map()];
+	const [first, ...rest] = ids;
+	if (first === undefined) return [new Map()];
+	return Array.from({ length: slots }, (_, slot) =>
+		slotAssignments(rest, slots)
+			.filter((assignment) => ![...assignment.values()].includes(slot))
+			.map((assignment) => new Map([[first, slot], ...assignment])),
+	).flat();
+}
+
+function allocationSignature(
+	input: CrossingAllocationInput,
+	allocation: GridCrossingAllocation,
+): string {
+	return JSON.stringify({
+		bus: input.busRelevantRelationIds.map((id) => allocation.busTrackByRelationId.get(id)),
+		gutters: input.gutterIds.map((ids, column) =>
+			ids.map((id) => allocation.gutterTrackByRelationId[column]?.get(id)),
+		),
+		ports: [...input.incidence].map(([endpoint, ids]) =>
+			ids.map((id) => allocation.portTrackByEndpointId.get(endpoint)?.get(id)),
+		),
+	});
+}
+
+function naiveAllocationSignatures(
+	input: CrossingAllocationInput,
+	extraTrack: boolean,
+): Set<string> {
+	const busAssignments = slotAssignments(input.busRelevantRelationIds, input.edges.topBus.capacity);
+	let extraColumns: number[] = [-1];
+	if (extraTrack)
+		extraColumns = input.gutterIds
+			.map((_, column) => column)
+			.filter(
+				(column) =>
+					input.blockedExtraGutterColumns?.has(column) !== true &&
+					defined(input.gutterIds[column]).length > 0,
+			);
+	const gutterChoices: ReadonlyMap<string, number>[][] = [];
+	for (const extraColumn of extraColumns) {
+		let combinations: ReadonlyMap<string, number>[][] = [[]];
+		for (const [column, ids] of input.gutterIds.entries()) {
+			const reserved = defined(input.edges.gutters[column]).capacity - 1;
+			const choices = slotAssignments(ids, reserved + Number(extraColumn === column)).filter(
+				(assignment) => extraColumn !== column || [...assignment.values()].includes(reserved),
+			);
+			combinations = combinations.flatMap((prefix) => choices.map((choice) => [...prefix, choice]));
+		}
+		gutterChoices.push(...combinations);
+	}
+	const ports = [...input.incidence];
+	let portChoices: ReadonlyMap<string, ReadonlyMap<string, number>>[] = [new Map()];
+	for (const [endpoint, ids] of ports) {
+		portChoices = portChoices.flatMap((prefix) =>
+			slotAssignments(ids, ids.length).map((choice) => new Map([...prefix, [endpoint, choice]])),
+		);
+	}
+	const signatures = new Set<string>();
+	for (const bus of busAssignments)
+		for (const gutters of gutterChoices)
+			for (const portMap of portChoices)
+				signatures.add(
+					allocationSignature(input, {
+						busTrackByRelationId: bus,
+						gutterTrackByRelationId: gutters,
+						portTrackByEndpointId: portMap,
+					}),
+				);
+	return signatures;
+}
 
 describe('grid crossing allocation route geometry properties', () => {
 	it('compares exact cardinality with route points and portals on admissible grids', () => {
@@ -83,6 +158,42 @@ describe('grid crossing allocation route geometry properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	});
+	it('enumerates every small route assignment independently and preserves a manual valid path', () => {
+		for (const crossingCount of [1, 2]) {
+			for (const sameRail of [false, true]) {
+				const fixture = variedGridRoutingCase(crossingCount, 2, 0, sameRail);
+				const phases = crossingAllocationPhases(fixture.input);
+				for (const [index, extraTrack] of [false, true, false].entries()) {
+					const expected = naiveAllocationSignatures(fixture.input, extraTrack);
+					const actual = new Set(
+						defined(phases[index])
+							.candidates()
+							.map((allocation) => allocationSignature(fixture.input, allocation)),
+					);
+					expect(actual).toEqual(expected);
+				}
+			}
+		}
+		const oneRoute = variedGridRoutingCase(1, 2, 0, true);
+		const allocation = canonicalCrossingAllocation(oneRoute.input);
+		const path = crossingRoute(oneRoute.routing, allocation, defined(oneRoute.crossing[0])).route;
+		// Source and target remain in the first column; the path stays on its left rail.
+		expect(path.points).toEqual([
+			{ x: 180, y: 188 },
+			{ x: 100, y: 188 },
+			{ x: 52, y: 188 },
+			{ x: 52, y: 588 },
+			{ x: 100, y: 588 },
+			{ x: 180, y: 588 },
+		]);
+		const foreignCells = oneRoute.routing.cells.filter(
+			({ id }) => id !== 'cell-0-0' && id !== 'cell-1-0',
+		);
+		for (const foreign of foreignCells)
+			expect(path.points.every(({ x }) => x < foreign.bounds.x)).toBe(true);
+		expect(routeGridFixture(oneRoute, allocation, false).failure).toBeUndefined();
+	});
+
 	it('constructs only effective bus proposals even when eight routes stay in one column', () => {
 		const sameColumn = variedGridRoutingCase(8, 2, 0, true).input;
 		expect(sameColumn.busRelevantRelationIds).toEqual([]);
@@ -151,7 +262,7 @@ describe('grid crossing allocation route geometry properties', () => {
 		);
 	});
 
-	it('matches the exhaustive phase oracle on generated crossing routes', () => {
+	it('compares conflict-first pruning with unpruned search on generated crossing routes', () => {
 		fc.assert(
 			fc.property(
 				fc.record({
@@ -174,19 +285,19 @@ describe('grid crossing allocation route geometry properties', () => {
 					};
 					const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
 						routeGridFixture(fixture, allocation, acceptBridges);
-					const oracle = searchGridCrossingAllocations(
+					const unpruned = searchGridCrossingAllocations(
 						input,
 						route,
 						budgets,
 						GridCrossingSearchMode.Exhaustive,
 					);
 					const pruned = searchGridCrossingAllocations(input, route, budgets);
-					if ('selected' in oracle) {
+					if ('selected' in unpruned) {
 						expect('selected' in pruned).toBe(true);
 						if (!('selected' in pruned)) return;
 						const order = Object.values(CrossingAllocationPhaseId);
 						expect(order.indexOf(pruned.witness.winningPhase)).toBeLessThanOrEqual(
-							order.indexOf(oracle.witness.winningPhase),
+							order.indexOf(unpruned.witness.winningPhase),
 						);
 						const acceptsBridges = pruned.witness.winningPhase === CrossingAllocationPhaseId.Bridge;
 						expect(route(pruned.selected.allocation, acceptsBridges).failure).toBeUndefined();
@@ -194,10 +305,10 @@ describe('grid crossing allocation route geometry properties', () => {
 						if (
 							firstBusBlock <= BigInt(GRID_CROSSING_REALLOCATION_BUDGET) &&
 							pruned.witness.winningPhase === CrossingAllocationPhaseId.Reallocate &&
-							pruned.witness.winningPhase === oracle.witness.winningPhase
+							pruned.witness.winningPhase === unpruned.witness.winningPhase
 						)
-							expect(pruned.selected.candidate.layout).toEqual(oracle.selected.candidate.layout);
-					} else if (oracle.witness.exhaustive) {
+							expect(pruned.selected.candidate.layout).toEqual(unpruned.selected.candidate.layout);
+					} else if (unpruned.witness.exhaustive) {
 						expect('selected' in pruned).toBe(false);
 					}
 				},
@@ -239,15 +350,15 @@ describe('grid crossing allocation route geometry properties', () => {
 					extraTrack: Number(defined(phases[1]).totalGeometries()),
 					bridge: Number(defined(phases[2]).totalGeometries()),
 				};
-				const oracle = searchGridCrossingAllocations(
+				const unpruned = searchGridCrossingAllocations(
 					input,
 					route,
 					budgets,
 					GridCrossingSearchMode.Exhaustive,
 				);
 				const pruned = searchGridCrossingAllocations(input, route);
-				expect('failure' in oracle).toBe(true);
-				expect(oracle.witness.exhaustive).toBe(true);
+				expect('failure' in unpruned).toBe(true);
+				expect(unpruned.witness.exhaustive).toBe(true);
 				expect('failure' in pruned).toBe(true);
 				expect(pruned.witness.exhaustive).toBe(true);
 			}),
@@ -258,14 +369,14 @@ describe('grid crossing allocation route geometry properties', () => {
 		const fixture = variedGridRoutingCase(3, 2, 2);
 		const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
 			routeGridFixture(fixture, allocation, acceptBridges);
-		const oracle = searchGridCrossingAllocations(
+		const unpruned = searchGridCrossingAllocations(
 			fixture.input,
 			route,
 			undefined,
 			GridCrossingSearchMode.Exhaustive,
 		);
 		const result = searchGridCrossingAllocations(fixture.input, route);
-		expect('selected' in oracle).toBe(true);
+		expect('selected' in unpruned).toBe(true);
 		const first = result.witness.rejectedAlternatives[0];
 		expect(first?.reason).toContain('route-0 and route-1');
 		expect(Number(defined(result.witness.phases[0]).totalGeometries)).toBeGreaterThan(256);
@@ -276,11 +387,11 @@ describe('grid crossing allocation route geometry properties', () => {
 		expect(laterConflict).toBeGreaterThan(255);
 		if (!('selected' in result)) throw new Error('Later phases must find a validated bridge.');
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		if (!('selected' in oracle)) throw new Error('The canonical budgeted search must select.');
-		expect(oracle.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		expect(oracle.witness.phases[0]?.exploredGeometries).toBe(256);
-		expect(oracle.witness.phases[1]?.exploredGeometries).toBe(256);
+		if (!('selected' in unpruned)) throw new Error('The canonical budgeted search must select.');
+		expect(unpruned.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
+		expect(unpruned.witness.phases[0]?.exploredGeometries).toBe(256);
+		expect(unpruned.witness.phases[1]?.exploredGeometries).toBe(256);
 		expect(route(result.selected.allocation, true).failure).toBeUndefined();
-		expect(route(oracle.selected.allocation, true).failure).toBeUndefined();
+		expect(route(unpruned.selected.allocation, true).failure).toBeUndefined();
 	});
 });

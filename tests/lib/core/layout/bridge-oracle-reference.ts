@@ -8,7 +8,6 @@ import {
 	type RoutedPath,
 	RouteOrientation,
 	type RouteRun,
-	routeRuns,
 } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../src/lib/core/layout/layout-settings';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
@@ -126,10 +125,38 @@ function recordReferencePair(scan: ReferenceScan, current: RouteRun, previous: R
 	recordReferenceBridge(scan, point, current, previous);
 }
 
+/** Decode maximal straight runs from waypoints without using the indexed oracle's parser. */
+function referenceRuns(path: RoutedPath): RouteRun[] {
+	const runs: RouteRun[] = [];
+	for (let index = 1; index < path.points.length; index += 1) {
+		const start = path.points[index - 1];
+		const end = path.points[index];
+		if (start === undefined || end === undefined) continue;
+		const dx = end.x - start.x;
+		const dy = end.y - start.y;
+		if ((dx === 0) === (dy === 0)) continue;
+		let orientation = RouteOrientation.Horizontal;
+		if (dx === 0) orientation = RouteOrientation.Vertical;
+		const previous = runs.at(-1);
+		if (
+			previous?.orientation === orientation &&
+			previous.end.x === start.x &&
+			previous.end.y === start.y &&
+			Math.sign(dx + dy) ===
+				Math.sign(previous.end.x - previous.start.x + previous.end.y - previous.start.y)
+		) {
+			runs[runs.length - 1] = { ...previous, end };
+		} else {
+			runs.push({ pathId: path.id, start, end, orientation });
+		}
+	}
+	return runs;
+}
+
 /** Independent, exhaustive pre-index crossing/carrier oracle; no production bridge analysis calls. */
 export function referenceRouteBridgeAnalysis(paths: readonly RoutedPath[]): RouteBridgeAnalysis {
 	const sortedPaths = [...paths].sort((left, right) => compareCanonicalStrings(left.id, right.id));
-	const runsByPath = sortedPaths.map((path) => routeRuns(path));
+	const runsByPath = sortedPaths.map(referenceRuns);
 	const scan: ReferenceScan = {
 		runs: runsByPath.flat(),
 		carried: new Map(),

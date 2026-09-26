@@ -192,15 +192,46 @@ const documentCase = fc
 			});
 	});
 
+function naivePermutations(ids: readonly string[]): string[][] {
+	let orders: string[][] = [[]];
+	for (const id of ids) {
+		const next: string[][] = [];
+		for (const order of orders)
+			for (let position = 0; position <= order.length; position += 1)
+				next.push([...order.slice(0, position), id, ...order.slice(position)]);
+		orders = next;
+	}
+	return orders;
+}
+
+function naiveRankOrders(domain: RankDomain): RankOrder[] {
+	let orders: string[][][] = [[]];
+	for (const band of domain.bands) {
+		const permutations = naivePermutations(band);
+		orders = orders.flatMap((prefix) =>
+			permutations.map((permutation) => [...prefix, permutation]),
+		);
+	}
+	return orders;
+}
+
 describe('rank order enumeration', () => {
 	it('yields the whole permutation product, all valid and unique, deterministically', () => {
 		fc.assert(
 			fc.property(domainCase, (domain) => {
-				const size = rankOrderEnumerationSize(domain);
+				const factorial = (count: number): number => {
+					let product = 1;
+					for (let factor = 2; factor <= count; factor += 1) product *= factor;
+					return product;
+				};
+				const size = domain.bands.reduce((product, band) => product * factorial(band.length), 1);
+				const expected = naiveRankOrders(domain).map((order) => JSON.stringify(order));
 				const orders = enumerateRankOrders(domain, size);
+				expect(rankOrderEnumerationSize(domain)).toBe(size);
+				expect(orders.map((order) => JSON.stringify(order)).sort(compareCanonicalStrings)).toEqual(
+					expected.sort(compareCanonicalStrings),
+				);
 				expect(orders).toHaveLength(size);
-				expect(new Set(orders.map((order) => JSON.stringify(order))).size).toBe(size);
-				for (const order of orders) expect(validateRankOrder(domain, order)).toBe(true);
 				expect(enumerateRankOrders(domain, size)).toEqual(orders);
 			}),
 			PROPERTY_PARAMETERS,
