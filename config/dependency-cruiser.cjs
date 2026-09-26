@@ -1,3 +1,71 @@
+const layoutPath = '^src/lib/core/layout/';
+const layoutScopes = {
+	base: `${layoutPath}layout-(types|settings)[.]ts$`,
+	engine: `${layoutPath}(layout-engine|layout-workspace|layout-port-placement|build-layout-result)[.]ts$`,
+	root: `${layoutPath}root-region[.]ts$`,
+	resources: `${layoutPath}resources/`,
+	search: `${layoutPath}search/`,
+	bridges: `${layoutPath}bridges/`,
+	'dedicated-candidate-validation': `${layoutPath}dedicated-candidate-validation/`,
+	rank: `${layoutPath}rank/`,
+	contract: `${layoutPath}contract/`,
+	'regions/model': `${layoutPath}regions/model/`,
+	lanes: `${layoutPath}lanes/`,
+	'regions/validation': `${layoutPath}regions/validation/`,
+	'regions/leaf': `${layoutPath}regions/leaf/`,
+	grids: `${layoutPath}grids/`,
+	'regions/recursive': `${layoutPath}regions/recursive/`,
+	folded: `${layoutPath}folded/`,
+};
+
+// A directory may import itself and only the dependencies listed here.
+const layoutImports = {
+	base: [],
+	resources: [],
+	search: ['geometry'],
+	bridges: ['geometry', 'base'],
+	'dedicated-candidate-validation': ['bridges', 'routing', 'structure', 'geometry', 'base'],
+	rank: ['dedicated-candidate-validation', 'structure', 'base'],
+	engine: ['rank', 'inspection', 'placement', 'routing', 'structure', 'geometry', 'base'],
+	contract: ['engine', 'rank', 'bridges', 'routing', 'structure', 'search', 'geometry', 'base'],
+	'regions/model': ['bridges', 'resources', 'search', 'geometry', 'base'],
+	lanes: ['regions/model', 'bridges', 'resources', 'search', 'placement', 'geometry', 'base'],
+	'regions/validation': ['regions/model', 'bridges', 'geometry', 'base'],
+	'regions/leaf': [
+		'lanes',
+		'rank',
+		'contract',
+		'engine',
+		'regions/model',
+		'bridges',
+		'search',
+		'geometry',
+		'base',
+	],
+	grids: [
+		'regions/leaf',
+		'regions/validation',
+		'regions/model',
+		'contract',
+		'bridges',
+		'resources',
+		'search',
+		'geometry',
+		'base',
+	],
+	'regions/recursive': [
+		'grids',
+		'regions/leaf',
+		'regions/validation',
+		'regions/model',
+		'bridges',
+		'geometry',
+		'base',
+	],
+	root: ['regions/recursive', 'regions/model', 'lanes', 'engine', 'geometry', 'base'],
+	folded: ['base'],
+};
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
 	forbidden: [
@@ -48,6 +116,17 @@ module.exports = {
 					'^src/lib/core/layout/(inspection/|routing/|geometry/|layout-(types|settings)[.]ts$)',
 			},
 		},
+		...Object.entries(layoutImports).map(([directory, permitted]) => ({
+			name: `layout-${directory.replace('/', '-')}-only-inward`,
+			severity: 'error',
+			from: { path: layoutScopes[directory] },
+			to: {
+				path: layoutPath,
+				pathNot: [layoutScopes[directory], ...permitted.map((group) => layoutScopes[group])].join(
+					'|',
+				),
+			},
+		})),
 		{
 			name: 'layout-workspace-only-belongs-to-orchestration',
 			severity: 'error',
