@@ -1,8 +1,10 @@
 import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
 import { createGraph } from '../graph/create-graph';
+import type { TopologicalRanks } from '../graph/topological-ranks';
 import { topologicallyRank } from '../graph/topological-ranks';
-import { layoutWithDedicatedEngine } from './layout-engine';
-import type { LayoutMeasurements } from './layout-types';
+import { evaluateDedicatedLayout } from './layout-engine';
+import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import { selectDedicatedRankLayout } from './rank-order-selection';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
@@ -38,10 +40,12 @@ export interface RegionLeafLayoutInput {
 	readonly measurements: LayoutMeasurements;
 	readonly leafPolicy: LayoutPolicy;
 	readonly cache?: RegionLocalLayoutCache | undefined;
+	readonly admitDedicatedLayout?:
+		((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 }
 
 function solveLeaf(input: RegionLeafLayoutInput): RegionLocalLayout {
-	const { document, measurements, leafPolicy, cache } = input;
+	const { document, measurements, leafPolicy, cache, admitDedicatedLayout } = input;
 	const policyFailure = regionLeafPolicyFailure(leafPolicy, document);
 	if (policyFailure !== undefined) throw new UnsupportedRegionLeafLayoutError(policyFailure);
 	const compute = (): RegionLocalLayout => {
@@ -68,13 +72,17 @@ function solveLeaf(input: RegionLeafLayoutInput): RegionLocalLayout {
 			};
 		}
 		return {
-			layout: layoutWithDedicatedEngine(graph.value, ranks, measurements),
+			layout: selectDedicatedRankLayout(graph.value, ranks, measurements, {
+				options: {},
+				evaluate: evaluateDedicatedLayout,
+				admit: admitDedicatedLayout,
+			}).layout,
 			ranks,
 			incidents: [],
 			witness: { attempted: 0, exhaustive: true, rejectedAlternatives: [] },
 		};
 	};
-	if (cache === undefined) return compute();
+	if (cache === undefined || admitDedicatedLayout !== undefined) return compute();
 	return cache.getOrCompute(document, measurements, leafPolicy, compute);
 }
 

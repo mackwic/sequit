@@ -43,7 +43,11 @@ export function selectDedicatedRankLayout(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	services: { readonly options: LayoutOptions; readonly evaluate: typeof evaluateDedicatedLayout },
+	services: {
+		readonly options: LayoutOptions;
+		readonly evaluate: typeof evaluateDedicatedLayout;
+		readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
+	},
 ): { readonly layout: LayoutResult; readonly witness: RankOrderSearchWitness } {
 	const { options, evaluate } = services;
 	const structure = prepareLayout(graph, ranks);
@@ -76,6 +80,7 @@ export function selectDedicatedRankLayout(
 		evaluate: (order) =>
 			evaluate(applyRankOrder(structure, domain, order), measurements, options, true),
 		limits: { completePipelines: MAX_COMPLETE_PIPELINES, uniqueProposals: 48 },
+		admit: services.admit,
 	});
 	return { layout: (search.selected?.evaluation ?? baseline).complete(), witness: search.witness };
 }

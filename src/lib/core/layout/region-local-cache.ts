@@ -13,7 +13,7 @@ import {
 export const MAX_REGION_LOCAL_CACHE_ENTRIES = 12;
 
 /** Bump this when the local child solver's geometry contract changes. */
-const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v6';
+const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v7';
 const INCIDENT_CONTRACT = 'region-incident-contract-v1';
 
 export interface RegionLocalLayout {

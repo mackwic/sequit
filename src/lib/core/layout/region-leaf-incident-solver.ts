@@ -210,6 +210,18 @@ function solveOnLayout(
 	);
 }
 
+function admitIncidentLayout(
+	contracts: readonly RegionIncidentContract[],
+	accepted: Map<LayoutResult, DedicatedRegionLeafIncidentSelected>,
+): (layout: LayoutResult, ranks: TopologicalRanks) => boolean {
+	return (layout, ranks) => {
+		const attempt = solveOnLayout(contracts, layout, ranks);
+		if (attempt.status !== RegionCompositionStatus.Selected) return false;
+		accepted.set(layout, attempt);
+		return true;
+	};
+}
+
 class UncacheableIncidentFailure extends Error {
 	constructor(readonly attempt: DedicatedRegionLeafIncidentUnknown) {
 		super(attempt.reason);
@@ -250,12 +262,17 @@ export function solveDedicatedRegionLeafWithIncidents(
 			demands,
 			input.document.layout.direction,
 		);
+		const accepted = new Map<LayoutResult, DedicatedRegionLeafIncidentSelected>();
+		let admitDedicatedLayout:
+			((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
+		if (contracts.length > 0) admitDedicatedLayout = admitIncidentLayout(contracts, accepted);
 		const raw = solveRegionLeafLayout({
 			document: input.document,
 			measurements: demanded,
 			leafPolicy: LayoutPolicy.Layered,
+			admitDedicatedLayout,
 		});
-		const attempt = solveOnLayout(contracts, raw.layout, raw.ranks);
+		const attempt = accepted.get(raw.layout) ?? solveOnLayout(contracts, raw.layout, raw.ranks);
 		if (attempt.status === RegionCompositionStatus.Unknown)
 			throw new UncacheableIncidentFailure(attempt);
 		return {

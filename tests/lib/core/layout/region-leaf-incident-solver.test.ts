@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
 	defined,
 	EndpointKind,
@@ -8,6 +9,9 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
+import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -17,9 +21,11 @@ import {
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/region-incident-contract';
+import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
@@ -353,5 +359,61 @@ describe('dedicated leaf incident contracts', () => {
 			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
 			witness: { attempted: 0, exhaustive: false },
 		});
+	});
+	it('retains documentary geometry when a better rank blocks a required region incident', () => {
+		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
+		if (entry === undefined) throw new Error('Missing routed rank fixture');
+		const contracts = [
+			{
+				relation: { id: 'foreign-a', from: 'a', to: 'outside' },
+				endpointId: 'a',
+				role: RegionIncidentRole.Source,
+				allowedSides: [RegionPortalSide.Top],
+			},
+			{
+				relation: { id: 'foreign-d', from: 'd', to: 'outside' },
+				endpointId: 'd',
+				role: RegionIncidentRole.Source,
+				allowedSides: [RegionPortalSide.Right],
+			},
+		];
+		const measurements = satisfyMetricDemands(
+			entry.measurements,
+			incidentMetricDemands(contracts),
+			entry.document.layout.direction,
+		);
+		const prepared = prepareLayoutDocument(entry.document);
+		const documentary = evaluateDedicatedLayout(
+			prepareLayout(prepared.graph, prepared.ranks),
+			measurements,
+		);
+		const unconstrained = solveRegionLeafLayout({
+			document: entry.document,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		expect(unconstrained.layout).not.toEqual(documentary);
+		const cache = new RegionLocalLayoutCache();
+		const input = {
+			document: entry.document,
+			measurements: entry.measurements,
+			contracts,
+			cache,
+		};
+		const cold = solveDedicatedRegionLeafWithIncidents(input);
+		const hit = solveDedicatedRegionLeafWithIncidents(input);
+		expect(hit).toEqual(cold);
+		if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);
+		expect(cold.layout).toEqual(documentary);
+		expect(cold.incidents).toHaveLength(2);
+		const first = defined(cold.incidents.find(({ relationId }) => relationId === 'foreign-a'));
+		const second = defined(cold.incidents.find(({ relationId }) => relationId === 'foreign-d'));
+		expect(first.side).toBe(RegionPortalSide.Top);
+		expect(second.side).toBe(RegionPortalSide.Right);
+		expect(pathsTouchWithoutBridge(first.points, second.points)).toBe(false);
+		for (const incident of cold.incidents)
+			for (const route of cold.layout.relations)
+				expect(pathsTouchWithoutBridge(incident.points, route.points)).toBe(false);
+		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
 	});
 });
