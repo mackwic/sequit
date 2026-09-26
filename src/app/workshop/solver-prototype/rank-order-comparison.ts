@@ -10,7 +10,13 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { layoutWithDedicatedEngine } from '../../../lib/core/layout/layout-engine';
+import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation';
+import { compareDedicatedRouteScores } from '../../../lib/core/layout/dedicated-candidate-validation';
+import type { DedicatedRouteScore } from '../../../lib/core/layout/dedicated-candidate-validation/types';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngineAndRankOrderWitness,
+} from '../../../lib/core/layout/layout-engine';
 import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
 import {
 	compareRankOrders,
@@ -23,6 +29,9 @@ import {
 	type RankOrderRelation,
 	validateRankOrder,
 } from '../../../lib/core/layout/rank-order';
+import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank-order-search';
+import { applyRankOrder, collectRankOrderDomain } from '../../../lib/core/layout/rank-ordering';
+import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import {
 	type EndpointSlot,
 	fractionalOrderKeySpace,
@@ -52,6 +61,10 @@ export interface RankOrderComparisonEntry {
 	readonly divergence: boolean;
 	readonly enumeratedCount: number;
 	readonly layout: LayoutResult;
+	readonly documentaryRouteScore?: DedicatedRouteScore;
+	readonly selectedRouteScore?: DedicatedRouteScore;
+	readonly exhaustiveRouteScore?: DedicatedRouteScore;
+	readonly witness: RankOrderSearchWitness;
 }
 
 export interface RankOrderComparison {
@@ -108,6 +121,7 @@ function corpusEntry(
  */
 export function rankOrderComparisonCorpus(): readonly RankOrderCorpusEntry[] {
 	const adjacent = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse');
+	const horizontal = realK32Fixture(LayoutDirection.LeftToRight, 'd-e', 'sparse');
 	return [
 		{
 			id: 'adjacent-3+1',
@@ -154,6 +168,23 @@ export function rankOrderComparisonCorpus(): readonly RankOrderCorpusEntry[] {
 				{ id: 'c-d', from: 'c', to: 'd' },
 			],
 		),
+		{
+			id: 'geometric-3+1',
+			label: 'Geometric 3+1 (horizontal)',
+			document: horizontal.document,
+			measurements: horizontal.measurements,
+		},
+		corpusEntry(
+			'geometric-2+2',
+			'Geometric 2+2',
+			['a', 'b', 'c', 'd', 'e'],
+			[
+				{ id: 'a-d', from: 'a', to: 'd' },
+				{ id: 'b-d', from: 'b', to: 'd' },
+				{ id: 'b-e', from: 'b', to: 'e' },
+				{ id: 'c-d', from: 'c', to: 'd' },
+			],
+		),
 	];
 }
 
@@ -193,6 +224,41 @@ function compareRankOrderEntry(entry: RankOrderCorpusEntry): RankOrderComparison
 	const orders = enumerateRankOrders(domain, rankOrderEnumerationSize(domain));
 	const best = bestEnumeratedOrder(orders, entry.document.relations);
 	const documentaryCrossings = countRankOrderCrossings(documentary, entry.document.relations);
+	const structure = prepareLayout(graph, ranks);
+	const movable = collectRankOrderDomain(structure);
+	const baseline = evaluateDedicatedLayout(structure, entry.measurements);
+	const baselineValidation = validateDedicatedCandidate({
+		graph,
+		ranks,
+		measurements: entry.measurements,
+		layout: baseline,
+	});
+	let exhaustiveRouteScore: DedicatedRouteScore | undefined;
+	for (const order of enumerateRankOrders(movable, rankOrderEnumerationSize(movable))) {
+		const layout = evaluateDedicatedLayout(
+			applyRankOrder(structure, movable, order),
+			entry.measurements,
+		);
+		const validation = validateDedicatedCandidate({
+			graph,
+			ranks,
+			measurements: entry.measurements,
+			layout,
+		});
+		if (!validation.valid) continue;
+		if (
+			exhaustiveRouteScore === undefined ||
+			compareDedicatedRouteScores(validation.score, exhaustiveRouteScore) < 0
+		)
+			exhaustiveRouteScore = validation.score;
+	}
+	const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, entry.measurements);
+	const selectedValidation = validateDedicatedCandidate({
+		graph,
+		ranks,
+		measurements: entry.measurements,
+		layout: selected.layout,
+	});
 	return {
 		id: entry.id,
 		label: entry.label,
@@ -208,7 +274,11 @@ function compareRankOrderEntry(entry: RankOrderCorpusEntry): RankOrderComparison
 		enumeratedValid: validateRankOrder(domain, best.order),
 		divergence: best.crossings < documentaryCrossings,
 		enumeratedCount: orders.length,
-		layout: layoutWithDedicatedEngine(graph, ranks, entry.measurements),
+		layout: selected.layout,
+		witness: selected.witness,
+		...(baselineValidation.valid && { documentaryRouteScore: baselineValidation.score }),
+		...(selectedValidation.valid && { selectedRouteScore: selectedValidation.score }),
+		...(exhaustiveRouteScore !== undefined && { exhaustiveRouteScore }),
 	};
 }
 

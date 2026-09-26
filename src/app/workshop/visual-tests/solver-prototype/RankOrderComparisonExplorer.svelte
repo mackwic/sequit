@@ -20,13 +20,13 @@
 
 <section class="rank-order" aria-label="Comparaison des ordres dans le rang">
 	<header>
-		<p class="eyebrow">Même domaine de rangs · deux algorithmes d'ordre</p>
+		<p class="eyebrow">Même domaine de rangs · proxy et géométrie validée</p>
 		<h2>Ordre documentaire contre meilleur ordre énuméré</h2>
 		<p>
-			L'ordre documentaire suit <code>layoutOrder</code> puis l'identifiant ; l'énumération parcourt tout
-			le produit des permutations et retient l'ordre au moins de croisements, départagé par l'ordre canonique.
-			Les deux sont validés par l'oracle indépendant (bijection par bande). Le moteur dédié n'a pas de
-			passe de réordonnancement : la production garde l'ordre documentaire.
+			L'énumération abstraite compte les inversions de relations, sans géométrie. La recherche en
+			production ne retient que des layouts entièrement matérialisés et validés : croisements
+			stricts, ponts, puis proximité à l'ordre documentaire. Le minimum géométrique est calculé
+			séparément sur les petits cas.
 		</p>
 	</header>
 	<table>
@@ -35,7 +35,10 @@
 				<th scope="col">Entrée</th>
 				<th scope="col">Ordre documentaire</th>
 				<th scope="col">Meilleur ordre énuméré</th>
-				<th scope="col">Croisements doc → énum</th>
+				<th scope="col">Proxy doc → énum</th>
+				<th scope="col">Croisements réels doc → retenu (minimum)</th>
+				<th scope="col">Ponts validés doc → retenu</th>
+				<th scope="col">Recherche</th>
 				<th scope="col">Candidats</th>
 				<th scope="col">Verdict</th>
 			</tr>
@@ -47,6 +50,19 @@
 					<td><code>{orderLabel(entry.documentary)}</code></td>
 					<td><code>{orderLabel(entry.enumerated)}</code></td>
 					<td>{entry.documentaryCrossings} → {entry.enumeratedCrossings}</td>
+					<td
+						>{entry.documentaryRouteScore?.strictCrossings ?? 'rejeté'} → {entry.selectedRouteScore
+							?.strictCrossings ?? 'rejeté'} ({entry.exhaustiveRouteScore?.strictCrossings ??
+							'aucun'})</td
+					>
+					<td
+						>{entry.documentaryRouteScore?.validatedBridges ?? 'rejeté'} → {entry.selectedRouteScore
+							?.validatedBridges ?? 'rejeté'}</td
+					>
+					<td
+						>{entry.witness.mode} · {entry.witness.stop} · {entry.witness.evaluated} pipelines · {entry
+							.witness.rejected.length} rejets</td
+					>
 					<td>{entry.enumeratedCount}</td>
 					<td>{verdict(entry)}</td>
 				</tr>
