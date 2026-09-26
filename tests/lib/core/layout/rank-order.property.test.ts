@@ -19,9 +19,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { routeRuns } from '../../../../src/lib/core/layout/bridge-oracle';
+import { routeBridgeAnalysis, routeRuns } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
-	compareDedicatedRouteScores,
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
@@ -692,47 +691,117 @@ function routeCount(layout: LayoutResult): number {
 	);
 }
 
+interface OracleLayout {
+	readonly order: RankOrder;
+	readonly layout: LayoutResult;
+	readonly crossings: number;
+	readonly bridges: number;
+}
+
+function oracleInversions(order: RankOrder, documentary: RankOrder): number {
+	let inversions = 0;
+	for (const [bandIndex, band] of order.entries()) {
+		const original = defined(documentary[bandIndex]);
+		for (let first = 0; first < band.length; first += 1)
+			for (let second = first + 1; second < band.length; second += 1)
+				if (original.indexOf(defined(band[first])) > original.indexOf(defined(band[second])))
+					inversions += 1;
+	}
+	return inversions;
+}
+
+function compareOracleLayouts(
+	left: OracleLayout,
+	right: OracleLayout,
+	documentary: RankOrder,
+): number {
+	const crossing = left.crossings - right.crossings;
+	if (crossing !== 0) return crossing;
+	const bridge = left.bridges - right.bridges;
+	if (bridge !== 0) return bridge;
+	const inversions =
+		oracleInversions(left.order, documentary) - oracleInversions(right.order, documentary);
+	if (inversions !== 0) return inversions;
+	const leftIds = left.order.flat();
+	const rightIds = right.order.flat();
+	for (let index = 0; index < leftIds.length; index += 1) {
+		const a = defined(leftIds[index]);
+		const b = defined(rightIds[index]);
+		if (a < b) return -1;
+		if (a > b) return 1;
+	}
+	return 0;
+}
+
+function oracleLayout(order: RankOrder, layout: LayoutResult): OracleLayout {
+	const analysis = routeBridgeAnalysis(layout.relations);
+	return {
+		order,
+		layout,
+		crossings: analysis.crossings.length,
+		bridges: analysis.bridges.length,
+	};
+}
+
+function assertCompleteOracle(
+	document: LogicDocument,
+	measurements: Parameters<typeof layoutWithDedicatedEngine>[2],
+): OracleLayout[] {
+	const created = createGraph(document);
+	if (!created.ok) throw new Error('Invalid oracle graph');
+	const graph = created.value;
+	const ranks = topologicallyRank(graph);
+	const structure = prepareLayout(graph, ranks);
+	const domain = collectRankOrderDomain(structure);
+	const size = rankOrderEnumerationSize(domain);
+	expect(size).toBeLessThanOrEqual(12);
+	const candidates: OracleLayout[] = [];
+	for (const order of enumerateRankOrders(domain, size)) {
+		const layout = evaluateDedicatedLayout(applyRankOrder(structure, domain, order), measurements);
+		if (validateDedicatedCandidate({ graph, ranks, measurements, layout }).valid)
+			candidates.push(oracleLayout(order, layout));
+	}
+	candidates.sort((left, right) => compareOracleLayouts(left, right, domain.bands));
+	const actual = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+	if (candidates.length > 0) expect(actual.layout).toEqual(defined(candidates[0]).layout);
+	else expect(actual.layout).toEqual(evaluateDedicatedLayout(structure, measurements));
+	expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
+	return candidates;
+}
+
 describe('dedicated bounded geometric rank search', () => {
 	it('matches an independently enumerated valid-layout oracle, routes included', () => {
-		for (const entry of rankOrderComparisonCorpus().slice(0, 2)) {
-			const created = createGraph(entry.document);
-			if (!created.ok) throw new Error('Invalid rank corpus graph');
-			const graph = created.value;
-			const ranks = topologicallyRank(graph);
-			const structure = prepareLayout(graph, ranks);
-			const domain = collectRankOrderDomain(structure);
-			const documentary = domain.bands;
-			const candidateOrders = enumerateRankOrders(domain, 12);
-			const valid = candidateOrders.flatMap((order) => {
-				const layout = evaluateDedicatedLayout(
-					applyRankOrder(structure, domain, order),
-					entry.measurements,
-				);
-				const validation = validateDedicatedCandidate({
-					graph,
-					ranks,
-					measurements: entry.measurements,
-					layout,
-				});
-				if (validation.valid) return [{ order, layout, score: validation.score }];
-				return [];
-			});
-			valid.sort(
-				(first, second) =>
-					compareDedicatedRouteScores(first.score, second.score) ||
-					rankOrderKendallDistance(first.order, documentary) -
-						rankOrderKendallDistance(second.order, documentary) ||
-					compareRankOrders(first.order, second.order),
-			);
-			const selected = layoutWithDedicatedEngineAndRankOrderWitness(
-				graph,
-				ranks,
-				entry.measurements,
-			);
-			if (valid.length > 0) expect(selected.layout).toEqual(defined(valid[0]).layout);
-			else expect(selected.layout).toEqual(evaluateDedicatedLayout(structure, entry.measurements));
-			expect(selected.witness.evaluated).toBeLessThanOrEqual(12);
-		}
+		for (const entry of rankOrderComparisonCorpus().slice(0, 2))
+			assertCompleteOracle(entry.document, entry.measurements);
+	});
+	it('checks every validated junction geometry, not just ordinary-node diagrams', () => {
+		const base = corpusDocument(
+			['a', 'b', 'c', 'd'],
+			['a', 'b', 'c', 'd'],
+			[
+				{ id: 'a-j', from: 'a', to: 'j' },
+				{ id: 'b-j', from: 'b', to: 'j' },
+				{ id: 'c-j', from: 'c', to: 'j' },
+				{ id: 'j-d', from: 'j', to: 'd' },
+			],
+		);
+		const document: LogicDocument = {
+			...base,
+			junctions: [
+				{
+					kind: EndpointKind.Junction,
+					id: 'j',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('b00'),
+				},
+			],
+		};
+		const candidates = assertCompleteOracle(document, {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			groups: new Map(),
+			junctions: new Map([['j', { width: 24, height: 24 }]]),
+		});
+		expect(candidates.length).toBeGreaterThan(1);
 	});
 
 	it('agrees with a separate exhaustive geometric oracle across connected small topologies', () => {
@@ -807,16 +876,10 @@ describe('dedicated bounded geometric rank search', () => {
 							options,
 						);
 						const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
-						if (validation.valid) return [{ order, layout, score: validation.score }];
+						if (validation.valid) return [oracleLayout(order, layout)];
 						return [];
 					});
-					valid.sort(
-						(left, right) =>
-							compareDedicatedRouteScores(left.score, right.score) ||
-							rankOrderKendallDistance(left.order, domain.bands) -
-								rankOrderKendallDistance(right.order, domain.bands) ||
-							compareRankOrders(left.order, right.order),
-					);
+					valid.sort((left, right) => compareOracleLayouts(left, right, domain.bands));
 					expect(actual.layout).toEqual(defined(valid[0]).layout);
 					expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
 				},
