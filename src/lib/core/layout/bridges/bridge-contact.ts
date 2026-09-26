@@ -44,9 +44,19 @@ export function unbridgedCrossings(analysis: {
 	readonly crossings: RouteBridgeAnalysis['crossings'];
 	readonly bridges: RouteBridgeAnalysis['bridges'];
 }): readonly RouteCrossing[] {
+	const bridgesByPoint = new Map<string, LayoutBridge[]>();
+	for (const bridge of analysis.bridges) {
+		const key = `${bridge.x}:${bridge.y}`;
+		let atPoint = bridgesByPoint.get(key);
+		if (atPoint === undefined) {
+			atPoint = [];
+			bridgesByPoint.set(key, atPoint);
+		}
+		atPoint.push(bridge);
+	}
 	return analysis.crossings.filter(
 		(crossing) =>
-			!analysis.bridges.some((bridge) =>
+			!(bridgesByPoint.get(`${crossing.x}:${crossing.y}`) ?? []).some((bridge) =>
 				bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
 			),
 	);

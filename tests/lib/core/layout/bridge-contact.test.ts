@@ -7,6 +7,7 @@ import {
 	type RouteContact,
 	RouteContactKind,
 	unbridgedContacts,
+	unbridgedCrossings,
 } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import {
 	type LayoutBridge,
@@ -285,6 +286,22 @@ describe('one route-contact rule', () => {
 		expect(
 			unbridgedContacts(laterHorizontal, laterVertical, bridges, { sortedByPoint: true }),
 		).toEqual([]);
+	});
+
+	it('preserves uncovered route pairs with unsorted bridges at the same point', () => {
+		const atPoint = { x: 50, y: 50 };
+		const crossings = [
+			{ ...atPoint, horizontalId: 'h', verticalId: 'v' },
+			{ ...atPoint, horizontalId: 'other', verticalId: 'v' },
+		];
+		const bridges = [
+			{ x: 100, y: 100, carrierIds: ['other'], crossedIds: ['v'] },
+			{ ...atPoint, carrierIds: ['h'], crossedIds: ['v'] },
+		];
+		expect(unbridgedCrossings({ crossings, bridges })).toEqual([crossings[1]]);
+		expect(unbridgedCrossings({ crossings, bridges: bridges.toReversed() })).toEqual([
+			crossings[1],
+		]);
 	});
 
 	it('gives dedicated and lane validators the same typed refusal and canonical relation pair', () => {
