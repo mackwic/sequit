@@ -19,7 +19,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import {
 	layoutWithRootRegionForProjection,
 	UnsupportedRegionLayoutError,

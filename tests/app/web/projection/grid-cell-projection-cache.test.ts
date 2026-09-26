@@ -6,7 +6,7 @@ import {
 	GRID_REGION_PRESENTATION_SCHEMA,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 

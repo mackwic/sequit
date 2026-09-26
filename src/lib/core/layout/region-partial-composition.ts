@@ -5,23 +5,12 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
-import { leafDocument, type RecursiveContext } from './nested-region-recursive-model-adapter';
-import {
-	normalizeRegionCompositionModel,
-	RegionCompositionModelStatus,
-} from './region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-	type RegionLayoutAttempt,
-} from './region-composition-types';
 import {
 	solveRegionLeafLayout,
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-layout';
 import { regionLeafPolicy } from './region-leaf-policy';
-import type { RegionLocalLayoutCache } from './region-local-cache';
 import {
 	closedSubtree,
 	incidentLeafIds,
@@ -30,7 +19,21 @@ import {
 	subtreeInput,
 	subtreeRegionIds,
 } from './region-partial-composition-scope';
-import type { RegionCompositionFailureEvidence } from './region-search-evidence';
+import {
+	leafDocument,
+	type RecursiveContext,
+} from './regions/model/nested-region-recursive-model-adapter';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from './regions/model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+} from './regions/model/region-composition-types';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import type { RegionCompositionFailureEvidence } from './regions/model/region-search-evidence';
 
 export enum RegionSubtreeScope {
 	Leaf = 'leaf',

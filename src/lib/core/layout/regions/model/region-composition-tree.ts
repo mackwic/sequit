@@ -1,5 +1,5 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import { defined } from '../../../document/logic-document';
 import type { RegionDefinition } from './region-composition-types';
 
 export interface RegionCompositionNode {

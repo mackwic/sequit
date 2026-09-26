@@ -2,17 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import { EndpointKind } from '../../../../src/lib/core/document/logic-document';
 import type { LayoutResult, Point } from '../../../../src/lib/core/layout/layout-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import {
-	RegionIncidentRejectionCode,
-	RegionIncidentRole,
-} from '../../../../src/lib/core/layout/region-incident-contract';
 import {
 	geometryFailure,
 	routeCandidates,
 	routeFor,
 	slotsForAssignment,
 } from '../../../../src/lib/core/layout/region-leaf-incident-geometry';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 
 const endpoint = {
 	id: 'local',

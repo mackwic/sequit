@@ -23,7 +23,7 @@ import type {
 	LayoutElement,
 	LayoutRelation,
 } from '../../../../src/lib/core/layout/layout-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function fixture(): {

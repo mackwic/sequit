@@ -2,15 +2,6 @@ import { defined, LayoutPolicy, type LogicDocument } from '../document/logic-doc
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
-import {
-	normalizeRegionIncidentContracts,
-	type RegionIncidentContract,
-	RegionIncidentRejectionCode,
-	type RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-	type RegionSolvedIncident,
-} from './region-incident-contract';
 import { incidentMetricDemands } from './region-incident-metric-demand';
 import { solveRegionLeafLayout } from './region-leaf-base-layout';
 import {
@@ -31,7 +22,19 @@ import {
 	witness,
 } from './region-leaf-incident-search-state';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
-import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
+import {
+	RegionCompositionStatus,
+	type RegionPortalSide,
+} from './regions/model/region-composition-types';
+import {
+	normalizeRegionIncidentContracts,
+	type RegionIncidentContract,
+	RegionIncidentRejectionCode,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+	type RegionSolvedIncident,
+} from './regions/model/region-incident-contract';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from './regions/model/region-local-cache';
 import { firstValidDepthFirst } from './search/bounded-search';
 
 const MAX_INCIDENTS = 8;

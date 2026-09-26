@@ -9,7 +9,7 @@ import {
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
-} from './region-incident-contract';
+} from './regions/model/region-incident-contract';
 import type { SharedLaneFrame } from './shared-lane-frame';
 import {
 	certifySharedLaneGeometry,

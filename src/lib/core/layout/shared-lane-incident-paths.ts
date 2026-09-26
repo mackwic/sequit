@@ -1,7 +1,10 @@
 import { defined } from '../document/logic-document';
 import type { Point } from './layout-types';
-import { RegionPortalSide } from './region-composition-types';
-import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
+import { RegionPortalSide } from './regions/model/region-composition-types';
+import type {
+	RegionIncidentContract,
+	RegionSolvedIncident,
+} from './regions/model/region-incident-contract';
 import {
 	directSharedLaneIncidentPath,
 	type SharedLaneIncidentFailure,

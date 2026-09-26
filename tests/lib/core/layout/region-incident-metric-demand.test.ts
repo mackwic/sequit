@@ -4,12 +4,12 @@ import {
 	MetricAxis,
 	MetricDemandKind,
 } from '../../../../src/lib/core/layout/contract/metric-demand';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRole,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 
 function contract(id: string, sides: readonly RegionPortalSide[]): RegionIncidentContract {
 	return {

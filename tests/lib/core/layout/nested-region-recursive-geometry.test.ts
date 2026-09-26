@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { boundaryPortal } from '../../../../src/lib/core/layout/nested-region-recursive-geometry';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { boundaryPortal } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 
 describe('recursive region boundary portals', () => {
 	it.each([

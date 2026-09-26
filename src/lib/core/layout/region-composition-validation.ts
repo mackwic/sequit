@@ -7,7 +7,6 @@ import {
 	RegionGeometryDiagnosticCode as Code,
 } from './geometry/region-geometry-diagnostic';
 import type { Bounds } from './layout-types';
-import type { RegionCompositionModel } from './region-composition-model';
 import {
 	diagnoseParentRouteContacts,
 	validateLeafCompositionGeometry,
@@ -17,6 +16,7 @@ import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
+import type { RegionCompositionModel } from './regions/model/region-composition-model';
 
 export type { RegionCompositionGeometryCandidate } from './region-composition-validation-types';
 

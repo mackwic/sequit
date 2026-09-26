@@ -16,7 +16,7 @@ import {
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './region-composition-types';
+} from './regions/model/region-composition-types';
 
 function portalOnBoundary(portal: RegionPortal, region: RegionChildPlacement): boolean {
 	if (portal.regionId !== region.id) return false;

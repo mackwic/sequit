@@ -13,14 +13,14 @@ import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import type {
 	RegionIncidentPath,
 	SolvedRecursiveRegion,
-} from '../../../../src/lib/core/layout/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
+} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';

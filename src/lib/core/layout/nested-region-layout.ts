@@ -5,8 +5,8 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
-} from './region-composition-types';
-import type { RegionLocalLayoutCache } from './region-local-cache';
+} from './regions/model/region-composition-types';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
 
 /** A projection may supply its own bounded leaf-layout cache. */
 export interface RegionExecutionContext {

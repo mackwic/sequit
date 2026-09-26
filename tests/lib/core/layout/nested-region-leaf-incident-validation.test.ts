@@ -13,10 +13,11 @@ import type { Bounds, LayoutRelation, Point } from '../../../../src/lib/core/lay
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	type RegionChildPlacement,
 	RegionCompositionStatus,
@@ -26,8 +27,7 @@ import {
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { regionDocument } from './nested-region-fixture';
 
 const NODE_BOUNDS = new Map<string, Bounds>([

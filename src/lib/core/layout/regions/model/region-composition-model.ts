@@ -1,6 +1,6 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { LayoutPolicy, type LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import { LayoutPolicy, type LogicRelation } from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
 import {
 	checkRegionCrossingLimits,
 	checkRegionLimits,

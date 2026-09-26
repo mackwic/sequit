@@ -20,18 +20,18 @@ import type {
 	LayoutRelation,
 	Point,
 } from '../../../../lib/core/layout/layout-types';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
+import { solveRegionLeafLayout } from '../../../../lib/core/layout/region-leaf-layout';
 import {
 	normalizeRegionCompositionModel,
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../lib/core/layout/region-composition-model';
+} from '../../../../lib/core/layout/regions/model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutSelected,
-} from '../../../../lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../lib/core/layout/region-composition-validation';
-import { solveRegionLeafLayout } from '../../../../lib/core/layout/region-leaf-layout';
+} from '../../../../lib/core/layout/regions/model/region-composition-types';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,

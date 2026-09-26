@@ -7,7 +7,7 @@ import {
 } from './contract/metric-demand';
 import { equal } from './grid-cell-geometry-primitives';
 import type { Bounds, LayoutRelation, Point } from './layout-types';
-import { RegionPortalSide } from './region-composition-types';
+import { RegionPortalSide } from './regions/model/region-composition-types';
 import { edgeExtent, type RoutingEdge, trackOffset } from './resources/routing-resource-allocation';
 
 const PORT_INSET = 16;

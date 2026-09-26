@@ -9,8 +9,6 @@ import {
 	LayoutPolicy,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/region-incident-contract';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import {
 	InvalidRegionLeafGraphError,
@@ -18,7 +16,9 @@ import {
 	solveRegionLeafLayoutWithIncidents,
 	UnsupportedRegionLeafLayoutError,
 } from '../../../../src/lib/core/layout/region-leaf-layout';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { regionDocument } from './nested-region-fixture';
 

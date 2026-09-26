@@ -5,7 +5,7 @@ import {
 	RegionIncidentRejectionCode,
 	type RegionIncidentSearchWitness,
 	type RegionSolvedIncident,
-} from './region-incident-contract';
+} from './regions/model/region-incident-contract';
 import type { SharedLaneGeometry, SharedLaneGeometryCertificate } from './shared-lane-geometry';
 import { validateSharedLaneGeometryWithCertificate } from './shared-lane-geometry';
 import {

@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import type { RegionArrangement } from '../../../../src/lib/core/layout/region-arrangement';
 import { solveArrangedRegion } from '../../../../src/lib/core/layout/region-arrangement-orchestration';
+import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-geometry';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+import type { RegionArrangement } from '../../../../src/lib/core/layout/regions/model/region-arrangement';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';

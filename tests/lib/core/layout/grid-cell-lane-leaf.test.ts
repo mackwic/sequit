@@ -16,25 +16,25 @@ import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/gr
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
-} from '../../../../src/lib/core/layout/region-incident-contract';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import {
 	RegionLocalLayoutCache,
 	regionLocalLayoutKey,
-} from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { layoutWithRootRegionForProjection } from '../../../../src/lib/core/layout/root-region';
 import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
 import {

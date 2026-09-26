@@ -8,7 +8,7 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutSelected,
-} from '../../../../src/lib/core/layout/region-composition-types';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	nestedRegionInput,

@@ -25,8 +25,8 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {

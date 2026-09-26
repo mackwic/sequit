@@ -52,14 +52,14 @@ import type {
 	LayoutResult,
 	Point,
 } from './layout-types';
+import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
 import {
 	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 	RegionRelationKind,
-} from './region-composition-model';
-import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
-import type { RegionLocalLayoutCache } from './region-local-cache';
-import { RegionSearchProvenance } from './region-search-evidence';
+} from './regions/model/region-composition-model';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import { RegionSearchProvenance } from './regions/model/region-search-evidence';
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };

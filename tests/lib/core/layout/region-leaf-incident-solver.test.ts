@@ -15,20 +15,20 @@ import {
 } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
+import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { incidentEndpointRoute } from '../../../../src/lib/core/layout/region-incident-contact';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { incidentEndpointRoute } from '../../../../src/lib/core/layout/regions/model/region-incident-contact';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
-import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';

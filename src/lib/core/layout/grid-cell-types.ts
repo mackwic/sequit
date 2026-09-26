@@ -8,13 +8,13 @@ import type {
 	RegionCompositionStatus,
 	RegionPortal,
 	RegionPortalSide,
-} from './region-composition-types';
+} from './regions/model/region-composition-types';
 import type {
 	RegionCompositionFailureEvidence,
 	RegionSearchProvenance,
-} from './region-search-evidence';
+} from './regions/model/region-search-evidence';
 
-export { RegionCompositionStatus as GridCellLayoutStatus } from './region-composition-types';
+export { RegionCompositionStatus as GridCellLayoutStatus } from './regions/model/region-composition-types';
 
 /** Experimental, derived composition input; it is not a persisted document schema. */
 export interface GridCellDefinition {

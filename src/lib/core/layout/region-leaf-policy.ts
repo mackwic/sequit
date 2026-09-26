@@ -1,5 +1,5 @@
 import { LayoutPolicy, type LogicDocument } from '../document/logic-document';
-import type { RegionDefinition } from './region-composition-types';
+import type { RegionDefinition } from './regions/model/region-composition-types';
 
 /** Dispatch only on the policy materialized by region normalization. */
 export function regionLeafPolicy(definition: RegionDefinition): LayoutPolicy {

@@ -8,12 +8,12 @@ import {
 	RegionGeometryDiagnosticCode as Code,
 } from './geometry/region-geometry-diagnostic';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
-import type { RegionCompositionModel } from './region-composition-model';
-import type { RegionOwnedRoute } from './region-composition-types';
 import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
+import type { RegionCompositionModel } from './regions/model/region-composition-model';
+import type { RegionOwnedRoute } from './regions/model/region-composition-types';
 
 function translatedBoundsMatch(local: Bounds, global: Bounds, translation: Point): boolean {
 	if (global.x !== local.x + translation.x) return false;

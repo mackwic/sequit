@@ -13,11 +13,11 @@ import {
 	regionQualifiedFailure,
 	retryOwnerForIncidentFailure,
 } from '../../../../src/lib/core/layout/nested-region-recursive-diagnostics';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,

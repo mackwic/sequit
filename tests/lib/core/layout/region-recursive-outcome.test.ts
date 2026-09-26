@@ -18,28 +18,10 @@ import {
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
 import {
-	leafDocument,
-	leafIncidentContracts,
-} from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import {
-	normalizeRegionCompositionModel,
-	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import {
-	RegionIncidentRejectionCode,
-	type RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../../../../src/lib/core/layout/region-leaf-layout';
 import { solveRegionLeafLayoutWithIncidents } from '../../../../src/lib/core/layout/region-leaf-layout';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-portal-side';
 import {
 	diagnosedFailure,
 	leafErrorAttempt,
@@ -47,7 +29,25 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from '../../../../src/lib/core/layout/region-recursive-outcome';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
+import {
+	leafDocument,
+	leafIncidentContracts,
+} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-portal-side';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 

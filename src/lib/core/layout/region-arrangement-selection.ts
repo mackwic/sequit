@@ -1,7 +1,7 @@
 import { gridCellArrangement } from './grid-cell-recursive-region';
-import type { RegionArrangement } from './region-arrangement';
-import type { RegionCompositionNode } from './region-composition-tree';
 import { rowRegionArrangement } from './region-row-arrangement';
+import type { RegionArrangement } from './regions/model/region-arrangement';
+import type { RegionCompositionNode } from './regions/model/region-composition-tree';
 
 /** A grid owns fixed rails, a childless region is a leaf, every other region is a row. */
 export function regionArrangementFor(

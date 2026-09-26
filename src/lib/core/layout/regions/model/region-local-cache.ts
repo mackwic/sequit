@@ -1,7 +1,7 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LayoutPolicy, type LogicDocument } from '../document/logic-document';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import { defined, type LayoutPolicy, type LogicDocument } from '../../../document/logic-document';
+import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,

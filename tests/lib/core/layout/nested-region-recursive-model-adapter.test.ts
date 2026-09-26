@@ -12,24 +12,24 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	leafDocument,
 	leafIncidentContracts,
 	type RecursiveContext,
-} from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/region-composition-limits';
+} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/region-incident-contract';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 

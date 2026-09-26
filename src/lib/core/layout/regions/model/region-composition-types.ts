@@ -3,9 +3,9 @@ import type {
 	LayoutConfiguration,
 	LayoutPolicy,
 	RegionLanePresentation,
-} from '../document/logic-document';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { Bounds, LayoutResult, Point } from './layout-types';
+} from '../../../document/logic-document';
+import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type { Bounds, LayoutResult, Point } from '../../layout-types';
 import type { RegionPortalSide } from './region-portal-side';
 import type { RegionCompositionFailureEvidence } from './region-search-evidence';
 

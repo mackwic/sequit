@@ -25,7 +25,7 @@ import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	effectiveRouteGeometry,
 	variedGridRoutingCase,

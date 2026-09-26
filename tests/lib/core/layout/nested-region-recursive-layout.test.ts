@@ -10,17 +10,17 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
+import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,

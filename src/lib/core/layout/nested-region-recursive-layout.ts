@@ -5,28 +5,8 @@ import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
-import type { RegionIncidentPath, SolvedRecursiveRegion } from './nested-region-recursive-geometry';
-import {
-	type IncidentSides,
-	leafDocument,
-	leafIncidentContracts,
-	policyFailure,
-	type RecursiveContext,
-} from './nested-region-recursive-model-adapter';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
 import { regionArrangementFor } from './region-arrangement-selection';
-import { NESTED_REGION_COMPOSITION_LIMITS } from './region-composition-limits';
-import {
-	normalizeRegionCompositionModel,
-	type RegionCompositionModel,
-	RegionCompositionModelStatus,
-} from './region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-	type RegionLayoutAttempt,
-	type RegionPortalSide,
-} from './region-composition-types';
 import { validateRegionCompositionGeometry } from './region-composition-validation';
 import { regionLeafIncidentPath } from './region-leaf-incident-path';
 import {
@@ -34,7 +14,6 @@ import {
 	UnknownRegionLeafLayoutError,
 } from './region-leaf-layout';
 import { regionLeafPolicy } from './region-leaf-policy';
-import type { RegionLocalLayoutCache } from './region-local-cache';
 import {
 	type DiagnosedCandidate,
 	diagnosedFailure,
@@ -43,7 +22,31 @@ import {
 	retryIncidentFailure,
 	retryLeafContractFailure,
 } from './region-recursive-outcome';
-import { RegionSearchProvenance } from './region-search-evidence';
+import type {
+	RegionIncidentPath,
+	SolvedRecursiveRegion,
+} from './regions/model/nested-region-recursive-geometry';
+import {
+	type IncidentSides,
+	leafDocument,
+	leafIncidentContracts,
+	policyFailure,
+	type RecursiveContext,
+} from './regions/model/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from './regions/model/region-composition-limits';
+import {
+	normalizeRegionCompositionModel,
+	type RegionCompositionModel,
+	RegionCompositionModelStatus,
+} from './regions/model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+	type RegionLayoutAttempt,
+	type RegionPortalSide,
+} from './regions/model/region-composition-types';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import { RegionSearchProvenance } from './regions/model/region-search-evidence';
 
 function solveLeaf(
 	context: RecursiveContext,

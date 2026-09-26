@@ -1,4 +1,4 @@
-import type { EndpointRoute } from './bridges/bridge-contact';
+import type { EndpointRoute } from '../../bridges/bridge-contact';
 import { RegionIncidentRole, type RegionSolvedIncident } from './region-incident-contract';
 
 /** A leaf piece declares only the endpoint actually attached inside this leaf. */

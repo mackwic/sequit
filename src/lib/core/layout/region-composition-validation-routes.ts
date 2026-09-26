@@ -11,16 +11,19 @@ import {
 	RegionGeometryDiagnosticCode as Code,
 } from './geometry/region-geometry-diagnostic';
 import type { Bounds, Point } from './layout-types';
-import type { RegionCompositionModel, RegionRelationOwnership } from './region-composition-model';
-import {
-	type RegionOwnedRoute,
-	type RegionPortal,
-	RegionPortalSide,
-} from './region-composition-types';
 import type {
 	RegionCompositionGeometryCandidate,
 	RegionGeometryPlacement,
 } from './region-composition-validation-types';
+import type {
+	RegionCompositionModel,
+	RegionRelationOwnership,
+} from './regions/model/region-composition-model';
+import {
+	type RegionOwnedRoute,
+	type RegionPortal,
+	RegionPortalSide,
+} from './regions/model/region-composition-types';
 
 export interface GeometryContext {
 	readonly model: RegionCompositionModel;

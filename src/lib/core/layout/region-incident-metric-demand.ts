@@ -4,11 +4,11 @@ import {
 	MetricDemandKind,
 	type MinimumEndpointExtentMetricDemand,
 } from './contract/metric-demand';
-import { RegionPortalSide } from './region-composition-types';
+import { RegionPortalSide } from './regions/model/region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
 	type RegionIncidentContract,
-} from './region-incident-contract';
+} from './regions/model/region-incident-contract';
 
 const PORT_INSET = 16;
 const PORT_SPACING = 24;

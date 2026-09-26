@@ -4,9 +4,9 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 	type RootLayoutPresentation,
-} from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { LayoutMeasurements } from './layout-types';
+} from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
+import type { LayoutMeasurements } from '../../layout-types';
 import type {
 	RegionCompositionModel,
 	RegionCompositionNode,

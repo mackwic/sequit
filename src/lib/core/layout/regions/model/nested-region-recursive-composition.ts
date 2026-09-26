@@ -1,5 +1,10 @@
-import { defined, type LogicRelation } from '../document/logic-document';
-import type { LayoutRelation } from './layout-types';
+import { defined, type LogicRelation } from '../../../document/logic-document';
+import type { LayoutRelation } from '../../layout-types';
+import {
+	allocateNestedTracks,
+	type RoutingTrackDemand,
+	trackOffset,
+} from '../../resources/routing-resource-allocation';
 import {
 	boundaryPortal,
 	type RegionIncidentPath,
@@ -20,11 +25,6 @@ import type {
 	RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
-import {
-	allocateNestedTracks,
-	type RoutingTrackDemand,
-	trackOffset,
-} from './resources/routing-resource-allocation';
 
 interface PositionedChildren {
 	readonly context: RecursiveContext;

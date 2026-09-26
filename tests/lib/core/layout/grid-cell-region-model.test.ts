@@ -10,7 +10,7 @@ import type { GridCellInput } from '../../../../src/lib/core/layout/grid-cell-ty
 import {
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { gridInput, prepareGrid } from './grid-cell-fixture';
 
 function normalizedGrid(input: GridCellInput = gridInput()) {

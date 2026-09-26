@@ -18,25 +18,25 @@ import {
 	policyFailure,
 	type RecursiveContext,
 	sideForRegion,
-} from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
-import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/region-composition-limits';
+} from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
+import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	partitionRelations,
 	relationOwnership,
-} from '../../../../src/lib/core/layout/region-composition-relations';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-relations';
 import {
 	normalizedRegions,
 	parentCycle,
-} from '../../../../src/lib/core/layout/region-composition-tree';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-tree';
 import {
 	type RegionInput,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 const emptyMeasurements: LayoutMeasurements = {

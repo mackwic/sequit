@@ -18,7 +18,7 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grid-cell-types';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function selected(

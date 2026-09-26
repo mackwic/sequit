@@ -12,7 +12,7 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,

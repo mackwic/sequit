@@ -22,7 +22,7 @@ import type { LayoutMeasurements } from '../../../../../src/lib/core/layout/layo
 import {
 	RegionLocalLayoutCache,
 	regionLocalLayoutKey,
-} from '../../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { median, percentile } from '../../../../support/performance/performance-statistics';
 import { gridInput, prepareGrid } from '../grid-cell-fixture';
 

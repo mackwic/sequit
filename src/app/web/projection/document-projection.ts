@@ -10,7 +10,7 @@ import {
 	type TopologicalRanks,
 } from '../../../lib/core/graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
-import { RegionLocalLayoutCache } from '../../../lib/core/layout/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
 import {
 	type CanvasMeasurementModel,
 	type CanvasModel,

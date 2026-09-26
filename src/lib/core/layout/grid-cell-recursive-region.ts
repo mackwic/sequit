@@ -15,20 +15,23 @@ import {
 	GridCellLayoutStatus,
 	type GridCellRouteAttempt,
 } from './grid-cell-types';
-import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
-import type { RecursiveContext } from './nested-region-recursive-model-adapter';
+import {
+	UnknownRegionLeafLayoutError,
+	UnsupportedRegionLeafLayoutError,
+} from './region-leaf-layout';
+import {
+	type SolvedRecursiveRegion,
+	translatedChildren,
+} from './regions/model/nested-region-recursive-geometry';
+import type { RecursiveContext } from './regions/model/nested-region-recursive-model-adapter';
 import type {
 	ArrangementIncidentInput,
 	ArrangementPlaceInput,
 	ArrangementRouteInput,
 	RegionArrangement,
-} from './region-arrangement';
-import { RegionPortalSide } from './region-composition-types';
-import {
-	UnknownRegionLeafLayoutError,
-	UnsupportedRegionLeafLayoutError,
-} from './region-leaf-layout';
-import { RegionSearchProvenance } from './region-search-evidence';
+} from './regions/model/region-arrangement';
+import { RegionPortalSide } from './regions/model/region-composition-types';
+import { RegionSearchProvenance } from './regions/model/region-search-evidence';
 
 function gridCellInput(context: RecursiveContext, regionId: string): GridCellInput {
 	const region = defined(context.model.regionsById.get(regionId));

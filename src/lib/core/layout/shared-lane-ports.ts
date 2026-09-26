@@ -2,8 +2,8 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined, LaneOrientation } from '../document/logic-document';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds } from './layout-types';
-import { RegionPortalSide } from './region-composition-types';
-import type { RegionIncidentContract } from './region-incident-contract';
+import { RegionPortalSide } from './regions/model/region-composition-types';
+import type { RegionIncidentContract } from './regions/model/region-incident-contract';
 import type { RoutingEdge } from './resources/routing-resource-allocation';
 import type {
 	LaneSide,

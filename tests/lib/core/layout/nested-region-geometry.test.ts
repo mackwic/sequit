@@ -21,8 +21,8 @@ import type {
 	RegionChildPlacement,
 	RegionLayoutSelected,
 	RegionOwnedRoute,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	nestedRegionInput,
 	regionDocument,

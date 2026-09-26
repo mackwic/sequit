@@ -1,6 +1,6 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import type { LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import type { LogicRelation } from '../../../document/logic-document';
+import type { LogicGraph } from '../../../graph/create-graph';
 import type { RegionInput } from './region-composition-types';
 
 /** Normalization outcome, shared by every composition entry point. */

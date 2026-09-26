@@ -4,17 +4,20 @@ import {
 	retryOwnerForIncidentFailure,
 	retryOwnerForLeafContractFailure,
 } from './nested-region-recursive-diagnostics';
-import { type RecursiveContext, sideForRegion } from './nested-region-recursive-model-adapter';
 import { regionArrangementFor } from './region-arrangement-selection';
-import {
-	RegionCompositionStatus,
-	type RegionLayoutAttempt,
-	type RegionPortalSide,
-} from './region-composition-types';
 import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-layout';
+import {
+	type RecursiveContext,
+	sideForRegion,
+} from './regions/model/nested-region-recursive-model-adapter';
+import {
+	RegionCompositionStatus,
+	type RegionLayoutAttempt,
+	type RegionPortalSide,
+} from './regions/model/region-composition-types';
 
 export interface DiagnosedCandidate {
 	readonly attempt: RegionLayoutAttempt;

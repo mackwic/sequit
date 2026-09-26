@@ -1,4 +1,4 @@
-import type { LogicRelation } from '../document/logic-document';
+import type { LogicRelation } from '../../../document/logic-document';
 import type { SolvedRecursiveRegion } from './nested-region-recursive-geometry';
 import type { RecursiveContext } from './nested-region-recursive-model-adapter';
 import type { RegionPortalSide } from './region-composition-types';

@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
+import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRole,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { depthTwoRegionDocument } from './nested-region-fixture';

@@ -10,7 +10,7 @@ import {
 import type { CrossingPortalSpan, GridCrossingAllocation } from './grid-cell-crossing-allocation';
 import type { GridCellInput, GridCellPlacement, GridCellPortal } from './grid-cell-types';
 import type { LayoutRelation, Point } from './layout-types';
-import { type RegionOwnedRoute, RegionPortalSide } from './region-composition-types';
+import { type RegionOwnedRoute, RegionPortalSide } from './regions/model/region-composition-types';
 
 /** The placed cells and the allocated tracks a grid region routes its crossings with. */
 export interface GridCrossingRouting {

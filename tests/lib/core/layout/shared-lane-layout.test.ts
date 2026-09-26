@@ -22,12 +22,12 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
-} from '../../../../src/lib/core/layout/region-incident-contract';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import {
 	makeSharedLaneFrame,
 	SHARED_LANE_CLEARANCE,

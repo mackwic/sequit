@@ -4,10 +4,10 @@ import type { SolvedGridCell } from './grid-cell-disposition';
 import { type GridModel, localMeasurements } from './grid-cell-model';
 import { gridCellRegionLeafDocument } from './grid-cell-region-model';
 import type { LayoutMeasurements } from './layout-types';
-import type { RegionCompositionModel } from './region-composition-model';
 import { InvalidRegionLeafGraphError, solveRegionLeafLayout } from './region-leaf-layout';
 import { regionLeafPolicy } from './region-leaf-policy';
-import type { RegionLocalLayoutCache } from './region-local-cache';
+import type { RegionCompositionModel } from './regions/model/region-composition-model';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
 
 interface GridRegionSolveInput {
 	readonly graph: LogicGraph;

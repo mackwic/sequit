@@ -6,8 +6,11 @@ import { evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
-import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
-import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
+import type { RegionLocalLayout, RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import {
+	type RegionSearchEvidence,
+	RegionSearchProvenance,
+} from './regions/model/region-search-evidence';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export class InvalidRegionLeafGraphError extends Error {

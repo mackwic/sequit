@@ -14,13 +14,13 @@ import {
 	type RegionIncidentPath,
 	type SolvedRecursiveRegion,
 	translatedIncidentPath,
-} from './nested-region-recursive-geometry';
+} from './regions/model/nested-region-recursive-geometry';
 import {
 	directChild,
 	type IncidentSides,
 	type RecursiveContext,
-} from './nested-region-recursive-model-adapter';
-import { RegionPortalSide } from './region-composition-types';
+} from './regions/model/nested-region-recursive-model-adapter';
+import { RegionPortalSide } from './regions/model/region-composition-types';
 
 interface GridIncidentInput {
 	readonly context: RecursiveContext;

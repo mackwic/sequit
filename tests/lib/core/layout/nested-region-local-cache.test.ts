@@ -10,20 +10,20 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
+import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-layout';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-layout';
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import {
 	MAX_REGION_LOCAL_CACHE_ENTRIES,
 	RegionLocalLayoutCache,
 	regionLocalLayoutKey,
-} from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { nestedRegionInput, regionDocument } from './nested-region-fixture';
 

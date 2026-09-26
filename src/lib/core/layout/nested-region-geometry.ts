@@ -3,16 +3,16 @@ import type { RouteBridgeCache } from './bridges/bridge-oracle';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { validateNestedPlacements } from './nested-region-placement-validation';
 import { validateNestedRouteOwnership } from './nested-region-route-validation';
+import { validateRegionCompositionGeometry } from './region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from './region-composition-model';
+} from './regions/model/region-composition-model';
 import {
 	type RegionInput,
 	type RegionLayoutSelected,
 	RegionPortalSide,
-} from './region-composition-types';
-import { validateRegionCompositionGeometry } from './region-composition-validation';
+} from './regions/model/region-composition-types';
 
 /** Separate materialization check: confinement, portals, ownership and opacity. */
 export function validateNestedRegionGeometry(

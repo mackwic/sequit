@@ -7,8 +7,8 @@ import {
 	type RegionCompositionLimits,
 	type RegionCompositionModel,
 	type RegionCompositionModelBuild,
-} from './region-composition-model';
-import type { RegionInput, RegionInputDefinition } from './region-composition-types';
+} from './regions/model/region-composition-model';
+import type { RegionInput, RegionInputDefinition } from './regions/model/region-composition-types';
 
 /** Adapt an already normalized two-by-two grid to the common region ownership model. */
 export function normalizeGridCellRegionModel(

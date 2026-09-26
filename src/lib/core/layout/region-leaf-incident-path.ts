@@ -1,7 +1,13 @@
 import { defined } from '../document/logic-document';
 import type { LayoutResult, Point } from './layout-types';
-import { boundaryPortal, type RegionIncidentPath } from './nested-region-recursive-geometry';
-import { RegionIncidentRole, type RegionSolvedIncident } from './region-incident-contract';
+import {
+	boundaryPortal,
+	type RegionIncidentPath,
+} from './regions/model/nested-region-recursive-geometry';
+import {
+	RegionIncidentRole,
+	type RegionSolvedIncident,
+} from './regions/model/region-incident-contract';
 
 function sameAxis(first: Point, middle: Point, last: Point): boolean {
 	const sameColumn = first.x === middle.x && middle.x === last.x;

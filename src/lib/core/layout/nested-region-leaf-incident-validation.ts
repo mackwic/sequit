@@ -18,13 +18,13 @@ import {
 	type RegionCompositionModel,
 	RegionRelationKind,
 	type RegionRelationOwnership,
-} from './region-composition-model';
+} from './regions/model/region-composition-model';
 import {
 	type RegionLayoutSelected,
 	type RegionOwnedRoute,
 	type RegionPortal,
 	RegionPortalSide,
-} from './region-composition-types';
+} from './regions/model/region-composition-types';
 
 interface LeafIncident {
 	readonly relation: LogicRelation;

@@ -9,20 +9,20 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
-	RegionCompositionStatus,
-	type RegionInput,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import {
-	RegionIncidentRejectionCode,
-	RegionIncidentUnknownCode,
-} from '../../../../src/lib/core/layout/region-incident-contract';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
-import {
 	REGION_SUBTREE_CALCULATION_FAILED,
 	RegionSubtreeScope,
 	solveRegionSubtreeAttempts,
 } from '../../../../src/lib/core/layout/region-partial-composition';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import {
 	regionLanePartialDocument,

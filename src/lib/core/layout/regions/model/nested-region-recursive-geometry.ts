@@ -1,7 +1,14 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicRelation } from '../document/logic-document';
-import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
+import { compareCanonicalStrings } from '../../../canonical-string';
+import { defined, type LogicRelation } from '../../../document/logic-document';
+import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type {
+	Bounds,
+	LayoutElement,
+	LayoutRelation,
+	LayoutResult,
+	Point,
+} from '../../layout-types';
+import { edgeExtent, type RoutingEdge } from '../../resources/routing-resource-allocation';
 import { PARENT_BUS_SPACING, REGION_PADDING } from './nested-region-crossing-routing';
 import {
 	type RegionChildPlacement,
@@ -9,7 +16,6 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
-import { edgeExtent, type RoutingEdge } from './resources/routing-resource-allocation';
 
 const REGION_GAP = 96;
 const ROOT_MARGIN = 48;

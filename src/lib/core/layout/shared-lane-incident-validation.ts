@@ -4,13 +4,13 @@ import { orthogonal, samePoint } from './geometry/nested-region-geometry-primiti
 import { hitsBox } from './geometry/shared-lane-geometry-primitives';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, Point } from './layout-types';
-import { RegionPortalSide } from './region-composition-types';
-import { incidentEndpointRoute } from './region-incident-contact';
+import { RegionPortalSide } from './regions/model/region-composition-types';
+import { incidentEndpointRoute } from './regions/model/region-incident-contact';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
 	type RegionSolvedIncident,
-} from './region-incident-contract';
+} from './regions/model/region-incident-contract';
 import { facePortEdge, incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneGeometry } from './shared-lane-types';
 

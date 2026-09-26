@@ -8,7 +8,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { layoutWithRootRegion } from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

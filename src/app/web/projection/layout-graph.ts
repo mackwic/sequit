@@ -5,7 +5,7 @@ import type {
 	LayoutOptions,
 	LayoutResult,
 } from '../../../lib/core/layout/layout-types';
-import type { RegionLocalLayoutCache } from '../../../lib/core/layout/region-local-cache';
+import type { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
 import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,

@@ -18,9 +18,9 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
-} from './region-composition-types';
-import type { RegionIncidentUnknownCode } from './region-incident-contract';
-import type { RegionLocalLayoutCache } from './region-local-cache';
+} from './regions/model/region-composition-types';
+import type { RegionIncidentUnknownCode } from './regions/model/region-incident-contract';
+import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './shared-lane-layout';
 
 export enum LayoutRegionKind {

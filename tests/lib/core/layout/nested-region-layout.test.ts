@@ -15,18 +15,18 @@ import {
 	solveNestedRegionLayoutForProjection,
 } from '../../../../src/lib/core/layout/nested-region-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionLayoutSelected,
 	type RegionOwnedRoute,
 	RegionPortalSide,
-} from '../../../../src/lib/core/layout/region-composition-types';
-import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { layoutDocument, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	depthTwoRegionDocument,

@@ -6,7 +6,7 @@ import {
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
-} from './region-incident-contract';
+} from './regions/model/region-incident-contract';
 import { boundedCounter, firstValidDepthFirst } from './search/bounded-search';
 import {
 	type LaneIncidentPathCandidate,

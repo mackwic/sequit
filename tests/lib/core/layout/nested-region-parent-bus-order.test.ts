@@ -6,18 +6,18 @@ import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
-import {
-	normalizeRegionCompositionModel,
-	RegionCompositionModelStatus,
-} from '../../../../src/lib/core/layout/region-composition-model';
-import {
-	RegionCompositionStatus,
-	type RegionInput,
-} from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import { validateParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
 import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/region-composition-validation-detail';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import {
+	RegionCompositionStatus,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {

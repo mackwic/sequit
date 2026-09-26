@@ -22,8 +22,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
-import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
+import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { UnsupportedRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
 import {
 	readSourceDocumentState,
