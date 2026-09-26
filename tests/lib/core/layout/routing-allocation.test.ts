@@ -20,7 +20,7 @@ import { settleGroupCorridorPorts } from '../../../../src/lib/core/layout/routin
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
-import { layoutDocument } from '../../../support/harnesses/layout';
+import { boundsFor, contains, layoutDocument, overlaps } from '../../../support/harnesses/layout';
 import { VisualLayout } from '../../../support/harnesses/visual-layout';
 
 describe('rail and port reservations', () => {
@@ -283,6 +283,10 @@ describe('rail and port reservations', () => {
 			),
 			groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
 		});
+		const group = boundsFor(layout, 'group');
+		expect(contains(group, boundsFor(layout, 'f'))).toBe(true);
+		for (const id of ids.filter((id) => id !== 'f'))
+			expect(overlaps(group, boundsFor(layout, id)), `Group must not contain ${id}`).toBe(false);
 		const independent = layout.relations.find(({ id }) => id === 'a-d');
 		const reusable = layout.relations.find(({ id }) => id === 'c-e');
 		if (independent === undefined || reusable === undefined)
@@ -292,6 +296,7 @@ describe('rail and port reservations', () => {
 			.routes()
 			.areOrthogonal()
 			.areAttachedToEndpoints()
+			.followLayoutFlow()
 			.haveOnlyAllowedSharedTrunks();
 	});
 

@@ -664,63 +664,6 @@ it('keeps all ordinary routes attached when grouped packing increases a corridor
 		.haveOnlyAllowedSharedTrunks();
 });
 
-it('keeps every relation attached when port growth exposes an independent corridor', async () => {
-	const configuration = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Right } as const;
-	const fixture = groupJunctionFixture(configuration, false, false);
-	const template = fixture.nodes[0];
-	if (template === undefined) throw new Error('A group member is required');
-	const ungrouped = { ...template };
-	delete ungrouped.groupId;
-	const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
-	const sizes = [
-		{ width: 167, height: 129 },
-		{ width: 86, height: 46 },
-		{ width: 151, height: 124 },
-		{ width: 122, height: 103 },
-		{ width: 126, height: 80 },
-		{ width: 135, height: 42 },
-	];
-	const document: LogicDocument = {
-		...fixture,
-		nodes: ids.map((id, index) => {
-			const node = { ...ungrouped, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
-			if (id === 'f') return { ...node, groupId: 'group' };
-			return node;
-		}),
-		junctions: [],
-		relations: [
-			{ id: 'a-d', from: 'a', to: 'd' },
-			{ id: 'b-e', from: 'b', to: 'e' },
-			{ id: 'b-f', from: 'b', to: 'f' },
-			{ id: 'c-e', from: 'c', to: 'e' },
-			{ id: 'c-f', from: 'c', to: 'f' },
-		],
-	};
-	const { layout, ranks } = await layoutDocument(document, {
-		nodes: Object.fromEntries(
-			ids.map((id, index) => {
-				const size = sizes[index];
-				if (size === undefined) throw new Error('Every node requires dimensions');
-				return [id, size];
-			}),
-		),
-		groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
-	});
-	assertDisjointNodesAndForeignGroups(document, layout);
-	const newCorridor = layout.relations.find((route) => route.id === 'a-d');
-	const reusableRail = layout.relations.find((route) => route.id === 'c-e');
-	if (newCorridor === undefined || reusableRail === undefined)
-		throw new Error('The independent and reusable routes must exist');
-	// The independent link enters the allocated corridor instead of creating a private rail.
-	expect(newCorridor.points[1]?.x).toBe(reusableRail.points[1]?.x);
-	AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
-		.routes()
-		.areOrthogonal()
-		.areAttachedToEndpoints()
-		.followLayoutFlow()
-		.haveOnlyAllowedSharedTrunks();
-});
-
 it('separates a group from a junction retreating as trailing clearance grows from 48 to 96', () => {
 	const configuration = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left } as const;
 	const fixture = groupJunctionFixture(configuration, false, false);
