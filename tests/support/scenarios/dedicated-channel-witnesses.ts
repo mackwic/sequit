@@ -47,10 +47,10 @@ export function railReuseDocument(): LogicDocument {
 	};
 }
 
-/** A single-column downstream chain bounds rank work without widening the tested channel. */
+/** A single-column downstream chain exceeds the measured local search budget without widening the tested channel. */
 export function railClearanceDocument(): LogicDocument {
 	const base = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'sparse').document;
-	const ids = Array.from({ length: 15 }, (_, index) => `wide-${index}`);
+	const ids = Array.from({ length: 41 }, (_, index) => `wide-${index}`);
 	return {
 		...base,
 		nodes: [

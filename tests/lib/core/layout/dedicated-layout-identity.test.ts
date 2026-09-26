@@ -366,8 +366,8 @@ describe('dedicated engine LayoutResult identity', () => {
 				'a630fe9ae19dfd906835eebbe7900a74eb6284723ecf19d7f8382bac419fa7ad',
 			'multirank-group-junction-two':
 				'af0c04a049f78553929819f5e5ed553f4d41f3bcd6fa95df18725c5869194280',
-			'rail-clearance-12': '8338dd7eade68aaa23a9cc844163e69af8bc7dd6555a0b1d3c84723ecc13e5ce',
-			'rail-clearance-13': '5f7012acee87b27e45cdd70169d743814bbe4b529d0449ebd2bac32ac8f84dc6',
+			'rail-clearance-12': 'e0bb6148ab3d54ea444731cfdfc7e35b5b196d15d1c7f96f7bdc15b8866e6754',
+			'rail-clearance-13': 'd33ef814c853a9cbc19a71d910cd2914dfae9803b17ad2796a6edd6dd5da88c6',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
 			'workshop-branching': '007f50ba4f616a515f8c8d08e082536958b139ee39d6ad2cb5ef12236c0e58c4',
 			'workshop-navigation': '8d830ff4b6e4ffa33df6499b0684748a4a38c1cf62bbe10d2960bf7934894438',

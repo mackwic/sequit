@@ -254,7 +254,6 @@ describe('dedicated engine channel characterization (replaceable during channel 
 				railClearanceDocument(),
 				['a-to-d', 'a-to-e'],
 				railClearanceMeasurements(clearance),
-				true,
 			);
 			const earlier = wireFor(channel, 'a-to-d').first;
 			const later = wireFor(channel, 'a-to-e').first;
