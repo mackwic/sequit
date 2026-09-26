@@ -27,7 +27,6 @@ export enum LayoutContractResolutionStatus {
 }
 
 enum LayoutContractResolutionUnknownReason {
-	BaselineFailed = 'baseline-failed',
 	NoValidatedCandidate = 'no-validated-candidate',
 }
 
@@ -170,17 +169,7 @@ export function resolveAdjacentLayoutContract(
 			evaluations: [],
 		};
 	// Differential comparison must retain the contract's documentary order on both sides.
-	let baseline: LayoutResult;
-	try {
-		baseline = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
-	} catch {
-		return {
-			status: LayoutContractResolutionStatus.Unknown,
-			reason: LayoutContractResolutionUnknownReason.BaselineFailed,
-			contract,
-			evaluations: [],
-		};
-	}
+	const baseline = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
 	const materialized = new Map<string, LayoutResult | undefined>();
 	const { evaluations, explored, exhaustive, incumbent } = bestWithinBudget({
 		alternatives: contract.candidates.flatMap(candidateFaceBranches),

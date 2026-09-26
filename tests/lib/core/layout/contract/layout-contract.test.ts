@@ -1527,4 +1527,24 @@ describe('adjacent node LayoutContract', () => {
 		);
 		expect(partial.exploredBranches).toBe(firstAccepted + 1);
 	});
+	it('reports no validated candidate when finite node widths exceed resolvable port precision', () => {
+		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
+		const measured = measurements();
+		const precisionLimited: LayoutMeasurements = {
+			...measured,
+			nodes: new Map([...measured.nodes].map(([id, size]) => [id, { ...size, width: 1e18 }])),
+		};
+		const result = resolveAdjacentLayoutContract(
+			source,
+			topologicallyRank(source),
+			precisionLimited,
+		);
+		expect(result.status).toBe(LayoutContractResolutionStatus.Unknown);
+		if (result.status !== LayoutContractResolutionStatus.Unknown) return;
+		expect(result.reason).toBe('no-validated-candidate');
+		expect(result.evaluations.length).toBeGreaterThan(0);
+		expect(
+			result.evaluations.every(({ status }) => status === ContractBranchStatus.GeometryRejected),
+		).toBe(true);
+	});
 });
