@@ -1,6 +1,6 @@
 import { defined } from '../document/logic-document';
 import { unbridgedContacts } from './bridge-contact';
-import { type RoutedPath, validatedBridges } from './bridge-oracle';
+import { type LayoutBridge, type RoutedPath, validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
 import { finiteBounds, inside, within } from './nested-region-geometry-primitives';
 import type { RegionCompositionModel } from './region-composition-model';
@@ -291,8 +291,9 @@ export function diagnoseParentRouteContacts(
 	model: RegionCompositionModel,
 	ownedRoutes: readonly RegionOwnedRoute[],
 	relations: readonly RoutedPath[] = [],
+	bridgesValidated?: readonly LayoutBridge[],
 ): RegionGeometryDiagnostic | undefined {
-	const bridges = validatedBridges(relations);
+	const bridges = bridgesValidated ?? validatedBridges(relations);
 	for (const [index, route] of ownedRoutes.entries()) {
 		const owner = model.regionsById.get(route.regionId);
 		if (owner === undefined || owner.childIds.length === 0) continue;

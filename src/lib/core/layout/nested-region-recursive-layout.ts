@@ -1,5 +1,6 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import type { RouteBridgeCache } from './bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
@@ -166,10 +167,11 @@ function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandi
 			),
 			ownedRoutes: solved.ownedRoutes,
 		} as const;
-		const chainFailure = validateRegionCompositionGeometry(model, candidate);
+		const bridgeCache: RouteBridgeCache = {};
+		const chainFailure = validateRegionCompositionGeometry(model, candidate, bridgeCache);
 		if (retryCompositionFailure(retryState, chainFailure)) continue;
 		if (chainFailure !== undefined) return diagnosedFailure(chainFailure, chainFailure.message);
-		const incidentFailure = validateNestedRegionLeafIncidents(model, candidate);
+		const incidentFailure = validateNestedRegionLeafIncidents(model, candidate, bridgeCache);
 		if (incidentFailure !== undefined) {
 			if (retryIncidentFailure(retryState, incidentFailure)) continue;
 			return diagnosedFailure(incidentFailure, regionQualifiedFailure(model, incidentFailure));

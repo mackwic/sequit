@@ -13,6 +13,7 @@ import {
 	routeRuns,
 	strictCrossings,
 	validatedBridges,
+	validatedBridgesCached,
 } from '../../../../src/lib/core/layout/bridge-oracle';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -92,6 +93,21 @@ describe('the bridge oracle', () => {
 		expect(strictCrossings([horizontalCrossing, verticalCrossing])).toEqual([
 			{ x: 50, y: 50, horizontalId: 'horizontal', verticalId: 'vertical' },
 		]);
+	});
+
+	it('does not carry a prior candidate bridge into a different route set', () => {
+		const crossing = [horizontalCrossing, verticalCrossing];
+		const disjoint = [
+			horizontalCrossing,
+			relation('vertical', [
+				{ x: 150, y: 0 },
+				{ x: 150, y: 100 },
+			]),
+		];
+		const cache = {};
+		expect(validatedBridgesCached(crossing, cache)).toHaveLength(1);
+		expect(validatedBridgesCached(disjoint, cache)).toEqual([]);
+		expect(validatedBridgesCached(crossing, cache)).toHaveLength(1);
 	});
 
 	it('moves the bridge to the run that has room when the later one is crowded', () => {

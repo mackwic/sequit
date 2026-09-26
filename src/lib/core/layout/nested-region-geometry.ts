@@ -1,5 +1,6 @@
 import type { LogicGraph } from '../graph/create-graph';
-import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
+import type { RouteBridgeCache } from './bridge-oracle';
+import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { validateNestedPlacements } from './nested-region-placement-validation';
 import { validateNestedRouteOwnership } from './nested-region-route-validation';
 import {
@@ -11,7 +12,7 @@ import {
 	type RegionLayoutSelected,
 	RegionPortalSide,
 } from './region-composition-types';
-import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from './region-composition-validation';
+import { validateRegionCompositionGeometry } from './region-composition-validation';
 
 /** Separate materialization check: confinement, portals, ownership and opacity. */
 export function validateNestedRegionGeometry(
@@ -26,11 +27,13 @@ export function validateNestedRegionGeometry(
 	const lateral = candidate.portals.some(
 		({ side }) => side === RegionPortalSide.Left || side === RegionPortalSide.Right,
 	);
-	if (nested || lateral)
+	if (nested || lateral) {
+		const bridgeCache: RouteBridgeCache = {};
 		return (
-			validateRegionCompositionGeometry(normalized.model, candidate) ??
-			validateNestedRegionLeafIncidents(normalized.model, candidate)
+			validateRegionCompositionGeometry(normalized.model, candidate, bridgeCache)?.message ??
+			validateNestedRegionLeafIncidents(normalized.model, candidate, bridgeCache)?.message
 		);
+	}
 	return (
 		validateNestedPlacements(candidate) ?? validateNestedRouteOwnership(graph, input, candidate)
 	);

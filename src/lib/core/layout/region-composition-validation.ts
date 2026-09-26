@@ -1,4 +1,5 @@
 import { defined } from '../document/logic-document';
+import { type RouteBridgeCache, validatedBridgesCached } from './bridge-oracle';
 import type { Bounds } from './layout-types';
 import { finiteBounds, inside, overlaps } from './nested-region-geometry-primitives';
 import type { RegionCompositionModel } from './region-composition-model';
@@ -125,6 +126,7 @@ function placementFailure(
 export function validateRegionCompositionGeometry(
 	model: RegionCompositionModel,
 	candidate: RegionCompositionGeometryCandidate,
+	bridgeCache?: RouteBridgeCache,
 ): RegionGeometryDiagnostic | undefined {
 	const placements = new Map(candidate.regions.map((region) => [region.id, region]));
 	const root = {
@@ -157,7 +159,13 @@ export function validateRegionCompositionGeometry(
 		const failure = relationFailure(owned, candidate, context);
 		if (failure !== undefined) return failure;
 	}
-	return diagnoseParentRouteContacts(model, candidate.ownedRoutes, candidate.layout.relations);
+	const bridges = validatedBridgesCached(candidate.layout.relations, bridgeCache);
+	return diagnoseParentRouteContacts(
+		model,
+		candidate.ownedRoutes,
+		candidate.layout.relations,
+		bridges,
+	);
 }
 
 /** Display adapter for callers that only need the established wording. */

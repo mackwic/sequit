@@ -1,6 +1,6 @@
 import { defined, type LogicRelation } from '../document/logic-document';
 import { disallowedRouteContacts, type EndpointRoute } from './bridge-contact';
-import { type LayoutBridge, validatedBridges } from './bridge-oracle';
+import { type LayoutBridge, type RouteBridgeCache, validatedBridgesCached } from './bridge-oracle';
 import type { Bounds, LayoutElement, Point } from './layout-types';
 import { orthogonal, segmentEnters } from './nested-region-geometry-primitives';
 import {
@@ -281,9 +281,10 @@ function registerLeafIncident(
 export function validateNestedRegionLeafIncidents(
 	model: RegionCompositionModel,
 	candidate: RegionLayoutSelected,
+	bridgeCache?: RouteBridgeCache,
 ): RegionGeometryDiagnostic | undefined {
 	const elementsById = new Map(candidate.layout.elements.map((element) => [element.id, element]));
-	const bridges = validatedBridges(candidate.layout.relations);
+	const bridges = validatedBridgesCached(candidate.layout.relations, bridgeCache);
 	const context = { elementsById, bridges };
 	const earlierByLeaf = new Map<string, LeafIncident[]>();
 	for (const owned of model.relations) {

@@ -54,6 +54,12 @@ export interface RouteBridgeAnalysis {
 	readonly bridges: readonly LayoutBridge[];
 }
 
+/** Derived bridges tied to one immutable route array; a different candidate replaces them. */
+export interface RouteBridgeCache {
+	paths?: readonly RoutedPath[];
+	bridges?: readonly LayoutBridge[];
+}
+
 /** The mutable state of one bridge analysis: the runs, the crossings and the arcs already placed. */
 interface BridgeScan {
 	readonly runs: readonly RouteRun[];
@@ -331,4 +337,19 @@ export function validatedBridges(
 	charge?: RouteWorkCharge,
 ): readonly LayoutBridge[] {
 	return routeBridgeAnalysis(paths, charge).bridges;
+}
+
+/** Share one derived bridge analysis between validators of the same assembled candidate. */
+export function validatedBridgesCached(
+	paths: readonly RoutedPath[],
+	cache?: RouteBridgeCache,
+): readonly LayoutBridge[] {
+	const previous = cache?.bridges;
+	if (previous !== undefined && cache?.paths === paths) return previous;
+	const bridges = validatedBridges(paths);
+	if (cache !== undefined) {
+		cache.paths = paths;
+		cache.bridges = bridges;
+	}
+	return bridges;
 }
