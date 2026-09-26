@@ -32,18 +32,10 @@ interface GlobalChoice {
 	readonly fallbackComponents: readonly (readonly string[])[];
 }
 
-export interface RejectedRankAdmission {
-	readonly accepted: false;
-	readonly endpointIds: readonly [string, ...string[]];
-	readonly relationIds: readonly string[];
-}
-
-export type RankAdmission = boolean | RejectedRankAdmission;
-
 interface SelectionServices {
 	readonly options: LayoutOptions;
 	readonly evaluate: typeof evaluateDedicatedLayout;
-	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => RankAdmission) | undefined;
+	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 }
 
 interface AssemblyInput {
@@ -105,30 +97,6 @@ function restoreDocumentary(
 		local.changed.delete(index);
 	}
 	return fallen;
-}
-
-function faultyAdmissionComponents(
-	failure: RankAdmission,
-	modified: ReadonlySet<number>,
-	byEndpoint: ReadonlyMap<string, number>,
-	byRelation: ReadonlyMap<string, readonly number[]>,
-): ReadonlySet<number> {
-	if (typeof failure === 'boolean') return modified;
-	const implicated = new Set<number>();
-	for (const id of failure.endpointIds) {
-		const index = byEndpoint.get(id);
-		if (index === undefined || !modified.has(index)) return modified;
-		implicated.add(index);
-	}
-	for (const id of failure.relationIds) {
-		const indices = byRelation.get(id);
-		if (indices === undefined) return modified;
-		for (const index of indices) {
-			if (!modified.has(index)) return modified;
-			implicated.add(index);
-		}
-	}
-	return implicated;
 }
 
 function rejectedRenderedQuality(
@@ -200,15 +168,9 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 			continue;
 		}
 		if (services.admit !== undefined) incidentAdmissions += 1;
-		const admission = services.admit?.(trial.result, ranks) ?? true;
-		if (admission !== true) {
-			const faulty = faultyAdmissionComponents(
-				admission,
-				local.changed,
-				budgets.byEndpoint,
-				owners,
-			);
-			fallbackComponents.push(...restoreDocumentary(input, faulty));
+		// Partial incident conflicts have no reliable component provenance; restore every rank edit.
+		if (services.admit?.(trial.result, ranks) === false) {
+			fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
 			continue;
 		}
 		return {

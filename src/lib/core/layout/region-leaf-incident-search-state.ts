@@ -1,13 +1,9 @@
-import { defined } from '../document/logic-document';
 import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './bounded-search';
-import type { RankAdmission } from './rank-order-selection';
 import type { RegionPortalSide } from './region-composition-types';
-import {
-	type RegionIncidentContract,
-	type RegionIncidentRejectedAlternative,
-	RegionIncidentRejectionCode,
-	type RegionIncidentSearchWitness,
-	RegionIncidentUnknownCode,
+import type {
+	RegionIncidentContract,
+	RegionIncidentRejectedAlternative,
+	RegionIncidentSearchWitness,
 } from './region-incident-contract';
 import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
 
@@ -100,44 +96,4 @@ export function recordRejection(
 
 export function takeAttempt(state: SearchState): boolean {
 	return state.budget.take();
-}
-
-function recordBlockers(
-	rejected: RegionIncidentRejectedAlternative,
-	byRelation: ReadonlyMap<string, string>,
-	endpoints: Set<string>,
-	relations: Set<string>,
-): void {
-	endpoints.add(rejected.endpointId);
-	if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) return;
-	const { blockedEndpointId, blockedRelationId, blockedIncidentRelationId } = rejected;
-	if (blockedEndpointId !== undefined) endpoints.add(blockedEndpointId);
-	if (blockedRelationId !== undefined) relations.add(blockedRelationId);
-	if (blockedIncidentRelationId !== undefined)
-		endpoints.add(defined(byRelation.get(blockedIncidentRelationId)));
-}
-
-/** Exhaustive failures identify an incident and every concrete blocker; missing provenance is global. */
-export function rejectedIncidentAdmission(
-	attempt: {
-		readonly code: RegionIncidentUnknownCode;
-		readonly witness: RegionIncidentSearchWitness;
-	},
-	contracts: readonly RegionIncidentContract[],
-): RankAdmission {
-	if (attempt.code !== RegionIncidentUnknownCode.NoValidAlternative) return false;
-	const endpoints = new Set<string>();
-	const relations = new Set<string>();
-	const byRelation = new Map(
-		contracts.map((contract) => [contract.relation.id, contract.endpointId]),
-	);
-	let concrete = false;
-	for (const rejected of attempt.witness.rejectedAlternatives) {
-		if (rejected.exhausted) continue;
-		recordBlockers(rejected, byRelation, endpoints, relations);
-		concrete = true;
-	}
-	if (!concrete) return false;
-	const [first, ...rest] = endpoints;
-	return { accepted: false, endpointIds: [defined(first), ...rest], relationIds: [...relations] };
 }

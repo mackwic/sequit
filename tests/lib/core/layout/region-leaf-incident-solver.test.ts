@@ -27,7 +27,6 @@ import {
 } from '../../../../src/lib/core/layout/region-incident-contract';
 import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
-import { rejectedIncidentAdmission } from '../../../../src/lib/core/layout/region-leaf-incident-search-state';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
@@ -345,13 +344,6 @@ describe('dedicated leaf incident contracts', () => {
 				],
 			},
 		});
-		if (attempt.status !== RegionCompositionStatus.Unknown)
-			throw new Error('Expected missing incident endpoint');
-		expect(rejectedIncidentAdmission(attempt, [missing])).toEqual({
-			accepted: false,
-			endpointIds: ['missing'],
-			relationIds: [],
-		});
 	});
 
 	it('reports an absent endpoint exhaustively even when another incident could be routed', () => {
@@ -397,9 +389,6 @@ describe('dedicated leaf incident contracts', () => {
 			code: RegionIncidentUnknownCode.InvalidContract,
 			witness: { attempted: 0, exhaustive: true },
 		});
-		if (invalid.status !== RegionCompositionStatus.Unknown)
-			throw new Error('Expected invalid contract');
-		expect(rejectedIncidentAdmission(invalid, [])).toBe(false);
 		const bounded = solveDedicatedRegionLeafWithIncidents({
 			document,
 			measurements,

@@ -18,9 +18,6 @@ export interface RegionLeafIncidentGeometryFailure {
 	readonly code: RegionIncidentRejectionCode;
 	readonly reason: string;
 	readonly candidateId?: string;
-	readonly blockedEndpointId?: string;
-	readonly blockedRelationId?: string;
-	readonly blockedIncidentRelationId?: string;
 	readonly exhausted?: true;
 }
 
@@ -173,14 +170,12 @@ function routeContactFailure(
 			return {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `The incident route touches local relation ${local.id}.`,
-				blockedRelationId: local.id,
 			};
 	for (const other of earlier)
 		if (disallowedProvisionalRouteContacts(incident, other).length > 0)
 			return {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `The incident route touches incident ${other.id}.`,
-				blockedIncidentRelationId: other.id,
 			};
 	return undefined;
 }
@@ -214,7 +209,6 @@ export function geometryFailure(
 			return {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `The incident route enters endpoint ${element.id}.`,
-				blockedEndpointId: element.id,
 			};
 	}
 	return routeContactFailure(layout, path, selected);

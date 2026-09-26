@@ -1657,6 +1657,16 @@ describe('dedicated bounded geometric rank search', () => {
 			globalCompletePipelines: 2,
 			globalValidations: 2,
 		});
+		const incidentDenied = selectDedicatedRankLayout(graph, ranks, measurements, {
+			options: {},
+			evaluate: evaluateDedicatedLayout,
+			admit: () => false,
+		});
+		expect(incidentDenied.layout).toEqual(
+			evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),
+		);
+		expect(incidentDenied.witness.fallbackComponents).toHaveLength(2);
+		expect(incidentDenied.witness.work.incidentAdmissions).toBe(1);
 	});
 
 	it('proves the documentary zero-route baseline optimal without another pipeline', () => {

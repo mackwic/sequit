@@ -3,7 +3,6 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { firstValidDepthFirst } from './bounded-search';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import type { RankAdmission } from './rank-order-selection';
 import { RegionCompositionStatus, type RegionPortalSide } from './region-composition-types';
 import {
 	normalizeRegionIncidentContracts,
@@ -28,7 +27,6 @@ import {
 import {
 	newSearchState,
 	recordRejection,
-	rejectedIncidentAdmission,
 	type SearchState,
 	takeAttempt,
 	witness,
@@ -217,11 +215,10 @@ function solveOnLayout(
 function admitIncidentLayout(
 	contracts: readonly RegionIncidentContract[],
 	accepted: { attempt?: DedicatedRegionLeafIncidentSelected },
-): (layout: LayoutResult, ranks: TopologicalRanks) => RankAdmission {
+): (layout: LayoutResult, ranks: TopologicalRanks) => boolean {
 	return (layout, ranks) => {
 		const attempt = solveOnLayout(contracts, layout, ranks);
-		if (attempt.status !== RegionCompositionStatus.Selected)
-			return rejectedIncidentAdmission(attempt, contracts);
+		if (attempt.status !== RegionCompositionStatus.Selected) return false;
 		accepted.attempt = attempt;
 		return true;
 	};
@@ -269,7 +266,7 @@ export function solveDedicatedRegionLeafWithIncidents(
 		);
 		const accepted: { attempt?: DedicatedRegionLeafIncidentSelected } = {};
 		let admitDedicatedLayout:
-			((layout: LayoutResult, ranks: TopologicalRanks) => RankAdmission) | undefined;
+			((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 		if (contracts.length > 0) admitDedicatedLayout = admitIncidentLayout(contracts, accepted);
 		const raw = solveRegionLeafLayout({
 			document: input.document,
