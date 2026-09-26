@@ -14,7 +14,7 @@ import { routeFailure } from './route-geometry';
 import { routeScore } from './route-score';
 import type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
 
-export { compareDedicatedRouteScores, scoreDedicatedCandidateRoutes } from './route-score';
+export { compareDedicatedRouteScores } from './route-score';
 export type { DedicatedCandidateValidation, DedicatedCandidateValidationInput } from './types';
 export { DedicatedCandidateRejectionCode } from './types';
 

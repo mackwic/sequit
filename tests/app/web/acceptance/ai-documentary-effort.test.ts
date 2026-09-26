@@ -6,7 +6,8 @@ import { defined } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { scoreDedicatedCandidateRoutes } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeScore } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import { weightedInversionScore } from '../../../../src/lib/core/layout/rank/crossing-aware-order';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
@@ -244,8 +245,11 @@ describe('AI for documentary effort', () => {
 				const created = createGraph(document);
 				if (!created.ok) throw new Error('Invalid documentary graph after relation edit');
 				const graph = created.value;
-				return scoreDedicatedCandidateRoutes(
-					evaluateDedicatedLayout(prepareLayout(graph, topologicallyRank(graph)), measurements),
+				return routeScore(
+					routeBridgeAnalysis(
+						evaluateDedicatedLayout(prepareLayout(graph, topologicallyRank(graph)), measurements)
+							.relations,
+					),
 				);
 			};
 			const priorScore = documentaryScore(persistedBefore);

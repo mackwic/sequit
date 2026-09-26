@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { routeScore } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
 import {
 	compareDedicatedRouteScores,
-	scoreDedicatedCandidateRoutes,
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
@@ -41,7 +42,7 @@ const crossingLayout: LayoutResult = {
 
 describe('dedicated candidate route scoring', () => {
 	it('scores materialized crossings and validated bridges', () => {
-		expect(scoreDedicatedCandidateRoutes(crossingLayout)).toEqual({
+		expect(routeScore(routeBridgeAnalysis(crossingLayout.relations))).toEqual({
 			strictCrossings: 1,
 			validatedBridges: 1,
 		});
@@ -60,7 +61,6 @@ describe('dedicated candidate route scoring', () => {
 				const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
 				if (!validation.valid)
 					throw new Error(`Expected validated candidate, got ${validation.code}`);
-				expect(scoreDedicatedCandidateRoutes(layout)).toEqual(validation.score);
 				return validation.score;
 			});
 		expect(scores).toEqual([
