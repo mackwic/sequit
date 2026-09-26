@@ -1,5 +1,5 @@
 import { defined } from '../document/logic-document';
-import { unbridgedContacts } from './bridge-contact';
+import { type BridgeContactOptions, unbridgedContacts } from './bridge-contact';
 import { type LayoutBridge, type RouteWorkCharge, validatedBridges } from './bridge-oracle';
 import type { LayoutRelation } from './layout-types';
 import { segmentsContact } from './shared-lane-geometry-primitives';
@@ -26,14 +26,18 @@ export function validateSharedLaneRouteContacts(
 	onBridgeCount?: (count: number) => void,
 ): string | undefined {
 	let bridges: readonly LayoutBridge[] | undefined;
-	if (acceptBridges) bridges = validatedBridges(routes, charge);
+	let bridgeOptions: BridgeContactOptions | undefined;
+	if (acceptBridges) {
+		bridges = validatedBridges(routes, charge);
+		bridgeOptions = { charge, sortedByPoint: true };
+	}
 	for (let first = 0; first < routes.length; first += 1) {
 		const a = defined(routes[first]);
 		for (let second = first + 1; second < routes.length; second += 1) {
 			const b = defined(routes[second]);
 			let touching: boolean;
 			if (bridges === undefined) touching = routesCross(a, b, charge);
-			else touching = unbridgedContacts(a, b, bridges, charge).length > 0;
+			else touching = unbridgedContacts(a, b, bridges, bridgeOptions).length > 0;
 			if (touching) return `Routes ${a.id} and ${b.id} cross without a bridge.`;
 		}
 	}

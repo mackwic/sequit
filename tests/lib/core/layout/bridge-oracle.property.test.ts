@@ -220,6 +220,20 @@ describe('the bridge oracle', () => {
 		);
 	});
 
+	it('matches exhaustive contact checks when bridges are indexed by their oracle point', () => {
+		fc.assert(
+			fc.property(routeSet(), (relations) => {
+				const bridges = validatedBridges(relations);
+				for (const [index, first] of relations.entries())
+					for (const second of relations.slice(index + 1))
+						expect(unbridgedContacts(first, second, bridges, { sortedByPoint: true })).toEqual(
+							unbridgedContacts(first, second, bridges),
+						);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('accepts a pair only when every contact is a bridged strict crossing', () => {
 		fc.assert(
 			fc.property(routeSet(), (relations) => {

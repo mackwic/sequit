@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import {
 	type LayoutBridge,
 	type RouteBridgeAnalysis,
@@ -64,18 +65,68 @@ function runContact(first: RouteRun, second: RouteRun): Point | undefined {
 	return { x: right.fixed, y: left.fixed };
 }
 
+/** The first bridge at or beyond one point in the oracle's x/y-sorted bridge array. */
+function firstBridgeAtPoint(
+	bridges: readonly LayoutBridge[],
+	point: Point,
+	charge?: RouteWorkCharge,
+): number {
+	let low = 0;
+	let high = bridges.length;
+	while (low < high) {
+		charge?.(1);
+		const middle = low + Math.floor((high - low) / 2);
+		const bridge = defined(bridges[middle]);
+		const beforeX = bridge.x < point.x;
+		const beforeY = bridge.x === point.x && bridge.y < point.y;
+		if (beforeX || beforeY) low = middle + 1;
+		else high = middle;
+	}
+	return low;
+}
+
+export interface BridgeContactOptions {
+	readonly charge?: RouteWorkCharge | undefined;
+	/** The canonical x/y order returned by `validatedBridges` is guaranteed. */
+	readonly sortedByPoint: true;
+}
+
+interface BridgeContactLookup {
+	readonly bridges: readonly LayoutBridge[];
+	readonly firstId: string;
+	readonly secondId: string;
+	readonly charge: RouteWorkCharge | undefined;
+	readonly sortedByPoint: boolean;
+}
+
+function contactIsBridged(point: Point, lookup: BridgeContactLookup): boolean {
+	const { bridges, firstId, secondId, charge, sortedByPoint } = lookup;
+	let index = 0;
+	if (sortedByPoint) index = firstBridgeAtPoint(bridges, point, charge);
+	for (; index < bridges.length; index += 1) {
+		const bridge = defined(bridges[index]);
+		if (sortedByPoint && !samePoint(bridge, point)) break;
+		chargeBridgeCoverage(bridge, charge);
+		if (bridgeCovers(bridge, point, firstId, secondId)) return true;
+	}
+	return false;
+}
+
 /**
  * The contacts between two declared paths that no validated bridge covers. Empty exactly when
  * every contact of the pair is a strict crossing carried by a bridge of `bridges`, which is the
  * composition acceptance rule for two routes owned by the same region. A T-contact or a collinear
- * overlap is never covered.
+ * overlap is never covered. The indexed option requires the order of `validatedBridges`.
  */
 export function unbridgedContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
-	charge?: RouteWorkCharge,
+	options?: BridgeContactOptions,
 ): readonly Point[] {
+	const charge = options?.charge;
+	const sortedByPoint = options?.sortedByPoint ?? false;
+	const lookup = { bridges, firstId: first.id, secondId: second.id, charge, sortedByPoint };
 	const contacts = new Map<string, Point>();
 	const secondRuns = routeRuns(second, charge);
 	for (const firstRun of routeRuns(first, charge)) {
@@ -83,11 +134,7 @@ export function unbridgedContacts(
 			charge?.(1);
 			const point = runContact(firstRun, secondRun);
 			if (point === undefined) continue;
-			const covered = bridges.some((bridge) => {
-				chargeBridgeCoverage(bridge, charge);
-				return bridgeCovers(bridge, point, first.id, second.id);
-			});
-			if (!covered) contacts.set(`${point.x}:${point.y}`, point);
+			if (!contactIsBridged(point, lookup)) contacts.set(`${point.x}:${point.y}`, point);
 		}
 	}
 	return [...contacts.values()];

@@ -1,4 +1,5 @@
 import { compareCanonicalStrings } from '../canonical-string';
+import { defined } from '../document/logic-document';
 import { strictCrossing, strictlyBetween } from './geometry/strict-crossing';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from './layout-settings';
 import type { Point } from './layout-types';
@@ -59,6 +60,10 @@ interface BridgeScan {
 	readonly crossings: Map<string, RouteCrossing>;
 	readonly carried: Map<RouteRun, Point[]>;
 	readonly bridges: Map<string, LayoutBridge>;
+	carrierRuns?: {
+		readonly horizontal: ReadonlyMap<number, readonly RouteRun[]>;
+		readonly vertical: ReadonlyMap<number, readonly RouteRun[]>;
+	};
 	readonly charge?: RouteWorkCharge | undefined;
 }
 
@@ -140,24 +145,46 @@ function canCarryBridge(
 	});
 }
 
-/** Every run parallel to `run` that passes through the point strictly inside itself. */
+/** Build carrier buckets only when a strict crossing makes them useful. */
+function carrierRuns(scan: BridgeScan): NonNullable<BridgeScan['carrierRuns']> {
+	if (scan.carrierRuns !== undefined) return scan.carrierRuns;
+	const horizontal = new Map<number, RouteRun[]>();
+	const vertical = new Map<number, RouteRun[]>();
+	for (const run of scan.runs) {
+		scan.charge?.(1);
+		const isHorizontal = run.orientation === RouteOrientation.Horizontal;
+		let buckets = vertical;
+		let fixed = run.start.x;
+		if (isHorizontal) {
+			buckets = horizontal;
+			fixed = run.start.y;
+		}
+		let group = buckets.get(fixed);
+		if (group === undefined) {
+			group = [];
+			buckets.set(fixed, group);
+		}
+		group.push(run);
+	}
+	scan.carrierRuns = { horizontal, vertical };
+	return scan.carrierRuns;
+}
+
+/** Every collinear run through a crossing point, in the original canonical run order. */
 function overlappingCarriers(
 	run: RouteRun,
 	point: Point,
-	runs: readonly RouteRun[],
+	index: NonNullable<BridgeScan['carrierRuns']>,
 	charge?: RouteWorkCharge,
 ): readonly RouteRun[] {
-	return runs.filter((candidate) => {
+	const horizontal = run.orientation === RouteOrientation.Horizontal;
+	// A strict crossing lies inside both source runs, so its coordinate has a carrier bucket.
+	let runs = index.vertical.get(point.x);
+	if (horizontal) runs = index.horizontal.get(point.y);
+	return defined(runs).filter((candidate) => {
 		charge?.(1);
-		if (candidate.orientation !== run.orientation) return false;
-		if (run.orientation === RouteOrientation.Horizontal)
-			return (
-				candidate.start.y === point.y &&
-				strictlyBetween(point.x, candidate.start.x, candidate.end.x)
-			);
-		return (
-			candidate.start.x === point.x && strictlyBetween(point.y, candidate.start.y, candidate.end.y)
-		);
+		if (horizontal) return strictlyBetween(point.x, candidate.start.x, candidate.end.x);
+		return strictlyBetween(point.y, candidate.start.y, candidate.end.y);
 	});
 }
 
@@ -177,8 +204,9 @@ function canonicalBridgeKey(bridge: LayoutBridge): string {
 function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previous: RouteRun): void {
 	const { charge } = scan;
 	let groupSize = 0;
+	const index = carrierRuns(scan);
 	const groups = [current, previous].map((run) => {
-		const group = overlappingCarriers(run, point, scan.runs, charge);
+		const group = overlappingCarriers(run, point, index, charge);
 		if (charge !== undefined) groupSize += group.length;
 		return group;
 	});
