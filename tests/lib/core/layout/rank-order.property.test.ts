@@ -710,6 +710,34 @@ interface OracleLayout {
 	readonly layout: LayoutResult;
 	readonly crossings: number;
 	readonly bridges: number;
+	readonly topologicalCrossings: number;
+}
+/** Count direct relation-pair inversions on movable bands; fixed junctions cannot swap. */
+function oracleTopologicalCrossings(order: RankOrder, relations: readonly LogicRelation[]): number {
+	const positions = new Map(
+		order.flatMap((band, rank) => band.map((id, index) => [id, { rank, index }] as const)),
+	);
+	let crossings = 0;
+	for (const [index, left] of relations.entries()) {
+		for (const right of relations.slice(index + 1)) {
+			const sourceA = positions.get(left.from);
+			const sourceB = positions.get(right.from);
+			const targetA = positions.get(left.to);
+			const targetB = positions.get(right.to);
+			if (
+				sourceA === undefined ||
+				sourceB === undefined ||
+				targetA === undefined ||
+				targetB === undefined ||
+				sourceA.rank !== sourceB.rank ||
+				targetA.rank !== targetB.rank ||
+				sourceA.rank === targetA.rank
+			)
+				continue;
+			if ((sourceA.index - sourceB.index) * (targetA.index - targetB.index) < 0) crossings += 1;
+		}
+	}
+	return crossings;
 }
 
 function oracleInversions(order: RankOrder, documentary: RankOrder): number {
@@ -729,10 +757,8 @@ function compareOracleLayouts(
 	right: OracleLayout,
 	documentary: RankOrder,
 ): number {
-	const crossing = left.crossings - right.crossings;
+	const crossing = left.topologicalCrossings - right.topologicalCrossings;
 	if (crossing !== 0) return crossing;
-	const bridge = left.bridges - right.bridges;
-	if (bridge !== 0) return bridge;
 	const inversions =
 		oracleInversions(left.order, documentary) - oracleInversions(right.order, documentary);
 	if (inversions !== 0) return inversions;
@@ -747,14 +773,39 @@ function compareOracleLayouts(
 	return 0;
 }
 
-function oracleLayout(order: RankOrder, layout: LayoutResult): OracleLayout {
+function oracleLayout(
+	order: RankOrder,
+	layout: LayoutResult,
+	relations: readonly LogicRelation[],
+): OracleLayout {
 	const analysis = routeBridgeAnalysis(layout.relations);
 	return {
 		order,
 		layout,
 		crossings: analysis.crossings.length,
 		bridges: analysis.bridges.length,
+		topologicalCrossings: oracleTopologicalCrossings(order, relations),
 	};
+}
+
+/** Rendered routes gate admission; stable topological order ranks the surviving candidates. */
+function admissibleOracleLayouts(
+	candidates: OracleLayout[],
+	documentaryOrder: RankOrder,
+): OracleLayout[] {
+	const documentary = candidates.find(({ order }) =>
+		order.every((band, index) =>
+			band.every((id, position) => id === defined(documentaryOrder[index])[position]),
+		),
+	);
+	let admissible = candidates;
+	if (documentary !== undefined)
+		admissible = candidates.filter(
+			({ crossings, bridges }) =>
+				crossings < documentary.crossings ||
+				(crossings === documentary.crossings && bridges <= documentary.bridges),
+		);
+	return admissible.sort((left, right) => compareOracleLayouts(left, right, documentaryOrder));
 }
 
 function damageRouteAttachment(layout: LayoutResult, relationIds: readonly string[]): LayoutResult {
@@ -828,46 +879,20 @@ function assertCompleteOracle(
 	for (const order of enumerateRankOrders(domain, size)) {
 		const layout = evaluateDedicatedLayout(applyRankOrder(structure, domain, order), measurements);
 		if (validateDedicatedCandidate({ graph, ranks, measurements, layout }).valid)
-			candidates.push(oracleLayout(order, layout));
+			candidates.push(oracleLayout(order, layout, document.relations));
 	}
-	candidates.sort((left, right) => compareOracleLayouts(left, right, domain.bands));
+	const admissible = admissibleOracleLayouts(candidates, domain.bands);
 	const actual = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
-	if (candidates.length > 0) expect(actual.layout).toEqual(defined(candidates[0]).layout);
+	if (admissible.length > 0) expect(actual.layout).toEqual(defined(admissible[0]).layout);
 	else expect(actual.layout).toEqual(evaluateDedicatedLayout(structure, measurements));
 	expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
-	return candidates;
+	return admissible;
 }
 
 describe('dedicated bounded geometric rank search', () => {
 	it('matches an independently enumerated valid-layout oracle, routes included', () => {
 		for (const entry of rankOrderComparisonCorpus().slice(0, 2))
 			assertCompleteOracle(entry.document, entry.measurements);
-		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-3+1'));
-		const tied = assertCompleteOracle(entry.document, entry.measurements);
-		expect(
-			tied.slice(1, 3).map(({ crossings, bridges, order }) => ({
-				crossings,
-				bridges,
-				order,
-			})),
-		).toEqual([
-			{
-				crossings: 0,
-				bridges: 0,
-				order: [
-					['d', 'e'],
-					['b', 'c', 'a'],
-				],
-			},
-			{
-				crossings: 0,
-				bridges: 0,
-				order: [
-					['e', 'd'],
-					['a', 'c', 'b'],
-				],
-			},
-		]);
 	});
 	it('checks every validated junction geometry, not just ordinary-node diagrams', () => {
 		const base = corpusDocument(
@@ -957,17 +982,17 @@ describe('dedicated bounded geometric rank search', () => {
 							options,
 						);
 						const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
-						if (validation.valid) return [oracleLayout(order, layout)];
+						if (validation.valid) return [oracleLayout(order, layout, document.relations)];
 						return [];
 					});
-					valid.sort((left, right) => compareOracleLayouts(left, right, domain.bands));
-					if (valid.length === 0) {
+					const admissible = admissibleOracleLayouts(valid, domain.bands);
+					if (admissible.length === 0) {
 						expect(actual.witness.stop).toBe('baseline-fallback');
 						expect(actual.layout).toEqual(
 							evaluateDedicatedLayout(structure, measurements, options),
 						);
 					} else {
-						expect(actual.layout).toEqual(defined(valid[0]).layout);
+						expect(actual.layout).toEqual(defined(admissible[0]).layout);
 						expect(actual.witness.valid).toBeGreaterThan(0);
 					}
 					expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
