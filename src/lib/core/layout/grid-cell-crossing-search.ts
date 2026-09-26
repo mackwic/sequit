@@ -69,18 +69,9 @@ function addConflictingRoutes(
 	active: Set<string>,
 	input: CrossingAllocationInput,
 	failure: RegionGeometryDiagnostic,
-): boolean {
-	const conflicting = [failure.relationId, failure.relatedRelationId].filter(
-		(id): id is string => id !== undefined && input.crossingIds.includes(id),
-	);
-	if (conflicting.length === 0) conflicting.push(...input.crossingIds);
-	let expanded = false;
-	for (const id of conflicting) {
-		if (active.has(id)) continue;
-		active.add(id);
-		expanded = true;
-	}
-	return expanded;
+): void {
+	for (const id of [failure.relationId, failure.relatedRelationId])
+		if (id !== undefined && input.crossingIds.includes(id)) active.add(id);
 }
 
 /** Rebuild the priority prefix when a rejection reveals a new route; then visit every remaining
