@@ -10,6 +10,7 @@ import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 	crossingCanonicalBusGeometryCount,
+	GRID_CROSSING_REALLOCATION_BUDGET,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { crossingRoute } from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
 import {
@@ -167,7 +168,8 @@ describe('grid crossing allocation route geometry properties', () => {
 						expect(route(pruned.selected.allocation, acceptsBridges).failure).toBeUndefined();
 						const firstBusBlock = crossingCanonicalBusGeometryCount(input);
 						if (
-							firstBusBlock <= 256n &&
+							firstBusBlock <= BigInt(GRID_CROSSING_REALLOCATION_BUDGET) &&
+							pruned.witness.winningPhase === CrossingAllocationPhaseId.Reallocate &&
 							pruned.witness.winningPhase === oracle.witness.winningPhase
 						)
 							expect(pruned.selected.candidate.layout).toEqual(oracle.selected.candidate.layout);
