@@ -18,8 +18,6 @@ import {
 
 export type { EndpointRoute } from './bridge-contact-shared';
 
-type SharedRouteRuns = NonNullable<Parameters<typeof sharedAtEndpoint>[3]['runs']>;
-
 /** True when a validated bridge carries the contact point between the two declared paths. */
 function bridgeCovers(
 	bridge: LayoutBridge,
@@ -54,14 +52,12 @@ export function unbridgedCrossings(analysis: {
 		}
 		atPoint.push(bridge);
 	}
-	return analysis.crossings.filter((crossing) => {
-		const atPoint = bridgesByPoint.get(`${crossing.x}:${crossing.y}`);
-		return (
-			atPoint?.some((bridge) =>
+	return analysis.crossings.filter(
+		(crossing) =>
+			!(bridgesByPoint.get(`${crossing.x}:${crossing.y}`) ?? []).some((bridge) =>
 				bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
-			) !== true
-		);
-	});
+			),
+	);
 }
 
 export enum RouteContactKind {
@@ -194,21 +190,16 @@ function contactInsideOverlap(contact: RouteContact, other: RouteContact): boole
 	return x && y;
 }
 
-interface ContactScanOptions {
-	readonly bridges: BridgeContactOptions | undefined;
-	readonly mode?: ContactScanMode;
-	readonly runs?: SharedRouteRuns;
-}
-
 /** Collects the same contacts for complete and still-to-be-extended leaf routes. */
 function routeContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
-	options: ContactScanOptions,
+	options: BridgeContactOptions | ContactScanMode | undefined,
 ): readonly RouteContact[] {
-	const bridgeOptions = options.bridges;
-	const deferBridgeDecision = options.mode === ContactScanMode.Provisional;
+	let bridgeOptions: BridgeContactOptions | undefined;
+	if (typeof options === 'object') bridgeOptions = options;
+	const deferBridgeDecision = options === ContactScanMode.Provisional;
 	const charge = bridgeOptions?.charge;
 	const sortedByPoint = bridgeOptions?.sortedByPoint ?? false;
 	const lookup = {
@@ -220,9 +211,8 @@ function routeContacts(
 		deferBridgeDecision,
 	};
 	const contacts = new Map<string, RouteContact>();
-	const secondRuns = options.runs?.second ?? routeRuns(second, charge);
-	const firstRuns = options.runs?.first ?? routeRuns(first, charge);
-	for (const firstRun of firstRuns) {
+	const secondRuns = routeRuns(second, charge);
+	for (const firstRun of routeRuns(first, charge)) {
 		for (const secondRun of secondRuns) {
 			charge?.(1);
 			const contact = runContact(firstRun, secondRun);
@@ -249,7 +239,7 @@ export function unbridgedContacts(
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
-	return routeContacts(first, second, bridges, { bridges: options });
+	return routeContacts(first, second, bridges, options);
 }
 
 /** An attachment point is allowed, but an extent needs a continuous shared family trunk. */
@@ -257,17 +247,13 @@ function permittedRouteContact(
 	first: EndpointRoute,
 	second: EndpointRoute,
 	contact: RouteContact,
-	endpoints: {
-		readonly source: Parameters<typeof sharedAtEndpoint>[3];
-		readonly target: Parameters<typeof sharedAtEndpoint>[3];
-	},
 ): boolean {
 	const sharedSource =
-		sharedAtEndpoint(first, second, contact.from, endpoints.source) &&
-		sharedAtEndpoint(first, second, contact.to, endpoints.source);
+		sharedAtEndpoint(first, second, contact.from, true) &&
+		sharedAtEndpoint(first, second, contact.to, true);
 	const sharedTarget =
-		sharedAtEndpoint(first, second, contact.from, endpoints.target) &&
-		sharedAtEndpoint(first, second, contact.to, endpoints.target);
+		sharedAtEndpoint(first, second, contact.from, false) &&
+		sharedAtEndpoint(first, second, contact.to, false);
 	if (sharedSource || sharedTarget) return true;
 	if (contact.kind === RouteContactKind.Overlap) return false;
 	return sharedAttachmentPoint(first, second, contact.from);
@@ -280,14 +266,9 @@ export function disallowedRouteContacts(
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
-	const runs = {
-		first: routeRuns(first, options?.charge),
-		second: routeRuns(second, options?.charge),
-	};
-	const contacts = routeContacts(first, second, bridges, { bridges: options, runs });
+	const contacts = unbridgedContacts(first, second, bridges, options);
 	if (contacts.length === 0) return contacts;
-	const endpoints = { source: { from: true, runs }, target: { from: false, runs } };
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, endpoints));
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
 }
 
 /**
@@ -298,13 +279,7 @@ export function disallowedProvisionalRouteContacts(
 	first: EndpointRoute,
 	second: EndpointRoute,
 ): readonly RouteContact[] {
-	const runs = { first: routeRuns(first), second: routeRuns(second) };
-	const contacts = routeContacts(first, second, [], {
-		bridges: undefined,
-		mode: ContactScanMode.Provisional,
-		runs,
-	});
+	const contacts = routeContacts(first, second, [], ContactScanMode.Provisional);
 	if (contacts.length === 0) return contacts;
-	const endpoints = { source: { from: true, runs }, target: { from: false, runs } };
-	return contacts.filter((contact) => !permittedRouteContact(first, second, contact, endpoints));
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
 }

@@ -95,25 +95,19 @@ function continuationPoint(run: RouteRun, from: boolean): Point {
 	return run.start;
 }
 
-interface SharedRouteRuns {
-	readonly first: readonly RouteRun[];
-	readonly second: readonly RouteRun[];
-}
-
 export function sharedAtEndpoint(
 	first: EndpointRoute,
 	second: EndpointRoute,
 	point: Point,
-	options: { readonly from: boolean; readonly runs?: SharedRouteRuns },
+	from: boolean,
 ): boolean {
-	const { from, runs } = options;
 	const id = endpointId(first, from);
 	if (id === undefined || id !== endpointId(second, from)) return false;
 	const firstPoint = defined(endpointPoint(first, from));
 	const secondPoint = defined(endpointPoint(second, from));
 	if (!samePoint(firstPoint, secondPoint)) return false;
-	const firstRuns = runs?.first ?? routeRuns(first);
-	const secondRuns = runs?.second ?? routeRuns(second);
+	const firstRuns = routeRuns(first);
+	const secondRuns = routeRuns(second);
 	const runCount = Math.min(firstRuns.length, secondRuns.length);
 	for (let offset = 0; offset < runCount; offset += 1) {
 		let firstIndex = offset;
