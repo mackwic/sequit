@@ -288,6 +288,7 @@ export function selectDedicatedRankLayout(
 		graph,
 		structure,
 		measurements,
+		baseline,
 		domain,
 		budgets,
 		evaluate: services.evaluate,

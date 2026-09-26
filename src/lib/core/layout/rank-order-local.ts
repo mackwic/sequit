@@ -1,6 +1,6 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { LayoutMeasurements } from './layout-types';
+import type { DedicatedLayoutEvaluation, LayoutMeasurements } from './layout-types';
 import type { RankOrder } from './rank-order';
 import { type RankSearchComponent, rankSearchComponents } from './rank-order-components';
 import {
@@ -36,6 +36,7 @@ interface LocalSearchInput {
 	readonly graph: LogicGraph;
 	readonly structure: LayoutStructure;
 	readonly measurements: LayoutMeasurements;
+	readonly baseline: DedicatedLayoutEvaluation;
 	readonly domain: RankOrderDomain;
 	readonly budgets: SearchBudgets;
 	readonly evaluate: DedicatedLayoutEvaluator;
@@ -44,6 +45,8 @@ interface LocalSearchInput {
 interface ComponentSearchInput {
 	readonly component: RankSearchComponent;
 	readonly global: RankOrderDomain;
+	readonly globalStructure: LayoutStructure;
+	readonly sharedBaseline: DedicatedLayoutEvaluation;
 	readonly indices: readonly number[];
 	readonly limit: number;
 	readonly evaluate: DedicatedLayoutEvaluator;
@@ -124,11 +127,15 @@ function matchingBands(
 }
 
 function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
-	const { component, global, indices, limit, evaluate } = input;
-	const structure = prepareLayout(component.graph, component.ranks);
+	const { component, global, globalStructure, sharedBaseline, indices, limit, evaluate } = input;
+	let structure = globalStructure;
+	let baseline = sharedBaseline;
+	if (component.graph !== globalStructure.graph) {
+		structure = prepareLayout(component.graph, component.ranks);
+		baseline = evaluate(structure, component.measurements, {}, true);
+	}
 	const domain = collectRankOrderDomain(structure);
 	const matched = matchingBands(global, indices, domain);
-	const baseline = evaluate(structure, component.measurements, {}, true);
 	const search = searchDedicatedRankOrders({
 		structure,
 		domain,
@@ -169,22 +176,38 @@ function recordSelectedBands(
 
 /** Local scores propose orders only; the completed document may share gaps and rails. */
 export function chooseLocal(input: LocalSearchInput): LocalChoice {
-	const { graph, structure, measurements, domain, budgets, evaluate } = input;
+	const { graph, structure, measurements, baseline, domain, budgets, evaluate } = input;
 	const orders = domain.bands.map((band) => [...band]);
 	const changed = new Set<number>();
 	const evidence: ComponentEvidence[] = [];
 	if (budgets.limits.size === 0)
 		return { orders, changed, evidence, skippedComponents: budgets.skippedComponents };
-	const components = rankSearchComponents(
-		graph,
-		structure,
-		measurements,
-		new Set(budgets.limits.keys()),
-	);
+	let components: readonly RankSearchComponent[];
+	if (structure.components.length === 1 && budgets.limits.has(0)) {
+		components = [
+			{
+				index: 0,
+				ids: defined(structure.components[0]).ids,
+				graph,
+				ranks: structure.ranks,
+				measurements,
+				relationCount: graph.relations.length,
+			},
+		];
+	} else {
+		components = rankSearchComponents(
+			graph,
+			structure,
+			measurements,
+			new Set(budgets.limits.keys()),
+		);
+	}
 	for (const component of components) {
 		const searched = searchComponent({
 			component,
 			global: domain,
+			globalStructure: structure,
+			sharedBaseline: baseline,
 			indices: defined(budgets.bands.get(component.index)),
 			limit: defined(budgets.limits.get(component.index)),
 			evaluate,

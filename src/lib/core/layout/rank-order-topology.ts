@@ -103,7 +103,7 @@ export class RankTopologyOracle {
 		this.segments = segments;
 	}
 
-	count(structure: LayoutStructure, order: RankOrder): number {
+	count(structure: LayoutStructure, order: RankOrder, maximum = Number.POSITIVE_INFINITY): number {
 		const rows = this.rows.map((row, rank) => {
 			const bandIndex = this.movable.get(rank);
 			if (bandIndex === undefined) return [...row];
@@ -136,6 +136,6 @@ export class RankTopologyOracle {
 				.sort((left, right) => left.x - right.x || compareCanonicalStrings(left.id, right.id))
 				.map(({ id }) => id);
 		});
-		return countRankOrderCrossings(augmented, this.segments);
+		return countRankOrderCrossings(augmented, this.segments, maximum);
 	}
 }

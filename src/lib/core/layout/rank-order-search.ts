@@ -107,15 +107,10 @@ export interface RankOrderSearchResult {
 	readonly witness: RankOrderSearchWitness;
 }
 
-function compareCandidates(left: ValidRankOrderCandidate, right: ValidRankOrderCandidate): number {
-	const crossings = left.topologyCrossings - right.topologyCrossings;
-	if (crossings !== 0) return crossings;
-	const distance = left.kendall - right.kendall;
-	if (distance !== 0) return distance;
-	return compareRankOrders(left.order, right.order);
-}
-
-function unbeatable(candidate: ValidRankOrderCandidate): boolean {
+/** No rank edit can improve bridge-free documentary routes or zero documentary inversions. */
+function documentaryNeedsNoSearch(candidate: ValidRankOrderCandidate): boolean {
+	if (candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0)
+		return true;
 	return candidate.topologyCrossings === 0 && candidate.kendall === 0;
 }
 
@@ -196,8 +191,7 @@ class RankOrderSearch {
 			routeScore: outcome.score,
 			kendall: rankOrderKendallDistance(order, this.input.domain.bands),
 		};
-		if (this.selected === undefined || compareCandidates(candidate, this.selected) < 0)
-			this.selected = candidate;
+		this.selected = candidate;
 	}
 
 	private cutOff(stop: RankSearchStop): false {
@@ -205,6 +199,17 @@ class RankOrderSearch {
 		this.truncated = true;
 		this.exhaustive = false;
 		return false;
+	}
+
+	/** A dominated rank order cannot win even with perfect routes; still explore its neighbors. */
+	private cannotBeatSelected(order: RankOrder): boolean {
+		const best = this.selected;
+		if (best === undefined) return false;
+		const crossings = this.topology.count(this.input.structure, order, best.topologyCrossings);
+		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
+		const kendall = rankOrderKendallDistance(order, this.input.domain.bands);
+		if (kendall !== best.kendall) return kendall > best.kendall;
+		return compareRankOrders(order, best.order) >= 0;
 	}
 
 	propose(order: RankOrder): boolean {
@@ -215,6 +220,7 @@ class RankOrderSearch {
 		this.seen.add(key);
 		this.proposed += 1;
 		this.frontier.push(order);
+		if (this.cannotBeatSelected(order)) return true;
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;
@@ -262,7 +268,7 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 	const search = new RankOrderSearch(input);
 	search.verify(input.domain.bands, input.baseline, true);
 	const documentary = search.selected;
-	if (documentary !== undefined && unbeatable(documentary)) {
+	if (documentary !== undefined && documentaryNeedsNoSearch(documentary)) {
 		search.stop = RankSearchStop.OptimalBound;
 		search.exhaustive = true;
 		return search.result();

@@ -145,12 +145,15 @@ function pairCrosses(
 export function countRankOrderCrossings(
 	order: RankOrder,
 	relations: readonly RankOrderRelation[],
+	maximum = Number.POSITIVE_INFINITY,
 ): number {
 	const index = indexRankOrder(order);
 	let crossings = 0;
 	for (let first = 0; first < relations.length; first += 1) {
 		for (let second = first + 1; second < relations.length; second += 1) {
-			if (pairCrosses(defined(relations[first]), defined(relations[second]), index)) crossings += 1;
+			if (!pairCrosses(defined(relations[first]), defined(relations[second]), index)) continue;
+			crossings += 1;
+			if (crossings > maximum) return crossings;
 		}
 	}
 	return crossings;

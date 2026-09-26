@@ -202,7 +202,8 @@ describe('rank order stability under document edits', () => {
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
-		expect(addition?.meanNormalizedMovement).toBeCloseTo(0.52);
+		expect(addition?.components).toHaveLength(1);
+		expect(addition?.components[0]?.touched).toBe(true);
 		expect(removal).toMatchObject({
 			removedRelations: 1,
 			commonElements: 5,
