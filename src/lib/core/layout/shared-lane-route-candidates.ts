@@ -28,6 +28,9 @@ interface SharedLaneAllocationPassWitness {
 	readonly exhaustive: boolean;
 	readonly truncated: boolean;
 	readonly searchStarted: boolean;
+	/** Charged upper-bound route/box and route/route segment probes. */
+	readonly work: number;
+	readonly workBudget: number;
 }
 
 export interface SharedLaneAllocationSearchWitness {
@@ -148,14 +151,14 @@ function strategyPlan(
 		},
 	];
 	const first = trackAllocationProducts(domains).next();
-	if (first.done === true) throw new Error('Lane route allocation must include its baseline.');
+
 	return {
 		order,
 		strategyRank,
 		frame,
 		allocation,
 		domains,
-		baselineKey: first.value.key,
+		baselineKey: defined(first.value).key,
 		total: trackAllocationProductCount(domains),
 	};
 }
@@ -223,10 +226,23 @@ export function* parallelRouteCandidates(
 	acceptBridges: boolean,
 ): Generator<ParallelRouteCandidate, undefined, void> {
 	for (const plan of plans) yield baselineCandidate(plan, acceptBridges);
-	for (const plan of plans) {
+	const alternatives: (Generator<TrackAllocationProduct> | undefined)[] = plans.map((plan) => {
 		const products = trackAllocationProducts(plan.domains);
 		products.next();
-		for (const product of products) yield allocationCandidate(input, plan, product, acceptBridges);
+		return products;
+	});
+	let remaining = alternatives.length;
+	while (remaining > 0) {
+		for (const [index, products] of alternatives.entries()) {
+			if (products === undefined) continue;
+			const next = products.next();
+			if (next.done === true) {
+				alternatives[index] = undefined;
+				remaining -= 1;
+				continue;
+			}
+			yield allocationCandidate(input, defined(plans[index]), next.value, acceptBridges);
+		}
 	}
 }
 
@@ -268,10 +284,11 @@ export function rankLaneRouteSelection<
 		};
 		bends += Math.max(0, routeRuns(route).length - 1);
 	}
+	const bridges = validatedBridges(selected.geometry.relations).length;
 	return {
 		selected,
 		candidate,
-		bridges: validatedBridges(selected.geometry.relations).length,
+		bridges,
 		length,
 		bends,
 	};
@@ -305,8 +322,5 @@ export function laneRouteSelectionIsBetter<Selection>(
 		candidate.candidate.strategyId,
 		incumbent.candidate.strategyId,
 	);
-	if (strategyOrder !== 0) return strategyOrder < 0;
-	return (
-		compareCanonicalStrings(candidate.candidate.candidateId, incumbent.candidate.candidateId) < 0
-	);
+	return strategyOrder < 0;
 }

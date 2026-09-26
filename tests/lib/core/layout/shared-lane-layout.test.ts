@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
 import {
 	defined,
 	EndpointKind,
@@ -905,9 +906,10 @@ describe('shared lane layout', () => {
 				if (route.id !== changedId) return route;
 				return {
 					...route,
-					points: route.points.map((point, index) =>
-						index === 2 ? defined(route.points[1]) : point,
-					),
+					points: route.points.map((point, index) => {
+						if (index === 2) return defined(route.points[1]);
+						return point;
+					}),
 				};
 			}),
 		};
@@ -927,9 +929,10 @@ describe('shared lane layout', () => {
 			relations: [
 				{
 					...historicalRoute,
-					points: historicalRoute.points.map((point, index) =>
-						index === 2 ? defined(historicalRoute.points[1]) : point,
-					),
+					points: historicalRoute.points.map((point, index) => {
+						if (index === 2) return defined(historicalRoute.points[1]);
+						return point;
+					}),
 				},
 				...original.relations.slice(1),
 			],
@@ -1125,7 +1128,7 @@ describe('shared lane layout', () => {
 		expect(
 			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
-		expect(result.allocationWitness?.passes).toEqual([
+		expect(result.allocationWitness?.passes).toMatchObject([
 			{
 				acceptBridges: false,
 				attempted: 18,
@@ -1156,7 +1159,72 @@ describe('shared lane layout', () => {
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
 	});
 
-	it('reports exact allocation counts when route search stops at its candidate budget', () => {
+	it('reaches a valid LocalPassages permutation after the first 64 canonical alternatives', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'r1', from: 'a1', to: 'a2' },
+			{ id: 'r0', from: 'a1', to: 'b1' },
+			{ id: 'r2', from: 'a2', to: 'c1' },
+			{ id: 'r3', from: 'b1', to: 'c1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const ports = planSharedLanePorts(input);
+		const candidates = [
+			...parallelRouteCandidates(input, parallelStrategyPlans(input, ports, []), false),
+		];
+		const canonical = candidates.filter(({ order }) => order === ParallelRouteOrder.Canonical);
+		expect(canonical.length).toBeGreaterThan(64);
+		for (const candidate of canonical.slice(0, 64)) {
+			const geometry = materializeParallelGeometry(
+				input,
+				candidate.frame,
+				candidate.order,
+				candidate.allocation,
+			);
+			expect(validateSharedLaneGeometry(prepared.graph, geometry)).toBeDefined();
+		}
+		const local = candidates.filter(({ order }) => order === ParallelRouteOrder.LocalPassages);
+		const firstLocal = defined(local[0]);
+		expect(
+			validateSharedLaneGeometry(
+				prepared.graph,
+				materializeParallelGeometry(
+					input,
+					firstLocal.frame,
+					firstLocal.order,
+					firstLocal.allocation,
+				),
+			),
+		).toBeDefined();
+		const validLocal = local.find(
+			(candidate) =>
+				validateSharedLaneGeometry(
+					prepared.graph,
+					materializeParallelGeometry(
+						input,
+						candidate.frame,
+						candidate.order,
+						candidate.allocation,
+					),
+				) === undefined,
+		);
+		expect(validLocal).toBeDefined();
+		expect(defined(validLocal).historicalRank).toBeUndefined();
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (result.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+		expect(validatedBridges(result.geometry.relations)).toHaveLength(0);
+		expect(result.allocationWitness?.passes[0]).toMatchObject({
+			acceptBridges: false,
+			total: String(candidates.length),
+			truncated: true,
+		});
+	});
+
+	it('reports exact attempted and work counts when route search exhausts its work budget', () => {
 		const document = fourRouteCrossingDocument();
 		const prepared = prepareLayoutDocument(document);
 		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
@@ -1170,19 +1238,23 @@ describe('shared lane layout', () => {
 		expect(result.allocationWitness?.passes).toEqual([
 			{
 				acceptBridges: false,
-				attempted: 64,
+				attempted: 74,
 				total: '600',
 				exhaustive: false,
 				truncated: true,
 				searchStarted: true,
+				work: 19_980,
+				workBudget: 20_000,
 			},
 			{
 				acceptBridges: true,
-				attempted: 64,
+				attempted: 74,
 				total: '600',
 				exhaustive: false,
 				truncated: true,
 				searchStarted: true,
+				work: 19_980,
+				workBudget: 20_000,
 			},
 		]);
 		expect(
@@ -1217,13 +1289,13 @@ describe('shared lane layout', () => {
 		expect(result.allocationWitness?.passes).toEqual([
 			expect.objectContaining({
 				acceptBridges: false,
-				attempted: 64,
+				attempted: 74,
 				exhaustive: false,
 				truncated: true,
 			}),
 			expect.objectContaining({
 				acceptBridges: true,
-				attempted: 64,
+				attempted: 74,
 				exhaustive: false,
 				truncated: true,
 			}),
@@ -1774,6 +1846,126 @@ describe('shared lane layout', () => {
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, altered)).toContain('wrong source face');
 	});
+	it('prefers fewer bends at equal validated bridge and length cost', () => {
+		const document = laneDocument(
+			LayoutDirection.TopToBottom,
+			LayoutBias.Top,
+			[{ id: 'a-to-b', from: 'a1', to: 'b1' }],
+			2,
+		);
+		const original = parallelCandidate(document, ParallelRouteOrder.LocalPassages);
+		const route = defined(original.geometry.relations[0]);
+		const points = route.points;
+		const firstGutter = defined(points[1]);
+		const secondGutter = defined(points[3]);
+		const middleY = (firstGutter.y + secondGutter.y) / 2;
+		const middleX = (firstGutter.x + secondGutter.x) / 2;
+		const bent = {
+			...original.geometry,
+			relations: [
+				{
+					...route,
+					points: [
+						defined(points[0]),
+						firstGutter,
+						{ x: firstGutter.x, y: middleY },
+						{ x: middleX, y: middleY },
+						{ x: middleX, y: secondGutter.y },
+						...points.slice(3),
+					],
+				},
+			],
+		};
+		expect(validateSharedLaneGeometry(original.graph, original.geometry)).toBeUndefined();
+		expect(validateSharedLaneGeometry(original.graph, bent)).toBeUndefined();
+		const identity = {
+			historicalRank: undefined,
+			allocationKey: 'gutter',
+			strategyId: 'parallel/local-passages',
+			candidateId: 'natural',
+		};
+		const shorter = rankLaneRouteSelection(
+			{ geometry: original.geometry, incidents: [] },
+			identity,
+		);
+		const moreBends = rankLaneRouteSelection(
+			{ geometry: bent, incidents: [] },
+			{ ...identity, candidateId: 'bent' },
+		);
+		expect([shorter.bridges, shorter.length]).toEqual([moreBends.bridges, moreBends.length]);
+		expect(shorter.bends).toBeLessThan(moreBends.bends);
+		expect(laneRouteSelectionIsBetter(shorter, moreBends)).toBe(true);
+		expect(laneRouteSelectionIsBetter(moreBends, shorter)).toBe(false);
+	});
+
+	it('prefers historical routes then canonical allocation IDs at equal geometric score', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'r1', from: 'a1', to: 'a2' },
+			{ id: 'r0', from: 'a1', to: 'b1' },
+			{ id: 'r2', from: 'a2', to: 'c1' },
+			{ id: 'r3', from: 'b1', to: 'c1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const candidates = [
+			...parallelRouteCandidates(
+				input,
+				parallelStrategyPlans(input, planSharedLanePorts(input), []),
+				true,
+			),
+		];
+		const ranked = candidates.map((candidate) => {
+			const geometry = materializeParallelGeometry(
+				input,
+				candidate.frame,
+				candidate.order,
+				candidate.allocation,
+			);
+			if (
+				validateSharedLaneGeometry(prepared.graph, geometry, SHARED_LANE_CLEARANCE, true) !==
+				undefined
+			)
+				return undefined;
+			return rankLaneRouteSelection({ geometry, incidents: [] }, candidate);
+		});
+		const historical = defined(ranked[0]);
+		const metricMatch = (candidate: NonNullable<(typeof ranked)[number]>) =>
+			candidate.bridges === historical.bridges &&
+			candidate.length === historical.length &&
+			candidate.bends === historical.bends;
+		const later = defined(
+			ranked.find(
+				(candidate) =>
+					candidate !== undefined &&
+					candidate.candidate.historicalRank === undefined &&
+					metricMatch(candidate),
+			),
+		);
+		expect(laneRouteSelectionIsBetter(historical, later)).toBe(true);
+		expect(laneRouteSelectionIsBetter(later, historical)).toBe(false);
+		const sameCost = ranked
+			.filter((candidate) => candidate !== undefined)
+			.filter(
+				(candidate) => candidate.candidate.historicalRank === undefined && metricMatch(candidate),
+			);
+		const [first, second] = sameCost.filter(
+			(candidate) => candidate.candidate.strategyId === later.candidate.strategyId,
+		);
+		expect(first).toBeDefined();
+		expect(second).toBeDefined();
+		const firstBetter = laneRouteSelectionIsBetter(defined(first), defined(second));
+		const secondBetter = laneRouteSelectionIsBetter(defined(second), defined(first));
+		expect(firstBetter).toBe(
+			compareCanonicalStrings(
+				defined(first).candidate.allocationKey,
+				defined(second).candidate.allocationKey,
+			) < 0,
+		);
+		expect(secondBetter).toBe(!firstBetter);
+	});
+
 	it('chooses the shorter bridge-free LocalPassages candidate over Canonical', () => {
 		const document = laneDocument(
 			LayoutDirection.TopToBottom,

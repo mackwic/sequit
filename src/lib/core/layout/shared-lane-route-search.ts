@@ -18,7 +18,17 @@ import {
 import { type LaneRouteStrategy, twoPassStrategies } from './shared-lane-route-strategies';
 import { TransverseRouteOrder } from './shared-transverse-routing';
 
-const MAX_SHARED_LANE_ALLOCATION_CANDIDATES_PER_PASS = 64;
+const MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS = 20_000;
+
+/** Bound the route-segment/box and pairwise contact probes before evaluating an allocation. */
+function parallelCandidateWork(input: SharedLaneInput, elementCount: number): number {
+	const routes = input.plans.length;
+	const boxProbes = routes * 5 * elementCount;
+	const routePairs = (routes * (routes - 1)) / 2;
+	const contactProbes = routePairs * 25;
+	const routeWork = boxProbes + contactProbes;
+	return Math.max(1, routeWork + routes * 10);
+}
 
 interface ParallelSelectionEvidence {
 	readonly geometry: SharedLaneGeometry;
@@ -54,6 +64,15 @@ function rankEvaluatedCandidate<Selection extends ParallelSelectionEvidence>(
 	if (selected === undefined) return undefined;
 	return rankLaneRouteSelection(selected, candidate);
 }
+function preferredCandidate<Selection>(
+	best: RankedLaneRouteSelection<Selection> | undefined,
+	ranked: RankedLaneRouteSelection<Selection> | undefined,
+): RankedLaneRouteSelection<Selection> | undefined {
+	if (ranked === undefined) return best;
+	if (best === undefined || laneRouteSelectionIsBetter(ranked, best)) return ranked;
+	return best;
+}
+
 function* baselineCandidates(
 	candidates: Generator<ParallelRouteCandidate, undefined, void>,
 	count: number,
@@ -120,12 +139,19 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 	const plans = parallelStrategyPlans(lanes, ports, contracts);
 	const total = parallelCandidateTotal(plans);
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
+	const candidateWork = parallelCandidateWork(lanes, defined(plans[0]).frame.elements.length);
+	const workBudget = Math.max(
+		MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS,
+		plans.length * candidateWork,
+	);
 	let allocationTruncated = false;
 	for (const acceptBridges of [false, true]) {
 		const candidates = parallelRouteCandidates(lanes, plans, acceptBridges);
-		const attempted = plans.length;
+		const baselineCount = plans.length;
+		let attempted = baselineCount;
+		let work = baselineCount * candidateWork;
 		let best = bestBaselineSelection(
-			baselineCandidates(candidates, attempted),
+			baselineCandidates(candidates, baselineCount),
 			input,
 			acceptBridges,
 		);
@@ -138,40 +164,34 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 				exhaustive,
 				truncated: false,
 				searchStarted: false,
+				work,
+				workBudget,
 			});
-			return {
-				selected: best.selected,
-				allocationWitness: { passes },
-				allocationTruncated,
-			};
+			return { selected: best.selected, allocationWitness: { passes }, allocationTruncated };
 		}
-		const pass = bestWithinBudgetStream({
-			alternatives: candidates,
-			budget: Math.max(0, MAX_SHARED_LANE_ALLOCATION_CANDIDATES_PER_PASS - attempted),
-			total,
-			evaluate: (candidate): RankedLaneRouteSelection<Selection> | undefined => {
-				const ranked = rankEvaluatedCandidate(candidate, acceptBridges, state, evaluate);
-				if (ranked === undefined) return undefined;
-				if (best === undefined || laneRouteSelectionIsBetter(ranked, best)) best = ranked;
-				return best;
-			},
-			better: laneRouteSelectionIsBetter,
-		});
+		while (work + candidateWork <= workBudget) {
+			const next = candidates.next();
+			if (next.done === true) break;
+			attempted += 1;
+			work += candidateWork;
+			const ranked = rankEvaluatedCandidate(next.value, acceptBridges, state, evaluate);
+			best = preferredCandidate(best, ranked);
+		}
+		const exhaustive = BigInt(attempted) === BigInt(total);
+		const truncated = !exhaustive;
 		passes.push({
 			acceptBridges,
-			attempted: attempted + pass.attempted,
-			total: pass.total,
-			exhaustive: pass.exhaustive,
-			truncated: pass.truncated,
+			attempted,
+			total,
+			exhaustive,
+			truncated,
 			searchStarted: true,
+			work,
+			workBudget,
 		});
-		allocationTruncated ||= pass.truncated;
+		allocationTruncated ||= truncated;
 		if (best !== undefined)
-			return {
-				selected: best.selected,
-				allocationWitness: { passes },
-				allocationTruncated,
-			};
+			return { selected: best.selected, allocationWitness: { passes }, allocationTruncated };
 	}
 	return { allocationWitness: { passes }, allocationTruncated };
 }
@@ -219,6 +239,8 @@ export function searchTransverseRouteOrders<Selection extends ParallelSelectionE
 			exhaustive: pass.exhaustive,
 			truncated: pass.truncated,
 			searchStarted: true,
+			work: pass.attempted,
+			workBudget: alternatives.length,
 		});
 		if (pass.incumbent !== undefined)
 			return { selected: pass.incumbent.selected, allocationWitness: { passes } };

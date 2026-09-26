@@ -229,6 +229,8 @@ describe('S | SD | C shared process', () => {
 				exhaustive: true,
 				truncated: false,
 				searchStarted: true,
+				work: 2,
+				workBudget: 2,
 			},
 		]);
 	});

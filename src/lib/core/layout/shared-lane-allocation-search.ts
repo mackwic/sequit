@@ -110,7 +110,7 @@ function productKey(
 /** Products are lazy; the historical product is first and is not repeated among alternatives. */
 export function* trackAllocationProducts(
 	domains: readonly TrackAssignmentDomain[],
-): Generator<TrackAllocationProduct> {
+): Generator<TrackAllocationProduct, undefined, void> {
 	const baseline = domains.map(baselineFor);
 	const baselineKey = productKey(domains, baseline);
 	yield { allocations: baseline, key: baselineKey };
