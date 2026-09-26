@@ -50,6 +50,7 @@ interface GuardedPersistencePlan extends PersistencePlan {
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
 	readonly #validTransactions = new WeakSet<Y.Transaction>();
+	readonly #activeTransactions = new Set<Y.Transaction>();
 	#persistenceCapture: PersistenceCapture | undefined;
 	#lastValidDocument: LogicDocument | undefined;
 	#lastPhysicalResult: YjsLiveDocumentResult<LogicDocument>;
@@ -64,6 +65,7 @@ export class YjsDocumentRepository {
 		document.on('beforeTransaction', this.#beforeTransaction);
 		document.on('afterTransaction', this.#afterTransaction);
 		document.on('update', this.#afterUpdate);
+		document.on('afterAllTransactions', this.#afterAllTransactions);
 		const initial = readLogicDocument(document);
 		this.#lastPhysicalResult = initial;
 		if (initial.ok) {
@@ -88,7 +90,7 @@ export class YjsDocumentRepository {
 	}
 
 	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult> {
-		if (this.#persistenceCapture !== undefined)
+		if (this.#persistenceCapture !== undefined || this.#activeTransactions.size > 0)
 			return Promise.resolve({
 				ok: false,
 				diagnostics: [
@@ -262,16 +264,22 @@ export class YjsDocumentRepository {
 		this.document.off('beforeTransaction', this.#beforeTransaction);
 		this.document.off('afterTransaction', this.#afterTransaction);
 		this.document.off('update', this.#afterUpdate);
+		this.document.off('afterAllTransactions', this.#afterAllTransactions);
 		this.#observers.clear();
 		this.#checkpointDocument?.destroy();
 		this.#lastValidDocument = undefined;
 	}
 
 	readonly #beforeTransaction = (transaction: Y.Transaction): void => {
+		this.#activeTransactions.add(transaction);
 		const capture = this.#persistenceCapture;
 		if (capture === undefined || capture.transaction === transaction) return;
 		if (capture.transaction === undefined) capture.transaction = transaction;
 		else capture.secondaryTransactions = true;
+	};
+
+	readonly #afterAllTransactions = (): void => {
+		this.#activeTransactions.clear();
 	};
 
 	readonly #afterUpdate = (

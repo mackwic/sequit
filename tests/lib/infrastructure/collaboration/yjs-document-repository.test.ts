@@ -2034,6 +2034,57 @@ describe('yjsLiveDocumentFormat', () => {
 		ydoc.destroy();
 	});
 
+	it('rejects a command from a remote transaction observer through cleanup', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, crossingDocument());
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+		const repository = new YjsDocumentRepository(local);
+		let nested: ReturnType<YjsDocumentRepository['persist']> | undefined;
+		repository.observe((_result, origin) => {
+			if (origin === 'remote')
+				nested = repository.persist(markdownChanges('source-b', 'Unsafe nested command'));
+		});
+		let duringUpdate: ReturnType<YjsDocumentRepository['persist']> | undefined;
+		local.on('update', (_update, origin) => {
+			if (origin === 'remote')
+				duringUpdate = repository.persist(markdownChanges('source-b', 'Unsafe update command'));
+		});
+		local.on('afterTransaction', (transaction) => {
+			if (transaction.origin !== 'remote') return;
+			local
+				.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+				.get('target-b')
+				?.set('natureId', 'missing-nature');
+		});
+		const remoteMarkdown = defined(
+			remote.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-a'),
+		).get('markdown');
+		if (!(remoteMarkdown instanceof Y.Text)) throw new Error('Expected shared Markdown');
+		remoteMarkdown.insert(0, 'Remote: ');
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)), 'remote');
+		expect(nested).toBeDefined();
+		expect(await nested).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'document-command-reentrant' }],
+		});
+		expect(duringUpdate).toBeDefined();
+		expect(await duringUpdate).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'document-command-reentrant' }],
+		});
+		expect(repository.read().ok).toBe(false);
+		expect(
+			local.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-b')?.get('markdown'),
+		).toBeInstanceOf(Y.Text);
+		expect(readDocument(remote).nodes.find(({ id }) => id === 'source-b')?.markdown).toBe(
+			'Source B',
+		);
+		repository.destroy();
+		local.destroy();
+		remote.destroy();
+	});
+
 	it('never publishes Accepted for a physical document poisoned by an earlier afterTransaction hook', async () => {
 		const ydoc = new Y.Doc();
 		importLogicDocument(ydoc, crossingDocument());
