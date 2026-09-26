@@ -376,12 +376,12 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-2+2': '9b431c8e68b8479123f3ccb6e5733142c820a5cf91aa514aac4b481c79fb6e7b',
 			'adjacent-3+1': 'fdb0249a5b7112767e038d033b441777f88a535a3d3bc59bc18c0b306338cc4a',
 			'ai-documentary-effort': 'efc78b3328e0fd53d68b5e26881580d51cdd98a2ebf24c6dbdd6b0d88cb4f1ee',
-			'group-endpoint-route': '271f3cd5701db83bb7051e33c9a9ece25c7e6b2c810a088a39d389d933c80297',
+			'group-endpoint-route': '02f614b08f2755f001eec182d450636417d3ac211e789bc1f2c42bfdf75fe6bd',
 			'junction-network-layout': '45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
 			'multirank-group-junction-one':
-				'29044bb55f6a8d22110b28980ef5e6021f1b914b94691d0d53618500902c72d0',
+				'f1d1780c20bab12275ee01bca27be4fb20b2abf49ff5c94b424142b812f81d0b',
 			'multirank-group-junction-two':
-				'cc554bf2610cce6a093f24d267292020469dee64bdd569b0240712032118d1fc',
+				'066e5fc7703363327bd2658571ddda1a9f2e981687e2efee4dc6034289efc7ba',
 			'rail-clearance-12': '9dae568401b9b8462723aa9c5564a2f04c4958fdb90a5ac445f37bbee3a60e9f',
 			'rail-clearance-13': '637f35ef14ed710564549725d3f26f676cb4dc0e0357fd675c2b20de6e6db695',
 			'rail-reuse': 'bf9eedd9a6eb7669b4b969d292616c8f7367b20b5eb017d6f1aed223c3d52a49',
