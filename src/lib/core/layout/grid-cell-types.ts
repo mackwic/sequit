@@ -1,10 +1,11 @@
 import type { LayoutConfiguration } from '../document/logic-document';
 import type { GridCrossingAllocation } from './grid-cell-crossing-allocation';
-import type { GridCrossingAllocationWitness } from './grid-cell-crossing-phases';
+import type { GridCrossingAllocationSelectedWitness } from './grid-cell-crossing-phases';
 import type {
 	RegionChildPlacement,
 	RegionCompositionAttempt,
 	RegionCompositionSelected,
+	RegionCompositionStatus,
 	RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
@@ -52,7 +53,7 @@ export interface GridCellSelected extends RegionCompositionSelected<GridCellPort
 /** The grid solver's selected candidate carries its actual allocation and bounded-search evidence. */
 export interface GridCellAllocationSelected extends GridCellSelected {
 	readonly allocation: GridCrossingAllocation;
-	readonly witness: GridCrossingAllocationWitness;
+	readonly witness: GridCrossingAllocationSelectedWitness;
 }
 
 type GridCellGridFailureEvidence = Extract<
@@ -69,7 +70,9 @@ export type GridCellLayoutAttempt = RegionCompositionAttempt<
 	GridCellGridFailureEvidence | GridCellDiagnosticOnlyFailureEvidence
 >;
 
-export type GridCellRouteAttempt = RegionCompositionAttempt<
-	GridCellAllocationSelected,
-	GridCellGridFailureEvidence
+export type GridCellRouteAttempt = Extract<
+	RegionCompositionAttempt<GridCellAllocationSelected, GridCellGridFailureEvidence>,
+	{
+		readonly status: RegionCompositionStatus.Selected | RegionCompositionStatus.Unknown;
+	}
 >;

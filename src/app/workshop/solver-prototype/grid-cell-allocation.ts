@@ -16,7 +16,6 @@ import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 } from '../../../lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../lib/core/layout/grid-cell-validation';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
 
 const ROUTE_COLORS = ['#bf4f36', '#287b65', '#4c5fb5', '#a34e91', '#b17b26', '#317c9e'];
@@ -95,15 +94,19 @@ function cell(id: string, row: number, column: number): GridCellInput['cells'][n
 
 function twoByTwo(): GridDefinition {
 	const endpointIds = ['a', 'b', 'c', 'd'];
+	const cells = [cell('A', 0, 0), cell('B', 0, 1), cell('C', 1, 0), cell('D', 1, 1)];
 	return {
 		id: 'grid-allocation-2x2',
 		title: 'Grille deux par deux',
 		description: 'Une traversée diagonale : le candidat canonique reste le premier choix valide.',
 		endpointIds,
-		cells: [cell('A', 0, 0), cell('B', 0, 1), cell('C', 1, 0), cell('D', 1, 1)],
-		cellByEndpointId: new Map(
-			endpointIds.map((id, index) => [id, ['A', 'B', 'C', 'D'][index] ?? '']),
-		),
+		cells,
+		cellByEndpointId: new Map([
+			['a', 'A'],
+			['b', 'B'],
+			['c', 'C'],
+			['d', 'D'],
+		]),
 		minimumColumnWidths: [180, 140],
 		minimumRowHeights: [90, 90],
 		relations: [{ id: 'a-d', from: 'a', to: 'd' }],
@@ -207,8 +210,6 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 		throw new Error(
 			`Grid workshop example ${definition.id} was ${attempt.status}: ${attempt.reason}`,
 		);
-	const invalid = validateGridCellGeometry(attempt, created.value, input);
-	if (invalid !== undefined) throw new Error(`Grid workshop example ${definition.id}: ${invalid}`);
 	const relationIds = definition.relations.map(({ id }) => id).sort(compareCanonicalStrings);
 	const colorsByRelationId = new Map(
 		relationIds.map((relationId, index) => [
@@ -219,9 +220,6 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 	const busOrder = [...attempt.allocation.busTrackByRelationId]
 		.sort((left, right) => left[1] - right[1])
 		.map(([relationId]) => relationId);
-	const winningPhase = attempt.witness.winningPhase;
-	if (winningPhase === undefined)
-		throw new Error(`Grid workshop example ${definition.id} has no winning allocation phase.`);
 	return {
 		id: definition.id,
 		title: definition.title,
@@ -230,7 +228,7 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 		colorsByRelationId,
 		tracks: gridTracks(definition, attempt, colorsByRelationId),
 		busOrder,
-		winningPhase,
+		winningPhase: attempt.witness.winningPhase,
 	};
 }
 

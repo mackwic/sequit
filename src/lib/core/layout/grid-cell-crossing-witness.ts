@@ -35,3 +35,8 @@ export interface GridCrossingAllocationWitness extends BoundedSearchWitness<Grid
 	readonly phases: readonly GridCrossingAllocationPhaseWitness[];
 	readonly winningPhase?: CrossingAllocationPhaseId;
 }
+
+/** Search evidence for a selected allocation always records the phase that won. */
+export interface GridCrossingAllocationSelectedWitness extends GridCrossingAllocationWitness {
+	readonly winningPhase: CrossingAllocationPhaseId;
+}

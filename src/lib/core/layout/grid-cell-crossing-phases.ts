@@ -7,7 +7,10 @@ import {
 } from './grid-cell-crossing-allocation';
 import { CrossingAllocationPhaseId } from './grid-cell-crossing-witness';
 
-export type { GridCrossingAllocationWitness } from './grid-cell-crossing-witness';
+export type {
+	GridCrossingAllocationSelectedWitness,
+	GridCrossingAllocationWitness,
+} from './grid-cell-crossing-witness';
 export { CrossingAllocationPhaseId } from './grid-cell-crossing-witness';
 
 /** Maximum route geometries examined while permuting the existing gutter, bus, and port tracks. */
@@ -21,6 +24,21 @@ export interface GridCrossingAllocationBudgets {
 	readonly reallocate: number;
 	readonly extraTrack: number;
 	readonly bridge: number;
+}
+
+function assertPositiveSafeIntegerBudget(value: number): void {
+	if (!Number.isSafeInteger(value) || value <= 0)
+		throw new RangeError('Grid crossing allocation budgets must be positive safe integers.');
+}
+
+/** Rejects budgets that cannot guarantee an allocation is examined in each phase. */
+export function validatedGridCrossingAllocationBudgets(
+	budgets: GridCrossingAllocationBudgets,
+): GridCrossingAllocationBudgets {
+	assertPositiveSafeIntegerBudget(budgets.reallocate);
+	assertPositiveSafeIntegerBudget(budgets.extraTrack);
+	assertPositiveSafeIntegerBudget(budgets.bridge);
+	return budgets;
 }
 
 const DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS: GridCrossingAllocationBudgets = {
@@ -88,6 +106,7 @@ export function crossingAllocationPhases(
 	input: CrossingAllocationInput,
 	budgets: GridCrossingAllocationBudgets = DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS,
 ): readonly CrossingAllocationPhase[] {
+	validatedGridCrossingAllocationBudgets(budgets);
 	return [
 		{
 			id: CrossingAllocationPhaseId.Reallocate,

@@ -6,7 +6,11 @@ import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell
 import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
 import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
-import { type GridCellInput, GridCellLayoutStatus } from './grid-cell-types';
+import {
+	type GridCellInput,
+	GridCellLayoutStatus,
+	type GridCellRouteAttempt,
+} from './grid-cell-types';
 import { type SolvedRecursiveRegion, translatedChildren } from './nested-region-recursive-geometry';
 import type { RecursiveContext } from './nested-region-recursive-model-adapter';
 import type {
@@ -89,6 +93,22 @@ interface GridPlaced {
 	readonly input: GridCellInput;
 	readonly disposition: GridCellDisposition;
 }
+interface GridCellCoordinate {
+	readonly row: number;
+	readonly column: number;
+}
+interface GridExtent {
+	readonly rows: number;
+	readonly columns: number;
+}
+type GridCellTouchPredicate = (cell: GridCellCoordinate, extent: GridExtent) => boolean;
+
+const GRID_CELL_TOUCHES_SIDE: Readonly<Record<RegionPortalSide, GridCellTouchPredicate>> = {
+	[RegionPortalSide.Top]: (cell) => cell.row === 0,
+	[RegionPortalSide.Bottom]: (cell, extent) => cell.row === extent.rows - 1,
+	[RegionPortalSide.Left]: (cell) => cell.column === 0,
+	[RegionPortalSide.Right]: (cell, extent) => cell.column === extent.columns - 1,
+};
 
 const GRID_INCIDENT_SIDES: readonly RegionPortalSide[] = [
 	RegionPortalSide.Top,
@@ -96,25 +116,6 @@ const GRID_INCIDENT_SIDES: readonly RegionPortalSide[] = [
 	RegionPortalSide.Bottom,
 	RegionPortalSide.Left,
 ];
-
-function cellTouchesSide(
-	cell: { readonly row: number; readonly column: number },
-	side: RegionPortalSide,
-	extent: { readonly rows: number; readonly columns: number },
-): boolean {
-	switch (side) {
-		case RegionPortalSide.Top:
-			return cell.row === 0;
-		case RegionPortalSide.Bottom:
-			return cell.row === extent.rows - 1;
-		case RegionPortalSide.Left:
-			return cell.column === 0;
-		case RegionPortalSide.Right:
-			return cell.column === extent.columns - 1;
-		default:
-			throw new Error('Unknown grid side.');
-	}
-}
 
 function gridIncidentSides(input: ArrangementIncidentInput): readonly RegionPortalSide[] {
 	const region = defined(input.context.model.regionsById.get(input.regionId));
@@ -137,7 +138,7 @@ function gridIncidentSides(input: ArrangementIncidentInput): readonly RegionPort
 	};
 	const outward = crossingEndpointSide(cell.column, extent.columns);
 	if (input.inheritedSides === undefined) return [outward];
-	const direct = input.inheritedSides.filter((side) => cellTouchesSide(cell, side, extent));
+	const direct = input.inheritedSides.filter((side) => GRID_CELL_TOUCHES_SIDE[side](cell, extent));
 	return [...new Set([...direct, outward, ...input.inheritedSides, ...GRID_INCIDENT_SIDES])];
 }
 
@@ -178,14 +179,12 @@ function placeGrid(input: ArrangementPlaceInput): GridPlaced {
 function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveRegion {
 	const { context, regionId, placement } = input;
 	const childrenById = new Map(input.children.map(({ id, solved }) => [id, solved]));
-	const attempt = routePlacedGridCellDisposition({
+	const attempt: GridCellRouteAttempt = routePlacedGridCellDisposition({
 		graph: placement.graph,
 		input: placement.input,
 		model: context.model,
 		disposition: placement.disposition,
 	});
-	if (attempt.status === GridCellLayoutStatus.Unsupported)
-		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
 	if (attempt.status === GridCellLayoutStatus.Unknown) {
 		throw new UnknownRegionLeafLayoutError(
 			attempt.reason,

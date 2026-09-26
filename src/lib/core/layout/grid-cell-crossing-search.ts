@@ -7,6 +7,7 @@ import {
 	type CrossingAllocationPhase,
 	crossingAllocationPhases,
 	type GridCrossingAllocationBudgets,
+	type GridCrossingAllocationSelectedWitness,
 	type GridCrossingAllocationWitness,
 } from './grid-cell-crossing-phases';
 import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
@@ -23,7 +24,7 @@ interface GridCrossingAllocationSelection<Candidate> {
 
 interface GridCrossingAllocationSearchSelected<Candidate> {
 	readonly selected: GridCrossingAllocationSelection<Candidate>;
-	readonly witness: GridCrossingAllocationWitness;
+	readonly witness: GridCrossingAllocationSelectedWitness;
 }
 
 interface GridCrossingAllocationSearchFailed {
