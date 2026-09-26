@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
 import {
 	defined,
@@ -18,8 +19,14 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import {
+	compareDedicatedRouteScores,
+	DedicatedCandidateRejectionCode,
+	validateDedicatedCandidate,
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngine,
+	layoutWithDedicatedEngineAndRankOrderWitness,
 } from '../../../../src/lib/core/layout/layout-engine';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import {
@@ -37,6 +44,7 @@ import {
 	rankOrderKendallDistance,
 	validateRankOrder,
 } from '../../../../src/lib/core/layout/rank-order';
+import { searchDedicatedRankOrders } from '../../../../src/lib/core/layout/rank-order-search';
 import {
 	applyRankOrder,
 	collectRankOrderDomain,
@@ -666,5 +674,175 @@ describe('bounded lazy rank orders', () => {
 				documentary,
 			),
 		).toBe(4);
+	});
+});
+
+describe('dedicated bounded geometric rank search', () => {
+	it('matches an independently enumerated valid-layout oracle, routes included', () => {
+		for (const entry of rankOrderComparisonCorpus().slice(0, 2)) {
+			const created = createGraph(entry.document);
+			if (!created.ok) throw new Error('Invalid rank corpus graph');
+			const graph = created.value;
+			const ranks = topologicallyRank(graph);
+			const structure = prepareLayout(graph, ranks);
+			const domain = collectRankOrderDomain(structure);
+			const documentary = domain.bands;
+			const candidateOrders = enumerateRankOrders(domain, 12);
+			const valid = candidateOrders.flatMap((order) => {
+				const layout = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					entry.measurements,
+				);
+				const validation = validateDedicatedCandidate({
+					graph,
+					ranks,
+					measurements: entry.measurements,
+					layout,
+				});
+				if (validation.valid) return [{ order, layout, score: validation.score }];
+				return [];
+			});
+			valid.sort(
+				(first, second) =>
+					compareDedicatedRouteScores(first.score, second.score) ||
+					rankOrderKendallDistance(first.order, documentary) -
+						rankOrderKendallDistance(second.order, documentary) ||
+					compareRankOrders(first.order, second.order),
+			);
+			const selected = layoutWithDedicatedEngineAndRankOrderWitness(
+				graph,
+				ranks,
+				entry.measurements,
+			);
+			if (valid.length > 0) expect(selected.layout).toEqual(defined(valid[0]).layout);
+			else expect(selected.layout).toEqual(evaluateDedicatedLayout(structure, entry.measurements));
+			expect(selected.witness.evaluated).toBeLessThanOrEqual(12);
+		}
+	});
+
+	it('rejects invalid alternatives even when their apparent score is better', () => {
+		const entry = rankOrderComparisonCorpus()[0];
+		if (entry === undefined) throw new Error('Missing rank corpus');
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid rank corpus graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		const baseline = evaluateDedicatedLayout(structure, entry.measurements, undefined, true);
+		const forged = {
+			result: { ...baseline.result, width: 0, relations: [] },
+			complete: () => baseline.result,
+		};
+		const result = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements: entry.measurements,
+			baseline,
+			evaluate: () => forged,
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(result.selected?.order).toEqual(domain.bands);
+		expect(result.witness.rejected.length).toBeGreaterThan(0);
+		expect(
+			result.witness.rejected.every(({ reason }) => reason.code === DedicatedCandidateRejectionCode.RelationInventory),
+		).toBe(true);
+		expect(result.witness.valid + result.witness.rejected.length + result.witness.unverified).toBe(
+			result.witness.evaluated,
+		);
+	});
+
+	it('does not start a second geometry pipeline when the evaluation budget is one', () => {
+		const entry = rankOrderComparisonCorpus()[0];
+		if (entry === undefined) throw new Error('Missing rank corpus');
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid rank corpus graph');
+		const structure = prepareLayout(created.value, topologicallyRank(created.value));
+		const domain = collectRankOrderDomain(structure);
+		const baseline = evaluateDedicatedLayout(structure, entry.measurements, undefined, true);
+		let evaluations = 0;
+		const result = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements: entry.measurements,
+			baseline,
+			evaluate: () => {
+				evaluations += 1;
+				return baseline;
+			},
+			limits: { completePipelines: 1, uniqueProposals: 48 },
+		});
+		expect(evaluations).toBe(0);
+		expect(result.witness.evaluated).toBe(1);
+		expect(result.witness.truncated).toBe(true);
+		expect(result.witness.exhaustive).toBe(false);
+		expect(result.selected?.evaluation).toBe(baseline);
+	});
+
+	it('keeps an invalid documentary baseline unchanged and never spends an alternative pipeline', () => {
+		const entry = rankOrderComparisonCorpus()[0];
+		if (entry === undefined) throw new Error('Missing rank corpus');
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid rank corpus graph');
+		const structure = prepareLayout(created.value, topologicallyRank(created.value));
+		const domain = collectRankOrderDomain(structure);
+		const baseline = evaluateDedicatedLayout(structure, entry.measurements, undefined, true);
+		let evaluations = 0;
+		const invalid = { ...baseline, result: { ...baseline.result, width: 0 } };
+		const result = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements: entry.measurements,
+			baseline: invalid,
+			evaluate: () => {
+				evaluations += 1;
+				return baseline;
+			},
+			limits: { completePipelines: 1, uniqueProposals: 1 },
+		});
+		expect(result.witness.stop).toBe('baseline-rejected');
+		expect(result.selected).toBeUndefined();
+		expect(result.unchangedBaseline).toBe(invalid);
+		expect(evaluations).toBe(0);
+	});
+});
+
+describe('rank-order heuristic cost and determinism', () => {
+	it('bounds a 4-by-2 domain to 12 complete evaluations and 48 distinct proposals', () => {
+		const document = corpusDocument(
+			['a', 'b', 'c', 'f', 'd', 'e'],
+			['a', 'b', 'c', 'f', 'd', 'e'],
+			[
+				{ id: 'a-d', from: 'a', to: 'd' },
+				{ id: 'a-e', from: 'a', to: 'e' },
+				{ id: 'b-d', from: 'b', to: 'd' },
+				{ id: 'c-d', from: 'c', to: 'd' },
+				{ id: 'f-d', from: 'f', to: 'd' },
+				{ id: 'f-e', from: 'f', to: 'e' },
+			],
+		);
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Invalid heuristic graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		const measurements = {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
+			groups: new Map(),
+			junctions: new Map(),
+		};
+		expect(rankOrderEnumerationSize(domain)).toBe(48);
+		const first = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+		const second = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+		expect(second).toEqual(first);
+		expect(first.witness.mode).toBe('heuristic');
+		expect(first.witness.evaluated).toBeLessThanOrEqual(12);
+		expect(first.witness.proposed).toBeLessThanOrEqual(48);
+		expect(first.witness.exhaustive).toBe(false);
+		expect(first.witness.truncated).toBe(true);
+		expect(
+			validateDedicatedCandidate({ graph, ranks, measurements, layout: first.layout }).valid,
+		).toBe(true);
 	});
 });

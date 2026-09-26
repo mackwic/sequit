@@ -52,6 +52,7 @@ export interface LayoutBridge extends Point {
 export interface RouteBridgeAnalysis {
 	readonly crossings: readonly RouteCrossing[];
 	readonly bridges: readonly LayoutBridge[];
+	readonly inspectedRuns?: number;
 }
 
 /** Derived bridges tied to one immutable route array; a different candidate replaces them. */
@@ -309,6 +310,7 @@ export function routeBridgeAnalysis(
 		previousRuns.push(...pathRuns);
 	}
 	return {
+		inspectedRuns: scan.runs.length,
 		crossings: [...scan.crossings.values()].sort((left, right) => {
 			charge?.(1);
 			const byPoint = left.x - right.x || left.y - right.y;

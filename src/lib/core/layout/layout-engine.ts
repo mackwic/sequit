@@ -17,6 +17,8 @@ import { expandRowGaps } from './placement/expand-row-gaps';
 import { groupJunctionInsets } from './placement/group-junction-channels';
 import { placeElements } from './placement/place-elements';
 import { prepareMeasurements } from './placement/prepare-measurements';
+import type { RankOrderSearchWitness } from './rank-order-search';
+import { selectDedicatedRankLayout } from './rank-order-selection';
 import { alignJunctionPorts } from './routing/align-junction-ports';
 import {
 	allocateLayerPorts,
@@ -34,7 +36,7 @@ import {
 import { directRoutingSpace, routingSpace } from './routing/routing-space';
 import { settleGroupCorridorPorts } from './routing/settle-group-corridors';
 import { bypassedChains } from './structure/bypassed-chains';
-import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
+import type { LayoutStructure } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
 
 interface PlacementReservation {
@@ -332,6 +334,21 @@ export function layoutWithDedicatedEngine(
 	measurements: LayoutMeasurements,
 	options: LayoutOptions = {},
 ): LayoutResult {
-	const structure = prepareLayout(graph, ranks);
-	return evaluateDedicatedLayout(structure, measurements, options);
+	return selectDedicatedRankLayout(graph, ranks, measurements, {
+		options,
+		evaluate: evaluateDedicatedLayout,
+	}).layout;
+}
+
+/** The same production selection, exposing its transient proof to workshop consumers. */
+export function layoutWithDedicatedEngineAndRankOrderWitness(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions = {},
+): { readonly layout: LayoutResult; readonly witness: RankOrderSearchWitness } {
+	return selectDedicatedRankLayout(graph, ranks, measurements, {
+		options,
+		evaluate: evaluateDedicatedLayout,
+	});
 }

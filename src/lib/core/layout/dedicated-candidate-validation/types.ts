@@ -1,5 +1,6 @@
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { RouteBridgeAnalysis } from '../bridge-oracle';
 import type { LayoutMeasurements, LayoutResult, Point } from '../layout-types';
 
 export enum DedicatedCandidateRejectionCode {
@@ -36,6 +37,7 @@ export interface DedicatedRouteScore {
 interface ValidDedicatedCandidate {
 	readonly valid: true;
 	readonly score: DedicatedRouteScore;
+	readonly analysis: RouteBridgeAnalysis;
 }
 
 export interface RejectedDedicatedCandidate {
