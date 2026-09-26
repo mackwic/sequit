@@ -10,18 +10,20 @@
 	let overlay = $state<HTMLDivElement>();
 	let revision = $state(0);
 	$effect(() => {
+		const observedText = text;
+		const quill = editor.quill;
 		const refresh = (): void => {
 			revision += 1;
 		};
-		text.observe(refresh);
-		editor.quill.on('editor-change', refresh);
-		editor.quill.root.addEventListener('scroll', refresh);
+		observedText.observe(refresh);
+		quill.on('editor-change', refresh);
+		quill.root.addEventListener('scroll', refresh);
 		const observer = new ResizeObserver(refresh);
-		observer.observe(editor.quill.root);
+		observer.observe(quill.root);
 		return () => {
-			text.unobserve(refresh);
-			editor.quill.off('editor-change', refresh);
-			editor.quill.root.removeEventListener('scroll', refresh);
+			observedText.unobserve(refresh);
+			quill.off('editor-change', refresh);
+			quill.root.removeEventListener('scroll', refresh);
 			observer.disconnect();
 		};
 	});
