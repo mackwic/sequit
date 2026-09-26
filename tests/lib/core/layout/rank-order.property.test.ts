@@ -354,6 +354,9 @@ describe('explicit ordinary row preparation', () => {
 		expect(() => prepareLayout(graph.value, ranks, order)).toThrow(
 			/Invalid ordinary-row rank order/,
 		);
+		expect(() => prepareLayout(graph.value, ranks, order.slice(1))).toThrow(
+			/Invalid ordinary-row rank order/,
+		);
 	});
 });
 

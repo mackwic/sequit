@@ -17,10 +17,8 @@ function sameOrder(
 	left: readonly (readonly string[])[],
 	right: readonly (readonly string[])[],
 ): boolean {
-	if (left.length !== right.length) return false;
 	for (const [index, band] of left.entries()) {
-		const other = right[index];
-		if (other?.length !== band.length) return false;
+		const other = defined(right[index]);
 		for (const [position, id] of band.entries()) {
 			if (other[position] !== id) return false;
 		}
