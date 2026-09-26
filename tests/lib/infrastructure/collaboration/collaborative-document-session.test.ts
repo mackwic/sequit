@@ -108,6 +108,17 @@ it('keeps command identity and locks text editing during a retryable service fai
 	room.destroy();
 });
 
+it('does not send a text proposal when the requested content already matches', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	expect(room.client.replaceNodeMarkdown('A', 'Alpha')).toBe(true);
+	vi.advanceTimersByTime(50);
+	expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(false);
+	room.destroy();
+});
+
 it('synchronizes an unsent text gesture after a retry without replaying stale intent', () => {
 	vi.useFakeTimers();
 	vi.spyOn(Math, 'random').mockReturnValue(0.5);
