@@ -726,6 +726,89 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
+	it('agrees with a separate exhaustive geometric oracle across connected small topologies', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 3 }),
+				fc.constantFrom(
+					LayoutDirection.TopToBottom,
+					LayoutDirection.BottomToTop,
+					LayoutDirection.LeftToRight,
+					LayoutDirection.RightToLeft,
+				),
+				(mask, direction) => {
+					const edges: LogicRelation[] = [
+						{ id: 'a-d', from: 'a', to: 'd' },
+						{ id: 'a-e', from: 'a', to: 'e' },
+						{ id: 'b-d', from: 'b', to: 'd' },
+						{ id: 'c-e', from: 'c', to: 'e' },
+					];
+					if (mask & 1) edges.push({ id: 'b-e', from: 'b', to: 'e' });
+					if (mask & 2) edges.push({ id: 'c-d', from: 'c', to: 'd' });
+					let bias = LayoutBias.Top;
+					if (direction === LayoutDirection.BottomToTop) bias = LayoutBias.Bottom;
+					if (direction === LayoutDirection.LeftToRight) bias = LayoutBias.Left;
+					if (direction === LayoutDirection.RightToLeft) bias = LayoutBias.Right;
+					const base = corpusDocument(['a', 'b', 'c', 'd', 'e'], ['a', 'b', 'c', 'd', 'e'], edges);
+					const document = { ...base, layout: defined(layoutConfiguration(direction, bias)) };
+					const created = createGraph(document);
+					if (!created.ok) throw new Error('Invalid generated rank topology');
+					const graph = created.value;
+					const ranks = topologicallyRank(graph);
+					const structure = prepareLayout(graph, ranks);
+					const domain = collectRankOrderDomain(structure);
+					expect(rankOrderEnumerationSize(domain)).toBe(12);
+					const measurements = {
+						nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
+						junctions: new Map(),
+						groups: new Map(),
+					};
+					const baseline = evaluateDedicatedLayout(structure, measurements);
+					const baselineValidation = validateDedicatedCandidate({
+						graph,
+						ranks,
+						measurements,
+						layout: baseline,
+					});
+					const options = { inspectRouting: true };
+					const actual = layoutWithDedicatedEngineAndRankOrderWitness(
+						graph,
+						ranks,
+						measurements,
+						options,
+					);
+					if (!baselineValidation.valid) {
+						expect(actual.witness.stop).toBe('baseline-rejected');
+						expect(actual.layout).toEqual(
+							evaluateDedicatedLayout(structure, measurements, options),
+						);
+						return;
+					}
+					const valid = enumerateRankOrders(domain, 12).flatMap((order) => {
+						const layout = evaluateDedicatedLayout(
+							applyRankOrder(structure, domain, order),
+							measurements,
+							options,
+						);
+						const validation = validateDedicatedCandidate({ graph, ranks, measurements, layout });
+						if (validation.valid) return [{ order, layout, score: validation.score }];
+						return [];
+					});
+					valid.sort(
+						(left, right) =>
+							compareDedicatedRouteScores(left.score, right.score) ||
+							rankOrderKendallDistance(left.order, domain.bands) -
+								rankOrderKendallDistance(right.order, domain.bands) ||
+							compareRankOrders(left.order, right.order),
+					);
+					expect(actual.layout).toEqual(defined(valid[0]).layout);
+					expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('does not validate the legacy dense shape or an ordinary graph with no exchange band', () => {
 		const wide = corpusDocument(
 			Array.from({ length: 9 }, (_, index) => `n${index}`),
