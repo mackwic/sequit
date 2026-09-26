@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { VisualLayout } from '../../../../../tests/support/harnesses/visual-layout';
 	import { LayoutDirection } from '../../../../lib/core/document/logic-document';
-	import { IndependentAdjacentIssue } from '../../../../lib/core/layout/contract/independent-adjacent-resolution';
+	import { IndependentAdjacentIssue } from '../../../../lib/core/layout/contract/independent-adjacent-policy';
 	import {
 		type AdjacentEngineComparison,
 		compareAdjacentBridgeAndDetour,

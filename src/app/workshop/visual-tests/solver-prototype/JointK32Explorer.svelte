@@ -5,9 +5,9 @@
 	import { LayoutDirection } from '../../../../lib/core/document/logic-document';
 	import { createGraph } from '../../../../lib/core/graph/create-graph';
 	import { topologicallyRank } from '../../../../lib/core/graph/topological-ranks';
+	import type { IndependentAdjacentSelection } from '../../../../lib/core/layout/contract/independent-adjacent-policy';
 	import {
 		type IndependentAdjacentResolution,
-		type IndependentAdjacentSelection,
 		IndependentAdjacentStatus,
 		resolveIndependentAdjacentContract,
 	} from '../../../../lib/core/layout/contract/independent-adjacent-resolution';

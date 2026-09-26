@@ -20,6 +20,8 @@ import {
 	DETOUR_AREA_TOLERANCE,
 	DETOUR_LENGTH_TOLERANCE,
 	IndependentAdjacentIssue,
+} from '../../../../src/lib/core/layout/contract/independent-adjacent-policy';
+import {
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../../src/lib/core/layout/contract/independent-adjacent-resolution';

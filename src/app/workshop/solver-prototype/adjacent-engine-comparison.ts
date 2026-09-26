@@ -9,8 +9,10 @@ import { routeBridgeAnalysis } from '../../../lib/core/layout/bridges/bridge-ora
 import { candidateFaceBranches } from '../../../lib/core/layout/contract/candidate-face-branches';
 import {
 	type IndependentAdjacentComparison,
-	type IndependentAdjacentGlobalStatus,
 	IndependentAdjacentIssue,
+} from '../../../lib/core/layout/contract/independent-adjacent-policy';
+import {
+	type IndependentAdjacentGlobalStatus,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../lib/core/layout/contract/independent-adjacent-resolution';

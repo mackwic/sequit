@@ -26,8 +26,10 @@ import {
 } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
 	arbitrateIssue,
-	IndependentAdjacentBranchStatus,
 	type IndependentAdjacentCostCandidate,
+} from '../../../../../src/lib/core/layout/contract/independent-adjacent-policy';
+import {
+	IndependentAdjacentBranchStatus,
 	IndependentAdjacentGlobalStatus,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
