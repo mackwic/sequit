@@ -3,18 +3,14 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { META_KEY } from '../../../src/lib/infrastructure/collaboration/room-persistence';
-import {
-	encodeSessionMessage,
-	LEGACY_SESSION_WIRE_VERSION,
-	SessionMessageKind as Message,
-} from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
 	CHUNK_KEY_PREFIX,
 	META_KEY,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
 import {
 	decodeSessionMessage,
+	encodeSessionMessage,
+	LEGACY_SESSION_WIRE_VERSION,
 	SessionMessageKind as Message,
 } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
