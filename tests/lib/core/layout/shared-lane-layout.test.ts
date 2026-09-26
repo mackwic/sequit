@@ -439,6 +439,31 @@ describe('shared lane layout', () => {
 				{ ...path, relationId: 'previous', endpointId: 'other' },
 			]),
 		).toMatchObject({ code: RegionIncidentRejectionCode.RouteObstructed });
+		// Only the assembled relation can carry a bridge eight units from the leaf portal.
+		expect(path.points).toEqual([path.anchor, path.portal]);
+		const crossing = {
+			id: 'near-portal',
+			from: 'foreign-a',
+			to: 'foreign-b',
+			points: [
+				{ x: path.portal.x + 8, y: path.anchor.y - 5 },
+				{ x: path.portal.x + 8, y: path.anchor.y + 5 },
+			],
+		};
+		expect(path.anchor.x).toBeGreaterThan(defined(crossing.points[0]).x);
+		expect(validatedBridges([crossing, { id: path.relationId, points: path.points }])).toEqual([]);
+		expect(
+			validateSharedLaneIncidentPath({ ...geometry, relations: [crossing] }, contract, path),
+		).toBeUndefined();
+		expect(
+			validatedBridges([
+				crossing,
+				{
+					id: path.relationId,
+					points: [path.anchor, path.portal, { x: path.portal.x - 32, y: path.anchor.y }],
+				},
+			]),
+		).toHaveLength(1);
 		const cramped = {
 			...geometry,
 			elements: geometry.elements.map((element) => {

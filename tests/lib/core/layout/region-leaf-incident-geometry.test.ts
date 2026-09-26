@@ -129,6 +129,21 @@ describe('dedicated leaf route geometry', () => {
 		);
 	});
 
+	it('defers bridge clearance near a portal until the full route is assembled', () => {
+		const local = {
+			id: 'local-crossing',
+			from: 'other-a',
+			to: 'other-b',
+			points: [
+				{ x: 135, y: 8 },
+				{ x: 145, y: 8 },
+			],
+		};
+		expect(
+			geometryFailure({ ...layout, relations: [local] }, endpoint, path([anchor, portal]), []),
+		).toBeUndefined();
+	});
+
 	it('keeps a direct route when its endpoint is close to the frame', () => {
 		expect(routeCandidates({ x: 140, y: 8 }, RegionPortalSide.Top, layout)).toEqual([
 			[

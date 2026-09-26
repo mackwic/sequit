@@ -1,6 +1,5 @@
 import { EndpointKind } from '../document/logic-document';
-import { disallowedRouteContacts } from './bridge-contact';
-import { validatedBridges } from './bridge-oracle';
+import { disallowedProvisionalRouteContacts } from './bridge-contact';
 import type { Bounds, LayoutElement, LayoutResult, Point } from './layout-types';
 import { inside, orthogonal, segmentEnters } from './nested-region-geometry-primitives';
 import { RegionPortalSide } from './region-composition-types';
@@ -165,15 +164,14 @@ function routeContactFailure(
 ): RegionLeafIncidentGeometryFailure | undefined {
 	const incident = incidentEndpointRoute(path);
 	const earlier = selected.map(incidentEndpointRoute);
-	const bridges = validatedBridges([...layout.relations, ...earlier, incident]);
 	for (const local of layout.relations)
-		if (disallowedRouteContacts(incident, local, bridges).length > 0)
+		if (disallowedProvisionalRouteContacts(incident, local).length > 0)
 			return {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `The incident route touches local relation ${local.id}.`,
 			};
 	for (const other of earlier)
-		if (disallowedRouteContacts(incident, other, bridges).length > 0)
+		if (disallowedProvisionalRouteContacts(incident, other).length > 0)
 			return {
 				code: RegionIncidentRejectionCode.RouteObstructed,
 				reason: `The incident route touches incident ${other.id}.`,

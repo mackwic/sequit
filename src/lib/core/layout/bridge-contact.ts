@@ -134,12 +134,17 @@ export interface BridgeContactOptions {
 	readonly sortedByPoint: true;
 }
 
+enum ContactScanMode {
+	Provisional = 'provisional',
+}
+
 interface BridgeContactLookup {
 	readonly bridges: readonly LayoutBridge[];
 	readonly firstId: string;
 	readonly secondId: string;
 	readonly charge: RouteWorkCharge | undefined;
 	readonly sortedByPoint: boolean;
+	readonly deferBridgeDecision: boolean;
 }
 
 function contactIsBridged(point: Point, lookup: BridgeContactLookup): boolean {
@@ -155,6 +160,18 @@ function contactIsBridged(point: Point, lookup: BridgeContactLookup): boolean {
 	return false;
 }
 
+function bridgeOrProvisionalContact(
+	firstRun: RouteRun,
+	secondRun: RouteRun,
+	contact: RouteContact,
+	lookup: BridgeContactLookup,
+): boolean {
+	if (contact.kind !== RouteContactKind.Point) return false;
+	if (!lookup.deferBridgeDecision && lookup.bridges.length === 0) return false;
+	if (!strictRunCrossing(firstRun, secondRun, contact.from)) return false;
+	return lookup.deferBridgeDecision || contactIsBridged(contact.from, lookup);
+}
+
 function contactInsideOverlap(contact: RouteContact, other: RouteContact): boolean {
 	if (other.kind !== RouteContactKind.Overlap) return false;
 	const x = contact.from.x >= other.from.x && contact.from.x <= other.to.x;
@@ -162,16 +179,26 @@ function contactInsideOverlap(contact: RouteContact, other: RouteContact): boole
 	return x && y;
 }
 
-/** All unbridged contacts, in canonical coordinate order regardless of route or run order. */
-export function unbridgedContacts(
+/** Collects the same contacts for complete and still-to-be-extended leaf routes. */
+function routeContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
-	options?: BridgeContactOptions,
+	options: BridgeContactOptions | ContactScanMode | undefined,
 ): readonly RouteContact[] {
-	const charge = options?.charge;
-	const sortedByPoint = options?.sortedByPoint ?? false;
-	const lookup = { bridges, firstId: first.id, secondId: second.id, charge, sortedByPoint };
+	let bridgeOptions: BridgeContactOptions | undefined;
+	if (typeof options === 'object') bridgeOptions = options;
+	const deferBridgeDecision = options === ContactScanMode.Provisional;
+	const charge = bridgeOptions?.charge;
+	const sortedByPoint = bridgeOptions?.sortedByPoint ?? false;
+	const lookup = {
+		bridges,
+		firstId: first.id,
+		secondId: second.id,
+		charge,
+		sortedByPoint,
+		deferBridgeDecision,
+	};
 	const contacts = new Map<string, RouteContact>();
 	const secondRuns = routeRuns(second, charge);
 	for (const firstRun of routeRuns(first, charge)) {
@@ -179,13 +206,7 @@ export function unbridgedContacts(
 			charge?.(1);
 			const contact = runContact(firstRun, secondRun);
 			if (contact === undefined) continue;
-			const canBridge = bridges.length > 0 && contact.kind === RouteContactKind.Point;
-			if (
-				canBridge &&
-				strictRunCrossing(firstRun, secondRun, contact.from) &&
-				contactIsBridged(contact.from, lookup)
-			)
-				continue;
+			if (bridgeOrProvisionalContact(firstRun, secondRun, contact, lookup)) continue;
 			const { from, to } = contact;
 			contacts.set(`${from.x}:${from.y}:${to.x}:${to.y}`, contact);
 		}
@@ -198,6 +219,16 @@ export function unbridgedContacts(
 			contact.kind === RouteContactKind.Overlap ||
 			!ordered.some((other) => contactInsideOverlap(contact, other)),
 	);
+}
+
+/** All unbridged contacts of complete routes, canonically ordered. */
+export function unbridgedContacts(
+	first: RoutedPath,
+	second: RoutedPath,
+	bridges: readonly LayoutBridge[],
+	options?: BridgeContactOptions,
+): readonly RouteContact[] {
+	return routeContacts(first, second, bridges, options);
 }
 
 /** An attachment point is allowed, but an extent needs a continuous shared family trunk. */
@@ -225,6 +256,19 @@ export function disallowedRouteContacts(
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
 	const contacts = unbridgedContacts(first, second, bridges, options);
+	if (contacts.length === 0) return contacts;
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
+}
+
+/**
+ * A leaf incident ends at a portal; only the assembled relation can prove carrier clearance.
+ * Defer strict crossings, never overlaps or T-contacts, to that complete-candidate validator.
+ */
+export function disallowedProvisionalRouteContacts(
+	first: EndpointRoute,
+	second: EndpointRoute,
+): readonly RouteContact[] {
+	const contacts = routeContacts(first, second, [], ContactScanMode.Provisional);
 	if (contacts.length === 0) return contacts;
 	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
 }
