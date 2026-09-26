@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LayoutConfiguration } from '../../../../src/lib/core/document/logic-document';
 import {
 	defined,
 	EndpointKind,
 	LayoutBias,
+	type LayoutConfiguration,
 	LayoutDirection,
+	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
 	DedicatedCandidateRejectionCode,
@@ -17,6 +21,7 @@ import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layou
 import { JUNCTION_PORT_INSET, PORT_INSET } from '../../../../src/lib/core/layout/layout-settings';
 import type { LayoutRelation } from '../../../../src/lib/core/layout/layout-types';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
@@ -169,6 +174,46 @@ describe('dedicated candidate validation: boxes and groups', () => {
 		const input = directionFixture(direction);
 		expect(validateDedicatedCandidate(input)).toMatchObject({ valid: true });
 	});
+
+	it.each([15, 31])(
+		'routes the %i-node binary decision tree without foreign contacts in every direction',
+		(count) => {
+			const ids = Array.from({ length: count }, (_, index) => `n${index}`);
+			const template = validLogicDocument();
+			for (const direction of Object.values(LayoutDirection)) {
+				const document: LogicDocument = {
+					...template,
+					layout: configurationFor(direction),
+					groups: [],
+					junctions: [],
+					nodes: ids.map((id, index) => ({
+						id,
+						kind: EndpointKind.Node,
+						natureId: template.natures[0]?.id ?? 'task',
+						markdown: id,
+						layoutOrder: orderKey(`a${(index + 1).toString(36)}`),
+					})),
+					relations: ids.slice(1).map((id, index) => ({
+						id: `r${index}`,
+						from: defined(ids[Math.floor(index / 2)]),
+						to: id,
+					})),
+				};
+				const prepared = createGraph(document);
+				if (!prepared.ok) throw new Error('Invalid binary decision tree');
+				const graph = prepared.value;
+				const ranks = topologicallyRank(graph);
+				const measurements = layoutMeasurementsFor(document, {
+					nodes: Object.fromEntries(ids.map((id) => [id, { width: 80, height: 40 }])),
+				});
+				const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+				expect(
+					validateDedicatedCandidate({ graph, ranks, measurements, layout }),
+					`${count} nodes, ${direction}`,
+				).toMatchObject({ valid: true });
+			}
+		},
+	);
 
 	it('rejects a common source port when paths leave in opposite directions', () => {
 		const input = twoOutgoingFixture(LayoutDirection.LeftToRight);

@@ -32,33 +32,6 @@ function compareLinks(a: CorridorLink, b: CorridorLink): number {
 	return source || target || compareCanonicalStrings(a.relation.id, b.relation.id);
 }
 
-function neighborInversion(links: readonly CorridorLink[]): boolean {
-	for (let index = 1; index < links.length; index += 1) {
-		const a = defined(links[index - 1]);
-		const b = defined(links[index]);
-		const source = a.source - b.source;
-		const target = a.target - b.target;
-		if (source * target < 0) return true;
-	}
-	return false;
-}
-
-function inverted(links: readonly CorridorLink[]): boolean {
-	if (neighborInversion(links)) return true;
-	let previousSource = Number.NEGATIVE_INFINITY;
-	let previousMaximum = Number.NEGATIVE_INFINITY;
-	let maximum = Number.NEGATIVE_INFINITY;
-	for (const link of [...links].sort(compareLinks)) {
-		if (link.source !== previousSource) {
-			previousMaximum = maximum;
-			previousSource = link.source;
-		}
-		if (link.target < previousMaximum) return true;
-		maximum = Math.max(maximum, link.target);
-	}
-	return false;
-}
-
 function intersectingClusters(links: readonly CorridorLink[]): CorridorLink[][] {
 	const ordered = [...links].sort(
 		(a, b) => Math.min(a.source, a.target) - Math.min(b.source, b.target) || compareLinks(a, b),
@@ -77,6 +50,13 @@ function intersectingClusters(links: readonly CorridorLink[]): CorridorLink[][] 
 	return groups;
 }
 
+function needsRouting(cluster: readonly CorridorLink[]): boolean {
+	// Midpoint bends of overlapping (including endpoint-touching) transverse spans
+	// can meet even when the links preserve order. Reserve rails for the whole
+	// connected interval cluster; unrelated paths cannot share its midpoint.
+	return cluster.length >= 2 && cluster.some(({ source, target }) => source !== target);
+}
+
 function collectCorridors(
 	byRank: ReadonlyMap<number, CorridorLink[]>,
 	graph: LogicGraph,
@@ -85,7 +65,7 @@ function collectCorridors(
 	const result: RoutingCorridor[] = [];
 	for (const [rank, links] of byRank) {
 		for (const cluster of intersectingClusters(links)) {
-			if (!inverted(cluster)) continue;
+			if (!needsRouting(cluster)) continue;
 			const corridor: RoutingCorridor = { rank, links: cluster };
 			if (canonicalIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
 			result.push(corridor);

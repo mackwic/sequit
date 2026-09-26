@@ -2,13 +2,17 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import {
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
+import { acyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
@@ -49,6 +53,26 @@ const collectionOrder = fc.tuple(
 );
 
 describe('dedicated candidate validation properties', () => {
+	it('accepts routed acyclic documents across directions and rank shapes', () => {
+		fc.assert(
+			fc.property(
+				acyclicLogicDocumentArbitrary({ minNodes: 3, maxNodes: 12, minEdges: 2, maxEdges: 16 }),
+				(document) => {
+					const prepared = createGraph(document);
+					if (!prepared.ok) throw new Error('Invalid generated acyclic graph');
+					const graph = prepared.value;
+					const ranks = topologicallyRank(graph);
+					const measurements = layoutMeasurementsFor(document);
+					const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+					expect(validateDedicatedCandidate({ graph, ranks, measurements, layout })).toMatchObject({
+						valid: true,
+					});
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('is invariant to element and route collection permutations for valid candidates', () => {
 		const expected = validateDedicatedCandidate(source);
 		expect(expected).toMatchObject({ valid: true });
