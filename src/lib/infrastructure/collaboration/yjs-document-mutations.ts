@@ -46,7 +46,7 @@ export interface MarkdownTargetFailure {
 	readonly failure: DocumentChangeResult;
 }
 
-export function markdownTarget(document: Y.Doc, nodeId: string): MarkdownTarget {
+function markdownTarget(document: Y.Doc, nodeId: string): MarkdownTarget {
 	const node = document.getMap<Y.Map<unknown>>(NODES).get(nodeId);
 	if (node === undefined) {
 		throw new YjsDocumentRepositoryRejection([
