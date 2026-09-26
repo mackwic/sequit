@@ -1,5 +1,4 @@
 import { defined } from '../document/logic-document';
-import type { TopologicalRanks } from '../graph/topological-ranks';
 import {
 	compareDedicatedRouteScores,
 	validateDedicatedCandidate,
@@ -9,7 +8,7 @@ import type {
 	RejectedDedicatedCandidate,
 } from './dedicated-candidate-validation/types';
 import type { DedicatedLayoutEvaluation } from './layout-engine';
-import type { LayoutMeasurements, LayoutResult } from './layout-types';
+import type { LayoutMeasurements } from './layout-types';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -37,16 +36,10 @@ export enum RankSearchStop {
 	EvaluationBudget = 'evaluation-budget',
 	ProposalBudget = 'proposal-budget',
 }
-export enum RankSearchRejectionCode {
-	IncidentInfeasible = 'incident-infeasible',
-}
 
-interface RejectedRankAdmission {
-	readonly valid: false;
-	readonly code: RankSearchRejectionCode.IncidentInfeasible;
+interface ValidFinalRankValidation {
+	readonly valid: true;
 }
-
-type RankSearchRejection = RejectedDedicatedCandidate | RejectedRankAdmission;
 
 export interface RankOrderSearchWitness {
 	readonly mode: RankSearchMode;
@@ -56,16 +49,30 @@ export interface RankOrderSearchWitness {
 	readonly valid: number;
 	readonly rejected: readonly {
 		readonly order: RankOrder;
-		readonly reason: RankSearchRejection;
+		readonly reason: RejectedDedicatedCandidate;
 	}[];
 	readonly unverified: number;
-	/** Whole weak components whose documentary order was retained by the work bound. */
+	/** Diagnostic of individually searched weak components; their scores are not global optima. */
+	readonly components?: readonly {
+		readonly ids: readonly string[];
+		readonly witness: RankOrderSearchWitness;
+		readonly pipelineLimit: number;
+		readonly estimatedRouteWork: number;
+		readonly selected: RankOrder;
+	}[];
 	readonly skippedComponents?: number;
 	readonly prunedByLowerBound: number;
+	readonly fallbackComponents?: readonly (readonly string[])[];
+	readonly finalValidation?: RejectedDedicatedCandidate | ValidFinalRankValidation;
 	readonly work: {
+		/** The per-component pipelines never process unrelated routes. */
 		readonly completePipelines: number;
 		readonly validations: number;
 		readonly routeRunsInspected: number;
+		readonly localCompletePipelines?: number;
+		readonly globalCompletePipelines?: number;
+		readonly globalValidations?: number;
+		readonly incidentAdmissions?: number;
 	};
 	readonly exhaustive: boolean;
 	readonly truncated: boolean;
@@ -85,7 +92,6 @@ export interface RankOrderSearchInput {
 	readonly baseline: DedicatedLayoutEvaluation;
 	readonly evaluate: (order: RankOrder) => DedicatedLayoutEvaluation;
 	readonly limits: { readonly completePipelines: number; readonly uniqueProposals: number };
-	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 }
 
 export interface RankOrderSearchResult {
@@ -137,7 +143,7 @@ class RankOrderSearch {
 	validations = 0;
 	routeRunsInspected = 0;
 	prunedByLowerBound = 0;
-	readonly rejected: { order: RankOrder; reason: RankSearchRejection }[] = [];
+	readonly rejected: { order: RankOrder; reason: RejectedDedicatedCandidate }[] = [];
 	selected: ValidRankOrderCandidate | undefined;
 	exhaustive = true;
 	truncated = false;
@@ -188,13 +194,6 @@ class RankOrderSearch {
 			return;
 		}
 		this.routeRunsInspected += outcome.analysis.inspectedRuns;
-		if (this.input.admit !== undefined && !this.input.admit(evaluation.result, structure.ranks)) {
-			this.rejected.push({
-				order,
-				reason: { valid: false, code: RankSearchRejectionCode.IncidentInfeasible },
-			});
-			return;
-		}
 		this.valid += 1;
 		const candidate = {
 			order,

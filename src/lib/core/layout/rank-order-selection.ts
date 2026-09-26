@@ -1,144 +1,281 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import type { evaluateDedicatedLayout } from './layout-engine';
+import { validateDedicatedCandidate } from './dedicated-candidate-validation';
+import type { RejectedDedicatedCandidate } from './dedicated-candidate-validation/types';
+import type { DedicatedLayoutEvaluation, evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
-import { boundedRankOrderEnumerationSize } from './rank-order';
+import type { RankOrder } from './rank-order';
 import {
-	type RankOrderSearchWitness,
-	RankSearchMode,
-	RankSearchStop,
-	searchDedicatedRankOrders,
-} from './rank-order-search';
+	chooseLocal,
+	type LocalChoice,
+	type SearchBudgets,
+	searchBudgets,
+} from './rank-order-local';
+import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
-const MAX_ESTIMATED_ROUTE_WORK = 4096;
-const MAX_COMPLETE_PIPELINES = 12;
-
-/** A bounded approximation of routing/validation work, not a global endpoint-count cutoff. */
-function estimatedRouteWork(
-	graph: LogicGraph,
-	structure: LayoutStructure,
-	domain: RankOrderDomain,
-): number {
-	const byEndpoint = new Map<string, number>();
-	for (const componentIndex of new Set(
-		domain.locations.map(({ componentIndex }) => componentIndex),
-	))
-		for (const id of defined(structure.components[componentIndex]).ids)
-			byEndpoint.set(id, componentIndex);
-	const counts = new Map<number, number>();
-	for (const { relation } of graph.relations) {
-		const componentIndex = byEndpoint.get(relation.from);
-		if (componentIndex !== undefined)
-			counts.set(componentIndex, (counts.get(componentIndex) ?? 0) + 1);
-	}
-	let pairwiseWork = 0;
-	for (const count of counts.values()) pairwiseWork += count * count;
-	const product =
-		boundedRankOrderEnumerationSize(domain, MAX_COMPLETE_PIPELINES) ?? MAX_COMPLETE_PIPELINES;
-	// One full-document pipeline per candidate, but changing one weak component never
-	// introduces route comparisons between two unrelated weak components.
-	return product * (graph.relations.length + pairwiseWork);
+interface GlobalChoice {
+	readonly evaluation: DedicatedLayoutEvaluation;
+	readonly pipelines: number;
+	readonly validations: number;
+	readonly runsInspected: number;
+	readonly incidentAdmissions: number;
+	readonly finalValidation?: RankOrderSearchWitness['finalValidation'];
+	readonly fallbackComponents: readonly (readonly string[])[];
+	readonly fallback: boolean;
 }
 
-/** Keep affordable components' exchange bands; an expensive component stays documentary. */
-function affordableDomain(
-	graph: LogicGraph,
-	structure: LayoutStructure,
-	domain: RankOrderDomain,
-): { readonly domain: RankOrderDomain; readonly skippedComponents: number } {
-	const groups = new Map<number, number[]>();
-	for (const [index, location] of domain.locations.entries()) {
-		let indices = groups.get(location.componentIndex);
-		if (indices === undefined) {
-			indices = [];
-			groups.set(location.componentIndex, indices);
-		}
-		indices.push(index);
+interface SelectionServices {
+	readonly options: LayoutOptions;
+	readonly evaluate: typeof evaluateDedicatedLayout;
+	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
+}
+
+interface AssemblyInput {
+	readonly graph: LogicGraph;
+	readonly ranks: TopologicalRanks;
+	readonly measurements: LayoutMeasurements;
+	readonly structure: LayoutStructure;
+	readonly domain: RankOrderDomain;
+	readonly baseline: DedicatedLayoutEvaluation;
+	readonly budgets: SearchBudgets;
+	readonly local: LocalChoice;
+	readonly services: SelectionServices;
+}
+
+function faultyComponents(
+	failure: RejectedDedicatedCandidate,
+	modified: ReadonlySet<number>,
+	byEndpoint: ReadonlyMap<string, number>,
+	byRelation: ReadonlyMap<string, readonly number[]>,
+): ReadonlySet<number> {
+	const implicated = new Set<number>();
+	for (const id of [failure.endpointId, failure.otherEndpointId]) {
+		const index = byEndpoint.get(id ?? '');
+		if (index !== undefined && modified.has(index)) implicated.add(index);
 	}
-	const selected: number[] = [];
-	let skippedComponents = 0;
-	for (const indices of groups.values()) {
-		const proposed = [...selected, ...indices];
-		const candidate: RankOrderDomain = {
-			bands: proposed.map((index) => defined(domain.bands[index])),
-			locations: proposed.map((index) => defined(domain.locations[index])),
+	for (const id of [failure.relationId, failure.otherRelationId])
+		for (const index of byRelation.get(id ?? '') ?? [])
+			if (modified.has(index)) implicated.add(index);
+	// An inventory/canvas failure or a fault in an untouched component has no safe attribution.
+	if (implicated.size === 0) return modified;
+	return implicated;
+}
+
+function relationOwners(
+	graph: LogicGraph,
+	byEndpoint: ReadonlyMap<string, number>,
+): ReadonlyMap<string, readonly number[]> {
+	return new Map(
+		graph.relations.map(({ relation }) => {
+			const source = defined(byEndpoint.get(relation.from));
+			const target = defined(byEndpoint.get(relation.to));
+			const indices = [source];
+			if (target !== source) indices.push(target);
+			return [relation.id, indices] as const;
+		}),
+	);
+}
+
+function restoreDocumentary(
+	input: AssemblyInput,
+	failure: RejectedDedicatedCandidate,
+	owners: ReadonlyMap<string, readonly number[]>,
+): readonly (readonly string[])[] {
+	const { local, budgets, domain, structure } = input;
+	const fallen: (readonly string[])[] = [];
+	for (const index of faultyComponents(failure, local.changed, budgets.byEndpoint, owners)) {
+		fallen.push(defined(structure.components[index]).ids);
+		for (const bandIndex of defined(budgets.bands.get(index)))
+			local.orders[bandIndex] = [...defined(domain.bands[bandIndex])];
+		local.changed.delete(index);
+	}
+	return fallen;
+}
+
+function admitFinal(
+	services: SelectionServices,
+	layout: LayoutResult,
+	ranks: TopologicalRanks,
+): boolean {
+	if (services.admit === undefined) return true;
+	return services.admit(layout, ranks);
+}
+
+/** One global validation per assembled trial; every failure removes at least one edit. */
+function assembleGlobal(input: AssemblyInput): GlobalChoice {
+	const { graph, ranks, measurements, structure, domain, baseline, budgets, local, services } =
+		input;
+	if (local.changed.size === 0)
+		return {
+			evaluation: baseline,
+			pipelines: 1,
+			validations: 0,
+			runsInspected: 0,
+			incidentAdmissions: 0,
+			fallbackComponents: [],
+			fallback: false,
 		};
-		if (estimatedRouteWork(graph, structure, candidate) > MAX_ESTIMATED_ROUTE_WORK) {
-			skippedComponents += 1;
-			continue;
+	const owners = relationOwners(graph, budgets.byEndpoint);
+	const fallbackComponents: (readonly string[])[] = [];
+	let pipelines = 1;
+	let validations = 0;
+	let runsInspected = 0;
+	let incidentAdmissions = 0;
+	let finalValidation: RankOrderSearchWitness['finalValidation'];
+	while (local.changed.size > 0) {
+		const trial = services.evaluate(
+			applyRankOrder(structure, domain, local.orders),
+			measurements,
+			services.options,
+			true,
+		);
+		pipelines += 1;
+		validations += 1;
+		const outcome = validateDedicatedCandidate({
+			graph,
+			ranks,
+			measurements,
+			layout: trial.result,
+		});
+		if (outcome.valid) {
+			runsInspected += outcome.analysis.inspectedRuns;
+			finalValidation = { valid: true };
+			if (services.admit !== undefined) incidentAdmissions += 1;
+			if (!admitFinal(services, trial.result, ranks)) break;
+			return {
+				evaluation: trial,
+				pipelines,
+				validations,
+				runsInspected,
+				incidentAdmissions,
+				fallbackComponents,
+				finalValidation,
+				fallback: fallbackComponents.length > 0,
+			};
 		}
-		selected.push(...indices);
+		runsInspected += outcome.inspectedRuns ?? 0;
+		finalValidation = outcome;
+		fallbackComponents.push(...restoreDocumentary(input, outcome, owners));
 	}
 	return {
-		domain: {
-			bands: selected.map((index) => defined(domain.bands[index])),
-			locations: selected.map((index) => defined(domain.locations[index])),
-		},
-		skippedComponents,
+		evaluation: baseline,
+		pipelines,
+		validations,
+		runsInspected,
+		incidentAdmissions,
+		fallbackComponents,
+		...(finalValidation !== undefined && { finalValidation }),
+		fallback: true,
 	};
 }
 
+function selectionWitness(
+	budgets: SearchBudgets,
+	local: LocalChoice,
+	global: GlobalChoice,
+): RankOrderSearchWitness {
+	let mode = RankSearchMode.Skipped;
+	let stop = RankSearchStop.NoBand;
+	let proposed = 0;
+	let evaluated = 0;
+	let valid = 0;
+	let unverified = 0;
+	let prunedByLowerBound = 0;
+	let localValidations = 0;
+	let localRuns = 0;
+	let truncated = false;
+	let exhaustive = local.skippedComponents === 0;
+	const rejected: { order: RankOrder; reason: RejectedDedicatedCandidate }[] = [];
+	for (const { witness } of local.evidence) {
+		proposed += witness.proposed;
+		evaluated += witness.evaluated;
+		valid += witness.valid;
+		unverified += witness.unverified;
+		prunedByLowerBound += witness.prunedByLowerBound;
+		localValidations += witness.work.validations;
+		localRuns += witness.work.routeRunsInspected;
+		rejected.push(...witness.rejected);
+		truncated ||= witness.truncated;
+		exhaustive &&= witness.exhaustive;
+		if (witness.mode === RankSearchMode.Heuristic || mode === RankSearchMode.Skipped)
+			mode = witness.mode;
+		if (witness.truncated || stop === RankSearchStop.NoBand) stop = witness.stop;
+	}
+	if (local.evidence.length === 0 && budgets.bands.size > 0) stop = RankSearchStop.ShapeEnvelope;
+	if (global.fallback) stop = RankSearchStop.BaselineFallback;
+	if (budgets.bands.size === 0) unverified = 1;
+	const localPipelines = evaluated;
+	if (evaluated === 0) evaluated = 1;
+	if (proposed === 0) proposed = 1;
+	const extras: {
+		skippedComponents?: number;
+		fallbackComponents?: readonly (readonly string[])[];
+		finalValidation?: NonNullable<RankOrderSearchWitness['finalValidation']>;
+	} = {};
+	if (local.skippedComponents > 0) extras.skippedComponents = local.skippedComponents;
+	if (global.fallbackComponents.length > 0) extras.fallbackComponents = global.fallbackComponents;
+	if (global.finalValidation !== undefined) extras.finalValidation = global.finalValidation;
+	return {
+		mode,
+		stop,
+		proposed,
+		evaluated,
+		valid,
+		rejected,
+		unverified,
+		...extras,
+		prunedByLowerBound,
+		components: local.evidence,
+		work: {
+			completePipelines: localPipelines + global.pipelines,
+			validations: localValidations + global.validations,
+			routeRunsInspected: localRuns + global.runsInspected,
+			localCompletePipelines: localPipelines,
+			globalCompletePipelines: global.pipelines,
+			globalValidations: global.validations,
+			incidentAdmissions: global.incidentAdmissions,
+		},
+		// This only describes the local search frontier, never a global score proof.
+		exhaustive,
+		truncated,
+	};
+}
+
+/** Local scores are proposal heuristics: global rails and rank gaps are shared across components. */
 export function selectDedicatedRankLayout(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	services: {
-		readonly options: LayoutOptions;
-		readonly evaluate: typeof evaluateDedicatedLayout;
-		readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
-	},
+	services: SelectionServices,
 ): { readonly layout: LayoutResult; readonly witness: RankOrderSearchWitness } {
-	const { options, evaluate } = services;
 	const structure = prepareLayout(graph, ranks);
-	const completeDomain = collectRankOrderDomain(structure);
-	const noBand = completeDomain.bands.length === 0;
-	let domain = completeDomain;
-	let skippedComponents = 0;
-	if (!noBand && estimatedRouteWork(graph, structure, completeDomain) > MAX_ESTIMATED_ROUTE_WORK) {
-		const affordable = affordableDomain(graph, structure, completeDomain);
-		domain = affordable.domain;
-		skippedComponents = affordable.skippedComponents;
-	}
-	if (domain.bands.length === 0) {
-		const layout = evaluate(structure, measurements, options);
-		let stop = RankSearchStop.NoBand;
-		if (!noBand) stop = RankSearchStop.ShapeEnvelope;
-		return {
-			layout,
-			witness: {
-				mode: RankSearchMode.Skipped,
-				stop,
-				proposed: 1,
-				evaluated: 1,
-				valid: 0,
-				rejected: [],
-				unverified: 1,
-				...(skippedComponents > 0 && { skippedComponents }),
-				prunedByLowerBound: 0,
-				work: { completePipelines: 1, validations: 0, routeRunsInspected: 0 },
-				exhaustive: false,
-				truncated: false,
-			},
-		};
-	}
-	const baseline = evaluate(structure, measurements, options, true);
-	const search = searchDedicatedRankOrders({
+	const domain = collectRankOrderDomain(structure);
+	const baseline = services.evaluate(structure, measurements, services.options, true);
+	const budgets = searchBudgets(graph, structure, domain);
+	const local = chooseLocal({
+		graph,
+		structure,
+		measurements,
+		domain,
+		budgets,
+		evaluate: services.evaluate,
+	});
+	const global = assembleGlobal({
+		graph,
+		ranks,
+		measurements,
 		structure,
 		domain,
-		measurements,
 		baseline,
-		evaluate: (order) =>
-			evaluate(applyRankOrder(structure, domain, order), measurements, options, true),
-		limits: { completePipelines: MAX_COMPLETE_PIPELINES, uniqueProposals: 48 },
-		admit: services.admit,
+		budgets,
+		local,
+		services,
 	});
-	const layout = (search.selected?.evaluation ?? baseline).complete();
-	if (skippedComponents === 0) return { layout, witness: search.witness };
 	return {
-		layout,
-		witness: { ...search.witness, skippedComponents, exhaustive: false },
+		layout: global.evaluation.complete(),
+		witness: selectionWitness(budgets, local, global),
 	};
 }

@@ -400,6 +400,42 @@ describe('dedicated leaf incident contracts', () => {
 			witness: { attempted: 0, exhaustive: false },
 		});
 	});
+	it('accepts one routed incident on the assembled optimized rank exactly once', () => {
+		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2'));
+		const contracts = [
+			{
+				relation: { id: 'foreign-b', from: 'b', to: 'outside' },
+				endpointId: 'b',
+				role: RegionIncidentRole.Source,
+				allowedSides: [RegionPortalSide.Right],
+			},
+		];
+		const measurements = satisfyMetricDemands(
+			entry.measurements,
+			incidentMetricDemands(contracts),
+			entry.document.layout.direction,
+		);
+		const independent = solveRegionLeafLayout({
+			document: entry.document,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		const selected = solveDedicatedRegionLeafWithIncidents({
+			document: entry.document,
+			measurements: entry.measurements,
+			contracts,
+		});
+		if (selected.status !== RegionCompositionStatus.Selected) throw new Error(selected.reason);
+		expect(selected.layout).toEqual(independent.layout);
+		expect(selected.incidents).toHaveLength(1);
+		const incident = defined(selected.incidents[0]);
+		const source = defined(selected.layout.elements.find(({ id }) => id === 'b'));
+		expect(incident.anchor.x).toBe(source.bounds.x + source.bounds.width);
+		expect(incident.portal.x).toBe(selected.layout.width);
+		for (const route of selected.layout.relations)
+			expect(pathsTouchWithoutBridge(incident.points, route.points)).toBe(false);
+	});
+
 	it('retains documentary geometry when a better rank blocks a required region incident', () => {
 		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
 		if (entry === undefined) throw new Error('Missing routed rank fixture');
