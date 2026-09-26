@@ -18,6 +18,8 @@ describe('rank order comparison', () => {
 			'two-successors',
 			'two-predecessors',
 			'three-predecessors',
+			'geometric-3+1',
+			'geometric-2+2',
 		]);
 		for (const entry of comparison.entries) {
 			expect(entry.documentaryValid).toBe(true);
@@ -50,10 +52,52 @@ describe('rank order comparison', () => {
 		).toBeLessThan(countRankOrderCrossings(entry.documentary, entry.relations));
 	});
 
+	it('separates abstract crossing proxy from validated geometric routes', () => {
+		const [threeOne, twoTwo, , , , geometricThreeOne, geometricTwoTwo] = comparison.entries;
+		expect(threeOne?.documentaryCrossings).toBe(2);
+		expect(twoTwo?.documentaryCrossings).toBe(1);
+		expect(threeOne?.documentaryRouteScore).toMatchObject({
+			strictCrossings: 2,
+			validatedBridges: 2,
+		});
+		expect(geometricThreeOne?.documentaryRouteScore).toMatchObject({
+			strictCrossings: 2,
+			validatedBridges: 2,
+		});
+		expect(geometricTwoTwo?.documentaryRouteScore).toMatchObject({
+			strictCrossings: 1,
+			validatedBridges: 1,
+		});
+		expect(geometricThreeOne?.selectedRouteScore).toMatchObject({
+			strictCrossings: 0,
+			validatedBridges: 0,
+		});
+		expect(geometricTwoTwo?.selectedRouteScore).toMatchObject({
+			strictCrossings: 0,
+			validatedBridges: 0,
+		});
+		expect(twoTwo?.documentaryRouteScore).toMatchObject({
+			strictCrossings: 3,
+			validatedBridges: 3,
+		});
+		for (const entry of comparison.entries) {
+			if (entry.documentaryRouteScore === undefined || entry.selectedRouteScore === undefined)
+				continue;
+			expect(entry.selectedRouteScore.strictCrossings).toBeLessThanOrEqual(
+				entry.documentaryRouteScore.strictCrossings,
+			);
+			expect(entry.exhaustiveRouteScore?.strictCrossings).toBeLessThanOrEqual(
+				entry.selectedRouteScore.strictCrossings,
+			);
+		}
+	});
+
 	it('matches pinned dedicated-engine layout fingerprints for every corpus entry', () => {
 		const expected: Record<string, string> = {
-			'adjacent-3+1': '3f17c7521dca3ad3c89131161233c1d3a5514df3ca9bbad6ae9eb22386dd60b8',
-			'adjacent-2+2': '12ccca819414a81c3f82bb216d4cdd62246dbcc8d909ec7f3b288e9c3f0cc4f1',
+			'geometric-3+1': '9e515a10436e726feaa7fef1799713c477a4b19dc8784a71ccba034a8c11ffb1',
+			'geometric-2+2': '55d6a8f884cc8f0515c883533b58989deeb507c57ac922be7dd6c75faa6bd160',
+			'adjacent-3+1': '68c2bfc4372097993c4bc012a3c1801522cce67b1cd85954d3834c3f0fef4650',
+			'adjacent-2+2': 'ab97fab54a82c5173ef33d604c1e156201bf8d722b0e1e09b210afa9f78a32cf',
 			'two-successors': 'cbef67223f47ce6a3ae02f7b451be2d111218576501be214a3cba1a06160a157',
 			'two-predecessors': '72956e705ceb18d863ee61533d5c77604512850401a8fe71614ddf6922dacb01',
 			'three-predecessors': 'b317d5a37873c18ff1bdfc1feb79efbfbc886a53e8b520ae2a1b7b4a8307a864',
