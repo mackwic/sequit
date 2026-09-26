@@ -13,6 +13,10 @@ import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngine,
 } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	applyRankOrder,
+	collectRankOrderDomain,
+} from '../../../../src/lib/core/layout/rank-ordering';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -106,36 +110,68 @@ describe('layout workspace ownership', () => {
 		);
 	});
 
-	it('keeps candidate evaluations isolated from the baseline, graph and measurements', () => {
+	it('keeps alternating candidate evaluations independent with groups and routing', () => {
 		fc.assert(
 			fc.property(fc.constantFrom(...LAYOUT_CONFIGURATIONS), (layout) => {
-				const prepared = prepareLayoutDocument({ ...validLogicDocument(), layout });
+				const document = enclosedCrossings(layout, false);
+				const prepared = prepareLayoutDocument(document);
 				const structure = prepareLayout(prepared.graph, prepared.ranks);
-				const order = structure.rankOrderDomain.bands.map((band) => [...band].reverse());
-				const inputSnapshot = structuredClone(prepared);
-				const first = layoutWithDedicatedEngine(
+				const domain = collectRankOrderDomain(structure);
+				const orderA = domain.bands.map((band) => [...band]);
+				const orderB = domain.bands.map((band) => [...band].reverse());
+				expect(orderB).not.toEqual(orderA);
+				const preparedSnapshot = structuredClone(prepared);
+				const documentSnapshot = structuredClone(document);
+
+				const publicA = layoutWithDedicatedEngine(
 					prepared.graph,
 					prepared.ranks,
 					prepared.measurements,
 				);
-				const saved = structuredClone(first);
-
-				evaluateDedicatedLayout(
-					prepareLayout(prepared.graph, prepared.ranks, order),
+				const publicAInspected = layoutWithDedicatedEngine(
+					prepared.graph,
+					prepared.ranks,
+					prepared.measurements,
+					{ inspectRouting: true },
+				);
+				const explicitA = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, orderA),
 					prepared.measurements,
 				);
-				const inspected = evaluateDedicatedLayout(structure, prepared.measurements, {
-					inspectRouting: true,
-				}).complete();
+				const trialA1 = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, orderA),
+					prepared.measurements,
+					{ inspectRouting: true },
+					true,
+				);
+				const trialB1 = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, orderB),
+					prepared.measurements,
+					{ inspectRouting: true },
+					true,
+				);
+				const trialA2 = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, orderA),
+					prepared.measurements,
+					{ inspectRouting: true },
+					true,
+				);
+				const trialB2 = evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, orderB),
+					prepared.measurements,
+					{ inspectRouting: true },
+					true,
+				);
 
-				const { routingInspection, ...inspectedGeometry } = inspected;
-				expect(inspectedGeometry).toEqual(first);
-				expect(routingInspection).toBeDefined();
-				expect(first).toEqual(saved);
-				expect(prepared).toEqual(inputSnapshot);
-				expect(
-					layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements),
-				).toEqual(saved);
+				expect(explicitA).toEqual(publicA);
+				expect(trialA1.result).toEqual(publicA);
+				expect(trialA1.complete()).toEqual(publicAInspected);
+				expect(trialA1.result).toEqual(trialA2.result);
+				expect(trialA1.complete()).toEqual(trialA2.complete());
+				expect(trialB1.result).toEqual(trialB2.result);
+				expect(trialB1.complete()).toEqual(trialB2.complete());
+				expect(prepared).toEqual(preparedSnapshot);
+				expect(document).toEqual(documentSnapshot);
 			}),
 			PROPERTY_PARAMETERS,
 		);

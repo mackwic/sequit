@@ -5,6 +5,7 @@ import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-stri
 import {
 	defined,
 	EndpointKind,
+	JunctionOperator,
 	LayoutBias,
 	layoutConfiguration,
 	LayoutDirection,
@@ -16,7 +17,11 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngine,
+} from '../../../../src/lib/core/layout/layout-engine';
+import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import {
 	compareRankOrders,
 	countRankOrderCrossings,
@@ -29,6 +34,10 @@ import {
 	type RankOrderInput,
 	validateRankOrder,
 } from '../../../../src/lib/core/layout/rank-order';
+import {
+	applyRankOrder,
+	collectRankOrderDomain,
+} from '../../../../src/lib/core/layout/rank-ordering';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import {
 	deriveEndpointRows,
@@ -309,66 +318,89 @@ describe('documentary rank order adapter', () => {
 	});
 });
 
-describe('explicit ordinary row preparation', () => {
-	it('preserves documentary packing while applying candidate order only within ordinary rows', () => {
-		fc.assert(
-			fc.property(documentCase, (document) => {
-				const created = createGraph(document);
-				if (!created.ok) return;
-				const graph = created.value;
-				const ranks = topologicallyRank(graph);
-				const documentary = prepareLayout(graph, ranks);
-				const candidate = documentary.rankOrderDomain.bands.map((band) => [...band].reverse());
-				const reordered = prepareLayout(graph, ranks, candidate);
-
-				expect(reordered.rankOrderDomain).toEqual(documentary.rankOrderDomain);
-				expect(
-					reordered.components.map(({ ids, effectiveOrder }) => ({ ids, effectiveOrder })),
-				).toEqual(
-					documentary.components.map(({ ids, effectiveOrder }) => ({ ids, effectiveOrder })),
-				);
-				expect(reordered.containment).toEqual(documentary.containment);
-				expect(reordered.components.flatMap(({ rows }) => rows.ordinary)).toEqual(candidate);
-				expect(reordered.components.map(({ rows }) => rows.junction)).toEqual(
-					documentary.components.map(({ rows }) => rows.junction),
-				);
-			}),
-			PROPERTY_PARAMETERS,
+describe('ordinary node rank-order domains', () => {
+	it('excludes isolated, empty and singleton rows and keeps junction rails fixed', () => {
+		const base = corpusDocument(
+			['a', 'b', 'c', 'd', 'isolated'],
+			['a', 'b', 'c', 'd', 'isolated'],
+			[
+				{ id: 'a-in', from: 'a', to: 'j' },
+				{ id: 'b-in', from: 'b', to: 'j' },
+				{ id: 'c-in', from: 'c', to: 'j' },
+				{ id: 'j-out', from: 'j', to: 'd' },
+			],
 		);
+		const document: LogicDocument = {
+			...base,
+			junctions: [
+				{
+					kind: EndpointKind.Junction,
+					id: 'j',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('b00'),
+				},
+			],
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Expected valid junction fixture graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+
+		// Independent fixture oracle: only a/b/c share an ordinary rank with an exchange choice.
+		expect(domain.bands).toEqual([['a', 'b', 'c']]);
+		expect(domain.locations).toHaveLength(1);
+		const component = structure.components.find(({ ids }) => ids.includes('a'));
+		if (component === undefined) throw new Error('Expected connected component');
+		const originalJunctionRows = component.rows.junction;
+		const reordered = applyRankOrder(structure, domain, [['c', 'b', 'a']]);
+		const reorderedComponent = reordered.components.find(({ ids }) => ids.includes('a'));
+		if (reorderedComponent === undefined) throw new Error('Expected reordered component');
+		expect(reorderedComponent.rows.junction).toEqual(originalJunctionRows);
+		expect(reorderedComponent.rows.ordinary[defined(domain.locations[0]).rank]).toEqual([
+			'c',
+			'b',
+			'a',
+		]);
+		expect(collectRankOrderDomain(reordered).bands.map((band) => [...band].sort())).toEqual(
+			domain.bands.map((band) => [...band].sort()),
+		);
+		expect(
+			structure.components.find(({ ids }) => ids.includes('isolated'))?.rows.ordinary,
+		).toHaveLength(2);
+		const measurements = {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			junctions: new Map([['j', { width: 20, height: 20 }]]),
+			groups: new Map(),
+		};
+		const publicResult = layoutWithDedicatedEngine(graph, ranks, measurements);
+		const explicitResult = evaluateDedicatedLayout(
+			applyRankOrder(structure, domain, domain.bands),
+			measurements,
+		);
+		expect(explicitResult).toEqual(publicResult);
+		const publicInspected = layoutWithDedicatedEngine(graph, ranks, measurements, {
+			inspectRouting: true,
+		});
+		const explicitInspection = evaluateDedicatedLayout(
+			applyRankOrder(structure, domain, domain.bands),
+			measurements,
+			{ inspectRouting: true },
+			true,
+		);
+		expect(explicitInspection.complete()).toEqual(publicInspected);
 	});
 
-	it('rejects an order that changes the row domains', () => {
-		const document = corpusDocument(
-			['a', 'b', 'c'],
-			['a', 'b', 'c'],
-			[{ id: 'r', from: 'a', to: 'c' }],
-		);
-		const graph = createGraph(document);
-		if (!graph.ok) throw new Error('Expected valid fixture graph');
-		const ranks = topologicallyRank(graph.value);
-		const structure = prepareLayout(graph.value, ranks);
-		const order = structure.rankOrderDomain.bands.map((band) => [...band]);
-		const firstBand = order[0];
-		if (firstBand === undefined) throw new Error('Expected a rank band');
-		order[0] = [...firstBand, 'outside-domain'];
-		expect(() => prepareLayout(graph.value, ranks, order)).toThrow(
-			/Invalid ordinary-row rank order/,
-		);
-		expect(() => prepareLayout(graph.value, ranks, order.slice(1))).toThrow(
-			/Invalid ordinary-row rank order/,
-		);
-	});
-});
-
-describe('dedicated layout evaluation with candidate row orders', () => {
-	it('moves 3+1 boxes without changing logical ranks, group membership or endpoint IDs', () => {
+	it('pins relation-endpoint groups and rejects them as candidate nodes', () => {
 		const base = corpusDocument(
 			['a', 'b', 'c', 'd'],
 			['a', 'b', 'c', 'd'],
 			[
-				{ id: 'r-a', from: 'a', to: 'd' },
-				{ id: 'r-b', from: 'b', to: 'd' },
-				{ id: 'r-c', from: 'c', to: 'd' },
+				{ id: 'a-d', from: 'a', to: 'd' },
+				{ id: 'b-d', from: 'b', to: 'd' },
+				{ id: 'c-d', from: 'c', to: 'd' },
+				{ id: 'g-d', from: 'g', to: 'd' },
 			],
 		);
 		const document: LogicDocument = {
@@ -381,31 +413,179 @@ describe('dedicated layout evaluation with candidate row orders', () => {
 		};
 		const created = createGraph(document);
 		if (!created.ok) throw new Error('Expected valid grouped graph');
-		const graph = created.value;
-		const ranks = topologicallyRank(graph);
-		const structure = prepareLayout(graph, ranks);
-		const candidate = structure.rankOrderDomain.bands.map((band) => [...band].reverse());
+		const structure = prepareLayout(created.value, topologicallyRank(created.value));
+		const domain = collectRankOrderDomain(structure);
+		expect(domain.bands).toEqual([['a', 'b', 'c']]);
+		const original = structure.components.find(({ ids }) => ids.includes('g'));
+		if (original === undefined) throw new Error('Expected group relation component');
+		const originalRow = original.rows.ordinary.find((row) => row.includes('g'));
+		if (originalRow === undefined) throw new Error('Expected group ordinary row');
+		const groupPosition = originalRow.indexOf('g');
+		const reordered = applyRankOrder(structure, domain, [['c', 'b', 'a']]);
+		const changed = reordered.components.find(({ ids }) => ids.includes('g'));
+		if (changed === undefined) throw new Error('Expected reordered group component');
+		const changedRow = changed.rows.ordinary.find((row) => row.includes('g'));
+		if (changedRow === undefined) throw new Error('Expected reordered group row');
+		expect(changedRow.indexOf('g')).toBe(groupPosition);
 		const measurements = {
 			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
 			junctions: new Map(),
 			groups: new Map([
-				['g', { minimumWidth: 80, minimumHeight: 50, headerHeight: 20, padding: 8 }],
+				['g', { minimumWidth: 100, minimumHeight: 60, headerHeight: 20, padding: 8 }],
 			]),
 		};
-		const baseline = evaluateDedicatedLayout(structure, measurements).result;
-		const reordered = evaluateDedicatedLayout(
-			prepareLayout(graph, ranks, candidate),
-			measurements,
-		).result;
-
-		const baselinePositions = new Map(baseline.elements.map(({ id, bounds }) => [id, bounds.x]));
-		const reorderedPositions = new Map(reordered.elements.map(({ id, bounds }) => [id, bounds.x]));
-		expect([...baselinePositions].some(([id, x]) => reorderedPositions.get(id) !== x)).toBe(true);
-		expect([...baselinePositions.keys()].sort(compareCanonicalStrings)).toEqual(
-			[...reorderedPositions.keys()].sort(compareCanonicalStrings),
+		const baseline = evaluateDedicatedLayout(structure, measurements);
+		const candidate = evaluateDedicatedLayout(reordered, measurements);
+		const groupBounds = baseline.elements.find(({ id }) => id === 'g')?.bounds;
+		const movedGroupBounds = candidate.elements.find(({ id }) => id === 'g')?.bounds;
+		const baselineRelation = baseline.relations.find(({ id }) => id === 'g-d');
+		const candidateRelation = candidate.relations.find(({ id }) => id === 'g-d');
+		if (
+			groupBounds === undefined ||
+			movedGroupBounds === undefined ||
+			baselineRelation === undefined ||
+			candidateRelation === undefined
+		)
+			throw new Error('Expected group bounds and its incident relation');
+		const startFace = (
+			bounds: typeof groupBounds,
+			point: (typeof baselineRelation.points)[number],
+		) => {
+			if (point.y === bounds.y) return 'top';
+			if (point.y === bounds.y + bounds.height) return 'bottom';
+			if (point.x === bounds.x) return 'left';
+			if (point.x === bounds.x + bounds.width) return 'right';
+			throw new Error('Expected group route to attach to a face');
+		};
+		expect(startFace(groupBounds, defined(baselineRelation.points[0]))).toBe(
+			startFace(movedGroupBounds, defined(candidateRelation.points[0])),
 		);
-		expect(reordered.elements.find(({ id }) => id === 'g')).toBeDefined();
-		expect(ranks.byEndpointId).toEqual(topologicallyRank(graph).byEndpointId);
-		expect(graph.document).toBe(document);
+		for (const id of ['a', 'b']) {
+			const memberBounds = baseline.elements.find(({ id: memberId }) => memberId === id)?.bounds;
+			const movedMemberBounds = candidate.elements.find(
+				({ id: memberId }) => memberId === id,
+			)?.bounds;
+			if (memberBounds === undefined || movedMemberBounds === undefined)
+				throw new Error('Expected group member bounds');
+			const enclosures: readonly (readonly [Bounds, Bounds])[] = [
+				[groupBounds, memberBounds],
+				[movedGroupBounds, movedMemberBounds],
+			];
+			for (const [container, member] of enclosures) {
+				expect(member.x).toBeGreaterThanOrEqual(container.x);
+				expect(member.y).toBeGreaterThanOrEqual(container.y);
+				expect(member.x + member.width).toBeLessThanOrEqual(container.x + container.width);
+				expect(member.y + member.height).toBeLessThanOrEqual(container.y + container.height);
+			}
+		}
+		expect(() => applyRankOrder(structure, domain, [['a', 'b', 'c', 'g']])).toThrow(
+			/Invalid ordinary-node rank order/,
+		);
+	});
+
+	it('rejects candidate inputs with a duplicate, foreign ID or wrong band count', () => {
+		const document = corpusDocument(
+			['a', 'b', 'c'],
+			['a', 'b', 'c'],
+			[
+				{ id: 'a-c', from: 'a', to: 'c' },
+				{ id: 'b-c', from: 'b', to: 'c' },
+			],
+		);
+		const graph = createGraph(document);
+		if (!graph.ok) throw new Error('Expected valid fixture graph');
+		const structure = prepareLayout(graph.value, topologicallyRank(graph.value));
+		const domain = collectRankOrderDomain(structure);
+		expect(domain.bands).toEqual([['a', 'b']]);
+		expect(() => applyRankOrder(structure, domain, [['a', 'a']])).toThrow(
+			/Invalid ordinary-node rank order/,
+		);
+		expect(() => applyRankOrder(structure, domain, [['a', 'outside-domain']])).toThrow(
+			/Invalid ordinary-node rank order/,
+		);
+		expect(() => applyRankOrder(structure, domain, [])).toThrow(/Invalid ordinary-node rank order/);
+
+		const twoBandDocument = corpusDocument(
+			['a', 'b', 'c', 'd'],
+			['a', 'b', 'c', 'd'],
+			[
+				{ id: 'a-c', from: 'a', to: 'c' },
+				{ id: 'a-d', from: 'a', to: 'd' },
+				{ id: 'b-c', from: 'b', to: 'c' },
+				{ id: 'b-d', from: 'b', to: 'd' },
+			],
+		);
+		const twoBandGraph = createGraph(twoBandDocument);
+		if (!twoBandGraph.ok) throw new Error('Expected valid two-band graph');
+		const twoBandStructure = prepareLayout(
+			twoBandGraph.value,
+			topologicallyRank(twoBandGraph.value),
+		);
+		const twoBandDomain = collectRankOrderDomain(twoBandStructure);
+		expect(twoBandDomain.bands.map((band) => band.length)).toEqual([2, 2]);
+		expect(() =>
+			applyRankOrder(twoBandStructure, twoBandDomain, [
+				['a', 'c'],
+				['b', 'd'],
+			]),
+		).toThrow(/Invalid ordinary-node rank order/);
+	});
+});
+
+describe('dedicated layout evaluation with candidate row orders', () => {
+	it('exchanges the 3+1 source nodes while retaining ranks, relations and identifiers', () => {
+		const document = corpusDocument(
+			['a', 'b', 'c', 'd'],
+			['a', 'b', 'c', 'd'],
+			[
+				{ id: 'r-a', from: 'a', to: 'd' },
+				{ id: 'r-b', from: 'b', to: 'd' },
+				{ id: 'r-c', from: 'c', to: 'd' },
+			],
+		);
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Expected valid 3+1 fixture graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		const candidate = domain.bands.map((band) => [...band].reverse());
+		const measurements = {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			junctions: new Map(),
+			groups: new Map(),
+		};
+		const documentSnapshot = structuredClone(document);
+		const graphSnapshot = structuredClone(graph);
+		const measurementsSnapshot = structuredClone(measurements);
+		const baseline = evaluateDedicatedLayout(structure, measurements);
+		const reordered = evaluateDedicatedLayout(
+			applyRankOrder(structure, domain, candidate),
+			measurements,
+		);
+		if ('complete' in baseline || 'complete' in reordered)
+			throw new Error('Ordinary evaluations must return LayoutResult directly');
+		const sourceOrder = (layout: typeof baseline) =>
+			layout.elements
+				.filter(({ id }) => ['a', 'b', 'c'].includes(id))
+				.sort((left, right) => left.bounds.x - right.bounds.x)
+				.map(({ id }) => id);
+		expect(sourceOrder(baseline)).toEqual(['a', 'b', 'c']);
+		expect(sourceOrder(reordered)).toEqual(['c', 'b', 'a']);
+		expect(ranks.byEndpointId.get('a')).toBe(1);
+		expect(ranks.byEndpointId.get('b')).toBe(1);
+		expect(ranks.byEndpointId.get('c')).toBe(1);
+		expect(ranks.byEndpointId.get('d')).toBe(0);
+		expect(reordered.elements.map(({ id }) => id).sort(compareCanonicalStrings)).toEqual(
+			baseline.elements.map(({ id }) => id).sort(compareCanonicalStrings),
+		);
+		expect(reordered.relations.map(({ id }) => id).sort(compareCanonicalStrings)).toEqual([
+			'r-a',
+			'r-b',
+			'r-c',
+		]);
+		expect(document).toEqual(documentSnapshot);
+		expect(graph).toEqual(graphSnapshot);
+		expect(measurements).toEqual(measurementsSnapshot);
 	});
 });
