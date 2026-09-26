@@ -7,7 +7,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -116,7 +116,13 @@ describe('dedicated leaf incident contracts', () => {
 		expect(cold.incidents).toHaveLength(2);
 		const first = defined(cold.incidents[0]);
 		const second = defined(cold.incidents[1]);
-		expect(pathsTouchWithoutBridge(first.points, second.points)).toBe(false);
+		expect(
+			disallowedRouteContacts(
+				{ id: first.relationId, points: first.points },
+				{ id: second.relationId, points: second.points },
+				[],
+			).length > 0,
+		).toBe(false);
 		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
 	});
 
@@ -144,7 +150,13 @@ describe('dedicated leaf incident contracts', () => {
 			attempt.incidents.find(({ relationId }) => relationId === 'a-outgoing'),
 		);
 		expect(incoming.portal.x).toBeLessThan(outgoing.portal.x);
-		expect(pathsTouchWithoutBridge(incoming.points, outgoing.points)).toBe(false);
+		expect(
+			disallowedRouteContacts(
+				{ id: incoming.relationId, points: incoming.points },
+				{ id: outgoing.relationId, points: outgoing.points },
+				[],
+			).length > 0,
+		).toBe(false);
 	});
 
 	it('keeps a local route isolated from a crossing incident', () => {
@@ -170,10 +182,13 @@ describe('dedicated leaf incident contracts', () => {
 		if (attempt.status !== RegionCompositionStatus.Selected) throw new Error(attempt.reason);
 		const path = defined(attempt.incidents[0]);
 		const local = defined(attempt.layout.relations.find(({ id }) => id === 'inside-a'));
-		let allowed: typeof path.anchor | undefined;
-		if (local.points.at(-1)?.x === path.anchor.x && local.points.at(-1)?.y === path.anchor.y)
-			allowed = path.anchor;
-		expect(pathsTouchWithoutBridge(path.points, local.points, allowed)).toBe(false);
+		expect(
+			disallowedRouteContacts(
+				{ id: path.relationId, points: path.points, from: path.endpointId },
+				local,
+				[],
+			),
+		).toEqual([]);
 	});
 
 	it('tries another route when the straight incident crosses local geometry', () => {

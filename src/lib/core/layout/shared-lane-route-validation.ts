@@ -13,7 +13,7 @@ import {
 	longEnd,
 	longitudinal,
 	longStart,
-	segmentsContact,
+	segmentsSelfContact,
 } from './shared-lane-geometry-primitives';
 import { type LaneSide, laneSide, reverseDirection, verticalDirection } from './shared-lane-model';
 import { validateSharedLaneRouteContacts } from './shared-lane-route-contact-validation';
@@ -190,7 +190,7 @@ function segmentCrossesItself(
 		const otherStart = route.points[other - 1];
 		const otherEnd = route.points[other];
 		if (otherStart === undefined || otherEnd === undefined) continue;
-		if (segmentsContact(segment.start, segment.end, otherStart, otherEnd)) return true;
+		if (segmentsSelfContact(segment.start, segment.end, otherStart, otherEnd)) return true;
 	}
 	return false;
 }

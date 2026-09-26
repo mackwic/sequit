@@ -310,7 +310,7 @@ describe('shared lane layout', () => {
 		expect(validateSharedLaneIncidentPath(selected.geometry, contract, path)).toBeUndefined();
 	});
 
-	it('rejects falsified lane incident identity, attachment, boundary and sharing', () => {
+	it('rejects falsified lane incidents while permitting a same-family shared trunk', () => {
 		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
 		const prepared = prepareLayoutDocument(document);
 		const contract = {
@@ -432,6 +432,11 @@ describe('shared lane layout', () => {
 		expect(
 			validateSharedLaneIncidentPath(geometry, contract, path, [
 				{ ...path, relationId: 'previous' },
+			]),
+		).toBeUndefined();
+		expect(
+			validateSharedLaneIncidentPath(geometry, contract, path, [
+				{ ...path, relationId: 'previous', endpointId: 'other' },
 			]),
 		).toMatchObject({ code: RegionIncidentRejectionCode.RouteObstructed });
 		const cramped = {

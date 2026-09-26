@@ -1,8 +1,13 @@
-import { defined } from '../../document/logic-document';
-import type { RouteRun } from '../bridge-oracle';
-import { routeRuns } from '../bridge-oracle';
-import type { LayoutRelation, Point } from '../layout-types';
-import { samePoint } from './route-geometry';
+import { defined } from '../document/logic-document';
+import { type RoutedPath, type RouteRun, routeRuns } from './bridge-oracle';
+import type { Point } from './layout-types';
+import { samePoint } from './nested-region-geometry-primitives';
+
+/** Endpoint identity is optional for a route piece: only its attached end is declared. */
+export interface EndpointRoute extends RoutedPath {
+	readonly from?: string;
+	readonly to?: string;
+}
 
 function coordinate(point: Point, horizontal: boolean): number {
 	if (horizontal) return point.x;
@@ -75,12 +80,12 @@ function pointOnSharedRun(first: RouteRun, second: RouteRun, point: Point, from:
 	);
 }
 
-function endpointId(route: LayoutRelation, from: boolean): string {
+export function endpointId(route: EndpointRoute, from: boolean): string | undefined {
 	if (from) return route.from;
 	return route.to;
 }
 
-function endpointPoint(route: LayoutRelation, from: boolean): Point | undefined {
+export function endpointPoint(route: EndpointRoute, from: boolean): Point | undefined {
 	if (from) return route.points[0];
 	return route.points.at(-1);
 }
@@ -91,12 +96,13 @@ function continuationPoint(run: RouteRun, from: boolean): Point {
 }
 
 export function sharedAtEndpoint(
-	first: LayoutRelation,
-	second: LayoutRelation,
+	first: EndpointRoute,
+	second: EndpointRoute,
 	point: Point,
 	from: boolean,
 ): boolean {
-	if (endpointId(first, from) !== endpointId(second, from)) return false;
+	const id = endpointId(first, from);
+	if (id === undefined || id !== endpointId(second, from)) return false;
 	const firstPoint = defined(endpointPoint(first, from));
 	const secondPoint = defined(endpointPoint(second, from));
 	if (!samePoint(firstPoint, secondPoint)) return false;
@@ -117,5 +123,23 @@ export function sharedAtEndpoint(
 		const secondContinuation = continuationPoint(secondRun, from);
 		if (!samePoint(firstContinuation, secondContinuation)) return false;
 	}
+	return false;
+}
+
+/** A point-only node connection may join routes with opposite endpoint roles. */
+export function sharedAttachmentPoint(
+	first: EndpointRoute,
+	second: EndpointRoute,
+	point: Point,
+): boolean {
+	for (const fromFirst of [true, false])
+		for (const fromSecond of [true, false]) {
+			const firstId = endpointId(first, fromFirst);
+			if (firstId === undefined || firstId !== endpointId(second, fromSecond)) continue;
+			const firstAnchor = endpointPoint(first, fromFirst);
+			const secondAnchor = endpointPoint(second, fromSecond);
+			if (firstAnchor === undefined || secondAnchor === undefined) continue;
+			if (samePoint(firstAnchor, point) && samePoint(secondAnchor, point)) return true;
+		}
 	return false;
 }

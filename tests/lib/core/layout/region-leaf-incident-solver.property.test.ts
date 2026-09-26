@@ -2,7 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
@@ -76,7 +76,13 @@ describe('dedicated leaf incident invariants', () => {
 					expect(path.points[0]).toEqual(path.anchor);
 					expect(path.points.at(-1)).toEqual(path.portal);
 					for (const other of cold.incidents.slice(index + 1))
-						expect(pathsTouchWithoutBridge(path.points, other.points)).toBe(false);
+						expect(
+							disallowedRouteContacts(
+								{ id: path.relationId, points: path.points },
+								{ id: other.relationId, points: other.points },
+								[],
+							).length > 0,
+						).toBe(false);
 				}
 				expect(defined(cold.layout.elements[0]).id).toBe('c');
 			}),

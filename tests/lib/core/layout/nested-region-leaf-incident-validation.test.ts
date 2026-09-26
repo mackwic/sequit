@@ -562,7 +562,7 @@ describe('recursive nested-region leaf incident validation', () => {
 		);
 	});
 
-	it('rejects a depth-three incident crossing a local route without a bridge', () => {
+	it('accepts a depth-three strict bridge but rejects the same crossing without clearance', () => {
 		const { model, candidate } = fixture(3);
 		const damaged = replaceRoute(candidate, 'inside-a', 'left', [
 			{ x: 90, y: 100 },
@@ -573,7 +573,14 @@ describe('recursive nested-region leaf incident validation', () => {
 			{ x: 110, y: 150 },
 		]);
 		expect(validateRegionCompositionGeometry(model, damaged)).toBeUndefined();
-		expect(validateNestedRegionLeafIncidents(model, damaged)).toContain(
+		expect(validateNestedRegionLeafIncidents(model, damaged)).toBeUndefined();
+		const tooNearPort = replaceRoute(candidate, 'inside-a', 'left', [
+			{ x: 90, y: 100 },
+			{ x: 90, y: 180 },
+			{ x: 110, y: 180 },
+			{ x: 110, y: 150 },
+		]);
+		expect(validateNestedRegionLeafIncidents(model, tooNearPort)).toContain(
 			'touches local relation inside-a in leaf left without a defined bridge',
 		);
 	});

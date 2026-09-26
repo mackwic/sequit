@@ -1,5 +1,10 @@
 import { defined } from '../document/logic-document';
 import {
+	type EndpointRoute,
+	sharedAtEndpoint,
+	sharedAttachmentPoint,
+} from './bridge-contact-shared';
+import {
 	type LayoutBridge,
 	type RouteBridgeAnalysis,
 	type RouteCrossing,
@@ -12,6 +17,8 @@ import {
 } from './bridge-oracle';
 import type { Point } from './layout-types';
 import { samePoint } from './nested-region-geometry-primitives';
+
+export type { EndpointRoute } from './bridge-contact-shared';
 
 /** True when a validated bridge carries the contact point between the two declared paths. */
 function bridgeCovers(
@@ -42,12 +49,19 @@ export function unbridgedCrossings(analysis: RouteBridgeAnalysis): readonly Rout
 	);
 }
 
-/**
- * The contact point of one pair of runs, or `undefined` when the two runs do not touch. The test is
- * the conservative composition contact: collinear overlap, T-contact and perpendicular touch all
- * count, endpoints included.
- */
-function runContact(first: RouteRun, second: RouteRun): Point | undefined {
+export enum RouteContactKind {
+	Point = 'point',
+	Overlap = 'overlap',
+}
+
+/** Point contacts and positive-length collinear overlaps have different exemptions. */
+export interface RouteContact {
+	readonly kind: RouteContactKind;
+	readonly from: Point;
+	readonly to: Point;
+}
+
+function runContact(first: RouteRun, second: RouteRun): RouteContact | undefined {
 	const left = runInterval(first);
 	const right = runInterval(second);
 	if (first.orientation === second.orientation) {
@@ -55,14 +69,43 @@ function runContact(first: RouteRun, second: RouteRun): Point | undefined {
 		const low = Math.max(left.low, right.low);
 		const high = Math.min(left.high, right.high);
 		if (low > high) return undefined;
-		if (first.orientation === RouteOrientation.Vertical) return { x: left.fixed, y: low };
-		return { x: low, y: left.fixed };
+		let from = { x: low, y: left.fixed };
+		let to = { x: high, y: left.fixed };
+		if (first.orientation === RouteOrientation.Vertical) {
+			from = { x: left.fixed, y: low };
+			to = { x: left.fixed, y: high };
+		}
+		let kind = RouteContactKind.Overlap;
+		if (low === high) kind = RouteContactKind.Point;
+		return { kind, from, to };
 	}
 	const firstInside = right.fixed >= left.low && right.fixed <= left.high;
 	const secondInside = left.fixed >= right.low && left.fixed <= right.high;
 	if (!firstInside || !secondInside) return undefined;
-	if (first.orientation === RouteOrientation.Vertical) return { x: left.fixed, y: right.fixed };
-	return { x: right.fixed, y: left.fixed };
+	let point = { x: right.fixed, y: left.fixed };
+	if (first.orientation === RouteOrientation.Vertical) point = { x: left.fixed, y: right.fixed };
+	return { kind: RouteContactKind.Point, from: point, to: point };
+}
+
+function strictRunCrossing(first: RouteRun, second: RouteRun, point: Point): boolean {
+	if (first.orientation === second.orientation) return false;
+	const left = runInterval(first);
+	const right = runInterval(second);
+	let firstCoordinate = point.y;
+	let secondCoordinate = point.y;
+	if (first.orientation === RouteOrientation.Horizontal) firstCoordinate = point.x;
+	if (second.orientation === RouteOrientation.Horizontal) secondCoordinate = point.x;
+	const firstInside = firstCoordinate > left.low && firstCoordinate < left.high;
+	const secondInside = secondCoordinate > right.low && secondCoordinate < right.high;
+	return firstInside && secondInside;
+}
+
+function compareContacts(first: RouteContact, second: RouteContact): number {
+	const x = first.from.x - second.from.x;
+	const y = first.from.y - second.from.y;
+	const extentX = first.to.x - second.to.x;
+	const extentY = first.to.y - second.to.y;
+	return x || y || extentX || extentY;
 }
 
 /** The first bridge at or beyond one point in the oracle's x/y-sorted bridge array. */
@@ -112,30 +155,73 @@ function contactIsBridged(point: Point, lookup: BridgeContactLookup): boolean {
 	return false;
 }
 
-/**
- * The contacts between two declared paths that no validated bridge covers. Empty exactly when
- * every contact of the pair is a strict crossing carried by a bridge of `bridges`, which is the
- * composition acceptance rule for two routes owned by the same region. A T-contact or a collinear
- * overlap is never covered. The indexed option requires the order of `validatedBridges`.
- */
+function contactInsideOverlap(contact: RouteContact, other: RouteContact): boolean {
+	if (other.kind !== RouteContactKind.Overlap) return false;
+	const x = contact.from.x >= other.from.x && contact.from.x <= other.to.x;
+	const y = contact.from.y >= other.from.y && contact.from.y <= other.to.y;
+	return x && y;
+}
+
+/** All unbridged contacts, in canonical coordinate order regardless of route or run order. */
 export function unbridgedContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
-): readonly Point[] {
+): readonly RouteContact[] {
 	const charge = options?.charge;
 	const sortedByPoint = options?.sortedByPoint ?? false;
 	const lookup = { bridges, firstId: first.id, secondId: second.id, charge, sortedByPoint };
-	const contacts = new Map<string, Point>();
+	const contacts = new Map<string, RouteContact>();
 	const secondRuns = routeRuns(second, charge);
 	for (const firstRun of routeRuns(first, charge)) {
 		for (const secondRun of secondRuns) {
 			charge?.(1);
-			const point = runContact(firstRun, secondRun);
-			if (point === undefined) continue;
-			if (!contactIsBridged(point, lookup)) contacts.set(`${point.x}:${point.y}`, point);
+			const contact = runContact(firstRun, secondRun);
+			if (contact === undefined) continue;
+			if (
+				contact.kind === RouteContactKind.Point &&
+				strictRunCrossing(firstRun, secondRun, contact.from) &&
+				contactIsBridged(contact.from, lookup)
+			)
+				continue;
+			const { from, to } = contact;
+			contacts.set(`${from.x}:${from.y}:${to.x}:${to.y}`, contact);
 		}
 	}
-	return [...contacts.values()];
+	const ordered = [...contacts.values()].sort(compareContacts);
+	return ordered.filter(
+		(contact) =>
+			contact.kind === RouteContactKind.Overlap ||
+			!ordered.some((other) => contactInsideOverlap(contact, other)),
+	);
+}
+
+/** An attachment point is allowed, but an extent needs a continuous shared family trunk. */
+export function permittedRouteContact(
+	first: EndpointRoute,
+	second: EndpointRoute,
+	contact: RouteContact,
+): boolean {
+	const sharedSource =
+		sharedAtEndpoint(first, second, contact.from, true) &&
+		sharedAtEndpoint(first, second, contact.to, true);
+	const sharedTarget =
+		sharedAtEndpoint(first, second, contact.from, false) &&
+		sharedAtEndpoint(first, second, contact.to, false);
+	if (sharedSource || sharedTarget) return true;
+	if (contact.kind === RouteContactKind.Overlap) return false;
+	return sharedAttachmentPoint(first, second, contact.from);
+}
+
+/** One canonical policy shared by dedicated, lane and leaf candidate validators. */
+export function disallowedRouteContacts(
+	first: EndpointRoute,
+	second: EndpointRoute,
+	bridges: readonly LayoutBridge[],
+	options?: BridgeContactOptions,
+): readonly RouteContact[] {
+	return unbridgedContacts(first, second, bridges, options).filter(
+		(contact) => !permittedRouteContact(first, second, contact),
+	);
 }

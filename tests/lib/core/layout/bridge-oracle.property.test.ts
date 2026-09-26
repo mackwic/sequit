@@ -120,8 +120,32 @@ describe('the bridge oracle', () => {
 		]);
 		expect(validatedBridges([bend, stub])).toEqual([]);
 		expect(validatedBridges([horizontalCrossing, overlap])).toEqual([]);
-		expect(unbridgedContacts(bend, stub, [])).toEqual([{ x: 50, y: 50 }]);
+		expect(unbridgedContacts(bend, stub, [])).toEqual([
+			{ kind: 'point', from: { x: 50, y: 50 }, to: { x: 50, y: 50 } },
+		]);
 		expect(unbridgedContacts(horizontalCrossing, overlap, [])).not.toEqual([]);
+	});
+
+	it('distinguishes attachment points from the entire overlap beginning at a port', () => {
+		const stem = relation('stem', [
+			{ x: 0, y: 0 },
+			{ x: 50, y: 0 },
+		]);
+		const turn = relation('turn', [
+			{ x: 0, y: 0 },
+			{ x: 20, y: 0 },
+			{ x: 20, y: 30 },
+		]);
+		const point = relation('point', [
+			{ x: 0, y: 0 },
+			{ x: 0, y: 30 },
+		]);
+		expect(unbridgedContacts(stem, turn, [])).toEqual([
+			{ kind: 'overlap', from: { x: 0, y: 0 }, to: { x: 20, y: 0 } },
+		]);
+		expect(unbridgedContacts(stem, point, [])).toEqual([
+			{ kind: 'point', from: { x: 0, y: 0 }, to: { x: 0, y: 0 } },
+		]);
 	});
 
 	it('never bridges a crossing without the clearance on either run', () => {
@@ -134,7 +158,9 @@ describe('the bridge oracle', () => {
 			{ x: 50, y: 60 },
 		]);
 		expect(validatedBridges([shortHorizontal, shortVertical])).toEqual([]);
-		expect(unbridgedContacts(shortHorizontal, shortVertical, [])).toEqual([{ x: 50, y: 50 }]);
+		expect(unbridgedContacts(shortHorizontal, shortVertical, [])).toEqual([
+			{ kind: 'point', from: { x: 50, y: 50 }, to: { x: 50, y: 50 } },
+		]);
 		expect(
 			unbridgedCrossings({
 				crossings: strictCrossings([shortHorizontal, shortVertical]),
@@ -151,7 +177,7 @@ describe('the bridge oracle', () => {
 			crossedIds: ['horizontal'],
 		};
 		expect(unbridgedContacts(horizontalCrossing, verticalCrossing, [forged])).toEqual([
-			{ x: 50, y: 50 },
+			{ kind: 'point', from: { x: 50, y: 50 }, to: { x: 50, y: 50 } },
 		]);
 		const moved: LayoutBridge = {
 			x: 50,
@@ -160,7 +186,7 @@ describe('the bridge oracle', () => {
 			crossedIds: ['horizontal'],
 		};
 		expect(unbridgedContacts(horizontalCrossing, verticalCrossing, [moved])).toEqual([
-			{ x: 50, y: 50 },
+			{ kind: 'point', from: { x: 50, y: 50 }, to: { x: 50, y: 50 } },
 		]);
 	});
 
@@ -245,8 +271,8 @@ describe('the bridge oracle', () => {
 						const unbridged = unbridgedContacts(first, second, bridges);
 						if (unbridged.length > 0) continue;
 						for (const point of contacts) {
-							expect(interiorRun(first, point)).toBeDefined();
-							expect(interiorRun(second, point)).toBeDefined();
+							expect(interiorRun(first, point.from)).toBeDefined();
+							expect(interiorRun(second, point.from)).toBeDefined();
 						}
 					}
 			}),

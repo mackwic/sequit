@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,9 +9,10 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-presentation';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
@@ -39,6 +41,7 @@ import {
 	directSharedLaneIncidentPath,
 	validateSharedLaneIncidentPath,
 } from '../../../../src/lib/core/layout/shared-lane-incident-validation';
+import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	persistedNestedGridDocument,
@@ -108,6 +111,64 @@ function laneIncidentIssue(geometry: SharedLaneGeometry, contract: RegionInciden
 }
 
 describe('a two-lane leaf in a recursive grid cell', () => {
+	it('validates the real contracted incident after document permutations and metric edits', () => {
+		fc.assert(
+			fc.property(
+				fc.boolean(),
+				fc.boolean(),
+				fc.constantFrom(0, 8, 16),
+				(reverseNodes, reverseRelations, delta) => {
+					const source = persistedNestedGridWithInnerLaneCrossingDocument();
+					let nodes = source.nodes;
+					let relations = source.relations;
+					if (reverseNodes) nodes = source.nodes.toReversed();
+					if (reverseRelations) relations = source.relations.toReversed();
+					const document = {
+						...source,
+						nodes,
+						relations,
+					};
+					const prepared = prepareLayoutDocument(document);
+					const input = regionInput(document);
+					const sizes = new Map(prepared.measurements.nodes);
+					const b2 = defined(sizes.get('b2'));
+					sizes.set('b2', { ...b2, width: b2.width + delta });
+					const selected = solveRecursiveNestedRegionLayout(
+						prepared.graph,
+						{ ...prepared.measurements, nodes: sizes },
+						input,
+					);
+					expect(selected.status).toBe(RegionCompositionStatus.Selected);
+					if (selected.status !== RegionCompositionStatus.Selected) return;
+					const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+					if (normalized.status !== RegionCompositionModelStatus.Ready)
+						throw new Error('Invalid generated region model');
+					expect(validateRegionCompositionGeometry(normalized.model, selected)).toBeUndefined();
+					expect(validateNestedRegionLeafIncidents(normalized.model, selected)).toBeUndefined();
+					const local = defined(
+						selected.ownedRoutes.find(
+							({ regionId, relationId }) => regionId === 'b' && relationId === 'inside-b',
+						),
+					);
+					const incident = defined(
+						selected.ownedRoutes.find(
+							({ regionId, relationId }) => regionId === 'b' && relationId === 'leaves-b',
+						),
+					);
+					const bridges = validatedBridges(selected.layout.relations);
+					expect(
+						disallowedRouteContacts(
+							{ id: incident.relationId, from: 'b', points: incident.points },
+							{ id: local.relationId, from: 'b', to: 'b2', points: local.points },
+							bridges,
+						),
+					).toEqual([]);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('publishes both lanes and the local route inside its cell and the root canvas', () => {
 		const document = persistedNestedGridWithLaneCellDocument();
 		const prepared = prepareLayoutDocument(document);
@@ -417,10 +478,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				},
 			],
 		};
-		expect(laneIncidentIssue(detour, contract)).toMatchObject({
-			code: RegionIncidentRejectionCode.RouteObstructed,
-			reason: 'Incident leaves-b touches local relation inside-b in its lane leaf.',
-		});
+		// This detour crosses strictly with sufficient clearance: the candidate carries a bridge.
+		expect(laneIncidentIssue(detour, contract)).toBeUndefined();
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
 			throw new Error('Expected normalized region composition');
@@ -439,9 +498,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				};
 			}),
 		};
-		expect(validateNestedRegionLeafIncidents(normalized.model, sharedTrunk)).toBe(
-			'Relation leaves-b incident touches local relation inside-b in leaf b without a defined bridge.',
-		);
+
+		expect(validateNestedRegionLeafIncidents(normalized.model, sharedTrunk)).toBeUndefined();
 		const b2 = defined(local.elements.find(({ id }) => id === 'b2'));
 		const obstructed = {
 			...geometry,
@@ -484,7 +542,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		const first = defined(routes.get('leaves-b'));
 		const second = defined(routes.get('second-leaves-b'));
 		expect(first.points[0]).not.toEqual(second.points[0]);
-		expect(pathsTouchWithoutBridge(first.points, second.points)).toBe(false);
+		expect(disallowedRouteContacts(first, second, []).length > 0).toBe(false);
 	});
 
 	it('evaluates a non-monotone lane crossing and transverse lanes through the contract', () => {

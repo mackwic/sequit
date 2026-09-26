@@ -96,20 +96,32 @@ describe('dedicated leaf route geometry', () => {
 				{ x: 160, y: 40 },
 			],
 		};
+		// The full candidate has a strict crossing with room for an arc on either route.
 		expect(
 			geometryFailure(
 				{ ...layout, relations: [localRelation] },
 				endpoint,
 				path([anchor, portal]),
 				[],
-			)?.reason,
+			),
+		).toBeUndefined();
+		const narrow = {
+			...localRelation,
+			points: [
+				{ x: 135, y: 40 },
+				{ x: 140, y: 40 },
+			],
+		};
+		expect(
+			geometryFailure({ ...layout, relations: [narrow] }, endpoint, path([anchor, portal]), [])
+				?.reason,
 		).toContain('local relation local-route');
 		const previous = routeFor(
 			{ ...contract, relation: { id: 'earlier', from: 'local', to: 'another' } },
 			RegionPortalSide.Left,
 			[
-				{ x: 120, y: 40 },
-				{ x: 160, y: 40 },
+				{ x: 135, y: 40 },
+				{ x: 140, y: 40 },
 			],
 		);
 		expect(geometryFailure(layout, endpoint, path([anchor, portal]), [previous])?.reason).toContain(

@@ -64,7 +64,8 @@ function pointOnSegment(point: Point, start: Point, end: Point): boolean {
 	return between(point.x, start.x, end.x) && between(point.y, start.y, end.y);
 }
 
-export function segmentsContact(a: Point, b: Point, c: Point, d: Point): boolean {
+/** Only for nonadjacent segments of the same route; route pairs use bridge-contact. */
+export function segmentsSelfContact(a: Point, b: Point, c: Point, d: Point): boolean {
 	const firstVertical = a.x === b.x;
 	const secondVertical = c.x === d.x;
 	if (firstVertical && !secondVertical) {

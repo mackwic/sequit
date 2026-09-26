@@ -1,9 +1,11 @@
 import { defined } from '../document/logic-document';
+import { disallowedRouteContacts } from './bridge-contact';
+import { type LayoutBridge, validatedBridges } from './bridge-oracle';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';
 import type { Bounds, Point } from './layout-types';
 import { orthogonal, samePoint } from './nested-region-geometry-primitives';
-import { pathsTouchWithoutBridge } from './nested-region-leaf-incident-contacts';
 import { RegionPortalSide } from './region-composition-types';
+import { incidentEndpointRoute } from './region-incident-contact';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
@@ -206,7 +208,9 @@ function localRouteContact(
 	geometry: SharedLaneGeometry,
 	bounds: Bounds,
 	path: RegionSolvedIncident,
+	bridges: readonly LayoutBridge[],
 ): SharedLaneIncidentFailure | undefined {
+	const current = incidentEndpointRoute(path);
 	const edge = facePortEdge(path.endpointId, path.side, bounds);
 	for (const route of geometry.relations) {
 		const port = routePortOnFace(route.points, path.endpointId, route.from, route.to);
@@ -215,7 +219,7 @@ function localRouteContact(
 				RegionIncidentRejectionCode.PortUnavailable,
 				`Incident ${path.relationId} cannot use edge ${edge.ownerId}: an occupied slot is beside the demanded port within PORT_SPACING (held by ${route.id}).`,
 			);
-		if (pathsTouchWithoutBridge(path.points, route.points))
+		if (disallowedRouteContacts(current, route, bridges).length > 0)
 			return failure(
 				RegionIncidentRejectionCode.RouteObstructed,
 				`Incident ${path.relationId} touches local relation ${route.id} in its lane leaf.`,
@@ -227,9 +231,13 @@ function localRouteContact(
 function earlierIncidentContact(
 	path: RegionSolvedIncident,
 	earlier: readonly RegionSolvedIncident[],
+	bridges: readonly LayoutBridge[],
 ): SharedLaneIncidentFailure | undefined {
 	for (const previous of earlier) {
-		if (pathsTouchWithoutBridge(path.points, previous.points))
+		if (
+			disallowedRouteContacts(incidentEndpointRoute(path), incidentEndpointRoute(previous), bridges)
+				.length > 0
+		)
 			return failure(
 				RegionIncidentRejectionCode.RouteObstructed,
 				`Incident ${path.relationId} touches incident ${previous.relationId} in its lane leaf.`,
@@ -262,9 +270,14 @@ export function validateSharedLaneIncidentPath(
 			RegionIncidentRejectionCode.PortUnavailable,
 			`Incident ${relationId} has no ${path.side}-facing port capacity.`,
 		);
+	const bridges = validatedBridges([
+		...geometry.relations,
+		...earlier.map(incidentEndpointRoute),
+		incidentEndpointRoute(path),
+	]);
 	return (
 		elementContact(geometry, contract.endpointId, path) ??
-		localRouteContact(geometry, source.bounds, path) ??
-		earlierIncidentContact(path, earlier)
+		localRouteContact(geometry, source.bounds, path, bridges) ??
+		earlierIncidentContact(path, earlier, bridges)
 	);
 }

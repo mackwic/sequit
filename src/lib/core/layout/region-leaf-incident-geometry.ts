@@ -1,8 +1,10 @@
 import { EndpointKind } from '../document/logic-document';
+import { disallowedRouteContacts } from './bridge-contact';
+import { validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutElement, LayoutResult, Point } from './layout-types';
 import { inside, orthogonal, segmentEnters } from './nested-region-geometry-primitives';
-import { pathsTouchWithoutBridge } from './nested-region-leaf-incident-contacts';
 import { RegionPortalSide } from './region-composition-types';
+import { incidentEndpointRoute } from './region-incident-contact';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
 import { RegionIncidentRejectionCode, RegionIncidentRole } from './region-incident-contract';
 
@@ -151,25 +153,32 @@ export function routeCandidates(
 	return routes;
 }
 
-function allowedLocalConnection(
-	endpointId: string,
-	anchor: Point,
-	relation: LayoutResult['relations'][number],
-): Point | undefined {
-	const first = relation.points[0];
-	const last = relation.points.at(-1);
-	if (relation.from === endpointId && first !== undefined) {
-		if (first.x === anchor.x && first.y === anchor.y) return anchor;
-	}
-	if (relation.to === endpointId && last !== undefined) {
-		if (last.x === anchor.x && last.y === anchor.y) return anchor;
-	}
-	return undefined;
-}
-
 function outsideCanvas(point: Point, layout: LayoutResult): boolean {
 	if (point.x < 0 || point.x > layout.width) return true;
 	return point.y < 0 || point.y > layout.height;
+}
+
+function routeContactFailure(
+	layout: LayoutResult,
+	path: RegionSolvedIncident,
+	selected: readonly RegionSolvedIncident[],
+): RegionLeafIncidentGeometryFailure | undefined {
+	const incident = incidentEndpointRoute(path);
+	const earlier = selected.map(incidentEndpointRoute);
+	const bridges = validatedBridges([...layout.relations, ...earlier, incident]);
+	for (const local of layout.relations)
+		if (disallowedRouteContacts(incident, local, bridges).length > 0)
+			return {
+				code: RegionIncidentRejectionCode.RouteObstructed,
+				reason: `The incident route touches local relation ${local.id}.`,
+			};
+	for (const other of earlier)
+		if (disallowedRouteContacts(incident, other, bridges).length > 0)
+			return {
+				code: RegionIncidentRejectionCode.RouteObstructed,
+				reason: `The incident route touches incident ${other.id}.`,
+			};
+	return undefined;
 }
 
 export function geometryFailure(
@@ -203,21 +212,7 @@ export function geometryFailure(
 				reason: `The incident route enters endpoint ${element.id}.`,
 			};
 	}
-	for (const local of layout.relations) {
-		const allowed = allowedLocalConnection(path.endpointId, path.anchor, local);
-		if (pathsTouchWithoutBridge(path.points, local.points, allowed))
-			return {
-				code: RegionIncidentRejectionCode.RouteObstructed,
-				reason: `The incident route touches local relation ${local.id}.`,
-			};
-	}
-	for (const other of selected)
-		if (pathsTouchWithoutBridge(path.points, other.points))
-			return {
-				code: RegionIncidentRejectionCode.RouteObstructed,
-				reason: `The incident route touches incident ${other.relationId}.`,
-			};
-	return undefined;
+	return routeContactFailure(layout, path, selected);
 }
 
 export function routeFor(

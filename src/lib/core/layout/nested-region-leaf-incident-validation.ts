@@ -1,7 +1,8 @@
 import { defined, type LogicRelation } from '../document/logic-document';
+import { disallowedRouteContacts } from './bridge-contact';
+import { type LayoutBridge, validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutElement, Point } from './layout-types';
-import { orthogonal, samePoint, segmentEnters } from './nested-region-geometry-primitives';
-import { pathsTouchWithoutBridge } from './nested-region-leaf-incident-contacts';
+import { orthogonal, segmentEnters } from './nested-region-geometry-primitives';
 import {
 	type RegionCompositionModel,
 	RegionRelationKind,
@@ -129,23 +130,6 @@ function elementFor(
 	return element;
 }
 
-function localConnectionAt(
-	local: LogicRelation,
-	points: readonly Point[],
-	endpointId: string,
-	anchor: Point,
-): Point | undefined {
-	if (local.from === endpointId) {
-		const start = points[0];
-		if (start !== undefined && samePoint(start, anchor)) return anchor;
-	}
-	const end = points.at(-1);
-	if (local.to === endpointId) {
-		if (end !== undefined && samePoint(end, anchor)) return anchor;
-	}
-	return undefined;
-}
-
 function foreignNodeFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
@@ -200,7 +184,14 @@ function localRouteFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
 	candidate: RegionLayoutSelected,
+	bridges: readonly LayoutBridge[],
 ): RegionGeometryDiagnostic | undefined {
+	const incidentRoute: { id: string; points: readonly Point[]; from?: string; to?: string } = {
+		id: incident.relation.id,
+		points: incident.piece.points,
+	};
+	if (incident.role === IncidentRole.Source) incidentRoute.from = incident.endpointId;
+	else incidentRoute.to = incident.endpointId;
 	for (const local of model.localRelationsByOwner.get(incident.leafId) ?? []) {
 		const route = candidate.ownedRoutes.find(
 			(piece) => piece.regionId === incident.leafId && piece.relationId === local.id,
@@ -219,8 +210,9 @@ function localRouteFailure(
 				`Local relation ${local.id} has a non-orthogonal route in leaf ${incident.leafId}.`,
 				{ relatedRelationId: local.id },
 			);
-		const allowed = localConnectionAt(local, route.points, incident.endpointId, incident.anchor);
-		if (pathsTouchWithoutBridge(incident.piece.points, route.points, allowed))
+		if (
+			disallowedRouteContacts(incidentRoute, { ...local, points: route.points }, bridges).length > 0
+		)
 			return incidentDiagnostic(
 				incident,
 				RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
@@ -235,9 +227,12 @@ function leafFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
 	candidate: RegionLayoutSelected,
-	elementsById: ReadonlyMap<string, LayoutElement>,
+	context: {
+		readonly elementsById: ReadonlyMap<string, LayoutElement>;
+		readonly bridges: readonly LayoutBridge[];
+	},
 ): RegionGeometryDiagnostic | undefined {
-	const element = elementFor(incident, elementsById);
+	const element = elementFor(incident, context.elementsById);
 	if ('code' in element) return element;
 	if (!onFace(incident.anchor, element.bounds, incident.portal.side))
 		return incidentDiagnostic(
@@ -246,7 +241,8 @@ function leafFailure(
 			`Relation ${incident.relation.id} ${incident.role} incident in leaf ${incident.leafId} does not attach to node ${incident.endpointId} on its ${incident.portal.side} face.`,
 		);
 	return (
-		foreignNodeFailure(incident, model, candidate) ?? localRouteFailure(incident, model, candidate)
+		foreignNodeFailure(incident, model, candidate) ??
+		localRouteFailure(incident, model, candidate, context.bridges)
 	);
 }
 
@@ -256,12 +252,14 @@ export function validateNestedRegionLeafIncidents(
 	candidate: RegionLayoutSelected,
 ): RegionGeometryDiagnostic | undefined {
 	const elementsById = new Map(candidate.layout.elements.map((element) => [element.id, element]));
+	const bridges = validatedBridges(candidate.layout.relations);
+	const context = { elementsById, bridges };
 	for (const owned of model.relations) {
 		if (owned.kind !== RegionRelationKind.Crossing) continue;
 		for (const role of [IncidentRole.Source, IncidentRole.Target]) {
 			const incident = incidentFor(owned, role, candidate);
 			if ('code' in incident) return incident;
-			const failure = leafFailure(incident, model, candidate, elementsById);
+			const failure = leafFailure(incident, model, candidate, context);
 			if (failure !== undefined) return failure;
 		}
 	}

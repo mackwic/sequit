@@ -1,4 +1,5 @@
 import { defined, EndpointKind, LayoutDirection } from '../../document/logic-document';
+import { sharedAtEndpoint } from '../bridge-contact-shared';
 import {
 	JUNCTION_PORT_INSET,
 	JUNCTION_PORT_SPACING,
@@ -6,7 +7,6 @@ import {
 	PORT_SPACING,
 } from '../layout-settings';
 import type { LayoutRelation, LayoutResult, Point } from '../layout-types';
-import { sharedAtEndpoint } from './route-shared-path';
 import type { DedicatedCandidateValidationInput, RejectedDedicatedCandidate } from './types';
 import { DedicatedCandidateRejectionCode, rejected } from './types';
 

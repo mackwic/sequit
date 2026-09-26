@@ -1,18 +1,11 @@
 import { defined } from '../../document/logic-document';
-import { unbridgedContacts } from '../bridge-contact';
+import { disallowedRouteContacts } from '../bridge-contact';
 import type { RouteBridgeAnalysis, RouteRun } from '../bridge-oracle';
 import { routeRuns } from '../bridge-oracle';
-import type { LayoutRelation, Point } from '../layout-types';
+import type { LayoutRelation } from '../layout-types';
 import { routeBoundsOverlap, routePathBounds } from './route-geometry';
-import { sharedAtEndpoint } from './route-shared-path';
 import type { RejectedDedicatedCandidate } from './types';
 import { DedicatedCandidateRejectionCode, rejected } from './types';
-
-function legalSharedContact(first: LayoutRelation, second: LayoutRelation, point: Point): boolean {
-	return (
-		sharedAtEndpoint(first, second, point, true) || sharedAtEndpoint(first, second, point, false)
-	);
-}
 
 function intervalsOverlap(
 	firstStart: number,
@@ -83,15 +76,14 @@ export function contactFailure(
 			const second = defined(routes[secondIndex]);
 			if (!routeBoundsOverlap(defined(envelopes[firstIndex]), defined(envelopes[secondIndex])))
 				continue;
-			const contacts = unbridgedContacts(first, second, analysis.bridges);
-			const invalidContact = contacts.find((point) => !legalSharedContact(first, second, point));
+			const invalidContact = disallowedRouteContacts(first, second, analysis.bridges)[0];
 			if (invalidContact === undefined) continue;
 			return {
 				valid: false,
 				code: DedicatedCandidateRejectionCode.RouteContact,
 				relationId: first.id,
 				otherRelationId: second.id,
-				contact: invalidContact,
+				contact: invalidContact.from,
 			};
 		}
 	}

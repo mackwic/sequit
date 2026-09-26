@@ -9,8 +9,8 @@ import {
 } from '../../../../lib/core/document/logic-document';
 import { orderKey } from '../../../../lib/core/document/order-key';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
+import { unbridgedContacts } from '../../../../lib/core/layout/bridge-contact';
 import type { LayoutMeasurements, Point } from '../../../../lib/core/layout/layout-types';
-import { pathsTouchWithoutBridge } from '../../../../lib/core/layout/nested-region-leaf-incident-contacts';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../lib/core/layout/nested-region-recursive-layout';
 import {
@@ -409,7 +409,13 @@ function strictCrossingProbe(selected: RegionLayoutSelected): RegionContactPanel
 		{ x: crossing.x - 18, y: crossing.y },
 		{ x: crossing.x + 18, y: crossing.y },
 	];
-	if (!pathsTouchWithoutBridge(points, cellPiece.points))
+	if (
+		unbridgedContacts(
+			{ id: 'probe', points },
+			{ id: cellPiece.relationId, points: cellPiece.points },
+			[],
+		).length === 0
+	)
 		throw new Error('The strict crossing probe must be rejected by the contact oracle.');
 	return {
 		id: 'strict-crossing',

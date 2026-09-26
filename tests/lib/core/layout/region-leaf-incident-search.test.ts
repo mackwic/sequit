@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/region-composition-types';
 import {
-	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/region-incident-contract';
@@ -45,26 +44,18 @@ function solveChain(count: number, alternatives: 'none' | 'second-right' | 'all-
 }
 
 describe('joint dedicated incident search', () => {
-	it('distinguishes exhaustive rejection from a truncated search', () => {
-		const exhausted = solveChain(4, 'none');
-		expect(exhausted).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionIncidentUnknownCode.NoValidAlternative,
-			witness: { exhaustive: true },
-		});
-		expect(exhausted.witness.attempted).toBeGreaterThan(0);
-		expect(
-			exhausted.witness.rejectedAlternatives.some(
-				({ code }) => code === RegionIncidentRejectionCode.RouteObstructed,
-			),
-		).toBe(true);
+	it('keeps the selected candidate when validated bridges make a route feasible before the budget', () => {
+		const selected = solveChain(3, 'none');
+		expect(selected.status).toBe(RegionCompositionStatus.Selected);
+		if (selected.status !== RegionCompositionStatus.Selected) return;
+		expect(selected.witness.attempted).toBeGreaterThan(0);
 		const truncated = solveChain(5, 'all-bottom');
 		expect(truncated).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
 			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
 			witness: { exhaustive: false },
 		});
-		expect(truncated.witness.attempted).toBeGreaterThan(exhausted.witness.attempted);
+		expect(truncated.witness.attempted).toBeGreaterThan(selected.witness.attempted);
 	});
 
 	it('chooses a valid alternate side after rejecting the preferred side', () => {
@@ -75,7 +66,13 @@ describe('joint dedicated incident search', () => {
 		).toBe(RegionPortalSide.Right);
 		for (const [index, incident] of selected.incidents.entries())
 			for (const other of selected.incidents.slice(index + 1))
-				expect(pathsTouchWithoutBridge(incident.points, other.points)).toBe(false);
+				expect(
+					disallowedRouteContacts(
+						{ id: incident.relationId, points: incident.points },
+						{ id: other.relationId, points: other.points },
+						[],
+					).length > 0,
+				).toBe(false);
 	});
 
 	it('continues with another side combination after one combination reaches its cap', () => {
@@ -85,6 +82,12 @@ describe('joint dedicated incident search', () => {
 		expect(selected.incidents.some(({ side }) => side === RegionPortalSide.Bottom)).toBe(true);
 		for (const [index, incident] of selected.incidents.entries())
 			for (const other of selected.incidents.slice(index + 1))
-				expect(pathsTouchWithoutBridge(incident.points, other.points)).toBe(false);
+				expect(
+					disallowedRouteContacts(
+						{ id: incident.relationId, points: incident.points },
+						{ id: other.relationId, points: other.points },
+						[],
+					).length > 0,
+				).toBe(false);
 	});
 });

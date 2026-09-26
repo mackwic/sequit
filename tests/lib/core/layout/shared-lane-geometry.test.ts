@@ -23,7 +23,6 @@ import {
 	type SharedLaneGeometry,
 	validateSharedLaneGeometry,
 } from '../../../../src/lib/core/layout/shared-lane-geometry';
-import { segmentsContact } from '../../../../src/lib/core/layout/shared-lane-geometry-primitives';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
@@ -407,12 +406,6 @@ describe('independent shared lane geometry validation', () => {
 		expect(validateSharedLaneGeometry(legacy.graph, geometry)).toContain(
 			'Explicit lanes are required',
 		);
-	});
-
-	it('recognizes an overlapping vertical segment as a route contact', () => {
-		expect(
-			segmentsContact({ x: 10, y: 0 }, { x: 10, y: 30 }, { x: 10, y: 20 }, { x: 10, y: 40 }),
-		).toBe(true);
 	});
 
 	it('rejects sparse route points before treating the candidate as valid', () => {

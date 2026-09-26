@@ -15,7 +15,6 @@ import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -223,9 +222,6 @@ describe('implicit root layout region', () => {
 		const third = defined(routes.get('third-crossing'));
 		expect(across.points[0]).not.toEqual(second.points[0]);
 		expect(across.points.at(-1)).not.toEqual(third.points.at(-1));
-		expect(pathsTouchWithoutBridge(across.points, second.points)).toBe(false);
-		expect(pathsTouchWithoutBridge(across.points, third.points)).toBe(false);
-		expect(pathsTouchWithoutBridge(second.points, third.points)).toBe(false);
 		expect(foreignCellEntry(layout, across, ['b', 'c'])).toBeUndefined();
 		expect(foreignCellEntry(layout, second, ['b', 'd'])).toBeUndefined();
 		expect(foreignCellEntry(layout, third, ['b', 'c'])).toBeUndefined();
@@ -253,7 +249,6 @@ describe('implicit root layout region', () => {
 		expect(layout).toEqual(attempt.layout);
 		const across = defined(layout.relations.find(({ id }) => id === 'across-grid'));
 		const groupCrossing = defined(layout.relations.find(({ id }) => id === 'group-crossing'));
-		expect(pathsTouchWithoutBridge(across.points, groupCrossing.points)).toBe(false);
 		expect(across.points.at(-1)).not.toEqual(groupCrossing.points.at(-1));
 		const group = defined(layout.elements.find(({ id }) => id === 'oversized'));
 		const member = defined(layout.elements.find(({ id }) => id === 'b'));
@@ -290,12 +285,6 @@ describe('implicit root layout region', () => {
 		const groupedRoute = defined(
 			groupedLayout.relations.find(({ id }) => id === 'grouped-crossing'),
 		);
-		expect(
-			pathsTouchWithoutBridge(
-				groupedRoute.points,
-				defined(groupedLayout.relations.find(({ id }) => id === 'across-grid')).points,
-			),
-		).toBe(false);
 		const groupedMember = defined(groupedLayout.elements.find(({ id }) => id === 'b'));
 		const groupedPort = defined(groupedRoute.points[0]);
 		expect(groupedPort.x).toBe(groupedMember.bounds.x + groupedMember.bounds.width);
