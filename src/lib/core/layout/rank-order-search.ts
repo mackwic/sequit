@@ -61,7 +61,6 @@ export interface RankOrderSearchWitness {
 		readonly selected: RankOrder;
 	}[];
 	readonly skippedComponents?: number;
-	readonly prunedByLowerBound: number;
 	readonly fallbackComponents?: readonly (readonly string[])[];
 	readonly finalValidation?: RejectedDedicatedCandidate | ValidFinalRankValidation;
 	readonly work: {
@@ -122,7 +121,6 @@ class RankOrderSearch {
 	unverified = 0;
 	validations = 0;
 	routeRunsInspected = 0;
-	prunedByLowerBound = 0;
 	readonly rejected: { order: RankOrder; reason: RejectedDedicatedCandidate }[] = [];
 	selected: ValidRankOrderCandidate | undefined;
 	exhaustive = true;
@@ -151,7 +149,6 @@ class RankOrderSearch {
 				rejected: this.rejected,
 				selectedOrder: this.selected?.order ?? this.input.domain.bands,
 				unverified: this.unverified,
-				prunedByLowerBound: this.prunedByLowerBound,
 				work: {
 					completePipelines: this.evaluated,
 					validations: this.validations,
@@ -203,10 +200,6 @@ class RankOrderSearch {
 		return false;
 	}
 
-	private worseKendall(order: RankOrder, selected: ValidRankOrderCandidate): boolean {
-		return rankOrderKendallDistance(order, this.input.domain.bands) > selected.kendall;
-	}
-
 	propose(order: RankOrder): boolean {
 		const key = JSON.stringify(order);
 		if (this.seen.has(key)) return true;
@@ -215,11 +208,6 @@ class RankOrderSearch {
 		this.seen.add(key);
 		this.proposed += 1;
 		this.frontier.push(order);
-		const selected = this.selected;
-		if (selected !== undefined && unbeatable(selected) && this.worseKendall(order, selected)) {
-			this.prunedByLowerBound += 1;
-			return true;
-		}
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;

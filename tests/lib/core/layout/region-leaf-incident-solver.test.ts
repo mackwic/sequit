@@ -24,6 +24,7 @@ import {
 } from '../../../../src/lib/core/layout/region-incident-contract';
 import { incidentMetricDemands } from '../../../../src/lib/core/layout/region-incident-metric-demand';
 import { solveRegionLeafLayout } from '../../../../src/lib/core/layout/region-leaf-base-layout';
+import { rejectedIncidentAdmission } from '../../../../src/lib/core/layout/region-leaf-incident-search-state';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../src/lib/core/layout/region-leaf-incident-solver';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
@@ -318,17 +319,16 @@ describe('dedicated leaf incident contracts', () => {
 	it('reports a typed unknown and rejected sides for a missing incident endpoint', () => {
 		const document = oneNodeLeaf();
 		const measurements = prepareLayoutDocument(document).measurements;
+		const missing = {
+			relation: { id: 'missing-cross', from: 'missing', to: 'other' },
+			endpointId: 'missing',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Top, RegionPortalSide.Left],
+		};
 		const attempt = solveDedicatedRegionLeafWithIncidents({
 			document,
 			measurements,
-			contracts: [
-				{
-					relation: { id: 'missing-cross', from: 'missing', to: 'other' },
-					endpointId: 'missing',
-					role: RegionIncidentRole.Source,
-					allowedSides: [RegionPortalSide.Top, RegionPortalSide.Left],
-				},
-			],
+			contracts: [missing],
 		});
 		expect(attempt).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
@@ -341,6 +341,12 @@ describe('dedicated leaf incident contracts', () => {
 					{ side: RegionPortalSide.Left, code: RegionIncidentRejectionCode.PortUnavailable },
 				],
 			},
+		});
+		if (attempt.status !== RegionCompositionStatus.Unknown) throw new Error('Expected missing incident endpoint');
+		expect(rejectedIncidentAdmission(attempt, [missing])).toEqual({
+			accepted: false,
+			endpointIds: ['missing'],
+			relationIds: [],
 		});
 	});
 
@@ -374,6 +380,31 @@ describe('dedicated leaf incident contracts', () => {
 		});
 	});
 
+	it('attributes concrete simultaneous incident blockers without treating exhaustion markers as geometry faults', () => {
+		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'));
+		const contracts = [0, 1].map((index) => ({
+			relation: { id: `foreign-${index}`, from: 'a', to: `outside-${index}` },
+			endpointId: 'a',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Top],
+		}));
+		const attempt = solveDedicatedRegionLeafWithIncidents({
+			document: entry.document,
+			measurements: entry.measurements,
+			contracts,
+		});
+		if (attempt.status !== RegionCompositionStatus.Unknown) throw new Error('Expected incident conflict');
+		expect(attempt.code).toBe(RegionIncidentUnknownCode.NoValidAlternative);
+		expect(attempt.witness.exhaustive).toBe(true);
+		expect(attempt.witness.rejectedAlternatives.some(({ blockedIncidentRelationId }) =>
+			blockedIncidentRelationId === 'foreign-0')).toBe(true);
+		expect(attempt.witness.rejectedAlternatives.some(({ exhausted }) => exhausted)).toBe(true);
+		expect(rejectedIncidentAdmission(attempt, contracts)).toMatchObject({
+			accepted: false,
+			endpointIds: ['a', 'd', 'e'],
+		});
+	});
+
 	it('distinguishes an invalid contract from the explicit search bound', () => {
 		const document = oneNodeLeaf();
 		const measurements = prepareLayoutDocument(document).measurements;
@@ -387,6 +418,8 @@ describe('dedicated leaf incident contracts', () => {
 			code: RegionIncidentUnknownCode.InvalidContract,
 			witness: { attempted: 0, exhaustive: true },
 		});
+		if (invalid.status !== RegionCompositionStatus.Unknown) throw new Error('Expected invalid contract');
+		expect(rejectedIncidentAdmission(invalid, [])).toBe(false);
 		const bounded = solveDedicatedRegionLeafWithIncidents({
 			document,
 			measurements,

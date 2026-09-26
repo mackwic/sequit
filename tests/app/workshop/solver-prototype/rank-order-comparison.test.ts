@@ -221,6 +221,47 @@ describe('rank order stability under document edits', () => {
 		});
 	});
 
+	it('counts only surviving same-rank pairs when a local edit splits a four-root goal band', () => {
+		const base = rankOrderComparisonCorpus().find(({ id }) => id === 'three-predecessors');
+		if (base === undefined) throw new Error('Missing three-root rank witness');
+		const last = base.document.nodes.find(({ id }) => id === 'c');
+		if (last === undefined) throw new Error('Missing third root');
+		const fourth = { ...last, id: 'e', markdown: 'E' };
+		const before = {
+			...base,
+			document: {
+				...base.document,
+				nodes: [...base.document.nodes, fourth],
+				relations: [...base.document.relations, { id: 'e-d', from: 'e', to: 'd' }],
+			},
+			measurements: {
+				...base.measurements,
+				nodes: new Map([...base.measurements.nodes, ['e', { width: 80, height: 60 }] as const]),
+			},
+		};
+		const after = {
+			...before,
+			document: {
+				...before.document,
+				relations: [
+					...before.document.relations,
+					{ id: 'a-b', from: 'a', to: 'b' },
+					{ id: 'e-b', from: 'e', to: 'b' },
+				],
+			},
+		};
+		const [comparison] = compareRankOrderMutations([{
+			id: 'split-goal-roots', label: 'Split root rank by adding two causal links', before, after,
+		}]);
+		expect(comparison).toMatchObject({
+			addedRelations: 2,
+			rankChanges: 2,
+			commonRankPairs: 1,
+			invertedRankPairs: 0,
+			documentary: { commonRankPairs: 1, invertedRankPairs: 0 },
+		});
+	});
+
 	it('does not invert selected or documentary bands when an endpoint identifier is renamed', () => {
 		const renamed = comparisons.find(({ id }) => id === 'rename-endpoint');
 		const restoreId = (bands: readonly (readonly string[])[]) =>

@@ -1,3 +1,4 @@
+import { defined } from '../document/logic-document';
 import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './bounded-search';
 import type { RankAdmission } from './rank-order-selection';
 import type { RegionPortalSide } from './region-composition-types';
@@ -106,21 +107,14 @@ function recordBlockers(
 	byRelation: ReadonlyMap<string, string>,
 	endpoints: Set<string>,
 	relations: Set<string>,
-): boolean {
-	if (rejected.code === RegionIncidentRejectionCode.GeometryInvalid) return false;
+): void {
 	endpoints.add(rejected.endpointId);
-	if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) return true;
+	if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) return;
 	const { blockedEndpointId, blockedRelationId, blockedIncidentRelationId } = rejected;
-	if (blockedEndpointId === undefined && blockedRelationId === undefined) {
-		if (blockedIncidentRelationId === undefined) return false;
-	}
 	if (blockedEndpointId !== undefined) endpoints.add(blockedEndpointId);
 	if (blockedRelationId !== undefined) relations.add(blockedRelationId);
-	if (blockedIncidentRelationId === undefined) return true;
-	const endpointId = byRelation.get(blockedIncidentRelationId);
-	if (endpointId === undefined) return false;
-	endpoints.add(endpointId);
-	return true;
+	if (blockedIncidentRelationId !== undefined)
+		endpoints.add(defined(byRelation.get(blockedIncidentRelationId)));
 }
 
 /** Exhaustive failures identify an incident and every concrete blocker; missing provenance is global. */
@@ -132,7 +126,6 @@ export function rejectedIncidentAdmission(
 	contracts: readonly RegionIncidentContract[],
 ): RankAdmission {
 	if (attempt.code !== RegionIncidentUnknownCode.NoValidAlternative) return false;
-	if (!attempt.witness.exhaustive) return false;
 	const endpoints = new Set<string>();
 	const relations = new Set<string>();
 	const byRelation = new Map(
@@ -141,9 +134,10 @@ export function rejectedIncidentAdmission(
 	let concrete = false;
 	for (const rejected of attempt.witness.rejectedAlternatives) {
 		if (rejected.exhausted) continue;
-		if (!recordBlockers(rejected, byRelation, endpoints, relations)) return false;
+		recordBlockers(rejected, byRelation, endpoints, relations);
 		concrete = true;
 	}
 	if (!concrete) return false;
-	return { accepted: false, endpointIds: [...endpoints], relationIds: [...relations] };
+	const [first, ...rest] = endpoints;
+	return { accepted: false, endpointIds: [defined(first), ...rest], relationIds: [...relations] };
 }

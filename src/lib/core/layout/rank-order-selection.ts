@@ -5,7 +5,7 @@ import {
 	compareDedicatedRouteScores,
 	validateDedicatedCandidate,
 } from './dedicated-candidate-validation';
-import type { RejectedDedicatedCandidate } from './dedicated-candidate-validation/types';
+import type { DedicatedRouteScore, RejectedDedicatedCandidate } from './dedicated-candidate-validation/types';
 import type { DedicatedLayoutEvaluation, evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import type { RankOrder } from './rank-order';
@@ -31,7 +31,7 @@ interface GlobalChoice {
 
 export interface RejectedRankAdmission {
 	readonly accepted: false;
-	readonly endpointIds: readonly string[];
+	readonly endpointIds: readonly [string, ...string[]];
 	readonly relationIds: readonly string[];
 }
 
@@ -125,16 +125,15 @@ function faultyAdmissionComponents(
 			implicated.add(index);
 		}
 	}
-	if (implicated.size === 0) return modified;
 	return implicated;
 }
 
 function rejectedRenderedQuality(
 	baseline: ReturnType<typeof validateDedicatedCandidate>,
-	trial: ReturnType<typeof validateDedicatedCandidate>,
+	trialScore: DedicatedRouteScore,
 ): boolean {
-	if (!baseline.valid || !trial.valid) return false;
-	return compareDedicatedRouteScores(trial.score, baseline.score) > 0;
+	if (!baseline.valid) return false;
+	return compareDedicatedRouteScores(trialScore, baseline.score) > 0;
 }
 
 /** Validate the baseline once, then each assembled trial; every rejection removes at least one edit. */
@@ -193,7 +192,7 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 		}
 		runsInspected += outcome.analysis.inspectedRuns;
 		finalValidation = { valid: true };
-		if (rejectedRenderedQuality(documentary, outcome)) {
+		if (rejectedRenderedQuality(documentary, outcome.score)) {
 			fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
 			continue;
 		}
@@ -241,7 +240,6 @@ function selectionWitness(
 	let evaluated = 0;
 	let valid = 0;
 	let unverified = 0;
-	let prunedByLowerBound = 0;
 	let localValidations = 0;
 	let localRuns = 0;
 	let truncated = false;
@@ -252,7 +250,6 @@ function selectionWitness(
 		evaluated += witness.evaluated;
 		valid += witness.valid;
 		unverified += witness.unverified;
-		prunedByLowerBound += witness.prunedByLowerBound;
 		localValidations += witness.work.validations;
 		localRuns += witness.work.routeRunsInspected;
 		rejected.push(...witness.rejected);
@@ -286,7 +283,6 @@ function selectionWitness(
 		unverified,
 		selectedOrder: local.orders,
 		...extras,
-		prunedByLowerBound,
 		components: local.evidence,
 		work: {
 			completePipelines: localPipelines + global.pipelines,

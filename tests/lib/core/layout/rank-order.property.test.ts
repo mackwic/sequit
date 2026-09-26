@@ -771,11 +771,11 @@ function damageRouteAttachment(layout: LayoutResult, relationIds: readonly strin
 	};
 }
 
-/** Route real proposals before damaging a local frontier or one assembled candidate. */
+/** Route real proposals before damaging a documentary baseline, local frontier, or assembled candidate. */
 function corruptedCandidate(
 	graph: LogicGraph,
 	damage: (layout: LayoutResult) => LayoutResult,
-	stage: 'global' | 'local' = 'global',
+	stage: 'baseline' | 'global' | 'local' = 'global',
 ): { readonly evaluate: typeof evaluateDedicatedLayout; readonly globalPipelines: () => number } {
 	let globalPipelines = 0;
 	function evaluate(
@@ -799,6 +799,7 @@ function corruptedCandidate(
 		if (structure.graph === graph) globalPipelines += 1;
 		if (
 			(stage === 'local' && structure.graph !== graph) ||
+			(stage === 'baseline' && structure.graph === graph && globalPipelines === 1) ||
 			(stage === 'global' && structure.graph === graph && globalPipelines === 2)
 		) {
 			const rejected = damage(actual.result);
@@ -1367,6 +1368,31 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
+	it('counts long projected crossings deterministically when virtual nodes share an interpolated position', () => {
+		const base = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2')).document;
+		const document = {
+			...base,
+			relations: [
+				{ id: 'a-b', from: 'a', to: 'b' },
+				{ id: 'b-e', from: 'b', to: 'e' },
+				{ id: 'c-d', from: 'c', to: 'd' },
+				{ id: 'd-e', from: 'd', to: 'e' },
+				{ id: 'a-e-1', from: 'a', to: 'e' },
+				{ id: 'a-e-2', from: 'a', to: 'e' },
+			],
+		};
+		for (const relations of [document.relations, [...document.relations].reverse()]) {
+			const created = createGraph({ ...document, relations });
+			if (!created.ok) throw new Error('Invalid parallel long-relation witness');
+			const structure = prepareLayout(created.value, topologicallyRank(created.value));
+			const domain = collectRankOrderDomain(structure);
+			const topology = new RankTopologyOracle(structure, domain);
+			expect(domain.bands).toEqual([['b', 'd'], ['a', 'c']]);
+			expect(topology.count(structure, domain.bands)).toBe(0);
+			expect(topology.count(structure, [['b', 'd'], ['c', 'a']])).toBe(3);
+		}
+	});
+
 	it('excludes a topology winner when the rendered goal-to-implementation tree has more crossings', () => {
 		const entry = defined(
 			rankOrderMutationCorpus().find(({ id }) => id === 'goal-implementation'),
@@ -1748,6 +1774,33 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(result.selected).toBeUndefined();
 		expect(result.unchangedBaseline).toBe(invalid);
 		expect(evaluations).toBe(0);
+	});
+
+	it('selects a valid order when a routed documentary baseline fails independent validation', () => {
+		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2'));
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid geometric order witness');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		for (const damage of [
+			(layout: LayoutResult) => damageRouteAttachment(layout, ['a-d']),
+			(layout: LayoutResult) => ({ ...layout, relations: [] }),
+		]) {
+			const routedBaseline = corruptedCandidate(graph, damage, 'baseline');
+			const selected = selectDedicatedRankLayout(graph, ranks, entry.measurements, {
+				options: {},
+				evaluate: routedBaseline.evaluate,
+			});
+			expect(routedBaseline.globalPipelines()).toBe(2);
+			expect(validateDedicatedCandidate({
+				graph,
+				ranks,
+				measurements: entry.measurements,
+				layout: selected.layout,
+			}).valid).toBe(true);
+			expect(selected.witness.stop).not.toBe('baseline-fallback');
+			expect(selected.witness.work.globalValidations).toBe(2);
+		}
 	});
 
 	it('admits incidents only after the assembled global geometry is validated', () => {

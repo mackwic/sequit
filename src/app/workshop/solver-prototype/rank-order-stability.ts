@@ -530,7 +530,6 @@ function rankInversions(
 				const leftAfter = afterPositions.get(left);
 				const rightAfter = afterPositions.get(right);
 				if (leftAfter === undefined || rightAfter === undefined) continue;
-				if (beforeRanks.get(left) !== beforeRanks.get(right)) continue;
 				if (beforeRanks.get(left) !== afterRanks.get(left)) continue;
 				if (beforeRanks.get(right) !== afterRanks.get(right)) continue;
 				commonRankPairs += 1;
