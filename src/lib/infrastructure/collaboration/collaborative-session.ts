@@ -16,7 +16,7 @@ import {
 import { notifySubscribers } from './notify-subscribers';
 import { type PendingCommandFrame, prepareSessionCommand } from './session-command-frame';
 import { recoverSessionCommandConflict } from './session-conflict-recovery';
-import { connectionStatus, textEditable } from './session-connection-status';
+import { connectionStatus } from './session-connection-status';
 import { ConflictCode } from './session-failure';
 import {
 	announceAcceptedReceipt,
@@ -51,6 +51,7 @@ export class CollaborativeSession
 	readonly #pending = new Map<string, PendingCommandFrame>();
 	#textFlow: SessionTextFlow;
 	#resumingText = false;
+	#recoveringTextRefusal = false;
 	readonly #textOrigin = Symbol('local text');
 	readonly #sessionId = crypto.randomUUID();
 	#sequence = 0;
@@ -68,7 +69,6 @@ export class CollaborativeSession
 	constructor(
 		private readonly initialDocument: LogicDocument,
 		private readonly transport: CollaborationTransport,
-		private readonly offlineTextEditing = false,
 	) {
 		super();
 		this.#presence = new SessionPresence(
@@ -99,6 +99,7 @@ export class CollaborativeSession
 			},
 			setReady: (value) => {
 				this.#ready = value;
+				if (value) this.#recoveringTextRefusal = false;
 			},
 			terminal: (message) => {
 				this.#reject(message);
@@ -154,8 +155,7 @@ export class CollaborativeSession
 		if (!this.#ready || this.#rejected || this.#destroyed)
 			throw new Error('La session doit être connectée.');
 		const pending = prepareSessionCommand(commands, this.#sessionId, this.#sequence);
-		// Invalid local commands cannot consume a sequence; retain the exact frame for retries.
-		// Preserve gesture order: a deletion must not overtake buffered edits to its target.
+		// Validate before consuming a sequence; flush text before deleting its target.
 		this.#textFlow.buffer.flush();
 		this.#sequence = pending.sequence;
 		this.#pending.set(pending.id, pending);
@@ -193,8 +193,8 @@ export class CollaborativeSession
 	}
 
 	#canEditText(): boolean {
-		if (this.#rejected || this.#destroyed) return false;
-		return textEditable(this.connectionStatus(), this.#initialized, this.offlineTextEditing);
+		if (this.#rejected || this.#destroyed || this.#recoveringTextRefusal) return false;
+		return this.#initialized;
 	}
 
 	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
@@ -301,8 +301,7 @@ export class CollaborativeSession
 
 	#conflict(message: Extract<SessionMessage, { type: SessionMessageKind.Conflict }>): void {
 		if (message.code === ConflictCode.TextTargetGone) {
-			if (!this.#textFlow.pending.has(message.id)) return;
-			this.#resetReplica();
+			if (this.#textFlow.pending.has(message.id)) this.#resetReplica();
 			return;
 		}
 		const recovered = recoverSessionCommandConflict(message, this.#pending);
@@ -316,6 +315,7 @@ export class CollaborativeSession
 
 	#resetReplica(): void {
 		this.#ready = false;
+		this.#recoveringTextRefusal = true;
 		this.#resumingText = false;
 		this.#synchronizer.stop();
 		const reset = replaceReplicaAfterTextRefusal(
@@ -342,7 +342,6 @@ export class CollaborativeSession
 
 	#reject(message: string): void {
 		this.#rejected = true;
-		this.#ready = false;
 		this.#textFlow.close();
 		this.#presence.destroy();
 		this.#synchronizer.stop();

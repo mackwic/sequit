@@ -42,7 +42,7 @@ import {
 } from '../../../support/fixtures/collaborative-document';
 import { createMemoryTransportPair } from '../../../support/harnesses/memory-transport';
 
-function setup(initialized = true, offlineTextEditing = false) {
+function setup(initialized = true) {
 	const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 	const authoritative = new Y.Doc({ gc: false });
 	if (initialized) importLogicDocument(authoritative, initial);
@@ -51,7 +51,7 @@ function setup(initialized = true, offlineTextEditing = false) {
 	pair.server.subscribeToFrames((frame) => {
 		sent.push(decodeSessionMessage(frame));
 	});
-	const client = createCollaborativeDocumentSession(initial, pair.client, { offlineTextEditing });
+	const client = createCollaborativeDocumentSession(initial, pair.client);
 	function receive(message: SessionMessage): void {
 		pair.server.send(encodeSessionMessage(message));
 	}
@@ -72,7 +72,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-it('keeps command identity and locks text editing during a retryable service failure', () => {
+it('preserves command identity and local text edits during a retryable service failure', () => {
 	vi.useFakeTimers();
 	vi.spyOn(Math, 'random').mockReturnValue(0.5);
 	const room = setup();
@@ -86,7 +86,7 @@ it('keeps command identity and locks text editing during a retryable service fai
 		code: failure.code,
 		message: failure.message,
 	});
-	expect(room.client.replaceNodeMarkdown('A', 'Blocked')).toBe(false);
+	expect(room.client.replaceNodeMarkdown('A', 'Pendant la reprise')).toBe(true);
 	room.client.setPresence({ selected: [{ kind: Kind.Node, id: 'A' }] });
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	vi.advanceTimersByTime(50);
@@ -97,7 +97,7 @@ it('keeps command identity and locks text editing during a retryable service fai
 	expect(
 		room.sent.filter((message) => message.type === Message.Change && 'commands' in message),
 	).toEqual([original, original]);
-	expect(room.client.read().nodes[0]?.markdown).toBe('Alpha');
+	expect(room.client.read().nodes[0]?.markdown).toBe('Pendant la reprise');
 	expect(room.client.replaceNodeMarkdown('A', 'After retry')).toBe(true);
 	expect(
 		room.sent.some(
@@ -228,10 +228,15 @@ it('flushes on target switch then resets a stale replica without replaying unack
 	});
 	expect(notices).toHaveBeenCalledTimes(1);
 	expect(room.client.replica()).toBe(1);
-	room.sync();
-	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	room.receive({ type: Message.Sync, payload: writeSyncResponse(room.authoritative) });
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Alpha' }]);
+	expect(room.client.replaceNodeMarkdown('A', 'Trop tôt')).toBe(false);
+	room.receive({ type: Message.Sync, payload: writeSyncRequest(room.authoritative) });
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	expect(room.client.replaceNodeMarkdown('A', 'Encore modifiable')).toBe(true);
+	room.pair.client.setStatus(TransportStatus.Disconnected);
+	expect(room.client.replaceNodeMarkdown('A', 'Modifiable hors ligne après refus')).toBe(true);
 	room.destroy();
 });
 
@@ -794,25 +799,23 @@ describe('collaborative document session', () => {
 		room.destroy();
 	});
 
-	it('locks local text while disconnected and allows it again after sync', () => {
-		vi.useFakeTimers();
+	it('continues editing text during ordinary reconnection but still blocks structural commands', () => {
 		const room = setup();
 		room.sync();
-		room.sent.length = 0;
 		room.pair.client.setStatus(TransportStatus.Disconnected);
-		expect(room.client.replaceNodeMarkdown('A', 'Unavailable')).toBe(false);
-		vi.advanceTimersByTime(500);
-		expect(room.sent).toEqual([]);
 		room.pair.client.setStatus(TransportStatus.Connected);
-		room.sync();
-		expect(room.client.read().nodes[0]?.markdown).toBe('Alpha');
-		expect(room.client.replaceNodeMarkdown('A', 'Online')).toBe(true);
+		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+		expect(room.client.replaceNodeMarkdown('A', 'Texte pendant la reprise')).toBe(true);
+		expect(room.client.read().nodes[0]?.markdown).toBe('Texte pendant la reprise');
+		expect(() =>
+			room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]),
+		).toThrow();
 		room.destroy();
 	});
 
-	it('keeps workshop-only offline text edits locally and replays them before resynchronizing', () => {
+	it('keeps initialized offline text edits locally and replays them before resynchronizing', () => {
 		vi.useFakeTimers();
-		const room = setup(true, true);
+		const room = setup();
 		room.sync();
 		room.sent.length = 0;
 		room.pair.client.setStatus(TransportStatus.Disconnected);
@@ -825,7 +828,6 @@ describe('collaborative document session', () => {
 		vi.advanceTimersByTime(500);
 		expect(room.sent).toEqual([]);
 		room.pair.client.setStatus(TransportStatus.Connected);
-		expect(room.client.replaceNodeMarkdown('A', 'Interdit pendant la reprise')).toBe(false);
 		for (let index = 0; index < 2; index++) {
 			const proposal = room.sent.find(
 				(message) => message.type === Message.Change && 'update' in message,

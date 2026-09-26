@@ -56,6 +56,12 @@ l'édition. Ces refus sont bornés à 6 par proposition, 24 par socket et 64 par
 room (recharge d'un jeton par seconde) ; ils ne sont pas persistés. Le client
 abandonne cette incarnation de texte et resynchronise le document.
 
+Une réplique déjà initialisée peut continuer à éditer du texte hors ligne et
+pendant une reconnexion ordinaire dans toute salle ; les modifications sont
+mises en mémoire et rejouées à la reprise. Les commandes structurelles restent
+bloquées hors connexion. Pendant la resynchronisation suivant un refus
+`text-target-gone`, la saisie est verrouillée jusqu'au nouvel état prêt.
+
 Cette collecte borne l'accumulation des contenus supprimés dans les scénarios
 testés. Elle ne garantit pas une taille constante pour une histoire infinie de
 clients, d'identifiants ou de mutations structurelles. La limite existante de

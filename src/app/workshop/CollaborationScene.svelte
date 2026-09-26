@@ -22,8 +22,8 @@
 		reconnecte-la. La saisie est partagée en continu et synchronisée à la reprise.
 	</p>
 	{#if room}<div class="participants">
-			<CollaborationParticipant {source} {room} path="/atelier" name="Alice" offlineTextEditing />
-			<CollaborationParticipant {source} {room} path="/atelier" name="Bob" offlineTextEditing />
+			<CollaborationParticipant {source} {room} path="/atelier" name="Alice" />
+			<CollaborationParticipant {source} {room} path="/atelier" name="Bob" />
 		</div>{/if}
 </div>
 

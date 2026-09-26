@@ -51,15 +51,14 @@
 		model,
 		name,
 		connected,
-		offlineTextEditing = false,
+		textEditable,
 	}: {
 		client: CollaborativeDocumentSession;
 		model: LogicDocument;
 		name: string;
 		connected: boolean;
-		offlineTextEditing?: boolean;
+		textEditable: boolean;
 	} = $props();
-	let textEditable = $derived(connected || offlineTextEditing);
 	const canvas = new CanvasSession();
 	const presence = new CollaborationAwareness(untrack(() => client));
 	setCollaborationAwareness(presence);

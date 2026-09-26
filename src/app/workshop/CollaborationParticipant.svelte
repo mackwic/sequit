@@ -9,6 +9,7 @@
 		type CollaborativeDocumentSession,
 		createCollaborativeDocumentSession,
 	} from '../../lib/infrastructure/collaboration/collaborative-document-session';
+	import { textEditable } from '../../lib/infrastructure/collaboration/session-connection-status';
 	import type { ParticipantPresence } from '../../lib/infrastructure/collaboration/session-wire';
 	import { createWebSocketCollaborationTransport } from '../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { parseSequitToml } from '../../lib/infrastructure/toml/parse-sequit-toml';
@@ -23,14 +24,7 @@
 		room,
 		name,
 		path = '/atelier/collaboration',
-		offlineTextEditing = false,
-	}: {
-		source: string;
-		room: string;
-		name: string;
-		path?: Pathname;
-		offlineTextEditing?: boolean;
-	} = $props();
+	}: { source: string; room: string; name: string; path?: Pathname } = $props();
 	let model = $state.raw<LogicDocument>();
 	let client = $state<CollaborativeDocumentSession>();
 	let participants = $state<readonly ParticipantPresence[]>([]);
@@ -48,9 +42,7 @@
 			createWebSocketCollaborationTransport(room, window.location.origin),
 		);
 		transport = socket;
-		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket, {
-			offlineTextEditing,
-		});
+		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
 		client = current;
 		const updateStatus = (): void => {
 			if (replica !== current.replica()) {
@@ -126,9 +118,7 @@
 				{model}
 				{name}
 				connected={status === CollaborationStatus.Ready}
-				offlineTextEditing={offlineTextEditing &&
-					paused &&
-					status === CollaborationStatus.Disconnected}
+				textEditable={textEditable(status, initialized)}
 			/>
 		{/if}
 	{/key}

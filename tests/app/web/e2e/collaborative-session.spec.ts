@@ -159,27 +159,24 @@ test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs',
 	await expect(bob.locator('[data-remote-selection]')).toHaveCount(0);
 	await edit(alice);
 	await edit(bob, 'Boîte B');
-	await expect(aliceText).toHaveAttribute('contenteditable', 'false');
+	await expect(aliceText).toHaveAttribute('contenteditable', 'true');
 	await expect(bob.getByLabel('Contenu B', { exact: true })).toHaveAttribute(
 		'contenteditable',
-		'false',
+		'true',
 	);
+	await aliceText.fill('Alpha hors ligne');
+	await bob.getByLabel('Contenu B', { exact: true }).fill('Bravo hors ligne');
 	await closeEditor(alice);
 	await closeEditor(bob);
 	await alice.getByRole('button', { name: 'Reconnecter' }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
-	await expect(alice.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
-	await expect(bob.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
-	await edit(alice);
-	await edit(bob, 'Boîte B');
-	await aliceText.fill('Alpha après reprise');
-	await bob.getByLabel('Contenu B', { exact: true }).fill('Bravo après reprise');
-	await expect(aliceText).toHaveText('Alpha après reprise');
-	await closeEditor(alice);
-	await closeEditor(bob);
+	await edit(alice, 'Boîte B');
+	await edit(bob);
+	await expect(alice.getByLabel('Contenu B', { exact: true })).toHaveText('Bravo hors ligne');
+	await expect(bobText).toHaveText('Alpha hors ligne');
 	await bob.reload();
 	await edit(bob);
-	await expect(bobText).toHaveText('Alpha après reprise');
+	await expect(bobText).toHaveText('Alpha hors ligne');
 	await aliceContext.close();
 	await bobContext.close();
 });
@@ -314,22 +311,27 @@ test('Deux boîtes : insertions concurrentes, curseur stable et autres champs pa
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
 	await edit(alice);
 	await edit(bob);
-	await expect(aliceText).toHaveAttribute('contenteditable', 'false');
-	await expect(bobText).toHaveAttribute('contenteditable', 'false');
+	await expect(aliceText).toHaveAttribute('contenteditable', 'true');
+	await expect(bobText).toHaveAttribute('contenteditable', 'true');
+	await aliceText.focus();
+	await aliceText.evaluate((element) => {
+		const end = element.lastElementChild?.lastChild;
+		const selection = window.getSelection();
+		if (end?.nodeType !== Node.TEXT_NODE || selection === null)
+			throw new Error('Expected the final text node');
+		selection.collapse(end, end.textContent?.length ?? 0);
+	});
+	await aliceText.pressSequentially(' fin');
+	await bobText.press('Home');
+	await bobText.pressSequentially('Début ');
 	await closeEditor(alice);
 	await closeEditor(bob);
 	await alice.getByRole('button', { name: 'Reconnecter' }).click();
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
-	await expect(alice.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
-	await expect(bob.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
 	await edit(alice);
 	await edit(bob);
-	await aliceText.fill('XAlpha fin');
-	await expect(bobText).toHaveText('XAlpha fin');
-	await bobText.press('Home');
-	await bobText.pressSequentially('Début ');
-	await expect(aliceText).toHaveText('Début XAlpha fin');
-	await expect(bobText).toHaveText('Début XAlpha fin');
+	await expect(aliceText).toHaveText('Début XAl|pha fin');
+	await expect(bobText).toHaveText('Début XAl|pha fin');
 	await alice.getByLabel('Couleur de A', { exact: true }).fill('#aabbcc');
 	await alice.getByLabel('Couleur de A', { exact: true }).press('Tab');
 	await expect(bob.getByLabel('Couleur de A', { exact: true })).toHaveValue('#aabbcc');

@@ -13,12 +13,7 @@ export function connectionStatus(
 	return CollaborationStatus.Synchronizing;
 }
 
-/** Offline editing is opt-in and only possible for an already initialized replica. */
-export function textEditable(
-	status: CollaborationStatus,
-	initialized: boolean,
-	offlineTextEditing: boolean,
-): boolean {
-	if (status === CollaborationStatus.Ready) return true;
-	return status === CollaborationStatus.Disconnected && initialized && offlineTextEditing;
+/** Only an uninitialized (including rejected-and-reset) replica must wait for sync. */
+export function textEditable(status: CollaborationStatus, initialized: boolean): boolean {
+	return status === CollaborationStatus.Ready || initialized;
 }
