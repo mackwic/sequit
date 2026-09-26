@@ -3,6 +3,11 @@ const layoutScopes = {
 	base: `${layoutPath}layout-(types|settings)[.]ts$`,
 	engine: `${layoutPath}(layout-engine|layout-workspace|layout-port-placement|build-layout-result)[.]ts$`,
 	root: `${layoutPath}root-region[.]ts$`,
+	geometry: `${layoutPath}geometry/`,
+	structure: `${layoutPath}structure/`,
+	placement: `${layoutPath}placement/`,
+	routing: `${layoutPath}routing/`,
+	inspection: `${layoutPath}inspection/`,
 	resources: `${layoutPath}resources/`,
 	search: `${layoutPath}search/`,
 	bridges: `${layoutPath}bridges/`,
@@ -66,6 +71,12 @@ const layoutImports = {
 	folded: ['base'],
 };
 
+function layoutScope(group) {
+	const scope = layoutScopes[group];
+	if (scope === undefined) throw new Error(`Unknown layout dependency scope: ${group}`);
+	return scope;
+}
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
 	forbidden: [
@@ -119,12 +130,10 @@ module.exports = {
 		...Object.entries(layoutImports).map(([directory, permitted]) => ({
 			name: `layout-${directory.replace('/', '-')}-only-inward`,
 			severity: 'error',
-			from: { path: layoutScopes[directory] },
+			from: { path: layoutScope(directory) },
 			to: {
 				path: layoutPath,
-				pathNot: [layoutScopes[directory], ...permitted.map((group) => layoutScopes[group])].join(
-					'|',
-				),
+				pathNot: [layoutScope(directory), ...permitted.map(layoutScope)].join('|'),
 			},
 		})),
 		{
