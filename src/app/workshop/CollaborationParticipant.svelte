@@ -23,7 +23,14 @@
 		room,
 		name,
 		path = '/atelier/collaboration',
-	}: { source: string; room: string; name: string; path?: Pathname } = $props();
+		offlineTextEditing = false,
+	}: {
+		source: string;
+		room: string;
+		name: string;
+		path?: Pathname;
+		offlineTextEditing?: boolean;
+	} = $props();
 	let model = $state.raw<LogicDocument>();
 	let client = $state<CollaborativeDocumentSession>();
 	let participants = $state<readonly ParticipantPresence[]>([]);
@@ -41,7 +48,9 @@
 			createWebSocketCollaborationTransport(room, window.location.origin),
 		);
 		transport = socket;
-		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
+		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket, {
+			offlineTextEditing,
+		});
 		client = current;
 		const updateStatus = (): void => {
 			if (replica !== current.replica()) {
@@ -117,6 +126,9 @@
 				{model}
 				{name}
 				connected={status === CollaborationStatus.Ready}
+				offlineTextEditing={offlineTextEditing &&
+					paused &&
+					status === CollaborationStatus.Disconnected}
 			/>
 		{/if}
 	{/key}

@@ -8,7 +8,7 @@ import {
 } from '../document/shared-document-command';
 import { type CollaborationTransport, TransportStatus } from './collaboration-transport';
 import {
-	CollaborationStatus,
+	type CollaborationStatus,
 	type CollaborativeDocumentSession,
 	type SourceDocumentState,
 	SourceDocumentStateKind,
@@ -16,6 +16,7 @@ import {
 import { notifySubscribers } from './notify-subscribers';
 import { type PendingCommandFrame, prepareSessionCommand } from './session-command-frame';
 import { recoverSessionCommandConflict } from './session-conflict-recovery';
+import { connectionStatus, textEditable } from './session-connection-status';
 import { ConflictCode } from './session-failure';
 import {
 	announceAcceptedReceipt,
@@ -67,6 +68,7 @@ export class CollaborativeSession
 	constructor(
 		private readonly initialDocument: LogicDocument,
 		private readonly transport: CollaborationTransport,
+		private readonly offlineTextEditing = false,
 	) {
 		super();
 		this.#presence = new SessionPresence(
@@ -145,13 +147,7 @@ export class CollaborativeSession
 	}
 
 	connectionStatus(): CollaborationStatus {
-		if (this.#rejected) return CollaborationStatus.Disconnected;
-		if (this.transport.status() === TransportStatus.Disconnected)
-			return CollaborationStatus.Disconnected;
-		if (this.transport.status() === TransportStatus.Connecting)
-			return CollaborationStatus.Connecting;
-		if (this.#ready) return CollaborationStatus.Ready;
-		return CollaborationStatus.Synchronizing;
+		return connectionStatus(this.#rejected, this.transport.status(), this.#ready);
 	}
 
 	dispatch(commands: readonly SharedDocumentCommand[]): string {
@@ -177,7 +173,7 @@ export class CollaborativeSession
 		update: Uint8Array,
 		bound?: Y.Text,
 	): void {
-		if (!this.#ready || this.#rejected || this.#destroyed) return;
+		if (!this.#canEditText()) return;
 		const text = sharedTextAt(this.document, target, field);
 		if (!this.#textFlow.boundText(target, text, bound)) return;
 		this.#textFlow.prepare(target, field, text);
@@ -185,7 +181,7 @@ export class CollaborativeSession
 	}
 
 	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean {
-		if (!this.#ready || this.#destroyed || this.#rejected) return false;
+		if (!this.#canEditText()) return false;
 		const text = sharedTextAt(this.document, target, field);
 		if (!this.#textFlow.boundText(target, text, bound)) return false;
 		if (text.toJSON() === next) return true;
@@ -194,6 +190,11 @@ export class CollaborativeSession
 			spliceSharedText(text, next);
 		}, this.#textOrigin);
 		return true;
+	}
+
+	#canEditText(): boolean {
+		if (this.#rejected || this.#destroyed) return false;
+		return textEditable(this.connectionStatus(), this.#initialized, this.offlineTextEditing);
 	}
 
 	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {

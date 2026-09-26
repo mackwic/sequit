@@ -12,6 +12,7 @@
 		node,
 		client,
 		connected,
+		textEditable,
 		dispatch,
 		label,
 		autofocusMarkdown = false,
@@ -19,6 +20,7 @@
 		node: LogicDocument['nodes'][number];
 		client: CollaborativeDocumentSession;
 		connected: boolean;
+		textEditable: boolean;
 		dispatch: (command: SharedDocumentCommand) => void;
 		label: string;
 		autofocusMarkdown?: boolean;
@@ -37,7 +39,7 @@
 {#key client.text({ kind: Kind.Node, id: node.id }, 'markdown')}
 	<SharedTextField
 		{client}
-		{connected}
+		connected={textEditable}
 		target={{ kind: Kind.Node, id: node.id }}
 		field="markdown"
 		{label}
@@ -47,7 +49,7 @@
 {#key client.text({ kind: Kind.Node, id: node.id }, 'description')}
 	<SharedTextField
 		{client}
-		{connected}
+		connected={textEditable}
 		target={{ kind: Kind.Node, id: node.id }}
 		field="description"
 		label={`Description de ${node.id}`}

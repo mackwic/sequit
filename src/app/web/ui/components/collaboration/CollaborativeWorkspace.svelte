@@ -51,12 +51,15 @@
 		model,
 		name,
 		connected,
+		offlineTextEditing = false,
 	}: {
 		client: CollaborativeDocumentSession;
 		model: LogicDocument;
 		name: string;
 		connected: boolean;
+		offlineTextEditing?: boolean;
 	} = $props();
+	let textEditable = $derived(connected || offlineTextEditing);
 	const canvas = new CanvasSession();
 	const presence = new CollaborationAwareness(untrack(() => client));
 	setCollaborationAwareness(presence);
@@ -251,6 +254,7 @@
 										{node}
 										{client}
 										{connected}
+										{textEditable}
 										{dispatch}
 										label={`Texte de ${editing.nodeId}`}
 										autofocusMarkdown
@@ -268,7 +272,7 @@
 					editingGroupId = undefined;
 				}}
 			>
-				<SharedGroupFields group={editingGroup} {client} {connected} {dispatch} />
+				<SharedGroupFields group={editingGroup} {client} {connected} {textEditable} {dispatch} />
 			</SharedEditDialog>{/if}
 		{#if sourceValid && creating}<CreateNodeDialog
 				natures={model.natures}
@@ -298,7 +302,7 @@
 			<SharedElementCard label="Titre du document">
 				<SharedTextField
 					{client}
-					{connected}
+					connected={textEditable}
 					target={{ kind: Kind.Document, id: model.id }}
 					field="title"
 					label="Titre du document"
@@ -309,7 +313,14 @@
 			{#each visible.document.nodes as node (node.id)}
 				<section aria-label={`Boîte ${node.id}`}>
 					<SharedElementCard label={`Boîte ${node.id}`}>
-						<SharedNodeFields {node} {client} {connected} {dispatch} label={`Contenu ${node.id}`} />
+						<SharedNodeFields
+							{node}
+							{client}
+							{connected}
+							{textEditable}
+							{dispatch}
+							label={`Contenu ${node.id}`}
+						/>
 					</SharedElementCard>
 				</section>
 			{/each}
@@ -319,7 +330,7 @@
 						{#key client.text({ kind: Kind.Group, id: group.id }, 'label')}
 							<SharedTextField
 								{client}
-								{connected}
+								connected={textEditable}
 								target={{ kind: Kind.Group, id: group.id }}
 								field="label"
 								label={`Libellé du groupe ${group.id}`}
@@ -378,7 +389,7 @@
 						{#key client.text({ kind: Kind.Nature, id: nature.id }, 'label')}
 							<SharedTextField
 								{client}
-								{connected}
+								connected={textEditable}
 								target={{ kind: Kind.Nature, id: nature.id }}
 								field="label"
 								label={`Libellé de la nature ${nature.id}`}

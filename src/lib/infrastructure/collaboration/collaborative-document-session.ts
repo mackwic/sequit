@@ -13,6 +13,7 @@ export { readSourceDocumentState } from './source-document-state';
 export function createCollaborativeDocumentSession(
 	initialDocument: LogicDocument,
 	transport: CollaborationTransport,
+	options: { offlineTextEditing?: boolean } = {},
 ): CollaborativeDocumentSession {
-	return new CollaborativeSession(initialDocument, transport);
+	return new CollaborativeSession(initialDocument, transport, options.offlineTextEditing ?? false);
 }

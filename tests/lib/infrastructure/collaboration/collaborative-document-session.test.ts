@@ -42,7 +42,7 @@ import {
 } from '../../../support/fixtures/collaborative-document';
 import { createMemoryTransportPair } from '../../../support/harnesses/memory-transport';
 
-function setup(initialized = true) {
+function setup(initialized = true, offlineTextEditing = false) {
 	const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 	const authoritative = new Y.Doc({ gc: false });
 	if (initialized) importLogicDocument(authoritative, initial);
@@ -51,7 +51,7 @@ function setup(initialized = true) {
 	pair.server.subscribeToFrames((frame) => {
 		sent.push(decodeSessionMessage(frame));
 	});
-	const client = createCollaborativeDocumentSession(initial, pair.client);
+	const client = createCollaborativeDocumentSession(initial, pair.client, { offlineTextEditing });
 	function receive(message: SessionMessage): void {
 		pair.server.send(encodeSessionMessage(message));
 	}
@@ -807,6 +807,46 @@ describe('collaborative document session', () => {
 		room.sync();
 		expect(room.client.read().nodes[0]?.markdown).toBe('Alpha');
 		expect(room.client.replaceNodeMarkdown('A', 'Online')).toBe(true);
+		room.destroy();
+	});
+
+	it('keeps workshop-only offline text edits locally and replays them before resynchronizing', () => {
+		vi.useFakeTimers();
+		const room = setup(true, true);
+		room.sync();
+		room.sent.length = 0;
+		room.pair.client.setStatus(TransportStatus.Disconnected);
+		expect(room.client.replaceNodeMarkdown('A', 'Texte A hors ligne')).toBe(true);
+		expect(room.client.replaceNodeMarkdown('B', 'Texte B hors ligne')).toBe(true);
+		expect(room.client.read().nodes.map(({ markdown }) => markdown)).toEqual([
+			'Texte A hors ligne',
+			'Texte B hors ligne',
+		]);
+		vi.advanceTimersByTime(500);
+		expect(room.sent).toEqual([]);
+		room.pair.client.setStatus(TransportStatus.Connected);
+		expect(room.client.replaceNodeMarkdown('A', 'Interdit pendant la reprise')).toBe(false);
+		for (let index = 0; index < 2; index++) {
+			const proposal = room.sent.find(
+				(message) => message.type === Message.Change && 'update' in message,
+			);
+			if (proposal?.type !== Message.Change || !('update' in proposal) || proposal.id === undefined)
+				throw new Error('Expected identified pending offline text');
+			Y.applyUpdate(room.authoritative, proposal.update);
+			room.sent.splice(room.sent.indexOf(proposal), 1);
+			room.receive({
+				type: Message.Commit,
+				id: proposal.id,
+				update: Y.encodeStateAsUpdate(room.authoritative),
+				commit: index + 1,
+			});
+		}
+		room.sync();
+		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+		expect(readLogicDocument(room.authoritative)).toMatchObject({
+			ok: true,
+			value: { nodes: [{ markdown: 'Texte A hors ligne' }, { markdown: 'Texte B hors ligne' }] },
+		});
 		room.destroy();
 	});
 

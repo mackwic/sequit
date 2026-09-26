@@ -13,11 +13,13 @@
 		group,
 		client,
 		connected,
+		textEditable,
 		dispatch,
 	}: {
 		group: LogicGroup;
 		client: CollaborativeDocumentSession;
 		connected: boolean;
+		textEditable: boolean;
 		dispatch: (command: SharedDocumentCommand) => void;
 	} = $props();
 
@@ -35,7 +37,7 @@
 {#key client.text({ kind: Kind.Group, id: group.id }, 'label')}
 	<SharedTextField
 		{client}
-		{connected}
+		connected={textEditable}
 		target={{ kind: Kind.Group, id: group.id }}
 		field="label"
 		label="Titre du groupe"
