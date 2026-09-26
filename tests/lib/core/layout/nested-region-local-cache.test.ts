@@ -111,6 +111,17 @@ describe('per-projection local region layout cache', () => {
 		);
 	});
 
+	it('invalidates the previous local solver allocation ordering', () => {
+		const document = regionDocument();
+		const measurements = prepareLayoutDocument(document).measurements;
+		const current = regionLocalLayoutKey(document, measurements, LayoutPolicy.SharedLanes);
+		const previous = JSON.stringify({
+			...JSON.parse(current),
+			algorithm: 'shared-or-dedicated-child-layout-v5',
+		});
+		expect(current).not.toBe(previous);
+	});
+
 	it('uses a canonical source and measurement key across permutations', () => {
 		const cache = new RegionLocalLayoutCache();
 		const source = regionDocument();
