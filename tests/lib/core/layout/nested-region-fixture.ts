@@ -7,9 +7,12 @@ import {
 	LayoutDirection,
 	LayoutPolicy,
 	type LogicDocument,
+	type LogicNode,
 	PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
+	REGION_LANE_PERSISTENCE_FORMAT,
+	REGION_LANE_PRESENTATION_SCHEMA,
 	REGION_PERSISTENCE_FORMAT,
 	REGION_POLICY_PERSISTENCE_FORMAT,
 	REGION_POLICY_PRESENTATION_SCHEMA,
@@ -419,6 +422,57 @@ export function persistedNestedGridWithInnerLaneCrossingDocument(): PersistedReg
 			...source.relations.filter(({ id }) => id !== 'across-grid'),
 			{ id: 'leaves-b', from: 'b', to: 'd' },
 		],
+	};
+}
+
+/** Two policies in persisted sibling leaves; the lane exit can follow two valid full routes. */
+export function persistedComposedLeafBridgeDocument(): PersistedRegionDocument {
+	const ids = ['a', 'b', 'c', 'd', 'e'] as const;
+	return {
+		persistenceFormat: REGION_LANE_PERSISTENCE_FORMAT,
+		id: 'composed-leaf-bridge',
+		title: 'Passage de feuille sans pont',
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
+		groups: [],
+		junctions: [],
+		nodes: ids.map((id, index) => {
+			const node: LogicNode = {
+				kind: EndpointKind.Node,
+				id,
+				natureId: 'task',
+				markdown: `${id}\n`,
+				layoutOrder: orderKey(`a${index}`),
+				regionId: 'ordinary',
+			};
+			if (index === 0) return { ...node, regionId: 'lane', laneId: 'sales' };
+			if (index === 1) return { ...node, regionId: 'lane', laneId: 'service' };
+			return node;
+		}),
+		relations: [
+			{ id: 'lane-local', from: 'a', to: 'b' },
+			{ id: 'ordinary-local', from: 'c', to: 'd' },
+			{ id: 'cross', from: 'b', to: 'c' },
+		],
+		regionPresentation: {
+			schemaVersion: REGION_LANE_PRESENTATION_SCHEMA,
+			regions: [
+				{
+					id: 'lane',
+					layoutOrder: orderKey('a0'),
+					policy: LayoutPolicy.SharedLanes,
+					lanePresentation: {
+						laneOrientation: LaneOrientation.Transverse,
+						growth: LaneGrowth.Auto,
+						lanes: [
+							{ id: 'sales', label: 'Sales', layoutOrder: orderKey('a0') },
+							{ id: 'service', label: 'Service', layoutOrder: orderKey('a1') },
+						],
+					},
+				},
+				{ id: 'ordinary', layoutOrder: orderKey('a1'), policy: LayoutPolicy.Layered },
+			],
+		},
 	};
 }
 
