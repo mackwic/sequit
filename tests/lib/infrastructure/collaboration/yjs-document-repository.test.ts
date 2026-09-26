@@ -2134,6 +2134,39 @@ describe('yjsLiveDocumentFormat', () => {
 });
 
 describe('repository presentation and recovery boundaries', () => {
+	it('persists a group state replacement without changing its shared label identity', async () => {
+		const ydoc = new Y.Doc();
+		importLogicDocument(ydoc, explicitLaneLogicDocument());
+		const repository = new YjsDocumentRepository(ydoc);
+		const group = defined(readDocument(ydoc).groups.find(({ id }) => id === 'container'));
+		const shared = defined(ydoc.getMap<Y.Map<unknown>>(YjsCollection.Groups).get(group.id));
+		const label = shared.get('label');
+		const updated = await repository.persist({
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupReplacements: [{ ...group, state: GroupState.Closed }],
+		});
+		expect(updated.ok).toBe(true);
+		const persisted = readDocument(ydoc).groups.find(({ id }) => id === group.id);
+		expect(persisted?.state).toBe(GroupState.Closed);
+		expect(shared.get('label')).toBe(label);
+		const cleared = await repository.persist({
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupReplacements: [group],
+		});
+		expect(cleared.ok).toBe(true);
+		const reverted = readDocument(ydoc).groups.find(({ id }) => id === group.id);
+		expect(reverted?.state).toBeUndefined();
+		expect(shared.get('label')).toBe(label);
+		repository.destroy();
+		ydoc.destroy();
+	});
+
 	it('preserves a new top-level group lane through a guarded Yjs transaction', async () => {
 		const ydoc = new Y.Doc();
 		importLogicDocument(ydoc, explicitLaneLogicDocument());

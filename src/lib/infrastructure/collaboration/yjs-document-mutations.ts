@@ -147,6 +147,8 @@ function applyGroupReplacements(
 		spliceSharedText(label, group.label);
 		if (group.color === undefined) entity.delete('color');
 		else entity.set('color', group.color);
+		if (group.state === undefined) entity.delete('state');
+		else if (entity.get('state') !== group.state) entity.set('state', group.state);
 	}
 }
 
