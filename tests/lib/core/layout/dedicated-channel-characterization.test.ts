@@ -240,7 +240,7 @@ function wireFor(channel: ChannelObservation, id: string) {
 describe('dedicated engine channel characterization (replaceable during channel migration)', () => {
 	describe('actual port allocations from LogicDocument layouts', () => {
 		it('reuses a retained production rail only after its prior interval clears', () => {
-			const channel = finalChannelFor(railReuseDocument(), ['c-to-e', 'd-to-e'], undefined, true);
+			const channel = finalChannelFor(railReuseDocument(), ['c-to-e', 'd-to-e']);
 			const earlier = wireFor(channel, 'c-to-e').first;
 			const later = wireFor(channel, 'd-to-e').first;
 			if (earlier === undefined || later === undefined)
