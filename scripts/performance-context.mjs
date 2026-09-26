@@ -16,6 +16,7 @@ export const performanceProtocolPaths = [
 	'tests/lib/core/layout/performance/incremental-layout-performance.test.ts',
 	'tests/lib/infrastructure/collaboration/performance/live-edit-performance.test.ts',
 	'tests/support/harnesses/memory-transport.ts',
+	'package.json',
 	'config/vitest.performance.config.ts',
 	'pnpm-lock.yaml',
 	'mise.toml',

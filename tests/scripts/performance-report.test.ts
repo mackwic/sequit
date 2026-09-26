@@ -167,6 +167,7 @@ describe('performance comparisons', () => {
 			'tests/lib/infrastructure/collaboration/performance/live-edit-performance.test.ts',
 		);
 		expect(performanceProtocolPaths).toContain('tests/support/harnesses/memory-transport.ts');
+		expect(performanceProtocolPaths).toContain('package.json');
 		const directory = mkdtempSync(join('tests', `performance-protocol-${randomUUID()}-`));
 		const workload = join(directory, 'workload.ts');
 		try {

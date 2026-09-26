@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 export interface PerformanceMeasurement {
 	readonly scenario: string;
@@ -13,5 +13,12 @@ export interface PerformanceMeasurement {
 export function recordPerformanceMeasurements(rows: readonly PerformanceMeasurement[]): void {
 	const destination = process.env['SEQUIT_PERFORMANCE_MEASUREMENTS'];
 	if (destination === undefined) return;
-	writeFileSync(destination, JSON.stringify(rows, null, 2));
+	let existing: unknown[] = [];
+	if (existsSync(destination)) {
+		const parsed: unknown = JSON.parse(readFileSync(destination, 'utf8'));
+		if (!Array.isArray(parsed))
+			throw new TypeError('Performance measurement output must be an array');
+		existing = parsed;
+	}
+	writeFileSync(destination, JSON.stringify([...existing, ...rows], null, 2));
 }
