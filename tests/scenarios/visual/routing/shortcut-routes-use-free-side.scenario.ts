@@ -43,7 +43,6 @@ function chainVariant(input: {
 			'Une chaîne ajoutée à droite du document témoin utilise son corridor extérieur plutôt que l’espace entre les composantes.',
 		group: 'Rails et ports',
 		order: 240,
-		expectedFailure: true,
 		arrange(direction = LayoutDirection.TopToBottom, bias) {
 			const builder = withBackdrop(['new-1', 'new-2', 'new-3', 'new-4'], direction)
 				.arrowsFrom('new-2', ['new-1'])
@@ -80,6 +79,7 @@ function chainVariant(input: {
 				.areAttachedToEndpoints()
 				.followLayoutFlow()
 				.haveNoCrossing()
+				.haveNoForbiddenContacts()
 				.haveOnlyAllowedSharedTrunks();
 			check.obstacles().haveClearance(24);
 		},
@@ -94,7 +94,6 @@ function branchVariant(): LayoutScenario {
 			'Le raccourci de la branche droite vers la racine reste à droite du nœud intermédiaire.',
 		group: 'Rails et ports',
 		order: 240,
-		expectedFailure: true,
 		arrange(direction = LayoutDirection.TopToBottom, bias) {
 			return layoutNodes({
 				...withBackdrop(['new-1', 'new-2', 'new-3', 'node-32'], direction)
@@ -122,6 +121,7 @@ function branchVariant(): LayoutScenario {
 				.areAttachedToEndpoints()
 				.followLayoutFlow()
 				.haveNoCrossing()
+				.haveNoForbiddenContacts()
 				.haveOnlyAllowedSharedTrunks();
 			check.obstacles().haveClearance(24);
 		},

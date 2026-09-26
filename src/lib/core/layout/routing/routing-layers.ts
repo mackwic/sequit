@@ -26,10 +26,12 @@ export function layerLinks(
 	bounds: ReadonlyMap<string, Bounds>,
 	{
 		vertical,
+		componentByEndpointId,
 		sourceOffsets,
 		targetOffsets,
 	}: {
 		readonly vertical: boolean;
+		readonly componentByEndpointId?: ReadonlyMap<string, number> | undefined;
 		readonly sourceOffsets?: ReadonlyMap<string, number> | undefined;
 		readonly targetOffsets?: ReadonlyMap<string, number> | undefined;
 	},
@@ -45,6 +47,7 @@ export function layerLinks(
 		layers,
 		bounds,
 		vertical,
+		componentByEndpointId,
 		sourceOffsets,
 		targetOffsets,
 	});

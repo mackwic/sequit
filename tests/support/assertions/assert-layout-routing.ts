@@ -67,6 +67,10 @@ class LayoutRoutes {
 		this.geometry.haveNoCrossing();
 		return this;
 	}
+	haveNoForbiddenContacts(): this {
+		this.geometry.haveNoForbiddenContacts();
+		return this;
+	}
 	haveCrossing(): this {
 		this.geometry.haveCrossing();
 		return this;

@@ -1,11 +1,11 @@
-import { defined } from '../../document/logic-document';
+import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { LayoutFrame } from '../geometry/layout-frame';
 import { mainSize, transverseSize, transverseStart } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, JUNCTION_CHANNEL_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point, RoutingLayers, Size } from '../layout-types';
 import { routeChannel } from './channel-routing';
-import type { ChannelRouting, ChannelWire } from './channel-types';
+import type { ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
 import { type PortAllocation, sharedSourcePorts, sharedTargetPorts } from './port-allocation';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
@@ -35,10 +35,81 @@ interface LayerInput extends LayerGeometry {
 	readonly componentByEndpointId: ReadonlyMap<string, number>;
 }
 
+interface OuterArrival {
+	readonly passage: number;
+	readonly run: ChannelRun;
+}
+
+function runConflictsOnRail(
+	run: ChannelRun,
+	rail: number,
+	runs: ReadonlySet<ChannelRun | undefined>,
+): boolean {
+	for (const other of runs) {
+		if (other === undefined || other === run) continue;
+		if (other.rail !== rail) continue;
+		const before = run.end + RAIL_SPACING / 2 < other.start;
+		const after = other.end + RAIL_SPACING / 2 < run.start;
+		if (!before && !after) return true;
+	}
+	return false;
+}
+
+function outerArrivals(
+	channel: ChannelRouting,
+	links: readonly LayerLink[],
+	input: LayerInput,
+): ReadonlyMap<string, OuterArrival[]> {
+	const byTarget = new Map<string, OuterArrival[]>();
+	for (const [index, link] of links.entries()) {
+		if (link.passage === undefined) continue;
+		if (link.sourceLayer <= link.targetLayer + 1) continue;
+		const source = input.graph.endpointsById.get(link.relation.from);
+		const target = input.graph.endpointsById.get(link.relation.to);
+		if (source?.kind !== EndpointKind.Node || target?.kind !== EndpointKind.Node) continue;
+		const targetBox = defined(input.bounds.get(link.relation.to));
+		const end =
+			transverseStart(targetBox, input.frame.vertical) +
+			transverseSize(targetBox, input.frame.vertical);
+		if (link.passage < end + RAIL_SPACING) continue;
+		const run = defined(channel.wires[index]).last;
+		if (run === undefined) continue;
+		const arrivals = byTarget.get(link.relation.to) ?? [];
+		arrivals.push({ passage: link.passage, run });
+		byTarget.set(link.relation.to, arrivals);
+	}
+	return byTarget;
+}
+
+/** Nested long arrivals need increasing tracks: a farther column must cross behind an inner one. */
+function reserveOuterArrivalRails(
+	channel: ChannelRouting,
+	byTarget: ReadonlyMap<string, OuterArrival[]>,
+): ChannelRouting {
+	let railCount = channel.railCount;
+	let runs: ReadonlySet<ChannelRun | undefined> | undefined;
+	for (const arrivals of byTarget.values()) {
+		if (arrivals.length < 2) continue;
+		runs ??= new Set(channel.wires.flatMap(({ first, last }) => [first, last]));
+		arrivals.sort((a, b) => a.passage - b.passage);
+		let previous = -1;
+		for (const { run } of arrivals) {
+			let rail = Math.max(previous + 1, run.rail);
+			while (runConflictsOnRail(run, rail, runs)) rail += 1;
+			run.rail = rail;
+			previous = rail;
+			railCount = Math.max(railCount, rail + 1);
+		}
+	}
+	if (railCount === channel.railCount) return channel;
+	return { ...channel, railCount };
+}
+
 function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerChannel[] {
 	const { graph, layers, bounds, frame } = input;
 	const links = layerLinks(graph, layers, bounds, {
 		vertical: frame.vertical,
+		componentByEndpointId: input.componentByEndpointId,
 		sourceOffsets: ports.sourceOffsets,
 		targetOffsets: ports.targetOffsets,
 	});
@@ -74,7 +145,9 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 				}),
 			};
 		});
-		channels.push({ layer, links: crossing, ...routeChannel(endpoints) });
+		const channel = routeChannel(endpoints);
+		const routed = reserveOuterArrivalRails(channel, outerArrivals(channel, crossing, input));
+		channels.push({ layer, links: crossing, ...routed });
 	}
 	return channels;
 }

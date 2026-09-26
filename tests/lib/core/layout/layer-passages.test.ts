@@ -177,6 +177,27 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(secondRelation)).toBe(0);
 	});
 
+	it('reserves two distinct local exterior tracks for concurrent long relations', () => {
+		const reserve = layerPassages({
+			...input([['target', 'other-target'], ['ordinary'], ['source', 'other-source']], {
+				target: box(0, 0),
+				'other-target': box(0, 0),
+				ordinary: box(-200, 120),
+				source: box(0, 240),
+				'other-source': box(0, 240),
+			}),
+			componentByEndpointId: new Map([
+				['target', 1],
+				['other-target', 1],
+				['source', 1],
+				['other-source', 1],
+				['ordinary', 0],
+			]),
+		});
+		expect(reserve(firstRelation)).toBe(64);
+		expect(reserve(secondRelation)).toBe(88);
+	});
+
 	it('uses a clear endpoint column across ordinary intermediate boxes', () => {
 		const reserve = layerPassages(
 			input([['target'], ['junction', 'ordinary'], ['source']], {

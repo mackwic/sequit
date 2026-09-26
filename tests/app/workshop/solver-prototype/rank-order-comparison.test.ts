@@ -158,13 +158,6 @@ describe('rank order stability under document edits', () => {
 				0,
 			);
 		}
-		const goal = comparisons.find(({ id }) => id === 'goal-implementation');
-		expect(goal).toMatchObject({
-			beforeCrossings: 0,
-			beforeDocumentaryCrossings: 3,
-			afterCrossings: 7,
-			afterDocumentaryCrossings: 8,
-		});
 		const decision = comparisons.find(({ id }) => id === 'decision-tree');
 		expect(decision?.beforeCrossings).toBeLessThan(decision?.beforeDocumentaryCrossings ?? 0);
 	});

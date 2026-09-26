@@ -15,7 +15,7 @@ Le témoin de gauche reprend la topologie visible du document `ai-documentation.
 
 ## Deux raccourcis
 
-La relation **New 3 → New 1** est ajoutée au cas précédent. Les deux raccourcis restent dans des corridors extérieurs locaux, sans pont ni détour à travers la composante voisine.
+La relation **New 3 → New 1** est ajoutée au cas précédent. Les deux raccourcis restent dans des corridors extérieurs locaux, sans pont ni détour à travers la composante voisine : leurs passages longitudinaux tiennent dans les deux premières pistes extérieures locales.
 
 ## Une branche et son raccourci
 

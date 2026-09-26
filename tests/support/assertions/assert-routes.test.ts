@@ -53,6 +53,35 @@ describe('route collection assertions', () => {
 			AssertRoutes([horizontal, continuation]).haveCrossing();
 		}).toThrow('Expected a crossing');
 	});
+	it('rejects a T-contact that has no proper crossing or overlapping segment', () => {
+		const touching = route('touching', [
+			{ x: 50, y: 50 },
+			{ x: 100, y: 50 },
+		]);
+		AssertRoutes([vertical, touching]).haveNoCrossing().haveNoOverlap();
+		expect(() => AssertRoutes([vertical, touching]).haveNoForbiddenContacts()).toThrow(
+			'Contacts entre routes sans pont',
+		);
+	});
+	it('allows a continuous shared incoming trunk from the same target', () => {
+		const left = {
+			...route('left', [
+				{ x: 0, y: 50 },
+				{ x: 50, y: 50 },
+				{ x: 50, y: 0 },
+			]),
+			to: 'common',
+		};
+		const right = {
+			...route('right', [
+				{ x: 100, y: 50 },
+				{ x: 50, y: 50 },
+				{ x: 50, y: 0 },
+			]),
+			to: 'common',
+		};
+		AssertRoutes([left, right]).haveNoForbiddenContacts();
+	});
 	it('rejects parallel routes with no crossing', () => {
 		const other = route('parallel', [
 			{ x: 0, y: 80 },

@@ -3,6 +3,11 @@ import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point, RoutingLayers } from '../layout-types';
+import {
+	componentExteriorCandidates,
+	type ExteriorCandidates,
+	exteriorFor,
+} from './component-passages';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 
 interface PassageInput {
@@ -10,6 +15,7 @@ interface PassageInput {
 	readonly layers: RoutingLayers;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
+	readonly componentByEndpointId?: ReadonlyMap<string, number> | undefined;
 	readonly sourceOffsets?: ReadonlyMap<string, number> | undefined;
 	readonly targetOffsets?: ReadonlyMap<string, number> | undefined;
 }
@@ -19,6 +25,7 @@ interface PassageWorkspace extends PassageInput {
 	readonly intervalCache: Map<string, readonly Interval[]>;
 	readonly obstacles: Map<number, RouteObstacles | undefined>;
 	readonly reservations: PassageReservation[];
+	readonly exteriorCandidates: ReadonlyMap<number, ExteriorCandidates>;
 }
 
 interface Interval {
@@ -253,11 +260,18 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		}
 		occupied = scoped;
 	}
+	const exterior = exteriorFor(
+		relation.from,
+		input.componentByEndpointId,
+		input.exteriorCandidates,
+	);
 	const candidates = [
+		...exterior.preferred,
 		sourceCoordinate,
 		targetCoordinate,
 		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
 		...groupPaddingCandidates(occupied, group, sourceCoordinate, targetCoordinate),
+		...exterior.fallback,
 	];
 	return selectPassage({
 		workspace: input,
@@ -273,12 +287,14 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 export function layerPassages(
 	input: PassageInput,
 ): (relation: LogicRelation) => number | undefined {
+	const exteriorCandidates = componentExteriorCandidates(input);
 	const workspace: PassageWorkspace = {
 		...input,
 		ancestorCache: new Map(),
 		intervalCache: new Map(),
 		obstacles: new Map(),
 		reservations: [],
+		exteriorCandidates,
 	};
 	return (relation) => reservePassage(workspace, relation);
 }

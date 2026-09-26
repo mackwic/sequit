@@ -1,3 +1,4 @@
+import { disallowedRouteContacts } from '../../../src/lib/core/layout/bridges/bridge-contact';
 import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 import { assertAllowedRouteSharing } from './allowed-route-sharing';
 import { VisualAssertionError } from './assertion-error';
@@ -10,6 +11,7 @@ interface RoutesAssertions {
 	): RoutesAssertions;
 	haveNoOverlap(): RoutesAssertions;
 	haveNoCrossing(): RoutesAssertions;
+	haveNoForbiddenContacts(): RoutesAssertions;
 	haveCrossing(): RoutesAssertions;
 	haveNoOverlapWith(other: readonly LayoutRelation[]): RoutesAssertions;
 	haveNoCrossingWith(other: readonly LayoutRelation[]): RoutesAssertions;
@@ -73,6 +75,18 @@ export function AssertRoutes(routes: readonly LayoutRelation[]): RoutesAssertion
 					},
 					{ code: 'routes.crossing', message: 'Expected routes without crossings.' },
 				);
+			return assertions;
+		},
+		haveNoForbiddenContacts() {
+			validate(routes, 2);
+			for (const [index, first] of routes.entries())
+				for (const second of routes.slice(index + 1)) {
+					const contacts = disallowedRouteContacts(first, second, []);
+					if (contacts.length > 0)
+						throw new VisualAssertionError('Contacts entre routes sans pont', 0, contacts.length, {
+							routes: [first.id, second.id],
+						});
+				}
 			return assertions;
 		},
 		haveCrossing() {

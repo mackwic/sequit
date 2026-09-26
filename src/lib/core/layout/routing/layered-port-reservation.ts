@@ -52,6 +52,7 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 	});
 	const passages = layerLinks(graph, layers, bounds, {
 		vertical: frame.vertical,
+		componentByEndpointId: input.componentByEndpointId,
 	});
 	const direct = passages.every(({ relation, sourceLayer, targetLayer }) => {
 		if (sourceLayer === targetLayer + 1) return true;

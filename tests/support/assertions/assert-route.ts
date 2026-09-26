@@ -1,4 +1,5 @@
 import type { LayoutRelation, Point } from '../../../src/lib/core/layout/layout-types';
+import { railPolicy } from '../fixtures/routing-fixtures';
 import { identityOf, validateBox } from '../harnesses/box-geometry';
 import type { BoxGeometry } from './assert-box';
 import { VisualAssertionError } from './assertion-error';
@@ -129,7 +130,8 @@ export function AssertRoute(route: LayoutRelation): RouteAssertions {
 			let passageAxis: 'x' | 'y' = 'y';
 			if (axis === 'y') passageAxis = 'x';
 			const minimum = obstacle.bounds[axis] + extent(obstacle.bounds, axis) + clearance;
-			const maximum = component.bounds[axis] + extent(component.bounds, axis) + 2 * clearance;
+			const maximum =
+				component.bounds[axis] + extent(component.bounds, axis) + 2 * railPolicy.spacing;
 			const obstacleStart = obstacle.bounds[passageAxis];
 			const obstacleEnd = obstacleStart + extent(obstacle.bounds, passageAxis);
 			const passages = routeSegments(route).filter(
