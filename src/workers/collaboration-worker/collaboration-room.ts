@@ -32,8 +32,8 @@ import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgra
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { readCommandReceipt } from './command-receipts';
 import { handleRoomFailure } from './room-failures';
+import { allowSessionRefusal } from './room-refusal-budget';
 import {
-	allowCommandRefusal,
 	broadcastRoomPresence,
 	rememberSocketVersion,
 	roomPresence,
@@ -208,7 +208,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				executeSharedCommands(candidate, message.commands);
 			} catch (error) {
 				if (!(error instanceof BusinessCommandRefusal)) throw error;
-				if (!allowCommandRefusal(socket, message.sessionId, message.id))
+				if (!(await allowSessionRefusal(this.ctx.storage, message.sessionId, message.id)))
 					throw new TerminalSessionFailure(
 						SessionFailureCode.RepeatedCommandRefusal,
 						'Cette proposition a été refusée trop souvent.',

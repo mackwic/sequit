@@ -11,6 +11,7 @@ import {
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
 import {
 	encodeSessionMessage,
+	LEGACY_SESSION_WIRE_VERSION,
 	SessionMessageKind as Message,
 } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
@@ -312,6 +313,28 @@ it.each([
 	});
 	const bob = await connectRoom(name);
 	expect((await bob.next(Message.Presence)).participants).toEqual([]);
+	alice.socket.close();
+	bob.socket.close();
+});
+
+it('shares version-four presence with a newly connected modern participant', async () => {
+	const name = 'legacy-presence';
+	const alice = await connectRoom(name);
+	await alice.next(Message.Presence);
+	alice.socket.send(
+		encodeSessionMessage(
+			{
+				type: Message.Presence,
+				participants: [{ clientId: 42, name: 'Legacy Alice', color: '#abcdef', selected: [] }],
+			},
+			LEGACY_SESSION_WIRE_VERSION,
+		),
+	);
+	expect((await alice.next(Message.Presence)).participants).toMatchObject([
+		{ name: 'Legacy Alice' },
+	]);
+	const bob = await connectRoom(name);
+	expect((await bob.next(Message.Presence)).participants).toMatchObject([{ name: 'Legacy Alice' }]);
 	alice.socket.close();
 	bob.socket.close();
 });

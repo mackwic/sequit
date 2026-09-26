@@ -8,16 +8,9 @@ import {
 	SessionMessageKind,
 } from '../../lib/infrastructure/collaboration/session-wire';
 
-interface RefusalBudget {
-	readonly sessionId: string;
-	readonly id: string;
-	readonly count: number;
-}
-
 interface SocketAttachment {
 	readonly version: 4 | 5;
 	readonly presence?: Uint8Array;
-	readonly refusal?: RefusalBudget;
 }
 
 function isSocketAttachment(value: unknown): value is SocketAttachment {
@@ -48,17 +41,6 @@ export function storeSocketPresence(
 		...socketAttachment(socket),
 		presence: encodeSessionMessage(message),
 	});
-}
-
-/** A repeated rejected proposal never consumes a durable command sequence. */
-export function allowCommandRefusal(socket: WebSocket, sessionId: string, id: string): boolean {
-	const attachment = socketAttachment(socket);
-	const previous = attachment.refusal;
-	let count = 1;
-	if (previous?.sessionId === sessionId && previous.id === id) count = previous.count + 1;
-	if (count > 6) return false;
-	socket.serializeAttachment({ ...attachment, refusal: { sessionId, id, count } });
-	return true;
 }
 
 export function sendRoomMessage(socket: WebSocket, message: SessionMessage): void {
