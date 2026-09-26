@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutDirection } from '../../../src/lib/core/document/logic-document';
 import { RoutingPortRole } from '../../../src/lib/core/layout/layout-types';
+import { AssertLayout } from '../../support/assertions/assert-layout';
 import { routeCrossings } from '../../support/assertions/route-geometry';
 import { LAYOUT_CONFIGURATIONS } from '../../support/builders/layout-bias-scenario';
+import { graphFixtures } from '../../support/fixtures/graph-fixtures';
+import { portPolicy } from '../../support/fixtures/routing-fixtures';
+import { layoutNodes } from '../../support/harnesses/layout-nodes';
 import { axesFor } from '../../support/harnesses/visual-directions';
 import { executableScenarios } from './catalogue';
 import { scenario as conditionalPorts } from './routing/conditional-incoming-ports.scenario';
@@ -82,6 +86,59 @@ describe('junction-incident crossing isolation', () => {
 			expect(crossingNearIncidentJunction({ elements: layout.elements, relations: ordinary })).toBe(
 				false,
 			);
+		},
+	);
+});
+
+describe('partial bipartite routing alongside an independent long passage', () => {
+	it.each(LAYOUT_CONFIGURATIONS)(
+		'preserves both H port policies in $direction with $bias bias',
+		async ({ direction, bias }) => {
+			for (const [source, target] of [
+				['new-4', 'node-32'],
+				['node-42', 'new-3'],
+			] as const) {
+				const layout = await layoutNodes({
+					...graphFixtures
+						.routingNodes(
+							[
+								'new-1',
+								'new-2',
+								'new-3',
+								'node-32',
+								'new-4',
+								'node-42',
+								'long-0',
+								'long-1',
+								'long-2',
+							],
+							direction,
+							180,
+						)
+						.arrowsFrom('new-2', ['new-1'])
+						.arrowsFrom('new-3', ['new-2'])
+						.arrowsFrom('node-32', ['new-2'])
+						.arrowsFrom('new-4', ['new-3'])
+						.arrowsFrom('node-42', ['node-32'])
+						.arrowsFrom(source, [target])
+						.arrowsFrom('long-0', ['long-1', 'long-2'])
+						.arrowsFrom('long-1', ['long-2'])
+						.build(),
+					direction,
+					bias,
+				});
+				const check = AssertLayout(layout);
+				check.ports(source, { role: 'outgoing' }).haveCount(1);
+				check
+					.ports(target, { role: 'incoming' })
+					.haveCount(2)
+					.areCentered()
+					.haveClearance(portPolicy);
+				check
+					.routes(['new-4-to-new-3', 'node-42-to-node-32', `${source}-to-${target}`])
+					.haveNoCrossing()
+					.haveOnlyAllowedSharedTrunks();
+			}
 		},
 	);
 });

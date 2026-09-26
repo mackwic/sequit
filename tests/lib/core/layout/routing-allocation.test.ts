@@ -4,6 +4,7 @@ import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
@@ -15,9 +16,13 @@ import {
 	sharedTargetPorts,
 } from '../../../../src/lib/core/layout/routing/port-allocation';
 import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
-import { crossingCorridors } from '../../../../src/lib/core/layout/routing/routing-corridors';
+import {
+	cornerPortSharing,
+	crossingCorridors,
+} from '../../../../src/lib/core/layout/routing/routing-corridors';
 import { settleGroupCorridorPorts } from '../../../../src/lib/core/layout/routing/settle-group-corridors';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
 import { boundsFor, contains, layoutDocument, overlaps } from '../../../support/harnesses/layout';
@@ -162,6 +167,72 @@ describe('rail and port reservations', () => {
 			expect(sizes.get('target')).toEqual({ width: 80, height: 80 });
 		}
 	});
+	it.each(LAYOUT_CONFIGURATIONS)(
+		'separates the common aligned link at its target in $direction with $bias bias',
+		({ direction, bias }) => {
+			const base = validLogicDocument();
+			const template = base.nodes[0];
+			if (template === undefined) throw new Error('Expected a fixture node');
+			const ids = ['a', 'b', 'd', 'e'] as const;
+			const document = {
+				...base,
+				groups: [],
+				junctions: [],
+				nodes: ids.map((id, index) => ({
+					...template,
+					id,
+					layoutOrder: orderKey(`a${index + 1}`),
+				})),
+				relations: [
+					{ id: 'a-d', from: 'a', to: 'd' },
+					{ id: 'b-d', from: 'b', to: 'd' },
+					{ id: 'b-e', from: 'b', to: 'e' },
+				],
+			};
+			const result = createGraph(document);
+			if (!result.ok) throw new Error('Expected a valid partial bipartite graph');
+			const graph = result.value;
+			const frame = createLayoutFrame(direction, bias);
+			const reverse =
+				direction === LayoutDirection.BottomToTop || direction === LayoutDirection.RightToLeft;
+			const bounds = new Map<string, Bounds>();
+			for (const [id, cross, source] of [
+				['a', 100, true],
+				['b', 200, true],
+				['d', 200, false],
+				['e', 300, false],
+			] as const) {
+				let main = 200;
+				if (source === reverse) main = 0;
+				let box: Bounds = { x: cross - 40, y: main, width: 80, height: 60 };
+				if (!frame.vertical) box = { x: main, y: cross - 40, width: 60, height: 80 };
+				bounds.set(id, box);
+			}
+			const ranks = new Map([
+				['a', 1],
+				['b', 1],
+				['d', 0],
+				['e', 0],
+			]);
+			const corridors = crossingCorridors({ graph, ranks, bounds, vertical: frame.vertical });
+			expect(corridors).toMatchObject([{ cornerOnly: true }]);
+			const sizes = new Map(
+				[...bounds].map(([id, box]) => [id, { width: box.width, height: box.height }] as const),
+			);
+			const ports = allocatePorts({
+				graph,
+				bounds,
+				vertical: frame.vertical,
+				sizes,
+				corridors,
+				...cornerPortSharing(corridors),
+			});
+			expect(ports.sourceOffsets.get('b-d')).toBe(0);
+			expect(ports.sourceOffsets.get('b-e')).toBe(0);
+			expect(ports.targetOffsets.get('a-d')).toBe(-24);
+			expect(ports.targetOffsets.get('b-d')).toBe(24);
+		},
+	);
 	it('preserves a grouped fork and its face size when placement exposes a corner corridor', () => {
 		const base = validLogicDocument();
 		const target = base.nodes.find(({ id }) => id === 'target');

@@ -62,7 +62,7 @@ function neighborInversion(links: readonly CorridorLink[]): boolean {
 	return false;
 }
 
-/** A diagonal completing three of four connections must not share both of its endpoint trunks. */
+/** A link shared by a branch and a convergence cannot share both of its endpoint trunks. */
 function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<string> {
 	const targets = new Set<string>();
 	if (cluster.length < 3) return targets;
@@ -82,10 +82,10 @@ function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<
 		if (firstSource === undefined) firstSourceByTarget.set(relation.to, relation.from);
 		else if (firstSource !== relation.from) convergingTargets.add(relation.to);
 	}
-	for (const { relation, source, target } of cluster) {
+	for (const { relation } of cluster) {
 		const branch = branchingSources.has(relation.from) && outgoingCounts.get(relation.from) === 2;
 		const join = convergingTargets.has(relation.to) && incomingCounts.get(relation.to) === 2;
-		if (source !== target && branch && join) targets.add(relation.to);
+		if (branch && join) targets.add(relation.to);
 	}
 	return targets;
 }
@@ -165,15 +165,16 @@ export function crossingCorridors(input: {
 interface CornerPortSharing {
 	readonly sharedSources: ReadonlySet<string>;
 	readonly sharedTargets: ReadonlySet<string>;
+	readonly distinctTargets: ReadonlySet<string>;
 }
 
-function excludePartialBipartiteTargets(
+function includePartialBipartiteTargets(
 	corridors: readonly RoutingCorridor[],
-	sharedTargets: Set<string>,
+	distinctTargets: Set<string>,
 ): void {
 	for (const corridor of corridors)
 		if (corridor.cornerOnly === true)
-			for (const target of partialBipartiteTargets(corridor.links)) sharedTargets.delete(target);
+			for (const target of partialBipartiteTargets(corridor.links)) distinctTargets.add(target);
 }
 
 /** Keep shared endpoints of new non-inverted corridors unless a crossing already separates them. */
@@ -184,7 +185,7 @@ export function cornerPortSharing(
 	const sharedSources = new Set<string>();
 	const sharedTargets = new Set<string>();
 	const crossingSources = new Set<string>();
-	const crossingTargets = new Set<string>();
+	const distinctTargets = new Set<string>();
 	for (const corridor of corridors) {
 		for (const { relation } of corridor.links) {
 			if (corridor.cornerOnly === true) {
@@ -192,12 +193,12 @@ export function cornerPortSharing(
 				sharedTargets.add(relation.to);
 			} else {
 				crossingSources.add(relation.from);
-				crossingTargets.add(relation.to);
+				distinctTargets.add(relation.to);
 			}
 		}
 	}
 	for (const source of crossingSources) sharedSources.delete(source);
-	for (const target of crossingTargets) sharedTargets.delete(target);
-	excludePartialBipartiteTargets(corridors, sharedTargets);
-	return { sharedSources, sharedTargets };
+	includePartialBipartiteTargets(corridors, distinctTargets);
+	for (const target of distinctTargets) sharedTargets.delete(target);
+	return { sharedSources, sharedTargets, distinctTargets };
 }

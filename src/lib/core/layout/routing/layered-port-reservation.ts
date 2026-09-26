@@ -85,12 +85,16 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 			target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
 		};
 	});
+	const cornerSharing = cornerPortSharing(crossings);
 	const sharedSources = new Set(junctionIds);
-	for (const id of cornerPortSharing(crossings)?.sharedSources ?? [])
+	for (const id of cornerSharing?.sharedSources ?? [])
 		if (!routedComponents.has(defined(input.componentByEndpointId.get(id)))) sharedSources.add(id);
 	const sharedTargets = new Set(junctionIds);
 	for (const { relation } of passages)
-		if (!routedComponents.has(defined(input.componentByEndpointId.get(relation.to))))
+		if (
+			!routedComponents.has(defined(input.componentByEndpointId.get(relation.to))) &&
+			cornerSharing?.distinctTargets.has(relation.to) !== true
+		)
 			sharedTargets.add(relation.to);
 	return allocatePorts({
 		corridors: [{ rank: 0, links }],
