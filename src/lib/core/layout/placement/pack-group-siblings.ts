@@ -140,8 +140,8 @@ export function packGroupSiblings(
 		items[index + 1] = group;
 	}
 	const tree = intervalTree(items);
-	for (const { id, box } of items) {
-		const span = spanOf(defined(windows.get(id)), tree);
+	for (const { id, box, window } of items) {
+		const span = spanOf(window, tree);
 		const previousEnd = queryMax(1, 0, tree.leafCount, { tree, span });
 		const start = transverseStart(box, vertical);
 		const shift = Math.max(0, previousEnd + ITEM_GAP - start);

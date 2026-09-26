@@ -33,17 +33,10 @@ export interface PlacementInput {
 function minimumGapWindows(
 	input: PlacementInput,
 	gaps: ReadonlyMap<number, number>,
-	channels: ReadonlyMap<number, readonly number[]>,
+	channels: ReadonlyMap<number, readonly number[]> | undefined,
 ): ReadonlyMap<string, MainWindow> {
 	const { structure, measurements, frame, placement } = input;
 	const slackById = new Map<string, number>();
-	if (structure.junctions.size === 0)
-		return groupSeparationWindows(
-			placement.bounds,
-			frame.vertical,
-			slackById,
-			defined(structure.hierarchy),
-		);
 	for (const component of structure.components)
 		for (const [rank, row] of component.rows.junction.entries()) {
 			if (row.length === 0) continue;
@@ -53,7 +46,7 @@ function minimumGapWindows(
 				vertical: frame.vertical,
 				junctions: structure.junctions,
 			});
-			const occupied = railSpan(rails, channels.get(rank));
+			const occupied = railSpan(rails, channels?.get(rank));
 			const interval = Math.max(measurements.rankGap, defined(gaps.get(rank)), occupied);
 			const slack = (interval - occupied) / 2;
 			for (const id of row) slackById.set(id, slack);
@@ -73,8 +66,8 @@ export function placeElements(
 	channelGaps?: ReadonlyMap<number, readonly number[]>,
 ): Map<string, MutableBounds> {
 	const { structure, measurements, frame, placement } = input;
-	const gaps = new Map(rankGaps);
-	const channels = new Map(channelGaps);
+	let modifiedGaps: Map<number, number> | undefined;
+	let modifiedChannels: Map<number, readonly number[]> | undefined;
 	const junctionRows = new Map<number, string[]>();
 	for (const [id, junction] of structure.junctions) {
 		const row = junctionRows.get(junction.interval) ?? [];
@@ -82,6 +75,7 @@ export function placeElements(
 		junctionRows.set(junction.interval, row);
 	}
 	for (const [rank, row] of junctionRows) {
+		modifiedGaps ??= new Map(rankGaps);
 		const rails = junctionRails({
 			row,
 			sizes: measurements.sizes,
@@ -89,18 +83,28 @@ export function placeElements(
 			junctions: structure.junctions,
 		});
 		const insets = placement.groupChannelInsets.get(rank);
-		if (insets !== undefined)
-			channels.set(
+		if (insets !== undefined) {
+			modifiedChannels ??= new Map(channelGaps);
+			modifiedChannels.set(
 				rank,
 				insetJunctionChannels(
 					rails,
-					Math.max(measurements.rankGap, gaps.get(rank) ?? 0),
-					channels.get(rank),
+					Math.max(measurements.rankGap, modifiedGaps.get(rank) ?? 0),
+					modifiedChannels.get(rank),
 					insets,
 				),
 			);
-		gaps.set(rank, Math.max(gaps.get(rank) ?? 0, railSpan(rails, channels.get(rank))));
+		}
+		modifiedGaps.set(
+			rank,
+			Math.max(
+				modifiedGaps.get(rank) ?? 0,
+				railSpan(rails, modifiedChannels?.get(rank) ?? channelGaps?.get(rank)),
+			),
+		);
 	}
+	const gaps = modifiedGaps ?? rankGaps;
+	const channels = modifiedChannels ?? channelGaps;
 	for (const [index, component] of structure.components.entries()) {
 		placement.components[index] = placeComponent({
 			rows: component.rows,
