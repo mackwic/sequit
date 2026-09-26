@@ -189,7 +189,7 @@ function routesOverlap(first: LayoutRelation, second: LayoutRelation): boolean {
 	return false;
 }
 
-export interface CrossingOverlap {
+interface CrossingOverlap {
 	readonly firstId: string;
 	readonly secondId: string;
 	readonly message: string;

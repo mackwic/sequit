@@ -19,7 +19,7 @@ import {
 	type GridCrossingAllocationWitness,
 } from './grid-cell-crossing-phases';
 
-export interface GridCrossingRouteAttempt<Candidate> {
+interface GridCrossingRouteAttempt<Candidate> {
 	readonly candidate: Candidate;
 	readonly failure?: RegionGeometryDiagnostic;
 }
