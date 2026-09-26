@@ -33,6 +33,32 @@ function digest(value: unknown): string {
 	return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+function isDescendantOfGroup(
+	document: LogicDocument,
+	node: LogicDocument['nodes'][number],
+	groupId: string,
+): boolean {
+	const groups = new Map(document.groups.map((group) => [group.id, group]));
+	let parentId = node.groupId;
+	while (parentId !== undefined) {
+		if (parentId === groupId) return true;
+		parentId = groups.get(parentId)?.groupId;
+	}
+	return false;
+}
+
+function intersects(
+	left: LayoutResult['elements'][number]['bounds'],
+	right: LayoutResult['elements'][number]['bounds'],
+): boolean {
+	return (
+		left.x < right.x + right.width &&
+		left.x + left.width > right.x &&
+		left.y < right.y + right.height &&
+		left.y + left.height > right.y
+	);
+}
+
 function makeDocument(
 	id: string,
 	ids: readonly string[],
@@ -316,6 +342,31 @@ describe('dedicated engine LayoutResult identity', () => {
 		const hashes = Object.fromEntries(
 			Object.entries(results).map(([id, result]) => [id, digest(result)]),
 		);
+
+		for (const id of [
+			'multirank-group-junction-one',
+			'multirank-group-junction-two',
+			'group-endpoint-route',
+		]) {
+			const document = allCases.find((candidate) => candidate.id === id)?.document;
+			const result = results[id];
+			if (document === undefined || result === undefined)
+				throw new Error(`Missing grouped identity case ${id}`);
+			const elements = new Map(result.elements.map((element) => [element.id, element]));
+			for (const group of document.groups) {
+				const groupBounds = elements.get(group.id)?.bounds;
+				if (groupBounds === undefined) throw new Error(`Missing group bounds ${group.id}`);
+				for (const node of document.nodes) {
+					if (isDescendantOfGroup(document, node, group.id)) continue;
+					const nodeBounds = elements.get(node.id)?.bounds;
+					if (nodeBounds === undefined) throw new Error(`Missing node bounds ${node.id}`);
+					expect(
+						intersects(groupBounds, nodeBounds),
+						`${id}: non-descendant node ${node.id} must stay outside group ${group.id}`,
+					).toBe(false);
+				}
+			}
+		}
 		const expectedIds = allCases.map(({ id }) => id);
 		expect(expectedIds).toHaveLength(12);
 		expect(new Set(expectedIds).size).toBe(expectedIds.length);
@@ -325,12 +376,12 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-2+2': '9b431c8e68b8479123f3ccb6e5733142c820a5cf91aa514aac4b481c79fb6e7b',
 			'adjacent-3+1': 'fdb0249a5b7112767e038d033b441777f88a535a3d3bc59bc18c0b306338cc4a',
 			'ai-documentary-effort': 'efc78b3328e0fd53d68b5e26881580d51cdd98a2ebf24c6dbdd6b0d88cb4f1ee',
-			'group-endpoint-route': '839c296963b8d825fb6032e718e720aea867f99f0197fb96cdf159d643eb3014',
+			'group-endpoint-route': '271f3cd5701db83bb7051e33c9a9ece25c7e6b2c810a088a39d389d933c80297',
 			'junction-network-layout': '45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
 			'multirank-group-junction-one':
-				'81c7e3fe345ba85f5d47c64571cfc3b594c795f4f3519c2229ba40e80bf406ec',
+				'29044bb55f6a8d22110b28980ef5e6021f1b914b94691d0d53618500902c72d0',
 			'multirank-group-junction-two':
-				'f6d92f4c952bd99cc7d88cfb44b04b055e66548d1b73cb94c5db5e7e3def978d',
+				'cc554bf2610cce6a093f24d267292020469dee64bdd569b0240712032118d1fc',
 			'rail-clearance-12': '9dae568401b9b8462723aa9c5564a2f04c4958fdb90a5ac445f37bbee3a60e9f',
 			'rail-clearance-13': '637f35ef14ed710564549725d3f26f676cb4dc0e0357fd675c2b20de6e6db695',
 			'rail-reuse': 'bf9eedd9a6eb7669b4b969d292616c8f7367b20b5eb017d6f1aed223c3d52a49',
