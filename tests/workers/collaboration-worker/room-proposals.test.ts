@@ -3,20 +3,37 @@ import { env } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { META_KEY } from '../../../src/lib/infrastructure/collaboration/room-persistence';
-import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
+	CHUNK_KEY_PREFIX,
+	META_KEY,
+} from '../../../src/lib/infrastructure/collaboration/room-persistence';
+import {
+	decodeSessionMessage,
+	SessionMessageKind as Message,
+} from '../../../src/lib/infrastructure/collaboration/session-wire';
+import {
+	readSyncStep,
+	SyncStepKind,
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../../src/lib/infrastructure/collaboration/sync-steps';
-import { readLogicDocument } from '../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { YjsCollection } from '../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import {
+	importLogicDocument,
+	readLogicDocument,
+} from '../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import {
+	createYjsEntityMap,
+	YjsCollection,
+} from '../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import {
 	SharedCommandKind as Op,
 	SharedElementKind as Kind,
 } from '../../../src/lib/infrastructure/document/shared-document-command';
 import { proposeChange } from '../../support/builders/collaboration';
-import { CollaborativeFixture } from '../../support/fixtures/collaborative-document';
+import {
+	CollaborativeFixture,
+	collaborativeFixture,
+} from '../../support/fixtures/collaborative-document';
 import { connectRoom, initializeRoom } from './room-client';
 
 describe('room authority', () => {
@@ -67,7 +84,27 @@ describe('room authority', () => {
 		async (channel) => {
 			const room = `text-boundary-${channel}`;
 			const alice = await connectRoom(room);
+			const bob = await connectRoom(room);
 			const doc = await initializeRoom(room, alice);
+			const bobDocument = new Y.Doc();
+			const initialCommit = await bob.next(Message.Commit);
+			Y.applyUpdate(bobDocument, initialCommit.update);
+			expect(readLogicDocument(bobDocument).ok).toBe(true);
+			const bobCommits: { update: Uint8Array; valid: boolean }[] = [];
+			bob.socket.addEventListener('message', (event) => {
+				if (!(event.data instanceof ArrayBuffer)) return;
+				const message = decodeSessionMessage(new Uint8Array(event.data));
+				if (message.type !== Message.Commit) return;
+				Y.applyUpdate(bobDocument, message.update);
+				bobCommits.push({ update: message.update, valid: readLogicDocument(bobDocument).ok });
+			});
+			const storedBefore = await runInDurableObject(
+				env.COLLABORATION_ROOMS.getByName(room),
+				async (_instance, state) => ({
+					meta: await state.storage.get(META_KEY),
+					document: await state.storage.get(`${CHUNK_KEY_PREFIX}0`),
+				}),
+			);
 			const update = proposeChange(doc, (candidate) => {
 				candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.set('color', '#ff0000');
 			});
@@ -87,13 +124,45 @@ describe('room authority', () => {
 			});
 			expect((await alice.next(Message.Reject)).message).toBeTruthy();
 			expect((await closed).code).toBe(1008);
-			await runInDurableObject(
+			expect(bobCommits).toHaveLength(0);
+			bob.send({ type: Message.Sync, payload: writeSyncRequest(bobDocument) });
+			const synced = readSyncStep((await bob.next(Message.Sync)).payload);
+			expect(synced.kind).toBe(SyncStepKind.Response);
+			if (synced.kind !== SyncStepKind.Response) throw new Error('Expected room sync response');
+			Y.applyUpdate(bobDocument, synced.update);
+			expect(readLogicDocument(bobDocument)).toEqual(readLogicDocument(doc));
+			expect(readLogicDocument(bobDocument).ok).toBe(true);
+			const afterReject = await runInDurableObject(
 				env.COLLABORATION_ROOMS.getByName(room),
-				async (_instance, state) => {
-					expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 1 });
-				},
+				async (_instance, state) => ({
+					meta: await state.storage.get(META_KEY),
+					document: await state.storage.get(`${CHUNK_KEY_PREFIX}0`),
+				}),
 			);
+			expect(afterReject).toEqual(storedBefore);
+			bob.send({
+				type: Message.Change,
+				id: 'valid-follow-up',
+				sessionId: 'valid-follow-up',
+				sequence: 1,
+				commands: [
+					{
+						op: Op.Update,
+						target: { kind: Kind.Node, id: 'A' },
+						set: { color: '#00ff00' },
+						unset: [],
+					},
+				],
+			});
+			const bobCommit = await bob.next(Message.Commit);
+			const bobResult = readLogicDocument(bobDocument);
+			expect(bobResult.ok).toBe(true);
+			expect(bobCommits).toHaveLength(1);
+			expect(bobCommits).toEqual([{ update: bobCommit.update, valid: true }]);
+			alice.socket.close();
+			bob.socket.close();
 			doc.destroy();
+			bobDocument.destroy();
 		},
 	);
 
@@ -121,6 +190,46 @@ describe('room authority', () => {
 		expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
 		bob.socket.close();
 		doc.destroy();
+	});
+
+	it('rejects cyclic initialization before any participant receives a commit', async () => {
+		const room = 'cyclic-initialization';
+		const watcher = await connectRoom(room);
+		const commits: Uint8Array[] = [];
+		watcher.socket.addEventListener('message', (event) => {
+			if (!(event.data instanceof ArrayBuffer)) return;
+			const message = decodeSessionMessage(new Uint8Array(event.data));
+			if (message.type === Message.Commit) commits.push(message.update);
+		});
+		const invalidSender = await connectRoom(room);
+		const invalid = new Y.Doc();
+		importLogicDocument(invalid, collaborativeFixture(CollaborativeFixture.LinkedBoxes, room));
+		invalid
+			.getMap<Y.Map<unknown>>(YjsCollection.Relations)
+			.set('initial-cycle', createYjsEntityMap({ from: 'A', to: 'B' }));
+		invalidSender.send({
+			type: Message.Initialize,
+			id: 'cyclic-initialize',
+			update: Y.encodeStateAsUpdate(invalid),
+		});
+		expect((await invalidSender.next(Message.Reject)).message).toBeTruthy();
+		expect(commits).toHaveLength(0);
+		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
+			expect(await state.storage.get(META_KEY)).toBeUndefined();
+		});
+		invalidSender.socket.close();
+		const validSender = await connectRoom(room);
+		const initialized = await initializeRoom(room, validSender, CollaborativeFixture.TwoBoxes);
+		const peerCommit = await watcher.next(Message.Commit);
+		const peerDocument = new Y.Doc();
+		Y.applyUpdate(peerDocument, peerCommit.update);
+		expect(readLogicDocument(peerDocument).ok).toBe(true);
+		expect(commits).toHaveLength(1);
+		validSender.socket.close();
+		watcher.socket.close();
+		invalid.destroy();
+		initialized.destroy();
+		peerDocument.destroy();
 	});
 
 	it('does not merge two initial documents racing for the same room', async () => {

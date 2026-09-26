@@ -89,3 +89,52 @@ mise exec -- pnpm run test:coverage:collaboration
   mesure de latence ni une preuve de capacité en production.
 - Les tests du client vérifient la reprise malgré des mouvements de présence,
   l'absence de trou après une commande locale invalide et l'isolation des abonnés.
+
+## Garantie de validation et limites locales
+
+Le dépôt garde séparément le `Y.Doc` physique, le dernier `LogicDocument` valide
+et le checkpoint Yjs correspondant au dernier état physique valide. Les
+commandes Markdown pures sont projetées depuis le document accepté sans clone
+Yjs, décodage du document ni recalcul du graphe lors du préflight. Les commandes
+structurelles et mixtes sont projetées immuablement, validées puis appliquées
+comme une seule transaction. Après une fusion distante invalide, une commande
+valide réconcilie le même `Y.Doc` depuis le checkpoint avant d'être acceptée ;
+les `Y.Text` existants sont conservés lorsque leur identité et leur type
+permettent de les réutiliser. Un échec de préflight conserve le checkpoint.
+
+Une application locale qui expose directement son `Y.Doc` ne peut pas garantir
+qu'un observer arbitraire ne l'invalidera pas après le début d'une transaction
+Yjs. Un tel hook peut aussi s'exécuter après que Yjs a émis l'update : le dépôt
+n'annule pas l'historique, ne réutilise pas les horloges et ne publie pas cet
+état comme une commande acceptée, mais un pair abonné directement à ce `Y.Doc`
+peut avoir vu l'update avant le hook. Cette limite ne décrit pas le transport
+collaboratif officiel : `CollaborationRoom` autorise et valide un candidat
+isolé, persiste le commit, puis seulement l'applique au document de room et le
+diffuse. Un pair de ce transport ne reçoit donc pas de commit invalide.
+
+## Mesures de remplacement Markdown
+
+La mesure locale utilise une fixture de 3 200 nœuds, trois échauffements et
+onze remplacements distincts. Le chronométrage porte sur chaque remplacement
+après l'attachement initial de la session ; l'initialisation, le worker et la
+latence réseau sont exclus. Machine : Apple M1 Max (`arm64`, macOS Darwin
+27.0.0) ; mise 2026.9.12, Node.js 24.20.0 et pnpm 12.3.4. Le fingerprint du
+protocole de mesure est
+`4ccfbc00c8aa258dbee7d703981c5df57a183566ec7bb65d81e6efb0298e8000`.
+La cible est une médiane locale d'environ 15 ms, non un seuil CI strict.
+
+Médianes observées : dépôt, 6,36 ms (baseline avant redesign : 186,46 ms) ;
+participant local prêt, 6,36 ms (baseline : 4,99 ms). Les mesures baseline
+et finales utilisent la même fixture et le même parcours de remplacement.
+L'instrumentation des compteurs de clones, `readLogicDocument` et `createGraph`
+n'est pas activée ; aucune valeur estimée n'est présentée comme un comptage.
+
+Échantillons finaux en millisecondes :
+
+```text
+dépôt:     [7.870, 7.835, 7.366, 5.777, 6.572, 5.610, 6.568, 5.477, 6.357, 5.527, 5.297]
+participant: [7.291, 7.330, 8.267, 5.957, 6.372, 6.138, 6.310, 6.999, 5.740, 6.363, 5.978]
+```
+
+Le test écrit aussi ces échantillons en JSON lorsque
+`SEQUIT_PERFORMANCE_MEASUREMENTS` indique un chemin de sortie.
