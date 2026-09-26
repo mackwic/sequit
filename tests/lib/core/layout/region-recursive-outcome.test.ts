@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	defined,
+	LaneGrowth,
+	LaneOrientation,
 	LayoutBias,
 	LayoutDirection,
 	LayoutPolicy,
 	type LogicDocument,
+	REGION_POLICY_PERSISTENCE_FORMAT,
+	REGION_POLICY_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/nested-region-local-measurements';
@@ -89,35 +93,28 @@ function actualIncidentFailure(): {
 } {
 	const source = depthTwoRegionDocument();
 	const node = defined(source.nodes.find(({ id }) => id === 'c'));
-	const sourceIds = Array.from({ length: 4 }, (_, index) => `n${index}`);
-	const targetIds = Array.from({ length: 4 }, (_, index) => `t${index}`);
+	const sourceIds = ['a1', 'a2', 'b1', 'b2'];
+	const targetIds = ['t0', 't1'];
 	const endpointIds = [...sourceIds, ...targetIds, 'middle-node'];
-	const document: LogicDocument = {
-		...source,
-		nodes: endpointIds.map((id, index) => ({
-			...node,
-			id,
-			markdown: `${id}\n`,
-			layoutOrder: orderKey(`a${index}`),
-		})),
-		relations: [
-			...sourceIds.slice(1).map((id, index) => ({
-				id: `local-${index}`,
-				from: defined(sourceIds[index]),
-				to: id,
-			})),
-			...sourceIds.map((id, index) => ({
-				id: `cross-${index}`,
-				from: id,
-				to: defined(targetIds[index]),
-			})),
-		],
-	};
 	const input: RegionInput = {
 		regions: [
 			{ id: '@root', layoutOrder: '0' },
 			{ id: 'branch', parentId: '@root', layoutOrder: 'a' },
-			{ id: 'left', parentId: 'branch', layoutOrder: 'a' },
+			{
+				id: 'left',
+				parentId: 'branch',
+				layoutOrder: 'a',
+				policy: LayoutPolicy.SharedLanes,
+				lanePresentation: {
+					laneOrientation: LaneOrientation.Transverse,
+					growth: LaneGrowth.Auto,
+					lanes: ['A', 'B'].map((id, index) => ({
+						id,
+						label: id,
+						layoutOrder: orderKey(`a${index}`),
+					})),
+				},
+			},
 			{ id: 'middle', parentId: 'branch', layoutOrder: 'b' },
 			{ id: 'far', parentId: 'branch', layoutOrder: 'c' },
 		],
@@ -126,6 +123,41 @@ function actualIncidentFailure(): {
 			...targetIds.map((id) => [id, 'far'] as const),
 			['middle-node', 'middle'],
 		]),
+	};
+	const document: LogicDocument = {
+		...source,
+		persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
+		regionPresentation: {
+			schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
+			regions: input.regions
+				.filter(({ id }) => id !== '@root')
+				.map((region, index) => {
+					const { parentId, ...definition } = region;
+					const persisted = {
+						...definition,
+						layoutOrder: orderKey(`a${index}`),
+						policy: region.policy ?? LayoutPolicy.Layered,
+					};
+					if (parentId === '@root' || parentId === undefined) return persisted;
+					return { ...persisted, parentId };
+				}),
+		},
+		nodes: endpointIds.map((id, index) => {
+			const laneField: { laneId?: string } = {};
+			if (sourceIds.includes(id)) laneField.laneId = defined(id[0]).toUpperCase();
+			return {
+				...node,
+				id,
+				regionId: defined(input.regionByEndpointId.get(id)),
+				markdown: `${id}\n`,
+				...laneField,
+				layoutOrder: orderKey(`a${index}`),
+			};
+		}),
+		relations: [
+			{ id: 'local', from: 'a1', to: 'a2' },
+			...targetIds.map((id, index) => ({ id: `cross-${index}`, from: 'a1', to: id })),
+		],
 	};
 	const prepared = prepareLayoutDocument(document);
 	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
@@ -146,13 +178,13 @@ function actualIncidentFailure(): {
 	};
 	const local = leafDocument(state.context, 'left');
 	const incidentSides = new Map<string, readonly RegionPortalSide[]>(
-		sourceIds.map((_, index) => [`cross-${index}`, [RegionPortalSide.Top]]),
+		targetIds.map((_, index) => [`cross-${index}`, [RegionPortalSide.Left]]),
 	);
 	const contracts = leafIncidentContracts(state.context, 'left', incidentSides);
 	const attempt = solveRegionLeafLayoutWithIncidents({
 		document: local,
 		measurements: nestedRegionLocalMeasurements(local, prepared.measurements),
-		leafPolicy: LayoutPolicy.Layered,
+		leafPolicy: LayoutPolicy.SharedLanes,
 		contracts,
 	});
 	if (
@@ -160,7 +192,9 @@ function actualIncidentFailure(): {
 		attempt.code !== RegionIncidentUnknownCode.NoValidAlternative ||
 		!attempt.witness.exhaustive ||
 		!attempt.witness.rejectedAlternatives.some(
-			({ code }) => code === RegionIncidentRejectionCode.RouteObstructed,
+			({ code, reason }) =>
+				code === RegionIncidentRejectionCode.RouteObstructed &&
+				reason?.includes('crosses node') === true,
 		)
 	)
 		throw new Error('Expected an exhaustive rejection from real leaf incident routes.');
