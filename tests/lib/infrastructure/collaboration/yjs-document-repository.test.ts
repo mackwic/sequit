@@ -1863,7 +1863,7 @@ describe('yjsLiveDocumentFormat', () => {
 		},
 	);
 
-	it('preserves interleaved local edits through invalid-merge recovery and reconnect', async () => {
+	it('preserves interleaved local edits through refused cycle recovery and external repair', async () => {
 		const local = new Y.Doc();
 		importLogicDocument(local, crossingDocument());
 		const peer = new Y.Doc();
@@ -1912,9 +1912,19 @@ describe('yjsLiveDocumentFormat', () => {
 			Y.applyUpdate(local, invalidRemoteUpdate);
 			expect(readLogicDocument(local).ok).toBe(false);
 
+			const beforeRefusal = Y.encodeStateVector(local);
+			const refused = await session.replaceNodeMarkdown('target-a', 'Persisted recovery edit');
+			expect(refused.kind).toBe('rejected');
+			expect(Y.encodeStateVector(local)).toEqual(beforeRefusal);
+			peer.transact(() => {
+				const relations = peer.getMap(YjsCollection.Relations);
+				relations.delete('recovery-cycle-forward');
+				relations.delete('recovery-cycle-back');
+			});
+			Y.applyUpdate(local, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(local)));
+			expect(readLogicDocument(local).ok).toBe(true);
 			const recovered = await session.replaceNodeMarkdown('target-a', 'Persisted recovery edit');
 			expect(recovered.kind).toBe('accepted');
-			expect(readLogicDocument(local).ok).toBe(true);
 			const liveState = Y.encodeStateVector(local);
 			const stalePeerState = Y.encodeStateVector(peer);
 			Y.applyUpdate(peer, Y.encodeStateAsUpdate(local, stalePeerState));
@@ -1939,7 +1949,7 @@ describe('yjsLiveDocumentFormat', () => {
 			peer.destroy();
 		}
 	});
-	it('keeps accepting commands from the last valid state after an invalid remote merge', async () => {
+	it('refuses a concurrent cycle until a peer repairs its relation', async () => {
 		const first = new Y.Doc();
 		importLogicDocument(first, crossingDocument());
 		const second = new Y.Doc();
@@ -1969,6 +1979,16 @@ describe('yjsLiveDocumentFormat', () => {
 			expect(reports).toContainEqual(
 				expect.objectContaining({ kind: 'rejected-external-transaction' }),
 			);
+			await expect(
+				session.addNode({
+					id: 'after-rejection',
+					natureId: 'goal',
+					markdown: 'After rejection',
+				}),
+			).rejects.toMatchObject({ diagnostics: [{ code: 'recovery-conflict' }] });
+			second.getMap(YjsCollection.Relations).delete('source-b-to-source-a');
+			Y.applyUpdate(first, Y.encodeStateAsUpdate(second, Y.encodeStateVector(first)));
+			expect(readLogicDocument(first).ok).toBe(true);
 			const accepted = await session.addNode({
 				id: 'after-rejection',
 				natureId: 'goal',
@@ -2414,6 +2434,29 @@ describe('repository presentation and recovery boundaries', () => {
 		peer.destroy();
 	});
 
+	it('refuses to erase a concurrent grid-track removal hidden by a malformed track', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, regionGridDocument());
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+		const repository = new YjsDocumentRepository(local);
+		defined(remote.getMap<Y.Map<unknown>>(YjsCollection.RegionGrids).get('branch')).set(
+			'minimumColumnWidths',
+			['invalid track'],
+		);
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
+		const before = Y.encodeStateVector(local);
+		const rejected = await repository.persist(markdownChanges('source-a', 'No erased track'));
+		expect(rejected).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'recovery-conflict', path: ['regionGrids', 'branch'] }],
+		});
+		expect(Y.encodeStateVector(local)).toEqual(before);
+		repository.destroy();
+		local.destroy();
+		remote.destroy();
+	});
+
 	it('restores grid tracks before persisting a region/lane group and node', async () => {
 		const local = new Y.Doc();
 		importLogicDocument(local, regionGridDocument());
@@ -2421,7 +2464,7 @@ describe('repository presentation and recovery boundaries', () => {
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
 		const repository = new YjsDocumentRepository(local);
 		const grid = defined(remote.getMap<Y.Map<unknown>>(YjsCollection.RegionGrids).get('branch'));
-		grid.set('minimumColumnWidths', ['invalid track']);
+		grid.set('minimumColumnWidths', ['invalid track', 100]);
 		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
 		expect(repository.read().ok).toBe(false);
 		const accepted = await repository.persist({
@@ -2467,7 +2510,39 @@ describe('repository presentation and recovery boundaries', () => {
 		remote.destroy();
 	});
 
-	it('repairs malformed remote entity fields in the same physical document and resyncs', async () => {
+	it.each(['malformed markdown', 'malformed entity'] as const)(
+		'restores only a %s when the remote merge contains no independent edit',
+		async (malformation) => {
+			const local = new Y.Doc();
+			importLogicDocument(local, crossingDocument());
+			const remote = new Y.Doc();
+			Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+			const repository = new YjsDocumentRepository(local);
+			const remoteNodes = remote.getMap<unknown>(YjsCollection.Nodes);
+			if (malformation === 'malformed markdown') {
+				const node = remoteNodes.get('source-b');
+				if (!(node instanceof Y.Map)) throw new Error('Expected shared node');
+				node.set('markdown', 'not shared text');
+			} else remoteNodes.set('source-b', 'not an entity');
+			Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
+			expect(repository.read().ok).toBe(false);
+			const accepted = await repository.persist(markdownChanges('target-a', 'After safe repair'));
+			expect(accepted.ok).toBe(true);
+			expect(readDocument(local).nodes.find(({ id }) => id === 'source-b')?.markdown).toBe(
+				'Source B',
+			);
+			expect(readDocument(local).nodes.find(({ id }) => id === 'target-a')?.markdown).toBe(
+				'After safe repair',
+			);
+			Y.applyUpdate(remote, Y.encodeStateAsUpdate(local, Y.encodeStateVector(remote)));
+			expect(readDocument(remote)).toEqual(readDocument(local));
+			repository.destroy();
+			local.destroy();
+			remote.destroy();
+		},
+	);
+
+	it('refuses mixed remote edits until explicit repair preserves independent Markdown', async () => {
 		const local = new Y.Doc();
 		importLogicDocument(local, crossingDocument());
 		const remote = new Y.Doc();
@@ -2490,11 +2565,35 @@ describe('repository presentation and recovery boundaries', () => {
 		expect(repository.read().ok).toBe(false);
 		expect(repository.readAccepted()).toMatchObject({ ok: true });
 
+		const beforeRefusal = Y.encodeStateVector(local);
+		const refused = await repository.persist(markdownChanges('target-a', 'Recovered write'));
+		expect(refused).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'recovery-conflict', path: ['nodes', 'source-a'] }],
+		});
+		expect(Y.encodeStateVector(local)).toEqual(beforeRefusal);
+		expect(survivingText.toJSON()).toBe('Remote invalid merge: Source A');
+		const originalTarget = defined(crossingDocument().nodes.find(({ id }) => id === 'target-b'));
+		local.transact(() => {
+			const sourceB = defined(nodes.get('source-b'));
+			sourceB.set('markdown', new Y.Text('Source B'));
+			sourceB.set('natureId', 'goal');
+			nodes.delete('malformed-node');
+			nodes.set(
+				'target-b',
+				createYjsEntityMap({
+					natureId: originalTarget.natureId,
+					markdown: new Y.Text(originalTarget.markdown),
+					layoutOrder: originalTarget.layoutOrder,
+				}),
+			);
+		});
+		expect(repository.read().ok).toBe(true);
 		const accepted = await repository.persist(markdownChanges('target-a', 'Recovered write'));
 		expect(accepted).toEqual(repository.read());
 		expect(accepted.ok).toBe(true);
 		expect(survivor.get('markdown')).toBe(survivingText);
-		expect(survivingText.toJSON()).toBe('Source A');
+		expect(survivingText.toJSON()).toBe('Remote invalid merge: Source A');
 		expect(readDocument(local).nodes.find(({ id }) => id === 'target-a')?.markdown).toBe(
 			'Recovered write',
 		);
@@ -2508,6 +2607,36 @@ describe('repository presentation and recovery boundaries', () => {
 		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, beforeLocal));
 		expect(readDocument(remote)).toEqual(readDocument(local));
 		expect(Y.encodeStateVector(remote)).toEqual(Y.encodeStateVector(local));
+		repository.destroy();
+		local.destroy();
+		remote.destroy();
+	});
+
+	it('refuses to erase valid Markdown beside an invalid nature on the same node', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, crossingDocument());
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+		const repository = new YjsDocumentRepository(local);
+		const node = defined(remote.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-a'));
+		const markdown = node.get('markdown');
+		if (!(markdown instanceof Y.Text)) throw new Error('Expected shared Markdown');
+		remote.transact(() => {
+			markdown.insert(0, 'Independent peer edit: ');
+			node.set('natureId', 'missing-nature');
+		});
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
+		const before = Y.encodeStateVector(local);
+		const rejected = await repository.persist(markdownChanges('target-a', 'Not committed'));
+		expect(rejected).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'recovery-conflict', path: ['nodes', 'source-a'] }],
+		});
+		expect(Y.encodeStateVector(local)).toEqual(before);
+		const physical = defined(local.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('source-a'));
+		const physicalMarkdown = physical.get('markdown');
+		if (!(physicalMarkdown instanceof Y.Text)) throw new Error('Expected shared Markdown');
+		expect(physicalMarkdown.toJSON()).toBe('Independent peer edit: Source A');
 		repository.destroy();
 		local.destroy();
 		remote.destroy();
@@ -2542,6 +2671,29 @@ describe('repository presentation and recovery boundaries', () => {
 		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, localVector));
 		expect(readDocument(local)).toEqual(readDocument(remote));
 		expect(Y.encodeStateVector(local)).toEqual(Y.encodeStateVector(remote));
+		repository.destroy();
+		local.destroy();
+		remote.destroy();
+	});
+
+	it('refuses automatic recovery after a second malformed remote transaction', async () => {
+		const local = new Y.Doc();
+		importLogicDocument(local, crossingDocument());
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
+		const repository = new YjsDocumentRepository(local);
+		const node = defined(remote.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('target-b'));
+		node.set('natureId', 'missing-one');
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
+		node.set('natureId', 'missing-two');
+		Y.applyUpdate(local, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local)));
+		const before = Y.encodeStateVector(local);
+		const rejected = await repository.persist(markdownChanges('source-a', 'Not committed'));
+		expect(rejected).toMatchObject({
+			ok: false,
+			diagnostics: [{ code: 'recovery-conflict', path: [] }],
+		});
+		expect(Y.encodeStateVector(local)).toEqual(before);
 		repository.destroy();
 		local.destroy();
 		remote.destroy();

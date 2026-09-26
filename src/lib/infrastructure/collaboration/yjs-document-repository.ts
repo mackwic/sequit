@@ -3,7 +3,11 @@ import * as Y from 'yjs';
 import { defined, type LogicDocument } from '../../core/document/logic-document';
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
 import type { DocumentChangeResult } from '../document/document-command-contracts';
-import { reconcileYjsDocument } from './reconcile-yjs-document';
+import {
+	reconcileYjsDocument,
+	recoveryConflictDiagnostic,
+	recoveryConflictPaths,
+} from './reconcile-yjs-document';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
 import {
 	applyYjsDocumentChanges,
@@ -57,6 +61,7 @@ export class YjsDocumentRepository {
 	#checkpointDocument: Y.Doc | undefined;
 	#canRecoverFromLastValid = false;
 	#recoveryConflict = false;
+	#recoveryConflictPaths: readonly (readonly string[])[] = [];
 	#physicalValid = false;
 	#revision = 0;
 	#acceptedRevision = 0;
@@ -130,22 +135,12 @@ export class YjsDocumentRepository {
 	}
 
 	#invalidPhysicalFailure(changes: DocumentChangeSet): DocumentChangeResult {
-		if (this.#recoveryConflict)
-			return {
-				ok: false,
-				diagnostics: [
-					{
-						code: 'recovery-conflict',
-						message:
-							'Further updates arrived while the document was invalid; automatic recovery would discard them',
-						path: [],
-					},
-				],
-			};
 		for (const { nodeId } of changes.nodeMarkdownReplacements) {
 			const result = lookupMarkdownTarget(this.document, nodeId);
 			if ('failure' in result) return result.failure;
 		}
+		if (this.#recoveryConflict)
+			return { ok: false, diagnostics: [recoveryConflictDiagnostic(this.#recoveryConflictPaths)] };
 		return this.#lastPhysicalResult;
 	}
 
@@ -305,13 +300,22 @@ export class YjsDocumentRepository {
 			this.#physicalValid = true;
 			this.#canRecoverFromLastValid = false;
 			this.#recoveryConflict = false;
+			this.#recoveryConflictPaths = [];
 			if (wasInvalid) {
 				this.#checkpointDocument?.destroy();
 				this.#checkpointDocument = this.#clone(this.document);
 			} else this.#validTransactions.add(transaction);
 		} else {
-			if (!this.#physicalValid && this.#lastValidDocument !== undefined)
-				this.#recoveryConflict = true;
+			const subsequent = !this.#physicalValid && this.#lastValidDocument !== undefined;
+			const checkpoint = this.#checkpointDocument;
+			if (checkpoint !== undefined) {
+				this.#recoveryConflictPaths = recoveryConflictPaths(
+					this.document,
+					checkpoint,
+					result.diagnostics.map(({ path }) => path),
+				);
+			}
+			this.#recoveryConflict = subsequent || this.#recoveryConflictPaths.length > 0;
 			this.#physicalValid = false;
 			const external = !transaction.local;
 			const capture = this.#persistenceCapture;
