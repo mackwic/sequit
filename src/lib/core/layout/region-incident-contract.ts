@@ -50,6 +50,10 @@ export interface RegionIncidentRejectedAlternative {
 	readonly role: RegionIncidentRole;
 	readonly side: RegionPortalSide;
 	readonly candidateId?: string;
+	readonly blockedEndpointId?: string;
+	readonly blockedRelationId?: string;
+	readonly blockedIncidentRelationId?: string;
+	readonly exhausted?: true;
 	readonly code: RegionIncidentRejectionCode;
 	readonly reason?: string;
 }

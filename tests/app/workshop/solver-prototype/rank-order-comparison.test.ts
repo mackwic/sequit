@@ -129,11 +129,51 @@ describe('rank order comparison', () => {
 describe('rank order stability under document edits', () => {
 	const comparisons = compareRankOrderMutations(rankOrderMutationCorpus());
 
+	it('exposes three distinct real archetypes, local edits, documentary crossings and independent controls', () => {
+		for (const id of ['evaporating-cloud', 'goal-implementation', 'decision-tree']) {
+			const mutation = rankOrderMutationCorpus().find((entry) => entry.id === id);
+			const measured = comparisons.find((entry) => entry.id === id);
+			expect(mutation?.before.document.relations).toContainEqual({
+				id: 'control-input--control-output',
+				from: 'control-input',
+				to: 'control-output',
+			});
+			expect(mutation?.after.document.relations.length).toBe(
+				(mutation?.before.document.relations.length ?? 0) + 1,
+			);
+			expect(measured?.beforeCrossings).toBeLessThanOrEqual(
+				measured?.beforeDocumentaryCrossings ?? -1,
+			);
+			expect(measured?.afterCrossings).toBeLessThanOrEqual(
+				measured?.afterDocumentaryCrossings ?? -1,
+			);
+			expect(measured?.components).toHaveLength(2);
+			expect(measured?.components.filter(({ touched }) => touched)).toHaveLength(1);
+			expect(measured?.components.filter(({ touched }) => !touched)).toHaveLength(1);
+			expect(measured?.components.find(({ touched }) => !touched)?.selected.invertedRankPairs).toBe(
+				0,
+			);
+		}
+		const goal = comparisons.find(({ id }) => id === 'goal-implementation');
+		expect(goal).toMatchObject({
+			beforeCrossings: 0,
+			beforeDocumentaryCrossings: 3,
+			afterCrossings: 7,
+			afterDocumentaryCrossings: 8,
+		});
+		const decision = comparisons.find(({ id }) => id === 'decision-tree');
+		expect(decision?.beforeCrossings).toBeLessThan(decision?.beforeDocumentaryCrossings ?? 0);
+	});
+
 	it('measures boxes, route endpoints, full paths and changed ranks after add/remove edits', () => {
 		expect(comparisons.map(({ id }) => id)).toEqual([
+			'evaporating-cloud',
+			'goal-implementation',
+			'decision-tree',
 			'add-relation',
 			'remove-relation',
 			'measurement-change',
+			'rename-endpoint',
 			'add-node',
 			'add-isolated-node',
 			'remove-node',
@@ -178,6 +218,26 @@ describe('rank order stability under document edits', () => {
 			commonElements: 4,
 			movedElements: 4,
 			commonRelations: 3,
+		});
+	});
+
+	it('does not invert selected or documentary bands when an endpoint identifier is renamed', () => {
+		const renamed = comparisons.find(({ id }) => id === 'rename-endpoint');
+		const restoreId = (bands: readonly (readonly string[])[]) =>
+			bands.map((band) =>
+				band.map((id) => {
+					if (id === 'renamed-b') return 'b';
+					return id;
+				}),
+			);
+		expect(restoreId(renamed?.afterWitness.selectedOrder ?? [])).toEqual(
+			renamed?.beforeWitness.selectedOrder,
+		);
+		expect(renamed).toMatchObject({
+			invertedRankPairs: 0,
+			documentary: { invertedRankPairs: 0 },
+			beforeCrossings: 0,
+			afterCrossings: 0,
 		});
 	});
 
@@ -232,7 +292,7 @@ describe('rank order stability under document edits', () => {
 	});
 
 	it('compares a complete document replacement without dividing by zero or matching stale ids', () => {
-		const before = rankOrderMutationCorpus()[0]?.before;
+		const before = rankOrderMutationCorpus().find(({ id }) => id === 'add-relation')?.before;
 		if (before === undefined) throw new Error('Missing original mutation document');
 		const original = before.document.nodes[0];
 		if (original === undefined) throw new Error('Missing original node');
@@ -270,7 +330,7 @@ describe('rank order stability under document edits', () => {
 	});
 
 	it('reports an invalid edited graph instead of comparing invalid layouts', () => {
-		const before = rankOrderMutationCorpus()[0]?.before;
+		const before = rankOrderMutationCorpus().find(({ id }) => id === 'add-relation')?.before;
 		if (before === undefined) throw new Error('Missing original mutation document');
 		const duplicate = before.document.relations[0];
 		if (duplicate === undefined) throw new Error('Missing original relation');
@@ -352,7 +412,7 @@ describe('rank order stability under document edits', () => {
 			commonBendsAfter: 12,
 			beforeCrossings: 0,
 			afterCrossings: 0,
-			afterWitness: { stop: 'complete', valid: 4 },
+			afterWitness: { stop: 'complete' },
 			relativeMovedElements: 6,
 			medianTranslation: { x: 44, y: -48 },
 			documentary: {

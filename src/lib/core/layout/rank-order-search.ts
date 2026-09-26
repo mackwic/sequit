@@ -1,4 +1,3 @@
-import { defined } from '../document/logic-document';
 import {
 	compareDedicatedRouteScores,
 	validateDedicatedCandidate,
@@ -17,6 +16,7 @@ import {
 	rankOrderKendallDistance,
 } from './rank-order';
 import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
+import { RankTopologyOracle } from './rank-order-topology';
 import type { RankOrderDomain } from './rank-ordering';
 import type { LayoutStructure } from './structure/prepare-layout';
 
@@ -29,7 +29,6 @@ export enum RankSearchMode {
 export enum RankSearchStop {
 	ShapeEnvelope = 'shape-envelope',
 	NoBand = 'no-band',
-	NoRelevantCrossing = 'no-relevant-crossing',
 	BaselineFallback = 'baseline-fallback',
 	Complete = 'complete',
 	OptimalBound = 'optimal-bound',
@@ -52,12 +51,13 @@ export interface RankOrderSearchWitness {
 		readonly reason: RejectedDedicatedCandidate;
 	}[];
 	readonly unverified: number;
+	/** Final per-rank order, after all validation and component-level fallbacks. */
+	readonly selectedOrder: RankOrder;
 	/** Diagnostic of individually searched weak components; their scores are not global optima. */
 	readonly components?: readonly {
 		readonly ids: readonly string[];
 		readonly witness: RankOrderSearchWitness;
 		readonly pipelineLimit: number;
-		readonly estimatedRouteWork: number;
 		readonly selected: RankOrder;
 	}[];
 	readonly skippedComponents?: number;
@@ -81,6 +81,7 @@ export interface RankOrderSearchWitness {
 export interface ValidRankOrderCandidate {
 	readonly order: RankOrder;
 	readonly evaluation: DedicatedLayoutEvaluation;
+	readonly topologyCrossings: number;
 	readonly routeScore: DedicatedRouteScore;
 	readonly kendall: number;
 }
@@ -101,36 +102,15 @@ export interface RankOrderSearchResult {
 }
 
 function compareCandidates(left: ValidRankOrderCandidate, right: ValidRankOrderCandidate): number {
-	const routeComparison = compareDedicatedRouteScores(left.routeScore, right.routeScore);
-	if (routeComparison !== 0) return routeComparison;
+	const crossings = left.topologyCrossings - right.topologyCrossings;
+	if (crossings !== 0) return crossings;
 	const distance = left.kendall - right.kendall;
 	if (distance !== 0) return distance;
-	// Only the documentary permutation has Kendall distance zero; the distance tie already
-	// prefers it over every alternative before canonical IDs are compared.
 	return compareRankOrders(left.order, right.order);
 }
 
-function zeroRoutes(candidate: ValidRankOrderCandidate): boolean {
-	return candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0;
-}
-
-function hasRelevantCrossing(
-	input: RankOrderSearchInput,
-	crossingIds: readonly (readonly string[])[],
-): boolean {
-	const { structure, domain } = input;
-	const relevant = new Set(
-		domain.locations.flatMap(
-			({ componentIndex }) => defined(structure.components[componentIndex]).ids,
-		),
-	);
-	const routes = new Map(structure.graph.relations.map(({ relation }) => [relation.id, relation]));
-	return crossingIds.some((ids) =>
-		ids.some((id) => {
-			const relation = routes.get(id);
-			return relevant.has(defined(relation).from) || relevant.has(defined(relation).to);
-		}),
-	);
+function unbeatable(candidate: ValidRankOrderCandidate): boolean {
+	return candidate.topologyCrossings === 0 && candidate.kendall === 0;
 }
 
 class RankOrderSearch {
@@ -149,10 +129,13 @@ class RankOrderSearch {
 	truncated = false;
 	private readonly seen: Set<string>;
 	private readonly frontier: RankOrder[];
+	private readonly topology: RankTopologyOracle;
+	private documentaryScore: DedicatedRouteScore | undefined;
 
 	constructor(private readonly input: RankOrderSearchInput) {
 		this.seen = new Set([JSON.stringify(input.domain.bands)]);
 		this.frontier = [input.domain.bands];
+		this.topology = new RankTopologyOracle(input.structure, input.domain);
 	}
 
 	result(): RankOrderSearchResult {
@@ -166,6 +149,7 @@ class RankOrderSearch {
 				evaluated: this.evaluated,
 				valid: this.valid,
 				rejected: this.rejected,
+				selectedOrder: this.selected?.order ?? this.input.domain.bands,
 				unverified: this.unverified,
 				prunedByLowerBound: this.prunedByLowerBound,
 				work: {
@@ -179,7 +163,7 @@ class RankOrderSearch {
 		};
 	}
 
-	verify(order: RankOrder, evaluation: DedicatedLayoutEvaluation, documentary: boolean): void {
+	verify(order: RankOrder, evaluation: DedicatedLayoutEvaluation, documentary = false): void {
 		const { structure, measurements } = this.input;
 		this.validations += 1;
 		const outcome = validateDedicatedCandidate({
@@ -194,24 +178,22 @@ class RankOrderSearch {
 			return;
 		}
 		this.routeRunsInspected += outcome.analysis.inspectedRuns;
+		if (documentary) this.documentaryScore = outcome.score;
+		else if (
+			this.documentaryScore !== undefined &&
+			compareDedicatedRouteScores(outcome.score, this.documentaryScore) > 0
+		)
+			return;
 		this.valid += 1;
 		const candidate = {
 			order,
 			evaluation,
+			topologyCrossings: this.topology.count(structure, order),
 			routeScore: outcome.score,
 			kendall: rankOrderKendallDistance(order, this.input.domain.bands),
 		};
 		if (this.selected === undefined || compareCandidates(candidate, this.selected) < 0)
 			this.selected = candidate;
-		if (!documentary) return;
-		const crossingIds = outcome.analysis.crossings.map(({ horizontalId, verticalId }) => [
-			horizontalId,
-			verticalId,
-		]);
-		if (!hasRelevantCrossing(this.input, crossingIds)) {
-			this.stop = RankSearchStop.NoRelevantCrossing;
-			this.exhaustive = false;
-		}
 	}
 
 	private cutOff(stop: RankSearchStop): false {
@@ -234,14 +216,14 @@ class RankOrderSearch {
 		this.proposed += 1;
 		this.frontier.push(order);
 		const selected = this.selected;
-		if (selected !== undefined && zeroRoutes(selected) && this.worseKendall(order, selected)) {
+		if (selected !== undefined && unbeatable(selected) && this.worseKendall(order, selected)) {
 			this.prunedByLowerBound += 1;
 			return true;
 		}
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;
-		this.verify(order, this.input.evaluate(order), false);
+		this.verify(order, this.input.evaluate(order));
 		return true;
 	}
 
@@ -285,12 +267,11 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 	const search = new RankOrderSearch(input);
 	search.verify(input.domain.bands, input.baseline, true);
 	const documentary = search.selected;
-	if (documentary !== undefined && zeroRoutes(documentary)) {
+	if (documentary !== undefined && unbeatable(documentary)) {
 		search.stop = RankSearchStop.OptimalBound;
 		search.exhaustive = true;
 		return search.result();
 	}
-	if (search.stop === RankSearchStop.NoRelevantCrossing) return search.result();
 	if (boundedRankOrderEnumerationSize(input.domain, input.limits.completePipelines) !== undefined)
 		search.runExact();
 	else search.runHeuristic();

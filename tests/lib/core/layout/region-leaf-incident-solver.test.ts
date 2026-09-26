@@ -436,6 +436,57 @@ describe('dedicated leaf incident contracts', () => {
 			expect(pathsTouchWithoutBridge(incident.points, route.points)).toBe(false);
 	});
 
+	it('restores only the incident-blocked component and keeps an independent rank gain', () => {
+		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'));
+		const nodes = entry.document.nodes.map((node) => ({ ...node, id: `x-${node.id}` }));
+		const document = {
+			...entry.document,
+			nodes: [...entry.document.nodes, ...nodes],
+			relations: [
+				...entry.document.relations,
+				...entry.document.relations.map((relation) => ({
+					...relation,
+					id: `x-${relation.id}`,
+					from: `x-${relation.from}`,
+					to: `x-${relation.to}`,
+				})),
+			],
+		};
+		const measurements = {
+			...entry.measurements,
+			nodes: new Map([
+				...entry.measurements.nodes,
+				...[...entry.measurements.nodes].map(([id, size]) => [`x-${id}`, size] as const),
+			]),
+		};
+		const attempt = solveDedicatedRegionLeafWithIncidents({
+			document,
+			measurements,
+			contracts: [
+				{
+					relation: { id: 'foreign-a', from: 'a', to: 'outside' },
+					endpointId: 'a',
+					role: RegionIncidentRole.Source,
+					allowedSides: [RegionPortalSide.Top],
+				},
+			],
+		});
+		if (attempt.status !== RegionCompositionStatus.Selected) throw new Error(attempt.reason);
+		const order = (ids: readonly string[]) =>
+			[...ids].sort(
+				(left, right) =>
+					defined(attempt.layout.elements.find(({ id }) => id === left)).bounds.x -
+					defined(attempt.layout.elements.find(({ id }) => id === right)).bounds.x,
+			);
+		expect(order(['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+		expect(order(['x-a', 'x-b', 'x-c'])).toEqual(['x-b', 'x-a', 'x-c']);
+		expect(attempt.incidents).toHaveLength(1);
+		for (const route of attempt.layout.relations)
+			expect(pathsTouchWithoutBridge(defined(attempt.incidents[0]).points, route.points)).toBe(
+				false,
+			);
+	});
+
 	it('retains documentary geometry when a better rank blocks a required region incident', () => {
 		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
 		if (entry === undefined) throw new Error('Missing routed rank fixture');

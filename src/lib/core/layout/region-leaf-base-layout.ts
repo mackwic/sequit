@@ -4,7 +4,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
-import { selectDedicatedRankLayout } from './rank-order-selection';
+import { type RankAdmission, selectDedicatedRankLayout } from './rank-order-selection';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
 import type { RegionLocalLayout, RegionLocalLayoutCache } from './region-local-cache';
 import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
@@ -41,7 +41,7 @@ export interface RegionLeafLayoutInput {
 	readonly leafPolicy: LayoutPolicy;
 	readonly cache?: RegionLocalLayoutCache | undefined;
 	readonly admitDedicatedLayout?:
-		((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
+		((layout: LayoutResult, ranks: TopologicalRanks) => RankAdmission) | undefined;
 }
 
 function solveLeaf(input: RegionLeafLayoutInput): RegionLocalLayout {

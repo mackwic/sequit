@@ -8,7 +8,8 @@ import { type RankOrderSearchWitness, searchDedicatedRankOrders } from './rank-o
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
-const MAX_ESTIMATED_ROUTE_WORK = 4096;
+/** Shape-only eligibility weight; not a bound on route segments or validation work. */
+const MAX_ELIGIBILITY_WEIGHT = 4096;
 const MAX_COMPLETE_PIPELINES = 12;
 const MAX_UNIQUE_PROPOSALS = 48;
 
@@ -51,10 +52,10 @@ interface ComponentSearchResult {
 	readonly selected: RankOrder;
 }
 
-/** Scale the local pipeline budget at the frontier instead of dropping an entire component. */
+/** Bound shape-only projected dependency pairs, not measured route or validation work. */
 function localPipelineLimit(relationCount: number): number {
-	const work = relationCount * (relationCount + 1);
-	return Math.min(MAX_COMPLETE_PIPELINES, Math.floor(MAX_ESTIMATED_ROUTE_WORK / work));
+	const eligibilityWeight = relationCount * (relationCount + 1);
+	return Math.min(MAX_COMPLETE_PIPELINES, Math.floor(MAX_ELIGIBILITY_WEIGHT / eligibilityWeight));
 }
 
 function componentBands(domain: RankOrderDomain): ReadonlyMap<number, readonly number[]> {
@@ -81,11 +82,15 @@ export function searchBudgets(
 		for (const id of component.ids) byEndpoint.set(id, index);
 	const counts = new Map<number, number>();
 	for (const index of bands.keys()) counts.set(index, 0);
-	for (const { relation } of graph.relations) {
+	const owners = new Map(graph.relations.map(({ relation }) => [relation.id, relation] as const));
+	for (const effective of graph.effectiveRelations) {
+		const relation = defined(owners.get(effective.relationId));
 		const source = defined(byEndpoint.get(relation.from));
 		const target = defined(byEndpoint.get(relation.to));
-		if (bands.has(source)) counts.set(source, defined(counts.get(source)) + 1);
-		if (target !== source && bands.has(target)) counts.set(target, defined(counts.get(target)) + 1);
+		const pairs = effective.sourceIds.length * effective.targetIds.length;
+		if (bands.has(source)) counts.set(source, defined(counts.get(source)) + pairs);
+		if (target !== source && bands.has(target))
+			counts.set(target, defined(counts.get(target)) + pairs);
 	}
 	let skippedComponents = 0;
 	for (const index of bands.keys()) {
@@ -136,8 +141,6 @@ function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
 			ids: component.ids,
 			witness: search.witness,
 			pipelineLimit: limit,
-			estimatedRouteWork:
-				search.witness.evaluated * component.relationCount * (component.relationCount + 1),
 			selected,
 		},
 		matched,

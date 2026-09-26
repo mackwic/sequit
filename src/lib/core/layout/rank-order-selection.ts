@@ -1,7 +1,10 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
-import { validateDedicatedCandidate } from './dedicated-candidate-validation';
+import {
+	compareDedicatedRouteScores,
+	validateDedicatedCandidate,
+} from './dedicated-candidate-validation';
 import type { RejectedDedicatedCandidate } from './dedicated-candidate-validation/types';
 import type { DedicatedLayoutEvaluation, evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
@@ -24,13 +27,20 @@ interface GlobalChoice {
 	readonly incidentAdmissions: number;
 	readonly finalValidation?: RankOrderSearchWitness['finalValidation'];
 	readonly fallbackComponents: readonly (readonly string[])[];
-	readonly fallback: boolean;
 }
+
+export interface RejectedRankAdmission {
+	readonly accepted: false;
+	readonly endpointIds: readonly string[];
+	readonly relationIds: readonly string[];
+}
+
+export type RankAdmission = boolean | RejectedRankAdmission;
 
 interface SelectionServices {
 	readonly options: LayoutOptions;
 	readonly evaluate: typeof evaluateDedicatedLayout;
-	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
+	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => RankAdmission) | undefined;
 }
 
 interface AssemblyInput {
@@ -81,12 +91,11 @@ function relationOwners(
 
 function restoreDocumentary(
 	input: AssemblyInput,
-	failure: RejectedDedicatedCandidate,
-	owners: ReadonlyMap<string, readonly number[]>,
+	components: ReadonlySet<number>,
 ): readonly (readonly string[])[] {
 	const { local, budgets, domain, structure } = input;
 	const fallen: (readonly string[])[] = [];
-	for (const index of faultyComponents(failure, local.changed, budgets.byEndpoint, owners)) {
+	for (const index of components) {
 		fallen.push(defined(structure.components[index]).ids);
 		for (const bandIndex of defined(budgets.bands.get(index)))
 			local.orders[bandIndex] = [...defined(domain.bands[bandIndex])];
@@ -95,16 +104,40 @@ function restoreDocumentary(
 	return fallen;
 }
 
-function admitFinal(
-	services: SelectionServices,
-	layout: LayoutResult,
-	ranks: TopologicalRanks,
-): boolean {
-	if (services.admit === undefined) return true;
-	return services.admit(layout, ranks);
+function faultyAdmissionComponents(
+	failure: RankAdmission,
+	modified: ReadonlySet<number>,
+	byEndpoint: ReadonlyMap<string, number>,
+	byRelation: ReadonlyMap<string, readonly number[]>,
+): ReadonlySet<number> {
+	if (typeof failure === 'boolean') return modified;
+	const implicated = new Set<number>();
+	for (const id of failure.endpointIds) {
+		const index = byEndpoint.get(id);
+		if (index === undefined || !modified.has(index)) return modified;
+		implicated.add(index);
+	}
+	for (const id of failure.relationIds) {
+		const indices = byRelation.get(id);
+		if (indices === undefined) return modified;
+		for (const index of indices) {
+			if (!modified.has(index)) return modified;
+			implicated.add(index);
+		}
+	}
+	if (implicated.size === 0) return modified;
+	return implicated;
 }
 
-/** One global validation per assembled trial; every failure removes at least one edit. */
+function rejectedRenderedQuality(
+	baseline: ReturnType<typeof validateDedicatedCandidate>,
+	trial: ReturnType<typeof validateDedicatedCandidate>,
+): boolean {
+	if (!baseline.valid || !trial.valid) return false;
+	return compareDedicatedRouteScores(trial.score, baseline.score) > 0;
+}
+
+/** Validate the baseline once, then each assembled trial; every rejection removes at least one edit. */
 function assembleGlobal(input: AssemblyInput): GlobalChoice {
 	const { graph, ranks, measurements, structure, domain, baseline, budgets, local, services } =
 		input;
@@ -116,13 +149,20 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 			runsInspected: 0,
 			incidentAdmissions: 0,
 			fallbackComponents: [],
-			fallback: false,
 		};
+	const documentary = validateDedicatedCandidate({
+		graph,
+		ranks,
+		measurements,
+		layout: baseline.result,
+	});
 	const owners = relationOwners(graph, budgets.byEndpoint);
 	const fallbackComponents: (readonly string[])[] = [];
 	let pipelines = 1;
-	let validations = 0;
-	let runsInspected = 0;
+	let validations = 1;
+	let runsInspected: number;
+	if (documentary.valid) runsInspected = documentary.analysis.inspectedRuns;
+	else runsInspected = documentary.inspectedRuns ?? 0;
 	let incidentAdmissions = 0;
 	let finalValidation: RankOrderSearchWitness['finalValidation'];
 	while (local.changed.size > 0) {
@@ -140,25 +180,44 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 			measurements,
 			layout: trial.result,
 		});
-		if (outcome.valid) {
-			runsInspected += outcome.analysis.inspectedRuns;
-			finalValidation = { valid: true };
-			if (services.admit !== undefined) incidentAdmissions += 1;
-			if (!admitFinal(services, trial.result, ranks)) break;
-			return {
-				evaluation: trial,
-				pipelines,
-				validations,
-				runsInspected,
-				incidentAdmissions,
-				fallbackComponents,
-				finalValidation,
-				fallback: fallbackComponents.length > 0,
-			};
+		if (!outcome.valid) {
+			runsInspected += outcome.inspectedRuns ?? 0;
+			finalValidation = outcome;
+			fallbackComponents.push(
+				...restoreDocumentary(
+					input,
+					faultyComponents(outcome, local.changed, budgets.byEndpoint, owners),
+				),
+			);
+			continue;
 		}
-		runsInspected += outcome.inspectedRuns ?? 0;
-		finalValidation = outcome;
-		fallbackComponents.push(...restoreDocumentary(input, outcome, owners));
+		runsInspected += outcome.analysis.inspectedRuns;
+		finalValidation = { valid: true };
+		if (rejectedRenderedQuality(documentary, outcome)) {
+			fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
+			continue;
+		}
+		if (services.admit !== undefined) incidentAdmissions += 1;
+		const admission = services.admit?.(trial.result, ranks) ?? true;
+		if (admission !== true) {
+			const faulty = faultyAdmissionComponents(
+				admission,
+				local.changed,
+				budgets.byEndpoint,
+				owners,
+			);
+			fallbackComponents.push(...restoreDocumentary(input, faulty));
+			continue;
+		}
+		return {
+			evaluation: trial,
+			pipelines,
+			validations,
+			runsInspected,
+			incidentAdmissions,
+			fallbackComponents,
+			finalValidation,
+		};
 	}
 	return {
 		evaluation: baseline,
@@ -168,7 +227,6 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 		incidentAdmissions,
 		fallbackComponents,
 		...(finalValidation !== undefined && { finalValidation }),
-		fallback: true,
 	};
 }
 
@@ -205,7 +263,7 @@ function selectionWitness(
 		if (witness.truncated || stop === RankSearchStop.NoBand) stop = witness.stop;
 	}
 	if (local.evidence.length === 0 && budgets.bands.size > 0) stop = RankSearchStop.ShapeEnvelope;
-	if (global.fallback) stop = RankSearchStop.BaselineFallback;
+	if (global.fallbackComponents.length > 0) stop = RankSearchStop.BaselineFallback;
 	if (budgets.bands.size === 0) unverified = 1;
 	const localPipelines = evaluated;
 	if (evaluated === 0) evaluated = 1;
@@ -226,6 +284,7 @@ function selectionWitness(
 		valid,
 		rejected,
 		unverified,
+		selectedOrder: local.orders,
 		...extras,
 		prunedByLowerBound,
 		components: local.evidence,

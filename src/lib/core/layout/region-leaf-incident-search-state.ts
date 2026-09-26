@@ -1,9 +1,12 @@
 import { boundedCounter, scopedCounter, type SearchBudgetCounter } from './bounded-search';
+import type { RankAdmission } from './rank-order-selection';
 import type { RegionPortalSide } from './region-composition-types';
-import type {
-	RegionIncidentContract,
-	RegionIncidentRejectedAlternative,
-	RegionIncidentSearchWitness,
+import {
+	type RegionIncidentContract,
+	type RegionIncidentRejectedAlternative,
+	RegionIncidentRejectionCode,
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
 } from './region-incident-contract';
 import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
 
@@ -89,13 +92,58 @@ export function recordRejection(
 		endpointId: contract.endpointId,
 		role: contract.role,
 		side,
-		code: failure.code,
-		reason: failure.reason,
+		...failure,
 	};
-	if (failure.candidateId === undefined) state.rejected.push(alternative);
-	else state.rejected.push({ ...alternative, candidateId: failure.candidateId });
+	state.rejected.push(alternative);
 }
 
 export function takeAttempt(state: SearchState): boolean {
 	return state.budget.take();
+}
+
+function recordBlockers(
+	rejected: RegionIncidentRejectedAlternative,
+	byRelation: ReadonlyMap<string, string>,
+	endpoints: Set<string>,
+	relations: Set<string>,
+): boolean {
+	if (rejected.code === RegionIncidentRejectionCode.GeometryInvalid) return false;
+	endpoints.add(rejected.endpointId);
+	if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) return true;
+	const { blockedEndpointId, blockedRelationId, blockedIncidentRelationId } = rejected;
+	if (blockedEndpointId === undefined && blockedRelationId === undefined) {
+		if (blockedIncidentRelationId === undefined) return false;
+	}
+	if (blockedEndpointId !== undefined) endpoints.add(blockedEndpointId);
+	if (blockedRelationId !== undefined) relations.add(blockedRelationId);
+	if (blockedIncidentRelationId === undefined) return true;
+	const endpointId = byRelation.get(blockedIncidentRelationId);
+	if (endpointId === undefined) return false;
+	endpoints.add(endpointId);
+	return true;
+}
+
+/** Exhaustive failures identify an incident and every concrete blocker; missing provenance is global. */
+export function rejectedIncidentAdmission(
+	attempt: {
+		readonly code: RegionIncidentUnknownCode;
+		readonly witness: RegionIncidentSearchWitness;
+	},
+	contracts: readonly RegionIncidentContract[],
+): RankAdmission {
+	if (attempt.code !== RegionIncidentUnknownCode.NoValidAlternative) return false;
+	if (!attempt.witness.exhaustive) return false;
+	const endpoints = new Set<string>();
+	const relations = new Set<string>();
+	const byRelation = new Map(
+		contracts.map((contract) => [contract.relation.id, contract.endpointId]),
+	);
+	let concrete = false;
+	for (const rejected of attempt.witness.rejectedAlternatives) {
+		if (rejected.exhausted) continue;
+		if (!recordBlockers(rejected, byRelation, endpoints, relations)) return false;
+		concrete = true;
+	}
+	if (!concrete) return false;
+	return { accepted: false, endpointIds: [...endpoints], relationIds: [...relations] };
 }
