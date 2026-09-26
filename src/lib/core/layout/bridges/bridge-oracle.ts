@@ -81,22 +81,23 @@ function carrierRuns(scan: BridgeScan): NonNullable<BridgeScan['carrierRuns']> {
 	if (scan.carrierRuns !== undefined) return scan.carrierRuns;
 	const horizontal = new Map<number, RouteRun[]>();
 	const vertical = new Map<number, RouteRun[]>();
-	for (const run of scan.runsByPath.flat()) {
-		scan.charge?.(1);
-		const isHorizontal = run.orientation === RouteOrientation.Horizontal;
-		let buckets = vertical;
-		let fixed = run.start.x;
-		if (isHorizontal) {
-			buckets = horizontal;
-			fixed = run.start.y;
+	for (const pathRuns of scan.runsByPath)
+		for (const run of pathRuns) {
+			scan.charge?.(1);
+			const isHorizontal = run.orientation === RouteOrientation.Horizontal;
+			let buckets = vertical;
+			let fixed = run.start.x;
+			if (isHorizontal) {
+				buckets = horizontal;
+				fixed = run.start.y;
+			}
+			let group = buckets.get(fixed);
+			if (group === undefined) {
+				group = [];
+				buckets.set(fixed, group);
+			}
+			group.push(run);
 		}
-		let group = buckets.get(fixed);
-		if (group === undefined) {
-			group = [];
-			buckets.set(fixed, group);
-		}
-		group.push(run);
-	}
 	scan.carrierRuns = { horizontal, vertical };
 	return scan.carrierRuns;
 }
