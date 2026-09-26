@@ -10,6 +10,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
@@ -147,6 +148,27 @@ function packedNestedRootGroupsDocument(): LogicDocument {
 	};
 }
 
+function groupTargetMultiDepthDocument(): LogicDocument {
+	const base = groupJunctionFixture(
+		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		true,
+		false,
+	);
+	const junction = defined(base.junctions[0]);
+	return {
+		...base,
+		junctions: [
+			{ ...junction, id: 'near', layoutOrder: orderKey('a3') },
+			{ ...junction, id: 'far', layoutOrder: orderKey('a4') },
+		],
+		relations: [
+			{ id: 'outside-near', from: 'outside', to: 'near' },
+			{ id: 'far-near', from: 'far', to: 'near' },
+			{ id: 'near-group', from: 'near', to: 'group' },
+		],
+	};
+}
+
 describe('dedicated layouts with nested group channels', () => {
 	it('keeps interleaved shells together while a route leaves a nested group', () => {
 		const document = interleavedNestedGroupDocument();
@@ -213,5 +235,24 @@ describe('dedicated layouts with nested group channels', () => {
 		expect(inner.x + inner.width).toBeLessThanOrEqual(right.x + right.width);
 		expect(middle.x).toBeGreaterThan(inner.x);
 		expect(middle.y).toBeGreaterThan(inner.y);
+	});
+
+	it('keeps a grouped junction incident clear within a multi-depth channel', () => {
+		const prepared = prepareLayoutDocument(groupTargetMultiDepthDocument(), {
+			nodes: { member: { width: 120, height: 60 }, outside: { width: 100, height: 60 } },
+			junctions: {
+				near: { width: 24, height: 24 },
+				far: { width: 24, height: 24 },
+			},
+			groups: { group: { minimumWidth: 140, minimumHeight: 100, headerHeight: 0, padding: 0 } },
+		});
+		const structure = prepareLayout(prepared.graph, prepared.ranks);
+		const nearPlacement = defined(structure.junctions.get('near'));
+		const farPlacement = defined(structure.junctions.get('far'));
+		expect(nearPlacement.interval).toBe(farPlacement.interval);
+		expect(nearPlacement.depth).not.toBe(farPlacement.depth);
+		const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
+		const validation = validateDedicatedCandidate({ ...prepared, layout });
+		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 	});
 });
