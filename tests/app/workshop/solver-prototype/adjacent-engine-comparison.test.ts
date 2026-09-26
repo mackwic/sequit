@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { renderRelationPaths } from '../../../../src/app/web/ui/canvas/render-relations';
+import { compareAdjacentBridgeAndDetour } from '../../../../src/app/workshop/solver-prototype/adjacent-engine-comparison';
 import {
-	compareAdjacentBridgeAndDetour,
-	requireAdjacentGraph,
-	requireSelectedAdjacentResolution,
-} from '../../../../src/app/workshop/solver-prototype/adjacent-engine-comparison';
+	requireDemoGraph,
+	requireSelectedDemoResult,
+} from '../../../../src/app/workshop/solver-prototype/demo-result';
 import { realK32Fixture } from '../../../../src/app/workshop/solver-prototype/real-k32-witness';
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
@@ -87,24 +87,25 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			...fixture.document,
 			relations: [...fixture.document.relations, { id: 'a-to-d', from: 'a', to: 'd' }],
 		};
-		expect(() => requireAdjacentGraph(malformed, 'Invalid adjacent witness')).toThrow(
+		expect(() => requireDemoGraph(malformed, 'Invalid adjacent witness')).toThrow(
 			'Invalid adjacent witness could not be created: Duplicate relation id: a-to-d',
 		);
 
 		const completeFixture = realK32Fixture(LayoutDirection.TopToBottom, 'd-e', 'complete');
-		const completeGraph = requireAdjacentGraph(
-			completeFixture.document,
-			'Complete adjacent witness',
-		);
+		const completeGraph = requireDemoGraph(completeFixture.document, 'Complete adjacent witness');
 		const resolution = resolveIndependentAdjacentContract(
 			completeGraph,
 			topologicallyRank(completeGraph),
 			completeFixture.measurements,
 		);
 		expect(resolution.status).toBe(IndependentAdjacentStatus.Unknown);
-		expect(() =>
-			requireSelectedAdjacentResolution(resolution, 'Independent adjacent witness'),
-		).toThrow('Independent adjacent witness is unknown.');
+		expect(() => {
+			requireSelectedDemoResult(
+				resolution,
+				IndependentAdjacentStatus.Selected,
+				'Independent adjacent witness',
+			);
+		}).toThrow('Independent adjacent witness is unknown.');
 	});
 
 	it('compares the real graph on shared measurements and reports both issue costs', async () => {

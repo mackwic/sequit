@@ -8,7 +8,6 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../lib/core/document/logic-document';
 import { orderKey } from '../../../lib/core/document/order-key';
-import { createGraph } from '../../../lib/core/graph/create-graph';
 import type { CrossingAllocationPhaseId } from '../../../lib/core/layout/grid-cell-crossing-phases';
 import { solveGridCellLayout } from '../../../lib/core/layout/grid-cell-layout';
 import {
@@ -17,6 +16,7 @@ import {
 	GridCellLayoutStatus,
 } from '../../../lib/core/layout/grid-cell-types';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
+import { requireDemoGraph, requireSelectedDemoResult } from './demo-result';
 
 const ROUTE_COLORS = ['#bf4f36', '#287b65', '#4c5fb5', '#a34e91', '#b17b26', '#317c9e'];
 
@@ -201,15 +201,14 @@ function gridTracks(
 
 function solveDemo(definition: GridDefinition): GridAllocationDemo {
 	const source = documentFor(definition);
-	const created = createGraph(source);
-	if (!created.ok)
-		throw new Error(`Grid workshop example ${definition.id} must form a valid graph.`);
+	const graph = requireDemoGraph(source, `Grid workshop example ${definition.id}`);
 	const input = gridInput(definition);
-	const attempt = solveGridCellLayout(created.value, measurements(definition.endpointIds), input);
-	if (attempt.status !== GridCellLayoutStatus.Selected)
-		throw new Error(
-			`Grid workshop example ${definition.id} was ${attempt.status}: ${attempt.reason}`,
-		);
+	const attempt = solveGridCellLayout(graph, measurements(definition.endpointIds), input);
+	requireSelectedDemoResult(
+		attempt,
+		GridCellLayoutStatus.Selected,
+		`Grid workshop example ${definition.id}`,
+	);
 	const relationIds = definition.relations.map(({ id }) => id).sort(compareCanonicalStrings);
 	const colorsByRelationId = new Map(
 		relationIds.map((relationId, index) => [

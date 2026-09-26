@@ -3,7 +3,7 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../lib/core/document/logic-document';
-import { createGraph, type LogicGraph } from '../../../lib/core/graph/create-graph';
+import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../lib/core/layout/bridge-oracle';
 import { candidateFaceBranches } from '../../../lib/core/layout/contract/candidate-face-branches';
@@ -11,7 +11,6 @@ import {
 	type IndependentAdjacentComparison,
 	type IndependentAdjacentGlobalStatus,
 	IndependentAdjacentIssue,
-	type IndependentAdjacentResolution,
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../lib/core/layout/contract/independent-adjacent-resolution';
@@ -26,6 +25,7 @@ import type {
 	LayoutResult,
 } from '../../../lib/core/layout/layout-types';
 import { renderRelationPaths } from '../../web/ui/canvas/render-relations';
+import { requireDemoGraph, requireSelectedDemoResult } from './demo-result';
 import { realK32Fixture, runRealK32Witness } from './real-k32-witness';
 
 interface AdjacentComparisonMetrics {
@@ -72,24 +72,6 @@ export interface AdjacentEngineComparison {
 		readonly globalStatus: IndependentAdjacentGlobalStatus.Undetermined;
 	};
 	readonly twoByTwo: AdjacentTwoByTwoComparison;
-}
-
-export function requireAdjacentGraph(document: LogicDocument, description: string): LogicGraph {
-	const created = createGraph(document);
-	if (!created.ok)
-		throw new Error(
-			`${description} could not be created: ${created.diagnostics.map(({ message }) => message).join('; ')}`,
-		);
-	return created.value;
-}
-
-export function requireSelectedAdjacentResolution(
-	resolution: IndependentAdjacentResolution,
-	description: string,
-): Extract<IndependentAdjacentResolution, { status: IndependentAdjacentStatus.Selected }> {
-	if (resolution.status !== IndependentAdjacentStatus.Selected)
-		throw new Error(`${description} is ${resolution.status}.`);
-	return resolution;
 }
 
 function assertBridgeMarkMatchesSelection(
@@ -224,14 +206,16 @@ function geometricallyValidUnderAdjacentContract(
 export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineComparison> {
 	const direction = LayoutDirection.TopToBottom;
 	const fixture = realK32Fixture(direction, 'd-e', 'sparse');
-	const graph = requireAdjacentGraph(fixture.document, 'The adjacent comparison document');
+	const graph = requireDemoGraph(fixture.document, 'The adjacent comparison document');
 	const ranked = topologicallyRank(graph);
 	const dedicated = await runRealK32Witness(direction, 'd-e', 'sparse', fixture);
 	const resolution = resolveIndependentAdjacentContract(graph, ranked, fixture.measurements);
-	const selectedResolution = requireSelectedAdjacentResolution(
+	requireSelectedDemoResult(
 		resolution,
+		IndependentAdjacentStatus.Selected,
 		'Independent adjacent comparison',
 	);
+	const selectedResolution = resolution;
 	if (dedicated.summary.assessment !== 'confirmed')
 		throw new Error(
 			`Dedicated adjacent witness is unproven: ${dedicated.summary.diagnostics.join('; ')}`,
@@ -255,13 +239,16 @@ export async function compareAdjacentBridgeAndDetour(): Promise<AdjacentEngineCo
 		throw new Error('An adjacent comparison layout failed its geometric contract.');
 	const twoByTwoSource = twoByTwoDocument(fixture.document);
 	const twoByTwoMeasurements = uniformMeasurements(fixture.measurements, 96, 400);
-	const twoByTwoGraph = requireAdjacentGraph(
-		twoByTwoSource,
-		'The adjacent 2+2 comparison document',
-	);
+	const twoByTwoGraph = requireDemoGraph(twoByTwoSource, 'The adjacent 2+2 comparison document');
 	const twoByTwoRanks = topologicallyRank(twoByTwoGraph);
-	const twoByTwoResolution = requireSelectedAdjacentResolution(
-		resolveIndependentAdjacentContract(twoByTwoGraph, twoByTwoRanks, twoByTwoMeasurements),
+	const twoByTwoResolution = resolveIndependentAdjacentContract(
+		twoByTwoGraph,
+		twoByTwoRanks,
+		twoByTwoMeasurements,
+	);
+	requireSelectedDemoResult(
+		twoByTwoResolution,
+		IndependentAdjacentStatus.Selected,
 		'Independent adjacent 2+2 comparison',
 	);
 	const twoByTwoComparison = defined(
