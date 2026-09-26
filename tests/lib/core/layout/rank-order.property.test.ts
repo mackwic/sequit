@@ -65,7 +65,9 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { createYjsEntityMap } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import { validLogicDocument } from '../../../support/builders/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
+import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
 const bandSizes = fc.array(fc.integer({ min: 0, max: 4 }), { minLength: 1, maxLength: 3 });
 const domainCase = fc
@@ -1047,8 +1049,8 @@ describe('dedicated bounded geometric rank search', () => {
 		};
 		const measurements = {
 			...entry.measurements,
-			nodes: new Map([
-				...entry.measurements.nodes,
+			nodes: new Map<string, { width: number; height: number }>([
+				...[...entry.measurements.nodes].map(([id, size]) => [id, { ...size, width: 60 }] as const),
 				...ids.map((id) => [id, { width: 80, height: 40 }] as const),
 			]),
 		};
@@ -1309,6 +1311,69 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(selected.selected?.evaluation.result).not.toBe(baseline.result);
 		expect(selected.witness.stop).not.toBe('baseline-fallback');
 	});
+	it('counts analyzed route runs when a contacted baseline is rejected before selecting a valid order', () => {
+		const document = validLogicDocument();
+		const prepared = prepareLayoutDocument({
+			...document,
+			relations: document.relations.filter(({ id }) => id !== 'group-to-target'),
+		});
+		const { graph, ranks, measurements } = prepared;
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		const baseline = evaluateDedicatedLayout(structure, measurements, undefined, true);
+		const first = defined(baseline.result.relations.find(({ id }) => id === 'a-to-choice'));
+		const second = defined(baseline.result.relations.find(({ id }) => id === 'b-to-choice'));
+		const shared = defined(first.points[2]);
+		const port = defined(first.points.at(-1));
+		const rejoined = [
+			defined(second.points[0]),
+			defined(second.points[1]),
+			shared,
+			{ x: shared.x, y: shared.y + 12 },
+			{ x: shared.x + 28, y: shared.y + 12 },
+			{ x: shared.x + 28, y: port.y - 6 },
+			{ x: shared.x, y: port.y - 6 },
+			port,
+		];
+		const rejected = {
+			...baseline,
+			result: {
+				...baseline.result,
+				relations: baseline.result.relations.map((route) => {
+					if (route.id !== second.id) return route;
+					return { ...route, points: rejoined };
+				}),
+			},
+		};
+		expect(
+			validateDedicatedCandidate({ graph, ranks, measurements, layout: rejected.result }),
+		).toMatchObject({ valid: false, code: DedicatedCandidateRejectionCode.RouteContact });
+		const result = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements,
+			baseline: rejected,
+			evaluate: (order) =>
+				evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					measurements,
+					undefined,
+					true,
+				),
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(result.selected?.order).toEqual([['source-b', 'source-a']]);
+		expect(result.witness).toMatchObject({
+			mode: 'exact',
+			stop: 'complete',
+			evaluated: 2,
+			valid: 1,
+			rejected: [{ reason: { code: DedicatedCandidateRejectionCode.RouteContact } }],
+		});
+		expect(result.witness.work.routeRunsInspected).toBe(
+			routeCount(rejected.result) + routeCount(defined(result.selected).evaluation.result),
+		);
+	});
 });
 
 describe('rank-order heuristic cost and determinism', () => {
@@ -1364,13 +1429,9 @@ describe('rank-order heuristic cost and determinism', () => {
 		expect(first.witness.mode).toBe('heuristic');
 		expect(first.witness.stop).toBe('evaluation-budget');
 		expect(first.witness.evaluated).toBe(12);
-		expect(
-			first.witness.rejected.some(
-				({ reason }) => reason.code === DedicatedCandidateRejectionCode.RouteContact,
-			),
-		).toBe(true);
+		expect(first.witness.valid).toBe(12);
+		expect(first.witness.rejected).toEqual([]);
 		let inspectedRuns = routeCount(baseline.result);
-		let routeContactRejections = 0;
 		let candidateEvaluations = 0;
 		const local = searchDedicatedRankOrders({
 			structure,
@@ -1391,15 +1452,13 @@ describe('rank-order heuristic cost and determinism', () => {
 					measurements,
 					layout: evaluation.result,
 				});
-				if (validation.valid || validation.code === DedicatedCandidateRejectionCode.RouteContact)
-					inspectedRuns += routeCount(evaluation.result);
-				if (!validation.valid && validation.code === DedicatedCandidateRejectionCode.RouteContact)
-					routeContactRejections += 1;
+				if (!validation.valid) throw new Error(`Invalid 4-by-2 candidate: ${validation.code}`);
+				inspectedRuns += routeCount(evaluation.result);
 				return evaluation;
 			},
 			limits: { completePipelines: 12, uniqueProposals: 48 },
 		});
-		expect(routeContactRejections).toBeGreaterThan(0);
+		expect(local.witness.rejected).toEqual([]);
 		expect(local.witness.work).toEqual({
 			completePipelines: candidateEvaluations + 1,
 			validations: candidateEvaluations + 1,
@@ -1407,8 +1466,8 @@ describe('rank-order heuristic cost and determinism', () => {
 		});
 		expect(local.witness.evaluated).toBe(local.witness.valid + local.witness.rejected.length);
 		expect(local.selected?.order).toEqual([
-			['d', 'e'],
-			['b', 'c', 'a', 'f'],
+			['e', 'd'],
+			['a', 'b', 'c', 'f'],
 		]);
 		expect(first.witness.evaluated).toBeLessThanOrEqual(12);
 		expect(first.witness.proposed).toBeLessThanOrEqual(48);
@@ -1417,6 +1476,40 @@ describe('rank-order heuristic cost and determinism', () => {
 		expect(
 			validateDedicatedCandidate({ graph, ranks, measurements, layout: first.layout }).valid,
 		).toBe(true);
+		const incidentAdmitted = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements,
+			baseline,
+			evaluate: (order) =>
+				evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					measurements,
+					undefined,
+					true,
+				),
+			admit: (layout) => {
+				const sourceOrder = ['a', 'b', 'c', 'f'].sort(
+					(left, right) =>
+						defined(layout.elements.find(({ id }) => id === left)).bounds.x -
+						defined(layout.elements.find(({ id }) => id === right)).bounds.x,
+				);
+				return sourceOrder.join(',') === 'a,c,b,f';
+			},
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(incidentAdmitted.witness).toMatchObject({
+			mode: 'heuristic',
+			stop: 'evaluation-budget',
+			evaluated: 12,
+			valid: 2,
+		});
+		expect(incidentAdmitted.witness.rejected.slice(0, 3).map(({ reason }) => reason.code)).toEqual([
+			'incident-infeasible',
+			'incident-infeasible',
+			'incident-infeasible',
+		]);
+		expect(incidentAdmitted.selected?.order[1]).toEqual(['a', 'c', 'b', 'f']);
 	});
 });
 

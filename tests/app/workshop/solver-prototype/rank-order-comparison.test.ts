@@ -110,10 +110,10 @@ describe('rank order comparison', () => {
 
 	it('matches pinned dedicated-engine layout fingerprints for every corpus entry', () => {
 		const expected: Record<string, string> = {
-			'geometric-3+1': '9e515a10436e726feaa7fef1799713c477a4b19dc8784a71ccba034a8c11ffb1',
-			'geometric-2+2': '55d6a8f884cc8f0515c883533b58989deeb507c57ac922be7dd6c75faa6bd160',
-			'adjacent-3+1': '68c2bfc4372097993c4bc012a3c1801522cce67b1cd85954d3834c3f0fef4650',
-			'adjacent-2+2': 'ab97fab54a82c5173ef33d604c1e156201bf8d722b0e1e09b210afa9f78a32cf',
+			'geometric-3+1': '3e38011f572fda44003de0ced6f62ae35ccefcb3b9bfec3818d2954099211fc8',
+			'geometric-2+2': '49b25131fc1eed3895523a09cfa7946fc337751a2ccbe192eb0a025fe1a33c79',
+			'adjacent-3+1': '245bfb9ce2a9e05f0ad28f28b08b589e5f351859c3190edf377525036531a4a6',
+			'adjacent-2+2': '655c66415e986bf51753f003a98f783b90afee9d2b36e55a8a7f91c386a18fdd',
 			'two-successors': 'cbef67223f47ce6a3ae02f7b451be2d111218576501be214a3cba1a06160a157',
 			'two-predecessors': '72956e705ceb18d863ee61533d5c77604512850401a8fe71614ddf6922dacb01',
 			'three-predecessors': 'b317d5a37873c18ff1bdfc1feb79efbfbc886a53e8b520ae2a1b7b4a8307a864',
@@ -145,19 +145,19 @@ describe('rank order stability under document edits', () => {
 			addedElements: 1,
 			addedRelations: 1,
 			commonElements: 5,
-			movedElements: 2,
+			movedElements: 5,
 			rankChanges: 0,
 			commonRelations: 4,
 			portChanges: 4,
 			pathChanges: 4,
-			commonRouteLengthBefore: 636,
+			commonRouteLengthBefore: 828,
 			commonRouteLengthAfter: 520,
 			commonBendsBefore: 8,
 			commonBendsAfter: 4,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
-		expect(addition?.meanNormalizedMovement).toBeCloseTo(0.232);
+		expect(addition?.meanNormalizedMovement).toBeCloseTo(0.52);
 		expect(removal).toMatchObject({
 			removedRelations: 1,
 			commonElements: 5,
@@ -165,7 +165,7 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 3,
 			portChanges: 3,
 			pathChanges: 3,
-			commonRouteLengthBefore: 506,
+			commonRouteLengthBefore: 650,
 			commonRouteLengthAfter: 332,
 			commonBendsBefore: 6,
 			commonBendsAfter: 2,
@@ -174,7 +174,7 @@ describe('rank order stability under document edits', () => {
 			removedElements: 1,
 			removedRelations: 1,
 			commonElements: 4,
-			movedElements: 3,
+			movedElements: 4,
 			commonRelations: 3,
 		});
 	});
@@ -189,8 +189,8 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 4,
 			portChanges: 0,
 			pathChanges: 0,
-			commonRouteLengthBefore: 636,
-			commonRouteLengthAfter: 636,
+			commonRouteLengthBefore: 828,
+			commonRouteLengthAfter: 828,
 			commonBendsBefore: 8,
 			commonBendsAfter: 8,
 			beforeCrossings: 0,
@@ -266,15 +266,15 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 68,
 			portChanges: 68,
 			pathChanges: 68,
-			commonRouteLengthBefore: 5284,
-			commonRouteLengthAfter: 5452,
+			commonRouteLengthBefore: 5464,
+			commonRouteLengthAfter: 5134,
 			commonBendsBefore: 8,
-			commonBendsAfter: 10,
+			commonBendsAfter: 12,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 			afterWitness: { stop: 'complete', valid: 4 },
 		});
-		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.8);
-		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.9);
+		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.7);
+		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.8);
 	});
 });

@@ -117,8 +117,8 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 		},
 		{
 			...base.measurements,
-			nodes: new Map([
-				...base.measurements.nodes,
+			nodes: new Map<string, { width: number; height: number }>([
+				...[...base.measurements.nodes].map(([id, size]) => [id, { ...size, width: 60 }] as const),
 				...ids.map((id) => [id, { width: 80, height: 40 }] as const),
 			]),
 		},
