@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { arch, cpus, hostname, platform, release } from 'node:os';
 
-const protocolPaths = [
+export const performanceProtocolPaths = [
 	'scripts/performance-context.mjs',
 	'scripts/performance-record.mjs',
 	'tests/support/harnesses/layout.ts',
@@ -14,6 +14,8 @@ const protocolPaths = [
 	'src/app/workshop/fixtures/layout-performance',
 	'tests/app/web/projection/performance/layout-graph-performance.test.ts',
 	'tests/lib/core/layout/performance/incremental-layout-performance.test.ts',
+	'tests/lib/infrastructure/collaboration/performance/live-edit-performance.test.ts',
+	'tests/support/harnesses/memory-transport.ts',
 	'config/vitest.performance.config.ts',
 	'pnpm-lock.yaml',
 	'mise.toml',
@@ -50,6 +52,10 @@ function fingerprint(paths) {
 	return hash.digest('hex');
 }
 
+export function performanceProtocolFingerprint(paths = performanceProtocolPaths) {
+	return fingerprint(paths);
+}
+
 export function sourceState() {
 	return {
 		commit: git('rev-parse', 'HEAD'),
@@ -76,7 +82,7 @@ export function performanceContext(suite, filter) {
 			execArgv: process.execArgv,
 			pnpm: execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim(),
 		},
-		protocol: fingerprint(protocolPaths),
+		protocol: fingerprint(performanceProtocolPaths),
 	};
 }
 

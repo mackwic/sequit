@@ -1,6 +1,25 @@
+import { randomUUID } from 'node:crypto';
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	symlinkSync,
+	unlinkSync,
+	writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { findCompetingValidations } from '../../scripts/performance-context.mjs';
+import {
+	competingValidations,
+	findCompetingValidations,
+	performanceContext,
+	performanceProtocolFingerprint,
+	performanceProtocolPaths,
+	sourceState,
+} from '../../scripts/performance-context.mjs';
 import {
 	compareReports,
 	formatComparison,
@@ -80,6 +99,94 @@ describe('performance comparisons', () => {
 		expect(() => {
 			validateReport(report([-1]));
 		}).toThrow('invalide');
+	});
+	it('records the machine, runtime, source and live-edit protocol in reports', () => {
+		const context = performanceContext('collaboration-live-edit', '3,200 nodes');
+		expect(context.suite).toBe('collaboration-live-edit');
+		expect(context.filter).toBe('3,200 nodes');
+		expect(context.machine.arch.length).toBeGreaterThan(0);
+		expect(context.machine.cpu).toBeDefined();
+		expect(context.runtime.node).toMatch(/^v\d+/);
+		expect(context.runtime.pnpm).toMatch(/^\d+/);
+		expect(context.protocol).toBe(performanceProtocolFingerprint());
+		const state = sourceState();
+		expect(state.commit).toMatch(/^[a-f0-9]{40}$/);
+		expect(typeof state.dirty).toBe('boolean');
+		expect(state.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+	});
+	it('changes the protocol fingerprint when a previously readable workspace path disappears', () => {
+		const directory = mkdtempSync(join('tests', `performance-protocol-${randomUUID()}-`));
+		const target = join(directory, 'target.ts');
+		const workload = join(directory, 'workload.ts');
+		try {
+			writeFileSync(target, 'sampleCount = 11');
+			symlinkSync('target.ts', workload);
+			const readableProtocol = performanceProtocolFingerprint([workload]);
+			unlinkSync(target);
+			const deletedProtocol = performanceProtocolFingerprint([workload]);
+			expect(deletedProtocol).not.toBe(readableProtocol);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+	it('checks the process list while excluding its own tree and idle servers', () => {
+		const directory = mkdtempSync(join('tests', `performance-ps-${randomUUID()}-`));
+		const executable = join(directory, 'ps');
+		const previousPath = process.env['PATH'];
+		const childPid = process.pid + 1;
+		writeFileSync(
+			executable,
+			`#!/bin/sh\nprintf "%s\\n" "${process.pid} 1 node vitest" "${childPid} ${process.pid} node /node_modules/vitest/vitest.mjs" "202 200 node /node_modules/eslint/bin/eslint.js" "300 1 node /node_modules/vite/bin/vite.js dev"\n`,
+		);
+		chmodSync(executable, 0o755);
+		process.env['PATH'] = directory;
+		try {
+			expect(competingValidations()).toEqual(['node /node_modules/eslint/bin/eslint.js']);
+		} finally {
+			if (previousPath === undefined) delete process.env['PATH'];
+			else process.env['PATH'] = previousPath;
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+	it('rethrows failures other than a missing performance input', () => {
+		const directory = mkdtempSync(join('tests', `performance-protocol-${randomUUID()}-`));
+		const inputDirectory = join(directory, 'input');
+		const workload = join(directory, 'workload.ts');
+		try {
+			mkdirSync(inputDirectory);
+			symlinkSync('input', workload);
+			expect(() => performanceProtocolFingerprint([workload])).toThrow(
+				expect.objectContaining({ code: 'EISDIR' }),
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+	it('invalidates comparisons when the collaborative live-edit workload changes', () => {
+		expect(performanceProtocolPaths).toContain(
+			'tests/lib/infrastructure/collaboration/performance/live-edit-performance.test.ts',
+		);
+		expect(performanceProtocolPaths).toContain('tests/support/harnesses/memory-transport.ts');
+		const directory = mkdtempSync(join('tests', `performance-protocol-${randomUUID()}-`));
+		const workload = join(directory, 'workload.ts');
+		try {
+			writeFileSync(workload, 'sampleCount = 11');
+			const beforeProtocol = performanceProtocolFingerprint([workload]);
+			writeFileSync(workload, 'sampleCount = 12');
+			const afterProtocol = performanceProtocolFingerprint([workload]);
+			expect(afterProtocol).not.toBe(beforeProtocol);
+			const before = {
+				...report(),
+				context: { ...report().context, protocol: beforeProtocol },
+			};
+			const after = {
+				...report(),
+				context: { ...report().context, protocol: afterProtocol },
+			};
+			expect(() => compareReports(before, after)).toThrow('protocol');
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 	it('ignores its own process tree, catches concurrent validations and allows an idle dev server', () => {
 		const rows = [
