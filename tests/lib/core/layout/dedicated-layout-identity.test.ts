@@ -16,10 +16,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
-import {
-	DedicatedCandidateRejectionCode,
-	validateDedicatedCandidate,
-} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
@@ -83,7 +80,11 @@ function makeDocument(
 	};
 }
 
-function groupedJunction(id: string, relations: LogicDocument['relations']): LogicDocument {
+function groupedJunction(
+	id: string,
+	relations: LogicDocument['relations'],
+	groupedNodeIds: readonly string[] = ['a', 'b', 'd'],
+): LogicDocument {
 	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
 	return {
 		...base,
@@ -91,7 +92,7 @@ function groupedJunction(id: string, relations: LogicDocument['relations']): Log
 			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a0') },
 		],
 		nodes: base.nodes.map((node) => {
-			if (['a', 'b', 'd'].includes(node.id)) return { ...node, groupId: 'group' };
+			if (groupedNodeIds.includes(node.id)) return { ...node, groupId: 'group' };
 			return node;
 		}),
 		junctions: [
@@ -294,26 +295,14 @@ describe('dedicated engine LayoutResult identity', () => {
 			}),
 		);
 
-		const expectedRejections = new Map([
-			['multirank-group-junction-one', DedicatedCandidateRejectionCode.ElementOverlap],
-			['multirank-group-junction-two', DedicatedCandidateRejectionCode.ElementOverlap],
-			['group-endpoint-route', DedicatedCandidateRejectionCode.ElementOverlap],
-		]);
-		expect(
-			[...validationById]
-				.flatMap(([id, validation]) => {
-					if (validation.valid) return [];
-					return [`${id}:${validation.code}`];
-				})
-				.toSorted(),
-		).toEqual([...expectedRejections].map(([id, code]) => `${id}:${code}`).toSorted());
-		for (const [id, code] of expectedRejections)
-			expect(validationById.get(id)).toMatchObject({ valid: false, code });
 		const expectedAcceptedIds = [
 			'adjacent-2+2',
 			'adjacent-3+1',
 			'ai-documentary-effort',
+			'group-endpoint-route',
 			'junction-network-layout',
+			'multirank-group-junction-one',
+			'multirank-group-junction-two',
 			'rail-clearance-12',
 			'rail-clearance-13',
 			'rail-reuse',
@@ -381,7 +370,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			'multirank-group-junction-one':
 				'5d21370f3c46a5e10ff2c3825e8ab602a99ceb0063ce5615f1e236ca89d2dc5f',
 			'multirank-group-junction-two':
-				'71b7e73f40e1c1480657e84550a8519b4e427a94e65b6f30c1b2d1407ad8058a',
+				'1b6c7d41c5040f17de7f4a561290fd9a87e48f6e130d0eef108fe505a085a32f',
 			'rail-clearance-12': '9dae568401b9b8462723aa9c5564a2f04c4958fdb90a5ac445f37bbee3a60e9f',
 			'rail-clearance-13': '637f35ef14ed710564549725d3f26f676cb4dc0e0357fd675c2b20de6e6db695',
 			'rail-reuse': 'bf9eedd9a6eb7669b4b969d292616c8f7367b20b5eb017d6f1aed223c3d52a49',
@@ -458,5 +447,38 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(
 			results['workshop-navigation']?.elements.filter(({ kind }) => kind === EndpointKind.Node),
 		).toHaveLength(9);
+	});
+	it('keeps foreign group shells clear of crossing rails in every direction', () => {
+		const configurations: LogicDocument['layout'][] = [
+			{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+			{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
+			{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+			{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
+		];
+		for (const configuration of configurations) {
+			const document = { ...multirankTwo, layout: configuration };
+			const graphResult = createGraph(document);
+			if (!graphResult.ok) throw new Error('The grouped graph must be valid');
+			const graph = graphResult.value;
+			const ranks = topologicallyRank(graph);
+			const measurements = layoutMeasurementsFor(document);
+			const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+			expect(
+				validateDedicatedCandidate({ graph, ranks, measurements, layout }),
+				configuration.direction,
+			).toMatchObject({ valid: true });
+		}
+	});
+	it('allows a crossing rail to enter its target group without making it an obstacle', () => {
+		const document = groupedJunction('target-group-shell', multirankTwo.relations, ['f']);
+		const graphResult = createGraph(document);
+		if (!graphResult.ok) throw new Error('The grouped graph must be valid');
+		const graph = graphResult.value;
+		const ranks = topologicallyRank(graph);
+		const measurements = layoutMeasurementsFor(document);
+		const layout = layoutWithDedicatedEngine(graph, ranks, measurements);
+		expect(validateDedicatedCandidate({ graph, ranks, measurements, layout })).toMatchObject({
+			valid: true,
+		});
 	});
 });
