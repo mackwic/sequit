@@ -1,6 +1,6 @@
-import { defined, LayoutDirection } from '../../document/logic-document';
+import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { segmentEntersInterior, strictlyWithin } from '../geometry/box-geometry';
+import { onPrincipalFace, segmentEntersInterior } from '../geometry/box-geometry';
 import type { Bounds, LayoutRelation, LayoutResult, Point } from '../layout-types';
 import type { RouteObstacles as NodeRouteObstacles } from '../routing/route-obstacles';
 import { routeHitsObstacles } from '../routing/route-obstacles';
@@ -11,24 +11,6 @@ import { DedicatedCandidateRejectionCode, rejected } from './types';
 interface RouteObstacles {
 	readonly nodes: NodeRouteObstacles;
 	readonly groups: readonly LayoutResult['elements'][number][];
-}
-
-export function onPrincipalFace(
-	point: Point,
-	box: Bounds,
-	direction: LayoutDirection,
-	source: boolean,
-): boolean {
-	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
-		let faceY = box.y;
-		if (direction === LayoutDirection.TopToBottom && !source) faceY += box.height;
-		if (direction === LayoutDirection.BottomToTop && source) faceY += box.height;
-		return point.y === faceY && strictlyWithin(point.x, box.x, box.width);
-	}
-	let faceX = box.x;
-	if (direction === LayoutDirection.LeftToRight && !source) faceX += box.width;
-	if (direction === LayoutDirection.RightToLeft && source) faceX += box.width;
-	return point.x === faceX && strictlyWithin(point.y, box.y, box.height);
 }
 
 export function samePoint(first: Point, second: Point): boolean {

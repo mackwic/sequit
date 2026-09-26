@@ -1,3 +1,4 @@
+import { LayoutDirection } from '../../document/logic-document';
 import type { Bounds, Point } from '../layout-types';
 
 export function finitePositiveBounds(box: Bounds): boolean {
@@ -13,6 +14,24 @@ export function boundsOverlap(a: Bounds, b: Bounds): boolean {
 	const horizontal = a.x < bRight && aRight > b.x;
 	const vertical = a.y < bBottom && aBottom > b.y;
 	return horizontal && vertical;
+}
+
+export function onPrincipalFace(
+	point: Point,
+	box: Bounds,
+	direction: LayoutDirection,
+	source: boolean,
+): boolean {
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
+		let faceY = box.y;
+		if (direction === LayoutDirection.TopToBottom && !source) faceY += box.height;
+		if (direction === LayoutDirection.BottomToTop && source) faceY += box.height;
+		return point.y === faceY && strictlyWithin(point.x, box.x, box.width);
+	}
+	let faceX = box.x;
+	if (direction === LayoutDirection.LeftToRight && !source) faceX += box.width;
+	if (direction === LayoutDirection.RightToLeft && source) faceX += box.width;
+	return point.x === faceX && strictlyWithin(point.y, box.y, box.height);
 }
 
 export function strictlyWithin(value: number, start: number, size: number): boolean {

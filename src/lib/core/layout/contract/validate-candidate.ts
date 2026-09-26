@@ -4,8 +4,8 @@ import type { LogicGraph } from '../../graph/create-graph';
 import {
 	boundsOverlap,
 	finitePositiveBounds,
+	onPrincipalFace,
 	segmentEntersInterior,
-	strictlyWithin,
 } from '../geometry/box-geometry';
 import type {
 	Bounds,
@@ -75,24 +75,6 @@ function actualOrder(
 		if (located[index]?.cross === located[index - 1]?.cross) return undefined;
 	}
 	return located.map(({ id }) => id);
-}
-
-function onPrincipalFace(
-	point: Point,
-	box: Bounds,
-	direction: LayoutDirection,
-	source: boolean,
-): boolean {
-	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop) {
-		let faceY = box.y;
-		if (direction === LayoutDirection.TopToBottom && !source) faceY += box.height;
-		if (direction === LayoutDirection.BottomToTop && source) faceY += box.height;
-		return point.y === faceY && strictlyWithin(point.x, box.x, box.width);
-	}
-	let faceX = box.x;
-	if (direction === LayoutDirection.LeftToRight && !source) faceX += box.width;
-	if (direction === LayoutDirection.RightToLeft && source) faceX += box.width;
-	return point.x === faceX && strictlyWithin(point.y, box.y, box.height);
 }
 
 function validateRoute(
