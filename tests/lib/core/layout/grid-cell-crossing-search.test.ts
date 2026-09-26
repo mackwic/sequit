@@ -42,9 +42,9 @@ function sharesUnchangedTracks(
 	for (const [column, ids] of input.gutterIds.entries())
 		for (const relationId of ids)
 			if (!active.has(relationId))
-				expect(
-					defined(candidate.gutterTrackByRelationId[column]).get(relationId),
-				).toBe(defined(baseline.gutterTrackByRelationId[column]).get(relationId));
+				expect(defined(candidate.gutterTrackByRelationId[column]).get(relationId)).toBe(
+					defined(baseline.gutterTrackByRelationId[column]).get(relationId),
+				);
 	for (const relationId of input.crossingIds)
 		if (!active.has(relationId))
 			expect(candidate.busTrackByRelationId.get(relationId)).toBe(
@@ -137,7 +137,8 @@ describe('grid crossing allocation search examples', () => {
 			return attempt;
 		};
 		const result = searchGridCrossingAllocations(fixture.input, route);
-		if (!('selected' in result)) throw new Error('The later bridge phase must find a valid allocation.');
+		if (!('selected' in result))
+			throw new Error('The later bridge phase must find a valid allocation.');
 		const reallocation = defined(result.witness.phases[0]);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
 		expect(reallocation.exploredGeometries).toBe(256);
@@ -204,14 +205,19 @@ describe('grid crossing allocation search examples', () => {
 			(allocation, acceptBridges) => routeGridFixture(fixture, allocation, acceptBridges),
 			{ reallocate: 1, extraTrack: 2, bridge: 3 },
 		);
-		if (!('selected' in result)) throw new Error('The canonical route must pass geometry validation.');
+		if (!('selected' in result))
+			throw new Error('The canonical route must pass geometry validation.');
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		expect(result.witness.phases.map(({ attempted, selected }) => ({ attempted, selected }))).toEqual([
+		expect(
+			result.witness.phases.map(({ attempted, selected }) => ({ attempted, selected })),
+		).toEqual([
 			{ attempted: true, selected: true },
 			{ attempted: false, selected: false },
 			{ attempted: false, selected: false },
 		]);
-		expect(result.witness.phases.map(({ exploredGeometries }) => exploredGeometries)).toEqual([1, 0, 0]);
+		expect(result.witness.phases.map(({ exploredGeometries }) => exploredGeometries)).toEqual([
+			1, 0, 0,
+		]);
 	});
 
 	it('returns the real geometry failure when all phase geometries are exhausted', () => {
@@ -249,6 +255,4 @@ describe('grid crossing allocation search examples', () => {
 			{ attempted: true, exhaustive: true, truncated: false, selected: false },
 		]);
 	});
-
-
 });
