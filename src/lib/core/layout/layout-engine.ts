@@ -4,6 +4,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { buildLayoutResult } from './build-layout-result';
 import { createLayoutFrame } from './geometry/layout-frame';
 import { inspectRouting } from './inspection/routing-inspection';
+import { placeWithPorts, portsChangePlacement, withChainAlignment } from './layout-port-placement';
 import type {
 	LayoutMeasurements,
 	LayoutOptions,
@@ -25,7 +26,7 @@ import {
 	materializeLayers,
 	planLayeredRouting,
 } from './routing/layered-routing';
-import { allocatePorts, type PortAllocation } from './routing/port-allocation';
+import { allocatePorts } from './routing/port-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
 import {
@@ -38,45 +39,6 @@ import { settleGroupCorridorPorts } from './routing/settle-group-corridors';
 import { bypassedChains } from './structure/bypassed-chains';
 import type { LayoutStructure } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
-
-interface PlacementReservation {
-	readonly gaps: ReadonlyMap<number, number>;
-	readonly channelGaps?: ReadonlyMap<number, readonly number[]>;
-}
-
-function alignBranchesWithPorts(workspace: LayoutWorkspace, ports: PortAllocation): void {
-	const offsets = new Map<string, number>();
-	for (const [id, anchor] of workspace.structure.branchAnchors) {
-		const source = ports.sourceOffsets.get(anchor.relationId) ?? 0;
-		const target = ports.targetOffsets.get(anchor.relationId) ?? 0;
-		offsets.set(id, target - source);
-	}
-	workspace.placement.branchOffsets = offsets;
-}
-
-/** Applying a proposal or restoring its predecessor updates the same placement inputs. */
-function placeWithPorts(
-	workspace: LayoutWorkspace,
-	ports: PortAllocation,
-	reservation?: PlacementReservation,
-): void {
-	alignBranchesWithPorts(workspace, ports);
-	for (const [id, size] of ports.sizes) workspace.measurements.sizes.set(id, size);
-	placeElements(workspace, reservation?.gaps ?? new Map(), reservation?.channelGaps);
-}
-
-function withChainAlignment(
-	ports: PortAllocation,
-	alignment: ReturnType<typeof alignBypassedChains>,
-): PortAllocation {
-	if (alignment === undefined) return ports;
-	return {
-		...ports,
-		sizes: new Map([...ports.sizes, ...alignment.sizes]),
-		sourceOffsets: new Map([...ports.sourceOffsets, ...alignment.sourceOffsets]),
-		targetOffsets: new Map([...ports.targetOffsets, ...alignment.targetOffsets]),
-	};
-}
 
 function reserveLayeredRouting(
 	workspace: LayoutWorkspace,
@@ -163,22 +125,6 @@ function reserveLayeredRouting(
 		railCounts: new Map(),
 	};
 	return materializeLayers(input, plan);
-}
-
-function portsChangePlacement(workspace: LayoutWorkspace, ports: PortAllocation): boolean {
-	const { structure, measurements, placement, frame } = workspace;
-	for (const demand of ports.metricDemands) {
-		const size = defined(measurements.sizes.get(demand.endpointId));
-		if (frame.vertical && size.width < demand.minimumCrossSize) return true;
-		if (!frame.vertical && size.height < demand.minimumCrossSize) return true;
-	}
-	for (const [id, anchor] of structure.branchAnchors) {
-		const offset =
-			(ports.targetOffsets.get(anchor.relationId) ?? 0) -
-			(ports.sourceOffsets.get(anchor.relationId) ?? 0);
-		if (offset !== (placement.branchOffsets?.get(id) ?? 0)) return true;
-	}
-	return false;
 }
 
 function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number, number>): void {
