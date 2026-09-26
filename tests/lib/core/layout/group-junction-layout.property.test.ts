@@ -554,3 +554,53 @@ it('keeps layered relations attached around a wide staggered group', async () =>
 		.followLayoutFlow()
 		.haveOnlyAllowedSharedTrunks();
 });
+
+it('keeps all ordinary routes attached when grouped packing increases a corridor gap', async () => {
+	const configuration = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left } as const;
+	const seed = groupJunctionFixture(configuration, false, false);
+	const firstNode = seed.nodes[0];
+	if (firstNode === undefined) throw new Error('Group fixture requires a node');
+	const nodeTemplate = { ...firstNode };
+	delete nodeTemplate.groupId;
+	const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+	const sizes = [
+		{ width: 158, height: 80 },
+		{ width: 148, height: 112 },
+		{ width: 184, height: 42 },
+		{ width: 83, height: 77 },
+		{ width: 165, height: 62 },
+		{ width: 145, height: 125 },
+	];
+	const document: LogicDocument = {
+		...seed,
+		nodes: ids.map((id, index) => {
+			const node = { ...nodeTemplate, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
+			if (id === 'd' || id === 'f') return { ...node, groupId: 'group' };
+			return node;
+		}),
+		junctions: [],
+		relations: [
+			{ id: 'r0-2', from: 'a', to: 'c' },
+			{ id: 'r1-4', from: 'b', to: 'e' },
+			{ id: 'r2-3', from: 'c', to: 'd' },
+			{ id: 'r2-4', from: 'c', to: 'e' },
+		],
+	};
+	const { layout, ranks } = await layoutDocument(document, {
+		nodes: Object.fromEntries(
+			ids.map((id, index) => {
+				const size = sizes[index];
+				if (size === undefined) throw new Error('Every node requires dimensions');
+				return [id, size];
+			}),
+		),
+		groups: { group: { minimumWidth: 322, minimumHeight: 322, headerHeight: 91, padding: 61 } },
+	});
+	assertDisjointNodesAndForeignGroups(document, layout);
+	AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+		.routes()
+		.areOrthogonal()
+		.areAttachedToEndpoints()
+		.followLayoutFlow()
+		.haveOnlyAllowedSharedTrunks();
+});
