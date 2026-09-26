@@ -304,6 +304,23 @@ describe('one route-contact rule', () => {
 		]);
 	});
 
+	it('reports an uncovered short crossing among many valid bridges', () => {
+		const horizontal = Array.from({ length: 6 }, (_, index) => {
+			if (index === 0) return path('h0', [10, 20], [30, 20]);
+			return path(`h${index}`, [0, 20 + 40 * index], [260, 20 + 40 * index]);
+		});
+		const vertical = Array.from({ length: 6 }, (_, index) => {
+			if (index === 0) return path('v0', [20, 10], [20, 30]);
+			return path(`v${index}`, [20 + 40 * index, 0], [20 + 40 * index, 260]);
+		});
+		const analysis = routeBridgeAnalysis([...horizontal, ...vertical]);
+		expect(analysis.crossings).toHaveLength(26);
+		expect(analysis.bridges).toHaveLength(25);
+		expect(unbridgedCrossings(analysis)).toEqual([
+			{ x: 20, y: 20, horizontalId: 'h0', verticalId: 'v0' },
+		]);
+	});
+
 	it('gives dedicated and lane validators the same typed refusal and canonical relation pair', () => {
 		const a: LayoutRelation = { ...path('a', [0, 0], [50, 0]), from: 'one', to: 'two' };
 		const z: LayoutRelation = { ...path('z', [0, 0], [20, 0]), from: 'another', to: 'three' };

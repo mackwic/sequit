@@ -42,6 +42,15 @@ export function unbridgedCrossings(analysis: {
 	readonly crossings: RouteBridgeAnalysis['crossings'];
 	readonly bridges: RouteBridgeAnalysis['bridges'];
 }): readonly RouteCrossing[] {
+	if (analysis.crossings.length === 0 || analysis.bridges.length === 0) return analysis.crossings;
+	// A point index only pays for itself once pairwise bridge checks become numerous.
+	if (analysis.crossings.length * analysis.bridges.length <= 256)
+		return analysis.crossings.filter(
+			(crossing) =>
+				!analysis.bridges.some((bridge) =>
+					bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
+				),
+		);
 	const bridgesByPoint = new Map<string, LayoutBridge[]>();
 	for (const bridge of analysis.bridges) {
 		const key = `${bridge.x}:${bridge.y}`;
@@ -54,9 +63,11 @@ export function unbridgedCrossings(analysis: {
 	}
 	return analysis.crossings.filter(
 		(crossing) =>
-			!(bridgesByPoint.get(`${crossing.x}:${crossing.y}`) ?? []).some((bridge) =>
-				bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
-			),
+			bridgesByPoint
+				.get(`${crossing.x}:${crossing.y}`)
+				?.some((bridge) =>
+					bridgeCovers(bridge, crossing, crossing.horizontalId, crossing.verticalId),
+				) !== true,
 	);
 }
 
