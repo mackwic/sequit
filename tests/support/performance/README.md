@@ -4,8 +4,8 @@ This opt-in suite reports machine-specific snapshot costs for graph creation, to
 
 ## Commands
 
-- `pnpm benchmark:layout` runs the 60-case layout matrix.
-- `pnpm benchmark:graph` runs the same 60 cases once for graph creation and once for ranking.
+- `pnpm benchmark:layout` runs the 70-case layout matrix.
+- `pnpm benchmark:graph` runs the same 70 cases once for graph creation and once for ranking.
 - `pnpm benchmark:performance` runs graph reporting followed by layout reporting.
 - `pnpm test:performance` runs the opt-in calibrated snapshot regression gate.
 - `pnpm benchmark:incremental` reports stage p50, p95, and maximum insertion latency.
@@ -35,6 +35,19 @@ The authoritative topology contracts and diagrams live in `tests/support/scenari
 - `junction-heavy`: a node chain with one additional XOR junction between adjacent semantic nodes.
 - `group-relations`: square-shell sibling groups connected directly by semantic group relations.
 - `shallow-groups`: binary-tree edges with non-nested sibling groups of at most nine nodes.
+- `lane-allocations`: three parallel lanes with four fixed relations among the first four nodes and isolated growth in the third lane; the sentinel isolates box-count growth from route-count growth.
+- `lane-allocations-dense`: three parallel lanes with one new cross-lane relation at node indexes 3, 23, 43, …; the 1000-node case has 50 relations touching all three lanes. This profile exercises route-count growth, the two bridge policies, measured allocation work, and the public cold and incremental layout boundaries.
+
+The parallel shared-lane allocation witness reports mandatory historical strategy baselines as `baselineWork`, separately from the optional candidates' `work` and fixed `workBudget` of 20,000 probes per bridge policy. Baseline work can exceed that ceiling on the growing-route profile; the cap applies only to fair round-robin alternatives. The focused scenario contract validates the selected 1000-node geometry and this distinction as well as the three-lane relation growth.
+
+On the deterministic 1000-node dense fixture, the actual solver selected geometry that passes full bridge-accepting validation. Its measured allocation witness was:
+
+| Bridge policy | Reserved baseline work | Optional work / cap | Completed attempts |
+| ------------- | ---------------------: | ------------------: | -----------------: |
+| No bridges    |                  3,220 |     20,000 / 20,000 |                  2 |
+| Bridges       |             21,409,183 |     20,000 / 20,000 |                  2 |
+
+Both attempts are the mandatory strategy baselines. The optional-work cap was reached while probing the next candidate, without promoting a partially evaluated candidate; the validated bridge-policy baseline was selected. The contract test checks the bounded work and valid selected geometry without pinning these incidental counters.
 
 `group-relations` expands relations between populated groups across their descendant members. Its adjacency metadata includes these effective Cartesian dependencies. The initial calibration below predates this behavior: its 5 ms incremental budget measured direct group endpoints with independent rank-zero members, so that historical workload is not equivalent to the current one. `junction-heavy` likewise reflects current production ranking, where both edges around a junction advance rank.
 
@@ -66,7 +79,7 @@ Each registration uses a fixed 250 ms warmup and at least 1000 ms of measured sa
 
 ## Calibrated Snapshot Budgets
 
-The gate warms each prepared case three times, records 11 independent public-API durations with `performance.now()`, and compares their median with the strict upper bound below. The complete matrix is materialized in `snapshot-layout-budgets.ts`; 59 cells retain the ticket draft and one locally contradicted cell is calibrated independently.
+The gate warms each prepared case three times, records 11 independent public-API durations with `performance.now()`, and compares their median with the strict upper bound below. The complete matrix is materialized in `snapshot-layout-budgets.ts`. Historical cells retain their original calibration; both lane rows below use the separately recorded calibration.
 
 | Scenario                  |     10 |     19 |     50 |    100 |    1000 |
 | ------------------------- | -----: | -----: | -----: | -----: | ------: |
@@ -82,6 +95,8 @@ The gate warms each prepared case three times, records 11 independent public-API
 | `junction-heavy`          | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `group-relations`         | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `shallow-groups`          | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
+| `lane-allocations`        |  <5 ms |  <5 ms |  <5 ms |  <5 ms |  <10 ms |
+| `lane-allocations-dense`  |  <5 ms |  <5 ms |  <5 ms |  <5 ms | <190 ms |
 
 ## Recording Results
 
@@ -130,6 +145,17 @@ The values below are the worst median in milliseconds from the three calibration
 
 Only `nested-subgroups` at 1000 nodes exceeded its ticket draft in all three runs: 132.863 ms, 136.079 ms, and 132.626 ms. Applying the calibration rule to the 136.079 ms worst median gives `ceil(136.079 * 1.5 / 5) * 5 = 205 ms`. This topology creates 1000 levels of containment and exercises the layout engine's depth-sensitive group-envelope work; no other matrix cell is weakened.
 
+### Lane-profile snapshot calibration (2026-09-26)
+
+Three consecutive filtered snapshot-gate runs measured both lane profiles after the route-work change, using the pinned Node `v24.20.0` and pnpm `12.3.4` on macOS Darwin 27.0.0, arm64 Apple M1 Max, AC power with charged battery. The source was based on `f5d2c62` with the lane fixture and bridge-metering cleanup uncommitted; the command was `mise exec -- pnpm exec vitest run --config config/vitest.performance.config.ts tests/app/web/projection/performance/layout-graph-performance.test.ts -t 'lane-allocations(/|-)'`. The entries below are the **worst median of three runs**, not whole-test durations:
+
+| Profile                  |    10 |    19 |    50 |   100 |    1000 |
+| ------------------------ | ----: | ----: | ----: | ----: | ------: |
+| `lane-allocations`       | 2.880 | 1.975 | 1.751 | 1.765 |   4.561 |
+| `lane-allocations-dense` | 0.077 | 0.099 | 1.947 | 1.995 | 123.415 |
+
+Each lane budget above is `ceil(worst median * 1.5 / 5) * 5` ms. In particular the growing-route 1000-node case has a 190 ms cold ceiling; the four-route sentinel retains a separate 10 ms ceiling. No historical non-lane budget was changed.
+
 ## Incremental Replay
 
 Incremental mode precomputes the same insertion transactions used by correctness replay, then starts from the scenario's empty document and applies all 1000 transactions in order. Insertion generation, summary calculation, assertion formatting, and terminal output are outside recorded insertion durations. Each measured insertion includes:
@@ -166,6 +192,8 @@ The opt-in gate compares total computational p95 in each growth bucket with the 
 | `junction-heavy`          |   5 |     5 |     5 |     5 |      10 |
 | `group-relations`         |   5 |     5 |     5 |     5 |       5 |
 | `shallow-groups`          |   5 |     5 |     5 |     5 |      10 |
+| `lane-allocations`        |   5 |     5 |     5 |     5 |      20 |
+| `lane-allocations-dense`  |   5 |     5 |     5 |    10 |     185 |
 
 All values are strict upper bounds in milliseconds.
 
@@ -200,14 +228,25 @@ The values below are the worst total p95 in milliseconds from the three runs. Th
 | `group-relations`         | 0.034 | 0.068 | 0.154 | 0.256 |   2.675 |
 | `shallow-groups`          | 0.024 | 0.048 | 0.126 | 0.253 |   3.716 |
 
+### Lane-profile incremental calibration (2026-09-26)
+
+Three consecutive filtered incremental-gate runs used the same pinned runtime and Apple M1 Max on AC power as the lane snapshot calibration above. The command was `mise exec -- pnpm exec vitest run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/incremental-layout-performance.test.ts -t 'lane-allocations($|-)'`. The **worst total p95** in milliseconds for each growth bucket was:
+
+| Profile                  |   1-9 | 10-19 | 20-49 | 50-99 | 100-999 |
+| ------------------------ | ----: | ----: | ----: | ----: | ------: |
+| `lane-allocations`       | 2.544 | 3.071 | 2.447 | 3.322 |  10.257 |
+| `lane-allocations-dense` | 0.147 | 0.140 | 2.199 | 5.551 | 122.775 |
+
+Applying `ceil(worstP95 * 1.5 / 5) * 5` produces the two lane rows in the regression table: the sentinel ends at 20 ms and the growing-route profile at 185 ms (with a 10 ms bound for its `50-99` bucket). These are machine-specific regression ceilings, **not** changes to the fixed 50 ms UX goal. The growing-route `100-999` bucket misses that goal in all three runs; the gate continues to report the gap. No historical non-lane budget was changed.
+
 ### Fixed UX Goals And Known Gaps
 
-The fixed goals are synchronous projection p95 below 16 ms and total computational p95 below 50 ms. Calibration never raises these goals. The calibrated runs identify two gaps in the `100-999` bucket:
+The fixed goals are synchronous projection p95 below 16 ms and total computational p95 below 50 ms. Calibration never raises these goals. The historical 2026-07-31 calibration identified two gaps in the `100-999` bucket:
 
 - `nested-subgroups` misses the total goal, with worst total p95 133.123 ms; its deeply nested group-envelope layout remains main-thread work despite the promise boundary.
 - `wide-bipartite-layers` misses the synchronous goal, with observed synchronous p95 up to 29.512 ms; its total p95 remains below 50 ms in calibration.
 
-All other topology/bucket goal results pass in these runs. The gate emits `PASS` or `GAP` for every topology and bucket and reports the slowest insertion index with all stage durations. Goal gaps remain visible but do not fail the machine-specific regression gate.
+All other topology/bucket goal results passed in those historical runs. The new growing-route lane profile adds the separately measured total-latency gap above. The gate emits `PASS` or `GAP` for every topology and bucket and reports the slowest insertion index with all stage durations. Goal gaps remain visible but do not fail the machine-specific regression gate.
 
 This synthetic Node replay is a main-thread computational proxy, not proof that the browser UI stays responsive. True interaction validation requires a public add-node operation and browser instrumentation around that action, including event-loop delay or long tasks, real DOM measurement, Svelte updates, and paint. Those facilities do not exist yet and are not invented by this suite.
 

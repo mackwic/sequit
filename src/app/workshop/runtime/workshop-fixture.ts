@@ -22,6 +22,7 @@ export const workshopFixtureLabels: Readonly<Record<LayoutPerformanceScenarioNam
 	'group-relations': 'Relations entre groupes',
 	'shallow-groups': 'Groupes côte à côte',
 	'lane-allocations': 'Voies partagées · allocations de routes',
+	'lane-allocations-dense': 'Voies partagées · routes croissantes',
 };
 
 function describeFixture(

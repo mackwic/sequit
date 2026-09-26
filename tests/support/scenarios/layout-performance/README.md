@@ -191,6 +191,14 @@ flowchart TB
 
 `*` continues the binary-tree edges. Node 10 remains at the document root, nodes 11-19 enter group 1, and later blocks follow the same pattern. Every group is a sibling with at most nine direct nodes; groups never nest.
 
+## lane-allocations
+
+Three parallel lanes hold four crossing relations among the first four nodes. Remaining nodes are isolated in lane C. This sentinel grows box count without growing route count, separating collision-scan cost from allocation-space growth. Implemented by `builders/lane-allocations-scenario.ts`.
+
+## lane-allocations-dense
+
+The same three parallel lanes receive nodes round-robin. At indexes `3 + 20k` (zero-based), the new node receives an edge from its predecessor. These edges rotate through all three lanes; relation count grows from one at 10 nodes to 50 at 1000 nodes, while each insertion retains the previous prefix. This profile exercises many-route allocation and contact analysis instead of the four-route sentinel's isolated-node tail. Implemented by `builders/lane-allocations-scenario.ts`.
+
 ## Governance
 
 Changing a topology requires updating this README, its concrete builder, and its focused contract test together. Adding a topology requires a tuple member, one implementation, one catalog entry, one README heading, and focused assertions.

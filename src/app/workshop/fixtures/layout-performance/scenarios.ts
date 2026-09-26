@@ -2,7 +2,10 @@ import { BinaryTreeScenarioBuilder } from './builders/binary-tree-scenario';
 import { DisconnectedComponentsScenarioBuilder } from './builders/disconnected-components-scenario';
 import { GroupRelationsScenarioBuilder } from './builders/group-relations-scenario';
 import { JunctionHeavyScenarioBuilder } from './builders/junction-heavy-scenario';
-import { LaneAllocationsScenarioBuilder } from './builders/lane-allocations-scenario';
+import {
+	LaneAllocationsScenarioBuilder,
+	LaneAllocationsScenarioName,
+} from './builders/lane-allocations-scenario';
 import { LongQueueScenarioBuilder } from './builders/long-queue-scenario';
 import { NestedSubgroupsScenarioBuilder } from './builders/nested-subgroups-scenario';
 import { RepeatedDiamondsScenarioBuilder } from './builders/repeated-diamonds-scenario';
@@ -34,6 +37,10 @@ export const LAYOUT_PERFORMANCE_SCENARIOS = [
 	{ name: 'group-relations', createBuilder: () => new GroupRelationsScenarioBuilder() },
 	{ name: 'shallow-groups', createBuilder: () => new ShallowGroupsScenarioBuilder() },
 	{ name: 'lane-allocations', createBuilder: () => new LaneAllocationsScenarioBuilder() },
+	{
+		name: 'lane-allocations-dense',
+		createBuilder: () => new LaneAllocationsScenarioBuilder(LaneAllocationsScenarioName.Dense),
+	},
 ] as const satisfies readonly NamedLayoutPerformanceScenario[];
 
 const registeredNames = LAYOUT_PERFORMANCE_SCENARIOS.map(({ name }) => name);

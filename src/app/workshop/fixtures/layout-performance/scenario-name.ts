@@ -12,6 +12,7 @@ export const LAYOUT_PERFORMANCE_SCENARIO_NAMES = [
 	'group-relations',
 	'shallow-groups',
 	'lane-allocations',
+	'lane-allocations-dense',
 ] as const;
 
 export type LayoutPerformanceScenarioName = (typeof LAYOUT_PERFORMANCE_SCENARIO_NAMES)[number];

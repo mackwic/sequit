@@ -11,6 +11,12 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
+import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
+import {
+	SharedLaneLayoutStatus,
+	solveSharedLaneLayout,
+} from '../../../../src/lib/core/layout/shared-lane-layout';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
@@ -105,6 +111,42 @@ describe('layout performance scenario contracts', () => {
 		expect(layout.relations.map(({ id }) => id).sort()).toEqual(
 			snapshot.document.relations.map(({ id }) => id).sort(),
 		);
+	});
+
+	it('grows relations across all three lanes while validating bounded route work', () => {
+		const scenario = LAYOUT_PERFORMANCE_SCENARIOS.find(
+			({ name }) => name === 'lane-allocations-dense',
+		);
+		if (scenario === undefined) throw new Error('Growing lane performance profile is missing');
+		const small = scenario.createBuilder().buildSnapshot(50);
+		const large = buildPreparedScenarioTwice(scenario, 1000)[0];
+		expect(small.document.relations).toHaveLength(3);
+		expect(large.document.relations).toHaveLength(50);
+		expect(new Set(large.document.nodes.map(({ laneId }) => laneId))).toEqual(
+			new Set(['A', 'B', 'C']),
+		);
+		const lanesByNodeId = new Map(large.document.nodes.map(({ id, laneId }) => [id, laneId]));
+		expect(new Set(large.document.relations.map(({ to }) => lanesByNodeId.get(to)))).toEqual(
+			new Set(['A', 'B', 'C']),
+		);
+		const outcome = solveSharedLaneLayout(large.graph, large.ranks, large.measurements);
+		expect(outcome.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (outcome.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(
+			validateSharedLaneGeometry(large.graph, outcome.geometry, SHARED_LANE_CLEARANCE, true),
+		).toBeUndefined();
+		const passes = outcome.allocationWitness?.passes;
+		expect(passes?.map(({ acceptBridges }) => acceptBridges)).toEqual([false, true]);
+		expect(
+			passes?.some(
+				({ baselineWork, workBudget }) => baselineWork !== undefined && baselineWork > workBudget,
+			),
+		).toBe(true);
+		for (const pass of passes ?? []) {
+			expect(pass.baselineWork).toBeGreaterThan(0);
+			expect(pass.work).toBeLessThanOrEqual(pass.workBudget);
+			expect(pass.workBudget).toBe(20_000);
+		}
 	});
 
 	it.each(LAYOUT_PERFORMANCE_SCENARIOS)(

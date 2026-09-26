@@ -46,13 +46,8 @@ const INCREMENTAL_LAYOUT_BUDGETS_MS = {
 	'junction-heavy': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 10 },
 	'group-relations': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 5 },
 	'shallow-groups': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 10 },
-	'lane-allocations': {
-		'1-9': 20,
-		'10-19': 20,
-		'20-49': 20,
-		'50-99': 12,
-		'100-999': 25,
-	},
+	'lane-allocations': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 20 },
+	'lane-allocations-dense': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 10, '100-999': 185 },
 } as const satisfies IncrementalLayoutBudgets;
 
 function assertExactKeys(
