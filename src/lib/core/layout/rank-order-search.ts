@@ -109,8 +109,7 @@ function hasRelevantCrossing(
 	return crossingIds.some((ids) =>
 		ids.some((id) => {
 			const relation = routes.get(id);
-			if (relation === undefined) return false;
-			return relevant.has(relation.from) || relevant.has(relation.to);
+			return relevant.has(defined(relation).from) || relevant.has(defined(relation).to);
 		}),
 	);
 }
@@ -173,7 +172,7 @@ class RankOrderSearch {
 			return;
 		}
 		this.valid += 1;
-		this.routeRunsInspected += outcome.analysis.inspectedRuns ?? 0;
+		this.routeRunsInspected += outcome.analysis.inspectedRuns;
 		const candidate = {
 			order,
 			evaluation,
@@ -188,8 +187,10 @@ class RankOrderSearch {
 			horizontalId,
 			verticalId,
 		]);
-		if (!hasRelevantCrossing(this.input, crossingIds))
+		if (!hasRelevantCrossing(this.input, crossingIds)) {
 			this.stop = RankSearchStop.NoRelevantCrossing;
+			this.exhaustive = false;
+		}
 	}
 
 	private cutOff(stop: RankSearchStop): false {
@@ -265,13 +266,15 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 	const baseline = search.selected;
 	if (baseline === undefined) {
 		search.stop = RankSearchStop.BaselineRejected;
+		search.exhaustive = false;
+		return search.result();
+	}
+	if (zeroRoutes(baseline) && baseline.kendall === 0) {
+		search.stop = RankSearchStop.OptimalBound;
+		search.exhaustive = true;
 		return search.result();
 	}
 	if (search.stop === RankSearchStop.NoRelevantCrossing) return search.result();
-	if (zeroRoutes(baseline) && baseline.kendall === 0) {
-		search.stop = RankSearchStop.OptimalBound;
-		return search.result();
-	}
 	if (boundedRankOrderEnumerationSize(input.domain, input.limits.completePipelines) !== undefined)
 		search.runExact();
 	else search.runHeuristic();

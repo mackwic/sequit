@@ -33,7 +33,7 @@ export function selectDedicatedRankLayout(
 				unverified: 1,
 				prunedByLowerBound: 0,
 				work: { completePipelines: 1, validations: 0, routeRunsInspected: 0 },
-				exhaustive: true,
+				exhaustive: false,
 				truncated: false,
 			},
 		};

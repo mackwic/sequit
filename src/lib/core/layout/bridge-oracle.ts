@@ -52,7 +52,7 @@ export interface LayoutBridge extends Point {
 export interface RouteBridgeAnalysis {
 	readonly crossings: readonly RouteCrossing[];
 	readonly bridges: readonly LayoutBridge[];
-	readonly inspectedRuns?: number;
+	readonly inspectedRuns: number;
 }
 
 /** Derived bridges tied to one immutable route array; a different candidate replaces them. */

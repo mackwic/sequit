@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
 
 import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
@@ -58,6 +59,11 @@ import {
 	type EndpointSlot,
 	fractionalOrderKeySpace,
 } from '../../../../src/lib/core/ordering/order-key-space';
+import {
+	importLogicDocument,
+	readLogicDocument,
+} from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { createYjsEntityMap } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 const bandSizes = fc.array(fc.integer({ min: 0, max: 4 }), { minLength: 1, maxLength: 3 });
@@ -720,6 +726,74 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
+	it('does not validate the legacy dense shape or an ordinary graph with no exchange band', () => {
+		const wide = corpusDocument(
+			Array.from({ length: 9 }, (_, index) => `n${index}`),
+			Array.from({ length: 9 }, (_, index) => `n${index}`),
+			[],
+		);
+		const created = createGraph(wide);
+		if (!created.ok) throw new Error('Invalid wide fixture');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const measurements = {
+			nodes: new Map(wide.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			junctions: new Map(),
+			groups: new Map(),
+		};
+		const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+		expect(result.layout).toEqual(
+			evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),
+		);
+		expect(result.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'shape-envelope',
+			evaluated: 1,
+			valid: 0,
+			unverified: 1,
+			work: { validations: 0, routeRunsInspected: 0 },
+		});
+		const single = corpusDocument(['only'], ['only'], []);
+		const one = createGraph(single);
+		if (!one.ok) throw new Error('Invalid singleton');
+		const oneResult = layoutWithDedicatedEngineAndRankOrderWitness(
+			one.value,
+			topologicallyRank(one.value),
+			{
+				nodes: new Map([['only', { width: 80, height: 40 }]]),
+				junctions: new Map(),
+				groups: new Map(),
+			},
+		);
+		expect(oneResult.witness).toMatchObject({
+			stop: 'no-band',
+			evaluated: 1,
+			valid: 0,
+			unverified: 1,
+		});
+	});
+
+	it('proves the documentary zero-route baseline optimal without another pipeline', () => {
+		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'two-successors');
+		if (entry === undefined) throw new Error('Missing zero-route corpus');
+		const created = createGraph(entry.document);
+		if (!created.ok) throw new Error('Invalid zero-route corpus');
+		const graph = created.value;
+		const result = layoutWithDedicatedEngineAndRankOrderWitness(
+			graph,
+			topologicallyRank(graph),
+			entry.measurements,
+		);
+		expect(result.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'optimal-bound',
+			evaluated: 1,
+			valid: 1,
+			exhaustive: true,
+			truncated: false,
+		});
+	});
+
 	it('rejects invalid alternatives even when their apparent score is better', () => {
 		const entry = rankOrderComparisonCorpus()[0];
 		if (entry === undefined) throw new Error('Missing rank corpus');
@@ -745,7 +819,9 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(result.selected?.order).toEqual(domain.bands);
 		expect(result.witness.rejected.length).toBeGreaterThan(0);
 		expect(
-			result.witness.rejected.every(({ reason }) => reason.code === DedicatedCandidateRejectionCode.RelationInventory),
+			result.witness.rejected.every(
+				({ reason }) => reason.code === DedicatedCandidateRejectionCode.RelationInventory,
+			),
 		).toBe(true);
 		expect(result.witness.valid + result.witness.rejected.length + result.witness.unverified).toBe(
 			result.witness.evaluated,
@@ -777,6 +853,24 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(result.witness.truncated).toBe(true);
 		expect(result.witness.exhaustive).toBe(false);
 		expect(result.selected?.evaluation).toBe(baseline);
+		const proposalLimited = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements: entry.measurements,
+			baseline,
+			evaluate: () => {
+				throw new Error('No proposal may be evaluated');
+			},
+			limits: { completePipelines: 12, uniqueProposals: 1 },
+		});
+		expect(proposalLimited.witness).toMatchObject({
+			mode: 'exact',
+			stop: 'proposal-budget',
+			proposed: 1,
+			evaluated: 1,
+			exhaustive: false,
+			truncated: true,
+		});
 	});
 
 	it('keeps an invalid documentary baseline unchanged and never spends an alternative pipeline', () => {
@@ -833,6 +927,28 @@ describe('rank-order heuristic cost and determinism', () => {
 			junctions: new Map(),
 		};
 		expect(rankOrderEnumerationSize(domain)).toBe(48);
+		const baseline = evaluateDedicatedLayout(structure, measurements, undefined, true);
+		const budget = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements,
+			baseline,
+			evaluate: (order) =>
+				evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					measurements,
+					undefined,
+					true,
+				),
+			limits: { completePipelines: 12, uniqueProposals: 2 },
+		});
+		expect(budget.witness).toMatchObject({
+			mode: 'heuristic',
+			stop: 'proposal-budget',
+			proposed: 2,
+			exhaustive: false,
+			truncated: true,
+		});
 		const first = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		const second = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		expect(second).toEqual(first);
@@ -844,5 +960,98 @@ describe('rank-order heuristic cost and determinism', () => {
 		expect(
 			validateDedicatedCandidate({ graph, ranks, measurements, layout: first.layout }).valid,
 		).toBe(true);
+	});
+});
+
+describe('rank-order cold-layout convergence', () => {
+	it('is independent of endpoint and relation array permutations in four directions, including inspection', () => {
+		const entries = [rankOrderComparisonCorpus()[0], rankOrderComparisonCorpus()[1]];
+		const directions = [
+			LayoutDirection.TopToBottom,
+			LayoutDirection.BottomToTop,
+			LayoutDirection.LeftToRight,
+			LayoutDirection.RightToLeft,
+		];
+		for (const entry of entries) {
+			if (entry === undefined) throw new Error('Missing corpus entry');
+			for (const direction of directions) {
+				let bias = LayoutBias.Top;
+				if (direction === LayoutDirection.BottomToTop) bias = LayoutBias.Bottom;
+				if (direction === LayoutDirection.LeftToRight) bias = LayoutBias.Left;
+				if (direction === LayoutDirection.RightToLeft) bias = LayoutBias.Right;
+				const configuration = layoutConfiguration(direction, bias);
+				if (configuration === undefined) throw new Error('Invalid direction');
+				const documentary = { ...entry.document, layout: configuration };
+				const permuted = {
+					...documentary,
+					nodes: [...documentary.nodes].reverse(),
+					relations: [...documentary.relations].reverse(),
+					groups: [...documentary.groups].reverse(),
+				};
+				const original = createGraph(documentary);
+				const reversed = createGraph(permuted);
+				if (!original.ok || !reversed.ok) throw new Error('Invalid permuted corpus');
+				for (const inspectRouting of [false, true]) {
+					const first = layoutWithDedicatedEngineAndRankOrderWitness(
+						original.value,
+						topologicallyRank(original.value),
+						entry.measurements,
+						{ inspectRouting },
+					);
+					const second = layoutWithDedicatedEngineAndRankOrderWitness(
+						reversed.value,
+						topologicallyRank(reversed.value),
+						entry.measurements,
+						{ inspectRouting },
+					);
+					expect(second).toEqual(first);
+				}
+			}
+		}
+	});
+});
+
+describe('collaborative rank-order convergence', () => {
+	it('chooses identical cold geometry after concurrent relations merge in opposite orders', () => {
+		const entry = rankOrderComparisonCorpus()[0];
+		if (entry === undefined) throw new Error('Missing exact rank-search fixture');
+		const base = new Y.Doc();
+		importLogicDocument(base, entry.document);
+		const first = new Y.Doc();
+		const second = new Y.Doc();
+		Y.applyUpdate(first, Y.encodeStateAsUpdate(base));
+		Y.applyUpdate(second, Y.encodeStateAsUpdate(base));
+		first
+			.getMap<Y.Map<unknown>>('sequit.relations')
+			.set('b-to-e', createYjsEntityMap({ from: 'b', to: 'e' }));
+		second
+			.getMap<Y.Map<unknown>>('sequit.relations')
+			.set('c-to-e', createYjsEntityMap({ from: 'c', to: 'e' }));
+		const left = new Y.Doc();
+		const right = new Y.Doc();
+		for (const target of [left, right]) Y.applyUpdate(target, Y.encodeStateAsUpdate(base));
+		Y.applyUpdate(left, Y.encodeStateAsUpdate(first));
+		Y.applyUpdate(left, Y.encodeStateAsUpdate(second));
+		Y.applyUpdate(right, Y.encodeStateAsUpdate(second));
+		Y.applyUpdate(right, Y.encodeStateAsUpdate(first));
+		const leftDocument = readLogicDocument(left);
+		const rightDocument = readLogicDocument(right);
+		if (!leftDocument.ok || !rightDocument.ok) throw new Error('Merged document must be valid');
+		expect(leftDocument.value).toEqual(rightDocument.value);
+		const leftGraph = createGraph(leftDocument.value);
+		const rightGraph = createGraph(rightDocument.value);
+		if (!leftGraph.ok || !rightGraph.ok) throw new Error('Merged graphs must be valid');
+		const firstLayout = layoutWithDedicatedEngineAndRankOrderWitness(
+			leftGraph.value,
+			topologicallyRank(leftGraph.value),
+			entry.measurements,
+		);
+		const secondLayout = layoutWithDedicatedEngineAndRankOrderWitness(
+			rightGraph.value,
+			topologicallyRank(rightGraph.value),
+			entry.measurements,
+		);
+		expect(firstLayout).toEqual(secondLayout);
+		expect(firstLayout.witness.mode).toBe('exact');
 	});
 });

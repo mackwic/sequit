@@ -40,7 +40,10 @@ function chargeBridgeCoverage(bridge: LayoutBridge, charge: RouteWorkCharge | un
 }
 
 /** The crossings of an analysis that no validated bridge of the same analysis covers. */
-export function unbridgedCrossings(analysis: RouteBridgeAnalysis): readonly RouteCrossing[] {
+export function unbridgedCrossings(analysis: {
+	readonly crossings: RouteBridgeAnalysis['crossings'];
+	readonly bridges: RouteBridgeAnalysis['bridges'];
+}): readonly RouteCrossing[] {
 	return analysis.crossings.filter(
 		(crossing) =>
 			!analysis.bridges.some((bridge) =>
