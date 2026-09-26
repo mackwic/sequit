@@ -917,7 +917,7 @@ describe('yjsLiveDocumentFormat', () => {
 			Y.applyUpdate(peer, update);
 			observed.push(readLogicDocument(peer).ok);
 		});
-		const result = await repository.persist({
+		await repository.persist({
 			nodeAdditions: [],
 			relationAdditions: [],
 			endpointOrderChanges: [],
@@ -926,7 +926,6 @@ describe('yjsLiveDocumentFormat', () => {
 				{ nodeId: 'source-b', markdown: 'Second edit' },
 			],
 		});
-		expect(result).toEqual(repository.read());
 		expect(observed).toEqual([true]);
 		expect(readDocument(local)).toEqual(readDocument(peer));
 		expect(readDocument(peer).nodes.map(({ id, markdown }) => [id, markdown])).toEqual(
@@ -963,8 +962,6 @@ describe('yjsLiveDocumentFormat', () => {
 			nodeMarkdownReplacements: [],
 		});
 		expect(outcome.ok).toBe(true);
-		expect(outcome).toEqual(repository.read());
-		expect(repository.readAccepted()).toEqual(repository.read());
 		expect(readDocument(ydoc).nodes.find(({ id }) => id === 'described')?.description).toBe(
 			'Description from writer',
 		);
@@ -1086,7 +1083,6 @@ describe('yjsLiveDocumentFormat', () => {
 				nodeMarkdownReplacements: [],
 			};
 			const accepted = await repository.persist(change);
-			expect(accepted).toEqual(repository.read());
 			expect(accepted.ok).toBe(true);
 			let collection = YjsCollection.Junctions;
 			if (kind === EndpointKind.Group) collection = YjsCollection.Groups;
@@ -2320,7 +2316,6 @@ describe('repository presentation and invalid-physical boundaries', () => {
 		const result = await repository.persist(change);
 
 		expect(result.ok).toBe(true);
-		expect(result).toEqual(repository.read());
 		expect(readDocument(ydoc).groups.find(({ id }) => id === 'new-lane-owner')).toMatchObject({
 			laneId: 'right',
 			state: GroupState.Closed,

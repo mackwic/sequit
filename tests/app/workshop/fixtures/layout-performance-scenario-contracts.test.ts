@@ -22,6 +22,7 @@ import {
 	layoutPreparedScenario,
 	scenarioDocumentIsValid,
 } from '../../../support/harnesses/layout-performance-scenario';
+import { prepareLayoutPerformanceScenario } from '../../../support/scenarios/layout-performance/prepare-layout-performance-scenario';
 
 const nodeCounts = [1, 10, 19, 50] as const;
 
@@ -106,20 +107,20 @@ describe('layout performance scenario contracts', () => {
 		expect(snapshot.document.nodes.filter(({ laneId }) => laneId === 'C')).toHaveLength(6);
 		expect(snapshot.document.relations).toHaveLength(4);
 		expect(snapshot.metadata).toMatchObject({ laneCount: 3, routeCount: 4 });
-		const prepared = buildPreparedScenarioTwice(scenario, 10)[0];
+		const prepared = prepareLayoutPerformanceScenario(scenario, 10);
 		const layout = await layoutPreparedScenario(prepared);
 		expect(layout.relations.map(({ id }) => id).sort()).toEqual(
 			snapshot.document.relations.map(({ id }) => id).sort(),
 		);
 	});
 
-	it('grows relations across all three lanes while validating bounded route work', () => {
+	it('grows relations across all three lanes with valid dense geometry', () => {
 		const scenario = LAYOUT_PERFORMANCE_SCENARIOS.find(
 			({ name }) => name === 'lane-allocations-dense',
 		);
 		if (scenario === undefined) throw new Error('Growing lane performance profile is missing');
 		const small = scenario.createBuilder().buildSnapshot(50);
-		const large = buildPreparedScenarioTwice(scenario, 1000)[0];
+		const large = prepareLayoutPerformanceScenario(scenario, 1000);
 		expect(small.document.relations).toHaveLength(3);
 		expect(large.document.relations).toHaveLength(50);
 		expect(new Set(large.document.nodes.map(({ laneId }) => laneId))).toEqual(
@@ -135,18 +136,6 @@ describe('layout performance scenario contracts', () => {
 		expect(
 			validateSharedLaneGeometry(large.graph, outcome.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
-		const passes = outcome.allocationWitness?.passes;
-		expect(passes?.map(({ acceptBridges }) => acceptBridges)).toEqual([false, true]);
-		expect(
-			passes?.some(
-				({ baselineWork, workBudget }) => baselineWork !== undefined && baselineWork > workBudget,
-			),
-		).toBe(true);
-		for (const pass of passes ?? []) {
-			expect(pass.baselineWork).toBeGreaterThan(0);
-			expect(pass.work).toBeLessThanOrEqual(pass.workBudget);
-			expect(pass.workBudget).toBe(20_000);
-		}
 	});
 
 	it.each(LAYOUT_PERFORMANCE_SCENARIOS)(

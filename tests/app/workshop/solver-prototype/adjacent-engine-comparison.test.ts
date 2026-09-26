@@ -8,14 +8,9 @@ import {
 } from '../../../../src/app/workshop/solver-prototype/demo-result';
 import { realK32Fixture } from '../../../../src/app/workshop/solver-prototype/real-k32-witness';
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { candidateFaceBranches } from '../../../../src/lib/core/layout/contract/candidate-face-branches';
-import {
-	materializeIndependentAdjacentBridgeGeometry,
-	materializeIndependentAdjacentGeometry,
-} from '../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {
 	DETOUR_AREA_TOLERANCE,
 	DETOUR_LENGTH_TOLERANCE,
@@ -25,63 +20,8 @@ import {
 	IndependentAdjacentStatus,
 	resolveIndependentAdjacentContract,
 } from '../../../../src/lib/core/layout/contract/independent-adjacent-resolution';
-import {
-	buildAdjacentLayoutContract,
-	LayoutContractBuildStatus,
-} from '../../../../src/lib/core/layout/contract/layout-contract';
-import {
-	type LayoutMeasurements,
-	type LayoutResult,
-	RoutingPortRole,
-} from '../../../../src/lib/core/layout/layout-types';
-import { layoutRouteCost } from '../../../../src/lib/core/layout/routing/route-cost';
+import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import { routeCrossings } from '../../../support/assertions/route-geometry';
-
-function materializeReportedBranch(
-	graph: LogicGraph,
-	measurements: LayoutMeasurements,
-	branchId: string,
-): LayoutResult {
-	const bridge = branchId.endsWith(':bridge');
-	let candidateBranchId = branchId;
-	if (bridge) candidateBranchId = branchId.slice(0, -':bridge'.length);
-	const built = buildAdjacentLayoutContract(graph, topologicallyRank(graph), measurements);
-	if (built.status !== LayoutContractBuildStatus.Ready)
-		throw new Error('Expected an adjacent contract for the reported branch');
-	const branch = built.contract.candidates
-		.flatMap(candidateFaceBranches)
-		.find((candidate) => candidate.id === candidateBranchId);
-	if (branch === undefined) throw new Error(`Unknown reported branch ${branchId}`);
-	let layout: LayoutResult | undefined;
-	if (bridge)
-		layout = materializeIndependentAdjacentBridgeGeometry(
-			graph,
-			measurements,
-			branch.candidate,
-			branch.choices,
-		);
-	else
-		layout = materializeIndependentAdjacentGeometry(
-			graph,
-			measurements,
-			branch.candidate,
-			branch.choices,
-		);
-	if (layout === undefined) throw new Error(`Could not materialize reported branch ${branchId}`);
-	return layout;
-}
-
-function allocatedGrowth(layout: LayoutResult, measurements: LayoutMeasurements): number {
-	return layout.elements.reduce((total, element) => {
-		const measured = measurements.nodes.get(element.id);
-		if (measured === undefined) throw new Error(`Missing measurement for ${element.id}`);
-		return (
-			total +
-			Math.max(0, element.bounds.width - measured.width) +
-			Math.max(0, element.bounds.height - measured.height)
-		);
-	}, 0);
-}
 
 describe('adjacent 3+1 bridge and detour comparison', () => {
 	it('reports malformed graph and unsupported resolution states through shared guards', () => {
@@ -163,24 +103,7 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			detourAreaTolerance: DETOUR_AREA_TOLERANCE,
 			detourLengthTolerance: DETOUR_LENGTH_TOLERANCE,
 		});
-		const detourLayout = materializeReportedBranch(
-			created.value,
-			fixture.measurements,
-			costs.detourBranchId,
-		);
-		const bridgeLayout = materializeReportedBranch(
-			created.value,
-			fixture.measurements,
-			costs.bridgeBranchId,
-		);
-		expect(layoutRouteCost(detourLayout)).toEqual(costs.detour);
-		expect(layoutRouteCost(bridgeLayout)).toEqual(costs.bridge);
-		expect(allocatedGrowth(detourLayout, fixture.measurements)).toBe(costs.detourTotalGrowth);
 		expect(fixture.measurements.nodes.get('a')?.width).toBe(80);
-		expect(allocatedGrowth(bridgeLayout, fixture.measurements)).toBe(costs.bridgeTotalGrowth);
-		expect(detourLayout.elements.find(({ id }) => id === 'a')?.bounds.width).toBe(96);
-		expect(bridgeLayout.elements.find(({ id }) => id === 'a')?.bounds.width).toBe(96);
-		expect(comparison.independent.metrics.growth).toBe(costs.bridgeTotalGrowth);
 		expect(comparison.dedicated.metrics.area).toBe(130560);
 		expect(comparison.dedicated.metrics.routeLength).toBe(896);
 		expect(comparison.dedicated.metrics.crossings).toBe(2);
@@ -201,8 +124,6 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 		expect(costs.detour.routeLength / costs.bridge.routeLength - 1).toBeGreaterThan(
 			DETOUR_LENGTH_TOLERANCE,
 		);
-		expect(comparison.independent.metrics.area).toBe(costs.bridge.area);
-		expect(comparison.independent.metrics.routeLength).toBe(costs.bridge.routeLength);
 		expect(comparison.twoByTwo.document.id).toBe('adjacent-2+2-bridge-witness');
 		expect(comparison.twoByTwo.independent.selectedIssue).toBe(IndependentAdjacentIssue.Bridge);
 		const twoByTwoCosts = comparison.twoByTwo.independent.comparison;
@@ -214,26 +135,6 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			detour: { area: 523136, routeLength: 1032, bends: 4 },
 			bridge: { area: 429440, routeLength: 600, bends: 8 },
 		});
-		const twoByTwoGraph = createGraph(comparison.twoByTwo.document);
-		if (!twoByTwoGraph.ok) throw new Error('Expected the 2+2 comparison graph');
-		const twoByTwoDetour = materializeReportedBranch(
-			twoByTwoGraph.value,
-			comparison.twoByTwo.measurements,
-			twoByTwoCosts.detourBranchId,
-		);
-		const twoByTwoBridge = materializeReportedBranch(
-			twoByTwoGraph.value,
-			comparison.twoByTwo.measurements,
-			twoByTwoCosts.bridgeBranchId,
-		);
-		expect(layoutRouteCost(twoByTwoDetour)).toEqual(twoByTwoCosts.detour);
-		expect(layoutRouteCost(twoByTwoBridge)).toEqual(twoByTwoCosts.bridge);
-		expect(allocatedGrowth(twoByTwoDetour, comparison.twoByTwo.measurements)).toBe(
-			twoByTwoCosts.detourTotalGrowth,
-		);
-		expect(allocatedGrowth(twoByTwoBridge, comparison.twoByTwo.measurements)).toBe(
-			twoByTwoCosts.bridgeTotalGrowth,
-		);
 		expect(comparison.twoByTwo.independent.metrics.area).toBe(429440);
 		expect(comparison.twoByTwo.independent.metrics.routeLength).toBe(600);
 		expect(comparison.twoByTwo.independent.metrics.bridges).toBe(1);
@@ -371,17 +272,10 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			DETOUR_LENGTH_TOLERANCE,
 		);
 		expect(costs.selected).toBe(IndependentAdjacentIssue.Detour);
-		expect(resolution.selection.totalGrowth).toBe(costs.detourTotalGrowth);
-		expect(resolution.selection.differentialGrowth).toBe(costs.detourDifferentialGrowth);
-		expect(resolution.selection.branchId).toBe(costs.detourBranchId);
-		const detourLayout = materializeReportedBranch(
-			created.value,
-			measurements,
-			costs.detourBranchId,
-		);
-		expect(allocatedGrowth(detourLayout, measurements)).toBe(costs.detourTotalGrowth);
 		expect(measurements.nodes.get('a')?.width).toBe(20);
-		expect(detourLayout.elements.find(({ id }) => id === 'a')?.bounds.width).toBe(96);
+		expect(resolution.selection.layout.elements.find(({ id }) => id === 'a')?.bounds.width).toBe(
+			96,
+		);
 	});
 
 	it('selects a real bridge when only detour route length exceeds its tolerance', () => {

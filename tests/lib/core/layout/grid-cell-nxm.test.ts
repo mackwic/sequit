@@ -175,9 +175,10 @@ describe('N by M grid composition', () => {
 		},
 	);
 
-	it('reserves each column gutter by its own crossing load without shrinking the global bus', () => {
+	it('reserves loaded gutters, routes the inner crossing and ignores input permutation', () => {
+		const source = nxmThreeByTwoDocument();
 		const input = nxmThreeByTwoInput();
-		const prepared = prepareLayoutDocument(nxmThreeByTwoDocument());
+		const prepared = prepareLayoutDocument(source);
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
@@ -198,7 +199,7 @@ describe('N by M grid composition', () => {
 		expect(result.layout.width).toBe(result.columnWidths.reduce((sum, width) => sum + width, 432));
 		expect(result.layout.height).toBe(result.rowHeights.reduce((sum, height) => sum + height, 336));
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
-		const resources = gridCrossingResources(input, nxmThreeByTwoDocument().relations);
+		const resources = gridCrossingResources(input, source.relations);
 		for (const [column, ids] of resources.gutterIds.entries()) {
 			const cell = columns[column];
 			const edge = resources.edges.gutters[column];
@@ -224,14 +225,6 @@ describe('N by M grid composition', () => {
 			const ports = result.portals.filter(({ relationId }) => relationId === route.id);
 			expect(ports).toHaveLength(2);
 		}
-	});
-
-	it('routes the inward crossing of a three by two grid through its inner gutter', () => {
-		const cellInput = nxmThreeByTwoInput();
-		const prepared = prepareLayoutDocument(nxmThreeByTwoDocument());
-		const result = solveGridCellLayout(prepared.graph, prepared.measurements, cellInput);
-		if (result.status !== GridCellLayoutStatus.Selected)
-			throw new Error(`${result.status}: ${result.reason}`);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
 		const reallocation = result.witness.phases[0];
 		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
@@ -250,28 +243,22 @@ describe('N by M grid composition', () => {
 			({ x }) => x > firstColumn.bounds.x + firstColumn.bounds.width && x < secondColumn.bounds.x,
 		);
 		expect(innerGutter).toBe(true);
-	});
-
-	it('is invariant to permutation of the document, cells and ownership entries', () => {
-		const source = nxmThreeByTwoDocument();
-		const cellInput = nxmThreeByTwoInput();
-		const baseline = prepareLayoutDocument(source, undefined);
 		const permuted = prepareLayoutDocument({
 			...source,
 			nodes: [...source.nodes].reverse(),
 			relations: [...source.relations].reverse(),
 		});
 		const permutedInput: GridCellInput = {
-			...cellInput,
-			cells: [...cellInput.cells].reverse(),
-			cellByEndpointId: new Map([...cellInput.cellByEndpointId].reverse()),
+			...input,
+			cells: [...input.cells].reverse(),
+			cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
 		};
 		const permutedMeasurements = {
 			...permuted.measurements,
 			nodes: new Map([...permuted.measurements.nodes].reverse()),
 		};
 		expect(solveGridCellLayout(permuted.graph, permutedMeasurements, permutedInput)).toEqual(
-			solveGridCellLayout(baseline.graph, baseline.measurements, cellInput),
+			result,
 		);
 	});
 });

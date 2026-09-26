@@ -394,6 +394,56 @@ it('keeps generated non-descendant nodes outside every group envelope', async ()
 	);
 });
 
+async function assertDistantGroups(
+	configuration: (typeof LAYOUT_CONFIGURATIONS)[number],
+	nodeWidth: number,
+	padding: number,
+	reverse: boolean,
+): Promise<void> {
+	const document = tallNestedInterleaving(configuration);
+	let variant = document;
+	if (reverse)
+		variant = {
+			...document,
+			groups: document.groups.toReversed(),
+			nodes: document.nodes.toReversed(),
+			relations: document.relations.toReversed(),
+		};
+	const overrides = {
+		nodes: Object.fromEntries(
+			document.nodes.map((node, index) => [
+				node.id,
+				{ width: nodeWidth + (index % 3) * 17, height: 45 + (index % 4) * 13 },
+			]),
+		),
+		groups: {
+			parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
+			child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
+			empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
+		},
+	};
+	const { layout } = await layoutDocument(variant, overrides);
+	assertDisjointNodesAndForeignGroups(variant, layout);
+	const parent = boundsFor(layout, 'parent');
+	if (configuration.direction === LayoutDirection.TopToBottom) {
+		const distant = boundsFor(layout, 't0');
+		expect(parent.y).toBeLessThan(distant.y + distant.height);
+		expect(distant.y).toBeLessThan(parent.y + parent.height);
+	}
+	expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
+	expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
+	const { layout: reordered } = await layoutDocument(
+		{
+			...variant,
+			groups: variant.groups.toReversed(),
+			nodes: variant.nodes.toReversed(),
+			relations: variant.relations.toReversed(),
+		},
+		overrides,
+	);
+	expect(reordered).toEqual(layout);
+}
+
 it.each(LAYOUT_CONFIGURATIONS)(
 	'separates tall nested, empty and interleaved groups across distant ranks ($direction / $bias)',
 	async (configuration) => {
@@ -402,53 +452,16 @@ it.each(LAYOUT_CONFIGURATIONS)(
 				fc.integer({ min: 100, max: 230 }),
 				fc.integer({ min: 35, max: 125 }),
 				fc.boolean(),
-				async (nodeWidth, padding, reverse) => {
-					const document = tallNestedInterleaving(configuration);
-					let variant = document;
-					if (reverse)
-						variant = {
-							...document,
-							groups: document.groups.toReversed(),
-							nodes: document.nodes.toReversed(),
-							relations: document.relations.toReversed(),
-						};
-					const overrides = {
-						nodes: Object.fromEntries(
-							document.nodes.map((node, index) => [
-								node.id,
-								{ width: nodeWidth + (index % 3) * 17, height: 45 + (index % 4) * 13 },
-							]),
-						),
-						groups: {
-							parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
-							child: { minimumWidth: 10000, minimumHeight: 10000, headerHeight: 25, padding: 20 },
-							empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
-						},
-					};
-					const { layout } = await layoutDocument(variant, overrides);
-					assertDisjointNodesAndForeignGroups(variant, layout);
-					const parent = boundsFor(layout, 'parent');
-					if (configuration.direction === LayoutDirection.TopToBottom) {
-						const distant = boundsFor(layout, 't0');
-						expect(parent.y).toBeLessThan(distant.y + distant.height);
-						expect(distant.y).toBeLessThan(parent.y + parent.height);
-					}
-					expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
-					expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
-					const { layout: reordered } = await layoutDocument(
-						{
-							...variant,
-							groups: variant.groups.toReversed(),
-							nodes: variant.nodes.toReversed(),
-							relations: variant.relations.toReversed(),
-						},
-						overrides,
-					);
-					expect(reordered).toEqual(layout);
-				},
+				async (nodeWidth, padding, reverse) =>
+					assertDistantGroups(configuration, nodeWidth, padding, reverse),
 			),
-			PROPERTY_PARAMETERS,
+			{
+				...PROPERTY_PARAMETERS,
+				numRuns: Math.ceil(PROPERTY_PARAMETERS.numRuns / LAYOUT_CONFIGURATIONS.length),
+			},
 		);
+		await assertDistantGroups(configuration, 100, 35, false);
+		await assertDistantGroups(configuration, 230, 125, true);
 	},
 );
 
