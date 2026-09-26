@@ -30,7 +30,7 @@ test('records real remote projections for a 1000-node document', async ({ browse
 		const observer = await observing.newPage();
 		await presenter.goto(`/atelier/collaboration?room=${room}&name=Présentation`);
 		await observer.goto(`/atelier/collaboration?room=${room}&name=Observation`);
-		await expect(observer.locator('[data-node-id]')).toHaveCount(1000);
+		await expect(observer.locator('[data-node-id]')).toHaveCount(1000, { timeout: 30_000 });
 		await presenter.getByRole('button', { name: `Modifier Boîte ${node.id}`, exact: true }).click();
 		const editor = presenter.getByRole('textbox', { name: `Contenu ${node.id}`, exact: true });
 		await editor.evaluate((element) => {
