@@ -17,12 +17,14 @@
 		target,
 		field,
 		label,
+		connected,
 		autofocus = false,
 	}: {
 		client: CollaborativeDocumentSession;
 		target: SharedTarget;
 		field: string;
 		label: string;
+		connected: boolean;
 		autofocus?: boolean;
 	} = $props();
 	const awareness = getCollaborationAwareness();
@@ -30,6 +32,10 @@
 	const text = $derived(client.text(target, field));
 	let host: HTMLDivElement;
 	let editor = $state<QuillMarkdownEditor>();
+	let quillInstance = $state.raw<Quill>();
+	$effect(() => {
+		quillInstance?.enable(connected);
+	});
 	let failure = $state('');
 	let sourceMode = $state(false);
 	const profile = $derived.by(() => {
@@ -56,7 +62,7 @@
 						client.updateText(target, field, markdown);
 					},
 					merge: (update) => {
-						client.applyLocalTextUpdate(update);
+						client.applyLocalTextUpdate(target, field, update);
 					},
 				},
 				profile,
@@ -102,8 +108,11 @@
 			window.addEventListener('blur', clear);
 			labelToolbar(quill);
 			quill.history.clear();
-			if (autofocus) quill.focus();
+			quill.enable(connected);
+			quillInstance = quill;
+			if (autofocus && connected) quill.focus();
 			cleanup = (): void => {
+				quillInstance = undefined;
 				binding.destroy();
 				binding.editor.removeEventListener('modechange', updateMode);
 				quill.root.removeEventListener('keydown', protectSource, true);
@@ -150,7 +159,9 @@
 			Ce contenu s’édite en texte source pour conserver toutes ses mises en forme.
 		</p>
 	{:else if editor && profile === QuillEditorProfile.Description}
-		<button type="button" onclick={() => editor?.showSource()}>Texte source</button>
+		<button type="button" disabled={!connected} onclick={() => editor?.showSource()}
+			>Texte source</button
+		>
 	{/if}
 	<div
 		class="editor-wrapper"

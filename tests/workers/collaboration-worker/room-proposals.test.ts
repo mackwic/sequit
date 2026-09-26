@@ -244,6 +244,55 @@ describe('room authority', () => {
 		peerDocument.destroy();
 	});
 
+	it('closes a session that repeatedly retries the same refused proposal without advancing its receipt', async () => {
+		const room = 'repeated-business-refusal';
+		const alice = await connectRoom(room);
+		const bob = await connectRoom(room);
+		const doc = await initializeRoom(room, alice, CollaborativeFixture.LinkedBoxes);
+		await bob.next(Message.Commit);
+		const refused = {
+			type: Message.Change,
+			id: 'same-invalid-gesture',
+			sessionId: 'repeated-session',
+			sequence: 1,
+			commands: [
+				{
+					op: Op.Create,
+					target: { kind: Kind.Relation, id: 'cycle' },
+					properties: { from: 'A', to: 'B' },
+				},
+			],
+		} as const;
+		const closed = new Promise<CloseEvent>((resolve) => {
+			alice.socket.addEventListener('close', resolve, { once: true });
+		});
+		for (let attempt = 0; attempt < 6; attempt++) {
+			alice.send(refused);
+			expect((await alice.next(Message.Conflict)).lastAcceptedSequence).toBe(0);
+			if (attempt === 0)
+				alice.send({
+					type: Message.Presence,
+					participants: [{ clientId: 7, name: 'Alice', color: '#aabbcc', selected: [] }],
+				});
+		}
+		alice.send(refused);
+		expect(await alice.next(Message.Reject)).toMatchObject({ code: 'repeated-command-refusal' });
+		expect((await closed).code).toBe(1008);
+		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
+			expect(await state.storage.get('command-session:repeated-session')).toBeUndefined();
+		});
+		bob.send({
+			type: Message.Change,
+			id: 'independent',
+			sessionId: 'bob-session',
+			sequence: 1,
+			commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }],
+		});
+		expect((await bob.next(Message.Commit)).id).toBe('independent');
+		bob.socket.close();
+		doc.destroy();
+	});
+
 	it('uses legacy v4 rejection for an old socket while preserving newer participants', async () => {
 		const name = 'mixed-protocol';
 		const legacy = await connectRoom(name);

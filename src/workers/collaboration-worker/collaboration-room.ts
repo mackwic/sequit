@@ -11,30 +11,29 @@ import {
 	SessionFailureCode,
 } from '../../lib/infrastructure/collaboration/session-failure';
 import {
+	BusinessCommandRefusal,
+	StaleSharedCommandError,
+	TerminalSessionFailure,
+} from '../../lib/infrastructure/collaboration/session-failure';
+import {
 	decodeSessionEnvelope,
 	type SessionMessage,
 	SessionMessageKind,
-	type SharedTarget,
 } from '../../lib/infrastructure/collaboration/session-wire';
-import {
-	executeSharedCommands,
-	StaleSharedCommandError,
-} from '../../lib/infrastructure/collaboration/shared-command-executor';
-import { SharedElementKind } from '../../lib/infrastructure/collaboration/shared-element';
-import { elementCollection } from '../../lib/infrastructure/collaboration/shared-element';
+import { executeSharedCommands } from '../../lib/infrastructure/collaboration/shared-command-executor';
 import {
 	readSyncStep,
 	SyncStepKind,
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../lib/infrastructure/collaboration/sync-steps';
-import { TextTargetGoneError } from '../../lib/infrastructure/collaboration/text-update-validation';
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { readCommandReceipt } from './command-receipts';
 import { handleRoomFailure } from './room-failures';
 import {
+	allowCommandRefusal,
 	broadcastRoomPresence,
 	rememberSocketVersion,
 	roomPresence,
@@ -128,8 +127,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				await this.initialize(socket, message);
 				return;
 			case SessionMessageKind.Change:
-				if ('update' in message)
-					await this.acceptUpdate(socket, message.update, message.id, message.targets);
+				if ('update' in message) await this.acceptUpdate(socket, message.update, message.id);
 				else await this.acceptCommands(socket, message);
 				return;
 			case SessionMessageKind.Presence:
@@ -209,8 +207,13 @@ export class CollaborationRoom extends DurableObject<Env> {
 			try {
 				executeSharedCommands(candidate, message.commands);
 			} catch (error) {
-				let explanation = 'Commande refusée.';
-				if (error instanceof Error) explanation = error.message;
+				if (!(error instanceof BusinessCommandRefusal)) throw error;
+				if (!allowCommandRefusal(socket, message.sessionId, message.id))
+					throw new TerminalSessionFailure(
+						SessionFailureCode.RepeatedCommandRefusal,
+						'Cette proposition a été refusée trop souvent.',
+					);
+				const explanation = error.message;
 				sendRoomMessage(socket, {
 					type: SessionMessageKind.Conflict,
 					code: commandConflictCode(error),
@@ -226,48 +229,18 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	private async acceptUpdate(
-		socket: WebSocket,
-		update: Uint8Array,
-		id?: string,
-		targets?: readonly SharedTarget[],
-	): Promise<void> {
+	private async acceptUpdate(socket: WebSocket, update: Uint8Array, id?: string): Promise<void> {
 		const decoded = Y.decodeUpdate(update);
 		if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return;
 		const accepted = readLogicDocument(this.roomState.doc);
 		if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
-		let result;
-		try {
-			result = await authorizeProposal({
-				authoritative: this.roomState.doc,
-				acceptedDocument: accepted.value,
-				proposedUpdate: update,
-				guards: defaultUpdateGuards,
-				textOnly: true,
-			});
-		} catch (error) {
-			if (!(error instanceof TextTargetGoneError)) throw error;
-			const gone = targets?.find((target) => {
-				if (target.kind === SharedElementKind.Document) return false;
-				return !elementCollection(this.roomState.doc, target.kind).has(target.id);
-			});
-			const targetId = error.targetId ?? gone?.id;
-			const conflict: {
-				type: SessionMessageKind.Conflict;
-				code: ConflictCode;
-				message: string;
-				id?: string;
-				targetId?: string;
-			} = {
-				type: SessionMessageKind.Conflict,
-				code: error.code,
-				message: error.message,
-			};
-			if (id !== undefined) conflict.id = id;
-			if (targetId !== undefined) conflict.targetId = targetId;
-			sendRoomMessage(socket, conflict);
-			return;
-		}
+		const result = await authorizeProposal({
+			authoritative: this.roomState.doc,
+			acceptedDocument: accepted.value,
+			proposedUpdate: update,
+			guards: defaultUpdateGuards,
+			textOnly: true,
+		});
 		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
 		try {
 			await this.commit(result.value.candidate);

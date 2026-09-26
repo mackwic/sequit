@@ -9,7 +9,6 @@
 		type CollaborativeDocumentSession,
 		createCollaborativeDocumentSession,
 	} from '../../lib/infrastructure/collaboration/collaborative-document-session';
-	import { SourceDocumentStateKind } from '../../lib/infrastructure/collaboration/collaborative-document-session';
 	import type { ParticipantPresence } from '../../lib/infrastructure/collaboration/session-wire';
 	import { createWebSocketCollaborationTransport } from '../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { parseSequitToml } from '../../lib/infrastructure/toml/parse-sequit-toml';
@@ -33,7 +32,6 @@
 	let initialized = $state(false);
 	let paused = $state(false);
 	let toast = $state<string>();
-	let replica = $state(0);
 	onMount(() => {
 		toast = consumeCollaborationError(path);
 		const parsed = parseSequitToml(source);
@@ -44,7 +42,6 @@
 		transport = socket;
 		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
 		client = current;
-		let boundDocument = current.document;
 		const updateStatus = (): void => {
 			status = current.connectionStatus();
 			if (status === CollaborationStatus.Ready) {
@@ -61,13 +58,7 @@
 				toast = message;
 				updateStatus();
 			}),
-			current.subscribeToSourceState((state) => {
-				if (state.kind === SourceDocumentStateKind.Valid && boundDocument !== current.document) {
-					boundDocument = current.document;
-					replica++;
-				}
-				updateStatus();
-			}),
+			current.subscribeToSourceState(updateStatus),
 			current.subscribeToPresence((value) => {
 				participants = value;
 			}),
@@ -86,7 +77,7 @@
 		<strong>{name}</strong>
 		<span role="status" aria-label="Connexion"
 			>{#if status === CollaborationStatus.Ready}Connecté{:else if status === CollaborationStatus.Disconnected}Hors
-				ligne{:else}Connexion…{/if}</span
+				ligne{:else if status === CollaborationStatus.Synchronizing}Synchronisation…{:else}Connexion…{/if}</span
 		>
 		<button
 			type="button"
@@ -104,7 +95,7 @@
 				.join(' · ')}</span
 		>
 	</header>
-	{#if toast}<div class="toast" role="alert">
+	{#if toast}<div class="toast" role="status" aria-live="polite" aria-atomic="true">
 			{toast}<button
 				type="button"
 				aria-label="Fermer la notification"
@@ -114,14 +105,12 @@
 			>
 		</div>{/if}
 	{#if client && model && initialized}
-		{#key replica}
-			<CollaborativeWorkspace
-				{client}
-				{model}
-				{name}
-				connected={status === CollaborationStatus.Ready}
-			/>
-		{/key}
+		<CollaborativeWorkspace
+			{client}
+			{model}
+			{name}
+			connected={status === CollaborationStatus.Ready}
+		/>
 	{/if}
 </section>
 

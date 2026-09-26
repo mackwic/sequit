@@ -2,7 +2,7 @@ import { notifySubscribers, subscribeToSet } from './notify-subscribers';
 import { clearSessionTimer, sendPresenceSafely } from './session-incoming';
 import type { LocalPresence, ParticipantPresence, SessionMessage } from './session-wire';
 
-/** Presence is ephemeral; it neither survives a replica swap nor affects durable commands. */
+/** Presence is ephemeral and never affects durable commands. */
 export class SessionPresence {
 	readonly #listeners = new Set<(participants: readonly ParticipantPresence[]) => void>();
 	#local: ParticipantPresence | undefined;
@@ -42,10 +42,6 @@ export class SessionPresence {
 	receive(participants: readonly ParticipantPresence[]): void {
 		this.#participants = participants;
 		notifySubscribers(this.#listeners, participants);
-	}
-
-	remount(): void {
-		if (this.#local !== undefined) this.#local = { ...this.#local, clientId: this.clientId() };
 	}
 
 	stop(): void {

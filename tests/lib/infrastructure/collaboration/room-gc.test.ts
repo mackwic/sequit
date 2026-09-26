@@ -3,11 +3,13 @@ import * as Y from 'yjs';
 
 import { authorizeProposal } from '../../../../src/lib/infrastructure/collaboration/authorize-proposal';
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
+import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import { defaultUpdateGuards } from '../../../../src/lib/infrastructure/collaboration/update-guards';
 import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { SharedCommandKind } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import {
 	CollaborativeFixture,
 	collaborativeFixture,
@@ -96,29 +98,49 @@ it('preserves local text undo/redo after server GC without undoing a remote part
 	for (const doc of [server, alice, bob]) doc.destroy();
 });
 
-it.each(['deleted-node', 'hidden-structure'])(
-	'still rejects %s after garbage collection',
-	async (attack) => {
-		const server = new Y.Doc({ gc: false });
-		importLogicDocument(
-			server,
-			collaborativeFixture(CollaborativeFixture.TwoBoxes, 'boundary-room'),
-		);
-		const client = clone(server);
-		if (attack === 'deleted-node') {
-			text(client).insert(0, 'Late ');
-			server.getMap('sequit.nodes').delete('A');
-			compactRoomDocument(server);
-		} else {
-			const hidden = new Y.Map();
-			client.getMap('hidden').set('payload', hidden);
-			hidden.set('structure', 'smuggled');
-			client.getMap('hidden').delete('payload');
-		}
-		await expect(accept(server, client)).rejects.toThrow();
-		if (attack === 'deleted-node') expect(server.getMap('sequit.nodes').has('A')).toBe(false);
-		expect(server.getMap('hidden').size).toBe(0);
-		client.destroy();
-		server.destroy();
-	},
-);
+it('accepts late text after compaction and restoration without reviving a deleted node', async () => {
+	const server = new Y.Doc({ gc: false });
+	importLogicDocument(server, collaborativeFixture(CollaborativeFixture.TwoBoxes, 'boundary-room'));
+	const client = clone(server);
+	text(client).insert(0, 'Late ');
+	server.getMap('sequit.nodes').delete('A');
+	compactRoomDocument(server);
+	const restored = new Y.Doc({ gc: false });
+	Y.applyUpdate(restored, Y.encodeStateAsUpdate(server));
+	await accept(restored, client);
+	expect(restored.getMap('sequit.nodes').has('A')).toBe(false);
+	expect(readLogicDocument(restored)).toMatchObject({ ok: true });
+	client.destroy();
+	server.destroy();
+	restored.destroy();
+});
+
+it('still rejects hidden structural updates after garbage collection', async () => {
+	const server = new Y.Doc({ gc: false });
+	importLogicDocument(server, collaborativeFixture(CollaborativeFixture.TwoBoxes, 'boundary-room'));
+	const client = clone(server);
+	const hidden = new Y.Map();
+	client.getMap('hidden').set('payload', hidden);
+	hidden.set('structure', 'smuggled');
+	client.getMap('hidden').delete('payload');
+	compactRoomDocument(server);
+	await expect(accept(server, client)).rejects.toThrow();
+	expect(server.getMap('hidden').size).toBe(0);
+	client.destroy();
+	server.destroy();
+});
+
+it('rejects an obsolete group label after the ungrouped room has been compacted', async () => {
+	const server = new Y.Doc({ gc: false });
+	importLogicDocument(server, collaborativeFixture(CollaborativeFixture.OpenGroup, 'ungroup-room'));
+	const client = clone(server);
+	const label = client.getMap<Y.Map<unknown>>('sequit.groups').get('G')?.get('label');
+	if (!(label instanceof Y.Text)) throw new Error('Expected grouped fixture label');
+	label.insert(0, 'Late ');
+	executeSharedCommands(server, [{ op: SharedCommandKind.Ungroup, id: 'G' }]);
+	compactRoomDocument(server);
+	await expect(accept(server, client)).rejects.toThrow();
+	expect(server.getMap('sequit.groups').has('G')).toBe(false);
+	client.destroy();
+	server.destroy();
+});

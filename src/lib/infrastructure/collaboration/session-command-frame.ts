@@ -1,10 +1,11 @@
 import type { SharedDocumentCommand } from '../document/shared-document-command';
-import { encodeSessionMessage, SessionMessageKind } from './session-wire';
+import { encodeSessionMessage, type SessionMessage, SessionMessageKind } from './session-wire';
 
-interface PendingCommandFrame {
+export interface PendingCommandFrame {
 	readonly id: string;
-	readonly sequence: number;
-	readonly frame: Uint8Array;
+	sequence: number;
+	frame: Uint8Array;
+	message: Extract<SessionMessage, { type: SessionMessageKind.Change; commands: unknown }>;
 }
 
 /** Validate and encode before consuming a durable command sequence. */
@@ -15,12 +16,13 @@ export function prepareSessionCommand(
 ): PendingCommandFrame {
 	const id = crypto.randomUUID();
 	const sequence = acceptedSequence + 1;
-	const frame = encodeSessionMessage({
+	const message = {
 		type: SessionMessageKind.Change,
 		id,
 		sessionId,
 		sequence,
 		commands,
-	});
-	return { id, sequence, frame };
+	} as const;
+	const frame = encodeSessionMessage(message);
+	return { id, sequence, frame, message };
 }

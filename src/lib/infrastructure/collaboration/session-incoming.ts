@@ -1,13 +1,14 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
-import type { SharedTarget } from '../document/shared-document-command';
 import {
 	type ProposalDecision,
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
 import { notifySubscribers } from './notify-subscribers';
 import { InvalidPresenceError } from './participant-presence';
+import type { PendingCommandFrame } from './session-command-frame';
+import type { SessionTextEdits } from './session-text-edits';
 import {
 	decodeSessionMessage,
 	type ParticipantPresence,
@@ -75,12 +76,11 @@ export function createInitializationMessage(
 
 export function createTextProposalBuffer(
 	ready: () => boolean,
-	targets: () => readonly SharedTarget[],
-	send: (message: SessionMessage) => void,
+	send: (message: Extract<SessionMessage, { update: Uint8Array }> & { id: string }) => void,
 ): TextUpdateBuffer {
 	return new TextUpdateBuffer((update) => {
 		if (!ready()) return;
-		send({ type: SessionMessageKind.Change, id: crypto.randomUUID(), update, targets: targets() });
+		send({ type: SessionMessageKind.Change, id: crypto.randomUUID(), update });
 	});
 }
 
@@ -104,12 +104,13 @@ export interface CommitReceipt {
 
 export function resolveCommitReceipt(
 	id: string | undefined,
-	pending: Map<string, Uint8Array>,
-	textFrames: Set<string>,
+	pending: Map<string, PendingCommandFrame>,
+	textEdits: SessionTextEdits,
 	initializationId?: string,
 ): CommitReceipt {
 	if (id === undefined) return { acknowledged: false, decision: false, initialization: false };
-	if (textFrames.delete(id)) return { acknowledged: true, decision: false, initialization: false };
+	if (textEdits.acknowledge(id))
+		return { acknowledged: true, decision: false, initialization: false };
 	const command = pending.delete(id);
 	const initialization = initializationId === id;
 	return {

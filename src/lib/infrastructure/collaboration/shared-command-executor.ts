@@ -19,6 +19,7 @@ import {
 	SharedElementKind,
 } from '../document/shared-document-command';
 import { reconcileSharedDocument } from './reconcile-shared-document';
+import { BusinessCommandRefusal, StaleSharedCommandError } from './session-failure';
 import {
 	elementCollection,
 	initialElementProperties,
@@ -39,7 +40,7 @@ function createElement(
 			'description'
 		];
 	const collection = elementCollection(document, target.kind);
-	if (collection.has(target.id)) throw new Error('Cet identifiant existe déjà.');
+	if (collection.has(target.id)) throw new BusinessCommandRefusal('Cet identifiant existe déjà.');
 	if (
 		[SharedElementKind.Node, SharedElementKind.Group, SharedElementKind.Junction].includes(
 			target.kind,
@@ -49,8 +50,6 @@ function createElement(
 	if (target.kind === SharedElementKind.Group) properties['state'] ??= GroupState.Expanded;
 	collection.set(target.id, createYjsEntityMap(properties));
 }
-
-export class StaleSharedCommandError extends Error {}
 
 function groupingMembers(document: Y.Doc, ids: readonly string[]): readonly Y.Map<unknown>[] {
 	return ids.map((id) => {
@@ -81,6 +80,7 @@ interface GroupProperties {
 
 function rootGroupOwnership(
 	document: Y.Doc,
+	first: Y.Map<unknown>,
 	members: readonly Y.Map<unknown>[],
 	properties: GroupProperties,
 ): void {
@@ -95,9 +95,7 @@ function rootGroupOwnership(
 		REGION_POLICY_PERSISTENCE_FORMAT,
 	];
 	const regionFormat = typeof format === 'number' && regionFormats.includes(format);
-	const first = members[0];
-	let owner = ROOT_LAYOUT_REGION_ID;
-	if (first !== undefined) owner = regionOwner(first);
+	const owner = regionOwner(first);
 	if (regionFormat && members.some((member) => regionOwner(member) !== owner))
 		throw new StaleSharedCommandError('Les éléments doivent appartenir à la même région.');
 	const regionLanes =
@@ -110,7 +108,6 @@ function rootGroupOwnership(
 		properties.laneId = laneId;
 	}
 	if (!regionFormat) return;
-	if (first === undefined) return;
 	if (owner !== ROOT_LAYOUT_REGION_ID) properties.regionId = owner;
 }
 
@@ -119,8 +116,10 @@ function groupProperties(
 	members: readonly Y.Map<unknown>[],
 	label: string,
 ): GroupProperties {
-	if (members.length === 0) throw new Error('Sélectionnez les éléments à regrouper.');
-	const parent = members[0]?.get('groupId');
+	const first = members[0];
+	if (first === undefined)
+		throw new BusinessCommandRefusal('Sélectionnez les éléments à regrouper.');
+	const parent = first.get('groupId');
 	if (members.some((member) => member.get('groupId') !== parent))
 		throw new StaleSharedCommandError('Les éléments doivent appartenir au même groupe.');
 	const properties: GroupProperties = { label };
@@ -128,7 +127,7 @@ function groupProperties(
 		properties.groupId = parent;
 		return properties;
 	}
-	rootGroupOwnership(document, members, properties);
+	rootGroupOwnership(document, first, members, properties);
 	return properties;
 }
 
@@ -159,8 +158,9 @@ function replaceNature(
 	const affected = [...nodes.values()].filter((node) => node.get('natureId') === target.id);
 	if (affected.length > 0) {
 		if (command.replacementId === undefined)
-			throw new Error('Choisissez une nature de remplacement.');
-		if (command.replacementId === target.id) throw new Error('Choisissez une autre nature.');
+			throw new BusinessCommandRefusal('Choisissez une nature de remplacement.');
+		if (command.replacementId === target.id)
+			throw new BusinessCommandRefusal('Choisissez une autre nature.');
 		sharedElement(document, { kind: SharedElementKind.Nature, id: command.replacementId });
 		for (const node of affected) node.set('natureId', command.replacementId);
 	}
@@ -210,6 +210,7 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 			return;
 		}
 		case SharedCommandKind.Ungroup: {
+			sharedElement(document, { kind: SharedElementKind.Group, id: command.id });
 			const current = readLogicDocument(document);
 			if (!current.ok) throw new Error('Document invalide.');
 			reconcileSharedDocument(document, dissolveDocumentGroup(current.value, command.id), command);
@@ -244,6 +245,7 @@ export function executeSharedCommands(
 		}
 	}, commands);
 	const final = readLogicDocument(document);
-	if (!final.ok) throw new Error(final.diagnostics.map(({ message }) => message).join('; '));
+	if (!final.ok)
+		throw new BusinessCommandRefusal(final.diagnostics.map(({ message }) => message).join('; '));
 	return final.value;
 }

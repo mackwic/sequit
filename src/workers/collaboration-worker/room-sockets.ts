@@ -8,25 +8,31 @@ import {
 	SessionMessageKind,
 } from '../../lib/infrastructure/collaboration/session-wire';
 
+interface RefusalBudget {
+	readonly sessionId: string;
+	readonly id: string;
+	readonly count: number;
+}
+
 interface SocketAttachment {
 	readonly version: 4 | 5;
 	readonly presence?: Uint8Array;
+	readonly refusal?: RefusalBudget;
+}
+
+function isSocketAttachment(value: unknown): value is SocketAttachment {
+	if (typeof value !== 'object') return false;
+	if (value === null) return false;
+	if (!('version' in value)) return false;
+	if (value.version === 4) return true;
+	return value.version === 5;
 }
 
 function socketAttachment(socket: WebSocket): SocketAttachment {
 	const stored: unknown = socket.deserializeAttachment();
 	if (stored instanceof Uint8Array) return { version: 4, presence: stored };
-	if (typeof stored !== 'object') return { version: LEGACY_SESSION_WIRE_VERSION };
-	if (stored === null) return { version: LEGACY_SESSION_WIRE_VERSION };
-	if (!('version' in stored)) return { version: LEGACY_SESSION_WIRE_VERSION };
-	const version = stored.version;
-	if (version !== 4 && version !== 5) return { version: LEGACY_SESSION_WIRE_VERSION };
-	let presence: Uint8Array | undefined;
-	if ('presence' in stored) {
-		if (stored.presence instanceof Uint8Array) presence = stored.presence;
-	}
-	if (presence !== undefined) return { version, presence };
-	return { version };
+	if (isSocketAttachment(stored)) return stored;
+	return { version: LEGACY_SESSION_WIRE_VERSION };
 }
 
 export function rememberSocketVersion(socket: WebSocket, version: 4 | 5): void {
@@ -34,11 +40,25 @@ export function rememberSocketVersion(socket: WebSocket, version: 4 | 5): void {
 	if (attachment.version !== version) socket.serializeAttachment({ ...attachment, version });
 }
 
-export function storeSocketPresence(socket: WebSocket, message: SessionMessage): void {
+export function storeSocketPresence(
+	socket: WebSocket,
+	message: Extract<SessionMessage, { type: SessionMessageKind.Presence }>,
+): void {
 	socket.serializeAttachment({
-		version: socketAttachment(socket).version,
+		...socketAttachment(socket),
 		presence: encodeSessionMessage(message),
 	});
+}
+
+/** A repeated rejected proposal never consumes a durable command sequence. */
+export function allowCommandRefusal(socket: WebSocket, sessionId: string, id: string): boolean {
+	const attachment = socketAttachment(socket);
+	const previous = attachment.refusal;
+	let count = 1;
+	if (previous?.sessionId === sessionId && previous.id === id) count = previous.count + 1;
+	if (count > 6) return false;
+	socket.serializeAttachment({ ...attachment, refusal: { sessionId, id, count } });
+	return true;
 }
 
 export function sendRoomMessage(socket: WebSocket, message: SessionMessage): void {
@@ -72,7 +92,8 @@ export function roomPresence(sockets: readonly WebSocket[], excluded?: WebSocket
 			const attachment = socketAttachment(peer);
 			if (attachment.presence === undefined) continue;
 			const message = decodeSessionMessage(attachment.presence);
-			if (message.type === SessionMessageKind.Presence) participants.push(...message.participants);
+			if (message.type !== SessionMessageKind.Presence) continue;
+			participants.push(...message.participants);
 		} catch {
 			// Ephemeral presence from obsolete protocol versions is discarded.
 		}

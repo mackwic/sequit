@@ -28,7 +28,11 @@ import {
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../../../src/lib/infrastructure/collaboration/sync-steps';
-import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { applyTextUpdate } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
+import {
+	importLogicDocument,
+	readLogicDocument,
+} from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import {
 	SharedCommandKind as Op,
 	SharedElementKind as Kind,
@@ -41,7 +45,7 @@ import { createMemoryTransportPair } from '../../../support/harnesses/memory-tra
 
 function setup(initialized = true) {
 	const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
-	const authoritative = new Y.Doc();
+	const authoritative = new Y.Doc({ gc: false });
 	if (initialized) importLogicDocument(authoritative, initial);
 	const pair = createMemoryTransportPair();
 	const sent: SessionMessage[] = [];
@@ -69,8 +73,9 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-it('keeps unsent text and command identity through a retryable service failure', () => {
+it('keeps command identity and locks text editing during a retryable service failure', () => {
 	vi.useFakeTimers();
+	vi.spyOn(Math, 'random').mockReturnValue(0.5);
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
@@ -82,7 +87,7 @@ it('keeps unsent text and command identity through a retryable service failure',
 		code: failure.code,
 		message: failure.message,
 	});
-	room.client.replaceNodeMarkdown('A', 'Retained');
+	expect(room.client.replaceNodeMarkdown('A', 'Blocked')).toBe(false);
 	room.client.setPresence({ selected: [{ kind: Kind.Node, id: 'A' }] });
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	vi.advanceTimersByTime(50);
@@ -93,12 +98,43 @@ it('keeps unsent text and command identity through a retryable service failure',
 	expect(
 		room.sent.filter((message) => message.type === Message.Change && 'commands' in message),
 	).toEqual([original, original]);
-	expect(room.client.read().nodes[0]?.markdown).toBe('Retained');
+	expect(room.client.read().nodes[0]?.markdown).toBe('Alpha');
+	expect(room.client.replaceNodeMarkdown('A', 'After retry')).toBe(true);
 	expect(
 		room.sent.some(
 			(message) => message.type === Message.Change && 'id' in message && message.id === id,
 		),
 	).toBe(true);
+	room.destroy();
+});
+
+it('synchronizes an unsent text gesture after a retry without replaying stale intent', () => {
+	vi.useFakeTimers();
+	vi.spyOn(Math, 'random').mockReturnValue(0.5);
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	expect(room.client.replaceNodeMarkdown('A', 'Buffered before outage')).toBe(true);
+	room.receive({
+		type: Message.Retry,
+		code: SessionFailureCode.StorageUnavailable,
+		message: 'Retry',
+	});
+	vi.advanceTimersByTime(50);
+	expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(false);
+	vi.advanceTimersByTime(950);
+	room.sent.length = 0;
+	room.sync();
+	for (const frame of room.sent) {
+		if (frame.type !== Message.Sync) continue;
+		const step = readSyncStep(frame.payload);
+		if (step.kind === SyncStepKind.Response) Y.applyUpdate(room.authoritative, step.update);
+	}
+	const result = readLogicDocument(room.authoritative);
+	if (!result.ok) throw new Error('Expected synchronized document');
+	expect(result.value.nodes.find((node) => node.id === 'A')?.markdown).toBe(
+		'Buffered before outage',
+	);
 	room.destroy();
 });
 
@@ -129,7 +165,7 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	room.destroy();
 });
 
-it('rebases buffered text on a surviving box after a peer deletes another box', () => {
+it('integrates mixed buffered text after peer deletion without replacing the replica', () => {
 	vi.useFakeTimers();
 	const room = setup();
 	room.sync();
@@ -137,7 +173,7 @@ it('rebases buffered text on a surviving box after a peer deletes another box', 
 	const original = room.client.document;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('B', 'Texte orphelin');
+	room.client.replaceNodeMarkdown('B', 'Texte devenu invisible');
 	room.client.replaceNodeMarkdown('A', 'Texte à conserver');
 	room.authoritative.getMap('sequit.nodes').delete('B');
 	room.receive({
@@ -145,116 +181,229 @@ it('rebases buffered text on a surviving box after a peer deletes another box', 
 		commit: 2,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
+	expect(room.sent).not.toContainEqual(expect.objectContaining({ type: Message.Change }));
+	expect(room.client.document).toBe(original);
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte B'));
 	vi.advanceTimersByTime(50);
-	const oldText = room.sent.find(
-		(message) => message.type === Message.Change && 'update' in message,
-	);
-	if (oldText?.type !== Message.Change || !('update' in oldText) || oldText.id === undefined)
-		throw new Error('Expected identified buffered text');
+	const batch = room.sent.find((message) => message.type === Message.Change && 'update' in message);
+	if (batch?.type !== Message.Change || !('update' in batch) || batch.id === undefined)
+		throw new Error('Expected identified text proposal');
+	applyTextUpdate(room.authoritative, batch.update);
 	room.receive({
-		type: Message.Conflict,
-		id: oldText.id,
-		targetId: 'B',
-		code: ConflictCode.TextTargetGone,
-		message: 'Text target is no longer available',
+		type: Message.Commit,
+		id: batch.id,
+		commit: 3,
+		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	expect(room.client.document).not.toBe(original);
-	expect(room.pair.client.status()).toBe(TransportStatus.Connected);
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('pas été enregistrée'));
-	room.sync();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(room.authoritative.getMap('sequit.nodes').has('B')).toBe(false);
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Texte à conserver' }]);
-	const response = room.sent.filter((message) => message.type === Message.Sync).at(-1);
-	if (response?.type !== Message.Sync) throw new Error('Expected sync reply');
-	const step = readSyncStep(response.payload);
-	if (step.kind !== SyncStepKind.Response) throw new Error('Expected native response');
-	Y.applyUpdate(room.authoritative, step.update);
-	expect(readSourceDocumentState(room.authoritative, 0)).toMatchObject({
-		kind: SourceDocumentStateKind.Valid,
-		document: { nodes: [{ id: 'A', markdown: 'Texte à conserver' }] },
-	});
-	expect(room.client.replaceNodeMarkdown('A', 'Nouvelle frappe')).toBe(true);
 	room.destroy();
 });
 
-it.each([
-	{
-		name: 'keeps a nonoverlapping local replacement',
-		remote: 'ZAlpha',
-		local: 'AlPHa',
-		expected: 'ZAlPHa',
-		draft: false,
-	},
-	{
-		name: 'exposes an overlapping local replacement as a recoverable draft',
-		remote: 'Omega',
-		local: 'AlPHa',
-		expected: 'Omega',
-		draft: true,
-	},
-])('$name after another box is removed', ({ remote, local, expected, draft }) => {
+it('never replays an acknowledged edit over a later remote replacement', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	room.client.replaceNodeMarkdown('A', 'AlPHa');
+	vi.advanceTimersByTime(50);
+	const accepted = room.sent.find(
+		(message) => message.type === Message.Change && 'update' in message,
+	);
+	if (accepted?.type !== Message.Change || !('update' in accepted) || accepted.id === undefined)
+		throw new Error('Expected text proposal');
+	applyTextUpdate(room.authoritative, accepted.update);
+	room.receive({
+		type: Message.Commit,
+		id: accepted.id,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	room.client.replaceNodeMarkdown('B', 'Pending');
+	const authoritative = room.authoritative
+		.getMap<Y.Map<unknown>>('sequit.nodes')
+		.get('A')
+		?.get('markdown');
+	if (!(authoritative instanceof Y.Text)) throw new Error('Expected surviving text');
+	authoritative.delete(0, authoritative.length);
+	authoritative.insert(0, 'Remote replacement');
+	room.authoritative.getMap('sequit.nodes').delete('B');
+	room.receive({
+		type: Message.Commit,
+		commit: 3,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	vi.advanceTimersByTime(50);
+	const pending = room.sent
+		.filter((message) => message.type === Message.Change && 'update' in message)
+		.at(-1);
+	if (pending?.type !== Message.Change || !('update' in pending))
+		throw new Error('Expected pending text');
+	applyTextUpdate(room.authoritative, pending.update);
+	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Remote replacement' }]);
+	expect(readSourceDocumentState(room.authoritative, 0)).toMatchObject({
+		kind: SourceDocumentStateKind.Valid,
+		document: { nodes: [{ id: 'A', markdown: 'Remote replacement' }] },
+	});
+	room.destroy();
+});
+
+it('ignores a delayed refusal for a proposal that is no longer pending', () => {
+	const room = setup();
+	room.sync();
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.receive({
+		type: Message.Conflict,
+		id: 'obsolete-proposal',
+		code: ConflictCode.CommandConflict,
+		message: 'Rejected earlier',
+		lastAcceptedSequence: 0,
+	});
+	expect(notices).not.toHaveBeenCalled();
+	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
+	expect(room.client.replaceNodeMarkdown('A', 'Still connected')).toBe(true);
+	room.destroy();
+});
+
+it('retains an older text gesture when a newer independent text receipt arrives first', () => {
 	vi.useFakeTimers();
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('B', 'Discarded');
-	room.client.replaceNodeMarkdown('A', local);
-	const nodes = room.authoritative.getMap<Y.Map<unknown>>('sequit.nodes');
-	nodes.delete('B');
-	const authoritative = nodes.get('A')?.get('markdown');
-	if (!(authoritative instanceof Y.Text)) throw new Error('Expected text on remaining box');
-	authoritative.delete(0, authoritative.length);
-	authoritative.insert(0, remote);
+	room.client.replaceNodeMarkdown('A', 'Older pending edit');
 	vi.advanceTimersByTime(50);
-	const oldText = room.sent.find(
+	room.client.replaceNodeMarkdown('B', 'Newer accepted edit');
+	vi.advanceTimersByTime(50);
+	const batches = room.sent.filter(
 		(message) => message.type === Message.Change && 'update' in message,
 	);
-	if (oldText?.type !== Message.Change || !('update' in oldText) || oldText.id === undefined)
-		throw new Error('Expected identified text proposal');
+	const newer = batches[1];
+	if (newer?.type !== Message.Change || !('update' in newer) || newer.id === undefined)
+		throw new Error('Expected a second text proposal');
 	room.receive({
-		type: Message.Conflict,
-		id: oldText.id,
-		code: ConflictCode.TextTargetGone,
-		message: 'Text target is no longer available',
+		type: Message.Commit,
+		id: newer.id,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	room.sync();
-	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: expected }]);
-	if (draft)
-		expect(notices).toHaveBeenCalledWith(
-			expect.stringContaining(`Brouillon à récupérer : ${local}`),
-		);
-	else expect(notices).not.toHaveBeenCalledWith(expect.stringContaining('Brouillon à récupérer'));
+	room.authoritative.getMap('sequit.nodes').delete('A');
+	room.receive({
+		type: Message.Commit,
+		commit: 3,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
 	room.destroy();
 });
 
-it('stops retrying a persistent service failure instead of looping forever', () => {
+it('keeps a newer same-field edit pending when an older receipt arrives', () => {
 	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.replaceNodeMarkdown('A', 'First');
+	vi.advanceTimersByTime(50);
+	const first = room.sent.at(-1);
+	if (first?.type !== Message.Change || !('update' in first) || first.id === undefined)
+		throw new Error('Expected first text proposal');
+	room.client.replaceNodeMarkdown('A', 'Second');
+	vi.advanceTimersByTime(50);
+	room.receive({
+		type: Message.Commit,
+		id: first.id,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	room.authoritative.getMap('sequit.nodes').delete('A');
+	room.receive({
+		type: Message.Commit,
+		commit: 3,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
+	room.destroy();
+});
+
+it('announces one deleted box even when two of its text fields had pending edits', () => {
+	const room = setup();
+	room.sync();
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Pending body');
+	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'description', 'Pending description');
+	room.authoritative.getMap('sequit.nodes').delete('B');
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte B'));
+	room.destroy();
+});
+
+it('backs off with jitter and stops only after six failed resynchronizations', () => {
+	vi.useFakeTimers();
+	vi.spyOn(Math, 'random').mockReturnValue(0.5);
 	const room = setup();
 	room.sync();
 	const rejected = vi.fn();
 	room.client.subscribeToRejection(rejected);
-	for (let attempt = 0; attempt < 4; attempt++) {
+	for (const [attempt, delay] of [1_000, 2_000, 4_000, 8_000, 16_000, 16_000].entries()) {
+		room.sent.length = 0;
 		room.receive({
 			type: Message.Retry,
 			code: SessionFailureCode.StorageUnavailable,
 			message: 'Service unavailable',
 		});
-		if (attempt < 3) {
-			room.receive({
-				type: Message.Commit,
-				commit: attempt + 2,
-				update: Y.encodeStateAsUpdate(room.authoritative),
-			});
-			vi.advanceTimersByTime(1_000);
-			room.sync();
-		}
+		room.receive({
+			type: Message.Commit,
+			commit: attempt + 2,
+			update: Y.encodeStateAsUpdate(room.authoritative),
+		});
+		vi.advanceTimersByTime(delay - 1);
+		expect(room.sent.some((message) => message.type === Message.Sync)).toBe(false);
+		vi.advanceTimersByTime(1);
+		expect(room.sent.some((message) => message.type === Message.Sync)).toBe(true);
+		room.sync();
 	}
+	room.receive({
+		type: Message.Retry,
+		code: SessionFailureCode.StorageUnavailable,
+		message: 'Service unavailable',
+	});
 	expect(rejected).toHaveBeenCalledOnce();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
-	vi.advanceTimersByTime(10_000);
 	room.destroy();
+});
+
+it('staggers two peers retrying the same transient outage', () => {
+	vi.useFakeTimers();
+	vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(1);
+	const alice = setup();
+	const bob = setup();
+	alice.sync();
+	bob.sync();
+	alice.sent.length = 0;
+	bob.sent.length = 0;
+	for (const room of [alice, bob])
+		room.receive({
+			type: Message.Retry,
+			code: SessionFailureCode.StorageUnavailable,
+			message: 'Outage',
+		});
+	vi.advanceTimersByTime(750);
+	expect(alice.sent.some((message) => message.type === Message.Sync)).toBe(true);
+	expect(bob.sent.some((message) => message.type === Message.Sync)).toBe(false);
+	vi.advanceTimersByTime(500);
+	expect(bob.sent.some((message) => message.type === Message.Sync)).toBe(true);
+	alice.destroy();
+	bob.destroy();
 });
 
 it('edits the shared document title only when the document target identity matches', () => {
@@ -448,23 +597,19 @@ describe('collaborative document session', () => {
 		room.destroy();
 	});
 
-	it('recovers unsent offline text with the native sync reply', () => {
+	it('locks local text while disconnected and allows it again after sync', () => {
 		vi.useFakeTimers();
 		const room = setup();
 		room.sync();
 		room.sent.length = 0;
 		room.pair.client.setStatus(TransportStatus.Disconnected);
-		room.client.replaceNodeMarkdown('A', 'Offline');
+		expect(room.client.replaceNodeMarkdown('A', 'Unavailable')).toBe(false);
 		vi.advanceTimersByTime(500);
 		expect(room.sent).toEqual([]);
 		room.pair.client.setStatus(TransportStatus.Connected);
 		room.sync();
-		const response = room.sent.filter((message) => message.type === Message.Sync).at(-1);
-		if (response?.type !== Message.Sync) throw new Error('Expected sync');
-		const step = readSyncStep(response.payload);
-		if (step.kind !== SyncStepKind.Response) throw new Error('Expected native response');
-		expect(step.update.length).toBeGreaterThan(2);
-		expect(room.client.read().nodes[0]?.markdown).toBe('Offline');
+		expect(room.client.read().nodes[0]?.markdown).toBe('Alpha');
+		expect(room.client.replaceNodeMarkdown('A', 'Online')).toBe(true);
 		room.destroy();
 	});
 
@@ -580,14 +725,14 @@ it('merges the textarea composition update locally and ignores edits after shutd
 	const update = Y.encodeStateAsUpdate(clone, Y.encodeStateVector(room.client.document));
 	const received = vi.fn();
 	const stop = room.client.subscribe(received);
-	room.client.applyLocalTextUpdate(update);
+	room.client.applyLocalTextUpdate({ kind: Kind.Node, id: 'A' }, 'markdown', update);
 	expect(received).toHaveBeenCalledOnce();
 	vi.advanceTimersByTime(50);
 	expect(room.sent).toHaveLength(1);
 	expect(room.client.text({ kind: Kind.Node, id: 'A' }, 'natureId')).toBeUndefined();
 	stop();
 	room.destroy();
-	room.client.applyLocalTextUpdate(update);
+	room.client.applyLocalTextUpdate({ kind: Kind.Node, id: 'A' }, 'markdown', update);
 	clone.destroy();
 });
 

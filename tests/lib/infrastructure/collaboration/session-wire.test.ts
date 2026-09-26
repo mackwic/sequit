@@ -135,7 +135,6 @@ describe('CBOR session protocol', () => {
 				type: SessionMessageKind.Change,
 				id: 'text',
 				update: new Uint8Array([0, 0]),
-				targets: [{ kind: SharedElementKind.Node, id: 'A' }],
 			},
 			LEGACY_SESSION_WIRE_VERSION,
 		);
@@ -149,6 +148,53 @@ describe('CBOR session protocol', () => {
 		expect(() => decodeSessionEnvelope(encode([LEGACY_SESSION_WIRE_VERSION, refusal]))).toThrow(
 			'Unsupported legacy message',
 		);
+		const oldCommand = {
+			type: SessionMessageKind.Change,
+			id: 'legacy-command',
+			sessionId: 'legacy-session',
+			sequence: 1,
+			commands: [{ op: SharedCommandKind.Ungroup, id: 'G' }],
+		} as const;
+		expect(
+			decodeSessionEnvelope(encodeSessionMessage(oldCommand, LEGACY_SESSION_WIRE_VERSION)),
+		).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: oldCommand,
+		});
+		expect(() =>
+			decodeSessionEnvelope(
+				encode([
+					LEGACY_SESSION_WIRE_VERSION,
+					{
+						type: SessionMessageKind.Change,
+						id: 'not-a-legacy-text-id',
+						update: new Uint8Array([0, 0]),
+					},
+				]),
+			),
+		).toThrow('Unsupported legacy message');
+	});
+
+	it.each([
+		{ code: ConflictCode.CommandConflict, message: 'Moved', lastAcceptedSequence: 0 },
+		{ code: ConflictCode.CommandConflict, message: 'Moved', id: 'command' },
+		{
+			code: ConflictCode.InvalidCommand,
+			message: 'Cycle',
+			id: 'command',
+			lastAcceptedSequence: -1,
+		},
+		{
+			code: ConflictCode.CommandConflict,
+			message: 'Moved',
+			id: 'command',
+			lastAcceptedSequence: 0,
+			targetId: 'B',
+		},
+	])('rejects conflicts without exactly one command repair position: %j', (invalid) => {
+		expect(() =>
+			decodeSessionMessage(frame({ type: SessionMessageKind.Conflict, ...invalid })),
+		).toThrow();
 	});
 
 	it('requires IDs for commands and validates IDs on text updates', () => {

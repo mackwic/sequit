@@ -1,7 +1,6 @@
 import { InvalidPresenceError } from '../../lib/infrastructure/collaboration/participant-presence';
 import {
 	RetryableSessionFailure,
-	SessionConflict,
 	type SessionFailureCode,
 	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
@@ -14,21 +13,6 @@ export function handleRoomFailure(
 	defaultCode: SessionFailureCode,
 ): void {
 	if (error instanceof InvalidPresenceError) return;
-	if (error instanceof SessionConflict) {
-		const conflict: {
-			type: SessionMessageKind.Conflict;
-			code: typeof error.code;
-			message: string;
-			targetId?: string;
-		} = {
-			type: SessionMessageKind.Conflict,
-			code: error.code,
-			message: error.message,
-		};
-		if (error.targetId !== undefined) conflict.targetId = error.targetId;
-		sendRoomMessage(socket, conflict);
-		return;
-	}
 	if (error instanceof RetryableSessionFailure) {
 		sendRoomMessage(socket, {
 			type: SessionMessageKind.Retry,

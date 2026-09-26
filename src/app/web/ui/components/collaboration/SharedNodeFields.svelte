@@ -36,6 +36,7 @@
 </header>
 <SharedTextField
 	{client}
+	{connected}
 	target={{ kind: Kind.Node, id: node.id }}
 	field="markdown"
 	{label}
@@ -43,6 +44,7 @@
 />
 <SharedTextField
 	{client}
+	{connected}
 	target={{ kind: Kind.Node, id: node.id }}
 	field="description"
 	label={`Description de ${node.id}`}

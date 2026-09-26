@@ -298,6 +298,7 @@
 			<SharedElementCard label="Titre du document">
 				<SharedTextField
 					{client}
+					{connected}
 					target={{ kind: Kind.Document, id: model.id }}
 					field="title"
 					label="Titre du document"
@@ -317,6 +318,7 @@
 					<SharedElementCard label={`Groupe ${group.id}`}>
 						<SharedTextField
 							{client}
+							{connected}
 							target={{ kind: Kind.Group, id: group.id }}
 							field="label"
 							label={`Libellé du groupe ${group.id}`}
@@ -373,6 +375,7 @@
 					<SharedElementCard label={`Nature ${nature.id}`}>
 						<SharedTextField
 							{client}
+							{connected}
 							target={{ kind: Kind.Nature, id: nature.id }}
 							field="label"
 							label={`Libellé de la nature ${nature.id}`}

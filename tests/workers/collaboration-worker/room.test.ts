@@ -9,7 +9,10 @@ import {
 	META_KEY,
 	planPersistence,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
-import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
+import {
+	encodeSessionMessage,
+	SessionMessageKind as Message,
+} from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
 	importLogicDocument,
 	readLogicDocument,
@@ -290,14 +293,22 @@ it.each([1005, 1006, 1015])(
 	},
 );
 
-it('discards obsolete ephemeral presence attachments after a protocol upgrade', async () => {
-	const name = 'obsolete-awareness';
+it.each([
+	['obsolete-bytes', new Uint8Array([2, 255])],
+	['obsolete-number', 4],
+	['unversioned-record', { presence: new Uint8Array([2, 255]) }],
+	[
+		'wrong-message-kind',
+		{ version: 5, presence: encodeSessionMessage({ type: Message.Reject, message: 'obsolete' }) },
+	],
+])('discards %s ephemeral presence after an attachment upgrade', async (suffix, attachment) => {
+	const name = `obsolete-awareness-${suffix}`;
 	const alice = await connectRoom(name);
 	await alice.next(Message.Presence);
 	await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), (_instance, state) => {
 		const socket = state.getWebSockets()[0];
 		if (socket === undefined) throw new Error('Missing socket');
-		socket.serializeAttachment(new Uint8Array([2, 255]));
+		socket.serializeAttachment(attachment);
 	});
 	const bob = await connectRoom(name);
 	expect((await bob.next(Message.Presence)).participants).toEqual([]);

@@ -4,7 +4,12 @@ export enum SessionFailureCode {
 	StorageUnavailable = 'storage-unavailable',
 	CommandGap = 'command-gap',
 	CorruptCommandReceipt = 'corrupt-command-receipt',
+	RepeatedCommandRefusal = 'repeated-command-refusal',
 }
+
+export class BusinessCommandRefusal extends Error {}
+
+export class StaleSharedCommandError extends BusinessCommandRefusal {}
 
 export class RetryableSessionFailure extends Error {
 	constructor(
@@ -16,19 +21,8 @@ export class RetryableSessionFailure extends Error {
 }
 
 export enum ConflictCode {
-	TextTargetGone = 'text-target-gone',
 	CommandConflict = 'command-conflict',
 	InvalidCommand = 'invalid-command',
-}
-
-export class SessionConflict extends Error {
-	constructor(
-		readonly code: ConflictCode,
-		message: string,
-		readonly targetId?: string,
-	) {
-		super(message);
-	}
 }
 
 export class TerminalSessionFailure extends Error {

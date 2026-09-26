@@ -1,12 +1,10 @@
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 
-import { defined } from '../../core/document/logic-document';
 import { SharedElementKind, type SharedTarget } from '../document/shared-document-command';
+import { StaleSharedCommandError } from './session-failure';
 import { isSharedTextField, sharedFieldValue } from './shared-text';
 import { wireKeys } from './wire-values';
 import { YjsCollection } from './yjs-document-schema';
-
-export { SharedElementKind } from '../document/shared-document-command';
 
 const COLLECTIONS: Readonly<Record<SharedElementKind, YjsCollection>> = {
 	[SharedElementKind.Document]: YjsCollection.Meta,
@@ -42,10 +40,12 @@ export function elementCollection(document: Y.Doc, kind: SharedElementKind): Y.M
 export function sharedElement(document: Y.Doc, target: SharedTarget): Y.Map<unknown> {
 	if (target.kind === SharedElementKind.Document) {
 		const meta = document.getMap(YjsCollection.Meta);
-		if (meta.get('id') !== target.id) throw new Error('Document introuvable.');
+		if (meta.get('id') !== target.id) throw new StaleSharedCommandError('Document introuvable.');
 		return meta;
 	}
-	return defined(elementCollection(document, target.kind).get(target.id), 'Élément introuvable.');
+	const entity = elementCollection(document, target.kind).get(target.id);
+	if (entity === undefined) throw new StaleSharedCommandError('Élément introuvable.');
+	return entity;
 }
 
 export function assertSharedProperties(
@@ -83,4 +83,18 @@ export function initialElementProperties(
 	return Object.fromEntries(
 		Object.entries(properties).map(([key, value]) => [key, sharedFieldValue(key, value)]),
 	);
+}
+
+export function sharedTextAt(
+	document: Y.Doc,
+	target: SharedTarget,
+	field: string,
+): Y.Text | undefined {
+	try {
+		const value = sharedElement(document, target).get(field);
+		if (value instanceof Y.Text) return value;
+	} catch {
+		// A peer can remove the entity between editing and reading it.
+	}
+	return undefined;
 }

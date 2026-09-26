@@ -34,6 +34,7 @@
 
 <SharedTextField
 	{client}
+	{connected}
 	target={{ kind: Kind.Group, id: group.id }}
 	field="label"
 	label="Titre du groupe"

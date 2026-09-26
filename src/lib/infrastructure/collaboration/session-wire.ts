@@ -1,6 +1,6 @@
 import { decode, encode } from 'cborg';
 
-import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
+import type { SharedDocumentCommand } from '../document/shared-document-command';
 import { type CommandSequence, readCommandSequence } from './command-sequence';
 import {
 	InvalidPresenceError,
@@ -9,9 +9,8 @@ import {
 	readParticipantPresence,
 } from './participant-presence';
 import { ConflictCode, SessionFailureCode } from './session-failure';
-export type { SharedTarget } from '../document/shared-document-command';
 export type { LocalPresence, ParticipantPresence } from './participant-presence';
-import { readSharedCommand, readSharedTarget } from './shared-command-codec';
+import { readSharedCommand } from './shared-command-codec';
 import { wireBytes, wireId, wireInteger, wireKeys, wireObject, wireString } from './wire-values';
 
 export const SESSION_WIRE_VERSION = 5;
@@ -50,7 +49,6 @@ interface TextMessage {
 	readonly type: SessionMessageKind.Change;
 	readonly update: Uint8Array;
 	readonly id?: string;
-	readonly targets?: readonly SharedTarget[];
 }
 
 interface CommitMessage {
@@ -81,9 +79,8 @@ interface ConflictMessage {
 	readonly type: SessionMessageKind.Conflict;
 	readonly code: ConflictCode;
 	readonly message: string;
-	readonly id?: string;
-	readonly targetId?: string;
-	readonly lastAcceptedSequence?: number;
+	readonly id: string;
+	readonly lastAcceptedSequence: number;
 }
 
 interface PresenceMessage {
@@ -102,25 +99,18 @@ export type SessionMessage =
 	| ConflictMessage
 	| PresenceMessage;
 
-function readTextTargets(value: unknown): readonly SharedTarget[] {
-	if (!Array.isArray(value) || value.length > 100) throw new Error('Invalid text targets');
-	return value.map(readSharedTarget);
-}
-
 function readChange(message: Record<string, unknown>): CommandMessage | TextMessage {
 	if ('update' in message) {
-		wireKeys(message, ['type', 'update', 'id', 'targets']);
+		wireKeys(message, ['type', 'update', 'id']);
 		const result: {
 			type: SessionMessageKind.Change;
 			update: Uint8Array;
 			id?: string;
-			targets?: readonly SharedTarget[];
 		} = {
 			type: SessionMessageKind.Change,
 			update: wireBytes(message['update']),
 		};
 		if (message['id'] !== undefined) result.id = wireId(message['id']);
-		if (message['targets'] !== undefined) result.targets = readTextTargets(message['targets']);
 		return result;
 	}
 	wireKeys(message, ['type', 'id', 'commands', 'sessionId', 'sequence']);
@@ -136,26 +126,16 @@ function readChange(message: Record<string, unknown>): CommandMessage | TextMess
 }
 
 function readConflict(message: Record<string, unknown>): ConflictMessage {
-	wireKeys(message, ['type', 'code', 'message', 'id', 'targetId', 'lastAcceptedSequence']);
+	wireKeys(message, ['type', 'code', 'message', 'id', 'lastAcceptedSequence']);
 	const code = Object.values(ConflictCode).find((value) => value === message['code']);
 	if (code === undefined) throw new Error('Unknown conflict code');
-	const result: {
-		type: SessionMessageKind.Conflict;
-		code: ConflictCode;
-		message: string;
-		id?: string;
-		targetId?: string;
-		lastAcceptedSequence?: number;
-	} = {
+	return {
 		type: SessionMessageKind.Conflict,
 		code,
 		message: wireString(message['message']),
+		id: wireId(message['id']),
+		lastAcceptedSequence: wireInteger(message['lastAcceptedSequence']),
 	};
-	if (message['id'] !== undefined) result.id = wireId(message['id']);
-	if (message['targetId'] !== undefined) result.targetId = wireId(message['targetId']);
-	if (message['lastAcceptedSequence'] !== undefined)
-		result.lastAcceptedSequence = wireInteger(message['lastAcceptedSequence']);
-	return result;
 }
 
 function readMessage(value: unknown): SessionMessage {

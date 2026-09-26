@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import {
-	applyTextUpdate,
-	TextTargetGoneError,
-} from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
+import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
+import { applyTextUpdate } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -67,16 +65,64 @@ describe('server text boundary', () => {
 		},
 	);
 
-	it('rejects late text for a deleted node without restoring it', () => {
+	it('integrates stale text on a deleted node while preserving a surviving concurrent edit', () => {
 		const { server, client } = replicas();
-		const text = node(client).get('markdown');
-		if (!(text instanceof Y.Text)) throw new Error('Missing text');
-		text.insert(0, 'Late ');
+		const deleted = node(client).get('markdown');
+		const survivor = client
+			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+			.get('source-b')
+			?.get('markdown');
+		if (!(deleted instanceof Y.Text) || !(survivor instanceof Y.Text))
+			throw new Error('Expected two editable boxes');
+		deleted.insert(0, 'Late ');
+		survivor.insert(0, 'Safe ');
 		server.getMap(YjsCollection.Nodes).delete('source-a');
 		expect(() => {
 			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-		}).toThrow(TextTargetGoneError);
+		}).not.toThrow();
 		expect(server.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
+		const accepted = server
+			.getMap<Y.Map<unknown>>(YjsCollection.Nodes)
+			.get('source-b')
+			?.get('markdown');
+		if (!(accepted instanceof Y.Text)) throw new Error('Expected surviving box');
+		expect(accepted.toJSON()).toContain('Safe ');
+		const fresh = new Y.Doc();
+		Y.applyUpdate(fresh, Y.encodeStateAsUpdate(server));
+		expect(fresh.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
+		fresh.destroy();
+		client.destroy();
+		server.destroy();
+	});
+	it('integrates delayed description text after its node has been compacted', () => {
+		const { server, client } = replicas();
+		const description = node(client).get('description');
+		if (!(description instanceof Y.Text)) throw new Error('Expected node description');
+		description.insert(0, 'Unsent detail');
+		server.getMap(YjsCollection.Nodes).delete('source-a');
+		compactRoomDocument(server);
+		expect(() => {
+			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
+		}).not.toThrow();
+		expect(server.getMap(YjsCollection.Nodes).has('source-a')).toBe(false);
+		client.destroy();
+		server.destroy();
+	});
+
+	it('rejects stale edits to a deleted non-node text field', () => {
+		const { server, client } = replicas();
+		const group = new Y.Map<unknown>();
+		group.set('label', new Y.Text('Group'));
+		server.getMap<Y.Map<unknown>>(YjsCollection.Groups).set('G', group);
+		Y.applyUpdate(client, Y.encodeStateAsUpdate(server));
+		const label = client.getMap<Y.Map<unknown>>(YjsCollection.Groups).get('G')?.get('label');
+		if (!(label instanceof Y.Text)) throw new Error('Expected group text');
+		label.insert(0, 'Late ');
+		server.getMap(YjsCollection.Groups).delete('G');
+		expect(() => {
+			applyTextUpdate(server, Y.encodeStateAsUpdate(client));
+		}).toThrow();
+		expect(server.getMap(YjsCollection.Groups).has('G')).toBe(false);
 		client.destroy();
 		server.destroy();
 	});
@@ -120,7 +166,7 @@ it('does not authorize edits to an undeclared text field', () => {
 	text.insert(0, 'Edited ');
 	expect(() => {
 		applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-	}).toThrow('no longer available');
+	}).toThrow('undeclared field');
 	client.destroy();
 	server.destroy();
 });

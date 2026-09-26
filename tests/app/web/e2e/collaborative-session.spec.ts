@@ -90,7 +90,7 @@ test('Deux boîtes reliées : refus du cycle, toast sans refresh et édition sui
 		if (frame === alice.mainFrame()) navigations.push(frame.url());
 	});
 	await alice.getByRole('button', { name: 'Relier', exact: true }).click();
-	await expect(alice.getByRole('alert')).toContainText('Action refusée');
+	await expect(alice.getByRole('status').filter({ hasText: 'Action refusée' })).toBeVisible();
 	expect(navigations).toEqual([]);
 	await expect(alice.getByRole('status', { name: 'Connexion', exact: true })).toHaveText(
 		'Connecté',

@@ -258,14 +258,6 @@ it('allows temporary missing references within one atomic creation batch', () =>
 	doc.destroy();
 });
 
-it('refuses to dissolve a group on an invalid document', () => {
-	const document = new Y.Doc();
-	expect(() => {
-		executeSharedCommands(document, [{ op: Op.Ungroup, id: 'missing' }]);
-	}).toThrow('Document invalide');
-	document.destroy();
-});
-
 it('keeps endpoint references when a nature or relation happens to have the same ID', () => {
 	const doc = given(CollaborativeFixture.TwoBoxes);
 	executeSharedCommands(doc, [

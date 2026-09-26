@@ -39,7 +39,7 @@ export type ProposalDecision = AcceptedProposalDecision | RefusedProposalDecisio
 export interface CollaborativeDocumentSession {
 	readonly document: Y.Doc;
 	subscribeToConflict(listener: (message: string) => void): () => void;
-	applyLocalTextUpdate(update: Uint8Array): void;
+	applyLocalTextUpdate(target: SharedTarget, field: string, update: Uint8Array): void;
 	dispatch(commands: readonly SharedDocumentCommand[]): string;
 	text(target: SharedTarget, field: string): Y.Text | undefined;
 	updateText(target: SharedTarget, field: string, next: string): boolean;
