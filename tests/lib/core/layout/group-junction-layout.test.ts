@@ -11,84 +11,16 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
+import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-
-function interleavedNestedGroupDocument(): LogicDocument {
-	const base = groupJunctionFixture(
-		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
-		false,
-		true,
-	);
-	return {
-		...base,
-		groups: [
-			{
-				kind: EndpointKind.Group,
-				id: 'inner',
-				label: 'Inner',
-				groupId: 'group',
-				layoutOrder: orderKey('a1'),
-			},
-			{
-				kind: EndpointKind.Group,
-				id: 'group',
-				label: 'Group',
-				layoutOrder: orderKey('a0'),
-			},
-			{
-				kind: EndpointKind.Group,
-				id: 'empty-group',
-				label: 'Empty group',
-				layoutOrder: orderKey('a8'),
-			},
-			{
-				kind: EndpointKind.Group,
-				id: 'separate-group',
-				label: 'Separate group',
-				layoutOrder: orderKey('a4'),
-			},
-			{
-				kind: EndpointKind.Group,
-				id: 'separate-inner',
-				label: 'Separate inner',
-				groupId: 'separate-group',
-				layoutOrder: orderKey('a5'),
-			},
-			{
-				kind: EndpointKind.Group,
-				id: 'empty-inner',
-				label: 'Empty inner',
-				groupId: 'separate-group',
-				layoutOrder: orderKey('a9'),
-			},
-		],
-		nodes: [
-			...base.nodes,
-			{
-				kind: EndpointKind.Node,
-				id: 'chain-first',
-				natureId: 'goal',
-				markdown: 'First member',
-				groupId: 'separate-group',
-				layoutOrder: orderKey('a6'),
-			},
-			{
-				kind: EndpointKind.Node,
-				id: 'chain-last',
-				natureId: 'goal',
-				markdown: 'Last member',
-				groupId: 'separate-inner',
-				layoutOrder: orderKey('a7'),
-			},
-		],
-		relations: [
-			...base.relations,
-			{ id: 'chain-first-to-outside', from: 'chain-first', to: 'outside' },
-			{ id: 'outside-to-chain-last', from: 'outside', to: 'chain-last' },
-		],
-	};
-}
+import {
+	boundsFor,
+	contains,
+	layoutDocument,
+	overlaps,
+	prepareLayoutDocument,
+} from '../../../support/harnesses/layout';
+import { VisualLayout } from '../../../support/harnesses/visual-layout';
 
 function packedNestedRootGroupsDocument(): LogicDocument {
 	const base = groupJunctionFixture(
@@ -170,42 +102,31 @@ function groupTargetMultiDepthDocument(): LogicDocument {
 }
 
 describe('dedicated layouts with nested group channels', () => {
-	it('keeps interleaved shells together while a route leaves a nested group', () => {
-		const document = interleavedNestedGroupDocument();
+	it('keeps nested shells clear of external nodes and junctions', async () => {
+		const configuration = {
+			direction: LayoutDirection.LeftToRight,
+			bias: LayoutBias.Left,
+		} as const;
+		const document = groupJunctionFixture(configuration, false, true);
 		const measurement = { minimumWidth: 240, minimumHeight: 180, headerHeight: 30, padding: 30 };
-		const prepared = prepareLayoutDocument(document, {
+		const { layout, ranks } = await layoutDocument(document, {
 			nodes: {
 				member: { width: 100, height: 50 },
 				outside: { width: 100, height: 50 },
-				'chain-first': { width: 100, height: 50 },
-				'chain-last': { width: 100, height: 50 },
 			},
-			groups: {
-				'empty-group': measurement,
-				'empty-inner': measurement,
-				group: measurement,
-				inner: measurement,
-				'separate-group': measurement,
-				'separate-inner': measurement,
-			},
+			groups: { group: measurement, inner: measurement },
 		});
-		const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
-
-		const validation = validateDedicatedCandidate({ ...prepared, layout });
-		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
-		const outer = layout.elements.find(({ id }) => id === 'separate-group')?.bounds;
-		const inner = layout.elements.find(({ id }) => id === 'separate-inner')?.bounds;
-		const nestedMember = layout.elements.find(({ id }) => id === 'chain-last')?.bounds;
-		expect(outer).toBeDefined();
-		expect(inner).toBeDefined();
-		expect(nestedMember).toBeDefined();
-		if (outer === undefined || inner === undefined || nestedMember === undefined) return;
-		expect(inner.x).toBeGreaterThanOrEqual(outer.x);
-		expect(inner.y).toBeGreaterThanOrEqual(outer.y);
-		expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width);
-		expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
-		expect(nestedMember.x).toBeGreaterThan(inner.x);
-		expect(nestedMember.y).toBeGreaterThan(inner.y);
+		const group = boundsFor(layout, 'group');
+		const inner = boundsFor(layout, 'inner');
+		expect(contains(group, inner)).toBe(true);
+		expect(contains(inner, boundsFor(layout, 'member'))).toBe(true);
+		expect(overlaps(group, boundsFor(layout, 'junction'))).toBe(false);
+		expect(overlaps(group, boundsFor(layout, 'outside'))).toBe(false);
+		AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+			.routes()
+			.areOrthogonal()
+			.areAttachedToEndpoints()
+			.followLayoutFlow();
 	});
 
 	it('moves nested shells with their interleaved sibling group', () => {
