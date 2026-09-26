@@ -59,18 +59,6 @@ export function* trackOrders(
 	yield* permutations([...slots].sort(compareCanonicalStrings));
 }
 
-export function* preferredTrackOrders(
-	ids: readonly string[],
-	trackCount: number,
-	active?: ReadonlySet<string>,
-	baseline?: readonly string[],
-): Generator<readonly string[]> {
-	yield ids;
-	for (const order of trackOrders(ids, trackCount, active, baseline)) {
-		if (order.some((id, index) => id !== ids[index])) yield order;
-	}
-}
-
 export function* portOrders(
 	incidence: ReadonlyMap<string, readonly string[]>,
 	active?: ReadonlySet<string>,
