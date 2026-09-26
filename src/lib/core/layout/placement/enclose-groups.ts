@@ -32,16 +32,18 @@ function enclosure(
 	};
 }
 
-/** Capture exact main-axis overlaps at the minimum routing gaps, before they grow. */
+/** Capture minimum-gap spans; a junction may retreat as its adjacent channels grow. */
 export function groupSeparationWindows(
 	bounds: ReadonlyMap<string, MutableBounds>,
 	vertical: boolean,
+	junctionSlack: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, MainWindow> {
 	const windows = new Map<string, MainWindow>();
 	for (const [id, box] of bounds) {
 		let first = box.x;
 		if (vertical) first = box.y;
-		windows.set(id, { first, last: first + mainSize(box, vertical) });
+		const slack = junctionSlack.get(id) ?? 0;
+		windows.set(id, { first: first - slack, last: first + mainSize(box, vertical) + slack });
 	}
 	return windows;
 }

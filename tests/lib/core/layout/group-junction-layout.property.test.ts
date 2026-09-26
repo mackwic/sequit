@@ -10,6 +10,13 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
+import {
+	placeElements,
+	type PlacementState,
+} from '../../../../src/lib/core/layout/placement/place-elements';
+import { prepareMeasurements } from '../../../../src/lib/core/layout/placement/prepare-measurements';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -19,6 +26,7 @@ import {
 	contains,
 	layoutDocument,
 	overlaps,
+	prepareLayoutDocument,
 	progressesFromTo,
 } from '../../../support/harnesses/layout';
 import { VisualLayout } from '../../../support/harnesses/visual-layout';
@@ -698,5 +706,61 @@ it('keeps every relation attached when port growth exposes an independent corrid
 		.routes()
 		.areOrthogonal()
 		.areAttachedToEndpoints()
-		.followLayoutFlow();
+		.followLayoutFlow()
+		.haveOnlyAllowedSharedTrunks();
+});
+
+it('separates a group from a junction retreating as trailing clearance grows from 48 to 96', () => {
+	const configuration = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left } as const;
+	const fixture = groupJunctionFixture(configuration, false, false);
+	const group = fixture.groups[0];
+	if (group === undefined) throw new Error('Group fixture requires its primary group');
+	const document: LogicDocument = {
+		...fixture,
+		groups: [group, { ...group, id: 'wide', layoutOrder: orderKey('a4') }],
+		nodes: fixture.nodes.map((node) => {
+			if (node.id === 'outside') return { ...node, groupId: 'wide' };
+			return node;
+		}),
+		relations: [
+			{ id: 'junction-member', from: 'junction', to: 'member' },
+			{ id: 'outside-junction', from: 'outside', to: 'junction' },
+		],
+	};
+	const prepared = prepareLayoutDocument(document, {
+		nodes: { member: { width: 100, height: 60 }, outside: { width: 100, height: 60 } },
+		junctions: { junction: { width: 20, height: 20 } },
+		groups: {
+			group: { minimumWidth: 174, minimumHeight: 100, headerHeight: 0, padding: 20 },
+			wide: { minimumWidth: 100, minimumHeight: 100, headerHeight: 0, padding: 140 },
+		},
+	});
+	const structure = prepareLayout(prepared.graph, prepared.ranks);
+	const frame = createLayoutFrame(configuration.direction, configuration.bias);
+	const measurements = prepareMeasurements(structure, prepared.measurements, frame);
+	expect(measurements.rankGap).toBe(140);
+	const placement: PlacementState = {
+		bounds: new Map(),
+		components: [],
+		groupChannelInsets: new Map(),
+	};
+	const workspace = { structure, frame, measurements, placement };
+	placeElements(workspace, new Map(), new Map([[0, [48, 48]]]));
+	const firstGroup = placement.bounds.get('group');
+	const firstJunction = placement.bounds.get('junction');
+	const firstMember = placement.bounds.get('member');
+	if (firstGroup === undefined || firstJunction === undefined || firstMember === undefined)
+		throw new Error('First group and junction must be placed');
+	expect(overlaps(firstGroup, firstJunction)).toBe(false);
+	const firstJunctionStart = firstJunction.x;
+	expect(firstJunctionStart - firstMember.x - firstMember.width).toBe(60);
+	placeElements(workspace, new Map(), new Map([[0, [48, 96]]]));
+	const finalGroup = placement.bounds.get('group');
+	const finalJunction = placement.bounds.get('junction');
+	const finalMember = placement.bounds.get('member');
+	if (finalGroup === undefined || finalJunction === undefined || finalMember === undefined)
+		throw new Error('Final group and junction must be placed');
+	expect(finalJunction.x - finalMember.x - finalMember.width).toBe(48);
+	expect(firstJunctionStart - finalJunction.x).toBe(12);
+	expect(overlaps(finalGroup, finalJunction)).toBe(false);
 });

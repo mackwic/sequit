@@ -243,7 +243,10 @@ export function evaluateDedicatedLayout(
 		workspace.placement.bounds,
 		frame,
 	);
-	if (workspace.placement.groupChannelInsets.size > 0) placeElements(workspace, baseGaps);
+	if (workspace.placement.groupChannelInsets.size > 0) {
+		delete workspace.placement.groupWindows;
+		placeElements(workspace, baseGaps);
+	}
 	const layers = routingLayers(structure);
 	const routes = reserveLayeredRouting(workspace, layers);
 	if (routes === undefined) reserveRouting(workspace, baseGaps);

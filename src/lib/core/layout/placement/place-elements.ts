@@ -1,3 +1,4 @@
+import { defined } from '../../document/logic-document';
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import {
@@ -26,6 +27,33 @@ export interface PlacementInput {
 	readonly measurements: PreparedMeasurements;
 	readonly frame: LayoutFrame;
 	readonly placement: PlacementState;
+}
+
+/** Junction slack is the unoccupied half of its minimum-gap rail interval. */
+function minimumGapWindows(
+	input: PlacementInput,
+	gaps: ReadonlyMap<number, number>,
+	channels: ReadonlyMap<number, readonly number[]>,
+): ReadonlyMap<string, MainWindow> {
+	const { structure, measurements, frame, placement } = input;
+	const slackById = new Map<string, number>();
+	if (structure.junctions.size === 0)
+		return groupSeparationWindows(placement.bounds, frame.vertical, slackById);
+	for (const component of structure.components)
+		for (const [rank, row] of component.rows.junction.entries()) {
+			if (row.length === 0) continue;
+			const rails = junctionRails({
+				row,
+				sizes: measurements.sizes,
+				vertical: frame.vertical,
+				junctions: structure.junctions,
+			});
+			const occupied = railSpan(rails, channels.get(rank));
+			const interval = Math.max(measurements.rankGap, defined(gaps.get(rank)), occupied);
+			const slack = (interval - occupied) / 2;
+			for (const id of row) slackById.set(id, slack);
+		}
+	return groupSeparationWindows(placement.bounds, frame.vertical, slackById);
 }
 
 /** Replace this call's placement, retaining its structure and reusable component list. */
@@ -93,8 +121,7 @@ export function placeElements(
 	if (structure.containment !== undefined)
 		repackContainment(structure.containment, placement.bounds, frame.vertical);
 	if (structure.hierarchy !== undefined) {
-		const windows =
-			placement.groupWindows ?? groupSeparationWindows(placement.bounds, frame.vertical);
+		const windows = placement.groupWindows ?? minimumGapWindows(input, gaps, channels);
 		placement.groupWindows = windows;
 		separateInterleavedGroupNodes({
 			hierarchy: structure.hierarchy,
