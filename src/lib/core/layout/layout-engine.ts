@@ -22,11 +22,8 @@ import { prepareMeasurements } from './placement/prepare-measurements';
 import type { RankOrderSearchWitness } from './rank/rank-order-search';
 import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import { alignJunctionPorts } from './routing/align-junction-ports';
-import {
-	allocateLayerPorts,
-	materializeLayers,
-	planLayeredRouting,
-} from './routing/layered-routing';
+import { allocateLayerPorts } from './routing/layered-port-reservation';
+import { materializeLayers, planLayeredRouting } from './routing/layered-routing';
 import { allocatePorts } from './routing/port-allocation';
 import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
