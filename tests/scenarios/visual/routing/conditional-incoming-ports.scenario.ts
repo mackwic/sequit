@@ -5,17 +5,19 @@ import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
-/** The same four relations need different face capacity when the two targets exchange order. */
+/** Shared incoming ports versus a dense crossing topology with three independent target ports. */
 function orderedTargets(crossed: boolean): LayoutScenario {
 	let id = 'conditional-incoming-ports-shared';
 	let label = 'E avant D : port partagé';
 	let nodeIds = ['a', 'b', 'c', 'e', 'd'];
 	let incomingPorts = 1;
+	let predecessorTargets = ['d'];
 	if (crossed) {
 		id = 'conditional-incoming-ports-crossed';
-		label = 'D avant E : trois ports et deux croisements';
+		label = 'D avant E : trois ports et croisements inévitables';
 		nodeIds = ['a', 'b', 'c', 'd', 'e'];
 		incomingPorts = 3;
+		predecessorTargets = ['d', 'e'];
 	}
 	return {
 		id,
@@ -27,8 +29,8 @@ function orderedTargets(crossed: boolean): LayoutScenario {
 				...graphFixtures
 					.routingNodes(nodeIds, direction)
 					.arrowsFrom('a', ['d', 'e'])
-					.arrowsFrom('b', ['d'])
-					.arrowsFrom('c', ['d'])
+					.arrowsFrom('b', predecessorTargets)
+					.arrowsFrom('c', predecessorTargets)
 					.build(),
 				direction,
 				bias,

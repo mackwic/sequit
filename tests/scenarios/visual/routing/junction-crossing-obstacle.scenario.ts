@@ -1,5 +1,6 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { routeCrossings } from '../../../support/assertions/route-geometry';
 import { junctionCrossingObstacle } from '../../../support/fixtures/junction-crossing-obstacle';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
@@ -18,10 +19,14 @@ export const scenario: LayoutScenario = {
 		check.node('r').hasRank(1);
 		check.nodes(['p0', 's', 'p1', 'p2']).haveRank(2);
 		check.nodes(['u0', 'g', 'u1', 'u2']).haveRank(3);
-		check.node('g').isAfter('u0', { direction: 'transverse-positive' });
-		check.node('u1').isAfter('g', { direction: 'transverse-positive' });
-		check.node('u2').isAfter('u1', { direction: 'transverse-positive' });
 		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow().haveCrossing();
+		const junctionSide = new Set(['g-to-p0', 'g-to-p1', 'g-to-j2', 'j1-to-s', 'j2-to-j1']);
+		const crossingNearJunction = routeCrossings(layout.relations).some(
+			({ horizontalId, verticalId }) =>
+				junctionSide.has(horizontalId) !== junctionSide.has(verticalId),
+		);
+		if (!crossingNearJunction) throw new Error('The junction must constrain an ordinary crossing');
+		check.renderedPaths().haveBridgeAtEveryCrossing();
 		check.obstacles().haveClearance(24);
 	},
 };
