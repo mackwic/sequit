@@ -2,6 +2,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+	disallowedProvisionalRouteContacts,
 	disallowedRouteContacts,
 	type RouteContact,
 	RouteContactKind,
@@ -38,21 +39,49 @@ function along(point: Point, vertical: boolean): number {
 	return point.x;
 }
 
-/** Reference geometry reads waypoint segments, not the production run/contact helpers. */
+interface ReferenceSpan {
+	readonly start: Point;
+	end: Point;
+}
+
+/** Coalesce forward, collinear waypoint stretches without reading the production run helpers. */
+function referenceSpans(points: readonly Point[]): readonly ReferenceSpan[] {
+	const spans: ReferenceSpan[] = [];
+	for (let index = 1; index < points.length; index += 1) {
+		const start = points[index - 1];
+		const end = points[index];
+		if (start === undefined || end === undefined) throw new Error('Incomplete generated path');
+		const prior = spans.at(-1);
+		if (prior?.end.x === start.x && prior.end.y === start.y) {
+			const vertical = prior.start.x === prior.end.x;
+			let priorStep = prior.end.x - prior.start.x;
+			let nextStep = end.x - start.x;
+			let aligned = end.y === start.y;
+			if (vertical) {
+				priorStep = prior.end.y - prior.start.y;
+				nextStep = end.y - start.y;
+				aligned = end.x === start.x;
+			}
+			if (aligned && Math.sign(priorStep) === Math.sign(nextStep)) {
+				prior.end = end;
+				continue;
+			}
+		}
+		spans.push({ start, end });
+	}
+	return spans;
+}
+
+/** Reference geometry reads independently coalesced waypoint spans, not production helpers. */
 function referenceContacts(
 	first: RoutedPath,
 	second: RoutedPath,
 	bridges: readonly LayoutBridge[],
 ): readonly RouteContact[] {
 	const contacts: RouteContact[] = [];
-	for (let i = 1; i < first.points.length; i += 1)
-		for (let j = 1; j < second.points.length; j += 1) {
-			const a = first.points[i - 1];
-			const b = first.points[i];
-			const c = second.points[j - 1];
-			const d = second.points[j];
-			if (a === undefined || b === undefined || c === undefined || d === undefined)
-				throw new Error('Incomplete generated path');
+	const secondSpans = referenceSpans(second.points);
+	for (const { start: a, end: b } of referenceSpans(first.points))
+		for (const { start: c, end: d } of secondSpans) {
 			const av = a.x === b.x;
 			const cv = c.x === d.x;
 			if (av === cv) {
@@ -133,8 +162,10 @@ const generatedRoute = fc
 		fc.integer({ min: 1, max: 60 }),
 		fc.boolean(),
 		fc.boolean(),
+		fc.boolean(),
+		fc.boolean(),
 	)
-	.map(([x, y, dx, dy, verticalFirst, reverse]) => {
+	.map(([x, y, dx, dy, verticalFirst, reverse, splitFirst, splitLast]) => {
 		let points = [
 			{ x, y },
 			{ x: x + dx, y },
@@ -146,11 +177,36 @@ const generatedRoute = fc
 				{ x, y: y + dy },
 				{ x: x + dx, y: y + dy },
 			];
+		if (splitFirst) {
+			const first = points[0];
+			const next = points[1];
+			if (first === undefined || next === undefined) throw new Error('Incomplete generated path');
+			points.splice(1, 0, { x: (first.x + next.x) / 2, y: (first.y + next.y) / 2 });
+		}
+		if (splitLast) {
+			const last = points.at(-1);
+			const previous = points.at(-2);
+			if (last === undefined || previous === undefined)
+				throw new Error('Incomplete generated path');
+			points.splice(points.length - 1, 0, {
+				x: (previous.x + last.x) / 2,
+				y: (previous.y + last.y) / 2,
+			});
+		}
 		if (reverse) return points.toReversed();
 		return points;
 	});
 
 describe('one route-contact rule', () => {
+	it('treats straight-through waypoints at a bridge as one route run', () => {
+		const horizontal = path('h', [0, 50], [50, 50], [100, 50]);
+		const vertical = path('v', [50, 0], [50, 50], [50, 100]);
+		const bridges = validatedBridges([horizontal, vertical]);
+		expect(bridges).toHaveLength(1);
+		expect(unbridgedContacts(horizontal, vertical, bridges)).toEqual([]);
+		expect(referenceContacts(horizontal, vertical, bridges)).toEqual([]);
+	});
+
 	it('distinguishes bridgeable strict crossings, T-contacts, overlaps, and endpoint-only attachment', () => {
 		const horizontal = path('h', [0, 50], [100, 50]);
 		const vertical = path('v', [50, 0], [50, 100]);
@@ -172,6 +228,23 @@ describe('one route-contact rule', () => {
 		expect(disallowedRouteContacts(outgoing, arriving, [])).toEqual([]);
 		expect(disallowedRouteContacts(outgoing, { ...arriving, to: 'other' }, [])).toEqual([
 			point(0, 0),
+		]);
+	});
+
+	it('defers only strict crossings of a portal piece to the fully assembled route', () => {
+		const short = path('short', [135, 8], [145, 8]);
+		const piece = path('incident', [140, 60], [140, 0]);
+		const full = path('incident', [140, 60], [140, 0], [140, -32]);
+		expect(validatedBridges([short, piece])).toEqual([]);
+		expect(disallowedRouteContacts(short, piece, [])).toEqual([point(140, 8)]);
+		expect(disallowedProvisionalRouteContacts(short, piece)).toEqual([]);
+		expect(validatedBridges([short, full])).toHaveLength(1);
+		expect(disallowedRouteContacts(short, full, validatedBridges([short, full]))).toEqual([]);
+		expect(
+			disallowedProvisionalRouteContacts(short, path('incident', [140, 60], [140, 8])),
+		).toEqual([point(140, 8)]);
+		expect(disallowedProvisionalRouteContacts(path('overlap', [135, 8], [145, 8]), short)).toEqual([
+			overlap({ x: 135, y: 8 }, { x: 145, y: 8 }),
 		]);
 	});
 
