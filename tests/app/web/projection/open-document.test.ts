@@ -373,13 +373,14 @@ describe('openDocument', () => {
 		}).not.toThrow();
 	});
 
-	it('moves only an eligible relation target to its strict-improvement rendered slot', async () => {
+	it('reprojects an edited relation without displacing unrelated canvas nodes', async () => {
 		const result = openDocument(crossingDocument);
 		if (!result.ok) throw new Error('Expected the crossing document to open');
 		const before = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
 		const successorBefore = before.nodes.find(({ id }) => id === 'successor')?.bounds;
+		const isolatedBefore = before.nodes.find(({ id }) => id === 'isolated')?.bounds;
 
 		await result.value.addRelation({
 			id: 'source-a-to-target-b',
@@ -391,13 +392,21 @@ describe('openDocument', () => {
 		);
 		const bounds = new Map(after.nodes.map(({ id, bounds: nodeBounds }) => [id, nodeBounds]));
 
-		expect(bounds.get('target-b')?.x).toBeLessThan(bounds.get('target-a')?.x ?? 0);
-		expect(bounds.get('target-a')?.x).toBeLessThan(bounds.get('helper')?.x ?? 0);
-		expect(bounds.get('target-a')?.y).toBe(bounds.get('target-b')?.y);
-		expect(bounds.get('source-a')?.x).toBeLessThan(bounds.get('source-b')?.x ?? 0);
+		const source = bounds.get('source-a');
+		const target = bounds.get('target-b');
+		const added = after.relations.find(({ id }) => id === 'source-a-to-target-b');
+		if (source === undefined || target === undefined || added === undefined)
+			throw new Error('The new relation or its endpoints were not projected');
+		expect(added.points[0]?.y).toBe(source.y);
+		expect(added.points.at(-1)?.y).toBe(target.y + target.height);
+		expect(added.points[0]?.x).toBeGreaterThanOrEqual(source.x);
+		expect(added.points[0]?.x).toBeLessThanOrEqual(source.x + source.width);
+		expect(added.points.at(-1)?.x).toBeGreaterThanOrEqual(target.x);
+		expect(added.points.at(-1)?.x).toBeLessThanOrEqual(target.x + target.width);
+		expect(bounds.get('target-a')?.y).toBe(target.y);
 		expect(bounds.get('source-a')?.y).toBe(bounds.get('source-b')?.y);
 		expect(bounds.get('successor')).toEqual(successorBefore);
-		expect(bounds.get('isolated')?.x).toBeGreaterThan(bounds.get('successor')?.x ?? 0);
+		expect(bounds.get('isolated')).toEqual(isolatedBefore);
 	});
 });
 

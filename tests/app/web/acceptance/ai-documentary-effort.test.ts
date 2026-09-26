@@ -7,6 +7,9 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { weightedInversionScore } from '../../../../src/lib/core/layout/crossing-aware-order';
+import { scoreDedicatedCandidateRoutes } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
+import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { orderEndpoints } from '../../../../src/lib/core/ordering/endpoint-order';
 import {
 	importLogicDocument,
@@ -223,95 +226,34 @@ describe('AI for documentary effort', () => {
 			);
 		});
 
-		it('removes a visible two-by-two inversion through the public relation editing path', async () => {
+		it('reduces persisted documentary crossings while keeping the public canvas crossing-free', async () => {
 			const opened = expectDocument(openDocument(twoByTwoInversionDocument));
-			const before = await opened.createCanvasModel(
-				layoutMeasurementsForCanvas(opened.measurementModel),
-			);
+			const measurements = layoutMeasurementsForCanvas(opened.measurementModel);
+			const persistedBefore = opened.read();
+			const before = await opened.createCanvasModel(measurements);
 
 			await opened.addRelation({
 				id: 'qualifying-source-b-to-target-a',
 				from: 'source-b',
 				to: 'target-a',
 			});
-			const after = await opened.createCanvasModel(
-				layoutMeasurementsForCanvas(opened.measurementModel),
-			);
+			const after = await opened.createCanvasModel(measurements);
 			const beforeBounds = new Map(before.nodes.map(({ id, bounds }) => [id, bounds]));
 			const afterBounds = new Map(after.nodes.map(({ id, bounds }) => [id, bounds]));
-			const links = [
-				{
-					relationId: 'source-a-to-target-b',
-					sourceId: 'source-a',
-					targetId: 'target-b',
-					weight: 1,
-				},
-				{
-					relationId: 'source-b-to-target-a',
-					sourceId: 'source-b',
-					targetId: 'target-a',
-					weight: 1,
-				},
-				{
-					relationId: 'qualifying-source-b-to-target-a',
-					sourceId: 'source-b',
-					targetId: 'target-a',
-					weight: 1,
-				},
-				{
-					relationId: 'source-b-to-target-c',
-					sourceId: 'source-b',
-					targetId: 'target-c',
-					weight: 1,
-				},
-			];
-			const ranks = new Map([
-				['source-a', 0],
-				['source-b', 0],
-				['target-a', 1],
-				['target-b', 1],
-				['target-c', 1],
-			]);
-			const score = (endpointOrder: readonly string[]) =>
-				weightedInversionScore({
-					effectiveRelations: links.map(({ relationId, sourceId, targetId }) => ({
-						relationId,
-						sourceIds: [sourceId],
-						targetIds: [targetId],
-					})),
-					effectiveEndpointOrder: endpointOrder,
-					ranks,
-					junctionIds: new Set(),
-				});
-
-			const beforeOrder = orderedIds(before.nodes, [
-				'source-a',
-				'source-b',
-				'target-a',
-				'target-b',
-				'target-c',
-			]);
-			const afterOrder = orderedIds(after.nodes, [
-				'source-a',
-				'source-b',
-				'target-a',
-				'target-b',
-				'target-c',
-			]);
-			expect(orderedIds(before.nodes, ['target-a', 'target-b', 'target-c'])).toEqual([
-				'target-a',
-				'target-b',
-				'target-c',
-			]);
-			expect(orderedIds(after.nodes, ['target-a', 'target-b', 'target-c'])).toEqual([
-				'target-b',
-				'target-a',
-				'target-c',
-			]);
-			expect(orderedIds(before.nodes, ['target-b', 'target-c'])).toEqual(
-				orderedIds(after.nodes, ['target-b', 'target-c']),
-			);
-			expect(score(afterOrder)).toBeLessThan(score(beforeOrder));
+			const documentaryScore = (document: typeof persistedBefore) => {
+				const created = createGraph(document);
+				if (!created.ok) throw new Error('Invalid documentary graph after relation edit');
+				const graph = created.value;
+				return scoreDedicatedCandidateRoutes(
+					evaluateDedicatedLayout(prepareLayout(graph, topologicallyRank(graph)), measurements),
+				);
+			};
+			const priorScore = documentaryScore(persistedBefore);
+			const currentScore = documentaryScore(opened.read());
+			expect(currentScore.strictCrossings).toBeLessThan(priorScore.strictCrossings);
+			expect(currentScore.validatedBridges).toBeLessThan(priorScore.validatedBridges);
+			const targetIds = ['target-a', 'target-b', 'target-c'];
+			expect(orderedIds(after.nodes, targetIds)).toEqual(orderedIds(before.nodes, targetIds));
 
 			for (const canvas of [before, after]) {
 				const bounds = new Map(canvas.nodes.map(({ id, bounds: nodeBounds }) => [id, nodeBounds]));
@@ -337,8 +279,7 @@ describe('AI for documentary effort', () => {
 					expect(pointTouchesBoundary(lastPoint, toBounds)).toBe(true);
 				}
 			}
-			// VL-617 permits realignment after a relation edit; source order and the released rail remain observable.
-			AssertRoutes(before.relations).haveCrossing();
+			AssertRoutes(before.relations).haveNoCrossing();
 			AssertRoutes(after.relations).haveNoCrossing();
 			const sourceIds = ['source-a', 'source-b'];
 			expect(orderedIds(after.nodes, sourceIds)).toEqual(orderedIds(before.nodes, sourceIds));
@@ -353,11 +294,7 @@ describe('AI for documentary effort', () => {
 				const current = afterBounds.get(id);
 				if (previous === undefined || current === undefined)
 					throw new Error(`Missing source ${id}`);
-				expect(current).toMatchObject({
-					width: previous.width,
-					height: previous.height,
-				});
-				expect(previous.y - current.y).toBe(24);
+				expect(current).toEqual(previous);
 			}
 		});
 	});
