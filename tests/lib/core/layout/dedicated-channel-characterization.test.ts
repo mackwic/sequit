@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
 	EndpointKind,
 	JunctionOperator,
@@ -10,14 +9,20 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import type * as ChannelRoutingModule from '../../../../src/lib/core/layout/routing/channel-routing';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import type {
 	ChannelEndpoint,
 	ChannelRouting,
 } from '../../../../src/lib/core/layout/routing/channel-types';
+import type { LayoutMeasurementOverrides } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	railClearanceDocument,
+	railClearanceMeasurements,
+	railReuseDocument,
+} from '../../../support/scenarios/dedicated-channel-witnesses';
 
 const channelObservations = vi.hoisted(() => ({ calls: [] as ChannelObservation[] }));
 interface ChannelObservation {
@@ -131,12 +136,20 @@ const junctionNetwork: LogicDocument = {
 	})),
 };
 
-function channelsFromProductionLayout(document: LogicDocument): readonly ChannelObservation[] {
-	const prepared = prepareLayoutDocument(document);
+function channelsFromProductionLayout(
+	document: LogicDocument,
+	overrides?: LayoutMeasurementOverrides,
+	requireSinglePipeline = false,
+): readonly ChannelObservation[] {
+	const prepared = prepareLayoutDocument(document, overrides);
 	channelObservations.calls.length = 0;
-	layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements, {
-		inspectRouting: true,
-	});
+	const selected = layoutWithDedicatedEngineAndRankOrderWitness(
+		prepared.graph,
+		prepared.ranks,
+		prepared.measurements,
+		{ inspectRouting: true },
+	);
+	if (requireSinglePipeline) expect(selected.witness.evaluated).toBe(1);
 	return [...channelObservations.calls];
 }
 
@@ -204,30 +217,37 @@ function wireFor(channel: ChannelObservation, id: string) {
 
 describe('dedicated engine channel characterization (replaceable during channel migration)', () => {
 	describe('actual port allocations from LogicDocument layouts', () => {
-		it('reuses the earliest of two eligible rails with distinct ends by relation ID', () => {
-			const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
-			if (entry === undefined) throw new Error('The adjacent 2+2 document must exist');
-			const channel = channelFor(channelsFromProductionLayout(entry.document), [
-				'a-d',
-				'a-e',
-				'b-d',
-				'c-e',
+		it('reuses a retained production rail only after its prior interval clears', () => {
+			const document = railReuseDocument();
+			const channel = channelFor(channelsFromProductionLayout(document, undefined, true), [
+				'c-to-e',
+				'd-to-e',
 			]);
-			const later = wireFor(channel, 'c-e').first;
-			const earlierEnd = wireFor(channel, 'b-d').first;
-			const laterEnd = wireFor(channel, 'a-e').first;
-			if (later === undefined || earlierEnd === undefined || laterEnd === undefined)
-				throw new Error('All three production intervals must have allocated runs');
-
-			const clearanceBoundary = later.start - 12;
-			expect(earlierEnd.end).toBeLessThan(clearanceBoundary);
-			expect(laterEnd.end).toBeLessThan(clearanceBoundary);
-			expect(earlierEnd.end).not.toBe(laterEnd.end);
-			expect(earlierEnd.depth).toBe(laterEnd.depth);
-			expect(earlierEnd.depth).toBe(later.depth);
-			expect(earlierEnd.end).toBeLessThan(laterEnd.end);
-			expect(later.rail).toBe(earlierEnd.rail);
-			expect(later.rail).not.toBe(laterEnd.rail);
+			const earlier = wireFor(channel, 'c-to-e').first;
+			const later = wireFor(channel, 'd-to-e').first;
+			if (earlier === undefined || later === undefined)
+				throw new Error('The retained rail-reuse routes must allocate both runs');
+			expect(later.start - earlier.end).toBeGreaterThan(12);
+			expect(later.depth).toBe(earlier.depth);
+			expect(later.rail).toBe(earlier.rail);
+		});
+		it.each([12, 13] as const)('keeps a %i-unit gap on the retained channel', (clearance) => {
+			const channel = channelFor(
+				channelsFromProductionLayout(
+					railClearanceDocument(),
+					railClearanceMeasurements(clearance),
+					true,
+				),
+				['a-to-d', 'a-to-e'],
+			);
+			const earlier = wireFor(channel, 'a-to-d').first;
+			const later = wireFor(channel, 'a-to-e').first;
+			if (earlier === undefined || later === undefined)
+				throw new Error('The clearance routes must allocate two runs');
+			expect(later.start - earlier.end).toBe(clearance);
+			expect(later.depth).toBe(earlier.depth);
+			if (clearance === 12) expect(later.rail).not.toBe(earlier.rail);
+			else expect(later.rail).toBe(earlier.rail);
 		});
 
 		it('characterizes actual endpoints and unsplit rails on both corrected crossing layouts', () => {

@@ -16,15 +16,28 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
-import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
-import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	compareDedicatedRouteScores,
+	validateDedicatedCandidate,
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngine,
+	layoutWithDedicatedEngineAndRankOrderWitness,
+} from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import {
 	type LayoutMeasurementOverrides,
 	layoutMeasurementsFor,
 } from '../../../support/builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
+import {
+	railClearanceDocument,
+	railClearanceMeasurements,
+	railReuseDocument,
+} from '../../../support/scenarios/dedicated-channel-witnesses';
 
 function digest(value: unknown): string {
 	return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -130,33 +143,6 @@ const groupEndpoint: LogicDocument = {
 	relations: [...multirankOne.relations, { id: 'group-to-e', from: 'group', to: 'e' }],
 };
 
-function railReuseDocument(id: string): LogicDocument {
-	const base = makeDocument(
-		id,
-		['a', 'b', 'c', 'd', 'e'],
-		[
-			{ id: 'a-to-d', from: 'a', to: 'd' },
-			{ id: 'b-to-c', from: 'b', to: 'c' },
-			{ id: 'c-to-e', from: 'c', to: 'e' },
-			{ id: 'd-to-e', from: 'd', to: 'e' },
-			{ id: 'c-to-sink', from: 'c', to: 'sink' },
-			{ id: 'd-to-sink', from: 'd', to: 'sink' },
-		],
-	);
-	return {
-		...base,
-		junctions: [
-			{
-				kind: EndpointKind.Junction,
-				id: 'sink',
-				operator: JunctionOperator.Xor,
-				layoutOrder: orderKey('a6'),
-			},
-		],
-	};
-}
-const railReuse = railReuseDocument('rail-reuse');
-
 const junctionNetwork: LogicDocument = {
 	...makeDocument(
 		'junction-network-layout',
@@ -223,30 +209,23 @@ interface IdentityCase {
 const rankCases = rankOrderComparisonCorpus()
 	.slice(0, 2)
 	.map(({ id, document }) => ({ id, document }));
-const clearanceDocument = rankCases.find(({ id }) => id === 'adjacent-3+1')?.document;
-if (clearanceDocument === undefined) throw new Error('The adjacent 3+1 document must exist');
-function clearanceCase(
-	id: string,
-	widths: readonly number[],
-	document: LogicDocument,
-): IdentityCase {
-	const nodes: Record<string, { width: number; height: number }> = {};
-	for (const [index, nodeId] of ['a', 'b', 'c', 'd', 'e'].entries()) {
-		const width = widths[index];
-		if (width === undefined) throw new Error('Every clearance fixture needs five node widths');
-		nodes[nodeId] = { width, height: 116 };
-	}
-	return { id, document, measurementOverrides: { nodes } };
-}
 const cases: IdentityCase[] = [
 	...rankCases,
 	{ id: 'multirank-group-junction-one', document: multirankOne },
 	{ id: 'multirank-group-junction-two', document: multirankTwo },
 	{ id: 'junction-network-layout', document: junctionNetwork },
 	{ id: 'group-endpoint-route', document: groupEndpoint },
-	{ id: 'rail-reuse', document: railReuse },
-	clearanceCase('rail-clearance-12', [131, 178, 225, 272, 319], clearanceDocument),
-	clearanceCase('rail-clearance-13', [129, 176, 223, 270, 317], clearanceDocument),
+	{ id: 'rail-reuse', document: railReuseDocument() },
+	{
+		id: 'rail-clearance-12',
+		document: railClearanceDocument(),
+		measurementOverrides: railClearanceMeasurements(12),
+	},
+	{
+		id: 'rail-clearance-13',
+		document: railClearanceDocument(),
+		measurementOverrides: railClearanceMeasurements(13),
+	},
 ];
 
 describe('dedicated engine LayoutResult identity', () => {
@@ -281,9 +260,32 @@ describe('dedicated engine LayoutResult identity', () => {
 				const graph = graphResult.value;
 				const ranks = topologicallyRank(graph);
 				const measurements = layoutMeasurementsFor(document, measurementOverrides);
-				const result = layoutWithDedicatedEngine(graph, ranks, measurements, {
+				const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements, {
 					inspectRouting: true,
 				});
+				const result = selected.layout;
+				if (id.startsWith('rail-')) expect(selected.witness.evaluated).toBe(1);
+				if (id.startsWith('rail-clearance-')) expect(selected.witness.stop).toBe('shape-envelope');
+				if (id === 'workshop-navigation') {
+					const baseline = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements, {
+						inspectRouting: true,
+					});
+					const initial = validateDedicatedCandidate({
+						graph,
+						ranks,
+						measurements,
+						layout: baseline,
+					});
+					const optimized = validateDedicatedCandidate({
+						graph,
+						ranks,
+						measurements,
+						layout: result,
+					});
+					if (!initial.valid || !optimized.valid)
+						throw new Error('Navigation routes must validate');
+					expect(compareDedicatedRouteScores(optimized.score, initial.score)).toBeLessThan(0);
+				}
 				validationById.set(
 					id,
 					validateDedicatedCandidate({ graph, ranks, measurements, layout: result }),
@@ -371,11 +373,11 @@ describe('dedicated engine LayoutResult identity', () => {
 				'5d21370f3c46a5e10ff2c3825e8ab602a99ceb0063ce5615f1e236ca89d2dc5f',
 			'multirank-group-junction-two':
 				'1b6c7d41c5040f17de7f4a561290fd9a87e48f6e130d0eef108fe505a085a32f',
-			'rail-clearance-12': 'ae866d04c6d0763e20674f2787b0773e716456f99bfb2ebbcd4ae0b895030124',
-			'rail-clearance-13': '6ffb888f0454c149f3b10acd59eb12b29eef2188f4df6dea1040fb64c2aca194',
+			'rail-clearance-12': 'bf2632bc7e6a31d2f3a8bb40a9010a80723a5b236d7d6c072048d458f3ad26b5',
+			'rail-clearance-13': 'f2292e0ea488f38806f26c2c97eae4759b6981db71452660e215ba092013e750',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
 			'workshop-branching': '007f50ba4f616a515f8c8d08e082536958b139ee39d6ad2cb5ef12236c0e58c4',
-			'workshop-navigation': '44bc5d3435f46a72dd2794838daaf7ba425cad1a4b4c551d90747fea8efb1c37',
+			'workshop-navigation': '8d830ff4b6e4ffa33df6499b0684748a4a38c1cf62bbe10d2960bf7934894438',
 		});
 
 		const casesById = new Map(allCases.map(({ id, ...identityCase }) => [id, identityCase]));

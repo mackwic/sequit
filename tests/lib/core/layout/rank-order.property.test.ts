@@ -888,7 +888,7 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 	});
 
-	it('does not validate the legacy dense shape or an ordinary graph with no exchange band', () => {
+	it('leaves an ordinary graph without an exchange band unverified', () => {
 		const wide = corpusDocument(
 			Array.from({ length: 9 }, (_, index) => `n${index}`),
 			Array.from({ length: 9 }, (_, index) => `n${index}`),
@@ -909,7 +909,7 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 		expect(result.witness).toMatchObject({
 			mode: 'skipped',
-			stop: 'shape-envelope',
+			stop: 'no-band',
 			evaluated: 1,
 			valid: 0,
 			unverified: 1,
@@ -933,6 +933,73 @@ describe('dedicated bounded geometric rank search', () => {
 			valid: 0,
 			unverified: 1,
 		});
+	});
+	it.each([
+		['evaporating cloud', 5, 4],
+		['goal tree', 9, 8],
+		['binary decision tree', 15, 14],
+	] as const)('admits a local rank domain for %s (%i nodes, %i relations)', (_, count, edges) => {
+		const ids = Array.from({ length: count }, (_, index) => `n${index}`);
+		const document = corpusDocument(
+			ids,
+			ids,
+			ids.slice(1).map((id, index) => ({
+				id: `r${index}`,
+				from: defined(ids[Math.floor(index / 2)]),
+				to: id,
+			})),
+		);
+		expect(document.relations).toHaveLength(edges);
+		const prepared = createGraph(document);
+		if (!prepared.ok) throw new Error('Invalid archetype graph');
+		const graph = prepared.value;
+		const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, topologicallyRank(graph), {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
+			junctions: new Map(),
+			groups: new Map(),
+		});
+		expect(result.witness.stop).not.toBe('shape-envelope');
+		expect(result.witness.evaluated).toBeLessThanOrEqual(12);
+		expect(result.witness.work.completePipelines).toBe(result.witness.evaluated);
+	});
+	it('recomputes the complete layout when one added relation crosses the work frontier', () => {
+		const ids = Array.from({ length: 15 }, (_, index) => `n${index}`);
+		const tree = ids.slice(1).map((id, index) => ({
+			id: `tree-${index}`,
+			from: defined(ids[Math.floor(index / 2)]),
+			to: id,
+		}));
+		const extras = [3, 4, 5, 6].map((index) => ({
+			id: `extra-${index}`,
+			from: 'n0',
+			to: `n${index}`,
+		}));
+		const measure = {
+			nodes: new Map(ids.map((id) => [id, { width: 80, height: 40 }])),
+			junctions: new Map(),
+			groups: new Map(),
+		};
+		const before = corpusDocument(ids, ids, [...tree, ...extras.slice(0, 3)]);
+		const after = corpusDocument(ids, ids, [...tree, ...extras]);
+		const first = createGraph(before);
+		const second = createGraph(after);
+		if (!first.ok || !second.ok) throw new Error('Invalid boundary graph');
+		const beforeRanks = topologicallyRank(first.value);
+		const afterRanks = topologicallyRank(second.value);
+		const prior = layoutWithDedicatedEngineAndRankOrderWitness(first.value, beforeRanks, measure);
+		const edited = layoutWithDedicatedEngineAndRankOrderWitness(second.value, afterRanks, measure);
+		expect(prior.witness.stop).not.toBe('shape-envelope');
+		expect(edited.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'shape-envelope',
+			evaluated: 1,
+			work: { completePipelines: 1, validations: 0 },
+		});
+		expect(edited.layout).toEqual(
+			evaluateDedicatedLayout(prepareLayout(second.value, afterRanks), measure),
+		);
+		expect(edited.layout.relations.map(({ id }) => id)).toContain('extra-6');
+		expect(prior.layout.relations.map(({ id }) => id)).not.toContain('extra-6');
 	});
 
 	it('proves the documentary zero-route baseline optimal without another pipeline', () => {
