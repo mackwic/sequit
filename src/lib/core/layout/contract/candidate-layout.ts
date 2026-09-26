@@ -2,11 +2,12 @@ import { defined } from '../../document/logic-document';
 import { orderKey } from '../../document/order-key';
 import type { LogicGraph } from '../../graph/create-graph';
 import { topologicallyRank } from '../../graph/topological-ranks';
-import { layoutWithDedicatedEngine } from '../layout-engine';
+import { evaluateDedicatedLayout } from '../layout-engine';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
+import { prepareLayout } from '../structure/prepare-layout';
 import type { LayoutContractCandidate } from './layout-contract';
 
-/** Materialize an order candidate with the current engine while the contract owns the choices. */
+/** Render the candidate's declared order; global rank search must not change this fixed branch. */
 export function materializeContractCandidate(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
@@ -23,7 +24,10 @@ export function materializeContractCandidate(
 	};
 	const orderedGraph: LogicGraph = { ...graph, document };
 	try {
-		return layoutWithDedicatedEngine(orderedGraph, topologicallyRank(orderedGraph), measurements);
+		return evaluateDedicatedLayout(
+			prepareLayout(orderedGraph, topologicallyRank(orderedGraph)),
+			measurements,
+		);
 	} catch {
 		return undefined;
 	}

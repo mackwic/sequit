@@ -2,8 +2,9 @@ import { compareCanonicalStrings } from '../../canonical-string';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { bestWithinBudget, validatedSearchBudget } from '../bounded-search';
-import { layoutWithDedicatedEngine } from '../layout-engine';
+import { evaluateDedicatedLayout } from '../layout-engine';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
+import { prepareLayout } from '../structure/prepare-layout';
 import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
 import { materializeContractCandidate } from './candidate-layout';
 import {
@@ -168,9 +169,10 @@ export function resolveAdjacentLayoutContract(
 			contract,
 			evaluations: [],
 		};
+	// Differential comparison must retain the contract's documentary order on both sides.
 	let baseline: LayoutResult;
 	try {
-		baseline = layoutWithDedicatedEngine(graph, ranks, measurements);
+		baseline = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
 	} catch {
 		return {
 			status: LayoutContractResolutionStatus.Unknown,

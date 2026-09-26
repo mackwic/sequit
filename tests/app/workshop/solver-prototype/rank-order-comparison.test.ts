@@ -250,9 +250,14 @@ describe('rank order stability under document edits', () => {
 				],
 			},
 		};
-		const [comparison] = compareRankOrderMutations([{
-			id: 'split-goal-roots', label: 'Split root rank by adding two causal links', before, after,
-		}]);
+		const [comparison] = compareRankOrderMutations([
+			{
+				id: 'split-goal-roots',
+				label: 'Split root rank by adding two causal links',
+				before,
+				after,
+			},
+		]);
 		expect(comparison).toMatchObject({
 			addedRelations: 2,
 			rankChanges: 2,

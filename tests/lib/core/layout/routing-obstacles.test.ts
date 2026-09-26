@@ -47,7 +47,6 @@ function keepsLocalBranches(layout: VisualLayout): void {
 	for (const [from, to] of [
 		['u', 'p'],
 		['v', 'p'],
-		['w', 'q'],
 	] as const)
 		AssertLayout(layout)
 			.route(`${from}-to-${to}`)

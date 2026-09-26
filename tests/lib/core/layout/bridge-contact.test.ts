@@ -10,6 +10,7 @@ import {
 } from '../../../../src/lib/core/layout/bridge-contact';
 import {
 	type LayoutBridge,
+	routeBridgeAnalysis,
 	type RoutedPath,
 	validatedBridges,
 } from '../../../../src/lib/core/layout/bridge-oracle';
@@ -289,7 +290,7 @@ describe('one route-contact rule', () => {
 	it('gives dedicated and lane validators the same typed refusal and canonical relation pair', () => {
 		const a: LayoutRelation = { ...path('a', [0, 0], [50, 0]), from: 'one', to: 'two' };
 		const z: LayoutRelation = { ...path('z', [0, 0], [20, 0]), from: 'another', to: 'three' };
-		const analysis = { crossings: [], bridges: [] };
+		const analysis = routeBridgeAnalysis([a, z]);
 		expect(contactFailure([a, z], analysis)).toMatchObject({
 			valid: false,
 			code: DedicatedCandidateRejectionCode.RouteContact,

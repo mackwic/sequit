@@ -1369,7 +1369,9 @@ describe('dedicated bounded geometric rank search', () => {
 	});
 
 	it('counts long projected crossings deterministically when virtual nodes share an interpolated position', () => {
-		const base = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2')).document;
+		const base = defined(
+			rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'),
+		).document;
 		const document = {
 			...base,
 			relations: [
@@ -1387,9 +1389,17 @@ describe('dedicated bounded geometric rank search', () => {
 			const structure = prepareLayout(created.value, topologicallyRank(created.value));
 			const domain = collectRankOrderDomain(structure);
 			const topology = new RankTopologyOracle(structure, domain);
-			expect(domain.bands).toEqual([['b', 'd'], ['a', 'c']]);
+			expect(domain.bands).toEqual([
+				['b', 'd'],
+				['a', 'c'],
+			]);
 			expect(topology.count(structure, domain.bands)).toBe(0);
-			expect(topology.count(structure, [['b', 'd'], ['c', 'a']])).toBe(3);
+			expect(
+				topology.count(structure, [
+					['b', 'd'],
+					['c', 'a'],
+				]),
+			).toBe(3);
 		}
 	});
 
@@ -1792,12 +1802,14 @@ describe('dedicated bounded geometric rank search', () => {
 				evaluate: routedBaseline.evaluate,
 			});
 			expect(routedBaseline.globalPipelines()).toBe(2);
-			expect(validateDedicatedCandidate({
-				graph,
-				ranks,
-				measurements: entry.measurements,
-				layout: selected.layout,
-			}).valid).toBe(true);
+			expect(
+				validateDedicatedCandidate({
+					graph,
+					ranks,
+					measurements: entry.measurements,
+					layout: selected.layout,
+				}).valid,
+			).toBe(true);
 			expect(selected.witness.stop).not.toBe('baseline-fallback');
 			expect(selected.witness.work.globalValidations).toBe(2);
 		}

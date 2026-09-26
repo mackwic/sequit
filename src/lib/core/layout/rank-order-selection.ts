@@ -5,7 +5,10 @@ import {
 	compareDedicatedRouteScores,
 	validateDedicatedCandidate,
 } from './dedicated-candidate-validation';
-import type { DedicatedRouteScore, RejectedDedicatedCandidate } from './dedicated-candidate-validation/types';
+import type {
+	DedicatedRouteScore,
+	RejectedDedicatedCandidate,
+} from './dedicated-candidate-validation/types';
 import type { DedicatedLayoutEvaluation, evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import type { RankOrder } from './rank-order';

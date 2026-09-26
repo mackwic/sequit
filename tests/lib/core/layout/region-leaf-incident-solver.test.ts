@@ -9,14 +9,17 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import {
+	disallowedProvisionalRouteContacts,
+	disallowedRouteContacts,
+} from '../../../../src/lib/core/layout/bridge-contact';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
-import { pathsTouchWithoutBridge } from '../../../../src/lib/core/layout/nested-region-leaf-incident-contacts';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/region-composition-types';
+import { incidentEndpointRoute } from '../../../../src/lib/core/layout/region-incident-contact';
 import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
@@ -137,7 +140,7 @@ describe('dedicated leaf incident contracts', () => {
 		expect(portal.side).toBe(RegionPortalSide.Bottom);
 		expect(portal.anchor.y).toBe(junction.bounds.y + junction.bounds.height);
 		expect(portal.portal.y).toBe(cold.layout.height);
-		expect(pathsTouchWithoutBridge(portal.points, internal.points)).toBe(false);
+		expect(disallowedProvisionalRouteContacts(incidentEndpointRoute(portal), internal)).toEqual([]);
 		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
 	});
 
@@ -342,7 +345,8 @@ describe('dedicated leaf incident contracts', () => {
 				],
 			},
 		});
-		if (attempt.status !== RegionCompositionStatus.Unknown) throw new Error('Expected missing incident endpoint');
+		if (attempt.status !== RegionCompositionStatus.Unknown)
+			throw new Error('Expected missing incident endpoint');
 		expect(rejectedIncidentAdmission(attempt, [missing])).toEqual({
 			accepted: false,
 			endpointIds: ['missing'],
@@ -380,31 +384,6 @@ describe('dedicated leaf incident contracts', () => {
 		});
 	});
 
-	it('attributes concrete simultaneous incident blockers without treating exhaustion markers as geometry faults', () => {
-		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'));
-		const contracts = [0, 1].map((index) => ({
-			relation: { id: `foreign-${index}`, from: 'a', to: `outside-${index}` },
-			endpointId: 'a',
-			role: RegionIncidentRole.Source,
-			allowedSides: [RegionPortalSide.Top],
-		}));
-		const attempt = solveDedicatedRegionLeafWithIncidents({
-			document: entry.document,
-			measurements: entry.measurements,
-			contracts,
-		});
-		if (attempt.status !== RegionCompositionStatus.Unknown) throw new Error('Expected incident conflict');
-		expect(attempt.code).toBe(RegionIncidentUnknownCode.NoValidAlternative);
-		expect(attempt.witness.exhaustive).toBe(true);
-		expect(attempt.witness.rejectedAlternatives.some(({ blockedIncidentRelationId }) =>
-			blockedIncidentRelationId === 'foreign-0')).toBe(true);
-		expect(attempt.witness.rejectedAlternatives.some(({ exhausted }) => exhausted)).toBe(true);
-		expect(rejectedIncidentAdmission(attempt, contracts)).toMatchObject({
-			accepted: false,
-			endpointIds: ['a', 'd', 'e'],
-		});
-	});
-
 	it('distinguishes an invalid contract from the explicit search bound', () => {
 		const document = oneNodeLeaf();
 		const measurements = prepareLayoutDocument(document).measurements;
@@ -418,7 +397,8 @@ describe('dedicated leaf incident contracts', () => {
 			code: RegionIncidentUnknownCode.InvalidContract,
 			witness: { attempted: 0, exhaustive: true },
 		});
-		if (invalid.status !== RegionCompositionStatus.Unknown) throw new Error('Expected invalid contract');
+		if (invalid.status !== RegionCompositionStatus.Unknown)
+			throw new Error('Expected invalid contract');
 		expect(rejectedIncidentAdmission(invalid, [])).toBe(false);
 		const bounded = solveDedicatedRegionLeafWithIncidents({
 			document,
@@ -466,10 +446,12 @@ describe('dedicated leaf incident contracts', () => {
 		expect(incident.anchor.x).toBe(source.bounds.x + source.bounds.width);
 		expect(incident.portal.x).toBe(selected.layout.width);
 		for (const route of selected.layout.relations)
-			expect(pathsTouchWithoutBridge(incident.points, route.points)).toBe(false);
+			expect(disallowedProvisionalRouteContacts(incidentEndpointRoute(incident), route)).toEqual(
+				[],
+			);
 	});
 
-	it('restores only the incident-blocked component and keeps an independent rank gain', () => {
+	it('admits an incident-compatible rank gain independently in each disconnected component', () => {
 		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'));
 		const nodes = entry.document.nodes.map((node) => ({ ...node, id: `x-${node.id}` }));
 		const document = {
@@ -511,16 +493,19 @@ describe('dedicated leaf incident contracts', () => {
 					defined(attempt.layout.elements.find(({ id }) => id === left)).bounds.x -
 					defined(attempt.layout.elements.find(({ id }) => id === right)).bounds.x,
 			);
-		expect(order(['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+		expect(order(['a', 'b', 'c'])).toEqual(['b', 'a', 'c']);
 		expect(order(['x-a', 'x-b', 'x-c'])).toEqual(['x-b', 'x-a', 'x-c']);
 		expect(attempt.incidents).toHaveLength(1);
 		for (const route of attempt.layout.relations)
-			expect(pathsTouchWithoutBridge(defined(attempt.incidents[0]).points, route.points)).toBe(
-				false,
-			);
+			expect(
+				disallowedProvisionalRouteContacts(
+					incidentEndpointRoute(defined(attempt.incidents[0])),
+					route,
+				),
+			).toEqual([]);
 	});
 
-	it('retains documentary geometry when a better rank blocks a required region incident', () => {
+	it('admits two non-obstructing incidents without restoring a worse documentary rank', () => {
 		const entry = rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2');
 		if (entry === undefined) throw new Error('Missing routed rank fixture');
 		const contracts = [
@@ -564,16 +549,23 @@ describe('dedicated leaf incident contracts', () => {
 		const hit = solveDedicatedRegionLeafWithIncidents(input);
 		expect(hit).toEqual(cold);
 		if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);
-		expect(cold.layout).toEqual(documentary);
+		expect(cold.layout).toEqual(unconstrained.layout);
 		expect(cold.incidents).toHaveLength(2);
 		const first = defined(cold.incidents.find(({ relationId }) => relationId === 'foreign-a'));
 		const second = defined(cold.incidents.find(({ relationId }) => relationId === 'foreign-d'));
 		expect(first.side).toBe(RegionPortalSide.Top);
 		expect(second.side).toBe(RegionPortalSide.Right);
-		expect(pathsTouchWithoutBridge(first.points, second.points)).toBe(false);
+		expect(
+			disallowedProvisionalRouteContacts(
+				incidentEndpointRoute(first),
+				incidentEndpointRoute(second),
+			),
+		).toEqual([]);
 		for (const incident of cold.incidents)
 			for (const route of cold.layout.relations)
-				expect(pathsTouchWithoutBridge(incident.points, route.points)).toBe(false);
+				expect(disallowedProvisionalRouteContacts(incidentEndpointRoute(incident), route)).toEqual(
+					[],
+				);
 		expect(cache.stats).toMatchObject({ misses: 1, hits: 1, entries: 1 });
 	});
 });

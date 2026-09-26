@@ -30,6 +30,7 @@ export function junctionObstacle(
 		relations: [
 			...fixture.relations.filter(({ id }) => id !== 'g-to-s'),
 			{ id: 'g-to-j', from: 'g', to: 'j' },
+			{ id: 'g-to-q', from: 'g', to: 'q' },
 			{ id: 'j-to-s', from: 'j', to: 's' },
 		],
 	};

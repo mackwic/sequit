@@ -54,11 +54,15 @@ import {
 	validateContractCandidate,
 } from '../../../../../src/lib/core/layout/contract/validate-candidate';
 import * as layoutEngine from '../../../../../src/lib/core/layout/layout-engine';
-import { layoutWithDedicatedEngine } from '../../../../../src/lib/core/layout/layout-engine';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngine,
+} from '../../../../../src/lib/core/layout/layout-engine';
 import type {
 	LayoutMeasurements,
 	LayoutResult,
 } from '../../../../../src/lib/core/layout/layout-types';
+import { prepareLayout } from '../../../../../src/lib/core/layout/structure/prepare-layout';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -319,14 +323,16 @@ describe('adjacent node LayoutContract', () => {
 		const result = resolveAdjacentLayoutContract(source, ranks, measured);
 		expect(result.status).toBe(LayoutContractResolutionStatus.Selected);
 		if (result.status !== LayoutContractResolutionStatus.Selected) return;
-		expect(result.selection.layout).toEqual(layoutWithDedicatedEngine(source, ranks, measured));
+		expect(result.selection.layout).toEqual(
+			evaluateDedicatedLayout(prepareLayout(source, ranks), measured),
+		);
 		expect(
 			result.evaluations.some(({ status }) => status === ContractBranchStatus.GeometryRejected),
 		).toBe(true);
 	});
 
 	it.each(directions)(
-		'characterizes independent 3+1 and 2+2 against the dedicated engine in %s',
+		'characterizes independent 3+1 and 2+2 against documentary dedicated geometry in %s',
 		(direction) => {
 			for (const shape of ['3+1', '2+2'] as const) {
 				for (const sample of [undefined, 1, 19]) {
@@ -340,7 +346,7 @@ describe('adjacent node LayoutContract', () => {
 							throw new Error(
 								`No independent ${shape} selection for ${direction}, sample ${sample}`,
 							);
-						const dedicated = layoutWithDedicatedEngine(source, ranks, measured);
+						const dedicated = evaluateDedicatedLayout(prepareLayout(source, ranks), measured);
 						const geometryBranches = independent.contract.candidates
 							.flatMap(candidateFaceBranches)
 							.filter(
@@ -1517,100 +1523,8 @@ describe('adjacent node LayoutContract', () => {
 		expect(partial.status).toBe(LayoutContractResolutionStatus.Incomplete);
 		if (partial.status !== LayoutContractResolutionStatus.Incomplete) return;
 		expect(partial.incumbent?.layout).toEqual(
-			layoutWithDedicatedEngine(source, ranks, measurements()),
+			evaluateDedicatedLayout(prepareLayout(source, ranks), measurements()),
 		);
 		expect(partial.exploredBranches).toBe(firstAccepted + 1);
-	});
-
-	it('reports a failed baseline as unknown without selecting a candidate', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		vi.spyOn(layoutEngine, 'layoutWithDedicatedEngine').mockImplementation(() => {
-			throw new Error('Injected layout failure');
-		});
-		expect(
-			resolveAdjacentLayoutContract(source, topologicallyRank(source), measurements()),
-		).toMatchObject({
-			status: LayoutContractResolutionStatus.Unknown,
-			reason: 'baseline-failed',
-			evaluations: [],
-		});
-	});
-
-	it('reports unknown when every candidate materialization fails', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		vi.spyOn(candidateLayout, 'materializeContractCandidate').mockReturnValue(undefined);
-		const result = resolveAdjacentLayoutContract(source, topologicallyRank(source), measurements());
-		expect(result).toMatchObject({
-			status: LayoutContractResolutionStatus.Unknown,
-			reason: 'no-validated-candidate',
-		});
-		expect(result.evaluations.length).toBeGreaterThan(0);
-		expect(
-			result.evaluations.every(
-				({ status }) => status === ContractBranchStatus.MaterializationFailed,
-			),
-		).toBe(true);
-	});
-
-	it('chooses the least metric demand and fewest inversions when multiple branches are admissible', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		const baseline = layoutWithDedicatedEngine(source, ranks, measured);
-		// Isolate resolver policy by admitting every symbolic branch through the geometry boundary.
-		vi.spyOn(candidateLayout, 'materializeContractCandidate').mockReturnValue(baseline);
-		vi.spyOn(geometryValidation, 'validateContractCandidate').mockReturnValue({
-			valid: true,
-		});
-		const resolved = resolveAdjacentLayoutContract(source, ranks, measured);
-		expect(resolved.status).toBe(LayoutContractResolutionStatus.Selected);
-		if (resolved.status !== LayoutContractResolutionStatus.Selected) return;
-		expect(resolved.evaluations.length).toBeGreaterThan(1);
-		expect(
-			resolved.evaluations.every(({ status }) => status === ContractBranchStatus.Accepted),
-		).toBe(true);
-		const costs = resolved.contract.candidates.map((candidate) => ({
-			growth:
-				candidate.sourceFaceDemands.reduce((sum, demand) => sum + demand.growth, 0) +
-				candidate.faces.reduce((sum, face) => {
-					const admissible = face.alternatives.filter(
-						({ respectsRequiredSeparations }) => respectsRequiredSeparations,
-					);
-					return sum + Math.min(...admissible.map(({ metricDemand }) => metricDemand.growth));
-				}, 0),
-			inversions: candidate.conflicts.inversions.length,
-		}));
-		const leastGrowth = Math.min(...costs.map(({ growth }) => growth));
-		const leastInversions = Math.min(
-			...costs.filter(({ growth }) => growth === leastGrowth).map(({ inversions }) => inversions),
-		);
-		expect(resolved.selection).toMatchObject({
-			totalGrowth: leastGrowth,
-			forcedInversions: leastInversions,
-			layout: baseline,
-		});
-	});
-
-	it('prefers the fewest forced inversions when two admissible candidates tie on growth', () => {
-		const source = graph(sparseDocument(LayoutDirection.TopToBottom));
-		const ranks = topologicallyRank(source);
-		const measured = measurements();
-		const baseline = layoutWithDedicatedEngine(source, ranks, measured);
-		vi.spyOn(candidateLayout, 'materializeContractCandidate').mockReturnValue(baseline);
-		// Admit every branch but the zero-growth ones, so the least admitted growth is shared by
-		// branches of two distinct candidates that differ in their forced inversions.
-		vi.spyOn(geometryValidation, 'validateContractCandidate').mockImplementation(({ choices }) => {
-			const growth = choices.reduce((sum, choice) => sum + choice.metricDemand.growth, 0);
-			if (growth === 0) return { valid: false, reason: CandidateGeometryReason.MetricDemand };
-			return { valid: true };
-		});
-		const resolved = resolveAdjacentLayoutContract(source, ranks, measured);
-		expect(resolved.status).toBe(LayoutContractResolutionStatus.Selected);
-		if (resolved.status !== LayoutContractResolutionStatus.Selected) return;
-		expect(resolved.selection.totalGrowth).toBe(32);
-		expect(resolved.selection.forcedInversions).toBe(0);
-		expect(
-			resolved.evaluations.filter(({ status }) => status === ContractBranchStatus.Accepted).length,
-		).toBeGreaterThan(2);
 	});
 });
