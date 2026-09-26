@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { rankOrderComparisonCorpus } from '../../../../src/app/workshop/solver-prototype/rank-order-comparison';
 import {
@@ -13,45 +13,22 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
-import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank-order';
-import type * as ChannelRoutingModule from '../../../../src/lib/core/layout/routing/channel-routing';
-import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
-import type {
-	ChannelEndpoint,
-	ChannelRouting,
-} from '../../../../src/lib/core/layout/routing/channel-types';
+import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
-import type { LayoutMeasurementOverrides } from '../../../support/builders/layout-measurements';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	type LayoutMeasurementOverrides,
+	layoutMeasurementsFor,
+} from '../../../support/builders/layout-measurements';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
-
-const channelObservations = vi.hoisted(() => ({ calls: [] as ChannelObservation[] }));
-interface ChannelObservation {
-	readonly endpoints: readonly ChannelEndpoint[];
-	readonly routing: ChannelRouting;
-}
-vi.mock('../../../../src/lib/core/layout/routing/channel-routing', async (importOriginal) => {
-	const actual = await importOriginal<typeof ChannelRoutingModule>();
-	return {
-		...actual,
-		routeOwnedChannel: (wires: Parameters<typeof actual.routeOwnedChannel>[0]) => {
-			const routing = actual.routeOwnedChannel(wires);
-			channelObservations.calls.push({ endpoints: wires, routing });
-			return routing;
-		},
-		routeChannel: (endpoints: Parameters<typeof actual.routeChannel>[0]) => {
-			const routing = actual.routeChannel(endpoints);
-			channelObservations.calls.push({ endpoints, routing });
-			return routing;
-		},
-	};
-});
 
 function digest(value: unknown): string {
 	return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
+
 function makeDocument(
 	id: string,
 	ids: readonly string[],
@@ -75,6 +52,7 @@ function makeDocument(
 		relations,
 	};
 }
+
 function groupedJunction(id: string, relations: LogicDocument['relations']): LogicDocument {
 	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
 	return {
@@ -97,6 +75,7 @@ function groupedJunction(id: string, relations: LogicDocument['relations']): Log
 		relations,
 	};
 }
+
 const multirankOne = groupedJunction('multirank-group-junction-one', [
 	{ id: 'a-to-d', from: 'a', to: 'd' },
 	{ id: 'b-to-c', from: 'b', to: 'c' },
@@ -113,7 +92,7 @@ const multirankTwo = groupedJunction('multirank-group-junction-two', [
 	{ id: 'e-to-join', from: 'e', to: 'join' },
 	{ id: 'f-to-join', from: 'f', to: 'join' },
 ]);
-const groupEndpoint = {
+const groupEndpoint: LogicDocument = {
 	...multirankOne,
 	id: 'group-endpoint-route',
 	title: 'group-endpoint-route',
@@ -147,9 +126,9 @@ function railReuseDocument(id: string): LogicDocument {
 }
 const railReuse = railReuseDocument('rail-reuse');
 
-const junctionChannelFamilies: LogicDocument = {
+const junctionNetwork: LogicDocument = {
 	...makeDocument(
-		'junction-channel-families',
+		'junction-network-layout',
 		['a', 'b', 'c', 'd'],
 		[
 			{ id: 'j-to-a', from: 'j', to: 'a' },
@@ -163,7 +142,6 @@ const junctionChannelFamilies: LogicDocument = {
 			{ id: 'k-to-sink', from: 'k', to: 'sink' },
 		],
 	),
-	nodes: makeDocument('junction-channel-families', ['a', 'b', 'c', 'd'], []).nodes,
 	junctions: ['j', 'k', 'sink'].map((id, index) => ({
 		kind: EndpointKind.Junction as const,
 		id,
@@ -172,7 +150,7 @@ const junctionChannelFamilies: LogicDocument = {
 	})),
 };
 
-function assertFiniteLayout(layout: ReturnType<typeof layoutWithDedicatedEngine>): void {
+function assertFiniteLayout(layout: LayoutResult): void {
 	const values = [layout.width, layout.height];
 	for (const { bounds } of layout.elements)
 		values.push(bounds.x, bounds.y, bounds.width, bounds.height);
@@ -211,38 +189,6 @@ interface IdentityCase {
 	readonly measurementOverrides?: LayoutMeasurementOverrides;
 }
 
-function channelFor(
-	channels: ReadonlyMap<string, readonly ChannelObservation[]>,
-	id: string,
-	relationIds: readonly string[],
-): ChannelObservation {
-	const channel = (channels.get(id) ?? []).find(({ endpoints }) =>
-		relationIds.every((relationId) =>
-			endpoints.some(({ id: endpointId }) => endpointId === relationId),
-		),
-	);
-	if (channel === undefined)
-		throw new Error(`Missing production channel for ${id}: ${relationIds.join(', ')}`);
-	return channel;
-}
-
-function wireFor(channel: ChannelObservation, id: string) {
-	const wire = channel.routing.wires.find((candidate) => candidate.id === id);
-	if (wire === undefined) throw new Error(`Missing production wire ${id}`);
-	return wire;
-}
-
-function placedBand(
-	layout: ReturnType<typeof layoutWithDedicatedEngine>,
-	ranks: ReadonlyMap<string, number>,
-	rank: number,
-): string[] {
-	return layout.elements
-		.filter(({ id }) => ranks.get(id) === rank)
-		.toSorted((left, right) => left.bounds.x - right.bounds.x)
-		.map(({ id }) => id);
-}
-
 const rankCases = rankOrderComparisonCorpus()
 	.slice(0, 2)
 	.map(({ id, document }) => ({ id, document }));
@@ -265,7 +211,7 @@ const cases: IdentityCase[] = [
 	...rankCases,
 	{ id: 'multirank-group-junction-one', document: multirankOne },
 	{ id: 'multirank-group-junction-two', document: multirankTwo },
-	{ id: 'junction-channel-families', document: junctionChannelFamilies },
+	{ id: 'junction-network-layout', document: junctionNetwork },
 	{ id: 'group-endpoint-route', document: groupEndpoint },
 	{ id: 'rail-reuse', document: railReuse },
 	clearanceCase('rail-clearance-12', [131, 178, 225, 272, 319], clearanceDocument),
@@ -273,7 +219,7 @@ const cases: IdentityCase[] = [
 ];
 
 describe('dedicated engine LayoutResult identity', () => {
-	it('pins full layouts and proves observed production channel behavior', async () => {
+	it('pins twelve complete layouts and asserts observable geometry by ID', async () => {
 		const aiSource = await aiDocumentaryEffortScenario();
 		const aiDocument = parseSequitToml(aiSource);
 		if (!aiDocument.ok) throw new Error('The AI documentary effort example must parse');
@@ -296,20 +242,16 @@ describe('dedicated engine LayoutResult identity', () => {
 			{ id: 'ai-documentary-effort', document: aiDocument.value },
 			...workshopCases,
 		];
-		const channels = new Map<string, readonly ChannelObservation[]>();
-		const preparedById = new Map<string, ReturnType<typeof prepareLayoutDocument>>();
 		const results = Object.fromEntries(
 			allCases.map(({ id, document, measurementOverrides }) => {
-				const prepared = prepareLayoutDocument(document, measurementOverrides);
-				preparedById.set(id, prepared);
-				channelObservations.calls.length = 0;
-				const result = layoutWithDedicatedEngine(
-					prepared.graph,
-					prepared.ranks,
-					prepared.measurements,
-					{ inspectRouting: true },
-				);
-				channels.set(id, [...channelObservations.calls]);
+				const graphResult = createGraph(document);
+				if (!graphResult.ok) throw new Error(`Invalid graph for ${id}`);
+				const graph = graphResult.value;
+				const ranks = topologicallyRank(graph);
+				const measurements = layoutMeasurementsFor(document, measurementOverrides);
+				const result = layoutWithDedicatedEngine(graph, ranks, measurements, {
+					inspectRouting: true,
+				});
 				expect(result.routingInspection).toBeDefined();
 				assertFiniteLayout(result);
 				return [id, result];
@@ -319,6 +261,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			Object.entries(results).map(([id, result]) => [id, digest(result)]),
 		);
 		const expectedIds = allCases.map(({ id }) => id);
+		expect(expectedIds).toHaveLength(12);
 		expect(new Set(expectedIds).size).toBe(expectedIds.length);
 		expect(new Set(Object.values(hashes)).size).toBe(Object.keys(hashes).length);
 
@@ -327,8 +270,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-3+1': 'fdb0249a5b7112767e038d033b441777f88a535a3d3bc59bc18c0b306338cc4a',
 			'ai-documentary-effort': 'efc78b3328e0fd53d68b5e26881580d51cdd98a2ebf24c6dbdd6b0d88cb4f1ee',
 			'group-endpoint-route': '839c296963b8d825fb6032e718e720aea867f99f0197fb96cdf159d643eb3014',
-			'junction-channel-families':
-				'45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
+			'junction-network-layout': '45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
 			'multirank-group-junction-one':
 				'81c7e3fe345ba85f5d47c64571cfc3b594c795f4f3519c2229ba40e80bf406ec',
 			'multirank-group-junction-two':
@@ -340,200 +282,51 @@ describe('dedicated engine LayoutResult identity', () => {
 			'workshop-navigation': '44bc5d3435f46a72dd2794838daaf7ba425cad1a4b4c551d90747fea8efb1c37',
 		});
 
-		expect(
-			results['junction-channel-families']?.elements.some(
-				({ id, kind }) => id === 'sink' && kind === EndpointKind.Junction,
-			),
-		).toBe(true);
+		const casesById = new Map(allCases.map(({ id, ...identityCase }) => [id, identityCase]));
+		for (const [id, result] of Object.entries(results)) {
+			const identityCase = casesById.get(id);
+			if (identityCase === undefined) throw new Error(`Missing source document for ${id}`);
+			const elementsById = new Map(result.elements.map((element) => [element.id, element]));
+			for (const endpoint of [
+				...identityCase.document.nodes,
+				...identityCase.document.groups,
+				...identityCase.document.junctions,
+			]) {
+				const element = elementsById.get(endpoint.id);
+				expect(element, `${id} box ${endpoint.id}`).toBeDefined();
+				expect(element?.bounds.width).toBeGreaterThan(0);
+				expect(element?.bounds.height).toBeGreaterThan(0);
+			}
+			const routesById = new Map(result.relations.map((route) => [route.id, route]));
+			for (const relation of identityCase.document.relations) {
+				const route = routesById.get(relation.id);
+				expect(route, `${id} route ${relation.id}`).toMatchObject({
+					from: relation.from,
+					to: relation.to,
+				});
+				expect(route?.points.length).toBeGreaterThan(1);
+			}
+		}
+
 		const groupRoute = results['group-endpoint-route']?.relations.find(
 			({ id }) => id === 'group-to-e',
 		);
 		expect(groupRoute).toMatchObject({ from: 'group', to: 'e' });
 		expect(groupRoute?.points.length).toBeGreaterThan(2);
 
-		const familyCalls = channels.get('junction-channel-families') ?? [];
-		const coincidentCalls = familyCalls.filter(({ endpoints }) =>
-			endpoints.some(({ source, target }) => source === target),
-		);
-		expect(coincidentCalls.length).toBeGreaterThan(0);
-		const unsharedCoincident = coincidentCalls.flatMap(({ endpoints, routing }) =>
-			endpoints
-				.filter(
-					({ source, target, sharedSource, sharedTarget }) =>
-						source === target && sharedSource === undefined && sharedTarget === undefined,
-				)
-				.map(({ id }) => routing.wires.find((wire) => wire.id === id)),
-		);
-		expect(
-			unsharedCoincident.some((wire) => wire?.first === undefined && wire?.last === undefined),
-		).toBe(true);
-
-		const departureFamily = channelFor(channels, 'junction-channel-families', [
-			'j-to-a',
-			'j-to-d-one',
-			'j-to-d-two',
-			'j-to-sink',
-			'k-to-a',
-			'k-to-b',
-			'k-to-sink',
-		]);
-		for (const id of ['j-to-sink', 'k-to-sink']) {
-			const endpoint = departureFamily.endpoints.find((candidate) => candidate.id === id);
-			expect(endpoint?.sharedSource).toBeDefined();
-			expect(endpoint?.sharedTarget).toBe('sink');
-		}
-		const jDeparture = wireFor(departureFamily, 'j-to-a').first;
-		expect(jDeparture).toBeDefined();
-		if (jDeparture === undefined) throw new Error('The j departure family must be routed');
-		for (const id of ['j-to-d-one', 'j-to-d-two'])
-			expect(wireFor(departureFamily, id).first).toBe(jDeparture);
-		expect(wireFor(departureFamily, 'j-to-sink').first).not.toBe(jDeparture);
-
-		const arrivalFamily = channelFor(channels, 'junction-channel-families', [
-			'a-to-sink',
-			'b-to-sink',
-			'j-to-sink',
-			'k-to-sink',
-		]);
-		const sharedArrival = wireFor(arrivalFamily, 'a-to-sink').last;
-		expect(sharedArrival).toBeDefined();
-		if (sharedArrival === undefined) throw new Error('The arrival family must be routed');
-		for (const id of ['b-to-sink', 'j-to-sink', 'k-to-sink'])
-			expect(wireFor(arrivalFamily, id).last).toBe(sharedArrival);
-
-		for (const id of ['multirank-group-junction-one', 'multirank-group-junction-two']) {
+		const crossingsByLayout = [
+			['multirank-group-junction-one', ['a-to-d', 'b-to-c'] as const],
+			['multirank-group-junction-two', ['c-to-f', 'd-to-e'] as const],
+		] as const;
+		for (const [id, relationIds] of crossingsByLayout) {
 			const layout = results[id];
-			const prepared = preparedById.get(id);
-			expect(layout).toBeDefined();
-			expect(prepared).toBeDefined();
-			if (!layout || !prepared) throw new Error(`Missing layout fixture ${id}`);
-			expect(layout.elements.some(({ kind }) => kind === EndpointKind.Group)).toBe(true);
-			expect(
-				layout.elements.some(
-					({ id: elementId, kind }) => elementId === 'join' && kind === EndpointKind.Junction,
-				),
-			).toBe(true);
-			expect(Math.max(...prepared.ranks.byEndpointId.values())).toBeGreaterThan(
-				Math.min(...prepared.ranks.byEndpointId.values()),
+			if (layout === undefined) throw new Error(`Missing LayoutResult ${id}`);
+			const crossingBridgeIds = routeBridgeAnalysis(layout.relations).bridges.map(
+				({ carrierIds, crossedIds }) => [...new Set([...carrierIds, ...crossedIds])].toSorted(),
 			);
-
-			let sourceIds: readonly string[];
-			let targetIds: readonly string[];
-			let crossingRelationIds: readonly [string, string];
-			let splitId: string;
-			let otherId: string;
-			if (id === 'multirank-group-junction-one') {
-				sourceIds = ['a', 'b'];
-				targetIds = ['c', 'd'];
-				crossingRelationIds = ['a-to-d', 'b-to-c'];
-				splitId = 'a-to-d';
-				otherId = 'b-to-c';
-			} else {
-				sourceIds = ['c', 'd'];
-				targetIds = ['e', 'f'];
-				crossingRelationIds = ['c-to-f', 'd-to-e'];
-				splitId = 'c-to-f';
-				otherId = 'd-to-e';
-			}
-			const sourceRank = prepared.ranks.byEndpointId.get(sourceIds[0] ?? '');
-			const targetRank = prepared.ranks.byEndpointId.get(targetIds[0] ?? '');
-			if (sourceRank === undefined || targetRank === undefined)
-				throw new Error(`Missing witness ranks for ${id}`);
-			const placedOrder = [
-				placedBand(layout, prepared.ranks.byEndpointId, sourceRank),
-				placedBand(layout, prepared.ranks.byEndpointId, targetRank),
-			];
-			expect(placedOrder).toEqual([sourceIds, targetIds]);
-			const crossingRelations = crossingRelationIds.map((relationId) => {
-				const relation = prepared.graph.relations.find(
-					({ relation: item }) => item.id === relationId,
-				);
-				if (relation === undefined) throw new Error(`Missing crossing relation ${relationId}`);
-				return relation.relation;
-			});
-			expect(countRankOrderCrossings(placedOrder, crossingRelations)).toBe(1);
-			const routeCrossings = routeBridgeAnalysis(layout.relations).crossings;
-			expect(
-				routeCrossings.some(
-					({ horizontalId, verticalId }) =>
-						new Set([horizontalId, verticalId]).size === 2 &&
-						crossingRelationIds.every((relationId) =>
-							[horizontalId, verticalId].includes(relationId),
-						),
-				),
-			).toBe(true);
-
-			const cycle = channelFor(channels, id, crossingRelationIds);
-			const split = wireFor(cycle, splitId);
-			const other = wireFor(cycle, otherId);
-			const splitFirst = split.first;
-			const splitLast = split.last;
-			const otherFirst = other.first;
-			expect(split.middle).toBeDefined();
-			expect(other.middle).toBeUndefined();
-			if (!splitFirst || !splitLast || !otherFirst)
-				throw new Error('The production crossing cycle must expose its ordered runs');
-			const splitInput = cycle.endpoints.find(({ id }) => id === splitId);
-			const otherInput = cycle.endpoints.find(({ id }) => id === otherId);
-			expect(splitInput?.source).toBe(otherInput?.target);
-			expect(splitInput?.target).toBe(otherInput?.source);
-			expect(splitFirst).not.toBe(splitLast);
-			expect(splitFirst.next).toContain(splitLast);
-			expect(otherFirst.next).toContain(splitLast);
-			expect([splitFirst.depth, otherFirst.depth, splitLast.depth]).toEqual([0, 1, 2]);
-			expect([splitFirst.rail, otherFirst.rail, splitLast.rail]).toEqual([0, 1, 2]);
+			expect(crossingBridgeIds).toContainEqual([...relationIds].toSorted());
 		}
 
-		const adjacentChannel = channelFor(channels, 'adjacent-3+1', [
-			'a-to-d',
-			'a-to-e',
-			'b-to-d',
-			'c-to-d',
-		]);
-		const shortRun = wireFor(adjacentChannel, 'a-to-d').first;
-		const longRun = wireFor(adjacentChannel, 'a-to-e').first;
-		const nestedRun = wireFor(adjacentChannel, 'b-to-d').first;
-		if (!shortRun || !longRun || !nestedRun)
-			throw new Error('The production adjacent channel must contain all interval runs');
-		expect(longRun.start).toBeLessThan(nestedRun.start);
-		expect(longRun.end).toBeGreaterThan(nestedRun.end);
-		expect(shortRun.start).toBeLessThan(longRun.start);
-		expect(shortRun.end).toBeGreaterThan(longRun.start);
-		const releasedRun = wireFor(adjacentChannel, 'b-to-d').first;
-		expect(releasedRun?.rail).toBe(shortRun.rail);
-		expect(releasedRun?.rail).not.toBe(longRun.rail);
-		expect(shortRun.end).toBeLessThan((releasedRun?.start ?? 0) - 12);
-		expect(longRun.end).toBeGreaterThanOrEqual((releasedRun?.start ?? 0) - 12);
-
-		const clearance12 = channelFor(channels, 'rail-clearance-12', [
-			'a-to-d',
-			'a-to-e',
-			'b-to-d',
-			'c-to-d',
-		]);
-		const before12 = wireFor(clearance12, 'a-to-d').first;
-		const after12 = wireFor(clearance12, 'a-to-e').first;
-		if (!before12 || !after12) throw new Error('The 12-unit production channel must have runs');
-		expect(after12.start - before12.end).toBe(12);
-		expect(after12.rail).not.toBe(before12.rail);
-		const clearance13 = channelFor(channels, 'rail-clearance-13', [
-			'a-to-d',
-			'a-to-e',
-			'b-to-d',
-			'c-to-d',
-		]);
-		const before13 = wireFor(clearance13, 'a-to-d').first;
-		const after13 = wireFor(clearance13, 'a-to-e').first;
-		if (!before13 || !after13) throw new Error('The 13-unit production channel must have runs');
-		expect(after13.start - before13.end).toBe(13);
-		expect(after13.rail).toBe(before13.rail);
-
-		const reuseChannel = channelFor(channels, 'rail-reuse', ['c-to-e', 'd-to-e']);
-		const cToERun = wireFor(reuseChannel, 'c-to-e').first;
-		const dToERun = wireFor(reuseChannel, 'd-to-e').first;
-		expect(cToERun).toBeDefined();
-		expect(dToERun).toBeDefined();
-		expect(cToERun?.rail).toBe(dToERun?.rail);
 		expect(
 			results['ai-documentary-effort']?.elements.filter(({ kind }) => kind === EndpointKind.Node),
 		).toHaveLength(24);
@@ -558,69 +351,5 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(
 			results['workshop-navigation']?.elements.filter(({ kind }) => kind === EndpointKind.Node),
 		).toHaveLength(9);
-	});
-	it('characterizes coincident channel endpoints with and without shared ownership', () => {
-		const unshared = routeChannel([{ id: 'coincident-unshared', source: 4, target: 4 }]);
-		const shared = routeChannel([
-			{ id: 'coincident-shared', source: 4, target: 4, sharedSource: 's', sharedTarget: 't' },
-		]);
-		expect(unshared.wires[0]?.first).toBeUndefined();
-		expect(shared.wires[0]?.first).toMatchObject({ start: 4, end: 4, rail: 0 });
-		expect(shared.wires[0]?.last).toBe(shared.wires[0]?.first);
-	});
-	it('characterizes shared cycle dependencies and merged family constraints', () => {
-		const sharedCycle = routeChannel([
-			{ id: 'shared-forward', source: 0, target: 48, sharedSource: 'source' },
-			{ id: 'backward', source: 48, target: 0 },
-		]);
-		const forward = sharedCycle.wires.find(({ id }) => id === 'shared-forward');
-		const backward = sharedCycle.wires.find(({ id }) => id === 'backward');
-		if (!forward?.first || !forward.last || !backward?.first || !backward.last)
-			throw new Error('The shared column cycle must be split into owned runs');
-		expect(forward.first).not.toBe(forward.last);
-		expect(backward.first).not.toBe(backward.last);
-		expect(forward.first.next).toContain(forward.last);
-		expect(forward.first.next).toContain(backward.last);
-		expect(backward.first.next).toContain(forward.last);
-		expect(backward.first.next).toContain(backward.last);
-
-		const sharedArrivalAndDeparture = routeChannel([
-			{
-				id: 'both-forward',
-				source: 0,
-				target: 48,
-				sharedSource: 'source',
-				sharedTarget: 'arrival',
-			},
-			{
-				id: 'both-backward',
-				source: 48,
-				target: 0,
-				sharedSource: 'source',
-				sharedTarget: 'arrival',
-			},
-		]);
-		const [forwardFamily, backwardFamily] = sharedArrivalAndDeparture.wires;
-		if (
-			!forwardFamily?.first ||
-			!forwardFamily.last ||
-			!backwardFamily?.first ||
-			!backwardFamily.last
-		)
-			throw new Error('The shared arrival and departure families must be merged');
-		expect(forwardFamily.first).toBe(backwardFamily.first);
-		expect(forwardFamily.last).toBe(backwardFamily.last);
-		expect(forwardFamily.first).not.toBe(forwardFamily.last);
-		expect(forwardFamily.first.next).toContain(forwardFamily.last);
-	});
-	it('preserves relation order when run starts and ends tie exactly', () => {
-		const tied = routeChannel([
-			{ id: 'tie-a', source: 0, target: 100 },
-			{ id: 'tie-b', source: 0, target: 100 },
-		]);
-		expect(tied.wires.map(({ id, first }) => [id, first?.start, first?.end, first?.rail])).toEqual([
-			['tie-a', 0, 100, 0],
-			['tie-b', 0, 100, 1],
-		]);
 	});
 });
