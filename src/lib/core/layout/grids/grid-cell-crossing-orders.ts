@@ -1,5 +1,5 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
 
 /** Empty routing track owned by an edge but unused by a relation. */
 export const FREE_TRACK = '';

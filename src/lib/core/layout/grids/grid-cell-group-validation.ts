@@ -1,5 +1,5 @@
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
 import { within } from './grid-cell-geometry-primitives';
 import type { GridCellSelected } from './grid-cell-types';
 

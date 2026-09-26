@@ -16,13 +16,13 @@ import {
 	GRID_CROSSING_BRIDGE_BUDGET,
 	GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	GRID_CROSSING_REALLOCATION_BUDGET,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

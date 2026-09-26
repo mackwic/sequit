@@ -11,7 +11,7 @@ import {
 	gridMargin,
 	gridRoutingEdges,
 	reservedRailTrack,
-} from '../../../../src/lib/core/layout/grid-cell-crossing';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
 	containmentCrossingAllocation,
@@ -19,12 +19,12 @@ import {
 	crossingAllocationCandidatesWithExtraTrack,
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import {
 	crossingAllocationGeometryCount,
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	effectiveRouteGeometry,

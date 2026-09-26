@@ -16,12 +16,12 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { within } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+import { within } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	RegionSubtreeScope,

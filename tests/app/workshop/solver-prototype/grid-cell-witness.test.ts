@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { runGridCellWitness } from '../../../../src/app/workshop/visual-tests/solver-prototype/grid-cell-witness';
-import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-types';
+import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 
 describe('observable grid-cell witness', () => {
 	it('materializes four local cells and validates its rank four to one crossing', () => {

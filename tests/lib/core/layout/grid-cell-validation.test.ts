@@ -2,22 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
+import { crossingIncidence } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import {
 	entersInterior,
 	within,
-} from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
-import { validateCrossPorts } from '../../../../src/lib/core/layout/grid-cell-port-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { validateCrossPorts } from '../../../../src/lib/core/layout/grids/grid-cell-port-validation';
 import {
 	GridCellLayoutStatus,
 	type GridCellPlacement,
 	type GridCellSelected,
-} from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
 	validateGridCellGeometry,
 	validateGridCellGeometryDiagnostic,
-} from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import type {
 	Bounds,
 	LayoutElement,

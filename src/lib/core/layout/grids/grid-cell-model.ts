@@ -1,7 +1,7 @@
-import { defined, type LogicDocument, type LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { defined, type LogicDocument, type LogicRelation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { LayoutMeasurements } from '../layout-types';
 import type { GridCellDefinition, GridCellInput } from './grid-cell-types';
-import type { LayoutMeasurements } from './layout-types';
 
 export interface GridModel {
 	readonly cells: readonly GridCellDefinition[];

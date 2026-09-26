@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { gridCrossingAllocationDemos } from '../../../../src/app/workshop/solver-prototype/grid-cell-allocation';
-import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 
 describe('grid crossing allocation workshop model', () => {
 	it('runs production grid allocations and records phase budgets and selected tracks', () => {

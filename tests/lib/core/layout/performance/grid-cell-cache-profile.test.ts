@@ -9,14 +9,14 @@ import { satisfyMetricDemands } from '../../../../../src/lib/core/layout/contrac
 import {
 	crossingIncidence,
 	crossingMetricDemands,
-} from '../../../../../src/lib/core/layout/grid-cell-crossing';
-import { solveGridCellLayout } from '../../../../../src/lib/core/layout/grid-cell-layout';
+} from '../../../../../src/lib/core/layout/grids/grid-cell-crossing';
+import { solveGridCellLayout } from '../../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	localDocument,
 	localMeasurements,
 	normalize,
-} from '../../../../../src/lib/core/layout/grid-cell-model';
-import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../../src/lib/core/layout/grids/grid-cell-model';
+import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../../src/lib/core/layout/layout-engine';
 import type { LayoutMeasurements } from '../../../../../src/lib/core/layout/layout-types';
 import {

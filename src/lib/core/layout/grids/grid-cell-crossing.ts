@@ -1,14 +1,18 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicRelation } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, type LogicRelation } from '../../document/logic-document';
 import {
 	MetricAxis,
 	MetricDemandKind,
 	type MinimumEndpointExtentMetricDemand,
-} from './contract/metric-demand';
+} from '../contract/metric-demand';
+import type { Bounds, LayoutRelation, Point } from '../layout-types';
+import { RegionPortalSide } from '../regions/model/region-composition-types';
+import {
+	edgeExtent,
+	type RoutingEdge,
+	trackOffset,
+} from '../resources/routing-resource-allocation';
 import { equal } from './grid-cell-geometry-primitives';
-import type { Bounds, LayoutRelation, Point } from './layout-types';
-import { RegionPortalSide } from './regions/model/region-composition-types';
-import { edgeExtent, type RoutingEdge, trackOffset } from './resources/routing-resource-allocation';
 
 const PORT_INSET = 16;
 /** Clearance between two adjacent crossing tracks. */

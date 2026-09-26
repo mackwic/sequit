@@ -12,7 +12,7 @@ import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/ge
 import {
 	crossingIncidence,
 	crossingMetricDemands,
-} from '../../../../src/lib/core/layout/grid-cell-crossing';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {

@@ -1,16 +1,16 @@
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { SolvedGridCell } from './grid-cell-disposition';
-import { type GridModel, localMeasurements } from './grid-cell-model';
-import { gridCellRegionLeafDocument } from './grid-cell-region-model';
-import type { LayoutMeasurements } from './layout-types';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { LayoutMeasurements } from '../layout-types';
 import {
 	InvalidRegionLeafGraphError,
 	solveRegionLeafLayout,
-} from './regions/leaf/region-leaf-layout';
-import { regionLeafPolicy } from './regions/leaf/region-leaf-policy';
-import type { RegionCompositionModel } from './regions/model/region-composition-model';
-import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+} from '../regions/leaf/region-leaf-layout';
+import { regionLeafPolicy } from '../regions/leaf/region-leaf-policy';
+import type { RegionCompositionModel } from '../regions/model/region-composition-model';
+import type { RegionLocalLayoutCache } from '../regions/model/region-local-cache';
+import type { SolvedGridCell } from './grid-cell-disposition';
+import { type GridModel, localMeasurements } from './grid-cell-model';
+import { gridCellRegionLeafDocument } from './grid-cell-region-model';
 
 interface GridRegionSolveInput {
 	readonly graph: LogicGraph;

@@ -15,13 +15,13 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellDefinition,
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function graphFor(document: LogicDocument): LogicGraph {

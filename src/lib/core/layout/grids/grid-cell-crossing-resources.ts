@@ -1,5 +1,5 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicRelation } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, type LogicRelation } from '../../document/logic-document';
 import { type GridRoutingEdges, gridRoutingEdges } from './grid-cell-crossing';
 import type { GridCellInput } from './grid-cell-types';
 

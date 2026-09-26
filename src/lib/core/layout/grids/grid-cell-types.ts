@@ -1,6 +1,4 @@
-import type { LayoutConfiguration } from '../document/logic-document';
-import type { GridCrossingAllocation } from './grid-cell-crossing-allocation';
-import type { GridCrossingAllocationSelectedWitness } from './grid-cell-crossing-phases';
+import type { LayoutConfiguration } from '../../document/logic-document';
 import type {
 	RegionChildPlacement,
 	RegionCompositionAttempt,
@@ -8,13 +6,15 @@ import type {
 	RegionCompositionStatus,
 	RegionPortal,
 	RegionPortalSide,
-} from './regions/model/region-composition-types';
+} from '../regions/model/region-composition-types';
 import type {
 	RegionCompositionFailureEvidence,
 	RegionSearchProvenance,
-} from './regions/model/region-search-evidence';
+} from '../regions/model/region-search-evidence';
+import type { GridCrossingAllocation } from './grid-cell-crossing-allocation';
+import type { GridCrossingAllocationSelectedWitness } from './grid-cell-crossing-phases';
 
-export { RegionCompositionStatus as GridCellLayoutStatus } from './regions/model/region-composition-types';
+export { RegionCompositionStatus as GridCellLayoutStatus } from '../regions/model/region-composition-types';
 
 /** Experimental, derived composition input; it is not a persisted document schema. */
 export interface GridCellDefinition {

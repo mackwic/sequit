@@ -6,18 +6,18 @@ import {
 	crossingIncidence,
 	crossingRailX,
 	reservedRailTrack,
-} from '../../../../src/lib/core/layout/grid-cell-crossing';
-import { crossingAllocationCandidatesWithExtraTrack } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
-import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import { crossingAllocationGeometryCount } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import { gridCrossingResources } from '../../../../src/lib/core/layout/grid-cell-crossing-resources';
-import { occupiedGridGutterColumns } from '../../../../src/lib/core/layout/grid-cell-inherited-incident';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
+import { crossingAllocationCandidatesWithExtraTrack } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { crossingAllocationGeometryCount } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
+import { occupiedGridGutterColumns } from '../../../../src/lib/core/layout/grids/grid-cell-inherited-incident';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import type { RecursiveContext } from '../../../../src/lib/core/layout/regions/model/nested-region-recursive-model-adapter';
 import {

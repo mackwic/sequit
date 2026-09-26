@@ -1,8 +1,8 @@
-import { defined } from '../document/logic-document';
-import type { TopologicalRanks } from '../graph/topological-ranks';
+import { defined } from '../../document/logic-document';
+import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { LayoutResult } from '../layout-types';
 import { gridGutterMargin, gridMargin, type GridRoutingEdges } from './grid-cell-crossing';
 import type { GridCellDefinition, GridCellInput, GridCellPlacement } from './grid-cell-types';
-import type { LayoutResult } from './layout-types';
 
 const CELL_PADDING = 32;
 const TRACK_GAP = 96;

@@ -16,26 +16,26 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { crossingIncidence } from '../../../../src/lib/core/layout/grid-cell-crossing';
+import { crossingIncidence } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
 	type CrossingAllocationInput,
 	type GridCrossingAllocation,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
-import { gridCrossingResources } from '../../../../src/lib/core/layout/grid-cell-crossing-resources';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
 	crossingRoute,
 	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
-import type { GridCellPlacement } from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
+import type { GridCellPlacement } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 	type GridCellSelected,
-} from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometryDiagnostic } from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometryDiagnostic } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 
 export interface VariedGridRoutingCase {

@@ -9,9 +9,9 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { entersInterior } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
-import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-types';
+import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-layout';

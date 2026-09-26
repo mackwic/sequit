@@ -1,5 +1,18 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import type { Point } from '../layout-types';
+import {
+	boundaryPortal,
+	type RegionIncidentPath,
+	type SolvedRecursiveRegion,
+	translatedIncidentPath,
+} from '../regions/model/nested-region-recursive-geometry';
+import {
+	directChild,
+	type IncidentSides,
+	type RecursiveContext,
+} from '../regions/model/nested-region-recursive-model-adapter';
+import { RegionPortalSide } from '../regions/model/region-composition-types';
 import {
 	CROSSING_SPACING,
 	crossingEndpointSide,
@@ -8,19 +21,6 @@ import {
 	reservedRailTrack,
 } from './grid-cell-crossing';
 import type { GridCellDefinition, GridCellPlacement, GridCellSelected } from './grid-cell-types';
-import type { Point } from './layout-types';
-import {
-	boundaryPortal,
-	type RegionIncidentPath,
-	type SolvedRecursiveRegion,
-	translatedIncidentPath,
-} from './regions/model/nested-region-recursive-geometry';
-import {
-	directChild,
-	type IncidentSides,
-	type RecursiveContext,
-} from './regions/model/nested-region-recursive-model-adapter';
-import { RegionPortalSide } from './regions/model/region-composition-types';
 
 interface GridIncidentInput {
 	readonly context: RecursiveContext;

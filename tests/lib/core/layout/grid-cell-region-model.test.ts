@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { localDocument, normalize } from '../../../../src/lib/core/layout/grid-cell-model';
+import { localDocument, normalize } from '../../../../src/lib/core/layout/grids/grid-cell-model';
 import {
 	gridCellRegionLeafDocument,
 	normalizeGridCellRegionModel,
-} from '../../../../src/lib/core/layout/grid-cell-region-model';
-import { solveGridCellRegionLeaves } from '../../../../src/lib/core/layout/grid-cell-region-solver';
-import type { GridCellInput } from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-region-model';
+import { solveGridCellRegionLeaves } from '../../../../src/lib/core/layout/grids/grid-cell-region-solver';
+import type { GridCellInput } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,

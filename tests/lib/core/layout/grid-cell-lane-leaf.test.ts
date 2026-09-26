@@ -12,7 +12,7 @@ import { validateLogicDocument } from '../../../../src/lib/core/document/validat
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
+import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-lane-validation';
 import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	directSharedLaneIncidentPath,

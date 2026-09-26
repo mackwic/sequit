@@ -8,15 +8,15 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../lib/core/document/logic-document';
 import { orderKey } from '../../../lib/core/document/order-key';
-import { gridMargin } from '../../../lib/core/layout/grid-cell-crossing';
-import type { CrossingAllocationPhaseId } from '../../../lib/core/layout/grid-cell-crossing-phases';
-import { gridCrossingResources } from '../../../lib/core/layout/grid-cell-crossing-resources';
-import { solveGridCellLayout } from '../../../lib/core/layout/grid-cell-layout';
+import { gridMargin } from '../../../lib/core/layout/grids/grid-cell-crossing';
+import type { CrossingAllocationPhaseId } from '../../../lib/core/layout/grids/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../lib/core/layout/grids/grid-cell-crossing-resources';
+import { solveGridCellLayout } from '../../../lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellAllocationSelected,
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../lib/core/layout/grid-cell-types';
+} from '../../../lib/core/layout/grids/grid-cell-types';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
 import { requireDemoGraph, requireSelectedDemoResult } from './demo-result';
 

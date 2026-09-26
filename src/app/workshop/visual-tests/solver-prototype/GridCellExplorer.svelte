@@ -4,7 +4,7 @@
 		type GridCellLayoutAttempt,
 		GridCellLayoutStatus,
 		type GridCellSelected,
-	} from '../../../../lib/core/layout/grid-cell-types';
+	} from '../../../../lib/core/layout/grids/grid-cell-types';
 	import type { Point } from '../../../../lib/core/layout/layout-types';
 	import { runGridCellWitness } from './grid-cell-witness';
 

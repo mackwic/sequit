@@ -1,9 +1,25 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, type LogicRelation } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { RoutedPath } from './bridges/bridge-oracle';
-import { satisfyMetricDemands } from './contract/metric-demand';
-import type { RegionGeometryDiagnostic } from './geometry/region-geometry-diagnostic';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined, type LogicRelation } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { RoutedPath } from '../bridges/bridge-oracle';
+import { satisfyMetricDemands } from '../contract/metric-demand';
+import type { RegionGeometryDiagnostic } from '../geometry/region-geometry-diagnostic';
+import type {
+	Bounds,
+	LayoutElement,
+	LayoutMeasurements,
+	LayoutRelation,
+	LayoutResult,
+	Point,
+} from '../layout-types';
+import {
+	type RegionCompositionModel,
+	RegionCompositionModelStatus,
+	RegionRelationKind,
+} from '../regions/model/region-composition-model';
+import type { RegionLocalLayoutCache } from '../regions/model/region-local-cache';
+import { RegionSearchProvenance } from '../regions/model/region-search-evidence';
+import { diagnoseParentRouteContacts } from '../regions/validation/region-composition-validation-detail';
 import {
 	crossingIncidence,
 	crossingMetricDemands,
@@ -44,22 +60,6 @@ import {
 	type GridCellSelected,
 } from './grid-cell-types';
 import { validateGridCellGeometryDiagnostic } from './grid-cell-validation';
-import type {
-	Bounds,
-	LayoutElement,
-	LayoutMeasurements,
-	LayoutRelation,
-	LayoutResult,
-	Point,
-} from './layout-types';
-import {
-	type RegionCompositionModel,
-	RegionCompositionModelStatus,
-	RegionRelationKind,
-} from './regions/model/region-composition-model';
-import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
-import { RegionSearchProvenance } from './regions/model/region-search-evidence';
-import { diagnoseParentRouteContacts } from './regions/validation/region-composition-validation-detail';
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };

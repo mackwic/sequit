@@ -8,7 +8,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
+import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-lane-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import {
 	normalizeRegionCompositionModel,

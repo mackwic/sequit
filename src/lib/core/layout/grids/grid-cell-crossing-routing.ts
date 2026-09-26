@@ -1,4 +1,6 @@
-import { defined, type LogicRelation } from '../document/logic-document';
+import { defined, type LogicRelation } from '../../document/logic-document';
+import type { LayoutRelation, Point } from '../layout-types';
+import { type RegionOwnedRoute, RegionPortalSide } from '../regions/model/region-composition-types';
 import {
 	crossingBusY,
 	crossingEndpointSide,
@@ -9,8 +11,6 @@ import {
 } from './grid-cell-crossing';
 import type { CrossingPortalSpan, GridCrossingAllocation } from './grid-cell-crossing-allocation';
 import type { GridCellInput, GridCellPlacement, GridCellPortal } from './grid-cell-types';
-import type { LayoutRelation, Point } from './layout-types';
-import { type RegionOwnedRoute, RegionPortalSide } from './regions/model/region-composition-types';
 
 /** The placed cells and the allocated tracks a grid region routes its crossings with. */
 export interface GridCrossingRouting {

@@ -1,5 +1,5 @@
-import { defined } from '../document/logic-document';
-import type { Bounds, LayoutRelation, Point } from './layout-types';
+import { defined } from '../../document/logic-document';
+import type { Bounds, LayoutRelation, Point } from '../layout-types';
 
 const EPSILON = 1e-6;
 

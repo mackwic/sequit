@@ -1,9 +1,11 @@
-import { defined, type LogicRelation } from '../document/logic-document';
+import { defined, type LogicRelation } from '../../document/logic-document';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
-} from './geometry/region-geometry-diagnostic';
+} from '../geometry/region-geometry-diagnostic';
+import type { Bounds, LayoutRelation, Point } from '../layout-types';
+import { RegionPortalSide } from '../regions/model/region-composition-types';
 import {
 	crossingEndpointSide,
 	crossingIncidence,
@@ -11,8 +13,6 @@ import {
 } from './grid-cell-crossing';
 import { equal, samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
-import type { Bounds, LayoutRelation, Point } from './layout-types';
-import { RegionPortalSide } from './regions/model/region-composition-types';
 
 interface CrossPortContext {
 	readonly fromCell: GridCellPlacement;

@@ -1,6 +1,6 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../document/logic-document';
+import type { Bounds, LayoutResult, Point } from '../layout-types';
 import { finiteBounds, sameBounds, within } from './grid-cell-geometry-primitives';
-import type { Bounds, LayoutResult, Point } from './layout-types';
 
 interface GridLaneCandidate {
 	readonly cells: readonly {

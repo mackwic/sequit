@@ -8,13 +8,13 @@ import {
 } from '../../../../lib/core/document/logic-document';
 import { orderKey } from '../../../../lib/core/document/order-key';
 import { createGraph } from '../../../../lib/core/graph/create-graph';
-import { solveGridCellLayout } from '../../../../lib/core/layout/grid-cell-layout';
+import { solveGridCellLayout } from '../../../../lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
 	type GridCellLayoutAttempt,
 	GridCellLayoutStatus,
-} from '../../../../lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../lib/core/layout/grid-cell-validation';
+} from '../../../../lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../lib/core/layout/grids/grid-cell-validation';
 import type { LayoutMeasurements } from '../../../../lib/core/layout/layout-types';
 
 function node(id: string, order: string, groupId?: string): LogicNode {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CrossingAllocationPhaseId } from '../../../../lib/core/layout/grid-cell-crossing-phases';
+	import { CrossingAllocationPhaseId } from '../../../../lib/core/layout/grids/grid-cell-crossing-phases';
 	import { gridCrossingAllocationDemos } from '../../solver-prototype/grid-cell-allocation';
 
 	const demos = gridCrossingAllocationDemos();

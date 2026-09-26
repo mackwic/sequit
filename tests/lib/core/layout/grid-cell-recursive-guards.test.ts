@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
-import { composeGridCellDisposition } from '../../../../src/lib/core/layout/grid-cell-layout';
-import { gridCellArrangement } from '../../../../src/lib/core/layout/grid-cell-recursive-region';
+import { composeGridCellDisposition } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { gridCellArrangement } from '../../../../src/lib/core/layout/grids/grid-cell-recursive-region';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
-import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
 import { UnsupportedRegionLeafLayoutError } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {

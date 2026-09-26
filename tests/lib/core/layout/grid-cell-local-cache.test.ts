@@ -6,17 +6,17 @@ import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/m
 import {
 	crossingIncidence,
 	crossingMetricDemands,
-} from '../../../../src/lib/core/layout/grid-cell-crossing';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	localDocument,
 	localMeasurements,
 	normalize,
-} from '../../../../src/lib/core/layout/grid-cell-model';
+} from '../../../../src/lib/core/layout/grids/grid-cell-model';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
-} from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';

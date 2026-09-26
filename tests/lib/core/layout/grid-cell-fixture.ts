@@ -14,7 +14,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import type {
 	GridCellDefinition,
 	GridCellInput,
-} from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
 	type PreparedLayoutDocument,
 	prepareLayoutDocument,

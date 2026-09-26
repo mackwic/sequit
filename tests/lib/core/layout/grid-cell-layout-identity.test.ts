@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
-import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grid-cell-types';
+import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function digest(value: unknown): string {

@@ -10,19 +10,19 @@ import {
 	canonicalCrossingAllocation,
 	crossingBusOrderCandidates,
 	type GridCrossingAllocation,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 	crossingCanonicalBusGeometryCount,
 	GRID_CROSSING_REALLOCATION_BUDGET,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
-import { crossingRoute } from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import {
 	GridCrossingSearchMode,
 	searchGridCrossingAllocations,
-} from '../../../../src/lib/core/layout/grid-cell-crossing-search';
-import { entersInterior } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-search';
+import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
 	effectiveRouteGeometry,

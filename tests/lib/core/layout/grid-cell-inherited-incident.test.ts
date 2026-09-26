@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
-import { gridRoutingEdges } from '../../../../src/lib/core/layout/grid-cell-crossing';
-import { gridCellInheritedIncidentPaths } from '../../../../src/lib/core/layout/grid-cell-inherited-incident';
-import { gridCellArrangement } from '../../../../src/lib/core/layout/grid-cell-recursive-region';
+import { gridRoutingEdges } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
+import { gridCellInheritedIncidentPaths } from '../../../../src/lib/core/layout/grids/grid-cell-inherited-incident';
+import { gridCellArrangement } from '../../../../src/lib/core/layout/grids/grid-cell-recursive-region';
 import {
 	GridCellLayoutStatus,
 	type GridCellPlacement,
 	type GridCellSelected,
-} from '../../../../src/lib/core/layout/grid-cell-types';
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import type {
 	RegionIncidentPath,

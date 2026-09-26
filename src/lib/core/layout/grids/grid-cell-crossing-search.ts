@@ -1,5 +1,7 @@
-import { defined } from '../document/logic-document';
-import type { RegionGeometryDiagnostic } from './geometry/region-geometry-diagnostic';
+import { defined } from '../../document/logic-document';
+import type { RegionGeometryDiagnostic } from '../geometry/region-geometry-diagnostic';
+import { boundedCounter } from '../search/bounded-search';
+import { CrossingAllocationPhaseId } from '../search/grid-cell-crossing-witness';
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
@@ -15,8 +17,6 @@ import {
 	type GridCrossingAllocationSelectedWitness,
 	type GridCrossingAllocationWitness,
 } from './grid-cell-crossing-phases';
-import { boundedCounter } from './search/bounded-search';
-import { CrossingAllocationPhaseId } from './search/grid-cell-crossing-witness';
 
 export interface GridCrossingRouteAttempt<Candidate> {
 	readonly candidate: Candidate;
