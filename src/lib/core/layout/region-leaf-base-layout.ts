@@ -25,7 +25,7 @@ export class UnsupportedRegionLeafLayoutError extends Error {
 export class UnknownRegionLeafLayoutError extends Error {
 	constructor(
 		readonly reason: string,
-		readonly evidence?: RegionSearchEvidence,
+		readonly evidence: RegionSearchEvidence,
 		readonly regionId?: string,
 	) {
 		super(reason);

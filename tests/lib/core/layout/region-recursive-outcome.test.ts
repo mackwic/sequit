@@ -207,10 +207,6 @@ describe('recursive composition outcome', () => {
 			status: RegionCompositionStatus.Unsupported,
 			reason: 'No policy.',
 		});
-		expect(leafErrorAttempt(new UnknownRegionLeafLayoutError('No validated route.'))).toEqual({
-			status: RegionCompositionStatus.Unknown,
-			reason: 'No validated route.',
-		});
 		const { error, witness } = actualIncidentFailure();
 		expect(leafErrorAttempt(error)).toMatchObject({
 			status: RegionCompositionStatus.Unknown,

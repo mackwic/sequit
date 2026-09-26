@@ -84,14 +84,17 @@ export function diagnosedFailure(
 
 export function leafErrorAttempt(error: unknown): RegionLayoutAttempt | undefined {
 	if (error instanceof UnsupportedRegionLeafLayoutError)
-		return { status: RegionCompositionStatus.Unsupported, reason: error.reason };
+		return {
+			status: RegionCompositionStatus.Unsupported,
+			reason: error.reason,
+		};
 	if (!(error instanceof UnknownRegionLeafLayoutError)) return undefined;
 	let region: { readonly regionId?: string } = {};
 	if (error.regionId !== undefined) region = { regionId: error.regionId };
 	return {
 		status: RegionCompositionStatus.Unknown,
 		reason: error.reason,
-		...(error.evidence ?? {}),
+		...error.evidence,
 		...region,
 	};
 }

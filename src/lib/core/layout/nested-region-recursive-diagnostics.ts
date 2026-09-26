@@ -62,10 +62,10 @@ export function retryOwnerForLeafContractFailure(
 		return undefined;
 	for (const rejected of evidence.witness.rejectedAlternatives) {
 		if (rejected.code !== RegionIncidentRejectionCode.RouteObstructed) continue;
-		const owned = model.relations.find(({ relation }) => relation.id === rejected.relationId);
-		const ownerId = owned?.ownerId;
-		if (ownerId === undefined) continue;
-		const retryOwner = retryableOwner(model, ownerId);
+		const owned = defined(
+			model.relations.find(({ relation }) => relation.id === rejected.relationId),
+		);
+		const retryOwner = retryableOwner(model, owned.ownerId);
 		if (retryOwner === undefined) continue;
 		return retryOwner;
 	}

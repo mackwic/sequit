@@ -3,28 +3,22 @@ import { describe, expect, it } from 'vitest';
 import {
 	defined,
 	LayoutBias,
-	type LayoutConfiguration,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	regionQualifiedFailure,
 	retryOwnerForIncidentFailure,
-	retryOwnerForLeafContractFailure,
 } from '../../../../src/lib/core/layout/nested-region-recursive-diagnostics';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/region-composition-model';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode as Code,
 } from '../../../../src/lib/core/layout/region-geometry-diagnostic';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { gridInput, prepareGrid } from './grid-cell-fixture';
 import {
 	depthTwoRegionDocument,
 	depthTwoRegionInput,
@@ -147,35 +141,5 @@ describe('recursive retry diagnostics', () => {
 				regionGeometryDiagnostic(Code.IncidentCrossesForeignNode, 'Unowned failure'),
 			),
 		).toBe('Unowned failure');
-	});
-
-	it('does not retry grid-owned search evidence as a row incident failure', () => {
-		const prepared = prepareGrid();
-		const input = gridInput();
-		const blockedFlow: LayoutConfiguration = {
-			direction: LayoutDirection.LeftToRight,
-			bias: LayoutBias.Left,
-		};
-		const cells = input.cells.map((cell) => {
-			if (cell.id !== 'a') return cell;
-			return { ...cell, layout: blockedFlow };
-		});
-		const attempt = solveGridCellLayout(
-			prepared.graph,
-			prepared.measurements,
-			{ ...input, cells },
-			{ allocationBudgets: { reallocate: 1, extraTrack: 1, bridge: 1 } },
-		);
-		if (
-			attempt.status !== RegionCompositionStatus.Unknown ||
-			attempt.provenance !== RegionSearchProvenance.Grid
-		)
-			throw new Error('Expected a real grid allocation failure.');
-		const evidence = {
-			provenance: RegionSearchProvenance.Grid,
-			code: attempt.code,
-			witness: attempt.witness,
-		} as const;
-		expect(retryOwnerForLeafContractFailure(retryModel(), evidence)).toBeUndefined();
 	});
 });

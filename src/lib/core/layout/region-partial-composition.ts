@@ -30,10 +30,7 @@ import {
 	subtreeInput,
 	subtreeRegionIds,
 } from './region-partial-composition-scope';
-import {
-	type RegionCompositionFailureEvidence,
-	RegionSearchProvenance,
-} from './region-search-evidence';
+import type { RegionCompositionFailureEvidence } from './region-search-evidence';
 
 export enum RegionSubtreeScope {
 	Leaf = 'leaf',
@@ -132,18 +129,7 @@ function failure(input: FailureInput): RegionSubtreeFailure {
 function failureEvidence(
 	attempt: Extract<RegionLayoutAttempt, { status: RegionCompositionStatus.Unknown }>,
 ): RegionCompositionFailureEvidence {
-	if (attempt.provenance === RegionSearchProvenance.Incident)
-		return {
-			provenance: RegionSearchProvenance.Incident,
-			code: attempt.code,
-			witness: attempt.witness,
-		};
-	if (attempt.provenance === RegionSearchProvenance.Grid)
-		return {
-			provenance: RegionSearchProvenance.Grid,
-			code: attempt.code,
-			witness: attempt.witness,
-		};
+	if (attempt.provenance !== undefined) return attempt;
 	if (attempt.code !== undefined) return { code: attempt.code };
 	return {};
 }
@@ -166,7 +152,7 @@ function leafFailure(
 			document,
 			reason: error.reason,
 			provenance: {
-				...(error.evidence ?? {}),
+				...error.evidence,
 				failureRegionId: error.regionId,
 			},
 		});

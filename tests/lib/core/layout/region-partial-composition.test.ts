@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
 	LayoutPolicy,
 	type LogicDocument,
@@ -11,19 +12,24 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 } from '../../../../src/lib/core/layout/region-composition-types';
+import {
+	RegionIncidentRejectionCode,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/region-local-cache';
 import {
 	REGION_SUBTREE_CALCULATION_FAILED,
 	RegionSubtreeScope,
 	solveRegionSubtreeAttempts,
 } from '../../../../src/lib/core/layout/region-partial-composition';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import {
 	regionLanePartialDocument,
 	regionLanePartialSubtreeDocument,
 } from '../../../support/builders/region-lane-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { regionDocument } from './nested-region-fixture';
+import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
 function attemptsFor(
 	document: LogicDocument,
@@ -55,7 +61,10 @@ describe('region partial composition', () => {
 				status: RegionCompositionStatus.Selected,
 				regionId: 'ordinary',
 				scope: RegionSubtreeScope.Leaf,
-				document: { nodes: [{ id: 'neighbor', markdown: 'Neighbor\n' }], relations: [] },
+				document: {
+					nodes: [{ id: 'neighbor', markdown: 'Neighbor\n' }],
+					relations: [],
+				},
 			},
 		]);
 	});
@@ -106,6 +115,95 @@ describe('region partial composition', () => {
 			layout: { elements: [{ id: 'neighbor' }], relations: [] },
 		});
 	});
+	it('preserves bounded blocked-incident evidence for a closed subtree', () => {
+		const source = depthTwoRegionDocument();
+		const template = source.nodes.find(({ id }) => id === 'c');
+		if (template === undefined) throw new Error('Expected a node template.');
+		const sourceIds = Array.from({ length: 4 }, (_, index) => `n${index}`);
+		const targetIds = Array.from({ length: 3 }, (_, index) => `t${index}`);
+		const endpointIds = [...sourceIds, ...targetIds, 'middle-node', 'outside-node'];
+		const document: LogicDocument = {
+			...source,
+			nodes: endpointIds.map((id, index) => ({
+				...template,
+				id,
+				markdown: `${id}\n`,
+				layoutOrder: orderKey(`a${index}`),
+			})),
+			relations: [
+				...sourceIds.slice(1).map((id, index) => ({
+					id: `local-${index}`,
+					from: defined(sourceIds[index]),
+					to: id,
+				})),
+				{ id: 'local-wide', from: 'n0', to: 'n3' },
+				...sourceIds.slice(0, 3).map((id, index) => ({
+					id: `cross-${index}`,
+					from: id,
+					to: defined(targetIds[index]),
+				})),
+			],
+		};
+		const input: RegionInput = {
+			regions: [
+				{ id: '@root', layoutOrder: '0' },
+				{ id: 'branch', parentId: '@root', layoutOrder: 'a' },
+				{ id: 'left', parentId: 'branch', layoutOrder: 'a' },
+				{ id: 'middle', parentId: 'branch', layoutOrder: 'b' },
+				{ id: 'far', parentId: 'branch', layoutOrder: 'c' },
+				{ id: 'outside', parentId: '@root', layoutOrder: 'b' },
+			],
+			regionByEndpointId: new Map([
+				...sourceIds.map((id) => [id, 'left'] as const),
+				...targetIds.map((id) => [id, 'far'] as const),
+				['middle-node', 'middle'],
+				['outside-node', 'outside'],
+			]),
+		};
+		const { graph, measurements } = prepareLayoutDocument(document);
+		const attempts = solveRegionSubtreeAttempts({
+			graph,
+			measurements,
+			input,
+			cache: new RegionLocalLayoutCache(),
+		});
+		const attempt = attempts.find(
+			({ scope, status }) =>
+				scope === RegionSubtreeScope.ClosedSubtree && status === RegionCompositionStatus.Unknown,
+		);
+		if (attempt?.status !== RegionCompositionStatus.Unknown)
+			throw new Error('Expected an unknown closed subtree.');
+		if (attempt.witness === undefined) throw new Error('Expected incident search evidence.');
+		expect(attempt).toMatchObject({
+			provenance: RegionSearchProvenance.Incident,
+			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+			witness: { attempted: 1024, exhaustive: false },
+		});
+		expect(
+			attempt.witness.rejectedAlternatives.some(
+				({ code }) => code === RegionIncidentRejectionCode.RouteObstructed,
+			),
+		).toBe(true);
+	});
+	it('preserves lane geometry when composing a closed row', () => {
+		const source = regionLanePartialSubtreeDocument(false);
+		const presentation = defined(source.regionPresentation);
+		const document: LogicDocument = {
+			...source,
+			regionPresentation: {
+				...presentation,
+				regions: presentation.regions.map((region) => {
+					if (region.id !== 'shared') return region;
+					return { ...region, parentId: 'branch', layoutOrder: orderKey('a2') };
+				}),
+			},
+		};
+		const branch = attemptsFor(document).find(({ regionId }) => regionId === 'branch');
+		if (branch?.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected a selected closed branch; status=${branch?.status}`);
+		expect(branch.scope).toBe(RegionSubtreeScope.ClosedSubtree);
+		expect(branch.layout.lanes?.map(({ id }) => id)).toEqual(['sales', 'service']);
+	});
 
 	it('reports a typed unsupported closed branch containing a shared-lane leaf', () => {
 		const source = regionLanePartialSubtreeDocument(true);
@@ -118,7 +216,11 @@ describe('region partial composition', () => {
 				...presentation,
 				regions: presentation.regions.map((region) => {
 					if (region.id === 'shared')
-						return { ...region, parentId: 'branch', layoutOrder: orderKey('a1') };
+						return {
+							...region,
+							parentId: 'branch',
+							layoutOrder: orderKey('a1'),
+						};
 					if (region.id === 'mate') {
 						const rootSibling = { ...region };
 						Reflect.deleteProperty(rootSibling, 'parentId');
@@ -160,11 +262,36 @@ describe('region partial composition', () => {
 		const input: RegionInput = {
 			regions: [
 				{ id: '@root', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
-				{ id: 'branch', parentId: '@root', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
-				{ id: 'outside', parentId: '@root', layoutOrder: 'a1', policy: LayoutPolicy.Layered },
-				{ id: 'left', parentId: 'branch', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
-				{ id: 'middle', parentId: 'branch', layoutOrder: 'a1', policy: LayoutPolicy.Layered },
-				{ id: 'right', parentId: 'branch', layoutOrder: 'a2', policy: LayoutPolicy.Layered },
+				{
+					id: 'branch',
+					parentId: '@root',
+					layoutOrder: 'a0',
+					policy: LayoutPolicy.Layered,
+				},
+				{
+					id: 'outside',
+					parentId: '@root',
+					layoutOrder: 'a1',
+					policy: LayoutPolicy.Layered,
+				},
+				{
+					id: 'left',
+					parentId: 'branch',
+					layoutOrder: 'a0',
+					policy: LayoutPolicy.Layered,
+				},
+				{
+					id: 'middle',
+					parentId: 'branch',
+					layoutOrder: 'a1',
+					policy: LayoutPolicy.Layered,
+				},
+				{
+					id: 'right',
+					parentId: 'branch',
+					layoutOrder: 'a2',
+					policy: LayoutPolicy.Layered,
+				},
 			],
 			regionByEndpointId: new Map([
 				['a-source', 'outside'],
@@ -208,8 +335,18 @@ describe('region partial composition', () => {
 		const input: RegionInput = {
 			regions: [
 				{ id: '@root', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
-				{ id: 'branch', parentId: '@root', layoutOrder: 'a0', policy: LayoutPolicy.Layered },
-				{ id: 'outside', parentId: '@root', layoutOrder: 'a1', policy: LayoutPolicy.Layered },
+				{
+					id: 'branch',
+					parentId: '@root',
+					layoutOrder: 'a0',
+					policy: LayoutPolicy.Layered,
+				},
+				{
+					id: 'outside',
+					parentId: '@root',
+					layoutOrder: 'a1',
+					policy: LayoutPolicy.Layered,
+				},
 				...(['left', 'second', 'middle', 'right'] as const).map((id, index) => ({
 					id,
 					parentId: 'branch',
@@ -289,7 +426,10 @@ describe('region partial composition', () => {
 		const measured = prepareLayoutDocument(document).measurements;
 		const nodes = new Map(measured.nodes);
 		nodes.delete('neighbor');
-		const attempts = attemptsFor(document, new RegionLocalLayoutCache(), { ...measured, nodes });
+		const attempts = attemptsFor(document, new RegionLocalLayoutCache(), {
+			...measured,
+			nodes,
+		});
 		expect(attempts.find(({ regionId }) => regionId === 'branch')).toMatchObject({
 			status: REGION_SUBTREE_CALCULATION_FAILED,
 			scope: RegionSubtreeScope.ClosedSubtree,
@@ -307,7 +447,10 @@ describe('region partial composition', () => {
 		const measured = prepareLayoutDocument(document).measurements;
 		const nodes = new Map(measured.nodes);
 		nodes.delete('neighbor');
-		const attempts = attemptsFor(document, new RegionLocalLayoutCache(), { ...measured, nodes });
+		const attempts = attemptsFor(document, new RegionLocalLayoutCache(), {
+			...measured,
+			nodes,
+		});
 		expect(attempts.find(({ regionId }) => regionId === 'ordinary')).toMatchObject({
 			status: REGION_SUBTREE_CALCULATION_FAILED,
 			scope: RegionSubtreeScope.Leaf,
@@ -332,7 +475,9 @@ describe('region partial composition', () => {
 		expect(warm).toEqual(attemptsFor(edited));
 		expect(warm.find(({ regionId }) => regionId === 'branch')).toMatchObject({
 			status: RegionCompositionStatus.Selected,
-			document: { nodes: [{ id: 'neighbor' }, { id: 'mate-node', markdown: 'Current mate\n' }] },
+			document: {
+				nodes: [{ id: 'neighbor' }, { id: 'mate-node', markdown: 'Current mate\n' }],
+			},
 		});
 	});
 
