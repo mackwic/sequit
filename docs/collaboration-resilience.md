@@ -62,6 +62,10 @@ mises en mémoire et rejouées à la reprise. Les commandes structurelles resten
 bloquées hors connexion. Pendant la resynchronisation suivant un refus
 `text-target-gone`, la saisie est verrouillée jusqu'au nouvel état prêt.
 
+Une saisie effectuée pendant une reconnexion, un `Retry` ou un conflit reste
+en file même si son tampon expire avant la réponse `Sync` ; ses propositions
+sont reprises dans l'ordre avant les commandes structurelles en attente.
+
 Cette collecte borne l'accumulation des contenus supprimés dans les scénarios
 testés. Elle ne garantit pas une taille constante pour une histoire infinie de
 clients, d'identifiants ou de mutations structurelles. La limite existante de

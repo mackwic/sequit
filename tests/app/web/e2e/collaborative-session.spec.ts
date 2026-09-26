@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import { expect, type Page, test } from '@playwright/test';
 
 import {
@@ -179,6 +181,72 @@ test('Deux boîtes : modales Quill, présence et reprise avec deux navigateurs',
 	await expect(bobText).toHaveText('Alpha hors ligne');
 	await aliceContext.close();
 	await bobContext.close();
+});
+
+test('a text buffered during reconnect reaches the other browser and survives a fresh Worker join', async ({
+	browser,
+}) => {
+	test.setTimeout(45_000);
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.TwoBoxes);
+	const aliceContext = await browser.newContext();
+	const bobContext = await browser.newContext();
+	let holdSync = false;
+	let forwardedText = 0;
+	const withheld: (() => void)[] = [];
+	await aliceContext.routeWebSocket(`**/collab/${room}`, (route) => {
+		const server = route.connectToServer();
+		route.onMessage((message) => {
+			if (typeof message !== 'string') {
+				const frame = decodeSessionMessage(new Uint8Array(message));
+				if (frame.type === Message.Change && 'update' in frame) forwardedText++;
+			}
+			server.send(message);
+		});
+		server.onMessage((message) => {
+			if (
+				holdSync &&
+				typeof message !== 'string' &&
+				decodeSessionMessage(new Uint8Array(message)).type === Message.Sync
+			) {
+				withheld.push(() => {
+					route.send(message);
+				});
+				return;
+			}
+			route.send(message);
+		});
+	});
+	try {
+		const alice = await aliceContext.newPage();
+		const bob = await bobContext.newPage();
+		await alice.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+		await bob.goto(`/atelier/collaboration?room=${room}&name=Bob`);
+		await expect(alice.getByRole('status', { name: 'Connexion' })).toHaveText('Connecté');
+		await edit(bob);
+		const bobText = bob.getByLabel('Contenu A', { exact: true });
+		holdSync = true;
+		await alice.getByRole('button', { name: 'Mettre hors ligne' }).click();
+		await alice.getByRole('button', { name: 'Reconnecter' }).click();
+		await expect.poll(() => withheld.length).toBeGreaterThan(0);
+		await expect(alice.getByRole('status', { name: 'Connexion' })).toContainText('Synchronisation');
+		await edit(alice);
+		const aliceText = alice.getByLabel('Contenu A', { exact: true });
+		await aliceText.fill('Première frappe pendant la reprise');
+		await delay(100);
+		await expect(bobText).toHaveText('Alpha');
+		expect(forwardedText).toBe(0);
+		holdSync = false;
+		for (const release of withheld.splice(0)) release();
+		await expect.poll(() => forwardedText).toBeGreaterThan(0);
+		await aliceText.fill('Seconde frappe après la réponse');
+		await expect(bobText).toHaveText('Seconde frappe après la réponse');
+		await bob.reload();
+		await edit(bob);
+		await expect(bobText).toHaveText('Seconde frappe après la réponse');
+	} finally {
+		await Promise.allSettled([aliceContext.close(), bobContext.close()]);
+	}
 });
 
 test('Deux boîtes reliées : refus du cycle, toast sans refresh et édition suivante partagée', async ({

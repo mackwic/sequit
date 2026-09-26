@@ -107,11 +107,12 @@ export class CollaborativeSession
 			presence: () => {
 				this.#presence.send();
 			},
-			resumeText: () => {
-				if (!this.#resumingText) return false;
-				this.#textFlow.buffer.flush();
-				this.#sendNextPendingText();
-				return true;
+			resumeText: (retry) => {
+				if (this.#resumingText && !retry) return true;
+				this.#resumingText = true;
+				if (this.#textFlow.resume()) return true;
+				this.#resumingText = false;
+				return false;
 			},
 		});
 		this.document.on('update', this.#updated);
@@ -230,8 +231,7 @@ export class CollaborativeSession
 		this.#ready = false;
 		if (status === TransportStatus.Connected) {
 			this.#resumingText = true;
-			this.#textFlow.buffer.flush();
-			this.#sendNextPendingText();
+			if (!this.#textFlow.resume()) this.#sendNextPendingText();
 		} else {
 			this.#resumingText = false;
 			this.#presence.receive([]);

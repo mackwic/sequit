@@ -133,6 +133,11 @@ export class SessionTextFlow {
 		this.edits.record(target, field);
 	}
 
+	resume(): boolean {
+		this.buffer.flush();
+		return this.sendNext();
+	}
+
 	sendNext(): boolean {
 		const next = this.pending.values().next().value;
 		if (next === undefined) return false;

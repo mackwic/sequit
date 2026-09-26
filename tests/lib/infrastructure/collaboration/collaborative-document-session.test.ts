@@ -92,6 +92,23 @@ it('preserves command identity and local text edits during a retryable service f
 	vi.advanceTimersByTime(50);
 	expect(room.sent.at(-1)?.type).toBe(Message.Presence);
 	vi.advanceTimersByTime(950);
+	const pendingText = room.sent.find(
+		(message) => message.type === Message.Change && 'update' in message,
+	);
+	if (
+		pendingText?.type !== Message.Change ||
+		!('update' in pendingText) ||
+		pendingText.id === undefined
+	)
+		throw new Error('Expected buffered text before command replay');
+	expect(room.sent.some((message) => message.type === Message.Sync)).toBe(false);
+	applyTextUpdate(room.authoritative, pendingText.update, pendingText);
+	room.receive({
+		type: Message.Commit,
+		id: pendingText.id,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
 	expect(room.sent.some((message) => message.type === Message.Sync)).toBe(true);
 	room.sync();
 	expect(
@@ -153,6 +170,96 @@ it('resends a queued text gesture before syncing after a transient retry', () =>
 	);
 	room.destroy();
 });
+
+it.each(['reconnect', 'retry', 'conflict'] as const)(
+	'delivers text typed during %s sync to a second replica and the authoritative document',
+	(cause) => {
+		vi.useFakeTimers();
+		vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		const room = setup();
+		const otherPair = createMemoryTransportPair();
+		const other = createCollaborativeDocumentSession(
+			collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room'),
+			otherPair.client,
+		);
+		const deliverToOther = (message: SessionMessage): void => {
+			otherPair.server.send(encodeSessionMessage(message));
+		};
+		room.sync();
+		deliverToOther({ type: Message.Sync, payload: writeSyncResponse(room.authoritative) });
+		deliverToOther({ type: Message.Sync, payload: writeSyncRequest(room.authoritative) });
+		room.sent.length = 0;
+		if (cause === 'reconnect') {
+			room.pair.client.setStatus(TransportStatus.Disconnected);
+			room.pair.client.setStatus(TransportStatus.Connected);
+		} else if (cause === 'retry') {
+			room.receive({
+				type: Message.Retry,
+				code: SessionFailureCode.StorageUnavailable,
+				message: 'Retry',
+			});
+			vi.advanceTimersByTime(1_000);
+		} else {
+			const id = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			room.receive({
+				type: Message.Conflict,
+				code: ConflictCode.CommandConflict,
+				message: 'Concurrent command',
+				id,
+				lastAcceptedSequence: 0,
+			});
+		}
+		room.sent.length = 0;
+		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
+		expect(room.client.replaceNodeMarkdown('A', 'Première pendant la reprise')).toBe(true);
+		vi.advanceTimersByTime(60);
+		expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(
+			false,
+		);
+		room.receive({ type: Message.Sync, payload: writeSyncResponse(room.authoritative) });
+		room.receive({ type: Message.Sync, payload: writeSyncRequest(room.authoritative) });
+		const proposals = room.sent.filter(
+			(frame): frame is Extract<SessionMessage, { type: Message.Change }> =>
+				frame.type === Message.Change && 'update' in frame,
+		);
+		expect(proposals).toHaveLength(1);
+		expect(room.client.replaceNodeMarkdown('A', 'Seconde après la réponse')).toBe(true);
+		vi.advanceTimersByTime(60);
+		expect(
+			room.sent.filter((frame) => frame.type === Message.Change && 'update' in frame),
+		).toHaveLength(1);
+		for (let index = 0; index < 2; index += 1) {
+			const proposal = room.sent.filter(
+				(frame) => frame.type === Message.Change && 'update' in frame,
+			)[index];
+			if (proposal?.type !== Message.Change || !('update' in proposal) || proposal.id === undefined)
+				throw new Error('Expected identified pending text proposal in causal order');
+			applyTextUpdate(room.authoritative, proposal.update, proposal);
+			const commit: SessionMessage = {
+				type: Message.Commit,
+				id: proposal.id,
+				commit: index + 2,
+				update: Y.encodeStateAsUpdate(room.authoritative),
+			};
+			room.receive(commit);
+			deliverToOther({
+				type: Message.Commit,
+				commit: commit.commit,
+				update: commit.update,
+			});
+		}
+		expect(room.client.read().nodes[0]?.markdown).toBe('Seconde après la réponse');
+		expect(other.read().nodes[0]?.markdown).toBe('Seconde après la réponse');
+		const persisted = readLogicDocument(room.authoritative);
+		if (!persisted.ok) throw new Error('Expected authoritative document to remain valid');
+		expect(persisted.value.nodes.find(({ id }) => id === 'A')?.markdown).toBe(
+			'Seconde après la réponse',
+		);
+		other.destroy();
+		otherPair.server.close();
+		room.destroy();
+	},
+);
 
 it('refuses only the stale command and renumbers the next gesture without closing', () => {
 	const room = setup();

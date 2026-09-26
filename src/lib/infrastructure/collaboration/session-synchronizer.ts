@@ -20,7 +20,7 @@ interface SyncHost {
 	readonly setReady: (value: boolean) => void;
 	readonly terminal: (message: string) => void;
 	readonly presence: () => void;
-	readonly resumeText: () => boolean;
+	readonly resumeText: (retry: boolean) => boolean;
 }
 
 /** Owns retry deadlines and native Yjs sync against one persistent replica. */
@@ -64,7 +64,7 @@ export class SessionSynchronizer {
 		const delay = Math.min(MAX_RETRY_DELAY_MS, Math.round(exponential * jitter));
 		this.#timer ??= setTimeout(() => {
 			this.stop();
-			if (!this.host.resumeText()) this.start();
+			if (!this.host.resumeText(true)) this.start();
 		}, delay);
 	}
 
@@ -81,9 +81,12 @@ export class SessionSynchronizer {
 		});
 		if (!this.host.initialized()) this.host.initialize();
 		else this.host.clearInitialization();
-		for (const pending of this.host.pending.values()) this.host.replay(pending.frame);
 		const ready = this.host.initialized();
+		if (ready) {
+			this.host.setReady(false);
+			if (this.host.resumeText(false)) return;
+		}
+		for (const pending of this.host.pending.values()) this.host.replay(pending.frame);
 		this.host.setReady(ready);
-		if (ready) this.host.buffer().flush();
 	}
 }
