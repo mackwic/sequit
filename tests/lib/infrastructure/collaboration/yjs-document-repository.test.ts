@@ -2152,6 +2152,17 @@ describe('repository presentation and recovery boundaries', () => {
 		const persisted = readDocument(ydoc).groups.find(({ id }) => id === group.id);
 		expect(persisted?.state).toBe(GroupState.Closed);
 		expect(shared.get('label')).toBe(label);
+		const renamed = await repository.persist({
+			nodeAdditions: [],
+			relationAdditions: [],
+			endpointOrderChanges: [],
+			nodeMarkdownReplacements: [],
+			groupReplacements: [{ ...group, label: 'Renamed', state: GroupState.Closed }],
+		});
+		expect(renamed.ok).toBe(true);
+		const renamedGroup = readDocument(ydoc).groups.find(({ id }) => id === group.id);
+		expect(renamedGroup).toMatchObject({ label: 'Renamed', state: GroupState.Closed });
+		expect(shared.get('label')).toBe(label);
 		const cleared = await repository.persist({
 			nodeAdditions: [],
 			relationAdditions: [],
