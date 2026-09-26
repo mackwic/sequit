@@ -129,8 +129,9 @@ function validateEndpointPorts(
 export function validatePorts(
 	input: DedicatedCandidateValidationInput,
 	elements: ReadonlyMap<string, LayoutResult['elements'][number]>,
+	routes: readonly LayoutRelation[],
 ): RejectedDedicatedCandidate | undefined {
-	const usesByEndpoint = collectPortUses(input.layout.relations);
+	const usesByEndpoint = collectPortUses(routes);
 	for (const uses of usesByEndpoint.values()) {
 		const failure = validateEndpointPorts(input, elements, uses);
 		if (failure !== undefined) return failure;

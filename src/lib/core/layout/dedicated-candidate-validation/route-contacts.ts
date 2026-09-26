@@ -2,7 +2,7 @@ import { defined } from '../../document/logic-document';
 import { unbridgedContacts } from '../bridge-contact';
 import type { RouteBridgeAnalysis, RouteRun } from '../bridge-oracle';
 import { routeRuns } from '../bridge-oracle';
-import type { LayoutRelation, LayoutResult, Point } from '../layout-types';
+import type { LayoutRelation, Point } from '../layout-types';
 import { routeBoundsOverlap, routePathBounds } from './route-geometry';
 import { sharedAtEndpoint } from './route-shared-path';
 import type { RejectedDedicatedCandidate } from './types';
@@ -71,10 +71,9 @@ export function validateSelfContacts(route: LayoutRelation): boolean {
 }
 
 export function contactFailure(
-	layout: LayoutResult,
+	routes: readonly LayoutRelation[],
 	analysis: RouteBridgeAnalysis,
 ): RejectedDedicatedCandidate | undefined {
-	const routes = layout.relations;
 	const envelopes = routes.map(routePathBounds);
 	for (let firstIndex = 0; firstIndex < routes.length; firstIndex += 1) {
 		const first = defined(routes[firstIndex]);

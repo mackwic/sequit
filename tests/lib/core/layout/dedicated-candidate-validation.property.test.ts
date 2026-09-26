@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
 	DedicatedCandidateRejectionCode,
 	validateDedicatedCandidate,
@@ -56,6 +57,100 @@ describe('dedicated candidate validation properties', () => {
 				const layout = { ...source.layout, elements, relations };
 				expect(validateDedicatedCandidate({ ...source, layout })).toEqual(expected);
 			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('selects the same first faulty group member across document and result permutations', () => {
+		const container = defined(source.layout.elements.find(({ id }) => id === 'container'));
+		const outside = { ...container.bounds, x: container.bounds.x + container.bounds.width + 4 };
+		const invalid = replaceBounds(
+			replaceBounds(source.layout, 'source-a', outside),
+			'source-b',
+			outside,
+		);
+		const expected = validateDedicatedCandidate({ ...source, layout: invalid });
+		expect(expected).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.GroupContainment,
+			endpointId: 'source-a',
+		});
+		fc.assert(
+			fc.property(
+				fc.shuffledSubarray([...source.document.nodes], {
+					minLength: source.document.nodes.length,
+					maxLength: source.document.nodes.length,
+				}),
+				fc.shuffledSubarray([...source.document.groups], {
+					minLength: source.document.groups.length,
+					maxLength: source.document.groups.length,
+				}),
+				fc.shuffledSubarray([...invalid.elements], {
+					minLength: invalid.elements.length,
+					maxLength: invalid.elements.length,
+				}),
+				(nodes, groups, elements) => {
+					const prepared = prepareLayoutDocument({ ...source.document, nodes, groups });
+					expect(
+						validateDedicatedCandidate({ ...prepared, layout: { ...invalid, elements } }),
+					).toEqual(expected);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('names a contacting route pair canonically regardless of document and result order', () => {
+		const first = defined(source.layout.relations.find(({ id }) => id === 'a-to-choice'));
+		const second = defined(source.layout.relations.find(({ id }) => id === 'b-to-choice'));
+		const secondStart = defined(second.points[0]);
+		const secondBend = defined(second.points[1]);
+		const sharedStart = defined(first.points[2]);
+		const targetPort = defined(first.points.at(-1));
+		const rejoined = {
+			...second,
+			points: [
+				secondStart,
+				secondBend,
+				sharedStart,
+				{ x: sharedStart.x, y: sharedStart.y + 12 },
+				{ x: sharedStart.x + 28, y: sharedStart.y + 12 },
+				{ x: sharedStart.x + 28, y: targetPort.y - 6 },
+				{ x: sharedStart.x, y: targetPort.y - 6 },
+				targetPort,
+			],
+		};
+		const invalid = {
+			...source.layout,
+			relations: source.layout.relations.map((route) => {
+				if (route.id === second.id) return rejoined;
+				return route;
+			}),
+		};
+		const expected = validateDedicatedCandidate({ ...source, layout: invalid });
+		expect(expected).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.RouteContact,
+			relationId: first.id,
+			otherRelationId: second.id,
+		});
+		fc.assert(
+			fc.property(
+				fc.shuffledSubarray([...source.document.relations], {
+					minLength: source.document.relations.length,
+					maxLength: source.document.relations.length,
+				}),
+				fc.shuffledSubarray([...invalid.relations], {
+					minLength: invalid.relations.length,
+					maxLength: invalid.relations.length,
+				}),
+				(relations, routes) => {
+					const prepared = prepareLayoutDocument({ ...source.document, relations });
+					expect(
+						validateDedicatedCandidate({ ...prepared, layout: { ...invalid, relations: routes } }),
+					).toEqual(expected);
+				},
+			),
 			PROPERTY_PARAMETERS,
 		);
 	});

@@ -1,6 +1,7 @@
+import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import type { Bounds, GroupMeasurement, LayoutResult } from '../layout-types';
+import type { Bounds, GroupMeasurement, LayoutRelation, LayoutResult } from '../layout-types';
 import { prepareGroupHierarchy } from '../structure/group-hierarchy';
 import type { DedicatedCandidateValidationInput, RejectedDedicatedCandidate } from './types';
 import { DedicatedCandidateRejectionCode, rejected } from './types';
@@ -17,7 +18,9 @@ export function elementsById(
 	if (input.layout.elements.length !== expected.size)
 		return rejected(DedicatedCandidateRejectionCode.ElementInventory);
 	const elements = new Map<string, LayoutResult['elements'][number]>();
-	for (const element of input.layout.elements) {
+	for (const element of [...input.layout.elements].sort((a, b) =>
+		compareCanonicalStrings(a.id, b.id),
+	)) {
 		const endpoint = expected.get(element.id);
 		if (endpoint === undefined)
 			return rejected(DedicatedCandidateRejectionCode.ElementInventory, element.id);
@@ -30,12 +33,13 @@ export function elementsById(
 
 export function validateRelationInventory(
 	input: DedicatedCandidateValidationInput,
+	routes: readonly LayoutRelation[],
 ): RejectedDedicatedCandidate | undefined {
-	if (input.layout.relations.length !== input.graph.relations.length)
+	if (routes.length !== input.graph.relations.length)
 		return rejected(DedicatedCandidateRejectionCode.RelationInventory);
 	const expected = new Map(input.graph.relations.map(({ relation }) => [relation.id, relation]));
 	const actual = new Set<string>();
-	for (const route of input.layout.relations) {
+	for (const route of routes) {
 		const relation = expected.get(route.id);
 		if (relation === undefined || actual.has(route.id))
 			return rejected(DedicatedCandidateRejectionCode.RelationInventory, undefined, route.id);
@@ -128,10 +132,14 @@ export function validateGroupContainment(
 ): RejectedDedicatedCandidate | undefined {
 	const hierarchy = prepareGroupHierarchy(input.graph.document);
 	if (hierarchy === undefined) return undefined;
-	for (const group of hierarchy.byId.values()) {
+	for (const group of [...hierarchy.byId.values()].sort((a, b) =>
+		compareCanonicalStrings(a.id, b.id),
+	)) {
 		const groupBox = defined(elements.get(group.id)).bounds;
 		const measurement = defined(input.measurements.groups.get(group.id));
-		for (const memberId of hierarchy.membersById.get(group.id) ?? []) {
+		for (const memberId of [...(hierarchy.membersById.get(group.id) ?? [])].sort(
+			compareCanonicalStrings,
+		)) {
 			const member = elements.get(memberId);
 			if (member === undefined || !insideGroupContent(groupBox, member.bounds, measurement))
 				return rejected(DedicatedCandidateRejectionCode.GroupContainment, memberId);

@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from '../canonical-string';
 import { EndpointKind } from '../document/logic-document';
 import { routeBridgeAnalysis } from './bridge-oracle';
 import {
@@ -38,7 +39,8 @@ export function validateDedicatedCandidate(
 ): DedicatedCandidateValidation {
 	const elements = elementsById(input);
 	if ('valid' in elements) return elements;
-	const relationFailure = validateRelationInventory(input);
+	const routes = [...input.layout.relations].sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	const relationFailure = validateRelationInventory(input, routes);
 	if (relationFailure !== undefined) return relationFailure;
 	const boundsFailure = validateElementBounds(input, elements);
 	if (boundsFailure !== undefined) return boundsFailure;
@@ -53,14 +55,14 @@ export function validateDedicatedCandidate(
 		.filter(({ kind }) => kind !== EndpointKind.Group)
 		.map(({ bounds }) => bounds);
 	const obstacles = { nodes: prepareRouteObstacles(nodeBoxes, 0), groups };
-	for (const route of input.layout.relations) {
+	for (const route of routes) {
 		const failure = routeFailure(input, route, elements, obstacles);
 		if (failure !== undefined) return failure;
 	}
-	const portFailure = validatePorts(input, elements);
+	const portFailure = validatePorts(input, elements, routes);
 	if (portFailure !== undefined) return portFailure;
-	const analysis = routeBridgeAnalysis(input.layout.relations);
-	const contactRejection = contactFailure(input.layout, analysis);
+	const analysis = routeBridgeAnalysis(routes);
+	const contactRejection = contactFailure(routes, analysis);
 	if (contactRejection !== undefined) return contactRejection;
 	return { valid: true, score: routeScore(input.layout, analysis) };
 }
