@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../canonical-string';
 import type { LogicRelation } from '../document/logic-document';
 import { defined } from '../document/logic-document';
 import type { RankOrder } from './rank-order';
@@ -48,10 +47,9 @@ function compareBarycentres(
 	const rightWeighted = b.sum * (a.count || 1);
 	const barycentre = leftWeighted - rightWeighted;
 	if (barycentre !== 0) return barycentre;
-	const documentary =
-		defined(documentaryPosition.get(left)) - defined(documentaryPosition.get(right));
-	if (documentary !== 0) return documentary;
-	return compareCanonicalStrings(left, right);
+	// Documentary positions are unique within a band. Equality here means the same ID,
+	// for which a further canonical-ID comparison would also be zero.
+	return defined(documentaryPosition.get(left)) - defined(documentaryPosition.get(right));
 }
 
 /** A sweep uses only already placed neighbouring ranks; unresolved neighbours do not bias a row. */

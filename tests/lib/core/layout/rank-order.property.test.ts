@@ -759,6 +759,13 @@ describe('dedicated bounded geometric rank search', () => {
 					const structure = prepareLayout(graph, ranks);
 					const domain = collectRankOrderDomain(structure);
 					expect(rankOrderEnumerationSize(domain)).toBe(12);
+					const componentIds = new Set(
+						domain.locations.flatMap(
+							({ componentIndex }) => defined(structure.components[componentIndex]).ids,
+						),
+					);
+					for (const { relation } of graph.relations)
+						expect(componentIds.has(relation.from)).toBe(componentIds.has(relation.to));
 					const measurements = {
 						nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
 						junctions: new Map(),
@@ -1206,4 +1213,125 @@ it('keeps a grouped member with no incident relation at documentary position', (
 	).toBe(true);
 	expect(domain.bands).toEqual([['a', 'b']]);
 	expect(barycentricSweep({ structure, domain }, domain.bands, false)).toEqual(domain.bands);
+});
+
+it('activates search for a group route whose only relevant endpoint is its target', () => {
+	const base = corpusDocument(
+		['a', 'b', 'd', 'e'],
+		['a', 'b', 'd', 'e'],
+		[
+			{ id: 'g-d', from: 'g', to: 'd' },
+			{ id: 'a-e', from: 'a', to: 'e' },
+		],
+	);
+	const document = {
+		...base,
+		layout: defined(layoutConfiguration(LayoutDirection.LeftToRight, LayoutBias.Left)),
+		groups: [
+			{ kind: EndpointKind.Group as const, id: 'g', label: 'Group', layoutOrder: orderKey('a0') },
+		],
+		nodes: base.nodes.map((node) => {
+			if (node.id === 'a' || node.id === 'b') return { ...node, groupId: 'g' };
+			return node;
+		}),
+	};
+	const created = createGraph(document);
+	if (!created.ok) throw new Error('Invalid grouped target fixture');
+	const graph = created.value;
+	const ranks = topologicallyRank(graph);
+	const structure = prepareLayout(graph, ranks);
+	const domain = collectRankOrderDomain(structure);
+	const relevant = new Set(
+		domain.locations.flatMap(
+			({ componentIndex }) => defined(structure.components[componentIndex]).ids,
+		),
+	);
+	expect(relevant.has('g')).toBe(false);
+	expect(relevant.has('d')).toBe(true);
+	const measurements = {
+		nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
+		groups: new Map([
+			['g', { minimumWidth: 100, minimumHeight: 60, headerHeight: 20, padding: 8 }],
+		]),
+		junctions: new Map(),
+	};
+	const baseline = evaluateDedicatedLayout(structure, measurements);
+	const validated = validateDedicatedCandidate({ graph, ranks, measurements, layout: baseline });
+	if (!validated.valid) throw new Error('Group route baseline must be valid');
+	expect(validated.analysis.crossings).toContainEqual(
+		expect.objectContaining({ horizontalId: 'g-d', verticalId: 'a-e' }),
+	);
+	const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+	expect(result.witness.mode).toBe('exact');
+	expect(result.witness.evaluated).toBeGreaterThan(1);
+	expect(
+		validateDedicatedCandidate({ graph, ranks, measurements, layout: result.layout }).valid,
+	).toBe(true);
+});
+
+it('leaves a permutable component unchanged when all strict crossings belong to a fixed chain', () => {
+	const ids = ['u', 'v', 'w', 'z', 'a', 'b', 'c'];
+	const relations: LogicRelation[] = [
+		{ id: 'a-c', from: 'a', to: 'c' },
+		{ id: 'b-c', from: 'b', to: 'c' },
+		{ id: 'u-v', from: 'u', to: 'v' },
+		{ id: 'v-w', from: 'v', to: 'w' },
+		{ id: 'w-z', from: 'w', to: 'z' },
+		{ id: 'u-w', from: 'u', to: 'w' },
+		{ id: 'v-z', from: 'v', to: 'z' },
+	];
+	for (const direction of [
+		LayoutDirection.TopToBottom,
+		LayoutDirection.BottomToTop,
+		LayoutDirection.LeftToRight,
+		LayoutDirection.RightToLeft,
+	]) {
+		let bias = LayoutBias.Top;
+		if (direction === LayoutDirection.BottomToTop) bias = LayoutBias.Bottom;
+		if (direction === LayoutDirection.LeftToRight) bias = LayoutBias.Left;
+		if (direction === LayoutDirection.RightToLeft) bias = LayoutBias.Right;
+		const document = {
+			...corpusDocument(ids, ids, relations),
+			layout: defined(layoutConfiguration(direction, bias)),
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Invalid disconnected crossing fixture');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		expect(domain.bands).toEqual([['a', 'b']]);
+		const measurements = {
+			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
+			groups: new Map(),
+			junctions: new Map(),
+		};
+		const options = { inspectRouting: true };
+		const baseline = evaluateDedicatedLayout(structure, measurements, options);
+		const validated = validateDedicatedCandidate({ graph, ranks, measurements, layout: baseline });
+		if (!validated.valid) throw new Error('Fixed crossing must be geometrically valid');
+		expect(validated.analysis.crossings.length).toBeGreaterThan(0);
+		expect(
+			validated.analysis.crossings.every(({ horizontalId, verticalId }) =>
+				[horizontalId, verticalId].every(
+					(id) => id.startsWith('u-') || id.startsWith('v-') || id.startsWith('w-'),
+				),
+			),
+		).toBe(true);
+		const selected = layoutWithDedicatedEngineAndRankOrderWitness(
+			graph,
+			ranks,
+			measurements,
+			options,
+		);
+		expect(selected.layout).toEqual(baseline);
+		expect(selected.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'no-relevant-crossing',
+			evaluated: 1,
+			valid: 1,
+			exhaustive: false,
+			truncated: false,
+		});
+	}
 });

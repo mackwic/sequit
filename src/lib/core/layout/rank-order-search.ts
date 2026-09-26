@@ -86,8 +86,8 @@ function compareCandidates(left: ValidRankOrderCandidate, right: ValidRankOrderC
 	if (routeComparison !== 0) return routeComparison;
 	const distance = left.kendall - right.kendall;
 	if (distance !== 0) return distance;
-	const documentary = Number(right.documentary) - Number(left.documentary);
-	if (documentary !== 0) return documentary;
+	// Only the documentary permutation has Kendall distance zero; the distance tie already
+	// prefers it over every alternative before canonical IDs are compared.
 	return compareRankOrders(left.order, right.order);
 }
 
