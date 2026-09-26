@@ -48,6 +48,7 @@ export enum RegionGeometryDiagnosticCode {
 	LocalRelationMissing = 'local-relation-missing',
 	LocalRelationNonOrthogonal = 'local-relation-non-orthogonal',
 	IncidentTouchesLocalRelation = 'incident-touches-local-relation',
+	IncidentTouchesIncident = 'incident-touches-incident',
 	GridCellGeometry = 'grid-cell-geometry',
 	GridElementGeometry = 'grid-element-geometry',
 	GridGroupGeometry = 'grid-group-geometry',

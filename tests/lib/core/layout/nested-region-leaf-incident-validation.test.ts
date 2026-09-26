@@ -7,6 +7,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import type { Bounds, LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import { validateNestedRegionLeafIncidents as validateIncidentDiagnostic } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
@@ -87,8 +88,14 @@ function regionDefinitions(depth: 1 | 2 | 3): readonly RegionInputDefinition[] {
 	return regions;
 }
 
-function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
+function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds, paired = false, anchorY = 70) {
 	const original = regionDocument();
+	let documentRelations = original.relations;
+	if (paired)
+		documentRelations = [
+			{ id: 'across-middle', from: 'a-target', to: 'c' },
+			{ id: 'across-second', from: 'a-source', to: 'c' },
+		];
 	const groups: LogicGroup[] = [];
 	if (groupBounds !== undefined)
 		groups.push({
@@ -100,6 +107,7 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	const document: LogicDocument = {
 		...original,
 		groups,
+		relations: documentRelations,
 		nodes: original.nodes
 			.filter(({ id }) => id !== 'b')
 			.map((node) => {
@@ -117,6 +125,10 @@ function fixture(depth: 1 | 2 | 3, groupBounds?: Bounds) {
 	]);
 	if (groupBounds !== undefined) regionByEndpointId.set('a-group', 'left');
 	const endpointBounds = new Map(NODE_BOUNDS);
+	if (paired) {
+		endpointBounds.set('a-target', { x: 120, y: anchorY, width: 20, height: 20 });
+		endpointBounds.set('a-source', { x: 80, y: 54, width: 42, height: 16 });
+	}
 	if (groupBounds !== undefined) endpointBounds.set('a-group', groupBounds);
 	const input: RegionInput = {
 		regions: regionDefinitions(depth),
@@ -372,7 +384,124 @@ function redirectSourceIncident(
 	};
 }
 
+/** The review witness translated (+30,+30) into the left leaf's root coordinates. */
+function pairedIncidentFixture(anchorY = 70) {
+	const base = fixture(1, undefined, true, anchorY);
+	const firstPieces: readonly RegionOwnedRoute[] = [
+		{
+			relationId: 'across-middle',
+			regionId: 'left',
+			points: [
+				{ x: 130, y: anchorY },
+				{ x: 130, y: 30 },
+			],
+		},
+		{
+			relationId: 'across-middle',
+			regionId: '@root',
+			points: [
+				{ x: 130, y: 30 },
+				{ x: 130, y: 10 },
+				{ x: 400, y: 10 },
+				{ x: 400, y: 30 },
+			],
+		},
+		{
+			relationId: 'across-middle',
+			regionId: 'right',
+			points: [
+				{ x: 400, y: 30 },
+				{ x: 400, y: 140 },
+			],
+		},
+	];
+	const secondPieces: readonly RegionOwnedRoute[] = [
+		{
+			relationId: 'across-second',
+			regionId: 'left',
+			points: [
+				{ x: 122, y: 62 },
+				{ x: 230, y: 62 },
+			],
+		},
+		{
+			relationId: 'across-second',
+			regionId: '@root',
+			points: [
+				{ x: 230, y: 62 },
+				{ x: 260, y: 62 },
+				{ x: 260, y: 20 },
+				{ x: 350, y: 20 },
+				{ x: 350, y: 150 },
+			],
+		},
+		{
+			relationId: 'across-second',
+			regionId: 'right',
+			points: [
+				{ x: 350, y: 150 },
+				{ x: 390, y: 150 },
+			],
+		},
+	];
+	const joined = (pieces: readonly RegionOwnedRoute[]) =>
+		pieces.flatMap(({ points }, index) => {
+			if (index === 0) return points;
+			return points.slice(1);
+		});
+	const candidate: RegionLayoutSelected = {
+		...base.candidate,
+		portals: [
+			portal('left', 'a-target', RegionPortalSide.Top, { x: 130, y: 30 }),
+			portal('right', 'c', RegionPortalSide.Top, { x: 400, y: 30 }),
+			{
+				...portal('left', 'a-source', RegionPortalSide.Right, { x: 230, y: 62 }),
+				relationId: 'across-second',
+			},
+			{
+				...portal('right', 'c', RegionPortalSide.Left, { x: 350, y: 150 }),
+				relationId: 'across-second',
+			},
+		],
+		ownedRoutes: [...firstPieces, ...secondPieces],
+		layout: {
+			...base.candidate.layout,
+			relations: [
+				{ id: 'across-middle', from: 'a-target', to: 'c', points: joined(firstPieces) },
+				{ id: 'across-second', from: 'a-source', to: 'c', points: joined(secondPieces) },
+			],
+		},
+	};
+	return { ...base, candidate };
+}
+
 describe('recursive nested-region leaf incident validation', () => {
+	it('refuses two nonbridgeable incidents of the same leaf only after full composition', () => {
+		const { graph, input, model, candidate } = pairedIncidentFixture();
+		expect(model.localRelationsByOwner.get('left')).toEqual([]);
+		expect(validatedBridges(candidate.layout.relations)).toEqual([]);
+		expect(validateRegionCompositionGeometry(model, candidate)).toBeUndefined();
+		expect(validateIncidentDiagnostic(model, candidate)).toMatchObject({
+			code: 'incident-touches-incident',
+			relationId: 'across-second',
+			relatedRelationId: 'across-middle',
+			regionId: 'left',
+		});
+		expect(validateNestedRegionGeometry(graph, input, candidate)).toContain(
+			'incident touches incident',
+		);
+	});
+
+	it('accepts the same two leaf incidents when the completed route carries their crossing', () => {
+		const { graph, input, model, candidate } = pairedIncidentFixture(80);
+		expect(validatedBridges(candidate.layout.relations)).toMatchObject([
+			{ x: 130, y: 62, carrierIds: ['across-middle'], crossedIds: ['across-second'] },
+		]);
+		expect(validateRegionCompositionGeometry(model, candidate)).toBeUndefined();
+		expect(validateIncidentDiagnostic(model, candidate)).toBeUndefined();
+		expect(validateNestedRegionGeometry(graph, input, candidate)).toBeUndefined();
+	});
+
 	it('accepts a direct incident leaving its containing group on each portal side', () => {
 		const groupBounds = { x: 90, y: 140, width: 40, height: 50 };
 		const bottom = fixture(1, groupBounds);

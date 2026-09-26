@@ -1,5 +1,5 @@
 import { defined, type LogicRelation } from '../document/logic-document';
-import { disallowedRouteContacts } from './bridge-contact';
+import { disallowedRouteContacts, type EndpointRoute } from './bridge-contact';
 import { type LayoutBridge, validatedBridges } from './bridge-oracle';
 import type { Bounds, LayoutElement, Point } from './layout-types';
 import { orthogonal, segmentEnters } from './nested-region-geometry-primitives';
@@ -180,18 +180,23 @@ function exitsContainingGroup(incident: LeafIncident, group: LayoutElement): boo
 	return anchor.x === portal.point.x && portal.point.y > bottom;
 }
 
+function incidentEndpointRoute(incident: LeafIncident): EndpointRoute {
+	const route: { id: string; points: readonly Point[]; from?: string; to?: string } = {
+		id: incident.relation.id,
+		points: incident.piece.points,
+	};
+	if (incident.role === IncidentRole.Source) route.from = incident.endpointId;
+	else route.to = incident.endpointId;
+	return route;
+}
+
 function localRouteFailure(
 	incident: LeafIncident,
 	model: RegionCompositionModel,
 	candidate: RegionLayoutSelected,
 	bridges: readonly LayoutBridge[],
 ): RegionGeometryDiagnostic | undefined {
-	const incidentRoute: { id: string; points: readonly Point[]; from?: string; to?: string } = {
-		id: incident.relation.id,
-		points: incident.piece.points,
-	};
-	if (incident.role === IncidentRole.Source) incidentRoute.from = incident.endpointId;
-	else incidentRoute.to = incident.endpointId;
+	const incidentRoute = incidentEndpointRoute(incident);
 	for (const local of model.localRelationsByOwner.get(incident.leafId) ?? []) {
 		const route = candidate.ownedRoutes.find(
 			(piece) => piece.regionId === incident.leafId && piece.relationId === local.id,
@@ -246,6 +251,32 @@ function leafFailure(
 	);
 }
 
+/** Compare only incidents within this leaf, after the complete relations have established bridges. */
+function registerLeafIncident(
+	incident: LeafIncident,
+	earlierByLeaf: Map<string, LeafIncident[]>,
+	bridges: readonly LayoutBridge[],
+): RegionGeometryDiagnostic | undefined {
+	const earlier = earlierByLeaf.get(incident.leafId);
+	if (earlier === undefined) {
+		earlierByLeaf.set(incident.leafId, [incident]);
+		return undefined;
+	}
+	const currentRoute = incidentEndpointRoute(incident);
+	for (const other of earlier) {
+		if (disallowedRouteContacts(incidentEndpointRoute(other), currentRoute, bridges).length === 0)
+			continue;
+		return incidentDiagnostic(
+			incident,
+			RegionGeometryDiagnosticCode.IncidentTouchesIncident,
+			`Relation ${incident.relation.id} incident touches incident ${other.relation.id} in leaf ${incident.leafId} without a defined bridge.`,
+			{ relatedRelationId: other.relation.id },
+		);
+	}
+	earlier.push(incident);
+	return undefined;
+}
+
 /** Complement to chain/opacity validation: inspect incident geometry inside each leaf. */
 export function validateNestedRegionLeafIncidents(
 	model: RegionCompositionModel,
@@ -254,6 +285,7 @@ export function validateNestedRegionLeafIncidents(
 	const elementsById = new Map(candidate.layout.elements.map((element) => [element.id, element]));
 	const bridges = validatedBridges(candidate.layout.relations);
 	const context = { elementsById, bridges };
+	const earlierByLeaf = new Map<string, LeafIncident[]>();
 	for (const owned of model.relations) {
 		if (owned.kind !== RegionRelationKind.Crossing) continue;
 		for (const role of [IncidentRole.Source, IncidentRole.Target]) {
@@ -261,6 +293,8 @@ export function validateNestedRegionLeafIncidents(
 			if ('code' in incident) return incident;
 			const failure = leafFailure(incident, model, candidate, context);
 			if (failure !== undefined) return failure;
+			const contact = registerLeafIncident(incident, earlierByLeaf, bridges);
+			if (contact !== undefined) return contact;
 		}
 	}
 	return undefined;
