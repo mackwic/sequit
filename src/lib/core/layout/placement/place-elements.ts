@@ -86,18 +86,14 @@ export function placeElements(
 		);
 	if (structure.containment !== undefined)
 		repackContainment(structure.containment, placement.bounds, frame.vertical);
-	if (structure.hierarchy !== undefined && structure.groupSeparationCandidates !== undefined)
-		separateInterleavedGroupNodes(
-			{
-				candidates: structure.groupSeparationCandidates,
-				hierarchy: structure.hierarchy,
-				graph: structure.graph,
-				measurements: measurements.groups,
-				bounds: placement.bounds,
-				frame,
-			},
-			cursor,
-		);
+	if (structure.hierarchy !== undefined)
+		separateInterleavedGroupNodes({
+			hierarchy: structure.hierarchy,
+			graph: structure.graph,
+			measurements: measurements.groups,
+			bounds: placement.bounds,
+			frame,
+		});
 	applyOuterMargin(placement.bounds);
 	return placement.bounds;
 }

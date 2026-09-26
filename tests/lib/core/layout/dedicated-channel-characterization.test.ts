@@ -65,6 +65,48 @@ function makeDocument(
 	};
 }
 
+function groupedJunction(id: string, relations: LogicDocument['relations']): LogicDocument {
+	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
+	return {
+		...base,
+		groups: [
+			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a0') },
+		],
+		nodes: base.nodes.map((node) => {
+			if (['a', 'b', 'd'].includes(node.id)) return { ...node, groupId: 'group' };
+			return node;
+		}),
+		junctions: [
+			{
+				kind: EndpointKind.Junction,
+				id: 'join',
+				operator: JunctionOperator.Xor,
+				layoutOrder: orderKey('a7'),
+			},
+		],
+		relations,
+	};
+}
+
+const productionCycleDocuments = [
+	groupedJunction('multirank-group-junction-one', [
+		{ id: 'a-to-d', from: 'a', to: 'd' },
+		{ id: 'b-to-c', from: 'b', to: 'c' },
+		{ id: 'c-to-e', from: 'c', to: 'e' },
+		{ id: 'd-to-f', from: 'd', to: 'f' },
+		{ id: 'e-to-join', from: 'e', to: 'join' },
+		{ id: 'f-to-join', from: 'f', to: 'join' },
+	]),
+	groupedJunction('multirank-group-junction-two', [
+		{ id: 'a-to-c', from: 'a', to: 'c' },
+		{ id: 'b-to-d', from: 'b', to: 'd' },
+		{ id: 'c-to-f', from: 'c', to: 'f' },
+		{ id: 'd-to-e', from: 'd', to: 'e' },
+		{ id: 'e-to-join', from: 'e', to: 'join' },
+		{ id: 'f-to-join', from: 'f', to: 'join' },
+	]),
+];
+
 const junctionNetwork: LogicDocument = {
 	...makeDocument(
 		'junction-network',
@@ -144,6 +186,71 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			expect(later.rail).not.toBe(laterEnd.rail);
 		});
 
+		it('characterizes actual endpoints and unsplit rails on both corrected crossing layouts', () => {
+			const observations = [
+				{
+					document: productionCycleDocuments[0],
+					ids: ['a-to-d', 'b-to-c'],
+					ports: [
+						[174, 686],
+						[430, 966],
+					],
+					rails: [0, 1],
+				},
+				{
+					document: productionCycleDocuments[1],
+					ids: ['c-to-f', 'd-to-e'],
+					ports: [
+						[966, 1542],
+						[686, 1222],
+					],
+					rails: [1, 0],
+				},
+			];
+			for (const { document, ids, ports, rails } of observations) {
+				if (document === undefined) throw new Error('Both corrected documents must exist');
+				const channel = channelFor(channelsFromProductionLayout(document), ids);
+				for (const [index, id] of ids.entries()) {
+					const endpoint = channel.endpoints.find((candidate) => candidate.id === id);
+					const wire = wireFor(channel, id);
+					expect([endpoint?.source, endpoint?.target]).toEqual(ports[index]);
+					expect(wire.middle).toBeUndefined();
+					expect(wire.first).toBe(wire.last);
+					expect([wire.first?.depth, wire.first?.rail]).toEqual([0, rails[index]]);
+				}
+			}
+		});
+
+		it('observes split-run cycle and precedence on an allocated document without groups', () => {
+			const document = makeDocument(
+				'allocated-cycle',
+				['a', 'b', 'c', 'd', 'e', 'f'],
+				[
+					{ id: 'a-d', from: 'a', to: 'd' },
+					{ id: 'b-c', from: 'b', to: 'c' },
+					{ id: 'b-d', from: 'b', to: 'd' },
+					{ id: 'c-f', from: 'c', to: 'f' },
+					{ id: 'd-f', from: 'd', to: 'f' },
+				],
+			);
+			const channel = channelFor(channelsFromProductionLayout(document), ['a-d', 'b-c']);
+			const splitInput = channel.endpoints.find(({ id }) => id === 'a-d');
+			const inverseInput = channel.endpoints.find(({ id }) => id === 'b-c');
+			const split = wireFor(channel, 'a-d');
+			const inverse = wireFor(channel, 'b-c');
+			expect([splitInput?.source, splitInput?.target]).toEqual([466, 698]);
+			expect([inverseInput?.source, inverseInput?.target]).toEqual([698, 466]);
+			expect(split.middle).toBeCloseTo(543.3333333333334);
+			expect(inverse.middle).toBeUndefined();
+			if (!split.first || !split.last || !inverse.first)
+				throw new Error('Allocated inverse ports must produce owned runs');
+			expect(split.first).not.toBe(split.last);
+			expect(split.first.next).toContain(split.last);
+			expect(inverse.first.next).toContain(split.last);
+			expect([split.first.depth, inverse.first.depth, split.last.depth]).toEqual([0, 1, 2]);
+			expect([split.first.rail, inverse.first.rail, split.last.rail]).toEqual([0, 1, 2]);
+		});
+
 		it('observes arrival and departure families created by allocated junction ports', () => {
 			const channels = channelsFromProductionLayout(junctionNetwork);
 			const familyIds = [
@@ -205,7 +312,7 @@ describe('dedicated engine channel characterization (replaceable during channel 
 		});
 
 		// These handcrafted keys are not allocated from their one-wire/inverse endpoint provenance.
-		// Production cycles and arrival/departure families are asserted from real documents above.
+		// The allocated cycle and junction families have separate documentary witnesses above.
 		it('characterizes shared cycle dependencies and merged family constraints', () => {
 			const sharedCycle = routeChannel([
 				{ id: 'shared-forward', source: 0, target: 48, sharedSource: 'source' },

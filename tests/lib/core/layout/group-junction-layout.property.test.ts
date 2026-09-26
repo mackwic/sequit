@@ -153,6 +153,88 @@ it('keeps an empty group document on the no-separation path', async () => {
 	expect(layout.elements).toHaveLength(1);
 });
 
+function groupForTallNode(id: string): string | undefined {
+	if (id === 'a') return 'child';
+	if (id === 'b') return 'parent';
+	return undefined;
+}
+
+function tallNestedInterleaving(
+	configuration: (typeof LAYOUT_CONFIGURATIONS)[number],
+): LogicDocument {
+	const base = groupJunctionFixture(configuration, false, true);
+	const ids = ['n0', 'a', 'n1', 'b', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 'sink'];
+	return {
+		...base,
+		groups: [
+			{ kind: EndpointKind.Group, id: 'parent', label: 'Parent', layoutOrder: orderKey('a0') },
+			{
+				kind: EndpointKind.Group,
+				id: 'child',
+				groupId: 'parent',
+				label: 'Child',
+				layoutOrder: orderKey('a1'),
+			},
+			{
+				kind: EndpointKind.Group,
+				id: 'empty',
+				groupId: 'parent',
+				label: 'Empty',
+				layoutOrder: orderKey('a2'),
+			},
+		],
+		nodes: ids.map((id, index) => {
+			const node = {
+				kind: EndpointKind.Node as const,
+				id,
+				natureId: 'goal',
+				markdown: id,
+				layoutOrder: orderKey(`b${String(index).padStart(2, '0')}`),
+			};
+			const groupId = groupForTallNode(id);
+			if (groupId !== undefined) return { ...node, groupId };
+			return node;
+		}),
+		junctions: [],
+		relations: [
+			...['n0', 'a', 'n1', 'b'].map((id) => ({ id: `${id}-sink`, from: id, to: 'sink' })),
+			...Array.from({ length: 7 }, (_, index) => ({
+				id: `t${index}-next`,
+				from: `t${index}`,
+				to: `t${index + 1}`,
+			})),
+			{ id: 't7-sink', from: 't7', to: 'sink' },
+		],
+	};
+}
+
+function assertDisjointNodesAndForeignGroups(
+	document: LogicDocument,
+	layout: Awaited<ReturnType<typeof layoutDocument>>['layout'],
+): void {
+	for (const group of document.groups) {
+		for (const node of document.nodes) {
+			if (isDescendant(document, node, group.id)) continue;
+			expect(
+				overlaps(boundsFor(layout, group.id), boundsFor(layout, node.id)),
+				sourceLabel(group.id, node.id),
+			).toBe(false);
+		}
+	}
+	for (const [index, node] of document.nodes.entries()) {
+		for (const next of document.nodes.slice(index + 1)) {
+			expect(
+				overlaps(boundsFor(layout, node.id), boundsFor(layout, next.id)),
+				sourceLabel(node.id, next.id),
+			).toBe(false);
+		}
+	}
+}
+
+function sourceLabel(left: string, right: string): string {
+	return `${left} must not intersect ${right}`;
+}
+
 it('keeps generated non-descendant nodes outside every group envelope', async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -193,6 +275,56 @@ it('keeps generated non-descendant nodes outside every group envelope', async ()
 						).toBe(false);
 					}
 				}
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('separates a tall nested child, empty sibling and interleaved row across distant ranks', async () => {
+	await fc.assert(
+		fc.asyncProperty(
+			fc.constantFrom(...LAYOUT_CONFIGURATIONS),
+			fc.integer({ min: 100, max: 230 }),
+			fc.integer({ min: 35, max: 125 }),
+			fc.boolean(),
+			async (configuration, nodeWidth, padding, reverse) => {
+				const document = tallNestedInterleaving(configuration);
+				let variant = document;
+				if (reverse)
+					variant = {
+						...document,
+						groups: document.groups.toReversed(),
+						nodes: document.nodes.toReversed(),
+						relations: document.relations.toReversed(),
+					};
+				const overrides = {
+					nodes: Object.fromEntries(
+						document.nodes.map((node, index) => [
+							node.id,
+							{ width: nodeWidth + (index % 3) * 17, height: 45 + (index % 4) * 13 },
+						]),
+					),
+					groups: {
+						parent: { minimumWidth: 180, minimumHeight: 100, headerHeight: 35, padding },
+						child: { minimumWidth: 220, minimumHeight: 10000, headerHeight: 25, padding: 20 },
+						empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
+					},
+				};
+				const { layout } = await layoutDocument(variant, overrides);
+				assertDisjointNodesAndForeignGroups(variant, layout);
+				expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'child'))).toBe(true);
+				expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
+				const { layout: reordered } = await layoutDocument(
+					{
+						...variant,
+						groups: variant.groups.toReversed(),
+						nodes: variant.nodes.toReversed(),
+						relations: variant.relations.toReversed(),
+					},
+					overrides,
+				);
+				expect(reordered).toEqual(layout);
 			},
 		),
 		PROPERTY_PARAMETERS,

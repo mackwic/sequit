@@ -12,10 +12,9 @@ import {
 	transverseSize,
 	transverseStart,
 } from '../geometry/layout-frame';
-import { COMPONENT_GAP, OUTER_MARGIN } from '../layout-settings';
+import { COMPONENT_GAP, ITEM_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
-import type { GroupSeparationCandidate } from '../structure/prepare-layout';
 import type { PackingCursor } from './pack-components';
 
 function enclosure(
@@ -34,232 +33,204 @@ function enclosure(
 	};
 }
 
-interface SeparationInterval {
-	readonly start: number;
-	readonly end: number;
+/** A group is packed as one transverse interval, so no foreign node can enter its frame. */
+interface PackingItem {
+	readonly id: string;
+	readonly bounds: MutableBounds;
 }
 
-interface SeparationContext {
-	readonly hierarchy: GroupHierarchy;
-	readonly graph: LogicGraph;
-	readonly bounds: Map<string, MutableBounds>;
-}
-
-function mainStart(bounds: Readonly<MutableBounds>, vertical: boolean): number {
-	if (vertical) return bounds.y;
-	return bounds.x;
-}
-
-function overlapsMainAxes(
-	left: Readonly<MutableBounds>,
-	right: Readonly<MutableBounds>,
+function packedChildren(
+	children: readonly string[],
+	bounds: ReadonlyMap<string, MutableBounds>,
+	pending: Map<string, number>,
 	vertical: boolean,
-): boolean {
-	const leftStart = mainStart(left, vertical);
-	const rightStart = mainStart(right, vertical);
-	const leftEnd = leftStart + mainSize(left, vertical);
-	const rightEnd = rightStart + mainSize(right, vertical);
-	if (leftEnd <= rightStart) return false;
-	if (rightEnd <= leftStart) return false;
-	return true;
-}
-
-function forbiddenDisplacement(
-	member: Readonly<MutableBounds>,
-	group: Readonly<MutableBounds>,
-	vertical: boolean,
-): SeparationInterval | undefined {
-	if (!overlapsMainAxes(member, group, vertical)) return undefined;
-	const memberCrossStart = transverseStart(member, vertical);
-	const memberCrossEnd = memberCrossStart + transverseSize(member, vertical);
-	const groupCrossStart = transverseStart(group, vertical);
-	const groupCrossEnd = groupCrossStart + transverseSize(group, vertical);
-	return { start: groupCrossStart - memberCrossEnd, end: groupCrossEnd - memberCrossStart };
-}
-
-function intersectsZero(interval: SeparationInterval): boolean {
-	if (interval.start >= 0) return false;
-	return interval.end > 0;
-}
-
-function nearestBoundary(interval: SeparationInterval): number {
-	const negativeDistance = -interval.start;
-	if (negativeDistance <= interval.end) return interval.start;
-	return interval.end;
-}
-
-function nearestAllowedDisplacement(intervals: SeparationInterval[]): number | undefined {
-	intervals.sort((left, right) => left.start - right.start || left.end - right.end);
-	let blocked: SeparationInterval | undefined;
-	for (const interval of intervals) {
-		if (blocked === undefined) {
-			blocked = interval;
-			continue;
+): void {
+	const items: PackingItem[] = children.map((id) => ({ id, bounds: defined(bounds.get(id)) }));
+	items.sort(
+		(left, right) =>
+			transverseStart(left.bounds, vertical) - transverseStart(right.bounds, vertical) ||
+			compareCanonicalStrings(left.id, right.id),
+	);
+	let end = Number.NEGATIVE_INFINITY;
+	for (const { id, bounds: box } of items) {
+		const start = transverseStart(box, vertical);
+		const shift = Math.max(0, end + ITEM_GAP - start);
+		if (shift > 0) {
+			translateTransversely(box, shift, vertical);
+			pending.set(id, (pending.get(id) ?? 0) + shift);
 		}
-		if (interval.start > blocked.end) {
-			if (intersectsZero(blocked)) return nearestBoundary(blocked);
-			blocked = interval;
-			continue;
-		}
-		blocked = { start: blocked.start, end: Math.max(blocked.end, interval.end) };
+		end = transverseStart(box, vertical) + transverseSize(box, vertical);
 	}
-	if (blocked !== undefined && intersectsZero(blocked)) return nearestBoundary(blocked);
-	return undefined;
 }
 
-function displacementOutsideGroups(
-	members: readonly Readonly<MutableBounds>[],
-	groupIds: readonly string[],
+interface NodeIndex {
+	readonly leafCount: number;
+	readonly minimumGroup: readonly number[];
+	readonly maximumGroup: readonly number[];
+	readonly minimumCross: readonly number[];
+	readonly maximumCrossEnd: readonly number[];
+	readonly minimumMain: readonly number[];
+	readonly maximumMainEnd: readonly number[];
+}
+
+function mainStart(box: MutableBounds, vertical: boolean): number {
+	if (vertical) return box.y;
+	return box.x;
+}
+
+function indexNodes(
+	graph: LogicGraph,
+	hierarchy: GroupHierarchy,
 	bounds: ReadonlyMap<string, MutableBounds>,
 	vertical: boolean,
-): number | undefined {
-	const intervals: SeparationInterval[] = [];
-	for (const member of members) {
-		for (const groupId of groupIds) {
-			const group = defined(bounds.get(groupId));
-			const interval = forbiddenDisplacement(member, group, vertical);
-			if (interval !== undefined) intervals.push(interval);
-		}
+): NodeIndex {
+	const nodes = graph.document.nodes.map((node) => {
+		let groupIndex = -1;
+		if (node.groupId !== undefined)
+			groupIndex = defined(hierarchy.preorderIndexById.get(node.groupId));
+		return { id: node.id, groupIndex, bounds: defined(bounds.get(node.id)) };
+	});
+	nodes.sort(
+		(left, right) =>
+			transverseStart(left.bounds, vertical) - transverseStart(right.bounds, vertical) ||
+			compareCanonicalStrings(left.id, right.id),
+	);
+	let leafCount = 1;
+	while (leafCount < nodes.length) leafCount *= 2;
+	const minimumGroup = new Array<number>(leafCount * 2).fill(Number.POSITIVE_INFINITY);
+	const maximumGroup = new Array<number>(leafCount * 2).fill(Number.NEGATIVE_INFINITY);
+	const minimumCross = new Array<number>(leafCount * 2).fill(Number.POSITIVE_INFINITY);
+	const maximumCrossEnd = new Array<number>(leafCount * 2).fill(Number.NEGATIVE_INFINITY);
+	const minimumMain = new Array<number>(leafCount * 2).fill(Number.POSITIVE_INFINITY);
+	const maximumMainEnd = new Array<number>(leafCount * 2).fill(Number.NEGATIVE_INFINITY);
+	for (const [position, node] of nodes.entries()) {
+		const index = leafCount + position;
+		const box = node.bounds;
+		minimumGroup[index] = maximumGroup[index] = node.groupIndex;
+		minimumCross[index] = transverseStart(box, vertical);
+		maximumCrossEnd[index] = minimumCross[index] + transverseSize(box, vertical);
+		minimumMain[index] = mainStart(box, vertical);
+		maximumMainEnd[index] = minimumMain[index] + mainSize(box, vertical);
 	}
-	return nearestAllowedDisplacement(intervals);
+	for (let index = leafCount - 1; index > 0; index -= 1) {
+		const left = index * 2,
+			right = left + 1;
+		minimumGroup[index] = Math.min(defined(minimumGroup[left]), defined(minimumGroup[right]));
+		maximumGroup[index] = Math.max(defined(maximumGroup[left]), defined(maximumGroup[right]));
+		minimumCross[index] = Math.min(defined(minimumCross[left]), defined(minimumCross[right]));
+		maximumCrossEnd[index] = Math.max(
+			defined(maximumCrossEnd[left]),
+			defined(maximumCrossEnd[right]),
+		);
+		minimumMain[index] = Math.min(defined(minimumMain[left]), defined(minimumMain[right]));
+		maximumMainEnd[index] = Math.max(defined(maximumMainEnd[left]), defined(maximumMainEnd[right]));
+	}
+	return {
+		leafCount,
+		minimumGroup,
+		maximumGroup,
+		minimumCross,
+		maximumCrossEnd,
+		minimumMain,
+		maximumMainEnd,
+	};
 }
 
-function targetIsInsideGroup(
-	groupIds: readonly string[],
-	groupStart: number,
-	groupEnd: number,
+interface GroupQuery {
+	readonly first: number;
+	readonly last: number;
+	readonly crossStart: number;
+	readonly crossEnd: number;
+	readonly mainStart: number;
+	readonly mainEnd: number;
+}
+
+function hasForeignNode(index: NodeIndex, position: number, query: GroupQuery): boolean {
+	if (defined(index.minimumCross[position]) >= query.crossEnd) return false;
+	if (defined(index.maximumCrossEnd[position]) <= query.crossStart) return false;
+	if (defined(index.minimumMain[position]) >= query.mainEnd) return false;
+	if (defined(index.maximumMainEnd[position]) <= query.mainStart) return false;
+	const onlyMembers =
+		defined(index.minimumGroup[position]) >= query.first &&
+		defined(index.maximumGroup[position]) <= query.last;
+	if (onlyMembers) return false;
+	if (position >= index.leafCount) return true;
+	if (hasForeignNode(index, position * 2, query)) return true;
+	return hasForeignNode(index, position * 2 + 1, query);
+}
+
+/** Index each measured node once; whole descendant subtrees are pruned per group. */
+function hasForeignIntersection(
 	hierarchy: GroupHierarchy,
+	graph: LogicGraph,
+	bounds: ReadonlyMap<string, MutableBounds>,
+	vertical: boolean,
 ): boolean {
-	for (const groupId of groupIds) {
-		const targetIndex = defined(hierarchy.preorderIndexById.get(groupId));
-		if (targetIndex < groupStart) continue;
-		if (targetIndex <= groupEnd) return true;
+	if (graph.document.nodes.length === 0) return false;
+	const index = indexNodes(graph, hierarchy, bounds, vertical);
+	for (const group of hierarchy.deepestFirst) {
+		const box = defined(bounds.get(group.id));
+		const crossStart = transverseStart(box, vertical);
+		const along = mainStart(box, vertical);
+		const query = {
+			first: defined(hierarchy.preorderIndexById.get(group.id)),
+			last: defined(hierarchy.subtreeEndById.get(group.id)),
+			crossStart,
+			crossEnd: crossStart + transverseSize(box, vertical),
+			mainStart: along,
+			mainEnd: along + mainSize(box, vertical),
+		};
+		if (hasForeignNode(index, 1, query)) return true;
 	}
 	return false;
 }
 
-function groupSubtreeBounds(
-	directGroupId: string,
-	hierarchy: GroupHierarchy,
-	bounds: ReadonlyMap<string, MutableBounds>,
-): readonly MutableBounds[] {
-	const pending = [directGroupId];
-	const members: MutableBounds[] = [];
-	while (pending.length > 0) {
-		const groupId = defined(pending.pop());
-		const groupBounds = defined(bounds.get(groupId));
-		members.push(groupBounds);
-		for (const memberId of hierarchy.membersById.get(groupId) ?? []) {
-			const memberBounds = defined(bounds.get(memberId));
-			members.push(memberBounds);
-			if (hierarchy.byId.has(memberId)) pending.push(memberId);
-		}
-	}
-	return members;
-}
-
-function overlappingTargetsByNode(
-	candidates: readonly GroupSeparationCandidate[],
-	bounds: ReadonlyMap<string, MutableBounds>,
-	vertical: boolean,
-): Map<string, string[]> | undefined {
-	let targetsByNode: Map<string, string[]> | undefined;
-	for (const { groupId, nodeIds } of candidates) {
-		const group = defined(bounds.get(groupId));
-		for (const nodeId of nodeIds) {
-			const node = defined(bounds.get(nodeId));
-			if (!overlapsMainAxes(node, group, vertical)) continue;
-			targetsByNode ??= new Map();
-			const targets = targetsByNode.get(nodeId) ?? [];
-			targets.push(groupId);
-			targetsByNode.set(nodeId, targets);
-		}
-	}
-	return targetsByNode;
-}
-
-interface SeparationExecution {
-	readonly context: SeparationContext;
+/**
+ * Pack disjoint sibling intervals bottom-up; translate their contents top-down once.
+ * Every ancestor sees the effective measured bounds of each child, including tall
+ * empty groups. No rank-window estimate or iterative cascade is necessary.
+ */
+export function separateInterleavedGroupNodes(input: {
+	readonly hierarchy: GroupHierarchy;
+	readonly graph: LogicGraph;
 	readonly measurements: ReadonlyMap<string, GroupMeasurement>;
+	readonly bounds: Map<string, MutableBounds>;
 	readonly frame: LayoutFrame;
-	readonly cursor: PackingCursor;
-}
-
-interface SeparationUnits {
-	readonly groups: ReadonlyMap<string, ReadonlySet<string>>;
-	readonly nodes: ReadonlyMap<string, ReadonlySet<string>>;
-}
-
-function separationUnits(
-	targetsByNode: ReadonlyMap<string, readonly string[]>,
-	context: SeparationContext,
-): SeparationUnits {
-	const groupTargets = new Map<string, Set<string>>();
-	const nodeTargets = new Map<string, Set<string>>();
-	const nodeIds = [...targetsByNode.keys()].sort(compareCanonicalStrings);
-	for (const nodeId of nodeIds) {
-		const targets = defined(targetsByNode.get(nodeId));
-		const directGroupId = context.graph.endpointsById.get(nodeId)?.entity.groupId;
-		if (directGroupId === undefined) {
-			nodeTargets.set(nodeId, new Set(targets));
-			continue;
-		}
-		const groupStart = defined(context.hierarchy.preorderIndexById.get(directGroupId));
-		const groupEnd = defined(context.hierarchy.subtreeEndById.get(directGroupId));
-		if (targetIsInsideGroup(targets, groupStart, groupEnd, context.hierarchy)) {
-			nodeTargets.set(nodeId, new Set(targets));
-			continue;
-		}
-		const groupTargetsForUnit = groupTargets.get(directGroupId) ?? new Set<string>();
-		for (const target of targets) groupTargetsForUnit.add(target);
-		groupTargets.set(directGroupId, groupTargetsForUnit);
+}): void {
+	const { hierarchy, graph, measurements, bounds, frame } = input;
+	if (!hasForeignIntersection(hierarchy, graph, bounds, frame.vertical)) return;
+	const pending = new Map<string, number>();
+	for (const group of hierarchy.deepestFirst) {
+		const children = hierarchy.membersById.get(group.id) ?? [];
+		if (children.length === 0) continue;
+		packedChildren(children, bounds, pending, frame.vertical);
+		bounds.set(group.id, enclosure(defined(measurements.get(group.id)), children, bounds));
 	}
-	return { groups: groupTargets, nodes: nodeTargets };
-}
+	const roots = [
+		...graph.document.nodes.filter((node) => node.groupId === undefined).map((node) => node.id),
+		...graph.document.junctions
+			.filter((junction) => junction.groupId === undefined)
+			.map((junction) => junction.id),
+		...graph.document.groups
+			.filter((group) => group.groupId === undefined)
+			.map((group) => group.id),
+	];
+	packedChildren(roots, bounds, pending, frame.vertical);
 
-function moveMembersOutsideTargets(
-	members: readonly MutableBounds[],
-	targets: readonly string[],
-	execution: SeparationExecution,
-): void {
-	const { context, measurements, frame, cursor } = execution;
-	const displacement = displacementOutsideGroups(members, targets, context.bounds, frame.vertical);
-	if (displacement === undefined) return;
-	for (const member of members) translateTransversely(member, displacement, frame.vertical);
-	encloseGroups(
-		{ hierarchy: context.hierarchy, measurements, bounds: context.bounds, frame },
-		cursor,
-	);
-}
-
-/** Move only actually interleaved non-members, using the nearest canonical transverse side. */
-export function separateInterleavedGroupNodes(
-	input: {
-		readonly candidates: readonly GroupSeparationCandidate[];
-		readonly hierarchy: GroupHierarchy;
-		readonly graph: LogicGraph;
-		readonly measurements: ReadonlyMap<string, GroupMeasurement>;
-		readonly bounds: Map<string, MutableBounds>;
-		readonly frame: LayoutFrame;
-	},
-	cursor: PackingCursor,
-): void {
-	const { candidates, hierarchy, graph, measurements, bounds, frame } = input;
-	const targetsByNode = overlappingTargetsByNode(candidates, bounds, frame.vertical);
-	if (targetsByNode === undefined) return;
-	const context = { hierarchy, graph, bounds };
-	const execution = { context, measurements, frame, cursor };
-	const units = separationUnits(targetsByNode, context);
-	const groupIds = [...units.groups.keys()].sort(compareCanonicalStrings);
-	for (const groupId of groupIds) {
-		const targets = [...defined(units.groups.get(groupId))].sort(compareCanonicalStrings);
-		const members = groupSubtreeBounds(groupId, hierarchy, bounds);
-		moveMembersOutsideTargets(members, targets, execution);
-	}
-	const nodeIds = [...units.nodes.keys()].sort(compareCanonicalStrings);
-	for (const nodeId of nodeIds) {
-		const targets = [...defined(units.nodes.get(nodeId))].sort(compareCanonicalStrings);
-		moveMembersOutsideTargets([defined(bounds.get(nodeId))], targets, execution);
+	// Parent translations have already moved the child frame, not its contents.
+	const queue = graph.document.groups
+		.filter((group) => group.groupId === undefined)
+		.map((group) => ({ id: group.id, inherited: 0 }));
+	for (const { id, inherited } of queue) {
+		const childShift = inherited + (pending.get(id) ?? 0);
+		if (inherited !== 0) translateTransversely(defined(bounds.get(id)), inherited, frame.vertical);
+		for (const memberId of hierarchy.membersById.get(id) ?? []) {
+			if (hierarchy.byId.has(memberId)) {
+				queue.push({ id: memberId, inherited: childShift });
+			} else if (childShift !== 0) {
+				translateTransversely(defined(bounds.get(memberId)), childShift, frame.vertical);
+			}
+		}
 	}
 }
 

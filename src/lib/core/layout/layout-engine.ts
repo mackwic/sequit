@@ -288,6 +288,6 @@ export function layoutWithDedicatedEngine(
 	measurements: LayoutMeasurements,
 	options: LayoutOptions = {},
 ): LayoutResult {
-	const structure = prepareLayout(graph, ranks, measurements);
+	const structure = prepareLayout(graph, ranks);
 	return evaluateDedicatedLayout(structure, measurements, options);
 }
