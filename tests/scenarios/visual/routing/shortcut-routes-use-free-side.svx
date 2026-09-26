@@ -1,0 +1,26 @@
+<script>
+ import { scenario } from './shortcut-routes-use-free-side.scenario';
+ import source from './shortcut-routes-use-free-side.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Les raccourcis utilisent le côté libre
+
+Le témoin de gauche reprend la topologie visible du document `ai-documentation.sequit.toml`. Une seconde composante est ajoutée à sa droite, comme lors de l’édition du document servi localement. Le voisinage n’est pas décoratif : il permet de détecter un raccourci qui emprunterait l’espace entre les composantes au lieu du côté extérieur libre.
+
+## Une chaîne et un raccourci
+
+**New 4 → New 3 → New 2 → New 1**, puis **New 4 → New 1**. Le raccourci longe le côté extérieur de New 2 et New 3 sans croiser les trois relations directes.
+
+## Deux raccourcis
+
+La relation **New 3 → New 1** est ajoutée au cas précédent. Les deux raccourcis restent dans des corridors extérieurs locaux, sans pont ni détour à travers la composante voisine.
+
+## Une branche et son raccourci
+
+**New 3 → New 2**, **32 → New 2** et **New 2 → New 1**, puis **32 → New 1**. La nouvelle relation passe du côté extérieur de New 2 plutôt que de le contourner par l’autre branche.
+
+Les assertions portent sur le côté du passage, les attaches, les obstacles et l’absence de croisement. Elles ne figent ni des coordonnées absolues ni un nombre exact de coudes. Les quatre directions et leurs biais compatibles exécutent les mêmes contrats.
+
+<VisualTest {scenario} {source} bind:settings />

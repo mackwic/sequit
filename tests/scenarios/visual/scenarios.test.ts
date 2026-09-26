@@ -13,14 +13,16 @@ import {
 } from './routing/junction-crossing-obstacle.scenario';
 
 describe.each(executableScenarios)('$id shared scenario', (scenario) => {
-	it.each(LAYOUT_CONFIGURATIONS)(
+	let scenarioTest = it;
+	if (scenario.expectedFailure === true) scenarioTest = it.fails;
+	scenarioTest.each(LAYOUT_CONFIGURATIONS)(
 		'passes with $direction and $bias bias',
 		async ({ direction, bias }) => {
 			const layout = await scenario.arrange(direction, bias);
 			scenario.assert(layout);
 		},
 	);
-	it.each(Object.values(LayoutDirection))(
+	scenarioTest.each(Object.values(LayoutDirection))(
 		'passes with the real engine in %s',
 		async (direction) => {
 			const layout = await scenario.arrange(direction);
@@ -28,7 +30,7 @@ describe.each(executableScenarios)('$id shared scenario', (scenario) => {
 			scenario.assert(layout);
 		},
 	);
-	it('defaults to top-to-bottom', async () => {
+	scenarioTest('defaults to top-to-bottom', async () => {
 		const layout = await scenario.arrange();
 		expect(layout.direction).toBe(LayoutDirection.TopToBottom);
 		scenario.assert(layout);

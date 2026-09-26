@@ -8,6 +8,8 @@ export interface LayoutScenario {
 	readonly description?: string;
 	/** Optional, independently executable cases belonging to one gallery page. */
 	readonly variants?: readonly LayoutScenario[];
+	/** Known unmet contract; Vitest runs each executable case with `it.fails`. */
+	readonly expectedFailure?: boolean;
 	readonly group: string;
 	readonly order: number;
 	arrange(direction?: LayoutDirection, bias?: LayoutBias): Promise<VisualLayout>;

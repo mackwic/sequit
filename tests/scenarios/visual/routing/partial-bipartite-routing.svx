@@ -1,0 +1,20 @@
+<script>
+ import { scenario } from './partial-bipartite-routing.scenario';
+ import source from './partial-bipartite-routing.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Trois relations ne suggèrent pas la quatrième
+
+Deux branches parallèles relient **New 4 → New 3** et **42 → 32**. Une troisième relation relie ensuite une source à la cible de l’autre branche.
+
+Si cette relation partage à la fois le tronc sortant de sa source et le tronc entrant de sa cible, les trois tracés forment un « H ». Le dessin peut alors être lu comme un carré complet et suggérer une quatrième relation qui n’existe pas.
+
+## Attendu
+
+La relation croisée conserve le port sortant partagé de sa source, mais utilise un second port entrant sur sa cible. Le partage reste ainsi lisible sans multiplier les ports aux deux extrémités. Les deux orientations symétriques sont exécutées : **New 4 → 32** et **42 → New 3**.
+
+La cible dispose de deux ports entrants centrés et espacés conformément à la politique des ports. Les routes restent orthogonales, attachées à leurs extrémités, sans croisement ni recouvrement interdit. Les quatre directions et leurs biais compatibles exécutent le même contrat.
+
+<VisualTest {scenario} {source} bind:settings />
