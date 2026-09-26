@@ -16,6 +16,10 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
+import {
+	DedicatedCandidateRejectionCode,
+	validateDedicatedCandidate,
+} from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
@@ -242,6 +246,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			{ id: 'ai-documentary-effort', document: aiDocument.value },
 			...workshopCases,
 		];
+		const validationById = new Map<string, ReturnType<typeof validateDedicatedCandidate>>();
 		const results = Object.fromEntries(
 			allCases.map(({ id, document, measurementOverrides }) => {
 				const graphResult = createGraph(document);
@@ -252,11 +257,62 @@ describe('dedicated engine LayoutResult identity', () => {
 				const result = layoutWithDedicatedEngine(graph, ranks, measurements, {
 					inspectRouting: true,
 				});
+				validationById.set(
+					id,
+					validateDedicatedCandidate({ graph, ranks, measurements, layout: result }),
+				);
+
 				expect(result.routingInspection).toBeDefined();
 				assertFiniteLayout(result);
 				return [id, result];
 			}),
 		);
+
+		const expectedRejections = new Map([
+			['multirank-group-junction-one', DedicatedCandidateRejectionCode.ElementOverlap],
+			['multirank-group-junction-two', DedicatedCandidateRejectionCode.ElementOverlap],
+			['group-endpoint-route', DedicatedCandidateRejectionCode.ElementOverlap],
+		]);
+		expect(
+			[...validationById]
+				.flatMap(([id, validation]) => {
+					if (validation.valid) return [];
+					return [`${id}:${validation.code}`];
+				})
+				.toSorted(),
+		).toEqual([...expectedRejections].map(([id, code]) => `${id}:${code}`).toSorted());
+		for (const [id, code] of expectedRejections)
+			expect(validationById.get(id)).toMatchObject({ valid: false, code });
+		const expectedAcceptedIds = [
+			'adjacent-2+2',
+			'adjacent-3+1',
+			'ai-documentary-effort',
+			'junction-network-layout',
+			'rail-clearance-12',
+			'rail-clearance-13',
+			'rail-reuse',
+			'workshop-branching',
+			'workshop-navigation',
+		];
+		expect(
+			[...validationById]
+				.filter(([, validation]) => validation.valid)
+				.map(([id]) => id)
+				.toSorted(),
+		).toEqual(expectedAcceptedIds.toSorted());
+		for (const id of expectedAcceptedIds) {
+			const validation = validationById.get(id);
+			if (validation?.valid !== true) throw new Error(`Expected accepted score for ${id}`);
+			expect(
+				[
+					validation.score.strictCrossings,
+					validation.score.validatedBridges,
+					validation.score.length,
+					validation.score.bends,
+				].every(Number.isFinite),
+			).toBe(true);
+		}
+
 		const hashes = Object.fromEntries(
 			Object.entries(results).map(([id, result]) => [id, digest(result)]),
 		);
