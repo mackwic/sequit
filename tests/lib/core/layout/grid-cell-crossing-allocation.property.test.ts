@@ -18,6 +18,7 @@ import {
 	GridCrossingSearchMode,
 	searchGridCrossingAllocations,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-search';
+import { entersInterior } from '../../../../src/lib/core/layout/grid-cell-geometry-primitives';
 import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
@@ -158,6 +159,55 @@ describe('grid crossing allocation route geometry properties', () => {
 					}
 				},
 			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+	it('keeps an exhaustively blocked gutter unknown when every track crosses an obstacle', () => {
+		fc.assert(
+			fc.property(fc.integer({ min: 12, max: 50 }), (obstacleWidth) => {
+				const { input, routing, crossing } = variedGridRoutingCase(1, 2, 0);
+				const sourceCell = defined(routing.cells.find(({ id }) => id === 'cell-0-0'));
+				const obstacle = {
+					x: sourceCell.bounds.x + 20,
+					y: sourceCell.bounds.y,
+					width: obstacleWidth,
+					height: sourceCell.bounds.height,
+				};
+				const route = (allocation: GridCrossingAllocation) => {
+					const path = crossingRoute(routing, allocation, defined(crossing[0])).route;
+					const blocked = entersInterior(
+						defined(path.points[0]),
+						defined(path.points[1]),
+						obstacle,
+					);
+					if (!blocked) return { candidate: path };
+					return {
+						candidate: path,
+						failure: regionGeometryDiagnostic(
+							RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+							`Cross-cell relation ${path.id} enters the gutter obstacle.`,
+							{ relationId: path.id, endpointId: 'gutter-obstacle' },
+						),
+					};
+				};
+				const phases = crossingAllocationPhases(input);
+				const budgets = {
+					reallocate: Number(defined(phases[0]).totalGeometries(input)),
+					extraTrack: Number(defined(phases[1]).totalGeometries(input)),
+					bridge: Number(defined(phases[2]).totalGeometries(input)),
+				};
+				const oracle = searchGridCrossingAllocations(
+					input,
+					route,
+					budgets,
+					GridCrossingSearchMode.Exhaustive,
+				);
+				const pruned = searchGridCrossingAllocations(input, route);
+				expect('failure' in oracle).toBe(true);
+				expect(oracle.witness.exhaustive).toBe(true);
+				expect('failure' in pruned).toBe(true);
+				expect(pruned.witness.exhaustive).toBe(true);
+			}),
 			PROPERTY_PARAMETERS,
 		);
 	});
