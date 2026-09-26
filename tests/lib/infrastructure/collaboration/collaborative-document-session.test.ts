@@ -204,6 +204,8 @@ it('flushes on target switch then resets a stale replica without replaying unack
 		commit: 2,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
+	room.client.applyLocalTextUpdate({ kind: Kind.Node, id: 'B' }, 'markdown', stale.update);
+	expect(room.client.read().nodes[0]?.markdown).toBe('Saisie non acquittée');
 	expect(notices).not.toHaveBeenCalled();
 	room.receive({
 		type: Message.Conflict,
@@ -216,10 +218,53 @@ it('flushes on target switch then resets a stale replica without replaying unack
 	expect(room.client.replica()).toBe(1);
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: stale.id,
+		target: stale.target,
+		message: 'Late duplicate',
+	});
+	expect(notices).toHaveBeenCalledTimes(1);
+	expect(room.client.replica()).toBe(1);
 	room.sync();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Alpha' }]);
 	expect(room.client.replaceNodeMarkdown('A', 'Encore modifiable')).toBe(true);
+	room.destroy();
+});
+
+it('discards an unsent document-title edit when an earlier box batch is refused', () => {
+	vi.useFakeTimers();
+	const room = setup();
+	room.sync();
+	room.sent.length = 0;
+	const notices = vi.fn();
+	room.client.subscribeToConflict(notices);
+	room.client.replaceNodeMarkdown('B', 'Boîte à abandonner');
+	room.client.updateText({ kind: Kind.Document, id: 'room' }, 'title', 'Titre non acquitté');
+	vi.advanceTimersByTime(50);
+	const first = room.sent.find((message) => message.type === Message.Change && 'update' in message);
+	if (first?.type !== Message.Change || !('update' in first) || first.id === undefined)
+		throw new Error('Expected flushed box text');
+	expect(first.target).toEqual({ kind: Kind.Node, id: 'B' });
+	room.authoritative.getMap('sequit.nodes').delete('B');
+	room.receive({
+		type: Message.Commit,
+		commit: 2,
+		update: Y.encodeStateAsUpdate(room.authoritative),
+	});
+	room.receive({
+		type: Message.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: first.id,
+		target: first.target,
+		message: 'Deleted',
+	});
+	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîtes B'));
+	room.sync();
+	expect(room.client.read().title).toBe('Deux boîtes');
+	expect(room.client.read().nodes.map(({ id }) => id)).toEqual(['A']);
 	room.destroy();
 });
 
