@@ -48,16 +48,20 @@ function precedes(first: ChannelRun, last: ChannelRun): void {
 	last.remaining += 1;
 }
 
-function makeRuns(wires: readonly ChannelWire[], sharedEndpoints: boolean): ChannelRun[] {
+function makeRuns(
+	wires: readonly ChannelWire[],
+	sharedEndpoints: boolean,
+	nonInverted: boolean,
+): ChannelRun[] {
 	let moving = wires;
 	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
-	let breaks = cycleBreaks(moving);
+	let breaks = new Set<ChannelWire>();
 	if (sharedEndpoints) {
 		// Shared endpoint families can turn independent column dependencies into a cycle.
 		// Leave coincident columns first, then join the shared arrival traverse.
 		const targets = new Set(wires.map((wire) => wire.target));
 		breaks = new Set(moving.filter((wire) => targets.has(wire.source)));
-	}
+	} else if (!nonInverted) breaks = cycleBreaks(moving);
 	const distinct = new Set<number>();
 	if (breaks.size > 0)
 		for (const wire of wires) {
@@ -175,7 +179,7 @@ function assignRails(runs: readonly ChannelRun[]): number {
 }
 
 /** The caller owns these fresh wires; routing fills in their run references in place. */
-export function routeOwnedChannel(wires: ChannelWire[]): ChannelRouting {
+export function routeOwnedChannel(wires: ChannelWire[], nonInverted = false): ChannelRouting {
 	let sharedEndpoints = false;
 	const moving = wires
 		.filter((wire) => {
@@ -189,7 +193,7 @@ export function routeOwnedChannel(wires: ChannelWire[]): ChannelRouting {
 		});
 	const arrivals = mergeRuns(
 		moving,
-		makeRuns(moving, sharedEndpoints),
+		makeRuns(moving, sharedEndpoints, nonInverted),
 		RunSide.Last,
 		sharedEndpoints,
 	);

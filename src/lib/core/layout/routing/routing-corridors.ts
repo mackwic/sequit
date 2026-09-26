@@ -62,22 +62,6 @@ function neighborInversion(links: readonly CorridorLink[]): boolean {
 	return false;
 }
 
-function inverted(links: readonly CorridorLink[]): boolean {
-	if (neighborInversion(links)) return true;
-	let previousSource = Number.NEGATIVE_INFINITY;
-	let previousMaximum = Number.NEGATIVE_INFINITY;
-	let maximum = Number.NEGATIVE_INFINITY;
-	for (const link of [...links].sort(compareLinks)) {
-		if (link.source !== previousSource) {
-			previousMaximum = maximum;
-			previousSource = link.source;
-		}
-		if (link.target < previousMaximum) return true;
-		maximum = Math.max(maximum, link.target);
-	}
-	return false;
-}
-
 /** Overlapping transverse runs need rail allocation even when they keep their rank order. */
 function independentTurns(cluster: readonly CorridorLink[]): boolean {
 	const turns = cluster.filter(({ source, target }) => source !== target);
@@ -96,7 +80,8 @@ function collectCorridors(
 	const result: RoutingCorridor[] = [];
 	for (const [rank, links] of byRank) {
 		for (const cluster of intersectingClusters(links)) {
-			const crossing = inverted(cluster);
+			// Interval-start ordering makes any source/target inversion visible between neighbors.
+			const crossing = neighborInversion(cluster);
 			if (!crossing && !independentTurns(cluster)) continue;
 			let corridor: RoutingCorridor = { rank, links: cluster };
 			if (!crossing) corridor = { rank, links: cluster, cornerOnly: true };

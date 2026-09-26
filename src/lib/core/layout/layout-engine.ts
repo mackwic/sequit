@@ -163,6 +163,23 @@ function reserveLayeredRouting(
 	return materializeLayers(input, plan);
 }
 
+/** Routing without a new face size or branch alignment can reuse the initial placement. */
+function portsChangePlacement(workspace: LayoutWorkspace, ports: PortAllocation): boolean {
+	const { structure, measurements, placement, frame } = workspace;
+	for (const demand of ports.metricDemands) {
+		const size = defined(measurements.sizes.get(demand.endpointId));
+		if (frame.vertical && size.width < demand.minimumCrossSize) return true;
+		if (!frame.vertical && size.height < demand.minimumCrossSize) return true;
+	}
+	for (const [id, anchor] of structure.branchAnchors) {
+		const offset =
+			(ports.targetOffsets.get(anchor.relationId) ?? 0) -
+			(ports.sourceOffsets.get(anchor.relationId) ?? 0);
+		if (offset !== (placement.branchOffsets?.get(id) ?? 0)) return true;
+	}
+	return false;
+}
+
 function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number, number>): void {
 	const { structure, measurements, frame, placement } = workspace;
 	const { graph, ranks } = structure;
@@ -173,17 +190,19 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		vertical: frame.vertical,
 	});
 	if (corridors.length === 0) return;
-	const sharing = cornerPortSharing(corridors);
 	let ports = allocatePorts({
 		corridors,
-		...sharing,
+		...cornerPortSharing(corridors),
 		fromCrossingCorridors: true,
 		sizes: measurements.sizes,
 		vertical: frame.vertical,
 		graph,
 		bounds: placement.bounds,
 	});
-	placeWithPorts(workspace, ports, { gaps: baseGaps });
+	let reusePlacement = false;
+	if (structure.hierarchy === undefined && structure.junctionIds.size === 0)
+		reusePlacement = !portsChangePlacement(workspace, ports);
+	if (!reusePlacement) placeWithPorts(workspace, ports, { gaps: baseGaps });
 	if (structure.hierarchy !== undefined)
 		({ corridors, ports } = settleGroupCorridorPorts({
 			graph,
@@ -203,6 +222,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		bounds: placement.bounds,
 		vertical: frame.vertical,
 		ranks: ranks.byEndpointId,
+		reuseCorridorCenters: reusePlacement,
 	});
 	if (structure.hierarchy === undefined && structure.junctionIds.size === 0) {
 		workspace.routing = routing;
