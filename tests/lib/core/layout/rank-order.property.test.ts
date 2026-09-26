@@ -995,7 +995,6 @@ describe('rank-order heuristic cost and determinism', () => {
 				{ id: 'b-d', from: 'b', to: 'd' },
 				{ id: 'c-d', from: 'c', to: 'd' },
 				{ id: 'f-d', from: 'f', to: 'd' },
-				{ id: 'f-e', from: 'f', to: 'e' },
 			],
 		);
 		const created = createGraph(document);
@@ -1036,6 +1035,29 @@ describe('rank-order heuristic cost and determinism', () => {
 		const second = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		expect(second).toEqual(first);
 		expect(first.witness.mode).toBe('heuristic');
+		expect(
+			first.witness.rejected.some(
+				({ reason }) => reason.code === DedicatedCandidateRejectionCode.RouteContact,
+			),
+		).toBe(true);
+		const local = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements,
+			baseline,
+			evaluate: (order) =>
+				evaluateDedicatedLayout(
+					applyRankOrder(structure, domain, order),
+					measurements,
+					undefined,
+					true,
+				),
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(local.selected?.order).toEqual([
+			['d', 'e'],
+			['b', 'c', 'a', 'f'],
+		]);
 		expect(first.witness.evaluated).toBeLessThanOrEqual(12);
 		expect(first.witness.proposed).toBeLessThanOrEqual(48);
 		expect(first.witness.exhaustive).toBe(false);
