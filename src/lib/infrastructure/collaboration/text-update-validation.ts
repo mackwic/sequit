@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 
 import type { TextTargetReference } from './session-wire';
-import { sharedTextAt } from './shared-element';
+import { isEditableSharedTextField, sharedTextAt } from './shared-element';
 import { isSharedTextField } from './shared-text';
 import { YjsCollection } from './yjs-document-schema';
 
@@ -17,14 +17,75 @@ function collectTexts(document: Y.Doc): ReadonlySet<Y.Text> {
 	return texts;
 }
 
-export class TextTargetGoneError extends Error {}
+class TextTargetGoneError extends Error {}
+
+interface DecodedTextProposal {
+	readonly structs: readonly Y.AbstractStruct[];
+	readonly ds: { readonly clients: ReadonlyMap<number, unknown> };
+}
+
+interface TextDeletionRange {
+	readonly clock: number;
+	readonly len: number;
+}
+
+function plainTextContent(item: Y.AbstractStruct): item is Y.Item {
+	if (!(item instanceof Y.Item)) return false;
+	if (item.content instanceof Y.ContentString) return true;
+	return item.content instanceof Y.ContentDeleted;
+}
 
 /** A reused node ID cannot authorize updates to the old Y.Text incarnation. */
-export function assertLiveTextTarget(document: Y.Doc, reference: TextTargetReference): void {
-	const current = sharedTextAt(document, reference.target, reference.field);
-	const id = current?._item?.id;
-	if (id?.client !== reference.textId.client || id.clock !== reference.textId.clock)
-		throw new TextTargetGoneError('La cible de texte a été supprimée ou remplacée.');
+export function isLiveTextTarget(document: Y.Doc, reference: TextTargetReference): boolean {
+	const id = sharedTextAt(document, reference.target, reference.field)?._item?.id;
+	return id?.client === reference.textId.client && id.clock === reference.textId.clock;
+}
+
+/** A missing incarnation is retryable only for syntactically plain edits to a permitted field. */
+export function assertSyntacticTextProposal(
+	reference: TextTargetReference,
+	update: DecodedTextProposal,
+): void {
+	if (!isEditableSharedTextField(reference.target.kind, reference.field))
+		throw new Error('La proposition de texte est invalide.');
+	if (update.structs.length === 0 && update.ds.clients.size === 0)
+		throw new Error('La proposition de texte est invalide.');
+	for (const struct of update.structs) {
+		if (!plainTextContent(struct))
+			throw new Error('La proposition contient une modification structurelle.');
+		if (struct.parentSub !== null)
+			throw new Error('La proposition contient une modification structurelle.');
+		if (typeof struct.parent === 'string')
+			throw new Error('La proposition contient une modification structurelle.');
+	}
+}
+
+function assertKnownDeletionRange(
+	structs: readonly Y.AbstractStruct[],
+	range: TextDeletionRange,
+): void {
+	const end = range.clock + range.len;
+	for (const item of structs) {
+		if (item.id.clock >= end) break;
+		if (item.id.clock + item.length <= range.clock) continue;
+		if (item instanceof Y.GC) continue;
+		if (!plainTextContent(item))
+			throw new Error('La proposition supprime une structure du document.');
+		if (!(item.parent instanceof Y.Text))
+			throw new Error('La proposition supprime une structure du document.');
+	}
+}
+
+/** Reject delete-only changes to known structural items; compacted tombstones remain unknown. */
+export function assertKnownTextDeletions(
+	document: Y.Doc,
+	deletions: ReadonlyMap<number, readonly TextDeletionRange[]>,
+): void {
+	for (const [client, ranges] of deletions) {
+		const structs = document.store.clients.get(client);
+		if (structs === undefined) continue;
+		for (const range of ranges) assertKnownDeletionRange(structs, range);
+	}
 }
 
 function assertTextItem(item: Y.AbstractStruct, texts: ReadonlySet<Y.Text>): void {

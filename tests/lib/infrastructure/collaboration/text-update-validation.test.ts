@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
-import { RoomRetiredTexts } from '../../../../src/lib/infrastructure/collaboration/retired-text-evidence';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	applyTextUpdate,
-	assertLiveTextTarget,
-	TextTargetGoneError,
+	assertKnownTextDeletions,
+	assertSyntacticTextProposal,
+	isLiveTextTarget,
 } from '../../../../src/lib/infrastructure/collaboration/text-update-validation';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
@@ -63,16 +63,150 @@ describe('server text boundary', () => {
 			field: 'markdown',
 			textId: text._item.id,
 		};
-		const retired = new RoomRetiredTexts();
-		expect(retired.liveOrRetired(server, reference, update)).toBe(true);
-		expect(() => retired.liveOrRetired(server, { ...reference, field: 'title' }, update)).toThrow();
-		expect(() =>
-			retired.liveOrRetired(
-				server,
+		expect(() => {
+			assertSyntacticTextProposal(reference, update);
+		}).not.toThrow();
+		expect(() => {
+			assertSyntacticTextProposal({ ...reference, field: 'title' }, update);
+		}).toThrow();
+		expect(() => {
+			assertSyntacticTextProposal(
 				{ ...reference, target: { kind: Kind.Relation, id: 'relation-a' }, field: 'label' },
 				update,
-			),
-		).toThrow();
+			);
+		}).toThrow();
+		client.destroy();
+		server.destroy();
+	});
+
+	it('distinguishes deletion-only text from structural or embedded deleted items', () => {
+		const { server, client } = replicas();
+		const text = node(client).get('markdown');
+		if (!(text instanceof Y.Text) || text._item === null) throw new Error('Missing text');
+		const textId = text._item.id;
+		const state = Y.encodeStateVector(server);
+		text.delete(0, 1);
+		const update = Y.decodeUpdate(Y.encodeStateAsUpdate(client, state));
+		expect(update.structs).toHaveLength(0);
+		expect(update.ds.clients.size).toBeGreaterThan(0);
+		expect(() => {
+			assertSyntacticTextProposal(
+				{
+					target: { kind: Kind.Node, id: 'source-a' },
+					field: 'markdown',
+					textId,
+				},
+				update,
+			);
+		}).not.toThrow();
+		expect(() => {
+			assertKnownTextDeletions(server, update.ds.clients);
+		}).not.toThrow();
+		const structural = new Y.Doc({ gc: false });
+		Y.applyUpdate(structural, Y.encodeStateAsUpdate(server));
+		structural.getMap(YjsCollection.Nodes).delete('source-b');
+		const deletion = Y.decodeUpdate(Y.encodeStateAsUpdate(structural, Y.encodeStateVector(server)));
+		expect(deletion.structs).toHaveLength(0);
+		expect(() => {
+			assertKnownTextDeletions(server, deletion.ds.clients);
+		}).toThrow();
+		const embedded = node(server).get('markdown');
+		if (!(embedded instanceof Y.Text)) throw new Error('Missing embedded text');
+		embedded.insertEmbed(0, { unauthorized: true });
+		const withEmbed = new Y.Doc({ gc: false });
+		Y.applyUpdate(withEmbed, Y.encodeStateAsUpdate(server));
+		const embeddedCandidate = node(withEmbed).get('markdown');
+		if (!(embeddedCandidate instanceof Y.Text)) throw new Error('Missing candidate embedded text');
+		embeddedCandidate.delete(0, 1);
+		const embedDeletion = Y.decodeUpdate(
+			Y.encodeStateAsUpdate(withEmbed, Y.encodeStateVector(server)),
+		);
+		expect(embedDeletion.structs).toHaveLength(0);
+		expect(() => {
+			assertKnownTextDeletions(server, embedDeletion.ds.clients);
+		}).toThrow();
+		withEmbed.destroy();
+		executeSharedCommands(server, [{ op: Op.Delete, target: { kind: Kind.Node, id: 'source-a' } }]);
+		compactRoomDocument(server);
+		expect(() => {
+			assertKnownTextDeletions(server, update.ds.clients);
+		}).not.toThrow();
+		const unknown = new Y.Doc({ gc: false });
+		const remoteText = unknown.getText('unseen');
+		remoteText.insert(0, 'x');
+		remoteText.delete(0, 1);
+		const unseen = Y.decodeUpdate(Y.encodeStateAsUpdate(unknown)).ds.clients;
+		expect(unseen.size).toBeGreaterThan(0);
+		expect(() => {
+			assertKnownTextDeletions(server, unseen);
+		}).not.toThrow();
+		unknown.destroy();
+		structural.destroy();
+		client.destroy();
+		server.destroy();
+	});
+
+	it('rejects blank, root, embedded and structural edits before a stale-target refusal', () => {
+		const { server, client } = replicas();
+		const text = node(client).get('markdown');
+		if (!(text instanceof Y.Text) || text._item === null) throw new Error('Missing text');
+		const reference = {
+			target: { kind: Kind.Node, id: 'source-a' },
+			field: 'markdown',
+			textId: text._item.id,
+		};
+		const empty = new Y.Doc();
+		expect(() => {
+			assertSyntacticTextProposal(reference, Y.decodeUpdate(Y.encodeStateAsUpdate(empty)));
+		}).toThrow();
+		const root = new Y.Doc();
+		root.getText('rogue').insert(0, 'Not a document field');
+		expect(() => {
+			assertSyntacticTextProposal(reference, Y.decodeUpdate(Y.encodeStateAsUpdate(root)));
+		}).toThrow();
+		const embed = new Y.Doc({ gc: false });
+		Y.applyUpdate(embed, Y.encodeStateAsUpdate(server));
+		const embedded = node(embed).get('markdown');
+		if (!(embedded instanceof Y.Text)) throw new Error('Missing embedded text');
+		embedded.insertEmbed(0, { unauthorized: true });
+		expect(() => {
+			assertSyntacticTextProposal(
+				reference,
+				Y.decodeUpdate(Y.encodeStateAsUpdate(embed, Y.encodeStateVector(server))),
+			);
+		}).toThrow();
+		node(client).set('color', '#ff0000');
+		expect(() => {
+			assertSyntacticTextProposal(
+				reference,
+				Y.decodeUpdate(Y.encodeStateAsUpdate(client, Y.encodeStateVector(server))),
+			);
+		}).toThrow();
+		expect(() => {
+			assertSyntacticTextProposal(reference, {
+				structs: [new Y.GC({ client: 10, clock: 0 }, 1)],
+				ds: { clients: new Map() },
+			});
+		}).toThrow();
+		const keyedText = new Y.Item(
+			{ client: 10, clock: 0 },
+			null,
+			null,
+			null,
+			null,
+			reference.textId,
+			'not-a-text-field',
+			new Y.ContentString('bad'),
+		);
+		expect(() => {
+			assertSyntacticTextProposal(reference, {
+				structs: [keyedText],
+				ds: { clients: new Map() },
+			});
+		}).toThrow();
+		empty.destroy();
+		root.destroy();
+		embed.destroy();
 		client.destroy();
 		server.destroy();
 	});
@@ -111,14 +245,10 @@ describe('server text boundary', () => {
 			field: 'markdown',
 			textId: { client: old._item.id.client, clock: old._item.id.clock },
 		};
-		expect(() => {
-			assertLiveTextTarget(server, reference);
-		}).not.toThrow();
+		expect(isLiveTextTarget(server, reference)).toBe(true);
 		executeSharedCommands(server, [{ op: Op.Delete, target: reference.target }]);
 		compactRoomDocument(server);
-		expect(() => {
-			assertLiveTextTarget(server, reference);
-		}).toThrow(TextTargetGoneError);
+		expect(isLiveTextTarget(server, reference)).toBe(false);
 		executeSharedCommands(server, [
 			{
 				op: Op.Create,
@@ -126,9 +256,7 @@ describe('server text boundary', () => {
 				properties: { natureId: 'goal', markdown: 'Nouvelle incarnation' },
 			},
 		]);
-		expect(() => {
-			assertLiveTextTarget(server, reference);
-		}).toThrow(TextTargetGoneError);
+		expect(isLiveTextTarget(server, reference)).toBe(false);
 		expect(node(server).get('markdown')).toBeInstanceOf(Y.Text);
 		client.destroy();
 		server.destroy();

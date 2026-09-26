@@ -169,7 +169,7 @@ describe('room authority', () => {
 		},
 	);
 
-	it('refuses a text proposal for a deleted and recreated node ID without committing or closing peers', async () => {
+	it('soft-refuses a heavily fragmented stale text proposal after reincarnation and bounds retries', async () => {
 		const room = 'reused-text-target';
 		const alice = await connectRoom(room);
 		const bob = await connectRoom(room);
@@ -177,12 +177,39 @@ describe('room authority', () => {
 		await bob.next(Message.Commit);
 		const old = doc.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
 		if (!(old instanceof Y.Text) || old._item === null) throw new Error('Expected integrated text');
+		const target = { kind: Kind.Node, id: 'A' } as const;
+		const textId = { client: old._item.id.client, clock: old._item.id.clock };
+		const manyEdits = proposeChange(doc, (candidate) => {
+			const text = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+			if (!(text instanceof Y.Text)) throw new Error('Expected editable text');
+			for (let i = 0; i < 300; i++) text.insert(0, 'x');
+		});
+		alice.send({
+			type: Message.Change,
+			id: 'many-fragments',
+			sessionId: 'alice-session',
+			target,
+			field: 'markdown',
+			textId,
+			update: manyEdits,
+		});
+		await alice.next(Message.Commit);
+		await bob.next(Message.Commit);
+		Y.applyUpdate(doc, manyEdits);
+		let fragments = 0;
+		for (let item = old._start; item !== null; item = item.right) fragments++;
+		expect(fragments).toBeGreaterThan(256);
 		const update = proposeChange(doc, (candidate) => {
 			const text = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
 			if (!(text instanceof Y.Text)) throw new Error('Expected candidate text');
 			text.insert(0, 'Obsolete ');
 		});
-		const target = { kind: Kind.Node, id: 'A' } as const;
+		const deletion = proposeChange(doc, (candidate) => {
+			const text = candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('A')?.get('markdown');
+			if (!(text instanceof Y.Text)) throw new Error('Expected deletable text');
+			text.delete(0, 1);
+		});
+		expect(Y.decodeUpdate(deletion).structs).toHaveLength(0);
 		const sessionId = 'recreated-target-session';
 		bob.send({
 			type: Message.Change,
@@ -208,7 +235,7 @@ describe('room authority', () => {
 			sessionId: 'alice-session',
 			target,
 			field: 'markdown',
-			textId: { client: old._item.id.client, clock: old._item.id.clock },
+			textId,
 			update,
 		} as const;
 		alice.send(obsolete);
@@ -218,8 +245,15 @@ describe('room authority', () => {
 			target,
 		});
 		expect(alice.socket.readyState).toBe(WebSocket.OPEN);
+		alice.send({ ...obsolete, id: 'late-delete-A', update: deletion });
+		expect(await alice.next(Message.Conflict)).toMatchObject({
+			code: 'text-target-gone',
+			id: 'late-delete-A',
+		});
+		alice.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
+		expect((await alice.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
-			expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 3 });
+			expect(await state.storage.get(META_KEY)).toMatchObject({ commit: 4 });
 		});
 		for (let attempt = 1; attempt < 6; attempt++) {
 			alice.send(obsolete);
@@ -240,8 +274,9 @@ describe('room authority', () => {
 		'invented-field',
 		'invented-incarnation',
 		'structural-update',
+		'structural-deletion',
 	] as const)(
-		'terminates %s text metadata after deletion without creating a soft refusal',
+		'classifies %s text metadata after deletion without committing a forged update',
 		async (variant) => {
 			const room = `forged-stale-${variant}`;
 			const alice = await connectRoom(room);
@@ -274,6 +309,10 @@ describe('room authority', () => {
 				update = proposeChange(doc, (candidate) => {
 					candidate.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('B')?.set('color', '#ff0000');
 				});
+			if (variant === 'structural-deletion')
+				update = proposeChange(doc, (candidate) => {
+					candidate.getMap(YjsCollection.Nodes).delete('B');
+				});
 			bob.send({
 				type: Message.Change,
 				id: 'delete-A',
@@ -299,8 +338,16 @@ describe('room authority', () => {
 				textId,
 				update,
 			});
-			expect((await alice.next(Message.Reject)).code).toBe('invalid-document');
-			expect((await closed).code).toBe(1008);
+			if (variant === 'unrelated-field' || variant === 'invented-incarnation') {
+				expect(await alice.next(Message.Conflict)).toMatchObject({
+					code: 'text-target-gone',
+					id: 'forged-A',
+				});
+				expect(alice.socket.readyState).toBe(WebSocket.OPEN);
+			} else {
+				expect((await alice.next(Message.Reject)).code).toBe('invalid-document');
+				expect((await closed).code).toBe(1008);
+			}
 			await runInDurableObject(
 				env.COLLABORATION_ROOMS.getByName(room),
 				async (_instance, state) => {

@@ -4,7 +4,6 @@ import * as Y from 'yjs';
 import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
 import type { CommandSequence } from '../../lib/infrastructure/collaboration/command-sequence';
 import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
-import { RoomRetiredTexts } from '../../lib/infrastructure/collaboration/retired-text-evidence';
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
 	BusinessCommandRefusal,
@@ -25,6 +24,11 @@ import {
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../lib/infrastructure/collaboration/sync-steps';
+import {
+	assertKnownTextDeletions,
+	assertSyntacticTextProposal,
+	isLiveTextTarget,
+} from '../../lib/infrastructure/collaboration/text-update-validation';
 import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
@@ -48,7 +52,6 @@ export class CollaborationRoom extends DurableObject<Env> {
 	private roomState = emptyRoomState();
 	private processing: Promise<void> = Promise.resolve();
 	private readonly refusalBudget = new RoomRefusalBudget();
-	private readonly retiredText = new RoomRetiredTexts();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -217,9 +220,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 				});
 				return;
 			}
-			const retired = this.retiredText.capture(this.roomState.doc, candidate, message.commands);
 			await this.commit(candidate, message.id, message, socket);
-			this.retiredText.remember(retired);
 		} finally {
 			candidate.destroy();
 		}
@@ -238,7 +239,9 @@ export class CollaborationRoom extends DurableObject<Env> {
 		let textTarget: IdentifiedTextMessage | undefined;
 		if (message?.id !== undefined) {
 			textTarget = message;
-			if (!this.retiredText.liveOrRetired(this.roomState.doc, message, decoded)) {
+			assertSyntacticTextProposal(message, decoded);
+			if (!isLiveTextTarget(this.roomState.doc, message)) {
+				assertKnownTextDeletions(this.roomState.doc, decoded.ds.clients);
 				refuseTextTarget(socket, message, this.refusalBudget);
 				return;
 			}
