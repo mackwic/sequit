@@ -129,9 +129,11 @@ class RankOrderSearch {
 	exhaustive = true;
 	truncated = false;
 	private readonly seen: Set<string>;
+	private readonly frontier: RankOrder[];
 
 	constructor(private readonly input: RankOrderSearchInput) {
 		this.seen = new Set([JSON.stringify(input.domain.bands)]);
+		this.frontier = [input.domain.bands];
 	}
 
 	result(): RankOrderSearchResult {
@@ -211,6 +213,7 @@ class RankOrderSearch {
 			return this.cutOff(RankSearchStop.ProposalBudget);
 		this.seen.add(key);
 		this.proposed += 1;
+		this.frontier.push(order);
 		const selected = this.selected;
 		if (selected !== undefined && zeroRoutes(selected) && this.worseKendall(order, selected)) {
 			this.prunedByLowerBound += 1;
@@ -239,7 +242,9 @@ class RankOrderSearch {
 		}
 		this.localImprovements();
 		if (this.truncated) return;
-		this.cutOff(RankSearchStop.ProposalBudget);
+		for (const source of this.frontier)
+			for (const order of adjacentOrders(source)) if (!this.propose(order)) return;
+		this.stop = RankSearchStop.Complete;
 	}
 
 	private localImprovements(): void {

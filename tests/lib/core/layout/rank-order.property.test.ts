@@ -1035,6 +1035,8 @@ describe('rank-order heuristic cost and determinism', () => {
 		const second = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		expect(second).toEqual(first);
 		expect(first.witness.mode).toBe('heuristic');
+		expect(first.witness.stop).toBe('evaluation-budget');
+		expect(first.witness.evaluated).toBe(12);
 		expect(
 			first.witness.rejected.some(
 				({ reason }) => reason.code === DedicatedCandidateRejectionCode.RouteContact,
