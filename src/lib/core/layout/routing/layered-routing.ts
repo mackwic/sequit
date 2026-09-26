@@ -13,7 +13,7 @@ import {
 	sharedSourcePorts,
 	sharedTargetPorts,
 } from './port-allocation';
-import { crossingCorridors } from './routing-corridors';
+import { cornerPortSharing, crossingCorridors, type RoutingCorridor } from './routing-corridors';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
 import { directRouteFitsSpace, type DirectRoutingSpace } from './routing-space';
 
@@ -243,6 +243,27 @@ export function materializeLayers(
 	return paths;
 }
 
+function componentsNeedingDistinctPorts(
+	input: ReservationInput,
+	crossings: readonly RoutingCorridor[],
+	passages: readonly LayerLink[],
+): ReadonlySet<number> {
+	const routed = new Set<number>();
+	for (const id of input.junctionIds) routed.add(defined(input.componentByEndpointId.get(id)));
+	for (const corridor of crossings) {
+		if (corridor.cornerOnly === true) continue;
+		for (const { relation } of corridor.links)
+			routed.add(defined(input.componentByEndpointId.get(relation.from)));
+	}
+	for (const { relation } of passages) {
+		const sourceRank = defined(input.ranks.get(relation.from));
+		const targetRank = defined(input.ranks.get(relation.to));
+		if (sourceRank > targetRank + 1)
+			routed.add(defined(input.componentByEndpointId.get(relation.from)));
+	}
+	return routed;
+}
+
 /** Reserve faces before placement; channels are planned from the resulting transverse positions. */
 export function allocateLayerPorts(input: ReservationInput): PortAllocation | undefined {
 	const { graph, layers, bounds, frame, junctionIds, sizes } = input;
@@ -274,17 +295,7 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 		});
 		if (ordinaryCrossings.length === 0) return undefined;
 	}
-	const routedComponents = new Set<number>();
-	for (const id of junctionIds) routedComponents.add(defined(input.componentByEndpointId.get(id)));
-	for (const { links } of crossings)
-		for (const { relation } of links)
-			routedComponents.add(defined(input.componentByEndpointId.get(relation.from)));
-	for (const { relation } of passages) {
-		const sourceRank = defined(input.ranks.get(relation.from));
-		const targetRank = defined(input.ranks.get(relation.to));
-		if (sourceRank > targetRank + 1)
-			routedComponents.add(defined(input.componentByEndpointId.get(relation.from)));
-	}
+	const routedComponents = componentsNeedingDistinctPorts(input, crossings, passages);
 	const links = passages.map((link) => {
 		const geometry = {
 			bounds,
@@ -298,6 +309,9 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 			target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
 		};
 	});
+	const sharedSources = new Set(junctionIds);
+	for (const id of cornerPortSharing(crossings)?.sharedSources ?? [])
+		if (!routedComponents.has(defined(input.componentByEndpointId.get(id)))) sharedSources.add(id);
 	const sharedTargets = new Set(junctionIds);
 	for (const { relation } of passages)
 		if (!routedComponents.has(defined(input.componentByEndpointId.get(relation.to))))
@@ -308,7 +322,7 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 		bounds,
 		graph,
 		vertical: frame.vertical,
-		sharedSources: junctionIds,
+		sharedSources,
 		sharedTargets,
 	});
 }

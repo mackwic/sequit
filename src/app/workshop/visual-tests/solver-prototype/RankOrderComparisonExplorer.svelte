@@ -107,8 +107,8 @@
 				<th scope="col">Rangs modifiés</th>
 				<th scope="col">Paires de rang inversées, choisi / documentaire</th>
 				<th scope="col"
-					>Composantes éditées / intactes : inversions · boîtes · ports · tracés, choisi /
-					documentaire</th
+					>Composantes éditées / intactes : inversions · amplitude relative · boîtes · ports ·
+					tracés, choisi / documentaire</th
 				>
 				<th scope="col">Ports · tracés modifiés</th>
 				<th scope="col">Longueur commune avant → après</th>
@@ -154,10 +154,13 @@
 								{#if component.touched}éditée{:else}intacte{/if}
 								<code>{component.ids.join(', ')}</code>
 								:
-								{component.selected.invertedRankPairs} · {component.selected.movedElements} ·
-								{component.selected.portChanges} · {component.selected.pathChanges} /
-								{component.documentary.invertedRankPairs} · {component.documentary.movedElements} ·
-								{component.documentary.portChanges} · {component.documentary.pathChanges}
+								{component.selected.invertedRankPairs} · {component.selected.meanRelativeNormalizedMovement.toFixed(
+									3,
+								)} · {component.selected.movedElements} · {component.selected.portChanges} ·
+								{component.selected.pathChanges} / {component.documentary.invertedRankPairs} ·
+								{component.documentary.meanRelativeNormalizedMovement.toFixed(3)} ·
+								{component.documentary.movedElements} · {component.documentary.portChanges} ·
+								{component.documentary.pathChanges}
 							</div>
 						{/each}
 					</td>

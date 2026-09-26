@@ -10,6 +10,9 @@ import {
 	compareRankOrderMutations,
 	rankOrderMutationCorpus,
 } from '../../../../src/app/workshop/solver-prototype/rank-order-stability';
+import { createGraph } from '../../../../src/lib/core/graph/create-graph';
+import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import { countRankOrderCrossings } from '../../../../src/lib/core/layout/rank-order';
 
 describe('rank order comparison', () => {
@@ -442,30 +445,77 @@ describe('rank order stability under document edits', () => {
 		expect(frontier?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.166);
 	});
 
-	it('exposes a large physical packing shift without resetting the independent crossing optimum', () => {
+	it('preserves the rank order, box sizes and relative ports of untouched components', () => {
+		for (const mutation of rankOrderMutationCorpus()) {
+			const comparison = comparisons.find(({ id }) => id === mutation.id);
+			if (comparison === undefined) throw new Error(`Missing stability comparison: ${mutation.id}`);
+			const layout = (side: typeof mutation.before) => {
+				const created = createGraph(side.document);
+				if (!created.ok) throw new Error(`Invalid stability corpus graph: ${mutation.id}`);
+				const graph = created.value;
+				return layoutWithDedicatedEngineAndRankOrderWitness(
+					graph,
+					topologicallyRank(graph),
+					side.measurements,
+				).layout;
+			};
+			const before = layout(mutation.before);
+			const after = layout(mutation.after);
+			const oldBoxes = new Map(before.elements.map(({ id, bounds }) => [id, bounds]));
+			const newBoxes = new Map(after.elements.map(({ id, bounds }) => [id, bounds]));
+			const newRoutes = new Map(after.relations.map((route) => [route.id, route]));
+			for (const component of comparison.components) {
+				if (component.touched) continue;
+				expect(component.selected.invertedRankPairs).toBe(0);
+				expect(component.selected.rankChanges).toBe(0);
+				const ids = new Set(component.ids);
+				for (const id of ids) {
+					const old = oldBoxes.get(id);
+					const current = newBoxes.get(id);
+					expect(old).toBeDefined();
+					expect(current).toBeDefined();
+					if (old === undefined || current === undefined) continue;
+					expect({ width: current.width, height: current.height }).toEqual({
+						width: old.width,
+						height: old.height,
+					});
+				}
+				for (const route of before.relations) {
+					if (!ids.has(route.from) || !ids.has(route.to)) continue;
+					const current = newRoutes.get(route.id);
+					expect(current).toBeDefined();
+					if (current === undefined) continue;
+					for (const [id, oldPort, newPort] of [
+						[route.from, route.points[0], current.points[0]],
+						[route.to, route.points.at(-1), current.points.at(-1)],
+					] as const) {
+						const oldBox = oldBoxes.get(id);
+						const newBox = newBoxes.get(id);
+						if (
+							oldPort === undefined ||
+							newPort === undefined ||
+							oldBox === undefined ||
+							newBox === undefined
+						)
+							throw new Error(`Missing stable port: ${route.id}`);
+						expect({ x: newPort.x - newBox.x, y: newPort.y - newBox.y }).toEqual({
+							x: oldPort.x - oldBox.x,
+							y: oldPort.y - oldBox.y,
+						});
+					}
+				}
+			}
+		}
+	});
+
+	it('keeps the independent crossing optimum under a shortcut in another component', () => {
 		const unrelated = comparisons.find(({ id }) => id === 'unrelated-shortcut');
 		expect(unrelated).toMatchObject({
 			addedRelations: 1,
-			commonElements: 70,
-			movedElements: 70,
 			rankChanges: 0,
-			commonRelations: 68,
-			portChanges: 68,
-			pathChanges: 68,
-			commonRouteLengthBefore: 5464,
-			commonRouteLengthAfter: 5134,
-			commonBendsBefore: 8,
-			commonBendsAfter: 12,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 			afterWitness: { stop: 'complete' },
-			relativeMovedElements: 6,
-			medianTranslation: { x: 44, y: -48 },
-			documentary: {
-				movedElements: 65,
-				relativeMovedElements: 5,
-				medianTranslation: { x: 8, y: 0 },
-			},
 		});
 		const independent = unrelated?.components.find(({ ids }) => ids.includes('a'));
 		expect(independent).toMatchObject({ touched: false, selected: { invertedRankPairs: 0 } });
@@ -474,9 +524,7 @@ describe('rank order stability under document edits', () => {
 		expect(optimizedBand(unrelated?.beforeWitness.selectedOrder)).toEqual(
 			optimizedBand(unrelated?.afterWitness.selectedOrder),
 		);
-		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.7);
-		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.8);
-		expect(unrelated?.meanRelativeNormalizedMovement).toBeCloseTo(0.04457);
-		expect(unrelated?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.00578);
+		expect(independent?.selected.meanRelativeNormalizedMovement).toBeGreaterThan(0);
+		expect(independent?.documentary.meanRelativeNormalizedMovement).toBe(0);
 	});
 });
