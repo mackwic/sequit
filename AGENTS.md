@@ -28,7 +28,7 @@
 - During development, run the narrowest relevant test or scenario.
 - For observable behavior changes, update the nearest behavioral test.
 - Use property tests for invariants and round trips, and E2E tests for browser flows.
-- Writer loop: run `pnpm quality:precommit` (format modified files, then lint, knip, architecture and types), followed by `pnpm quality:fast` (coverage without property tests).
+- Writer loop: run `pnpm quality:precommit` (format modified files, then lint, knip, architecture and types), followed by `pnpm quality:fast` (coverage without property tests). `quality:precommit` checks the working tree: commit everything it validated.
 - Integration: run `pnpm quality:integration` (property tests, Chromium E2E and snapshot performance). E2E is integration-only, not part of the writer loop.
-- Before merging, run `pnpm check` (all the above, other E2E browser projects, full formatting and build).
+- Before merging, run `pnpm check` (all the above, full web coverage with properties, incremental performance, other E2E browser projects, full formatting and build).
 - The 90% web and worker coverage gates and this split between writer and integration loops were fixed by explicit user decision; all agents must otherwise preserve thresholds.

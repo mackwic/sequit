@@ -35,17 +35,19 @@ are preserved.
 
 ## Local quality gates
 
-Use `pnpm quality:fast` during implementation. It is the fast, fail-fast edit-loop gate and runs:
+During implementation, run `pnpm quality:precommit`, then `pnpm quality:fast`. The precommit
+script formats modified files with the repository Prettier configuration, then checks lint, unused
+code, architecture, and types. It checks the working tree: commit everything it validated.
 
-1. `pnpm lint` for correctness, readability, and production maintainability rules.
-2. `pnpm quality:unused` to reject unused files, exports, and dependencies.
-3. `pnpm quality:architecture` to enforce dependency directions.
-4. `pnpm test:coverage` for the root Node and collaboration-worker Vitest suites.
-5. `pnpm quality:duplicates` for token-aware production clone detection.
+`quality:fast` is the fail-fast writer gate: full lint, Knip, architecture, web coverage **without**
+`*.property.test.ts` files, worker coverage, then duplicate detection. Property tests are reserved
+for `pnpm quality:integration`, which runs all properties, Chromium E2E, and snapshot performance.
+E2E is not part of the writer loop. The individual scripts are joined with `&&`, stopping on failure.
 
-The fast gate enforces coverage rather than running ordinary Vitest twice. Each command is joined with `&&`; a failure stops later diagnostics from running.
-
-Run `pnpm check` before merging; it is the authoritative local gate and adds formatting, all TypeScript and Svelte checks, Playwright browser tests, and both production builds. Mutation testing is separate: run `pnpm test:mutation` explicitly, or `pnpm test:mutation:weekly` to reproduce the intensive scheduled campaign.
+Run `pnpm check` before merging. It adds format checking, full web coverage **including** property
+tests, incremental performance, the other Playwright browser projects, TypeScript/Svelte checks,
+and both production builds to the writer and integration gates. Mutation testing is separate: run
+`pnpm test:mutation` explicitly, or `pnpm test:mutation:weekly` for the intensive campaign.
 
 ### Diagnostic commands
 
@@ -54,14 +56,17 @@ Run `pnpm check` before merging; it is the authoritative local gate and adds for
 | `pnpm lint`                        | All authored JavaScript, TypeScript, Svelte, tests, and configuration; production metrics cover `src/lib`, `src/app/web`, workshop fixture generators, and Worker sources |
 | `pnpm quality:unused`              | Unused files, exports, and dependencies reported by Knip                                                                                                                  |
 | `pnpm quality:architecture`        | Dependency boundaries and circular dependencies reported by dependency-cruiser                                                                                            |
-| `pnpm test:coverage:web`           | Root Vitest suite with Istanbul coverage for `src/**/*.ts`, excluding Worker sources                                                                                      |
+| `pnpm test:coverage:web:fast`      | Web coverage without property tests; used by `quality:fast`                                                                                                               |
+| `pnpm test:coverage:web`           | Complete root Vitest suite including properties, with Istanbul coverage for web sources                                                                                   |
 | `pnpm test:coverage:collaboration` | Cloudflare Vitest suite with Istanbul coverage for `src/workers/collaboration-worker/**/*.ts`                                                                             |
 | `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                                   |
 | `pnpm quality:duplicates`          | TypeScript and Svelte under `src`, excluding tests and generated output                                                                                                   |
-| `pnpm quality:fast`                | Lint, unused-code, architecture, coverage, and duplication gate                                                                                                           |
+| `pnpm quality:precommit`           | Format modified working-tree files, then lint, unused-code, architecture, and types checks                                                                                |
+| `pnpm quality:fast`                | Lint, unused-code, architecture, web coverage without properties, worker coverage, and duplication gate                                                                   |
+| `pnpm quality:integration`         | Property tests, Chromium E2E, and snapshot performance                                                                                                                    |
 | `pnpm test:mutation`               | Stryker mutation testing for the complete selected critical modules                                                                                                       |
 | `pnpm test:mutation:weekly`        | Intensive mutation campaign using the 5,000-case property-test fuzzing profile                                                                                            |
-| `pnpm check`                       | Authoritative local gate: format, types, fast quality gate, browser tests, and production builds                                                                          |
+| `pnpm check`                       | Merge gate: format, types, fast and integration gates, complete web coverage, incremental performance, other browsers, builds                                             |
 
 ### Enforced baselines
 
@@ -69,7 +74,7 @@ Authored code prohibits ternaries by default. Production TypeScript has global l
 
 Closed string domains use native string enums. ESLint rejects string literal types and `as const` string objects paired with a derived value-union alias (`typeof Values[keyof typeof Values]`); ordinary string configuration maps remain allowed.
 
-The web and collaboration suites independently require 98% statements, branches, functions, and lines. Generated declarations, Svelte components, tests, and support files are outside these coverage scopes.
+The web and collaboration suites independently require 90% statements, branches, functions, and lines, by explicit user decision. Generated declarations, Svelte components, and test files are outside these coverage scopes; selected test-support utilities are included in web coverage.
 
 Duplication analysis uses mild token matching with a minimum clone size of 5 lines and 50 tokens. It scans production TypeScript and Svelte, excludes declarations, tests, generated output, builds, and reports, prints results only to the console, and fails when duplicated lines exceed 1%.
 
