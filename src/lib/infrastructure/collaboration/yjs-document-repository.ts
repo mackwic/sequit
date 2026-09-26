@@ -1,13 +1,8 @@
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 
 import { defined, type LogicDocument } from '../../core/document/logic-document';
 import type { DocumentChangeSet } from '../../core/document/topology-edits';
 import type { DocumentChangeResult } from '../document/document-command-contracts';
-import {
-	reconcileYjsDocument,
-	recoveryConflictDiagnostic,
-	recoveryConflictPaths,
-} from './reconcile-yjs-document';
 import { readLogicDocument, type YjsLiveDocumentResult } from './yjs-document-codec';
 import {
 	applyYjsDocumentChanges,
@@ -15,6 +10,7 @@ import {
 	type MarkdownTarget,
 	type MarkdownTargetFailure,
 	validateYjsAdditionConflicts,
+	YjsDocumentRepositoryRejection,
 } from './yjs-document-mutations';
 import { isMarkdownOnly, projectYjsDocumentChange } from './yjs-document-projection';
 
@@ -29,7 +25,6 @@ interface PersistenceCapture {
 	projected: LogicDocument | undefined;
 	markdownOnly: boolean;
 	targets: readonly MarkdownTarget[];
-	recovery: boolean;
 	transaction?: Y.Transaction;
 	secondaryTransactions: boolean;
 }
@@ -42,42 +37,24 @@ interface PersistencePlan {
 	readonly changes: DocumentChangeSet;
 	readonly projection: LogicDocument;
 	readonly targets: readonly MarkdownTarget[];
-	readonly checkpoint: Y.Doc | undefined;
-	readonly recovering: boolean;
 	readonly origin: unknown;
-}
-
-interface GuardedPersistencePlan extends PersistencePlan {
-	readonly validationRevision: number;
 }
 
 export class YjsDocumentRepository {
 	readonly #observers = new Set<YjsDocumentRepositoryObserver>();
-	readonly #validTransactions = new WeakSet<Y.Transaction>();
 	readonly #activeTransactions = new Set<Y.Transaction>();
 	#persistenceCapture: PersistenceCapture | undefined;
 	#lastValidDocument: LogicDocument | undefined;
 	#lastPhysicalResult: YjsLiveDocumentResult<LogicDocument>;
-	#checkpointDocument: Y.Doc | undefined;
-	#canRecoverFromLastValid = false;
-	#recoveryConflict = false;
-	#recoveryConflictPaths: readonly (readonly string[])[] = [];
-	#physicalValid = false;
 	#revision = 0;
-	#acceptedRevision = 0;
 
 	constructor(readonly document: Y.Doc) {
 		document.on('beforeTransaction', this.#beforeTransaction);
 		document.on('afterTransaction', this.#afterTransaction);
-		document.on('update', this.#afterUpdate);
 		document.on('afterAllTransactions', this.#afterAllTransactions);
 		const initial = readLogicDocument(document);
 		this.#lastPhysicalResult = initial;
-		if (initial.ok) {
-			this.#lastValidDocument = initial.value;
-			this.#checkpointDocument = this.#clone(document);
-			this.#physicalValid = true;
-		}
+		if (initial.ok) this.#lastValidDocument = initial.value;
 	}
 
 	read(): YjsLiveDocumentResult<LogicDocument> {
@@ -88,10 +65,6 @@ export class YjsDocumentRepository {
 		const accepted = this.#lastValidDocument;
 		if (accepted !== undefined) return { ok: true, value: accepted };
 		return this.#lastPhysicalResult;
-	}
-
-	get acceptedRevision(): number {
-		return this.#acceptedRevision;
 	}
 
 	persist(changes: DocumentChangeSet, origin?: unknown): Promise<DocumentChangeResult> {
@@ -106,51 +79,49 @@ export class YjsDocumentRepository {
 					},
 				],
 			});
-		return Promise.resolve(this.#persist(changes, origin));
+		try {
+			return Promise.resolve(this.#persist(changes, origin));
+		} catch (error) {
+			if (error instanceof YjsDocumentRepositoryRejection)
+				return Promise.resolve({ ok: false, diagnostics: error.diagnostics });
+			let message = String(error);
+			if (error instanceof Error) message = error.message;
+			return Promise.resolve({
+				ok: false,
+				diagnostics: [{ code: 'document-command-invalid', message, path: [] }],
+			});
+		}
 	}
 
 	#persist(changes: DocumentChangeSet, origin?: unknown): DocumentChangeResult {
-		const checkpoint = this.#checkpointDocument;
-		const allowedRecovery = !this.#physicalValid && this.#canRecoverFromLastValid;
-		const recovering = allowedRecovery && checkpoint !== undefined;
-		const accepted = this.#lastValidDocument;
-		if (accepted === undefined) return this.#lastPhysicalResult;
-		if (!this.#physicalValid && !recovering) return this.#invalidPhysicalFailure(changes);
-		let targetSource = this.document;
-		if (recovering) targetSource = defined(checkpoint);
-		const targetCapture = this.#captureMarkdownTargets(changes, targetSource);
+		if (!this.#lastPhysicalResult.ok) return this.#invalidPhysicalFailure(changes);
+		const targetCapture = this.#captureMarkdownTargets(changes);
 		if ('failure' in targetCapture) return targetCapture.failure;
-		let targets: readonly MarkdownTarget[] = [];
-		if (!recovering) targets = targetCapture.targets;
-		const projection = projectYjsDocumentChange(accepted, changes);
+		const projection = projectYjsDocumentChange(this.#lastPhysicalResult.value, changes);
 		if (!projection.ok) return projection;
 		return this.#commitProjection({
 			changes,
 			projection: projection.value,
-			targets,
-			checkpoint,
-			recovering,
+			targets: targetCapture.targets,
 			origin,
 		});
 	}
 
 	#invalidPhysicalFailure(changes: DocumentChangeSet): DocumentChangeResult {
+		if (this.#lastValidDocument === undefined) return this.#lastPhysicalResult;
 		for (const { nodeId } of changes.nodeMarkdownReplacements) {
 			const result = lookupMarkdownTarget(this.document, nodeId);
 			if ('failure' in result) return result.failure;
 		}
-		if (this.#recoveryConflict)
-			return { ok: false, diagnostics: [recoveryConflictDiagnostic(this.#recoveryConflictPaths)] };
 		return this.#lastPhysicalResult;
 	}
 
 	#captureMarkdownTargets(
 		changes: DocumentChangeSet,
-		document: Y.Doc,
 	): MarkdownTargetCapture | MarkdownTargetFailure {
 		const targets: MarkdownTarget[] = [];
 		for (const { nodeId } of changes.nodeMarkdownReplacements) {
-			const result = lookupMarkdownTarget(document, nodeId);
+			const result = lookupMarkdownTarget(this.document, nodeId);
 			if ('failure' in result) return result;
 			targets.push(result.target);
 		}
@@ -158,16 +129,11 @@ export class YjsDocumentRepository {
 	}
 
 	#commitProjection(plan: PersistencePlan): DocumentChangeResult {
-		const guardedPlan: GuardedPersistencePlan = {
-			...plan,
-			validationRevision: this.#revision,
-		};
 		const capture: PersistenceCapture = {
 			result: undefined,
 			projected: undefined,
 			markdownOnly: isMarkdownOnly(plan.changes),
 			targets: plan.targets,
-			recovery: plan.recovering,
 			secondaryTransactions: false,
 		};
 		let transactionChangedBeforeCommand = false;
@@ -178,7 +144,7 @@ export class YjsDocumentRepository {
 		this.#persistenceCapture = capture;
 		try {
 			this.document.transact(() => {
-				this.#applyProjection(capture, guardedPlan, transactionChangedBeforeCommand);
+				this.#applyProjection(capture, plan, transactionChangedBeforeCommand);
 			}, plan.origin);
 			const commandResult = defined(capture.result);
 			if (!commandResult.ok) return commandResult;
@@ -193,26 +159,21 @@ export class YjsDocumentRepository {
 
 	#applyProjection(
 		capture: PersistenceCapture,
-		plan: GuardedPersistencePlan,
+		plan: PersistencePlan,
 		transactionChangedBeforeCommand: boolean,
 	): void {
-		if (!plan.recovering) {
-			const targetFailure = this.#targetFailure(plan.targets);
-			if (targetFailure !== undefined) {
-				capture.result = targetFailure;
-				return;
-			}
+		const targetFailure = this.#targetFailure(plan.targets);
+		if (targetFailure !== undefined) {
+			capture.result = targetFailure;
+			return;
 		}
-		if (!plan.recovering && transactionChangedBeforeCommand)
+		if (transactionChangedBeforeCommand) {
 			validateYjsAdditionConflicts(this.document, plan.changes);
-		const revisionChanged = this.#revision !== plan.validationRevision;
-		if (revisionChanged || transactionChangedBeforeCommand) {
 			capture.result = this.#staleTargetFailure();
 			return;
 		}
 		capture.result = { ok: true, value: plan.projection };
-		if (plan.recovering) reconcileYjsDocument(this.document, defined(plan.checkpoint));
-		else capture.projected = plan.projection;
+		capture.projected = plan.projection;
 		try {
 			applyYjsDocumentChanges(this.document, plan.changes);
 		} catch (error) {
@@ -244,12 +205,6 @@ export class YjsDocumentRepository {
 		};
 	}
 
-	#clone(source: Y.Doc): Y.Doc {
-		const clone = new Y.Doc({ gc: false });
-		Y.applyUpdate(clone, Y.encodeStateAsUpdate(source));
-		return clone;
-	}
-
 	observe(observer: YjsDocumentRepositoryObserver): () => void {
 		this.#observers.add(observer);
 		return () => this.#observers.delete(observer);
@@ -258,10 +213,8 @@ export class YjsDocumentRepository {
 	destroy(): void {
 		this.document.off('beforeTransaction', this.#beforeTransaction);
 		this.document.off('afterTransaction', this.#afterTransaction);
-		this.document.off('update', this.#afterUpdate);
 		this.document.off('afterAllTransactions', this.#afterAllTransactions);
 		this.#observers.clear();
-		this.#checkpointDocument?.destroy();
 		this.#lastValidDocument = undefined;
 	}
 
@@ -277,54 +230,6 @@ export class YjsDocumentRepository {
 		this.#activeTransactions.clear();
 	};
 
-	readonly #afterUpdate = (
-		update: Uint8Array,
-		_origin: unknown,
-		_document: Y.Doc,
-		transaction: Y.Transaction,
-	): void => {
-		if (!this.#validTransactions.has(transaction)) return;
-		Y.applyUpdate(defined(this.#checkpointDocument), update);
-	};
-
-	#recordPhysicalResult(
-		result: YjsLiveDocumentResult<LogicDocument>,
-		transaction: Y.Transaction,
-		revision: number,
-	): void {
-		this.#lastPhysicalResult = result;
-		if (result.ok) {
-			const wasInvalid = !this.#physicalValid;
-			this.#lastValidDocument = result.value;
-			this.#acceptedRevision = revision;
-			this.#physicalValid = true;
-			this.#canRecoverFromLastValid = false;
-			this.#recoveryConflict = false;
-			this.#recoveryConflictPaths = [];
-			if (wasInvalid) {
-				this.#checkpointDocument?.destroy();
-				this.#checkpointDocument = this.#clone(this.document);
-			} else this.#validTransactions.add(transaction);
-		} else {
-			const subsequent = !this.#physicalValid && this.#lastValidDocument !== undefined;
-			const checkpoint = this.#checkpointDocument;
-			if (checkpoint !== undefined) {
-				this.#recoveryConflictPaths = recoveryConflictPaths(
-					this.document,
-					checkpoint,
-					result.diagnostics.map(({ path }) => path),
-				);
-			}
-			this.#recoveryConflict = subsequent || this.#recoveryConflictPaths.length > 0;
-			this.#physicalValid = false;
-			const external = !transaction.local;
-			const capture = this.#persistenceCapture;
-			const noConflict = !this.#recoveryConflict;
-			const otherTransaction = capture?.transaction !== transaction;
-			this.#canRecoverFromLastValid = external && noConflict && otherTransaction;
-		}
-	}
-
 	readonly #afterTransaction = (transaction: Y.Transaction): void => {
 		const revision = ++this.#revision;
 		const active = this.#persistenceCapture;
@@ -338,9 +243,9 @@ export class YjsDocumentRepository {
 		const useProjection = markdownProjection && stableTransaction;
 		if (useProjection) result = { ok: true, value: projection };
 		else result = this.read();
-		this.#recordPhysicalResult(result, transaction, revision);
-		const applied = projection !== undefined || capture?.recovery === true;
-		if (capture !== undefined && applied) capture.result = result;
+		this.#lastPhysicalResult = result;
+		if (result.ok) this.#lastValidDocument = result.value;
+		if (capture !== undefined && projection !== undefined) capture.result = result;
 		for (const observer of [...this.#observers]) {
 			try {
 				observer(result, transaction.origin, revision);

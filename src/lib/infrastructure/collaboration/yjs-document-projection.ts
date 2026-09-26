@@ -1,5 +1,4 @@
 import {
-	defined,
 	EndpointKind,
 	type LogicDocument,
 	type LogicEndpoint,
@@ -99,6 +98,58 @@ function validateChangedOrders(changes: DocumentChangeSet): DocumentChangeResult
 	return { ok: false, diagnostics: context.diagnostics };
 }
 
+function projectionFailure(
+	code: string,
+	message: string,
+	path: readonly string[],
+): DocumentChangeResult {
+	return { ok: false, diagnostics: [{ code, message, path }] };
+}
+
+function validateExistingTargets(
+	current: LogicDocument,
+	changes: DocumentChangeSet,
+): DocumentChangeResult | undefined {
+	for (const node of changes.nodeAdditions) {
+		if (current.nodes.some(({ id }) => id === node.id))
+			return projectionFailure('entity-already-exists', `Node already exists: ${node.id}`, [
+				'nodes',
+				node.id,
+			]);
+	}
+	for (const relation of changes.relationAdditions) {
+		if (current.relations.some(({ id }) => id === relation.id))
+			return projectionFailure('entity-already-exists', `Relation already exists: ${relation.id}`, [
+				'relations',
+				relation.id,
+			]);
+	}
+	for (const group of changes.groupAdditions ?? []) {
+		if (current.groups.some(({ id }) => id === group.id))
+			return projectionFailure('entity-already-exists', `Group already exists: ${group.id}`, [
+				'groups',
+				group.id,
+			]);
+	}
+	for (const group of changes.groupReplacements ?? []) {
+		if (!current.groups.some(({ id }) => id === group.id))
+			return projectionFailure('group-not-found', `Group no longer exists: ${group.id}`, [
+				'groups',
+				group.id,
+			]);
+	}
+	for (const change of changes.endpointOrderChanges) {
+		if (endpoint(current, change.endpointKind, change.endpointId) === undefined)
+			return projectionFailure(
+				'endpoint-not-found',
+				`Endpoint no longer exists: ${change.endpointId}`,
+				[ENDPOINT_COLLECTION[change.endpointKind], change.endpointId],
+			);
+	}
+
+	return undefined;
+}
+
 export function projectYjsDocumentChange(
 	current: LogicDocument,
 	changes: DocumentChangeSet,
@@ -121,28 +172,8 @@ export function projectYjsDocumentChange(
 	}
 	const invalidOrder = validateChangedOrders(changes);
 	if (invalidOrder !== undefined) return invalidOrder;
-	for (const node of changes.nodeAdditions) {
-		if (current.nodes.some(({ id }) => id === node.id))
-			throw new Error(`Node addition conflicts with existing id: ${node.id}`);
-	}
-	for (const relation of changes.relationAdditions) {
-		if (current.relations.some(({ id }) => id === relation.id))
-			throw new Error(`Relation addition conflicts with existing id: ${relation.id}`);
-	}
-	for (const group of changes.groupAdditions ?? []) {
-		if (current.groups.some(({ id }) => id === group.id))
-			throw new Error(`Group addition conflicts with existing id: ${group.id}`);
-	}
-	for (const group of changes.groupReplacements ?? [])
-		defined(
-			current.groups.find(({ id }) => id === group.id),
-			`Group no longer exists: ${group.id}`,
-		);
-	for (const change of changes.endpointOrderChanges)
-		defined(
-			endpoint(current, change.endpointKind, change.endpointId),
-			`Endpoint no longer exists: ${change.endpointId}`,
-		);
+	const invalidTarget = validateExistingTargets(current, changes);
+	if (invalidTarget !== undefined) return invalidTarget;
 
 	const removedGroups = endpointRemovals(changes, EndpointKind.Group);
 	const removedNodes = endpointRemovals(changes, EndpointKind.Node);
@@ -163,11 +194,14 @@ export function projectYjsDocumentChange(
 			({ id }) => !removedRelations.has(id),
 		),
 	};
-	for (const change of changes.endpointGroupChanges ?? [])
-		defined(
-			endpoint(projected, change.endpointKind, change.endpointId),
-			`Endpoint no longer exists: ${change.endpointId}`,
-		);
+	for (const change of changes.endpointGroupChanges ?? []) {
+		if (endpoint(projected, change.endpointKind, change.endpointId) === undefined)
+			return projectionFailure(
+				'endpoint-not-found',
+				`Endpoint no longer exists: ${change.endpointId}`,
+				[ENDPOINT_COLLECTION[change.endpointKind], change.endpointId],
+			);
+	}
 
 	return validateCandidateLogicDocument(projected);
 }

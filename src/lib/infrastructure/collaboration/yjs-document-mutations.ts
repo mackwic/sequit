@@ -84,10 +84,19 @@ export function lookupMarkdownTarget(
 	}
 }
 
+function additionConflict(kind: string, collection: YjsCollection, id: string): Error {
+	return new YjsDocumentRepositoryRejection([
+		{
+			code: 'entity-already-exists',
+			message: `${kind} addition conflicts with existing id: ${id}`,
+			path: [collection.slice('sequit.'.length), id],
+		},
+	]);
+}
+
 function validateGroupAdditions(groups: Y.Map<Y.Map<unknown>>, additions: GroupAdditions): void {
 	for (const group of additions) {
-		if (groups.has(group.id))
-			throw new Error(`Group addition conflicts with existing id: ${group.id}`);
+		if (groups.has(group.id)) throw additionConflict('Group', GROUPS, group.id);
 	}
 }
 
@@ -96,11 +105,10 @@ export function validateYjsAdditionConflicts(document: Y.Doc, changes: DocumentC
 	const nodes = document.getMap<Y.Map<unknown>>(NODES);
 	const relations = document.getMap<Y.Map<unknown>>(RELATIONS);
 	for (const node of changes.nodeAdditions) {
-		if (nodes.has(node.id)) throw new Error(`Node addition conflicts with existing id: ${node.id}`);
+		if (nodes.has(node.id)) throw additionConflict('Node', NODES, node.id);
 	}
 	for (const relation of changes.relationAdditions) {
-		if (relations.has(relation.id))
-			throw new Error(`Relation addition conflicts with existing id: ${relation.id}`);
+		if (relations.has(relation.id)) throw additionConflict('Relation', RELATIONS, relation.id);
 	}
 	validateGroupAdditions(groups, changes.groupAdditions ?? []);
 }
@@ -143,7 +151,14 @@ function applyGroupReplacements(
 	for (const group of replacements) {
 		const entity = defined(groups.get(group.id), `Group no longer exists: ${group.id}`);
 		const label = entity.get('label');
-		if (!(label instanceof Y.Text)) throw new Error(`Group label is unavailable: ${group.id}`);
+		if (!(label instanceof Y.Text))
+			throw new YjsDocumentRepositoryRejection([
+				{
+					code: 'group-label-unavailable',
+					message: `Group label is unavailable: ${group.id}`,
+					path: ['groups', group.id, 'label'],
+				},
+			]);
 		spliceSharedText(label, group.label);
 		if (group.color === undefined) entity.delete('color');
 		else entity.set('color', group.color);
