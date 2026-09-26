@@ -5,8 +5,8 @@ import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
-/** Shared incoming ports versus a dense crossing topology with three independent target ports. */
-function orderedTargets(crossed: boolean): LayoutScenario {
+/** Dense variants retain exactly the same relations; only the target document order changes. */
+function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario {
 	let id = 'conditional-incoming-ports-shared';
 	let label = 'E avant D : port partagé';
 	let nodeIds = ['a', 'b', 'c', 'e', 'd'];
@@ -15,7 +15,10 @@ function orderedTargets(crossed: boolean): LayoutScenario {
 	if (crossed) {
 		id = 'conditional-incoming-ports-crossed';
 		label = 'D avant E : trois ports et croisements inévitables';
-		nodeIds = ['a', 'b', 'c', 'd', 'e'];
+		if (reversedDense) {
+			id = 'conditional-incoming-ports-dense-reordered';
+			label = 'E avant D : mêmes relations denses, trois ports';
+		} else nodeIds = ['a', 'b', 'c', 'd', 'e'];
 		incomingPorts = 3;
 		predecessorTargets = ['d', 'e'];
 	}
@@ -40,7 +43,8 @@ function orderedTargets(crossed: boolean): LayoutScenario {
 			const check = AssertLayout(layout);
 			check.nodes(['a', 'b', 'c']).haveRank(2);
 			check.nodes(['d', 'e']).haveRank(1);
-			if (crossed) check.node('e').isAfter('d', { direction: 'transverse-positive' });
+			if (crossed && !reversedDense)
+				check.node('e').isAfter('d', { direction: 'transverse-positive' });
 			else check.node('d').isAfter('e', { direction: 'transverse-positive' });
 			check
 				.ports('d', { role: 'incoming' })
@@ -71,5 +75,5 @@ export const scenario: LayoutScenario = {
 	...orderedTargets(true),
 	id: 'conditional-incoming-ports',
 	label: 'Ordre des cibles et capacité des ports entrants',
-	variants: [orderedTargets(true), orderedTargets(false)],
+	variants: [orderedTargets(true), orderedTargets(true, true), orderedTargets(false)],
 };
