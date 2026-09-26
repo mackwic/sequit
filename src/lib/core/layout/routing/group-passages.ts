@@ -53,7 +53,7 @@ export function foreignGroupObstacles(
 		...groupAncestors(input, relation.from),
 		...groupAncestors(input, relation.to),
 	]);
-	const key = [...owned].sort().join(String.fromCharCode(0));
+	const key = JSON.stringify([...owned].sort());
 	if (input.groupObstacleCache.has(key)) return input.groupObstacleCache.get(key);
 	const boxes: Bounds[] = [];
 	for (const candidate of groups) {
