@@ -138,6 +138,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 4,
 			portChanges: 4,
 			pathChanges: 4,
+			commonRouteLengthBefore: 636,
+			commonRouteLengthAfter: 520,
+			commonBendsBefore: 8,
+			commonBendsAfter: 4,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
@@ -149,6 +153,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 3,
 			portChanges: 3,
 			pathChanges: 3,
+			commonRouteLengthBefore: 506,
+			commonRouteLengthAfter: 332,
+			commonBendsBefore: 6,
+			commonBendsAfter: 2,
 		});
 		expect(removedNode).toMatchObject({
 			removedElements: 1,
@@ -169,6 +177,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 4,
 			portChanges: 0,
 			pathChanges: 0,
+			commonRouteLengthBefore: 636,
+			commonRouteLengthAfter: 636,
+			commonBendsBefore: 8,
+			commonBendsAfter: 8,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
@@ -206,6 +218,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 0,
 			portChanges: 0,
 			pathChanges: 0,
+			commonRouteLengthBefore: 0,
+			commonRouteLengthAfter: 0,
+			commonBendsBefore: 0,
+			commonBendsAfter: 0,
 		});
 	});
 
@@ -238,6 +254,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 68,
 			portChanges: 68,
 			pathChanges: 68,
+			commonRouteLengthBefore: 5284,
+			commonRouteLengthAfter: 5452,
+			commonBendsBefore: 8,
+			commonBendsAfter: 10,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 			afterWitness: { stop: 'complete', valid: 4 },

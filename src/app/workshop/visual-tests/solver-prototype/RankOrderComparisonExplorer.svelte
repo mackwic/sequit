@@ -82,7 +82,8 @@
 		<p>
 			Déplacement du centre des boîtes communes, normalisé par leur diagonale précédente. Les ports
 			et les tracés sont comparés en coordonnées absolues : un déplacement d'une composante entière
-			les compte comme modifiés, même si son ordre interne reste identique.
+			les compte comme modifiés, même si son ordre interne reste identique. Longueur et coudes
+			comparent uniquement les relations présentes dans les deux documents.
 		</p>
 	</header>
 	<table>
@@ -95,6 +96,8 @@
 				<th scope="col">Déplacement moyen · maximal</th>
 				<th scope="col">Rangs modifiés</th>
 				<th scope="col">Ports · tracés modifiés</th>
+				<th scope="col">Longueur commune avant → après</th>
+				<th scope="col">Coudes communs avant → après</th>
 				<th scope="col">Recherche avant → après</th>
 			</tr>
 		</thead>
@@ -114,6 +117,8 @@
 					>
 					<td>{mutation.rankChanges} / {mutation.commonElements}</td>
 					<td>{mutation.portChanges} · {mutation.pathChanges} / {mutation.commonRelations}</td>
+					<td>{mutation.commonRouteLengthBefore} → {mutation.commonRouteLengthAfter} px</td>
+					<td>{mutation.commonBendsBefore} → {mutation.commonBendsAfter}</td>
 					<td
 						>{mutation.beforeWitness.stop} → {mutation.afterWitness.stop} ({mutation.afterWitness
 							.evaluated} pipelines)</td

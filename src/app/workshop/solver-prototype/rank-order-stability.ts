@@ -29,6 +29,11 @@ export interface RankOrderStability {
 	readonly commonRelations: number;
 	readonly portChanges: number;
 	readonly pathChanges: number;
+	/** Length and elbows of the same relation IDs, excluding added/removed relations. */
+	readonly commonRouteLengthBefore: number;
+	readonly commonRouteLengthAfter: number;
+	readonly commonBendsBefore: number;
+	readonly commonBendsAfter: number;
 }
 
 export interface RankOrderMutationComparison extends RankOrderStability {
@@ -183,6 +188,28 @@ function samePorts(left: LayoutRelation, right: LayoutRelation): boolean {
 	);
 }
 
+function routeGeometry(relation: LayoutRelation): {
+	readonly length: number;
+	readonly bends: number;
+} {
+	let length = 0;
+	let bends = 0;
+	let previousAxis: 'x' | 'y' | undefined;
+	for (let index = 1; index < relation.points.length; index += 1) {
+		const previous = defined(relation.points[index - 1]);
+		const current = defined(relation.points[index]);
+		const dx = Math.abs(current.x - previous.x);
+		const dy = Math.abs(current.y - previous.y);
+		length += dx + dy;
+		if (dx === 0 && dy === 0) continue;
+		let axis: 'x' | 'y' = 'y';
+		if (dx > 0) axis = 'x';
+		if (previousAxis !== undefined && previousAxis !== axis) bends += 1;
+		previousAxis = axis;
+	}
+	return { length, bends };
+}
+
 function observed(entry: RankOrderCorpusEntry) {
 	const created = createGraph(entry.document);
 	if (!created.ok) throw new Error(`Invalid rank mutation ${entry.id}: ${JSON.stringify(created)}`);
@@ -234,12 +261,22 @@ function stability(
 	let commonRelations = 0;
 	let portChanges = 0;
 	let pathChanges = 0;
+	let commonRouteLengthBefore = 0;
+	let commonRouteLengthAfter = 0;
+	let commonBendsBefore = 0;
+	let commonBendsAfter = 0;
 	for (const relation of before.relations) {
 		const next = routes.get(relation.id);
 		if (next === undefined) continue;
 		commonRelations += 1;
 		if (!samePorts(relation, next)) portChanges += 1;
 		if (!samePath(relation, next)) pathChanges += 1;
+		const oldGeometry = routeGeometry(relation);
+		const newGeometry = routeGeometry(next);
+		commonRouteLengthBefore += oldGeometry.length;
+		commonRouteLengthAfter += newGeometry.length;
+		commonBendsBefore += oldGeometry.bends;
+		commonBendsAfter += newGeometry.bends;
 	}
 	let meanNormalizedMovement = 0;
 	if (commonElements > 0) meanNormalizedMovement = totalMovement / commonElements;
@@ -252,6 +289,10 @@ function stability(
 		commonRelations,
 		portChanges,
 		pathChanges,
+		commonRouteLengthBefore,
+		commonRouteLengthAfter,
+		commonBendsBefore,
+		commonBendsAfter,
 	};
 }
 
