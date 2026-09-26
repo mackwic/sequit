@@ -5,7 +5,7 @@ export interface PerformanceMeasurement {
 	readonly size: number | string;
 	readonly metric: string;
 	readonly observedMs: number;
-	readonly budgetMs: number;
+	readonly budgetMs: number | undefined;
 	readonly details: unknown;
 }
 

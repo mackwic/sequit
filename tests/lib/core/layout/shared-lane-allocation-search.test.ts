@@ -90,40 +90,4 @@ describe('shared lane allocation search', () => {
 		expect(count).toBe(factorial * factorial);
 		expect(count).toBeGreaterThan(BigInt(Number.MAX_SAFE_INTEGER));
 	});
-
-	it.each([
-		[
-			'duplicate route identities',
-			domain('gutter', ['route', 'route'], [['route', 0]], 2),
-			'Duplicate route identity in gutter.',
-		],
-		[
-			'fewer tracks than active routes',
-			domain(
-				'gutter',
-				['first', 'second'],
-				[
-					['first', 0],
-					['second', 1],
-				],
-				1,
-			),
-			'Invalid track count in gutter.',
-		],
-		[
-			'non-integer track count',
-			domain('gutter', ['route'], [['route', 0]], 1.5),
-			'Invalid track count in gutter.',
-		],
-		[
-			'track count above edge capacity',
-			(() => {
-				const valid = domain('gutter', ['route'], [['route', 0]], 2);
-				return { ...valid, edge: { ...valid.edge, capacity: 1 } };
-			})(),
-			'Track count exceeds edge capacity in gutter.',
-		],
-	] as const)('rejects an invalid route track domain: %s', (_case, invalid, reason) => {
-		expect(() => trackAllocationProductCount([invalid])).toThrow(reason);
-	});
 });

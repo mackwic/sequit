@@ -10,8 +10,13 @@ import {
 	RegionIncidentUnknownCode,
 	type RegionSolvedIncident,
 } from './region-incident-contract';
-import { makeSharedLaneFrame, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
-import { type SharedLaneGeometry, validateSharedLaneGeometry } from './shared-lane-geometry';
+import type { SharedLaneFrame } from './shared-lane-frame';
+import {
+	certifySharedLaneGeometry,
+	type SharedLaneGeometry,
+	type SharedLaneGeometryCertificate,
+	validateSharedLaneGeometryWithCertificate,
+} from './shared-lane-geometry';
 import {
 	type IncidentSearchState,
 	rejectIncidentAlternative,
@@ -19,23 +24,19 @@ import {
 	searchWitness,
 	unknownCode,
 } from './shared-lane-incident-search';
-import { interiorPassageAllocation } from './shared-lane-interior-passage';
 import { validateSharedLaneInteriorPassage } from './shared-lane-interior-validation';
+import { interiorParallelGeometry, transverseGeometry } from './shared-lane-layout-geometry';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import {
 	materializeParallelGeometry,
 	type SharedLaneAllocationSearchWitness,
 } from './shared-lane-route-candidates';
-import { searchParallelRouteAllocations } from './shared-lane-route-search';
-import { twoPassStrategies } from './shared-lane-route-strategies';
-import { allocateParallelRoutes, routeSharedLanes } from './shared-lane-routing';
-import { makeTransverseLaneFrame } from './shared-transverse-frame';
 import {
-	allocateTransverseRoutes,
-	routeTransverseLanes,
-	TransverseRouteOrder,
-} from './shared-transverse-routing';
+	searchParallelRouteAllocations,
+	searchTransverseRouteOrders,
+} from './shared-lane-route-search';
+import type { TransverseRouteOrder } from './shared-transverse-routing';
 
 export enum SharedLaneLayoutStatus {
 	Selected = 'selected',
@@ -72,57 +73,6 @@ export interface SharedLaneSolveOptions extends LayoutOptions {
 	readonly incidents?: readonly RegionIncidentContract[];
 }
 
-function geometryDimensions(
-	input: SharedLaneInput,
-	crossExtent: number,
-	longExtent: number,
-): {
-	readonly width: number;
-	readonly height: number;
-} {
-	if (input.vertical) return { width: crossExtent, height: longExtent };
-	return { width: longExtent, height: crossExtent };
-}
-
-function interiorParallelGeometry(
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-): SharedLaneGeometry | undefined {
-	const frame = makeSharedLaneFrame(input, ports);
-	const passage = interiorPassageAllocation(input, frame, ports);
-	if (passage === undefined) return undefined;
-	const dimensions = geometryDimensions(input, frame.crossExtent, frame.longExtent);
-	return {
-		...dimensions,
-		lanes: frame.lanes,
-		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, {
-			...allocateParallelRoutes(input, frame),
-			passage,
-		}),
-	};
-}
-
-function transverseGeometry(
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-	order: TransverseRouteOrder,
-): SharedLaneGeometry {
-	const frame = makeTransverseLaneFrame(input, ports);
-	const dimensions = geometryDimensions(input, frame.crossExtent, frame.longExtent);
-	return {
-		...dimensions,
-		lanes: frame.lanes,
-		elements: frame.elements,
-		relations: routeTransverseLanes(
-			input,
-			frame,
-			allocateTransverseRoutes(input, frame, order),
-			order,
-		),
-	};
-}
-
 function selectedLayout(
 	geometry: SharedLaneGeometry,
 	incidents: readonly RegionSolvedIncident[],
@@ -150,6 +100,15 @@ function emptyWitness(): RegionIncidentSearchWitness {
 	return { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
 }
 
+function completedIncidentWitness(
+	state: IncidentSearchState,
+	contracts: readonly RegionIncidentContract[],
+): RegionIncidentSearchWitness {
+	const witness = searchWitness(state);
+	if (contracts.length === 0) return witness;
+	return { ...witness, exhaustive: false };
+}
+
 interface GeometryAttemptInput {
 	readonly graph: LogicGraph;
 	readonly geometry: SharedLaneGeometry;
@@ -157,16 +116,21 @@ interface GeometryAttemptInput {
 	readonly contracts: readonly RegionIncidentContract[];
 	readonly acceptBridges: boolean;
 	readonly state: IncidentSearchState;
+	readonly certificate: SharedLaneGeometryCertificate;
 }
 
 function geometryAttempt(input: GeometryAttemptInput): SelectedSharedLaneLayout | string {
-	const { graph, geometry, ports, contracts, acceptBridges, state } = input;
-	const issue = validateSharedLaneGeometry(graph, geometry, SHARED_LANE_CLEARANCE, acceptBridges);
+	const { graph, geometry, ports, contracts, acceptBridges, state, certificate } = input;
+	const issue = validateSharedLaneGeometryWithCertificate(
+		graph,
+		geometry,
+		certificate,
+		acceptBridges,
+	);
 	if (issue !== undefined) {
 		const first = contracts[0];
 		const side = first?.allowedSides[0];
 		if (first !== undefined && side !== undefined) {
-			state.attempted += 1;
 			rejectIncidentAlternative(state, first, side, {
 				code: RegionIncidentRejectionCode.GeometryInvalid,
 				reason: issue,
@@ -213,6 +177,7 @@ function parallelAttempt({
 			firstIssue = issue;
 		}
 	}
+	const certificatesByFrame = new WeakMap<SharedLaneFrame, SharedLaneGeometryCertificate>();
 	const search = searchParallelRouteAllocations({
 		input,
 		ports,
@@ -225,7 +190,20 @@ function parallelAttempt({
 				candidate.order,
 				candidate.allocation,
 			);
-			const attempt = geometryAttempt({ graph, geometry, ports, contracts, acceptBridges, state });
+			let certificate = certificatesByFrame.get(candidate.frame);
+			if (certificate === undefined) {
+				certificate = certifySharedLaneGeometry(graph, geometry);
+				certificatesByFrame.set(candidate.frame, certificate);
+			}
+			const attempt = geometryAttempt({
+				graph,
+				geometry,
+				ports,
+				contracts,
+				acceptBridges,
+				state,
+				certificate,
+			});
 			if (typeof attempt !== 'string') return attempt;
 			firstIssue ??= attempt;
 			return undefined;
@@ -235,7 +213,7 @@ function parallelAttempt({
 		return selectedLayout(
 			search.selected.geometry,
 			search.selected.incidents,
-			search.selected.witness,
+			completedIncidentWitness(state, contracts),
 			search.allocationWitness,
 		);
 	let code = unknownCode(state);
@@ -263,30 +241,49 @@ function transverseAttempt({
 		candidateId: '',
 		rejectedAlternatives: [],
 	};
-	for (const strategy of twoPassStrategies('transverse', [
-		TransverseRouteOrder.Canonical,
-		TransverseRouteOrder.Nested,
-	])) {
-		state.strategyId = strategy.id;
-		state.candidateId = strategy.id;
-		const geometry = transverseGeometry(input, ports, strategy.order);
-		const attempt = geometryAttempt({
-			graph,
-			geometry,
-			ports,
-			contracts,
-			acceptBridges: strategy.acceptBridges,
-			state,
-		});
-		if (typeof attempt !== 'string') return attempt;
-		firstIssue ??= attempt;
-		if (!state.exhaustive) break;
-	}
+	const preparedByOrder = new Map<
+		TransverseRouteOrder,
+		{ readonly geometry: SharedLaneGeometry; readonly certificate: SharedLaneGeometryCertificate }
+	>();
+	const search = searchTransverseRouteOrders({
+		evaluate: (strategy) => {
+			state.strategyId = strategy.id;
+			state.candidateId = strategy.id;
+			let prepared = preparedByOrder.get(strategy.order);
+			if (prepared === undefined) {
+				const geometry = transverseGeometry(input, ports, strategy.order);
+				prepared = { geometry, certificate: certifySharedLaneGeometry(graph, geometry) };
+				preparedByOrder.set(strategy.order, prepared);
+			}
+			const selected = geometryAttempt({
+				graph,
+				geometry: prepared.geometry,
+				ports,
+				contracts,
+				acceptBridges: strategy.acceptBridges,
+				state,
+				certificate: prepared.certificate,
+			});
+			if (typeof selected === 'string') {
+				firstIssue ??= selected;
+				return undefined;
+			}
+			return selected;
+		},
+	});
+	if (search.selected !== undefined)
+		return selectedLayout(
+			search.selected.geometry,
+			search.selected.incidents,
+			completedIncidentWitness(state, contracts),
+			search.allocationWitness,
+		);
 	return {
 		status: SharedLaneLayoutStatus.Unknown,
 		code: unknownCode(state),
 		reason: defined(firstIssue),
 		witness: searchWitness(state),
+		allocationWitness: search.allocationWitness,
 	};
 }
 

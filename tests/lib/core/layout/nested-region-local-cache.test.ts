@@ -398,6 +398,30 @@ describe('per-projection local region layout cache', () => {
 		expect(regionLocalLayoutKey(document, measurements)).not.toBe(key);
 	});
 
+	it('preserves absent incident evidence on a warm local cache hit', () => {
+		const document = regionDocument();
+		const measurements = prepareLayoutDocument(document).measurements;
+		const cache = new RegionLocalLayoutCache();
+		const leaf = solveRegionLeafLayout({
+			document,
+			measurements,
+			leafPolicy: LayoutPolicy.Layered,
+		});
+		const value = { layout: leaf.layout, ranks: leaf.ranks };
+		let computations = 0;
+		const compute = () => {
+			computations += 1;
+			return value;
+		};
+		const first = cache.getOrCompute(document, measurements, LayoutPolicy.Layered, compute);
+		const hit = cache.getOrCompute(document, measurements, LayoutPolicy.Layered, compute);
+		expect(hit).toEqual(first);
+		expect(hit).not.toBe(first);
+		expect(hit.incidents).toBeUndefined();
+		expect(hit.witness).toBeUndefined();
+		expect(computations).toBe(1);
+	});
+
 	it('invalidates a real leaf for a local metric edit and protects route and rank copies', () => {
 		const source = regionDocument();
 		const local: LogicDocument = {

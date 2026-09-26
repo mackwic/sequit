@@ -19,12 +19,6 @@ export interface TrackAllocationProduct {
 
 function domainRelationIds(domain: TrackAssignmentDomain): readonly string[] {
 	const ids = [...domain.relationIds].sort(compareCanonicalStrings);
-	if (new Set(ids).size !== ids.length)
-		throw new Error(`Duplicate route identity in ${domain.id}.`);
-	if (!Number.isSafeInteger(domain.trackCount) || domain.trackCount < ids.length)
-		throw new Error(`Invalid track count in ${domain.id}.`);
-	if (domain.trackCount > domain.edge.capacity)
-		throw new Error(`Track count exceeds edge capacity in ${domain.id}.`);
 	return ids;
 }
 

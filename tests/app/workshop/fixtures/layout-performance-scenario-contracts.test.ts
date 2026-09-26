@@ -4,7 +4,13 @@ import { applyLayoutPerformanceInsertion } from '../../../../src/app/workshop/fi
 import { LayoutPerformanceScenarioBuilder } from '../../../../src/app/workshop/fixtures/layout-performance/layout-performance-scenario-builder';
 import { LAYOUT_PERFORMANCE_SCENARIO_NAMES } from '../../../../src/app/workshop/fixtures/layout-performance/scenario-name';
 import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../../../src/app/workshop/fixtures/layout-performance/scenarios';
-import { EndpointKind, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	EndpointKind,
+	LaneOrientation,
+	LayoutPolicy,
+	type LogicDocument,
+} from '../../../../src/lib/core/document/logic-document';
+import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
@@ -73,6 +79,31 @@ describe('layout performance scenario contracts', () => {
 		);
 		expect(new Set(LAYOUT_PERFORMANCE_SCENARIOS.map(({ name }) => name)).size).toBe(
 			LAYOUT_PERFORMANCE_SCENARIO_NAMES.length,
+		);
+	});
+
+	it('includes a four-route shared-lane allocation stress scenario', async () => {
+		const scenario = LAYOUT_PERFORMANCE_SCENARIOS.find(
+			(candidate) => candidate.name === 'lane-allocations',
+		);
+		if (scenario === undefined) throw new Error('Lane allocation performance scenario is missing');
+		const snapshot = scenario.createBuilder().buildSnapshot(10);
+		const validation = validateLogicDocument(snapshot.document);
+		expect(validation.ok, JSON.stringify(validation)).toBe(true);
+		const presentation = snapshot.document.presentation;
+		if (presentation === undefined)
+			throw new Error('Lane performance fixture is missing its root presentation');
+		expect(presentation.policy).toBe(LayoutPolicy.Layered);
+		expect(presentation.laneOrientation).toBe(LaneOrientation.Parallel);
+		expect(presentation.lanes.map(({ id }) => id)).toEqual(['A', 'B', 'C']);
+		expect(snapshot.document.nodes.filter(({ laneId }) => laneId !== 'C')).toHaveLength(4);
+		expect(snapshot.document.nodes.filter(({ laneId }) => laneId === 'C')).toHaveLength(6);
+		expect(snapshot.document.relations).toHaveLength(4);
+		expect(snapshot.metadata).toMatchObject({ laneCount: 3, routeCount: 4 });
+		const prepared = buildPreparedScenarioTwice(scenario, 10)[0];
+		const layout = await layoutPreparedScenario(prepared);
+		expect(layout.relations.map(({ id }) => id).sort()).toEqual(
+			snapshot.document.relations.map(({ id }) => id).sort(),
 		);
 	});
 

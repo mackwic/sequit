@@ -236,6 +236,54 @@ describe('persisted lanes in a region leaf', () => {
 		expect(next).toEqual(solve(edited));
 	});
 
+	it('recomputes only the changed lane leaf and reuses foreign leaves', () => {
+		const source = fixture(LaneOrientation.Parallel, true);
+		const cache = new RegionLocalLayoutCache();
+		const first = solve(source, cache);
+		const newNode = {
+			kind: EndpointKind.Node,
+			id: 'follow-up',
+			natureId: 'task',
+			regionId: 'shared',
+			laneId: 'service',
+			markdown: 'Follow up',
+			layoutOrder: orderKey('a9'),
+		} as const;
+		const updated = {
+			...source,
+			nodes: [...source.nodes, newNode],
+			relations: [
+				...source.relations,
+				{ id: 'handoff-follow-up', from: 'delivery', to: 'follow-up' },
+			],
+		};
+		const sizes: LayoutMeasurements = {
+			...measurements,
+			nodes: new Map([...measurements.nodes, ['follow-up', { width: 112, height: 64 }]]),
+		};
+		const before = cache.stats;
+		const incremental = solve(updated, cache, sizes);
+		expect(incremental).toEqual(solve(updated, new RegionLocalLayoutCache(), sizes));
+		expect(incremental.elements.map(({ id }) => id)).toContain('follow-up');
+		expect(first.elements.map(({ id }) => id)).not.toContain('follow-up');
+		expect(cache.stats.misses - before.misses).toBe(1);
+		expect(cache.stats.hits - before.hits).toBe(2);
+
+		const beforeContract = cache.stats;
+		const contracted = {
+			...updated,
+			relations: [
+				...updated.relations,
+				{ id: 'follow-up-cross', from: 'follow-up', to: 'neighbor' },
+			],
+		};
+		const withContract = solve(contracted, cache, sizes);
+		expect(withContract).toEqual(solve(contracted, new RegionLocalLayoutCache(), sizes));
+		expect(withContract.relations.map(({ id }) => id)).toContain('follow-up-cross');
+		expect(cache.stats.misses - beforeContract.misses).toBe(2);
+		expect(cache.stats.hits - beforeContract.hits).toBe(1);
+	});
+
 	it.each([LaneOrientation.Parallel, LaneOrientation.Transverse])(
 		'keeps a %s leaf incident local before crossing to an ordinary sibling',
 		(orientation) => {

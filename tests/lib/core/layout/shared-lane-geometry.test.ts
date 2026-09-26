@@ -386,6 +386,21 @@ describe('independent shared lane geometry validation', () => {
 		expect(validateSharedLaneGeometry(graph, geometry)).toContain('overlaps its predecessor');
 	});
 
+	it('checks reversed transverse lane order independently', () => {
+		const { geometry } = witness();
+		const source = document();
+		const reversed: LogicDocument = {
+			...source,
+			layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+			presentation: {
+				...defined(source.presentation),
+				laneOrientation: LaneOrientation.Transverse,
+			},
+		};
+		const graph = prepareLayoutDocument(reversed).graph;
+		expect(validateSharedLaneGeometry(graph, geometry)).toContain('overlaps its predecessor');
+	});
+
 	it('requires an explicit presentation before checking a shared candidate', () => {
 		const { geometry } = witness();
 		const legacy = prepareLayoutDocument(validLogicDocument());

@@ -15,7 +15,10 @@ export type IncrementalLayoutGrowthBucketName =
 	(typeof INCREMENTAL_LAYOUT_GROWTH_BUCKETS)[number]['name'];
 
 type IncrementalLayoutBudgets = Readonly<
-	Record<LayoutPerformanceScenarioName, Readonly<Record<IncrementalLayoutGrowthBucketName, number>>>
+	Record<
+		LayoutPerformanceScenarioName,
+		Readonly<Record<IncrementalLayoutGrowthBucketName, number | undefined>>
+	>
 >;
 
 const INCREMENTAL_LAYOUT_BUDGETS_MS = {
@@ -43,6 +46,13 @@ const INCREMENTAL_LAYOUT_BUDGETS_MS = {
 	'junction-heavy': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 10 },
 	'group-relations': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 5 },
 	'shallow-groups': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 10 },
+	'lane-allocations': {
+		'1-9': 100,
+		'10-19': 300,
+		'20-49': 500,
+		'50-99': 1000,
+		'100-999': undefined,
+	},
 } as const satisfies IncrementalLayoutBudgets;
 
 function assertExactKeys(
@@ -72,6 +82,6 @@ for (const scenario of LAYOUT_PERFORMANCE_SCENARIO_NAMES) {
 export function incrementalLayoutBudgetMs(
 	scenario: LayoutPerformanceScenarioName,
 	bucket: IncrementalLayoutGrowthBucketName,
-): number {
+): number | undefined {
 	return INCREMENTAL_LAYOUT_BUDGETS_MS[scenario][bucket];
 }

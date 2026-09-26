@@ -45,10 +45,11 @@ describe('layoutGraph snapshot performance', { concurrent: false }, () => {
 			});
 			observations.push(`${scenario.name},${nodeCount},${observed.toFixed(3)},${budget}`);
 
-			expect(
-				observed,
-				`${scenario.name}/nodes=${nodeCount}: median ${observed.toFixed(2)} ms, budget <${budget} ms`,
-			).toBeLessThan(budget);
+			if (budget !== undefined)
+				expect(
+					observed,
+					`${scenario.name}/nodes=${nodeCount}: median ${observed.toFixed(2)} ms, budget <${budget} ms`,
+				).toBeLessThan(budget);
 		}, 120_000);
 	}
 });

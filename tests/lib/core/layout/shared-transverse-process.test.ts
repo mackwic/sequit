@@ -217,6 +217,20 @@ describe('S | SD | C shared process', () => {
 			'cross without a bridge',
 		);
 		expect(validateSharedLaneGeometry(prepared.graph, nested)).toBeUndefined();
+		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+		expect(selected.geometry.relations).toEqual(nested.relations);
+		expect(selected.allocationWitness?.passes).toEqual([
+			{
+				acceptBridges: false,
+				attempted: 2,
+				total: '2',
+				exhaustive: true,
+				truncated: false,
+				searchStarted: true,
+			},
+		]);
 	});
 
 	it.each(DIRECTIONS)(

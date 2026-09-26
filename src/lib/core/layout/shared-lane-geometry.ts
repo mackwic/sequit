@@ -1,7 +1,8 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined, LaneOrientation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { Bounds } from './layout-types';
+import type { Bounds, LayoutElement } from './layout-types';
+import { SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import {
 	crossEnd,
 	crossStart,
@@ -68,24 +69,160 @@ function validateBoxes(graph: LogicGraph, geometry: SharedLaneGeometry): string 
 	return undefined;
 }
 
-function validateBoxSeparation(geometry: SharedLaneGeometry): string | undefined {
-	const boxes = [...geometry.elements].sort((a, b) => compareCanonicalStrings(a.id, b.id));
-	for (let first = 0; first < boxes.length; first += 1) {
-		const a = defined(boxes[first]);
-		for (let second = first + 1; second < boxes.length; second += 1) {
-			const b = defined(boxes[second]);
-			if (overlapping(a.bounds, b.bounds)) return `Elements ${a.id} and ${b.id} overlap.`;
+interface IndexedElement {
+	readonly element: LayoutElement;
+	readonly index: number;
+}
+
+interface SpatialBounds {
+	readonly minX: number;
+	readonly minY: number;
+	readonly maxX: number;
+	readonly maxY: number;
+}
+
+enum BoxIndexNodeKind {
+	Leaf = 'leaf',
+	Branch = 'branch',
+}
+
+type BoxIndexNode =
+	| (SpatialBounds & {
+			readonly kind: BoxIndexNodeKind.Leaf;
+			readonly minimumIndex: number;
+			readonly maximumIndex: number;
+			readonly elements: readonly IndexedElement[];
+	  })
+	| (SpatialBounds & {
+			readonly kind: BoxIndexNodeKind.Branch;
+			readonly minimumIndex: number;
+			readonly maximumIndex: number;
+			readonly left: BoxIndexNode;
+			readonly right: BoxIndexNode;
+	  });
+
+const BOX_INDEX_LEAF_SIZE = 8;
+
+function elementBounds(elements: readonly IndexedElement[]): SpatialBounds {
+	const first = defined(elements[0]).element.bounds;
+	let minX = first.x;
+	let minY = first.y;
+	let maxX = first.x + first.width;
+	let maxY = first.y + first.height;
+	for (let index = 1; index < elements.length; index += 1) {
+		const bounds = defined(elements[index]).element.bounds;
+		minX = Math.min(minX, bounds.x);
+		minY = Math.min(minY, bounds.y);
+		maxX = Math.max(maxX, bounds.x + bounds.width);
+		maxY = Math.max(maxY, bounds.y + bounds.height);
+	}
+	return { minX, minY, maxX, maxY };
+}
+
+function buildBoxIndex(elements: readonly IndexedElement[]): BoxIndexNode {
+	const bounds = elementBounds(elements);
+	let minimumIndex = Number.MAX_SAFE_INTEGER;
+	let maximumIndex = -1;
+	for (const { index } of elements) {
+		minimumIndex = Math.min(minimumIndex, index);
+		maximumIndex = Math.max(maximumIndex, index);
+	}
+	if (elements.length <= BOX_INDEX_LEAF_SIZE)
+		return {
+			...bounds,
+			kind: BoxIndexNodeKind.Leaf,
+			minimumIndex,
+			maximumIndex,
+			elements,
+		};
+
+	const splitX = bounds.maxX - bounds.minX >= bounds.maxY - bounds.minY;
+	const ordered = [...elements].sort((left, right) => {
+		const leftBounds = left.element.bounds;
+		const rightBounds = right.element.bounds;
+		let leftCenter = leftBounds.x + leftBounds.width / 2;
+		let rightCenter = rightBounds.x + rightBounds.width / 2;
+		if (!splitX) {
+			leftCenter = leftBounds.y + leftBounds.height / 2;
+			rightCenter = rightBounds.y + rightBounds.height / 2;
 		}
+		return leftCenter - rightCenter || left.index - right.index;
+	});
+	const middle = Math.floor(ordered.length / 2);
+	const left = buildBoxIndex(ordered.slice(0, middle));
+	const right = buildBoxIndex(ordered.slice(middle));
+	const leftMinimumIndex = left.minimumIndex;
+	const rightMinimumIndex = right.minimumIndex;
+	const leftMaximumIndex = left.maximumIndex;
+	const rightMaximumIndex = right.maximumIndex;
+	return {
+		...bounds,
+		kind: BoxIndexNodeKind.Branch,
+		minimumIndex: Math.min(leftMinimumIndex, rightMinimumIndex),
+		maximumIndex: Math.max(leftMaximumIndex, rightMaximumIndex),
+		left,
+		right,
+	};
+}
+
+function intersects(bounds: Bounds, index: SpatialBounds): boolean {
+	const right = bounds.x + bounds.width;
+	const bottom = bounds.y + bounds.height;
+	const overlapsX = bounds.x < index.maxX && right > index.minX;
+	const overlapsY = bounds.y < index.maxY && bottom > index.minY;
+	return overlapsX && overlapsY;
+}
+
+function firstOverlapAfter(
+	query: IndexedElement,
+	node: BoxIndexNode,
+	maximumCandidateIndex: number,
+): number | undefined {
+	const isBeforeQuery = node.maximumIndex <= query.index;
+	const isAfterCandidates = node.minimumIndex >= maximumCandidateIndex;
+	if (isBeforeQuery || isAfterCandidates) return undefined;
+	if (!intersects(query.element.bounds, node)) return undefined;
+	if (node.kind === BoxIndexNodeKind.Leaf) {
+		let first: number | undefined;
+		for (const candidate of node.elements) {
+			const firstIndex = first ?? maximumCandidateIndex;
+			if (candidate.index <= query.index || candidate.index >= firstIndex) continue;
+			if (overlapping(query.element.bounds, candidate.element.bounds)) first = candidate.index;
+		}
+		return first;
+	}
+	const left = firstOverlapAfter(query, node.left, maximumCandidateIndex);
+	const right = firstOverlapAfter(query, node.right, left ?? maximumCandidateIndex);
+	if (left === undefined) return right;
+	if (right === undefined) return left;
+	return Math.min(left, right);
+}
+
+function validateBoxSeparation(geometry: SharedLaneGeometry): string | undefined {
+	const sorted = [...geometry.elements].sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	const elements = sorted.map((element, index) => ({ element, index }));
+	if (elements.length < 2) return undefined;
+	const index = buildBoxIndex(elements);
+	for (const current of elements) {
+		const overlap = firstOverlapAfter(current, index, Number.MAX_SAFE_INTEGER);
+		if (overlap !== undefined)
+			return `Elements ${current.element.id} and ${defined(sorted[overlap]).id} overlap.`;
 	}
 	return undefined;
 }
 
-/** A candidate is checked against the source graph, not against the solver's plans. */
-export function validateSharedLaneGeometry(
+export interface SharedLaneGeometryCertificate {
+	readonly graph: LogicGraph;
+	readonly lanes: SharedLaneGeometry['lanes'];
+	readonly elements: SharedLaneGeometry['elements'];
+	readonly width: number;
+	readonly height: number;
+	readonly issue: string | undefined;
+}
+
+function validateStaticGeometry(
 	graph: LogicGraph,
 	geometry: SharedLaneGeometry,
-	clearance = 12,
-	acceptBridges = false,
 ): string | undefined {
 	if (graph.document.presentation === undefined) return 'Explicit lanes are required.';
 	if (!Number.isFinite(geometry.width) || !Number.isFinite(geometry.height))
@@ -95,7 +232,59 @@ export function validateSharedLaneGeometry(
 	if (laneIssue !== undefined) return laneIssue;
 	const boxIssue = validateBoxes(graph, geometry);
 	if (boxIssue !== undefined) return boxIssue;
-	const overlapIssue = validateBoxSeparation(geometry);
-	if (overlapIssue !== undefined) return overlapIssue;
+	return validateBoxSeparation(geometry);
+}
+
+export function certifySharedLaneGeometry(
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+): SharedLaneGeometryCertificate {
+	return {
+		graph,
+		lanes: geometry.lanes,
+		elements: geometry.elements,
+		width: geometry.width,
+		height: geometry.height,
+		issue: validateStaticGeometry(graph, geometry),
+	};
+}
+
+function certificateMatches(
+	certificate: SharedLaneGeometryCertificate,
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+): boolean {
+	const sameGraph = certificate.graph === graph;
+	const sameLanes = certificate.lanes === geometry.lanes;
+	const sameElements = certificate.elements === geometry.elements;
+	const sameWidth = certificate.width === geometry.width;
+	const sameHeight = certificate.height === geometry.height;
+	const sameStaticGeometry = sameGraph && sameLanes && sameElements;
+	const sameDimensions = sameWidth && sameHeight;
+	return sameStaticGeometry && sameDimensions;
+}
+
+/** A candidate is checked against the source graph, not against the solver's plans. */
+export function validateSharedLaneGeometry(
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+	clearance = SHARED_LANE_CLEARANCE,
+	acceptBridges = false,
+): string | undefined {
+	const validation = validateStaticGeometry(graph, geometry);
+	if (validation !== undefined) return validation;
 	return validateSharedLaneRoutes(graph, geometry, clearance, acceptBridges);
+}
+
+export function validateSharedLaneGeometryWithCertificate(
+	graph: LogicGraph,
+	geometry: SharedLaneGeometry,
+	certificate: SharedLaneGeometryCertificate,
+	acceptBridges: boolean,
+): string | undefined {
+	let validation: string | undefined;
+	if (certificateMatches(certificate, graph, geometry)) validation = certificate.issue;
+	else validation = validateStaticGeometry(graph, geometry);
+	if (validation !== undefined) return validation;
+	return validateSharedLaneRoutes(graph, geometry, SHARED_LANE_CLEARANCE, acceptBridges);
 }

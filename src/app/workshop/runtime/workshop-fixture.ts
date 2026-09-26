@@ -21,6 +21,7 @@ export const workshopFixtureLabels: Readonly<Record<LayoutPerformanceScenarioNam
 	'junction-heavy': 'Chaîne avec jonctions XOR',
 	'group-relations': 'Relations entre groupes',
 	'shallow-groups': 'Groupes côte à côte',
+	'lane-allocations': 'Voies partagées · allocations de routes',
 };
 
 function describeFixture(

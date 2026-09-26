@@ -11,6 +11,7 @@ export const LAYOUT_PERFORMANCE_SCENARIO_NAMES = [
 	'junction-heavy',
 	'group-relations',
 	'shallow-groups',
+	'lane-allocations',
 ] as const;
 
 export type LayoutPerformanceScenarioName = (typeof LAYOUT_PERFORMANCE_SCENARIO_NAMES)[number];

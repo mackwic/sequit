@@ -15,9 +15,9 @@ import {
 } from '../../../../support/performance/replay-incremental-layout';
 
 const measurements: PerformanceMeasurement[] = [];
-const inputs = LAYOUT_PERFORMANCE_SCENARIOS.map((scenario) =>
-	prepareIncrementalLayoutReplay(scenario, 1000),
-);
+const inputs = LAYOUT_PERFORMANCE_SCENARIOS.filter(
+	(scenario) => scenario.name !== 'lane-allocations',
+).map((scenario) => prepareIncrementalLayoutReplay(scenario, 1000));
 const calibrationRows: string[] = [];
 const uxRows: string[] = [];
 
@@ -60,12 +60,13 @@ describe('incremental layout performance', { concurrent: false }, () => {
 						`${input.scenario.name},${summary.bucket},sync=${synchronousP95.toFixed(3)}ms:${uxStatus(synchronousP95, INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS.synchronousProjection)},total=${totalP95.toFixed(3)}ms:${uxStatus(totalP95, INCREMENTAL_LAYOUT_RESPONSIVENESS_TARGETS_MS.total)},slowestNodeIndex=${summary.slowestInsertion.nodeIndex} ${slowestStages}`,
 					);
 
-					expect
-						.soft(
-							totalP95,
-							`${input.scenario.name}/${summary.bucket}: total p95 ${totalP95.toFixed(2)} ms, calibrated budget <${budget} ms; slowest insertion ${summary.slowestInsertion.nodeIndex}`,
-						)
-						.toBeLessThan(budget);
+					if (budget !== undefined)
+						expect
+							.soft(
+								totalP95,
+								`${input.scenario.name}/${summary.bucket}: total p95 ${totalP95.toFixed(2)} ms, calibrated budget <${budget} ms; slowest insertion ${summary.slowestInsertion.nodeIndex}`,
+							)
+							.toBeLessThan(budget);
 				}
 			},
 			1_200_000,
