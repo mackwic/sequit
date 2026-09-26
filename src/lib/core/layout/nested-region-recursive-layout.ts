@@ -1,6 +1,6 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { RouteBridgeCache } from './bridge-oracle';
+import type { RouteBridgeCache } from './bridges/bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from './layout-types';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';

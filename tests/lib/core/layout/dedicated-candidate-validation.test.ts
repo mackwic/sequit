@@ -11,7 +11,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridge-oracle';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	compareDedicatedRouteScores,
 	DedicatedCandidateRejectionCode,

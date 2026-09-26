@@ -4,8 +4,8 @@ import { realK32Fixture } from '../../../../../src/app/workshop/solver-prototype
 import { LayoutDirection } from '../../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../../src/lib/core/graph/topological-ranks';
-import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridge-contact';
-import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridge-oracle';
+import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridges/bridge-contact';
+import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contract/candidate-face-branches';
 import { materializeIndependentAdjacentBridgeGeometry } from '../../../../../src/lib/core/layout/contract/independent-adjacent-geometry';
 import {

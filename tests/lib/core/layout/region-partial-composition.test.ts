@@ -7,7 +7,7 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	RegionCompositionStatus,
 	type RegionInput,

@@ -29,9 +29,9 @@ import {
 	FoldedGroupUnknownReason,
 	FoldedSideFace,
 	tryLayoutFoldedGroup,
-} from '../../../../src/lib/core/layout/folded-group-layout';
+} from '../../../../src/lib/core/layout/folded/folded-group-layout';
+import { normalizeVisibleOwnership } from '../../../../src/lib/core/layout/folded/visible-ownership';
 import type { LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';
-import { normalizeVisibleOwnership } from '../../../../src/lib/core/layout/visible-ownership';
 
 const directions = [
 	LayoutDirection.TopToBottom,

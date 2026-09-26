@@ -1,7 +1,7 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { RoutedPath } from './bridge-oracle';
+import type { RoutedPath } from './bridges/bridge-oracle';
 import { satisfyMetricDemands } from './contract/metric-demand';
 import type { RegionGeometryDiagnostic } from './geometry/region-geometry-diagnostic';
 import {

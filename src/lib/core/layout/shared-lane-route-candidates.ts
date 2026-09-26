@@ -1,6 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
-import { routeRuns, type RouteWorkCharge, validatedBridges } from './bridge-oracle';
+import { routeRuns, type RouteWorkCharge, validatedBridges } from './bridges/bridge-oracle';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
 import {
 	type TrackAllocationProduct,

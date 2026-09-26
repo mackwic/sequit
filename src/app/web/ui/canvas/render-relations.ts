@@ -4,7 +4,7 @@ import {
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
-} from '../../../../lib/core/layout/bridge-oracle';
+} from '../../../../lib/core/layout/bridges/bridge-oracle';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../lib/core/layout/layout-settings';
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
 import { parallelSegmentsAreClose, relationColors } from './relation-colors';

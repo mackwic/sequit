@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	unbridgedContacts,
 	unbridgedCrossings,
-} from '../../../../src/lib/core/layout/bridge-contact';
+} from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import {
 	type LayoutBridge,
 	type RoutedPath,
@@ -14,7 +14,7 @@ import {
 	strictCrossings,
 	validatedBridges,
 	validatedBridgesCached,
-} from '../../../../src/lib/core/layout/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 

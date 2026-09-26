@@ -7,13 +7,13 @@ import {
 	type RouteContact,
 	RouteContactKind,
 	unbridgedContacts,
-} from '../../../../src/lib/core/layout/bridge-contact';
+} from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import {
 	type LayoutBridge,
 	routeBridgeAnalysis,
 	type RoutedPath,
 	validatedBridges,
-} from '../../../../src/lib/core/layout/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import { contactFailure } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-contacts';
 import type { LayoutRelation, Point } from '../../../../src/lib/core/layout/layout-types';

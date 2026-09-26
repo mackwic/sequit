@@ -1,5 +1,5 @@
-import type { RouteBridgeAnalysis } from '../bridge-oracle';
-import { routeBridgeAnalysis } from '../bridge-oracle';
+import type { RouteBridgeAnalysis } from '../bridges/bridge-oracle';
+import { routeBridgeAnalysis } from '../bridges/bridge-oracle';
 import type { LayoutResult } from '../layout-types';
 import type { DedicatedRouteScore } from './types';
 

@@ -1,5 +1,5 @@
 import { defined } from '../document/logic-document';
-import type { RouteWorkCharge } from './bridge-oracle';
+import type { RouteWorkCharge } from './bridges/bridge-oracle';
 import type { RegionIncidentContract, RegionSolvedIncident } from './region-incident-contract';
 import { bestWithinBudgetStream } from './search/bounded-search';
 import type { SharedLaneGeometry } from './shared-lane-geometry';

@@ -1,19 +1,24 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined, EndpointKind, GroupState, type LogicDocument } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
-import type { TopologicalRanks } from '../graph/topological-ranks';
+import { compareCanonicalStrings } from '../../canonical-string';
 import {
-	type FoldedGeometry,
-	type FoldedSideFace,
-	geometryFromMeasurements,
-} from './folded-group-geometry';
+	defined,
+	EndpointKind,
+	GroupState,
+	type LogicDocument,
+} from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
+import type { TopologicalRanks } from '../../graph/topological-ranks';
 import type {
 	GroupMeasurement,
 	LayoutMeasurements,
 	LayoutResult,
 	Point,
 	Size,
-} from './layout-types';
+} from '../layout-types';
+import {
+	type FoldedGeometry,
+	type FoldedSideFace,
+	geometryFromMeasurements,
+} from './folded-group-geometry';
 import {
 	type NormalizedVisibleOwnership,
 	normalizeVisibleOwnership,

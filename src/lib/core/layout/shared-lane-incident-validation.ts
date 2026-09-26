@@ -1,5 +1,5 @@
 import { defined } from '../document/logic-document';
-import { disallowedProvisionalRouteContacts } from './bridge-contact';
+import { disallowedProvisionalRouteContacts } from './bridges/bridge-contact';
 import { orthogonal, samePoint } from './geometry/nested-region-geometry-primitives';
 import { hitsBox } from './geometry/shared-lane-geometry-primitives';
 import { PORT_INSET, PORT_SPACING } from './layout-settings';

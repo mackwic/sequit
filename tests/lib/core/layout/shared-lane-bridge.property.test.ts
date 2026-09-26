@@ -16,8 +16,8 @@ import {
 	type LogicRelation,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/shared-lane-frame';
 import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/shared-lane-geometry';
 import {

@@ -15,7 +15,7 @@ import {
 import {
 	FoldedGroupLayoutKind,
 	tryLayoutFoldedGroup,
-} from '../../../lib/core/layout/folded-group-layout';
+} from '../../../lib/core/layout/folded/folded-group-layout';
 import {
 	type SourceDocumentState,
 	SourceDocumentStateKind,

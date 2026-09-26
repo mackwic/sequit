@@ -1,5 +1,5 @@
 import { EndpointKind } from '../document/logic-document';
-import { disallowedProvisionalRouteContacts } from './bridge-contact';
+import { disallowedProvisionalRouteContacts } from './bridges/bridge-contact';
 import { inside, orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
 import type { Bounds, LayoutElement, LayoutResult, Point } from './layout-types';
 import { RegionPortalSide } from './region-composition-types';

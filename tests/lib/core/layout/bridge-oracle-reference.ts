@@ -7,7 +7,7 @@ import {
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
-} from '../../../../src/lib/core/layout/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../src/lib/core/layout/layout-settings';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
 

@@ -18,8 +18,8 @@ import {
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../../src/lib/core/graph/topological-ranks';
-import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridge-contact';
-import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridge-oracle';
+import { unbridgedCrossings } from '../../../../../src/lib/core/layout/bridges/bridge-contact';
+import { routeBridgeAnalysis } from '../../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { candidateFaceBranches } from '../../../../../src/lib/core/layout/contract/candidate-face-branches';
 import * as candidateLayout from '../../../../../src/lib/core/layout/contract/candidate-layout';
 import { materializeContractCandidate } from '../../../../../src/lib/core/layout/contract/candidate-layout';

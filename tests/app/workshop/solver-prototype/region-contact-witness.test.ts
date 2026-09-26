@@ -9,7 +9,7 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionCompositionStatus } from '../../../../src/lib/core/layout/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/region-composition-validation';
 

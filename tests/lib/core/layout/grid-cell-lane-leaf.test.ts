@@ -9,8 +9,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-presentation';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
-import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grid-cell-lane-validation';
 import type { Bounds, LayoutMeasurements } from '../../../../src/lib/core/layout/layout-types';

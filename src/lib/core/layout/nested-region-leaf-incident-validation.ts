@@ -1,6 +1,10 @@
 import { defined, type LogicRelation } from '../document/logic-document';
-import { disallowedRouteContacts, type EndpointRoute } from './bridge-contact';
-import { type LayoutBridge, type RouteBridgeCache, validatedBridgesCached } from './bridge-oracle';
+import { disallowedRouteContacts, type EndpointRoute } from './bridges/bridge-contact';
+import {
+	type LayoutBridge,
+	type RouteBridgeCache,
+	validatedBridgesCached,
+} from './bridges/bridge-oracle';
 import { orthogonal, segmentEnters } from './geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,

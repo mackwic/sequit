@@ -12,7 +12,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
 	disallowedProvisionalRouteContacts,
 	disallowedRouteContacts,
-} from '../../../../src/lib/core/layout/bridge-contact';
+} from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { satisfyMetricDemands } from '../../../../src/lib/core/layout/contract/metric-demand';
 import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
 import {

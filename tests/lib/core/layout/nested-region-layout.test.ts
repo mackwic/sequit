@@ -7,7 +7,7 @@ import {
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/nested-region-geometry';
 import {

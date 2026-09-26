@@ -1,12 +1,12 @@
-import { LayoutDirection } from '../document/logic-document';
+import { LayoutDirection } from '../../document/logic-document';
 import {
 	BASE_RANK_GAP,
 	OUTER_MARGIN,
 	PORT_INSET,
 	PORT_SPACING,
 	RAIL_SPACING,
-} from './layout-settings';
-import type { Bounds, GroupMeasurement, Point, Size } from './layout-types';
+} from '../layout-settings';
+import type { Bounds, GroupMeasurement, Point, Size } from '../layout-types';
 
 export enum FoldedSideFace {
 	Left = 'left',

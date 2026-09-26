@@ -1,5 +1,5 @@
 import type { LogicGraph } from '../graph/create-graph';
-import type { RouteBridgeCache } from './bridge-oracle';
+import type { RouteBridgeCache } from './bridges/bridge-oracle';
 import { validateNestedRegionLeafIncidents } from './nested-region-leaf-incident-validation';
 import { validateNestedPlacements } from './nested-region-placement-validation';
 import { validateNestedRouteOwnership } from './nested-region-route-validation';

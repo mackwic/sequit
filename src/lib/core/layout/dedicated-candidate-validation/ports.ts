@@ -1,5 +1,5 @@
 import { defined, EndpointKind, LayoutDirection } from '../../document/logic-document';
-import { sharedAtEndpoint } from '../bridge-contact-shared';
+import { sharedAtEndpoint } from '../bridges/bridge-contact-shared';
 import {
 	JUNCTION_PORT_INSET,
 	JUNCTION_PORT_SPACING,

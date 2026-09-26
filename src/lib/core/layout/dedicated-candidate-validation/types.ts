@@ -1,6 +1,6 @@
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
-import type { RouteBridgeAnalysis } from '../bridge-oracle';
+import type { RouteBridgeAnalysis } from '../bridges/bridge-oracle';
 import type { LayoutMeasurements, LayoutResult, Point } from '../layout-types';
 
 export enum DedicatedCandidateRejectionCode {

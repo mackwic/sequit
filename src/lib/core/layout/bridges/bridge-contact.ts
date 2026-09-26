@@ -1,4 +1,6 @@
-import { defined } from '../document/logic-document';
+import { defined } from '../../document/logic-document';
+import { samePoint } from '../geometry/nested-region-geometry-primitives';
+import type { Point } from '../layout-types';
 import {
 	type EndpointRoute,
 	sharedAtEndpoint,
@@ -15,8 +17,6 @@ import {
 	type RouteWorkCharge,
 	runInterval,
 } from './bridge-oracle';
-import { samePoint } from './geometry/nested-region-geometry-primitives';
-import type { Point } from './layout-types';
 
 export type { EndpointRoute } from './bridge-contact-shared';
 

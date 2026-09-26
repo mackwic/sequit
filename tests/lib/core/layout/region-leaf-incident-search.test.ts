@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import {
 	RegionCompositionStatus,
 	RegionPortalSide,

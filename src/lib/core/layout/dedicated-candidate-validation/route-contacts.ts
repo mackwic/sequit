@@ -1,7 +1,7 @@
 import { defined } from '../../document/logic-document';
-import { disallowedRouteContacts } from '../bridge-contact';
-import type { RouteBridgeAnalysis, RouteRun } from '../bridge-oracle';
-import { routeRuns } from '../bridge-oracle';
+import { disallowedRouteContacts } from '../bridges/bridge-contact';
+import type { RouteBridgeAnalysis, RouteRun } from '../bridges/bridge-oracle';
+import { routeRuns } from '../bridges/bridge-oracle';
 import type { LayoutRelation } from '../layout-types';
 import { routeBoundsOverlap, routePathBounds } from './route-geometry';
 import type { RejectedDedicatedCandidate } from './types';

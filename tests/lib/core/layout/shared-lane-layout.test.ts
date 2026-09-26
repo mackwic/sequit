@@ -20,8 +20,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
+import { routeRuns, validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/region-composition-types';
 import {
 	RegionIncidentRejectionCode,

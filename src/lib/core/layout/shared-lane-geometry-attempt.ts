@@ -1,5 +1,5 @@
 import type { LogicGraph } from '../graph/create-graph';
-import type { RouteWorkCharge } from './bridge-oracle';
+import type { RouteWorkCharge } from './bridges/bridge-oracle';
 import {
 	type RegionIncidentContract,
 	RegionIncidentRejectionCode,

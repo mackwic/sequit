@@ -1,6 +1,6 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { EndpointKind } from '../document/logic-document';
-import { routeBridgeAnalysis } from './bridge-oracle';
+import { routeBridgeAnalysis } from './bridges/bridge-oracle';
 import {
 	elementsById,
 	validateGroupContainment,

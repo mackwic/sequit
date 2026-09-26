@@ -10,7 +10,7 @@ import { realK32Fixture } from '../../../../src/app/workshop/solver-prototype/re
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { candidateFaceBranches } from '../../../../src/lib/core/layout/contract/candidate-face-branches';
 import {
 	materializeIndependentAdjacentBridgeGeometry,

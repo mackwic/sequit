@@ -5,7 +5,7 @@ import {
 } from '../../../lib/core/document/logic-document';
 import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
-import { routeBridgeAnalysis } from '../../../lib/core/layout/bridge-oracle';
+import { routeBridgeAnalysis } from '../../../lib/core/layout/bridges/bridge-oracle';
 import { candidateFaceBranches } from '../../../lib/core/layout/contract/candidate-face-branches';
 import {
 	type IndependentAdjacentComparison,

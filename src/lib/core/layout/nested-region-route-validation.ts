@@ -1,7 +1,7 @@
 import { defined, type LogicRelation } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import { unbridgedContacts } from './bridge-contact';
-import { validatedBridges } from './bridge-oracle';
+import { unbridgedContacts } from './bridges/bridge-contact';
+import { validatedBridges } from './bridges/bridge-oracle';
 import {
 	orthogonal,
 	samePoint,

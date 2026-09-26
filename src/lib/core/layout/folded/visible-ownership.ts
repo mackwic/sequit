@@ -1,6 +1,6 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
-import type { LogicGraph } from '../graph/create-graph';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
 
 interface VisibleSourceAnchor {
 	readonly endpointId: string;

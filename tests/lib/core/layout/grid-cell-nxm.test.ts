@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	crossingEndpointSide,
 	crossingIncidence,

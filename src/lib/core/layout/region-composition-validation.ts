@@ -1,5 +1,5 @@
 import { defined } from '../document/logic-document';
-import { type RouteBridgeCache, validatedBridgesCached } from './bridge-oracle';
+import { type RouteBridgeCache, validatedBridgesCached } from './bridges/bridge-oracle';
 import { finiteBounds, inside, overlaps } from './geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,

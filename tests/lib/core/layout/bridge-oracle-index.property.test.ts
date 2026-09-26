@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import {
 	routeBridgeAnalysis,
 	type RoutedPath,
-} from '../../../../src/lib/core/layout/bridge-oracle';
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { referenceRouteBridgeAnalysis } from './bridge-oracle-reference';
 

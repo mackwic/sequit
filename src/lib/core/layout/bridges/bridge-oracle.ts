@@ -1,8 +1,8 @@
-import { compareCanonicalStrings } from '../canonical-string';
-import { defined } from '../document/logic-document';
-import { strictCrossing, strictlyBetween } from './geometry/strict-crossing';
-import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from './layout-settings';
-import type { Point } from './layout-types';
+import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
+import { strictCrossing, strictlyBetween } from '../geometry/strict-crossing';
+import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../layout-settings';
+import type { Point } from '../layout-types';
 
 /** Optional elementary geometry-work charge for bounded route searches. */
 export type RouteWorkCharge = (units: number) => void;

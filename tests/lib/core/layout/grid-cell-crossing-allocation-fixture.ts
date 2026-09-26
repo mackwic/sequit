@@ -10,8 +10,8 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { TopologicalRanks } from '../../../../src/lib/core/graph/topological-ranks';
-import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
