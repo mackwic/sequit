@@ -4,7 +4,10 @@ import { crossingEndpointSide } from './grid-cell-crossing';
 import { type GridCrossingResources, gridCrossingResources } from './grid-cell-crossing-resources';
 import { gridCrossingOwnedRoutes } from './grid-cell-crossing-routing';
 import { type GridCellDisposition, layoutGridCellDisposition } from './grid-cell-disposition';
-import { gridCellInheritedIncidentPaths } from './grid-cell-inherited-incident';
+import {
+	gridCellInheritedIncidentPaths,
+	occupiedGridGutterColumns,
+} from './grid-cell-inherited-incident';
 import { routePlacedGridCellDisposition } from './grid-cell-layout';
 import { normalize } from './grid-cell-model';
 import {
@@ -186,6 +189,12 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 		model: context.model,
 		disposition: placement.disposition,
 		resources: placement.resources,
+		blockedExtraGutterColumns: occupiedGridGutterColumns(
+			context,
+			regionId,
+			input.incidentSides,
+			placement.input.cells,
+		),
 	});
 	if (attempt.status === GridCellLayoutStatus.Unknown) {
 		throw new UnknownRegionLeafLayoutError(

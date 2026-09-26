@@ -3,11 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
 	crossingEndpointSide,
+	crossingIncidence,
 	crossingRailX,
 	reservedRailTrack,
 } from '../../../../src/lib/core/layout/grid-cell-crossing';
+import { crossingAllocationCandidatesWithExtraTrack } from '../../../../src/lib/core/layout/grid-cell-crossing-allocation';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
+import { crossingAllocationGeometryCount } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grid-cell-crossing-resources';
+import { occupiedGridGutterColumns } from '../../../../src/lib/core/layout/grid-cell-inherited-incident';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -16,6 +20,7 @@ import {
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grid-cell-validation';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/nested-region-leaf-incident-validation';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/nested-region-recursive-layout';
+import type { RecursiveContext } from '../../../../src/lib/core/layout/nested-region-recursive-model-adapter';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -323,6 +328,54 @@ describe('N by M grid region arrangement', () => {
 		const grid = attempt.regions.find(({ id }) => id === 'grid');
 		if (grid === undefined) throw new Error('Missing parent grid.');
 		expect(route.points.some(({ x }) => x === localRail)).toBe(true);
+		// The reserved rail is already occupied by b-out. A phase-piste candidate must not
+		// allocate that same rail to a-b, even if other column gutters can still grow.
+		const context = {
+			graph: prepared.graph,
+			model: normalized.model,
+			measurements: prepared.measurements,
+			cache: undefined,
+			ownershipByRelationId: new Map(
+				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
+			),
+		} satisfies RecursiveContext;
+		const blockedExtraGutterColumns = occupiedGridGutterColumns(
+			context,
+			'grid',
+			new Map([['b-out', [RegionPortalSide.Left]]]),
+			cellInput.cells,
+		);
+		expect([...blockedExtraGutterColumns]).toEqual([1]);
+		const crossing = nxmThreeByTwoDocument().relations;
+		const allocationInput = {
+			edges: resources.edges,
+			crossingIds: crossing.map(({ id }) => id),
+			busRelevantRelationIds: ['a-b', 'a-c'],
+			gutterIds: resources.gutterIds,
+			incidence: crossingIncidence(crossing),
+			portalByRelationId: new Map(),
+			blockedExtraGutterColumns,
+		};
+		const unconstrained = [
+			...crossingAllocationCandidatesWithExtraTrack({
+				...allocationInput,
+				blockedExtraGutterColumns: undefined,
+			}),
+		];
+		expect(
+			unconstrained.some((candidate) =>
+				[...(candidate.gutterTrackByRelationId[1] ?? new Map()).values()].includes(
+					reservedRailTrack(edge),
+				),
+			),
+		).toBe(true);
+		const candidates = [...crossingAllocationCandidatesWithExtraTrack(allocationInput)];
+		expect(BigInt(candidates.length)).toBe(crossingAllocationGeometryCount(allocationInput, 1));
+		expect(candidates.length).toBeGreaterThan(0);
+		for (const candidate of candidates)
+			expect([...(candidate.gutterTrackByRelationId[1] ?? new Map()).values()]).not.toContain(
+				reservedRailTrack(edge),
+			);
 	});
 
 	it('keeps the reserved outer track in an empty crossing gutter for an inherited incident', () => {

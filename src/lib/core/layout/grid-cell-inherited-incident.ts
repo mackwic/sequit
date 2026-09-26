@@ -7,7 +7,7 @@ import {
 	type GridRoutingEdges,
 	reservedRailTrack,
 } from './grid-cell-crossing';
-import type { GridCellPlacement, GridCellSelected } from './grid-cell-types';
+import type { GridCellDefinition, GridCellPlacement, GridCellSelected } from './grid-cell-types';
 import type { Point } from './layout-types';
 import {
 	boundaryPortal,
@@ -188,6 +188,25 @@ function continuation(
 	else if (portalY === approachY) points.push(portal.point);
 	else points.push({ x: railX, y: portalY }, portal.point);
 	return { points, portal };
+}
+
+/** Gutter columns already claimed by child incidents before choosing any crossing allocation. */
+export function occupiedGridGutterColumns(
+	context: RecursiveContext,
+	regionId: string,
+	incidentSides: IncidentSides,
+	cells: readonly GridCellDefinition[],
+): ReadonlySet<number> {
+	const columnByCellId = new Map(cells.map(({ id, column }) => [id, column]));
+	const occupied = new Set<number>();
+	for (const relationId of incidentSides.keys()) {
+		const owned = defined(context.ownershipByRelationId.get(relationId));
+		let endpointId = owned.relation.to;
+		if (owned.sourcePathToOwner.includes(regionId)) endpointId = owned.relation.from;
+		const childId = directChild(context, regionId, endpointId);
+		occupied.add(defined(columnByCellId.get(childId)));
+	}
+	return occupied;
 }
 
 /** Continue each selected child incident through free grid tracks to the grid frame. */

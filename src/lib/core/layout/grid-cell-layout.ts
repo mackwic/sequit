@@ -153,6 +153,7 @@ export function composeGridCellDisposition({
 }
 
 interface PlacedGridCellInput {
+	readonly blockedExtraGutterColumns?: ReadonlySet<number> | undefined;
 	readonly resources: GridCrossingResources;
 	readonly graph: LogicGraph;
 	readonly input: GridCellInput;
@@ -265,6 +266,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			})
 			.map(({ id }) => id),
 		gutterIds,
+		blockedExtraGutterColumns: placed.blockedExtraGutterColumns,
 		incidence,
 		portalByRelationId: new Map(),
 	};

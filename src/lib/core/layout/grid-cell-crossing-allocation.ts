@@ -27,6 +27,8 @@ export interface CrossingAllocationInput {
 	readonly busRelevantRelationIds: readonly string[];
 	/** Crossing relations with an endpoint in each column, in canonical order, per column. */
 	readonly gutterIds: readonly (readonly string[])[];
+	/** An inherited incident already uses the outer track of these gutters. */
+	readonly blockedExtraGutterColumns?: ReadonlySet<number> | undefined;
 	/** Canonical port order per endpoint. */
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 	readonly portalByRelationId: ReadonlyMap<string, CrossingPortalSpan>;
@@ -145,7 +147,10 @@ function* combineOrders(
 	factories: readonly TrackOrderFactory[],
 	index: number,
 	prefix: (readonly string[])[],
-	constraints: { readonly input: CrossingAllocationInput; readonly extraColumn: number | undefined },
+	constraints: {
+		readonly input: CrossingAllocationInput;
+		readonly extraColumn: number | undefined;
+	},
 ): Generator<readonly (readonly string[])[]> {
 	const factory = factories[index];
 	if (factory !== undefined) {
@@ -352,5 +357,6 @@ export function* crossingAllocationCandidatesWithExtraTrack(
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
 	for (const [column, ids] of input.gutterIds.entries())
-		if (ids.length > 0) yield* permutationCandidates(input, column, new Set(), active);
+		if (ids.length > 0 && input.blockedExtraGutterColumns?.has(column) !== true)
+			yield* permutationCandidates(input, column, new Set(), active);
 }

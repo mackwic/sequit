@@ -108,7 +108,10 @@ export function crossingAllocationGeometryCount(
 ): bigint {
 	const base = allocationGeometrySpaceSize(input);
 	if (extraTracks === 0) return base;
-	return base * BigInt(input.gutterIds.reduce((sum, ids) => sum + ids.length, 0));
+	let availableLoad = 0;
+	for (const [column, ids] of input.gutterIds.entries())
+		if (input.blockedExtraGutterColumns?.has(column) !== true) availableLoad += ids.length;
+	return base * BigInt(availableLoad);
 }
 
 /**
