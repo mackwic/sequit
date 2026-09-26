@@ -124,14 +124,16 @@ export function prepareLayout(
 	const rankOrderDomain: RankOrderDomain = {
 		bands: components.flatMap((component) => component.rows.ordinary),
 	};
-	const effectiveOrder = order ?? rankOrderDomain.bands;
-	if (!validOrder(rankOrderDomain, effectiveOrder))
-		throw new Error('Invalid ordinary-row rank order');
-	if (!sameOrder(rankOrderDomain.bands, effectiveOrder)) {
+	if (order !== undefined) {
+		if (!validOrder(rankOrderDomain, order)) throw new Error('Invalid ordinary-row rank order');
+	}
+	if (order !== undefined && !sameOrder(rankOrderDomain.bands, order)) {
 		let bandIndex = 0;
 		components = components.map((component) => {
 			const bandCount = component.rows.ordinary.length;
-			const ordinaryOrder = effectiveOrder.slice(bandIndex, bandIndex + bandCount).flat();
+			const ordinaryOrder = defined(order)
+				.slice(bandIndex, bandIndex + bandCount)
+				.flat();
 			bandIndex += bandCount;
 			return {
 				...component,
