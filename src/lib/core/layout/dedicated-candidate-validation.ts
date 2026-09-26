@@ -61,6 +61,7 @@ export function validateDedicatedCandidate(
 	if (portFailure !== undefined) return portFailure;
 	const analysis = routeBridgeAnalysis(routes);
 	const contactRejection = contactFailure(routes, analysis);
-	if (contactRejection !== undefined) return contactRejection;
+	if (contactRejection !== undefined)
+		return { ...contactRejection, inspectedRuns: analysis.inspectedRuns };
 	return { valid: true, score: routeScore(input.layout, analysis), analysis };
 }

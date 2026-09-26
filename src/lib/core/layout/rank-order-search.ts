@@ -170,11 +170,12 @@ class RankOrderSearch {
 			layout: evaluation.result,
 		});
 		if (!outcome.valid) {
+			this.routeRunsInspected += outcome.inspectedRuns ?? 0;
 			this.rejected.push({ order, reason: outcome });
 			return;
 		}
-		this.valid += 1;
 		this.routeRunsInspected += outcome.analysis.inspectedRuns;
+		this.valid += 1;
 		const candidate = {
 			order,
 			evaluation,

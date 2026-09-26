@@ -42,6 +42,8 @@ interface ValidDedicatedCandidate {
 
 export interface RejectedDedicatedCandidate {
 	readonly valid: false;
+	/** Route runs analyzed before a post-analysis contact rejection. */
+	readonly inspectedRuns?: number;
 	readonly code: DedicatedCandidateRejectionCode;
 	readonly endpointId?: string;
 	readonly relationId?: string;

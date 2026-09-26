@@ -19,6 +19,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { routeRuns } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
 	compareDedicatedRouteScores,
 	DedicatedCandidateRejectionCode,
@@ -29,7 +30,7 @@ import {
 	layoutWithDedicatedEngine,
 	layoutWithDedicatedEngineAndRankOrderWitness,
 } from '../../../../src/lib/core/layout/layout-engine';
-import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
+import type { Bounds, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -684,6 +685,13 @@ describe('bounded lazy rank orders', () => {
 	});
 });
 
+function routeCount(layout: LayoutResult): number {
+	return [...layout.relations.values()].reduce(
+		(total, relation) => total + routeRuns({ id: relation.id, points: relation.points }).length,
+		0,
+	);
+}
+
 describe('dedicated bounded geometric rank search', () => {
 	it('matches an independently enumerated valid-layout oracle, routes included', () => {
 		for (const entry of rankOrderComparisonCorpus().slice(0, 2)) {
@@ -1050,20 +1058,43 @@ describe('rank-order heuristic cost and determinism', () => {
 				({ reason }) => reason.code === DedicatedCandidateRejectionCode.RouteContact,
 			),
 		).toBe(true);
+		let inspectedRuns = routeCount(baseline.result);
+		let routeContactRejections = 0;
+		let candidateEvaluations = 0;
 		const local = searchDedicatedRankOrders({
 			structure,
 			domain,
 			measurements,
 			baseline,
-			evaluate: (order) =>
-				evaluateDedicatedLayout(
+			evaluate: (order) => {
+				candidateEvaluations += 1;
+				const evaluation = evaluateDedicatedLayout(
 					applyRankOrder(structure, domain, order),
 					measurements,
 					undefined,
 					true,
-				),
+				);
+				const validation = validateDedicatedCandidate({
+					graph,
+					ranks,
+					measurements,
+					layout: evaluation.result,
+				});
+				if (validation.valid || validation.code === DedicatedCandidateRejectionCode.RouteContact)
+					inspectedRuns += routeCount(evaluation.result);
+				if (!validation.valid && validation.code === DedicatedCandidateRejectionCode.RouteContact)
+					routeContactRejections += 1;
+				return evaluation;
+			},
 			limits: { completePipelines: 12, uniqueProposals: 48 },
 		});
+		expect(routeContactRejections).toBeGreaterThan(0);
+		expect(local.witness.work).toEqual({
+			completePipelines: candidateEvaluations + 1,
+			validations: candidateEvaluations + 1,
+			routeRunsInspected: inspectedRuns,
+		});
+		expect(local.witness.evaluated).toBe(local.witness.valid + local.witness.rejected.length);
 		expect(local.selected?.order).toEqual([
 			['d', 'e'],
 			['b', 'c', 'a', 'f'],
