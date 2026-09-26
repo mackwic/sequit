@@ -9,8 +9,12 @@ import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
 } from './dedicated-candidate-validation/types';
-import type { DedicatedLayoutEvaluation, evaluateDedicatedLayout } from './layout-engine';
-import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
+import type {
+	DedicatedLayoutEvaluation,
+	LayoutMeasurements,
+	LayoutOptions,
+	LayoutResult,
+} from './layout-types';
 import type { RankOrder } from './rank-order';
 import {
 	chooseLocal,
@@ -18,7 +22,12 @@ import {
 	type SearchBudgets,
 	searchBudgets,
 } from './rank-order-local';
-import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-search';
+import {
+	type DedicatedLayoutEvaluator,
+	type RankOrderSearchWitness,
+	RankSearchMode,
+	RankSearchStop,
+} from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
@@ -34,7 +43,7 @@ interface GlobalChoice {
 
 interface SelectionServices {
 	readonly options: LayoutOptions;
-	readonly evaluate: typeof evaluateDedicatedLayout;
+	readonly evaluate: DedicatedLayoutEvaluator;
 	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 }
 

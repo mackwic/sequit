@@ -60,6 +60,12 @@ export interface LayoutOptions {
 	readonly inspectRouting?: boolean;
 }
 
+/** A deferred diagnostic permits rank search to discard candidates without materializing inspection. */
+export interface DedicatedLayoutEvaluation {
+	readonly result: LayoutResult;
+	complete(): LayoutResult;
+}
+
 /** Flow role of a derived routing port; its geometric side comes from the layout direction. */
 export enum RoutingPortRole {
 	Incoming = 'incoming',

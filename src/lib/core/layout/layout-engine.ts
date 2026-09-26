@@ -6,6 +6,7 @@ import { createLayoutFrame } from './geometry/layout-frame';
 import { inspectRouting } from './inspection/routing-inspection';
 import { placeWithPorts, portsChangePlacement, withChainAlignment } from './layout-port-placement';
 import type {
+	DedicatedLayoutEvaluation,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
@@ -185,12 +186,6 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 	}
 	placeWithPorts(workspace, ports, routing);
 	workspace.routing = routing;
-}
-
-export interface DedicatedLayoutEvaluation {
-	readonly result: LayoutResult;
-	/** Inspection is deferred so search trials can be discarded without building diagnostics. */
-	complete(): LayoutResult;
 }
 
 export function evaluateDedicatedLayout(

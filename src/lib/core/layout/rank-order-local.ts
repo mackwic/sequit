@@ -1,10 +1,13 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
-import type { evaluateDedicatedLayout } from './layout-engine';
 import type { LayoutMeasurements } from './layout-types';
 import type { RankOrder } from './rank-order';
 import { type RankSearchComponent, rankSearchComponents } from './rank-order-components';
-import { type RankOrderSearchWitness, searchDedicatedRankOrders } from './rank-order-search';
+import {
+	type DedicatedLayoutEvaluator,
+	type RankOrderSearchWitness,
+	searchDedicatedRankOrders,
+} from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 import { type LayoutStructure, prepareLayout } from './structure/prepare-layout';
 
@@ -35,7 +38,7 @@ interface LocalSearchInput {
 	readonly measurements: LayoutMeasurements;
 	readonly domain: RankOrderDomain;
 	readonly budgets: SearchBudgets;
-	readonly evaluate: typeof evaluateDedicatedLayout;
+	readonly evaluate: DedicatedLayoutEvaluator;
 }
 
 interface ComponentSearchInput {
@@ -43,7 +46,7 @@ interface ComponentSearchInput {
 	readonly global: RankOrderDomain;
 	readonly indices: readonly number[];
 	readonly limit: number;
-	readonly evaluate: typeof evaluateDedicatedLayout;
+	readonly evaluate: DedicatedLayoutEvaluator;
 }
 
 interface ComponentSearchResult {

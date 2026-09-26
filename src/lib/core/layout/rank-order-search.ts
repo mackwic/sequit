@@ -6,8 +6,7 @@ import type {
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
 } from './dedicated-candidate-validation/types';
-import type { DedicatedLayoutEvaluation } from './layout-engine';
-import type { LayoutMeasurements } from './layout-types';
+import type { DedicatedLayoutEvaluation, LayoutMeasurements, LayoutOptions } from './layout-types';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -19,6 +18,14 @@ import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
 import type { RankOrderDomain } from './rank-ordering';
 import type { LayoutStructure } from './structure/prepare-layout';
+
+/** Rank selection only needs the retained evaluation path of the dedicated engine. */
+export type DedicatedLayoutEvaluator = (
+	structure: LayoutStructure,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions | undefined,
+	retainForCompletion: true,
+) => DedicatedLayoutEvaluation;
 
 export enum RankSearchMode {
 	Skipped = 'skipped',

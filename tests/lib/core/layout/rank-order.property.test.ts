@@ -26,13 +26,13 @@ import {
 	validateDedicatedCandidate,
 } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import {
-	type DedicatedLayoutEvaluation,
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngine,
 	layoutWithDedicatedEngineAndRankOrderWitness,
 } from '../../../../src/lib/core/layout/layout-engine';
 import type {
 	Bounds,
+	DedicatedLayoutEvaluation,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
