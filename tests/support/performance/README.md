@@ -45,7 +45,7 @@ On the deterministic 1000-node dense fixture, the actual solver selected geometr
 | Bridge policy | Reserved baseline work | Optional work / cap | Completed attempts |
 | ------------- | ---------------------: | ------------------: | -----------------: |
 | No bridges    |                  3,220 |     20,000 / 20,000 |                  2 |
-| Bridges       |             21,409,183 |     20,000 / 20,000 |                  2 |
+| Bridges       |                335,084 |     20,000 / 20,000 |                  2 |
 
 Both attempts are the mandatory strategy baselines. The optional-work cap was reached while probing the next candidate, without promoting a partially evaluated candidate; the validated bridge-policy baseline was selected. The contract test checks the bounded work and valid selected geometry without pinning these incidental counters.
 
@@ -96,7 +96,7 @@ The gate warms each prepared case three times, records 11 independent public-API
 | `group-relations`         | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `shallow-groups`          | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `lane-allocations`        |  <5 ms |  <5 ms |  <5 ms |  <5 ms |  <10 ms |
-| `lane-allocations-dense`  |  <5 ms |  <5 ms |  <5 ms |  <5 ms | <190 ms |
+| `lane-allocations-dense`  |  <5 ms |  <5 ms |  <5 ms |  <5 ms |  <65 ms |
 
 ## Recording Results
 
@@ -154,7 +154,7 @@ Three consecutive filtered snapshot-gate runs measured both lane profiles after 
 | `lane-allocations`       | 2.880 | 1.975 | 1.751 | 1.765 |   4.561 |
 | `lane-allocations-dense` | 0.077 | 0.099 | 1.947 | 1.995 | 123.415 |
 
-Each lane budget above is `ceil(worst median * 1.5 / 5) * 5` ms. In particular the growing-route 1000-node case has a 190 ms cold ceiling; the four-route sentinel retains a separate 10 ms ceiling. No historical non-lane budget was changed.
+The original lane budgets used `ceil(worst median * 1.5 / 5) * 5` ms. Bridge-contact indexing changes only the growing-route 1000-node ceiling: three later paired runs with the same fixture, test command and pinned runtime gave 97.788/181.067/115.604 ms on the integrated baseline and 28.845/41.043/41.264 ms with indexing. The new 65 ms ceiling is `ceil(41.264 * 1.5 / 5) * 5`; smaller buckets and the four-route sentinel retain their earlier, stricter bounds. Other concurrent agent work caused noticeable run-to-run load variation; these paired timings are not idle-host measurements. No historical non-lane budget was changed.
 
 ## Incremental Replay
 
@@ -193,7 +193,7 @@ The opt-in gate compares total computational p95 in each growth bucket with the 
 | `group-relations`         |   5 |     5 |     5 |     5 |       5 |
 | `shallow-groups`          |   5 |     5 |     5 |     5 |      10 |
 | `lane-allocations`        |   5 |     5 |     5 |     5 |      20 |
-| `lane-allocations-dense`  |   5 |     5 |     5 |    10 |     185 |
+| `lane-allocations-dense`  |   5 |     5 |     5 |    10 |      70 |
 
 All values are strict upper bounds in milliseconds.
 
@@ -237,7 +237,7 @@ Three consecutive filtered incremental-gate runs used the same pinned runtime an
 | `lane-allocations`       | 2.544 | 3.071 | 2.447 | 3.322 |  10.257 |
 | `lane-allocations-dense` | 0.147 | 0.140 | 2.199 | 5.551 | 122.775 |
 
-Applying `ceil(worstP95 * 1.5 / 5) * 5` produces the two lane rows in the regression table: the sentinel ends at 20 ms and the growing-route profile at 185 ms (with a 10 ms bound for its `50-99` bucket). These are machine-specific regression ceilings, **not** changes to the fixed 50 ms UX goal. The growing-route `100-999` bucket misses that goal in all three runs; the gate continues to report the gap. No historical non-lane budget was changed.
+The original lane ceilings used `ceil(worstP95 * 1.5 / 5) * 5`. After indexing, three alternating baseline/branch runs with this same filtered gate and fixture measured `lane-allocations-dense/100-999` at 90.268/111.912/88.543 ms on the integrated baseline versus 34.318/43.380/33.180 ms on this branch. The optimized worst p95 gives a 70 ms ceiling (`ceil(43.380 * 1.5 / 5) * 5`) and passed the unchanged 50 ms UX goal in all three runs. Other lane buckets retain their earlier, stricter ceilings; competing processes caused transient sentinel bucket overruns during these comparisons, so their budgets were not raised to accommodate host load. No historical non-lane budget was changed.
 
 ### Fixed UX Goals And Known Gaps
 
@@ -246,7 +246,7 @@ The fixed goals are synchronous projection p95 below 16 ms and total computation
 - `nested-subgroups` misses the total goal, with worst total p95 133.123 ms; its deeply nested group-envelope layout remains main-thread work despite the promise boundary.
 - `wide-bipartite-layers` misses the synchronous goal, with observed synchronous p95 up to 29.512 ms; its total p95 remains below 50 ms in calibration.
 
-All other topology/bucket goal results passed in those historical runs. The new growing-route lane profile adds the separately measured total-latency gap above. The gate emits `PASS` or `GAP` for every topology and bucket and reports the slowest insertion index with all stage durations. Goal gaps remain visible but do not fail the machine-specific regression gate.
+All other topology/bucket goal results passed in those historical runs. The indexed growing-route lane profile now passes the 50 ms computational proxy in the paired calibration above; the two historical gaps remain. The gate emits `PASS` or `GAP` for every topology and bucket and reports the slowest insertion index with all stage durations. Goal gaps remain visible but do not fail the machine-specific regression gate.
 
 This synthetic Node replay is a main-thread computational proxy, not proof that the browser UI stays responsive. True interaction validation requires a public add-node operation and browser instrumentation around that action, including event-loop delay or long tasks, real DOM measurement, Svelte updates, and paint. Those facilities do not exist yet and are not invented by this suite.
 
