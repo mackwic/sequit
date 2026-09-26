@@ -8,14 +8,12 @@ import {
 import { notifySubscribers } from './notify-subscribers';
 import { InvalidPresenceError } from './participant-presence';
 import type { PendingCommandFrame } from './session-command-frame';
-import type { SessionTextEdits } from './session-text-edits';
 import {
 	decodeSessionMessage,
 	type ParticipantPresence,
 	type SessionMessage,
 	SessionMessageKind,
 } from './session-wire';
-import { TextUpdateBuffer } from './text-update-buffer';
 import { importLogicDocument } from './yjs-document-codec';
 
 interface IncomingHandlers {
@@ -74,10 +72,6 @@ export function createInitializationMessage(
 	}
 }
 
-export function createTextProposalBuffer(send: (update: Uint8Array) => void): TextUpdateBuffer {
-	return new TextUpdateBuffer(send);
-}
-
 export function sendPresenceSafely(
 	presence: ParticipantPresence | undefined,
 	send: (message: SessionMessage) => void,
@@ -96,10 +90,14 @@ export interface CommitReceipt {
 	readonly initialization: boolean;
 }
 
+interface TextReceiptAcknowledgments {
+	acknowledge(id: string): boolean;
+}
+
 export function resolveCommitReceipt(
 	id: string | undefined,
 	pending: Map<string, PendingCommandFrame>,
-	textEdits: SessionTextEdits,
+	textEdits: TextReceiptAcknowledgments,
 	initializationId?: string,
 ): CommitReceipt {
 	if (id === undefined) return { acknowledged: false, decision: false, initialization: false };

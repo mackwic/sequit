@@ -2,13 +2,12 @@ import type * as Y from 'yjs';
 
 import { SharedElementKind, type SharedTarget } from '../document/shared-document-command';
 import { notifySubscribers } from './notify-subscribers';
-import { createTextProposalBuffer } from './session-incoming';
 import {
 	type IdentifiedTextMessage,
 	SessionMessageKind,
 	type TextTargetReference,
 } from './session-wire';
-import type { TextUpdateBuffer } from './text-update-buffer';
+import { TextUpdateBuffer } from './text-update-buffer';
 
 interface EditedTarget {
 	readonly target: SharedTarget;
@@ -16,7 +15,7 @@ interface EditedTarget {
 }
 
 /** Tracks pending user gestures, never replays text or rewrites Yjs history. */
-export class SessionTextEdits {
+class SessionTextEdits {
 	readonly #active = new Map<string, EditedTarget>();
 	readonly #sent = new Map<string, Map<string, number>>();
 	#version = 0;
@@ -95,7 +94,7 @@ export class SessionTextFlow {
 	) {
 		this.#send = send;
 		this.#abandoned = abandoned;
-		this.buffer = createTextProposalBuffer((update) => {
+		this.buffer = new TextUpdateBuffer((update) => {
 			const reference = this.#target;
 			if (reference === undefined) throw new Error('A text update has no target');
 			const message: IdentifiedTextMessage = {
