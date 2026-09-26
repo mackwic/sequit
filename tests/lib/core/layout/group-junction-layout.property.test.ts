@@ -10,12 +10,17 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
+import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { groupSeparationWindows } from '../../../../src/lib/core/layout/placement/enclose-groups';
+import { packGroupSiblings } from '../../../../src/lib/core/layout/placement/pack-group-siblings';
 import {
 	placeElements,
 	type PlacementState,
 } from '../../../../src/lib/core/layout/placement/place-elements';
 import { prepareMeasurements } from '../../../../src/lib/core/layout/placement/prepare-measurements';
+import { prepareGroupHierarchy } from '../../../../src/lib/core/layout/structure/group-hierarchy';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
@@ -770,3 +775,118 @@ it('separates a group from a junction retreating as trailing clearance grows fro
 	expect(firstJunctionStart - finalJunction.x).toBe(12);
 	expect(overlaps(finalGroup, finalJunction)).toBe(false);
 });
+
+it('propagates a junction retreat through nested shells', () => {
+	const bounds = new Map([
+		['foreign', { x: 0, y: 40, width: 100, height: 140 }],
+		['junction', { x: 160, y: 100, width: 20, height: 20 }],
+		['inner', { x: 105, y: 45, width: 130, height: 130 }],
+		['outer', { x: 100, y: 40, width: 140, height: 140 }],
+	]);
+	const seed = groupJunctionFixture(
+		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		false,
+		false,
+	);
+	const group = seed.groups[0];
+	const junction = seed.junctions[0];
+	if (group === undefined || junction === undefined) throw new Error('Expected group and junction');
+	const hierarchy = prepareGroupHierarchy({
+		...seed,
+		nodes: [],
+		groups: [
+			{ ...group, id: 'inner', groupId: 'outer' },
+			{ ...group, id: 'outer' },
+		],
+		junctions: [{ ...junction, groupId: 'inner' }],
+	});
+	if (hierarchy === undefined) throw new Error('Expected nested groups');
+	const windows = groupSeparationWindows(bounds, false, new Map([['junction', 12]]), hierarchy);
+	expect(windows.get('inner')).toEqual({ first: 93, last: 247 });
+	expect(windows.get('outer')).toEqual({ first: 88, last: 252 });
+	const initial = structuredClone(bounds);
+	packGroupSiblings(
+		['foreign', 'outer'],
+		bounds,
+		{ groupIds: hierarchy.byId, pending: new Map(), windows },
+		false,
+	);
+	const outer = bounds.get('outer');
+	const foreign = bounds.get('foreign');
+	if (outer === undefined || foreign === undefined) throw new Error('Expected both boxes');
+	outer.x -= 12;
+	expect(overlaps(outer, foreign)).toBe(false);
+	fc.assert(
+		fc.property(fc.integer({ min: 0, max: 40 }), (retreat) => {
+			const boxes = structuredClone(initial);
+			const reserved = groupSeparationWindows(
+				boxes,
+				false,
+				new Map([['junction', retreat]]),
+				hierarchy,
+			);
+			packGroupSiblings(
+				['foreign', 'outer'],
+				boxes,
+				{ groupIds: hierarchy.byId, pending: new Map(), windows: reserved },
+				false,
+			);
+			const container = boxes.get('outer');
+			const outsider = boxes.get('foreign');
+			if (container === undefined || outsider === undefined)
+				throw new Error('Expected both packed boxes');
+			container.x -= retreat;
+			expect(overlaps(container, outsider)).toBe(false);
+		}),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it.each(LAYOUT_CONFIGURATIONS)(
+	'validates junction-only nested shells under asymmetric channel growth (%s)',
+	(configuration) => {
+		const seed = groupJunctionFixture(configuration, false, false);
+		const node = seed.nodes[0];
+		const junction = seed.junctions[0];
+		const group = seed.groups[0];
+		if (node === undefined || junction === undefined || group === undefined)
+			throw new Error('Expected the grouped junction fixture');
+		const ungrouped = { ...node };
+		delete ungrouped.groupId;
+		const document: LogicDocument = {
+			...seed,
+			groups: [
+				{ ...group, id: 'inner', groupId: 'outer' },
+				{ ...group, id: 'outer' },
+				{ ...group, id: 'wide' },
+			],
+			nodes: [
+				{ ...ungrouped, id: 'source', groupId: 'wide' },
+				{ ...ungrouped, id: 'foreign', layoutOrder: orderKey('a4') },
+				{ ...ungrouped, id: 'target', layoutOrder: orderKey('a5') },
+			],
+			junctions: [{ ...junction, groupId: 'inner' }],
+			relations: [
+				{ id: 'source-join', from: 'source', to: 'junction' },
+				{ id: 'foreign-join', from: 'foreign', to: 'junction' },
+				{ id: 'join-target', from: 'junction', to: 'target' },
+			],
+		};
+		const prepared = prepareLayoutDocument(document, {
+			nodes: {
+				source: { width: 100, height: 60 },
+				foreign: { width: 100, height: 60 },
+				target: { width: 100, height: 60 },
+			},
+			junctions: { junction: { width: 20, height: 20 } },
+			groups: {
+				inner: { minimumWidth: 130, minimumHeight: 130, headerHeight: 0, padding: 55 },
+				outer: { minimumWidth: 140, minimumHeight: 140, headerHeight: 0, padding: 0 },
+				wide: { minimumWidth: 140, minimumHeight: 140, headerHeight: 0, padding: 85 },
+			},
+		});
+		const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
+		expect(overlaps(boundsFor(layout, 'outer'), boundsFor(layout, 'foreign'))).toBe(false);
+	},
+);

@@ -37,12 +37,20 @@ export function groupSeparationWindows(
 	bounds: ReadonlyMap<string, MutableBounds>,
 	vertical: boolean,
 	junctionSlack: ReadonlyMap<string, number>,
+	hierarchy: GroupHierarchy,
 ): ReadonlyMap<string, MainWindow> {
 	const windows = new Map<string, MainWindow>();
+	const excursions = new Map(junctionSlack);
+	for (const group of hierarchy.deepestFirst) {
+		let maximum = 0;
+		for (const memberId of hierarchy.membersById.get(group.id) ?? [])
+			maximum = Math.max(maximum, excursions.get(memberId) ?? 0);
+		excursions.set(group.id, maximum);
+	}
 	for (const [id, box] of bounds) {
 		let first = box.x;
 		if (vertical) first = box.y;
-		const slack = junctionSlack.get(id) ?? 0;
+		const slack = excursions.get(id) ?? 0;
 		windows.set(id, { first: first - slack, last: first + mainSize(box, vertical) + slack });
 	}
 	return windows;

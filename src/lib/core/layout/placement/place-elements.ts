@@ -38,7 +38,12 @@ function minimumGapWindows(
 	const { structure, measurements, frame, placement } = input;
 	const slackById = new Map<string, number>();
 	if (structure.junctions.size === 0)
-		return groupSeparationWindows(placement.bounds, frame.vertical, slackById);
+		return groupSeparationWindows(
+			placement.bounds,
+			frame.vertical,
+			slackById,
+			defined(structure.hierarchy),
+		);
 	for (const component of structure.components)
 		for (const [rank, row] of component.rows.junction.entries()) {
 			if (row.length === 0) continue;
@@ -53,7 +58,12 @@ function minimumGapWindows(
 			const slack = (interval - occupied) / 2;
 			for (const id of row) slackById.set(id, slack);
 		}
-	return groupSeparationWindows(placement.bounds, frame.vertical, slackById);
+	return groupSeparationWindows(
+		placement.bounds,
+		frame.vertical,
+		slackById,
+		defined(structure.hierarchy),
+	);
 }
 
 /** Replace this call's placement, retaining its structure and reusable component list. */
