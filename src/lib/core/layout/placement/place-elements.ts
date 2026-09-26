@@ -1,6 +1,6 @@
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
-import { encloseGroups } from './enclose-groups';
+import { encloseGroups, separateInterleavedGroupNodes } from './enclose-groups';
 import { insetJunctionChannels } from './group-junction-channels';
 import { junctionRails, railSpan } from './junction-rails';
 import { applyOuterMargin, packComponents, repackContainment } from './pack-components';
@@ -86,6 +86,18 @@ export function placeElements(
 		);
 	if (structure.containment !== undefined)
 		repackContainment(structure.containment, placement.bounds, frame.vertical);
+	if (structure.hierarchy !== undefined && structure.groupSeparationCandidates !== undefined)
+		separateInterleavedGroupNodes(
+			{
+				candidates: structure.groupSeparationCandidates,
+				hierarchy: structure.hierarchy,
+				graph: structure.graph,
+				measurements: measurements.groups,
+				bounds: placement.bounds,
+				frame,
+			},
+			cursor,
+		);
 	applyOuterMargin(placement.bounds);
 	return placement.bounds;
 }

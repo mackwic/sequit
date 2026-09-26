@@ -5,6 +5,8 @@ export interface GroupHierarchy {
 	readonly byId: ReadonlyMap<string, LogicGroup>;
 	readonly membersById: ReadonlyMap<string, readonly string[]>;
 	readonly rootById: ReadonlyMap<string, string>;
+	readonly preorderIndexById: ReadonlyMap<string, number>;
+	readonly subtreeEndById: ReadonlyMap<string, number>;
 	readonly deepestFirst: readonly LogicGroup[];
 }
 
@@ -34,6 +36,46 @@ function indexAncestors(groups: ReadonlyMap<string, LogicGroup>): ReadonlyMap<st
 	return ancestors;
 }
 
+function indexGroupSubtrees(groups: ReadonlyMap<string, LogicGroup>): {
+	readonly preorderIndexById: ReadonlyMap<string, number>;
+	readonly subtreeEndById: ReadonlyMap<string, number>;
+} {
+	const childrenById = new Map<string, string[]>();
+	const roots: string[] = [];
+	for (const group of groups.values()) {
+		if (group.groupId === undefined) {
+			roots.push(group.id);
+			continue;
+		}
+		const children = childrenById.get(group.groupId) ?? [];
+		children.push(group.id);
+		childrenById.set(group.groupId, children);
+	}
+	roots.sort(compareCanonicalStrings);
+	for (const children of childrenById.values()) children.sort(compareCanonicalStrings);
+
+	const preorderIndexById = new Map<string, number>();
+	const subtreeEndById = new Map<string, number>();
+	const pending: { readonly id: string; readonly exiting: boolean }[] = [];
+	let nextIndex = 0;
+	for (const root of roots.toReversed()) pending.push({ id: root, exiting: false });
+	while (pending.length > 0) {
+		const current = defined(pending.pop());
+		if (current.exiting) {
+			subtreeEndById.set(current.id, nextIndex - 1);
+			continue;
+		}
+		preorderIndexById.set(current.id, nextIndex++);
+		pending.push({ id: current.id, exiting: true });
+		const children = childrenById.get(current.id) ?? [];
+		for (let index = children.length - 1; index >= 0; index -= 1) {
+			const childId = children[index];
+			if (childId !== undefined) pending.push({ id: childId, exiting: false });
+		}
+	}
+	return { preorderIndexById, subtreeEndById };
+}
+
 export function prepareGroupHierarchy(document: LogicDocument): GroupHierarchy | undefined {
 	if (document.groups.length === 0) return undefined;
 	const byId = new Map(document.groups.map((group) => [group.id, group]));
@@ -46,6 +88,7 @@ export function prepareGroupHierarchy(document: LogicDocument): GroupHierarchy |
 		membersById.set(member.groupId, members);
 	}
 	const ancestors = indexAncestors(byId);
+	const subtreeIndices = indexGroupSubtrees(byId);
 	const deepestFirst = [...document.groups].sort((left, right) => {
 		const depth = defined(ancestors.get(right.id)).depth - defined(ancestors.get(left.id)).depth;
 		return depth || compareCanonicalStrings(left.id, right.id);
@@ -55,5 +98,6 @@ export function prepareGroupHierarchy(document: LogicDocument): GroupHierarchy |
 		membersById,
 		deepestFirst,
 		rootById: new Map([...ancestors].map(([id, entry]) => [id, entry.root])),
+		...subtreeIndices,
 	};
 }

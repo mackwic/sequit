@@ -65,59 +65,6 @@ function makeDocument(
 	};
 }
 
-function groupedJunction(id: string, relations: LogicDocument['relations']): LogicDocument {
-	const base = makeDocument(id, ['a', 'b', 'c', 'd', 'e', 'f'], relations);
-	return {
-		...base,
-		groups: [
-			{ kind: EndpointKind.Group, id: 'group', label: 'Group', layoutOrder: orderKey('a0') },
-		],
-		nodes: base.nodes.map((node) => {
-			if (['a', 'b', 'd'].includes(node.id)) return { ...node, groupId: 'group' };
-			return node;
-		}),
-		junctions: [
-			{
-				kind: EndpointKind.Junction,
-				id: 'join',
-				operator: JunctionOperator.Xor,
-				layoutOrder: orderKey('a7'),
-			},
-		],
-		relations,
-	};
-}
-
-const productionCycleDocuments = [
-	{
-		id: 'multirank-group-junction-one',
-		document: groupedJunction('multirank-group-junction-one', [
-			{ id: 'a-to-d', from: 'a', to: 'd' },
-			{ id: 'b-to-c', from: 'b', to: 'c' },
-			{ id: 'c-to-e', from: 'c', to: 'e' },
-			{ id: 'd-to-f', from: 'd', to: 'f' },
-			{ id: 'e-to-join', from: 'e', to: 'join' },
-			{ id: 'f-to-join', from: 'f', to: 'join' },
-		]),
-		crossingIds: ['a-to-d', 'b-to-c'] as const,
-		splitId: 'a-to-d',
-		otherId: 'b-to-c',
-	},
-	{
-		id: 'multirank-group-junction-two',
-		document: groupedJunction('multirank-group-junction-two', [
-			{ id: 'a-to-c', from: 'a', to: 'c' },
-			{ id: 'b-to-d', from: 'b', to: 'd' },
-			{ id: 'c-to-f', from: 'c', to: 'f' },
-			{ id: 'd-to-e', from: 'd', to: 'e' },
-			{ id: 'e-to-join', from: 'e', to: 'join' },
-			{ id: 'f-to-join', from: 'f', to: 'join' },
-		]),
-		crossingIds: ['c-to-f', 'd-to-e'] as const,
-		splitId: 'c-to-f',
-		otherId: 'd-to-e',
-	},
-];
 const junctionNetwork: LogicDocument = {
 	...makeDocument(
 		'junction-network',
@@ -195,30 +142,6 @@ describe('dedicated engine channel characterization (replaceable during channel 
 			expect(earlierEnd.end).toBeLessThan(laterEnd.end);
 			expect(later.rail).toBe(earlierEnd.rail);
 			expect(later.rail).not.toBe(laterEnd.rail);
-		});
-
-		it('observes split runs and their dependency cycle on routed crossing documents', () => {
-			for (const { document, crossingIds, splitId, otherId } of productionCycleDocuments) {
-				const channel = channelFor(channelsFromProductionLayout(document), crossingIds);
-				const split = wireFor(channel, splitId);
-				const other = wireFor(channel, otherId);
-				const splitFirst = split.first;
-				const splitLast = split.last;
-				const otherFirst = other.first;
-				const splitInput = channel.endpoints.find(({ id }) => id === splitId);
-				const otherInput = channel.endpoints.find(({ id }) => id === otherId);
-				if (!splitFirst || !splitLast || !otherFirst || !splitInput || !otherInput)
-					throw new Error('Production crossing channels must expose their source runs');
-				expect(split.middle).toBeDefined();
-				expect(other.middle).toBeUndefined();
-				expect(splitInput.source).toBe(otherInput.target);
-				expect(splitInput.target).toBe(otherInput.source);
-				expect(splitFirst).not.toBe(splitLast);
-				expect(splitFirst.next).toContain(splitLast);
-				expect(otherFirst.next).toContain(splitLast);
-				expect([splitFirst.depth, otherFirst.depth, splitLast.depth]).toEqual([0, 1, 2]);
-				expect([splitFirst.rail, otherFirst.rail, splitLast.rail]).toEqual([0, 1, 2]);
-			}
 		});
 
 		it('observes arrival and departure families created by allocated junction ports', () => {

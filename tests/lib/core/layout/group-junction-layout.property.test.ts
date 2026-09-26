@@ -1,6 +1,8 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { EndpointKind, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
@@ -13,6 +15,79 @@ import {
 	progressesFromTo,
 } from '../../../support/harnesses/layout';
 import { VisualLayout } from '../../../support/harnesses/visual-layout';
+
+function interleavedGroupJunctionFixture(
+	configuration: (typeof LAYOUT_CONFIGURATIONS)[number],
+	groupAsTarget: boolean,
+	nested: boolean,
+): LogicDocument {
+	const document = groupJunctionFixture(configuration, groupAsTarget, nested);
+	let groupId = 'separate-group';
+	if (nested) groupId = 'separate-inner';
+	let nestedGroups: LogicDocument['groups'] = [];
+	if (nested)
+		nestedGroups = [
+			{
+				kind: EndpointKind.Group,
+				id: 'separate-inner',
+				label: 'Separate inner group',
+				groupId: 'separate-group',
+				layoutOrder: orderKey('a5'),
+			},
+		];
+	const groups: LogicDocument['groups'] = [
+		...document.groups,
+		{
+			kind: EndpointKind.Group,
+			id: 'separate-group',
+			label: 'Separate group',
+			layoutOrder: orderKey('a4'),
+		},
+		...nestedGroups,
+	];
+	return {
+		...document,
+		groups,
+		nodes: [
+			...document.nodes,
+			{
+				kind: EndpointKind.Node,
+				id: 'chain-first',
+				natureId: 'goal',
+				markdown: 'First member',
+				groupId,
+				layoutOrder: orderKey('a6'),
+			},
+			{
+				kind: EndpointKind.Node,
+				id: 'chain-last',
+				natureId: 'goal',
+				markdown: 'Last member',
+				groupId,
+				layoutOrder: orderKey('a7'),
+			},
+		],
+		relations: [
+			...document.relations,
+			{ id: 'chain-first-to-outside', from: 'chain-first', to: 'outside' },
+			{ id: 'outside-to-chain-last', from: 'outside', to: 'chain-last' },
+		],
+	};
+}
+
+function isDescendant(
+	document: ReturnType<typeof interleavedGroupJunctionFixture>,
+	node: (typeof document.nodes)[number],
+	groupId: string,
+): boolean {
+	const groups = new Map(document.groups.map((group) => [group.id, group]));
+	let parentId = node.groupId;
+	while (parentId !== undefined) {
+		if (parentId === groupId) return true;
+		parentId = groups.get(parentId)?.groupId;
+	}
+	return false;
+}
 
 describe.each(LAYOUT_CONFIGURATIONS)(
 	'group boundaries at junctions in $direction / $bias',
@@ -45,6 +120,50 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 		);
 	},
 );
+
+it('keeps generated non-descendant nodes outside every group envelope', async () => {
+	await fc.assert(
+		fc.asyncProperty(
+			fc.constantFrom(...LAYOUT_CONFIGURATIONS),
+			fc.boolean(),
+			fc.boolean(),
+			fc.record({
+				minimumWidth: fc.integer({ min: 140, max: 600 }),
+				minimumHeight: fc.integer({ min: 100, max: 600 }),
+				headerHeight: fc.integer({ min: 5, max: 90 }),
+				padding: fc.integer({ min: 5, max: 100 }),
+			}),
+			async (configuration, groupAsTarget, nested, measurement) => {
+				const document = interleavedGroupJunctionFixture(configuration, groupAsTarget, nested);
+				const { layout } = await layoutDocument(document, {
+					nodes: {
+						member: { width: 100, height: 50 },
+						outside: { width: 100, height: 50 },
+						'chain-first': { width: 100, height: 50 },
+						'chain-last': { width: 100, height: 50 },
+					},
+					groups: {
+						group: measurement,
+						inner: measurement,
+						'separate-group': measurement,
+						'separate-inner': measurement,
+					},
+				});
+				for (const group of document.groups) {
+					const groupBounds = boundsFor(layout, group.id);
+					for (const node of document.nodes) {
+						if (isDescendant(document, node, group.id)) continue;
+						expect(
+							overlaps(groupBounds, boundsFor(layout, node.id)),
+							`${node.id} must stay outside group ${group.id} in ${configuration.direction}`,
+						).toBe(false);
+					}
+				}
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
 
 it('reserves actual nested envelopes with varied minimum sizes, padding and header measurements', async () => {
 	await fc.assert(
