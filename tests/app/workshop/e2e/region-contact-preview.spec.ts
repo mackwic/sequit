@@ -89,7 +89,7 @@ test('the grid allocation workshop explains exact route geometry search', async 
 
 	const explorer = page.getByRole('region', { name: 'Allocation de grille' });
 	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
-	const pruned = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-pruned');
+	const pruned = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-conflicts-first');
 	const noncanonical = explorer.getByTestId(
 		'grid-allocation-case-grid-allocation-noncanonical-bus',
 	);
@@ -114,7 +114,7 @@ test('the grid allocation workshop explains exact route geometry search', async 
 	}
 
 	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('2 / 144');
+	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('2 / 2592');
 	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
 		'data-truncated',
 		'false',

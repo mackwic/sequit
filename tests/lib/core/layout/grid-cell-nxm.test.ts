@@ -147,7 +147,7 @@ describe('N by M grid composition', () => {
 		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
 		expect(reallocation.selected).toBe(true);
 		expect(reallocation.exploredGeometries).toBeLessThan(256);
-		expect(Number(reallocation.totalGeometries)).toBeLessThan(256);
+		expect(reallocation.totalGeometries).toBe('2592');
 		expect(result.witness.phases.slice(1).every(({ attempted }) => !attempted)).toBe(true);
 		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);

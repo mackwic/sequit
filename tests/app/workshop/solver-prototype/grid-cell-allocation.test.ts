@@ -8,7 +8,7 @@ describe('grid crossing allocation workshop model', () => {
 		const demos = gridCrossingAllocationDemos();
 		expect(demos.map(({ id }) => id)).toEqual([
 			'grid-allocation-2x2',
-			'grid-allocation-3x2-pruned',
+			'grid-allocation-3x2-conflicts-first',
 			'grid-allocation-noncanonical-bus',
 		]);
 		expect(demos.map(({ winningPhase }) => winningPhase)).toEqual([
@@ -35,7 +35,7 @@ describe('grid crossing allocation workshop model', () => {
 		expect(pruned.selected.witness.phases[0]).toMatchObject({
 			id: CrossingAllocationPhaseId.Reallocate,
 			exploredGeometries: 2,
-			totalGeometries: '144',
+			totalGeometries: '2592',
 			truncated: false,
 			selected: true,
 		});

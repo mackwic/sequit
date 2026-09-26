@@ -43,7 +43,8 @@
 		<p>
 			Chaque carte exécute le solveur de grille et son oracle géométrique. Les rails et bus
 			reprennent la couleur de leur relation ; les tableaux rendent visible le candidat
-			effectivement retenu et les géométries explorées dans la frontière des routes en conflit.
+			effectivement retenu, le nombre de géométries explorées et le total déclaré de chaque phase.
+			Les routes en conflit sont essayées en premier ; le reste conserve l’ordre canonique.
 		</p>
 	</header>
 	<div class="examples">
@@ -115,7 +116,7 @@
 						</ul>
 					</section>
 					<section aria-label="Exploration par phase">
-						<h4>Géométries explorées / total ciblé</h4>
+						<h4>Géométries explorées / total déclaré</h4>
 						<ul class="phases">
 							{#each demo.selected.witness.phases as phase (phase.id)}
 								<li

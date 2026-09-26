@@ -87,6 +87,18 @@ function allocationGeometrySpaceSize(input: CrossingAllocationInput, extraTracks
 	return count;
 }
 
+/** Number of geometries with the first bus assignment held fixed. */
+export function crossingCanonicalBusGeometryCount(
+	input: CrossingAllocationInput,
+	extraTracks = 0,
+): bigint {
+	const busOrders = permutationCount(
+		input.busRelevantRelationIds.length,
+		input.edges.topBus.capacity,
+	);
+	return crossingAllocationGeometryCount(input, extraTracks) / busOrders;
+}
+
 /** Exact number of geometries after ignoring unused bus tracks and assignments without a new track. */
 export function crossingAllocationGeometryCount(
 	input: CrossingAllocationInput,

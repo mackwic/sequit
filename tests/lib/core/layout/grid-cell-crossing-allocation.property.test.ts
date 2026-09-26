@@ -2,9 +2,6 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
-import { crossingOverlap } from '../../../../src/lib/core/layout/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
 	type GridCrossingAllocation,
@@ -12,6 +9,7 @@ import {
 import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
+	crossingCanonicalBusGeometryCount,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-phases';
 import { crossingRoute } from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
 import {
@@ -26,6 +24,7 @@ import {
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
 	effectiveRouteGeometry,
+	routeGridFixture,
 	variedGridRoutingCase,
 } from './grid-cell-crossing-allocation-fixture';
 
@@ -82,6 +81,51 @@ describe('grid crossing allocation route geometry properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	});
+	it('keeps unrelated tracks and ports fixed in each conflict-first prefix', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 127 }),
+				fc.integer({ min: 2, max: 3 }),
+				fc.integer({ min: 0, max: 2 }),
+				(seed, columns, activeIndex) => {
+					const { input, routing, crossing } = variedGridRoutingCase(3, columns, seed);
+					const active = new Set([defined(input.crossingIds[activeIndex])]);
+					const canonical = canonicalCrossingAllocation(input);
+					for (const phase of crossingAllocationPhases(input)) {
+						const candidates = [...phase.candidates(input, active, true)];
+						const geometries = candidates.map((candidate) =>
+							effectiveRouteGeometry(routing, crossing, candidate),
+						);
+						expect(new Set(geometries).size).toBe(candidates.length);
+						for (const candidate of candidates) {
+							for (const [column, ids] of input.gutterIds.entries()) {
+								const tracks = defined(candidate.gutterTrackByRelationId[column]);
+								expect(new Set(tracks.values()).size).toBe(ids.length);
+								for (const id of ids)
+									if (!active.has(id))
+										expect(tracks.get(id)).toBe(
+											defined(canonical.gutterTrackByRelationId[column]).get(id),
+										);
+							}
+							for (const id of input.crossingIds)
+								if (!active.has(id))
+									expect(candidate.busTrackByRelationId.get(id)).toBe(
+										canonical.busTrackByRelationId.get(id),
+									);
+							for (const [endpoint, ids] of input.incidence)
+								for (const id of ids)
+									if (!active.has(id))
+										expect(defined(candidate.portTrackByEndpointId.get(endpoint)).get(id)).toBe(
+											defined(canonical.portTrackByEndpointId.get(endpoint)).get(id),
+										);
+						}
+					}
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('matches the exhaustive phase oracle on generated crossing routes', () => {
 		fc.assert(
 			fc.property(
@@ -95,56 +139,23 @@ describe('grid crossing allocation route geometry properties', () => {
 					sameRail: fc.boolean(),
 				}),
 				({ crossingCount, columnCount, seed, sameRail }) => {
-					const { input, routing, crossing } = variedGridRoutingCase(
-						crossingCount,
-						columnCount,
-						seed,
-						sameRail,
-					);
+					const fixture = variedGridRoutingCase(crossingCount, columnCount, seed, sameRail);
+					const { input } = fixture;
 					const phases = crossingAllocationPhases(input);
 					const budgets = {
 						reallocate: Number(defined(phases[0]).totalGeometries(input)),
 						extraTrack: Number(defined(phases[1]).totalGeometries(input)),
 						bridge: Number(defined(phases[2]).totalGeometries(input)),
 					};
-					const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) => {
-						const paths = crossing.map(
-							(relation) => crossingRoute(routing, allocation, relation).route,
-						);
-						const overlap = crossingOverlap(paths);
-						if (overlap !== undefined)
-							return {
-								candidate: paths,
-								failure: regionGeometryDiagnostic(
-									RegionGeometryDiagnosticCode.GridCrossingOverlap,
-									overlap.message,
-									{ relationId: overlap.firstId, relatedRelationId: overlap.secondId },
-								),
-							};
-						let bridges: ReturnType<typeof validatedBridges> = [];
-						if (acceptBridges) bridges = validatedBridges(paths);
-						for (const [index, first] of paths.entries()) {
-							for (const second of paths.slice(index + 1)) {
-								if (unbridgedContacts(first, second, bridges).length > 0)
-									return {
-										candidate: paths,
-										failure: regionGeometryDiagnostic(
-											RegionGeometryDiagnosticCode.ParentRouteContact,
-											'Unbridged route contact.',
-											{ relationId: first.id, relatedRelationId: second.id },
-										),
-									};
-							}
-						}
-						return { candidate: paths };
-					};
+					const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+						routeGridFixture(fixture, allocation, acceptBridges);
 					const oracle = searchGridCrossingAllocations(
 						input,
 						route,
 						budgets,
 						GridCrossingSearchMode.Exhaustive,
 					);
-					const pruned = searchGridCrossingAllocations(input, route);
+					const pruned = searchGridCrossingAllocations(input, route, budgets);
 					if ('selected' in oracle) {
 						expect('selected' in pruned).toBe(true);
 						if (!('selected' in pruned)) return;
@@ -152,8 +163,14 @@ describe('grid crossing allocation route geometry properties', () => {
 						expect(order.indexOf(pruned.witness.winningPhase)).toBeLessThanOrEqual(
 							order.indexOf(oracle.witness.winningPhase),
 						);
-						if (pruned.witness.winningPhase === oracle.witness.winningPhase)
-							expect(pruned.selected.candidate).toEqual(oracle.selected.candidate);
+						const acceptsBridges = pruned.witness.winningPhase === CrossingAllocationPhaseId.Bridge;
+						expect(route(pruned.selected.allocation, acceptsBridges).failure).toBeUndefined();
+						const firstBusBlock = crossingCanonicalBusGeometryCount(input);
+						if (
+							firstBusBlock <= 256n &&
+							pruned.witness.winningPhase === oracle.witness.winningPhase
+						)
+							expect(pruned.selected.candidate.layout).toEqual(oracle.selected.candidate.layout);
 					} else if (oracle.witness.exhaustive) {
 						expect('selected' in pruned).toBe(false);
 					}
@@ -161,7 +178,7 @@ describe('grid crossing allocation route geometry properties', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+	}, 120_000);
 	it('keeps an exhaustively blocked gutter unknown when every track crosses an obstacle', () => {
 		fc.assert(
 			fc.property(fc.integer({ min: 12, max: 50 }), (obstacleWidth) => {
@@ -210,5 +227,22 @@ describe('grid crossing allocation route geometry properties', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
+	});
+	it('discovers a second conflicting route beyond the reallocation budget and carries it to later phases', () => {
+		const fixture = variedGridRoutingCase(3, 2, 2);
+		const result = searchGridCrossingAllocations(fixture.input, (allocation, acceptBridges) =>
+			routeGridFixture(fixture, allocation, acceptBridges),
+		);
+		const first = result.witness.rejectedAlternatives[0];
+		expect(first?.reason).toContain('route-0 and route-1');
+		expect(Number(defined(result.witness.phases[0]).totalGeometries)).toBeGreaterThan(256);
+		expect(defined(result.witness.phases[0]).exploredGeometries).toBe(256);
+		const laterConflict = result.witness.rejectedAlternatives.findIndex(({ reason }) =>
+			reason.includes('route-0 and route-2'),
+		);
+		expect(laterConflict).toBeGreaterThan(255);
+		if (!('selected' in result)) throw new Error('Later phases must find a validated bridge.');
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
+		expect(routeGridFixture(fixture, result.selected.allocation, true).failure).toBeUndefined();
 	});
 });

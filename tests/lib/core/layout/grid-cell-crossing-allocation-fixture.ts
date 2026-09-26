@@ -1,9 +1,17 @@
 import {
 	defined,
 	EndpointKind,
+	LayoutBias,
+	LayoutDirection,
+	type LogicDocument,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import type { TopologicalRanks } from '../../../../src/lib/core/graph/topological-ranks';
+import { unbridgedContacts } from '../../../../src/lib/core/layout/bridge-contact';
+import { validatedBridges } from '../../../../src/lib/core/layout/bridge-oracle';
 import {
 	crossingIncidence,
 	gridRoutingEdges,
@@ -16,15 +24,28 @@ import {
 import {
 	crossingPortalSpans,
 	crossingRoute,
+	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
 } from '../../../../src/lib/core/layout/grid-cell-crossing-routing';
 import type { GridCellPlacement } from '../../../../src/lib/core/layout/grid-cell-types';
+import {
+	type GridCellInput,
+	GridCellLayoutStatus,
+	type GridCellSelected,
+} from '../../../../src/lib/core/layout/grid-cell-types';
+import { validateGridCellGeometryDiagnostic } from '../../../../src/lib/core/layout/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import {
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../../../../src/lib/core/layout/region-geometry-diagnostic';
 
 export interface VariedGridRoutingCase {
 	readonly input: CrossingAllocationInput;
 	readonly routing: GridCrossingRouting;
 	readonly crossing: readonly LogicRelation[];
+	readonly graph: LogicGraph;
+	readonly gridInput: GridCellInput;
 }
 
 export function variedGridRoutingCase(
@@ -64,7 +85,7 @@ export function variedGridRoutingCase(
 	}
 	for (const cell of cells) {
 		if (defined(endpointsByCellId.get(cell.id)).length === 0) {
-			const endpointId = `anchor-${cell.row}-${cell.column}`;
+			const endpointId = `task-${cell.row}-${cell.column}`;
 			cellByEndpointId.set(endpointId, cell.id);
 			defined(endpointsByCellId.get(cell.id)).push(endpointId);
 		}
@@ -128,6 +149,32 @@ export function variedGridRoutingCase(
 		incidence,
 		portalByRelationId: new Map(),
 	};
+	const source: LogicDocument = {
+		persistenceFormat: PERSISTENCE_FORMAT,
+		id: 'property-grid',
+		title: 'Grid route geometry property',
+		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
+		groups: [],
+		junctions: [],
+		nodes: [...cellByEndpointId.keys()].map((id, index) => ({
+			kind: EndpointKind.Node as const,
+			id,
+			natureId: 'task',
+			markdown: `${id}\n`,
+			layoutOrder: orderKey(`a${String.fromCharCode(65 + index)}`),
+		})),
+		relations: crossing,
+	};
+	const prepared = createGraph(source);
+	if (!prepared.ok) throw new Error('Generated grid document must be a valid graph.');
+	const gridInput: GridCellInput = {
+		rootId: routing.rootId,
+		cells: cells.map(({ id, row, column }) => ({ id, parentId: routing.rootId, row, column })),
+		cellByEndpointId,
+		minimumColumnWidths: Array<number>(columnCount).fill(520),
+		minimumRowHeights: Array<number>(rowCount).fill(300),
+	};
 	const canonical = canonicalCrossingAllocation(allocationInput);
 	return {
 		input: {
@@ -136,6 +183,8 @@ export function variedGridRoutingCase(
 		},
 		routing,
 		crossing,
+		graph: prepared.value,
+		gridInput,
 	};
 }
 
@@ -145,4 +194,79 @@ export function effectiveRouteGeometry(
 	allocation: GridCrossingAllocation,
 ): string {
 	return JSON.stringify(crossing.map((relation) => crossingRoute(routing, allocation, relation)));
+}
+
+/** Evaluate the generated candidate with the same grid geometry and route-contact oracles as production. */
+export function routeGridFixture(
+	fixture: VariedGridRoutingCase,
+	allocation: GridCrossingAllocation,
+	acceptBridges: boolean,
+): {
+	readonly candidate: GridCellSelected;
+	readonly failure?: ReturnType<typeof regionGeometryDiagnostic>;
+} {
+	const { routing, crossing, graph, gridInput } = fixture;
+	const routed = crossing.map((relation) => crossingRoute(routing, allocation, relation));
+	const cells = routing.cells;
+	const elements = cells.flatMap((cell) =>
+		cell.localLayout.elements.map((element) => ({
+			...element,
+			bounds: {
+				...element.bounds,
+				x: element.bounds.x + cell.translation.x,
+				y: element.bounds.y + cell.translation.y,
+			},
+		})),
+	);
+	const candidate: GridCellSelected = {
+		status: GridCellLayoutStatus.Selected,
+		rootId: routing.rootId,
+		layout: {
+			width: Math.max(...cells.map(({ bounds }) => bounds.x + bounds.width)) + 100,
+			height: Math.max(...cells.map(({ bounds }) => bounds.y + bounds.height)) + 100,
+			elements,
+			relations: routed.map(({ route }) => route),
+			regions: cells.map(({ id, bounds }) => ({ id, bounds })),
+		},
+		cells,
+		columnWidths: Array<number>(routing.columnCount).fill(520),
+		rowHeights: Array<number>(cells.length / routing.columnCount).fill(300),
+		portals: routed.flatMap(({ portals }) => portals),
+	};
+	const failure = validateGridCellGeometryDiagnostic(candidate, graph, gridInput);
+	if (failure !== undefined) return { candidate, failure };
+	const byId = new Map(candidate.layout.relations.map((route) => [route.id, route]));
+	const owned = gridCrossingOwnedRoutes(
+		routing.rootId,
+		routing.cellByEndpointId,
+		crossing,
+		byId,
+	).filter(({ regionId }) => regionId === routing.rootId);
+	let bridges: ReturnType<typeof validatedBridges> = [];
+	if (acceptBridges) bridges = validatedBridges(candidate.layout.relations);
+	for (const [index, first] of owned.entries()) {
+		for (const second of owned.slice(index + 1)) {
+			if (
+				unbridgedContacts(
+					{ id: first.relationId, points: first.points },
+					{ id: second.relationId, points: second.points },
+					bridges,
+				).length === 0
+			)
+				continue;
+			return {
+				candidate,
+				failure: regionGeometryDiagnostic(
+					RegionGeometryDiagnosticCode.ParentRouteContact,
+					`Region ${routing.rootId} routes ${first.relationId} and ${second.relationId} intersect without a bridge.`,
+					{
+						relationId: first.relationId,
+						relatedRelationId: second.relationId,
+						regionId: routing.rootId,
+					},
+				),
+			};
+		}
+	}
+	return { candidate };
 }

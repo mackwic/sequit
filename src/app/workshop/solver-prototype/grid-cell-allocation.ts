@@ -113,7 +113,7 @@ function twoByTwo(): GridDefinition {
 	};
 }
 
-function threeByTwo(conflicted: boolean): GridDefinition {
+function threeByTwo(conflictsFirst: boolean): GridDefinition {
 	const endpointIds = ['a', 'b', 'c', 'd', 'e', 'f'];
 	const cellIds = ['a', 'b', 'c', 'd', 'e', 'f'];
 	const relations: LogicRelation[] = [];
@@ -121,11 +121,11 @@ function threeByTwo(conflicted: boolean): GridDefinition {
 	let id: string;
 	let title: string;
 	let description: string;
-	if (conflicted) {
-		id = 'grid-allocation-3x2-pruned';
-		title = 'Grille trois par deux · conflits ciblés';
+	if (conflictsFirst) {
+		id = 'grid-allocation-3x2-conflicts-first';
+		title = 'Grille trois par deux · conflits d’abord';
 		description =
-			'Les permutations ciblent les routes en conflit : la réaffectation suffit avant la piste et le pont.';
+			'Les conflits guident les premiers essais avant le parcours complet : la réaffectation suffit sans pont. Nœuds d’atelier : 120 × 64 px ; témoin moteur : 220 × 116 px.';
 		relations.push(
 			{ id: 'a-b', from: 'a', to: 'b' },
 			{ id: 'a-c', from: 'a', to: 'c' },
