@@ -59,11 +59,9 @@ export function reservedRailTrack(edge: RoutingEdge): number {
 	return edge.capacity - 1;
 }
 
-/**
- * The margin one frame edge reserves: OUTER_RAIL_OFFSET clear of the first crossing track, plus one
- * CROSSING_SPACING per additional crossing track. The far OUTER_RAIL_OFFSET covers the reserved
- * track and its clearance, so no rail track ever leaves the composed canvas.
- */
+/** The top margin reserves the global bus for every crossing, even when no single column carries
+ * them all. Side margins are instead paid by the corresponding gutter; the bottom stays at its
+ * 96px minimum because there is no bottom bus. */
 export function gridMargin({ crossingCount }: GridRoutingEdges): number {
 	const span = CROSSING_SPACING * Math.max(0, crossingCount - 1);
 	return GRID_GUTTER_MIN_MARGIN + span;
