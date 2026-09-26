@@ -7,6 +7,11 @@ import { LAYOUT_CONFIGURATIONS } from '../../support/builders/layout-bias-scenar
 import { axesFor } from '../../support/harnesses/visual-directions';
 import { executableScenarios } from './catalogue';
 import { scenario as conditionalPorts } from './routing/conditional-incoming-ports.scenario';
+import {
+	crossingNearIncidentJunction,
+	scenario as junctionObstacle,
+} from './routing/junction-crossing-obstacle.scenario';
+
 describe.each(executableScenarios)('$id shared scenario', (scenario) => {
 	it.each(LAYOUT_CONFIGURATIONS)(
 		'passes with $direction and $bias bias',
@@ -59,6 +64,22 @@ describe('conditional incoming-port topology versus target order', () => {
 				expect(incoming).toHaveLength(3);
 				expect(routeCrossings(layout.relations).length).toBeGreaterThan(0);
 			}
+		},
+	);
+});
+
+describe('junction-incident crossing isolation', () => {
+	it.each(Object.values(LayoutDirection))(
+		'rejects a K4,2 crossing without any j* route despite retained ordinary crossings in %s',
+		async (direction) => {
+			const layout = await junctionObstacle.arrange(direction);
+			const incident = new Set(['j1-to-s', 'j2-to-j1', 'g-to-j2']);
+			const ordinary = layout.relations.filter(({ id }) => !incident.has(id));
+			expect(routeCrossings(ordinary).length).toBeGreaterThan(0);
+			expect(crossingNearIncidentJunction(layout)).toBe(true);
+			expect(crossingNearIncidentJunction({ elements: layout.elements, relations: ordinary })).toBe(
+				false,
+			);
 		},
 	);
 });
