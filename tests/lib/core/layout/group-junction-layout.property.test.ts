@@ -447,6 +447,11 @@ async function assertDistantGroups(
 it.each(LAYOUT_CONFIGURATIONS)(
 	'separates tall nested, empty and interleaved groups across distant ranks ($direction / $bias)',
 	async (configuration) => {
+		let runsPerConfiguration = Math.ceil(
+			PROPERTY_PARAMETERS.numRuns / LAYOUT_CONFIGURATIONS.length,
+		);
+		if (process.env['SEQUIT_PROPERTY_MODE'] === 'fuzz')
+			runsPerConfiguration = PROPERTY_PARAMETERS.numRuns;
 		await fc.assert(
 			fc.asyncProperty(
 				fc.integer({ min: 100, max: 230 }),
@@ -457,7 +462,7 @@ it.each(LAYOUT_CONFIGURATIONS)(
 			),
 			{
 				...PROPERTY_PARAMETERS,
-				numRuns: Math.ceil(PROPERTY_PARAMETERS.numRuns / LAYOUT_CONFIGURATIONS.length),
+				numRuns: runsPerConfiguration,
 			},
 		);
 		await assertDistantGroups(configuration, 100, 35, false);

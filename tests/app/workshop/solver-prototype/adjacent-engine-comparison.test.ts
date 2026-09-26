@@ -104,6 +104,9 @@ describe('adjacent 3+1 bridge and detour comparison', () => {
 			detourLengthTolerance: DETOUR_LENGTH_TOLERANCE,
 		});
 		expect(fixture.measurements.nodes.get('a')?.width).toBe(80);
+		expect(comparison.independent.metrics.area).toBe(120768);
+		expect(comparison.independent.metrics.routeLength).toBe(732);
+		expect(comparison.independent.metrics.growth).toBe(16);
 		expect(comparison.dedicated.metrics.area).toBe(130560);
 		expect(comparison.dedicated.metrics.routeLength).toBe(896);
 		expect(comparison.dedicated.metrics.crossings).toBe(2);

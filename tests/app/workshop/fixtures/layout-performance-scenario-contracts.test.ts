@@ -114,7 +114,7 @@ describe('layout performance scenario contracts', () => {
 		);
 	});
 
-	it('grows relations across all three lanes with valid dense geometry', () => {
+	it('grows relations across all three lanes while validating bounded route work', () => {
 		const scenario = LAYOUT_PERFORMANCE_SCENARIOS.find(
 			({ name }) => name === 'lane-allocations-dense',
 		);
@@ -136,6 +136,17 @@ describe('layout performance scenario contracts', () => {
 		expect(
 			validateSharedLaneGeometry(large.graph, outcome.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
+		const passes = outcome.allocationWitness?.passes;
+		expect(passes?.map(({ acceptBridges }) => acceptBridges)).toEqual([false, true]);
+		expect(
+			passes?.some(
+				({ baselineWork, workBudget }) => baselineWork !== undefined && baselineWork > workBudget,
+			),
+		).toBe(true);
+		for (const pass of passes ?? []) {
+			expect(pass.baselineWork).toBeGreaterThan(0);
+			expect(pass.work).toBeLessThanOrEqual(pass.workBudget);
+		}
 	});
 
 	it.each(LAYOUT_PERFORMANCE_SCENARIOS)(
