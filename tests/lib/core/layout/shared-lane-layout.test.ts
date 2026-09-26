@@ -1217,6 +1217,12 @@ describe('shared lane layout', () => {
 		if (result.status !== SharedLaneLayoutStatus.Selected) return;
 		expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
 		expect(validatedBridges(result.geometry.relations)).toHaveLength(0);
+		const localGeometries = local
+			.map((candidate) =>
+				materializeParallelGeometry(input, candidate.frame, candidate.order, candidate.allocation),
+			)
+			.filter((geometry) => validateSharedLaneGeometry(prepared.graph, geometry) === undefined);
+		expect(localGeometries).toContainEqual(result.geometry);
 		expect(result.allocationWitness?.passes[0]).toMatchObject({
 			acceptBridges: false,
 			total: String(candidates.length),
