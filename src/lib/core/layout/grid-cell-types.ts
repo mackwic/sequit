@@ -8,6 +8,10 @@ import type {
 	RegionPortal,
 	RegionPortalSide,
 } from './region-composition-types';
+import type {
+	RegionCompositionFailureEvidence,
+	RegionSearchProvenance,
+} from './region-search-evidence';
 
 export { RegionCompositionStatus as GridCellLayoutStatus } from './region-composition-types';
 
@@ -51,4 +55,21 @@ export interface GridCellAllocationSelected extends GridCellSelected {
 	readonly witness: GridCrossingAllocationWitness;
 }
 
-export type GridCellLayoutAttempt = RegionCompositionAttempt<GridCellAllocationSelected>;
+type GridCellGridFailureEvidence = Extract<
+	RegionCompositionFailureEvidence,
+	{ readonly provenance: RegionSearchProvenance.Grid }
+>;
+type GridCellDiagnosticOnlyFailureEvidence = Extract<
+	RegionCompositionFailureEvidence,
+	{ readonly provenance?: undefined }
+>;
+
+export type GridCellLayoutAttempt = RegionCompositionAttempt<
+	GridCellAllocationSelected,
+	GridCellGridFailureEvidence | GridCellDiagnosticOnlyFailureEvidence
+>;
+
+export type GridCellRouteAttempt = RegionCompositionAttempt<
+	GridCellAllocationSelected,
+	GridCellGridFailureEvidence
+>;

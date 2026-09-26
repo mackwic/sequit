@@ -38,6 +38,7 @@ import {
 	RegionSubtreeScope,
 	solveRegionSubtreeAttempts,
 } from '../../../../src/lib/core/layout/region-partial-composition';
+import { RegionSearchProvenance } from '../../../../src/lib/core/layout/region-search-evidence';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridDocument, regionDocument } from './nested-region-fixture';
@@ -801,17 +802,16 @@ describe('a grid disposition inside the recursive region tree', () => {
 		};
 		const prepared = prepareLayoutDocument(document);
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, nested);
-		if (attempt.status !== RegionCompositionStatus.Unknown)
-			throw new Error('Expected the recursive grid disposition to be unknown.');
+		if (
+			attempt.status !== RegionCompositionStatus.Unknown ||
+			attempt.provenance !== RegionSearchProvenance.Grid
+		)
+			throw new Error('Expected recursive grid search evidence.');
 		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
 		expect(attempt.reason).toBe('Cross-cell relation across-grid enters element a-source.');
 		expect(attempt.regionId).toBe('grid');
-		const recursiveWitness = attempt.witness;
-		if (recursiveWitness === undefined || !('phases' in recursiveWitness))
-			throw new Error('Expected recursive grid phase evidence.');
-		if (!Array.isArray(recursiveWitness.phases)) throw new Error('Expected recursive grid phases.');
-		expect(recursiveWitness.attempted).toBeGreaterThan(0);
-		expect(recursiveWitness.phases).toMatchObject([
+		expect(attempt.witness.attempted).toBeGreaterThan(0);
+		expect(attempt.witness.phases).toMatchObject([
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
@@ -824,15 +824,14 @@ describe('a grid disposition inside the recursive region tree', () => {
 		}).find(
 			({ regionId, scope }) => regionId === 'grid' && scope === RegionSubtreeScope.ClosedSubtree,
 		);
-		if (subtree?.status !== RegionCompositionStatus.Unknown)
-			throw new Error('Expected the grid subtree disposition to be unknown.');
+		if (
+			subtree?.status !== RegionCompositionStatus.Unknown ||
+			subtree.provenance !== RegionSearchProvenance.Grid
+		)
+			throw new Error('Expected grid subtree search evidence.');
 		expect(subtree.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
-		const subtreeWitness = subtree.witness;
-		if (subtreeWitness === undefined || !('phases' in subtreeWitness))
-			throw new Error('Expected grid subtree phase evidence.');
-		if (!Array.isArray(subtreeWitness.phases)) throw new Error('Expected grid subtree phases.');
-		expect(subtreeWitness.attempted).toBeGreaterThan(0);
-		expect(subtreeWitness.phases).toMatchObject([
+		expect(subtree.witness.attempted).toBeGreaterThan(0);
+		expect(subtree.witness.phases).toMatchObject([
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },

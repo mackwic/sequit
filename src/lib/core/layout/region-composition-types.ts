@@ -79,20 +79,22 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 	readonly portals: readonly Portal[];
 }
 
-type RegionCompositionUnknown = {
+type RegionCompositionUnknown<FailureEvidence extends RegionCompositionFailureEvidence> = {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
 	readonly regionId?: string;
 	readonly relationId?: string;
-} & RegionCompositionFailureEvidence;
+} & FailureEvidence;
 
 interface RegionCompositionUnsupported {
 	readonly status: RegionCompositionStatus.Unsupported;
 	readonly reason: string;
 }
 
-export type RegionCompositionAttempt<Selected extends RegionCompositionSelected> =
-	Selected | RegionCompositionUnknown | RegionCompositionUnsupported;
+export type RegionCompositionAttempt<
+	Selected extends RegionCompositionSelected,
+	FailureEvidence extends RegionCompositionFailureEvidence = RegionCompositionFailureEvidence,
+> = Selected | RegionCompositionUnknown<FailureEvidence> | RegionCompositionUnsupported;
 
 export interface RegionLayoutSelected extends RegionCompositionSelected<RegionPortal> {
 	readonly regions: readonly RegionChildPlacement[];

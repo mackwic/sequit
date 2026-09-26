@@ -35,6 +35,7 @@ import {
 	type GridCellInput,
 	type GridCellLayoutAttempt,
 	GridCellLayoutStatus,
+	type GridCellRouteAttempt,
 	type GridCellSelected,
 } from './grid-cell-types';
 import { validateGridCellGeometryDiagnostic } from './grid-cell-validation';
@@ -54,17 +55,13 @@ import {
 import { diagnoseParentRouteContacts } from './region-composition-validation-detail';
 import type { RegionGeometryDiagnostic } from './region-geometry-diagnostic';
 import type { RegionLocalLayoutCache } from './region-local-cache';
-import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
+import { RegionSearchProvenance } from './region-search-evidence';
 
 function unsupported(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unsupported, reason };
 }
 
-function unknown(
-	reason: string,
-	evidence?: Extract<RegionSearchEvidence, { readonly provenance: RegionSearchProvenance.Grid }>,
-): GridCellLayoutAttempt {
-	if (evidence !== undefined) return { status: GridCellLayoutStatus.Unknown, reason, ...evidence };
+function unknown(reason: string): GridCellLayoutAttempt {
 	return { status: GridCellLayoutStatus.Unknown, reason };
 }
 
@@ -170,7 +167,7 @@ function ownedCrossings(
 }
 
 /** Route a grid whose child placements have already been selected. */
-export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellLayoutAttempt {
+export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): GridCellRouteAttempt {
 	const { graph, input, model, disposition } = placed;
 	const crossing = ownedCrossings(model, input);
 	const incidence = crossingIncidence(crossing);
@@ -287,9 +284,11 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			allocation: search.selected.allocation,
 			witness: search.witness,
 		} satisfies GridCellAllocationSelected;
-	return unknown(search.failure.message, {
+	return {
+		status: GridCellLayoutStatus.Unknown,
+		reason: search.failure.message,
 		provenance: RegionSearchProvenance.Grid,
 		code: search.failure.code,
 		witness: search.witness,
-	});
+	};
 }

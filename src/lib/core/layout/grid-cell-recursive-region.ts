@@ -20,7 +20,7 @@ import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from './region-leaf-layout';
-import { type RegionSearchEvidence, RegionSearchProvenance } from './region-search-evidence';
+import { RegionSearchProvenance } from './region-search-evidence';
 
 function gridCellInput(context: RecursiveContext, regionId: string): GridCellInput {
 	const region = defined(context.model.regionsById.get(regionId));
@@ -187,14 +187,15 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 	if (attempt.status === GridCellLayoutStatus.Unsupported)
 		throw new UnsupportedRegionLeafLayoutError(attempt.reason);
 	if (attempt.status === GridCellLayoutStatus.Unknown) {
-		let evidence: RegionSearchEvidence | undefined;
-		if (attempt.provenance === RegionSearchProvenance.Grid)
-			evidence = {
+		throw new UnknownRegionLeafLayoutError(
+			attempt.reason,
+			{
 				provenance: RegionSearchProvenance.Grid,
 				code: attempt.code,
 				witness: attempt.witness,
-			};
-		throw new UnknownRegionLeafLayoutError(attempt.reason, evidence, regionId);
+			},
+			regionId,
+		);
 	}
 	const incidentPaths = gridCellInheritedIncidentPaths({
 		context,
