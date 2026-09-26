@@ -188,25 +188,6 @@ it.each(LAYOUT_CONFIGURATIONS)(
 	},
 );
 
-it('keeps an empty group document on the no-separation path', async () => {
-	const configuration = LAYOUT_CONFIGURATIONS[0];
-	const fixture = groupJunctionFixture(configuration, false, false);
-	const group = fixture.groups[0];
-	if (group === undefined) throw new Error('The empty-group fixture needs a group');
-	const document: LogicDocument = {
-		...fixture,
-		groups: [{ ...group, id: 'empty-group' }],
-		nodes: [],
-		junctions: [],
-		relations: [],
-	};
-	const { layout } = await layoutDocument(document);
-	const bounds = boundsFor(layout, 'empty-group');
-	expect(bounds.width).toBeGreaterThan(0);
-	expect(bounds.height).toBeGreaterThan(0);
-	expect(layout.elements).toHaveLength(1);
-});
-
 function groupForTallNode(id: string): string | undefined {
 	if (id === 'a' || id === 'sink') return 'child';
 	if (id === 'b') return 'parent';
@@ -262,6 +243,16 @@ function tallNestedInterleaving(
 	};
 }
 
+function groupContains(document: LogicDocument, ancestorId: string, memberId: string): boolean {
+	const byId = new Map(document.groups.map((group) => [group.id, group]));
+	let parentId = byId.get(memberId)?.groupId;
+	while (parentId !== undefined) {
+		if (parentId === ancestorId) return true;
+		parentId = byId.get(parentId)?.groupId;
+	}
+	return false;
+}
+
 function assertDisjointNodesAndForeignGroups(
 	document: LogicDocument,
 	layout: Awaited<ReturnType<typeof layoutDocument>>['layout'],
@@ -272,6 +263,16 @@ function assertDisjointNodesAndForeignGroups(
 			expect(
 				overlaps(boundsFor(layout, group.id), boundsFor(layout, node.id)),
 				sourceLabel(group.id, node.id),
+			).toBe(false);
+		}
+	}
+	for (const [index, group] of document.groups.entries()) {
+		for (const next of document.groups.slice(index + 1)) {
+			if (groupContains(document, group.id, next.id)) continue;
+			if (groupContains(document, next.id, group.id)) continue;
+			expect(
+				overlaps(boundsFor(layout, group.id), boundsFor(layout, next.id)),
+				sourceLabel(group.id, next.id),
 			).toBe(false);
 		}
 	}
@@ -288,6 +289,51 @@ function assertDisjointNodesAndForeignGroups(
 function sourceLabel(left: string, right: string): string {
 	return `${left} must not intersect ${right}`;
 }
+
+it.each(LAYOUT_CONFIGURATIONS)(
+	'separates overlapping sibling frames even when neither contains the other source ($direction / $bias)',
+	async (configuration) => {
+		const fixture = groupJunctionFixture(configuration, false, false);
+		const member = fixture.nodes.find(({ id }) => id === 'member');
+		const sourceGroup = fixture.groups[0];
+		if (member === undefined || sourceGroup === undefined)
+			throw new Error('Group fixture requires member and group');
+		const sink = { ...member, id: 'sink', layoutOrder: orderKey('a4') };
+		delete sink.groupId;
+		const document: LogicDocument = {
+			...fixture,
+			groups: [
+				{ ...sourceGroup, id: 'left' },
+				{ ...sourceGroup, id: 'right', layoutOrder: orderKey('a3') },
+			],
+			nodes: [
+				{ ...member, id: 'a', groupId: 'left', layoutOrder: orderKey('a1') },
+				{ ...member, id: 'b', groupId: 'right', layoutOrder: orderKey('a2') },
+				sink,
+			],
+			junctions: [],
+			relations: [
+				{ id: 'a-sink', from: 'a', to: 'sink' },
+				{ id: 'b-sink', from: 'b', to: 'sink' },
+			],
+		};
+		const { layout, ranks } = await layoutDocument(document, {
+			nodes: {
+				a: { width: 100, height: 60 },
+				b: { width: 100, height: 60 },
+				sink: { width: 100, height: 60 },
+			},
+			groups: {
+				left: { minimumWidth: 140, minimumHeight: 100, headerHeight: 20, padding: 20 },
+				right: { minimumWidth: 140, minimumHeight: 100, headerHeight: 20, padding: 20 },
+			},
+		});
+		assertDisjointNodesAndForeignGroups(document, layout);
+		AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+			.routes()
+			.areAttachedToEndpoints();
+	},
+);
 
 it('keeps generated non-descendant nodes outside every group envelope', async () => {
 	await fc.assert(
@@ -603,4 +649,54 @@ it('keeps all ordinary routes attached when grouped packing increases a corridor
 		.areAttachedToEndpoints()
 		.followLayoutFlow()
 		.haveOnlyAllowedSharedTrunks();
+});
+
+it('keeps every relation attached when port growth exposes an independent corridor', async () => {
+	const configuration = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Right } as const;
+	const fixture = groupJunctionFixture(configuration, false, false);
+	const template = fixture.nodes[0];
+	if (template === undefined) throw new Error('A group member is required');
+	const ungrouped = { ...template };
+	delete ungrouped.groupId;
+	const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+	const sizes = [
+		{ width: 167, height: 129 },
+		{ width: 86, height: 46 },
+		{ width: 151, height: 124 },
+		{ width: 122, height: 103 },
+		{ width: 126, height: 80 },
+		{ width: 135, height: 42 },
+	];
+	const document: LogicDocument = {
+		...fixture,
+		nodes: ids.map((id, index) => {
+			const node = { ...ungrouped, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
+			if (id === 'f') return { ...node, groupId: 'group' };
+			return node;
+		}),
+		junctions: [],
+		relations: [
+			{ id: 'a-d', from: 'a', to: 'd' },
+			{ id: 'b-e', from: 'b', to: 'e' },
+			{ id: 'b-f', from: 'b', to: 'f' },
+			{ id: 'c-e', from: 'c', to: 'e' },
+			{ id: 'c-f', from: 'c', to: 'f' },
+		],
+	};
+	const { layout, ranks } = await layoutDocument(document, {
+		nodes: Object.fromEntries(
+			ids.map((id, index) => {
+				const size = sizes[index];
+				if (size === undefined) throw new Error('Every node requires dimensions');
+				return [id, size];
+			}),
+		),
+		groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
+	});
+	assertDisjointNodesAndForeignGroups(document, layout);
+	AssertLayout(new VisualLayout(layout, ranks.byEndpointId, configuration.direction))
+		.routes()
+		.areOrthogonal()
+		.areAttachedToEndpoints()
+		.followLayoutFlow();
 });

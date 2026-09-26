@@ -1,12 +1,11 @@
 import { defined } from '../../document/logic-document';
-import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { routeOwnedChannel } from './channel-routing';
 import type { ChannelRouting } from './channel-types';
 import { type PortAllocation, sharedSourcePorts } from './port-allocation';
-import { crossingCorridors, type RoutingCorridor } from './routing-corridors';
+import type { RoutingCorridor } from './routing-corridors';
 
 interface PlannedCorridor extends ChannelRouting {
 	readonly corridor: RoutingCorridor;
@@ -63,31 +62,4 @@ export function planNodeRouting(input: {
 		ports: input.ports,
 		ranks: input.ranks,
 	};
-}
-
-/** Rebuild corridors after group-aware placement changes transverse positions. */
-export function stabilizeNodeRouting(
-	geometry: {
-		readonly graph: LogicGraph;
-		readonly ranks: ReadonlyMap<string, number>;
-		readonly bounds: ReadonlyMap<string, Bounds>;
-		readonly vertical: boolean;
-	},
-	ports: PortAllocation,
-	initial: NodeRouting,
-	place: (gaps: ReadonlyMap<number, number>) => void,
-): NodeRouting {
-	const reservation = new Map(initial.gaps);
-	for (;;) {
-		const corridors = crossingCorridors(geometry);
-		const plan = planNodeRouting({ ...geometry, corridors, ports });
-		let expanded = false;
-		for (const [rank, gap] of plan.gaps) {
-			if (gap <= (reservation.get(rank) ?? 0)) continue;
-			reservation.set(rank, gap);
-			expanded = true;
-		}
-		if (!expanded) return plan;
-		place(reservation);
-	}
 }

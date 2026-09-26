@@ -119,51 +119,6 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 	return { layers, channels, ports, gaps, channelGaps };
 }
 
-interface LayerReservation {
-	readonly gaps: ReadonlyMap<number, number>;
-	readonly channelGaps: ReadonlyMap<number, readonly number[]>;
-}
-
-function growChannelGaps(
-	current: Map<number, readonly number[]>,
-	planned: ReadonlyMap<number, readonly number[]>,
-): boolean {
-	let expanded = false;
-	for (const [rank, slots] of planned) {
-		const previous = current.get(rank) ?? [];
-		const next = slots.map((slot, index) => Math.max(slot, previous[index] ?? 0));
-		if (!next.some((slot, index) => slot > (previous[index] ?? 0))) continue;
-		current.set(rank, next);
-		expanded = true;
-	}
-	return expanded;
-}
-
-/** The reserved gaps only grow; channels are always built from the final coordinates. */
-export function stabilizeLayeredRouting(
-	input: LayerInput,
-	ports: PortAllocation,
-	initial: LayerPlan,
-	place: (reservation: LayerReservation) => void,
-): LayerPlan {
-	let reservation: LayerReservation = initial;
-	for (;;) {
-		const plan = planLayeredRouting(input, ports);
-		const gaps = new Map(reservation.gaps);
-		const channelGaps = new Map(reservation.channelGaps);
-		let expanded = false;
-		for (const [rank, gap] of plan.gaps) {
-			if (gap <= (gaps.get(rank) ?? 0)) continue;
-			gaps.set(rank, gap);
-			expanded = true;
-		}
-		if (growChannelGaps(channelGaps, plan.channelGaps)) expanded = true;
-		if (!expanded) return plan;
-		reservation = { gaps, channelGaps };
-		place(reservation);
-	}
-}
-
 export function materializeLayers(
 	input: LayerGeometry,
 	plan: LayerPlan,

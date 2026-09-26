@@ -22,10 +22,9 @@ import {
 	allocateLayerPorts,
 	materializeLayers,
 	planLayeredRouting,
-	stabilizeLayeredRouting,
 } from './routing/layered-routing';
 import { allocatePorts, type PortAllocation } from './routing/port-allocation';
-import { planNodeRouting, stabilizeNodeRouting } from './routing/reserve-node-routing';
+import { planNodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
 import { crossingCorridors } from './routing/routing-corridors';
 import { directRoutingSpace, routingSpace } from './routing/routing-space';
@@ -122,11 +121,6 @@ function reserveLayeredRouting(
 	placeWithPorts(workspace, ports);
 	let plan = planLayeredRouting(input, ports);
 	placeWithPorts(workspace, ports, plan);
-	const plannedPorts = ports;
-	if (structure.hierarchy !== undefined)
-		plan = stabilizeLayeredRouting(input, ports, plan, (reservation) => {
-			placeWithPorts(workspace, plannedPorts, reservation);
-		});
 	if (structure.junctionIds.size > 0) {
 		const originalPorts = ports;
 		const originalPlan = plan;
@@ -144,11 +138,6 @@ function reserveLayeredRouting(
 		});
 		plan = planLayeredRouting(input, ports);
 		placeWithPorts(workspace, ports, plan);
-		const candidatePorts = ports;
-		if (structure.hierarchy !== undefined)
-			plan = stabilizeLayeredRouting(input, ports, plan, (reservation) => {
-				placeWithPorts(workspace, candidatePorts, reservation);
-			});
 		const fits = [...ports.sizes].every(([id, size]) => {
 			const placed = proposal.sizes.get(id);
 			return placed?.width === size.width && placed.height === size.height;
@@ -188,7 +177,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		bounds: placement.bounds,
 	});
 	placeWithPorts(workspace, ports, { gaps: baseGaps });
-	let routing = planNodeRouting({
+	const routing = planNodeRouting({
 		corridors,
 		ports,
 		bounds: placement.bounds,
@@ -207,15 +196,6 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		return;
 	}
 	placeWithPorts(workspace, ports, routing);
-	if (structure.hierarchy !== undefined)
-		routing = stabilizeNodeRouting(
-			{ graph, ranks: ranks.byEndpointId, bounds: placement.bounds, vertical: frame.vertical },
-			ports,
-			routing,
-			(gaps) => {
-				placeWithPorts(workspace, ports, { gaps });
-			},
-		);
 	workspace.routing = routing;
 }
 

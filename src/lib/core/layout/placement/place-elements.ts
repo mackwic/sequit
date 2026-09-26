@@ -1,9 +1,14 @@
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
-import { encloseGroups, separateInterleavedGroupNodes } from './enclose-groups';
+import {
+	encloseGroups,
+	groupSeparationWindows,
+	separateInterleavedGroupNodes,
+} from './enclose-groups';
 import { insetJunctionChannels } from './group-junction-channels';
 import { junctionRails, railSpan } from './junction-rails';
 import { applyOuterMargin, packComponents, repackContainment } from './pack-components';
+import type { MainWindow } from './pack-group-siblings';
 import { type ComponentLayout, placeComponent } from './place-component';
 import type { PreparedMeasurements } from './prepare-measurements';
 
@@ -11,6 +16,7 @@ export interface PlacementState {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly components: ComponentLayout[];
 	groupChannelInsets: ReadonlyMap<number, readonly number[]>;
+	groupWindows?: ReadonlyMap<string, MainWindow>;
 	transverseCenters?: ReadonlyMap<string, number> | undefined;
 	branchOffsets?: ReadonlyMap<string, number> | undefined;
 }
@@ -86,14 +92,19 @@ export function placeElements(
 		);
 	if (structure.containment !== undefined)
 		repackContainment(structure.containment, placement.bounds, frame.vertical);
-	if (structure.hierarchy !== undefined)
+	if (structure.hierarchy !== undefined) {
+		const windows =
+			placement.groupWindows ?? groupSeparationWindows(placement.bounds, frame.vertical);
+		placement.groupWindows = windows;
 		separateInterleavedGroupNodes({
 			hierarchy: structure.hierarchy,
 			graph: structure.graph,
 			measurements: measurements.groups,
 			bounds: placement.bounds,
 			frame,
+			windows,
 		});
+	}
 	applyOuterMargin(placement.bounds);
 	return placement.bounds;
 }

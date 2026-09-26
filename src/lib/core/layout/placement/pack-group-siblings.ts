@@ -1,7 +1,6 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import {
-	mainSize,
 	type MutableBounds,
 	translateTransversely,
 	transverseSize,
@@ -13,9 +12,10 @@ interface Item {
 	readonly id: string;
 	readonly box: MutableBounds;
 	readonly group: boolean;
+	readonly window: MainWindow;
 }
 
-interface Span {
+export interface MainWindow {
 	readonly first: number;
 	readonly last: number;
 }
@@ -29,25 +29,19 @@ interface Tree {
 
 interface Update {
 	readonly tree: Tree;
-	readonly span: Span;
+	readonly span: MainWindow;
 	readonly value: number;
 }
 
 interface Query {
 	readonly tree: Tree;
-	readonly span: Span;
+	readonly span: MainWindow;
 }
 
-function primaryStart(box: MutableBounds, vertical: boolean): number {
-	if (vertical) return box.y;
-	return box.x;
-}
-
-function spanOf(box: MutableBounds, vertical: boolean, tree: Tree): Span {
-	const first = primaryStart(box, vertical);
+function spanOf(window: MainWindow, tree: Tree): MainWindow {
 	return {
-		first: defined(tree.positions.get(first)),
-		last: defined(tree.positions.get(first + mainSize(box, vertical))),
+		first: defined(tree.positions.get(window.first)),
+		last: defined(tree.positions.get(window.last)),
 	};
 }
 
@@ -78,17 +72,14 @@ function queryMax(position: number, low: number, high: number, query: Query): nu
 	return Math.max(value, left, right);
 }
 
-function primaryOverlap(left: MutableBounds, right: MutableBounds, vertical: boolean): boolean {
-	const first = primaryStart(left, vertical);
-	const second = primaryStart(right, vertical);
-	if (first + mainSize(left, vertical) <= second) return false;
-	return second + mainSize(right, vertical) > first;
+function primaryOverlap(left: MainWindow, right: MainWindow): boolean {
+	return left.first < right.last && right.first < left.last;
 }
 
 /** A group can pass a foreign sibling when that order is more compact. */
 function preferGroupAfter(group: Item, other: Item, vertical: boolean): boolean {
 	if (!group.group || other.group) return false;
-	if (!primaryOverlap(group.box, other.box, vertical)) return false;
+	if (!primaryOverlap(group.window, other.window)) return false;
 	const groupStart = transverseStart(group.box, vertical);
 	const groupEnd = groupStart + transverseSize(group.box, vertical);
 	const otherStart = transverseStart(other.box, vertical);
@@ -104,15 +95,10 @@ function preferGroupAfter(group: Item, other: Item, vertical: boolean): boolean 
 	return groupAfterCost < otherAfterCost;
 }
 
-function intervalTree(items: readonly Item[], vertical: boolean): Tree {
-	const coordinates = [
-		...new Set(
-			items.flatMap(({ box }) => [
-				primaryStart(box, vertical),
-				primaryStart(box, vertical) + mainSize(box, vertical),
-			]),
-		),
-	].sort((a, b) => a - b);
+function intervalTree(items: readonly Item[]): Tree {
+	const coordinates = [...new Set(items.flatMap(({ window }) => [window.first, window.last]))].sort(
+		(a, b) => a - b,
+	);
 	let leafCount = 1;
 	while (leafCount < coordinates.length - 1) leafCount *= 2;
 	return {
@@ -123,21 +109,23 @@ function intervalTree(items: readonly Item[], vertical: boolean): Tree {
 	};
 }
 
-/** Preserve already aligned distinct ranks and move only siblings with overlapping main spans. */
+/** Preserve distinct minimum-gap intervals and move only siblings that can coexist. */
 export function packGroupSiblings(
 	children: readonly string[],
 	bounds: ReadonlyMap<string, MutableBounds>,
 	packing: {
 		readonly groupIds: ReadonlyMap<string, unknown>;
 		readonly pending: Map<string, number>;
+		readonly windows: ReadonlyMap<string, MainWindow>;
 	},
 	vertical: boolean,
 ): void {
-	const { groupIds, pending } = packing;
+	const { groupIds, pending, windows } = packing;
 	const items: Item[] = children.map((id) => ({
 		id,
 		box: defined(bounds.get(id)),
 		group: groupIds.has(id),
+		window: defined(windows.get(id)),
 	}));
 	items.sort(
 		(left, right) =>
@@ -151,9 +139,9 @@ export function packGroupSiblings(
 		items[index] = other;
 		items[index + 1] = group;
 	}
-	const tree = intervalTree(items, vertical);
+	const tree = intervalTree(items);
 	for (const { id, box } of items) {
-		const span = spanOf(box, vertical, tree);
+		const span = spanOf(defined(windows.get(id)), tree);
 		const previousEnd = queryMax(1, 0, tree.leafCount, { tree, span });
 		const start = transverseStart(box, vertical);
 		const shift = Math.max(0, previousEnd + ITEM_GAP - start);
