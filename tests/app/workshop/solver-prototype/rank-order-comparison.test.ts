@@ -133,6 +133,7 @@ describe('rank order stability under document edits', () => {
 		expect(comparisons.map(({ id }) => id)).toEqual([
 			'add-relation',
 			'remove-relation',
+			'rename',
 			'add-node',
 			'add-isolated-node',
 			'remove-node',
@@ -179,6 +180,33 @@ describe('rank order stability under document edits', () => {
 		});
 	});
 
+	it('attributes a measurement-only rename and distinguishes relative motion from shared translation', () => {
+		const rename = comparisons.find(({ id }) => id === 'rename');
+		expect(rename).toMatchObject({
+			addedElements: 0,
+			removedElements: 0,
+			addedRelations: 0,
+			removedRelations: 0,
+			commonElements: 5,
+			rankChanges: 0,
+			commonRelations: 4,
+			portChanges: 4,
+			pathChanges: 4,
+			beforeCrossings: 0,
+			afterCrossings: 0,
+			medianTranslation: { x: 58, y: -24 },
+			relativeMovedElements: 4,
+			documentary: {
+				commonElements: 5,
+				rankChanges: 0,
+				medianTranslation: { x: 24, y: 0 },
+				relativeMovedElements: 2,
+			},
+		});
+		expect(rename?.meanRelativeNormalizedMovement).toBeCloseTo(0.328);
+		expect(rename?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.096);
+	});
+
 	it('preserves the geometry and ports of an independent component under a node-only append', () => {
 		const isolated = comparisons.find(({ id }) => id === 'add-isolated-node');
 		expect(isolated).toMatchObject({
@@ -188,6 +216,9 @@ describe('rank order stability under document edits', () => {
 			rankChanges: 0,
 			commonRelations: 4,
 			portChanges: 0,
+			relativeMovedElements: 0,
+			medianTranslation: { x: 0, y: 0 },
+			documentary: { movedElements: 0, relativeMovedElements: 0 },
 			pathChanges: 0,
 			commonRouteLengthBefore: 828,
 			commonRouteLengthAfter: 828,
@@ -273,8 +304,17 @@ describe('rank order stability under document edits', () => {
 			beforeCrossings: 0,
 			afterCrossings: 0,
 			afterWitness: { stop: 'complete', valid: 4 },
+			relativeMovedElements: 6,
+			medianTranslation: { x: 44, y: -48 },
+			documentary: {
+				movedElements: 65,
+				relativeMovedElements: 5,
+				medianTranslation: { x: 8, y: 0 },
+			},
 		});
 		expect(unrelated?.meanNormalizedMovement).toBeGreaterThan(0.7);
 		expect(unrelated?.meanNormalizedMovement).toBeLessThan(0.8);
+		expect(unrelated?.meanRelativeNormalizedMovement).toBeCloseTo(0.04457);
+		expect(unrelated?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.00578);
 	});
 });

@@ -6,9 +6,13 @@ import {
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../lib/core/graph/topological-ranks';
 import { validateDedicatedCandidate } from '../../../lib/core/layout/dedicated-candidate-validation';
-import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../lib/core/layout/layout-engine';
+import {
+	evaluateDedicatedLayout,
+	layoutWithDedicatedEngineAndRankOrderWitness,
+} from '../../../lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult, Point } from '../../../lib/core/layout/layout-types';
 import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank-order-search';
+import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import { fractionalOrderKeySpace } from '../../../lib/core/ordering/order-key-space';
 import { rankOrderComparisonCorpus, type RankOrderCorpusEntry } from './rank-order-comparison';
 
@@ -25,6 +29,11 @@ export interface RankOrderStability {
 	/** Translation of each common box's center, divided by its previous box diagonal. */
 	readonly meanNormalizedMovement: number;
 	readonly maxNormalizedMovement: number;
+	/** Motion after subtracting the median translation of common box centers. */
+	readonly relativeMovedElements: number;
+	readonly meanRelativeNormalizedMovement: number;
+	readonly maxRelativeNormalizedMovement: number;
+	readonly medianTranslation: Point;
 	readonly rankChanges: number;
 	readonly commonRelations: number;
 	readonly portChanges: number;
@@ -47,6 +56,7 @@ export interface RankOrderMutationComparison extends RankOrderStability {
 	readonly afterCrossings?: number;
 	readonly beforeWitness: RankOrderSearchWitness;
 	readonly afterWitness: RankOrderSearchWitness;
+	readonly documentary: RankOrderStability;
 }
 
 function entry(
@@ -93,6 +103,10 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 			nodes: new Map([...base.measurements.nodes].filter(([id]) => id !== 'c')),
 		},
 	);
+	const renamed = entry(base, document, {
+		...base.measurements,
+		nodes: new Map([...base.measurements.nodes, ['b', { width: 144, height: 60 }]]),
+	});
 	const ids = Array.from({ length: 65 }, (_, index) => `chain-${index}`);
 	const large = entry(
 		base,
@@ -141,6 +155,12 @@ export function rankOrderMutationCorpus(): readonly RankOrderMutation[] {
 				...document,
 				relations: document.relations.filter(({ id }) => id !== 'c-d'),
 			}),
+		},
+		{
+			id: 'rename',
+			label: 'Renommer un nœud sans modifier le graphe',
+			before: base,
+			after: renamed,
 		},
 		{ id: 'add-node', label: 'Ajouter un nœud et une relation', before: base, after: withNode },
 		{
@@ -216,6 +236,7 @@ function observed(entry: RankOrderCorpusEntry) {
 	const graph = created.value;
 	const ranks = topologicallyRank(graph);
 	const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, entry.measurements);
+	const documentary = evaluateDedicatedLayout(prepareLayout(graph, ranks), entry.measurements);
 	const validation = validateDedicatedCandidate({
 		graph,
 		ranks,
@@ -223,10 +244,19 @@ function observed(entry: RankOrderCorpusEntry) {
 		layout: selected.layout,
 	});
 	return {
+		documentary,
 		...selected,
 		ranks: ranks.byEndpointId,
 		...(validation.valid && { crossings: validation.score.strictCrossings }),
 	};
+}
+
+function median(values: number[]): number {
+	if (values.length === 0) return 0;
+	values.sort((left, right) => left - right);
+	const middle = Math.floor(values.length / 2);
+	if (values.length % 2 === 1) return defined(values[middle]);
+	return (defined(values[middle - 1]) + defined(values[middle])) / 2;
 }
 
 function stability(
@@ -236,26 +266,45 @@ function stability(
 	afterRanks: ReadonlyMap<string, number>,
 ): RankOrderStability {
 	const later = new Map(after.elements.map((element) => [element.id, element]));
-	let commonElements = 0;
-	let movedElements = 0;
+	const translations: { readonly x: number; readonly y: number; readonly diagonal: number }[] = [];
 	let rankChanges = 0;
-	let totalMovement = 0;
-	let maxNormalizedMovement = 0;
 	for (const element of before.elements) {
 		const next = later.get(element.id);
 		if (next === undefined) continue;
-		commonElements += 1;
 		if (beforeRanks.get(element.id) !== afterRanks.get(element.id)) rankChanges += 1;
 		const { bounds: old } = element;
 		const { bounds: current } = next;
-		const displacement = Math.hypot(
-			current.x + current.width / 2 - old.x - old.width / 2,
-			current.y + current.height / 2 - old.y - old.height / 2,
+		translations.push({
+			x: current.x + current.width / 2 - old.x - old.width / 2,
+			y: current.y + current.height / 2 - old.y - old.height / 2,
+			diagonal: Math.hypot(old.width, old.height),
+		});
+	}
+	const commonElements = translations.length;
+	const medianTranslation = {
+		x: median(translations.map(({ x }) => x)),
+		y: median(translations.map(({ y }) => y)),
+	};
+	let movedElements = 0;
+	let relativeMovedElements = 0;
+	let totalMovement = 0;
+	let totalRelativeMovement = 0;
+	let maxNormalizedMovement = 0;
+	let maxRelativeNormalizedMovement = 0;
+	for (const translation of translations) {
+		const displacement = Math.hypot(translation.x, translation.y);
+		const relative = Math.hypot(
+			translation.x - medianTranslation.x,
+			translation.y - medianTranslation.y,
 		);
 		if (displacement > 0) movedElements += 1;
-		const normalized = displacement / Math.hypot(old.width, old.height);
+		if (relative > 0) relativeMovedElements += 1;
+		const normalized = displacement / translation.diagonal;
+		const relativeNormalized = relative / translation.diagonal;
 		totalMovement += normalized;
+		totalRelativeMovement += relativeNormalized;
 		maxNormalizedMovement = Math.max(maxNormalizedMovement, normalized);
+		maxRelativeNormalizedMovement = Math.max(maxRelativeNormalizedMovement, relativeNormalized);
 	}
 	const routes = new Map(after.relations.map((relation) => [relation.id, relation]));
 	let commonRelations = 0;
@@ -279,12 +328,20 @@ function stability(
 		commonBendsAfter += newGeometry.bends;
 	}
 	let meanNormalizedMovement = 0;
-	if (commonElements > 0) meanNormalizedMovement = totalMovement / commonElements;
+	let meanRelativeNormalizedMovement = 0;
+	if (commonElements > 0) {
+		meanNormalizedMovement = totalMovement / commonElements;
+		meanRelativeNormalizedMovement = totalRelativeMovement / commonElements;
+	}
 	return {
 		commonElements,
 		movedElements,
 		meanNormalizedMovement,
 		maxNormalizedMovement,
+		relativeMovedElements,
+		meanRelativeNormalizedMovement,
+		maxRelativeNormalizedMovement,
+		medianTranslation,
 		rankChanges,
 		commonRelations,
 		portChanges,
@@ -310,6 +367,7 @@ export function compareRankOrderMutations(
 			id,
 			label,
 			...stability(prior.layout, next.layout, prior.ranks, next.ranks),
+			documentary: stability(prior.documentary, next.documentary, prior.ranks, next.ranks),
 			addedElements: [...nextElements].filter((endpointId) => !priorElements.has(endpointId))
 				.length,
 			removedElements: [...priorElements].filter((endpointId) => !nextElements.has(endpointId))
