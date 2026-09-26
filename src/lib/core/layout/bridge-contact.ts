@@ -179,8 +179,9 @@ export function unbridgedContacts(
 			charge?.(1);
 			const contact = runContact(firstRun, secondRun);
 			if (contact === undefined) continue;
+			const canBridge = bridges.length > 0 && contact.kind === RouteContactKind.Point;
 			if (
-				contact.kind === RouteContactKind.Point &&
+				canBridge &&
 				strictRunCrossing(firstRun, secondRun, contact.from) &&
 				contactIsBridged(contact.from, lookup)
 			)
@@ -189,7 +190,9 @@ export function unbridgedContacts(
 			contacts.set(`${from.x}:${from.y}:${to.x}:${to.y}`, contact);
 		}
 	}
+	if (contacts.size === 0) return [];
 	const ordered = [...contacts.values()].sort(compareContacts);
+	if (ordered.every((contact) => contact.kind === RouteContactKind.Point)) return ordered;
 	return ordered.filter(
 		(contact) =>
 			contact.kind === RouteContactKind.Overlap ||
@@ -221,7 +224,7 @@ export function disallowedRouteContacts(
 	bridges: readonly LayoutBridge[],
 	options?: BridgeContactOptions,
 ): readonly RouteContact[] {
-	return unbridgedContacts(first, second, bridges, options).filter(
-		(contact) => !permittedRouteContact(first, second, contact),
-	);
+	const contacts = unbridgedContacts(first, second, bridges, options);
+	if (contacts.length === 0) return contacts;
+	return contacts.filter((contact) => !permittedRouteContact(first, second, contact));
 }

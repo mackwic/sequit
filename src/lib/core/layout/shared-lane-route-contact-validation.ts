@@ -16,7 +16,8 @@ export function validateSharedLaneRouteContacts(
 	if (acceptBridges) {
 		bridges = validatedBridges(routes, charge);
 	}
-	const ordered = [...routes].sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	let ordered = routes;
+	if (routes.length > 1) ordered = [...routes].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	for (let first = 0; first < ordered.length; first += 1) {
 		const a = defined(ordered[first]);
 		for (let second = first + 1; second < ordered.length; second += 1) {
