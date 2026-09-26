@@ -256,9 +256,16 @@ describe('grid crossing allocation route geometry properties', () => {
 	});
 	it('discovers a second conflicting route beyond the reallocation budget and carries it to later phases', () => {
 		const fixture = variedGridRoutingCase(3, 2, 2);
-		const result = searchGridCrossingAllocations(fixture.input, (allocation, acceptBridges) =>
-			routeGridFixture(fixture, allocation, acceptBridges),
+		const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+			routeGridFixture(fixture, allocation, acceptBridges);
+		const oracle = searchGridCrossingAllocations(
+			fixture.input,
+			route,
+			undefined,
+			GridCrossingSearchMode.Exhaustive,
 		);
+		const result = searchGridCrossingAllocations(fixture.input, route);
+		expect('selected' in oracle).toBe(true);
 		const first = result.witness.rejectedAlternatives[0];
 		expect(first?.reason).toContain('route-0 and route-1');
 		expect(Number(defined(result.witness.phases[0]).totalGeometries)).toBeGreaterThan(256);
@@ -269,6 +276,11 @@ describe('grid crossing allocation route geometry properties', () => {
 		expect(laterConflict).toBeGreaterThan(255);
 		if (!('selected' in result)) throw new Error('Later phases must find a validated bridge.');
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		expect(routeGridFixture(fixture, result.selected.allocation, true).failure).toBeUndefined();
+		if (!('selected' in oracle)) throw new Error('The canonical budgeted search must select.');
+		expect(oracle.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
+		expect(oracle.witness.phases[0]?.exploredGeometries).toBe(256);
+		expect(oracle.witness.phases[1]?.exploredGeometries).toBe(256);
+		expect(route(result.selected.allocation, true).failure).toBeUndefined();
+		expect(route(oracle.selected.allocation, true).failure).toBeUndefined();
 	});
 });
