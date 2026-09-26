@@ -8,16 +8,16 @@ import type { LayoutScenario } from '../scenario';
 /** Dense variants retain exactly the same relations; only the target document order changes. */
 function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario {
 	let id = 'conditional-incoming-ports-shared';
-	let label = 'E avant D : port partagé';
+	let label = 'Quatre relations, E avant D : port partagé';
 	let nodeIds = ['a', 'b', 'c', 'e', 'd'];
 	let incomingPorts = 1;
 	let predecessorTargets = ['d'];
 	if (crossed) {
 		id = 'conditional-incoming-ports-crossed';
-		label = 'D avant E : trois ports et croisements inévitables';
+		label = 'Six relations, D avant E : trois ports';
 		if (reversedDense) {
 			id = 'conditional-incoming-ports-dense-reordered';
-			label = 'E avant D : mêmes relations denses, trois ports';
+			label = 'Six relations, E avant D : toujours trois ports';
 		} else nodeIds = ['a', 'b', 'c', 'd', 'e'];
 		incomingPorts = 3;
 		predecessorTargets = ['d', 'e'];
@@ -74,6 +74,6 @@ function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario
 export const scenario: LayoutScenario = {
 	...orderedTargets(true),
 	id: 'conditional-incoming-ports',
-	label: 'Ordre des cibles et capacité des ports entrants',
+	label: 'Topologie des relations et invariance des ports sous inversion des cibles',
 	variants: [orderedTargets(true), orderedTargets(true, true), orderedTargets(false)],
 };

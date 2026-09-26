@@ -5,18 +5,12 @@
  let { settings = $bindable() } = $props();
 </script>
 
-# Ordre des cibles et capacité des ports entrants
+# Topologie des relations et ordre des cibles
 
-Les sources **A, B et C** pointent vers **D** ; **A** pointe aussi vers **E**. Les cinq nœuds gardent les mêmes relations et les mêmes rangs dans les deux variantes. Seul l'ordre documentaire de **D** et **E** change. Le graphe, les rangs, les dimensions et les routes proviennent du pipeline réel.
+Dans la topologie **dense**, A, B et C pointent tous vers D et E. Inverser l'ordre documentaire de D et E sans changer les six relations maintient **trois ports entrants sur D** dans les deux ordres, dans les quatre directions. Le moteur peut modifier les trajets, mais ce scénario ne prouve pas une différence de capacité imputable à l'ordre.
 
-## D avant E
+Dans la topologie **clairsemée**, seules A → D, A → E, B → D et C → D demeurent. E précède D et les trois arrivées vers D partagent alors un port central ; sa dimension transversale est **80** au lieu de **144** pour les variantes denses. Le contraste entre un et trois ports tient donc aussi à la suppression de B → E et C → E, et non au seul ordre des cibles.
 
-La route **A → E** croise celles de **B → D** et **C → D**. Ces arrivées croisées ne peuvent partager le port entrant de D avec aucune autre arrivée. D reçoit **trois ports distincts** : avec une marge de 24 et un espacement de 48, sa dimension transversale passe de **80 à 144**. Les croisements visibles portent leurs ponts.
-
-## E avant D
-
-Les mêmes relations ne se croisent plus. Les trois arrivées vers D partagent **un port central**, et D garde sa dimension transversale intrinsèque de **80**.
-
-Les deux variantes vérifient les ports, les tailles, les attaches et les routes dans les quatre directions et leurs biais compatibles. Ce sont deux documents de référence avec des préférences d'ordre différentes ; ce test n'affirme pas que le moteur actuel explore les deux ordres pour un seul document.
+Les graphes, rangs, tailles, attaches et chemins proviennent du pipeline réel. Chaque variante vérifie les ports, les boîtes, les routes et, dans les cas denses, les ponts de croisement.
 
 <VisualTest {scenario} {source} bind:settings />
