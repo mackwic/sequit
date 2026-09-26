@@ -55,13 +55,14 @@ function makeRuns(
 ): ChannelRun[] {
 	let moving = wires;
 	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
-	let breaks = new Set<ChannelWire>();
+	let breaks: Set<ChannelWire>;
 	if (sharedEndpoints) {
 		// Shared endpoint families can turn independent column dependencies into a cycle.
 		// Leave coincident columns first, then join the shared arrival traverse.
 		const targets = new Set(wires.map((wire) => wire.target));
 		breaks = new Set(moving.filter((wire) => targets.has(wire.source)));
-	} else if (!nonInverted) breaks = cycleBreaks(moving);
+	} else if (nonInverted) breaks = new Set();
+	else breaks = cycleBreaks(moving);
 	const distinct = new Set<number>();
 	if (breaks.size > 0)
 		for (const wire of wires) {

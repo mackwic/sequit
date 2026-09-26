@@ -163,7 +163,6 @@ function reserveLayeredRouting(
 	return materializeLayers(input, plan);
 }
 
-/** Routing without a new face size or branch alignment can reuse the initial placement. */
 function portsChangePlacement(workspace: LayoutWorkspace, ports: PortAllocation): boolean {
 	const { structure, measurements, placement, frame } = workspace;
 	for (const demand of ports.metricDemands) {
@@ -190,17 +189,18 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		vertical: frame.vertical,
 	});
 	if (corridors.length === 0) return;
+	const sharing = cornerPortSharing(corridors);
 	let ports = allocatePorts({
 		corridors,
-		...cornerPortSharing(corridors),
+		...sharing,
 		fromCrossingCorridors: true,
 		sizes: measurements.sizes,
 		vertical: frame.vertical,
 		graph,
 		bounds: placement.bounds,
 	});
-	let reusePlacement = false;
-	if (structure.hierarchy === undefined && structure.junctionIds.size === 0)
+	let reusePlacement = sharing !== undefined && structure.hierarchy === undefined;
+	if (reusePlacement && structure.junctionIds.size === 0)
 		reusePlacement = !portsChangePlacement(workspace, ports);
 	if (!reusePlacement) placeWithPorts(workspace, ports, { gaps: baseGaps });
 	if (structure.hierarchy !== undefined)

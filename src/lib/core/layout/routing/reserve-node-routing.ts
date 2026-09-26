@@ -3,6 +3,7 @@ import { transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { routeOwnedChannel } from './channel-routing';
+import type { ChannelWire } from './channel-types';
 import type { ChannelRouting } from './channel-types';
 import { type PortAllocation, sharedSourcePorts } from './port-allocation';
 import type { RoutingCorridor } from './routing-corridors';
@@ -60,26 +61,31 @@ export function planNodeRouting(input: {
 		);
 	const corridors = input.corridors.map((corridor) => {
 		const sourcePorts = corridorSourcePorts(corridor, input.ports);
-		const channel = routeOwnedChannel(
-			corridor.links.map(({ relation, source, target }) => {
-				let sourceCenter = source;
-				let targetCenter = target;
-				if (centers !== undefined) {
-					sourceCenter = defined(centers.get(relation.from));
-					targetCenter = defined(centers.get(relation.to));
-				}
-				return {
-					id: relation.id,
-					sharedSource: sourcePorts?.get(relation.id),
-					source: sourceCenter + defined(input.ports.sourceOffsets.get(relation.id)),
-					target: targetCenter + defined(input.ports.targetOffsets.get(relation.id)),
-					first: undefined,
-					last: undefined,
-					middle: undefined,
-				};
-			}),
-			corridor.cornerOnly === true,
-		);
+		let wires: ChannelWire[];
+		if (centers === undefined) {
+			wires = corridor.links.map(({ relation, source, target }) => ({
+				id: relation.id,
+				sharedSource: sourcePorts?.get(relation.id),
+				source: source + defined(input.ports.sourceOffsets.get(relation.id)),
+				target: target + defined(input.ports.targetOffsets.get(relation.id)),
+				first: undefined,
+				last: undefined,
+				middle: undefined,
+			}));
+		} else {
+			wires = corridor.links.map(({ relation }) => ({
+				id: relation.id,
+				sharedSource: sourcePorts?.get(relation.id),
+				source:
+					defined(centers.get(relation.from)) + defined(input.ports.sourceOffsets.get(relation.id)),
+				target:
+					defined(centers.get(relation.to)) + defined(input.ports.targetOffsets.get(relation.id)),
+				first: undefined,
+				last: undefined,
+				middle: undefined,
+			}));
+		}
+		const channel = routeOwnedChannel(wires, corridor.cornerOnly === true);
 		const count = Math.max(railCounts.get(corridor.rank) ?? 0, channel.railCount);
 		railCounts.set(corridor.rank, count);
 		gaps.set(corridor.rank, BASE_RANK_GAP + Math.max(0, count - 1) * RAIL_SPACING);
