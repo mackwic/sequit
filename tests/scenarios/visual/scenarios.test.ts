@@ -13,7 +13,7 @@ import {
 } from './routing/junction-crossing-obstacle.scenario';
 
 describe.each(executableScenarios)('$id shared scenario', (scenario) => {
-	let scenarioTest = it;
+	let scenarioTest: typeof it | typeof it.fails = it;
 	if (scenario.expectedFailure === true) scenarioTest = it.fails;
 	scenarioTest.each(LAYOUT_CONFIGURATIONS)(
 		'passes with $direction and $bias bias',
