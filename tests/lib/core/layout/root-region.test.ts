@@ -82,7 +82,7 @@ function persistedGridOf(document: LogicDocument, input: GridCellInput): LogicDo
 			schemaVersion: GRID_REGION_PRESENTATION_SCHEMA,
 			regions: input.cells.map(({ id }, index) => ({
 				id,
-				layoutOrder: orderKey(`a${index.toString().padStart(3, '0')}`),
+				layoutOrder: orderKey(`a${index.toString().padStart(3, '0')}V`),
 				policy: LayoutPolicy.Layered,
 			})),
 			grid: {
@@ -99,7 +99,7 @@ function persistedGridOf(document: LogicDocument, input: GridCellInput): LogicDo
 }
 
 describe('implicit root layout region', () => {
-	it.fails('selects a persisted 3×7 grid with 21 endpoints through the product entry', () => {
+	it('selects a persisted 3×7 grid with 21 endpoints through the product entry', () => {
 		const { document, input } = gridOf(3, 7);
 		const prepared = prepareLayoutDocument(persistedGridOf(document, input));
 		expect(normalizeRootRegion(prepared.graph, prepared.ranks).policy).toBe(
@@ -110,7 +110,7 @@ describe('implicit root layout region', () => {
 		expect(layout.elements).toHaveLength(21);
 	});
 
-	it.fails(
+	it(
 		'selects a persisted 6×6 grid with thirty local relations through the product entry',
 		() => {
 			const { document, input } = gridOf(6, 6);
