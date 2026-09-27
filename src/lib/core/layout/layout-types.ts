@@ -56,6 +56,16 @@ export interface LayoutResult {
 	readonly relations: readonly LayoutRelation[];
 }
 
+/** A dedicated candidate cannot publish an obstacle-crossing group relation. */
+export class GroupRouteFailure extends Error {
+	readonly code = 'group-route-no-valid-passage' as const;
+
+	constructor(readonly relationId: string) {
+		super(`No valid passage for relation ${relationId}`);
+		this.name = 'GroupRouteFailure';
+	}
+}
+
 export interface LayoutOptions {
 	readonly inspectRouting?: boolean;
 }

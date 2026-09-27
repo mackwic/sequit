@@ -1,10 +1,17 @@
 import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
-import type {
-	DedicatedRouteScore,
-	RejectedDedicatedCandidate,
+import {
+	DedicatedCandidateRejectionCode,
+	type DedicatedRouteScore,
+	rejected,
+	type RejectedDedicatedCandidate,
 } from '../dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
-import type { DedicatedLayoutEvaluation, LayoutMeasurements, LayoutOptions } from '../layout-types';
+import {
+	type DedicatedLayoutEvaluation,
+	GroupRouteFailure,
+	type LayoutMeasurements,
+	type LayoutOptions,
+} from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import {
 	boundedRankOrderEnumerationSize,
@@ -222,7 +229,16 @@ class RankOrderSearch {
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;
-		this.verify(order, this.input.evaluate(order));
+		try {
+			this.verify(order, this.input.evaluate(order));
+		} catch (error) {
+			if (!(error instanceof GroupRouteFailure)) throw error;
+			this.validations += 1;
+			this.rejected.push({
+				order,
+				reason: rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, error.relationId),
+			});
+		}
 		return true;
 	}
 

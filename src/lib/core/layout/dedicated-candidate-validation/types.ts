@@ -15,6 +15,7 @@ export enum DedicatedCandidateRejectionCode {
 	Route = 'route',
 	Attachment = 'attachment',
 	Obstacle = 'obstacle',
+	GroupPassage = 'group-passage',
 	SelfContact = 'self-contact',
 	RouteContact = 'route-contact',
 	Ports = 'ports',

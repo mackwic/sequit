@@ -2,16 +2,19 @@ import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
-import type {
-	DedicatedRouteScore,
-	RejectedDedicatedCandidate,
+import {
+	DedicatedCandidateRejectionCode,
+	type DedicatedRouteScore,
+	rejected,
+	type RejectedDedicatedCandidate,
 } from '../dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
-import type {
-	DedicatedLayoutEvaluation,
-	LayoutMeasurements,
-	LayoutOptions,
-	LayoutResult,
+import {
+	type DedicatedLayoutEvaluation,
+	GroupRouteFailure,
+	type LayoutMeasurements,
+	type LayoutOptions,
+	type LayoutResult,
 } from '../layout-types';
 import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
@@ -114,10 +117,24 @@ function rejectedRenderedQuality(
 	return compareDedicatedRouteScores(trialScore, baseline.score) > 0;
 }
 
+function evaluateAssembled(input: AssemblyInput): DedicatedLayoutEvaluation | GroupRouteFailure {
+	const { structure, domain, local, measurements, services } = input;
+	try {
+		return services.evaluate(
+			applyRankOrder(structure, domain, local.orders),
+			measurements,
+			services.options,
+			true,
+		);
+	} catch (error) {
+		if (error instanceof GroupRouteFailure) return error;
+		throw error;
+	}
+}
+
 /** Validate the baseline once, then each assembled trial; every rejection removes at least one edit. */
 function assembleGlobal(input: AssemblyInput): GlobalChoice {
-	const { graph, ranks, measurements, structure, domain, baseline, budgets, local, services } =
-		input;
+	const { graph, ranks, measurements, baseline, budgets, local, services } = input;
 	if (local.changed.size === 0)
 		return {
 			evaluation: baseline,
@@ -143,14 +160,24 @@ function assembleGlobal(input: AssemblyInput): GlobalChoice {
 	let incidentAdmissions = 0;
 	let finalValidation: RankOrderSearchWitness['finalValidation'];
 	while (local.changed.size > 0) {
-		const trial = services.evaluate(
-			applyRankOrder(structure, domain, local.orders),
-			measurements,
-			services.options,
-			true,
-		);
 		pipelines += 1;
 		validations += 1;
+		const trial = evaluateAssembled(input);
+		if (trial instanceof GroupRouteFailure) {
+			const failure = rejected(
+				DedicatedCandidateRejectionCode.GroupPassage,
+				undefined,
+				trial.relationId,
+			);
+			finalValidation = failure;
+			fallbackComponents.push(
+				...restoreDocumentary(
+					input,
+					faultyComponents(failure, local.changed, budgets.byEndpoint, owners),
+				),
+			);
+			continue;
+		}
 		const outcome = validateDedicatedCandidate({
 			graph,
 			ranks,
