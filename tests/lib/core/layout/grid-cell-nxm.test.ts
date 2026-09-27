@@ -108,7 +108,7 @@ describe('grid bus allocation', () => {
 		expect(order).toEqual(['r1', 'r0', 'r2']);
 		const phase = result.witness.phases[1];
 		expect(result.witness.phases[0]?.exhaustive).toBe(true);
-		expect(phase?.totalGeometries).toBe('384');
+		expect(phase?.exhaustive).toBe(false);
 		expect(phase?.exploredGeometries).toBeLessThan(256);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
 		expect(

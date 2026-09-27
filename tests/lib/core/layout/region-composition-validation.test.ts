@@ -15,16 +15,23 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
+	RegionCompositionStatus,
 	type RegionInput,
 	RegionPortalSide,
 	RegionWorkPhase,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import {
 	type RegionCompositionGeometryCandidate,
 	validateRegionCompositionGeometry as validateCompositionDiagnostic,
 	validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry,
 } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
-import { validateParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
+import {
+	validateLeafCompositionGeometry,
+	validateParentRouteContacts,
+} from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
+import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { rowOf } from '../../../support/performance/layout-resource-scenarios';
 import {
 	depthTwoRegionDocument,
 	depthTwoRegionInput,
@@ -393,6 +400,27 @@ function fixture(
 }
 
 describe('generic region composition geometry', () => {
+	it('indexes a thousand leaf inventories under one measured traversal envelope', () => {
+		const { document, input } = rowOf(1000);
+		const prepared = prepareLayoutDocument(document);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Invalid row');
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (attempt.status !== RegionCompositionStatus.Selected) throw new Error('Unselected row');
+		const placements = new Map(attempt.regions.map((region) => [region.id, region]));
+		const work = new RegionCompositionWork({
+			normalizationComparisons: 0,
+			placements: 0,
+			comparisons: 0,
+			traversals: 4000,
+		});
+		expect(
+			validateLeafCompositionGeometry(normalized.model, attempt, placements, work),
+		).toBeUndefined();
+		expect(work.attempted(RegionWorkPhase.Traversals)).toBeGreaterThanOrEqual(1000);
+		expect(work.attempted(RegionWorkPhase.Traversals)).toBeLessThanOrEqual(4000);
+	});
+
 	it('accepts 100 sibling frames that touch only at their x or y edges', () => {
 		const { model, candidate } = siblingFixture(100);
 		const work = new RegionCompositionWork({

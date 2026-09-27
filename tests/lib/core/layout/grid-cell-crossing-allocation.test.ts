@@ -184,6 +184,29 @@ describe('grid crossing allocation', () => {
 		expect(crossingPortY(face, crossingFaceEdge('grid', 2), 1)).toBe(142);
 	});
 
+	it('saturates every phase without recursing through many adjacent-row relations', () => {
+		const ids = Array.from({ length: 15_000 }, (_, index) => `cross-${index}`);
+		const rows = [
+			ids.filter((_, index) => index % 2 === 0),
+			ids.filter((_, index) => index % 2 === 1),
+		];
+		const input: CrossingAllocationInput = {
+			...allocationInput(),
+			edges: gridRoutingEdges('grid', [], ids.length),
+			crossingIds: ids,
+			busRelevantRelationIds: ids,
+			gutterIds: [],
+			rowGutterIds: rows,
+			incidence: new Map([['origin', ids]]),
+		};
+		const phases = crossingAllocationPhases(input);
+		for (const phase of phases) {
+			if (phase.id === CrossingAllocationPhaseId.ExtraTrack)
+				expect(phase.totalGeometries()).toBe(0n);
+			else expect(phase.totalGeometries()).toBe(BigInt(phase.budget + 1));
+		}
+	});
+
 	it('starts with the canonical allocation and its crossing order per gutter', () => {
 		const input = allocationInput();
 		const canonical = canonicalCrossingAllocation(input);
@@ -313,7 +336,7 @@ describe('grid crossing allocation', () => {
 		for (const phase of phases) {
 			const candidates = [...phase.candidates()];
 			expect(candidates.length).toBeGreaterThan(0);
-			expect(BigInt(candidates.length)).toBe(phase.totalGeometries());
+			expect(phase.totalGeometries()).toBe(BigInt(Math.min(candidates.length, phase.budget + 1)));
 		}
 	});
 

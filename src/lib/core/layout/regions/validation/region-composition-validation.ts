@@ -254,7 +254,7 @@ export function validateRegionCompositionGeometry(
 	const context = { model, placements, root };
 	const placement = placementFailure(candidate, context, work);
 	if (placement !== undefined) return placement;
-	const leafGeometry = validateLeafCompositionGeometry(model, candidate, placements);
+	const leafGeometry = validateLeafCompositionGeometry(model, candidate, placements, work);
 	if (leafGeometry !== undefined) return leafGeometry;
 	const relationIds = new Set(model.relations.map(({ relation }) => relation.id));
 	if (

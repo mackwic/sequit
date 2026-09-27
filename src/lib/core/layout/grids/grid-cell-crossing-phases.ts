@@ -8,6 +8,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { rowGeometryCount } from './grid-cell-crossing-row-count';
 
 export type {
 	GridCrossingAllocationSelectedWitness,
@@ -68,72 +69,22 @@ export interface CrossingAllocationPhase {
 	) => Generator<GridCrossingAllocation, undefined, undefined>;
 }
 
-function permutationCount(items: number, slots: number): bigint {
+function permutationCount(items: number, slots: number, limit?: bigint): bigint {
 	let count = 1n;
-	for (let index = 0; index < items; index += 1) count *= BigInt(slots - index);
+	for (let index = 0; index < items; index += 1) {
+		count *= BigInt(slots - index);
+		if (limit !== undefined && count > limit) return limit + 1n;
+	}
 	return count;
 }
 
-function factorial(value: number): bigint {
+function factorial(value: number, limit?: bigint): bigint {
 	let count = 1n;
-	for (let factor = 2; factor <= value; factor += 1) count *= BigInt(factor);
+	for (let factor = 2; factor <= value; factor += 1) {
+		count *= BigInt(factor);
+		if (limit !== undefined && count > limit) return limit + 1n;
+	}
 	return count;
-}
-
-/** A relation uses one eligible separation or the bus; selected relations take distinct
- * tracks within their chosen row edge. Memoize loads, and stop counting once non-exhaustion
- * at the phase budget is established instead of enumerating combinatorial load states. */
-function rowGeometryCount(input: CrossingAllocationInput, limit?: bigint): bigint {
-	const eligible = input.crossingIds.filter((id) =>
-		(input.rowGutterIds ?? []).some((ids) => ids.includes(id)),
-	);
-	if (eligible.length === 0) return 1n;
-	const boundaries = eligible.map((id) => {
-		const rows: number[] = [];
-		for (const [row, ids] of (input.rowGutterIds ?? []).entries())
-			if (ids.includes(id)) rows.push(row);
-		return rows;
-	});
-	const capacities = (input.rowGutterIds ?? []).map((ids) => ids.length);
-	if (boundaries.every((rows) => rows.length === capacities.length)) {
-		const slots = capacities.reduce((total, capacity) => total + capacity, 0);
-		let total = 1n;
-		let choices = 1n;
-		let tracks = 1n;
-		for (let selected = 1; selected <= eligible.length; selected += 1) {
-			const remaining = eligible.length - selected + 1;
-			choices = (choices * BigInt(remaining)) / BigInt(selected);
-			tracks *= BigInt(slots - selected + 1);
-			total += choices * tracks;
-			if (limit !== undefined && total > limit) return limit + 1n;
-		}
-		return total;
-	}
-	const loads = capacities.map(() => 0);
-	const memo = new Map<string, bigint>();
-	function count(index: number): bigint {
-		if (index === eligible.length) return 1n;
-		const key = `${index}:${loads.join(',')}`;
-		const cached = memo.get(key);
-		if (cached !== undefined) return cached;
-		let total = count(index + 1);
-		if (limit !== undefined && total > limit) return total;
-		for (const row of defined(boundaries[index])) {
-			const used = defined(loads[row]);
-			if (used === defined(capacities[row])) continue;
-			loads[row] = used + 1;
-			const available = defined(capacities[row]) - used;
-			total += BigInt(available) * count(index + 1);
-			loads[row] = used;
-			if (limit !== undefined && total > limit) {
-				memo.set(key, limit + 1n);
-				return limit + 1n;
-			}
-		}
-		memo.set(key, total);
-		return total;
-	}
-	return count(0);
 }
 
 function cappedCount(count: bigint, limit: bigint | undefined): bigint {
@@ -148,16 +99,20 @@ function allocationGeometrySpaceSize(
 ): bigint {
 	let count = 1n;
 	if (!canonicalBus)
-		count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
+		count = permutationCount(
+			input.busRelevantRelationIds.length,
+			input.edges.topBus.capacity,
+			limit,
+		);
 	if (limit !== undefined && count > limit) return limit + 1n;
 	for (const [column, ids] of input.gutterIds.entries()) {
-		count *= permutationCount(ids.length, defined(input.edges.gutters[column]).capacity - 1);
+		count *= permutationCount(ids.length, defined(input.edges.gutters[column]).capacity - 1, limit);
 		if (limit !== undefined && count > limit) return limit + 1n;
 	}
 	count *= rowGeometryCount(input, limit);
 	if (limit !== undefined && count > limit) return limit + 1n;
 	for (const relations of input.incidence.values()) {
-		count *= factorial(relations.length);
+		count *= factorial(relations.length, limit);
 		if (limit !== undefined && count > limit) return limit + 1n;
 	}
 	return count;
@@ -226,7 +181,7 @@ export function crossingAllocationPhases(
 			id: CrossingAllocationPhaseId.Reallocate,
 			budget: budgets.reallocate,
 			acceptBridges: false,
-			totalGeometries: () => crossingAllocationGeometryCount(busInput),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput, 0, budgets.reallocate),
 			candidates: (active, prioritizeBus) =>
 				crossingAllocationCandidates(busInput, active, prioritizeBus),
 		},
@@ -234,14 +189,14 @@ export function crossingAllocationPhases(
 			id: CrossingAllocationPhaseId.ExtraTrack,
 			budget: budgets.extraTrack,
 			acceptBridges: false,
-			totalGeometries: () => crossingAllocationGeometryCount(busInput, 1),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput, 1, budgets.extraTrack),
 			candidates: (active) => crossingAllocationCandidatesWithExtraTrack(busInput, active),
 		},
 		{
 			id: CrossingAllocationPhaseId.Bridge,
 			budget: budgets.bridge,
 			acceptBridges: true,
-			totalGeometries: () => crossingAllocationGeometryCount(busInput),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput, 0, budgets.bridge),
 			candidates: (active, prioritizeBus) =>
 				crossingAllocationCandidates(busInput, active, prioritizeBus),
 		},
