@@ -34,6 +34,7 @@ import {
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
@@ -136,6 +137,14 @@ function alternatives(): {
 }
 
 describe('persisted composed incident bridge selection', () => {
+	it('prunes exhausted product dimensions even when their limits change during enumeration', () => {
+		const bounds = Array<number>(16).fill(0);
+		bounds[15] = 31;
+		const product = indexVectors(bounds.length, 31, (dimension) => bounds[dimension] ?? 0);
+		expect(product.next()).toEqual({ value: [...Array<number>(15).fill(0), 31], done: false });
+		bounds[15] = 0;
+		expect(product.next().done).toBe(true);
+	});
 	it('holds two complete and independently valid candidates, with a cheaper route without a bridge', () => {
 		const { bridged, unbridged } = alternatives();
 		expect(bridged.layout.lanes).toHaveLength(2);

@@ -90,19 +90,6 @@ interface SideResult {
 const REGION_COMPOSITION_PRODUCT_BUDGET = 64;
 const PASS_BUDGET = REGION_COMPOSITION_PRODUCT_BUDGET / 2;
 
-function unavailableIndex(
-	leaves: readonly string[],
-	indices: readonly number[],
-	selection: LeafSelection,
-): boolean {
-	for (const [offset, id] of leaves.entries()) {
-		const stream = selection.streams.get(id);
-		if (stream?.exhaustive === true && defined(indices[offset]) >= stream.candidates.length)
-			return true;
-	}
-	return false;
-}
-
 function searchedAllIndices(
 	leaves: readonly string[],
 	diagonal: number,
@@ -210,8 +197,11 @@ function evaluateProduct(side: SideSearchContext, indices: readonly number[]): P
 function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
 	const { pass, selection, passAttempts } = side;
 	let sideFailure: RegionGeometryDiagnostic | undefined;
-	for (const indices of indexVectors(pass.leaves.length, diagonal)) {
-		if (unavailableIndex(pass.leaves, indices, selection)) continue;
+	for (const indices of indexVectors(pass.leaves.length, diagonal, (dimension) => {
+		const stream = selection.streams.get(defined(pass.leaves[dimension]));
+		if (stream?.exhaustive === true) return stream.candidates.length - 1;
+		return diagonal;
+	})) {
 		if (passAttempts.count >= PASS_BUDGET) {
 			pass.state.exhaustive = false;
 			return { truncated: true };
