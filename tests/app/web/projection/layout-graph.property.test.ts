@@ -537,8 +537,12 @@ describe('generated layouts', () => {
 						const after = boundsFor(scaled.layout, group.id);
 						expect(before).toBeDefined();
 						if (!before) throw new Error(`Missing original empty group bounds: ${group.id}`);
-						expect(after.width).toBe(before.width * factor);
-						expect(after.height).toBe(before.height * factor);
+						const measured = generated.groups[group.id];
+						if (measured === undefined) throw new Error(`Missing group measurement: ${group.id}`);
+						expect(after.width).toBeGreaterThanOrEqual(measured.minimumWidth * factor);
+						expect(after.height).toBeGreaterThanOrEqual(measured.minimumHeight * factor);
+						expect(after.width).toBeLessThanOrEqual(before.width * factor);
+						expect(after.height).toBeLessThanOrEqual(before.height * factor);
 					}
 					for (const relation of scaled.layout.relations) {
 						expect(

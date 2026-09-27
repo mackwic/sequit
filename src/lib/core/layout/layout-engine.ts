@@ -1,4 +1,4 @@
-import { defined, EndpointKind } from '../document/logic-document';
+import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import { buildLayoutResult } from './build-layout-result';
@@ -46,8 +46,7 @@ function reserveLayeredRouting(
 	if (structure.junctionIds.size === 0 && structure.maximumRank <= 1) return undefined;
 	const skipsOrdinaryRows =
 		structure.junctionIds.size === 0 &&
-		structure.graph.relations.some(({ relation, source, target }) => {
-			if (source.kind === EndpointKind.Group || target.kind === EndpointKind.Group) return false;
+		structure.graph.relations.some(({ relation }) => {
 			const sourceRank = defined(structure.ranks.byEndpointId.get(relation.from));
 			const targetRank = defined(structure.ranks.byEndpointId.get(relation.to));
 			return sourceRank > targetRank + 1;

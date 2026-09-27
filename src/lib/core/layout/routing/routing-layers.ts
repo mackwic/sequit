@@ -52,10 +52,10 @@ export function layerLinks(
 		targetOffsets,
 	});
 	return graph.relations
-		.filter(
-			({ source, target }) =>
-				source.kind !== EndpointKind.Group && target.kind !== EndpointKind.Group,
-		)
+		.filter(({ relation, source, target }) => {
+			if (source.kind !== EndpointKind.Group && target.kind !== EndpointKind.Group) return true;
+			return defined(layers.byId.get(relation.from)) > defined(layers.byId.get(relation.to));
+		})
 		.map(({ relation, target }) => {
 			const sourceLayer = defined(layers.byId.get(relation.from));
 			const targetLayer = defined(layers.byId.get(relation.to));
