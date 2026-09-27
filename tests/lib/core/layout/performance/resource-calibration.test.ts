@@ -18,6 +18,8 @@ import { RegionIncidentRole } from '../../../../../src/lib/core/layout/regions/m
 import { RegionLocalLayoutCache } from '../../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateRegionCompositionGeometry } from '../../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import { allocateChannelIntervals } from '../../../../../src/lib/core/layout/routing/channel-interval-allocation';
+import { routeChannel } from '../../../../../src/lib/core/layout/routing/channel-routing';
 import {
 	type PreparedLayoutDocument,
 	prepareLayoutDocument,
@@ -380,6 +382,60 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 			}),
 		);
 	}
+	for (const [name, wires] of [
+		[
+			'split',
+			[
+				{ id: 'a', source: 48, target: 96 },
+				{ id: 'b', source: 96, target: 48 },
+			],
+		],
+		[
+			'shared',
+			[
+				{ id: 'a', source: 0, target: 48, sharedSource: 'common' },
+				{ id: 'b', source: 0, target: 96, sharedSource: 'common' },
+			],
+		],
+	] as const) {
+		results.push(
+			profileResource(`channel-${name}`, 'cold', () => {
+				const channel = routeChannel(wires);
+				return {
+					status: 'allocated',
+					work: {
+						allocatedRuns: channel.trackByRunKey.size,
+						railTracks: channel.railCount,
+						splitWires: channel.wires.filter((wire) => wire.middle !== undefined).length,
+					},
+				};
+			}),
+		);
+	}
+	const equalIntervals = [
+		{ key: 'z-last', start: 0, end: 40, rail: -1 },
+		{ key: 'a-first', start: 0, end: 40, rail: -1 },
+		{ key: 'short', start: 0, end: 20, rail: -1 },
+		{ key: 'middle', start: 33, end: 35, rail: -1 },
+		{ key: 'later', start: 60, end: 80, rail: -1 },
+		{ key: 'latest', start: 61, end: 75, rail: -1 },
+	];
+	results.push(
+		profileResource('channel-equal-intervals', 'cold', () => {
+			const allocation = allocateChannelIntervals(
+				{ ownerId: '@root/channel/ties', capacity: 6, spacing: 24 },
+				equalIntervals,
+				2,
+			);
+			return {
+				status: 'allocated',
+				work: {
+					allocatedRuns: allocation.trackByRunKey.size,
+					railTracks: allocation.trackCount,
+				},
+			};
+		}),
+	);
 	// A one-pixel metric edit after a cached baseline must stabilize to its cold result.
 	expect(solveGridCellLayout(crossing.graph, alteredMeasurements, input, { cache })).toEqual(
 		solveGridCellLayout(crossing.graph, alteredMeasurements, input),
@@ -433,6 +489,10 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 	expect(results.find((entry) => entry.name === 'row-8-children')?.status).toBe('selected');
 	expect(results.find((entry) => entry.name === 'region-249-depth-32')?.status).toBe('selected');
 	expect(results.find((entry) => entry.name === 'chain-depth-256')?.status).toBe('selected');
+	expect(results.find((entry) => entry.name === 'channel-shared')?.work['allocatedRuns']).toBe(1);
+	expect(
+		results.find((entry) => entry.name === 'channel-equal-intervals')?.work['allocatedRuns'],
+	).toBe(6);
 	expect(
 		results.find(
 			(entry) => entry.name === 'region-265-depth-4' && entry.mode === 'normalization-only',
