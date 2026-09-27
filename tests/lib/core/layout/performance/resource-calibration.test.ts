@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { EndpointKind, defined } from '../../../../../src/lib/core/document/logic-document';
+import { defined, EndpointKind } from '../../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { solveGridCellLayout } from '../../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grids/grid-cell-types';

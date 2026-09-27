@@ -404,29 +404,22 @@ describe('dedicated leaf incident contracts', () => {
 		});
 	});
 
-	it.fails(
-		'composes a nested leaf with nine distinct boundary incidents in the product pipeline',
-		() => {
-			const { document, input } = nineIncidentNestedRegions();
-			const prepared = prepareLayoutDocument(document);
-			const composed = solveRecursiveNestedRegionLayout(
-				prepared.graph,
-				prepared.measurements,
-				input,
-			);
-			expect(composed.status).toBe(RegionCompositionStatus.Selected);
-			if (composed.status !== RegionCompositionStatus.Selected) return;
-			const normalized = normalizeRegionCompositionModel(prepared.graph, input);
-			if (normalized.status !== RegionCompositionModelStatus.Ready)
-				throw new Error(normalized.diagnostic.message);
-			expect(validateRegionCompositionGeometry(normalized.model, composed)).toBeUndefined();
-			const leafRoutes = composed.ownedRoutes.filter(({ regionId }) => regionId === 'leaf');
-			expect(leafRoutes.map(({ relationId }) => relationId).sort()).toEqual(
-				document.relations.map(({ id }) => id).sort(),
-			);
-			expect(composed.regions.some(({ id }) => id === 'target')).toBe(true);
-		},
-	);
+	it('composes a nested leaf with nine distinct boundary incidents in the product pipeline', () => {
+		const { document, input } = nineIncidentNestedRegions();
+		const prepared = prepareLayoutDocument(document);
+		const composed = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(composed.status).toBe(RegionCompositionStatus.Selected);
+		if (composed.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error(normalized.diagnostic.message);
+		expect(validateRegionCompositionGeometry(normalized.model, composed)).toBeUndefined();
+		const leafRoutes = composed.ownedRoutes.filter(({ regionId }) => regionId === 'leaf');
+		expect(leafRoutes.map(({ relationId }) => relationId).sort()).toEqual(
+			document.relations.map(({ id }) => id).sort(),
+		);
+		expect(composed.regions.some(({ id }) => id === 'target')).toBe(true);
+	});
 
 	it('selects nine independent incidents after actually checking their routes', () => {
 		const document = independentNodes(9);
