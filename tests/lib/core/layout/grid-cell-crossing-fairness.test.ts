@@ -32,10 +32,98 @@ function hits(route: LayoutRelation, obstacle: Bounds): boolean {
 	return false;
 }
 
-describe('fair grid crossing search', () => {
-	it('finds a noncanonical bus and second row separation among eight charged 4×3 crossings', () => {
-		const ids = Array.from({ length: 12 }, (_, index) => `n${index}`);
-		const template = nxmThreeByTwoDocument();
+function chargedGrid(pairs: readonly (readonly [number, number])[]) {
+	const ids = Array.from({ length: 12 }, (_, index) => `n${index}`);
+	const template = nxmThreeByTwoDocument();
+	const crossing = pairs.map(([from, to], index) => ({
+		id: `r${index}`,
+		from: `n${from}`,
+		to: `n${to}`,
+	}));
+	const document = {
+		...template,
+		nodes: ids.map((id, index) => ({
+			...defined(template.nodes[0]),
+			id,
+			markdown: `${id}
+`,
+			layoutOrder: orderKey(`a${String.fromCharCode(65 + index)}`),
+		})),
+		relations: crossing,
+	};
+	const input = {
+		rootId: '@root',
+		cells: ids.map((id, index) => ({
+			id,
+			parentId: '@root',
+			row: Math.floor(index / 4),
+			column: index % 4,
+		})),
+		cellByEndpointId: new Map(ids.map((id) => [id, id])),
+		minimumColumnWidths: [180, 180, 180, 180],
+		minimumRowHeights: [90, 90, 90],
+	};
+	const prepared = prepareLayoutDocument(document);
+	const placed = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+	if (placed.status !== GridCellLayoutStatus.Selected) throw new Error(placed.reason);
+	const resources = gridCrossingResources(input, crossing);
+	const incidence = crossingIncidence(crossing);
+	const routing = {
+		rootId: input.rootId,
+		crossing,
+		columnCount: 4,
+		cells: placed.cells,
+		cellByEndpointId: input.cellByEndpointId,
+		edges: resources.edges,
+		incidence,
+	};
+	const base = {
+		edges: resources.edges,
+		crossingIds: crossing.map(({ id }) => id),
+		busRelevantRelationIds: crossing.map(({ id }) => id),
+		gutterIds: resources.gutterIds,
+		rowGutterIds: resources.rowGutterIds,
+		incidence,
+		portalByRelationId: new Map(),
+	};
+	const allocationInput = {
+		...base,
+		portalByRelationId: crossingPortalSpans(routing, canonicalCrossingAllocation(base)),
+	};
+	return { placed, resources, routing, crossing, allocationInput };
+}
+
+function blockedGap(upper: Bounds, lower: Bounds, x: number): Bounds {
+	return {
+		x,
+		y: upper.y + upper.height + 8,
+		width: 8,
+		height: lower.y - upper.y - upper.height - 16,
+	};
+}
+
+function obstacleProbe(
+	routing: ReturnType<typeof chargedGrid>['routing'],
+	relation: ReturnType<typeof chargedGrid>['crossing'][number],
+	obstacles: readonly Bounds[],
+) {
+	return (allocation: GridCrossingAllocation) => {
+		const route = crossingRoute(routing, allocation, relation).route;
+		if (obstacles.some((bounds) => hits(route, bounds)))
+			return {
+				candidate: allocation,
+				failure: regionGeometryDiagnostic(
+					RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+					'The charged route intersects a declared obstacle.',
+					{ relationId: relation.id },
+				),
+			};
+		return { candidate: allocation };
+	};
+}
+
+describe('bounded grid crossing phases', () => {
+	it('finds a second row separation among eight charged 4×3 crossings in the first phase', () => {
 		const pairs = [
 			[0, 10],
 			[1, 11],
@@ -46,111 +134,59 @@ describe('fair grid crossing search', () => {
 			[0, 9],
 			[2, 11],
 		] as const;
-		const crossing = pairs.map(([from, to], index) => ({
-			id: `r${index}`,
-			from: `n${from}`,
-			to: `n${to}`,
-		}));
-		const document = {
-			...template,
-			nodes: ids.map((id, index) => ({
-				...defined(template.nodes[0]),
-				id,
-				markdown: `${id}\n`,
-				layoutOrder: orderKey(`a${String.fromCharCode(65 + index)}`),
-			})),
-			relations: crossing,
-		};
-		const input = {
-			rootId: '@root',
-			cells: ids.map((id, index) => ({
-				id,
-				parentId: '@root',
-				row: Math.floor(index / 4),
-				column: index % 4,
-			})),
-			cellByEndpointId: new Map(ids.map((id) => [id, id])),
-			minimumColumnWidths: [180, 180, 180, 180],
-			minimumRowHeights: [90, 90, 90],
-		};
-		const prepared = prepareLayoutDocument(document);
-		const placed = solveGridCellLayout(prepared.graph, prepared.measurements, input);
-		if (placed.status !== GridCellLayoutStatus.Selected) throw new Error(placed.reason);
-		const resources = gridCrossingResources(input, crossing);
+		const { placed, resources, routing, crossing, allocationInput } = chargedGrid(pairs);
 		expect(resources.rowGutterIds.map((ids) => ids.length)).toEqual([8, 8]);
-		const incidence = crossingIncidence(crossing);
-		const routing = {
-			rootId: input.rootId,
-			crossing,
-			columnCount: 4,
-			cells: placed.cells,
-			cellByEndpointId: input.cellByEndpointId,
-			edges: resources.edges,
-			incidence,
-		};
-		const base = {
-			edges: resources.edges,
-			crossingIds: crossing.map(({ id }) => id),
-			busRelevantRelationIds: crossing.map(({ id }) => id),
-			gutterIds: resources.gutterIds,
-			rowGutterIds: resources.rowGutterIds,
-			incidence,
-			portalByRelationId: new Map(),
-		};
-		const allocationInput = {
-			...base,
-			portalByRelationId: crossingPortalSpans(routing, canonicalCrossingAllocation(base)),
-		};
-		const cell = (row: number, column: number) =>
-			defined(placed.cells.find((cell) => cell.row === row && cell.column === column));
-		const first = cell(0, 0);
-		const middle = cell(1, 0);
-		const bottom = cell(2, 0);
-		const rowGap = (upper: typeof first, lower: typeof first, x: number): Bounds => ({
-			x,
-			y: upper.bounds.y + upper.bounds.height + 8,
-			width: 8,
-			height: lower.bounds.y - upper.bounds.y - upper.bounds.height - 16,
-		});
-		const x6 = first.bounds.x + first.bounds.width / 2;
-		const x7 = cell(0, 2).bounds.x + cell(0, 2).bounds.width / 2;
-		const obstacles6 = [
-			rowGap(first, middle, x6),
-			rowGap(middle, bottom, x6),
-			{ x: x6, y: crossingBusY(resources.edges.topBus, 6) - 4, width: 8, height: 8 },
+		const upper = defined(placed.cells.find((cell) => cell.row === 0 && cell.column === 2));
+		const middle = defined(placed.cells.find((cell) => cell.row === 1 && cell.column === 2));
+		const x = upper.bounds.x + upper.bounds.width / 2;
+		const obstacles = [
+			blockedGap(upper.bounds, middle.bounds, x),
+			{ x, y: 0, width: 8, height: upper.bounds.y - 8 },
 		];
-		const obstacles7 = [
-			rowGap(cell(0, 2), cell(1, 2), x7),
-			{ x: x7, y: 0, width: 8, height: first.bounds.y - 8 },
-		];
-		const probe = (allocation: GridCrossingAllocation) => {
-			const route6 = crossingRoute(routing, allocation, defined(crossing[6])).route;
-			const route7 = crossingRoute(routing, allocation, defined(crossing[7])).route;
-			if (
-				obstacles6.some((bounds) => hits(route6, bounds)) ||
-				obstacles7.some((bounds) => hits(route7, bounds))
-			)
-				return {
-					candidate: allocation,
-					failure: regionGeometryDiagnostic(
-						RegionGeometryDiagnosticCode.GridCrossingEntersElement,
-						'The charged routes intersect a declared obstacle.',
-						{ relationId: 'r6', relatedRelationId: 'r7' },
-					),
-				};
-			return { candidate: allocation };
-		};
-		const result = searchGridCrossingAllocations(allocationInput, probe, {
-			reallocate: 256,
-			extraTrack: 1,
-			bridge: 1,
-		});
+		const result = searchGridCrossingAllocations(
+			allocationInput,
+			obstacleProbe(routing, defined(crossing[7]), obstacles),
+			{ rowGutter: 256, reallocate: 1, extraTrack: 1, bridge: 1 },
+		);
 		if (!('selected' in result)) throw new Error(result.failure.message);
-		expect(result.witness.winningPhase).toBe('reallocate');
+		expect(result.witness.winningPhase).toBe('row-gutter');
 		expect(result.witness.phases[0]?.exploredGeometries).toBeLessThan(256);
-		const allocation = result.selected.allocation;
-		expect(allocation.rowTrackByRelationId?.[1]?.has('r7')).toBe(true);
-		expect(allocation.rowTrackByRelationId?.some((tracks) => tracks.has('r6'))).toBe(false);
-		expect(allocation.busTrackByRelationId.get('r6')).not.toBe(6);
+		expect(result.selected.allocation.rowTrackByRelationId?.[1]?.has('r7')).toBe(true);
+		expect(result.witness.phases[1]?.attempted).toBe(false);
+	});
+
+	it('exhausts 256 row choices before a fresh bus budget resolves twelve two-gap demands', () => {
+		const pairs: [number, number][] = [];
+		for (let source = 0; source < 4; source += 1)
+			for (let target = 0; target < 4; target += 1)
+				if (source !== target) pairs.push([source, target + 8]);
+		const { placed, resources, routing, crossing, allocationInput } = chargedGrid(pairs);
+		expect(resources.rowGutterIds.map((ids) => ids.length)).toEqual([12, 12]);
+		const cells = placed.cells.filter((cell) => cell.column === 2);
+		const upper = defined(cells.find((cell) => cell.row === 0));
+		const middle = defined(cells.find((cell) => cell.row === 1));
+		const lower = defined(cells.find((cell) => cell.row === 2));
+		const x = upper.bounds.x + upper.bounds.width / 2;
+		const obstacles = [
+			blockedGap(upper.bounds, middle.bounds, x),
+			blockedGap(middle.bounds, lower.bounds, x),
+			{ x, y: crossingBusY(resources.edges.topBus, 11) - 4, width: 8, height: 8 },
+		];
+		const result = searchGridCrossingAllocations(
+			allocationInput,
+			obstacleProbe(routing, defined(crossing[11]), obstacles),
+			{ rowGutter: 256, reallocate: 256, extraTrack: 1, bridge: 1 },
+		);
+		if (!('selected' in result)) throw new Error(result.failure.message);
+		expect(result.witness.phases[0]).toMatchObject({
+			id: 'row-gutter',
+			exploredGeometries: 256,
+			truncated: true,
+			selected: false,
+		});
+		expect(result.witness.winningPhase).toBe('reallocate');
+		expect(result.witness.phases[1]?.exploredGeometries).toBeLessThan(256);
+		expect(result.selected.allocation.rowTrackByRelationId?.length).toBe(0);
+		expect(result.selected.allocation.busTrackByRelationId.get('r11')).not.toBe(11);
 	});
 });

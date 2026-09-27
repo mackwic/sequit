@@ -120,9 +120,13 @@ describe('grid crossing allocation route geometry properties', () => {
 					for (const phase of phases)
 						expect(BigInt([...phase.candidates()].length)).toBe(phase.totalGeometries());
 					const budgets = {
-						reallocate: Number(defined(phases[0]).totalGeometries()),
-						extraTrack: Number(defined(phases[1]).totalGeometries()),
-						bridge: Number(defined(phases[2]).totalGeometries()),
+						rowGutter: Number(defined(phases[0]).totalGeometries()),
+
+						reallocate: Number(defined(phases[1]).totalGeometries()),
+
+						extraTrack: Number(defined(phases[2]).totalGeometries()),
+
+						bridge: Number(defined(phases[3]).totalGeometries()),
 					};
 					const result = searchGridCrossingAllocations(
 						input,
@@ -173,11 +177,17 @@ describe('grid crossing allocation route geometry properties', () => {
 						sameRail,
 					);
 					const phases = crossingAllocationPhases(input);
-					const reallocation = [...defined(phases[0]).candidates()];
-					const extraTrack = [...defined(phases[1]).candidates()];
-					const bridge = [...defined(phases[2]).candidates()];
+					const rowGutter = [...defined(phases[0]).candidates()];
+					const reallocation = [...defined(phases[1]).candidates()];
+					const extraTrack = [...defined(phases[2]).candidates()];
+					const bridge = [...defined(phases[3]).candidates()];
 					expect(reallocation[0]).toEqual(canonicalCrossingAllocation(input));
-					for (const [phaseIndex, candidates] of [reallocation, extraTrack, bridge].entries()) {
+					for (const [phaseIndex, candidates] of [
+						rowGutter,
+						reallocation,
+						extraTrack,
+						bridge,
+					].entries()) {
 						const phase = defined(phases[phaseIndex]);
 						const geometries = candidates.map((allocation) =>
 							effectiveRouteGeometry(routing, crossing, allocation),
@@ -216,7 +226,7 @@ describe('grid crossing allocation route geometry properties', () => {
 				for (const [index, extraTrack] of [false, true, false].entries()) {
 					const expected = naiveAllocationSignatures(fixture.input, extraTrack);
 					const actual = new Set(
-						defined(phases[index])
+						defined(phases[index + 1])
 							.candidates()
 							.map((allocation) => allocationSignature(fixture.input, allocation)),
 					);
@@ -329,9 +339,13 @@ describe('grid crossing allocation route geometry properties', () => {
 					const { input } = fixture;
 					const phases = crossingAllocationPhases(input);
 					const budgets = {
-						reallocate: Number(defined(phases[0]).totalGeometries()),
-						extraTrack: Number(defined(phases[1]).totalGeometries()),
-						bridge: Number(defined(phases[2]).totalGeometries()),
+						rowGutter: Number(defined(phases[0]).totalGeometries()),
+
+						reallocate: Number(defined(phases[1]).totalGeometries()),
+
+						extraTrack: Number(defined(phases[2]).totalGeometries()),
+
+						bridge: Number(defined(phases[3]).totalGeometries()),
 					};
 					const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
 						routeGridFixture(fixture, allocation, acceptBridges);
@@ -396,9 +410,10 @@ describe('grid crossing allocation route geometry properties', () => {
 				};
 				const phases = crossingAllocationPhases(input);
 				const budgets = {
-					reallocate: Number(defined(phases[0]).totalGeometries()),
-					extraTrack: Number(defined(phases[1]).totalGeometries()),
-					bridge: Number(defined(phases[2]).totalGeometries()),
+					rowGutter: Number(defined(phases[0]).totalGeometries()),
+					reallocate: Number(defined(phases[1]).totalGeometries()),
+					extraTrack: Number(defined(phases[2]).totalGeometries()),
+					bridge: Number(defined(phases[3]).totalGeometries()),
 				};
 				const unpruned = searchGridCrossingAllocations(
 					input,
@@ -429,8 +444,8 @@ describe('grid crossing allocation route geometry properties', () => {
 		expect('selected' in unpruned).toBe(true);
 		const first = result.witness.rejectedAlternatives[0];
 		expect(first?.reason).toContain('route-0 and route-1');
-		expect(Number(defined(result.witness.phases[0]).totalGeometries)).toBeGreaterThan(256);
-		expect(defined(result.witness.phases[0]).exploredGeometries).toBe(256);
+		expect(Number(defined(result.witness.phases[1]).totalGeometries)).toBeGreaterThan(256);
+		expect(defined(result.witness.phases[1]).exploredGeometries).toBe(256);
 		const laterConflict = result.witness.rejectedAlternatives.findIndex(({ reason }) =>
 			reason.includes('route-0 and route-2'),
 		);
@@ -439,8 +454,8 @@ describe('grid crossing allocation route geometry properties', () => {
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
 		if (!('selected' in unpruned)) throw new Error('The canonical budgeted search must select.');
 		expect(unpruned.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		expect(unpruned.witness.phases[0]?.exploredGeometries).toBe(256);
-		expect(unpruned.witness.phases[1]?.exploredGeometries).toBe(256);
+		expect(unpruned.witness.phases[2]?.exploredGeometries).toBe(256);
+		expect(unpruned.witness.phases[2]?.exploredGeometries).toBe(256);
 		expect(route(result.selected.allocation, true).failure).toBeUndefined();
 		expect(route(unpruned.selected.allocation, true).failure).toBeUndefined();
 	});

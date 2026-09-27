@@ -299,16 +299,17 @@ describe('grid crossing allocation', () => {
 		}
 	});
 
-	it('declares the reallocation, extra-track and bridge issues in that order', () => {
+	it('declares row gutters, bus reallocation, extra track and bridge in order', () => {
 		const input = allocationInput();
 		const phases = crossingAllocationPhases(input);
 		expect(phases.map(({ id }) => id)).toEqual([
+			CrossingAllocationPhaseId.RowGutter,
 			CrossingAllocationPhaseId.Reallocate,
 			CrossingAllocationPhaseId.ExtraTrack,
 			CrossingAllocationPhaseId.Bridge,
 		]);
-		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, true]);
-		expect([...defined(phases[2]).candidates()]).toEqual([...crossingAllocationCandidates(input)]);
+		expect(phases.map(({ acceptBridges }) => acceptBridges)).toEqual([false, false, false, true]);
+		expect([...defined(phases[3]).candidates()]).toEqual([...crossingAllocationCandidates(input)]);
 		for (const phase of phases) {
 			const candidates = [...phase.candidates()];
 			expect(candidates.length).toBeGreaterThan(0);

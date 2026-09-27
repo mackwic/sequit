@@ -794,6 +794,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
+			{ attempted: true, exhaustive: true },
 		]);
 		const subtree = solveRegionSubtreeAttempts({
 			graph: prepared.graph,
@@ -811,6 +812,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		expect(subtree.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
 		expect(subtree.witness.attempted).toBeGreaterThan(0);
 		expect(subtree.witness.phases).toMatchObject([
+			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },
 			{ attempted: true, exhaustive: true },

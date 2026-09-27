@@ -438,10 +438,10 @@ describe('bounded two by two grid composition', () => {
 	});
 
 	it.each([
-		{ phase: 'reallocate', budgets: { reallocate: 0, extraTrack: 1, bridge: 1 } },
-		{ phase: 'extraTrack', budgets: { reallocate: 1, extraTrack: 0, bridge: 1 } },
-		{ phase: 'bridge', budgets: { reallocate: 1, extraTrack: 1, bridge: 0 } },
-		{ phase: 'extraTrack', budgets: { reallocate: 1, extraTrack: 1.5, bridge: 1 } },
+		{ phase: 'reallocate', budgets: { rowGutter: 1, reallocate: 0, extraTrack: 1, bridge: 1 } },
+		{ phase: 'extraTrack', budgets: { rowGutter: 1, reallocate: 1, extraTrack: 0, bridge: 1 } },
+		{ phase: 'bridge', budgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 0 } },
+		{ phase: 'extraTrack', budgets: { rowGutter: 1, reallocate: 1, extraTrack: 1.5, bridge: 1 } },
 	])('rejects a non-positive or fractional $phase budget at the public entry', ({ budgets }) => {
 		const prepared = prepareGrid();
 		expect(() =>
@@ -466,7 +466,7 @@ describe('bounded two by two grid composition', () => {
 			prepared.graph,
 			prepared.measurements,
 			{ ...input, cells },
-			{ allocationBudgets: { reallocate: 1, extraTrack: 1, bridge: 1 } },
+			{ allocationBudgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 1 } },
 		);
 		if (attempt.status !== GridCellLayoutStatus.Unknown)
 			throw new Error('The blocked crossing should be reported as unknown.');
@@ -474,20 +474,19 @@ describe('bounded two by two grid composition', () => {
 			throw new Error('Expected grid allocation evidence.');
 		const witness = attempt.witness;
 		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
-		expect(witness.attempted).toBe(3);
+		expect(witness.attempted).toBe(4);
 		expect(witness.exhaustive).toBe(false);
 		expect(
 			witness.rejectedAlternatives.some(
 				({ phaseId, code }) =>
-					phaseId === CrossingAllocationPhaseId.Reallocate &&
+					phaseId === CrossingAllocationPhaseId.RowGutter &&
 					code === RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 			),
 		).toBe(true);
+		expect(witness.phases[0]?.truncated).toBe(true);
 		for (const phase of witness.phases) {
 			expect(phase.attempted).toBe(true);
 			expect(phase.exploredGeometries).toBe(1);
-			expect(BigInt(phase.totalGeometries)).toBeGreaterThan(1n);
-			expect(phase.truncated).toBe(true);
 		}
 	});
 });

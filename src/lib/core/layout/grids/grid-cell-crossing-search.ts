@@ -14,6 +14,7 @@ import {
 	GRID_CROSSING_BRIDGE_BUDGET,
 	GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	GRID_CROSSING_REALLOCATION_BUDGET,
+	GRID_CROSSING_ROW_GUTTER_BUDGET,
 	type GridCrossingAllocationBudgets,
 	type GridCrossingAllocationSelectedWitness,
 	type GridCrossingAllocationWitness,
@@ -142,6 +143,28 @@ export enum GridCrossingSearchMode {
 	Exhaustive = 'exhaustive',
 }
 
+const standardPhaseBudgets: Record<CrossingAllocationPhaseId, number> = {
+	[CrossingAllocationPhaseId.RowGutter]: GRID_CROSSING_ROW_GUTTER_BUDGET,
+	[CrossingAllocationPhaseId.Reallocate]: GRID_CROSSING_REALLOCATION_BUDGET,
+	[CrossingAllocationPhaseId.ExtraTrack]: GRID_CROSSING_EXTRA_TRACK_BUDGET,
+	[CrossingAllocationPhaseId.Bridge]: GRID_CROSSING_BRIDGE_BUDGET,
+};
+
+function prioritizesConflicts(
+	phase: CrossingAllocationPhase,
+	rowInput: CrossingAllocationInput,
+	busInput: CrossingAllocationInput,
+	mode: GridCrossingSearchMode,
+): boolean {
+	if (mode !== GridCrossingSearchMode.Conflicts) return false;
+	let countingInput = busInput;
+	if (phase.id === CrossingAllocationPhaseId.RowGutter) countingInput = rowInput;
+	let extraTracks: 0 | 1 = 0;
+	if (phase.id === CrossingAllocationPhaseId.ExtraTrack) extraTracks = 1;
+	const budget = Math.min(phase.budget, standardPhaseBudgets[phase.id]);
+	return crossingCanonicalBusGeometryCount(countingInput, extraTracks) > BigInt(budget);
+}
+
 /** Search each declared grid issue with its own candidate budget and publish phase evidence. */
 export function searchGridCrossingAllocations<Candidate>(
 	input: CrossingAllocationInput,
@@ -157,24 +180,17 @@ export function searchGridCrossingAllocations<Candidate>(
 	let failure: RegionGeometryDiagnostic | undefined;
 	const rejectedAlternatives: GridCrossingAllocationWitness['rejectedAlternatives'][number][] = [];
 	const phases = crossingAllocationPhases(input, budgets);
+	const busInput: CrossingAllocationInput = { ...input, rowGutterIds: [] };
+	const rowInput: CrossingAllocationInput = { ...input, busRelevantRelationIds: [] };
 	const phaseEvidence: GridCrossingAllocationWitness['phases'][number][] = [];
 	const active = new Set<string>();
 	for (const phase of phases) {
 		// If one bus order fits the phase budget, keep 1A's canonical precedence. Otherwise
 		// front-load conflict permutations, then resume 1A's complete order without repeats.
-		let extraTracks: 0 | 1 = 0;
-		if (phase.id === CrossingAllocationPhaseId.ExtraTrack) extraTracks = 1;
-		let standardBudget = GRID_CROSSING_REALLOCATION_BUDGET;
-		if (phase.id === CrossingAllocationPhaseId.ExtraTrack)
-			standardBudget = GRID_CROSSING_EXTRA_TRACK_BUDGET;
-		if (phase.id === CrossingAllocationPhaseId.Bridge) standardBudget = GRID_CROSSING_BRIDGE_BUDGET;
-		const priorityBudget = Math.min(phase.budget, standardBudget);
-		const busBlockFits =
-			crossingCanonicalBusGeometryCount(input, extraTracks) <= BigInt(priorityBudget);
 		const result = searchGridCrossingPhase(
 			input,
 			phase,
-			{ active, conflictsFirst: mode === GridCrossingSearchMode.Conflicts && !busBlockFits },
+			{ active, conflictsFirst: prioritizesConflicts(phase, rowInput, busInput, mode) },
 			route,
 		);
 		phaseEvidence.push(result.evidence);

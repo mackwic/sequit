@@ -1,7 +1,6 @@
 import { defined } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
 import { type RouteBridgeCache, validatedBridgesCached } from '../../bridges/bridge-oracle';
-import { indexVectors } from '../../geometry/index-vectors';
 import type { RegionGeometryDiagnostic } from '../../geometry/region-geometry-diagnostic';
 import type { LayoutMeasurements } from '../../layout-types';
 import type { SolvedRecursiveRegion } from '../composition/nested-region-recursive-geometry';
@@ -23,7 +22,7 @@ import type { RegionLocalLayoutCache } from '../model/region-local-cache';
 import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
-import { incidentLeafIds } from './region-composition-product';
+import { incidentLeafIds, indexVectors } from './region-composition-product';
 import {
 	compositionSearchOutcome,
 	type DiagnosedCandidate,

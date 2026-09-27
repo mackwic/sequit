@@ -1,46 +1,9 @@
 import { defined } from '../../document/logic-document';
-import { indexVectors } from '../geometry/index-vectors';
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
 import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
-
-interface RowChoiceContext {
-	readonly input: CrossingAllocationInput;
-	readonly eligible: readonly string[];
-	readonly rowsByRelationId: ReadonlyMap<string, readonly number[]>;
-	readonly active: ReadonlySet<string> | undefined;
-}
-
-interface AllocationStream {
-	readonly cached: GridCrossingAllocation[];
-	readonly iterator: Generator<GridCrossingAllocation>;
-	exhausted: boolean;
-}
-
-function allocationAt(stream: AllocationStream, index: number): GridCrossingAllocation | undefined {
-	while (stream.cached.length <= index && !stream.exhausted) {
-		const next = stream.iterator.next();
-		if (next.done === true) stream.exhausted = true;
-		else stream.cached.push(next.value);
-	}
-	return stream.cached[index];
-}
-
-function eligibleRows(input: CrossingAllocationInput): Map<string, number[]> {
-	const rowsByRelationId = new Map<string, number[]>();
-	for (const [row, ids] of (input.rowGutterIds ?? []).entries())
-		for (const id of ids) {
-			let rows = rowsByRelationId.get(id);
-			if (rows === undefined) {
-				rows = [];
-				rowsByRelationId.set(id, rows);
-			}
-			rows.push(row);
-		}
-	return rowsByRelationId;
-}
 
 function chosenRowTracks(
 	allocation: GridCrossingAllocation,
@@ -53,76 +16,64 @@ function chosenRowTracks(
 	});
 }
 
-function chosenAllocation(
+interface RowChoiceContext {
+	readonly eligible: readonly string[];
+	readonly rowsByRelationId: ReadonlyMap<string, readonly number[]>;
+	readonly seen: Set<string>;
+	readonly busRelevant: ReadonlySet<string>;
+}
+
+function* choicesForAllocation(
 	allocation: GridCrossingAllocation,
-	eligible: readonly string[],
-	rowsByRelationId: ReadonlyMap<string, readonly number[]>,
-	indices: readonly number[],
-): GridCrossingAllocation {
-	const chosenRowById = new Map<string, number>();
-	for (const [index, id] of eligible.entries()) {
-		const rows = defined(rowsByRelationId.get(id));
-		const row = rows[defined(indices[index + 1])];
-		if (row !== undefined) chosenRowById.set(id, row);
-	}
-	return { ...allocation, rowTrackByRelationId: chosenRowTracks(allocation, chosenRowById) };
-}
-
-function rowChoiceLimit(id: string, context: RowChoiceContext): number {
-	if (context.active !== undefined && !context.active.has(id)) return 0;
-	return defined(context.rowsByRelationId.get(id)).length;
-}
-
-function vectorLimit(
-	dimension: number,
-	diagonal: number,
-	stream: AllocationStream,
 	context: RowChoiceContext,
-): number {
-	if (dimension !== 0) return rowChoiceLimit(defined(context.eligible[dimension - 1]), context);
-	if (stream.exhausted) return stream.cached.length - 1;
-	return diagonal;
-}
-
-function* fairRowCandidates(
-	context: RowChoiceContext,
-	allocations: Generator<GridCrossingAllocation>,
+	index: number,
+	chosenRowById: Map<string, number>,
 ): Generator<GridCrossingAllocation> {
-	const { eligible, rowsByRelationId } = context;
-	const seen = new Set<string>();
-	const busRelevant = new Set(context.input.busRelevantRelationIds);
-	const stream: AllocationStream = { cached: [], iterator: allocations, exhausted: false };
-	const rowDepth = eligible.reduce((sum, id) => sum + rowChoiceLimit(id, context), 0);
-	for (let diagonal = 0; ; diagonal += 1) {
-		const limit = stream.cached.length + rowDepth;
-		if (stream.exhausted && diagonal >= limit) break;
-		for (const indices of indexVectors(eligible.length + 1, diagonal, (dimension) =>
-			vectorLimit(dimension, diagonal, stream, context),
-		)) {
-			const allocation = allocationAt(stream, defined(indices[0]));
-			if (allocation === undefined) continue;
-			const candidate = chosenAllocation(allocation, eligible, rowsByRelationId, indices);
-			const key = geometryKeyFromAllocation(candidate, busRelevant);
-			if (seen.has(key)) continue;
-			seen.add(key);
-			yield candidate;
-		}
+	if (index === context.eligible.length) {
+		const rowTracks = chosenRowTracks(allocation, chosenRowById);
+		const candidate = { ...allocation, rowTrackByRelationId: rowTracks };
+		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
+		if (context.seen.has(key)) return;
+		context.seen.add(key);
+		yield candidate;
+		return;
 	}
+	const id = defined(context.eligible[index]);
+	for (const row of defined(context.rowsByRelationId.get(id))) {
+		chosenRowById.set(id, row);
+		yield* choicesForAllocation(allocation, context, index + 1, chosenRowById);
+	}
+	chosenRowById.delete(id);
+	yield* choicesForAllocation(allocation, context, index + 1, chosenRowById);
 }
 
-/** A relation uses exactly one row separation or the bus. Diagonals interleave the base
- * bus/gutter/port allocation with row alternatives: neither dimension exhausts the 256 budget
- * before the other's next choice is tried. The first canonical candidate is unchanged. */
+/** A relation chooses exactly one eligible row separation or the top bus. Distinct choices
+ * share the existing search phase and its budget instead of creating a second allocator. */
 export function* withRowRouteChoices(
 	input: CrossingAllocationInput,
 	allocations: Generator<GridCrossingAllocation>,
-	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation> {
-	const rowsByRelationId = eligibleRows(input);
+	const rowsByRelationId = new Map<string, number[]>();
+	for (const [row, ids] of (input.rowGutterIds ?? []).entries())
+		for (const id of ids) {
+			let rows = rowsByRelationId.get(id);
+			if (rows === undefined) {
+				rows = [];
+				rowsByRelationId.set(id, rows);
+			}
+			rows.push(row);
+		}
 	const eligible = input.crossingIds.filter((id) => rowsByRelationId.has(id));
 	if (eligible.length === 0) {
 		yield* allocations;
 		return;
 	}
-	yield* fairRowCandidates({ input, eligible, rowsByRelationId, active }, allocations);
+	const context = {
+		eligible,
+		rowsByRelationId,
+		seen: new Set<string>(),
+		busRelevant: new Set(input.busRelevantRelationIds),
+	};
+	for (const allocation of allocations)
+		yield* choicesForAllocation(allocation, context, 0, new Map());
 }

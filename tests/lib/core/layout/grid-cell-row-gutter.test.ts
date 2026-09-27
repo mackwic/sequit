@@ -184,7 +184,7 @@ describe('horizontal grid row gutters', () => {
 		expect(result.witness.rejectedAlternatives[0]?.code).toBe(
 			RegionGeometryDiagnosticCode.ParentRouteContact,
 		);
-		expect(result.witness.phases[0]?.totalGeometries).toBe('12');
+		expect(result.witness.phases[0]?.totalGeometries).toBe('6');
 		expect(result.witness.phases[0]?.exploredGeometries).toBe(2);
 		expect(defined(result.allocation.rowTrackByRelationId)[0]?.has('a-f')).toBe(false);
 		expect(defined(result.allocation.rowTrackByRelationId)[1]?.get('a-f')).toBe(0);

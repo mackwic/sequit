@@ -91,11 +91,16 @@ test('the grid allocation workshop explains exact route geometry search', async 
 	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
 	const pruned = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-conflicts-first');
 	const horizontal = explorer.getByTestId('grid-allocation-case-grid-allocation-row-gutter');
-	await expect(twoByTwo.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
+	await expect(twoByTwo.getByTestId('grid-allocation-winner')).toContainText(
+		'Gouttières de rangée',
+	);
 	await expect(twoByTwo.locator('svg')).toHaveAttribute('aria-label', /4 cellules/);
-	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
+	await expect(twoByTwo.getByTestId('grid-allocation-phase-row-gutter')).toHaveAttribute(
 		'data-truncated',
 		'false',
+	);
+	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toContainText(
+		'Non tentée',
 	);
 	for (const phaseId of ['extra-track', 'bridge']) {
 		const phase = twoByTwo.getByTestId(`grid-allocation-phase-${phaseId}`);

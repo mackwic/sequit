@@ -3,6 +3,8 @@ import type { BoundedSearchWitness } from './bounded-search';
 
 /** One declared attempt of the crossing allocation search, in search order. */
 export enum CrossingAllocationPhaseId {
+	/** Choose owned horizontal separations, retaining the canonical upper bus. */
+	RowGutter = 'row-gutter',
 	/** Permute tracks and portals: the reallocation issue of the routing resource graph. */
 	Reallocate = 'reallocate',
 	/** Add one rail track: the growth issue, already reserved by the margin. */

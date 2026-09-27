@@ -6,6 +6,8 @@
 
 	function phaseLabel(id: CrossingAllocationPhaseId): string {
 		switch (id) {
+			case CrossingAllocationPhaseId.RowGutter:
+				return 'Gouttières de rangée';
 			case CrossingAllocationPhaseId.Reallocate:
 				return 'Réaffectation';
 			case CrossingAllocationPhaseId.ExtraTrack:
@@ -39,7 +41,7 @@
 >
 	<header>
 		<p class="eyebrow">Grille · recherche bornée réelle</p>
-		<h2>Réaffecter, ajouter une piste, puis tenter le pont</h2>
+		<h2>Choisir la rangée ou le bus, ajouter une piste, puis tenter le pont</h2>
 		<p>
 			Chaque carte exécute le solveur de grille et son oracle géométrique. Les rails et bus
 			reprennent la couleur de leur relation ; les tableaux rendent visible le candidat

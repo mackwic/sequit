@@ -101,17 +101,21 @@ describe('grid bus allocation', () => {
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
-		expect(result.allocation.rowTrackByRelationId?.[0]?.size).toBe(0);
+		expect(result.allocation.rowTrackByRelationId?.[0]?.size ?? 0).toBe(0);
 		const order = [...result.allocation.busTrackByRelationId]
 			.sort((left, right) => left[1] - right[1])
 			.map(([id]) => id);
 		expect(order).toEqual(['r1', 'r0', 'r2']);
-		const phase = result.witness.phases[0];
+		const phase = result.witness.phases[1];
+		expect(result.witness.phases[0]?.exhaustive).toBe(true);
 		expect(phase?.totalGeometries).toBe('384');
 		expect(phase?.exploredGeometries).toBeLessThan(256);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
 		expect(
-			result.witness.rejectedAlternatives.filter(({ busOrder }) => busOrder.join() === 'r0,r1,r2'),
+			result.witness.rejectedAlternatives.filter(
+				({ phaseId, busOrder }) =>
+					phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === 'r0,r1,r2',
+			),
 		).toHaveLength(64);
 		expect(validatedBridges(result.layout.relations)).toEqual([]);
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
@@ -208,12 +212,12 @@ describe('N by M grid composition', () => {
 			expect(ports).toHaveLength(2);
 		}
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		const reallocation = result.witness.phases[0];
+		const reallocation = result.witness.phases[1];
 		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
 		expect(reallocation.selected).toBe(true);
 		expect(reallocation.exploredGeometries).toBeLessThan(256);
 		expect(reallocation.totalGeometries).toBe('96');
-		expect(result.witness.phases.slice(1).every(({ attempted }) => !attempted)).toBe(true);
+		expect(result.witness.phases.slice(2).every(({ attempted }) => !attempted)).toBe(true);
 		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);
 		const secondColumn = result.cells.find(({ column }) => column === 1);

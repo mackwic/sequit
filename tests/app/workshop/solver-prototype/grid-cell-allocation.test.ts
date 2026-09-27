@@ -12,9 +12,9 @@ describe('grid crossing allocation workshop model', () => {
 			'grid-allocation-row-gutter',
 		]);
 		expect(demos.map(({ winningPhase }) => winningPhase)).toEqual([
+			CrossingAllocationPhaseId.RowGutter,
 			CrossingAllocationPhaseId.Reallocate,
-			CrossingAllocationPhaseId.Reallocate,
-			CrossingAllocationPhaseId.Reallocate,
+			CrossingAllocationPhaseId.RowGutter,
 		]);
 
 		const [basic, pruned, horizontal] = demos;
@@ -24,14 +24,14 @@ describe('grid crossing allocation workshop model', () => {
 		expect(pruned.selected.cells).toHaveLength(6);
 		expect(pruned.sizeBefore.width - pruned.selected.layout.width).toBe(96);
 		expect(pruned.sizeBefore.height - pruned.selected.layout.height).toBe(48);
-		expect(pruned.selected.witness.phases[0]).toMatchObject({
+		expect(pruned.selected.witness.phases[1]).toMatchObject({
 			id: CrossingAllocationPhaseId.Reallocate,
 			exploredGeometries: 33,
 			totalGeometries: '96',
 			truncated: false,
 			selected: true,
 		});
-		expect(pruned.selected.witness.phases.slice(1).map(({ attempted }) => attempted)).toEqual([
+		expect(pruned.selected.witness.phases.slice(2).map(({ attempted }) => attempted)).toEqual([
 			false,
 			false,
 		]);

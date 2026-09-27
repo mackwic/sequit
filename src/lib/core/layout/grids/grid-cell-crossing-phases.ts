@@ -15,6 +15,8 @@ export type {
 } from '../search/grid-cell-crossing-witness';
 export { CrossingAllocationPhaseId } from '../search/grid-cell-crossing-witness';
 
+/** Maximum route geometries examined with horizontal row alternatives and canonical bus. */
+export const GRID_CROSSING_ROW_GUTTER_BUDGET = 256;
 /** Maximum route geometries examined while permuting the existing gutter, bus, and port tracks. */
 export const GRID_CROSSING_REALLOCATION_BUDGET = 256;
 /** Maximum route geometries examined using a newly reserved gutter track. */
@@ -23,6 +25,7 @@ export const GRID_CROSSING_EXTRA_TRACK_BUDGET = 256;
 export const GRID_CROSSING_BRIDGE_BUDGET = 256;
 
 export interface GridCrossingAllocationBudgets {
+	readonly rowGutter: number;
 	readonly reallocate: number;
 	readonly extraTrack: number;
 	readonly bridge: number;
@@ -37,6 +40,7 @@ function assertPositiveSafeIntegerBudget(value: number): void {
 export function validatedGridCrossingAllocationBudgets(
 	budgets: GridCrossingAllocationBudgets,
 ): GridCrossingAllocationBudgets {
+	assertPositiveSafeIntegerBudget(budgets.rowGutter);
 	assertPositiveSafeIntegerBudget(budgets.reallocate);
 	assertPositiveSafeIntegerBudget(budgets.extraTrack);
 	assertPositiveSafeIntegerBudget(budgets.bridge);
@@ -44,6 +48,7 @@ export function validatedGridCrossingAllocationBudgets(
 }
 
 const DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS: GridCrossingAllocationBudgets = {
+	rowGutter: GRID_CROSSING_ROW_GUTTER_BUDGET,
 	reallocate: GRID_CROSSING_REALLOCATION_BUDGET,
 	extraTrack: GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	bridge: GRID_CROSSING_BRIDGE_BUDGET,
@@ -166,8 +171,8 @@ export function crossingAllocationGeometryCount(
 }
 
 /**
- * The declared issue order of a grid conflict: reallocate, then add a track, then accept a
- * validated bridge, then `unknown`. A grid crossing relation has exactly one geometry per
+ * The declared issue order: horizontal row tracks, legacy upper-bus reallocation,
+ * then add a track, then accept a validated bridge, then `unknown`. A grid crossing relation has exactly one geometry per
  * allocation and the arrangement declares no alternative side (`alternativeSides: []`), so the
  * grid owns no detour: the detour/bridge thresholds of the contract search are vacuous here, and
  * the bridge phase is the last resource before a coded `unknown`.
@@ -177,29 +182,38 @@ export function crossingAllocationPhases(
 	budgets: GridCrossingAllocationBudgets = DEFAULT_GRID_CROSSING_ALLOCATION_BUDGETS,
 ): readonly CrossingAllocationPhase[] {
 	validatedGridCrossingAllocationBudgets(budgets);
+	const rowInput = { ...input, busRelevantRelationIds: [] };
+	const busInput = { ...input, rowGutterIds: [] };
 	return [
+		{
+			id: CrossingAllocationPhaseId.RowGutter,
+			budget: budgets.rowGutter,
+			acceptBridges: false,
+			totalGeometries: () => crossingAllocationGeometryCount(rowInput),
+			candidates: (active) => crossingAllocationCandidates(rowInput, active),
+		},
 		{
 			id: CrossingAllocationPhaseId.Reallocate,
 			budget: budgets.reallocate,
 			acceptBridges: false,
-			totalGeometries: () => crossingAllocationGeometryCount(input),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput),
 			candidates: (active, prioritizeBus) =>
-				crossingAllocationCandidates(input, active, prioritizeBus),
+				crossingAllocationCandidates(busInput, active, prioritizeBus),
 		},
 		{
 			id: CrossingAllocationPhaseId.ExtraTrack,
 			budget: budgets.extraTrack,
 			acceptBridges: false,
-			totalGeometries: () => crossingAllocationGeometryCount(input, 1),
-			candidates: (active) => crossingAllocationCandidatesWithExtraTrack(input, active),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput, 1),
+			candidates: (active) => crossingAllocationCandidatesWithExtraTrack(busInput, active),
 		},
 		{
 			id: CrossingAllocationPhaseId.Bridge,
 			budget: budgets.bridge,
 			acceptBridges: true,
-			totalGeometries: () => crossingAllocationGeometryCount(input),
+			totalGeometries: () => crossingAllocationGeometryCount(busInput),
 			candidates: (active, prioritizeBus) =>
-				crossingAllocationCandidates(input, active, prioritizeBus),
+				crossingAllocationCandidates(busInput, active, prioritizeBus),
 		},
 	];
 }

@@ -61,7 +61,12 @@ function sharesUnchangedTracks(
 describe('grid crossing allocation search examples', () => {
 	it('rejects invalid phase work budgets at their boundaries', () => {
 		const input = variedGridRoutingCase(1, 2, 0).input;
-		const budgets: GridCrossingAllocationBudgets = { reallocate: 1, extraTrack: 1, bridge: 1 };
+		const budgets: GridCrossingAllocationBudgets = {
+			rowGutter: 1,
+			reallocate: 1,
+			extraTrack: 1,
+			bridge: 1,
+		};
 
 		for (const invalid of [
 			{ ...budgets, reallocate: 0 },
@@ -114,13 +119,13 @@ describe('grid crossing allocation search examples', () => {
 		const result = searchGridCrossingAllocations(fixture.input, route);
 		if (!('selected' in result))
 			throw new Error('The later bridge phase must find a valid allocation.');
-		const reallocation = defined(result.witness.phases[0]);
+		const reallocation = defined(result.witness.phases[1]);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
 		expect(reallocation.exploredGeometries).toBeGreaterThan(0);
 		expect(Number(reallocation.totalGeometries)).toBeGreaterThan(reallocation.exploredGeometries);
 		expect(reallocation.truncated).toBe(true);
 		expect(result.witness.rejectedAlternatives[0]).toMatchObject({
-			phaseId: CrossingAllocationPhaseId.Reallocate,
+			phaseId: CrossingAllocationPhaseId.RowGutter,
 			busOrder: busOrder(canonical),
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
@@ -173,20 +178,21 @@ describe('grid crossing allocation search examples', () => {
 		for (const candidate of candidates)
 			sharesUnchangedTracks(candidate, canonical, fixture.input, active);
 	});
-	it('stops after the first valid reallocation and leaves later phases unattempted', () => {
+	it('stops after the first valid row candidate and leaves later phases unattempted', () => {
 		const fixture = variedGridRoutingCase(1, 2, 0);
 		const result = searchGridCrossingAllocations(
 			fixture.input,
 			(allocation, acceptBridges) => routeGridFixture(fixture, allocation, acceptBridges),
-			{ reallocate: 1, extraTrack: 2, bridge: 3 },
+			{ rowGutter: 1, reallocate: 1, extraTrack: 2, bridge: 3 },
 		);
 		if (!('selected' in result))
 			throw new Error('The canonical route must pass geometry validation.');
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.RowGutter);
 		expect(
 			result.witness.phases.map(({ attempted, selected }) => ({ attempted, selected })),
 		).toEqual([
 			{ attempted: true, selected: true },
+			{ attempted: false, selected: false },
 			{ attempted: false, selected: false },
 			{ attempted: false, selected: false },
 		]);
@@ -196,9 +202,10 @@ describe('grid crossing allocation search examples', () => {
 		const fixture = variedGridRoutingCase(2, 2, 0);
 		const phases = crossingAllocationPhases(fixture.input);
 		const budgets: GridCrossingAllocationBudgets = {
-			reallocate: Number(defined(phases[0]).totalGeometries()),
-			extraTrack: Number(defined(phases[1]).totalGeometries()),
-			bridge: Number(defined(phases[2]).totalGeometries()),
+			rowGutter: Number(defined(phases[0]).totalGeometries()),
+			reallocate: Number(defined(phases[1]).totalGeometries()),
+			extraTrack: Number(defined(phases[2]).totalGeometries()),
+			bridge: Number(defined(phases[3]).totalGeometries()),
 		};
 		const result = searchGridCrossingAllocations(
 			fixture.input,
@@ -217,6 +224,7 @@ describe('grid crossing allocation search examples', () => {
 				selected,
 			})),
 		).toEqual([
+			{ attempted: true, exhaustive: true, truncated: false, selected: false },
 			{ attempted: true, exhaustive: true, truncated: false, selected: false },
 			{ attempted: true, exhaustive: true, truncated: false, selected: false },
 			{ attempted: true, exhaustive: true, truncated: false, selected: false },

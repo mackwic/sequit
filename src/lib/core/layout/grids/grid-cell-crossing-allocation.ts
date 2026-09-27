@@ -273,13 +273,7 @@ export function* crossingAllocationCandidates(
 	active?: ReadonlySet<string>,
 	prioritizeBus = false,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
-	let rowFrontier: ReadonlySet<string> | undefined;
-	if (prioritizeBus) rowFrontier = active;
-	yield* withRowRouteChoices(
-		input,
-		baseCrossingAllocationCandidates(input, active, prioritizeBus),
-		rowFrontier,
-	);
+	yield* withRowRouteChoices(input, baseCrossingAllocationCandidates(input, active, prioritizeBus));
 }
 
 /** One extra column track, with the same row/upper-bus alternatives. */
@@ -287,9 +281,5 @@ export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
-	yield* withRowRouteChoices(
-		input,
-		baseCrossingAllocationCandidatesWithExtraTrack(input, active),
-		active,
-	);
+	yield* withRowRouteChoices(input, baseCrossingAllocationCandidatesWithExtraTrack(input, active));
 }
