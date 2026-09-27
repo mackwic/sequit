@@ -2,8 +2,11 @@ import fc from 'fast-check';
 import { expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
 	JunctionOperator,
+	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -13,6 +16,13 @@ import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layou
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+
+const biasByDirection: Record<LayoutDirection, LayoutBias> = {
+	[LayoutDirection.TopToBottom]: LayoutBias.Top,
+	[LayoutDirection.BottomToTop]: LayoutBias.Bottom,
+	[LayoutDirection.LeftToRight]: LayoutBias.Left,
+	[LayoutDirection.RightToLeft]: LayoutBias.Right,
+};
 
 const independentLoad = fc.record({
 	direction: fc.constantFrom(...Object.values(LayoutDirection)),
@@ -76,7 +86,7 @@ it.fails(
 			const seed = validLogicDocument();
 			const a: LogicDocument = {
 				...seed,
-				layout: { ...seed.layout, direction },
+				layout: defined(layoutConfiguration(direction, biasByDirection[direction])),
 				groups: [],
 				nodes: ['a', 'b', 'c'].map((id, index) => ({
 					kind: EndpointKind.Node,
