@@ -1,6 +1,10 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import type { DedicatedLayoutEvaluation, LayoutMeasurements } from '../layout-types';
+import {
+	type DedicatedLayoutEvaluation,
+	GroupRouteFailure,
+	type LayoutMeasurements,
+} from '../layout-types';
 import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
 import { type RankSearchComponent, rankSearchComponents } from './rank-order-components';
@@ -129,10 +133,15 @@ function matchingBands(
 function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
 	const { component, global, globalStructure, sharedBaseline, indices, limit, evaluate } = input;
 	let structure = globalStructure;
-	let baseline = sharedBaseline;
+	let baseline: DedicatedLayoutEvaluation | GroupRouteFailure = sharedBaseline;
 	if (component.graph !== globalStructure.graph) {
 		structure = prepareLayout(component.graph, component.ranks);
-		baseline = evaluate(structure, component.measurements, {}, true);
+		try {
+			baseline = evaluate(structure, component.measurements, {}, true);
+		} catch (error) {
+			if (!(error instanceof GroupRouteFailure)) throw error;
+			baseline = error;
+		}
 	}
 	const domain = collectRankOrderDomain(structure);
 	const matched = matchingBands(global, indices, domain);

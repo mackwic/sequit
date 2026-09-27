@@ -4,39 +4,39 @@ import { disallowedRouteContacts } from './bridges/bridge-contact';
 import { routeBridgeAnalysis } from './bridges/bridge-oracle';
 import { validateSelfContacts } from './bridges/route-self-contacts';
 import { routePathBounds } from './geometry/box-geometry';
-import { type LayoutFrame, pointOnAxes } from './geometry/layout-frame';
-import { PORT_INSET, PORT_SPACING, RAIL_SPACING } from './layout-settings';
-import { type Bounds, GroupRouteFailure, type LayoutRelation, type Point } from './layout-types';
+import type { LayoutFrame } from './geometry/layout-frame';
+import { PORT_SPACING, RAIL_SPACING } from './layout-settings';
+import { type Bounds, GroupRouteFailure, type LayoutRelation } from './layout-types';
+import {
+	aroundBoundaryPath,
+	aroundPath,
+	exteriorMainRails,
+	exteriorPath,
+	type FacePorts,
+	sourceBoundaryEscapes,
+	transverse,
+} from './routing/group-exterior-path';
 import { foreignGroupObstacles } from './routing/group-passages';
 import {
-	candidateTracks,
-	type GroupTrackIndex,
-	prepareGroupTrackIndex,
-} from './routing/group-track-index';
-import {
-	prepareRouteEnvelopeIndex,
-	replaceRouteEnvelope,
-	type RouteEnvelopeIndex,
-	routeEnvelopeNeighbors,
-} from './routing/route-envelope-index';
-import {
-	prepareRouteObstacles,
-	routeHitsObstacles,
-	type RouteObstacles,
-} from './routing/route-obstacles';
+	prepareRoutingContext,
+	respectsExternalFlow,
+	type RoutingContext,
+	shiftedGroupPort,
+} from './routing/group-route-candidates';
+import { candidateTracks, prepareGroupTrackIndex } from './routing/group-track-index';
+import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
+import { routeHitsObstacles, type RouteObstacles } from './routing/route-obstacles';
 
-function main(point: Point, vertical: boolean): number {
-	if (vertical) return point.y;
-	return point.x;
-}
-
-function transverse(point: Point, vertical: boolean): number {
-	if (vertical) return point.x;
-	return point.y;
-}
-
-const PORT_OFFSETS = [0, PORT_SPACING, -PORT_SPACING, RAIL_SPACING, -RAIL_SPACING];
 const HALF_RAIL = RAIL_SPACING / 2;
+const PORT_OFFSETS = [
+	0,
+	PORT_SPACING,
+	-PORT_SPACING,
+	RAIL_SPACING,
+	-RAIL_SPACING,
+	HALF_RAIL,
+	-HALF_RAIL,
+];
 const DOUBLE_RAIL = RAIL_SPACING * 2;
 const TRIPLE_RAIL = RAIL_SPACING * 3;
 const CLEARANCE_PAIRS = [
@@ -46,99 +46,17 @@ const CLEARANCE_PAIRS = [
 	[RAIL_SPACING, HALF_RAIL],
 	[DOUBLE_RAIL, HALF_RAIL],
 	[TRIPLE_RAIL, HALF_RAIL],
+	[HALF_RAIL, HALF_RAIL],
 ] as const;
 
-interface RoutingContext {
-	readonly graph: LogicGraph;
-	readonly bounds: ReadonlyMap<string, Bounds>;
-	readonly frame: LayoutFrame;
-	readonly vertical: boolean;
-	readonly routes: LayoutRelation[];
-	readonly nodes: RouteObstacles;
-	readonly contactIndex: RouteEnvelopeIndex;
-	readonly neighbors: number[];
-	activeIndex: number;
-	readonly ancestorCache: Map<string, readonly string[]>;
-	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
-	tracks: GroupTrackIndex | undefined;
-	outside: number;
+interface RouteAttempt {
+	readonly route: LayoutRelation;
+	readonly groups: RouteObstacles | undefined;
 }
-
-function endpoint(route: LayoutRelation, source: boolean): { id: string; port: Point } {
-	if (source) return { id: route.from, port: defined(route.points[0]) };
-	return { id: route.to, port: defined(route.points.at(-1)) };
+interface ExteriorAttempt extends RouteAttempt {
+	readonly ports: FacePorts;
+	readonly rails: readonly number[];
 }
-
-function portInUse(
-	context: RoutingContext,
-	route: LayoutRelation,
-	source: boolean,
-	coordinate: number,
-): boolean {
-	const { id } = endpoint(route, source);
-	for (const other of context.routes) {
-		if (other.id === route.id) continue;
-		const face = endpoint(other, source);
-		if (face.id !== id) continue;
-		const distance = Math.abs(coordinate - transverse(face.port, context.vertical));
-		if (distance < PORT_SPACING) return true;
-	}
-	return false;
-}
-
-function shiftedGroupPort(
-	context: RoutingContext,
-	route: LayoutRelation,
-	source: boolean,
-	offset: number,
-): Point | undefined {
-	const { id, port } = endpoint(route, source);
-	if (offset === 0) return port;
-	if (defined(context.graph.endpointsById.get(id)).kind !== EndpointKind.Group) return undefined;
-	const box = defined(context.bounds.get(id));
-	let start = box.y;
-	let length = box.height;
-	if (context.vertical) {
-		start = box.x;
-		length = box.width;
-	}
-	const coordinate = transverse(port, context.vertical) + offset;
-	const low = start + PORT_INSET;
-	const high = start + length - PORT_INSET;
-	if (coordinate < low || coordinate > high) return undefined;
-	if (portInUse(context, route, source, coordinate)) return undefined;
-	return pointOnAxes(coordinate, main(port, context.vertical), context.vertical);
-}
-
-interface FacePorts {
-	readonly source: Point;
-	readonly target: Point;
-}
-
-function exteriorPath(
-	frame: LayoutFrame,
-	track: number,
-	ports: FacePorts,
-	clearances: readonly [number, number],
-): readonly Point[] {
-	const first = ports.source;
-	const last = ports.target;
-	let outgoing = -1;
-	if (!frame.forward) outgoing = 1;
-	const source = main(first, frame.vertical) + outgoing * clearances[0];
-	const target = main(last, frame.vertical) - outgoing * clearances[1];
-	const sourceCoordinate = transverse(first, frame.vertical);
-	const targetCoordinate = transverse(last, frame.vertical);
-	return [
-		first,
-		pointOnAxes(sourceCoordinate, source, frame.vertical),
-		pointOnAxes(track, source, frame.vertical),
-		pointOnAxes(track, target, frame.vertical),
-		pointOnAxes(targetCoordinate, target, frame.vertical),
-		last,
-	];
-}
-
 function contactsAnotherRoute(candidate: LayoutRelation, context: RoutingContext): boolean {
 	if (!validateSelfContacts(candidate)) return true;
 	const envelope = routePathBounds(candidate);
@@ -157,14 +75,10 @@ function admissiblePath(
 	groups: RouteObstacles | undefined,
 ): boolean {
 	if (candidate.points.some(({ x, y }) => x < 0 || y < 0)) return false;
+	if (!respectsExternalFlow(context, candidate)) return false;
 	if (routeHitsObstacles(candidate.points, context.nodes)) return false;
 	if (groups !== undefined && routeHitsObstacles(candidate.points, groups)) return false;
 	return !contactsAnotherRoute(candidate, context);
-}
-
-interface RouteAttempt {
-	readonly route: LayoutRelation;
-	readonly groups: RouteObstacles | undefined;
 }
 
 function pathOnTrack(
@@ -192,6 +106,99 @@ function pathForPorts(
 	for (const track of candidateTracks(context.tracks, source, target)) {
 		const candidate = pathOnTrack(context, attempt, ports, track);
 		if (candidate !== undefined) return candidate;
+	}
+	return undefined;
+}
+
+function aroundOnTrack(
+	context: RoutingContext,
+	attempt: ExteriorAttempt,
+	targetTrack: number,
+): LayoutRelation | undefined {
+	for (const mainRail of attempt.rails) {
+		const rails = { main: mainRail, target: targetTrack };
+		for (const clearances of CLEARANCE_PAIRS) {
+			const points = aroundPath(context.frame, attempt.ports, rails, clearances);
+			const candidate = { ...attempt.route, points };
+			if (admissiblePath(context, candidate, attempt.groups)) return candidate;
+		}
+	}
+	return undefined;
+}
+
+function aroundForPorts(
+	context: RoutingContext,
+	attempt: ExteriorAttempt,
+): LayoutRelation | undefined {
+	const source = transverse(attempt.ports.source, context.vertical);
+	const target = transverse(attempt.ports.target, context.vertical);
+	for (const targetTrack of candidateTracks(defined(context.tracks), source, target)) {
+		const candidate = aroundOnTrack(context, attempt, targetTrack);
+		if (candidate !== undefined) return candidate;
+	}
+	return undefined;
+}
+
+function boundaryOnTrack(
+	context: RoutingContext,
+	attempt: ExteriorAttempt,
+	escape: readonly [number, number],
+	targetTrack: number,
+): LayoutRelation | undefined {
+	for (const mainRail of attempt.rails) {
+		const rails = {
+			main: mainRail,
+			sourceMain: escape[0],
+			sourceTrack: escape[1],
+			targetTrack,
+		};
+		for (const targetClearance of [RAIL_SPACING, DOUBLE_RAIL, TRIPLE_RAIL, HALF_RAIL]) {
+			const points = aroundBoundaryPath(context.frame, attempt.ports, rails, targetClearance);
+			const candidate = { ...attempt.route, points };
+			if (admissiblePath(context, candidate, attempt.groups)) return candidate;
+		}
+	}
+	return undefined;
+}
+
+function boundaryForPorts(
+	context: RoutingContext,
+	attempt: ExteriorAttempt,
+): LayoutRelation | undefined {
+	const escapes = sourceBoundaryEscapes(
+		context.bounds,
+		context.graph.document.groups,
+		attempt.ports.source,
+		context.frame,
+	);
+	const source = transverse(attempt.ports.source, context.vertical);
+	const target = transverse(attempt.ports.target, context.vertical);
+	for (const escape of escapes)
+		for (const targetTrack of candidateTracks(defined(context.tracks), source, target)) {
+			const candidate = boundaryOnTrack(context, attempt, escape, targetTrack);
+			if (candidate !== undefined) return candidate;
+		}
+	return undefined;
+}
+
+/** Use a second exterior axis only after every simpler passage has failed. */
+function aroundRoute(
+	context: RoutingContext,
+	route: LayoutRelation,
+	groups: RouteObstacles | undefined,
+): LayoutRelation | undefined {
+	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
+	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
+	for (const sourceOffset of PORT_OFFSETS) {
+		const source = shiftedGroupPort(context, route, true, sourceOffset);
+		if (source === undefined) continue;
+		for (const targetOffset of PORT_OFFSETS) {
+			const target = shiftedGroupPort(context, route, false, targetOffset);
+			if (target === undefined) continue;
+			const attempt = { route, groups, ports: { source, target }, rails };
+			const candidate = aroundForPorts(context, attempt) ?? boundaryForPorts(context, attempt);
+			if (candidate !== undefined) return candidate;
+		}
 	}
 	return undefined;
 }
@@ -247,43 +254,6 @@ function freshExterior(
 	return undefined;
 }
 
-function prepareRoutingContext(
-	graph: LogicGraph,
-	bounds: ReadonlyMap<string, Bounds>,
-	frame: LayoutFrame,
-	routes: LayoutRelation[],
-): RoutingContext {
-	const boxes: Bounds[] = [];
-	for (const id of graph.rankableEndpointIds) {
-		if (defined(graph.endpointsById.get(id)).kind === EndpointKind.Group) continue;
-		boxes.push(defined(bounds.get(id)));
-	}
-	let outside = 0;
-	for (const box of bounds.values()) {
-		let edge = box.y + box.height;
-		if (frame.vertical) edge = box.x + box.width;
-		outside = Math.max(outside, edge);
-	}
-	for (const route of routes)
-		for (const point of route.points)
-			outside = Math.max(outside, transverse(point, frame.vertical));
-	return {
-		graph,
-		bounds,
-		frame,
-		vertical: frame.vertical,
-		routes,
-		nodes: prepareRouteObstacles(boxes, 0),
-		contactIndex: prepareRouteEnvelopeIndex(routes.map(routePathBounds)),
-		neighbors: [],
-		activeIndex: 0,
-		ancestorCache: new Map<string, readonly string[]>(),
-		groupObstacleCache: new Map<string, RouteObstacles | undefined>(),
-		tracks: undefined,
-		outside,
-	};
-}
-
 /** Final bounds, rather than logical group ranks, determine which passages need correction. */
 export function clearGroupEndpointRoutes(
 	graph: LogicGraph,
@@ -310,13 +280,16 @@ export function clearGroupEndpointRoutes(
 		const clearanceGroups = foreignGroupObstacles(context, route);
 		let replacement =
 			alternateRoute(context, route, clearanceGroups) ??
-			freshExterior(context, route, clearanceGroups);
+			freshExterior(context, route, clearanceGroups) ??
+			aroundRoute(context, route, clearanceGroups);
 		if (replacement === undefined) {
 			// A target can sit only 24px beyond a foreign frame. Preserve physical
 			// disjointness when the preferred 24px envelope cannot fit at its face.
 			const exactGroups = foreignGroupObstacles(context, route, 0);
 			replacement =
-				alternateRoute(context, route, exactGroups) ?? freshExterior(context, route, exactGroups);
+				alternateRoute(context, route, exactGroups) ??
+				freshExterior(context, route, exactGroups) ??
+				aroundRoute(context, route, exactGroups);
 		}
 		if (replacement === undefined) throw new GroupRouteFailure(route.id);
 		routes[index] = replacement;

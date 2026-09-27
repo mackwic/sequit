@@ -30,11 +30,9 @@ import { validateLogicDocument } from '../../../../src/lib/core/document/validat
 import * as graph from '../../../../src/lib/core/graph/create-graph';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
-import {
-	layoutMeasurementsFor,
-	layoutMeasurementsForCanvas,
-} from '../../../support/builders/layout-measurements';
+import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import {
 	CollaborativeFixture,
@@ -424,18 +422,10 @@ describe('live document projection', () => {
 		});
 	});
 
-	it('preserves an obstructed group relation after every rank order fails', async () => {
-		const document: LogicDocument = {
-			...multirankTwo,
-			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
-		};
-		const measurements = layoutMeasurementsFor(document, {
-			groups: {
-				group: { minimumWidth: 28, minimumHeight: 1000, headerHeight: 4, padding: 0 },
-			},
-			nodes: { e: { width: 96, height: 60 }, f: { width: 96, height: 60 } },
-		});
-		const projection = createSharedCanvasProjection(document);
+	it('keeps the blocked relation visible in a typed canvas layout diagnosis', async () => {
+		const projection = createSharedCanvasProjection(multirankTwo);
+		const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
+		vi.spyOn(layout, 'layoutGraph').mockRejectedValueOnce(new GroupRouteFailure('c-to-f'));
 		await expect(projection.createCanvasModel(measurements)).rejects.toMatchObject({
 			name: LayoutProjectionError.name,
 			diagnostic: {
