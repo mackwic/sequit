@@ -45,7 +45,10 @@ import {
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
-import { solveRecursiveCandidate } from '../../../../src/lib/core/layout/regions/recursive/region-composition-search';
+import {
+	ExhaustedLeafAlternative,
+	solveRecursiveCandidate,
+} from '../../../../src/lib/core/layout/regions/recursive/region-composition-search';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
@@ -204,8 +207,8 @@ describe('persisted composed incident bridge selection', () => {
 		const { bridged } = alternatives();
 		for (const position of [33, 64]) {
 			const { result, calls, distinct } = searchComposedCandidates(position, bridged);
-			expect(distinct).toBe(64);
-			expect(calls).toBe(64);
+			expect(distinct).toBe(65);
+			expect(calls).toBe(65);
 			expect(result.status).toBe(RegionCompositionStatus.Selected);
 			if (result.status !== RegionCompositionStatus.Selected) continue;
 			expect(result.searchWitness?.attempted).toBe(64);
@@ -213,14 +216,69 @@ describe('persisted composed incident bridge selection', () => {
 			expect(result.searchWitness?.bestBridge).toEqual(layoutRouteCost(bridged.layout));
 		}
 		const { result, calls, distinct, rejectedCode } = searchComposedCandidates(65, bridged);
-		expect(distinct).toBe(64);
-		expect(calls).toBe(64);
+		expect(distinct).toBe(65);
+		expect(calls).toBe(65);
 		expect(result.status).toBe(RegionCompositionStatus.Unknown);
 		if (result.status !== RegionCompositionStatus.Unknown) return;
 		expect(result.code).toBe(RegionCompositionSearchCode.SearchBudgetExceeded);
 		expect(result.provenance).toBe(RegionSearchProvenance.Composition);
 		expect(result.searchWitness).toMatchObject({ attempted: 64, exhaustive: false });
 		expect(result.searchWitness?.rejectedAlternatives[0]?.code).toBe(rejectedCode);
+	});
+	it('reports an exhaustive geometry rejection when exactly 64 leaf combinations exist', () => {
+		const { bridged } = alternatives();
+		const rejected: RegionLayoutSelected = { ...bridged, portals: [] };
+		const failure = validateRegionCompositionGeometry(readyModel, rejected);
+		if (failure === undefined) throw new Error('Expected rejected complete composition');
+		const leaf: RegionLeafIncidentSelected = {
+			status: RegionCompositionStatus.Selected,
+			layout: bridged.layout,
+			ranks: topologicallyRank(preparedGraph),
+			incidents: [],
+			witness: { attempted: 1, exhaustive: true, rejectedAlternatives: [] },
+		};
+		const terminal = { attempted: 64, exhaustive: true, rejectedAlternatives: [] };
+		function* finite(count: number) {
+			for (let index = 0; index < count; index += 1) yield leaf;
+			return terminal;
+		}
+		let complete = 0;
+		const result = solveRecursiveCandidate(
+			{ graph: preparedGraph, measurements, model: readyModel, cache: undefined },
+			(_context, selection) => {
+				for (const [id, index] of selection.indices) {
+					let stream = selection.streams.get(id);
+					if (stream === undefined) {
+						let candidateCount = 1;
+						if (id === 'lane') candidateCount = 64;
+						stream = {
+							candidates: [],
+							iterator: finite(candidateCount),
+							exhaustive: false,
+							complete: true,
+						};
+						selection.streams.set(id, stream);
+					}
+					while (stream.candidates.length <= index && !stream.exhaustive) {
+						const next = stream.iterator.next();
+						if (next.done === true) {
+							stream.exhaustive = true;
+							stream.complete = next.value.exhaustive;
+							stream.witness = next.value;
+						} else stream.candidates.push(next.value);
+					}
+					if (index >= stream.candidates.length) throw new ExhaustedLeafAlternative();
+				}
+				complete += 1;
+				return composedForSearch(rejected);
+			},
+		).attempt;
+		expect(complete).toBe(64);
+		expect(result).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: failure.code,
+			searchWitness: { attempted: 64, exhaustive: true },
+		});
 	});
 	it('reports a bounded local leaf with its own identity and search witness', () => {
 		const { bridged } = alternatives();

@@ -187,6 +187,33 @@ function evaluateProduct(side: SideSearchContext, indices: readonly number[]): P
 	};
 }
 
+/** Ask for the next tuple without validating or charging a complete composition. */
+function probeProduct(side: SideSearchContext, indices: readonly number[]): ProductResult {
+	const { pass, context, selection } = side;
+	selectIndices(selection, pass.leaves, indices);
+	try {
+		pass.solveRoot(context, selection);
+	} catch (error) {
+		if (error instanceof ExhaustedLeafAlternative) return { exhausted: true };
+		if (error instanceof UnknownRegionLeafLayoutError)
+			return { exhausted: false, leafFailure: error };
+		throw error;
+	}
+	return { exhausted: false };
+}
+
+function probeBeyondBudget(
+	side: SideSearchContext,
+	indices: readonly number[],
+): SideResult | undefined {
+	const probe = probeProduct(side, indices);
+	if (probe.exhausted) return undefined;
+	if (probe.leafFailure !== undefined) return { truncated: false, leafFailure: probe.leafFailure };
+	side.pass.state.exhaustive = false;
+	side.pass.state.compositionBudgetExceeded = true;
+	return { truncated: true };
+}
+
 function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
 	const { pass, selection, passAttempts } = side;
 	let sideFailure: RegionGeometryDiagnostic | undefined;
@@ -196,9 +223,9 @@ function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
 		return diagonal;
 	})) {
 		if (passAttempts.count >= REGION_COMPOSITION_PRODUCT_BUDGET) {
-			pass.state.exhaustive = false;
-			pass.state.compositionBudgetExceeded = true;
-			return { truncated: true };
+			const termination = probeBeyondBudget(side, indices);
+			if (termination !== undefined) return termination;
+			continue;
 		}
 		const result = evaluateProduct(side, indices);
 		if (result.exhausted) continue;
