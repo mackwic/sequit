@@ -4,6 +4,7 @@ import {
 	defined,
 	EndpointKind,
 	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -20,6 +21,7 @@ import {
 	overlaps,
 	prepareLayoutDocument,
 } from '../../../support/harnesses/layout';
+import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
 import { VisualLayout } from '../../../support/harnesses/visual-layout';
 
 function packedNestedRootGroupsDocument(): LogicDocument {
@@ -176,4 +178,86 @@ describe('dedicated layouts with nested group channels', () => {
 		const validation = validateDedicatedCandidate({ ...prepared, layout });
 		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 	});
+
+	it.each(Object.values(LayoutDirection))(
+		'materializes three concurrent shortcut routes within their shared group frame in %s',
+		(direction) => {
+			const vertical =
+				direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+			const base = groupJunctionFixture(
+				defined(layoutConfiguration(direction, defaultBiasFor(direction))),
+				false,
+				false,
+			);
+			const template = defined(base.nodes[0]);
+			const document: LogicDocument = {
+				...base,
+				groups: [
+					{ kind: EndpointKind.Group, id: 'common', label: 'Common', layoutOrder: orderKey('a0') },
+				],
+				nodes: ['source', 'middle', 'target'].map((id, index) => ({
+					...template,
+					id,
+					markdown: id,
+					groupId: 'common',
+					layoutOrder: orderKey(`a${index + 1}`),
+				})),
+				junctions: [],
+				relations: [
+					{ id: 'source-middle', from: 'source', to: 'middle' },
+					{ id: 'middle-target', from: 'middle', to: 'target' },
+					{ id: 'shortcut-a', from: 'source', to: 'target' },
+					{ id: 'shortcut-b', from: 'source', to: 'target' },
+					{ id: 'shortcut-c', from: 'source', to: 'target' },
+				],
+			};
+			const sourceSize = { width: 40, height: 80 };
+			const middleSize = { width: 40, height: 500 };
+			const groupSize = { minimumWidth: 700, minimumHeight: 800 };
+			if (vertical) {
+				sourceSize.width = 80;
+				sourceSize.height = 40;
+				middleSize.width = 500;
+				middleSize.height = 40;
+				groupSize.minimumWidth = 800;
+				groupSize.minimumHeight = 700;
+			}
+			const prepared = prepareLayoutDocument(document, {
+				nodes: {
+					source: sourceSize,
+					middle: middleSize,
+					target: sourceSize,
+				},
+				groups: {
+					common: {
+						...groupSize,
+						headerHeight: 24,
+						padding: 16,
+					},
+				},
+			});
+			const layout = layoutWithDedicatedEngine(
+				prepared.graph,
+				prepared.ranks,
+				prepared.measurements,
+			);
+			const validation = validateDedicatedCandidate({ ...prepared, layout });
+			expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+			const group = defined(layout.elements.find(({ id }) => id === 'common'));
+			const routes = new Map(layout.relations.map((route) => [route.id, route]));
+			for (const id of ['shortcut-a', 'shortcut-b', 'shortcut-c']) {
+				const route = defined(routes.get(id));
+				expect(route.points.length).toBeGreaterThan(2);
+				expect(
+					route.points.every(
+						({ x, y }) =>
+							x >= group.bounds.x &&
+							x <= group.bounds.x + group.bounds.width &&
+							y >= group.bounds.y &&
+							y <= group.bounds.y + group.bounds.height,
+					),
+				).toBe(true);
+			}
+		},
+	);
 });

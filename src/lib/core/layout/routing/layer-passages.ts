@@ -24,7 +24,7 @@ interface PassageInput {
 interface PassageWorkspace extends PassageInput {
 	readonly ancestorCache: Map<string, readonly string[]>;
 	readonly intervalCache: Map<string, readonly Interval[]>;
-	readonly obstacles: Map<number, RouteObstacles | undefined>;
+	readonly obstacles: Map<string, RouteObstacles | undefined>;
 	readonly reservations: PassageReservation[];
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
 	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
@@ -43,9 +43,10 @@ interface PassageReservation {
 
 interface PassageSelection {
 	readonly workspace: PassageWorkspace;
-	readonly candidates: readonly number[];
-	readonly crossed: readonly RouteObstacles[];
+	candidates: number[];
 	readonly endpoints: readonly [source: Bounds, target: Bounds];
+	readonly sourceCoordinate: number;
+	readonly targetCoordinate: number;
 	readonly group: Interval | undefined;
 	readonly foreignGroupObstacles: RouteObstacles | undefined;
 	readonly layerSpan: readonly [target: number, source: number];
@@ -68,19 +69,22 @@ function insertionIndex(reservations: readonly PassageReservation[], coordinate:
 	return start;
 }
 
-function obstaclesIn(input: PassageWorkspace, layer: number): RouteObstacles | undefined {
+function obstaclesAcross(
+	input: PassageWorkspace,
+	targetLayer: number,
+	sourceLayer: number,
+): RouteObstacles | undefined {
+	const key = `${targetLayer}:${sourceLayer}`;
 	const { obstacles } = input;
-	if (!obstacles.has(layer)) {
-		const row = defined(input.layers.rows[layer]);
+	if (!obstacles.has(key)) {
+		const boxes: Bounds[] = [];
+		for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
+			for (const id of defined(input.layers.rows[layer])) boxes.push(defined(input.bounds.get(id)));
 		let index: RouteObstacles | undefined;
-		if (row.length > 0)
-			index = prepareRouteObstacles(
-				row.map((id) => defined(input.bounds.get(id))),
-				RAIL_SPACING,
-			);
-		obstacles.set(layer, index);
+		if (boxes.length > 0) index = prepareRouteObstacles(boxes, RAIL_SPACING);
+		obstacles.set(key, index);
 	}
-	return obstacles.get(layer);
+	return obstacles.get(key);
 }
 
 function transverseInterval(box: Bounds, vertical: boolean): Interval {
@@ -134,22 +138,53 @@ function internalCorridorCandidates(
 	return sortByDistance(candidates, source, target);
 }
 
-/** The containing group's leading and trailing padding remain fallbacks after internal gaps. */
-function groupPaddingCandidates(
+function occupiedGroupPaddingCandidates(
 	occupied: readonly Interval[],
-	group: Interval | undefined,
-	source: number,
-	target: number,
-): readonly number[] {
-	if (group === undefined || occupied.length === 0) return [];
-	const preferred = (source + target) / 2;
+	group: Interval,
+	preferred: number,
+	maximumTracks: number,
+): number[] {
 	const first = defined(occupied[0]);
 	const last = defined(occupied.at(-1));
-	const candidates = [
-		Math.max(group.start, Math.min(preferred, first.start)),
-		Math.max(last.end, Math.min(preferred, group.end)),
-	];
-	return sortByDistance(candidates, source, target);
+	const leading = Math.max(group.start, Math.min(preferred, first.start));
+	const trailing = Math.max(last.end, Math.min(preferred, group.end));
+	const candidates = [leading, trailing];
+	for (let track = 1; track < maximumTracks; track += 1) {
+		const candidate = leading - track * RAIL_SPACING;
+		if (candidate < group.start) break;
+		candidates.push(candidate);
+	}
+	for (let track = 1; track < maximumTracks; track += 1) {
+		const candidate = trailing + track * RAIL_SPACING;
+		if (candidate > group.end) break;
+		candidates.push(candidate);
+	}
+	return candidates;
+}
+
+/** Reuse 24px-spaced free tracks in the containing frame after internal gaps. */
+function groupPaddingCandidates(
+	selection: PassageSelection,
+	occupied: readonly Interval[],
+): readonly number[] {
+	const { group, sourceCoordinate, targetCoordinate, workspace } = selection;
+	if (group === undefined) return [];
+	const preferred = (sourceCoordinate + targetCoordinate) / 2;
+	const maximumTracks = workspace.reservations.length + 1;
+	let candidates: number[];
+	if (occupied.length === 0) {
+		candidates = [];
+		for (let track = 1; track <= maximumTracks; track += 1) {
+			const leading = preferred - track * RAIL_SPACING;
+			const trailing = preferred + track * RAIL_SPACING;
+			if (leading < group.start && trailing > group.end) break;
+			if (leading >= group.start) candidates.push(leading);
+			if (trailing <= group.end) candidates.push(trailing);
+		}
+	} else {
+		candidates = occupiedGroupPaddingCandidates(occupied, group, preferred, maximumTracks);
+	}
+	return sortByDistance(candidates, sourceCoordinate, targetCoordinate);
 }
 
 function occupiedIntervals(
@@ -168,51 +203,61 @@ function occupiedIntervals(
 	return intervals;
 }
 
-function reserveCoordinate(
-	input: PassageWorkspace,
-	coordinate: number,
-	targetLayer: number,
-	sourceLayer: number,
-): boolean {
-	const reservations = input.reservations;
+function reservationIndex(selection: PassageSelection, coordinate: number): number | undefined {
+	const { workspace, group } = selection;
+	const [targetLayer, sourceLayer] = selection.layerSpan;
+	if (group !== undefined) {
+		if (coordinate < group.start || coordinate > group.end) return undefined;
+	}
+	const reservations = workspace.reservations;
 	const index = insertionIndex(reservations, coordinate);
 	for (let before = index - 1; before >= 0; before -= 1) {
 		const held = defined(reservations[before]);
 		if (coordinate - held.coordinate >= RAIL_SPACING) break;
-		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return false;
+		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
 	}
 	for (let after = index; after < reservations.length; after += 1) {
 		const held = defined(reservations[after]);
 		if (held.coordinate - coordinate >= RAIL_SPACING) break;
-		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return false;
+		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
 	}
-	reservations.splice(index, 0, { coordinate, sourceLayer, targetLayer });
-	return true;
+	return index;
+}
+
+function candidateHitsObstacles(
+	selection: PassageSelection,
+	candidate: number,
+	obstacleIndex: RouteObstacles | undefined,
+): boolean {
+	const [source, target] = selection.endpoints;
+	const points = [
+		column(candidate, source, selection.workspace.vertical),
+		column(candidate, target, selection.workspace.vertical),
+	];
+	if (obstacleIndex !== undefined) {
+		if (routeHitsObstacles(points, obstacleIndex)) return true;
+	}
+	const foreignGroupObstacles = selection.foreignGroupObstacles;
+	if (foreignGroupObstacles !== undefined) {
+		if (routeHitsObstacles(points, foreignGroupObstacles)) return true;
+	}
+	return false;
 }
 
 function selectPassage(input: PassageSelection): number | undefined {
-	const { workspace, candidates, crossed, group } = input;
-	const [source, target] = input.endpoints;
+	const { workspace, candidates } = input;
 	const [targetLayer, sourceLayer] = input.layerSpan;
+	let obstacleIndex: RouteObstacles | undefined;
+	let obstacleIndexReady = false;
 	for (const candidate of new Set(candidates)) {
-		let insideGroup = true;
-		if (group !== undefined) {
-			const afterStart = candidate >= group.start;
-			const beforeEnd = candidate <= group.end;
-			insideGroup = afterStart && beforeEnd;
+		const index = reservationIndex(input, candidate);
+		if (index === undefined) continue;
+		if (!obstacleIndexReady) {
+			obstacleIndex = obstaclesAcross(workspace, targetLayer, sourceLayer);
+			obstacleIndexReady = true;
 		}
-		if (!insideGroup) continue;
-		const points = [
-			column(candidate, source, workspace.vertical),
-			column(candidate, target, workspace.vertical),
-		];
-		if (crossed.some((index) => routeHitsObstacles(points, index))) continue;
-		if (
-			input.foreignGroupObstacles !== undefined &&
-			routeHitsObstacles(points, input.foreignGroupObstacles)
-		)
-			continue;
-		if (!reserveCoordinate(workspace, candidate, targetLayer, sourceLayer)) continue;
+		if (candidateHitsObstacles(input, candidate, obstacleIndex)) continue;
+		workspace.reservations.splice(index, 0, { coordinate: candidate, sourceLayer, targetLayer });
 		return candidate;
 	}
 	return undefined;
@@ -224,11 +269,6 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	const sourceLayer = defined(input.layers.byId.get(relation.from));
 	const targetLayer = defined(input.layers.byId.get(relation.to));
 	if (sourceLayer <= targetLayer + 1) return undefined;
-	const crossed: RouteObstacles[] = [];
-	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1) {
-		const index = obstaclesIn(input, layer);
-		if (index !== undefined) crossed.push(index);
-	}
 	const source = defined(input.bounds.get(relation.from));
 	const target = defined(input.bounds.get(relation.to));
 	const sourceOffset = input.sourceOffsets?.get(relation.id) ?? 0;
@@ -254,28 +294,27 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		input.exteriorCandidates,
 	);
 	let preferred: readonly number[] = [];
-	let fallback: readonly number[] = [];
-	if (group === undefined) {
-		preferred = exterior.preferred;
-		fallback = exterior.fallback;
-	}
-	const candidates = [
-		...preferred,
+	if (group === undefined) preferred = exterior.preferred;
+	const fallback = exterior.fallback;
+	const selection: PassageSelection = {
+		workspace: input,
+		candidates: [],
+		endpoints: [source, target],
 		sourceCoordinate,
 		targetCoordinate,
-		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
-		...groupPaddingCandidates(occupied, group, sourceCoordinate, targetCoordinate),
-		...fallback,
-	];
-	return selectPassage({
-		workspace: input,
-		candidates,
-		crossed,
-		endpoints: [source, target],
 		group,
 		foreignGroupObstacles: foreignGroups,
 		layerSpan: [targetLayer, sourceLayer],
-	});
+	};
+	selection.candidates.push(...preferred);
+	selection.candidates.push(sourceCoordinate, targetCoordinate);
+	selection.candidates.push(
+		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
+	);
+	selection.candidates.push(...groupPaddingCandidates(selection, occupied));
+	if (group !== undefined) selection.candidates.push(...exterior.preferred);
+	selection.candidates.push(...fallback);
+	return selectPassage(selection);
 }
 
 /** A new allocator belongs to one geometry phase; nothing survives the next placement. */

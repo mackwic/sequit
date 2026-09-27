@@ -5,6 +5,7 @@ import {
 	JunctionOperator,
 	LayoutDirection,
 	type LogicDocument,
+	type LogicNode,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
@@ -238,6 +239,36 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		},
 	);
 
+	it('uses the free source column before a side too narrow for concurrent shortcuts', () => {
+		const shortcuts = ['a', 'b', 'c'].map((id) => ({
+			id: `bounded-${id}`,
+			from: 'source',
+			to: 'target',
+		}));
+		const created = createGraph({ ...document, groups: [], junctions: [], relations: shortcuts });
+		if (!created.ok) throw new Error('The bounded neighboring components must be valid');
+		const reserve = layerPassages({
+			...input(
+				[['target'], ['ordinary', 'other-source'], ['source']],
+				{
+					target: box(400, 0),
+					ordinary: box(280, 120),
+					'other-source': box(560, 120),
+					source: box(400, 240),
+				},
+				created.value,
+			),
+			componentByEndpointId: new Map([
+				['ordinary', 0],
+				['source', 1],
+				['target', 1],
+				['other-source', 2],
+			]),
+		});
+		// The freer 80px side cannot hold three 24px rails and neighbor clearance.
+		expect(shortcuts.map((relation) => reserve(relation))).toEqual([400, 464, 488]);
+	});
+
 	it('chooses a clear leading side when its tracks fit before a right-side neighbor', () => {
 		const reserve = layerPassages({
 			...input(
@@ -326,6 +357,187 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 			),
 		);
 		expect(reserve(firstRelation)).toBe(-64);
+	});
+
+	it('reserves separated tracks in a saturated shared group frame', () => {
+		const shortcuts = ['a', 'b', 'c'].map((id) => ({
+			id: `shortcut-${id}`,
+			from: 'source',
+			to: 'target',
+		}));
+		const groupedDocument: LogicDocument = {
+			...document,
+			nodes: document.nodes.map((node) => ({ ...node, groupId: 'group' })),
+			junctions: [],
+			relations: [
+				...shortcuts,
+				{ id: 'side-first', from: 'other-source', to: 'ordinary' },
+				{ id: 'side-second', from: 'ordinary', to: 'other-target' },
+			],
+		};
+		const groupedResult = createGraph(groupedDocument);
+		if (!groupedResult.ok)
+			throw new Error('The grouped shortcut fixture must have valid endpoints.');
+		const bounds = new Map<string, Bounds>([
+			['group', { x: 0, y: 0, width: 400, height: 400 }],
+			['target', box(200, 0, 32)],
+			['ordinary', box(200, 120, 80)],
+			['source', box(200, 240, 32)],
+			['other-target', box(350, 0, 32)],
+			['other-source', box(350, 240, 32)],
+		]);
+		const reserve = layerPassages({
+			graph: groupedResult.value,
+			layers: {
+				rows: [['target', 'other-target'], ['ordinary'], ['source', 'other-source']],
+				byId: new Map([
+					['target', 0],
+					['other-target', 0],
+					['ordinary', 1],
+					['source', 2],
+					['other-source', 2],
+				]),
+				intervals: [],
+			},
+			bounds,
+			vertical: frame.vertical,
+			componentByEndpointId: new Map([
+				['source', 1],
+				['target', 1],
+				['ordinary', 2],
+				['other-source', 2],
+				['other-target', 2],
+			]),
+		});
+		const passages = shortcuts.map((relation) => reserve(relation));
+		expect(passages).toEqual([136, 264, 112]);
+		for (const passage of passages) expect(passage).toBeGreaterThanOrEqual(0);
+		for (const passage of passages) expect(passage).toBeLessThanOrEqual(400);
+	});
+
+	it.each([
+		{ start: 0, end: 400, capacity: 17 },
+		{ start: 0, end: 350, capacity: 15 },
+		{ start: 50, end: 400, capacity: 15 },
+	])(
+		'reserves empty-row group tracks until frame $start..$end is full',
+		({ start, end, capacity }) => {
+			const shortcuts = Array.from({ length: capacity + 1 }, (_, index) => ({
+				id: `empty-${index}`,
+				from: 'source',
+				to: 'target',
+			}));
+			const groupedResult = createGraph({
+				...document,
+				nodes: document.nodes.map((node) => ({ ...node, groupId: 'group' })),
+				junctions: [],
+				relations: shortcuts,
+			});
+			if (!groupedResult.ok)
+				throw new Error('The isolated group fixture must have valid endpoints.');
+			let groupBounds: Bounds = { x: start, y: 0, width: end - start, height: 400 };
+			if (!frame.vertical) groupBounds = { x: 0, y: start, width: 400, height: end - start };
+			const reserve = layerPassages(
+				input(
+					[['target'], [], ['source']],
+					{ group: groupBounds, target: box(200, 0, 32), source: box(200, 240, 32) },
+					groupedResult.value,
+				),
+			);
+			const passages = shortcuts.map((relation) => reserve(relation));
+			expect(passages.slice(0, 3)).toEqual([200, 176, 224]);
+			const allocated: number[] = [];
+			for (const passage of passages.slice(0, -1)) {
+				if (passage === undefined) throw new Error('A free group track was not reserved');
+				expect(passage).toBeGreaterThanOrEqual(start);
+				expect(passage).toBeLessThanOrEqual(end);
+				for (const prior of allocated) expect(Math.abs(passage - prior)).toBeGreaterThanOrEqual(24);
+				allocated.push(passage);
+			}
+			expect(passages.at(-1)).toBeUndefined();
+		},
+	);
+
+	it('uses in-frame component exterior tracks after group candidates saturate', () => {
+		const shortcuts = ['a', 'b', 'c'].map((id) => ({
+			id: `exterior-${id}`,
+			from: 'source',
+			to: 'target',
+		}));
+		const nodes = [
+			'source',
+			'middle',
+			'target',
+			'neighbor-source',
+			'neighbor-obstacle',
+			'neighbor-target',
+		].map((id, index): LogicNode => ({
+			kind: EndpointKind.Node,
+			id,
+			natureId: 'goal',
+			markdown: id,
+			layoutOrder: orderKey(`a${index}`),
+			groupId: 'group',
+		}));
+		const groupedResult = createGraph({
+			...document,
+			nodes,
+			junctions: [],
+			relations: [
+				{ id: 'source-middle', from: 'source', to: 'middle' },
+				{ id: 'middle-target', from: 'middle', to: 'target' },
+				...shortcuts,
+				{ id: 'neighbor-first', from: 'neighbor-source', to: 'neighbor-obstacle' },
+				{ id: 'neighbor-second', from: 'neighbor-obstacle', to: 'neighbor-target' },
+			],
+		});
+		if (!groupedResult.ok)
+			throw new Error('The connected grouped fixture must have valid endpoints.');
+		let groupBounds: Bounds;
+		let groupStart: number;
+		let groupEnd: number;
+		if (frame.vertical) {
+			groupBounds = { x: 150, y: 0, width: 300, height: 300 };
+			groupStart = groupBounds.x;
+			groupEnd = groupStart + groupBounds.width;
+		} else {
+			groupBounds = { x: 0, y: 150, width: 300, height: 300 };
+			groupStart = groupBounds.y;
+			groupEnd = groupStart + groupBounds.height;
+		}
+		const reserve = layerPassages({
+			...input(
+				[
+					['target', 'neighbor-target'],
+					['middle', 'neighbor-obstacle'],
+					['source', 'neighbor-source'],
+				],
+				{
+					group: groupBounds,
+					target: box(200, 0),
+					middle: box(200, 120),
+					source: box(200, 240),
+					'neighbor-target': box(400, 0),
+					'neighbor-obstacle': box(400, 120),
+					'neighbor-source': box(400, 240),
+				},
+				groupedResult.value,
+			),
+			componentByEndpointId: new Map([
+				['source', 1],
+				['middle', 1],
+				['target', 1],
+				['neighbor-source', 2],
+				['neighbor-obstacle', 2],
+				['neighbor-target', 2],
+			]),
+		});
+		const passages = shortcuts.map((relation) => reserve(relation));
+		expect(passages).toEqual([264, 288, 312]);
+		for (const passage of passages) {
+			expect(passage).toBeGreaterThanOrEqual(groupStart);
+			expect(passage).toBeLessThanOrEqual(groupEnd);
+		}
 	});
 
 	it('rejects an offset endpoint column outside the common group', () => {
