@@ -600,7 +600,8 @@ describe('variable persisted region trees through the production layout entry', 
 			);
 		});
 	}
+	// Each run composes an edit sequence incrementally and cold: 3.2 s alone, 5.75 s in full coverage.
 	it('matches cold composition through reordered local, crossing, size and collection edits', async () => {
 		await fc.assert(fc.asyncProperty(sequenceCases, checkSequenceCase), PROPERTY_PARAMETERS);
-	});
+	}, 20_000);
 });

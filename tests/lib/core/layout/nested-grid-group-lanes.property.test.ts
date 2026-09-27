@@ -201,6 +201,7 @@ async function checkSelection(
 }
 
 describe('a grouped cell beside local lanes in a persisted nested grid', () => {
+	// Each run projects four edited documents incrementally and cold: up to 4.4 s under coverage.
 	it.each([0, 1])(
 		'keeps every geometry selected and incremental equal to cold through fractional edits, batch %i',
 		async (batch) => {
@@ -232,6 +233,7 @@ describe('a grouped cell beside local lanes in a persisted nested grid', () => {
 				parameters,
 			);
 		},
+		20_000,
 	);
 
 	it('keeps a grouped member inside a lane cell explicitly unsupported', () => {
