@@ -393,22 +393,22 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			),
 		);
 	}
-	const nested = nineIncidentNestedRegions();
+	const nestedIncident = nineIncidentNestedRegions();
 	for (const size of [2, 9]) {
 		const nodes = [
-			...nested.document.nodes.slice(0, size),
-			...nested.document.nodes.slice(9, 9 + size),
+			...nestedIncident.document.nodes.slice(0, size),
+			...nestedIncident.document.nodes.slice(9, 9 + size),
 		];
 		const document = {
-			...nested.document,
+			...nestedIncident.document,
 			nodes,
-			relations: nested.document.relations.slice(0, size),
+			relations: nestedIncident.document.relations.slice(0, size),
 		};
 		const ids = new Set(nodes.map(({ id }) => id));
 		const input = {
-			...nested.input,
+			...nestedIncident.input,
 			regionByEndpointId: new Map(
-				[...nested.input.regionByEndpointId].filter(([id]) => ids.has(id)),
+				[...nestedIncident.input.regionByEndpointId].filter(([id]) => ids.has(id)),
 			),
 		};
 		const prepared = prepareLayoutDocument(document);

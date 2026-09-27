@@ -416,7 +416,7 @@ describe('dedicated leaf incident contracts', () => {
 			);
 			expect(composed.status).toBe(RegionCompositionStatus.Selected);
 			if (composed.status !== RegionCompositionStatus.Selected) return;
-			const normalized = normalizeRegionCompositionModel(prepared.graph, input, {});
+			const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 			if (normalized.status !== RegionCompositionModelStatus.Ready)
 				throw new Error(normalized.diagnostic.message);
 			expect(validateRegionCompositionGeometry(normalized.model, composed)).toBeUndefined();
