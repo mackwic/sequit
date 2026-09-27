@@ -36,7 +36,8 @@ export function gridCrossingResources(
 		const sourceRow = defined(rowByCellId.get(defined(input.cellByEndpointId.get(from))));
 		const targetRow = defined(rowByCellId.get(defined(input.cellByEndpointId.get(to))));
 		if (source !== target && sourceRow !== targetRow)
-			defined(rowGutterIds[Math.min(sourceRow, targetRow)]).push(id);
+			for (let row = Math.min(sourceRow, targetRow); row < Math.max(sourceRow, targetRow); row += 1)
+				defined(rowGutterIds[row]).push(id);
 	}
 	for (const ids of [...gutterIds, ...rowGutterIds]) ids.sort(compareCanonicalStrings);
 	return {

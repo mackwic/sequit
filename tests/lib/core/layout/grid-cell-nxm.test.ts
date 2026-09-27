@@ -85,6 +85,49 @@ describe('grid bus allocation', () => {
 		expect(reversed.edges).toEqual(resources.edges);
 		expect(reversed.gutterIds).toEqual(resources.gutterIds);
 	});
+	it('selects a noncanonical bus after every canonical order fails without row alternatives', () => {
+		const source = {
+			...nxmThreeByTwoDocument(),
+			relations: [
+				{ id: 'r0', from: 'a', to: 'b' },
+				{ id: 'r1', from: 'a', to: 'c' },
+				{ id: 'r2', from: 'b', to: 'c' },
+			],
+		};
+		const input = nxmThreeByTwoInput();
+		const resources = gridCrossingResources(input, source.relations);
+		expect(resources.rowGutterIds).toEqual([[]]);
+		const prepared = prepareLayoutDocument(source);
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`${result.status}: ${result.reason}`);
+		expect(result.allocation.rowTrackByRelationId?.[0]?.size).toBe(0);
+		const order = [...result.allocation.busTrackByRelationId]
+			.sort((left, right) => left[1] - right[1])
+			.map(([id]) => id);
+		expect(order).toEqual(['r1', 'r0', 'r2']);
+		const phase = result.witness.phases[0];
+		expect(phase?.totalGeometries).toBe('384');
+		expect(phase?.exploredGeometries).toBeLessThan(256);
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
+		expect(
+			result.witness.rejectedAlternatives.filter(({ busOrder }) => busOrder.join() === 'r0,r1,r2'),
+		).toHaveLength(64);
+		expect(validatedBridges(result.layout.relations)).toEqual([]);
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+		const permuted = prepareLayoutDocument({
+			...source,
+			nodes: [...source.nodes].reverse(),
+			relations: [...source.relations].reverse(),
+		});
+		expect(
+			solveGridCellLayout(permuted.graph, permuted.measurements, {
+				...input,
+				cells: [...input.cells].reverse(),
+				cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+			}),
+		).toEqual(result);
+	});
 });
 
 describe('N by M grid composition', () => {

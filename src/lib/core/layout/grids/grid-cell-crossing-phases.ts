@@ -75,18 +75,53 @@ function factorial(value: number): bigint {
 	return count;
 }
 
-function rowAssignmentCount(load: number): bigint {
-	let total = 1n;
-	let choices = 1n;
-	let tracks = 1n;
-	for (let selected = 1; selected <= load; selected += 1) {
-		const remaining = BigInt(load - selected + 1);
-		choices *= remaining;
-		choices /= BigInt(selected);
-		tracks *= remaining;
-		total += choices * tracks;
+/** A relation uses one eligible separation or the bus; selected relations take distinct
+ * tracks within their chosen row edge. Memoize loads rather than materializing geometries. */
+function rowGeometryCount(input: CrossingAllocationInput): bigint {
+	const eligible = input.crossingIds.filter((id) =>
+		(input.rowGutterIds ?? []).some((ids) => ids.includes(id)),
+	);
+	if (eligible.length === 0) return 1n;
+	const boundaries = eligible.map((id) => {
+		const rows: number[] = [];
+		for (const [row, ids] of (input.rowGutterIds ?? []).entries())
+			if (ids.includes(id)) rows.push(row);
+		return rows;
+	});
+	const capacities = (input.rowGutterIds ?? []).map((ids) => ids.length);
+	if (boundaries.every((rows) => rows.length === capacities.length)) {
+		const slots = capacities.reduce((total, capacity) => total + capacity, 0);
+		let total = 1n;
+		let choices = 1n;
+		let tracks = 1n;
+		for (let selected = 1; selected <= eligible.length; selected += 1) {
+			const remaining = eligible.length - selected + 1;
+			choices = (choices * BigInt(remaining)) / BigInt(selected);
+			tracks *= BigInt(slots - selected + 1);
+			total += choices * tracks;
+		}
+		return total;
 	}
-	return total;
+	const loads = capacities.map(() => 0);
+	const memo = new Map<string, bigint>();
+	function count(index: number): bigint {
+		if (index === eligible.length) return 1n;
+		const key = `${index}:${loads.join(',')}`;
+		const cached = memo.get(key);
+		if (cached !== undefined) return cached;
+		let total = count(index + 1);
+		for (const row of defined(boundaries[index])) {
+			const used = defined(loads[row]);
+			if (used === defined(capacities[row])) continue;
+			loads[row] = used + 1;
+			const available = defined(capacities[row]) - used;
+			total += BigInt(available) * count(index + 1);
+			loads[row] = used;
+		}
+		memo.set(key, total);
+		return total;
+	}
+	return count(0);
 }
 
 function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
@@ -98,7 +133,7 @@ function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
 			defined(input.edges.gutters[column]).capacity - 1,
 		);
 	count *= gutterAssignments;
-	for (const ids of input.rowGutterIds ?? []) count *= rowAssignmentCount(ids.length);
+	count *= rowGeometryCount(input);
 	for (const relations of input.incidence.values()) count *= factorial(relations.length);
 	return count;
 }

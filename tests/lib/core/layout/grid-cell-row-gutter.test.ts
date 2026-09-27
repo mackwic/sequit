@@ -157,7 +157,7 @@ describe('horizontal grid row gutters', () => {
 			const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
 			if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
 			const resources = gridCrossingResources(input, document.relations);
-			expect(resources.rowGutterIds).toEqual([['nonadjacent'], []]);
+			expect(resources.rowGutterIds).toEqual([['nonadjacent'], ['nonadjacent']]);
 			expect(defined(result.allocation.rowTrackByRelationId)[0]?.get('nonadjacent')).toBe(0);
 			const upper = defined(result.cells.find(({ row }) => row === 0));
 			const route = defined(result.layout.relations.find(({ id }) => id === 'nonadjacent'));
@@ -165,6 +165,51 @@ describe('horizontal grid row gutters', () => {
 			expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
 		},
 	);
+	it('moves a nonadjacent crossing to the second gap after a real route contact', () => {
+		const source = nxmTwoByThreeDocument();
+		const document = {
+			...source,
+			relations: [
+				{ id: 'a-f', from: 'a', to: 'f' },
+				{ id: 'blocker', from: 'b', to: 'd' },
+			],
+		};
+		const input = nxmTwoByThreeInput();
+		const resources = gridCrossingResources(input, document.relations);
+		expect(resources.rowGutterIds).toEqual([['a-f'], ['a-f']]);
+		expect(resources.edges.rowGutters.map(({ capacity }) => capacity)).toEqual([1, 1]);
+		const prepared = prepareLayoutDocument(document);
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+		expect(result.witness.rejectedAlternatives[0]?.code).toBe(
+			RegionGeometryDiagnosticCode.ParentRouteContact,
+		);
+		expect(result.witness.phases[0]?.totalGeometries).toBe('12');
+		expect(result.witness.phases[0]?.exploredGeometries).toBe(2);
+		expect(defined(result.allocation.rowTrackByRelationId)[0]?.has('a-f')).toBe(false);
+		expect(defined(result.allocation.rowTrackByRelationId)[1]?.get('a-f')).toBe(0);
+		const middle = defined(result.cells.find(({ row }) => row === 1));
+		const route = defined(result.layout.relations.find(({ id }) => id === 'a-f'));
+		const trackY = crossingRowY(
+			defined(resources.edges.rowGutters[1]),
+			middle.bounds.y + middle.bounds.height,
+			0,
+		);
+		expect(route.points[3]?.y).toBe(trackY);
+		expect(routeBridgeAnalysis(result.layout.relations).bridges).toEqual([]);
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+		const permuted = prepareLayoutDocument({
+			...document,
+			relations: [...document.relations].reverse(),
+		});
+		expect(
+			solveGridCellLayout(permuted.graph, permuted.measurements, {
+				...input,
+				cells: [...input.cells].reverse(),
+				cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+			}),
+		).toEqual(result);
+	});
 	it('grows only a loaded row separation and allocates distinct horizontal tracks', () => {
 		const source = gridDocument();
 		const document = {

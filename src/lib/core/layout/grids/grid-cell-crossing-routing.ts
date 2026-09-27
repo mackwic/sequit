@@ -88,9 +88,8 @@ export function crossingRoute(
 	if (source.railX === target.railX) {
 		points.push({ x: target.railX, y: target.port.y });
 	} else {
-		let upperCell = source.cell;
-		if (target.cell.row < source.cell.row) upperCell = target.cell;
-		const row = upperCell.row;
+		const row =
+			allocation.rowTrackByRelationId?.findIndex((tracks) => tracks.has(relation.id)) ?? -1;
 		const rowTrack = allocation.rowTrackByRelationId?.[row]?.get(relation.id);
 		let busY: number;
 		if (rowTrack === undefined)
@@ -98,12 +97,14 @@ export function crossingRoute(
 				routing.edges.topBus,
 				defined(allocation.busTrackByRelationId.get(relation.id)),
 			);
-		else
+		else {
+			const upperCell = defined(routing.cells.find((cell) => cell.row === row));
 			busY = crossingRowY(
 				defined(routing.edges.rowGutters[row]),
 				upperCell.bounds.y + upperCell.bounds.height,
 				rowTrack,
 			);
+		}
 		points.push(
 			{ x: source.railX, y: busY },
 			{ x: target.railX, y: busY },
