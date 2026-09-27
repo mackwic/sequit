@@ -28,9 +28,27 @@ export interface RegionCompositionWorkBudgets {
 export const NESTED_REGION_COMPOSITION_WORK_BUDGETS: RegionCompositionWorkBudgets = {
 	normalizationComparisons: 8192,
 	placements: 512,
-	comparisons: 1024,
+	comparisons: 8192,
 	traversals: 4096,
 };
+
+/** Fixed baselines cover retries in small documents; slopes fund large shallow scenes.
+ * Each phase still stops after a finite deterministic amount of work per document. */
+export function regionCompositionWorkBudgets(
+	regionCount: number,
+	relationCount: number,
+): RegionCompositionWorkBudgets {
+	const size = regionCount + relationCount;
+	return {
+		normalizationComparisons: Math.max(
+			NESTED_REGION_COMPOSITION_WORK_BUDGETS.normalizationComparisons,
+			32 * size,
+		),
+		placements: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.placements, 2 * size),
+		comparisons: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.comparisons, 32 * size),
+		traversals: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.traversals, 8 * size),
+	};
+}
 
 export class RegionWorkLimitExceeded extends Error {
 	constructor(readonly diagnostic: RegionCompositionDiagnostic) {

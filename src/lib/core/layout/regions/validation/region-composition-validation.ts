@@ -1,6 +1,6 @@
 import { defined } from '../../../document/logic-document';
 import { type RouteBridgeCache, validatedBridgesCached } from '../../bridges/bridge-oracle';
-import { finiteBounds, inside, overlaps } from '../../geometry/nested-region-geometry-primitives';
+import { finiteBounds, inside } from '../../geometry/nested-region-geometry-primitives';
 import {
 	type RegionGeometryDiagnostic,
 	regionGeometryDiagnostic as diagnostic,
@@ -88,18 +88,123 @@ function regionPlacementFailure(
 	return undefined;
 }
 
+interface IndexedSiblingSweepEvent {
+	readonly x: number;
+	readonly yStart: number;
+	readonly yEnd: number;
+	readonly starts: boolean;
+	readonly siblingIndex: number;
+}
+
 function siblingsOverlap(
 	siblings: readonly RegionGeometryPlacement[],
 	parentId: string,
 	work?: RegionCompositionWork,
 ): boolean {
-	for (let left = 0; left < siblings.length; left += 1) {
-		const leftBounds = defined(siblings[left]).bounds;
-		for (let right = left + 1; right < siblings.length; right += 1) {
-			work?.charge(RegionWorkPhase.Comparisons, parentId);
-			const rightBounds = defined(siblings[right]).bounds;
-			if (overlaps(leftBounds, rightBounds)) return true;
+	if (siblings.length < 2) return false;
+
+	const yCoordinates: number[] = [];
+	for (const sibling of siblings) {
+		yCoordinates.push(sibling.bounds.y, sibling.bounds.y + sibling.bounds.height);
+	}
+
+	yCoordinates.sort((left, right) => {
+		work?.charge(RegionWorkPhase.Comparisons, parentId);
+		return left < right ? -1 : left > right ? 1 : 0;
+	});
+	const uniqueYCoordinates: number[] = [];
+	for (const coordinate of yCoordinates) {
+		const previous = uniqueYCoordinates[uniqueYCoordinates.length - 1];
+		if (previous === undefined) {
+			uniqueYCoordinates.push(coordinate);
+			continue;
 		}
+		work?.charge(RegionWorkPhase.Comparisons, parentId);
+		if (coordinate !== previous) uniqueYCoordinates.push(coordinate);
+	}
+
+	const coordinateIndexes = new Map<number, number>();
+	for (let index = 0; index < uniqueYCoordinates.length; index += 1)
+		coordinateIndexes.set(defined(uniqueYCoordinates[index]), index);
+	const indexedEvents: IndexedSiblingSweepEvent[] = [];
+	for (let siblingIndex = 0; siblingIndex < siblings.length; siblingIndex += 1) {
+		const bounds = defined(siblings[siblingIndex]).bounds;
+		const yStart = coordinateIndexes.get(bounds.y);
+		const yEnd = coordinateIndexes.get(bounds.y + bounds.height);
+		if (yStart === undefined || yEnd === undefined)
+			throw new Error('A sibling sweep endpoint was not coordinate-compressed.');
+		indexedEvents.push(
+			{ x: bounds.x, yStart, yEnd, starts: true, siblingIndex },
+			{ x: bounds.x + bounds.width, yStart, yEnd, starts: false, siblingIndex },
+		);
+	}
+	indexedEvents.sort((left, right) => {
+		work?.charge(RegionWorkPhase.Comparisons, parentId);
+		if (left.x !== right.x) return left.x < right.x ? -1 : 1;
+		if (left.starts !== right.starts) return left.starts ? 1 : -1;
+		return left.siblingIndex - right.siblingIndex;
+	});
+
+	const intervalCount = uniqueYCoordinates.length - 1;
+	const maximumCoverage = new Float64Array(intervalCount * 4);
+	const lazyCoverage = new Float64Array(intervalCount * 4);
+	const updateCoverage = (queryStart: number, queryEnd: number, delta: number): void => {
+		const update = (node: number, start: number, end: number): void => {
+			work?.charge(RegionWorkPhase.Comparisons, parentId);
+			if (queryStart <= start && end <= queryEnd) {
+				maximumCoverage[node] += delta;
+				lazyCoverage[node] += delta;
+				return;
+			}
+			const middle = Math.floor((start + end) / 2);
+			if (queryStart < middle) update(node * 2, start, middle);
+			if (queryEnd > middle) update(node * 2 + 1, middle, end);
+			maximumCoverage[node] =
+				lazyCoverage[node] +
+				Math.max(maximumCoverage[node * 2], maximumCoverage[node * 2 + 1]);
+		};
+		update(1, 0, intervalCount);
+	};
+	const maximumInRange = (queryStart: number, queryEnd: number): number => {
+		const query = (
+			node: number,
+			start: number,
+			end: number,
+			inheritedCoverage: number,
+		): number => {
+			work?.charge(RegionWorkPhase.Comparisons, parentId);
+			if (queryStart <= start && end <= queryEnd)
+				return inheritedCoverage + maximumCoverage[node];
+			const childInheritedCoverage = inheritedCoverage + lazyCoverage[node];
+			const middle = Math.floor((start + end) / 2);
+			let maximum = Number.NEGATIVE_INFINITY;
+			if (queryStart < middle)
+				maximum = query(
+					node * 2,
+					start,
+					middle,
+					childInheritedCoverage,
+				);
+			if (queryEnd > middle)
+				maximum = Math.max(
+					maximum,
+					query(
+						node * 2 + 1,
+						middle,
+						end,
+						childInheritedCoverage,
+					),
+				);
+			return maximum;
+		};
+		return query(1, 0, intervalCount, 0);
+	};
+
+	for (const event of indexedEvents) {
+		if (event.starts) {
+			if (maximumInRange(event.yStart, event.yEnd) > 0) return true;
+			updateCoverage(event.yStart, event.yEnd, 1);
+		} else updateCoverage(event.yStart, event.yEnd, -1);
 	}
 	return false;
 }

@@ -280,6 +280,21 @@ describe('recursive region model and row policy', () => {
 		expect(attempt.regions).toHaveLength(count);
 	});
 
+	it.each([100, 600])('selects and validates a wide row of %i children', (count) => {
+		const { document, input } = rowOf(count);
+		const prepared = prepareLayoutDocument(document);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(
+			attempt.status,
+			attempt.status === RegionCompositionStatus.Unsupported ? attempt.reason : undefined,
+		).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Invalid row');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(attempt.regions).toHaveLength(count);
+	});
+
 	it.each([0, 1, 2, 3])('charges each child placement before work at limit %i', (limit) => {
 		const { document, input } = rowOf(2);
 		const prepared = prepareLayoutDocument(document);
@@ -309,12 +324,12 @@ describe('recursive region model and row policy', () => {
 		expect(work.attempted(RegionWorkPhase.Placements)).toBe(Math.min(limit, 2));
 	});
 
-	it.each([25, 26, 27])('charges canonical normalization comparisons at limit %i', (limit) => {
+	it('reports a typed refusal when normalization has no comparison work', () => {
 		const { document, input } = rowOf(9);
 		const prepared = prepareLayoutDocument(document);
 		const work = new RegionCompositionWork({
 			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
-			normalizationComparisons: limit,
+			normalizationComparisons: 0,
 		});
 		const attempt = solveRecursiveNestedRegionLayoutWithWork(
 			prepared.graph,
@@ -322,27 +337,24 @@ describe('recursive region model and row policy', () => {
 			input,
 			{ work },
 		);
-		if (limit < 26)
-			expect(attempt).toMatchObject({
-				status: RegionCompositionStatus.Unsupported,
-				diagnostic: {
-					code: RegionCompositionDiagnosticCode.ResourceLimit,
-					phase: RegionWorkPhase.NormalizationComparisons,
-					actual: limit,
-					limit,
-					exhaustive: false,
-				},
-			});
-		else expect(attempt.status).toBe(RegionCompositionStatus.Selected);
-		expect(work.attempted(RegionWorkPhase.NormalizationComparisons)).toBe(Math.min(limit, 26));
+		expect(attempt).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				phase: RegionWorkPhase.NormalizationComparisons,
+				limit: 0,
+				exhaustive: false,
+			},
+		});
+		expect('layout' in attempt).toBe(false);
 	});
 
-	it.each([35, 36, 37])('charges actual sibling comparisons at limit %i', (limit) => {
+	it('reports a typed refusal before unbudgeted sibling geometry is published', () => {
 		const { document, input } = rowOf(9);
 		const prepared = prepareLayoutDocument(document);
 		const work = new RegionCompositionWork({
 			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
-			comparisons: limit,
+			comparisons: 0,
 		});
 		const attempt = solveRecursiveNestedRegionLayoutWithWork(
 			prepared.graph,
@@ -350,19 +362,16 @@ describe('recursive region model and row policy', () => {
 			input,
 			{ work },
 		);
-		if (limit < 36)
-			expect(attempt).toMatchObject({
-				status: RegionCompositionStatus.Unsupported,
-				diagnostic: {
-					code: RegionCompositionDiagnosticCode.ResourceLimit,
-					phase: RegionWorkPhase.Comparisons,
-					limit,
-					actual: limit,
-					exhaustive: false,
-				},
-			});
-		else expect(attempt.status).toBe(RegionCompositionStatus.Selected);
-		expect(work.attempted(RegionWorkPhase.Comparisons)).toBe(Math.min(limit, 36));
+		expect(attempt).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			diagnostic: {
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				phase: RegionWorkPhase.Comparisons,
+				limit: 0,
+				exhaustive: false,
+			},
+		});
+		expect('layout' in attempt).toBe(false);
 	});
 
 	it('selects a shallow forest of 265 regions without a shape quota', () => {

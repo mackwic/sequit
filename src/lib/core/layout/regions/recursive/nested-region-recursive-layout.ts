@@ -23,7 +23,7 @@ import {
 import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import {
 	checkRegionStackDepth,
-	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	regionCompositionWorkBudgets,
 	RegionCompositionWork,
 	RegionWorkLimitExceeded,
 } from '../model/region-composition-limits';
@@ -183,7 +183,11 @@ export function solveRecursiveNestedRegionLayoutWithWork(
 	} = {},
 ): RegionLayoutAttempt {
 	const { cache } = execution;
-	const work = execution.work ?? new RegionCompositionWork(NESTED_REGION_COMPOSITION_WORK_BUDGETS);
+	const work =
+		execution.work ??
+		new RegionCompositionWork(
+			regionCompositionWorkBudgets(input.regions.length, graph.relations.length),
+		);
 	const normalized = normalizeRegionCompositionModel(graph, input, work);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		return {

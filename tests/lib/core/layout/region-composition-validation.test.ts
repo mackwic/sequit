@@ -9,12 +9,16 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
+import { RegionCompositionWork } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
-import type { RegionInput } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionPortalSide,
+	RegionWorkPhase,
+	type RegionInput,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	type RegionCompositionGeometryCandidate,
 	validateRegionCompositionGeometry as validateCompositionDiagnostic,
@@ -139,6 +143,51 @@ function groupedLeafFixture(innerBounds: Bounds = { x: 60, y: 60, width: 100, he
 				},
 			},
 		],
+		portals: [],
+		ownedRoutes: [],
+	};
+	return { model: normalized.model, candidate };
+}
+
+function siblingFixture(count: number, axis: 'x' | 'y' = 'x', overlapLast = false) {
+	const source = regionDocument();
+	const graph = createGraph({ ...source, groups: [], nodes: [], relations: [] });
+	if (!graph.ok) throw new Error('The empty sibling fixture has an invalid graph.');
+	const input: RegionInput = {
+		regions: [
+			{ id: '@root', layoutOrder: '0' },
+			...Array.from({ length: count }, (_, index) => ({
+				id: `sibling-${index}`,
+				parentId: '@root',
+				layoutOrder: orderKey(`a${index.toString(36)}x`),
+			})),
+		],
+		regionByEndpointId: new Map(),
+	};
+	const normalized = normalizeRegionCompositionModel(graph.value, input);
+	if (normalized.status !== RegionCompositionModelStatus.Ready)
+		throw new Error(normalized.diagnostic.message);
+	const layoutWidth = axis === 'x' ? count * 2 + 2 : 8;
+	const layoutHeight = axis === 'y' ? count * 2 + 2 : 8;
+	const regions = Array.from({ length: count }, (_, index) => {
+		let x = axis === 'x' ? 1 + index * 2 : 1;
+		let y = axis === 'y' ? 1 + index * 2 : 1;
+		if (overlapLast && index === count - 1) {
+			if (axis === 'x') x = 1.5;
+			else y = 1.5;
+		}
+		return {
+			id: `sibling-${index}`,
+			parentId: '@root',
+			bounds: { x, y, width: 2, height: 2 },
+			translation: { x, y },
+			localLayout: { width: 2, height: 2, elements: [], relations: [] },
+		};
+	});
+	const candidate: RegionCompositionGeometryCandidate = {
+		rootId: '@root',
+		layout: { width: layoutWidth, height: layoutHeight, elements: [], relations: [] },
+		regions,
 		portals: [],
 		ownedRoutes: [],
 	};
@@ -340,6 +389,31 @@ function fixture(
 }
 
 describe('generic region composition geometry', () => {
+	it('accepts 100 sibling frames that touch only at their x or y edges', () => {
+		const { model, candidate } = siblingFixture(100);
+		const work = new RegionCompositionWork({
+			normalizationComparisons: 0,
+			placements: 100,
+			comparisons: 4096,
+			traversals: 0,
+		});
+		expect(validateCompositionDiagnostic(model, candidate, undefined, work)).toBeUndefined();
+		expect(work.attempted(RegionWorkPhase.Comparisons)).toBeLessThan(4096);
+
+		const vertical = siblingFixture(100, 'y');
+		expect(
+			validateCompositionDiagnostic(vertical.model, vertical.candidate),
+		).toBeUndefined();
+	});
+
+	it('rejects an overlap among 100 sibling frames', () => {
+		const { model, candidate } = siblingFixture(100, 'x', true);
+		expect(validateCompositionDiagnostic(model, candidate)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.OverlappingChildren,
+			regionId: '@root',
+		});
+	});
+
 	it('keeps every nested group and its member inside the owning group bounds', () => {
 		const valid = groupedLeafFixture();
 		expect(validateRegionCompositionGeometry(valid.model, valid.candidate)).toBeUndefined();
