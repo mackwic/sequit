@@ -40,16 +40,23 @@ import {
 } from '../../../support/performance/layout-resource-scenarios';
 
 function assertBoundedWitness(
-	provenance: string,
-	witness: BoundedSearchWitness<{ readonly code?: string; readonly reason?: string }>,
+	name: string,
+	witness: BoundedSearchWitness<{
+		readonly code?: string;
+		readonly reason?: string;
+		readonly relationId?: string;
+		readonly phaseId?: string;
+		readonly indices?: readonly number[];
+	}>,
 	budget: number,
 ): void {
-	expect(provenance.length).toBeGreaterThan(0);
-	expect(witness.attempted, provenance).toBeGreaterThanOrEqual(0);
-	expect(witness.attempted, provenance).toBeLessThanOrEqual(budget);
-	expect(witness.rejectedAlternatives.length, provenance).toBeLessThanOrEqual(witness.attempted);
-	for (const rejected of witness.rejectedAlternatives)
-		expect(rejected.code ?? rejected.reason, provenance).toBeTruthy();
+	expect(witness.attempted, name).toBeGreaterThanOrEqual(0);
+	expect(witness.attempted, name).toBeLessThanOrEqual(budget);
+	expect(witness.rejectedAlternatives.length, name).toBeLessThanOrEqual(witness.attempted);
+	for (const rejected of witness.rejectedAlternatives) {
+		expect(rejected.code ?? rejected.reason, name).toBeTruthy();
+		expect(rejected.relationId ?? rejected.phaseId ?? rejected.indices, name).toBeDefined();
+	}
 }
 
 it('accounts for attempted work, truncation and provenance across grid, leaf, lanes, rank and composition', () => {
