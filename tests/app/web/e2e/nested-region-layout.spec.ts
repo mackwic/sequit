@@ -17,6 +17,7 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	depthTwoRegionDocument,
 	persistedDepthTwoRegionDocument,
@@ -312,11 +313,11 @@ test('a persisted route leaves an internal grid through both region boundaries',
 	await page.setViewportSize({ width: 1920, height: 1200 });
 	const room = `e2e-${crypto.randomUUID()}`;
 	const source = persistedNestedGridDocument();
-	const document = {
+	const seededDocument = {
 		...source,
 		relations: [...source.relations, { id: 'leaves-grid', from: 'a-target', to: 'outside' }],
 	};
-	await seedRoom(room, CollaborativeFixture.LinkedBoxes, document);
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes, seededDocument);
 	await page.goto(`/atelier/collaboration?room=${room}`);
 	await expect(page.locator('[data-graph-stage]')).toBeVisible();
 	await expect(page.locator('[data-region-id]')).toHaveCount(6);
@@ -339,8 +340,51 @@ test('a persisted route leaves an internal grid through both region boundaries',
 			clientY: 600,
 		});
 	await expect(page.locator('[data-graph-stage]')).toHaveCSS('transform', /^matrix\(0\.5,/);
-	const route = page.locator('[data-relation-id="leaves-grid"]');
-	await expect(route).toHaveAttribute('d', /A 6 6 /);
+	const geometry = await page.evaluate(() => {
+		const route = document.querySelector<SVGPathElement>('[data-relation-id="leaves-grid"]');
+		const source = document.querySelector<HTMLElement>('[data-node-id="a-target"]');
+		const target = document.querySelector<HTMLElement>('[data-node-id="outside"]');
+		const matrix = route?.getScreenCTM();
+		if (
+			route === null ||
+			source === null ||
+			target === null ||
+			matrix === null ||
+			matrix === undefined
+		)
+			throw new Error('Missing incident route or endpoint geometry');
+		const paths = [...document.querySelectorAll<SVGPathElement>('[data-relation-id]')].map(
+			(path) => ({
+				id: path.dataset['relationId'] ?? '',
+				d: path.getAttribute('d') ?? '',
+				points: [
+					...(path.getAttribute('d') ?? '').matchAll(/[ML] (-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g),
+				].map(([, x, y]) => ({ x: Number(x), y: Number(y) })),
+			}),
+		);
+		const incident = paths.find(({ id }) => id === 'leaves-grid');
+		const first = incident?.points[0];
+		const last = incident?.points.at(-1);
+		if (first === undefined || last === undefined) throw new Error('Missing incident attachments');
+		const attached = (element: HTMLElement, point: { x: number; y: number }) => {
+			const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+			const bounds = element.getBoundingClientRect();
+			const alongX = screen.x >= bounds.left - 1 && screen.x <= bounds.right + 1;
+			const alongY = screen.y >= bounds.top - 1 && screen.y <= bounds.bottom + 1;
+			const onSide =
+				Math.abs(screen.x - bounds.left) <= 1 ||
+				Math.abs(screen.x - bounds.right) <= 1 ||
+				Math.abs(screen.y - bounds.top) <= 1 ||
+				Math.abs(screen.y - bounds.bottom) <= 1;
+			return alongX && alongY && onSide;
+		};
+		return { paths, attachments: [attached(source, first), attached(target, last)] };
+	});
+	expect(geometry.attachments).toEqual([true, true]);
+	for (const path of geometry.paths) expect(path.d).not.toContain(' A ');
+	const contacts = routeBridgeAnalysis(geometry.paths);
+	expect(contacts.crossings).toEqual([]);
+	expect(contacts.bridges).toEqual([]);
 	const screenshot = info.outputPath('persisted-grid-external-incident.png');
 	await page.screenshot({ path: screenshot });
 	await info.attach('persisted-grid-external-incident', {
