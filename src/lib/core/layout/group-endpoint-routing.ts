@@ -5,13 +5,7 @@ import { routeBridgeAnalysis } from './bridges/bridge-oracle';
 import { validateSelfContacts } from './bridges/route-self-contacts';
 import { routePathBounds } from './geometry/box-geometry';
 import { type LayoutFrame, pointOnAxes } from './geometry/layout-frame';
-import {
-	JUNCTION_PORT_INSET,
-	JUNCTION_PORT_SPACING,
-	PORT_INSET,
-	PORT_SPACING,
-	RAIL_SPACING,
-} from './layout-settings';
+import { PORT_INSET, PORT_SPACING, RAIL_SPACING } from './layout-settings';
 import { type Bounds, GroupRouteFailure, type LayoutRelation, type Point } from './layout-types';
 import { foreignGroupObstacles } from './routing/group-passages';
 import {
@@ -41,15 +35,7 @@ function transverse(point: Point, vertical: boolean): number {
 	return point.y;
 }
 
-const PORT_OFFSETS = [
-	0,
-	PORT_SPACING,
-	-PORT_SPACING,
-	RAIL_SPACING,
-	-RAIL_SPACING,
-	JUNCTION_PORT_SPACING,
-	-JUNCTION_PORT_SPACING,
-];
+const PORT_OFFSETS = [0, PORT_SPACING, -PORT_SPACING, RAIL_SPACING, -RAIL_SPACING];
 const HALF_RAIL = RAIL_SPACING / 2;
 const DOUBLE_RAIL = RAIL_SPACING * 2;
 const TRIPLE_RAIL = RAIL_SPACING * 3;
@@ -100,7 +86,7 @@ function portInUse(
 	return false;
 }
 
-function shiftedPort(
+function shiftedGroupPort(
 	context: RoutingContext,
 	route: LayoutRelation,
 	source: boolean,
@@ -108,10 +94,7 @@ function shiftedPort(
 ): Point | undefined {
 	const { id, port } = endpoint(route, source);
 	if (offset === 0) return port;
-	const kind = defined(context.graph.endpointsById.get(id)).kind;
-	if (kind === EndpointKind.Node && Math.abs(offset) !== PORT_SPACING) return undefined;
-	if (kind === EndpointKind.Junction && Math.abs(offset) !== JUNCTION_PORT_SPACING)
-		return undefined;
+	if (defined(context.graph.endpointsById.get(id)).kind !== EndpointKind.Group) return undefined;
 	const box = defined(context.bounds.get(id));
 	let start = box.y;
 	let length = box.height;
@@ -119,11 +102,9 @@ function shiftedPort(
 		start = box.x;
 		length = box.width;
 	}
-	let inset = PORT_INSET;
-	if (kind === EndpointKind.Junction) inset = JUNCTION_PORT_INSET;
 	const coordinate = transverse(port, context.vertical) + offset;
-	const low = start + inset;
-	const high = start + length - inset;
+	const low = start + PORT_INSET;
+	const high = start + length - PORT_INSET;
 	if (coordinate < low || coordinate > high) return undefined;
 	if (portInUse(context, route, source, coordinate)) return undefined;
 	return pointOnAxes(coordinate, main(port, context.vertical), context.vertical);
@@ -221,10 +202,10 @@ function alternateRoute(
 	groups: RouteObstacles | undefined,
 ): LayoutRelation | undefined {
 	for (const sourceOffset of PORT_OFFSETS) {
-		const source = shiftedPort(context, route, true, sourceOffset);
+		const source = shiftedGroupPort(context, route, true, sourceOffset);
 		if (source === undefined) continue;
 		for (const targetOffset of PORT_OFFSETS) {
-			const target = shiftedPort(context, route, false, targetOffset);
+			const target = shiftedGroupPort(context, route, false, targetOffset);
 			if (target === undefined) continue;
 			const candidate = pathForPorts(context, { route, groups }, { source, target });
 			if (candidate !== undefined) return candidate;
@@ -254,10 +235,10 @@ function freshExterior(
 ): LayoutRelation | undefined {
 	const attempt = { route, groups };
 	for (const sourceOffset of PORT_OFFSETS) {
-		const source = shiftedPort(context, route, true, sourceOffset);
+		const source = shiftedGroupPort(context, route, true, sourceOffset);
 		if (source === undefined) continue;
 		for (const targetOffset of PORT_OFFSETS) {
-			const target = shiftedPort(context, route, false, targetOffset);
+			const target = shiftedGroupPort(context, route, false, targetOffset);
 			if (target === undefined) continue;
 			const candidate = exteriorForPorts(context, attempt, { source, target });
 			if (candidate !== undefined) return candidate;
