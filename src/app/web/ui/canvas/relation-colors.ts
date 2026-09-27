@@ -3,7 +3,7 @@ import { clusterColors } from './route-color-clusters';
 import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
 
 // Distinguish only parallel routes close enough to be visually confused.
-const PARALLEL_COLOR_DISTANCE = 24;
+export const PARALLEL_COLOR_DISTANCE = 24;
 
 interface ColorSegment {
 	readonly start: Point;

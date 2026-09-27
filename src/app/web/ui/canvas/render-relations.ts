@@ -1,13 +1,22 @@
 import { defined } from '../../../../lib/core/document/logic-document';
-import { routeBridgeAnalysis } from '../../../../lib/core/layout/bridges/bridge-oracle';
+import {
+	type LayoutBridge,
+	routeBridgeAnalysis,
+	type RouteCrossing,
+} from '../../../../lib/core/layout/bridges/bridge-oracle';
 import {
 	RouteOrientation,
 	type RouteRun,
 	routeRuns,
+	runInterval,
 } from '../../../../lib/core/layout/bridges/route-runs';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../lib/core/layout/layout-settings';
 import type { LayoutRelation, Point } from '../../projection/layout-graph';
-import { parallelSegmentsAreClose, relationColors } from './relation-colors';
+import {
+	PARALLEL_COLOR_DISTANCE,
+	parallelSegmentsAreClose,
+	relationColors,
+} from './relation-colors';
 import { DEFAULT_ROUTE_PALETTE, type RoutePalette } from './route-color-palette';
 
 export interface RenderedRelation extends LayoutRelation {
@@ -15,8 +24,49 @@ export interface RenderedRelation extends LayoutRelation {
 	readonly color: string;
 }
 
-function pairKey(horizontalId: string, verticalId: string): string {
-	return `${horizontalId}\u0000${verticalId}`;
+interface ParallelRun {
+	readonly run: RouteRun;
+	readonly relationIndex: number;
+	readonly fixed: number;
+}
+
+/** Runs of each orientation sorted by fixed coordinate: nearby parallels form one slice. */
+type ParallelRuns = Readonly<Record<RouteOrientation, readonly ParallelRun[]>>;
+
+function parallelRuns(runsByRelation: readonly (readonly RouteRun[])[]): ParallelRuns {
+	const index: Record<RouteOrientation, ParallelRun[]> = {
+		[RouteOrientation.Horizontal]: [],
+		[RouteOrientation.Vertical]: [],
+	};
+	for (const [relationIndex, runs] of runsByRelation.entries())
+		for (const run of runs)
+			index[run.orientation].push({ run, relationIndex, fixed: runInterval(run).fixed });
+	for (const runs of Object.values(index)) runs.sort((left, right) => left.fixed - right.fixed);
+	return index;
+}
+
+/** Parallel runs whose fixed coordinate is at most `distance` from the run's own. */
+function nearbyParallels(
+	parallels: ParallelRuns,
+	run: RouteRun,
+	distance: number,
+): readonly ParallelRun[] {
+	const runs = parallels[run.orientation];
+	const { fixed } = runInterval(run);
+	let low = 0;
+	let high = runs.length;
+	while (low < high) {
+		const middle = Math.floor((low + high) / 2);
+		if (defined(runs[middle]).fixed < fixed - distance) low = middle + 1;
+		else high = middle;
+	}
+	const nearby: ParallelRun[] = [];
+	for (let index = low; index < runs.length; index += 1) {
+		const candidate = defined(runs[index]);
+		if (candidate.fixed > fixed + distance) break;
+		nearby.push(candidate);
+	}
+	return nearby;
 }
 
 function distanceAlong(run: RouteRun, point: Point): number {
@@ -36,17 +86,20 @@ function pointAlong(run: RouteRun, distance: number): Point {
 	};
 }
 
-/** The visual side of a bridge: the bulge avoids a parallel trunk closer than the clearance. */
-function bridgeSweep(run: RouteRun, point: Point, runs: readonly RouteRun[]): number {
+/**
+ * The visual side of a bridge: the bulge avoids a parallel trunk closer than the clearance. A
+ * parallel at least that far away can decide neither side, so only nearby parallels are read.
+ */
+function bridgeSweep(run: RouteRun, point: Point, parallels: ParallelRuns): number {
 	const horizontal = run.orientation === RouteOrientation.Horizontal;
 	const axis = horizontal ? 'x' : 'y';
 	const cross = horizontal ? 'y' : 'x';
 	let side = Math.sign(run.end[axis] - run.start[axis]);
 	if (horizontal) side = -side;
+	const minimum = BRIDGE_RADIUS + BRIDGE_CLEARANCE;
 	let current = Number.POSITIVE_INFINITY;
 	let opposite = Number.POSITIVE_INFINITY;
-	for (const other of runs) {
-		if (other.orientation !== run.orientation) continue;
+	for (const { run: other } of nearbyParallels(parallels, run, minimum)) {
 		const start = Math.min(other.start[axis], other.end[axis]);
 		const end = Math.max(other.start[axis], other.end[axis]);
 		const before = point[axis] - BRIDGE_RADIUS;
@@ -56,7 +109,6 @@ function bridgeSweep(run: RouteRun, point: Point, runs: readonly RouteRun[]): nu
 		if (offset > 0) current = Math.min(current, offset);
 		if (offset < 0) opposite = Math.min(opposite, -offset);
 	}
-	const minimum = BRIDGE_RADIUS + BRIDGE_CLEARANCE;
 	if (current < minimum && opposite > current) return 0;
 	return 1;
 }
@@ -64,7 +116,7 @@ function bridgeSweep(run: RouteRun, point: Point, runs: readonly RouteRun[]): nu
 function pathFor(
 	runs: readonly RouteRun[],
 	bridges: ReadonlyMap<RouteRun, readonly Point[]>,
-	allRuns: readonly RouteRun[],
+	parallels: ParallelRuns,
 ): string {
 	const first = runs.at(0);
 	if (!first) return '';
@@ -80,7 +132,7 @@ function pathFor(
 			const before = pointAlong(run, distance - BRIDGE_RADIUS);
 			const after = pointAlong(run, distance + BRIDGE_RADIUS);
 			commands.push(`L ${before.x} ${before.y}`);
-			const sweep = bridgeSweep(run, pointAlong(run, distance), allRuns);
+			const sweep = bridgeSweep(run, pointAlong(run, distance), parallels);
 			commands.push(`A ${BRIDGE_RADIUS} ${BRIDGE_RADIUS} 0 0 ${sweep} ${after.x} ${after.y}`);
 		}
 		commands.push(`L ${run.end.x} ${run.end.y}`);
@@ -102,36 +154,49 @@ function strictlyContains(run: RouteRun, point: Point): boolean {
 	return sameCross && within;
 }
 
-function pairKeyFor(run: RouteRun, previous: RouteRun): string {
-	if (run.orientation === RouteOrientation.Horizontal) return pairKey(run.pathId, previous.pathId);
-	return pairKey(previous.pathId, run.pathId);
-}
-
-function needsContrast(
-	run: RouteRun,
-	previous: RouteRun,
-	crossingPairs: ReadonlySet<string>,
-): boolean {
-	return crossingPairs.has(pairKeyFor(run, previous)) || parallelSegmentsAreClose(run, previous);
-}
-
-/** Crossings and nearby parallels need different ink; both are read from the same run pairs. */
+/**
+ * Crossings and nearby parallels of distinct relations need different ink. Color clusters depend
+ * only on which relations touch, so each crossing is one contact and parallels come from the index.
+ */
 function colorContactsFor(
 	runsByRelation: readonly (readonly RouteRun[])[],
-	crossingPairs: ReadonlySet<string>,
+	crossings: readonly RouteCrossing[],
+	parallels: ParallelRuns,
 ): readonly (readonly [string, string])[] {
-	const contacts: (readonly [string, string])[] = [];
-	const previousRuns: RouteRun[] = [];
-	for (const runs of runsByRelation) {
+	const contacts: (readonly [string, string])[] = crossings.map(
+		({ horizontalId, verticalId }) => [horizontalId, verticalId] as const,
+	);
+	for (const [relationIndex, runs] of runsByRelation.entries())
 		for (const run of runs) {
-			const touched = previousRuns.filter((previous) =>
-				needsContrast(run, previous, crossingPairs),
+			const earlier = nearbyParallels(parallels, run, PARALLEL_COLOR_DISTANCE).filter(
+				(other) => other.relationIndex < relationIndex && parallelSegmentsAreClose(run, other.run),
 			);
-			for (const previous of touched) contacts.push([run.pathId, previous.pathId]);
+			for (const other of earlier) contacts.push([run.pathId, other.run.pathId]);
 		}
-		previousRuns.push(...runs);
-	}
 	return contacts;
+}
+
+/** Bridge points by carrier run; every carrier belongs to these relations, read by the same oracle. */
+function bridgePointsByRun(
+	runsByRelation: readonly (readonly RouteRun[])[],
+	bridges: readonly LayoutBridge[],
+): ReadonlyMap<RouteRun, readonly Point[]> {
+	const runsByPath = new Map<string, RouteRun[]>();
+	for (const run of runsByRelation.flat()) {
+		const pathRuns = runsByPath.get(run.pathId) ?? [];
+		pathRuns.push(run);
+		runsByPath.set(run.pathId, pathRuns);
+	}
+	const points = new Map<RouteRun, Point[]>();
+	for (const bridge of bridges) {
+		const carriers = bridge.carrierIds.flatMap((id) => defined(runsByPath.get(id)));
+		for (const run of carriers.filter((carrier) => strictlyContains(carrier, bridge))) {
+			const carried = points.get(run) ?? [];
+			carried.push(bridge);
+			points.set(run, carried);
+		}
+	}
+	return points;
 }
 
 /**
@@ -144,31 +209,19 @@ export function renderRelationPaths(
 	palette: RoutePalette = DEFAULT_ROUTE_PALETTE,
 ): readonly RenderedRelation[] {
 	const runsByRelation = relations.map((relation) => routeRuns(relation));
-	const allRuns = runsByRelation.flat();
+	const parallels = parallelRuns(runsByRelation);
 	const { crossings, bridges } = routeBridgeAnalysis(relations);
-	const crossingPairs = new Set(
-		crossings.map((crossing) => pairKey(crossing.horizontalId, crossing.verticalId)),
-	);
-	const bridgePoints = new Map<RouteRun, Point[]>();
-	for (const bridge of bridges) {
-		for (const run of allRuns) {
-			if (!bridge.carrierIds.includes(run.pathId)) continue;
-			if (!strictlyContains(run, bridge)) continue;
-			const points = bridgePoints.get(run) ?? [];
-			points.push(bridge);
-			bridgePoints.set(run, points);
-		}
-	}
+	const bridgePoints = bridgePointsByRun(runsByRelation, bridges);
 	const colors = relationColors(
 		relations,
-		colorContactsFor(runsByRelation, crossingPairs),
+		colorContactsFor(runsByRelation, crossings, parallels),
 		palette,
 	);
 	return runsByRelation.map((runs, index) => {
 		const relation = defined(relations[index]);
 		return {
 			...relation,
-			path: pathFor(runs, bridgePoints, allRuns),
+			path: pathFor(runs, bridgePoints, parallels),
 			color: defined(colors.get(relation.id)),
 		};
 	});
