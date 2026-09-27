@@ -31,7 +31,10 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import {
+	RegionCompositionSearchCode,
+	RegionSearchProvenance,
+} from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import {
 	RegionSubtreeScope,
@@ -722,7 +725,11 @@ describe('a grid disposition inside the recursive region tree', () => {
 			);
 			expect(attempt.status).toBe(expected);
 			if (attempt.status === RegionCompositionStatus.Unknown) {
-				expect(attempt.code).toBe(RegionGeometryDiagnosticCode.ParentRouteContact);
+				expect(attempt.code).toBe(RegionCompositionSearchCode.SearchBudgetExceeded);
+				expect(attempt.searchWitness).toMatchObject({ attempted: 64, exhaustive: false });
+				expect(attempt.searchWitness?.rejectedAlternatives.map(({ code }) => code)).toContain(
+					RegionGeometryDiagnosticCode.ParentRouteContact,
+				);
 				return;
 			}
 			if (attempt.status !== RegionCompositionStatus.Selected) return;

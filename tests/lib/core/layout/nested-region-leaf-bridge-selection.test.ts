@@ -447,7 +447,7 @@ describe('persisted composed incident bridge selection', () => {
 		const cache = new RegionLocalLayoutCache();
 		expect(solveRecursiveNestedRegionLayout(graph.value, sizes, input, cache)).toEqual(cold);
 		if (cold.status !== RegionCompositionStatus.Selected)
-			throw new Error('Expected a valid bridge');
+			throw new Error('Expected a complete region selection');
 		expect(cold.searchWitness?.rejectedAlternatives).toContainEqual({
 			indices: [0, 0],
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,

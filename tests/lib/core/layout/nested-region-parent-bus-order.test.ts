@@ -13,6 +13,7 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { RegionCompositionSearchCode } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
@@ -249,14 +250,16 @@ describe('parent bus rail order', () => {
 			...interleaved,
 			relations: [...interleaved.relations, { id: 'third-exit', from: 'c', to: 'outside' }],
 		};
-		// Two exits of the same column share the left rail: their contact is a collinear overlap,
-		// which no bridge can carry, so the capacity stays unknown.
-		expect(solve(third).candidate).toMatchObject({
+		// The initial shared rail overlaps; the finite product cannot prove all alternatives impossible.
+		const unresolved = solve(third).candidate;
+		expect(unresolved).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-			regionId: 'grid',
-			relationId: 'a-left-exit',
-			reason: 'Region grid routes a-left-exit and third-exit intersect without a bridge.',
+			code: RegionCompositionSearchCode.SearchBudgetExceeded,
+			searchWitness: { attempted: 64, exhaustive: false },
 		});
+		if (unresolved.status !== RegionCompositionStatus.Unknown) return;
+		expect(unresolved.searchWitness?.rejectedAlternatives.map(({ code }) => code)).toContain(
+			RegionGeometryDiagnosticCode.ParentRouteContact,
+		);
 	});
 });
