@@ -5,6 +5,7 @@ import { LayoutPolicy } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { indexVectors } from '../../../../src/lib/core/layout/geometry/index-vectors';
 import { layoutRouteCost } from '../../../../src/lib/core/layout/geometry/layout-route-cost';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { enumerateSharedLaneLayouts } from '../../../../src/lib/core/layout/lanes/shared-lane-candidate-enumeration';
@@ -44,7 +45,6 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
-import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
 import {
 	ExhaustedLeafAlternative,
 	solveRecursiveCandidate,
