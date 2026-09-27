@@ -18,7 +18,8 @@ export interface ChannelWire extends ChannelEndpoint {
 	middle: number | undefined;
 }
 export interface ChannelRun {
-	readonly key: string;
+	/** Assigned after family merging, in topological visitation order. */
+	key: number;
 	/** Assigned track on the channel edge. */
 	rail: number;
 	start: number;
@@ -29,7 +30,7 @@ export interface ChannelRun {
 }
 export interface ChannelRailAllocation {
 	readonly edge: ChannelRoutingEdge;
-	readonly trackByRunKey: ReadonlyMap<string, number>;
+	readonly trackByRunKey: ReadonlyMap<number, number>;
 	readonly railCount: number;
 }
 export interface ChannelRouting extends ChannelRailAllocation {

@@ -63,6 +63,7 @@ it('never reuses a track at or below the strict half-spacing clearance', () => {
 			(pairs) => {
 				const demands = pairs.map(([start, length], index) => ({
 					key: String(index),
+					rail: -1,
 					start,
 					end: start + length,
 				}));

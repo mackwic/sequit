@@ -1,16 +1,18 @@
 import { defined } from '../../document/logic-document';
 import type { ChannelRoutingEdge } from './channel-types';
 
-export interface ChannelIntervalDemand {
+export interface ChannelIntervalDemand<Key extends string | number> {
 	/** Identity of this run occurrence, independent of its source relation(s). */
-	readonly key: string;
+	readonly key: Key;
+	/** The selected track is also read by the existing route materializer. */
+	rail: number;
 	readonly start: number;
 	readonly end: number;
 }
 
-export interface ChannelIntervalAllocation {
+export interface ChannelIntervalAllocation<Key extends string | number> {
 	readonly edge: ChannelRoutingEdge;
-	readonly trackByRunKey: ReadonlyMap<string, number>;
+	readonly trackByRunKey: ReadonlyMap<Key, number>;
 	readonly trackCount: number;
 }
 
@@ -49,12 +51,12 @@ function pop(heap: TrackEnd[]): TrackEnd {
 }
 
 /** Channel interval policy: stable start/end order, first released track and strict half-spacing clearance. */
-export function allocateChannelIntervals(
+export function allocateChannelIntervals<Key extends string | number>(
 	edge: ChannelRoutingEdge,
-	demands: readonly ChannelIntervalDemand[],
+	demands: readonly ChannelIntervalDemand<Key>[],
 	offset: number,
-	trackByRunKey = new Map<string, number>(),
-): ChannelIntervalAllocation {
+	trackByRunKey = new Map<Key, number>(),
+): ChannelIntervalAllocation<Key> {
 	const ordered = [...demands].sort((a, b) => a.start - b.start || a.end - b.end);
 	const heap: TrackEnd[] = [];
 	let trackCount = 0;
@@ -68,6 +70,7 @@ export function allocateChannelIntervals(
 				throw new Error(`Routing edge ${edge.ownerId} has insufficient channel tracks.`);
 			trackCount += 1;
 		}
+		demand.rail = track;
 		trackByRunKey.set(demand.key, track);
 		push(heap, { end: demand.end, track });
 	}

@@ -87,7 +87,7 @@ function reserveOuterArrivalRails(
 	byTarget: ReadonlyMap<string, OuterArrival[]>,
 ): ChannelRouting {
 	let railCount = channel.railCount;
-	let trackByRunKey: Map<string, number> | undefined;
+	let trackByRunKey: Map<number, number> | undefined;
 	let runs: ReadonlySet<ChannelRun | undefined> | undefined;
 	for (const arrivals of byTarget.values()) {
 		if (arrivals.length < 2) continue;

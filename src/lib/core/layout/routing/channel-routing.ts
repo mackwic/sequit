@@ -39,9 +39,9 @@ function cycleBreaks(wires: readonly ChannelWire[]): Set<ChannelWire> {
 	return breaks;
 }
 
-function run(source: number, target: number, key: string): ChannelRun {
+function run(source: number, target: number): ChannelRun {
 	return {
-		key,
+		key: -1,
 		start: Math.min(source, target),
 		end: Math.max(source, target),
 		rail: 0,
@@ -87,12 +87,12 @@ function makeRuns(
 			const neighbor = defined(coordinates[defined(indices.get(wire.source)) + step]);
 			const offset = (neighbor - wire.source) / 3;
 			wire.middle = wire.source + offset;
-			wire.first = run(wire.source, wire.middle, String(runs.length));
-			wire.last = run(wire.middle, wire.target, String(runs.length + 1));
+			wire.first = run(wire.source, wire.middle);
+			wire.last = run(wire.middle, wire.target);
 			precedes(wire.first, wire.last);
 			runs.push(wire.first, wire.last);
 		} else {
-			wire.first = run(wire.source, wire.target, String(runs.length));
+			wire.first = run(wire.source, wire.target);
 			wire.last = wire.first;
 			runs.push(wire.first);
 		}
@@ -170,8 +170,10 @@ function mergeRuns(
 
 function assignRails(runs: readonly ChannelRun[], ownerId: string): ChannelRailAllocation {
 	const ready = runs.filter((segment) => segment.remaining === 0);
+	let nextRunKey = 0;
 	const layers: ChannelRun[][] = [];
 	for (const segment of ready) {
+		segment.key = nextRunKey++;
 		const layer = layers[segment.depth] ?? [];
 		layer.push(segment);
 		layers[segment.depth] = layer;
@@ -184,14 +186,9 @@ function assignRails(runs: readonly ChannelRun[], ownerId: string): ChannelRailA
 	if (ready.length !== runs.length) throw new Error('Unresolved channel routing constraint cycle');
 	let count = 0;
 	const edge = { ownerId, capacity: runs.length, spacing: RAIL_SPACING };
-	const trackByRunKey = new Map<string, number>();
+	const trackByRunKey = new Map<number, number>();
 	for (const layer of layers) {
-		const allocation = allocateChannelIntervals(edge, layer, count, trackByRunKey);
-		for (const segment of layer) {
-			const track = defined(allocation.trackByRunKey.get(segment.key));
-			segment.rail = track;
-		}
-		count += allocation.trackCount;
+		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
 	edge.capacity = count;
 	return { edge, trackByRunKey, railCount: count };

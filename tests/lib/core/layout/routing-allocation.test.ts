@@ -390,9 +390,9 @@ describe('rail and port reservations', () => {
 		const allocation = allocateChannelIntervals(
 			edge,
 			[
-				{ key: 'outer', start: 0, end: 100 },
-				{ key: 'inner', start: 0, end: 20 },
-				{ key: 'later', start: 33, end: 50 },
+				{ key: 'outer', start: 0, end: 100, rail: -1 },
+				{ key: 'inner', start: 0, end: 20, rail: -1 },
+				{ key: 'later', start: 33, end: 50, rail: -1 },
 			],
 			2,
 		);
@@ -407,12 +407,12 @@ describe('rail and port reservations', () => {
 		const allocation = allocateChannelIntervals(
 			{ ownerId: '@root/channel/ties', capacity: 6, spacing: 24 },
 			[
-				{ key: 'z-last', start: 0, end: 40 },
-				{ key: 'a-first', start: 0, end: 40 },
-				{ key: 'short', start: 0, end: 20 },
-				{ key: 'middle', start: 33, end: 35 },
-				{ key: 'later', start: 60, end: 80 },
-				{ key: 'latest', start: 61, end: 75 },
+				{ key: 'z-last', start: 0, end: 40, rail: -1 },
+				{ key: 'a-first', start: 0, end: 40, rail: -1 },
+				{ key: 'short', start: 0, end: 20, rail: -1 },
+				{ key: 'middle', start: 33, end: 35, rail: -1 },
+				{ key: 'later', start: 60, end: 80, rail: -1 },
+				{ key: 'latest', start: 61, end: 75, rail: -1 },
 			],
 			2,
 		);
@@ -430,10 +430,10 @@ describe('rail and port reservations', () => {
 		const allocation = allocateChannelIntervals(
 			{ ownerId: '@root/channel/free', capacity: 4, spacing: 24 },
 			[
-				{ key: 'short', start: 0, end: 20 },
-				{ key: 'long', start: 0, end: 30 },
-				{ key: 'reused-short', start: 33, end: 45 },
-				{ key: 'choice', start: 60, end: 70 },
+				{ key: 'short', start: 0, end: 20, rail: -1 },
+				{ key: 'long', start: 0, end: 30, rail: -1 },
+				{ key: 'reused-short', start: 33, end: 45, rail: -1 },
+				{ key: 'choice', start: 60, end: 70, rail: -1 },
 			],
 			0,
 		);
@@ -448,8 +448,8 @@ describe('rail and port reservations', () => {
 			const allocation = allocateChannelIntervals(
 				{ ownerId: '@root/channel/clearance', capacity: 2, spacing: 24 },
 				[
-					{ key: 'first', start: 0, end: 20 },
-					{ key: 'second', start, end: start + 10 },
+					{ key: 'first', start: 0, end: 20, rail: -1 },
+					{ key: 'second', start, end: start + 10, rail: -1 },
 				],
 				0,
 			);
@@ -458,17 +458,18 @@ describe('rail and port reservations', () => {
 	});
 	it('reuses within a channel edge capacity but rejects overlapping demand beyond it', () => {
 		const edge = { ownerId: '@root/channel/bounded', capacity: 1, spacing: 24 };
-		const first = { key: 'first', start: 0, end: 20 };
+		const first = { key: 'first', start: 0, end: 20, rail: -1 };
 		expect(
-			allocateChannelIntervals(edge, [first, { key: 'later', start: 33, end: 40 }], 0).trackCount,
+			allocateChannelIntervals(edge, [first, { key: 'later', start: 33, end: 40, rail: -1 }], 0)
+				.trackCount,
 		).toBe(1);
 		expect(() =>
-			allocateChannelIntervals(edge, [first, { key: 'overlap', start: 32, end: 40 }], 0),
+			allocateChannelIntervals(edge, [first, { key: 'overlap', start: 32, end: 40, rail: -1 }], 0),
 		).toThrow('Routing edge @root/channel/bounded has insufficient channel tracks.');
 		expect(() =>
 			allocateChannelIntervals(
 				{ ...edge, capacity: 2 },
-				[first, { key: 'overlap', start: 32, end: 40 }],
+				[first, { key: 'overlap', start: 32, end: 40, rail: -1 }],
 				1,
 			),
 		).toThrow('Routing edge @root/channel/bounded has insufficient channel tracks.');
@@ -485,8 +486,8 @@ describe('rail and port reservations', () => {
 		expect(divided?.first).not.toBe(divided?.last);
 		expect(divided?.first?.depth).toBeLessThan(divided?.last?.depth ?? -1);
 		expect(divided?.first?.key).not.toBe(divided?.last?.key);
-		expect(split.trackByRunKey.get(divided?.first?.key ?? '')).toBe(divided?.first?.rail);
-		expect(split.trackByRunKey.get(divided?.last?.key ?? '')).toBe(divided?.last?.rail);
+		expect(split.trackByRunKey.get(divided?.first?.key ?? -1)).toBe(divided?.first?.rail);
+		expect(split.trackByRunKey.get(divided?.last?.key ?? -1)).toBe(divided?.last?.rail);
 		expect(a?.first).not.toBe(b?.first);
 		const family = routeChannel([
 			{ id: 'a', source: 0, target: 48, sharedSource: 'common' },
