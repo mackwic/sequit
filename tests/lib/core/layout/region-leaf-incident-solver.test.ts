@@ -34,6 +34,7 @@ import {
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { independentNodes } from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
 function oneNodeLeaf(): LogicDocument {
@@ -379,7 +380,7 @@ describe('dedicated leaf incident contracts', () => {
 		});
 	});
 
-	it('distinguishes an invalid contract from the explicit search bound', () => {
+	it('rejects an invalid contract before attempting any route', () => {
 		const document = oneNodeLeaf();
 		const measurements = prepareLayoutDocument(document).measurements;
 		const invalid = solveDedicatedRegionLeafWithIncidents({
@@ -392,18 +393,71 @@ describe('dedicated leaf incident contracts', () => {
 			code: RegionIncidentUnknownCode.InvalidContract,
 			witness: { attempted: 0, exhaustive: true },
 		});
-		const bounded = solveDedicatedRegionLeafWithIncidents({
-			document,
-			measurements,
-			contracts: Array.from({ length: 9 }, (_, index) =>
-				incident(`cross-${index}`, RegionPortalSide.Top),
-			),
-		});
-		expect(bounded).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
-			witness: { attempted: 0, exhaustive: false },
-		});
+	});
+
+	it('selects nine independent incidents after actually checking their routes', () => {
+		const document = independentNodes(9);
+		const measurements = prepareLayoutDocument(document).measurements;
+		const contracts = document.nodes.map((node, index) => ({
+			relation: { id: `outside-${index}`, from: node.id, to: 'foreign' },
+			endpointId: node.id,
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Top],
+		}));
+		const input = { document, measurements, contracts };
+		const cold = solveDedicatedRegionLeafWithIncidents(input);
+		const cache = new RegionLocalLayoutCache();
+		expect(solveDedicatedRegionLeafWithIncidents({ ...input, cache })).toEqual(cold);
+		expect(solveDedicatedRegionLeafWithIncidents({ ...input, cache })).toEqual(cold);
+		if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);
+		expect(cold.incidents).toHaveLength(9);
+		expect(cold.witness.attempted).toBeGreaterThanOrEqual(9);
+		for (const [index, path] of cold.incidents.entries()) {
+			expect(path.endpointId).toBe(defined(document.nodes[index]).id);
+			for (const other of cold.incidents.slice(index + 1))
+				expect(
+					disallowedRouteContacts(
+						{ id: path.relationId, points: path.points },
+						{ id: other.relationId, points: other.points },
+						[],
+					),
+				).toEqual([]);
+		}
+	});
+
+	it('charges missing endpoint checks up to the global budget and never publishes a partial route', () => {
+		const document = oneNodeLeaf();
+		const measurements = prepareLayoutDocument(document).measurements;
+		for (const count of [8_191, 8_192, 8_193]) {
+			const contracts = [
+				incident('a-valid', RegionPortalSide.Top),
+				...Array.from({ length: count }, (_, index) => ({
+					relation: { id: `z-missing-${index}`, from: 'missing', to: 'foreign' },
+					endpointId: 'missing',
+					role: RegionIncidentRole.Source,
+					allowedSides: [RegionPortalSide.Top],
+				})),
+			];
+			const result = solveDedicatedRegionLeafWithIncidents({
+				document,
+				measurements,
+				contracts,
+			});
+			expect(result.status).toBe(RegionCompositionStatus.Unknown);
+			if (result.status !== RegionCompositionStatus.Unknown) continue;
+			expect(result.witness.attempted).toBe(Math.min(count, 8_192));
+			expect(result.witness.rejectedAlternatives).toHaveLength(result.witness.attempted);
+			expect(
+				result.witness.rejectedAlternatives.every(
+					({ code }) => code === RegionIncidentRejectionCode.PortUnavailable,
+				),
+			).toBe(true);
+			let expected = RegionIncidentUnknownCode.NoValidAlternative;
+			if (count > 8_192) expected = RegionIncidentUnknownCode.SearchBudgetExceeded;
+			expect(result.code).toBe(expected);
+			expect(result.witness.exhaustive).toBe(count <= 8_192);
+			if (count > 8_192) expect(result.reason).toContain('global search exhausted its 8192');
+		}
 	});
 	it('accepts one routed incident on the assembled optimized rank exactly once', () => {
 		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2'));

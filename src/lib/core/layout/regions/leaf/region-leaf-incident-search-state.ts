@@ -11,8 +11,17 @@ import type {
 } from '../model/region-incident-contract';
 import type { RegionLeafIncidentGeometryFailure } from './region-leaf-incident-geometry';
 
+// A four-link chain selects after 4,130 checked alternatives across side assignments; 8,192
+// leaves nearly twice that measured work while retaining the side cap and existing fallbacks.
 const MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT = 1_024;
 const MAX_ALTERNATIVES = 8_192;
+
+/** A limit is spent only after checking an actual route or a declared endpoint/side. */
+export function exhaustedBudgetReason(state: SearchState): string {
+	if (state.budgetExceeded)
+		return `The dedicated-leaf global search exhausted its ${MAX_ALTERNATIVES} checked-alternative budget after ${state.attempted} attempts.`;
+	return `The dedicated-leaf side-assignment search exhausted its ${MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT} checked-alternative budget after ${state.attempted} attempts.`;
+}
 
 export interface SearchState {
 	attempted: number;
@@ -21,6 +30,8 @@ export interface SearchState {
 	budgetExceeded: boolean;
 	incomplete: boolean;
 	readonly rejected: RegionIncidentRejectedAlternative[];
+	/** Endpoint checks precede side assignments and charge only the global counter. */
+	readonly globalBudget: SearchBudgetCounter;
 	/** The alternative budget: the per-assignment cap composed under the global cap. */
 	readonly budget: SearchBudgetCounter;
 }
@@ -31,6 +42,20 @@ export interface SearchState {
  * search incomplete even when a later one succeeds.
  */
 export function newSearchState(): SearchState {
+	const globalBudget = boundedCounter(MAX_ALTERNATIVES, {
+		get attempted(): number {
+			return state.attempted;
+		},
+		set attempted(value: number) {
+			state.attempted = value;
+		},
+		get exhausted(): boolean {
+			return state.budgetExceeded;
+		},
+		set exhausted(value: boolean) {
+			state.budgetExceeded = value;
+		},
+	});
 	const state: SearchState = {
 		attempted: 0,
 		assignmentAttempts: 0,
@@ -38,38 +63,22 @@ export function newSearchState(): SearchState {
 		budgetExceeded: false,
 		incomplete: false,
 		rejected: [],
-		budget: scopedCounter(
-			boundedCounter(MAX_ALTERNATIVES, {
-				get attempted(): number {
-					return state.attempted;
-				},
-				set attempted(value: number) {
-					state.attempted = value;
-				},
-				get exhausted(): boolean {
-					return state.budgetExceeded;
-				},
-				set exhausted(value: boolean) {
-					state.budgetExceeded = value;
-				},
-			}),
-			MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT,
-			{
-				get attempted(): number {
-					return state.assignmentAttempts;
-				},
-				set attempted(value: number) {
-					state.assignmentAttempts = value;
-				},
-				get exhausted(): boolean {
-					return state.assignmentLimitReached;
-				},
-				set exhausted(value: boolean) {
-					state.assignmentLimitReached = value;
-					state.incomplete = value;
-				},
+		globalBudget,
+		budget: scopedCounter(globalBudget, MAX_ALTERNATIVES_PER_SIDE_ASSIGNMENT, {
+			get attempted(): number {
+				return state.assignmentAttempts;
 			},
-		),
+			set attempted(value: number) {
+				state.assignmentAttempts = value;
+			},
+			get exhausted(): boolean {
+				return state.assignmentLimitReached;
+			},
+			set exhausted(value: boolean) {
+				state.assignmentLimitReached = value;
+				state.incomplete = value;
+			},
+		}),
 	};
 	return state;
 }

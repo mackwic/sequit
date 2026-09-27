@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 
-import { EndpointKind } from '../../../../../src/lib/core/document/logic-document';
+import { EndpointKind, defined } from '../../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { solveGridCellLayout } from '../../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grids/grid-cell-types';
@@ -280,14 +280,14 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 		),
 	);
 
-	const leafDocument = independentNodes(9);
+	const leafDocument = independentNodes(16);
 	const contracts = leafDocument.nodes.map((node, index) => ({
 		relation: { id: `outside-${index}`, from: node.id, to: 'foreign' },
 		endpointId: node.id,
 		role: RegionIncidentRole.Source,
 		allowedSides: [RegionPortalSide.Top],
 	}));
-	for (const size of [8, 9]) {
+	for (const size of [8, 9, 12, 16]) {
 		const preparedLeaf = prepareLayoutDocument({
 			...leafDocument,
 			nodes: leafDocument.nodes.slice(0, size),
@@ -303,39 +303,90 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			}),
 		);
 	}
-	const eightLeaf = { ...leafDocument, nodes: leafDocument.nodes.slice(0, 8) };
-	const leafMetrics = prepareLayoutDocument(eightLeaf).measurements;
-	const mutatedLeafNodes = new Map(leafMetrics.nodes);
-	const leafNode = mutatedLeafNodes.get('node-0');
-	if (leafNode === undefined) throw new Error('Missing leaf measurement');
-	mutatedLeafNodes.set('node-0', { ...leafNode, width: leafNode.width + 1 });
-	let leafCache = new RegionLocalLayoutCache();
-	results.push(
-		profileResource(
-			'leaf-8-incidents',
-			'incremental',
-			() => {
-				const attempt = solveDedicatedRegionLeafWithIncidents({
-					document: eightLeaf,
-					measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
-					contracts: contracts.slice(0, 8),
-					cache: leafCache,
-				});
-				return leafSample(attempt);
-			},
-			2,
-			7,
-			() => {
-				leafCache = new RegionLocalLayoutCache();
-				solveDedicatedRegionLeafWithIncidents({
-					document: eightLeaf,
-					measurements: leafMetrics,
-					contracts: contracts.slice(0, 8),
-					cache: leafCache,
-				});
-			},
-		),
-	);
+	for (const size of [8, 9]) {
+		const leaf = { ...leafDocument, nodes: leafDocument.nodes.slice(0, size) };
+		const leafMetrics = prepareLayoutDocument(leaf).measurements;
+		const mutatedLeafNodes = new Map(leafMetrics.nodes);
+		const leafNode = mutatedLeafNodes.get('node-0');
+		if (leafNode === undefined) throw new Error('Missing leaf measurement');
+		mutatedLeafNodes.set('node-0', { ...leafNode, width: leafNode.width + 1 });
+		let leafCache = new RegionLocalLayoutCache();
+		results.push(
+			profileResource(
+				`leaf-${size}-incidents`,
+				'incremental',
+				() =>
+					leafSample(
+						solveDedicatedRegionLeafWithIncidents({
+							document: leaf,
+							measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
+							contracts: contracts.slice(0, size),
+							cache: leafCache,
+						}),
+					),
+				2,
+				7,
+				() => {
+					leafCache = new RegionLocalLayoutCache();
+					solveDedicatedRegionLeafWithIncidents({
+						document: leaf,
+						measurements: leafMetrics,
+						contracts: contracts.slice(0, size),
+						cache: leafCache,
+					});
+				},
+			),
+		);
+		// A one-pixel edit after a cached baseline must stabilize to its cold result.
+		expect(
+			solveDedicatedRegionLeafWithIncidents({
+				document: leaf,
+				measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
+				contracts: contracts.slice(0, size),
+				cache: leafCache,
+			}),
+		).toEqual(
+			solveDedicatedRegionLeafWithIncidents({
+				document: leaf,
+				measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
+				contracts: contracts.slice(0, size),
+			}),
+		);
+	}
+	for (const size of [4, 5]) {
+		const nodes = leafDocument.nodes.slice(0, size);
+		const document = {
+			...leafDocument,
+			nodes,
+			relations: nodes.slice(1).map((node, index) => ({
+				id: `local-${index}`,
+				from: defined(nodes[index]).id,
+				to: node.id,
+			})),
+		};
+		const measurements = prepareLayoutDocument(document).measurements;
+		const chainContracts = nodes.map((node, index) => {
+			const allowedSides = [RegionPortalSide.Top];
+			if (index > 0) allowedSides.push(RegionPortalSide.Bottom);
+			return {
+				relation: { id: `cross-${index}`, from: node.id, to: 'foreign' },
+				endpointId: node.id,
+				role: RegionIncidentRole.Source,
+				allowedSides,
+			};
+		});
+		results.push(
+			profileResource(`leaf-chain-${size}`, 'cold', () =>
+				leafSample(
+					solveDedicatedRegionLeafWithIncidents({
+						document,
+						measurements,
+						contracts: chainContracts,
+					}),
+				),
+			),
+		);
+	}
 	const nine = rowOf(9);
 	const rowPrepared = prepareLayoutDocument(nine.document);
 	results.push(
@@ -768,20 +819,6 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 		solveGridCellLayout(crossing.graph, alteredMeasurements, input),
 	);
 	expect(
-		solveDedicatedRegionLeafWithIncidents({
-			document: eightLeaf,
-			measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
-			contracts: contracts.slice(0, 8),
-			cache: leafCache,
-		}),
-	).toEqual(
-		solveDedicatedRegionLeafWithIncidents({
-			document: eightLeaf,
-			measurements: { ...leafMetrics, nodes: mutatedLeafNodes },
-			contracts: contracts.slice(0, 8),
-		}),
-	);
-	expect(
 		solveRecursiveNestedRegionLayout(
 			eightPrepared.graph,
 			{ ...eightPrepared.measurements, nodes: rowAltered },
@@ -848,7 +885,11 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 	expect(
 		results.find((entry) => entry.name === 'grid-21-local-relations')?.work['geometries'],
 	).toBe(1);
-	expect(results.find((entry) => entry.name === 'leaf-9-incidents')?.work['attempts']).toBe(0);
+	expect(
+		results.find((entry) => entry.name === 'leaf-9-incidents' && entry.mode === 'cold')?.work[
+			'attempts'
+		],
+	).toBe(9);
 	expect(
 		results.find(
 			(entry) => entry.name === 'region-265-depth-34' && entry.mode === 'normalization-only',

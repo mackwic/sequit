@@ -53,9 +53,23 @@ describe('joint dedicated incident search', () => {
 		expect(truncated).toMatchObject({
 			status: RegionCompositionStatus.Unknown,
 			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
-			witness: { exhaustive: false },
+			witness: { attempted: 8_192, exhaustive: false },
 		});
+		if (truncated.status !== RegionCompositionStatus.Unknown) return;
+		expect(truncated.reason).toContain('global search exhausted its 8192');
 		expect(truncated.witness.attempted).toBeGreaterThan(selected.witness.attempted);
+	});
+
+	it('reports the per-side cap on a genuinely searched but unresolved chain', () => {
+		const unresolved = solveChain(5, 'none');
+		expect(unresolved).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+			witness: { attempted: 1_024, exhaustive: false },
+		});
+		if (unresolved.status !== RegionCompositionStatus.Unknown) return;
+		expect(unresolved.reason).toContain('side-assignment search exhausted its 1024');
+		expect('incidents' in unresolved).toBe(false);
 	});
 
 	it('chooses a valid alternate side after rejecting the preferred side', () => {

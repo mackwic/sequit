@@ -15,6 +15,7 @@ import {
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { independentNodes } from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument } from './nested-region-fixture';
 
 const sample = fc.record({
@@ -86,6 +87,49 @@ describe('dedicated leaf incident invariants', () => {
 				}
 				expect(defined(cold.layout.elements[0]).id).toBe('c');
 			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('selects complete nine-plus incident leaves independently of contract permutation', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 9, max: 12 }),
+				fc.constantFrom(RegionPortalSide.Top, RegionPortalSide.Bottom),
+				(count, side) => {
+					const document = independentNodes(count);
+					const measurements = prepareLayoutDocument(document).measurements;
+					const contracts: RegionIncidentContract[] = document.nodes.map((node, index) => ({
+						relation: { id: `outside-${index}`, from: node.id, to: 'foreign' },
+						endpointId: node.id,
+						role: RegionIncidentRole.Source,
+						allowedSides: [side],
+					}));
+					const input = { document, measurements, contracts };
+					const cold = solveDedicatedRegionLeafWithIncidents(input);
+					const cache = new RegionLocalLayoutCache();
+					expect(solveDedicatedRegionLeafWithIncidents({ ...input, cache })).toEqual(cold);
+					expect(
+						solveDedicatedRegionLeafWithIncidents({
+							...input,
+							contracts: contracts.toReversed(),
+							cache,
+						}),
+					).toEqual(cold);
+					if (cold.status !== RegionCompositionStatus.Selected) throw new Error(cold.reason);
+					expect(cold.incidents).toHaveLength(count);
+					expect(cold.witness.attempted).toBeGreaterThanOrEqual(count);
+					for (const [index, route] of cold.incidents.entries())
+						for (const other of cold.incidents.slice(index + 1))
+							expect(
+								disallowedRouteContacts(
+									{ id: route.relationId, points: route.points },
+									{ id: other.relationId, points: other.points },
+									[],
+								),
+							).toEqual([]);
+				},
+			),
 			PROPERTY_PARAMETERS,
 		);
 	});

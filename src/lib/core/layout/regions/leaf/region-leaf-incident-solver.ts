@@ -26,15 +26,13 @@ import {
 	slotsForAssignment,
 } from './region-leaf-incident-geometry';
 import {
+	exhaustedBudgetReason,
 	newSearchState,
 	recordRejection,
 	type SearchState,
-	takeAttempt,
 	witness,
 } from './region-leaf-incident-search-state';
 import { regionLeafPolicyFailure } from './region-leaf-policy';
-
-const MAX_INCIDENTS = 8;
 
 export interface DedicatedRegionLeafIncidentInput {
 	readonly document: LogicDocument;
@@ -164,18 +162,17 @@ function solveOnLayout(
 			incidents: [],
 			witness: witness(state, true),
 		};
-	if (contracts.length > MAX_INCIDENTS)
-		return unknown(
-			RegionIncidentUnknownCode.SearchBudgetExceeded,
-			`A dedicated leaf accepts at most ${MAX_INCIDENTS} incident contracts per bounded search.`,
-			state,
-			false,
-		);
 	const elements = new Map(layout.elements.map((element) => [element.id, element]));
 	for (const contract of contracts) {
 		if (elements.has(contract.endpointId)) continue;
 		for (const side of contract.allowedSides) {
-			takeAttempt(state);
+			if (!state.globalBudget.take())
+				return unknown(
+					RegionIncidentUnknownCode.SearchBudgetExceeded,
+					exhaustedBudgetReason(state),
+					state,
+					false,
+				);
 			recordRejection(state, contract, side, {
 				code: RegionIncidentRejectionCode.PortUnavailable,
 				reason: `The local layout has no endpoint ${contract.endpointId}.`,
@@ -202,7 +199,7 @@ function solveOnLayout(
 	if (state.budgetExceeded || state.incomplete)
 		return unknown(
 			RegionIncidentUnknownCode.SearchBudgetExceeded,
-			'The bounded dedicated-leaf incident search exhausted its alternative budget.',
+			exhaustedBudgetReason(state),
 			state,
 			false,
 		);
