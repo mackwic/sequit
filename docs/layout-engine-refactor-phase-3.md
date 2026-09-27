@@ -4,18 +4,28 @@ Ce plan prolonge le [plan de refonte](layout-engine-refactor.md), qui reste la r
 
 ## Point de reprise
 
-La tête intégrée de reprise est `53e71866` (27 septembre 2026) ; `9ccec37` reste la base historique du plan. Les prérequis de grille 1A/1C et 4B sont clos ; l'étape 0B a figé douze références indépendantes du `LayoutResult` dédié, en plus de l'empreinte dense et des cinq empreintes de grille. Le journal distingue les portes d'intégration des mesures faites dans les worktrees.
+La tête historique de reprise était `53e71866` (27 septembre 2026) ; la tête intégrée documentée ici est `9ef5035b` ; `9ccec37` reste la base historique du plan. Les prérequis de grille 1A/1C et 4B sont clos ; l'étape 0B a figé douze références indépendantes du `LayoutResult` dédié, en plus de l'empreinte dense et des cinq empreintes de grille. Le journal distingue les portes d'intégration des mesures faites dans les worktrees.
 
 À l'étape 1, les fondations d'évaluation d'ordres ordinaires (1B/1C), le validateur géométrique indépendant (1D/1E) et la recherche 1F sont intégrés en production. L’admissibilité exige un layout valide et au plus autant de croisements stricts réels que le documentaire (et, à égalité, pas davantage de ponts validés) ; parmi les candidats admissibles, le score topologique départage d’abord, puis la distance de Kendall et les identifiants. Les gains abstraits 3+1/2+2 ne sont pas des gains de routes réelles. Le confinement des groupes et le dégagement de leurs routes étrangères sont intégrés : les douze références dédiées sont désormais valides, dont trois ré-épinglées après correction de la géométrie. Le recul des jonctions membres est propagé aux fenêtres de groupe (`8ae81e42`) ; le cas du cadre couvrant entièrement les deux rangées d’un canal reste ouvert (n° 43). Les ports partagés autour des coins sont protégés et leur chemin chaud a été ajusté. Le n° 8 ferme négativement l'hypothèse d'inclusion pour les pistes de lanes ; l'optimisation ordinale de leurs routes n'est pas intégrée. Les étapes suivantes conservent leurs conditions de preuve et leur ordre.
+
+## Bilan intégré à `9ef5035b` (27 septembre 2026)
+
+- **Étape 2b :** énumération locale puis composition bornée avec reprises et politique 2B sur issues validées ; le détour sans pont du témoin 2b-1 est sélectionné. Deux parcours Chromium persistés prouvent ce détour et un pont réellement nécessaire. La règle de contact 2a demeure l’oracle commun.
+- **Étape 3 :** gouttières horizontales possédées et allouées entre rangées, budgets bus/rangée séparés, `leaves-grid` E2E ajusté car le pont antérieur a disparu ; limite acceptée : aucune preuve du produit général « rangée + ordre de bus non canonique ».
+- **Étape 4 :** rails des runs de canaux portés sur les arêtes d’intervalles, identité d’allocation distincte de la provenance relationnelle et consommateurs de lanes migrés ; références `LayoutResult` inchangées pour cette tranche. Faces/ports et corridors du reste du moteur ne sont **pas** annoncés migrés.
+- **Étape 5 :** profils froid/incrémental initiaux puis budgets effectivement comptés pour grilles, régions et incidents de feuilles ; garde de profondeur indépendante, scènes indépendantes validées maintenues. Les propositions du profil ne valent pas seuils actifs. Les témoins de grille distinguent total exact et borne inférieure.
+- **Corrections connexes :** raccourcis locaux et passages des extrémités de groupe validés ; checks automatisés de publication, non-interférence, travail, honnêteté des témoins et relâchements. Le contact des routes de groupes/jonctions et le placement inerte ont été corrigés ; la **non-interférence générale sans jonction reste ouverte**. `ai-documentary-effort` a changé par simplification de deux segments colinéaires, non par correction géométrique ; `group-endpoint-route` est revenue à sa référence historique. Le cadre couvrant deux rangées (registre n° 43) reste ouvert.
+
+Le [journal](layout-engine-refactor-journal-2026-09-24.md#phase-3--intégrations-du-27-septembre-après-53e71866) donne les hachages et les limites de chaque preuve. Les prescriptions détaillées ci-dessous conservent le protocole de décision initial ; leurs bilans intégrés priment sur les verbes prospectifs de départ.
 
 ## Diagnostic
 
 La phase 2 a généralisé l'allocation des rails et ajouté un oracle de pont ; les intégrations suivantes ont déjà traité le rang et les contacts 2a. La liste distingue les capacités acquises des chantiers restant à mener :
 
 1. **Recherche de rang maintenant intégrée.** `rank/rank-order.ts` sait énumérer et noter des ordres ; le banc `rank-order-comparison.ts` montre 2 → 0 croisements sur 3+1 et 1 → 0 sur 2+2 pour son oracle abstrait. La production recherche par composante faible en partant du documentaire et valide complètement chaque candidat retenu. Ce score n'établit pas qu'un ordre se place, alloue ses ports et produit des routes valides : l'ordre affecte aussi les conflits de faces et l'empilement de composantes.
-2. **Alternatives de feuilles encore incomplètes.** La règle commune de contact point/étendue et familles d’attaches remplace `pathsTouchWithoutBridge` et les décisions locales entre routes ; la composition valide aussi les paires d’incidents d’une même feuille. L’énumération et la sélection des alternatives composées sans pont puis avec pont restent ouvertes (étape 2b).
-3. **Gouttière horizontale encore hypothétique.** `gridRoutingEdges` déclare les gouttières de colonnes et `topBus`; `crossingRoute` fait monter les traversées vers le bus supérieur. Toutefois, la propriété N × M sélectionne déjà une traversée « down-leading » de la première à la dernière rangée avec ce bus, sans démontrer que son tracé est illisible. Le code `GridRowGutterMissing` est déclaré, non levé : un besoin réel doit être prouvé avant d'ajouter la ressource.
-4. **Enveloppes de cardinalité non mesurées et moteur encore mixte.** `regions/model/region-composition-limits.ts` borne régions, extrémités, relations, enfants et traversées ; `grids/grid-cell-model.ts` a sa propre enveloppe 20/20 et le solveur de feuille plafonne les incidents. Ces nombres ne démontrent pas un coût acceptable. Le graphe de ressources sert aux dispositions et aux voies adjacentes, mais les rails du moteur dédié passent encore par leur allocation spécialisée.
+2. **Alternatives de feuilles maintenant composées.** La règle commune de contact point/étendue et familles d’attaches remplace `pathsTouchWithoutBridge` et les décisions locales entre routes ; la composition valide aussi les paires d’incidents d’une même feuille. Les alternatives locales sont désormais énumérées et composées sous budgets, avec reprise après rejet, puis sélection d’issues complètes sans pont ou avec pont (étape 2b). La recherche tronquée ne prétend pas être exhaustive.
+3. **Gouttière horizontale intégrée.** `gridRoutingEdges` déclare les gouttières de colonnes et `topBus`; `crossingRoute` fait monter les traversées vers le bus supérieur. Une traversée « down-leading » de la propriété N × M emprunte aussi le bus supérieur, mais les gouttières de rangées allouées permettent maintenant des alternatives sans croisement ni pont pour les cas discriminants. La recherche ne combine pas en général le choix de rangée et tous les ordres de bus non canoniques.
+4. **Budgets comptés, migration partielle du moteur dédié.** `regions/model/region-composition-limits.ts` portait historiquement les bornes de régions, extrémités, relations, enfants et traversées ; `grids/grid-cell-model.ts` avait sa propre enveloppe 20/20 et le solveur de feuille sa limite d’incidents. Ces anciennes enveloppes de cardinalité sont remplacées par du travail compté, avec garde de profondeur indépendante ; le profil préalable seul ne suffisait pas à les calibrer. Les runs de canaux du moteur dédié sont alloués sur des arêtes d’intervalles possédées, à sorties inchangées pour cette migration. Le reste du moteur demeure spécialisé.
 
 Les écarts acceptés qui ne bloquent pas la lisibilité (traces spécifiques d'atelier du n° 1, affectation de côtés du n° 2, deux passes de lanes du n° 16 et absence d'orientation générique au n° 31) restent hors périmètre. Ils ne justifient ni un chantier transversal ni une nouvelle abstraction dans cette phase.
 
@@ -69,13 +79,13 @@ L’oracle distingue maintenant point et étendue ; seul le point d’attache ex
 
 **Acceptation observable.** Test de comportement : un incident de feuille composé dont le seul conflit est un croisement strict porté par un pont validé est sélectionné ; un contact en T, un recouvrement colinéaire, un pont sans dégagement, un pont manquant et un contact au-delà du point d'attache restent rejetés avec diagnostic. Les tests falsifient aussi l'invariance par permutation et la distinction raccord ponctuel/recouvrement. Fuzz du solveur dédié (`region-leaf-incident-solver.property.test.ts`) et nouvelle propriété de _vraie feuille_ à politique shared-lanes, avec contrats incidents transmis au solveur de feuille ; `shared-lane-bridge.property.test.ts` actuel ne couvre que la racine sans `RegionIncidentContract`, il ne prouve donc pas ce chemin. Garder les propriétés unitaires de l'oracle de pont.
 
-**État 2b.** 2b-1 (`53e71866`) fige un document persisté dont deux routes composées et validées existent, l’une sans pont, plus courte, l’autre avec pont ; le test de sélection est `it.fails`, aucune sélection nouvelle n’est revendiquée. 2b-2 doit énumérer les alternatives déterministes de chaque politique de feuille et les composer avec reprise après rejet ; 2b-3 doit comparer les meilleures issues complètes par les seuils 2B avec passes sans pont puis pont ; 2b-4 doit prouver le canvas persisté, l’opacité, les portails et le rendu d’arc. Le n° 17 reste ouvert, même si la règle de contact 2a est commune.
+**Bilan 2b intégré.** 2b-1 (`53e71866`) a figé deux routes composées valides, dont un détour sans pont plus court ; son ancien `it.fails` est historique. `8c3e37fb` à `9c92d56b` énumèrent, composent et arbitrent sous budget les candidates entièrement validées, avec reprise et témoin honnête de troncature ; le détour est désormais sélectionné. `7dd03ead` vérifie sur Chromium le détour persisté, son opacité et ses portails, et un pont nécessaire sur un autre document. N° 17 et 53 levés pour ces capacités ; l’exhaustivité d’une recherche tronquée n’est jamais revendiquée.
 
 **Rendu et portes spécifiques.** Oui : un état jusque-là `unknown` peut devenir une route validée. E2E Chromium sur une scène réellement composée et persistée (`tests/app/web/e2e/nested-region-layout.spec.ts`, à étendre au témoin de feuille) ; le preview d'atelier correspondant vit sous `tests/app/workshop/e2e/region-lane-leaf-preview.spec.ts`. Vérifier route/arc, portails, absence de diagnostic et opacité d'une région étrangère, pas seulement le panneau. `test:performance` vérifie le coût des analyses de runs.
 
 **Risque / invariant.** L'ensemble analysé doit être la candidate complète, avec les identifiants réels, pour que le pont et son porteur soient déterministes. Les attaches au nœud, les contacts T, les recouvrements et l'opacité restent durs ; aucune marque de pont n'est persistée.
 
-### 3. Éprouver, ou fermer, l'hypothèse des gouttières horizontales
+### 3. Gouttières horizontales — intégrées après preuve discriminante
 
 **Prérequis.** Terminer et consigner les décisions 1A, 1C et 4B avant cette étape. 1A/1C doit fournir la recherche déclarée et son témoin, 4B la capacité par charge réelle ; cette étape n'ajoute pas une seconde politique d'allocation.
 
@@ -93,7 +103,7 @@ L’oracle distingue maintenant point et étendue ; seul le point d’attache ex
 
 **Risque / invariant.** Ne pas confondre un code de ressource annoncé avec un besoin produit. Une gouttière n'est pas une nouvelle région ni un axe de rang partagé ; les sous-layouts des cellules et les routes déjà lisibles restent identiques.
 
-### 4. Migrer une allocation du moteur dédié, sorties inchangées
+### 4. Migrer une allocation du moteur dédié, sorties inchangées — première tranche intégrée
 
 **Départ.** `routing/channel-routing.ts:makeRuns`, `runFamilies`, `mergeRuns`, `assignRails` / `routeOwnedChannel`, `routing/rail-packing.ts:packRails`, `routing/channel-types.ts:ChannelRun`, et `resources/routing-resource-allocation.ts:RoutingTrackDemand` / `RoutingTrackAllocation`.
 
@@ -107,7 +117,7 @@ Définir une clé déterministe par occurrence/famille de run, distincte des rel
 
 **Suite de migration, conditionnelle aux preuves.** Après cette première tranche, garder les mêmes frontières et oracles : (a) demandes de faces/ports de `port-allocation.ts` et `reserve-node-routing.ts` ; (b) passages et conflits de corridors de `layer-passages.ts`, `routing-corridors.ts` et `graph-corridor-conflicts.ts` ; (c) canaux de groupes/jonctions, puis sélection et matérialisation des routes. Chaque sous-tranche exige une empreinte `LayoutResult` externe au calcul courant et démontre un gain d'inspection, de cache ou d'assertion ; la phase 3 ne revendique pas la migration complète du moteur.
 
-### 5. Mesurer les budgets de ressources sans perdre la reprise partielle
+### 5. Mesurer les budgets de ressources sans perdre la reprise partielle — intégrée
 
 **Départ.** `regions/model/region-composition-limits.ts:checkRegionLimits` / `checkRegionCrossingLimits` et `NESTED_REGION_COMPOSITION_LIMITS` ; `grids/grid-cell-model.ts:envelopeFailure` (20 extrémités / 20 relations) ; `regions/leaf/region-leaf-incident-solver.ts:MAX_INCIDENTS` ; les budgets de candidats de grille issus de 1A ; `regions/recursive/nested-region-recursive-layout.ts:solveRegion` et `regions/recursive/region-arrangement-orchestration.ts:solveArrangedRegion`.
 
@@ -125,6 +135,8 @@ Une exhaustion interdit le candidat et les routes incomplètes du sous-arbre con
 
 **Risque / invariant.** Une valeur de cardinalité rebaptisée « budget » resterait une limite structurelle. La profondeur doit prévenir le débordement avant l'appel récursif. Sous `ResourceLimit`, seules les scènes partielles déjà complètes et indépendantes restent publiables ; aucun résultat ancien ou incomplet.
 
+**Bilan des étapes 3 à 5.** À l’étape 3, `93f76840` à `f9c5ef53` ajoutent et cherchent les gouttières de rangées ; `53516b78` constate que la traversée `across-grid` est raccourcie de 404 px et ne croise plus `leaves-grid`, donc retire l’arc E2E obsolète. Les ordres de bus non canoniques ne sont pas combinés en général à toutes les rangées (registre n° 58). À l’étape 4, `07975dec`, `4c551173`, `42de05d5`, `0b10aaa3` et `6dee604e` préservent les références dédiées tout en migrant l’identité et l’allocation des runs de canaux ; les autres allocations du moteur ne sont pas revendiquées. À l’étape 5, le profil `5b605825`/`f6760c84` a précédé la garde de pile `abbc4e23`, les budgets de composition `ed5baefb` à `43a82eb0`, la levée de 20/20 `edb7a46d` à `44239ad8` et les budgets de feuilles `ebae726b` à `b93969e3` ; `d31d3311` distingue les totaux exacts et bornes inférieures. Les seuils proposés dans le profil n’ont pas été activés simplement parce qu’ils avaient été proposés. Le registre n° 12, 13, 37, 38, 41 et 58 détaille les preuves et limites.
+
 ## Parallélisme et règles transverses
 
 - L'étape 0 verrouille les références avant tout changement. L'étape 1 précède les autres : son ordre change les dispositions dont dépendent les validations de feuilles et de grilles.
@@ -139,7 +151,25 @@ Une exhaustion interdit le candidat et les routes incomplètes du sous-arbre con
 
 Seulement les valeurs et formes que le code futur doit mesurer, avec son étape de décision :
 
-1. **Quel coût de la recherche de rang reste acceptable sous la charge ?** L'étape 1 livre des budgets et compteurs sur le pipeline complet ; les mesures de latence restent à confronter aux plafonds actuels, sans confondre score topologique et validité des routes.
-2. **La gouttière horizontale réduit-elle effectivement un détour ou restaure-t-elle une route ?** L'étape 3 tranche par contre-exemple froid et comparaison mesurée ; sans preuve, elle ferme l'hypothèse et retire le diagnostic mort.
-3. **Quels budgets de travail, d'allocations et de profondeur sont justifiés par les profils ?** L'étape 5 les calibre, en gardant une protection de pile préalable distincte ou en supprimant la récursion.
-4. **Quelle famille de ressources migrer après les runs de canaux ?** L'étape 4 en fixe la suite selon les empreintes identiques et les gains mesurés ; faces/ports et corridors sont les candidats, avant groupes/jonctions.
+1. **Quel coût reste acceptable sous la charge ?** Les budgets et compteurs sont actifs ; les mesures de latence et les plafonds provisoires restent à confronter en fenêtre calme, sans confondre score topologique et validité des routes.
+2. **Quelles combinaisons de gouttière et de bus restent hors recherche ?** La gouttière a supprimé un croisement et un pont dans le parcours intégré ; le produit rangée × ordre de bus non canonique n’est pas exploré en général (n° 58).
+3. **Les budgets déployés tiennent-ils les grandes scènes sous charge ?** La profondeur a sa garde indépendante et les alternatives/visites sont comptées ; poursuivre les mesures sur les formes auparavant refusées, sans confondre `heapUsed` et allocation cumulée.
+4. **Quelle famille migrer après les runs de canaux ?** Faces/ports et corridors restent candidats, avant groupes/jonctions : demander des empreintes d’identité et un gain mesuré, sans prétendre à une migration complète.
+
+## Leçons des relectures
+
+Cinq familles de défauts doivent être vérifiées avant tout lot writer, y compris lorsque les portes sont vertes :
+
+1. **Chemin produit** : prouver le comportement depuis `layoutWithRootRegion`, la projection ou un scénario persistant, plutôt que seulement par appel au solveur ; rechercher les gardes amont qui rendent un gain local inaccessible.
+2. **Non-interférence** : comparer A seule et A+B indépendante, jusqu’aux ports, attaches et routes. Les 31 configurations des corrections de jonction ne prouvent pas la non-interférence générale sans jonction (n° 66).
+3. **Travail compté** : borner avant et pendant tout précomptage, produit de candidats et validation par paires ; profiler aussi le pire cas voisin, pas uniquement le nominal. La grille exacte 384 sous 385 mais « ≥ 257 » sous 256 illustre la différence entre total et borne.
+4. **Témoins honnêtes** : ne dire `exhaustive` qu’après parcours complet, attribuer cause et provenance au rejet concerné, publier les compteurs exacts ou leur borne explicite ; aucune géométrie partielle/invalide comme issue.
+5. **Pas de relâchement silencieux** : lister et justifier assertions affaiblies ou supprimées, tests `it.fails`/skip et changements de budget/plafond. Un refus diagnostiqué n’autorise pas à réduire une attente sans raison produit.
+
+Les checks automatisés `ff15230d` à `83ba6e55` exercent publications riches (50 en fast, 5 000 en fuzz), juxtaposition, coûts de formes larges et témoins de cinq solveurs ; `080df382` signale sans bloquer les relâchements de `git diff <base>...HEAD`. **Liste de vérification writer :** vérifier entrée produit et gardes amont ; juxtaposition A/A+B pour toute portée globale ; comptage de tout travail avant/hors budget et profil limite ; exactitude des témoins/provenances et absence de sortie partielle ; rapport des relâchements avec justification ; tests ciblés, empreintes et portes writer avant commit, portes d’intégration en lot. La relecture des défauts publiés a exigé les corrections `27401010` à `9ef5035b` : le check détecte, il ne remplace pas la réparation.
+
+## Proposition phase 4 — proposée, à valider
+
+Adopter la **forme B** : des phases à l’intérieur du moteur dédié **et** de chaque domaine (`lanes/`, `grids/`, `regions/`), un `shared/` limité aux contrats qui traversent effectivement leurs frontières, et des orchestrateurs au-dessus ; ne pas disperser tous les domaines dans une unique chaîne de dossiers globaux. Pour chaque domaine, la règle d’import est **phase N importe phases < N et `shared/`**, pas seulement N−1 ; les orchestrateurs/adaptateurs ont des exceptions déclarées, sans cycle d’import. Ce découpage n’introduit ni IR persistée ni changement de `LayoutResult`.
+
+Ordre proposé : **(1)** définir et éprouver sur entrées figées des instantanés immuables de tailles, bornes et espaces entre phases, sans copie systématique en production ; **(2)** placer la boucle finie ports → demandes métriques → re-placement et stabilisation des corridors dans l’orchestrateur, avec rang candidat évalué par injection sur layout complet ; **(3)** isoler les imports interdomaines et solveurs de feuilles concrets derrière des adaptateurs et contrats, en gardant la récursion et les ressources de grille pré-placement ; **(4)** déplacer les modules et renforcer `dependency-cruiser` par lots vérifiés, après stabilisation des interfaces. Chaque lot préserve propriétaires, budgets/exhaustivité, identifiants de pistes, cache local, sorties déterministes et identité incrémental/froid. Ce n’est **pas** un chantier intégré à `9ef5035b` ; la décision reste à valider.
