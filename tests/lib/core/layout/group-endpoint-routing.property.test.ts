@@ -18,13 +18,26 @@ import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layo
 import { clearGroupEndpointRoutes } from '../../../../src/lib/core/layout/group-endpoint-routing';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { GroupRouteFailure, type Point } from '../../../../src/lib/core/layout/layout-types';
+import { groupJunctionInsets } from '../../../../src/lib/core/layout/placement/group-junction-channels';
+import {
+	placeElements,
+	type PlacementInput,
+} from '../../../../src/lib/core/layout/placement/place-elements';
+import { prepareMeasurements } from '../../../../src/lib/core/layout/placement/prepare-measurements';
+import { allocateLayerPorts } from '../../../../src/lib/core/layout/routing/layered-port-reservation';
 import {
 	prepareRouteObstacles,
 	routeHitsObstacles,
 } from '../../../../src/lib/core/layout/routing/route-obstacles';
+import { directRoutingSpace } from '../../../../src/lib/core/layout/routing/routing-space';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
+import { routingLayers } from '../../../../src/lib/core/layout/structure/routing-layers';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { richAcyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	type PreparedLayoutDocument,
+	prepareLayoutDocument,
+} from '../../../support/harnesses/layout';
 
 const witnesses = {
 	A: {
@@ -92,6 +105,60 @@ const directions = [
 	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
 	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
 ] as const satisfies readonly LayoutConfiguration[];
+
+function initialLayerPortReservation(prepared: PreparedLayoutDocument) {
+	const structure = prepareLayout(prepared.graph, prepared.ranks);
+	const frame = createLayoutFrame(
+		prepared.document.layout.direction,
+		prepared.document.layout.bias,
+	);
+	const measurements = prepareMeasurements(structure, prepared.measurements, frame);
+	const workspace: PlacementInput = {
+		structure,
+		measurements,
+		frame,
+		placement: {
+			bounds: new Map(),
+			components: [],
+			groupChannelInsets: new Map(),
+		},
+	};
+	placeElements(workspace, new Map());
+	workspace.placement.groupChannelInsets = groupJunctionInsets(
+		structure,
+		workspace.placement.bounds,
+		frame,
+	);
+	if (workspace.placement.groupChannelInsets.size > 0) {
+		delete workspace.placement.groupWindows;
+		placeElements(workspace, new Map());
+	}
+	const layers = routingLayers(structure);
+	const bounds = workspace.placement.bounds;
+	const componentByEndpointId = new Map(
+		structure.components.flatMap((component, index) =>
+			component.ids.map((id) => [id, index] as const),
+		),
+	);
+	const space = directRoutingSpace({
+		layers,
+		bounds,
+		frame,
+		junctionIds: structure.junctionIds,
+		enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
+	});
+	return allocateLayerPorts({
+		graph: prepared.graph,
+		layers,
+		bounds,
+		frame,
+		junctionIds: structure.junctionIds,
+		ranks: prepared.ranks.byEndpointId,
+		sizes: measurements.sizes,
+		componentByEndpointId,
+		space,
+	});
+}
 
 describe.each(['A', 'B', 'C'] as const)('group endpoint obstacle %s', (scenario) => {
 	it.each(directions)('routes around foreign boxes in $direction', (configuration) => {
@@ -278,6 +345,74 @@ it('keeps a route outside a foreign frame adjoining its shared target', () => {
 			({ x, y }) => x > container.x && x < container.x + container.width && y < bottom,
 		),
 	).toBe(false);
+});
+it('does not reserve shared-target ports against its own ancestor frame', () => {
+	const document: LogicDocument = {
+		...validLogicDocument(),
+		layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
+	};
+	const ancestorDocument: LogicDocument = {
+		...document,
+		nodes: document.nodes.map((node) => {
+			if (node.id === 'target') return { ...node, groupId: 'container' };
+			return node;
+		}),
+	};
+	const ancestor = prepareLayoutDocument(ancestorDocument, {
+		nodes: { target: { width: 12.1, height: 0.1 } },
+		groups: {
+			container: {
+				minimumWidth: 344,
+				minimumHeight: 72,
+				headerHeight: 36,
+				padding: 24,
+			},
+		},
+	});
+	const layout = layoutWithDedicatedEngine(ancestor.graph, ancestor.ranks, ancestor.measurements);
+	expect(validateDedicatedCandidate({ ...ancestor, layout })).toMatchObject({ valid: true });
+	const target = layout.elements.find(({ id }) => id === 'target')?.bounds;
+	const container = layout.elements.find(({ id }) => id === 'container')?.bounds;
+	const route = layout.relations.find(({ id }) => id === 'group-to-target');
+	if (target === undefined || container === undefined || route === undefined)
+		throw new Error('Missing target, ancestor frame, or direct group relation');
+	expect(target.x).toBeGreaterThanOrEqual(container.x);
+	expect(target.y).toBeGreaterThanOrEqual(container.y);
+	expect(target.x + target.width).toBeLessThanOrEqual(container.x + container.width);
+	expect(target.y + target.height).toBeLessThanOrEqual(container.y + container.height);
+	expect(route.points.at(-1)?.x).toBe(target.x);
+	expect(initialLayerPortReservation(ancestor)).toBeUndefined();
+
+	const blocked = prepareLayoutDocument(document, {
+		nodes: { target: { width: 12.1, height: 0.1 } },
+		groups: {
+			container: {
+				minimumWidth: 368,
+				minimumHeight: 72,
+				headerHeight: 36,
+				padding: 24,
+			},
+		},
+	});
+	const blockedPlan = initialLayerPortReservation(blocked);
+	if (blockedPlan === undefined) throw new Error('Missing ports for a blocked shared target');
+	const groupOffset = blockedPlan.targetOffsets.get('group-to-target');
+	const choiceOffset = blockedPlan.targetOffsets.get('choice-to-target');
+	if (groupOffset === undefined || choiceOffset === undefined)
+		throw new Error('Missing a predecessor port on the blocked target');
+	expect(groupOffset).toBe(-24);
+	expect(choiceOffset).toBe(24);
+	expect([...blockedPlan.targetOffsets.keys()].sort()).toEqual([
+		'choice-to-target',
+		'group-to-target',
+	]);
+	expect(
+		blockedPlan.metricDemands.map(({ endpointId, portCount, role }) => ({
+			endpointId,
+			portCount,
+			role,
+		})),
+	).toEqual([{ endpointId: 'target', portCount: 2, role: 'incoming' }]);
 });
 
 function exteriorRailWitness() {

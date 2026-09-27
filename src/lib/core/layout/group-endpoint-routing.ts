@@ -18,10 +18,10 @@ import {
 } from './routing/group-exterior-path';
 import { foreignGroupObstacles } from './routing/group-passages';
 import {
+	candidateFacePorts,
 	prepareRoutingContext,
 	respectsExternalFlow,
 	type RoutingContext,
-	shiftedGroupPort,
 } from './routing/group-route-candidates';
 import { candidateTracks, prepareGroupTrackIndex } from './routing/group-track-index';
 import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
@@ -189,16 +189,10 @@ function aroundRoute(
 ): LayoutRelation | undefined {
 	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
 	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
-	for (const sourceOffset of PORT_OFFSETS) {
-		const source = shiftedGroupPort(context, route, true, sourceOffset);
-		if (source === undefined) continue;
-		for (const targetOffset of PORT_OFFSETS) {
-			const target = shiftedGroupPort(context, route, false, targetOffset);
-			if (target === undefined) continue;
-			const attempt = { route, groups, ports: { source, target }, rails };
-			const candidate = aroundForPorts(context, attempt) ?? boundaryForPorts(context, attempt);
-			if (candidate !== undefined) return candidate;
-		}
+	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
+		const attempt = { route, groups, ports, rails };
+		const candidate = aroundForPorts(context, attempt) ?? boundaryForPorts(context, attempt);
+		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
 }
@@ -208,15 +202,10 @@ function alternateRoute(
 	route: LayoutRelation,
 	groups: RouteObstacles | undefined,
 ): LayoutRelation | undefined {
-	for (const sourceOffset of PORT_OFFSETS) {
-		const source = shiftedGroupPort(context, route, true, sourceOffset);
-		if (source === undefined) continue;
-		for (const targetOffset of PORT_OFFSETS) {
-			const target = shiftedGroupPort(context, route, false, targetOffset);
-			if (target === undefined) continue;
-			const candidate = pathForPorts(context, { route, groups }, { source, target });
-			if (candidate !== undefined) return candidate;
-		}
+	const attempt = { route, groups };
+	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
+		const candidate = pathForPorts(context, attempt, ports);
+		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
 }
@@ -241,15 +230,9 @@ function freshExterior(
 	groups: RouteObstacles | undefined,
 ): LayoutRelation | undefined {
 	const attempt = { route, groups };
-	for (const sourceOffset of PORT_OFFSETS) {
-		const source = shiftedGroupPort(context, route, true, sourceOffset);
-		if (source === undefined) continue;
-		for (const targetOffset of PORT_OFFSETS) {
-			const target = shiftedGroupPort(context, route, false, targetOffset);
-			if (target === undefined) continue;
-			const candidate = exteriorForPorts(context, attempt, { source, target });
-			if (candidate !== undefined) return candidate;
-		}
+	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
+		const candidate = exteriorForPorts(context, attempt, ports);
+		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
 }

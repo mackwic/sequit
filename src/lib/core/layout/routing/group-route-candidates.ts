@@ -4,7 +4,7 @@ import { routePathBounds } from '../geometry/box-geometry';
 import { type LayoutFrame, pointOnAxes } from '../geometry/layout-frame';
 import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import type { Bounds, LayoutRelation, Point } from '../layout-types';
-import { main, transverse } from './group-exterior-path';
+import { type FacePorts, main, transverse } from './group-exterior-path';
 import type { GroupTrackIndex } from './group-track-index';
 import { prepareRouteEnvelopeIndex, type RouteEnvelopeIndex } from './route-envelope-index';
 import { prepareRouteObstacles, type RouteObstacles } from './route-obstacles';
@@ -47,7 +47,7 @@ function portInUse(
 	return false;
 }
 
-export function shiftedGroupPort(
+function shiftedGroupPort(
 	context: RoutingContext,
 	route: LayoutRelation,
 	source: boolean,
@@ -69,6 +69,21 @@ export function shiftedGroupPort(
 	if (coordinate < low || coordinate > high) return undefined;
 	if (portInUse(context, route, source, coordinate)) return undefined;
 	return pointOnAxes(coordinate, main(port, context.vertical), context.vertical);
+}
+/** Preserve the same source-first and target-second offset order across every fallback. */
+export function* candidateFacePorts(
+	context: RoutingContext,
+	route: LayoutRelation,
+	offsets: readonly number[],
+): Generator<FacePorts> {
+	for (const sourceOffset of offsets) {
+		const source = shiftedGroupPort(context, route, true, sourceOffset);
+		if (source === undefined) continue;
+		for (const targetOffset of offsets) {
+			const target = shiftedGroupPort(context, route, false, targetOffset);
+			if (target !== undefined) yield { source, target };
+		}
+	}
 }
 
 export function respectsExternalFlow(context: RoutingContext, candidate: LayoutRelation): boolean {

@@ -1,18 +1,19 @@
 import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import {
-	type LayoutFrame,
-	mainSize,
-	transverseCenter,
-	transverseSize,
-	transverseStart,
-} from '../geometry/layout-frame';
-import { RAIL_SPACING } from '../layout-settings';
+import type { LayoutFrame } from '../geometry/layout-frame';
 import type { Bounds, RoutingLayers, Size } from '../layout-types';
+import { routePoints } from './endpoint-routes';
+import { foreignGroupObstacles } from './group-passages';
 import { allocatePorts, type PortAllocation } from './port-allocation';
-import { cornerPortSharing, crossingCorridors, type RoutingCorridor } from './routing-corridors';
+import { routeHitsObstacles, type RouteObstacles } from './route-obstacles';
+import {
+	cornerPortSharing,
+	type CorridorLink,
+	crossingCorridors,
+	type RoutingCorridor,
+} from './routing-corridors';
 import { type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
-import { directRouteFitsSpace, type DirectRoutingSpace } from './routing-space';
+import { directRouteFitsSpace, directRouteRail, type DirectRoutingSpace } from './routing-space';
 
 interface ReservationInput {
 	readonly graph: LogicGraph;
@@ -47,110 +48,91 @@ function componentsNeedingDistinctPorts(
 	return routed;
 }
 
-function principalStart(box: Bounds, vertical: boolean): number {
-	if (vertical) return box.y;
-	return box.x;
-}
-
-function faceNearForeignGroup(
-	group: Bounds,
-	face: number,
-	transverse: number,
-	vertical: boolean,
-): boolean {
-	const start = principalStart(group, vertical);
-	if (face < start - RAIL_SPACING) return false;
-	const end = start + mainSize(group, vertical);
-	if (face > end + RAIL_SPACING) return false;
-	const transverseEdge = transverseStart(group, vertical);
-	if (transverse <= transverseEdge) return false;
-	return transverse < transverseEdge + transverseSize(group, vertical);
-}
-
-function foreignGroupNearRelation(
-	graph: LogicGraph,
-	bounds: ReadonlyMap<string, Bounds>,
-	entry: LogicGraph['relations'][number],
-	frame: LayoutFrame,
-): boolean {
-	const target = bounds.get(entry.relation.to);
-	if (target === undefined) return false;
-	let face = principalStart(target, frame.vertical);
-	if (frame.forward) face += mainSize(target, frame.vertical);
-	const transverse = transverseCenter(target, frame.vertical);
-	for (const group of graph.document.groups) {
-		if (group.id === entry.source.entity.id) continue;
-		const other = bounds.get(group.id);
-		if (other === undefined) continue;
-		if (faceNearForeignGroup(other, face, transverse, frame.vertical)) return true;
-	}
-	return false;
-}
-
-function sharedGroupTargetAtForeignGroupFace(
-	graph: LogicGraph,
-	bounds: ReadonlyMap<string, Bounds>,
-	frame: LayoutFrame,
-): boolean {
+function sharedTargetsBlockedByForeignGroups(input: ReservationInput): ReadonlySet<string> {
+	const { graph, bounds, frame, space } = input;
+	const blocked = new Set<string>();
+	const passageContext = {
+		graph,
+		bounds,
+		vertical: frame.vertical,
+		ancestorCache: new Map<string, readonly string[]>(),
+		groupObstacleCache: new Map<string, RouteObstacles | undefined>(),
+	};
 	for (const entry of graph.relations) {
 		if (entry.source.kind !== EndpointKind.Group) continue;
 		const predecessors = graph.predecessorsByEndpointId.get(entry.relation.to);
 		if (predecessors === undefined || predecessors.length < 2) continue;
-		if (foreignGroupNearRelation(graph, bounds, entry, frame)) return true;
+		const obstacles = foreignGroupObstacles(passageContext, entry.relation, 0);
+		if (obstacles === undefined) continue;
+		const source = bounds.get(entry.relation.from);
+		const target = bounds.get(entry.relation.to);
+		if (source === undefined || target === undefined) continue;
+		const points = routePoints({
+			source,
+			target,
+			direction: frame.direction,
+			rail: directRouteRail(space, entry.relation.from, entry.relation.to),
+		});
+		if (routeHitsObstacles(points, obstacles)) blocked.add(entry.relation.to);
 	}
-	return false;
+	return blocked;
 }
 
-/** Reserve faces before placement; channels are planned from the resulting transverse positions. */
-export function allocateLayerPorts(input: ReservationInput): PortAllocation | undefined {
-	const { graph, layers, bounds, frame, junctionIds, sizes } = input;
-	const crossings = crossingCorridors({
-		graph,
-		ranks: layers.byId,
-		bounds,
-		vertical: frame.vertical,
-		includeJunctions: true,
-	});
-	const passages = layerLinks(graph, layers, bounds, {
-		vertical: frame.vertical,
-		componentByEndpointId: input.componentByEndpointId,
-	});
-	const direct = passages.every(({ relation, sourceLayer, targetLayer }) => {
+function linksForPassages(input: ReservationInput, passages: readonly LayerLink[]): CorridorLink[] {
+	const geometry = {
+		bounds: input.bounds,
+		vertical: input.frame.vertical,
+		offsets: new Map<string, number>(),
+	};
+	return passages.map((link) => ({
+		relation: link.relation,
+		source: linkCoordinate(link, true, link.targetLayer + 1, geometry),
+		target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
+	}));
+}
+
+function passagesFitDirectly(input: ReservationInput, passages: readonly LayerLink[]): boolean {
+	return passages.every(({ relation, sourceLayer, targetLayer }) => {
 		if (sourceLayer === targetLayer + 1) return true;
 		const sourceRank = defined(input.ranks.get(relation.from));
 		const targetRank = defined(input.ranks.get(relation.to));
 		if (sourceRank > targetRank + 1) return false;
-		if (junctionIds.has(relation.from) || junctionIds.has(relation.to)) return false;
+		if (input.junctionIds.has(relation.from) || input.junctionIds.has(relation.to)) return false;
 		return directRouteFitsSpace(input.space, relation.from, relation.to);
 	});
-	if (crossings.length === 0 && direct) {
-		// A later ordinary reservation would move the rails and invalidate the direct passages.
-		const ordinaryCrossings = crossingCorridors({
-			graph,
-			ranks: input.ranks,
-			bounds,
-			vertical: frame.vertical,
-		});
-		if (
-			ordinaryCrossings.length === 0 &&
-			!sharedGroupTargetAtForeignGroupFace(graph, bounds, frame)
-		)
-			return undefined;
-	}
-	const routedComponents = componentsNeedingDistinctPorts(input, crossings, passages);
-	const links = passages.map((link) => {
-		const geometry = {
-			bounds,
-			vertical: frame.vertical,
-			offsets: new Map<string, number>(),
-		};
-		// Order each face by the opposite side of its adjacent channel, including long passages.
-		return {
-			relation: link.relation,
-			source: linkCoordinate(link, true, link.targetLayer + 1, geometry),
-			target: linkCoordinate(link, false, link.sourceLayer - 1, geometry),
-		};
+}
+
+function reserveBlockedTargetPorts(
+	input: ReservationInput,
+	passages: readonly LayerLink[],
+	blockedTargets: ReadonlySet<string>,
+): PortAllocation {
+	const relations = input.graph.relations.filter(({ relation }) => blockedTargets.has(relation.to));
+	const links = linksForPassages(
+		input,
+		passages.filter(({ relation }) => blockedTargets.has(relation.to)),
+	);
+	const sharedSources = new Set(input.junctionIds);
+	for (const { relation } of relations) sharedSources.add(relation.from);
+	return allocatePorts({
+		corridors: [{ rank: 0, links }],
+		sizes: input.sizes,
+		bounds: input.bounds,
+		graph: { ...input.graph, relations },
+		vertical: input.frame.vertical,
+		sharedSources,
+		sharedTargets: input.junctionIds,
 	});
+}
+
+function reserveOrdinaryPorts(
+	input: ReservationInput,
+	crossings: readonly RoutingCorridor[],
+	passages: readonly LayerLink[],
+): PortAllocation {
+	const { graph, bounds, frame, junctionIds, sizes } = input;
+	const routedComponents = componentsNeedingDistinctPorts(input, crossings, passages);
+	const links = linksForPassages(input, passages);
 	const cornerSharing = cornerPortSharing(crossings);
 	const sharedSources = new Set(junctionIds);
 	for (const id of cornerSharing?.sharedSources ?? [])
@@ -174,4 +156,35 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 		sharedSources,
 		sharedTargets,
 	});
+}
+
+/** Reserve faces before placement; channels are planned from the resulting transverse positions. */
+export function allocateLayerPorts(input: ReservationInput): PortAllocation | undefined {
+	const { graph, layers, bounds, frame } = input;
+	const crossings = crossingCorridors({
+		graph,
+		ranks: layers.byId,
+		bounds,
+		vertical: frame.vertical,
+		includeJunctions: true,
+	});
+	const passages = layerLinks(graph, layers, bounds, {
+		vertical: frame.vertical,
+		componentByEndpointId: input.componentByEndpointId,
+	});
+	if (crossings.length === 0 && passagesFitDirectly(input, passages)) {
+		// A later ordinary reservation would move the rails and invalidate the direct passages.
+		const ordinaryCrossings = crossingCorridors({
+			graph,
+			ranks: input.ranks,
+			bounds,
+			vertical: frame.vertical,
+		});
+		if (ordinaryCrossings.length === 0) {
+			const blockedTargets = sharedTargetsBlockedByForeignGroups(input);
+			if (blockedTargets.size === 0) return undefined;
+			return reserveBlockedTargetPorts(input, passages, blockedTargets);
+		}
+	}
+	return reserveOrdinaryPorts(input, crossings, passages);
 }
