@@ -21,7 +21,10 @@ import {
 	UnknownRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
 import { regionLeafPolicy } from '../leaf/region-leaf-policy';
-import { NESTED_REGION_COMPOSITION_LIMITS } from '../model/region-composition-limits';
+import {
+	checkRegionStackDepth,
+	NESTED_REGION_COMPOSITION_LIMITS,
+} from '../model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
@@ -167,6 +170,9 @@ export function solveRecursiveNestedRegionLayout(
 			status: RegionCompositionStatus.Unsupported,
 			reason: normalized.diagnostic.message,
 		};
+	const stack = checkRegionStackDepth(normalized.model.preorderIds, normalized.model.regionsById);
+	if (stack !== undefined)
+		return { status: RegionCompositionStatus.Unsupported, reason: stack.message };
 	const failure = policyFailure(graph, normalized.model);
 	if (failure !== undefined)
 		return { status: RegionCompositionStatus.Unsupported, reason: failure };

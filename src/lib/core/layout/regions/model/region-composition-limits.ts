@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../../canonical-string';
 import type { LogicRelation } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
+import type { RegionCompositionNode } from './region-composition-tree';
 import type { RegionInput } from './region-composition-types';
 
 /** Normalization outcome, shared by every composition entry point. */
@@ -25,6 +26,7 @@ export enum RegionCompositionDiagnosticCode {
 	DuplicateRelationId = 'duplicate-relation-id',
 	NonLeafLanePresentation = 'non-leaf-lane-presentation',
 	ResourceLimit = 'resource-limit',
+	StackDepthLimit = 'stack-depth-limit',
 }
 
 export interface RegionCompositionDiagnostic {
@@ -57,6 +59,28 @@ export const NESTED_REGION_COMPOSITION_LIMITS: RegionCompositionLimits = {
 	maxChildrenPerRegion: 8,
 	maxCrossingsPerRegion: 3,
 };
+
+/** Recursive composition has multiple stack frames per region; this is not a work budget. */
+const MAX_REGION_RECURSION_DEPTH = 192;
+
+/** Depth was calculated by the iterative normalized tree walk, before any recursive solve. */
+export function checkRegionStackDepth(
+	preorderIds: readonly string[],
+	regionsById: ReadonlyMap<string, RegionCompositionNode>,
+): RegionCompositionDiagnostic | undefined {
+	for (const id of preorderIds) {
+		const depth = regionsById.get(id)?.depth;
+		if (depth === undefined || depth < MAX_REGION_RECURSION_DEPTH) continue;
+		return {
+			code: RegionCompositionDiagnosticCode.StackDepthLimit,
+			message: `Recursive region stack depth ${depth + 1} exceeds the safe limit of ${MAX_REGION_RECURSION_DEPTH}.`,
+			path: ['regions', id, 'depth'],
+			actual: depth + 1,
+			limit: MAX_REGION_RECURSION_DEPTH,
+		};
+	}
+	return undefined;
+}
 
 enum RegionResource {
 	Regions = 'regions',

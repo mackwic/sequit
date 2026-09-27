@@ -14,7 +14,10 @@ import {
 	leafIncidentContracts,
 	type RecursiveContext,
 } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
-import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
+import {
+	checkRegionStackDepth,
+	NESTED_REGION_COMPOSITION_LIMITS,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
@@ -291,60 +294,41 @@ describe('recursive region model and row policy', () => {
 			reason: 'children exceed the configured limit of 8.',
 		});
 	});
-	it('bounds deep pass-through chains before recursive solving', () => {
+	it.each([191, 192, 193])('diagnoses recursive stack depth at %i levels', (depth) => {
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
-		const endpointIds = [...prepared.graph.endpointsById.keys()];
-		const maxRegions = NESTED_REGION_COMPOSITION_LIMITS.maxRegions ?? 0;
-		const inputAtLimit: RegionInput = {
-			regions: Array.from({ length: maxRegions }, (_, index) => {
-				const region: RegionInput['regions'][number] = {
-					id: `depth-${index}`,
-					layoutOrder: 'a0',
-				};
+		const input: RegionInput = {
+			regions: Array.from({ length: depth }, (_, index) => {
+				const region: RegionInput['regions'][number] = { id: `depth-${index}`, layoutOrder: 'a0' };
 				if (index > 0) return { ...region, parentId: `depth-${index - 1}` };
 				return region;
 			}),
-			regionByEndpointId: new Map(endpointIds.map((id) => [id, `depth-${maxRegions - 1}`])),
+			regionByEndpointId: new Map(
+				[...prepared.graph.endpointsById.keys()].map((id) => [id, `depth-${depth - 1}`]),
+			),
 		};
-		expect(
-			solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, inputAtLimit).status,
-		).toBe(RegionCompositionStatus.Selected);
-
-		const tooDeep: RegionInput = {
-			...inputAtLimit,
-			regions: Array.from({ length: 5000 }, (_, index) => {
-				const region: RegionInput['regions'][number] = {
-					id: `deep-${index}`,
-					layoutOrder: 'a0',
-				};
-				if (index > 0) return { ...region, parentId: `deep-${index - 1}` };
-				return region;
-			}),
-			regionByEndpointId: new Map(endpointIds.map((id) => [id, 'deep-4999'])),
-		};
-		const rejected = solveRecursiveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			tooDeep,
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Invalid witness');
+		const diagnostic = checkRegionStackDepth(
+			normalized.model.preorderIds,
+			normalized.model.regionsById,
 		);
-		const normalized = normalizeRegionCompositionModel(
-			prepared.graph,
-			tooDeep,
-			NESTED_REGION_COMPOSITION_LIMITS,
-		);
-		expect(normalized).toMatchObject({
-			status: RegionCompositionModelStatus.Unsupported,
-			diagnostic: {
-				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: ['regions'],
-				actual: 5000,
-				limit: maxRegions,
-			},
-		});
-		expect(rejected).toMatchObject({
-			status: RegionCompositionStatus.Unsupported,
-			reason: `regions exceed the configured limit of ${maxRegions}.`,
-		});
+		if (depth <= 192) expect(diagnostic).toBeUndefined();
+		else
+			expect(diagnostic).toEqual({
+				code: RegionCompositionDiagnosticCode.StackDepthLimit,
+				message: 'Recursive region stack depth 193 exceeds the safe limit of 192.',
+				path: ['regions', 'depth-192', 'depth'],
+				actual: 193,
+				limit: 192,
+			});
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (depth <= 192) expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		else
+			expect(attempt).toEqual({
+				status: RegionCompositionStatus.Unsupported,
+				reason: 'Recursive region stack depth 193 exceeds the safe limit of 192.',
+			});
 	});
 
 	it.each([
