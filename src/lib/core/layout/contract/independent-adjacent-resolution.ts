@@ -2,8 +2,8 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { unbridgedCrossings } from '../bridges/bridge-contact';
 import { routeBridgeAnalysis } from '../bridges/bridge-oracle';
+import { layoutRouteCost } from '../geometry/layout-route-cost';
 import type { LayoutMeasurements, LayoutResult } from '../layout-types';
-import { layoutRouteCost } from '../routing/route-cost';
 import { bestWithinBudget, validatedSearchBudget } from '../search/bounded-search';
 import { type CandidateFaceBranch, candidateFaceBranches } from './candidate-face-branches';
 import {

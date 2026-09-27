@@ -1,9 +1,12 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { LayoutPolicy } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { layoutRouteCost } from '../../../../src/lib/core/layout/geometry/layout-route-cost';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { enumerateSharedLaneLayouts } from '../../../../src/lib/core/layout/lanes/shared-lane-candidate-enumeration';
 import {
 	SharedLaneLayoutStatus,
@@ -34,7 +37,7 @@ import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layou
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
-import { layoutRouteCost } from '../../../../src/lib/core/layout/routing/route-cost';
+import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { persistedComposedLeafBridgeDocument } from './nested-region-fixture';
 
 const document = persistedComposedLeafBridgeDocument();
@@ -145,10 +148,14 @@ describe('persisted composed incident bridge selection', () => {
 			{ carrierIds: ['lane-local'], crossedIds: ['cross'] },
 		]);
 		expect(validatedBridges(unbridged.layout.relations)).toEqual([]);
-		expect(layoutRouteCost(bridged.layout)).toEqual({ area: 834624, routeLength: 1715, bends: 10 });
+		expect(layoutRouteCost(bridged.layout)).toEqual({
+			area: 834624,
+			routeLength: 1707.5,
+			bends: 10,
+		});
 		expect(layoutRouteCost(unbridged.layout)).toEqual({
 			area: 834624,
-			routeLength: 1631,
+			routeLength: 1623.5,
 			bends: 10,
 		});
 	});
@@ -294,9 +301,80 @@ describe('persisted composed incident bridge selection', () => {
 		).toBe(true);
 	});
 
-	it.fails('selects the valid, shorter no-bridge composed route before a bridge', () => {
+	it('selects the valid, shorter no-bridge composed route before a bridge', () => {
 		const { selected, unbridged } = alternatives();
 		expect(validatedBridges(selected.layout.relations)).toEqual([]);
 		expect(layoutRouteCost(selected.layout)).toEqual(layoutRouteCost(unbridged.layout));
+		expect(selected.searchWitness).toMatchObject({
+			bestDetour: layoutRouteCost(selected.layout),
+			selected: 'detour',
+		});
+		expect(selected.searchWitness?.bestBridge?.area).toBe(834624);
+		expect(selected.searchWitness?.bestDetourIndices).toBeDefined();
+		expect(selected.searchWitness?.bestBridgeIndices).toBeDefined();
+		expect(selected.searchWitness?.attempted).toBeLessThanOrEqual(64);
+	});
+	it('keeps both issue costs and the selected geometry stable across permutations and cache edits', () => {
+		const cache = new RegionLocalLayoutCache();
+		const baseline = solve();
+		fc.assert(
+			fc.property(
+				fc.shuffledSubarray([...document.nodes], {
+					minLength: document.nodes.length,
+					maxLength: document.nodes.length,
+				}),
+				fc.shuffledSubarray([...document.relations], {
+					minLength: document.relations.length,
+					maxLength: document.relations.length,
+				}),
+				(nodes, relations) => {
+					const graph = createGraph({ ...document, nodes, relations });
+					if (!graph.ok) throw new Error('Invalid permutation of the witness');
+					const input = nestedRegionInput(graph.value);
+					const warm = solveRecursiveNestedRegionLayout(graph.value, measurements, input, cache);
+					const cold = solveRecursiveNestedRegionLayout(graph.value, measurements, input);
+					expect(warm).toEqual(cold);
+					expect(warm.status).toBe(RegionCompositionStatus.Selected);
+					if (warm.status !== RegionCompositionStatus.Selected) return;
+					expect(layoutRouteCost(warm.layout)).toEqual(layoutRouteCost(baseline.layout));
+					expect(warm.searchWitness?.bestDetour).toEqual(baseline.searchWitness?.bestDetour);
+					expect(warm.searchWitness?.bestBridge).toEqual(baseline.searchWitness?.bestBridge);
+					expect(validatedBridges(warm.layout.relations)).toEqual([]);
+				},
+			),
+			{ ...PROPERTY_PARAMETERS, numRuns: 20 },
+		);
+	});
+	it('retries a rejected full composition and retains a separately valid bridged issue', () => {
+		const extended = {
+			...document,
+			relations: [...document.relations, { id: 'extra-cross', from: 'a', to: 'c' }],
+		};
+		const graph = createGraph(extended);
+		if (!graph.ok) throw new Error('Invalid composed crossing document');
+		const sizes = {
+			nodes: new Map(extended.nodes.map(({ id }) => [id, { width: 80, height: 64 }])),
+			groups: new Map(),
+			junctions: new Map(),
+		};
+		const input = nestedRegionInput(graph.value);
+		const cold = solveRecursiveNestedRegionLayout(graph.value, sizes, input);
+		const cache = new RegionLocalLayoutCache();
+		expect(solveRecursiveNestedRegionLayout(graph.value, sizes, input, cache)).toEqual(cold);
+		if (cold.status !== RegionCompositionStatus.Selected)
+			throw new Error('Expected a valid bridge');
+		expect(cold.searchWitness?.rejectedAlternatives).toContainEqual({
+			indices: [0, 0],
+			code: RegionGeometryDiagnosticCode.ParentRouteContact,
+		});
+		expect(cold.searchWitness?.bestDetour).toBeUndefined();
+		expect(cold.searchWitness?.bestBridge).toEqual(layoutRouteCost(cold.layout));
+		expect(cold.searchWitness?.bestBridgeIndices).toEqual([0, 3]);
+		expect(cold.searchWitness?.selected).toBe('bridge');
+		expect(validatedBridges(cold.layout.relations).length).toBeGreaterThan(0);
+		const normalized = normalizeRegionCompositionModel(graph.value, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Expected model');
+		expect(validateRegionCompositionGeometry(normalized.model, cold)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, cold)).toBeUndefined();
 	});
 });

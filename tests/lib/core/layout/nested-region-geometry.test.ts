@@ -470,34 +470,6 @@ describe('nested region geometry oracle', () => {
 			'leaves its owning child',
 		],
 		[
-			'cross relation using a shifted source port',
-			(candidate: Candidate) => {
-				const local = owner(candidate, 'across-middle', 'left');
-				const global = route(candidate, 'across-middle');
-				const oldPort = defined(local.points[0]);
-				const portal = defined(local.points.at(-1));
-				const newPort = { x: oldPort.x + 5, y: oldPort.y };
-				const bend = { x: newPort.x, y: portal.y };
-				local.points = [newPort, bend, portal];
-				global.points = [newPort, bend, ...global.points.slice(1)];
-			},
-			'source port',
-		],
-		[
-			'cross relation using a shifted target port',
-			(candidate: Candidate) => {
-				const local = owner(candidate, 'across-middle', 'right');
-				const global = route(candidate, 'across-middle');
-				const oldPort = defined(local.points.at(-1));
-				const portal = defined(local.points[0]);
-				const newPort = { x: oldPort.x + 5, y: oldPort.y };
-				const bend = { x: newPort.x, y: portal.y };
-				local.points = [portal, bend, newPort];
-				global.points = [...global.points.slice(0, -1), bend, newPort];
-			},
-			'target port',
-		],
-		[
 			'missing composed relation',
 			(candidate: Candidate) => {
 				candidate.layout.relations = candidate.layout.relations.filter(
@@ -538,6 +510,37 @@ describe('nested region geometry oracle', () => {
 		],
 	] as const)('rejects %s', (_, mutate, expected) => {
 		expect(rejected(mutate)).toContain(expected);
+	});
+
+	it.each([
+		[
+			'cross relation using a noncentral source attachment',
+			(candidate: Candidate) => {
+				const local = owner(candidate, 'across-middle', 'left');
+				const global = route(candidate, 'across-middle');
+				const oldPort = defined(local.points[0]);
+				const portal = defined(local.points.at(-1));
+				const newPort = { x: oldPort.x + 5, y: oldPort.y };
+				const bend = { x: newPort.x, y: portal.y };
+				local.points = [newPort, bend, portal];
+				global.points = [newPort, bend, ...global.points.slice(1)];
+			},
+		],
+		[
+			'cross relation using a noncentral target attachment',
+			(candidate: Candidate) => {
+				const local = owner(candidate, 'across-middle', 'right');
+				const global = route(candidate, 'across-middle');
+				const oldPort = defined(local.points.at(-1));
+				const portal = defined(local.points[0]);
+				const newPort = { x: oldPort.x + 5, y: oldPort.y };
+				const bend = { x: newPort.x, y: portal.y };
+				local.points = [portal, bend, newPort];
+				global.points = [...global.points.slice(0, -1), bend, newPort];
+			},
+		],
+	] as const)('accepts %s on its declared face', (_, mutate) => {
+		expect(rejected(mutate)).toBeUndefined();
 	});
 
 	it('rejects incomplete route ownership before accepting a composed result', () => {

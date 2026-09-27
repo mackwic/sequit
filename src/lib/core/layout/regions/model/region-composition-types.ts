@@ -5,6 +5,7 @@ import type {
 	RegionLanePresentation,
 } from '../../../document/logic-document';
 import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type { RouteCost } from '../../geometry/layout-route-cost';
 import type { Bounds, LayoutResult, Point } from '../../layout-types';
 import type { RegionPortalSide } from './region-portal-side';
 import type { RegionCompositionFailureEvidence } from './region-search-evidence';
@@ -82,6 +83,7 @@ export interface RegionCompositionSelected<Portal extends RegionPortalBase = Reg
 type RegionCompositionUnknown<FailureEvidence extends RegionCompositionFailureEvidence> = {
 	readonly status: RegionCompositionStatus.Unknown;
 	readonly reason: string;
+	readonly searchWitness?: RegionCompositionSearchWitness;
 	readonly regionId?: string;
 	readonly relationId?: string;
 } & FailureEvidence;
@@ -96,7 +98,28 @@ export type RegionCompositionAttempt<
 	FailureEvidence extends RegionCompositionFailureEvidence = RegionCompositionFailureEvidence,
 > = Selected | RegionCompositionUnknown<FailureEvidence> | RegionCompositionUnsupported;
 
+/** Search evidence belongs to the composition, never to a locally cached leaf. */
+export enum RegionCompositionIssue {
+	Detour = 'detour',
+	Bridge = 'bridge',
+}
+
+export interface RegionCompositionSearchWitness {
+	readonly attempted: number;
+	readonly exhaustive: boolean;
+	readonly rejectedAlternatives: readonly {
+		readonly indices: readonly number[];
+		readonly code: string;
+	}[];
+	readonly bestDetour?: RouteCost | undefined;
+	readonly bestBridge?: RouteCost | undefined;
+	readonly bestDetourIndices?: readonly number[] | undefined;
+	readonly bestBridgeIndices?: readonly number[] | undefined;
+	readonly selected?: RegionCompositionIssue;
+}
+
 export interface RegionLayoutSelected extends RegionCompositionSelected<RegionPortal> {
+	readonly searchWitness?: RegionCompositionSearchWitness;
 	readonly regions: readonly RegionChildPlacement[];
 	readonly ownedRoutes: readonly RegionOwnedRoute[];
 }

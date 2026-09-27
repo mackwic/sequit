@@ -17,6 +17,7 @@ import {
 	type RegionPortal,
 	RegionPortalSide,
 } from '../model/region-composition-types';
+import { incidentAnchorOnFace } from './nested-region-leaf-incident-validation';
 
 function portalOnBoundary(portal: RegionPortal, region: RegionChildPlacement): boolean {
 	if (portal.regionId !== region.id) return false;
@@ -38,10 +39,7 @@ function endpointOnPortalSide(
 	bounds: Bounds | undefined,
 	side: RegionPortalSide,
 ): boolean {
-	if (bounds === undefined) return false;
-	let y = bounds.y;
-	if (side === RegionPortalSide.Bottom) y += bounds.height;
-	return samePoint(point, { x: bounds.x + bounds.width / 2, y });
+	return bounds !== undefined && incidentAnchorOnFace(point, bounds, side);
 }
 
 function portalConnectionFailure(

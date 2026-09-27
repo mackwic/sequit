@@ -47,12 +47,12 @@ import {
 	SourceFaceDemandFailure,
 	validateSourceFaceDemands,
 } from '../../../../../src/lib/core/layout/contract/validate-source-face-demand';
+import { layoutRouteCost } from '../../../../../src/lib/core/layout/geometry/layout-route-cost';
 import { PORT_INSET, PORT_SPACING } from '../../../../../src/lib/core/layout/layout-settings';
 import {
 	type LayoutMeasurements,
 	RoutingPortRole,
 } from '../../../../../src/lib/core/layout/layout-types';
-import { layoutRouteCost } from '../../../../../src/lib/core/layout/routing/route-cost';
 import { routeCrossings } from '../../../../support/assertions/route-geometry';
 
 const nodeIds = ['a', 'b', 'c', 'd', 'e'] as const;

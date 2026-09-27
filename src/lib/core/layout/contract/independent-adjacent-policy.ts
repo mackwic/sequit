@@ -1,6 +1,6 @@
 import { compareCanonicalStrings } from '../../canonical-string';
+import type { RouteCost } from '../geometry/layout-route-cost';
 import type { LayoutResult } from '../layout-types';
-import type { RouteCost } from '../routing/route-cost';
 import type { CandidateFaceChoice } from './validate-candidate';
 
 /** The default detour tolerances over the best bridged candidate. */

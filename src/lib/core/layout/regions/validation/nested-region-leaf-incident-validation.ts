@@ -51,7 +51,11 @@ function incidentDiagnostic(
 	});
 }
 
-function onFace(anchor: Point, bounds: Bounds, side: RegionPortalSide): boolean {
+export function incidentAnchorOnFace(
+	anchor: Point,
+	bounds: Bounds,
+	side: RegionPortalSide,
+): boolean {
 	if (side === RegionPortalSide.Top || side === RegionPortalSide.Bottom) {
 		const right = bounds.x + bounds.width;
 		const horizontal = anchor.x > bounds.x && anchor.x < right;
@@ -243,7 +247,7 @@ function leafFailure(
 ): RegionGeometryDiagnostic | undefined {
 	const element = elementFor(incident, context.elementsById);
 	if ('code' in element) return element;
-	if (!onFace(incident.anchor, element.bounds, incident.portal.side))
+	if (!incidentAnchorOnFace(incident.anchor, element.bounds, incident.portal.side))
 		return incidentDiagnostic(
 			incident,
 			RegionGeometryDiagnosticCode.IncidentWrongAttachment,

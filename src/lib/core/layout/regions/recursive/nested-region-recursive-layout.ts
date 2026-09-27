@@ -1,6 +1,5 @@
 import { defined } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
-import type { RouteBridgeCache } from '../../bridges/bridge-oracle';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
 import type {
 	RegionIncidentPath,
@@ -15,6 +14,9 @@ import {
 } from '../composition/nested-region-recursive-model-adapter';
 import { regionLeafIncidentPath } from '../leaf/region-leaf-incident-path';
 import {
+	enumerateRegionLeafLayoutsWithIncidents,
+	type RegionLeafIncidentAttempt,
+	type RegionLeafIncidentInput,
 	solveRegionLeafLayoutWithIncidents,
 	UnknownRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
@@ -22,47 +24,76 @@ import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import { NESTED_REGION_COMPOSITION_LIMITS } from '../model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
-	type RegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../model/region-composition-model';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
-	type RegionPortalSide,
 } from '../model/region-composition-types';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
 import { RegionSearchProvenance } from '../model/region-search-evidence';
-import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
-import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
 import { nestedRegionLocalMeasurements } from './nested-region-local-measurements';
-import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
 import { solveArrangedRegion } from './region-arrangement-orchestration';
 import { regionArrangementFor } from './region-arrangement-selection';
 import {
-	type DiagnosedCandidate,
-	diagnosedFailure,
-	leafErrorAttempt,
-	type RegionRetryState,
-	retryIncidentFailure,
-	retryLeafContractFailure,
-} from './region-recursive-outcome';
+	ExhaustedLeafAlternative,
+	type LeafSelection,
+	solveRecursiveCandidate,
+} from './region-composition-search';
+import { leafErrorAttempt } from './region-recursive-outcome';
+
+function leafCandidate(
+	input: RegionLeafIncidentInput,
+	regionId: string,
+	selection: LeafSelection | undefined,
+): RegionLeafIncidentAttempt {
+	const index = selection?.indices.get(regionId);
+	if (index === undefined) return solveRegionLeafLayoutWithIncidents(input);
+	const streams = defined(selection);
+	let stream = streams.streams.get(regionId);
+	if (stream === undefined) {
+		stream = {
+			candidates: [],
+			iterator: enumerateRegionLeafLayoutsWithIncidents(input),
+			exhaustive: false,
+			complete: true,
+		};
+		streams.streams.set(regionId, stream);
+	}
+	while (stream.candidates.length <= index && !stream.exhaustive) {
+		const next = stream.iterator.next();
+		if (next.done === true) {
+			stream.exhaustive = true;
+			stream.complete = next.value.exhaustive;
+		} else stream.candidates.push(next.value);
+	}
+	const candidate = stream.candidates[index];
+	if (candidate !== undefined) return candidate;
+	if (index > 0) throw new ExhaustedLeafAlternative();
+	return solveRegionLeafLayoutWithIncidents(input);
+}
 
 function solveLeaf(
 	context: RecursiveContext,
 	regionId: string,
 	incidentSides: IncidentSides,
+	selection?: LeafSelection,
 ): SolvedRecursiveRegion {
+	const index = selection?.indices.get(regionId) ?? -1;
+	const cached = selection?.solvedLeaves.get(regionId)?.get(index);
+	if (cached !== undefined) return cached;
 	const document = leafDocument(context, regionId);
 	const measurements = nestedRegionLocalMeasurements(document, context.measurements);
 	const definition = defined(context.model.regionsById.get(regionId)).definition;
-	const solved = solveRegionLeafLayoutWithIncidents({
+	const input = {
 		document,
 		measurements,
 		leafPolicy: regionLeafPolicy(definition),
 		cache: context.cache,
 		contracts: leafIncidentContracts(context, regionId, incidentSides),
-	});
+	};
+	const solved = leafCandidate(input, regionId, selection);
 	if (solved.status === RegionCompositionStatus.Unknown)
 		throw new UnknownRegionLeafLayoutError(
 			`Region ${regionId}: ${solved.reason}`,
@@ -84,7 +115,7 @@ function solveLeaf(
 	const incidentPaths = new Map<string, RegionIncidentPath>();
 	for (const incident of solved.incidents)
 		incidentPaths.set(incident.relationId, regionLeafIncidentPath(regionId, layout, incident));
-	return {
+	const result: SolvedRecursiveRegion = {
 		layout,
 		ranks,
 		regions: [],
@@ -96,92 +127,33 @@ function solveLeaf(
 		})),
 		incidentPaths,
 	};
+	if (selection !== undefined) {
+		let layouts = selection.solvedLeaves.get(regionId);
+		if (layouts === undefined) {
+			layouts = new Map();
+			selection.solvedLeaves.set(regionId, layouts);
+		}
+		layouts.set(index, result);
+	}
+	return result;
 }
 
 function solveRegion(
 	context: RecursiveContext,
 	regionId: string,
 	incidentSides: IncidentSides,
+	selection?: LeafSelection,
 ): SolvedRecursiveRegion {
 	const region = defined(context.model.regionsById.get(regionId));
 	const arrangement = regionArrangementFor(region);
-	if (arrangement === undefined) return solveLeaf(context, regionId, incidentSides);
+	if (arrangement === undefined) return solveLeaf(context, regionId, incidentSides, selection);
 	return solveArrangedRegion({
 		context,
 		regionId,
 		incidentSides,
 		arrangement,
-		solveChild: solveRegion,
+		solveChild: (childContext, id, sides) => solveRegion(childContext, id, sides, selection),
 	});
-}
-
-interface RecursiveCandidateInput {
-	readonly graph: LogicGraph;
-	readonly measurements: LayoutMeasurements;
-	readonly model: RegionCompositionModel;
-	readonly cache: RegionLocalLayoutCache | undefined;
-}
-
-function retryCompositionFailure(
-	state: RegionRetryState,
-	failure: ReturnType<typeof validateRegionCompositionGeometry>,
-): boolean {
-	if (failure === undefined) return false;
-	return retryIncidentFailure(state, failure);
-}
-
-function solveRecursiveCandidate(input: RecursiveCandidateInput): DiagnosedCandidate {
-	const { graph, measurements, model, cache } = input;
-	const dispositionSideByRegionId = new Map<string, RegionPortalSide>();
-	const context: RecursiveContext = {
-		graph,
-		measurements,
-		cache,
-		model,
-		ownershipByRelationId: new Map(model.relations.map((owned) => [owned.relation.id, owned])),
-		dispositionSideByRegionId,
-	};
-	const relationOrder = new Map(graph.relations.map(({ relation }, index) => [relation.id, index]));
-	const retriedOwners = new Set<string>();
-	const retryState: RegionRetryState = {
-		context,
-		retriedOwners,
-		dispositionSides: dispositionSideByRegionId,
-	};
-	// One initial candidate plus at most one side retry per normalized region.
-	const retryBudget = model.regionsById.size + 1;
-	for (let attempt = 0; attempt < retryBudget; attempt += 1) {
-		let solved: SolvedRecursiveRegion;
-		try {
-			solved = solveRegion(context, model.rootId, new Map());
-		} catch (error) {
-			if (retryLeafContractFailure(retryState, error)) continue;
-			throw error;
-		}
-		const candidate = {
-			status: RegionCompositionStatus.Selected,
-			rootId: model.rootId,
-			layout: solved.layout,
-			regions: solved.regions,
-			portals: [...solved.portals].sort(
-				(left, right) =>
-					defined(relationOrder.get(left.relationId)) -
-					defined(relationOrder.get(right.relationId)),
-			),
-			ownedRoutes: solved.ownedRoutes,
-		} as const;
-		const bridgeCache: RouteBridgeCache = {};
-		const chainFailure = validateRegionCompositionGeometry(model, candidate, bridgeCache);
-		if (retryCompositionFailure(retryState, chainFailure)) continue;
-		if (chainFailure !== undefined) return diagnosedFailure(chainFailure, chainFailure.message);
-		const incidentFailure = validateNestedRegionLeafIncidents(model, candidate, bridgeCache);
-		if (incidentFailure !== undefined) {
-			if (retryIncidentFailure(retryState, incidentFailure)) continue;
-			return diagnosedFailure(incidentFailure, regionQualifiedFailure(model, incidentFailure));
-		}
-		return { attempt: candidate };
-	}
-	throw new Error('Region side alternatives exceeded the normalized region count.');
 }
 
 /** A row disposition with an incident contract at every region boundary. */
@@ -205,12 +177,15 @@ export function solveRecursiveNestedRegionLayout(
 	if (failure !== undefined)
 		return { status: RegionCompositionStatus.Unsupported, reason: failure };
 	try {
-		return solveRecursiveCandidate({
-			graph,
-			measurements,
-			model: normalized.model,
-			cache,
-		}).attempt;
+		return solveRecursiveCandidate(
+			{
+				graph,
+				measurements,
+				model: normalized.model,
+				cache,
+			},
+			(context, selection) => solveRegion(context, normalized.model.rootId, new Map(), selection),
+		).attempt;
 	} catch (error) {
 		const attempt = leafErrorAttempt(error);
 		if (attempt !== undefined) return attempt;
