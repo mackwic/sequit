@@ -61,9 +61,12 @@ function contactsAnotherRoute(candidate: LayoutRelation, context: RoutingContext
 	if (!validateSelfContacts(candidate)) return true;
 	const envelope = routePathBounds(candidate);
 	routeEnvelopeNeighbors(context.contactIndex, envelope, context.activeIndex, context.neighbors);
-	for (const index of context.neighbors) {
-		const other = defined(context.routes[index]);
-		const bridges = routeBridgeAnalysis([candidate, other]).bridges;
+	if (context.neighbors.length === 0) return false;
+	const neighboringRoutes: LayoutRelation[] = [candidate];
+	for (const index of context.neighbors) neighboringRoutes.push(defined(context.routes[index]));
+	const bridges = routeBridgeAnalysis(neighboringRoutes).bridges;
+	for (let index = 1; index < neighboringRoutes.length; index++) {
+		const other = defined(neighboringRoutes[index]);
 		if (disallowedRouteContacts(candidate, other, bridges).length > 0) return true;
 	}
 	return false;
@@ -237,6 +240,16 @@ function freshExterior(
 	return undefined;
 }
 
+function routeNeedsCorrection(
+	route: LayoutRelation,
+	context: RoutingContext,
+	groups: RouteObstacles | undefined,
+): boolean {
+	if (routeHitsObstacles(route.points, context.nodes)) return true;
+	if (groups !== undefined && routeHitsObstacles(route.points, groups)) return true;
+	return contactsAnotherRoute(route, context);
+}
+
 /** Final bounds, rather than logical group ranks, determine which passages need correction. */
 export function clearGroupEndpointRoutes(
 	graph: LogicGraph,
@@ -257,9 +270,7 @@ export function clearGroupEndpointRoutes(
 	for (const [index, route] of routes.entries()) {
 		context.activeIndex = index;
 		const groups = foreignGroupObstacles(context, route, 0);
-		const hitsNode = routeHitsObstacles(route.points, context.nodes);
-		const hitsGroup = groups !== undefined && routeHitsObstacles(route.points, groups);
-		if (!hitsNode && !hitsGroup) continue;
+		if (!routeNeedsCorrection(route, context, groups)) continue;
 		const clearanceGroups = foreignGroupObstacles(context, route);
 		let replacement =
 			alternateRoute(context, route, clearanceGroups) ??

@@ -321,6 +321,25 @@ describe('one route-contact rule', () => {
 		]);
 	});
 
+	it('accepts a solitary bend but rejects an overlapping route without a second route', () => {
+		const route: LayoutRelation = {
+			...path('loop', [0, 0], [100, 0], [100, 50], [40, 50], [40, 0], [80, 0]),
+			from: 'a',
+			to: 'b',
+		};
+		const bend: LayoutRelation = {
+			...path('bend', [0, 0], [100, 0], [100, 100]),
+			from: 'a',
+			to: 'b',
+		};
+		expect(contactFailure([bend], routeBridgeAnalysis([bend]))).toBeUndefined();
+		expect(contactFailure([route], routeBridgeAnalysis([route]))).toMatchObject({
+			valid: false,
+			code: DedicatedCandidateRejectionCode.SelfContact,
+			relationId: 'loop',
+		});
+	});
+
 	it('gives dedicated and lane validators the same typed refusal and canonical relation pair', () => {
 		const a: LayoutRelation = { ...path('a', [0, 0], [50, 0]), from: 'one', to: 'two' };
 		const z: LayoutRelation = { ...path('z', [0, 0], [20, 0]), from: 'another', to: 'three' };

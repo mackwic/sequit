@@ -26,16 +26,8 @@ const verifyPublishedLayouts = async () => {
 	expect(invalidCount, firstFailures.join('\n')).toBe(0);
 };
 
-// Fuzz still exercises all 5,000 cases; its fixed seed includes a reduced route-contact defect.
-if (process.env['SEQUIT_PROPERTY_MODE'] === 'fuzz')
-	it.fails(
-		'fuzzes published layouts against the independent geometry validator',
-		verifyPublishedLayouts,
-		600_000,
-	);
-else
-	it(
-		'checks published layouts against the independent geometry validator',
-		verifyPublishedLayouts,
-		600_000,
-	);
+it(
+	'checks published layouts against the independent geometry validator',
+	verifyPublishedLayouts,
+	600_000,
+);
