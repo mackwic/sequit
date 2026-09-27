@@ -17,6 +17,22 @@ Ordre décidé : modèle transversal d'abord, puis phases du moteur dédié avec
 - **B2** : enveloppe de groupe sortie des couches, passages planifiés au lieu de la correction après placement (plus gros gain de lisibilité et de simplicité).
 - **B3** : suppression des points colinéaires dupliqués dans les routes (cosmétique ; ré-épingle les 12 références et l'empreinte dense).
 
+## Défauts connus à reprendre en priorité
+
+### Relation groupe→groupe entre rangs adjacents (constaté le 27 septembre 2026)
+
+- Défaut pour la phase 4. Quand deux groupes sont reliés et placés sur deux rangs adjacents, leurs cadres se touchent (écart nul) et la route groupe→groupe se réduit à un point : 4 points identiques, par ex. (686,240) dans `group-relations` et (174,240) pour deux groupes d'un seul membre. La flèche est donc invisible et le validateur la rejette (`route`) dans tout ordre, documentaire compris. On l'observe dès 1×1 membre et jusqu'à 7×7, ainsi que dans le scénario de performance `group-relations`, entre chaque paire de groupes consécutifs. Cause : `relationGroupRankGap` (`src/lib/core/layout/placement/prepare-measurements.ts`) ne réserve que la somme des coques des groupes qui contiennent les membres, et non l'écart libre `BASE_RANK_GAP` entre le bord d'une extrémité-groupe et l'autre extrémité. Correctif essayé : gap = max(existant, coques intérieures + BASE_RANK_GAP) quand une extrémité est un groupe. Avec lui, la route mesure 72 px et le layout est valide dans les 4 directions, un test rouge avant et vert après existait (1 et 7 membres, par `layoutWithRootRegion`), et avec 1 unité de budget les groupes 7×7 restent cherchés. Trois raisons de l'avoir annulé : (a) il modifie l'empreinte `dedicated-layout-identity` ; (b) `group-relations` à 1000 nœuds passe de ~4 ms à ~35 s en layout à froid (à 100 nœuds : 39,6 ms). L'écart global de rang multiplie donc un coût non linéaire à profiler avant tout correctif ; (c) il s'arrêtait au milieu d'un profilage.
+
+- Après ce correctif seulement, imputer 1 unité de budget par relation groupe→groupe au lieu de |S|×|T|. Aujourd'hui, deux groupes de 7 membres (49 paires ≥ 45) sautent la recherche de toute leur composante. Sans ce correctif, 1 unité relance une recherche inutile : tous les candidats sont invalides, la sortie est `baseline-fallback`, et `group-relations` dépasse ses plafonds incrémentaux (50-99 : 6,63 ms pour un plafond de 5 ; 100-999 : 31,7 ms pour un plafond de 10).
+
+- Conséquence actuelle : la relation groupe→groupe impute |S|×|T| paires au budget de rang ; deux groupes de 7 membres (49 paires) désactivent la recherche d'ordre de toute leur composante (falaise à 45 paires). La sélection d'ordre change pour tout document comportant une relation groupe→groupe depuis `a4999076`.
+
+### Autres points ouverts
+
+- Non-interférence générale des composantes sans jonction comportant des arêtes longues (réservation inter-composantes `reservedRoutes`).
+- Combinaison gouttière de rangée + ordre de bus non canonique dans une même relation de grille (limite acceptée en phase 3).
+- Coût incrémental `binary-tree/100-999` : chaque insertion refait un layout froid complet (~6 ms) ; plafond 9 ms sans marge.
+
 ## Modèle de domaine et plan en vagues (diagnostic du 27 septembre 2026)
 
 # Diagnostic de modélisation du domaine du moteur de layout et préparation de la phase 4 (tête `6af4368f`)
