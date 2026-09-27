@@ -7,7 +7,11 @@ import {
 } from '../layout-types';
 import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
-import { type RankSearchComponent, rankSearchComponents } from './rank-order-components';
+import {
+	type RankSearchComponent,
+	rankSearchComponents,
+	relationComponents,
+} from './rank-order-components';
 import {
 	type DedicatedLayoutEvaluator,
 	type RankOrderSearchWitness,
@@ -78,7 +82,7 @@ function componentBands(domain: RankOrderDomain): ReadonlyMap<number, readonly n
 	return byComponent;
 }
 
-/** Count only local relations once, including routes projected through enclosing groups. */
+/** Count each relation once per local document holding it, with its projected member pairs. */
 export function searchBudgets(
 	graph: LogicGraph,
 	structure: LayoutStructure,
@@ -92,15 +96,11 @@ export function searchBudgets(
 		for (const id of component.ids) byEndpoint.set(id, index);
 	const counts = new Map<number, number>();
 	for (const index of bands.keys()) counts.set(index, 0);
-	const owners = new Map(graph.relations.map(({ relation }) => [relation.id, relation] as const));
-	for (const effective of graph.effectiveRelations) {
-		const relation = defined(owners.get(effective.relationId));
-		const source = defined(byEndpoint.get(relation.from));
-		const target = defined(byEndpoint.get(relation.to));
+	const holders = relationComponents(graph, byEndpoint);
+	for (const [index, effective] of graph.effectiveRelations.entries()) {
 		const pairs = effective.sourceIds.length * effective.targetIds.length;
-		if (bands.has(source)) counts.set(source, defined(counts.get(source)) + pairs);
-		if (target !== source && bands.has(target))
-			counts.set(target, defined(counts.get(target)) + pairs);
+		for (const holder of defined(holders[index]))
+			if (bands.has(holder)) counts.set(holder, defined(counts.get(holder)) + pairs);
 	}
 	let skippedComponents = 0;
 	for (const index of bands.keys()) {

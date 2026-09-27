@@ -54,6 +54,37 @@ function groupOwners(
 	return owners;
 }
 
+/**
+ * Components whose local document keeps both endpoints of each relation, by relation index. A
+ * relation between two groups is projected onto their members: it belongs to the members'
+ * component, although each group endpoint forms a rank component of its own.
+ */
+function relationHolders(
+	graph: LogicGraph,
+	byEndpoint: ReadonlyMap<string, number>,
+	owners: ReadonlyMap<string, ReadonlySet<number>>,
+): readonly (readonly number[])[] {
+	const holders = (id: string): ReadonlySet<number> => {
+		const groupHolders = owners.get(id);
+		if (groupHolders !== undefined) return groupHolders;
+		const index = byEndpoint.get(id);
+		if (index === undefined) return new Set();
+		return new Set([index]);
+	};
+	return graph.relations.map(({ relation }) => {
+		const targets = holders(relation.to);
+		return [...holders(relation.from)].filter((index) => targets.has(index));
+	});
+}
+
+/** The rank components holding each relation, by relation index, as `rankSearchComponents` does. */
+export function relationComponents(
+	graph: LogicGraph,
+	byEndpoint: ReadonlyMap<string, number>,
+): readonly (readonly number[])[] {
+	return relationHolders(graph, byEndpoint, groupOwners(graph, byEndpoint));
+}
+
 /** Partition the document once; a shared enclosing group is retained in each local context. */
 export function rankSearchComponents(
 	graph: LogicGraph,
@@ -81,14 +112,10 @@ export function rankSearchComponents(
 		parts.get(byEndpoint.get(junction.id) ?? -1)?.junctions.push(junction);
 	for (const group of graph.document.groups)
 		for (const index of owners.get(group.id) ?? []) defined(parts.get(index)).groups.push(group);
-	for (const { relation } of graph.relations) {
-		const source = byEndpoint.get(relation.from);
-		const target = byEndpoint.get(relation.to);
-		if (source !== undefined) defined(parts.get(source)).relations.push(relation);
-		// Projected group relations can connect members in another ranked component.
-		if (target !== undefined && target !== source)
-			defined(parts.get(target)).relations.push(relation);
-	}
+	const holders = relationHolders(graph, byEndpoint, owners);
+	for (const [index, { relation }] of graph.relations.entries())
+		for (const holder of defined(holders[index]))
+			defined(parts.get(holder)).relations.push(relation);
 	return [...parts].map(([index, part]) => {
 		const document = {
 			...graph.document,

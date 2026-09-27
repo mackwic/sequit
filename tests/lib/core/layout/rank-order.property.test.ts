@@ -1370,6 +1370,49 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 	});
 
+	it('charges a relation between two groups to the component of their members', () => {
+		const base = defined(
+			rankOrderComparisonCorpus().find(({ id }) => id === 'two-successors'),
+		).document;
+		const node = defined(base.nodes[0]);
+		const members = ['source', 'target'].flatMap((groupId) =>
+			Array.from({ length: 7 }, (_, index) => ({
+				...node,
+				id: `${groupId}-${index}`,
+				groupId,
+				markdown: 'Member',
+			})),
+		);
+		const document: LogicDocument = {
+			...base,
+			nodes: members,
+			groups: ['source', 'target'].map((id) => ({
+				id,
+				kind: EndpointKind.Group,
+				label: id,
+				layoutOrder: node.layoutOrder,
+			})),
+			relations: [{ id: 'source-target', from: 'source', to: 'target' }],
+		};
+		const prepared = prepareLayoutDocument(document);
+		const result = layoutWithDedicatedEngineAndRankOrderWitness(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+		);
+		const projection = defined(prepared.graph.effectiveRelations[0]);
+		expect(projection.sourceIds.length * projection.targetIds.length).toBe(49);
+		expect(result.witness).toMatchObject({
+			mode: 'skipped',
+			stop: 'shape-envelope',
+			skippedComponents: 1,
+			work: { localCompletePipelines: 0, globalCompletePipelines: 1 },
+		});
+		expect(result.layout).toEqual(
+			evaluateDedicatedLayout(prepareLayout(prepared.graph, prepared.ranks), prepared.measurements),
+		);
+	});
+
 	it('keeps unrelated grouped nodes and junctions outside the optimized local slice', () => {
 		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2'));
 		const document: LogicDocument = {
@@ -2351,6 +2394,48 @@ it('searches projected group routes through the component of their target', () =
 	const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 	expect(result.witness.mode).toBe('exact');
 	expect(result.witness.evaluated).toBeGreaterThan(1);
+	expect(
+		validateDedicatedCandidate({ graph, ranks, measurements, layout: result.layout }).valid,
+	).toBe(true);
+});
+
+it('searches a relation between two groups in the local document of their members', () => {
+	const base = corpusDocument(
+		['p', 'q', 'r', 'a', 'b'],
+		['p', 'q', 'r', 'a', 'b'],
+		[
+			{ id: 'p-q', from: 'p', to: 'q' },
+			{ id: 'r-a', from: 'r', to: 'a' },
+			{ id: 'r-b', from: 'r', to: 'b' },
+			{ id: 'g1-g2', from: 'g1', to: 'g2' },
+		],
+	);
+	const groupOf = new Map([
+		['q', 'g1'],
+		['a', 'g2'],
+	]);
+	const document: LogicDocument = {
+		...base,
+		groups: ['g1', 'g2'].map((id, index) => ({
+			kind: EndpointKind.Group,
+			id,
+			label: id,
+			layoutOrder: orderKey(`Z${index + 1}`),
+		})),
+		nodes: base.nodes.map((node) => {
+			const groupId = groupOf.get(node.id);
+			if (groupId === undefined) return node;
+			return { ...node, groupId };
+		}),
+	};
+	const { graph, ranks, measurements } = prepareLayoutDocument(document);
+	const documentary = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
+	expect(
+		validateDedicatedCandidate({ graph, ranks, measurements, layout: documentary }),
+	).toMatchObject({ valid: false, relationId: 'g1-g2' });
+	const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+	expect(result.witness.mode).toBe('exact');
+	expect(result.witness.valid).toBeGreaterThan(0);
 	expect(
 		validateDedicatedCandidate({ graph, ranks, measurements, layout: result.layout }).valid,
 	).toBe(true);
