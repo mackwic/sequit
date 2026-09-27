@@ -25,6 +25,8 @@ interface ReservationInput {
 	readonly sizes: ReadonlyMap<string, Size>;
 	readonly componentByEndpointId: ReadonlyMap<string, number>;
 	readonly space: DirectRoutingSpace;
+	/** Mixed routing must keep junction channel clearance even when all local passages look direct. */
+	readonly forceChannels?: boolean;
 }
 
 function componentsNeedingDistinctPorts(
@@ -172,7 +174,7 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 		vertical: frame.vertical,
 		componentByEndpointId: input.componentByEndpointId,
 	});
-	if (crossings.length === 0 && passagesFitDirectly(input, passages)) {
+	if (!input.forceChannels && crossings.length === 0 && passagesFitDirectly(input, passages)) {
 		// A later ordinary reservation would move the rails and invalidate the direct passages.
 		const ordinaryCrossings = crossingCorridors({
 			graph,

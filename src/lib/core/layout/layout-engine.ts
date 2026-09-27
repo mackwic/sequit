@@ -24,8 +24,8 @@ import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import { alignJunctionPorts } from './routing/align-junction-ports';
 import { allocateLayerPorts } from './routing/layered-port-reservation';
 import { materializeLayers, planLayeredRouting } from './routing/layered-routing';
-import { allocatePorts } from './routing/port-allocation';
-import { planNodeRouting } from './routing/reserve-node-routing';
+import { allocatePorts, type PortAllocation } from './routing/port-allocation';
+import { planNodeRouting, type NodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
 import {
 	cornerPortSharing,
@@ -38,11 +38,181 @@ import { bypassedChains } from './structure/bypassed-chains';
 import type { LayoutStructure } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
 
+interface RoutingReservation {
+	readonly gaps: ReadonlyMap<number, number>;
+	readonly channelGaps?: ReadonlyMap<number, readonly number[]>;
+}
+
+interface LayeredRoutingResult {
+	readonly materialize: () => ReadonlyMap<string, readonly Point[]>;
+	readonly reservation: RoutingReservation;
+}
+
+function mergeGapMaps(
+	left: ReadonlyMap<number, number>,
+	right: ReadonlyMap<number, number>,
+): ReadonlyMap<number, number> {
+	const result = new Map(left);
+	for (const [rank, gap] of right) result.set(rank, Math.max(result.get(rank) ?? 0, gap));
+	return result;
+}
+
+function mergeChannelGapMaps(
+	left: ReadonlyMap<number, readonly number[]> | undefined,
+	right: ReadonlyMap<number, readonly number[]> | undefined,
+): ReadonlyMap<number, readonly number[]> | undefined {
+	if (left === undefined) return right;
+	if (right === undefined) return left;
+	const result = new Map(left);
+	for (const [rank, gaps] of right) {
+		const current = result.get(rank) ?? [];
+		result.set(
+			rank,
+			Array.from({ length: Math.max(current.length, gaps.length) }, (_, index) =>
+				Math.max(current[index] ?? 0, gaps[index] ?? 0),
+			),
+		);
+	}
+	return result;
+}
+
+function mergeReservations(
+	left: RoutingReservation,
+	right: RoutingReservation,
+): RoutingReservation {
+	return {
+		gaps: mergeGapMaps(left.gaps, right.gaps),
+		channelGaps: mergeChannelGapMaps(left.channelGaps, right.channelGaps),
+	};
+}
+
+function structureForComponents(
+	structure: LayoutStructure,
+	components: LayoutStructure['components'],
+): LayoutStructure {
+	const ids = new Set(components.flatMap(({ ids: componentIds }) => componentIds));
+	const relations = structure.graph.relations.filter(
+		({ relation }) => ids.has(relation.from) && ids.has(relation.to),
+	);
+	const relationIds = new Set(relations.map(({ relation }) => relation.id));
+	const graph: LogicGraph = {
+		...structure.graph,
+		endpointsById: structure.graph.endpointsById,
+		relations,
+		effectiveRelations: structure.graph.effectiveRelations.filter(({ relationId }) =>
+			relationIds.has(relationId),
+		),
+		rankableEndpointIds: structure.graph.rankableEndpointIds.filter((id) => ids.has(id)),
+		outgoingByEndpointId: new Map(
+			[...structure.graph.outgoingByEndpointId]
+				.filter(([id]) => ids.has(id))
+				.map(([id, neighbors]) => [id, neighbors.filter((neighbor) => ids.has(neighbor))]),
+		),
+		predecessorsByEndpointId: new Map(
+			[...structure.graph.predecessorsByEndpointId]
+				.filter(([id]) => ids.has(id))
+				.map(([id, neighbors]) => [id, neighbors.filter((neighbor) => ids.has(neighbor))]),
+		),
+	};
+	const hasGroupContext = [...ids].some(
+		(id) =>
+			structure.hierarchy?.byId.has(id) === true ||
+			structure.graph.endpointsById.get(id)?.entity.groupId !== undefined,
+	);
+	return {
+		...structure,
+		graph,
+		junctionIds: new Set([...structure.junctionIds].filter((id) => ids.has(id))),
+		junctions: new Map([...structure.junctions].filter(([id]) => ids.has(id))),
+		branchAnchors: new Map(
+			[...structure.branchAnchors].filter(([, anchor]) => relationIds.has(anchor.relationId)),
+		),
+		hierarchy: hasGroupContext ? structure.hierarchy : undefined,
+		components,
+	};
+}
+
+function usesLayeredRouting(
+	structure: LayoutStructure,
+	component: LayoutStructure['components'][number],
+): boolean {
+	if (structure.maximumRank <= 1 && structure.junctionIds.size === 0) return false;
+	const ids = new Set(component.ids);
+	if (component.ids.some((id) => structure.junctionIds.has(id))) return true;
+	return structure.graph.relations.some(({ relation }) => {
+		if (!ids.has(relation.from) || !ids.has(relation.to)) return false;
+		const sourceRank = defined(structure.ranks.byEndpointId.get(relation.from));
+		const targetRank = defined(structure.ranks.byEndpointId.get(relation.to));
+		return sourceRank > targetRank + 1;
+	});
+}
+
+function scopePortAllocation(ports: PortAllocation, structure: LayoutStructure): PortAllocation {
+	const relationIds = new Set(structure.graph.relations.map(({ relation }) => relation.id));
+	const endpointIds = new Set(structure.graph.rankableEndpointIds);
+	return {
+		...ports,
+		sourceOffsets: new Map([...ports.sourceOffsets].filter(([id]) => relationIds.has(id))),
+		targetOffsets: new Map([...ports.targetOffsets].filter(([id]) => relationIds.has(id))),
+		metricDemands: ports.metricDemands.filter(({ endpointId }) => endpointIds.has(endpointId)),
+		sizes: new Map([...ports.sizes].filter(([id]) => endpointIds.has(id))),
+	};
+}
+
+function placeWithRoutingPorts(
+	workspace: LayoutWorkspace,
+	ports: PortAllocation,
+	routingStructure: LayoutStructure,
+	reservation?: RoutingReservation,
+): void {
+	if (routingStructure === workspace.structure) {
+		placeWithPorts(workspace, ports, reservation);
+		return;
+	}
+	const relationIds = new Set(routingStructure.graph.relations.map(({ relation }) => relation.id));
+	const offsets = new Map(workspace.placement.branchOffsets ?? []);
+	for (const [id, anchor] of workspace.structure.branchAnchors) {
+		if (!relationIds.has(anchor.relationId)) continue;
+		offsets.set(
+			id,
+			(ports.targetOffsets.get(anchor.relationId) ?? 0) -
+				(ports.sourceOffsets.get(anchor.relationId) ?? 0),
+		);
+	}
+	workspace.placement.branchOffsets = offsets;
+	for (const [id, size] of ports.sizes) workspace.measurements.sizes.set(id, size);
+	placeElements(workspace, reservation?.gaps ?? new Map(), reservation?.channelGaps);
+}
+
+function componentPortsChangePlacement(
+	workspace: LayoutWorkspace,
+	ports: PortAllocation,
+	routingStructure: LayoutStructure,
+): boolean {
+	if (routingStructure === workspace.structure) return portsChangePlacement(workspace, ports);
+	const { frame, measurements, placement } = workspace;
+	for (const demand of ports.metricDemands) {
+		const size = defined(measurements.sizes.get(demand.endpointId));
+		if (frame.vertical && size.width < demand.minimumCrossSize) return true;
+		if (!frame.vertical && size.height < demand.minimumCrossSize) return true;
+	}
+	for (const [id, anchor] of routingStructure.branchAnchors) {
+		const offset =
+			(ports.targetOffsets.get(anchor.relationId) ?? 0) -
+			(ports.sourceOffsets.get(anchor.relationId) ?? 0);
+		if (offset !== (placement.branchOffsets?.get(id) ?? 0)) return true;
+	}
+	return false;
+}
+
 function reserveLayeredRouting(
 	workspace: LayoutWorkspace,
 	layers: RoutingLayers,
-): ReadonlyMap<string, readonly Point[]> | undefined {
-	const { structure, measurements, placement, frame } = workspace;
+	routingStructure: LayoutStructure = workspace.structure,
+	baseReservation: RoutingReservation = { gaps: new Map() },
+): LayeredRoutingResult | undefined {
+	const { measurements, placement, frame } = workspace;
+	const structure = routingStructure;
 	if (structure.junctionIds.size === 0 && structure.maximumRank <= 1) return undefined;
 	const skipsOrdinaryRows =
 		structure.junctionIds.size === 0 &&
@@ -66,12 +236,13 @@ function reserveLayeredRouting(
 		junctionIds: structure.junctionIds,
 		sizes: measurements.sizes,
 		componentByEndpointId: new Map(
-			structure.components.flatMap((component, index) =>
+			workspace.structure.components.flatMap((component, index) =>
 				component.ids.map((id) => [id, index] as const),
 			),
 		),
 	};
-	let ports = allocateLayerPorts({
+	const allocated = allocateLayerPorts({
+		forceChannels: routingStructure !== workspace.structure,
 		...input,
 		space: directRoutingSpace({
 			layers,
@@ -81,29 +252,57 @@ function reserveLayeredRouting(
 			enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
 		}),
 	});
-	if (ports === undefined) return undefined;
-	placement.transverseCenters = alignment?.centers;
+	if (allocated === undefined) return undefined;
+	let ports =
+		routingStructure === workspace.structure
+			? allocated
+			: scopePortAllocation(allocated, structure);
+	if (routingStructure === workspace.structure) placement.transverseCenters = alignment?.centers;
+	else if (alignment !== undefined) {
+		const centers = new Map(placement.transverseCenters ?? []);
+		for (const [id, center] of alignment.centers) centers.set(id, center);
+		placement.transverseCenters = centers;
+	}
 	ports = withChainAlignment(ports, alignment);
-	placeWithPorts(workspace, ports);
+	if (routingStructure !== workspace.structure) ports = scopePortAllocation(ports, structure);
+	const initialReservation =
+		routingStructure === workspace.structure
+			? { gaps: new Map<number, number>() }
+			: baseReservation;
+	placeWithRoutingPorts(workspace, ports, structure, initialReservation);
 	let plan = planLayeredRouting(input, ports);
-	placeWithPorts(workspace, ports, plan);
+	let reservation: RoutingReservation =
+		routingStructure === workspace.structure ? plan : mergeReservations(baseReservation, plan);
+	const planReservation = routingStructure === workspace.structure ? plan : reservation;
+	placeWithRoutingPorts(workspace, ports, structure, planReservation);
 	if (structure.junctionIds.size > 0) {
 		const originalPorts = ports;
 		const originalPlan = plan;
+		const originalReservation = reservation;
 		const originalPaths = materializeLayers(input, plan);
-		const proposal = alignJunctionPorts({
+		let proposal = alignJunctionPorts({
 			...input,
 			vertical: frame.vertical,
 			ports,
 		});
-		placeWithPorts(workspace, proposal, plan);
+		if (routingStructure !== workspace.structure)
+			proposal = scopePortAllocation(proposal, structure);
+		placeWithRoutingPorts(workspace, proposal, structure, planReservation);
 		ports = alignJunctionPorts({
 			...input,
 			vertical: frame.vertical,
 			ports: originalPorts,
 		});
+		if (routingStructure !== workspace.structure) ports = scopePortAllocation(ports, structure);
 		plan = planLayeredRouting(input, ports);
-		placeWithPorts(workspace, ports, plan);
+		reservation =
+			routingStructure === workspace.structure ? plan : mergeReservations(baseReservation, plan);
+		placeWithRoutingPorts(
+			workspace,
+			ports,
+			structure,
+			routingStructure === workspace.structure ? plan : reservation,
+		);
 		const fits = [...ports.sizes].every(([id, size]) => {
 			const placed = proposal.sizes.get(id);
 			return placed?.width === size.width && placed.height === size.height;
@@ -111,22 +310,32 @@ function reserveLayeredRouting(
 		if (!fits || !improvesRoutes(originalPaths, materializeLayers(input, plan))) {
 			ports = originalPorts;
 			plan = originalPlan;
-			placeWithPorts(workspace, ports, plan);
+			reservation = originalReservation;
+			placeWithRoutingPorts(
+				workspace,
+				ports,
+				structure,
+				routingStructure === workspace.structure ? plan : reservation,
+			);
 		}
 	}
 	workspace.routing = {
 		ports,
-		gaps: plan.gaps,
+		gaps: reservation.gaps,
 		ranks: structure.ranks.byEndpointId,
 		corridors: [],
 		railCounts: new Map(),
 	};
-	return materializeLayers(input, plan);
+	return { materialize: () => materializeLayers(input, plan), reservation };
 }
 
-function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number, number>): void {
-	const { structure, measurements, frame, placement } = workspace;
-	const { graph, ranks } = structure;
+function reserveRouting(
+	workspace: LayoutWorkspace,
+	baseGaps: ReadonlyMap<number, number>,
+	routingStructure: LayoutStructure = workspace.structure,
+): void {
+	const { measurements, frame, placement } = workspace;
+	const { graph, ranks } = routingStructure;
 	let corridors: readonly RoutingCorridor[] = crossingCorridors({
 		graph,
 		ranks: ranks.byEndpointId,
@@ -135,7 +344,7 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 	});
 	if (corridors.length === 0) return;
 	const sharing = cornerPortSharing(corridors);
-	let ports = allocatePorts({
+	const allocated = allocatePorts({
 		corridors,
 		...sharing,
 		fromCrossingCorridors: true,
@@ -144,11 +353,16 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		graph,
 		bounds: placement.bounds,
 	});
-	let reusePlacement = sharing !== undefined && structure.hierarchy === undefined;
-	if (reusePlacement && structure.junctionIds.size === 0)
-		reusePlacement = !portsChangePlacement(workspace, ports);
-	if (!reusePlacement) placeWithPorts(workspace, ports, { gaps: baseGaps });
-	if (structure.hierarchy !== undefined)
+	let ports =
+		routingStructure === workspace.structure
+			? allocated
+			: scopePortAllocation(allocated, routingStructure);
+	let reusePlacement = sharing !== undefined && routingStructure.hierarchy === undefined;
+	if (reusePlacement && routingStructure.junctionIds.size === 0)
+		reusePlacement = !componentPortsChangePlacement(workspace, ports, routingStructure);
+	if (!reusePlacement)
+		placeWithRoutingPorts(workspace, ports, routingStructure, { gaps: baseGaps });
+	if (routingStructure.hierarchy !== undefined)
 		({ corridors, ports } = settleGroupCorridorPorts({
 			graph,
 			ranks: ranks.byEndpointId,
@@ -158,9 +372,15 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 			initial: corridors,
 			initialPorts: ports,
 			place: (candidate) => {
-				placeWithPorts(workspace, candidate, { gaps: baseGaps });
+				const selected =
+					routingStructure === workspace.structure
+						? candidate
+						: scopePortAllocation(candidate, routingStructure);
+				placeWithRoutingPorts(workspace, selected, routingStructure, { gaps: baseGaps });
 			},
 		}));
+	if (routingStructure !== workspace.structure)
+		ports = scopePortAllocation(ports, routingStructure);
 	const routing = planNodeRouting({
 		corridors,
 		ports,
@@ -169,19 +389,118 @@ function reserveRouting(workspace: LayoutWorkspace, baseGaps: ReadonlyMap<number
 		ranks: ranks.byEndpointId,
 		reuseCorridorCenters: reusePlacement,
 	});
-	if (structure.hierarchy === undefined && structure.junctionIds.size === 0) {
+	if (routingStructure.hierarchy === undefined && routingStructure.junctionIds.size === 0) {
 		workspace.routing = routing;
-		expandRowGaps({
-			bounds: placement.bounds,
-			ranks: ranks.byEndpointId,
-			gaps: routing.gaps,
-			maximumRank: structure.maximumRank,
-			frame,
-		});
+		if (routingStructure !== workspace.structure) {
+			placeWithRoutingPorts(workspace, ports, routingStructure, {
+				gaps: mergeGapMaps(baseGaps, routing.gaps),
+			});
+		} else
+			expandRowGaps({
+				bounds: placement.bounds,
+				ranks: ranks.byEndpointId,
+				gaps: routing.gaps,
+				maximumRank: routingStructure.maximumRank,
+				frame,
+			});
 		return;
 	}
-	placeWithPorts(workspace, ports, routing);
+	placeWithRoutingPorts(workspace, ports, routingStructure, routing);
 	workspace.routing = routing;
+}
+
+interface StandardRoutingPlan {
+	readonly structure: LayoutStructure;
+	readonly routing: NodeRouting | undefined;
+}
+
+function materializeStandardRoutes(
+	workspace: LayoutWorkspace,
+	plan: StandardRoutingPlan,
+): ReadonlyMap<string, readonly Point[]> {
+	const { frame, placement } = workspace;
+	const { structure, routing } = plan;
+	const placedRouting =
+		routing === undefined || routing.corridors.length === 0
+			? routing
+			: planNodeRouting({
+					corridors: routing.corridors.map(({ corridor }) => corridor),
+					ports: routing.ports,
+					bounds: placement.bounds,
+					vertical: frame.vertical,
+					ranks: structure.ranks.byEndpointId,
+				});
+	const result = buildLayoutResult({
+		graph: structure.graph,
+		bounds: placement.bounds,
+		routing: placedRouting,
+		frame,
+		space: routingSpace({
+			layers: routingLayers(structure),
+			bounds: placement.bounds,
+			frame,
+			enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
+		}),
+	});
+	return new Map(result.relations.map(({ id, points }) => [id, points]));
+}
+
+function reserveMixedRouting(
+	workspace: LayoutWorkspace,
+	baseGaps: ReadonlyMap<number, number>,
+	layeredComponents: LayoutStructure['components'],
+	normalComponents: LayoutStructure['components'],
+): ReadonlyMap<string, readonly Point[]> {
+	let reservation: RoutingReservation = { gaps: baseGaps };
+	const standardPlans: StandardRoutingPlan[] = [];
+	let inspectionPlan: NodeRouting | undefined;
+	const sourceOffsets = new Map<string, number>();
+	const targetOffsets = new Map<string, number>();
+	const rememberPorts = (plan: NodeRouting): void => {
+		inspectionPlan = plan;
+		for (const [id, offset] of plan.ports.sourceOffsets) sourceOffsets.set(id, offset);
+		for (const [id, offset] of plan.ports.targetOffsets) targetOffsets.set(id, offset);
+	};
+	for (const component of normalComponents) {
+		const componentStructure = structureForComponents(workspace.structure, [component]);
+		workspace.routing = undefined;
+		reserveRouting(workspace, reservation.gaps, componentStructure);
+		const routing = workspace.routing;
+		standardPlans.push({ structure: componentStructure, routing });
+		if (routing !== undefined) {
+			rememberPorts(routing);
+			reservation = mergeReservations(reservation, { gaps: routing.gaps });
+		}
+	}
+	const layeredPlans: LayeredRoutingResult[] = [];
+	for (const component of layeredComponents) {
+		const componentStructure = structureForComponents(workspace.structure, [component]);
+		const layered = reserveLayeredRouting(
+			workspace,
+			routingLayers(componentStructure),
+			componentStructure,
+			reservation,
+		);
+		if (layered === undefined) continue;
+		layeredPlans.push(layered);
+		reservation = layered.reservation;
+		if (workspace.routing !== undefined) rememberPorts(workspace.routing);
+	}
+	const routes = new Map<string, readonly Point[]>();
+	for (const plan of standardPlans)
+		for (const [id, points] of materializeStandardRoutes(workspace, plan)) routes.set(id, points);
+	for (const { materialize } of layeredPlans)
+		for (const [id, points] of materialize()) routes.set(id, points);
+	workspace.routing =
+		inspectionPlan === undefined
+			? undefined
+			: {
+					...inspectionPlan,
+					ports: { ...inspectionPlan.ports, sourceOffsets, targetOffsets },
+					gaps: reservation.gaps,
+					corridors: [],
+				};
+	return routes;
 }
 
 export function evaluateDedicatedLayout(
@@ -227,8 +546,21 @@ export function evaluateDedicatedLayout(
 		placeElements(workspace, baseGaps);
 	}
 	const layers = routingLayers(structure);
-	const routes = reserveLayeredRouting(workspace, layers);
-	if (routes === undefined) reserveRouting(workspace, baseGaps);
+	const layeredComponents = structure.components.filter((component) =>
+		usesLayeredRouting(structure, component),
+	);
+	const normalComponents = structure.components.filter(
+		(component) => !usesLayeredRouting(structure, component),
+	);
+	let routes: ReadonlyMap<string, readonly Point[]> | undefined;
+	if (layeredComponents.length === 0) reserveRouting(workspace, baseGaps);
+	else if (normalComponents.length === 0) {
+		const layered = reserveLayeredRouting(workspace, layers);
+		if (layered === undefined) reserveRouting(workspace, baseGaps);
+		else routes = layered.materialize();
+	} else {
+		routes = reserveMixedRouting(workspace, baseGaps, layeredComponents, normalComponents);
+	}
 	const space = routingSpace({
 		layers,
 		bounds: workspace.placement.bounds,
