@@ -1,7 +1,14 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
-import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
-import { packRails } from './rail-packing';
+import { RAIL_SPACING } from '../layout-settings';
+import { allocateChannelIntervals } from './channel-interval-allocation';
+import type {
+	ChannelEndpoint,
+	ChannelRailAllocation,
+	ChannelRouting,
+	ChannelRun,
+	ChannelWire,
+} from './channel-types';
 
 enum RunSide {
 	First = 'first',
@@ -32,8 +39,9 @@ function cycleBreaks(wires: readonly ChannelWire[]): Set<ChannelWire> {
 	return breaks;
 }
 
-function run(source: number, target: number): ChannelRun {
+function run(source: number, target: number, key: string): ChannelRun {
 	return {
+		key,
 		start: Math.min(source, target),
 		end: Math.max(source, target),
 		rail: 0,
@@ -79,12 +87,12 @@ function makeRuns(
 			const neighbor = defined(coordinates[defined(indices.get(wire.source)) + step]);
 			const offset = (neighbor - wire.source) / 3;
 			wire.middle = wire.source + offset;
-			wire.first = run(wire.source, wire.middle);
-			wire.last = run(wire.middle, wire.target);
+			wire.first = run(wire.source, wire.middle, String(runs.length));
+			wire.last = run(wire.middle, wire.target, String(runs.length + 1));
 			precedes(wire.first, wire.last);
 			runs.push(wire.first, wire.last);
 		} else {
-			wire.first = run(wire.source, wire.target);
+			wire.first = run(wire.source, wire.target, String(runs.length));
 			wire.last = wire.first;
 			runs.push(wire.first);
 		}
@@ -160,7 +168,7 @@ function mergeRuns(
 	return retained;
 }
 
-function assignRails(runs: readonly ChannelRun[]): number {
+function assignRails(runs: readonly ChannelRun[], ownerId: string): ChannelRailAllocation {
 	const ready = runs.filter((segment) => segment.remaining === 0);
 	const layers: ChannelRun[][] = [];
 	for (const segment of ready) {
@@ -175,12 +183,26 @@ function assignRails(runs: readonly ChannelRun[]): number {
 	}
 	if (ready.length !== runs.length) throw new Error('Unresolved channel routing constraint cycle');
 	let count = 0;
-	for (const layer of layers) count += packRails(layer, count);
-	return count;
+	const edge = { ownerId, capacity: runs.length, spacing: RAIL_SPACING };
+	const trackByRunKey = new Map<string, number>();
+	for (const layer of layers) {
+		const allocation = allocateChannelIntervals(edge, layer, count, trackByRunKey);
+		for (const segment of layer) {
+			const track = defined(allocation.trackByRunKey.get(segment.key));
+			segment.rail = track;
+		}
+		count += allocation.trackCount;
+	}
+	edge.capacity = count;
+	return { edge, trackByRunKey, railCount: count };
 }
 
 /** The caller owns these fresh wires; routing fills in their run references in place. */
-export function routeOwnedChannel(wires: ChannelWire[], nonInverted = false): ChannelRouting {
+export function routeOwnedChannel(
+	wires: ChannelWire[],
+	nonInverted = false,
+	ownerId = '@root/channel',
+): ChannelRouting {
 	let sharedEndpoints = false;
 	const moving = wires
 		.filter((wire) => {
@@ -210,16 +232,16 @@ export function routeOwnedChannel(wires: ChannelWire[], nonInverted = false): Ch
 			if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
 		}
 	}
-	return { wires, railCount: assignRails(runs) };
+	return { wires, ...assignRails(runs, ownerId) };
 }
 
 /** Share traverses at a common port, preserve distinct nets, then color transverse runs. */
-export function routeChannel(input: readonly ChannelEndpoint[]): ChannelRouting {
+export function routeChannel(input: readonly ChannelEndpoint[], ownerId?: string): ChannelRouting {
 	const wires: ChannelWire[] = input.map((endpoint) => ({
 		...endpoint,
 		first: undefined,
 		last: undefined,
 		middle: undefined,
 	}));
-	return routeOwnedChannel(wires);
+	return routeOwnedChannel(wires, false, ownerId);
 }

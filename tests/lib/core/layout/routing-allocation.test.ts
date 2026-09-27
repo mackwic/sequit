@@ -8,6 +8,7 @@ import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layo
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
 import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
+import { allocateChannelIntervals } from '../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
 	allocatePorts,
@@ -15,7 +16,6 @@ import {
 	sharedSourcePorts,
 	sharedTargetPorts,
 } from '../../../../src/lib/core/layout/routing/port-allocation';
-import { packRails } from '../../../../src/lib/core/layout/routing/rail-packing';
 import {
 	cornerPortSharing,
 	crossingCorridors,
@@ -386,38 +386,92 @@ describe('rail and port reservations', () => {
 		expect(await layoutGraph(fixture.graph, fixture.ranks, measured)).toEqual(fixture.layout);
 	});
 	it('reuses a rail for separated intervals but reserves different rails for nested intervals', () => {
-		const runs = [
-			{ start: 0, end: 100, rail: -1 },
-			{ start: 0, end: 20, rail: -1 },
-			{ start: 33, end: 50, rail: -1 },
-		];
-		expect(packRails(runs, 2)).toBe(2);
-		expect(runs.map(({ rail }) => rail)).toEqual([3, 2, 2]);
+		const edge = { ownerId: '@root/channel/reuse', capacity: 4, spacing: 24 };
+		const allocation = allocateChannelIntervals(
+			edge,
+			[
+				{ key: 'outer', start: 0, end: 100 },
+				{ key: 'inner', start: 0, end: 20 },
+				{ key: 'later', start: 33, end: 50 },
+			],
+			2,
+		);
+		expect(allocation.trackCount).toBe(2);
+		expect([...allocation.trackByRunKey]).toEqual([
+			['inner', 2],
+			['outer', 3],
+			['later', 2],
+		]);
 	});
 	it('keeps stable start/end ties and reuses the earliest released rail, not the lowest index', () => {
-		const runs = [
-			{ start: 0, end: 40, rail: -1 },
-			{ start: 0, end: 40, rail: -1 },
-			{ start: 0, end: 20, rail: -1 },
-			{ start: 33, end: 35, rail: -1 },
-			{ start: 60, end: 80, rail: -1 },
-			{ start: 61, end: 75, rail: -1 },
-		];
-		expect(packRails(runs, 2)).toBe(3);
-		expect(runs.map(({ rail }) => rail)).toEqual([3, 4, 2, 2, 2, 4]);
+		const allocation = allocateChannelIntervals(
+			{ ownerId: '@root/channel/ties', capacity: 6, spacing: 24 },
+			[
+				{ key: 'z-last', start: 0, end: 40 },
+				{ key: 'a-first', start: 0, end: 40 },
+				{ key: 'short', start: 0, end: 20 },
+				{ key: 'middle', start: 33, end: 35 },
+				{ key: 'later', start: 60, end: 80 },
+				{ key: 'latest', start: 61, end: 75 },
+			],
+			2,
+		);
+		expect(allocation.trackCount).toBe(3);
+		expect([...allocation.trackByRunKey]).toEqual([
+			['short', 2],
+			['z-last', 3],
+			['a-first', 4],
+			['middle', 2],
+			['later', 2],
+			['latest', 4],
+		]);
+	});
+	it('selects the earliest released rail when two different rails are already free', () => {
+		const allocation = allocateChannelIntervals(
+			{ ownerId: '@root/channel/free', capacity: 4, spacing: 24 },
+			[
+				{ key: 'short', start: 0, end: 20 },
+				{ key: 'long', start: 0, end: 30 },
+				{ key: 'reused-short', start: 33, end: 45 },
+				{ key: 'choice', start: 60, end: 70 },
+			],
+			0,
+		);
+		expect(allocation.trackCount).toBe(2);
+		expect([...allocation.trackByRunKey.values()]).toEqual([0, 1, 0, 1]);
 	});
 	it('requires strictly more than twelve units of clearance before reusing a rail', () => {
 		for (const [start, expected] of [
-			[32, [0, 1]],
-			[33, [0, 0]],
+			[32, 1],
+			[33, 0],
 		] as const) {
-			const runs = [
-				{ start: 0, end: 20, rail: -1 },
-				{ start, end: start + 10, rail: -1 },
-			];
-			packRails(runs, 0);
-			expect(runs.map(({ rail }) => rail)).toEqual(expected);
+			const allocation = allocateChannelIntervals(
+				{ ownerId: '@root/channel/clearance', capacity: 2, spacing: 24 },
+				[
+					{ key: 'first', start: 0, end: 20 },
+					{ key: 'second', start, end: start + 10 },
+				],
+				0,
+			);
+			expect(allocation.trackByRunKey.get('second')).toBe(expected);
 		}
+	});
+	it('reuses within a channel edge capacity but rejects overlapping demand beyond it', () => {
+		const edge = { ownerId: '@root/channel/bounded', capacity: 1, spacing: 24 };
+		const first = { key: 'first', start: 0, end: 20 };
+		expect(
+			allocateChannelIntervals(edge, [first, { key: 'later', start: 33, end: 40 }], 0).trackCount,
+		).toBe(1);
+		expect(() =>
+			allocateChannelIntervals(edge, [first, { key: 'overlap', start: 32, end: 40 }], 0),
+		).toThrow('Routing edge @root/channel/bounded has insufficient channel tracks.');
+		expect(() =>
+			allocateChannelIntervals(
+				{ ...edge, capacity: 2 },
+				[first, { key: 'overlap', start: 32, end: 40 }],
+				1,
+			),
+		).toThrow('Routing edge @root/channel/bounded has insufficient channel tracks.');
 	});
 	it('keeps split occurrences distinct and shares a family traverse across relations', () => {
 		const split = routeChannel([
@@ -430,12 +484,16 @@ describe('rail and port reservations', () => {
 		const divided = split.wires.find(({ middle }) => middle !== undefined);
 		expect(divided?.first).not.toBe(divided?.last);
 		expect(divided?.first?.depth).toBeLessThan(divided?.last?.depth ?? -1);
+		expect(divided?.first?.key).not.toBe(divided?.last?.key);
+		expect(split.trackByRunKey.get(divided?.first?.key ?? '')).toBe(divided?.first?.rail);
+		expect(split.trackByRunKey.get(divided?.last?.key ?? '')).toBe(divided?.last?.rail);
 		expect(a?.first).not.toBe(b?.first);
 		const family = routeChannel([
 			{ id: 'a', source: 0, target: 48, sharedSource: 'common' },
 			{ id: 'b', source: 0, target: 96, sharedSource: 'common' },
 		]);
 		expect(family.wires[0]?.first).toBe(family.wires[1]?.first);
+		expect(family.trackByRunKey.size).toBe(1);
 		expect(family.wires[0]?.first?.start).toBe(0);
 		expect(family.wires[0]?.first?.end).toBe(96);
 	});

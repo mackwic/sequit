@@ -85,7 +85,11 @@ export function planNodeRouting(input: {
 				middle: undefined,
 			}));
 		}
-		const channel = routeOwnedChannel(wires, corridor.cornerOnly === true);
+		const channel = routeOwnedChannel(
+			wires,
+			corridor.cornerOnly === true,
+			`@root/channel/corridor-${corridor.rank}`,
+		);
 		const count = Math.max(railCounts.get(corridor.rank) ?? 0, channel.railCount);
 		railCounts.set(corridor.rank, count);
 		gaps.set(corridor.rank, BASE_RANK_GAP + Math.max(0, count - 1) * RAIL_SPACING);

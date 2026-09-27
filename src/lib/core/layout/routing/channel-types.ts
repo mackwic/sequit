@@ -1,4 +1,9 @@
-import type { RailRun } from './rail-packing';
+/** Same resource-edge shape as the shared graph; routing does not depend outward on resources. */
+export interface ChannelRoutingEdge {
+	readonly ownerId: string;
+	readonly capacity: number;
+	readonly spacing: number;
+}
 
 export interface ChannelEndpoint {
 	readonly id: string;
@@ -12,14 +17,21 @@ export interface ChannelWire extends ChannelEndpoint {
 	last: ChannelRun | undefined;
 	middle: number | undefined;
 }
-export interface ChannelRun extends RailRun {
+export interface ChannelRun {
+	readonly key: string;
+	/** Assigned track on the channel edge. */
+	rail: number;
 	start: number;
 	end: number;
 	readonly next: ChannelRun[];
 	remaining: number;
 	depth: number;
 }
-export interface ChannelRouting {
-	readonly wires: readonly ChannelWire[];
+export interface ChannelRailAllocation {
+	readonly edge: ChannelRoutingEdge;
+	readonly trackByRunKey: ReadonlyMap<string, number>;
 	readonly railCount: number;
+}
+export interface ChannelRouting extends ChannelRailAllocation {
+	readonly wires: readonly ChannelWire[];
 }

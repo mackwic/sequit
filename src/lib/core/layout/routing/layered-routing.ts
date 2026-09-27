@@ -87,6 +87,7 @@ function reserveOuterArrivalRails(
 	byTarget: ReadonlyMap<string, OuterArrival[]>,
 ): ChannelRouting {
 	let railCount = channel.railCount;
+	let trackByRunKey: Map<string, number> | undefined;
 	let runs: ReadonlySet<ChannelRun | undefined> | undefined;
 	for (const arrivals of byTarget.values()) {
 		if (arrivals.length < 2) continue;
@@ -96,13 +97,17 @@ function reserveOuterArrivalRails(
 		for (const { run } of arrivals) {
 			let rail = Math.max(previous + 1, run.rail);
 			while (runConflictsOnRail(run, rail, runs)) rail += 1;
-			run.rail = rail;
+			if (run.rail !== rail) {
+				trackByRunKey ??= new Map(channel.trackByRunKey);
+				trackByRunKey.set(run.key, rail);
+				run.rail = rail;
+			}
 			previous = rail;
 			railCount = Math.max(railCount, rail + 1);
 		}
 	}
-	if (railCount === channel.railCount) return channel;
-	return { ...channel, railCount };
+	if (trackByRunKey === undefined) return channel;
+	return { ...channel, edge: { ...channel.edge, capacity: railCount }, trackByRunKey, railCount };
 }
 
 function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerChannel[] {
@@ -150,7 +155,7 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 				}),
 			};
 		});
-		const channel = routeChannel(endpoints);
+		const channel = routeChannel(endpoints, `@root/channel/layer-${layer}`);
 		const routed = reserveOuterArrivalRails(channel, outerArrivals(channel, crossing, input));
 		channels.push({ layer, links: crossing, ...routed });
 	}
