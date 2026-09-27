@@ -52,6 +52,37 @@ export function gridOf(
 	};
 }
 
+/** Seven ordinary local nodes yield 21 distinct acyclic relations inside one grid cell. */
+export function gridWithLocalRelations(): { document: LogicDocument; input: GridCellInput } {
+	const base = gridOf(2, 2);
+	const localNodes = independentNodes(7).nodes;
+	const firstCell = base.input.cells[0];
+	if (firstCell === undefined) throw new Error('Expected a grid cell');
+	return {
+		document: {
+			...base.document,
+			nodes: [
+				...base.document.nodes,
+				...localNodes.map((node) => ({ ...node, id: `local-${node.id}` })),
+			],
+			relations: localNodes.flatMap((source, index) =>
+				localNodes.slice(index + 1).map((target) => ({
+					id: `local-${source.id}-${target.id}`,
+					from: `local-${source.id}`,
+					to: `local-${target.id}`,
+				})),
+			),
+		},
+		input: {
+			...base.input,
+			cellByEndpointId: new Map([
+				...base.input.cellByEndpointId,
+				...localNodes.map((node) => [`local-${node.id}`, firstCell.id] as const),
+			]),
+		},
+	};
+}
+
 export function rowOf(count: number): { document: LogicDocument; input: RegionInput } {
 	const document = independentNodes(count);
 	return {

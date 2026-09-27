@@ -43,6 +43,7 @@ import {
 	forestOf,
 	gridOf,
 	gridRegionInput,
+	gridWithLocalRelations,
 	independentNodes,
 	rowOf,
 	shallowForestOf,
@@ -199,6 +200,72 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 					adjacentGrid.input,
 				),
 			),
+		),
+	);
+
+	const localGrid = gridWithLocalRelations();
+	const localPrepared = prepareLayoutDocument(localGrid.document);
+	results.push(
+		profileResource('grid-21-local-relations', 'cold', () =>
+			witnessSample(
+				solveGridCellLayout(localPrepared.graph, localPrepared.measurements, localGrid.input),
+			),
+		),
+	);
+	const largeMutatedNodes = new Map(largePrepared.measurements.nodes);
+	const largeNode = largeMutatedNodes.get('node-0');
+	if (largeNode === undefined) throw new Error('Missing large grid node measurement');
+	largeMutatedNodes.set('node-0', { ...largeNode, width: largeNode.width + 1 });
+	let largeCache = new RegionLocalLayoutCache();
+	results.push(
+		profileResource(
+			'grid-3x7-21-endpoints',
+			'incremental',
+			() =>
+				witnessSample(
+					solveGridCellLayout(
+						largePrepared.graph,
+						{ ...largePrepared.measurements, nodes: largeMutatedNodes },
+						largeGrid.input,
+						{ cache: largeCache },
+					),
+				),
+			2,
+			7,
+			() => {
+				largeCache = new RegionLocalLayoutCache();
+				solveGridCellLayout(largePrepared.graph, largePrepared.measurements, largeGrid.input, {
+					cache: largeCache,
+				});
+			},
+		),
+	);
+	const localMutatedNodes = new Map(localPrepared.measurements.nodes);
+	const localNode = localMutatedNodes.get('local-node-0');
+	if (localNode === undefined) throw new Error('Missing local grid node measurement');
+	localMutatedNodes.set('local-node-0', { ...localNode, width: localNode.width + 1 });
+	let localCache = new RegionLocalLayoutCache();
+	results.push(
+		profileResource(
+			'grid-21-local-relations',
+			'incremental',
+			() =>
+				witnessSample(
+					solveGridCellLayout(
+						localPrepared.graph,
+						{ ...localPrepared.measurements, nodes: localMutatedNodes },
+						localGrid.input,
+						{ cache: localCache },
+					),
+				),
+			2,
+			7,
+			() => {
+				localCache = new RegionLocalLayoutCache();
+				solveGridCellLayout(localPrepared.graph, localPrepared.measurements, localGrid.input, {
+					cache: localCache,
+				});
+			},
 		),
 	);
 
@@ -563,6 +630,34 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			};
 		}),
 	);
+	expect(
+		solveGridCellLayout(
+			largePrepared.graph,
+			{ ...largePrepared.measurements, nodes: largeMutatedNodes },
+			largeGrid.input,
+			{ cache: largeCache },
+		),
+	).toEqual(
+		solveGridCellLayout(
+			largePrepared.graph,
+			{ ...largePrepared.measurements, nodes: largeMutatedNodes },
+			largeGrid.input,
+		),
+	);
+	expect(
+		solveGridCellLayout(
+			localPrepared.graph,
+			{ ...localPrepared.measurements, nodes: localMutatedNodes },
+			localGrid.input,
+			{ cache: localCache },
+		),
+	).toEqual(
+		solveGridCellLayout(
+			localPrepared.graph,
+			{ ...localPrepared.measurements, nodes: localMutatedNodes },
+			localGrid.input,
+		),
+	);
 	// A one-pixel metric edit after a cached baseline must stabilize to its cold result.
 	expect(solveGridCellLayout(crossing.graph, alteredMeasurements, input, { cache })).toEqual(
 		solveGridCellLayout(crossing.graph, alteredMeasurements, input),
@@ -638,9 +733,16 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 		results.find((entry) => entry.name === 'row-9-children' && entry.mode === 'normalization-only')
 			?.work['normalizedRegions'],
 	).toBe(10);
-	expect(results.find((entry) => entry.name === 'grid-3x7-21-endpoints')?.work['geometries']).toBe(
-		0,
+	expect(results.find((entry) => entry.name === 'grid-3x7-21-endpoints')?.status).toBe('selected');
+	expect(results.find((entry) => entry.name === 'grid-21-local-relations')?.status).toBe(
+		'selected',
 	);
+	expect(results.find((entry) => entry.name === 'grid-3x7-21-endpoints')?.work['geometries']).toBe(
+		1,
+	);
+	expect(
+		results.find((entry) => entry.name === 'grid-21-local-relations')?.work['geometries'],
+	).toBe(1);
 	expect(results.find((entry) => entry.name === 'leaf-9-incidents')?.work['attempts']).toBe(0);
 	expect(
 		results.find(

@@ -25,9 +25,42 @@ import {
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
-import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
+import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	gridOf,
+	gridWithLocalRelations,
+} from '../../../support/performance/layout-resource-scenarios';
+import {
+	gridDocument,
+	gridInput,
+	nxmThreeByTwoDocument,
+	nxmThreeByTwoInput,
+	prepareGrid,
+} from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
+	it('selects a complete grid with 21 independent endpoints, beyond the old shape limit', () => {
+		const { document, input } = gridOf(3, 7);
+		const prepared = prepareLayoutDocument(document);
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		expect(result.status).toBe(GridCellLayoutStatus.Selected);
+		if (result.status !== GridCellLayoutStatus.Selected) return;
+		expect(result.layout.elements).toHaveLength(21);
+		expect(result.cells).toHaveLength(21);
+		expect(result.witness.attempted).toBe(1);
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+	});
+
+	it('selects 21 local relations without confusing relation count with crossing work', () => {
+		const { document, input } = gridWithLocalRelations();
+		const prepared = prepareLayoutDocument(document);
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		expect(result.status).toBe(GridCellLayoutStatus.Selected);
+		if (result.status !== GridCellLayoutStatus.Selected) return;
+		expect(result.layout.relations).toHaveLength(21);
+		expect(result.witness.attempted).toBe(1);
+		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+	});
 	it('reports an unsolved local cycle without publishing a partial grid', () => {
 		const prepared = prepareGrid();
 		const endpoint = prepared.graph.endpointsById.get('a-top');
@@ -450,6 +483,31 @@ describe('bounded two by two grid composition', () => {
 			}),
 		).toThrow('Grid crossing allocation budgets must be positive safe integers.');
 	});
+
+	it.each([255, 256, 257])(
+		'charges only examined row-gutter geometries at a %i-unit boundary',
+		(rowGutter) => {
+			const document = nxmThreeByTwoDocument();
+			const graph = prepareLayoutDocument({
+				...document,
+				relations: [...document.relations, { id: 'd-to-f', from: 'd', to: 'f' }],
+			});
+			const input = nxmThreeByTwoInput();
+			const result = solveGridCellLayout(graph.graph, graph.measurements, input, {
+				allocationBudgets: { rowGutter, reallocate: 256, extraTrack: 256, bridge: 256 },
+			});
+			expect(result.status).toBe(GridCellLayoutStatus.Selected);
+			if (result.status !== GridCellLayoutStatus.Selected) return;
+			const row = result.witness.phases[0];
+			if (row === undefined) throw new Error('Expected the row-gutter phase');
+			expect(row.exploredGeometries).toBe(rowGutter);
+			expect(row.truncated).toBe(true);
+			expect(row.exhaustive).toBe(false);
+			expect(BigInt(row.totalGeometries)).toBeGreaterThan(BigInt(rowGutter));
+			expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
+			expect(validateGridCellGeometry(result, graph.graph, input)).toBeUndefined();
+		},
+	);
 
 	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
 		const prepared = prepareGrid();

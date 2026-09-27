@@ -85,7 +85,7 @@ function moveRelation(relation: LayoutRelation, delta: Point): LayoutRelation {
 	return { ...relation, points: relation.points.map((point) => offset(point, delta)) };
 }
 
-/** Bounded root grid proof. Each cell gets an independent graph, rank set, and dedicated layout. */
+/** Root grid layout. Each cell gets an independent graph, rank set, and dedicated layout. */
 export interface GridCellLayoutOptions {
 	readonly cache?: RegionLocalLayoutCache;
 	readonly allocationBudgets?: GridCrossingAllocationBudgets | undefined;

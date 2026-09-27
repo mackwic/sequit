@@ -27,6 +27,10 @@ import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	gridOf,
+	gridWithLocalRelations,
+} from '../../../support/performance/layout-resource-scenarios';
 
 const fractionalSize = fc.record({
 	width: fc.integer({ min: 80, max: 320 }).map((value) => value + 0.25),
@@ -146,6 +150,50 @@ function gridOwnedUnbridgedContact(
 }
 
 describe('grid-cell real-pipeline properties', () => {
+	it('selects valid geometry beyond either old cardinality guard under permutations and metric edits', () => {
+		fc.assert(
+			fc.property(
+				fc.boolean(),
+				fc.integer({ min: 80, max: 400 }),
+				fc.integer({ min: 0, max: 300 }),
+				(localRelations, width, minimumHeight) => {
+					let scene = gridOf(3, 7);
+					if (localRelations) scene = gridWithLocalRelations();
+					const { document, input } = scene;
+					const first = document.nodes[0];
+					if (first === undefined) throw new Error('Expected a populated grid');
+					const changed = {
+						...input,
+						minimumRowHeights: input.minimumRowHeights.map(() => minimumHeight),
+					};
+					const prepared = prepareLayoutDocument(document, {
+						nodes: { [first.id]: { width, height: 80 } },
+					});
+					const solved = solveGridCellLayout(prepared.graph, prepared.measurements, changed);
+					if (solved.status !== GridCellLayoutStatus.Selected)
+						throw new Error(`Expected selected grid: ${solved.status}: ${solved.reason}`);
+					expect(validateGridCellGeometry(solved, prepared.graph, changed)).toBeUndefined();
+					expect(solved.layout.relations).toHaveLength(document.relations.length);
+					const reversed = prepareLayoutDocument(
+						{
+							...document,
+							nodes: [...document.nodes].reverse(),
+							relations: [...document.relations].reverse(),
+						},
+						{ nodes: { [first.id]: { width, height: 80 } } },
+					);
+					expect(
+						solveGridCellLayout(reversed.graph, reversed.measurements, {
+							...changed,
+							cells: [...changed.cells].reverse(),
+							cellByEndpointId: new Map([...changed.cellByEndpointId].reverse()),
+						}),
+					).toEqual(solved);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
 	it('keeps independent cells and opaque crossings across two and three by two and three grids', () => {
 		fc.assert(
 			fc.property(

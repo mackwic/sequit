@@ -10,7 +10,6 @@ import {
 	LayoutPolicy,
 	type LogicDocument,
 	type LogicGroup,
-	type LogicNode,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
@@ -53,7 +52,7 @@ describe('grid model envelope', () => {
 	const prepared = prepareGrid();
 	const input = gridInput();
 
-	it('rejects non-grid presentations, junctions, and oversized graph envelopes', () => {
+	it('rejects non-grid presentations and junctions', () => {
 		const base = gridDocument();
 		const withRegions: LogicDocument = {
 			...base,
@@ -76,28 +75,6 @@ describe('grid model envelope', () => {
 			],
 		};
 		rejected(graphFor(withJunction), input, 'Junctions are outside this bounded grid proof.');
-		const extraNodes: LogicNode[] = Array.from({ length: 16 }, (_, index) => ({
-			kind: EndpointKind.Node,
-			id: `extra-${index}`,
-			natureId: 'task',
-			markdown: 'Extra\n',
-			layoutOrder: orderKey('a9'),
-		}));
-		rejected(
-			graphFor({ ...base, nodes: [...base.nodes, ...extraNodes] }),
-			input,
-			'This grid proof accepts at most twenty endpoints and twenty relations.',
-		);
-		const extraRelations = Array.from({ length: 20 }, (_, index) => ({
-			id: `extra-relation-${index}`,
-			from: 'a-bottom',
-			to: 'd',
-		}));
-		rejected(
-			graphFor({ ...base, relations: [...base.relations, ...extraRelations] }),
-			input,
-			'This grid proof accepts at most twenty endpoints and twenty relations.',
-		);
 	});
 
 	it('keeps a valid root lane document outside the grid disposition', () => {

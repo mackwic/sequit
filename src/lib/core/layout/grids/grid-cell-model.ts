@@ -21,9 +21,6 @@ function envelopeFailure(graph: LogicGraph, input: GridCellInput): string | unde
 	if (document.regionPresentation !== undefined && document.regionPresentation.grid === undefined)
 		return 'Only a persisted grid region presentation can use this grid policy.';
 	if (document.junctions.length > 0) return 'Junctions are outside this bounded grid proof.';
-	const endpointCount = document.nodes.length + document.groups.length;
-	if (endpointCount > 20 || document.relations.length > 20)
-		return 'This grid proof accepts at most twenty endpoints and twenty relations.';
 	if (input.rootId.length === 0) return 'The root identity must be nonempty.';
 	const minima = [...input.minimumColumnWidths, ...input.minimumRowHeights];
 	if (minima.some((value) => !Number.isFinite(value) || value < 0))
