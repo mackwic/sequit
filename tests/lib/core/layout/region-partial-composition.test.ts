@@ -9,8 +9,14 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
+	RegionCompositionWork,
+	regionCompositionWorkBudgets,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
+import {
+	RegionCompositionDiagnosticCode,
 	RegionCompositionStatus,
 	type RegionInput,
+	RegionWorkPhase,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionIncidentRejectionCode,
@@ -18,19 +24,18 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import { solveRegionSubtreeAttempts } from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
 import {
 	REGION_SUBTREE_CALCULATION_FAILED,
 	RegionSubtreeScope,
-	solveRegionSubtreeAttempts,
-} from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
+} from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition-types';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import {
 	regionLanePartialDocument,
 	regionLanePartialSubtreeDocument,
 } from '../../../support/builders/region-lane-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { independentNodes } from '../../../support/performance/layout-resource-scenarios';
+import { independentNodes, rowOf } from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
 function attemptsFor(
@@ -48,7 +53,7 @@ function attemptsFor(
 }
 
 describe('region partial composition', () => {
-	it('keeps a closed sibling after comparison work exhausts in another subtree', () => {
+	it('retains a completed sibling and diagnoses later shared-work exhaustion', () => {
 		const source = independentNodes(49);
 		const document = {
 			...source,
@@ -60,8 +65,8 @@ describe('region partial composition', () => {
 		const input: RegionInput = {
 			regions: [
 				{ id: '@root', layoutOrder: '0' },
-				{ id: 'heavy', parentId: '@root', layoutOrder: 'a0' },
-				{ id: 'safe', parentId: '@root', layoutOrder: 'a1' },
+				{ id: 'heavy', parentId: '@root', layoutOrder: 'a1' },
+				{ id: 'safe', parentId: '@root', layoutOrder: 'a0' },
 				...Array.from({ length: 48 }, (_, index) => ({
 					id: `child-${index}`,
 					parentId: ['heavy', 'safe'][Number(index >= 46)] ?? 'heavy',
@@ -76,27 +81,16 @@ describe('region partial composition', () => {
 			),
 		};
 		const { graph, measurements } = prepareLayoutDocument(document);
-		const root = solveRecursiveNestedRegionLayout(graph, measurements, input);
-		expect(root).toMatchObject({
-			status: RegionCompositionStatus.Unsupported,
-			diagnostic: {
-				code: 'resource-limit',
-				phase: 'comparisons',
-				limit: 1024,
-				actual: 1024,
-				exhaustive: false,
-			},
+		const work = new RegionCompositionWork({
+			...regionCompositionWorkBudgets(input.regions.length, graph.relations.length),
+			comparisons: 128,
 		});
 		const attempts = solveRegionSubtreeAttempts({
 			graph,
 			measurements,
 			input,
 			cache: new RegionLocalLayoutCache(),
-		});
-		const heavy = attempts.find(({ regionId }) => regionId === 'heavy');
-		expect(heavy).toMatchObject({
-			status: RegionCompositionStatus.Unsupported,
-			scope: RegionSubtreeScope.ClosedSubtree,
+			work,
 		});
 		const safe = attempts.find(({ regionId }) => regionId === 'safe');
 		expect(safe).toMatchObject({
@@ -106,6 +100,16 @@ describe('region partial composition', () => {
 		});
 		if (safe?.status !== RegionCompositionStatus.Selected) throw new Error('Missing safe scene');
 		expect(safe.layout.relations.map(({ id }) => id)).toEqual(['safe-route']);
+		const heavy = attempts.find(({ regionId }) => regionId === 'heavy');
+		expect(heavy).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			scope: RegionSubtreeScope.ClosedSubtree,
+			diagnostic: {
+				code: 'resource-limit',
+				phase: RegionWorkPhase.Comparisons,
+				exhaustive: false,
+			},
+		});
 		expect(
 			attempts.some(
 				(attempt) =>
@@ -113,8 +117,57 @@ describe('region partial composition', () => {
 					attempt.layout.relations.some(({ id }) => id === 'heavy-route'),
 			),
 		).toBe(false);
+		expect(work.attempted(RegionWorkPhase.Comparisons)).toBe(128);
 	});
 
+	it('refuses a thousand flat leaves at a bounded work limit after retaining selected leaves', () => {
+		const { document, input } = rowOf(1000);
+		const { graph, measurements } = prepareLayoutDocument(document);
+		const work = new RegionCompositionWork({
+			...regionCompositionWorkBudgets(input.regions.length, graph.relations.length),
+			traversals: 10_000,
+		});
+		const attempts = solveRegionSubtreeAttempts({
+			graph,
+			measurements,
+			input,
+			cache: new RegionLocalLayoutCache(),
+			work,
+		});
+		const retainedLeaf = attempts.find(({ regionId }) => regionId === 'child-0');
+		expect(retainedLeaf).toMatchObject({
+			status: RegionCompositionStatus.Selected,
+			scope: RegionSubtreeScope.Leaf,
+			document: { nodes: [{ id: 'node-0' }], relations: [] },
+			layout: { elements: [{ id: 'node-0' }], relations: [] },
+		});
+		const exhausted = attempts.at(-1);
+		if (exhausted === undefined) throw new Error('Missing resource-limit failure');
+		expect(exhausted).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			diagnostic: {
+				code: 'resource-limit',
+				phase: RegionWorkPhase.Traversals,
+				limit: 10_000,
+				exhaustive: false,
+			},
+			endpointIds: [],
+			relationIds: [],
+		});
+		expect(exhausted.regionId).toMatch(/^child-\d+$/);
+		if (retainedLeaf?.status !== RegionCompositionStatus.Selected)
+			throw new Error('Missing previously validated leaf');
+		expect(exhausted.regionId).not.toBe(retainedLeaf.regionId);
+		expect(
+			attempts.filter(
+				(attempt) =>
+					attempt.status === RegionCompositionStatus.Unsupported &&
+					attempt.diagnostic?.code === RegionCompositionDiagnosticCode.ResourceLimit,
+			),
+		).toEqual([exhausted]);
+		expect(exhausted).not.toHaveProperty('layout');
+		expect(work.attempted(RegionWorkPhase.Traversals)).toBe(10_000);
+	});
 	it('reports an unsupported leaf beside the current independent leaf', () => {
 		const attempts = attemptsFor(regionLanePartialDocument(true));
 		expect(attempts).toMatchObject([

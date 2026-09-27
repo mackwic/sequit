@@ -41,6 +41,7 @@ import {
 	regionLanePartialDocument,
 	regionLanePartialSubtreeDocument,
 } from '../../../support/builders/region-lane-document';
+import { persistedRowOf } from '../../../support/performance/layout-resource-scenarios';
 
 function graphFor(document: LogicDocument) {
 	const graph = createGraph(document);
@@ -53,6 +54,22 @@ async function layoutFailure(document: LogicDocument): Promise<LayoutProjectionE
 }
 
 describe('partial region layout projection', () => {
+	it('keeps all complete flat-leaf previews under one replay envelope', () => {
+		const document = persistedRowOf(1000);
+		const projection = createSharedCanvasProjection(document);
+		const previews = partialRegionPreviews(
+			graphFor(document),
+			layoutMeasurementsForCanvas(projection.measurementModel),
+			new RegionLocalLayoutCache(),
+		);
+		expect(previews).toHaveLength(1000);
+		expect(previews.every(({ kind }) => kind === RegionPreviewKind.Ready)).toBe(true);
+		expect(previews[0]).toMatchObject({
+			regionId: 'child-0',
+			canvas: { nodes: [{ id: 'node-0' }], relations: [] },
+		});
+	});
+
 	it('keeps a source-valid persisted ordinary leaf when its sibling lane layout is unresolved', async () => {
 		const document = regionLanePartialDocument(true);
 		expect(validateLogicDocument(document)).toMatchObject({ ok: true });

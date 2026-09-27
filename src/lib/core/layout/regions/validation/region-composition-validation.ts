@@ -78,10 +78,10 @@ function regionPlacementFailure(
 	let parent: Bounds | undefined = context.root;
 	if (region.parentId !== context.model.rootId)
 		parent = context.placements.get(region.parentId)?.bounds;
-	const invalidBounds =
-		!finiteBounds(region.bounds) ||
-		region.bounds.x + region.bounds.width <= region.bounds.x ||
-		region.bounds.y + region.bounds.height <= region.bounds.y;
+	const invalidFrame = !finiteBounds(region.bounds);
+	const collapsedX = region.bounds.x + region.bounds.width <= region.bounds.x;
+	const collapsedY = region.bounds.y + region.bounds.height <= region.bounds.y;
+	const invalidBounds = invalidFrame || collapsedX || collapsedY;
 	const outsideParent = parent !== undefined && !inside(parent, region.bounds);
 	if (parent === undefined || invalidBounds || outsideParent)
 		return diagnostic(Code.ChildOutsideParent, `Child region ${id} is outside its parent.`, {
@@ -99,13 +99,11 @@ interface IndexedSiblingSweepEvent {
 	readonly siblingIndex: number;
 }
 
-function siblingsOverlap(
+function compressedSiblingYCoordinates(
 	siblings: readonly RegionGeometryPlacement[],
 	parentId: string,
 	work?: RegionCompositionWork,
-): boolean {
-	if (siblings.length < 2) return false;
-
+): readonly number[] {
 	const yCoordinates: number[] = [];
 	for (const sibling of siblings) {
 		yCoordinates.push(sibling.bounds.y, sibling.bounds.y + sibling.bounds.height);
@@ -113,7 +111,7 @@ function siblingsOverlap(
 
 	yCoordinates.sort((left, right) => {
 		work?.charge(RegionWorkPhase.Comparisons, parentId);
-		return left < right ? -1 : left > right ? 1 : 0;
+		return left - right;
 	});
 	const uniqueYCoordinates: number[] = [];
 	for (const coordinate of yCoordinates) {
@@ -125,7 +123,16 @@ function siblingsOverlap(
 		work?.charge(RegionWorkPhase.Comparisons, parentId);
 		if (coordinate !== previous) uniqueYCoordinates.push(coordinate);
 	}
+	return uniqueYCoordinates;
+}
 
+function siblingsOverlap(
+	siblings: readonly RegionGeometryPlacement[],
+	parentId: string,
+	work?: RegionCompositionWork,
+): boolean {
+	if (siblings.length < 2) return false;
+	const uniqueYCoordinates = compressedSiblingYCoordinates(siblings, parentId, work);
 	const coordinateIndexes = new Map<number, number>();
 	for (let index = 0; index < uniqueYCoordinates.length; index += 1)
 		coordinateIndexes.set(defined(uniqueYCoordinates[index]), index);
@@ -143,8 +150,11 @@ function siblingsOverlap(
 	}
 	indexedEvents.sort((left, right) => {
 		work?.charge(RegionWorkPhase.Comparisons, parentId);
-		if (left.x !== right.x) return left.x < right.x ? -1 : 1;
-		if (left.starts !== right.starts) return left.starts ? 1 : -1;
+		if (left.x !== right.x) return left.x - right.x;
+		if (left.starts !== right.starts) {
+			if (left.starts) return 1;
+			return -1;
+		}
 		return left.siblingIndex - right.siblingIndex;
 	});
 
@@ -155,23 +165,29 @@ function siblingsOverlap(
 		const update = (node: number, start: number, end: number): void => {
 			work?.charge(RegionWorkPhase.Comparisons, parentId);
 			if (queryStart <= start && end <= queryEnd) {
-				maximumCoverage[node] += delta;
-				lazyCoverage[node] += delta;
+				maximumCoverage[node] = defined(maximumCoverage[node]) + delta;
+				lazyCoverage[node] = defined(lazyCoverage[node]) + delta;
 				return;
 			}
 			const middle = Math.floor((start + end) / 2);
 			if (queryStart < middle) update(node * 2, start, middle);
 			if (queryEnd > middle) update(node * 2 + 1, middle, end);
-			maximumCoverage[node] =
-				lazyCoverage[node] + Math.max(maximumCoverage[node * 2], maximumCoverage[node * 2 + 1]);
+			const leftChild = node * 2;
+			const rightChild = leftChild + 1;
+			const childCoverage = Math.max(
+				defined(maximumCoverage[leftChild]),
+				defined(maximumCoverage[rightChild]),
+			);
+			maximumCoverage[node] = defined(lazyCoverage[node]) + childCoverage;
 		};
 		update(1, 0, intervalCount);
 	};
 	const maximumInRange = (queryStart: number, queryEnd: number): number => {
 		const query = (node: number, start: number, end: number, inheritedCoverage: number): number => {
 			work?.charge(RegionWorkPhase.Comparisons, parentId);
-			if (queryStart <= start && end <= queryEnd) return inheritedCoverage + maximumCoverage[node];
-			const childInheritedCoverage = inheritedCoverage + lazyCoverage[node];
+			if (queryStart <= start && end <= queryEnd)
+				return inheritedCoverage + defined(maximumCoverage[node]);
+			const childInheritedCoverage = inheritedCoverage + defined(lazyCoverage[node]);
 			const middle = Math.floor((start + end) / 2);
 			let maximum = Number.NEGATIVE_INFINITY;
 			if (queryStart < middle) maximum = query(node * 2, start, middle, childInheritedCoverage);

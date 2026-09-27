@@ -15,9 +15,9 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
+	type RegionInput,
 	RegionPortalSide,
 	RegionWorkPhase,
-	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	type RegionCompositionGeometryCandidate,
@@ -167,11 +167,15 @@ function siblingFixture(count: number, axis: 'x' | 'y' = 'x', overlapLast = fals
 	const normalized = normalizeRegionCompositionModel(graph.value, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error(normalized.diagnostic.message);
-	const layoutWidth = axis === 'x' ? count * 2 + 2 : 8;
-	const layoutHeight = axis === 'y' ? count * 2 + 2 : 8;
+	let layoutWidth = 8;
+	let layoutHeight = 8;
+	if (axis === 'x') layoutWidth = count * 2 + 2;
+	else layoutHeight = count * 2 + 2;
 	const regions = Array.from({ length: count }, (_, index) => {
-		let x = axis === 'x' ? 1 + index * 2 : 1;
-		let y = axis === 'y' ? 1 + index * 2 : 1;
+		let x = 1;
+		let y = 1;
+		if (axis === 'x') x += index * 2;
+		else y += index * 2;
 		if (overlapLast && index === count - 1) {
 			if (axis === 'x') x = 1.5;
 			else y = 1.5;
@@ -418,11 +422,11 @@ describe('generic region composition geometry', () => {
 			...region,
 			bounds: { x: 1, y: 1e18, width: 2, height: 1 },
 			translation: { x: 1, y: 1e18 },
-			localLayout: { ...region.localLayout, height: 1 },
+			localLayout: { ...defined(region.localLayout), height: 1 },
 		}));
 		const inflated = {
 			...first,
-			layout: { ...first.layout, width: 1e20, height: 1e20 },
+			layout: { width: 1e20, height: 1e20, elements: [], relations: [] },
 		};
 		expect(validateCompositionDiagnostic(model, inflated)).toMatchObject({
 			code: RegionGeometryDiagnosticCode.ChildOutsideParent,

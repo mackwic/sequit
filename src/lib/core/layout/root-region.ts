@@ -2,6 +2,7 @@ import { defined, type LayoutPolicy } from '../document/logic-document';
 import {
 	normalizeRegionPresentation,
 	RegionPresentationStatus,
+	type RegionPresentationWork,
 	ROOT_LAYOUT_REGION_ID,
 } from '../document/region-presentation';
 import type { LogicGraph } from '../graph/create-graph';
@@ -11,16 +12,16 @@ import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-la
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
-	regionCompositionWorkBudgets,
 	RegionCompositionWork,
+	regionCompositionWorkBudgets,
 	RegionWorkLimitExceeded,
 } from './regions/model/region-composition-limits';
 import {
-	RegionCompositionStatus,
-	RegionWorkPhase,
 	type RegionCompositionDiagnostic,
+	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
+	RegionWorkPhase,
 } from './regions/model/region-composition-types';
 import type { RegionIncidentUnknownCode } from './regions/model/region-incident-contract';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
@@ -157,16 +158,21 @@ export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWor
 		work?.charge(RegionWorkPhase.Traversals, endpoint.id);
 		if (endpoint.regionId !== undefined) assignments.set(endpoint.id, endpoint.regionId);
 	}
+	let presentationWork: RegionPresentationWork | undefined;
+	if (work !== undefined)
+		presentationWork = {
+			compare: (id) => {
+				work.charge(RegionWorkPhase.NormalizationComparisons, id);
+			},
+			visit: (id) => {
+				work.charge(RegionWorkPhase.Traversals, id);
+			},
+		};
 	const normalized = normalizeRegionPresentation(
 		graph.document,
 		definitions,
 		assignments,
-		work === undefined
-			? undefined
-			: {
-					compare: (id) => work.charge(RegionWorkPhase.NormalizationComparisons, id),
-					visit: (id) => work.charge(RegionWorkPhase.Traversals, id),
-				},
+		presentationWork,
 	);
 	if (normalized.status !== RegionPresentationStatus.Ready)
 		throw new UnsupportedRegionLayoutError(
@@ -203,24 +209,13 @@ export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWor
 	return { regions, regionByEndpointId: normalized.value.regionByEndpointId };
 }
 
-function layoutWithNestedRegions(
+function nestedRegionInputWithWork(
 	graph: LogicGraph,
-	measurements: LayoutMeasurements,
-	execution: LayoutOptions | RegionExecutionContext,
-	gridRoot = false,
-): LayoutResult {
-	const work =
-		'options' in execution && execution.work !== undefined
-			? execution.work
-			: new RegionCompositionWork(
-					regionCompositionWorkBudgets(
-						(graph.document.regionPresentation?.regions.length ?? 0) + 1,
-						graph.relations.length,
-					),
-				);
-	let input: RegionInput;
+	work: RegionCompositionWork,
+	gridRoot: boolean,
+): RegionInput {
 	try {
-		input = nestedRegionInput(graph, work);
+		return nestedRegionInput(graph, work);
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded) {
 			if (gridRoot)
@@ -235,15 +230,25 @@ function layoutWithNestedRegions(
 			throw new UnsupportedGridCellLayoutError(graph.document.id, error.reason);
 		throw error;
 	}
+}
+
+function layoutWithNestedRegions(
+	graph: LogicGraph,
+	measurements: LayoutMeasurements,
+	execution: LayoutOptions | RegionExecutionContext,
+	gridRoot = false,
+): LayoutResult {
+	const regionCount = (graph.document.regionPresentation?.regions.length ?? 0) + 1;
+	const work = new RegionCompositionWork(
+		regionCompositionWorkBudgets(regionCount, graph.relations.length),
+	);
+	const input = nestedRegionInputWithWork(graph, work, gridRoot);
 	let attempt: RegionLayoutAttempt;
 	if ('options' in execution && execution.cache !== undefined)
-		attempt = solveNestedRegionLayoutForProjection(
-			graph,
-			measurements,
-			input,
-			execution.cache,
+		attempt = solveNestedRegionLayoutForProjection(graph, measurements, input, {
+			cache: execution.cache,
 			work,
-		);
+		});
 	else
 		attempt = solveNestedRegionLayout(graph, measurements, input, {
 			options: layoutOptions(execution),

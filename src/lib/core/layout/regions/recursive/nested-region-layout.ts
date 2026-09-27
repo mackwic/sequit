@@ -13,7 +13,7 @@ import { solveRecursiveNestedRegionLayoutWithWork } from './nested-region-recurs
 export interface RegionExecutionContext {
 	readonly options: LayoutOptions;
 	readonly cache?: RegionLocalLayoutCache;
-	readonly work?: RegionCompositionWork;
+	readonly work?: RegionCompositionWork | undefined;
 }
 
 export function solveNestedRegionLayout(
@@ -42,23 +42,31 @@ export function solveNestedRegionLayout(
 			status: RegionCompositionStatus.Unsupported,
 			reason: 'Combined routing inspection is not available.',
 		};
+	if (execution.work !== undefined)
+		return solveRecursiveNestedRegionLayoutWithWork(graph, measurements, input, {
+			cache: execution.cache,
+			work: execution.work,
+		});
 	return solveRecursiveNestedRegionLayoutWithWork(graph, measurements, input, {
 		cache: execution.cache,
-		work: execution.work,
 	});
 }
 
 /** Projection-owned cache and monotone work envelope; public solver options stay unchanged. */
+interface RegionProjectionExecutionContext {
+	readonly cache: RegionLocalLayoutCache;
+	readonly work?: RegionCompositionWork;
+}
+
 export function solveNestedRegionLayoutForProjection(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	input: RegionInput,
-	cache: RegionLocalLayoutCache,
-	work?: RegionCompositionWork,
+	context: RegionProjectionExecutionContext,
 ): RegionLayoutAttempt {
 	return solveNestedRegionLayout(graph, measurements, input, {
 		options: {},
-		cache,
-		work,
+		cache: context.cache,
+		work: context.work,
 	});
 }

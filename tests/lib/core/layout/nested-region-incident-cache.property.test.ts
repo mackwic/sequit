@@ -50,19 +50,19 @@ describe('recursive incident contract cache', () => {
 						prepared.graph,
 						prepared.measurements,
 						input,
-						cache,
+						{ cache },
 					);
 					const repeated = solveNestedRegionLayoutForProjection(
 						prepared.graph,
 						prepared.measurements,
 						input,
-						cache,
+						{ cache },
 					);
 					const cold = solveNestedRegionLayoutForProjection(
 						prepared.graph,
 						prepared.measurements,
 						input,
-						new RegionLocalLayoutCache(),
+						{ cache: new RegionLocalLayoutCache() },
 					);
 					expect(incremental).toEqual(cold);
 					expect(repeated).toEqual(cold);

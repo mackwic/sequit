@@ -36,10 +36,8 @@ import {
 	RegionSearchProvenance,
 } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
-import {
-	RegionSubtreeScope,
-	solveRegionSubtreeAttempts,
-} from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
+import { solveRegionSubtreeAttempts } from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
+import { RegionSubtreeScope } from '../../../../src/lib/core/layout/regions/recursive/region-partial-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { diagnoseParentRouteContacts } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation-detail';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';

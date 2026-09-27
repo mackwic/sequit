@@ -181,8 +181,10 @@ function endpointLaneIssue(
 export function regionLeafLaneAssignmentIssues(
 	document: LogicDocument,
 	endpoints: readonly Endpoint[],
-	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
-	ownership: ReadonlyMap<string, string>,
+	regionContext: {
+		readonly byRegionId: ReadonlyMap<string, LayoutRegionDefinition>;
+		readonly ownership: ReadonlyMap<string, string>;
+	},
 	onComparison?: (ownerId: string) => void,
 ): readonly RegionPresentationIssue[] {
 	const format = document.persistenceFormat;
@@ -190,7 +192,12 @@ export function regionLeafLaneAssignmentIssues(
 		format === REGION_LANE_PERSISTENCE_FORMAT || format === REGION_COMPOSITION_PERSISTENCE_FORMAT;
 	if (!earlierRegionFormat && format !== REGION_POLICY_PERSISTENCE_FORMAT) return [];
 	const rootLaneIds = new Set(document.presentation?.lanes.map(({ id }) => id) ?? []);
-	const context = { document, byRegionId, ownership, rootLaneIds };
+	const context = {
+		document,
+		byRegionId: regionContext.byRegionId,
+		ownership: regionContext.ownership,
+		rootLaneIds,
+	};
 	const issues: RegionPresentationIssue[] = [];
 	for (const endpoint of [...endpoints].sort((a, b) => {
 		onComparison?.(a.id);

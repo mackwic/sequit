@@ -1,13 +1,17 @@
 import type { LogicGraph } from '../../../lib/core/graph/create-graph';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
+import {
+	RegionCompositionWork,
+	regionCompositionWorkBudgets,
+} from '../../../lib/core/layout/regions/model/region-composition-limits';
 import { RegionCompositionStatus } from '../../../lib/core/layout/regions/model/region-composition-types';
 import type { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
+import { solveRegionSubtreeAttempts } from '../../../lib/core/layout/regions/recursive/region-partial-composition';
 import {
 	type RegionSubtreeAttempt,
 	type RegionSubtreeFailure,
 	RegionSubtreeScope,
-	solveRegionSubtreeAttempts,
-} from '../../../lib/core/layout/regions/recursive/region-partial-composition';
+} from '../../../lib/core/layout/regions/recursive/region-partial-composition-types';
 import {
 	nestedRegionInput,
 	UnknownRegionLayoutError,
@@ -110,11 +114,18 @@ export function partialRegionPreviews(
 	measurements: LayoutMeasurements,
 	cache: RegionLocalLayoutCache,
 ): readonly RegionPreview[] {
+	const work = new RegionCompositionWork(
+		regionCompositionWorkBudgets(
+			(graph.document.regionPresentation?.regions.length ?? 0) + 1,
+			graph.relations.length,
+		),
+	);
 	const attempts = solveRegionSubtreeAttempts({
 		graph,
 		measurements,
-		input: nestedRegionInput(graph),
+		input: nestedRegionInput(graph, work),
 		cache,
+		work,
 	});
 	const previews: RegionPreview[] = [];
 	for (const attempt of attempts) {

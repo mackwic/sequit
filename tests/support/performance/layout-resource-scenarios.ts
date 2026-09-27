@@ -1,13 +1,13 @@
 import {
 	defined,
 	EndpointKind,
-	LayoutPolicy,
-	REGION_PERSISTENCE_FORMAT,
-	REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	LayoutDirection,
+	LayoutPolicy,
 	type LogicDocument,
 	PERSISTENCE_FORMAT,
+	REGION_PERSISTENCE_FORMAT,
+	REGION_PRESENTATION_SCHEMA,
 } from '../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../src/lib/core/document/order-key';
 import type { GridCellInput } from '../../../src/lib/core/layout/grids/grid-cell-types';

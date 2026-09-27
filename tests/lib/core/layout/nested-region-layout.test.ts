@@ -596,13 +596,13 @@ describe('bounded nested-region composition', () => {
 			prepared.graph,
 			prepared.measurements,
 			input,
-			cache,
+			{ cache },
 		);
 		const second = solveNestedRegionLayoutForProjection(
 			prepared.graph,
 			prepared.measurements,
 			input,
-			cache,
+			{ cache },
 		);
 		expect(first).toEqual(attempt);
 		expect(second).toEqual(attempt);

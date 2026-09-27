@@ -284,10 +284,9 @@ describe('recursive region model and row policy', () => {
 		const { document, input } = rowOf(count);
 		const prepared = prepareLayoutDocument(document);
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(
-			attempt.status,
-			attempt.status === RegionCompositionStatus.Unsupported ? attempt.reason : undefined,
-		).toBe(RegionCompositionStatus.Selected);
+		let reason: string | undefined;
+		if (attempt.status === RegionCompositionStatus.Unsupported) reason = attempt.reason;
+		expect(attempt.status, reason).toBe(RegionCompositionStatus.Selected);
 		if (attempt.status !== RegionCompositionStatus.Selected) return;
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Invalid row');

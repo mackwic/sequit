@@ -215,15 +215,16 @@ type Endpoint =
 function validateAssignments(
 	byEndpointId: ReadonlyMap<string, Endpoint>,
 	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
-	assignments: ReadonlyMap<string, string>,
-	issues: RegionPresentationIssue[],
+	context: EndpointOwnershipContext,
 	work?: RegionPresentationWork,
 ): void {
-	for (const [id, regionId] of [...assignments].sort(([a], [b]) => compareWithWork(a, b, work))) {
+	for (const [id, regionId] of [...context.assignments].sort(([a], [b]) =>
+		compareWithWork(a, b, work),
+	)) {
 		if (!byEndpointId.has(id))
-			issues.push({ code: RegionPresentationIssueCode.UnknownEndpoint, id });
+			context.issues.push({ code: RegionPresentationIssueCode.UnknownEndpoint, id });
 		if (regionId !== ROOT_LAYOUT_REGION_ID && !byRegionId.has(regionId))
-			issues.push({
+			context.issues.push({
 				code: RegionPresentationIssueCode.UnknownAssignedRegion,
 				id,
 			});
@@ -233,17 +234,16 @@ function validateAssignments(
 function endpointPath(
 	endpoint: Endpoint,
 	byEndpointId: ReadonlyMap<string, Endpoint>,
-	ownership: ReadonlyMap<string, string>,
-	issues: RegionPresentationIssue[],
+	context: EndpointOwnershipContext,
 	work?: RegionPresentationWork,
 ): readonly Endpoint[] {
 	const path: Endpoint[] = [];
 	const seen = new Set<string>();
 	let current: Endpoint = endpoint;
-	while (!ownership.has(current.id)) {
+	while (!context.ownership.has(current.id)) {
 		work?.visit(current.id);
 		if (seen.has(current.id)) {
-			issues.push({
+			context.issues.push({
 				code: RegionPresentationIssueCode.InvalidGroupParent,
 				id: endpoint.id,
 			});
@@ -254,7 +254,7 @@ function endpointPath(
 		if (current.groupId === undefined) break;
 		const parent = byEndpointId.get(current.groupId);
 		if (parent?.kind !== EndpointKind.Group) {
-			issues.push({
+			context.issues.push({
 				code: RegionPresentationIssueCode.InvalidGroupParent,
 				id: current.id,
 			});
@@ -308,15 +308,13 @@ function endpointIssues(
 	const byEndpointId = new Map(endpoints.map((endpoint) => [endpoint.id, endpoint]));
 	const ownership = new Map<string, string>();
 	const laneOwnership = new Map<string, string | undefined>();
-	const context = { assignments, ownership, laneOwnership, issues };
-	validateAssignments(byEndpointId, byRegionId, assignments, issues, work);
+	const context = { assignments, ownership, laneOwnership, issues, byRegionId };
+	validateAssignments(byEndpointId, byRegionId, context, work);
 	for (const endpoint of [...endpoints].sort((a, b) => compareWithWork(a.id, b.id, work))) {
-		const path = endpointPath(endpoint, byEndpointId, ownership, issues, work);
+		const path = endpointPath(endpoint, byEndpointId, context, work);
 		ownEndpointPath(path, context);
 	}
-	issues.push(
-		...regionLeafLaneAssignmentIssues(document, endpoints, byRegionId, ownership, work?.compare),
-	);
+	issues.push(...regionLeafLaneAssignmentIssues(document, endpoints, context, work?.compare));
 	return { ownership, laneOwnership, issues };
 }
 

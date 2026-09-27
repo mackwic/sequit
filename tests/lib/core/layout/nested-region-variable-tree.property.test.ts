@@ -520,7 +520,7 @@ async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 				prepared.graph,
 				measurements,
 				tree.input,
-				cache,
+				{ cache },
 			);
 			const cold = solveNestedRegionLayout(prepared.graph, measurements, tree.input);
 			expect(incremental).toEqual(cold);

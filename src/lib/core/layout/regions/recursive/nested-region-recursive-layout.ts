@@ -23,8 +23,8 @@ import {
 import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import {
 	checkRegionStackDepth,
-	regionCompositionWorkBudgets,
 	RegionCompositionWork,
+	regionCompositionWorkBudgets,
 	RegionWorkLimitExceeded,
 } from '../model/region-composition-limits';
 import {

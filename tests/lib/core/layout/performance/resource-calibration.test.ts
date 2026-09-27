@@ -8,8 +8,8 @@ import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../../src
 import type { LayoutMeasurements } from '../../../../../src/lib/core/layout/layout-types';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
-	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
 	RegionCompositionWork,
+	regionCompositionWorkBudgets,
 } from '../../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
@@ -27,7 +27,12 @@ import {
 	solveRecursiveNestedRegionLayout,
 	solveRecursiveNestedRegionLayoutWithWork,
 } from '../../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import { solveRegionSubtreeAttempts } from '../../../../../src/lib/core/layout/regions/recursive/region-partial-composition';
 import { validateRegionCompositionGeometry } from '../../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import {
+	layoutWithRootRegion,
+	nestedRegionInput,
+} from '../../../../../src/lib/core/layout/root-region';
 import { allocateChannelIntervals } from '../../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../../src/lib/core/layout/routing/channel-routing';
 import {
@@ -45,6 +50,7 @@ import {
 	gridRegionInput,
 	gridWithLocalRelations,
 	independentNodes,
+	persistedRowOf,
 	rowOf,
 	shallowForestOf,
 } from '../../../../support/performance/layout-resource-scenarios';
@@ -95,7 +101,9 @@ function regionSample(
 	measurements: LayoutMeasurements = prepared.measurements,
 	cache?: RegionLocalLayoutCache,
 ): ResourceProfileSample {
-	const counter = new RegionCompositionWork(NESTED_REGION_COMPOSITION_WORK_BUDGETS);
+	const counter = new RegionCompositionWork(
+		regionCompositionWorkBudgets(input.regions.length, prepared.graph.relations.length),
+	);
 	const attempt = solveRecursiveNestedRegionLayoutWithWork(prepared.graph, measurements, input, {
 		cache,
 		work: counter,
@@ -112,16 +120,10 @@ function regionSample(
 		throw new Error('Selected tree must normalize without a limit');
 	const failure = validateRegionCompositionGeometry(normalized.model, attempt);
 	if (failure !== undefined) throw new Error(failure.message);
-	let siblingComparisons = 0;
-	for (const region of normalized.model.regionsById.values()) {
-		const children = region.childIds.length;
-		siblingComparisons += (children * (children - 1)) / 2;
-	}
 	return {
 		status: attempt.status,
 		work: {
 			placementValidations: normalized.model.preorderIds.length - 1,
-			siblingComparisons,
 			...work,
 		},
 	};
@@ -204,11 +206,15 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 	);
 
 	const localGrid = gridWithLocalRelations();
-	const localPrepared = prepareLayoutDocument(localGrid.document);
+	const localGridPrepared = prepareLayoutDocument(localGrid.document);
 	results.push(
 		profileResource('grid-21-local-relations', 'cold', () =>
 			witnessSample(
-				solveGridCellLayout(localPrepared.graph, localPrepared.measurements, localGrid.input),
+				solveGridCellLayout(
+					localGridPrepared.graph,
+					localGridPrepared.measurements,
+					localGrid.input,
+				),
 			),
 		),
 	);
@@ -240,7 +246,7 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			},
 		),
 	);
-	const localMutatedNodes = new Map(localPrepared.measurements.nodes);
+	const localMutatedNodes = new Map(localGridPrepared.measurements.nodes);
 	const localNode = localMutatedNodes.get('local-node-0');
 	if (localNode === undefined) throw new Error('Missing local grid node measurement');
 	localMutatedNodes.set('local-node-0', { ...localNode, width: localNode.width + 1 });
@@ -252,8 +258,8 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			() =>
 				witnessSample(
 					solveGridCellLayout(
-						localPrepared.graph,
-						{ ...localPrepared.measurements, nodes: localMutatedNodes },
+						localGridPrepared.graph,
+						{ ...localGridPrepared.measurements, nodes: localMutatedNodes },
 						localGrid.input,
 						{ cache: localCache },
 					),
@@ -262,9 +268,14 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			7,
 			() => {
 				localCache = new RegionLocalLayoutCache();
-				solveGridCellLayout(localPrepared.graph, localPrepared.measurements, localGrid.input, {
-					cache: localCache,
-				});
+				solveGridCellLayout(
+					localGridPrepared.graph,
+					localGridPrepared.measurements,
+					localGrid.input,
+					{
+						cache: localCache,
+					},
+				);
 			},
 		),
 	);
@@ -340,6 +351,100 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 				},
 			};
 		}),
+	);
+	for (const count of [100, 600, 1000]) {
+		const wideRow = rowOf(count);
+		const preparedWideRow = prepareLayoutDocument(wideRow.document);
+		results.push(
+			profileResource(
+				`row-${count}-children`,
+				'cold',
+				() => regionSample(preparedWideRow, wideRow.input),
+				2,
+				5,
+			),
+		);
+	}
+	const presentedWideRow = prepareLayoutDocument(persistedRowOf(1000));
+	results.push(
+		profileResource(
+			'product-row-1000-children',
+			'cold',
+			() => {
+				const layout = layoutWithRootRegion(
+					presentedWideRow.graph,
+					presentedWideRow.ranks,
+					presentedWideRow.measurements,
+				);
+				return { status: 'selected', work: { regions: layout.regions?.length ?? 0 } };
+			},
+			2,
+			5,
+		),
+	);
+	results.push(
+		profileResource(
+			'presented-row-1000-shared-work',
+			'cold',
+			() => {
+				const work = new RegionCompositionWork(regionCompositionWorkBudgets(1001, 0));
+				const input = nestedRegionInput(presentedWideRow.graph, work);
+				const attempt = solveRecursiveNestedRegionLayoutWithWork(
+					presentedWideRow.graph,
+					presentedWideRow.measurements,
+					input,
+					{ work },
+				);
+				return {
+					status: attempt.status,
+					work: {
+						normalizationComparisons: work.attempted(RegionWorkPhase.NormalizationComparisons),
+						placements: work.attempted(RegionWorkPhase.Placements),
+						comparisons: work.attempted(RegionWorkPhase.Comparisons),
+						traversals: work.attempted(RegionWorkPhase.Traversals),
+					},
+				};
+			},
+			2,
+			5,
+		),
+	);
+	results.push(
+		profileResource(
+			'partial-row-1000-shared-work',
+			'cold',
+			() => {
+				const work = new RegionCompositionWork(regionCompositionWorkBudgets(1001, 0));
+				const input = nestedRegionInput(presentedWideRow.graph, work);
+				const presentationTraversals = work.attempted(RegionWorkPhase.Traversals);
+				const attempts = solveRegionSubtreeAttempts({
+					graph: presentedWideRow.graph,
+					measurements: presentedWideRow.measurements,
+					input,
+					cache: new RegionLocalLayoutCache(),
+					work,
+				});
+				const selected = attempts.filter(
+					({ status }) => status === RegionCompositionStatus.Selected,
+				).length;
+				let status = 'selected';
+				if (selected !== 1000) status = `partial:${selected}`;
+				return {
+					status,
+					work: {
+						attempts: attempts.length,
+						selected,
+						presentationTraversals,
+						normalizationComparisons: work.attempted(RegionWorkPhase.NormalizationComparisons),
+						placements: work.attempted(RegionWorkPhase.Placements),
+						comparisons: work.attempted(RegionWorkPhase.Comparisons),
+						traversals: work.attempted(RegionWorkPhase.Traversals),
+					},
+				};
+			},
+			2,
+			5,
+		),
 	);
 	const eight = rowOf(8);
 	const eightPrepared = prepareLayoutDocument(eight.document);

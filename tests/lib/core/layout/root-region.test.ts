@@ -19,12 +19,12 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import {
-	regionCompositionWorkBudgets,
 	RegionCompositionWork,
+	regionCompositionWorkBudgets,
 	RegionWorkLimitExceeded,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
-import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
