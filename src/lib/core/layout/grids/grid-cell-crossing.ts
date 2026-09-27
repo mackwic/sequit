@@ -36,6 +36,8 @@ export interface GridRoutingEdges {
 	 */
 	readonly gutters: readonly RoutingEdge[];
 	readonly topBus: RoutingEdge;
+	/** One horizontal track edge per boundary between adjacent rows. */
+	readonly rowGutters: readonly RoutingEdge[];
 	/** Total crossings reserved on the global top bus. */
 	readonly crossingCount: number;
 }
@@ -46,6 +48,7 @@ export function gridRoutingEdges(
 	regionId: string,
 	gutterIds: readonly (readonly string[])[],
 	crossingCount: number,
+	rowGutterIds: readonly (readonly string[])[] = [],
 ): GridRoutingEdges {
 	return {
 		gutters: gutterIds.map((ids) => ({
@@ -54,6 +57,11 @@ export function gridRoutingEdges(
 			spacing: CROSSING_SPACING,
 		})),
 		topBus: { ownerId: regionId, capacity: crossingCount, spacing: CROSSING_SPACING },
+		rowGutters: rowGutterIds.map((ids) => ({
+			ownerId: regionId,
+			capacity: ids.length,
+			spacing: CROSSING_SPACING,
+		})),
 		crossingCount,
 	};
 }

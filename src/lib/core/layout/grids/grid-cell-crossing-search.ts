@@ -5,7 +5,7 @@ import { CrossingAllocationPhaseId } from '../search/grid-cell-crossing-witness'
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
-} from './grid-cell-crossing-allocation';
+} from './grid-cell-crossing-allocation-types';
 import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
 import {
 	type CrossingAllocationPhase,
@@ -97,12 +97,7 @@ function searchGridCrossingPhase<Candidate>(
 	const seen = new Set<string>();
 	const busRelevant = new Set(input.busRelevantRelationIds);
 	for (const allocation of orderedPhaseCandidates(phase, active, conflictsFirst)) {
-		const key = geometryKeyFromAllocation(
-			allocation.gutterTrackByRelationId,
-			allocation.busTrackByRelationId,
-			allocation.portTrackByEndpointId,
-			busRelevant,
-		);
+		const key = geometryKeyFromAllocation(allocation, busRelevant);
 		if (seen.has(key)) continue;
 		if (!explored.take()) break;
 		seen.add(key);

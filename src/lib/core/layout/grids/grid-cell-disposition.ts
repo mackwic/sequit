@@ -2,6 +2,7 @@ import { defined } from '../../document/logic-document';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import type { LayoutResult } from '../layout-types';
 import { gridGutterMargin, gridMargin, type GridRoutingEdges } from './grid-cell-crossing';
+import { gridRowGap } from './grid-cell-crossing-resources';
 import type { GridCellDefinition, GridCellInput, GridCellPlacement } from './grid-cell-types';
 
 const CELL_PADDING = 32;
@@ -70,7 +71,8 @@ export function layoutGridCellDisposition(
 	for (const [row, height] of rowHeights.entries()) {
 		rowOrigins.push(gridBottom);
 		gridBottom += height;
-		if (row + 1 < rowHeights.length) gridBottom += TRACK_GAP;
+		if (row + 1 < rowHeights.length)
+			gridBottom += Math.max(TRACK_GAP, gridRowGap(defined(edges.rowGutters[row])));
 	}
 	const cells: GridCellPlacement[] = children.map(({ cell, layout, ranks }) => {
 		const origin = { x: defined(columnOrigins[cell.column]), y: defined(rowOrigins[cell.row]) };

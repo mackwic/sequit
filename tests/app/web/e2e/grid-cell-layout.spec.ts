@@ -77,10 +77,16 @@ test('a persisted 2×2 grid renders four independent cells and an exterior cross
 		if (route === null) throw new Error('Missing cross-cell route');
 		const matrix = route.getScreenCTM();
 		if (matrix === null) throw new Error('Missing route transform');
+		const upperBottom = Math.max(box('a').bottom, box('b').bottom);
+		const lowerTop = Math.min(box('c').top, box('d').top);
+		const gutterX = (box('a').right + box('b').left) / 2;
+		let usesReservedRowGap = false;
 		const length = route.getTotalLength();
 		for (let sample = 0; sample <= 128; sample += 1) {
 			const point = route.getPointAtLength((length * sample) / 128);
 			const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+			if (Math.abs(screen.x - gutterX) < 8 && screen.y > upperBottom && screen.y < lowerTop)
+				usesReservedRowGap = true;
 			for (const id of ['b', 'c']) {
 				const bounds = box(id);
 				if (
@@ -92,6 +98,7 @@ test('a persisted 2×2 grid renders four independent cells and an exterior cross
 					throw new Error(`Cross-cell route entered opaque cell ${id}`);
 			}
 		}
+		if (!usesReservedRowGap) throw new Error('Persisted crossing bypassed the reserved row gap');
 		return [...rectangles].map(([id, bounds]) => ({
 			id,
 			x: bounds.x,

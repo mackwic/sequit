@@ -110,13 +110,15 @@
 				<div class="details">
 					<section aria-label="Candidat d’allocation retenu">
 						<h4>Candidat retenu</h4>
-						<p data-testid="grid-allocation-retained">Bus : {demo.busOrder.join(' → ')}</p>
+						<p data-testid="grid-allocation-retained">
+							Bus : {demo.busOrder.join(' → ') || 'aucun'}
+						</p>
 						<ul class="tracks">
 							{#each demo.tracks as track (track.relationId)}
 								<li data-testid={`grid-allocation-track-${track.relationId}`}>
 									<span class="swatch" style:--track-color={track.color} aria-hidden="true"></span>
 									<strong>{track.relationId}</strong>
-									<span>bus {track.busTrack} · rails {track.railLabel}</span>
+									<span>{track.routeTrackLabel} · rails {track.railLabel}</span>
 								</li>
 							{/each}
 						</ul>

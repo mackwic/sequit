@@ -9,7 +9,11 @@ import {
 	crossingRailX,
 	type GridRoutingEdges,
 } from './grid-cell-crossing';
-import type { CrossingPortalSpan, GridCrossingAllocation } from './grid-cell-crossing-allocation';
+import type {
+	CrossingPortalSpan,
+	GridCrossingAllocation,
+} from './grid-cell-crossing-allocation-types';
+import { crossingRowY } from './grid-cell-crossing-resources';
 import type { GridCellInput, GridCellPlacement, GridCellPortal } from './grid-cell-types';
 
 /** The placed cells and the allocated tracks a grid region routes its crossings with. */
@@ -29,7 +33,12 @@ function crossingEndpoint(
 	allocation: GridCrossingAllocation,
 	relation: LogicRelation,
 	endpointId: string,
-): { readonly port: Point; readonly portal: GridCellPortal; readonly railX: number } {
+): {
+	readonly port: Point;
+	readonly portal: GridCellPortal;
+	readonly railX: number;
+	readonly cell: GridCellPlacement;
+} {
 	const { incidence, edges, columnCount, cellByEndpointId } = routing;
 	const cellId = defined(cellByEndpointId.get(endpointId));
 	const cell = defined(routing.cells.find(({ id }) => id === cellId));
@@ -65,7 +74,7 @@ function crossingEndpoint(
 	};
 	const edge = defined(edges.gutters[cell.column]);
 	const track = defined(defined(allocation.gutterTrackByRelationId[cell.column]).get(relation.id));
-	return { port, portal, railX: crossingRailX(edge, portalX, side, track) };
+	return { port, portal, railX: crossingRailX(edge, portalX, side, track), cell };
 }
 
 export function crossingRoute(
@@ -79,10 +88,22 @@ export function crossingRoute(
 	if (source.railX === target.railX) {
 		points.push({ x: target.railX, y: target.port.y });
 	} else {
-		const busY = crossingBusY(
-			routing.edges.topBus,
-			defined(allocation.busTrackByRelationId.get(relation.id)),
-		);
+		let upperCell = source.cell;
+		if (target.cell.row < source.cell.row) upperCell = target.cell;
+		const row = upperCell.row;
+		const rowTrack = allocation.rowTrackByRelationId?.[row]?.get(relation.id);
+		let busY: number;
+		if (rowTrack === undefined)
+			busY = crossingBusY(
+				routing.edges.topBus,
+				defined(allocation.busTrackByRelationId.get(relation.id)),
+			);
+		else
+			busY = crossingRowY(
+				defined(routing.edges.rowGutters[row]),
+				upperCell.bounds.y + upperCell.bounds.height,
+				rowTrack,
+			);
 		points.push(
 			{ x: source.railX, y: busY },
 			{ x: target.railX, y: busY },

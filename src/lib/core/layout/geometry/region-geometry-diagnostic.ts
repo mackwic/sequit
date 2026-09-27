@@ -61,7 +61,7 @@ export enum RegionGeometryDiagnosticCode {
 	GridCrossingOverlap = 'grid-crossing-overlap',
 	/** A crossing endpoint needs a port face its cell does not publish: no group-face track. */
 	GridGroupFaceMissing = 'grid-group-face-missing',
-	/** A crossing that would need a horizontal gutter between two rows: not modelled yet. */
+	/** The declared horizontal routing edge is absent and no upper-bus fallback validates. */
 	GridRowGutterMissing = 'grid-row-gutter-missing',
 }
 

@@ -3,9 +3,11 @@ import { CrossingAllocationPhaseId } from '../search/grid-cell-crossing-witness'
 import {
 	crossingAllocationCandidates,
 	crossingAllocationCandidatesWithExtraTrack,
-	type CrossingAllocationInput,
-	type GridCrossingAllocation,
 } from './grid-cell-crossing-allocation';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from './grid-cell-crossing-allocation-types';
 
 export type {
 	GridCrossingAllocationSelectedWitness,
@@ -73,6 +75,20 @@ function factorial(value: number): bigint {
 	return count;
 }
 
+function rowAssignmentCount(load: number): bigint {
+	let total = 1n;
+	let choices = 1n;
+	let tracks = 1n;
+	for (let selected = 1; selected <= load; selected += 1) {
+		const remaining = BigInt(load - selected + 1);
+		choices *= remaining;
+		choices /= BigInt(selected);
+		tracks *= remaining;
+		total += choices * tracks;
+	}
+	return total;
+}
+
 function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
 	let count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
 	let gutterAssignments = 1n;
@@ -82,6 +98,7 @@ function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
 			defined(input.edges.gutters[column]).capacity - 1,
 		);
 	count *= gutterAssignments;
+	for (const ids of input.rowGutterIds ?? []) count *= rowAssignmentCount(ids.length);
 	for (const relations of input.incidence.values()) count *= factorial(relations.length);
 	return count;
 }

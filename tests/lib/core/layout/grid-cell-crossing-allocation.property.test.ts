@@ -6,18 +6,19 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
-import {
-	canonicalCrossingAllocation,
-	type CrossingAllocationInput,
-	crossingBusOrderCandidates,
-	type GridCrossingAllocation,
-} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
+import { crossingBusOrderCandidates } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-bus-orders';
 import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 	crossingCanonicalBusGeometryCount,
 	GRID_CROSSING_REALLOCATION_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import {
 	GridCrossingSearchMode,
@@ -106,6 +107,55 @@ function naiveAllocationSignatures(
 }
 
 describe('grid crossing allocation route geometry properties', () => {
+	it('counts row-track choices and top-bus fallbacks under input permutations', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 0, max: 127 }),
+				fc.integer({ min: 1, max: 2 }),
+				(seed, count) => {
+					const fixture = variedGridRoutingCase(count, 2, seed);
+					const resources = gridCrossingResources(fixture.gridInput, fixture.crossing);
+					const input = { ...fixture.input, rowGutterIds: resources.rowGutterIds };
+					const phases = crossingAllocationPhases(input);
+					for (const phase of phases)
+						expect(BigInt([...phase.candidates()].length)).toBe(phase.totalGeometries());
+					const budgets = {
+						reallocate: Number(defined(phases[0]).totalGeometries()),
+						extraTrack: Number(defined(phases[1]).totalGeometries()),
+						bridge: Number(defined(phases[2]).totalGeometries()),
+					};
+					const result = searchGridCrossingAllocations(
+						input,
+						(allocation) => ({
+							candidate: allocation,
+							failure: regionGeometryDiagnostic(
+								RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+								'A declared obstacle blocks every candidate.',
+							),
+						}),
+						budgets,
+						GridCrossingSearchMode.Exhaustive,
+					);
+					expect('failure' in result).toBe(true);
+					for (const phase of result.witness.phases) {
+						expect(phase.exhaustive).toBe(true);
+						expect(BigInt(phase.exploredGeometries)).toBe(BigInt(phase.totalGeometries));
+					}
+					const reversed = gridCrossingResources(
+						{
+							...fixture.gridInput,
+							cells: [...fixture.gridInput.cells].reverse(),
+							cellByEndpointId: new Map([...fixture.gridInput.cellByEndpointId].reverse()),
+						},
+						[...fixture.crossing].reverse(),
+					);
+					expect(reversed.rowGutterIds).toEqual(resources.rowGutterIds);
+					expect(reversed.edges.rowGutters).toEqual(resources.edges.rowGutters);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
 	it('compares exact cardinality with route points and portals on admissible grids', () => {
 		fc.assert(
 			fc.property(

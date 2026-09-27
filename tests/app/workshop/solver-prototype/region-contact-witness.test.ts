@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-	probeRegionContactScenario,
 	RegionContactCaseId,
 	RegionContactPanelStatus,
 	requireRejectedRegionContactCandidate,
@@ -9,8 +8,6 @@ import {
 	solveRegionContactScenario,
 } from '../../../../src/app/workshop/visual-tests/solver-prototype/region-contact-witness';
 import { defined } from '../../../../src/lib/core/document/logic-document';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 
 describe('observable contacts at region boundaries', () => {
@@ -99,30 +96,6 @@ describe('observable contacts at region boundaries', () => {
 		expect(probePanel.status).toBe(RegionContactPanelStatus.Rejected);
 		expect(probePanel.validator).toContain('sonde géométrique');
 		expect(probePanel.description).toContain('Aucun pont');
-	});
-
-	it('bridges the three-relation grid contact instead of leaving it unresolved', () => {
-		const source = defined(cases.find(({ id }) => id === RegionContactCaseId.Grid)).source;
-		const originalContact = {
-			...source,
-			document: {
-				...source.document,
-				relations: [...source.document.relations, { id: 'across-grid', from: 'a-target', to: 'd' }],
-			},
-		};
-		const { attempt } = probeRegionContactScenario(originalContact);
-		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
-		if (attempt.status !== RegionCompositionStatus.Selected) return;
-		const bridges = validatedBridges(attempt.layout.relations);
-		expect(bridges.length).toBeGreaterThan(0);
-		expect(
-			defined(
-				bridges.find(
-					({ carrierIds, crossedIds }) =>
-						carrierIds.includes('leaves-grid') && crossedIds.includes('across-grid'),
-				),
-			),
-		).toBeDefined();
 	});
 
 	it('reports invalid graph and region ownership from mutations of a real workshop document', () => {

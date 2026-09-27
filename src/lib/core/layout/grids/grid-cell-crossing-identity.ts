@@ -1,4 +1,5 @@
 import { compareCanonicalStrings } from '../../canonical-string';
+import type { GridCrossingAllocation } from './grid-cell-crossing-allocation-types';
 import { FREE_TRACK } from './grid-cell-crossing-orders';
 
 type TrackEntries = readonly (readonly [string, number])[];
@@ -33,11 +34,15 @@ export function geometryKeyFromOrders(
 	gutterOrders: readonly (readonly string[])[],
 	busOrder: readonly string[],
 	portOrders: ReadonlyMap<string, readonly string[]>,
-	busRelevant: ReadonlySet<string>,
+	context: {
+		readonly busRelevant: ReadonlySet<string>;
+		readonly rowTracks: readonly (readonly string[])[];
+	},
 ): string {
 	return JSON.stringify([
 		gutterOrders.map((order) => orderEntries(order)),
-		orderEntries(busOrder, busRelevant),
+		context.rowTracks.map((order) => orderEntries(order)),
+		orderEntries(busOrder, context.busRelevant),
 		[...portOrders]
 			.sort(([left], [right]) => compareCanonicalStrings(left, right))
 			.map(([endpointId, order]) => [endpointId, orderEntries(order)]),
@@ -45,15 +50,14 @@ export function geometryKeyFromOrders(
 }
 
 export function geometryKeyFromAllocation(
-	gutterTracks: readonly ReadonlyMap<string, number>[],
-	busTracks: ReadonlyMap<string, number>,
-	portTracks: ReadonlyMap<string, ReadonlyMap<string, number>>,
+	allocation: GridCrossingAllocation,
 	busRelevant: ReadonlySet<string>,
 ): string {
 	return JSON.stringify([
-		gutterTracks.map((tracks) => mapEntries(tracks)),
-		mapEntries(busTracks, busRelevant),
-		[...portTracks]
+		allocation.gutterTrackByRelationId.map((tracks) => mapEntries(tracks)),
+		(allocation.rowTrackByRelationId ?? []).map((tracks) => mapEntries(tracks)),
+		mapEntries(allocation.busTrackByRelationId, busRelevant),
+		[...allocation.portTrackByEndpointId]
 			.sort(([left], [right]) => compareCanonicalStrings(left, right))
 			.map(([endpointId, tracks]) => [endpointId, mapEntries(tracks)]),
 	]);

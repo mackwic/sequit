@@ -85,67 +85,6 @@ describe('grid bus allocation', () => {
 		expect(reversed.edges).toEqual(resources.edges);
 		expect(reversed.gutterIds).toEqual(resources.gutterIds);
 	});
-
-	it('uses a non-canonical bus order after rejecting every canonical-bus allocation', () => {
-		const source = {
-			...nxmThreeByTwoDocument(),
-			relations: [
-				{ id: 'a-b', from: 'a', to: 'b' },
-				{ id: 'a-c', from: 'a', to: 'c' },
-				{ id: 'a-d', from: 'a', to: 'd' },
-			],
-		};
-		const base = nxmThreeByTwoInput();
-		const input: GridCellInput = {
-			...base,
-			cellByEndpointId: new Map([
-				['a', 'a'],
-				['b', 'd'],
-				['c', 'c'],
-				['d', 'f'],
-				['e', 'b'],
-				['f', 'e'],
-			]),
-		};
-		const prepared = prepareLayoutDocument(source);
-		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
-		if (result.status !== GridCellLayoutStatus.Selected)
-			throw new Error(`${result.status}: ${result.reason}`);
-
-		const firstDiagnostic = result.witness.rejectedAlternatives[0];
-		expect(firstDiagnostic?.reason).toContain('a-b');
-		expect(firstDiagnostic?.reason).toContain('a-c');
-		expect(firstDiagnostic?.reason).not.toContain('a-d');
-		// The initially uninvolved route must trade its canonical bus track to repair the pair.
-		expect(result.allocation.busTrackByRelationId.get('a-d')).toBe(1);
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		expect(
-			[...result.allocation.busTrackByRelationId]
-				.sort((left, right) => left[1] - right[1])
-				.map(([relationId]) => relationId),
-		).toEqual(['a-b', 'a-d', 'a-c']);
-		const reallocation = result.witness.phases[0];
-		if (reallocation === undefined) throw new Error('Expected reallocation phase evidence.');
-		const canonicalBus = ['a-b', 'a-c', 'a-d'];
-		const canonicalBusRejections = result.witness.rejectedAlternatives.filter(
-			({ phaseId, busOrder }) =>
-				phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === canonicalBus.join(),
-		);
-		expect(canonicalBusRejections).toHaveLength(Number(BigInt(reallocation.totalGeometries) / 6n));
-		expect(reallocation.exploredGeometries).toBeGreaterThanOrEqual(canonicalBusRejections.length);
-		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
-		const permuted = prepareLayoutDocument({
-			...source,
-			relations: [...source.relations].reverse(),
-		});
-		expect(
-			solveGridCellLayout(permuted.graph, permuted.measurements, {
-				...input,
-				cells: [...input.cells].reverse(),
-				cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
-			}),
-		).toEqual(result);
-	});
 });
 
 describe('N by M grid composition', () => {

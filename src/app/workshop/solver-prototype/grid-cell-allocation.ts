@@ -25,7 +25,7 @@ const ROUTE_COLORS = ['#bf4f36', '#287b65', '#4c5fb5', '#a34e91', '#b17b26', '#3
 interface GridAllocationTrackView {
 	readonly relationId: string;
 	readonly color: string;
-	readonly busTrack: number;
+	readonly routeTrackLabel: string;
 	readonly railLabel: string;
 }
 
@@ -136,10 +136,10 @@ function threeByTwo(conflictsFirst: boolean): GridDefinition {
 		);
 		for (const endpointId of endpointIds) cellByEndpointId.set(endpointId, endpointId);
 	} else {
-		id = 'grid-allocation-noncanonical-bus';
-		title = 'Bus non canonique';
+		id = 'grid-allocation-row-gutter';
+		title = 'Gouttière horizontale et bus';
 		description =
-			'Les relations a-b, a-c et a-d ne se sélectionnent qu’après rejet de tous les bus canoniques.';
+			'La relation a-d traverse la gouttière entre rangées ; a-b et a-c conservent le bus supérieur.';
 		relations.push(
 			{ id: 'a-b', from: 'a', to: 'b' },
 			{ id: 'a-c', from: 'a', to: 'c' },
@@ -178,7 +178,12 @@ function gridTracks(
 		.sort((left, right) => compareCanonicalStrings(left[0], right[0]))
 		.map(([relationId]) => {
 			const relation = defined(relationById.get(relationId));
-			const busTrack = defined(selected.allocation.busTrackByRelationId.get(relationId));
+			let routeTrackLabel: string | undefined;
+			for (const [row, tracks] of (selected.allocation.rowTrackByRelationId ?? []).entries()) {
+				const track = tracks.get(relationId);
+				if (track !== undefined) routeTrackLabel = `gouttière R${row + 1}·${track}`;
+			}
+			routeTrackLabel ??= `bus ${defined(selected.allocation.busTrackByRelationId.get(relationId))}`;
 			const columns = new Set([
 				defined(
 					selected.cells.find(({ id }) => id === definition.cellByEndpointId.get(relation.from)),
@@ -196,7 +201,7 @@ function gridTracks(
 			return {
 				relationId,
 				color: defined(colorsByRelationId.get(relationId)),
-				busTrack,
+				routeTrackLabel,
 				railLabel: rails.join(' / '),
 			};
 		});
@@ -234,7 +239,11 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 			Math.max(0, rows - 1) * 96 +
 			2 * globalMargin,
 	};
+	const horizontalIds = new Set(
+		(attempt.allocation.rowTrackByRelationId ?? []).flatMap((tracks) => [...tracks.keys()]),
+	);
 	const busOrder = [...attempt.allocation.busTrackByRelationId]
+		.filter(([relationId]) => !horizontalIds.has(relationId))
 		.sort((left, right) => left[1] - right[1])
 		.map(([relationId]) => relationId);
 	return {

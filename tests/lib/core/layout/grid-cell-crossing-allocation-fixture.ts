@@ -17,11 +17,11 @@ import {
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { crossingIncidence } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
-import {
-	canonicalCrossingAllocation,
-	type CrossingAllocationInput,
-	type GridCrossingAllocation,
-} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,

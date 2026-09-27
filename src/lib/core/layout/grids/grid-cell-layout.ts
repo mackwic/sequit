@@ -3,7 +3,11 @@ import { defined, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { RoutedPath } from '../bridges/route-runs';
 import { satisfyMetricDemands } from '../contract/metric-demand';
-import type { RegionGeometryDiagnostic } from '../geometry/region-geometry-diagnostic';
+import {
+	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../geometry/region-geometry-diagnostic';
 import type {
 	Bounds,
 	LayoutElement,
@@ -26,11 +30,11 @@ import {
 	GRID_GUTTER_MIN_MARGIN,
 	gridGutterMargin,
 } from './grid-cell-crossing';
-import {
-	canonicalCrossingAllocation,
-	type CrossingAllocationInput,
-	type GridCrossingAllocation,
-} from './grid-cell-crossing-allocation';
+import { canonicalCrossingAllocation } from './grid-cell-crossing-allocation';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from './grid-cell-crossing-allocation-types';
 import {
 	type GridCrossingAllocationBudgets,
 	validatedGridCrossingAllocationBudgets,
@@ -183,8 +187,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 	const incidence = crossingIncidence(crossing);
 	const { cells, columnWidths, rowHeights, gridRight, gridBottom } = disposition;
 	const columnCount = columnWidths.length;
-	const { edges, gutterIds } = placed.resources;
+	const { edges, gutterIds, rowGutterIds } = placed.resources;
 	const cellById = new Map(cells.map((cell) => [cell.id, cell]));
+	const missingRow = rowGutterIds.findIndex(
+		(ids, row) => ids.length > 0 && edges.rowGutters[row] === undefined,
+	);
+
 	const routing: GridCrossingRouting = {
 		rootId: input.rootId,
 		crossing,
@@ -266,6 +274,10 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			})
 			.map(({ id }) => id),
 		gutterIds,
+		rowGutterIds: rowGutterIds.map((ids, row) => {
+			if (edges.rowGutters[row] === undefined) return [];
+			return ids;
+		}),
 		blockedExtraGutterColumns: placed.blockedExtraGutterColumns,
 		incidence,
 		portalByRelationId: new Map(),
@@ -283,11 +295,18 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			allocation: search.selected.allocation,
 			witness: search.witness,
 		} satisfies GridCellAllocationSelected;
+	let failure = search.failure;
+	if (missingRow >= 0)
+		failure = regionGeometryDiagnostic(
+			RegionGeometryDiagnosticCode.GridRowGutterMissing,
+			`Grid row ${missingRow} has no declared horizontal routing edge.`,
+			{ relationId: defined(defined(rowGutterIds[missingRow])[0]), regionId: input.rootId },
+		);
 	return {
 		status: GridCellLayoutStatus.Unknown,
-		reason: search.failure.message,
+		reason: failure.message,
 		provenance: RegionSearchProvenance.Grid,
-		code: search.failure.code,
+		code: failure.code,
 		witness: search.witness,
 	};
 }

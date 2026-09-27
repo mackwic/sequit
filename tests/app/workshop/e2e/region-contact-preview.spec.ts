@@ -90,21 +90,12 @@ test('the grid allocation workshop explains exact route geometry search', async 
 	const explorer = page.getByRole('region', { name: 'Allocation de grille' });
 	const twoByTwo = explorer.getByTestId('grid-allocation-case-grid-allocation-2x2');
 	const pruned = explorer.getByTestId('grid-allocation-case-grid-allocation-3x2-conflicts-first');
-	const noncanonical = explorer.getByTestId(
-		'grid-allocation-case-grid-allocation-noncanonical-bus',
-	);
+	const horizontal = explorer.getByTestId('grid-allocation-case-grid-allocation-row-gutter');
 	await expect(twoByTwo.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
 	await expect(twoByTwo.locator('svg')).toHaveAttribute('aria-label', /4 cellules/);
 	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
-		'data-exhaustive',
-		'true',
-	);
-	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
 		'data-truncated',
 		'false',
-	);
-	await expect(twoByTwo.getByTestId('grid-allocation-phase-reallocate')).toContainText(
-		'Exhaustive',
 	);
 	for (const phaseId of ['extra-track', 'bridge']) {
 		const phase = twoByTwo.getByTestId(`grid-allocation-phase-${phaseId}`);
@@ -127,14 +118,14 @@ test('the grid allocation workshop explains exact route geometry search', async 
 			'Non tentée',
 		);
 
-	await expect(noncanonical.getByTestId('grid-allocation-retained')).toContainText(
-		'Bus : a-b → a-d → a-c',
-	);
+	await expect(horizontal.getByTestId('grid-allocation-retained')).toContainText('Bus : a-b → a-c');
+	await expect(horizontal.getByTestId('grid-allocation-track-a-d')).toContainText('gouttière R1·0');
+	await expect(twoByTwo.getByTestId('grid-allocation-retained')).toContainText('Bus : aucun');
 
 	for (const [card, relationIds] of [
 		[twoByTwo, ['a-d']],
 		[pruned, ['a-b', 'a-c', 'c-f']],
-		[noncanonical, ['a-b', 'a-c', 'a-d']],
+		[horizontal, ['a-b', 'a-c', 'a-d']],
 	] as const) {
 		for (const relationId of relationIds) {
 			const track = card.getByTestId(`grid-allocation-track-${relationId}`);

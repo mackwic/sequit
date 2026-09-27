@@ -1,8 +1,10 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
-import type { Point } from '../layout-types';
 import { allocateNestedTracks, type RoutingEdge } from '../resources/routing-resource-allocation';
-import type { GridRoutingEdges } from './grid-cell-crossing';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from './grid-cell-crossing-allocation-types';
+import { crossingBusOrderCandidates } from './grid-cell-crossing-bus-orders';
 import { geometryKeyFromAllocation, geometryKeyFromOrders } from './grid-cell-crossing-identity';
 import {
 	FREE_TRACK,
@@ -10,35 +12,7 @@ import {
 	trackOrderFromMap,
 	trackOrders,
 } from './grid-cell-crossing-orders';
-
-/** One allocated track per crossing relation, on each gutter edge and on the bus. */
-export interface GridCrossingAllocation {
-	/** One track map per column gutter, in column order. */
-	readonly gutterTrackByRelationId: readonly ReadonlyMap<string, number>[];
-	readonly busTrackByRelationId: ReadonlyMap<string, number>;
-	readonly portTrackByEndpointId: ReadonlyMap<string, ReadonlyMap<string, number>>;
-}
-
-/** The two portal points a crossing relation leaves from, in canonical port order. */
-export interface CrossingPortalSpan {
-	readonly source: Point;
-	readonly target: Point;
-}
-
-export interface CrossingAllocationInput {
-	readonly edges: GridRoutingEdges;
-	/** Crossing relation identities in canonical order. */
-	readonly crossingIds: readonly string[];
-	/** Relations whose endpoints use different rails and therefore use a bus track geometrically. */
-	readonly busRelevantRelationIds: readonly string[];
-	/** Crossing relations with an endpoint in each column, in canonical order, per column. */
-	readonly gutterIds: readonly (readonly string[])[];
-	/** An inherited incident already uses the outer track of these gutters. */
-	readonly blockedExtraGutterColumns?: ReadonlySet<number> | undefined;
-	/** Canonical port order per endpoint. */
-	readonly incidence: ReadonlyMap<string, readonly string[]>;
-	readonly portalByRelationId: ReadonlyMap<string, CrossingPortalSpan>;
-}
+import { withRowRouteChoices } from './grid-cell-crossing-row-choices';
 
 type TrackOrderFactory = () => Generator<readonly string[]>;
 
@@ -53,14 +27,22 @@ function allocationOf(
 	gutterOrders: readonly (readonly string[])[],
 	busOrder: readonly string[],
 	portOrderByEndpointId: ReadonlyMap<string, readonly string[]>,
+	rowOrders: readonly (readonly string[])[] = [],
 ): GridCrossingAllocation {
 	return {
 		gutterTrackByRelationId: gutterOrders.map(trackMap),
 		busTrackByRelationId: trackMap(busOrder),
+		rowTrackByRelationId: rowOrders.map(trackMap),
 		portTrackByEndpointId: new Map(
 			[...portOrderByEndpointId].map(([endpointId, order]) => [endpointId, trackMap(order)]),
 		),
 	};
+}
+
+function canonicalRowOrders(input: CrossingAllocationInput): readonly (readonly string[])[] {
+	return (input.rowGutterIds ?? []).map((ids) =>
+		input.crossingIds.filter((id) => ids.includes(id)),
+	);
 }
 
 /** Canonical bus order restricted to each gutter; canonical port order on each face. */
@@ -69,7 +51,12 @@ export function canonicalCrossingAllocation(
 ): GridCrossingAllocation {
 	const restricted = (ids: readonly string[]): readonly string[] =>
 		input.crossingIds.filter((relationId) => ids.includes(relationId));
-	return allocationOf(input.gutterIds.map(restricted), input.crossingIds, input.incidence);
+	return allocationOf(
+		input.gutterIds.map(restricted),
+		input.crossingIds,
+		input.incidence,
+		canonicalRowOrders(input),
+	);
 }
 
 /**
@@ -114,6 +101,10 @@ export function containmentCrossingAllocation(
 		),
 		busOrder,
 		input.incidence,
+		(input.rowGutterIds ?? []).map((ids, row) => {
+			if (ids.length === 0) return [];
+			return containmentOrder(input, defined(input.edges.rowGutters[row]), ids);
+		}),
 	);
 }
 
@@ -145,66 +136,6 @@ function* combineOrders(
 	if (order[reservedTrack] !== FREE_TRACK) yield [...prefix];
 }
 
-/** Lexicographic first representative of each effective bus geometry: irrelevant routes retain
- * their relative canonical order rather than multiplying the same geometry factorially. */
-function* distinctBusOrders(
-	relevant: readonly string[],
-	context: { readonly inert: readonly string[]; readonly capacity: number },
-	inertIndex: number,
-	prefix: string[],
-): Generator<readonly string[], undefined, undefined> {
-	if (prefix.length === context.capacity) {
-		yield [...prefix];
-		return;
-	}
-	const nextInert = context.inert[inertIndex];
-	let choices = relevant;
-	if (nextInert !== undefined) choices = [...relevant, nextInert].sort(compareCanonicalStrings);
-	for (const id of choices) {
-		prefix.push(id);
-		if (id === nextInert) yield* distinctBusOrders(relevant, context, inertIndex + 1, prefix);
-		else
-			yield* distinctBusOrders(
-				relevant.filter((candidate) => candidate !== id),
-				context,
-				inertIndex,
-				prefix,
-			);
-		prefix.pop();
-	}
-}
-
-/** Exactly one constructed bus proposal per effective assignment, canonical first. A priority
- * frontier freezes inert and nonconflicting relations; the complete suffix permits relevant
- * relations to occupy any bus slot while fixing inert routes in canonical relative order. */
-export function* crossingBusOrderCandidates(
-	input: CrossingAllocationInput,
-	active?: ReadonlySet<string>,
-): Generator<readonly string[], undefined, undefined> {
-	const canonical = input.crossingIds;
-	yield canonical;
-	const relevant = new Set(input.busRelevantRelationIds);
-	let orders: Iterable<readonly string[]>;
-	if (active === undefined)
-		orders = distinctBusOrders(
-			input.busRelevantRelationIds,
-			{
-				inert: input.crossingIds.filter((id) => !relevant.has(id)),
-				capacity: input.edges.topBus.capacity,
-			},
-			0,
-			[],
-		);
-	else
-		orders = trackOrders(
-			input.busRelevantRelationIds,
-			input.edges.topBus.capacity,
-			new Set(input.busRelevantRelationIds.filter((id) => active.has(id))),
-			canonical,
-		);
-	for (const order of orders) if (order.some((id, index) => id !== canonical[index])) yield order;
-}
-
 function* permutationCandidates(
 	input: CrossingAllocationInput,
 	extraColumn: number | undefined,
@@ -224,24 +155,39 @@ function* permutationCandidates(
 				trackOrderFromMap(ids, defined(canonical.gutterTrackByRelationId[column]), capacity),
 			);
 		}),
+		...(input.rowGutterIds ?? []).map((ids, row) => (): Generator<readonly string[]> => {
+			let capacity = 0;
+			if (ids.length > 0) capacity = defined(input.edges.rowGutters[row]).capacity;
+			return trackOrders(ids, capacity, active, ids);
+		}),
 	];
 	const seen = new Set(excluded);
 	const constraints = { input, extraColumn };
 	for (const orders of combineOrders(factories, 0, [], constraints)) {
 		const busOrder = defined(orders[0]);
-		const gutterOrders = orders.slice(1);
+		const gutterOrders = orders.slice(1, input.gutterIds.length + 1);
+		const rowOrders = orders.slice(input.gutterIds.length + 1);
 		for (const portOrderByEndpointId of portOrders(input.incidence, active)) {
-			const key = geometryKeyFromOrders(
-				gutterOrders,
-				busOrder,
-				portOrderByEndpointId,
-				busRelevantRelationIds,
-			);
+			const key = geometryKeyFromOrders(gutterOrders, busOrder, portOrderByEndpointId, {
+				busRelevant: busRelevantRelationIds,
+				rowTracks: rowOrders,
+			});
 			if (seen.has(key)) continue;
 			seen.add(key);
-			yield allocationOf(gutterOrders, busOrder, portOrderByEndpointId);
+			yield allocationOf(gutterOrders, busOrder, portOrderByEndpointId, rowOrders);
 		}
 	}
+}
+
+function unchangedTracks(
+	canonical: readonly ReadonlyMap<string, number>[],
+	candidate: readonly ReadonlyMap<string, number>[],
+	active: ReadonlySet<string>,
+): boolean {
+	for (const [index, tracks] of candidate.entries())
+		for (const [id, track] of tracks)
+			if (!active.has(id) && defined(canonical[index]).get(id) !== track) return false;
+	return true;
 }
 
 function containmentMovesOnlyConflicts(
@@ -249,73 +195,91 @@ function containmentMovesOnlyConflicts(
 	containment: GridCrossingAllocation,
 	active: ReadonlySet<string>,
 ): boolean {
-	for (const [column, tracks] of containment.gutterTrackByRelationId.entries()) {
-		for (const [id, track] of tracks)
-			if (!active.has(id) && defined(canonical.gutterTrackByRelationId[column]).get(id) !== track)
-				return false;
-	}
+	if (
+		!unchangedTracks(canonical.gutterTrackByRelationId, containment.gutterTrackByRelationId, active)
+	)
+		return false;
+	if (
+		!unchangedTracks(
+			canonical.rowTrackByRelationId ?? [],
+			containment.rowTrackByRelationId ?? [],
+			active,
+		)
+	)
+		return false;
 	for (const [id, track] of containment.busTrackByRelationId)
 		if (!active.has(id) && canonical.busTrackByRelationId.get(id) !== track) return false;
 	return true;
 }
 
+function* prioritizedBusCandidates(
+	input: CrossingAllocationInput,
+	excluded: Set<string>,
+	active?: ReadonlySet<string>,
+): Generator<GridCrossingAllocation> {
+	const gutterOrders = input.gutterIds.map((ids) =>
+		input.crossingIds.filter((id) => ids.includes(id)),
+	);
+	const rowOrders = canonicalRowOrders(input);
+	const busRelevant = new Set(input.busRelevantRelationIds);
+	for (const busOrder of crossingBusOrderCandidates(input, active)) {
+		const key = geometryKeyFromOrders(gutterOrders, busOrder, input.incidence, {
+			busRelevant,
+			rowTracks: rowOrders,
+		});
+		if (excluded.has(key)) continue;
+		excluded.add(key);
+		yield allocationOf(gutterOrders, busOrder, input.incidence, rowOrders);
+	}
+}
+
 /** Canonical, containment, then lazy lexicographic bus/gutter/port permutations. */
-export function* crossingAllocationCandidates(
+function* baseCrossingAllocationCandidates(
 	input: CrossingAllocationInput,
 	active?: ReadonlySet<string>,
 	prioritizeBus = false,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
 	const busRelevantRelationIds = new Set(input.busRelevantRelationIds);
 	const canonical = canonicalCrossingAllocation(input);
-	const excluded = new Set([
-		geometryKeyFromAllocation(
-			canonical.gutterTrackByRelationId,
-			canonical.busTrackByRelationId,
-			canonical.portTrackByEndpointId,
-			busRelevantRelationIds,
-		),
-	]);
+	const excluded = new Set([geometryKeyFromAllocation(canonical, busRelevantRelationIds)]);
 	yield canonical;
 	const containment = containmentCrossingAllocation(input);
-	const containmentKey = geometryKeyFromAllocation(
-		containment.gutterTrackByRelationId,
-		containment.busTrackByRelationId,
-		containment.portTrackByEndpointId,
-		busRelevantRelationIds,
-	);
+	const containmentKey = geometryKeyFromAllocation(containment, busRelevantRelationIds);
 	const allowed =
 		active === undefined || containmentMovesOnlyConflicts(canonical, containment, active);
 	if (!excluded.has(containmentKey) && allowed) {
 		excluded.add(containmentKey);
 		yield containment;
 	}
-	// Bus permutations are cheap to try with the canonical gutters and ports. Without this
-	// prefix, the Cartesian product of gutters hides a valid bus order beyond the budget.
-	if (prioritizeBus) {
-		const gutterOrders = input.gutterIds.map((ids) =>
-			input.crossingIds.filter((id) => ids.includes(id)),
-		);
-		for (const busOrder of crossingBusOrderCandidates(input, active)) {
-			const key = geometryKeyFromOrders(
-				gutterOrders,
-				busOrder,
-				input.incidence,
-				busRelevantRelationIds,
-			);
-			if (excluded.has(key)) continue;
-			excluded.add(key);
-			yield allocationOf(gutterOrders, busOrder, input.incidence);
-		}
-	}
+	// Bus permutations are cheap with canonical gutters and ports; keep them before the
+	// Cartesian gutter product if a conflict requests a bus-first prefix.
+	if (prioritizeBus) yield* prioritizedBusCandidates(input, excluded, active);
 	yield* permutationCandidates(input, undefined, excluded, active);
 }
 
 /** Add one reserved crossing track to one loaded gutter at a time. */
-export function* crossingAllocationCandidatesWithExtraTrack(
+function* baseCrossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
 	for (const [column, ids] of input.gutterIds.entries())
 		if (ids.length > 0 && input.blockedExtraGutterColumns?.has(column) !== true)
 			yield* permutationCandidates(input, column, new Set(), active);
+}
+
+/** Canonical and containment allocations, then row/upper-bus choices in the same phase budget. */
+export function* crossingAllocationCandidates(
+	input: CrossingAllocationInput,
+	active?: ReadonlySet<string>,
+	prioritizeBus = false,
+): Generator<GridCrossingAllocation, undefined, undefined> {
+	yield* withRowRouteChoices(input, baseCrossingAllocationCandidates(input, active, prioritizeBus));
+}
+
+/** One extra column track, with the same row/upper-bus alternatives. */
+export function* crossingAllocationCandidatesWithExtraTrack(
+	input: CrossingAllocationInput,
+	active?: ReadonlySet<string>,
+): Generator<GridCrossingAllocation, undefined, undefined> {
+	yield* withRowRouteChoices(input, baseCrossingAllocationCandidatesWithExtraTrack(input, active));
 }

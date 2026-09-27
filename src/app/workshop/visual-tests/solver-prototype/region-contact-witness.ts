@@ -212,7 +212,7 @@ function focusViewBox(points: readonly Point[]): string {
 }
 
 /** Inspect the production solver verdict before a workshop panel claims a selected geometry. */
-export function probeRegionContactScenario(source: RegionContactSource): {
+function probeRegionContactScenario(source: RegionContactSource): {
 	readonly model: RegionCompositionModel;
 	readonly attempt: RegionLayoutAttempt;
 } {

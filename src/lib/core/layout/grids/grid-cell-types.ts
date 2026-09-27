@@ -11,7 +11,7 @@ import type {
 	RegionCompositionFailureEvidence,
 	RegionSearchProvenance,
 } from '../regions/model/region-search-evidence';
-import type { GridCrossingAllocation } from './grid-cell-crossing-allocation';
+import type { GridCrossingAllocation } from './grid-cell-crossing-allocation-types';
 import type { GridCrossingAllocationSelectedWitness } from './grid-cell-crossing-phases';
 
 export { RegionCompositionStatus as GridCellLayoutStatus } from '../regions/model/region-composition-types';

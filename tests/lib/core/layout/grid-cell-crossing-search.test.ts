@@ -9,8 +9,8 @@ import {
 	canonicalCrossingAllocation,
 	containmentCrossingAllocation,
 	crossingAllocationCandidates,
-	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import type { GridCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,

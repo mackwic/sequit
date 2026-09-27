@@ -17,9 +17,11 @@ import {
 	containmentCrossingAllocation,
 	crossingAllocationCandidates,
 	crossingAllocationCandidatesWithExtraTrack,
-	type CrossingAllocationInput,
-	type GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import type {
+	CrossingAllocationInput,
+	GridCrossingAllocation,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import {
 	crossingAllocationGeometryCount,
 	CrossingAllocationPhaseId,

@@ -397,7 +397,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		);
 	});
 
-	it('bridges the strict crossings between three grid routes instead of losing the capacity', () => {
+	it('routes three nested grid crossings without parent contacts or bridges', () => {
 		const { document, input } = nestedGridFixture();
 		const prepared = prepareLayoutDocument({
 			...document,
@@ -410,12 +410,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
 		if (attempt.status !== RegionCompositionStatus.Selected) return;
-		const bridges = validatedBridges(attempt.layout.relations);
-		expect(bridges.length).toBe(3);
-		expect(bridges.every(({ crossedIds }) => crossedIds.length > 0)).toBe(true);
-		expect(
-			defined(bridges.find(({ carrierIds }) => carrierIds.includes('third-crossing'))),
-		).toBeDefined();
+		expect(validatedBridges(attempt.layout.relations)).toEqual([]);
 		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready)
 			throw new Error('Expected normalized three-crossing grid');
@@ -424,24 +419,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		).toBeUndefined();
 	});
 
-	it('reports the unbridged parent contact when the relations are omitted', () => {
-		const { document, input } = nestedGridFixture();
-		const prepared = prepareLayoutDocument({
-			...document,
-			relations: [...document.relations, { id: 'leaves-grid', from: 'a-target', to: 'outside' }],
-		});
-		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
-		if (normalized.status !== RegionCompositionModelStatus.Ready)
-			throw new Error('Expected normalized external-incident grid');
-		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
-		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
-		if (attempt.status !== RegionCompositionStatus.Selected) return;
-		expect(diagnoseParentRouteContacts(normalized.model, attempt.ownedRoutes)).toMatchObject({
-			code: RegionGeometryDiagnosticCode.ParentRouteContact,
-		});
-	});
-
-	it('bridges an external incident crossing a grid rail and keeps the scene selected', () => {
+	it('routes an external incident without an obsolete grid-rail bridge', () => {
 		const { document, input } = nestedGridFixture();
 		const prepared = prepareLayoutDocument({
 			...document,
@@ -452,10 +430,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
 		if (attempt.status !== RegionCompositionStatus.Selected) return;
-		const bridges = validatedBridges(attempt.layout.relations);
-		expect(bridges).toEqual([
-			{ x: 128, y: 188, carrierIds: ['leaves-grid'], crossedIds: ['across-grid'] },
-		]);
+		expect(validatedBridges(attempt.layout.relations)).toEqual([]);
 		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Expected model');
 		expect(
 			diagnoseParentRouteContacts(normalized.model, attempt.ownedRoutes, attempt.layout.relations),
@@ -716,7 +691,6 @@ describe('a grid disposition inside the recursive region tree', () => {
 		function decided(
 			prepared: ReturnType<typeof prepareLayoutDocument>,
 			expected: RegionCompositionStatus.Selected | RegionCompositionStatus.Unknown,
-			bridges?: number,
 		): void {
 			const attempt = solveRecursiveNestedRegionLayout(
 				prepared.graph,
@@ -733,8 +707,6 @@ describe('a grid disposition inside the recursive region tree', () => {
 				return;
 			}
 			if (attempt.status !== RegionCompositionStatus.Selected) return;
-			if (bridges !== undefined)
-				expect(validatedBridges(attempt.layout.relations)).toHaveLength(bridges);
 			const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 			if (normalized.status !== RegionCompositionModelStatus.Ready)
 				throw new Error('Expected normalized grid composition');
@@ -767,7 +739,7 @@ describe('a grid disposition inside the recursive region tree', () => {
 				{ id: 'right-exit', from: 'b', to: 'outside-2' },
 			],
 		});
-		decided(crossing, RegionCompositionStatus.Selected, 2);
+		decided(crossing, RegionCompositionStatus.Selected);
 		const bottom = prepareLayoutDocument({
 			...document,
 			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
