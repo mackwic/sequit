@@ -66,4 +66,11 @@ const results = await Promise.all(
 			}),
 	),
 );
+const relaxationReport = spawnSync('pnpm', ['run', 'quality:relaxation-report'], {
+	stdio: 'inherit',
+});
+if (relaxationReport.error || relaxationReport.status !== 0)
+	process.stderr.write(
+		`Test relaxation report unavailable (non-blocking): ${String(relaxationReport.error ?? relaxationReport.status)}\n`,
+	);
 if (results.some((code) => code !== 0)) process.exit(1);

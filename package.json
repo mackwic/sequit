@@ -20,6 +20,7 @@
 		"lint:fix": "eslint . --fix --max-warnings 0",
 		"lint:staged": "lint-staged",
 		"quality:precommit": "node scripts/quality-precommit.mjs",
+		"quality:relaxation-report": "node scripts/test-relaxation-report.mjs",
 		"quality:fast": "pnpm run lint && pnpm run quality:unused && pnpm run quality:architecture && pnpm run test:coverage:web:fast && pnpm run test:coverage:collaboration && pnpm run quality:duplicates",
 		"quality:integration": "pnpm run test:property && pnpm run test:e2e --project=chromium && pnpm run test:performance",
 		"quality:architecture": "depcruise src tests/scenarios/visual tests/support --config config/dependency-cruiser.cjs --output-type err",
