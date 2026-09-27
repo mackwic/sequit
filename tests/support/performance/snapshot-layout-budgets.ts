@@ -14,7 +14,6 @@ type SnapshotLayoutBudgets = Readonly<
 	>
 >;
 
-// Temporary 2026-09-26 relaxation; remeasure and lower these ceilings after layout costs fall.
 const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'long-queue': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'binary-tree': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
@@ -22,7 +21,7 @@ const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'unbalanced-random': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	subgroups: { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'nested-subgroups': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 205 },
-	'wide-bipartite-layers': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 150 },
+	'wide-bipartite-layers': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 138 },
 	'repeated-diamonds': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'disconnected-components': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'junction-heavy': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
