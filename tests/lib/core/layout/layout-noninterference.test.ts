@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { expect, it } from 'vitest';
 
+import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
 import {
 	defined,
 	EndpointKind,
@@ -10,7 +11,6 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
-import { layoutGraph } from '../../../../src/app/web/projection/layout-graph';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
@@ -40,7 +40,10 @@ function relationSignature(
 ) {
 	const vertical =
 		direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
-	const cross = (point: { x: number; y: number }) => (vertical ? point.x : point.y);
+	const cross = (point: { x: number; y: number }) => {
+		if (vertical) return point.x;
+		return point.y;
+	};
 	const bounds = new Map(layout.elements.map(({ id, bounds }) => [id, bounds]));
 	return layout.relations
 		.filter(({ id }) => relationIds.includes(id))

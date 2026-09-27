@@ -1,7 +1,7 @@
 const layoutPath = '^src/lib/core/layout/';
 const layoutScopes = {
 	base: `${layoutPath}layout-(types|settings)[.]ts$`,
-	engine: `${layoutPath}(layout-engine|layout-workspace|layout-port-placement|build-layout-result|group-endpoint-routing)[.]ts$`,
+	engine: `${layoutPath}(layout-engine|layout-workspace|layout-port-placement|layout-routing-(components|layers|mixed)|build-layout-result|group-endpoint-routing)[.]ts$`,
 	root: `${layoutPath}root-region[.]ts$`,
 	geometry: `${layoutPath}geometry/`,
 	structure: `${layoutPath}structure/`,

@@ -230,11 +230,18 @@ export function routeBridgeAnalysis(
 		bridges: new Map(),
 		charge,
 	};
-	const runs = runsByPath.flat();
+	const runs: RouteRun[] = [];
+	const pathOrdinals: number[] = [];
+	for (const [pathIndex, pathRuns] of runsByPath.entries())
+		for (const run of pathRuns) {
+			runs.push(run);
+			pathOrdinals.push(pathIndex);
+		}
 	const indexed = indexRouteRuns(runs, {
 		direction: RunNeighborDirection.Earlier,
 		perpendicularOnly: true,
 		charge,
+		pathOrdinals,
 	});
 	let runIndex = 0;
 	for (const pathRuns of runsByPath) {

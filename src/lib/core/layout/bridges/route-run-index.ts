@@ -62,8 +62,9 @@ interface Query {
 	readonly current: number;
 	readonly later: boolean;
 	readonly pathId: string;
+	readonly pathOrdinals: readonly number[] | undefined;
 	readonly matches: IndexedRun[];
-	readonly charge?: RouteWorkCharge;
+	readonly charge: RouteWorkCharge | undefined;
 }
 
 function candidates(node: Node | undefined, query: Query): void {
@@ -72,8 +73,10 @@ function candidates(node: Node | undefined, query: Query): void {
 	if (!overlaps(node.box, query.box)) return;
 	let eligible = node.run.index < query.current;
 	if (query.later) eligible = node.run.index > query.current;
-	if (eligible && node.run.run.pathId !== query.pathId && overlaps(node.run.box, query.box))
-		query.matches.push(node.run);
+	let differentPath = node.run.run.pathId !== query.pathId;
+	if (query.pathOrdinals !== undefined)
+		differentPath = query.pathOrdinals[node.run.index] !== query.pathOrdinals[query.current];
+	if (eligible && differentPath && overlaps(node.run.box, query.box)) query.matches.push(node.run);
 	candidates(node.before, query);
 	candidates(node.after, query);
 }
@@ -96,7 +99,8 @@ export enum RunNeighborDirection {
 export interface RunIndexOptions {
 	readonly direction: RunNeighborDirection;
 	readonly perpendicularOnly: boolean;
-	readonly charge?: RouteWorkCharge;
+	readonly charge?: RouteWorkCharge | undefined;
+	readonly pathOrdinals?: readonly number[];
 }
 
 /** Static segment-envelope index; yield different-path neighbours in canonical run order. */
@@ -134,6 +138,7 @@ export function indexRouteRuns(
 			current: index,
 			later,
 			pathId: run.run.pathId,
+			pathOrdinals: options.pathOrdinals,
 			matches,
 			charge,
 		});

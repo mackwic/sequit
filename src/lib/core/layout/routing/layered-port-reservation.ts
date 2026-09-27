@@ -174,7 +174,8 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 		vertical: frame.vertical,
 		componentByEndpointId: input.componentByEndpointId,
 	});
-	if (!input.forceChannels && crossings.length === 0 && passagesFitDirectly(input, passages)) {
+	const directPassages = crossings.length === 0 && passagesFitDirectly(input, passages);
+	if (input.forceChannels !== true && directPassages) {
 		// A later ordinary reservation would move the rails and invalidate the direct passages.
 		const ordinaryCrossings = crossingCorridors({
 			graph,

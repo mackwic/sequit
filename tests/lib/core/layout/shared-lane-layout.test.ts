@@ -2124,17 +2124,19 @@ describe('shared lane layout', () => {
 			{ id: 'b-to-c', from: 'b1', to: 'c1' },
 		]);
 		const prepared = prepareLayoutDocument(document);
-		const incidents: RegionIncidentContract[] = ['external-0', 'external-1'].map((id) => ({
-			relation: { id, from: 'b1', to: 'outside' },
-			endpointId: 'b1',
-			role: RegionIncidentRole.Source,
-			allowedSides: [
-				RegionPortalSide.Left,
-				RegionPortalSide.Right,
-				RegionPortalSide.Top,
-				RegionPortalSide.Bottom,
-			],
-		}));
+		const incidents: RegionIncidentContract[] = ['external-0', 'external-1', 'external-2'].map(
+			(id) => ({
+				relation: { id, from: 'b1', to: 'outside' },
+				endpointId: 'b1',
+				role: RegionIncidentRole.Source,
+				allowedSides: [
+					RegionPortalSide.Left,
+					RegionPortalSide.Right,
+					RegionPortalSide.Top,
+					RegionPortalSide.Bottom,
+				],
+			}),
+		);
 		const input = defined(
 			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
 		);
