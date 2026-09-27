@@ -1,5 +1,5 @@
 import { LayoutDirection } from '../../document/logic-document';
-import type { Bounds, Point } from '../layout-types';
+import type { Bounds, LayoutRelation, Point } from '../layout-types';
 
 export function finitePositiveBounds(box: Bounds): boolean {
 	if (![box.x, box.y, box.width, box.height].every(Number.isFinite)) return false;
@@ -14,6 +14,29 @@ export function boundsOverlap(a: Bounds, b: Bounds): boolean {
 	const horizontal = a.x < bRight && aRight > b.x;
 	const vertical = a.y < bBottom && aBottom > b.y;
 	return horizontal && vertical;
+}
+export function routePathBounds(route: LayoutRelation): Bounds {
+	let minX = Infinity;
+	let maxX = -Infinity;
+	let minY = Infinity;
+	let maxY = -Infinity;
+	for (const point of route.points) {
+		minX = Math.min(minX, point.x);
+		maxX = Math.max(maxX, point.x);
+		minY = Math.min(minY, point.y);
+		maxY = Math.max(maxY, point.y);
+	}
+	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+export function routeBoundsOverlap(first: Bounds, second: Bounds): boolean {
+	const firstRight = first.x + first.width;
+	const secondRight = second.x + second.width;
+	const horizontalOverlap = first.x <= secondRight && firstRight >= second.x;
+	const firstBottom = first.y + first.height;
+	const secondBottom = second.y + second.height;
+	const verticalOverlap = first.y <= secondBottom && firstBottom >= second.y;
+	return horizontalOverlap && verticalOverlap;
 }
 
 export function onPrincipalFace(

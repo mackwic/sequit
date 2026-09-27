@@ -1,4 +1,4 @@
-import { defined, type LogicRelation } from '../../document/logic-document';
+import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
@@ -21,6 +21,8 @@ function groupAncestors(input: GroupPassageContext, endpointId: string): readonl
 	const cached = input.ancestorCache.get(endpointId);
 	if (cached !== undefined) return cached;
 	const result: string[] = [];
+	if (input.graph.endpointsById.get(endpointId)?.kind === EndpointKind.Group)
+		result.push(endpointId);
 	let groupId = input.graph.endpointsById.get(endpointId)?.entity.groupId;
 	while (groupId !== undefined) {
 		result.push(groupId);
@@ -46,6 +48,7 @@ export function commonGroupBounds(
 export function foreignGroupObstacles(
 	input: GroupPassageContext,
 	relation: LogicRelation,
+	clearance = RAIL_SPACING,
 ): RouteObstacles | undefined {
 	const groups = input.graph.document.groups;
 	if (groups.length === 0) return undefined;
@@ -53,7 +56,7 @@ export function foreignGroupObstacles(
 		...groupAncestors(input, relation.from),
 		...groupAncestors(input, relation.to),
 	]);
-	const key = JSON.stringify([...owned].sort());
+	const key = `${clearance}:${JSON.stringify([...owned].sort())}`;
 	if (input.groupObstacleCache.has(key)) return input.groupObstacleCache.get(key);
 	const boxes: Bounds[] = [];
 	for (const candidate of groups) {
@@ -62,7 +65,7 @@ export function foreignGroupObstacles(
 		if (box !== undefined) boxes.push(box);
 	}
 	let index: RouteObstacles | undefined;
-	if (boxes.length > 0) index = prepareRouteObstacles(boxes, RAIL_SPACING);
+	if (boxes.length > 0) index = prepareRouteObstacles(boxes, clearance);
 	input.groupObstacleCache.set(key, index);
 	return index;
 }

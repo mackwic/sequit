@@ -1,7 +1,7 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { onPrincipalFace, segmentEntersInterior } from '../geometry/box-geometry';
-import type { Bounds, LayoutRelation, LayoutResult, Point } from '../layout-types';
+import type { LayoutRelation, LayoutResult, Point } from '../layout-types';
 import type { RouteObstacles as NodeRouteObstacles } from '../routing/route-obstacles';
 import { routeHitsObstacles } from '../routing/route-obstacles';
 import { sameOwnerGroup } from './element-checks';
@@ -26,31 +26,6 @@ function onCanvas(point: Point, layout: LayoutResult): boolean {
 function finitePoint(point: Point): boolean {
 	return Number.isFinite(point.x) && Number.isFinite(point.y);
 }
-
-export function routePathBounds(route: LayoutRelation): Bounds {
-	let minX = Infinity;
-	let maxX = -Infinity;
-	let minY = Infinity;
-	let maxY = -Infinity;
-	for (const point of route.points) {
-		minX = Math.min(minX, point.x);
-		maxX = Math.max(maxX, point.x);
-		minY = Math.min(minY, point.y);
-		maxY = Math.max(maxY, point.y);
-	}
-	return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
-export function routeBoundsOverlap(first: Bounds, second: Bounds): boolean {
-	const firstRight = first.x + first.width;
-	const secondRight = second.x + second.width;
-	const horizontalOverlap = first.x <= secondRight && firstRight >= second.x;
-	const firstBottom = first.y + first.height;
-	const secondBottom = second.y + second.height;
-	const verticalOverlap = first.y <= secondBottom && firstBottom >= second.y;
-	return horizontalOverlap && verticalOverlap;
-}
-
 function routeOwnsGroup(graph: LogicGraph, groupId: string, route: LayoutRelation): boolean {
 	if (groupId === route.from || groupId === route.to) return true;
 	if (sameOwnerGroup(graph, groupId, route.from)) return true;

@@ -76,15 +76,17 @@ function obstaclesAcross(
 ): RouteObstacles | undefined {
 	const key = `${targetLayer}:${sourceLayer}`;
 	const { obstacles } = input;
-	if (!obstacles.has(key)) {
-		const boxes: Bounds[] = [];
-		for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
-			for (const id of defined(input.layers.rows[layer])) boxes.push(defined(input.bounds.get(id)));
-		let index: RouteObstacles | undefined;
-		if (boxes.length > 0) index = prepareRouteObstacles(boxes, RAIL_SPACING);
-		obstacles.set(key, index);
-	}
-	return obstacles.get(key);
+	if (obstacles.has(key)) return obstacles.get(key);
+	const boxes: Bounds[] = [];
+	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
+		for (const id of defined(input.layers.rows[layer])) {
+			if (input.graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
+			boxes.push(defined(input.bounds.get(id)));
+		}
+	let index: RouteObstacles | undefined;
+	if (boxes.length > 0) index = prepareRouteObstacles(boxes, RAIL_SPACING);
+	obstacles.set(key, index);
+	return index;
 }
 
 function transverseInterval(box: Bounds, vertical: boolean): Interval {
@@ -197,7 +199,9 @@ function occupiedIntervals(
 	if (cached !== undefined) return cached;
 	const boxes: Bounds[] = [];
 	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
-		for (const id of defined(input.layers.rows[layer])) boxes.push(defined(input.bounds.get(id)));
+		for (const id of defined(input.layers.rows[layer]))
+			if (input.graph.endpointsById.get(id)?.kind !== EndpointKind.Group)
+				boxes.push(defined(input.bounds.get(id)));
 	const intervals = mergedIntervals(boxes, input.vertical);
 	input.intervalCache.set(key, intervals);
 	return intervals;
@@ -264,8 +268,6 @@ function selectPassage(input: PassageSelection): number | undefined {
 }
 
 function reservePassage(input: PassageWorkspace, relation: LogicRelation): number | undefined {
-	if (input.graph.endpointsById.get(relation.from)?.kind !== EndpointKind.Node) return undefined;
-	if (input.graph.endpointsById.get(relation.to)?.kind !== EndpointKind.Node) return undefined;
 	const sourceLayer = defined(input.layers.byId.get(relation.from));
 	const targetLayer = defined(input.layers.byId.get(relation.to));
 	if (sourceLayer <= targetLayer + 1) return undefined;

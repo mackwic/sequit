@@ -90,6 +90,9 @@ export function allocateLayerPorts(input: ReservationInput): PortAllocation | un
 	const sharedSources = new Set(junctionIds);
 	for (const id of cornerSharing?.sharedSources ?? [])
 		if (!routedComponents.has(defined(input.componentByEndpointId.get(id)))) sharedSources.add(id);
+	for (const { relation } of passages)
+		if (!routedComponents.has(defined(input.componentByEndpointId.get(relation.from))))
+			sharedSources.add(relation.from);
 	const sharedTargets = new Set(junctionIds);
 	for (const { relation } of passages)
 		if (

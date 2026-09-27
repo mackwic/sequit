@@ -108,7 +108,92 @@ describe.each(['A', 'B', 'C'] as const)('group endpoint obstacle %s', (scenario)
 	});
 });
 
-it('keeps group incidents clear of nodes, junctions and forbidden route contacts in the rich corpus', () => {
+it.each(directions)(
+	'avoids an intermediate node when a populated group shares its target’s logical rank ($direction)',
+	(configuration) => {
+		const seed = validLogicDocument();
+		const document: LogicDocument = {
+			...seed,
+			layout: configuration,
+			groups: [{ kind: EndpointKind.Group, id: 'G', label: 'G', layoutOrder: orderKey('a0') }],
+			nodes: ['m', 'u', 't'].map((id, index) => {
+				const node = {
+					kind: EndpointKind.Node as const,
+					id,
+					natureId: 'goal',
+					markdown: id,
+					layoutOrder: orderKey(`a${index + 1}`),
+				};
+				if (id === 'm') return { ...node, groupId: 'G' };
+				return node;
+			}),
+			junctions: [],
+			relations: [
+				{ id: 'm-u', from: 'm', to: 'u' },
+				{ id: 'u-t', from: 'u', to: 't' },
+				{ id: 'G-t', from: 'G', to: 't' },
+			],
+		};
+		const prepared = prepareLayoutDocument(document, {
+			groups: { G: { minimumWidth: 160, minimumHeight: 72, headerHeight: 4, padding: 4 } },
+		});
+		const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
+	},
+);
+
+it.each(directions)(
+	'does not change an independent fork when a group shortcut requires reserved rails ($direction)',
+	(configuration) => {
+		const seed = validLogicDocument();
+		const nodes = ['a', 'b', 'c', 'q', 't'].map((id, index) => ({
+			kind: EndpointKind.Node as const,
+			id,
+			natureId: 'goal',
+			markdown: id,
+			layoutOrder: orderKey(`a${index + 1}`),
+		}));
+		const fork: LogicDocument = {
+			...seed,
+			layout: configuration,
+			groups: [],
+			nodes: nodes.slice(0, 3),
+			junctions: [],
+			relations: [
+				{ id: 'a-b', from: 'a', to: 'b' },
+				{ id: 'a-c', from: 'a', to: 'c' },
+			],
+		};
+		const combined: LogicDocument = {
+			...fork,
+			groups: [{ kind: EndpointKind.Group, id: 'G', label: 'G', layoutOrder: orderKey('a9') }],
+			nodes,
+			relations: [
+				...fork.relations,
+				{ id: 'G-q', from: 'G', to: 'q' },
+				{ id: 'q-t', from: 'q', to: 't' },
+				{ id: 'G-t', from: 'G', to: 't' },
+			],
+		};
+		const original = prepareLayoutDocument(fork);
+		const expanded = prepareLayoutDocument(combined);
+		const base = layoutWithDedicatedEngine(original.graph, original.ranks, original.measurements);
+		const result = layoutWithDedicatedEngine(expanded.graph, expanded.ranks, expanded.measurements);
+		const relative = (layout: typeof base) => {
+			const anchor = layout.elements.find(({ id }) => id === 'a')?.bounds;
+			if (anchor === undefined) throw new Error('Missing fork source');
+			return layout.relations
+				.filter(({ from }) => from === 'a')
+				.map(({ id, points }) => ({
+					id,
+					points: points.map(({ x, y }) => ({ x: x - anchor.x, y: y - anchor.y })),
+				}));
+		};
+		expect(relative(result)).toEqual(relative(base));
+	},
+);
+
+it('publishes only valid group and junction routes in the rich corpus', () => {
 	for (const document of fc.sample(richAcyclicLogicDocumentArbitrary(), {
 		seed: 1592915777,
 		numRuns: 200,
@@ -125,10 +210,6 @@ it('keeps group incidents clear of nodes, junctions and forbidden route contacts
 			expect(routeHitsObstacles(route.points, nodeObstacles), route.id).toBe(false);
 		}
 		expect(contactFailure(layout.relations, routeBridgeAnalysis(layout.relations))).toBeUndefined();
-		const validation = validateDedicatedCandidate({ ...prepared, layout });
-		if (!validation.valid) {
-			expect(validation.code).toBe('obstacle');
-			expect(validation.endpointId).toBeDefined();
-		}
+		expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
 	}
 });

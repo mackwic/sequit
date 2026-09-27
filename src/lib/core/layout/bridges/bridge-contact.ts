@@ -83,7 +83,7 @@ export interface RouteContact {
 	readonly to: Point;
 }
 
-function runContact(first: RouteRun, second: RouteRun): RouteContact | undefined {
+export function runContact(first: RouteRun, second: RouteRun): RouteContact | undefined {
 	const left = runInterval(first);
 	const right = runInterval(second);
 	if (first.orientation === second.orientation) {

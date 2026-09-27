@@ -2,6 +2,7 @@ import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import type { LayoutFrame } from './geometry/layout-frame';
+import { clearGroupEndpointRoutes } from './group-endpoint-routing';
 import { OUTER_MARGIN } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
 import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint-routes';
@@ -71,6 +72,7 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 	const relations = input.graph.relations.map((entry, index) =>
 		layoutRelation(input, entry, index, planned),
 	);
+	clearGroupEndpointRoutes(input.graph, input.bounds, input.frame, relations);
 	const elements: LayoutElement[] = [];
 	let width = OUTER_MARGIN * 2;
 	let height = OUTER_MARGIN * 2;

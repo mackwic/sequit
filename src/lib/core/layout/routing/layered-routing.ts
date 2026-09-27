@@ -121,9 +121,14 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 		links.map(({ relation }) => relation),
 		ports.targetOffsets,
 	);
+	// Preserve relation order in each channel while visiting only the layers a link crosses.
+	const linksByChannel = Array.from({ length: layers.rows.length - 1 }, () => [] as LayerLink[]);
+	for (const link of links)
+		for (let layer = link.targetLayer; layer < link.sourceLayer; layer += 1)
+			defined(linksByChannel[layer]).push(link);
 	const channels: LayerChannel[] = [];
 	for (let layer = 0; layer < layers.rows.length - 1; layer += 1) {
-		const crossing = links.filter((link) => link.targetLayer <= layer && link.sourceLayer > layer);
+		const crossing = defined(linksByChannel[layer]);
 		const geometry = { bounds, vertical: frame.vertical };
 		const endpoints = crossing.map((link) => {
 			let sharedTarget: string | undefined;

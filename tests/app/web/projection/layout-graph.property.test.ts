@@ -539,10 +539,15 @@ describe('generated layouts', () => {
 						if (!before) throw new Error(`Missing original empty group bounds: ${group.id}`);
 						const measured = generated.groups[group.id];
 						if (measured === undefined) throw new Error(`Missing group measurement: ${group.id}`);
-						expect(after.width).toBeGreaterThanOrEqual(measured.minimumWidth * factor);
-						expect(after.height).toBeGreaterThanOrEqual(measured.minimumHeight * factor);
-						expect(after.width).toBeLessThanOrEqual(before.width * factor);
-						expect(after.height).toBeLessThanOrEqual(before.height * factor);
+						const intrinsicHeight = Math.max(
+							measured.minimumHeight,
+							measured.headerHeight + 2 * measured.padding,
+						);
+						const intrinsicWidth = measured.minimumWidth;
+						// Empty groups scale exactly unless their unscaled face-port capacity
+						// exceeds the intrinsic size; that capacity does not scale.
+						expect(after.width).toBe(Math.max(intrinsicWidth * factor, before.width));
+						expect(after.height).toBe(Math.max(intrinsicHeight * factor, before.height));
 					}
 					for (const relation of scaled.layout.relations) {
 						expect(
