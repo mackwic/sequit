@@ -11,8 +11,6 @@ import {
 	PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PRESENTATION_SCHEMA,
-	REGION_LANE_PERSISTENCE_FORMAT,
-	REGION_LANE_PRESENTATION_SCHEMA,
 	REGION_PERSISTENCE_FORMAT,
 	REGION_POLICY_PERSISTENCE_FORMAT,
 	REGION_POLICY_PRESENTATION_SCHEMA,
@@ -429,7 +427,7 @@ export function persistedNestedGridWithInnerLaneCrossingDocument(): PersistedReg
 export function persistedComposedLeafBridgeDocument(): PersistedRegionDocument {
 	const ids = ['a', 'b', 'c', 'd', 'e'] as const;
 	return {
-		persistenceFormat: REGION_LANE_PERSISTENCE_FORMAT,
+		persistenceFormat: REGION_POLICY_PERSISTENCE_FORMAT,
 		id: 'composed-leaf-bridge',
 		title: 'Passage de feuille sans pont',
 		layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
@@ -455,7 +453,7 @@ export function persistedComposedLeafBridgeDocument(): PersistedRegionDocument {
 			{ id: 'cross', from: 'b', to: 'c' },
 		],
 		regionPresentation: {
-			schemaVersion: REGION_LANE_PRESENTATION_SCHEMA,
+			schemaVersion: REGION_POLICY_PRESENTATION_SCHEMA,
 			regions: [
 				{
 					id: 'lane',
