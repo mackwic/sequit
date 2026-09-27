@@ -17,6 +17,7 @@ import {
 } from './regions/model/region-composition-types';
 import type { RegionIncidentUnknownCode } from './regions/model/region-incident-contract';
 import type { RegionLocalLayoutCache } from './regions/model/region-local-cache';
+import type { RegionCompositionSearchCode } from './regions/model/region-search-evidence';
 import {
 	type RegionExecutionContext,
 	solveNestedRegionLayout,
@@ -86,7 +87,11 @@ export class UnsupportedGridCellLayoutError extends Error {
 }
 
 export class UnknownGridCellLayoutError extends Error {
-	readonly code: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | undefined;
+	readonly code:
+		| RegionGeometryDiagnosticCode
+		| RegionIncidentUnknownCode
+		| RegionCompositionSearchCode
+		| undefined;
 	readonly regionId: string | undefined;
 	readonly relationId: string | undefined;
 
@@ -94,7 +99,8 @@ export class UnknownGridCellLayoutError extends Error {
 		readonly documentId: string,
 		readonly reason: string,
 		diagnostic?: {
-			readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
+			readonly code?:
+				RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | RegionCompositionSearchCode;
 			readonly regionId?: string;
 			readonly relationId?: string;
 		},

@@ -22,9 +22,14 @@ interface GridSearchEvidence {
 	readonly witness: GridCrossingAllocationWitness;
 }
 
+export enum RegionCompositionSearchCode {
+	SearchBudgetExceeded = 'composition-search-budget-exceeded',
+}
+
 interface DiagnosticOnlyFailureEvidence {
 	readonly provenance?: undefined;
-	readonly code?: RegionGeometryDiagnosticCode | RegionIncidentUnknownCode;
+	readonly code?:
+		RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | RegionCompositionSearchCode;
 	readonly witness?: undefined;
 }
 

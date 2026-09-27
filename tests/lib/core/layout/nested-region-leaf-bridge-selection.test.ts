@@ -13,6 +13,7 @@ import {
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
+import type { SolvedRecursiveRegion } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-geometry';
 import {
 	leafDocument,
 	leafIncidentContracts,
@@ -32,9 +33,11 @@ import {
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { RegionCompositionSearchCode } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
+import { solveRecursiveCandidate } from '../../../../src/lib/core/layout/regions/recursive/region-composition-search';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
@@ -48,6 +51,7 @@ const preparedGraph = graph.value;
 const input = nestedRegionInput(preparedGraph);
 const model = normalizeRegionCompositionModel(preparedGraph, input);
 if (model.status !== RegionCompositionModelStatus.Ready) throw new Error(model.diagnostic.message);
+const readyModel = model.model;
 const measurements = {
 	nodes: new Map(document.nodes.map(({ id }) => [id, { width: 60, height: 64 }])),
 	groups: new Map(),
@@ -136,7 +140,79 @@ function alternatives(): {
 	};
 }
 
+function composedForSearch(candidate: RegionLayoutSelected): SolvedRecursiveRegion {
+	return { ...candidate, ranks: topologicallyRank(preparedGraph), incidentPaths: new Map() };
+}
+
+function searchComposedCandidates(candidateAt: number, alternative: RegionLayoutSelected) {
+	const { bridged } = alternatives();
+	const rejected: RegionLayoutSelected = { ...bridged, portals: [] };
+	const diagnostic = validateRegionCompositionGeometry(readyModel, rejected);
+	if (diagnostic === undefined)
+		throw new Error('Expected missing portal to reject the composition');
+	let calls = 0;
+	const visited = new Set<string>();
+	const result = solveRecursiveCandidate(
+		{ graph: preparedGraph, measurements, model: readyModel, cache: undefined },
+		(_context, selection) => {
+			visited.add(JSON.stringify([...selection.indices]));
+			calls += 1;
+			if (calls === candidateAt) return composedForSearch(alternative);
+			return composedForSearch(rejected);
+		},
+	).attempt;
+	return { result, calls, distinct: visited.size, rejectedCode: diagnostic.code };
+}
+
 describe('persisted composed incident bridge selection', () => {
+	it('keeps the first valid bridge-free geometry even if a later valid detour is cheaper', () => {
+		const { unbridged } = alternatives();
+		const historical: RegionLayoutSelected = {
+			...unbridged,
+			layout: { ...unbridged.layout, width: unbridged.layout.width + 64 },
+		};
+		expect(validateRegionCompositionGeometry(model.model, historical)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(model.model, historical)).toBeUndefined();
+		expect(validatedBridges(historical.layout.relations)).toEqual([]);
+		expect(layoutRouteCost(unbridged.layout).area).toBeLessThan(
+			layoutRouteCost(historical.layout).area,
+		);
+		let calls = 0;
+		const selected = solveRecursiveCandidate(
+			{ graph: preparedGraph, measurements, model: model.model, cache: undefined },
+			() => {
+				calls += 1;
+				if (calls === 1) return composedForSearch(historical);
+				return composedForSearch(unbridged);
+			},
+		).attempt;
+		expect(calls).toBe(1);
+		expect(selected.status).toBe(RegionCompositionStatus.Selected);
+		if (selected.status !== RegionCompositionStatus.Selected) return;
+		expect(selected.layout).toEqual(historical.layout);
+		expect(selected.searchWitness?.attempted).toBe(1);
+	});
+	it('evaluates distinct compositions past the old 32nd slot and reports the 64/65 boundary', () => {
+		const { bridged } = alternatives();
+		for (const position of [33, 64]) {
+			const { result, calls, distinct } = searchComposedCandidates(position, bridged);
+			expect(distinct).toBe(64);
+			expect(calls).toBe(64);
+			expect(result.status).toBe(RegionCompositionStatus.Selected);
+			if (result.status !== RegionCompositionStatus.Selected) continue;
+			expect(result.searchWitness?.attempted).toBe(64);
+			expect(result.searchWitness?.selected).toBe('bridge');
+			expect(result.searchWitness?.bestBridge).toEqual(layoutRouteCost(bridged.layout));
+		}
+		const { result, calls, distinct, rejectedCode } = searchComposedCandidates(65, bridged);
+		expect(distinct).toBe(64);
+		expect(calls).toBe(64);
+		expect(result.status).toBe(RegionCompositionStatus.Unknown);
+		if (result.status !== RegionCompositionStatus.Unknown) return;
+		expect(result.code).toBe(RegionCompositionSearchCode.SearchBudgetExceeded);
+		expect(result.searchWitness).toMatchObject({ attempted: 64, exhaustive: false });
+		expect(result.searchWitness?.rejectedAlternatives[0]?.code).toBe(rejectedCode);
+	});
 	it('prunes exhausted product dimensions even when their limits change during enumeration', () => {
 		const bounds = Array<number>(16).fill(0);
 		bounds[15] = 31;
@@ -376,11 +452,14 @@ describe('persisted composed incident bridge selection', () => {
 			indices: [0, 0],
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
-		expect(cold.searchWitness?.bestDetour).toBeUndefined();
-		expect(cold.searchWitness?.bestBridge).toEqual(layoutRouteCost(cold.layout));
+		expect(cold.searchWitness?.bestDetour).toBeDefined();
+		expect(cold.searchWitness?.bestDetour).toEqual(layoutRouteCost(cold.layout));
+		expect(cold.searchWitness?.bestBridge?.routeLength).toBeGreaterThan(
+			layoutRouteCost(cold.layout).routeLength,
+		);
 		expect(cold.searchWitness?.bestBridgeIndices).toEqual([0, 3]);
-		expect(cold.searchWitness?.selected).toBe('bridge');
-		expect(validatedBridges(cold.layout.relations).length).toBeGreaterThan(0);
+		expect(cold.searchWitness?.selected).toBe('detour');
+		expect(validatedBridges(cold.layout.relations)).toEqual([]);
 		const normalized = normalizeRegionCompositionModel(graph.value, input);
 		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Expected model');
 		expect(validateRegionCompositionGeometry(normalized.model, cold)).toBeUndefined();

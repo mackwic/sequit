@@ -24,6 +24,7 @@ import {
 	type RegionPortalSide,
 } from '../model/region-composition-types';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
+import { RegionCompositionSearchCode } from '../model/region-search-evidence';
 import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
@@ -47,6 +48,7 @@ export interface LeafSelection {
 	readonly indices: Map<string, number>;
 	readonly streams: Map<string, LeafStream>;
 	readonly solvedLeaves: Map<string, Map<number, SolvedRecursiveRegion>>;
+	readonly preserveFirst: boolean;
 }
 
 export class ExhaustedLeafAlternative extends Error {}
@@ -75,20 +77,18 @@ interface PassInput {
 	) => SolvedRecursiveRegion;
 	readonly leaves: readonly string[];
 	readonly relationOrder: ReadonlyMap<string, number>;
-	readonly wantsBridge: boolean;
 	readonly state: SearchState;
-	readonly firstSelection: LeafSelection;
 }
 
 interface SideResult {
 	readonly truncated: boolean;
 	readonly leafFailure?: UnknownRegionLeafLayoutError | undefined;
 	readonly sideFailure?: RegionGeometryDiagnostic | undefined;
+	readonly historical?: boolean | undefined;
 }
 
-/** One budget shared by disposition retries and both bridge passes. */
+/** One budget shared by disposition retries and distinct complete compositions. */
 const REGION_COMPOSITION_PRODUCT_BUDGET = 64;
-const PASS_BUDGET = REGION_COMPOSITION_PRODUCT_BUDGET / 2;
 
 function searchedAllIndices(
 	leaves: readonly string[],
@@ -143,7 +143,6 @@ function evaluateCandidate(
 		return failure;
 	}
 	const hasBridge = validatedBridgesCached(candidate.layout.relations, bridgeCache).length > 0;
-	if (hasBridge !== pass.wantsBridge) return undefined;
 	const complete = compositionCostCandidate(candidate, indices);
 	if (hasBridge) {
 		if (state.bestBridge === undefined || betterCompositionCost(complete, state.bestBridge))
@@ -173,6 +172,7 @@ interface ProductResult {
 	readonly exhausted: boolean;
 	readonly failure?: RegionGeometryDiagnostic;
 	readonly leafFailure?: UnknownRegionLeafLayoutError;
+	readonly historical?: boolean;
 }
 
 function evaluateProduct(side: SideSearchContext, indices: readonly number[]): ProductResult {
@@ -191,7 +191,12 @@ function evaluateProduct(side: SideSearchContext, indices: readonly number[]): P
 	pass.state.attempted += 1;
 	const failure = evaluateCandidate(pass, solved, indices);
 	if (failure !== undefined) return { exhausted: false, failure };
-	return { exhausted: false };
+	const firstComplete = selection.preserveFirst && pass.state.attempted === 1;
+	const initialVector = indices.every((index) => index === 0);
+	return {
+		exhausted: false,
+		historical: firstComplete && initialVector && pass.state.bestDetour !== undefined,
+	};
 }
 
 function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
@@ -202,12 +207,16 @@ function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
 		if (stream?.exhaustive === true) return stream.candidates.length - 1;
 		return diagonal;
 	})) {
-		if (passAttempts.count >= PASS_BUDGET) {
+		if (passAttempts.count >= REGION_COMPOSITION_PRODUCT_BUDGET) {
 			pass.state.exhaustive = false;
 			return { truncated: true };
 		}
 		const result = evaluateProduct(side, indices);
 		if (result.exhausted) continue;
+		if (result.historical === true) {
+			pass.state.exhaustive = false;
+			return { truncated: false, historical: true };
+		}
 		if (result.leafFailure !== undefined)
 			return { truncated: false, leafFailure: result.leafFailure };
 		if (result.failure !== undefined) sideFailure = result.failure;
@@ -223,9 +232,10 @@ function searchSide(
 ): SideResult {
 	const side: SideSearchContext = { pass, context, passAttempts, selection };
 	let sideFailure: RegionGeometryDiagnostic | undefined;
-	for (let diagonal = 0; diagonal <= PASS_BUDGET; diagonal += 1) {
+	for (let diagonal = 0; diagonal <= REGION_COMPOSITION_PRODUCT_BUDGET; diagonal += 1) {
 		const result = searchDiagonal(side, diagonal);
-		if (result.truncated || result.leafFailure !== undefined) return result;
+		if (result.truncated || result.historical === true) return result;
+		if (result.leafFailure !== undefined) return result;
 		if (result.sideFailure !== undefined) sideFailure = result.sideFailure;
 		if (searchedAllIndices(pass.leaves, diagonal, selection)) break;
 	}
@@ -240,8 +250,8 @@ function noValidCandidate(state: SearchState): boolean {
 	return !hasIssue && state.firstFailure === undefined;
 }
 
-function newLeafSelection(): LeafSelection {
-	return { indices: new Map(), streams: new Map(), solvedLeaves: new Map() };
+function newLeafSelection(preserveFirst: boolean): LeafSelection {
+	return { indices: new Map(), streams: new Map(), solvedLeaves: new Map(), preserveFirst };
 }
 
 function recordUnretriableLeaf(result: SideResult, state: SearchState): void {
@@ -264,10 +274,9 @@ function searchPass(pass: PassInput): void {
 	const retryState: RegionRetryState = { context, retriedOwners: new Set(), dispositionSides };
 	const passAttempts = { count: 0 };
 	for (let sideAttempt = 0; sideAttempt <= model.regionsById.size; sideAttempt += 1) {
-		let selection = pass.firstSelection;
-		if (sideAttempt > 0) selection = newLeafSelection();
+		const selection = newLeafSelection(sideAttempt === 0);
 		const result = searchSide(pass, context, passAttempts, selection);
-		if (result.truncated) return;
+		if (result.truncated || result.historical === true) return;
 		if (
 			result.leafFailure !== undefined &&
 			retryLeafContractFailure(retryState, result.leafFailure)
@@ -290,18 +299,7 @@ export function solveRecursiveCandidate(
 		input.graph.relations.map(({ relation }, index) => [relation.id, index]),
 	);
 	const state: SearchState = { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
-	const firstSelection = newLeafSelection();
-	// Pass one rejects bridges, pass two admits them after the same complete validation.
-	searchPass({
-		input,
-		solveRoot,
-		leaves,
-		relationOrder,
-		wantsBridge: false,
-		state,
-		firstSelection,
-	});
-	searchPass({ input, solveRoot, leaves, relationOrder, wantsBridge: true, state, firstSelection });
+	searchPass({ input, solveRoot, leaves, relationOrder, state });
 	const issue = chooseCompositionIssue(state.bestDetour, state.bestBridge);
 	let witness: RegionCompositionSearchWitness = {
 		attempted: state.attempted,
@@ -318,6 +316,15 @@ export function solveRecursiveCandidate(
 		if (leaves.length > 0) attempt = { ...attempt, searchWitness: witness };
 		return { attempt };
 	}
+	if (!state.exhaustive)
+		return {
+			attempt: {
+				status: RegionCompositionStatus.Unknown,
+				code: RegionCompositionSearchCode.SearchBudgetExceeded,
+				reason: 'The bounded region composition search exhausted its alternative budget.',
+				searchWitness: witness,
+			},
+		};
 	const failure = state.firstFailure?.attempt;
 	if (failure?.status === RegionCompositionStatus.Unknown)
 		return { attempt: { ...failure, searchWitness: witness } };
