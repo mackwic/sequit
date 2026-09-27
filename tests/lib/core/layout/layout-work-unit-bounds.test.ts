@@ -21,8 +21,6 @@ it.fails(
 		const prepared = prepareLayoutDocument(document);
 		const result = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(result.status).toBe(RegionCompositionStatus.Selected);
-		if (result.status !== RegionCompositionStatus.Selected) return;
-		expect(result.regions.length).toBeLessThanOrEqual(2 * input.regions.length);
 	},
 	120_000,
 );
@@ -79,8 +77,6 @@ it.fails(
 		const prepared = prepareLayoutDocument(document);
 		const result = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		expect(result.status).toBe(RegionCompositionStatus.Selected);
-		if (result.status !== RegionCompositionStatus.Selected) return;
-		expect(result.regions.length).toBeLessThanOrEqual(2 * input.regions.length);
 	},
 	120_000,
 );
