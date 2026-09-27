@@ -183,8 +183,11 @@ export function searchGridCrossingAllocations<Candidate>(
 	const busInput: CrossingAllocationInput = { ...input, rowGutterIds: [] };
 	const rowInput: CrossingAllocationInput = { ...input, busRelevantRelationIds: [] };
 	const phaseEvidence: GridCrossingAllocationWitness['phases'][number][] = [];
-	const active = new Set<string>();
+	let active = new Set<string>();
 	for (const phase of phases) {
+		// Row failures cannot change the legacy bus prefix; later bus conflicts still
+		// carry into extra-track and bridge searches as they did before row gutters.
+		if (phase.id === CrossingAllocationPhaseId.Reallocate) active = new Set<string>();
 		// If one bus order fits the phase budget, keep 1A's canonical precedence. Otherwise
 		// front-load conflict permutations, then resume 1A's complete order without repeats.
 		const result = searchGridCrossingPhase(

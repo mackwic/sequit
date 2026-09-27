@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
 	type RegionGeometryDiagnostic,
+	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
@@ -88,6 +89,45 @@ describe('grid crossing allocation search examples', () => {
 		expect(crossingCanonicalBusGeometryCount(input)).toBe(BigInt(canonicalBlockSize));
 	});
 
+	it('starts the bus phase with the legacy priority prefix, ignoring row-phase conflicts', () => {
+		const fixture = variedGridRoutingCase(3, 2, 2);
+		const attempts: GridCrossingAllocation[] = [];
+		const busInput = { ...fixture.input, rowGutterIds: [] };
+		const budgets = { rowGutter: 1, reallocate: 8, extraTrack: 1, bridge: 1 };
+		searchGridCrossingAllocations(
+			fixture.input,
+			(allocation) => {
+				attempts.push(allocation);
+				let relationId = 'route-2';
+				if (attempts.length === 1) relationId = 'route-0';
+				return {
+					candidate: allocation,
+					failure: regionGeometryDiagnostic(
+						RegionGeometryDiagnosticCode.GridCrossingEntersElement,
+						'Declared obstacle blocks this candidate.',
+						{ relationId },
+					),
+				};
+			},
+			budgets,
+		);
+		const geometry = (candidate: GridCrossingAllocation) =>
+			effectiveRouteGeometry(fixture.routing, fixture.crossing, candidate);
+		const legacyPrefix: string[] = [];
+		for (const choices of [
+			[canonicalCrossingAllocation(busInput)],
+			crossingAllocationCandidates(busInput, new Set(['route-2']), true),
+			crossingAllocationCandidates(busInput),
+		]) {
+			for (const candidate of choices) {
+				const key = geometry(candidate);
+				if (!legacyPrefix.includes(key)) legacyPrefix.push(key);
+				if (legacyPrefix.length === 8) break;
+			}
+			if (legacyPrefix.length === 8) break;
+		}
+		expect(attempts.slice(1, 9).map(geometry)).toEqual(legacyPrefix);
+	});
 	it('uses observed crossing conflicts to prioritize only the affected tracks before the bridge phase', () => {
 		const fixture = variedGridRoutingCase(3, 2, 2);
 		const canonical = canonicalCrossingAllocation(fixture.input);
@@ -130,12 +170,6 @@ describe('grid crossing allocation search examples', () => {
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
 		expect(observedFailures.length).toBe(result.witness.rejectedAlternatives.length);
-		const laterConflict = observedFailures.findIndex(
-			({ relationId, relatedRelationId }) =>
-				(relationId === 'route-0' && relatedRelationId === 'route-2') ||
-				(relationId === 'route-2' && relatedRelationId === 'route-0'),
-		);
-		expect(laterConflict).toBeGreaterThanOrEqual(reallocation.exploredGeometries);
 		expect(route(result.selected.allocation, true).failure).toBeUndefined();
 	});
 	it('does not prioritize containment when the observed route failure leaves that unrelated route fixed', () => {

@@ -243,7 +243,9 @@ function* baseCrossingAllocationCandidates(
 	const canonical = canonicalCrossingAllocation(input);
 	const excluded = new Set([geometryKeyFromAllocation(canonical, busRelevantRelationIds)]);
 	yield canonical;
-	const containment = containmentCrossingAllocation(input);
+	let containment = containmentCrossingAllocation(input);
+	if (busRelevantRelationIds.size === 0)
+		containment = { ...containment, busTrackByRelationId: canonical.busTrackByRelationId };
 	const containmentKey = geometryKeyFromAllocation(containment, busRelevantRelationIds);
 	const allowed =
 		active === undefined || containmentMovesOnlyConflicts(canonical, containment, active);

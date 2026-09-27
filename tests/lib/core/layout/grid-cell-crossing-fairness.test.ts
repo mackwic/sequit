@@ -10,8 +10,12 @@ import {
 	crossingBusY,
 	crossingIncidence,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
-import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
+import {
+	canonicalCrossingAllocation,
+	containmentCrossingAllocation,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import type { GridCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
+import { crossingAllocationPhases } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
@@ -93,6 +97,14 @@ function chargedGrid(pairs: readonly (readonly [number, number])[]) {
 	return { placed, resources, routing, crossing, allocationInput };
 }
 
+function twelveCrossings(): [number, number][] {
+	const pairs: [number, number][] = [];
+	for (let source = 0; source < 4; source += 1)
+		for (let target = 0; target < 4; target += 1)
+			if (source !== target) pairs.push([source, target + 8]);
+	return pairs;
+}
+
 function blockedGap(upper: Bounds, lower: Bounds, x: number): Bounds {
 	return {
 		x,
@@ -156,11 +168,8 @@ describe('bounded grid crossing phases', () => {
 	});
 
 	it('exhausts 256 row choices before a fresh bus budget resolves twelve two-gap demands', () => {
-		const pairs: [number, number][] = [];
-		for (let source = 0; source < 4; source += 1)
-			for (let target = 0; target < 4; target += 1)
-				if (source !== target) pairs.push([source, target + 8]);
-		const { placed, resources, routing, crossing, allocationInput } = chargedGrid(pairs);
+		const { placed, resources, routing, crossing, allocationInput } =
+			chargedGrid(twelveCrossings());
 		expect(resources.rowGutterIds.map((ids) => ids.length)).toEqual([12, 12]);
 		const cells = placed.cells.filter((cell) => cell.column === 2);
 		const upper = defined(cells.find((cell) => cell.row === 0));
@@ -188,5 +197,43 @@ describe('bounded grid crossing phases', () => {
 		expect(result.witness.phases[1]?.exploredGeometries).toBeLessThan(256);
 		expect(result.selected.allocation.rowTrackByRelationId?.length).toBe(0);
 		expect(result.selected.allocation.busTrackByRelationId.get('r11')).not.toBe(11);
+	});
+	it('visits the earliest relation’s second gap before exhausting the Cartesian tail', () => {
+		const { placed, resources, routing, crossing, allocationInput } =
+			chargedGrid(twelveCrossings());
+		expect(resources.rowGutterIds.map((ids) => ids.length)).toEqual([12, 12]);
+		const upper = defined(placed.cells.find((cell) => cell.row === 0 && cell.column === 0));
+		const right = defined(placed.cells.find((cell) => cell.row === 0 && cell.column === 1));
+		const middle = defined(placed.cells.find((cell) => cell.row === 1 && cell.column === 0));
+		const x = (upper.bounds.x + upper.bounds.width + right.bounds.x) / 2;
+		const obstacles = [
+			blockedGap(upper.bounds, middle.bounds, x),
+			{ x, y: crossingBusY(resources.edges.topBus, 0) - 4, width: 8, height: 8 },
+		];
+		const result = searchGridCrossingAllocations(
+			allocationInput,
+			obstacleProbe(routing, defined(crossing[0]), obstacles),
+			{ rowGutter: 256, reallocate: 1, extraTrack: 1, bridge: 1 },
+		);
+		if (!('selected' in result)) throw new Error(result.failure.message);
+		expect(result.witness.winningPhase).toBe('row-gutter');
+		expect(result.witness.phases[0]?.exploredGeometries).toBeLessThan(256);
+		expect(result.selected.allocation.rowTrackByRelationId?.[1]?.has('r0')).toBe(true);
+	});
+
+	it('keeps the canonical bus even when interval containment proposes a different bus order', () => {
+		const { allocationInput } = chargedGrid(twelveCrossings());
+		const limited = { ...allocationInput, rowGutterIds: [['r0']] };
+		const canonical = canonicalCrossingAllocation(limited);
+		const containment = containmentCrossingAllocation(limited);
+		expect(containment.busTrackByRelationId).not.toEqual(canonical.busTrackByRelationId);
+		const rowPhase = defined(crossingAllocationPhases(limited)[0]);
+		const prefix = [...rowPhase.candidates().take(8)];
+		expect(prefix).toContainEqual({
+			...containment,
+			busTrackByRelationId: canonical.busTrackByRelationId,
+		});
+		for (const candidate of prefix)
+			expect(candidate.busTrackByRelationId).toEqual(canonical.busTrackByRelationId);
 	});
 });

@@ -21,16 +21,18 @@ interface RowChoiceContext {
 	readonly rowsByRelationId: ReadonlyMap<string, readonly number[]>;
 	readonly seen: Set<string>;
 	readonly busRelevant: ReadonlySet<string>;
+	readonly chosenRowById: Map<string, number>;
 }
 
-function* choicesForAllocation(
+function* choicesForCost(
 	allocation: GridCrossingAllocation,
 	context: RowChoiceContext,
 	index: number,
-	chosenRowById: Map<string, number>,
+	remainingCost: number,
 ): Generator<GridCrossingAllocation> {
 	if (index === context.eligible.length) {
-		const rowTracks = chosenRowTracks(allocation, chosenRowById);
+		if (remainingCost !== 0) return;
+		const rowTracks = chosenRowTracks(allocation, context.chosenRowById);
 		const candidate = { ...allocation, rowTrackByRelationId: rowTracks };
 		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
 		if (context.seen.has(key)) return;
@@ -39,16 +41,21 @@ function* choicesForAllocation(
 		return;
 	}
 	const id = defined(context.eligible[index]);
-	for (const row of defined(context.rowsByRelationId.get(id))) {
-		chosenRowById.set(id, row);
-		yield* choicesForAllocation(allocation, context, index + 1, chosenRowById);
+	const rows = defined(context.rowsByRelationId.get(id));
+	// Preserve the historical first candidate (each relation on its first row).
+	context.chosenRowById.set(id, defined(rows[0]));
+	yield* choicesForCost(allocation, context, index + 1, remainingCost);
+	for (let choice = 1; choice < rows.length; choice += 1) {
+		if (remainingCost < choice) continue;
+		context.chosenRowById.set(id, defined(rows[choice]));
+		yield* choicesForCost(allocation, context, index + 1, remainingCost - choice);
 	}
-	chosenRowById.delete(id);
-	yield* choicesForAllocation(allocation, context, index + 1, chosenRowById);
+	context.chosenRowById.delete(id);
+	if (remainingCost > 0) yield* choicesForCost(allocation, context, index + 1, remainingCost - 1);
 }
 
-/** A relation chooses exactly one eligible row separation or the top bus. Distinct choices
- * share the existing search phase and its budget instead of creating a second allocator. */
+/** A relation chooses one eligible row separation or the top bus. Increasing total
+ * choice cost exposes each relation's alternatives before expanding the Cartesian tail. */
 export function* withRowRouteChoices(
 	input: CrossingAllocationInput,
 	allocations: Generator<GridCrossingAllocation>,
@@ -73,7 +80,13 @@ export function* withRowRouteChoices(
 		rowsByRelationId,
 		seen: new Set<string>(),
 		busRelevant: new Set(input.busRelevantRelationIds),
+		chosenRowById: new Map<string, number>(),
 	};
+	const maximumCost = eligible.reduce(
+		(sum, id) => sum + Math.max(1, defined(rowsByRelationId.get(id)).length - 1),
+		0,
+	);
 	for (const allocation of allocations)
-		yield* choicesForAllocation(allocation, context, 0, new Map());
+		for (let cost = 0; cost <= maximumCost; cost += 1)
+			yield* choicesForCost(allocation, context, 0, cost);
 }
