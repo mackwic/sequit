@@ -558,10 +558,64 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(firstRelation)).toBe(100);
 	});
 
-	it.each(['junction', 'group'])('leaves %s endpoints to their dedicated routing policy', (id) => {
-		const reserve = layerPassages(oneInterval());
-		expect(reserve({ id: 'from-special', from: id, to: 'target' })).toBeUndefined();
-		expect(reserve({ id: 'to-special', from: 'source', to: id })).toBeUndefined();
+	it.each([
+		{ side: 'source', sourceId: 'group', targetId: 'target' },
+		{ side: 'target', sourceId: 'source', targetId: 'group' },
+	])('reserves a passage when the group is the $side endpoint', ({ side, sourceId, targetId }) => {
+		const relation = { id: `group-${side}`, from: sourceId, to: targetId };
+		const incidentGraphResult = createGraph({
+			...document,
+			relations: [
+				{ id: 'into-junction', from: sourceId, to: 'junction' },
+				{ id: 'out-of-junction', from: 'junction', to: targetId },
+				relation,
+			],
+		});
+		if (!incidentGraphResult.ok) throw new Error('The group passage fixture must be valid.');
+		const reserve = layerPassages(
+			input(
+				[[targetId], ['junction'], [sourceId]],
+				{
+					[sourceId]: box(0, 240, 160),
+					[targetId]: box(0, 0, 160),
+					junction: box(300, 120, 28),
+				},
+				incidentGraphResult.value,
+			),
+		);
+		expect(reserve(relation)).toBe(0);
+	});
+
+	it.each([
+		{ side: 'source', sourceId: 'next-junction', targetId: 'target' },
+		{ side: 'target', sourceId: 'source', targetId: 'next-junction' },
+	])('reserves a passage for a long $side junction incidence', ({ side, sourceId, targetId }) => {
+		const relation = { id: `junction-${side}`, from: sourceId, to: targetId };
+		const incidentGraphResult = createGraph({
+			...document,
+			relations: [
+				{ id: 'into-junction', from: sourceId, to: 'junction' },
+				{ id: 'out-of-junction', from: 'junction', to: targetId },
+				relation,
+			],
+		});
+		if (!incidentGraphResult.ok) throw new Error('The junction passage fixture must be valid.');
+		let sourceBreadth = 80;
+		let targetBreadth = 80;
+		if (side === 'source') sourceBreadth = 28;
+		else targetBreadth = 28;
+		const reserve = layerPassages(
+			input(
+				[[targetId], ['junction'], [sourceId]],
+				{
+					[sourceId]: box(0, 240, sourceBreadth),
+					[targetId]: box(0, 0, targetBreadth),
+					junction: box(300, 120, 28),
+				},
+				incidentGraphResult.value,
+			),
+		);
+		expect(reserve(relation)).toBe(0);
 	});
 
 	it('does not allocate a passage to an adjacent or reversed relation', () => {
