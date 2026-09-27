@@ -81,7 +81,7 @@ test('the workshop compares real boundary contacts with rejected alternatives', 
 	expect(await gridValid.locator('svg').getAttribute('viewBox')).toBe(gridFull);
 });
 
-test('the grid allocation workshop explains exact route geometry search', async ({
+test('the grid allocation workshop distinguishes exact counts from lower bounds', async ({
 	page,
 }, testInfo) => {
 	await page.goto('/atelier/solveur');
@@ -114,6 +114,7 @@ test('the grid allocation workshop explains exact route geometry search', async 
 		'−96 px de largeur, −48 px de hauteur',
 	);
 	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('33 / 96');
+	await expect(pruned.getByTestId('grid-allocation-phase-extra-track')).toContainText('0 / ≥ 257');
 	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
 		'data-truncated',
 		'false',

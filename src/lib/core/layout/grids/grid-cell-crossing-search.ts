@@ -1,7 +1,10 @@
 import { defined } from '../../document/logic-document';
 import type { RegionGeometryDiagnostic } from '../geometry/region-geometry-diagnostic';
 import { boundedCounter } from '../search/bounded-search';
-import { CrossingAllocationPhaseId } from '../search/grid-cell-crossing-witness';
+import {
+	CrossingAllocationPhaseId,
+	GridCrossingGeometryCountKind,
+} from '../search/grid-cell-crossing-witness';
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
@@ -80,6 +83,11 @@ function* orderedPhaseCandidates(
 	yield* phase.candidates();
 }
 
+function totalGeometriesKind(total: bigint, budget: number): GridCrossingGeometryCountKind {
+	if (total > BigInt(budget)) return GridCrossingGeometryCountKind.LowerBound;
+	return GridCrossingGeometryCountKind.Exact;
+}
+
 function searchGridCrossingPhase<Candidate>(
 	input: CrossingAllocationInput,
 	phase: CrossingAllocationPhase,
@@ -131,6 +139,7 @@ function searchGridCrossingPhase<Candidate>(
 			attempted: true,
 			exploredGeometries: explored.attempted,
 			totalGeometries: total.toString(),
+			totalGeometriesKind: totalGeometriesKind(total, phase.budget),
 			exhaustive,
 			truncated: selection === undefined && !exhaustive,
 			selected: selection !== undefined,
@@ -204,16 +213,19 @@ export function searchGridCrossingAllocations<Candidate>(
 		winningPhase = phase.id;
 		break;
 	}
-	for (const phase of phases.slice(phaseEvidence.length))
+	for (const phase of phases.slice(phaseEvidence.length)) {
+		const total = phase.totalGeometries();
 		phaseEvidence.push({
 			id: phase.id,
 			attempted: false,
 			exploredGeometries: 0,
-			totalGeometries: phase.totalGeometries().toString(),
+			totalGeometries: total.toString(),
+			totalGeometriesKind: totalGeometriesKind(total, phase.budget),
 			exhaustive: false,
 			truncated: false,
 			selected: false,
 		});
+	}
 	const witness: GridCrossingAllocationWitness = {
 		attempted: phaseEvidence.reduce((sum, phase) => sum + phase.exploredGeometries, 0),
 		exhaustive: phaseEvidence.every(({ attempted, exhaustive }) => attempted && exhaustive),

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { CrossingAllocationPhaseId } from '../../../../lib/core/layout/grids/grid-cell-crossing-phases';
+	import { GridCrossingGeometryCountKind } from '../../../../lib/core/layout/search/grid-cell-crossing-witness';
 	import { gridCrossingAllocationDemos } from '../../solver-prototype/grid-cell-allocation';
 
 	const demos = gridCrossingAllocationDemos();
@@ -45,8 +46,9 @@
 		<p>
 			Chaque carte exécute le solveur de grille et son oracle géométrique. Les rails et bus
 			reprennent la couleur de leur relation ; les tableaux rendent visible le candidat
-			effectivement retenu, le nombre de géométries explorées et le total déclaré de chaque phase.
-			Les routes en conflit sont essayées en premier ; le reste conserve l’ordre canonique.
+			effectivement retenu, le nombre de géométries explorées et le total exact, ou sa borne
+			inférieure, par phase. Les routes en conflit sont essayées en premier ; le reste conserve
+			l’ordre canonique.
 		</p>
 	</header>
 	<div class="examples">
@@ -126,7 +128,7 @@
 						</ul>
 					</section>
 					<section aria-label="Exploration par phase">
-						<h4>Géométries explorées / total déclaré</h4>
+						<h4>Géométries explorées / espace déclaré</h4>
 						<ul class="phases">
 							{#each demo.selected.witness.phases as phase (phase.id)}
 								<li
@@ -135,7 +137,9 @@
 									data-truncated={phase.truncated}
 								>
 									<span>{phaseLabel(phase.id)}</span>
-									<strong>{phase.exploredGeometries} / {phase.totalGeometries}</strong>
+									<strong
+										>{phase.exploredGeometries} / {#if phase.totalGeometriesKind === GridCrossingGeometryCountKind.LowerBound}≥&nbsp;{/if}{phase.totalGeometries}</strong
+									>
 									<span>{phaseOutcome(phase)}</span>
 								</li>
 							{/each}

@@ -100,6 +100,7 @@ describe('grid crossing allocation search examples', () => {
 			selected: true,
 			exploredGeometries: 1,
 			totalGeometries: '257',
+			totalGeometriesKind: 'lower-bound',
 			exhaustive: false,
 		});
 	}, 5_000);

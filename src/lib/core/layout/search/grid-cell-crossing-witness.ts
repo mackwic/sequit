@@ -13,12 +13,18 @@ export enum CrossingAllocationPhaseId {
 	Bridge = 'bridge',
 }
 
+export enum GridCrossingGeometryCountKind {
+	Exact = 'exact',
+	LowerBound = 'lower-bound',
+}
+
 interface GridCrossingAllocationPhaseWitness {
 	readonly id: CrossingAllocationPhaseId;
 	readonly attempted: boolean;
 	readonly exploredGeometries: number;
-	/** Exact up to the phase budget; budget + 1 is a lower bound, not an exact size. */
+	/** Exact up to the phase budget; budget + 1 is only a lower bound. */
 	readonly totalGeometries: string;
+	readonly totalGeometriesKind: GridCrossingGeometryCountKind;
 	/** True only when every candidate declared for this phase was examined. */
 	readonly exhaustive: boolean;
 	/** True when the phase stopped at its budget before selecting or exhausting its candidates. */
@@ -33,7 +39,7 @@ interface GridCrossingAllocationRejectedAlternative {
 	readonly reason: string;
 }
 
-/** Bounded grid evidence with exact per-phase route geometry counts. */
+/** Bounded grid evidence with explicit exact counts or lower bounds per phase. */
 export interface GridCrossingAllocationWitness extends BoundedSearchWitness<GridCrossingAllocationRejectedAlternative> {
 	readonly phases: readonly GridCrossingAllocationPhaseWitness[];
 	readonly winningPhase?: CrossingAllocationPhaseId;

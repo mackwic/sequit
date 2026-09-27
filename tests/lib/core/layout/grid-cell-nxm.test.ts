@@ -97,6 +97,18 @@ describe('grid bus allocation', () => {
 		const input = nxmThreeByTwoInput();
 		const resources = gridCrossingResources(input, source.relations);
 		expect(resources.rowGutterIds).toEqual([[]]);
+		const crossingIds = source.relations.map(({ id }) => id);
+		const busInput = {
+			...resources,
+			rowGutterIds: [],
+			crossingIds,
+			busRelevantRelationIds: crossingIds,
+			incidence: crossingIncidence(source.relations),
+			portalByRelationId: new Map(),
+		};
+		// Count the complete small search space when it fits the counting budget.
+		expect(crossingAllocationGeometryCount(busInput, 0, 385)).toBe(384n);
+		expect(crossingAllocationGeometryCount(busInput, 0, 256)).toBe(257n);
 		const prepared = prepareLayoutDocument(source);
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
 		if (result.status !== GridCellLayoutStatus.Selected)
@@ -109,6 +121,10 @@ describe('grid bus allocation', () => {
 		const phase = result.witness.phases[1];
 		expect(result.witness.phases[0]?.exhaustive).toBe(true);
 		expect(phase?.exhaustive).toBe(false);
+		expect(phase).toMatchObject({
+			totalGeometries: '257',
+			totalGeometriesKind: 'lower-bound',
+		});
 		expect(phase?.exploredGeometries).toBeLessThan(256);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
 		expect(
@@ -217,6 +233,7 @@ describe('N by M grid composition', () => {
 		expect(reallocation.selected).toBe(true);
 		expect(reallocation.exploredGeometries).toBeLessThan(256);
 		expect(reallocation.totalGeometries).toBe('96');
+		expect(reallocation.totalGeometriesKind).toBe('exact');
 		expect(result.witness.phases.slice(2).every(({ attempted }) => !attempted)).toBe(true);
 		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
 		const firstColumn = result.cells.find(({ column }) => column === 0);

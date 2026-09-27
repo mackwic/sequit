@@ -83,8 +83,10 @@ it('accounts for attempted work, truncation and provenance across grid, leaf, la
 	for (const phase of gridWitness.phases) {
 		expect(phase.id).toBeTruthy();
 		expect(phase.exploredGeometries).toBeLessThanOrEqual(phaseBudgets[phase.id]);
-		if (phase.exhaustive)
+		if (phase.exhaustive) {
+			expect(phase.totalGeometriesKind).toBe('exact');
 			expect(BigInt(phase.exploredGeometries)).toBe(BigInt(phase.totalGeometries));
+		}
 		if (phase.truncated) expect(phase.exhaustive).toBe(false);
 		if (!phase.attempted) expect(phase.exploredGeometries).toBe(0);
 	}
