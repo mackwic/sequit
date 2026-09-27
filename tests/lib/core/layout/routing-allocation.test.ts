@@ -394,6 +394,51 @@ describe('rail and port reservations', () => {
 		expect(packRails(runs, 2)).toBe(2);
 		expect(runs.map(({ rail }) => rail)).toEqual([3, 2, 2]);
 	});
+	it('keeps stable start/end ties and reuses the earliest released rail, not the lowest index', () => {
+		const runs = [
+			{ start: 0, end: 40, rail: -1 },
+			{ start: 0, end: 40, rail: -1 },
+			{ start: 0, end: 20, rail: -1 },
+			{ start: 33, end: 35, rail: -1 },
+			{ start: 60, end: 80, rail: -1 },
+			{ start: 61, end: 75, rail: -1 },
+		];
+		expect(packRails(runs, 2)).toBe(3);
+		expect(runs.map(({ rail }) => rail)).toEqual([3, 4, 2, 2, 2, 4]);
+	});
+	it('requires strictly more than twelve units of clearance before reusing a rail', () => {
+		for (const [start, expected] of [
+			[32, [0, 1]],
+			[33, [0, 0]],
+		] as const) {
+			const runs = [
+				{ start: 0, end: 20, rail: -1 },
+				{ start, end: start + 10, rail: -1 },
+			];
+			packRails(runs, 0);
+			expect(runs.map(({ rail }) => rail)).toEqual(expected);
+		}
+	});
+	it('keeps split occurrences distinct and shares a family traverse across relations', () => {
+		const split = routeChannel([
+			{ id: 'a', source: 48, target: 96 },
+			{ id: 'b', source: 96, target: 48 },
+		]);
+		const a = split.wires.find(({ id }) => id === 'a');
+		const b = split.wires.find(({ id }) => id === 'b');
+		expect(split.wires.filter(({ middle }) => middle !== undefined)).toHaveLength(1);
+		const divided = split.wires.find(({ middle }) => middle !== undefined);
+		expect(divided?.first).not.toBe(divided?.last);
+		expect(divided?.first?.depth).toBeLessThan(divided?.last?.depth ?? -1);
+		expect(a?.first).not.toBe(b?.first);
+		const family = routeChannel([
+			{ id: 'a', source: 0, target: 48, sharedSource: 'common' },
+			{ id: 'b', source: 0, target: 96, sharedSource: 'common' },
+		]);
+		expect(family.wires[0]?.first).toBe(family.wires[1]?.first);
+		expect(family.wires[0]?.first?.start).toBe(0);
+		expect(family.wires[0]?.first?.end).toBe(96);
+	});
 	it('breaks a column-constraint cycle while keeping direct wires straight', () => {
 		const input = [
 			{ id: 'left', source: 0, target: 0 },
