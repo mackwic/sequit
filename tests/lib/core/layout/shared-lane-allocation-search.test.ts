@@ -10,7 +10,7 @@ import type { RoutingTrackAllocation } from '../../../../src/lib/core/layout/res
 
 function domain(
 	id: string,
-	relationIds: readonly string[],
+	keys: readonly string[],
 	baselineTracks: readonly (readonly [string, number])[],
 	trackCount: number,
 ): TrackAssignmentDomain {
@@ -19,7 +19,7 @@ function domain(
 		edge,
 		trackByKey: new Map(baselineTracks),
 	};
-	return { id, edge, trackCount, relationIds, baseline };
+	return { id, edge, trackCount, keys, baseline };
 }
 
 describe('shared lane allocation search', () => {

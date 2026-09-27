@@ -8,7 +8,8 @@ export interface TrackAssignmentDomain {
 	readonly id: string;
 	readonly edge: RoutingEdge;
 	readonly trackCount: number;
-	readonly relationIds: readonly string[];
+	/** Active allocation keys; lane plans currently use their relation IDs as keys. */
+	readonly keys: readonly string[];
 	readonly baseline: RoutingTrackAllocation;
 }
 
@@ -24,7 +25,7 @@ interface CanonicalDomain {
 }
 
 function canonicalDomain(domain: TrackAssignmentDomain): CanonicalDomain {
-	return { domain, ids: [...domain.relationIds].sort(compareCanonicalStrings) };
+	return { domain, ids: [...domain.keys].sort(compareCanonicalStrings) };
 }
 
 function allocationFor(
@@ -46,7 +47,7 @@ function assignmentKey(ids: readonly string[], allocation: RoutingTrackAllocatio
 
 /** Exact number of injective assignments of the active routes to their used tracks. */
 function trackAssignmentCount(domain: TrackAssignmentDomain): bigint {
-	const { length } = domain.relationIds;
+	const { length } = domain.keys;
 	let count = 1n;
 	for (let index = 0; index < length; index += 1) count *= BigInt(domain.trackCount - index);
 	return count;

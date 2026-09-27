@@ -17,39 +17,32 @@ interface AllocationPropertyCase {
 	readonly secondPadding: number;
 }
 
-function domain(
-	id: string,
-	relationIds: readonly string[],
-	trackCount: number,
-): TrackAssignmentDomain {
+function domain(id: string, keys: readonly string[], trackCount: number): TrackAssignmentDomain {
 	const edge: RoutingEdge = { ownerId: id, capacity: trackCount, spacing: 24 };
 	let shift = 0;
 	if (trackCount > 1) shift = 1;
-	const baselineTracks = relationIds.map((relationId, index): readonly [string, number] => [
-		relationId,
+	const baselineTracks = keys.map((key, index): readonly [string, number] => [
+		key,
 		(index + shift) % trackCount,
 	]);
 	const baseline: RoutingTrackAllocation = {
 		edge,
 		trackByKey: new Map(baselineTracks),
 	};
-	return { id, edge, trackCount, relationIds, baseline };
+	return { id, edge, trackCount, keys, baseline };
 }
 
 type TrackAssignment = readonly (readonly [string, number])[];
 
-function injections(
-	relationIds: readonly string[],
-	trackCount: number,
-): readonly TrackAssignment[] {
-	const sortedIds = [...relationIds].sort();
+function injections(keys: readonly string[], trackCount: number): readonly TrackAssignment[] {
+	const sortedKeys = [...keys].sort();
 	const results: TrackAssignment[] = [];
 	const tracks: number[] = [];
 	const used = new Set<number>();
 	function visit(index: number): void {
-		if (index === sortedIds.length) {
+		if (index === sortedKeys.length) {
 			results.push(
-				sortedIds.map((id, route) => {
+				sortedKeys.map((id, route) => {
 					const track = tracks[route];
 					if (track === undefined) throw new Error('Missing an exhaustive route track.');
 					return [id, track] as const;
@@ -83,7 +76,7 @@ function encodedProduct(
 	return JSON.stringify(
 		domains.map((domain, index) => [
 			domain.id,
-			[...domain.relationIds].sort().map((id) => [id, allocations[index]?.trackByKey.get(id)]),
+			[...domain.keys].sort().map((id) => [id, allocations[index]?.trackByKey.get(id)]),
 		]),
 	);
 }
@@ -103,10 +96,10 @@ const propertyCase = fc
 		secondPadding,
 	}));
 
-function trackCapacity(relationIds: readonly string[], padding: number): number {
+function trackCapacity(keys: readonly string[], padding: number): number {
 	let availablePadding = padding;
-	if (relationIds.length > 0 && availablePadding < 1) availablePadding = 1;
-	return relationIds.length + availablePadding;
+	if (keys.length > 0 && availablePadding < 1) availablePadding = 1;
+	return keys.length + availablePadding;
 }
 function domainsFor(value: AllocationPropertyCase): readonly TrackAssignmentDomain[] {
 	const first = Array.from({ length: value.firstBandRoutes }, (_, index) => `a-${index}`);
@@ -133,17 +126,15 @@ describe('shared lane allocation search property', () => {
 			fc.property(propertyCase, (value) => {
 				const domains = domainsFor(value);
 				const actual = [...trackAllocationProducts(domains)];
-				const expectedBands = domains.map((entry) =>
-					injections(entry.relationIds, entry.trackCount),
-				);
+				const expectedBands = domains.map((entry) => injections(entry.keys, entry.trackCount));
 				const expected = cartesian(expectedBands).map((assignments) =>
 					JSON.stringify(domains.map((entry, index) => [entry.id, assignments[index] ?? []])),
 				);
 				const actualKeys = actual.map(({ allocations }) => encodedProduct(allocations, domains));
 				for (const entry of domains) {
-					if (entry.relationIds.length === 0) continue;
+					if (entry.keys.length === 0) continue;
 					expect([...entry.baseline.trackByKey.values()]).not.toEqual(
-						entry.relationIds.map((_, index) => index),
+						entry.keys.map((_, index) => index),
 					);
 				}
 				expect(actualKeys[0]).toBe(
@@ -158,7 +149,7 @@ describe('shared lane allocation search property', () => {
 
 				const permuted = domains.map((entry) => ({
 					...entry,
-					relationIds: [...entry.relationIds].reverse(),
+					keys: [...entry.keys].reverse(),
 					baseline: {
 						...entry.baseline,
 						trackByKey: new Map([...entry.baseline.trackByKey].reverse()),

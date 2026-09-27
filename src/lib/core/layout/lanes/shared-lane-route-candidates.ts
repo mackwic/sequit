@@ -98,7 +98,7 @@ export function materializeParallelGeometry(
 	};
 }
 
-function activeRailIds(frame: SharedLaneFrame, order: ParallelRouteOrder): readonly string[] {
+function activeRailKeys(frame: SharedLaneFrame, order: ParallelRouteOrder): readonly string[] {
 	const ids: string[] = [];
 	for (const plan of frame.crossLanePlans) {
 		if (order === ParallelRouteOrder.LocalPassages) {
@@ -123,14 +123,14 @@ function strategyPlan(
 			id: 'gutter',
 			edge: allocation.gutter.edge,
 			trackCount: allocation.gutter.edge.capacity,
-			relationIds: input.plans.map(({ id }) => id),
+			keys: input.plans.map(({ id }) => id),
 			baseline: allocation.gutter,
 		},
 		{
 			id: 'rail',
 			edge: allocation.exteriorRail.edge,
 			trackCount: frame.crossLanePlans.length,
-			relationIds: activeRailIds(frame, order),
+			keys: activeRailKeys(frame, order),
 			baseline: allocation.exteriorRail,
 		},
 	];
