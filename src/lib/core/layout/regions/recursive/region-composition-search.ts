@@ -48,6 +48,22 @@ export interface LeafSelection {
 	readonly preserveFirst: boolean;
 }
 
+/** Pull only the local stream, never a composed geometry, when probing a product index. */
+export function leafStreamCandidate(
+	stream: LeafStream,
+	index: number,
+): RegionLeafIncidentSelected | undefined {
+	while (stream.candidates.length <= index && !stream.exhaustive) {
+		const next = stream.iterator.next();
+		if (next.done === true) {
+			stream.exhaustive = true;
+			stream.complete = next.value.exhaustive;
+			stream.witness = next.value;
+		} else stream.candidates.push(next.value);
+	}
+	return stream.candidates[index];
+}
+
 export class ExhaustedLeafAlternative extends Error {}
 
 export interface RecursiveCandidateInput {
@@ -188,27 +204,19 @@ function evaluateProduct(side: SideSearchContext, indices: readonly number[]): P
 }
 
 /** Ask for the next tuple without validating or charging a complete composition. */
-function probeProduct(side: SideSearchContext, indices: readonly number[]): ProductResult {
-	const { pass, context, selection } = side;
-	selectIndices(selection, pass.leaves, indices);
-	try {
-		pass.solveRoot(context, selection);
-	} catch (error) {
-		if (error instanceof ExhaustedLeafAlternative) return { exhausted: true };
-		if (error instanceof UnknownRegionLeafLayoutError)
-			return { exhausted: false, leafFailure: error };
-		throw error;
+function probeProduct(side: SideSearchContext, indices: readonly number[]): boolean {
+	for (const [offset, id] of side.pass.leaves.entries()) {
+		const stream = defined(side.selection.streams.get(id));
+		if (leafStreamCandidate(stream, defined(indices[offset])) === undefined) return false;
 	}
-	return { exhausted: false };
+	return true;
 }
 
 function probeBeyondBudget(
 	side: SideSearchContext,
 	indices: readonly number[],
 ): SideResult | undefined {
-	const probe = probeProduct(side, indices);
-	if (probe.exhausted) return undefined;
-	if (probe.leafFailure !== undefined) return { truncated: false, leafFailure: probe.leafFailure };
+	if (!probeProduct(side, indices)) return undefined;
 	side.pass.state.exhaustive = false;
 	side.pass.state.compositionBudgetExceeded = true;
 	return { truncated: true };

@@ -39,6 +39,7 @@ import { regionArrangementFor } from './region-arrangement-selection';
 import {
 	ExhaustedLeafAlternative,
 	type LeafSelection,
+	leafStreamCandidate,
 	solveRecursiveCandidate,
 } from './region-composition-search';
 import { leafErrorAttempt } from './region-recursive-outcome';
@@ -61,15 +62,7 @@ function leafCandidate(
 		};
 		streams.streams.set(regionId, stream);
 	}
-	while (stream.candidates.length <= index && !stream.exhaustive) {
-		const next = stream.iterator.next();
-		if (next.done === true) {
-			stream.exhaustive = true;
-			stream.complete = next.value.exhaustive;
-			stream.witness = next.value;
-		} else stream.candidates.push(next.value);
-	}
-	const candidate = stream.candidates[index];
+	const candidate = leafStreamCandidate(stream, index);
 	if (candidate !== undefined) return candidate;
 	if (index > 0) throw new ExhaustedLeafAlternative();
 	return solveRegionLeafLayoutWithIncidents(input);

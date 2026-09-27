@@ -163,9 +163,28 @@ function searchComposedCandidates(candidateAt: number, alternative: RegionLayout
 		throw new Error('Expected missing portal to reject the composition');
 	let calls = 0;
 	const visited = new Set<string>();
+	const local: RegionLeafIncidentSelected = {
+		status: RegionCompositionStatus.Selected,
+		layout: bridged.layout,
+		ranks: topologicallyRank(preparedGraph),
+		incidents: [],
+		witness: { attempted: 1, exhaustive: true, rejectedAlternatives: [] },
+	};
+	function* leafStream() {
+		for (let index = 0; index < 1000; index += 1) yield local;
+		return { attempted: 1000, exhaustive: true, rejectedAlternatives: [] };
+	}
 	const result = solveRecursiveCandidate(
 		{ graph: preparedGraph, measurements, model: readyModel, cache: undefined },
 		(_context, selection) => {
+			for (const id of selection.indices.keys())
+				if (!selection.streams.has(id))
+					selection.streams.set(id, {
+						candidates: [],
+						iterator: leafStream(),
+						exhaustive: false,
+						complete: true,
+					});
 			visited.add(JSON.stringify([...selection.indices]));
 			calls += 1;
 			if (calls === candidateAt) return composedForSearch(alternative);
@@ -207,8 +226,8 @@ describe('persisted composed incident bridge selection', () => {
 		const { bridged } = alternatives();
 		for (const position of [33, 64]) {
 			const { result, calls, distinct } = searchComposedCandidates(position, bridged);
-			expect(distinct).toBe(65);
-			expect(calls).toBe(65);
+			expect(distinct).toBe(64);
+			expect(calls).toBe(64);
 			expect(result.status).toBe(RegionCompositionStatus.Selected);
 			if (result.status !== RegionCompositionStatus.Selected) continue;
 			expect(result.searchWitness?.attempted).toBe(64);
@@ -216,8 +235,8 @@ describe('persisted composed incident bridge selection', () => {
 			expect(result.searchWitness?.bestBridge).toEqual(layoutRouteCost(bridged.layout));
 		}
 		const { result, calls, distinct, rejectedCode } = searchComposedCandidates(65, bridged);
-		expect(distinct).toBe(65);
-		expect(calls).toBe(65);
+		expect(distinct).toBe(64);
+		expect(calls).toBe(64);
 		expect(result.status).toBe(RegionCompositionStatus.Unknown);
 		if (result.status !== RegionCompositionStatus.Unknown) return;
 		expect(result.code).toBe(RegionCompositionSearchCode.SearchBudgetExceeded);
