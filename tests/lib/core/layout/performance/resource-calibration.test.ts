@@ -19,6 +19,7 @@ import { RegionWorkPhase } from '../../../../../src/lib/core/layout/regions/mode
 import {
 	RegionCompositionStatus,
 	type RegionInput,
+	type RegionLayoutAttempt,
 	RegionPortalSide,
 } from '../../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../../src/lib/core/layout/regions/model/region-incident-contract';
@@ -50,6 +51,7 @@ import {
 	gridRegionInput,
 	gridWithLocalRelations,
 	independentNodes,
+	nineIncidentNestedRegions,
 	persistedRowOf,
 	rowOf,
 	shallowForestOf,
@@ -89,6 +91,8 @@ function leafSample(
 		status,
 		work: {
 			attempts: attempt.witness.attempted,
+			slotWork: attempt.witness.slotWork?.attempted ?? 0,
+			slotExhausted: Number(attempt.witness.slotWork?.exhausted ?? false),
 			rejected: attempt.witness.rejectedAlternatives.length,
 		},
 	};
@@ -353,7 +357,7 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 			}),
 		);
 	}
-	for (const size of [4, 5]) {
+	for (const size of [4, 5, 16]) {
 		const nodes = leafDocument.nodes.slice(0, size);
 		const document = {
 			...leafDocument,
@@ -367,7 +371,9 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 		const measurements = prepareLayoutDocument(document).measurements;
 		const chainContracts = nodes.map((node, index) => {
 			const allowedSides = [RegionPortalSide.Top];
-			if (index > 0) allowedSides.push(RegionPortalSide.Bottom);
+			if (size === 16)
+				allowedSides.push(RegionPortalSide.Bottom, RegionPortalSide.Left, RegionPortalSide.Right);
+			else if (index > 0) allowedSides.push(RegionPortalSide.Bottom);
 			return {
 				relation: { id: `cross-${index}`, from: node.id, to: 'foreign' },
 				endpointId: node.id,
@@ -386,6 +392,65 @@ it('profiles cold and cached-mutation work under counted budgets', () => {
 				),
 			),
 		);
+	}
+	const nested = nineIncidentNestedRegions();
+	for (const size of [2, 9]) {
+		const nodes = [
+			...nested.document.nodes.slice(0, size),
+			...nested.document.nodes.slice(9, 9 + size),
+		];
+		const document = {
+			...nested.document,
+			nodes,
+			relations: nested.document.relations.slice(0, size),
+		};
+		const ids = new Set(nodes.map(({ id }) => id));
+		const input = {
+			...nested.input,
+			regionByEndpointId: new Map(
+				[...nested.input.regionByEndpointId].filter(([id]) => ids.has(id)),
+			),
+		};
+		const prepared = prepareLayoutDocument(document);
+		const sample = (attempt: RegionLayoutAttempt): ResourceProfileSample => {
+			let compositionAttempts = 0;
+			let ownedRoutes = 0;
+			if (attempt.status !== RegionCompositionStatus.Unsupported)
+				compositionAttempts = attempt.searchWitness?.attempted ?? 0;
+			if (attempt.status === RegionCompositionStatus.Selected)
+				ownedRoutes = attempt.ownedRoutes.length;
+			return { status: attempt.status, work: { compositionAttempts, ownedRoutes } };
+		};
+		results.push(
+			profileResource(`nested-leaf-${size}-boundary`, 'cold', () =>
+				sample(solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input)),
+			),
+		);
+		const nodeMeasurements = new Map(prepared.measurements.nodes);
+		const node = nodeMeasurements.get('node-0');
+		if (node === undefined) throw new Error('Missing nested source measurement');
+		nodeMeasurements.set('node-0', { ...node, width: node.width + 1 });
+		const editedMeasurements = { ...prepared.measurements, nodes: nodeMeasurements };
+		let cache = new RegionLocalLayoutCache();
+		results.push(
+			profileResource(
+				`nested-leaf-${size}-boundary`,
+				'incremental',
+				() =>
+					sample(
+						solveRecursiveNestedRegionLayout(prepared.graph, editedMeasurements, input, cache),
+					),
+				2,
+				7,
+				() => {
+					cache = new RegionLocalLayoutCache();
+					solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input, cache);
+				},
+			),
+		);
+		expect(
+			solveRecursiveNestedRegionLayout(prepared.graph, editedMeasurements, input, cache),
+		).toEqual(solveRecursiveNestedRegionLayout(prepared.graph, editedMeasurements, input));
 	}
 	const nine = rowOf(9);
 	const rowPrepared = prepareLayoutDocument(nine.document);

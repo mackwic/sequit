@@ -102,7 +102,11 @@ function* routesOnLayout(
 	function* routeAt(
 		slotSides: readonly RegionPortalSide[],
 	): Generator<readonly RegionSolvedIncident[]> {
-		const slots = slotsForAssignment(contracts, slotSides);
+		const slots = slotsForAssignment(contracts, slotSides, state.slotBudget);
+		if (slots === undefined) {
+			state.incomplete = true;
+			return;
+		}
 		yield* validDepthFirst<RegionSolvedIncident, RegionLeafIncidentGeometryFailure>({
 			levels: contracts.length,
 			counter: state.budget,
@@ -142,7 +146,7 @@ function* routesOnLayout(
 			sides.push(side);
 			yield* assignSides(index + 1);
 			sides.pop();
-			if (state.budgetExceeded) return;
+			if (state.budgetExceeded || state.slotBudgetExceeded) return;
 		}
 	}
 	yield* assignSides(0);

@@ -33,6 +33,37 @@ export function independentNodes(count: number): LogicDocument {
 	};
 }
 
+/** Nine distinct boundary routes from a nested leaf to its independent root sibling. */
+export function nineIncidentNestedRegions(): { document: LogicDocument; input: RegionInput } {
+	const source = independentNodes(18);
+	const document: LogicDocument = {
+		...source,
+		relations: source.nodes.slice(0, 9).map((node, index) => ({
+			id: `cross-${index}`,
+			from: node.id,
+			to: defined(source.nodes[index + 9]).id,
+		})),
+	};
+	return {
+		document,
+		input: {
+			regions: [
+				{ id: '@root', layoutOrder: '0' },
+				{ id: 'branch', parentId: '@root', layoutOrder: 'a' },
+				{ id: 'leaf', parentId: 'branch', layoutOrder: 'a' },
+				{ id: 'target', parentId: '@root', layoutOrder: 'b' },
+			],
+			regionByEndpointId: new Map(
+				document.nodes.map((node, index) => {
+					let regionId = 'target';
+					if (index < 9) regionId = 'leaf';
+					return [node.id, regionId];
+				}),
+			),
+		},
+	};
+}
+
 export function gridOf(
 	columns: number,
 	rows: number,

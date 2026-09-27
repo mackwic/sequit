@@ -13,6 +13,7 @@ import {
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { boundedCounter } from '../../../../src/lib/core/layout/search/bounded-search';
 
 const endpoint = {
 	id: 'local',
@@ -199,5 +200,30 @@ describe('dedicated leaf route geometry', () => {
 			2 / 3,
 			1 / 2,
 		]);
+	});
+
+	it('stops slot construction at its work boundary without exposing an incomplete assignment', () => {
+		const contracts = Array.from({ length: 16 }, (_, index) => ({
+			...contract,
+			relation: { id: `cross-${index}`, from: 'local', to: 'foreign' },
+		}));
+		const sides = contracts.map(() => RegionPortalSide.Top);
+		const complete = slotsForAssignment(contracts, sides);
+		for (const limit of [31, 32, 33]) {
+			const counter = boundedCounter(limit);
+			const result = slotsForAssignment(contracts, sides, counter);
+			if (limit < 32) {
+				expect(result).toBeUndefined();
+				expect(counter.exhausted).toBe(true);
+				expect(counter.attempted).toBe(31);
+				continue;
+			}
+			expect(result).toEqual(complete);
+			expect(result?.map(({ preferredFraction }) => preferredFraction)).toEqual(
+				Array.from({ length: 16 }, (_, index) => (index + 1) / 17),
+			);
+			expect(counter.attempted).toBe(32);
+			expect(counter.exhausted).toBe(false);
+		}
 	});
 });

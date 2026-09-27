@@ -6,6 +6,7 @@ import {
 	segmentEnters,
 } from '../../geometry/nested-region-geometry-primitives';
 import type { Bounds, LayoutElement, LayoutResult, Point } from '../../layout-types';
+import type { SearchBudgetCounter } from '../../search/bounded-search';
 import { incidentEndpointRoute } from '../composition/region-incident-contact';
 import { RegionPortalSide } from '../model/region-composition-types';
 import type {
@@ -67,30 +68,67 @@ export function slotFractions(preferred: number): readonly number[] {
 	return [...new Set([preferred, 0.5, 0.25, 0.75, 0.125, 0.875])];
 }
 
+interface SlotGroup {
+	readonly side: RegionPortalSide;
+	readonly targets: number[];
+	readonly sources: number[];
+}
+
+function slotGroups(
+	contracts: readonly RegionIncidentContract[],
+	sides: readonly RegionPortalSide[],
+	work?: SearchBudgetCounter,
+): Map<string, SlotGroup> | undefined {
+	const groups = new Map<string, SlotGroup>();
+	for (const [index, contract] of contracts.entries()) {
+		const side = sides[index];
+		if (side === undefined) throw new Error('The side assignment is incomplete.');
+		if (work !== undefined && !work.take()) return undefined;
+		const key = JSON.stringify([contract.endpointId, side]);
+		let group = groups.get(key);
+		if (group === undefined) {
+			group = { side, targets: [], sources: [] };
+			groups.set(key, group);
+		}
+		// The role order and original indices reproduce the old stable comparator.
+		if (contract.role === RegionIncidentRole.Target) group.targets.push(index);
+		else group.sources.push(index);
+	}
+	return groups;
+}
+
 export function slotsForAssignment(
 	contracts: readonly RegionIncidentContract[],
 	sides: readonly RegionPortalSide[],
-): readonly FaceSlot[] {
-	return contracts.map((contract, index) => {
-		const side = sides[index];
-		if (side === undefined) throw new Error('The side assignment is incomplete.');
-		const companions = contracts
-			.flatMap((other, otherIndex) => {
-				if (other.endpointId !== contract.endpointId || sides[otherIndex] !== side) return [];
-				return [otherIndex];
-			})
-			.sort((left, right) => {
-				// A target enters the local flow before a source leaves it. This also
-				// gives a parent bus and an outgoing corridor separate face positions.
-				let leftRole = 1;
-				let rightRole = 1;
-				if (contracts[left]?.role === RegionIncidentRole.Target) leftRole = 0;
-				if (contracts[right]?.role === RegionIncidentRole.Target) rightRole = 0;
-				return leftRole - rightRole || left - right;
-			});
-		const slot = companions.indexOf(index) + 1;
-		return { side, preferredFraction: slot / (companions.length + 1) };
-	});
+): readonly FaceSlot[];
+export function slotsForAssignment(
+	contracts: readonly RegionIncidentContract[],
+	sides: readonly RegionPortalSide[],
+	work: SearchBudgetCounter,
+): readonly FaceSlot[] | undefined;
+export function slotsForAssignment(
+	contracts: readonly RegionIncidentContract[],
+	sides: readonly RegionPortalSide[],
+	work?: SearchBudgetCounter,
+): readonly FaceSlot[] | undefined {
+	const groups = slotGroups(contracts, sides, work);
+	if (groups === undefined) return undefined;
+	const slots: FaceSlot[] = [];
+	for (const group of groups.values()) {
+		const denominator = group.targets.length + group.sources.length + 1;
+		let ordinal = 1;
+		for (const index of group.targets) {
+			if (work !== undefined && !work.take()) return undefined;
+			slots[index] = { side: group.side, preferredFraction: ordinal / denominator };
+			ordinal += 1;
+		}
+		for (const index of group.sources) {
+			if (work !== undefined && !work.take()) return undefined;
+			slots[index] = { side: group.side, preferredFraction: ordinal / denominator };
+			ordinal += 1;
+		}
+	}
+	return slots;
 }
 
 function detourCoordinates(

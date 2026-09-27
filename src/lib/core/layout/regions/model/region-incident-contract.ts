@@ -55,8 +55,15 @@ export interface RegionIncidentRejectedAlternative {
 	readonly reason?: string;
 }
 
-/** A bounded search reports whether its listed attempts exhaust the declared alternatives. */
-export type RegionIncidentSearchWitness = BoundedSearchWitness<RegionIncidentRejectedAlternative>;
+/** Route attempts and independently counted work used to construct side assignments. */
+export type RegionIncidentSearchWitness =
+	BoundedSearchWitness<RegionIncidentRejectedAlternative> & {
+		readonly slotWork?: {
+			readonly attempted: number;
+			readonly limit: number;
+			readonly exhausted: boolean;
+		};
+	};
 
 const ALL_SIDES = new Set<RegionPortalSide>(Object.values(RegionPortalSide));
 const ALL_ROLES = new Set<string>(Object.values(RegionIncidentRole));

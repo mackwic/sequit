@@ -23,6 +23,10 @@ import {
 	solveDedicatedRegionLeafWithIncidents,
 } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
+	normalizeRegionCompositionModel,
+	RegionCompositionModelStatus,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
@@ -32,9 +36,14 @@ import {
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { independentNodes } from '../../../support/performance/layout-resource-scenarios';
+import {
+	independentNodes,
+	nineIncidentNestedRegions,
+} from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
 function oneNodeLeaf(): LogicDocument {
@@ -395,6 +404,30 @@ describe('dedicated leaf incident contracts', () => {
 		});
 	});
 
+	it.fails(
+		'composes a nested leaf with nine distinct boundary incidents in the product pipeline',
+		() => {
+			const { document, input } = nineIncidentNestedRegions();
+			const prepared = prepareLayoutDocument(document);
+			const composed = solveRecursiveNestedRegionLayout(
+				prepared.graph,
+				prepared.measurements,
+				input,
+			);
+			expect(composed.status).toBe(RegionCompositionStatus.Selected);
+			if (composed.status !== RegionCompositionStatus.Selected) return;
+			const normalized = normalizeRegionCompositionModel(prepared.graph, input, {});
+			if (normalized.status !== RegionCompositionModelStatus.Ready)
+				throw new Error(normalized.diagnostic.message);
+			expect(validateRegionCompositionGeometry(normalized.model, composed)).toBeUndefined();
+			const leafRoutes = composed.ownedRoutes.filter(({ regionId }) => regionId === 'leaf');
+			expect(leafRoutes.map(({ relationId }) => relationId).sort()).toEqual(
+				document.relations.map(({ id }) => id).sort(),
+			);
+			expect(composed.regions.some(({ id }) => id === 'target')).toBe(true);
+		},
+	);
+
 	it('selects nine independent incidents after actually checking their routes', () => {
 		const document = independentNodes(9);
 		const measurements = prepareLayoutDocument(document).measurements;
@@ -423,6 +456,27 @@ describe('dedicated leaf incident contracts', () => {
 					),
 				).toEqual([]);
 		}
+	});
+
+	it('refuses a slot-construction budget only after counting actual group and slot work', () => {
+		const document = oneNodeLeaf();
+		const measurements = prepareLayoutDocument(document).measurements;
+		const contracts = Array.from({ length: 513 }, (_, index) =>
+			incident(`cross-${index}`, RegionPortalSide.Top),
+		);
+		const result = solveDedicatedRegionLeafWithIncidents({ document, measurements, contracts });
+		expect(result).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+			witness: {
+				attempted: 0,
+				exhaustive: false,
+				slotWork: { attempted: 1_024, limit: 1_024, exhausted: true },
+			},
+		});
+		if (result.status !== RegionCompositionStatus.Unknown) return;
+		expect(result.reason).toContain('1024 slot-operation budget after 1024 operations');
+		expect('incidents' in result).toBe(false);
 	});
 
 	it('charges missing endpoint checks up to the global budget and never publishes a partial route', () => {
