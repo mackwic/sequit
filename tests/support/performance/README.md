@@ -183,7 +183,7 @@ The opt-in gate compares total computational p95 in each growth bucket with the 
 | `long-queue`              |   5 |     5 |     5 |     5 |       8 |
 | `binary-tree`             |   5 |     5 |     5 |     5 |       9 |
 | `unbalanced`              |   5 |     5 |     5 |     5 |       9 |
-| `unbalanced-random`       |   5 |     5 |     7 |     5 |      12 |
+| `unbalanced-random`       |   5 |     7 |     7 |     5 |      12 |
 | `subgroups`               |   5 |     5 |     5 |     5 |      19 |
 | `nested-subgroups`        |   5 |     5 |     5 |     5 |     200 |
 | `wide-bipartite-layers`   |   5 |     9 |     5 |     6 |     195 |
@@ -229,6 +229,8 @@ The values below are the worst total p95 in milliseconds from the three runs. Th
 | `shallow-groups`          | 0.024 | 0.048 | 0.126 | 0.253 |   3.716 |
 
 ### Calm-window recalibration (2026-09-27)
+
+`unbalanced-random/10-19` was then raised from 5 to 7 ms by explicit user decision (margin for borderline cells): its calm median is 4.497 ms after the fixes (3.560 ms on the base), so `ceil(1.5 × median)` = 7 ms, and one calm pass had failed at 5.001 ms.
 
 The temporary 2026-09-26 relaxation was re-measured on `34d023c9` with two complete `performance:record` passes of each suite (pinned Node `v24.20.0`, pnpm `12.3.4`, Apple M1 Max, AC power, no other validation run). Each relaxed ceiling became its historical value when `1.5 × median of the two passes` fell below it, otherwise `ceil(1.5 × median)` ms, never above the temporary value. The snapshot `wide-bipartite-layers/1000` median was 91.806 ms (ceiling 150 → 138 ms). Incremental medians in the `100-999` bucket: `group-relations` 6.226 ms (17 → 10 ms, after the group-relation rank-component fix), `wide-bipartite-layers` 129.787 ms (242 → 195 ms), `unbalanced-random/20-49` 4.553 ms (10 → 7 ms), `wide-bipartite-layers/50-99` 3.520 ms (7 → 6 ms). `binary-tree` (6.234 ms) and `junction-heavy` (14.141 ms) would need more than their temporary ceilings under this rule; they keep 9 and 19 ms rather than being raised. The other relaxed cells keep values equal to `ceil(1.5 × median)`. No historical cell is restored: every relaxed workload still costs more than two thirds of its original ceiling.
 
