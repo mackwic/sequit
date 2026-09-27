@@ -16,6 +16,7 @@ import {
 	GRID_CROSSING_BRIDGE_BUDGET,
 	GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	GRID_CROSSING_REALLOCATION_BUDGET,
+	GRID_CROSSING_ROW_GUTTER_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
@@ -172,6 +173,7 @@ describe('grid-cell real-pipeline properties', () => {
 						throw new Error(`Expected selected grid: ${solved.status}: ${solved.reason}`);
 					expect(validateGridCellGeometry(solved, cold.graph, input)).toBeUndefined();
 					const budgets = new Map([
+						['row-gutter', GRID_CROSSING_ROW_GUTTER_BUDGET],
 						['reallocate', GRID_CROSSING_REALLOCATION_BUDGET],
 						['extra-track', GRID_CROSSING_EXTRA_TRACK_BUDGET],
 						['bridge', GRID_CROSSING_BRIDGE_BUDGET],
