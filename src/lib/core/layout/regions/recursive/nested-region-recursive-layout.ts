@@ -23,7 +23,9 @@ import {
 import { regionLeafPolicy } from '../leaf/region-leaf-policy';
 import {
 	checkRegionStackDepth,
-	NESTED_REGION_COMPOSITION_LIMITS,
+	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	RegionCompositionWork,
+	RegionWorkLimitExceeded,
 } from '../model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
@@ -135,21 +137,28 @@ function solveLeaf(
 	return result;
 }
 
+interface RegionSolveState {
+	readonly selection?: LeafSelection | undefined;
+	readonly work: RegionCompositionWork;
+}
+
 function solveRegion(
 	context: RecursiveContext,
 	regionId: string,
 	incidentSides: IncidentSides,
-	selection?: LeafSelection,
+	state: RegionSolveState,
 ): SolvedRecursiveRegion {
 	const region = defined(context.model.regionsById.get(regionId));
 	const arrangement = regionArrangementFor(region);
-	if (arrangement === undefined) return solveLeaf(context, regionId, incidentSides, selection);
+	if (arrangement === undefined)
+		return solveLeaf(context, regionId, incidentSides, state.selection);
 	return solveArrangedRegion({
 		context,
 		regionId,
 		incidentSides,
 		arrangement,
-		solveChild: (childContext, id, sides) => solveRegion(childContext, id, sides, selection),
+		work: state.work,
+		solveChild: (childContext, id, sides) => solveRegion(childContext, id, sides, state),
 	});
 }
 
@@ -160,19 +169,35 @@ export function solveRecursiveNestedRegionLayout(
 	input: RegionInput,
 	cache?: RegionLocalLayoutCache,
 ): RegionLayoutAttempt {
-	const normalized = normalizeRegionCompositionModel(
-		graph,
-		input,
-		NESTED_REGION_COMPOSITION_LIMITS,
-	);
+	return solveRecursiveNestedRegionLayoutWithWork(graph, measurements, input, { cache });
+}
+
+/** An invocation can supply counters to inspect measured work and exercise a budget boundary. */
+export function solveRecursiveNestedRegionLayoutWithWork(
+	graph: LogicGraph,
+	measurements: LayoutMeasurements,
+	input: RegionInput,
+	execution: {
+		readonly cache?: RegionLocalLayoutCache | undefined;
+		readonly work?: RegionCompositionWork;
+	} = {},
+): RegionLayoutAttempt {
+	const { cache } = execution;
+	const work = execution.work ?? new RegionCompositionWork(NESTED_REGION_COMPOSITION_WORK_BUDGETS);
+	const normalized = normalizeRegionCompositionModel(graph, input, work);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		return {
 			status: RegionCompositionStatus.Unsupported,
 			reason: normalized.diagnostic.message,
+			diagnostic: normalized.diagnostic,
 		};
 	const stack = checkRegionStackDepth(normalized.model.preorderIds, normalized.model.regionsById);
 	if (stack !== undefined)
-		return { status: RegionCompositionStatus.Unsupported, reason: stack.message };
+		return {
+			status: RegionCompositionStatus.Unsupported,
+			reason: stack.message,
+			diagnostic: stack,
+		};
 	const failure = policyFailure(graph, normalized.model);
 	if (failure !== undefined)
 		return { status: RegionCompositionStatus.Unsupported, reason: failure };
@@ -184,9 +209,17 @@ export function solveRecursiveNestedRegionLayout(
 				model: normalized.model,
 				cache,
 			},
-			(context, selection) => solveRegion(context, normalized.model.rootId, new Map(), selection),
+			(context, selection) =>
+				solveRegion(context, normalized.model.rootId, new Map(), { selection, work }),
+			work,
 		).attempt;
 	} catch (error) {
+		if (error instanceof RegionWorkLimitExceeded)
+			return {
+				status: RegionCompositionStatus.Unsupported,
+				reason: error.message,
+				diagnostic: error.diagnostic,
+			};
 		const attempt = leafErrorAttempt(error);
 		if (attempt !== undefined) return attempt;
 		throw error;

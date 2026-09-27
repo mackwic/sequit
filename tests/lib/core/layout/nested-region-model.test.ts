@@ -155,32 +155,8 @@ describe('normalized child-region envelope', () => {
 		expect(solve(withLanes, nestedRegionInput()).status).toBe(RegionCompositionStatus.Unsupported);
 	});
 
-	it('keeps the explicit size envelope and canonical region tie-break', () => {
+	it('keeps the canonical region tie-break', () => {
 		const document = regionDocument();
-		const template = document.nodes[0];
-		if (template === undefined) throw new Error('Missing source fixture');
-		const extraNodes = Array.from({ length: 9 }, (_, index) => ({
-			...template,
-			id: `extra-${index}`,
-			layoutOrder: orderKey(`a${'456789ABC'.charAt(index)}`),
-		}));
-		const tooMany = { ...document, nodes: [...document.nodes, ...extraNodes] };
-		expect(solve(tooMany, nestedRegionInput()).status).toBe(RegionCompositionStatus.Unsupported);
-		const withinNodeBudget = [...document.nodes, ...extraNodes.slice(0, 6)];
-		const relations = [] as LogicDocument['relations'][number][];
-		for (let source = 0; source < withinNodeBudget.length; source += 1) {
-			for (let target = source + 1; target < withinNodeBudget.length; target += 1) {
-				if (relations.length >= 17) continue;
-				const from = withinNodeBudget[source]?.id;
-				const to = withinNodeBudget[target]?.id;
-				if (from === undefined || to === undefined) continue;
-				relations.push({ id: `relation-${source}-${target}`, from, to });
-			}
-		}
-		const tooManyRelations = { ...document, nodes: withinNodeBudget, relations };
-		expect(solve(tooManyRelations, nestedRegionInput()).status).toBe(
-			RegionCompositionStatus.Unsupported,
-		);
 		const sameOrder = nestedRegionInput();
 		const tied = {
 			...sameOrder,
@@ -193,22 +169,6 @@ describe('normalized child-region envelope', () => {
 		expect(resolved.status).toBe(RegionCompositionStatus.Selected);
 		if (resolved.status !== RegionCompositionStatus.Selected) return;
 		expect(resolved.regions.map(({ id }) => id)).toEqual(['left', 'middle', 'right']);
-	});
-
-	it('enforces the bounded inter-region route budget', () => {
-		const document = regionDocument();
-		const moreCrossings = {
-			...document,
-			relations: [
-				...document.relations,
-				{ id: 'a-to-b', from: 'a-target', to: 'b' },
-				{ id: 'b-to-c', from: 'b', to: 'c' },
-				{ id: 'a-to-c-again', from: 'a-source', to: 'c' },
-			],
-		};
-		expect(solve(moreCrossings, nestedRegionInput()).status).toBe(
-			RegionCompositionStatus.Unsupported,
-		);
 	});
 
 	it('does not materialize a combined routing inspection', () => {

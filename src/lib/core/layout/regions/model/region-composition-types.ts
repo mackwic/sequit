@@ -12,6 +12,43 @@ import type { RegionCompositionFailureEvidence } from './region-search-evidence'
 
 export { RegionPortalSide } from './region-portal-side';
 
+export enum RegionWorkPhase {
+	NormalizationComparisons = 'normalizationComparisons',
+	Placements = 'placements',
+	Comparisons = 'comparisons',
+	Traversals = 'traversals',
+}
+
+/** Declared diagnostic identities of region normalization and its resource limits. */
+export enum RegionCompositionDiagnosticCode {
+	EmptyRegionId = 'empty-region-id',
+	DuplicateRegionId = 'duplicate-region-id',
+	InvalidRootCount = 'invalid-root-count',
+	UnknownParent = 'unknown-parent',
+	ParentCycle = 'parent-cycle',
+	MissingEndpointAssignment = 'missing-endpoint-assignment',
+	UnknownEndpointAssignment = 'unknown-endpoint-assignment',
+	UnknownRegionAssignment = 'unknown-region-assignment',
+	NonLeafAssignment = 'non-leaf-assignment',
+	SplitGroup = 'split-group',
+	DuplicateRelationId = 'duplicate-relation-id',
+	NonLeafLanePresentation = 'non-leaf-lane-presentation',
+	ResourceLimit = 'resource-limit',
+	StackDepthLimit = 'stack-depth-limit',
+}
+
+export interface RegionCompositionDiagnostic {
+	readonly code: RegionCompositionDiagnosticCode;
+	readonly message: string;
+	readonly path: readonly string[];
+	readonly cycle?: readonly string[];
+	readonly limit?: number;
+	readonly actual?: number;
+	readonly phase?: RegionWorkPhase;
+	readonly ownerId?: string;
+	readonly exhaustive?: false;
+}
+
 interface RegionDefinitionFields {
 	readonly id: string;
 	readonly parentId?: string;
@@ -91,6 +128,7 @@ type RegionCompositionUnknown<FailureEvidence extends RegionCompositionFailureEv
 interface RegionCompositionUnsupported {
 	readonly status: RegionCompositionStatus.Unsupported;
 	readonly reason: string;
+	readonly diagnostic?: RegionCompositionDiagnostic;
 }
 
 export type RegionCompositionAttempt<
@@ -107,6 +145,7 @@ export enum RegionCompositionIssue {
 export interface RegionCompositionSearchWitness {
 	readonly attempted: number;
 	readonly exhaustive: boolean;
+	readonly resourceLimit?: RegionCompositionDiagnostic | undefined;
 	readonly rejectedAlternatives: readonly {
 		readonly indices: readonly number[];
 		readonly code: string;

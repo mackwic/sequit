@@ -1,8 +1,14 @@
-import { compareCanonicalStrings } from '../../../canonical-string';
-import type { LogicRelation } from '../../../document/logic-document';
-import type { LogicGraph } from '../../../graph/create-graph';
-import type { RegionCompositionNode } from './region-composition-tree';
-import type { RegionInput } from './region-composition-types';
+import { defined } from '../../../document/logic-document';
+import { boundedCounter, type SearchBudgetCounter } from '../../search/bounded-search';
+import {
+	type RegionCompositionDiagnostic,
+	RegionCompositionDiagnosticCode,
+	type RegionInput,
+	RegionWorkPhase,
+} from './region-composition-types';
+
+export type { RegionCompositionDiagnostic } from './region-composition-types';
+export { RegionCompositionDiagnosticCode } from './region-composition-types';
 
 /** Normalization outcome, shared by every composition entry point. */
 export enum RegionCompositionModelStatus {
@@ -11,54 +17,64 @@ export enum RegionCompositionModelStatus {
 	Unsupported = 'unsupported',
 }
 
-/** Declared diagnostic identities of region normalization and its resource limits. */
-export enum RegionCompositionDiagnosticCode {
-	EmptyRegionId = 'empty-region-id',
-	DuplicateRegionId = 'duplicate-region-id',
-	InvalidRootCount = 'invalid-root-count',
-	UnknownParent = 'unknown-parent',
-	ParentCycle = 'parent-cycle',
-	MissingEndpointAssignment = 'missing-endpoint-assignment',
-	UnknownEndpointAssignment = 'unknown-endpoint-assignment',
-	UnknownRegionAssignment = 'unknown-region-assignment',
-	NonLeafAssignment = 'non-leaf-assignment',
-	SplitGroup = 'split-group',
-	DuplicateRelationId = 'duplicate-relation-id',
-	NonLeafLanePresentation = 'non-leaf-lane-presentation',
-	ResourceLimit = 'resource-limit',
-	StackDepthLimit = 'stack-depth-limit',
+export interface RegionCompositionWorkBudgets {
+	readonly normalizationComparisons: number;
+	readonly placements: number;
+	readonly comparisons: number;
+	readonly traversals: number;
 }
 
-export interface RegionCompositionDiagnostic {
-	readonly code: RegionCompositionDiagnosticCode;
-	readonly message: string;
-	readonly path: readonly string[];
-	readonly cycle?: readonly string[];
-	readonly limit?: number;
-	readonly actual?: number;
-}
-
-export interface RegionCompositionLimits {
-	readonly maxRegions?: number;
-	readonly maxEndpoints?: number;
-	readonly maxRelations?: number;
-	readonly maxChildrenPerRegion?: number;
-	readonly maxCrossingsPerRegion?: number;
-}
-
-/**
- * Declared resource envelope of the bounded recursive composition. The region budget
- * also bounds recursive solver depth; the remaining bounds protect graph and row work.
- * Eight children keeps the row bus linear in its children (`PARENT_BUS_SPACING` per
- * allocated track) while admitting rows wider than the historical three.
- */
-export const NESTED_REGION_COMPOSITION_LIMITS: RegionCompositionLimits = {
-	maxRegions: 256,
-	maxEndpoints: 12,
-	maxRelations: 16,
-	maxChildrenPerRegion: 8,
-	maxCrossingsPerRegion: 3,
+/** Work units are charged before each actual validation, comparison or relation visit. */
+export const NESTED_REGION_COMPOSITION_WORK_BUDGETS: RegionCompositionWorkBudgets = {
+	normalizationComparisons: 8192,
+	placements: 512,
+	comparisons: 1024,
+	traversals: 4096,
 };
+
+export class RegionWorkLimitExceeded extends Error {
+	constructor(readonly diagnostic: RegionCompositionDiagnostic) {
+		super(diagnostic.message);
+	}
+}
+
+/** One monotone counter per independently calibrated composition phase. */
+export class RegionCompositionWork {
+	private readonly counters: Record<RegionWorkPhase, SearchBudgetCounter>;
+
+	constructor(private readonly limits: RegionCompositionWorkBudgets) {
+		for (const limit of Object.values(limits)) {
+			if (!Number.isSafeInteger(limit) || limit < 0)
+				throw new Error('Region composition budgets must be non-negative safe integers.');
+		}
+		this.counters = {
+			[RegionWorkPhase.NormalizationComparisons]: boundedCounter(limits.normalizationComparisons),
+			[RegionWorkPhase.Placements]: boundedCounter(limits.placements),
+			[RegionWorkPhase.Comparisons]: boundedCounter(limits.comparisons),
+			[RegionWorkPhase.Traversals]: boundedCounter(limits.traversals),
+		};
+	}
+
+	charge(phase: RegionWorkPhase, ownerId: string): void {
+		const counter = this.counters[phase];
+		if (counter.take()) return;
+		const limit = this.limits[phase];
+		throw new RegionWorkLimitExceeded({
+			code: RegionCompositionDiagnosticCode.ResourceLimit,
+			message: `Region ${phase} work exhausted at ${limit} operations (owner ${ownerId}).`,
+			path: ['regions', ownerId, phase],
+			phase,
+			ownerId,
+			actual: counter.attempted,
+			limit,
+			exhaustive: false,
+		});
+	}
+
+	attempted(phase: RegionWorkPhase): number {
+		return this.counters[phase].attempted;
+	}
+}
 
 /** Recursive composition has multiple stack frames per region; this is not a work budget. */
 const MAX_REGION_RECURSION_DEPTH = 192;
@@ -66,11 +82,11 @@ const MAX_REGION_RECURSION_DEPTH = 192;
 /** Depth was calculated by the iterative normalized tree walk, before any recursive solve. */
 export function checkRegionStackDepth(
 	preorderIds: readonly string[],
-	regionsById: ReadonlyMap<string, RegionCompositionNode>,
+	regionsById: ReadonlyMap<string, { readonly depth: number }>,
 ): RegionCompositionDiagnostic | undefined {
 	for (const id of preorderIds) {
-		const depth = regionsById.get(id)?.depth;
-		if (depth === undefined || depth < MAX_REGION_RECURSION_DEPTH) continue;
+		const depth = defined(regionsById.get(id)).depth;
+		if (depth < MAX_REGION_RECURSION_DEPTH) continue;
 		return {
 			code: RegionCompositionDiagnosticCode.StackDepthLimit,
 			message: `Recursive region stack depth ${depth + 1} exceeds the safe limit of ${MAX_REGION_RECURSION_DEPTH}.`,
@@ -82,30 +98,6 @@ export function checkRegionStackDepth(
 	return undefined;
 }
 
-enum RegionResource {
-	Regions = 'regions',
-	Endpoints = 'endpoints',
-	Relations = 'relations',
-	Children = 'children',
-	Crossings = 'crossings',
-}
-
-function resourceFailure(
-	name: RegionResource,
-	actual: number,
-	limit: number | undefined,
-	path: readonly string[] = [name],
-): RegionCompositionDiagnostic | undefined {
-	if (limit === undefined || actual <= limit) return undefined;
-	return {
-		code: RegionCompositionDiagnosticCode.ResourceLimit,
-		message: `${name} exceed the configured limit of ${limit}.`,
-		path,
-		limit,
-		actual,
-	};
-}
-
 /** Children owned by each parent region, keyed by the parent identity. */
 export function regionChildCounts(input: RegionInput): ReadonlyMap<string, number> {
 	const counts = new Map<string, number>();
@@ -114,61 +106,4 @@ export function regionChildCounts(input: RegionInput): ReadonlyMap<string, numbe
 		counts.set(region.parentId, (counts.get(region.parentId) ?? 0) + 1);
 	}
 	return counts;
-}
-
-function validateLimits(limits: RegionCompositionLimits): void {
-	for (const limit of [
-		limits.maxRegions,
-		limits.maxEndpoints,
-		limits.maxRelations,
-		limits.maxChildrenPerRegion,
-		limits.maxCrossingsPerRegion,
-	]) {
-		if (limit === undefined) continue;
-		if (!Number.isSafeInteger(limit) || limit < 0)
-			throw new Error('Region composition limits must be non-negative safe integers.');
-	}
-}
-
-export function checkRegionLimits(
-	graph: LogicGraph,
-	input: RegionInput,
-	limits: RegionCompositionLimits,
-): RegionCompositionDiagnostic | undefined {
-	validateLimits(limits);
-	const base =
-		resourceFailure(RegionResource.Regions, input.regions.length, limits.maxRegions) ??
-		resourceFailure(RegionResource.Endpoints, graph.endpointsById.size, limits.maxEndpoints) ??
-		resourceFailure(RegionResource.Relations, graph.relations.length, limits.maxRelations);
-	if (base !== undefined) return base;
-	if (limits.maxChildrenPerRegion === undefined) return undefined;
-	const childCounts = regionChildCounts(input);
-	for (const regionId of [...childCounts.keys()].sort(compareCanonicalStrings)) {
-		const failure = resourceFailure(
-			RegionResource.Children,
-			childCounts.get(regionId) ?? 0,
-			limits.maxChildrenPerRegion,
-			['regions', regionId, 'children'],
-		);
-		if (failure !== undefined) return failure;
-	}
-	return undefined;
-}
-
-export function checkRegionCrossingLimits(
-	regionIds: readonly string[],
-	crossing: ReadonlyMap<string, readonly LogicRelation[]>,
-	limit: number | undefined,
-): RegionCompositionDiagnostic | undefined {
-	if (limit === undefined) return undefined;
-	for (const regionId of regionIds) {
-		const failure = resourceFailure(
-			RegionResource.Crossings,
-			crossing.get(regionId)?.length ?? 0,
-			limit,
-			['regions', regionId, 'crossings'],
-		);
-		if (failure !== undefined) return failure;
-	}
-	return undefined;
 }

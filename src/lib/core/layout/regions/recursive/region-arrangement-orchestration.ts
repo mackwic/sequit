@@ -10,7 +10,9 @@ import type {
 	ArrangementIncidentInput,
 	RegionArrangement,
 } from '../composition/region-arrangement';
+import type { RegionCompositionWork } from '../model/region-composition-limits';
 import type { RegionPortalSide } from '../model/region-composition-types';
+import { RegionWorkPhase } from '../model/region-composition-types';
 import { RegionIncidentRole } from '../model/region-incident-contract';
 
 interface ChildSidesInput<Placement> {
@@ -20,12 +22,14 @@ interface ChildSidesInput<Placement> {
 	readonly incidentSides: IncidentSides;
 	readonly preferredSide: RegionPortalSide;
 	readonly arrangement: RegionArrangement<Placement>;
+	readonly work?: RegionCompositionWork | undefined;
 }
 
 function requestedChildSides<Placement>(input: ChildSidesInput<Placement>): IncidentSides {
 	const { context, regionId, childId, incidentSides, preferredSide, arrangement } = input;
 	const sides = new Map<string, readonly RegionPortalSide[]>();
 	for (const owned of context.model.relations) {
+		input.work?.charge(RegionWorkPhase.Traversals, childId);
 		const inheritedSides = incidentSides.get(owned.relation.id);
 		if (owned.ownerId !== regionId && inheritedSides === undefined) continue;
 		const sourceHere = owned.ownerId === regionId || owned.sourcePathToOwner.includes(regionId);
@@ -55,6 +59,7 @@ export interface ArrangedRegionInput<Placement> {
 	readonly regionId: string;
 	readonly incidentSides: IncidentSides;
 	readonly arrangement: RegionArrangement<Placement>;
+	readonly work?: RegionCompositionWork | undefined;
 	readonly solveChild: (
 		context: RecursiveContext,
 		regionId: string,
@@ -71,7 +76,10 @@ export function solveArrangedRegion<Placement>(
 	const preferredSide = sideForRegion(context, regionId);
 	const crossings = context.graph.relations
 		.map(({ relation }) => relation)
-		.filter((relation) => context.ownershipByRelationId.get(relation.id)?.ownerId === regionId);
+		.filter((relation) => {
+			input.work?.charge(RegionWorkPhase.Traversals, regionId);
+			return context.ownershipByRelationId.get(relation.id)?.ownerId === regionId;
+		});
 	const children = region.childIds.map((id) => ({
 		id,
 		solved: solveChild(
@@ -84,6 +92,7 @@ export function solveArrangedRegion<Placement>(
 				incidentSides,
 				preferredSide,
 				arrangement,
+				work: input.work,
 			}),
 		),
 	}));

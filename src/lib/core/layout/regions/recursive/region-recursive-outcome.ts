@@ -12,6 +12,7 @@ import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
+import type { RegionCompositionDiagnostic } from '../model/region-composition-limits';
 import {
 	type RegionCompositionSearchWitness,
 	RegionCompositionStatus,
@@ -119,6 +120,7 @@ export interface SearchState {
 	attempted: number;
 	exhaustive: boolean;
 	compositionBudgetExceeded: boolean;
+	resourceLimit?: RegionCompositionDiagnostic;
 	leafFailure?: UnknownRegionLeafLayoutError;
 	localBudget?: { readonly regionId: string; readonly witness: RegionIncidentSearchWitness };
 	bestDetour?: CompositionCostCandidate;
@@ -141,6 +143,8 @@ export function compositionSearchOutcome(
 		bestDetourIndices: state.bestDetour?.indices,
 		bestBridgeIndices: state.bestBridge?.indices,
 	};
+	if (state.resourceLimit !== undefined)
+		witness = { ...witness, resourceLimit: state.resourceLimit };
 	if (issue !== undefined) {
 		witness = { ...witness, selected: issue.issue };
 		let attempt = issue.selected.attempt;

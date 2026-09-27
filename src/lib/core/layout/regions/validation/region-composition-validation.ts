@@ -7,7 +7,9 @@ import {
 	RegionGeometryDiagnosticCode as Code,
 } from '../../geometry/region-geometry-diagnostic';
 import type { Bounds } from '../../layout-types';
+import type { RegionCompositionWork } from '../model/region-composition-limits';
 import type { RegionCompositionModel } from '../model/region-composition-model';
+import { RegionWorkPhase } from '../model/region-composition-types';
 import {
 	diagnoseParentRouteContacts,
 	validateLeafCompositionGeometry,
@@ -86,10 +88,15 @@ function regionPlacementFailure(
 	return undefined;
 }
 
-function siblingsOverlap(siblings: readonly RegionGeometryPlacement[]): boolean {
+function siblingsOverlap(
+	siblings: readonly RegionGeometryPlacement[],
+	parentId: string,
+	work?: RegionCompositionWork,
+): boolean {
 	for (let left = 0; left < siblings.length; left += 1) {
 		const leftBounds = defined(siblings[left]).bounds;
 		for (let right = left + 1; right < siblings.length; right += 1) {
+			work?.charge(RegionWorkPhase.Comparisons, parentId);
 			const rightBounds = defined(siblings[right]).bounds;
 			if (overlaps(leftBounds, rightBounds)) return true;
 		}
@@ -97,10 +104,13 @@ function siblingsOverlap(siblings: readonly RegionGeometryPlacement[]): boolean 
 	return false;
 }
 
-function siblingOverlapFailure(context: GeometryContext): RegionGeometryDiagnostic | undefined {
+function siblingOverlapFailure(
+	context: GeometryContext,
+	work?: RegionCompositionWork,
+): RegionGeometryDiagnostic | undefined {
 	for (const parent of context.model.regionsById.values()) {
 		const siblings = parent.childIds.map((id) => defined(context.placements.get(id)));
-		if (siblingsOverlap(siblings))
+		if (siblingsOverlap(siblings, parent.id, work))
 			return diagnostic(Code.OverlappingChildren, `Children of region ${parent.id} overlap.`, {
 				regionId: parent.id,
 			});
@@ -111,15 +121,17 @@ function siblingOverlapFailure(context: GeometryContext): RegionGeometryDiagnost
 function placementFailure(
 	candidate: RegionCompositionGeometryCandidate,
 	context: GeometryContext,
+	work?: RegionCompositionWork,
 ): RegionGeometryDiagnostic | undefined {
 	const inventory = placementInventoryFailure(candidate, context);
 	if (inventory !== undefined) return inventory;
 	for (const id of context.model.preorderIds) {
 		if (id === context.model.rootId) continue;
+		work?.charge(RegionWorkPhase.Placements, id);
 		const failure = regionPlacementFailure(id, context);
 		if (failure !== undefined) return failure;
 	}
-	return siblingOverlapFailure(context);
+	return siblingOverlapFailure(context, work);
 }
 
 /** Validate every boundary in the normalized leaf → LCA → leaf route chain. */
@@ -127,6 +139,7 @@ export function validateRegionCompositionGeometry(
 	model: RegionCompositionModel,
 	candidate: RegionCompositionGeometryCandidate,
 	bridgeCache?: RouteBridgeCache,
+	work?: RegionCompositionWork,
 ): RegionGeometryDiagnostic | undefined {
 	const placements = new Map(candidate.regions.map((region) => [region.id, region]));
 	const root = {
@@ -136,7 +149,7 @@ export function validateRegionCompositionGeometry(
 		height: candidate.layout.height,
 	};
 	const context = { model, placements, root };
-	const placement = placementFailure(candidate, context);
+	const placement = placementFailure(candidate, context, work);
 	if (placement !== undefined) return placement;
 	const leafGeometry = validateLeafCompositionGeometry(model, candidate, placements);
 	if (leafGeometry !== undefined) return leafGeometry;

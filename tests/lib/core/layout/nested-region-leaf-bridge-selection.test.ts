@@ -28,9 +28,14 @@ import {
 	UnknownRegionLeafLayoutError,
 } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {
+	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	RegionCompositionWork,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
+import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionWorkPhase } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionCompositionStatus,
 	type RegionLayoutSelected,
@@ -43,7 +48,10 @@ import {
 	RegionSearchProvenance,
 } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import {
+	solveRecursiveNestedRegionLayout,
+	solveRecursiveNestedRegionLayoutWithWork,
+} from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
 import {
 	ExhaustedLeafAlternative,
@@ -540,6 +548,33 @@ describe('persisted composed incident bridge selection', () => {
 		).toBe(true);
 	});
 
+	it('retains only a fully validated incumbent after placement work exhausts', () => {
+		const work = new RegionCompositionWork({
+			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+			placements: 4,
+		});
+		const attempt = solveRecursiveNestedRegionLayoutWithWork(preparedGraph, measurements, input, {
+			work,
+		});
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		expect(attempt.searchWitness).toMatchObject({
+			exhaustive: false,
+			resourceLimit: {
+				code: 'resource-limit',
+				phase: RegionWorkPhase.Placements,
+				actual: 4,
+				limit: 4,
+				exhaustive: false,
+			},
+		});
+		expect(work.attempted(RegionWorkPhase.Placements)).toBe(4);
+		expect(validateRegionCompositionGeometry(readyModel, attempt)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(readyModel, attempt)).toBeUndefined();
+		expect(attempt.layout.relations.map(({ id }) => id).sort()).toEqual(
+			[...document.relations.map(({ id }) => id)].sort(),
+		);
+	});
 	it('selects the valid, shorter no-bridge composed route before a bridge', () => {
 		const { selected, unbridged } = alternatives();
 		expect(validatedBridges(selected.layout.relations)).toEqual([]);

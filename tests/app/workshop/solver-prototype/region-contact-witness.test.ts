@@ -122,9 +122,9 @@ describe('observable contacts at region boundaries', () => {
 		);
 	});
 
-	it('reports a normalized but unsupported crossing capacity instead of publishing a layout', () => {
+	it('publishes validated routes for four sibling-boundary crossings', () => {
 		const source = defined(cases.find(({ id }) => id === RegionContactCaseId.Parent)).source;
-		const tooManyCrossings = {
+		const fourCrossings = {
 			...source,
 			document: {
 				...source.document,
@@ -136,9 +136,11 @@ describe('observable contacts at region boundaries', () => {
 				],
 			},
 		};
-		expect(() => solveRegionContactScenario(tooManyCrossings)).toThrow(
-			'crossings exceed the configured limit of 3',
-		);
+		const { model, selected } = solveRegionContactScenario(fourCrossings);
+		expect(validateRegionCompositionGeometry(model, selected)).toBeUndefined();
+		for (const relationId of ['root-2', 'root-3', 'root-4']) {
+			expect(selected.ownedRoutes.some((route) => route.relationId === relationId)).toBe(true);
+		}
 	});
 
 	it('never labels an accepted geometry as a rejected portal candidate', () => {

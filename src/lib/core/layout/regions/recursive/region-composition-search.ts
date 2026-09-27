@@ -11,6 +11,10 @@ import {
 	type RegionLeafIncidentSelected,
 	UnknownRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
+import {
+	type RegionCompositionWork,
+	RegionWorkLimitExceeded,
+} from '../model/region-composition-limits';
 import type { RegionCompositionModel } from '../model/region-composition-model';
 import {
 	RegionCompositionStatus,
@@ -82,6 +86,7 @@ interface PassInput {
 	readonly leaves: readonly string[];
 	readonly relationOrder: ReadonlyMap<string, number>;
 	readonly state: SearchState;
+	readonly work?: RegionCompositionWork | undefined;
 }
 
 interface SideResult {
@@ -137,7 +142,7 @@ function evaluateCandidate(
 	const { state } = pass;
 	const candidate = assembleCandidate(model, solved, pass.relationOrder);
 	const bridgeCache: RouteBridgeCache = {};
-	const chainFailure = validateRegionCompositionGeometry(model, candidate, bridgeCache);
+	const chainFailure = validateRegionCompositionGeometry(model, candidate, bridgeCache, pass.work);
 	const failure = chainFailure ?? validateNestedRegionLeafIncidents(model, candidate, bridgeCache);
 	if (failure !== undefined) {
 		state.rejectedAlternatives.push({ indices: [...indices], code: failure.code });
@@ -316,6 +321,7 @@ function searchPass(pass: PassInput): void {
 export function solveRecursiveCandidate(
 	input: RecursiveCandidateInput,
 	solveRoot: PassInput['solveRoot'],
+	work?: RegionCompositionWork,
 ): DiagnosedCandidate {
 	const leaves = incidentLeafIds(input.model);
 	const relationOrder = new Map(
@@ -327,6 +333,13 @@ export function solveRecursiveCandidate(
 		compositionBudgetExceeded: false,
 		rejectedAlternatives: [],
 	};
-	searchPass({ input, solveRoot, leaves, relationOrder, state });
+	try {
+		searchPass({ input, solveRoot, leaves, relationOrder, state, work });
+	} catch (error) {
+		if (!(error instanceof RegionWorkLimitExceeded)) throw error;
+		if (state.bestDetour === undefined && state.bestBridge === undefined) throw error;
+		state.exhaustive = false;
+		state.resourceLimit = error.diagnostic;
+	}
 	return compositionSearchOutcome(state, leaves);
 }

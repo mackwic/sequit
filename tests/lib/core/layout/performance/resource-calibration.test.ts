@@ -1,14 +1,21 @@
 import { expect, it } from 'vitest';
 
+import { EndpointKind } from '../../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../../src/lib/core/document/order-key';
 import { solveGridCellLayout } from '../../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { GridCellLayoutStatus } from '../../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../../src/lib/core/layout/layout-engine';
 import type { LayoutMeasurements } from '../../../../../src/lib/core/layout/layout-types';
 import { solveDedicatedRegionLeafWithIncidents } from '../../../../../src/lib/core/layout/regions/leaf/region-leaf-incident-solver';
 import {
+	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	RegionCompositionWork,
+} from '../../../../../src/lib/core/layout/regions/model/region-composition-limits';
+import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionWorkPhase } from '../../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
@@ -16,7 +23,10 @@ import {
 } from '../../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../../src/lib/core/layout/regions/model/region-local-cache';
-import { solveRecursiveNestedRegionLayout } from '../../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import {
+	solveRecursiveNestedRegionLayout,
+	solveRecursiveNestedRegionLayoutWithWork,
+} from '../../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateRegionCompositionGeometry } from '../../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { allocateChannelIntervals } from '../../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../../src/lib/core/layout/routing/channel-routing';
@@ -43,6 +53,7 @@ import {
 	railReuseDocument,
 } from '../../../../support/scenarios/dedicated-channel-witnesses';
 import { nxmThreeByTwoDocument, nxmThreeByTwoInput } from '../grid-cell-fixture';
+import { depthTwoRegionDocument, depthTwoRegionInput } from '../nested-region-fixture';
 
 function witnessSample(attempt: ReturnType<typeof solveGridCellLayout>): ResourceProfileSample {
 	if (attempt.status === GridCellLayoutStatus.Unsupported)
@@ -83,10 +94,19 @@ function regionSample(
 	measurements: LayoutMeasurements = prepared.measurements,
 	cache?: RegionLocalLayoutCache,
 ): ResourceProfileSample {
-	const attempt = solveRecursiveNestedRegionLayout(prepared.graph, measurements, input, cache);
-	if (attempt.status !== RegionCompositionStatus.Selected)
-		return { status: attempt.status, work: { placementValidations: 0, siblingComparisons: 0 } };
-	const normalized = normalizeRegionCompositionModel(prepared.graph, input, {});
+	const counter = new RegionCompositionWork(NESTED_REGION_COMPOSITION_WORK_BUDGETS);
+	const attempt = solveRecursiveNestedRegionLayoutWithWork(prepared.graph, measurements, input, {
+		cache,
+		work: counter,
+	});
+	const work = {
+		normalizationComparisons: counter.attempted(RegionWorkPhase.NormalizationComparisons),
+		placements: counter.attempted(RegionWorkPhase.Placements),
+		comparisons: counter.attempted(RegionWorkPhase.Comparisons),
+		traversals: counter.attempted(RegionWorkPhase.Traversals),
+	};
+	if (attempt.status !== RegionCompositionStatus.Selected) return { status: attempt.status, work };
+	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error('Selected tree must normalize without a limit');
 	const failure = validateRegionCompositionGeometry(normalized.model, attempt);
@@ -101,6 +121,7 @@ function regionSample(
 		work: {
 			placementValidations: normalized.model.preorderIds.length - 1,
 			siblingComparisons,
+			...work,
 		},
 	};
 }
@@ -110,7 +131,7 @@ function normalizedRegions(attempt: ReturnType<typeof normalizeRegionComposition
 	return attempt.model.preorderIds.length;
 }
 
-it('profiles cold and cached-mutation work beside structural refusals (no production limits bypassed)', () => {
+it('profiles cold and cached-mutation work under counted budgets', () => {
 	const results = [];
 	const grid = nxmThreeByTwoDocument();
 	const crossingGrid = {
@@ -158,7 +179,6 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 			const model = normalizeRegionCompositionModel(
 				largePrepared.graph,
 				gridRegionInput(largeGrid.input),
-				{},
 			);
 			return {
 				status: model.status,
@@ -245,7 +265,7 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 	);
 	results.push(
 		profileResource('row-9-children', 'normalization-only', () => {
-			const model = normalizeRegionCompositionModel(rowPrepared.graph, nine.input, {});
+			const model = normalizeRegionCompositionModel(rowPrepared.graph, nine.input);
 			return {
 				status: model.status,
 				work: {
@@ -295,7 +315,7 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 	);
 	results.push(
 		profileResource('region-265-depth-34', 'normalization-only', () => {
-			const attempt = normalizeRegionCompositionModel(widePrepared.graph, wide.input, {});
+			const attempt = normalizeRegionCompositionModel(widePrepared.graph, wide.input);
 			return {
 				status: attempt.status,
 				work: {
@@ -313,12 +333,119 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 	);
 	results.push(
 		profileResource('region-265-depth-4', 'normalization-only', () => {
-			const normalized = normalizeRegionCompositionModel(shallowPrepared.graph, shallow.input, {});
+			const normalized = normalizeRegionCompositionModel(shallowPrepared.graph, shallow.input);
 			return {
 				status: normalized.status,
 				work: { normalizedRegions: normalizedRegions(normalized) },
 			};
 		}),
+	);
+	const shallowNodes = new Map(shallowPrepared.measurements.nodes);
+	const shallowNode = shallowNodes.get('node-0');
+	if (shallowNode === undefined) throw new Error('Missing shallow forest measurement');
+	shallowNodes.set('node-0', { ...shallowNode, width: shallowNode.width + 1 });
+	const shallowMetrics = { ...shallowPrepared.measurements, nodes: shallowNodes };
+	let shallowCache = new RegionLocalLayoutCache();
+	results.push(
+		profileResource(
+			'region-265-depth-4',
+			'incremental',
+			() => regionSample(shallowPrepared, shallow.input, shallowMetrics, shallowCache),
+			2,
+			7,
+			() => {
+				shallowCache = new RegionLocalLayoutCache();
+				solveRecursiveNestedRegionLayout(
+					shallowPrepared.graph,
+					shallowPrepared.measurements,
+					shallow.input,
+					shallowCache,
+				);
+			},
+		),
+	);
+	expect(
+		solveRecursiveNestedRegionLayout(
+			shallowPrepared.graph,
+			shallowMetrics,
+			shallow.input,
+			shallowCache,
+		),
+	).toEqual(solveRecursiveNestedRegionLayout(shallowPrepared.graph, shallowMetrics, shallow.input));
+	const relations = independentNodes(34);
+	const localRelations = {
+		...relations,
+		relations: Array.from({ length: 17 }, (_, index) => ({
+			id: `local-${index}`,
+			from: `node-${index * 2}`,
+			to: `node-${index * 2 + 1}`,
+		})),
+	};
+	const localPrepared = prepareLayoutDocument(localRelations);
+	const localInput: RegionInput = {
+		...rowOf(17).input,
+		regionByEndpointId: new Map(
+			relations.nodes.map((node, index) => [node.id, `child-${Math.floor(index / 2)}`]),
+		),
+	};
+	results.push(
+		profileResource('region-17-local-relations', 'cold', () =>
+			regionSample(localPrepared, localInput),
+		),
+	);
+	const crossingRow = rowOf(8);
+	const crossingPrepared = prepareLayoutDocument({
+		...crossingRow.document,
+		relations: Array.from({ length: 4 }, (_, index) => ({
+			id: `crossing-${index}`,
+			from: `node-${index * 2}`,
+			to: `node-${index * 2 + 1}`,
+		})),
+	});
+	results.push(
+		profileResource('region-four-traversals', 'cold', () =>
+			regionSample(crossingPrepared, crossingRow.input),
+		),
+	);
+	const nested = depthTwoRegionDocument();
+	const nestedInput = depthTwoRegionInput();
+	const nestedPrepared = prepareLayoutDocument(nested);
+	const wider: RegionInput = {
+		...nestedInput,
+		regions: nestedInput.regions.map((region) => {
+			if (region.id === 'right' || region.id === 'far-right')
+				return { ...region, parentId: 'branch' };
+			return region;
+		}),
+	};
+	results.push(
+		profileResource('region-retried-five-children', 'cold', () =>
+			regionSample(nestedPrepared, wider),
+		),
+	);
+	const grouped = prepareLayoutDocument({
+		...nested,
+		groups: [
+			{
+				kind: EndpointKind.Group,
+				id: 'group-left',
+				label: 'Left group',
+				layoutOrder: orderKey('a0'),
+			},
+		],
+		nodes: nested.nodes.map((node) => {
+			if (node.id !== 'a-source') return node;
+			return { ...node, groupId: 'group-left' };
+		}),
+		relations: [...nested.relations, { id: 'group-crossing', from: 'group-left', to: 'c' }],
+	});
+	results.push(
+		profileResource('region-group-crossing-retry', 'cold', () =>
+			regionSample(grouped, {
+				...nestedInput,
+				regionByEndpointId: new Map([...nestedInput.regionByEndpointId, ['group-left', 'left']]),
+			}),
+		),
 	);
 	const adjacentWide = forestOf(8, 31); // 249 regions at depth 32.
 	const adjacentWidePrepared = prepareLayoutDocument(adjacentWide.document);
@@ -327,7 +454,7 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 			regionSample(adjacentWidePrepared, adjacentWide.input),
 		),
 	);
-	for (const depth of [32, 64, 128, 256, 257]) {
+	for (const depth of [32, 64, 128, 191, 192, 193, 256, 257]) {
 		const chain = forestOf(1, depth - 1);
 		const prepared = prepareLayoutDocument(chain.document);
 		results.push(
@@ -488,7 +615,10 @@ it('profiles cold and cached-mutation work beside structural refusals (no produc
 	expect(results.find((entry) => entry.name === 'grid-3x6-18-endpoints')?.status).toBe('selected');
 	expect(results.find((entry) => entry.name === 'row-8-children')?.status).toBe('selected');
 	expect(results.find((entry) => entry.name === 'region-249-depth-32')?.status).toBe('selected');
-	expect(results.find((entry) => entry.name === 'chain-depth-256')?.status).toBe('selected');
+	expect(results.find((entry) => entry.name === 'chain-depth-192')?.status).toBe('selected');
+	expect(results.find((entry) => entry.name === 'chain-depth-193')?.status).toBe('unsupported');
+	expect(results.find((entry) => entry.name === 'region-265-depth-4')?.status).toBe('selected');
+	expect(results.find((entry) => entry.name === 'row-9-children')?.status).toBe('selected');
 	expect(results.find((entry) => entry.name === 'channel-shared')?.work['allocatedRuns']).toBe(1);
 	expect(
 		results.find((entry) => entry.name === 'channel-equal-intervals')?.work['allocatedRuns'],

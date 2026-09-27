@@ -1,6 +1,8 @@
 import { compareCanonicalStrings } from '../../../canonical-string';
 import { defined } from '../../../document/logic-document';
+import type { RegionCompositionWork } from './region-composition-limits';
 import type { RegionDefinition } from './region-composition-types';
+import { RegionWorkPhase } from './region-composition-types';
 
 export interface RegionCompositionNode {
 	readonly definition: RegionDefinition;
@@ -12,9 +14,13 @@ export interface RegionCompositionNode {
 
 export function parentCycle(
 	definitions: ReadonlyMap<string, RegionDefinition>,
+	work?: RegionCompositionWork,
 ): readonly string[] | undefined {
 	const done = new Set<string>();
-	for (const start of [...definitions.keys()].sort(compareCanonicalStrings)) {
+	for (const start of [...definitions.keys()].sort((left, right) => {
+		work?.charge(RegionWorkPhase.NormalizationComparisons, left);
+		return compareCanonicalStrings(left, right);
+	})) {
 		if (done.has(start)) continue;
 		const path: string[] = [];
 		const indexById = new Map<string, number>();
@@ -33,6 +39,7 @@ export function parentCycle(
 
 function orderedChildren(
 	definitions: ReadonlyMap<string, RegionDefinition>,
+	work?: RegionCompositionWork,
 ): ReadonlyMap<string, readonly string[]> {
 	const children = new Map([...definitions.keys()].map((id) => [id, [] as string[]]));
 	for (const definition of definitions.values())
@@ -40,6 +47,7 @@ function orderedChildren(
 			defined(children.get(definition.parentId), 'Unvalidated region parent.').push(definition.id);
 	for (const siblings of children.values())
 		siblings.sort((leftId, rightId) => {
+			work?.charge(RegionWorkPhase.NormalizationComparisons, leftId);
 			const left = defined(definitions.get(leftId), 'Unvalidated region parent.');
 			const right = defined(definitions.get(rightId), 'Unvalidated region parent.');
 			return (
@@ -53,11 +61,12 @@ function orderedChildren(
 export function normalizedRegions(
 	rootId: string,
 	definitions: ReadonlyMap<string, RegionDefinition>,
+	work?: RegionCompositionWork,
 ): {
 	readonly preorderIds: readonly string[];
 	readonly byId: ReadonlyMap<string, RegionCompositionNode>;
 } {
-	const children = orderedChildren(definitions);
+	const children = orderedChildren(definitions, work);
 	const preorderIds: string[] = [];
 	const byId = new Map<string, RegionCompositionNode>();
 	const pending: { readonly id: string; readonly depth: number }[] = [{ id: rootId, depth: 0 }];

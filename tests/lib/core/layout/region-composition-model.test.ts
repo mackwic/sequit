@@ -4,11 +4,16 @@ import { defined, LayoutPolicy } from '../../../../src/lib/core/document/logic-d
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import { regionLeafPolicy } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-policy';
 import {
+	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	RegionCompositionWork,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
+import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import type { RegionInput } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionWorkPhase } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { regionLaneDocument } from '../../../support/builders/region-lane-document';
 import { gridDocument, gridInput } from './grid-cell-fixture';
 import {
@@ -245,7 +250,7 @@ describe('recursive region composition model', () => {
 		expect(result.diagnostic.message.length).toBeGreaterThan(0);
 	});
 
-	it('reports a cycle path and keeps resource limits separate from depth', () => {
+	it('reports a cycle path', () => {
 		const input = thirdLevelInput();
 		const cycle = normalizeRegionCompositionModel(graph(), {
 			...input,
@@ -261,20 +266,7 @@ describe('recursive region composition model', () => {
 				cycle: ['deep', 'left', 'deep'],
 			},
 		});
-		const bounded = normalizeRegionCompositionModel(graph(), input, {
-			maxRegions: 7,
-		});
-		expect(bounded).toMatchObject({
-			status: RegionCompositionModelStatus.Unsupported,
-			diagnostic: {
-				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: ['regions'],
-				actual: 8,
-				limit: 7,
-			},
-		});
 	});
-
 	it('keeps an indivisible group in one leaf and diagnoses a split assignment', () => {
 		const input = gridInput();
 		const regions: RegionInput['regions'] = [
@@ -337,26 +329,28 @@ describe('recursive region composition model', () => {
 		});
 	});
 
-	it.each([
-		[{ maxEndpoints: 5 }, 'endpoints', 6, 5],
-		[{ maxRelations: 2 }, 'relations', 3, 2],
-	] as const)('reports a resource budget for %s', (limits, resource, actual, limit) => {
-		expect(normalizeRegionCompositionModel(graph(), depthTwoRegionInput(), limits)).toMatchObject({
+	it('charges real relation traversal during normalization before partitioning', () => {
+		const work = new RegionCompositionWork({
+			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+			traversals: 1,
+		});
+		const normalized = normalizeRegionCompositionModel(graph(), depthTwoRegionInput(), work);
+		expect(normalized).toMatchObject({
 			status: RegionCompositionModelStatus.Unsupported,
 			diagnostic: {
 				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: [resource],
-				actual,
-				limit,
+				phase: RegionWorkPhase.Traversals,
+				actual: 1,
+				limit: 1,
+				exhaustive: false,
 			},
 		});
+		expect(work.attempted(RegionWorkPhase.Traversals)).toBe(1);
 	});
 
-	it.each([-1, 1.5, Number.NaN])('rejects the invalid resource limit %s', (maxRegions) => {
-		expect(() =>
-			normalizeRegionCompositionModel(graph(), depthTwoRegionInput(), {
-				maxRegions,
-			}),
-		).toThrow('Region composition limits must be non-negative safe integers.');
+	it.each([-1, 1.5, Number.NaN])('rejects invalid work budget %s', (traversals) => {
+		expect(
+			() => new RegionCompositionWork({ ...NESTED_REGION_COMPOSITION_WORK_BUDGETS, traversals }),
+		).toThrow('Region composition budgets must be non-negative safe integers.');
 	});
 });

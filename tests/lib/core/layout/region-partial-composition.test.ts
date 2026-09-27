@@ -18,6 +18,7 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import {
 	REGION_SUBTREE_CALCULATION_FAILED,
 	RegionSubtreeScope,
@@ -29,6 +30,7 @@ import {
 	regionLanePartialSubtreeDocument,
 } from '../../../support/builders/region-lane-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { independentNodes } from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument, regionDocument } from './nested-region-fixture';
 
 function attemptsFor(
@@ -46,6 +48,73 @@ function attemptsFor(
 }
 
 describe('region partial composition', () => {
+	it('keeps a closed sibling after comparison work exhausts in another subtree', () => {
+		const source = independentNodes(49);
+		const document = {
+			...source,
+			relations: [
+				{ id: 'heavy-route', from: 'node-0', to: 'node-48' },
+				{ id: 'safe-route', from: 'node-46', to: 'node-47' },
+			],
+		};
+		const input: RegionInput = {
+			regions: [
+				{ id: '@root', layoutOrder: '0' },
+				{ id: 'heavy', parentId: '@root', layoutOrder: 'a0' },
+				{ id: 'safe', parentId: '@root', layoutOrder: 'a1' },
+				...Array.from({ length: 48 }, (_, index) => ({
+					id: `child-${index}`,
+					parentId: ['heavy', 'safe'][Number(index >= 46)] ?? 'heavy',
+					layoutOrder: orderKey(`a${index.toString().padStart(3, '0')}1`),
+				})),
+			],
+			regionByEndpointId: new Map(
+				source.nodes.map((node, index) => {
+					if (index === 48) return [node.id, 'child-1'];
+					return [node.id, `child-${index}`];
+				}),
+			),
+		};
+		const { graph, measurements } = prepareLayoutDocument(document);
+		const root = solveRecursiveNestedRegionLayout(graph, measurements, input);
+		expect(root).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			diagnostic: {
+				code: 'resource-limit',
+				phase: 'comparisons',
+				limit: 1024,
+				actual: 1024,
+				exhaustive: false,
+			},
+		});
+		const attempts = solveRegionSubtreeAttempts({
+			graph,
+			measurements,
+			input,
+			cache: new RegionLocalLayoutCache(),
+		});
+		const heavy = attempts.find(({ regionId }) => regionId === 'heavy');
+		expect(heavy).toMatchObject({
+			status: RegionCompositionStatus.Unsupported,
+			scope: RegionSubtreeScope.ClosedSubtree,
+		});
+		const safe = attempts.find(({ regionId }) => regionId === 'safe');
+		expect(safe).toMatchObject({
+			status: RegionCompositionStatus.Selected,
+			scope: RegionSubtreeScope.ClosedSubtree,
+			layout: { relations: [{ id: 'safe-route' }] },
+		});
+		if (safe?.status !== RegionCompositionStatus.Selected) throw new Error('Missing safe scene');
+		expect(safe.layout.relations.map(({ id }) => id)).toEqual(['safe-route']);
+		expect(
+			attempts.some(
+				(attempt) =>
+					attempt.status === RegionCompositionStatus.Selected &&
+					attempt.layout.relations.some(({ id }) => id === 'heavy-route'),
+			),
+		).toBe(false);
+	});
+
 	it('reports an unsupported leaf beside the current independent leaf', () => {
 		const attempts = attemptsFor(regionLanePartialDocument(true));
 		expect(attempts).toMatchObject([

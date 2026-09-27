@@ -19,10 +19,8 @@ import {
 	type RecursiveContext,
 	sideForRegion,
 } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
-import { NESTED_REGION_COMPOSITION_LIMITS } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
-	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import {
@@ -138,36 +136,6 @@ describe('direct region composition contracts', () => {
 		};
 		expect(leafDocument(context, 'left')[collection].map(({ id }) => id)).toContain(endpointId);
 		expect(leafDocument(context, 'middle')[collection]).toEqual([]);
-	});
-
-	it('reports the endpoint budget through the coded resource limit', () => {
-		const document = depthTwoRegionDocument();
-		const template = defined(document.nodes[0]);
-		const extra = Array.from({ length: 7 }, (_, index) => ({
-			...template,
-			id: `extra-${index}`,
-			layoutOrder: orderKey(`a${'6789ABC'.charAt(index)}`),
-		}));
-		const source = graph({ ...document, nodes: [...document.nodes, ...extra] });
-		const input = depthTwoRegionInput();
-		const assigned: RegionInput = {
-			...input,
-			regionByEndpointId: new Map([
-				...input.regionByEndpointId,
-				...extra.map(({ id }) => [id, 'left'] as const),
-			]),
-		};
-		expect(
-			normalizeRegionCompositionModel(source, assigned, NESTED_REGION_COMPOSITION_LIMITS),
-		).toMatchObject({
-			status: RegionCompositionModelStatus.Unsupported,
-			diagnostic: {
-				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: ['endpoints'],
-				actual: 13,
-				limit: 12,
-			},
-		});
 	});
 
 	it('rejects a root without children after normalization', () => {

@@ -2,13 +2,12 @@ import { compareCanonicalStrings } from '../../../canonical-string';
 import { LayoutPolicy, type LogicRelation } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
 import {
-	checkRegionCrossingLimits,
-	checkRegionLimits,
 	regionChildCounts,
 	type RegionCompositionDiagnostic,
 	RegionCompositionDiagnosticCode,
-	type RegionCompositionLimits,
 	RegionCompositionModelStatus,
+	type RegionCompositionWork,
+	RegionWorkLimitExceeded,
 } from './region-composition-limits';
 import {
 	partitionRelations,
@@ -25,8 +24,8 @@ import type {
 	RegionInput,
 	RegionInputDefinition,
 } from './region-composition-types';
+import { RegionWorkPhase } from './region-composition-types';
 
-export type { RegionCompositionLimits } from './region-composition-limits';
 export {
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
@@ -162,12 +161,16 @@ function nonLeafLaneFailure(
 	);
 }
 
-function parseDefinitions(input: RegionInput): ParsedDefinitions | RegionCompositionModelBuild {
+function parseDefinitions(
+	input: RegionInput,
+	work?: RegionCompositionWork,
+): ParsedDefinitions | RegionCompositionModelBuild {
 	const definitions = new Map<string, RegionDefinition>();
 	const childCounts = regionChildCounts(input);
-	for (const region of [...input.regions].sort((left, right) =>
-		compareCanonicalStrings(left.id, right.id),
-	)) {
+	for (const region of [...input.regions].sort((left, right) => {
+		work?.charge(RegionWorkPhase.NormalizationComparisons, left.id);
+		return compareCanonicalStrings(left.id, right.id);
+	})) {
 		if (region.id.length === 0)
 			return invalid(
 				RegionCompositionDiagnosticCode.EmptyRegionId,
@@ -192,7 +195,7 @@ function parseDefinitions(input: RegionInput): ParsedDefinitions | RegionComposi
 				`Region ${region.id} refers to unknown parent ${region.parentId}.`,
 				['regions', region.id, 'parentId'],
 			);
-	const cycle = parentCycle(definitions);
+	const cycle = parentCycle(definitions, work);
 	if (cycle !== undefined)
 		return invalid(
 			RegionCompositionDiagnosticCode.ParentCycle,
@@ -232,14 +235,25 @@ function duplicateRelationFailure(graph: LogicGraph): RegionCompositionModelBuil
 export function normalizeRegionCompositionModel(
 	graph: LogicGraph,
 	input: RegionInput,
-	limits: RegionCompositionLimits = {},
+	work?: RegionCompositionWork,
 ): RegionCompositionModelBuild {
-	const resource = checkRegionLimits(graph, input, limits);
-	if (resource !== undefined) return unsupported(resource);
-	const parsed = parseDefinitions(input);
+	let parsed: ParsedDefinitions | RegionCompositionModelBuild;
+	try {
+		parsed = parseDefinitions(input, work);
+	} catch (error) {
+		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
+		throw error;
+	}
 	if ('status' in parsed) return parsed;
 	const { rootId, definitions } = parsed;
-	const { preorderIds, byId: regionsById } = normalizedRegions(rootId, definitions);
+	let regions: ReturnType<typeof normalizedRegions>;
+	try {
+		regions = normalizedRegions(rootId, definitions, work);
+	} catch (error) {
+		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
+		throw error;
+	}
+	const { preorderIds, byId: regionsById } = regions;
 	const assignments = assignmentFailure(graph, input, regionsById);
 	if (assignments !== undefined) return assignments;
 	const duplicate = duplicateRelationFailure(graph);
@@ -252,14 +266,14 @@ export function normalizeRegionCompositionModel(
 		const groupId = graph.endpointsById.get(endpointId)?.entity.groupId;
 		if (groupId !== undefined) parentGroupByEndpointId.set(endpointId, groupId);
 	}
-	const relations = relationOwnership(graph, leafByEndpointId, regionsById);
+	let relations: readonly RegionRelationOwnership[];
+	try {
+		relations = relationOwnership(graph, leafByEndpointId, regionsById, work);
+	} catch (error) {
+		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
+		throw error;
+	}
 	const partitions = partitionRelations(preorderIds, relations);
-	const crossing = checkRegionCrossingLimits(
-		preorderIds,
-		partitions.crossing,
-		limits.maxCrossingsPerRegion,
-	);
-	if (crossing !== undefined) return unsupported(crossing);
 	return {
 		status: RegionCompositionModelStatus.Ready,
 		model: {

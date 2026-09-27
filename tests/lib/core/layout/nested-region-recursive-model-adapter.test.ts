@@ -16,13 +16,15 @@ import {
 } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
 import {
 	checkRegionStackDepth,
-	NESTED_REGION_COMPOSITION_LIMITS,
+	NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+	RegionCompositionWork,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionDiagnosticCode,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionWorkPhase } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
@@ -30,10 +32,18 @@ import {
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
-import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
+import {
+	solveRecursiveNestedRegionLayout,
+	solveRecursiveNestedRegionLayoutWithWork,
+} from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	independentNodes,
+	rowOf,
+	shallowForestOf,
+} from '../../../support/performance/layout-resource-scenarios';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 function solve(input: RegionInput) {
@@ -41,17 +51,13 @@ function solve(input: RegionInput) {
 	return solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 }
 
-/** A row is a row: every shape below the declared envelope must select and validate. */
+/** An accepted row publishes a complete and independently validated geometry. */
 function expectSelectedRow(input: RegionInput) {
 	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 	const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 	expect(attempt.status).toBe(RegionCompositionStatus.Selected);
 	if (attempt.status !== RegionCompositionStatus.Selected) return undefined;
-	const normalized = normalizeRegionCompositionModel(
-		prepared.graph,
-		input,
-		NESTED_REGION_COMPOSITION_LIMITS,
-	);
+	const normalized = normalizeRegionCompositionModel(prepared.graph, input);
 	if (normalized.status !== RegionCompositionModelStatus.Ready)
 		throw new Error(normalized.diagnostic.message);
 	expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
@@ -262,38 +268,162 @@ describe('recursive region model and row policy', () => {
 		expect(attempt?.regions.filter(({ parentId }) => parentId === '@root')).toHaveLength(1);
 	});
 
-	it('reports a declared children budget beyond the configured bound', () => {
-		const input = depthTwoRegionInput();
-		const wide: RegionInput = {
-			...input,
-			regions: [
-				...input.regions,
-				...Array.from({ length: 6 }, (_, index) => ({
-					id: `spare-${index}`,
-					parentId: '@root',
-					layoutOrder: orderKey(`a${'6789AB'.charAt(index)}`),
-				})),
-			],
-		};
-		const normalized = normalizeRegionCompositionModel(
-			prepareLayoutDocument(depthTwoRegionDocument()).graph,
-			wide,
-			NESTED_REGION_COMPOSITION_LIMITS,
-		);
-		expect(normalized).toMatchObject({
-			status: RegionCompositionModelStatus.Unsupported,
-			diagnostic: {
-				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: ['regions', '@root', 'children'],
-				actual: 9,
-				limit: 8,
-			},
-		});
-		expect(solve(wide)).toEqual({
-			status: RegionCompositionStatus.Unsupported,
-			reason: 'children exceed the configured limit of 8.',
-		});
+	it.each([9, 13])('selects a low-work row with %i populated children', (count) => {
+		const { document, input } = rowOf(count);
+		const prepared = prepareLayoutDocument(document);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Invalid row');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(attempt.regions).toHaveLength(count);
 	});
+
+	it.each([0, 1, 2, 3])('charges each child placement before work at limit %i', (limit) => {
+		const { document, input } = rowOf(2);
+		const prepared = prepareLayoutDocument(document);
+		const work = new RegionCompositionWork({
+			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+			placements: limit,
+		});
+		const attempt = solveRecursiveNestedRegionLayoutWithWork(
+			prepared.graph,
+			prepared.measurements,
+			input,
+			{ work },
+		);
+		if (limit < 2) {
+			expect(attempt).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				diagnostic: {
+					code: RegionCompositionDiagnosticCode.ResourceLimit,
+					phase: RegionWorkPhase.Placements,
+					limit,
+					actual: limit,
+					exhaustive: false,
+				},
+			});
+			expect('layout' in attempt).toBe(false);
+		} else expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		expect(work.attempted(RegionWorkPhase.Placements)).toBe(Math.min(limit, 2));
+	});
+
+	it.each([25, 26, 27])('charges canonical normalization comparisons at limit %i', (limit) => {
+		const { document, input } = rowOf(9);
+		const prepared = prepareLayoutDocument(document);
+		const work = new RegionCompositionWork({
+			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+			normalizationComparisons: limit,
+		});
+		const attempt = solveRecursiveNestedRegionLayoutWithWork(
+			prepared.graph,
+			prepared.measurements,
+			input,
+			{ work },
+		);
+		if (limit < 26)
+			expect(attempt).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				diagnostic: {
+					code: RegionCompositionDiagnosticCode.ResourceLimit,
+					phase: RegionWorkPhase.NormalizationComparisons,
+					actual: limit,
+					limit,
+					exhaustive: false,
+				},
+			});
+		else expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		expect(work.attempted(RegionWorkPhase.NormalizationComparisons)).toBe(Math.min(limit, 26));
+	});
+
+	it.each([35, 36, 37])('charges actual sibling comparisons at limit %i', (limit) => {
+		const { document, input } = rowOf(9);
+		const prepared = prepareLayoutDocument(document);
+		const work = new RegionCompositionWork({
+			...NESTED_REGION_COMPOSITION_WORK_BUDGETS,
+			comparisons: limit,
+		});
+		const attempt = solveRecursiveNestedRegionLayoutWithWork(
+			prepared.graph,
+			prepared.measurements,
+			input,
+			{ work },
+		);
+		if (limit < 36)
+			expect(attempt).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				diagnostic: {
+					code: RegionCompositionDiagnosticCode.ResourceLimit,
+					phase: RegionWorkPhase.Comparisons,
+					limit,
+					actual: limit,
+					exhaustive: false,
+				},
+			});
+		else expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		expect(work.attempted(RegionWorkPhase.Comparisons)).toBe(Math.min(limit, 36));
+	});
+
+	it('selects a shallow forest of 265 regions without a shape quota', () => {
+		const { document, input } = shallowForestOf(192);
+		const prepared = prepareLayoutDocument(document);
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready) throw new Error('Invalid forest');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(attempt.regions).toHaveLength(264);
+	});
+
+	it('selects seventeen independent local relations across populated leaves', () => {
+		const document = independentNodes(34);
+		const populated = rowOf(17).input;
+		const input: RegionInput = {
+			...populated,
+			regionByEndpointId: new Map(
+				document.nodes.map((node, index) => [node.id, `child-${Math.floor(index / 2)}`]),
+			),
+		};
+		const prepared = prepareLayoutDocument({
+			...document,
+			relations: Array.from({ length: 17 }, (_, index) => ({
+				id: `local-${index}`,
+				from: `node-${index * 2}`,
+				to: `node-${index * 2 + 1}`,
+			})),
+		});
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Invalid relations');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(attempt.layout.relations).toHaveLength(17);
+	});
+
+	it('selects four disjoint inter-region traversals', () => {
+		const { document, input } = rowOf(8);
+		const prepared = prepareLayoutDocument({
+			...document,
+			relations: Array.from({ length: 4 }, (_, index) => ({
+				id: `crossing-${index}`,
+				from: `node-${index * 2}`,
+				to: `node-${index * 2 + 1}`,
+			})),
+		});
+		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		expect(attempt.status).toBe(RegionCompositionStatus.Selected);
+		if (attempt.status !== RegionCompositionStatus.Selected) return;
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Invalid traversals');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		expect(attempt.layout.relations).toHaveLength(4);
+	});
+
 	it.each([191, 192, 193])('diagnoses recursive stack depth at %i levels', (depth) => {
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());
 		const input: RegionInput = {
@@ -325,9 +455,10 @@ describe('recursive region model and row policy', () => {
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
 		if (depth <= 192) expect(attempt.status).toBe(RegionCompositionStatus.Selected);
 		else
-			expect(attempt).toEqual({
+			expect(attempt).toMatchObject({
 				status: RegionCompositionStatus.Unsupported,
 				reason: 'Recursive region stack depth 193 exceeds the safe limit of 192.',
+				diagnostic: { code: RegionCompositionDiagnosticCode.StackDepthLimit },
 			});
 	});
 
@@ -377,28 +508,6 @@ describe('recursive region model and row policy', () => {
 		expect(result.status).toBe(RegionCompositionModelStatus.Ready);
 		if (result.status !== RegionCompositionModelStatus.Ready) return;
 		expect(result.model.regionsById.get('deep')?.depth).toBe(3);
-	});
-
-	it('bounds the number of root-owned crossings', () => {
-		const source = depthTwoRegionDocument();
-		const document: LogicDocument = {
-			...source,
-			relations: [
-				...source.relations,
-				{ id: 'root-2', from: 'd', to: 'e' },
-				{ id: 'root-3', from: 'd', to: 'e' },
-				{ id: 'root-4', from: 'd', to: 'e' },
-			],
-		};
-		const prepared = prepareLayoutDocument(document);
-		const attempt = solveRecursiveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			depthTwoRegionInput(),
-		);
-		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
-		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
-		expect(attempt.reason).toContain('crossings exceed the configured limit of 3');
 	});
 
 	it('resolves a group crossing after its owning parent retries a bus side', () => {

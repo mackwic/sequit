@@ -101,15 +101,6 @@ describe('grid cells in the common region ownership model', () => {
 				path: ['endpoints', 'd', 'regionId'],
 			},
 		});
-		expect(normalizeGridCellRegionModel(graph, input, grid, { maxRegions: 4 })).toMatchObject({
-			status: RegionCompositionModelStatus.Unsupported,
-			diagnostic: {
-				code: RegionCompositionDiagnosticCode.ResourceLimit,
-				path: ['regions'],
-				actual: 5,
-				limit: 4,
-			},
-		});
 	});
 
 	it('propagates an invalid local relation partition instead of publishing partial cells', () => {

@@ -2,7 +2,6 @@ import { defined, type LogicDocument } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import {
 	normalizeRegionCompositionModel,
-	type RegionCompositionLimits,
 	type RegionCompositionModel,
 	type RegionCompositionModelBuild,
 } from '../regions/model/region-composition-model';
@@ -15,7 +14,6 @@ export function normalizeGridCellRegionModel(
 	graph: LogicGraph,
 	input: GridCellInput,
 	grid: GridModel,
-	limits: RegionCompositionLimits = {},
 ): RegionCompositionModelBuild {
 	const regions: RegionInputDefinition[] = [{ id: input.rootId, layoutOrder: '0' }];
 	for (const cell of grid.cells) {
@@ -31,7 +29,7 @@ export function normalizeGridCellRegionModel(
 		regions,
 		regionByEndpointId: input.cellByEndpointId,
 	};
-	return normalizeRegionCompositionModel(graph, composition, limits);
+	return normalizeRegionCompositionModel(graph, composition);
 }
 
 /** Build a cell leaf from the common tree's endpoint and LCA ownership partitions. */
