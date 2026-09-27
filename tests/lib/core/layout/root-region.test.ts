@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	defined,
+	GRID_PERSISTENCE_FORMAT,
+	GRID_REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	LayoutDirection,
 	LayoutPolicy,
+	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
-import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
+import {
+	type GridCellInput,
+	GridCellLayoutStatus,
+} from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import {
@@ -41,6 +47,7 @@ import {
 	validLogicDocument,
 } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { gridOf } from '../../../support/performance/layout-resource-scenarios';
 import { gridInput, persistedGridDocument, prepareGrid } from './grid-cell-fixture';
 import {
 	persistedNestedGridDocument,
@@ -67,7 +74,78 @@ function foreignCellEntry(
 	return undefined;
 }
 
+function persistedGridOf(document: LogicDocument, input: GridCellInput): LogicDocument {
+	return {
+		...document,
+		persistenceFormat: GRID_PERSISTENCE_FORMAT,
+		regionPresentation: {
+			schemaVersion: GRID_REGION_PRESENTATION_SCHEMA,
+			regions: input.cells.map(({ id }, index) => ({
+				id,
+				layoutOrder: orderKey(`a${index.toString().padStart(3, '0')}`),
+				policy: LayoutPolicy.Layered,
+			})),
+			grid: {
+				minimumColumnWidths: input.minimumColumnWidths,
+				minimumRowHeights: input.minimumRowHeights,
+				cells: input.cells.map(({ id, row, column }) => ({ regionId: id, row, column })),
+			},
+		},
+		nodes: document.nodes.map((node) => ({
+			...node,
+			regionId: defined(input.cellByEndpointId.get(node.id)),
+		})),
+	};
+}
+
 describe('implicit root layout region', () => {
+	it.fails('selects a persisted 3×7 grid with 21 endpoints through the product entry', () => {
+		const { document, input } = gridOf(3, 7);
+		const prepared = prepareLayoutDocument(persistedGridOf(document, input));
+		expect(normalizeRootRegion(prepared.graph, prepared.ranks).policy).toBe(
+			LayoutRegionPolicy.GridCells,
+		);
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(layout.regions).toHaveLength(21);
+		expect(layout.elements).toHaveLength(21);
+	});
+
+	it.fails(
+		'selects a persisted 6×6 grid with thirty local relations through the product entry',
+		() => {
+			const { document, input } = gridOf(6, 6);
+			const populated = {
+				...document,
+				nodes: [
+					...document.nodes,
+					...document.nodes.slice(0, 30).map((node) => ({
+						...node,
+						id: `local-${node.id}`,
+						layoutOrder: orderKey('a9999'),
+					})),
+				],
+				relations: document.nodes.slice(0, 30).map((node) => ({
+					id: `local-${node.id}`,
+					from: node.id,
+					to: `local-${node.id}`,
+				})),
+			};
+			const ownership = new Map(input.cellByEndpointId);
+			for (const node of document.nodes.slice(0, 30))
+				ownership.set(`local-${node.id}`, defined(input.cellByEndpointId.get(node.id)));
+			const prepared = prepareLayoutDocument(
+				persistedGridOf(populated, { ...input, cellByEndpointId: ownership }),
+			);
+			expect(normalizeRootRegion(prepared.graph, prepared.ranks).policy).toBe(
+				LayoutRegionPolicy.GridCells,
+			);
+			const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+			expect(layout.regions).toHaveLength(36);
+			expect(layout.elements).toHaveLength(66);
+			expect(layout.relations).toHaveLength(30);
+		},
+	);
+
 	it('normalizes a legacy document as one virtual region borrowing its graph and ranks', () => {
 		const prepared = prepareLayoutDocument(validLogicDocument());
 		const region = normalizeRootRegion(prepared.graph, prepared.ranks);

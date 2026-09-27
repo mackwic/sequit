@@ -6,6 +6,7 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
+import { crossingIncidence } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import {
 	canonicalCrossingAllocation,
 	containmentCrossingAllocation,
@@ -18,10 +19,12 @@ import {
 	crossingCanonicalBusGeometryCount,
 	type GridCrossingAllocationBudgets,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	GridCrossingSearchMode,
 	searchGridCrossingAllocations,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-search';
+import { gridOf } from '../../../support/performance/layout-resource-scenarios';
 import {
 	effectiveRouteGeometry,
 	routeGridFixture,
@@ -60,6 +63,47 @@ function sharesUnchangedTracks(
 }
 
 describe('grid crossing allocation search examples', () => {
+	it('bounds declared counting work for one hundred crossings across a 10×10 grid', () => {
+		const grid = gridOf(10, 10);
+		const crossings = Array.from({ length: 100 }, (_, index) => {
+			const row = Math.floor(index / 10);
+			const column = index % 10;
+			const nextRow = (row + 1) % 10;
+			return {
+				id: `cross-${index}`,
+				from: `node-${row * 10 + column}`,
+				to: `node-${nextRow * 10 + ((column + 1) % 10)}`,
+			};
+		});
+		const resources = gridCrossingResources(grid.input, crossings);
+		const input = {
+			...resources,
+			crossingIds: crossings.map(({ id }) => id),
+			busRelevantRelationIds: crossings.map(({ id }) => id),
+			incidence: crossingIncidence(crossings),
+			portalByRelationId: new Map(),
+		};
+		const row = defined(crossingAllocationPhases(input)[0]);
+		expect(row.totalGeometries()).toBe(257n);
+		// Isolate the row-load counting path, excluding the inexpensive column/port products.
+		const rowOnly = {
+			...input,
+			gutterIds: [],
+			incidence: new Map(),
+		};
+		expect(defined(crossingAllocationPhases(rowOnly)[0]).totalGeometries()).toBe(257n);
+		const result = searchGridCrossingAllocations(input, (allocation) => ({
+			candidate: allocation,
+		}));
+		expect('selected' in result).toBe(true);
+		expect(result.witness.phases[0]).toMatchObject({
+			selected: true,
+			exploredGeometries: 1,
+			totalGeometries: '257',
+			exhaustive: false,
+		});
+	}, 5_000);
+
 	it('rejects invalid phase work budgets at their boundaries', () => {
 		const input = variedGridRoutingCase(1, 2, 0).input;
 		const budgets: GridCrossingAllocationBudgets = {

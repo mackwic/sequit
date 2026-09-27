@@ -60,7 +60,7 @@ export interface CrossingAllocationPhase {
 	readonly budget: number;
 	/** True when a contact between two parent routes is admissible if a validated bridge carries it. */
 	readonly acceptBridges: boolean;
-	/** Exact number of distinct effective route geometries declared in this phase. */
+	/** Exact up to the budget; budget + 1 proves a larger space without counting its tail. */
 	readonly totalGeometries: () => bigint;
 	readonly candidates: (
 		active?: ReadonlySet<string>,
@@ -81,8 +81,9 @@ function factorial(value: number): bigint {
 }
 
 /** A relation uses one eligible separation or the bus; selected relations take distinct
- * tracks within their chosen row edge. Memoize loads rather than materializing geometries. */
-function rowGeometryCount(input: CrossingAllocationInput): bigint {
+ * tracks within their chosen row edge. Memoize loads, and stop counting once non-exhaustion
+ * at the phase budget is established instead of enumerating combinatorial load states. */
+function rowGeometryCount(input: CrossingAllocationInput, limit?: bigint): bigint {
 	const eligible = input.crossingIds.filter((id) =>
 		(input.rowGutterIds ?? []).some((ids) => ids.includes(id)),
 	);
@@ -104,6 +105,7 @@ function rowGeometryCount(input: CrossingAllocationInput): bigint {
 			choices = (choices * BigInt(remaining)) / BigInt(selected);
 			tracks *= BigInt(slots - selected + 1);
 			total += choices * tracks;
+			if (limit !== undefined && total > limit) return limit + 1n;
 		}
 		return total;
 	}
@@ -115,6 +117,7 @@ function rowGeometryCount(input: CrossingAllocationInput): bigint {
 		const cached = memo.get(key);
 		if (cached !== undefined) return cached;
 		let total = count(index + 1);
+		if (limit !== undefined && total > limit) return total;
 		for (const row of defined(boundaries[index])) {
 			const used = defined(loads[row]);
 			if (used === defined(capacities[row])) continue;
@@ -122,6 +125,10 @@ function rowGeometryCount(input: CrossingAllocationInput): bigint {
 			const available = defined(capacities[row]) - used;
 			total += BigInt(available) * count(index + 1);
 			loads[row] = used;
+			if (limit !== undefined && total > limit) {
+				memo.set(key, limit + 1n);
+				return limit + 1n;
+			}
 		}
 		memo.set(key, total);
 		return total;
@@ -129,17 +136,30 @@ function rowGeometryCount(input: CrossingAllocationInput): bigint {
 	return count(0);
 }
 
-function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
-	let count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
-	let gutterAssignments = 1n;
-	for (const [column, ids] of input.gutterIds.entries())
-		gutterAssignments *= permutationCount(
-			ids.length,
-			defined(input.edges.gutters[column]).capacity - 1,
-		);
-	count *= gutterAssignments;
-	count *= rowGeometryCount(input);
-	for (const relations of input.incidence.values()) count *= factorial(relations.length);
+function cappedCount(count: bigint, limit: bigint | undefined): bigint {
+	if (limit !== undefined && count > limit) return limit + 1n;
+	return count;
+}
+
+function allocationGeometrySpaceSize(
+	input: CrossingAllocationInput,
+	limit?: bigint,
+	canonicalBus = false,
+): bigint {
+	let count = 1n;
+	if (!canonicalBus)
+		count = permutationCount(input.busRelevantRelationIds.length, input.edges.topBus.capacity);
+	if (limit !== undefined && count > limit) return limit + 1n;
+	for (const [column, ids] of input.gutterIds.entries()) {
+		count *= permutationCount(ids.length, defined(input.edges.gutters[column]).capacity - 1);
+		if (limit !== undefined && count > limit) return limit + 1n;
+	}
+	count *= rowGeometryCount(input, limit);
+	if (limit !== undefined && count > limit) return limit + 1n;
+	for (const relations of input.incidence.values()) {
+		count *= factorial(relations.length);
+		if (limit !== undefined && count > limit) return limit + 1n;
+	}
 	return count;
 }
 
@@ -147,27 +167,37 @@ function allocationGeometrySpaceSize(input: CrossingAllocationInput): bigint {
 export function crossingCanonicalBusGeometryCount(
 	input: CrossingAllocationInput,
 	extraTracks: 0 | 1 = 0,
+	budget?: number,
 ): bigint {
-	const busOrders = permutationCount(
-		input.busRelevantRelationIds.length,
-		input.edges.topBus.capacity,
-	);
-	return crossingAllocationGeometryCount(input, extraTracks) / busOrders;
+	return crossingGeometryCount(input, extraTracks, budget, true);
 }
 
 /** An extra-track geometry grows exactly one gutter; its reserved slot must be occupied.
  * With n existing relations on that gutter, there are n choices for the route taking the new
  * slot and n! arrangements for the rest, i.e. n times the base gutter permutation count. */
-export function crossingAllocationGeometryCount(
+function crossingGeometryCount(
 	input: CrossingAllocationInput,
-	extraTracks: 0 | 1 = 0,
+	extraTracks: 0 | 1,
+	budget?: number,
+	canonicalBus = false,
 ): bigint {
-	const base = allocationGeometrySpaceSize(input);
+	let limit: bigint | undefined;
+	if (budget !== undefined) limit = BigInt(budget);
+	const base = allocationGeometrySpaceSize(input, limit, canonicalBus);
 	if (extraTracks === 0) return base;
 	let availableLoad = 0;
 	for (const [column, ids] of input.gutterIds.entries())
 		if (input.blockedExtraGutterColumns?.has(column) !== true) availableLoad += ids.length;
-	return base * BigInt(availableLoad);
+	return cappedCount(base * BigInt(availableLoad), limit);
+}
+
+/** Exact on small spaces; with a budget, returns budget + 1 as a lower bound once exceeded. */
+export function crossingAllocationGeometryCount(
+	input: CrossingAllocationInput,
+	extraTracks: 0 | 1 = 0,
+	budget?: number,
+): bigint {
+	return crossingGeometryCount(input, extraTracks, budget);
 }
 
 /**
@@ -189,7 +219,7 @@ export function crossingAllocationPhases(
 			id: CrossingAllocationPhaseId.RowGutter,
 			budget: budgets.rowGutter,
 			acceptBridges: false,
-			totalGeometries: () => crossingAllocationGeometryCount(rowInput),
+			totalGeometries: () => crossingAllocationGeometryCount(rowInput, 0, budgets.rowGutter),
 			candidates: (active) => crossingAllocationCandidates(rowInput, active),
 		},
 		{

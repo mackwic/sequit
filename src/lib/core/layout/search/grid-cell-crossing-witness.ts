@@ -17,6 +17,7 @@ interface GridCrossingAllocationPhaseWitness {
 	readonly id: CrossingAllocationPhaseId;
 	readonly attempted: boolean;
 	readonly exploredGeometries: number;
+	/** Exact up to the phase budget; budget + 1 is a lower bound, not an exact size. */
 	readonly totalGeometries: string;
 	/** True only when every candidate declared for this phase was examined. */
 	readonly exhaustive: boolean;

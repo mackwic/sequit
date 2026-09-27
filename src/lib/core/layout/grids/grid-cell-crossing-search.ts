@@ -162,7 +162,7 @@ function prioritizesConflicts(
 	let extraTracks: 0 | 1 = 0;
 	if (phase.id === CrossingAllocationPhaseId.ExtraTrack) extraTracks = 1;
 	const budget = Math.min(phase.budget, standardPhaseBudgets[phase.id]);
-	return crossingCanonicalBusGeometryCount(countingInput, extraTracks) > BigInt(budget);
+	return crossingCanonicalBusGeometryCount(countingInput, extraTracks, budget) > BigInt(budget);
 }
 
 /** Search each declared grid issue with its own candidate budget and publish phase evidence. */
