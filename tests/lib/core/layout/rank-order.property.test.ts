@@ -2308,16 +2308,15 @@ it('searches projected group routes through the component of their target', () =
 	).toBe(true);
 });
 
-it('leaves a permutable component unchanged when all strict crossings belong to a fixed chain', () => {
-	const ids = ['u', 'v', 'w', 'z', 'a', 'b', 'c'];
+it('leaves a permutable component unchanged when strict crossings belong to fixed junction routes', () => {
+	const nodeIds = ['a', 'b'];
 	const relations: LogicRelation[] = [
-		{ id: 'a-c', from: 'a', to: 'c' },
-		{ id: 'b-c', from: 'b', to: 'c' },
-		{ id: 'u-v', from: 'u', to: 'v' },
-		{ id: 'v-w', from: 'v', to: 'w' },
-		{ id: 'w-z', from: 'w', to: 'z' },
-		{ id: 'u-w', from: 'u', to: 'w' },
-		{ id: 'v-z', from: 'v', to: 'z' },
+		{ id: 'j1-j3', from: 'j1', to: 'j3' },
+		{ id: 'j1-j4', from: 'j1', to: 'j4' },
+		{ id: 'j2-j3', from: 'j2', to: 'j3' },
+		{ id: 'j2-j4', from: 'j2', to: 'j4' },
+		{ id: 'a-j5', from: 'a', to: 'j5' },
+		{ id: 'b-j5', from: 'b', to: 'j5' },
 	];
 	for (const direction of [
 		LayoutDirection.TopToBottom,
@@ -2329,12 +2328,23 @@ it('leaves a permutable component unchanged when all strict crossings belong to 
 		if (direction === LayoutDirection.BottomToTop) bias = LayoutBias.Bottom;
 		if (direction === LayoutDirection.LeftToRight) bias = LayoutBias.Left;
 		if (direction === LayoutDirection.RightToLeft) bias = LayoutBias.Right;
-		const document = {
-			...corpusDocument(ids, ids, relations),
+		const base = corpusDocument(nodeIds, nodeIds, relations);
+		const document: LogicDocument = {
+			...base,
 			layout: defined(layoutConfiguration(direction, bias)),
+			nodes: base.nodes.map((node, index) => ({
+				...node,
+				layoutOrder: orderKey(`a${index + 5}`),
+			})),
+			junctions: Array.from({ length: 5 }, (_, index) => ({
+				kind: EndpointKind.Junction,
+				id: `j${index + 1}`,
+				operator: JunctionOperator.Xor,
+				layoutOrder: orderKey(`a${index}`),
+			})),
 		};
 		const created = createGraph(document);
-		if (!created.ok) throw new Error('Invalid disconnected crossing fixture');
+		if (!created.ok) throw new Error('Invalid fixed-crossing graph');
 		const graph = created.value;
 		const ranks = topologicallyRank(graph);
 		const structure = prepareLayout(graph, ranks);
@@ -2343,18 +2353,16 @@ it('leaves a permutable component unchanged when all strict crossings belong to 
 		const measurements = {
 			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),
 			groups: new Map(),
-			junctions: new Map(),
+			junctions: new Map(document.junctions.map(({ id }) => [id, { width: 24, height: 24 }])),
 		};
 		const options = { inspectRouting: true };
 		const baseline = evaluateDedicatedLayout(structure, measurements, options);
 		const validated = validateDedicatedCandidate({ graph, ranks, measurements, layout: baseline });
-		if (!validated.valid) throw new Error('Fixed crossing must be geometrically valid');
+		if (!validated.valid) throw new Error('Fixed junction crossings must be geometrically valid');
 		expect(validated.analysis.crossings.length).toBeGreaterThan(0);
 		expect(
 			validated.analysis.crossings.every(({ horizontalId, verticalId }) =>
-				[horizontalId, verticalId].every(
-					(id) => id.startsWith('u-') || id.startsWith('v-') || id.startsWith('w-'),
-				),
+				[horizontalId, verticalId].every((id) => id.startsWith('j')),
 			),
 		).toBe(true);
 		const selected = layoutWithDedicatedEngineAndRankOrderWitness(

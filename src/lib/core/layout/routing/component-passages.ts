@@ -110,6 +110,26 @@ function neighborClearances(
 	return { leadingClearance, trailingClearance, hasLeadingNeighbor, hasTrailingNeighbor };
 }
 
+function preferClearerSide(
+	leading: readonly number[],
+	trailing: readonly number[],
+	clearances: SideClearances,
+	leadingHasRoom: boolean,
+): ExteriorCandidates {
+	const { leadingClearance, trailingClearance, hasLeadingNeighbor, hasTrailingNeighbor } =
+		clearances;
+	const requiredClearance = (trailing.length + 1) * RAIL_SPACING;
+	if (hasLeadingNeighbor && trailingClearance > leadingClearance) {
+		if (trailingClearance >= requiredClearance) return { preferred: trailing, fallback: leading };
+		return { preferred: NO_EXTERIOR.preferred, fallback: [...trailing, ...leading] };
+	}
+	if (hasTrailingNeighbor && leadingHasRoom && leadingClearance > trailingClearance) {
+		if (leadingClearance >= requiredClearance) return { preferred: leading, fallback: trailing };
+		return { preferred: NO_EXTERIOR.preferred, fallback: [...leading, ...trailing] };
+	}
+	return { preferred: NO_EXTERIOR.preferred, fallback: [...leading, ...trailing] };
+}
+
 /** Coordinates owned by one component, never the outermost coordinate of the whole canvas. */
 export function componentExteriorCandidates(
 	input: ComponentPassageInput,
@@ -135,22 +155,9 @@ export function componentExteriorCandidates(
 		let leadingHasRoom = false;
 		if (lastLeading !== undefined && fitsAll) leadingHasRoom = lastLeading >= RAIL_SPACING;
 		// Neighbors constrain a side only when their primary bands overlap.
-		const { leadingClearance, trailingClearance, hasLeadingNeighbor, hasTrailingNeighbor } =
-			neighborClearances(owner, interval, intervals, leading.length > 0);
-		let preferred: readonly number[] = [];
-		let fallback: readonly number[] = [...leading, ...trailing];
-		const trailingFreer = trailingClearance > leadingClearance;
-		const leadingFreer = leadingClearance > trailingClearance;
-		const trailingFits = trailingClearance >= RAIL_SPACING;
-		const leadingFits = leadingClearance >= RAIL_SPACING;
-		if (hasLeadingNeighbor && trailingFreer && trailingFits) {
-			preferred = trailing;
-			fallback = leading;
-		} else if (hasTrailingNeighbor && leadingHasRoom && leadingFreer && leadingFits) {
-			preferred = leading;
-			fallback = trailing;
-		}
-		candidates.set(owner, { preferred, fallback });
+		// The preferred side must fit every concurrent rail plus a rail of neighbor clearance.
+		const clearances = neighborClearances(owner, interval, intervals, leading.length > 0);
+		candidates.set(owner, preferClearerSide(leading, trailing, clearances, leadingHasRoom));
 	}
 	return candidates;
 }
