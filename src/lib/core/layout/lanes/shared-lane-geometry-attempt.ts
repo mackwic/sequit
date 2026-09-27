@@ -52,6 +52,7 @@ export function attemptSharedLaneGeometry(
 		changedRouteIds,
 		charge,
 	} = input;
+	const initialRejections = state.rejectedAlternatives.length;
 	let bridges: number | undefined;
 	let issue: string | undefined;
 	if (routeCertificate !== undefined && changedRouteIds !== undefined) {
@@ -82,7 +83,10 @@ export function attemptSharedLaneGeometry(
 	}
 	const incidents = searchLaneIncidentPaths({ geometry, ports, contracts, state });
 	if (incidents === undefined)
-		return state.rejectedAlternatives[0]?.reason ?? 'No lane incident side remains valid.';
+		return (
+			state.rejectedAlternatives[initialRejections]?.reason ??
+			'No lane incident side remains valid.'
+		);
 	let witness = searchWitness(state);
 	if (contracts.length > 0) witness = { ...witness, exhaustive: false };
 	return { incidents, witness, bridges };

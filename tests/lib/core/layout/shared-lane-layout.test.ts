@@ -34,10 +34,16 @@ import {
 	validateSharedLaneGeometry,
 	validateSharedLaneGeometryWithCertificate,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import { attemptSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry-attempt';
 import { laneIncidentPathCandidates } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-paths';
-import { searchLaneIncidentPaths } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-search';
+import {
+	type IncidentSearchState,
+	rejectIncidentAlternative,
+	searchLaneIncidentPaths,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-incident-search';
 import { validateSharedLaneIncidentPath } from '../../../../src/lib/core/layout/lanes/shared-lane-incident-validation';
 import {
+	parallelAttempt,
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
@@ -65,6 +71,7 @@ import {
 } from '../../../../src/lib/core/layout/lanes/shared-lane-routing';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
+	type RegionIncidentContract,
 	RegionIncidentRejectionCode,
 	RegionIncidentRole,
 	RegionIncidentUnknownCode,
@@ -2067,6 +2074,120 @@ describe('shared lane layout', () => {
 		expect(
 			final.value.allocationWitness?.passes.every(({ work, workBudget }) => work <= workBudget),
 		).toBe(true);
+	});
+
+	it('does not certify exhaustive replay when an accepted allocation has a capped incident search', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'a-to-b', from: 'a1', to: 'b1' },
+			{ id: 'a-to-c', from: 'a2', to: 'c1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const incidents: RegionIncidentContract[] = ['a1', 'a2'].map((endpointId, index) => ({
+			relation: { id: `external-${index}`, from: endpointId, to: `outside-${index}` },
+			endpointId,
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Left, RegionPortalSide.Right],
+		}));
+		const stream = enumerateSharedLaneLayouts(
+			prepared.graph,
+			prepared.ranks,
+			prepared.measurements,
+			{ incidents },
+		);
+		const first = stream.next();
+		expect(first.done).toBe(false);
+		let final = stream.next();
+		while (final.done === false) final = stream.next();
+		if (final.done !== true) throw new Error('Unbounded lane search');
+		expect(final.value.allocationWitness?.passes.every(({ exhaustive }) => exhaustive)).toBe(true);
+		expect(final.value.rejectedAlternatives.length).toBeGreaterThan(0);
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const completed: boolean[] = [];
+		const replay = parallelAttempt({
+			graph: prepared.graph,
+			input,
+			ports: planSharedLanePorts(input, incidents),
+			contracts: incidents,
+			collect: () => undefined,
+			onSearchCompleted: ({ exhaustive }) => completed.push(exhaustive),
+		});
+		expect(replay.status).toBe(SharedLaneLayoutStatus.Selected);
+		expect(completed).toEqual([true]);
+		expect(final.value.exhaustive).toBe(false);
+	});
+	it('propagates a later incident budget refusal after selecting an allocation', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'a-to-b', from: 'a1', to: 'b1' },
+			{ id: 'a-to-c', from: 'a2', to: 'c1' },
+			{ id: 'b-to-c', from: 'b1', to: 'c1' },
+		]);
+		const prepared = prepareLayoutDocument(document);
+		const incidents: RegionIncidentContract[] = ['external-0', 'external-1'].map((id) => ({
+			relation: { id, from: 'b1', to: 'outside' },
+			endpointId: 'b1',
+			role: RegionIncidentRole.Source,
+			allowedSides: [
+				RegionPortalSide.Left,
+				RegionPortalSide.Right,
+				RegionPortalSide.Top,
+				RegionPortalSide.Bottom,
+			],
+		}));
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const completed: { attempted: number; exhaustive: boolean }[] = [];
+		const replay = parallelAttempt({
+			graph: prepared.graph,
+			input,
+			ports: planSharedLanePorts(input, incidents),
+			contracts: incidents,
+			collect: () => undefined,
+			onSearchCompleted: ({ attempted, exhaustive }) => completed.push({ attempted, exhaustive }),
+		});
+		expect(replay.status).toBe(SharedLaneLayoutStatus.Selected);
+		expect(completed).toEqual([{ attempted: 256, exhaustive: false }]);
+	});
+
+	it('attributes each allocation failure to its own incident search', () => {
+		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [], 2);
+		const prepared = prepareLayoutDocument(document);
+		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+		if (selected.status !== SharedLaneLayoutStatus.Selected) throw new Error('Missing geometry');
+		const contract: RegionIncidentContract = {
+			relation: { id: 'external', from: 'missing', to: 'outside' },
+			endpointId: 'missing',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Right],
+		};
+		const state: IncidentSearchState = {
+			attempted: 0,
+			exhaustive: true,
+			strategyId: 'parallel/canonical',
+			candidateId: 'allocation-2',
+			rejectedAlternatives: [],
+		};
+		rejectIncidentAlternative(state, contract, RegionPortalSide.Right, {
+			code: RegionIncidentRejectionCode.GeometryInvalid,
+			reason: 'Earlier allocation has invalid geometry.',
+		});
+		const input = defined(
+			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+		);
+		const attempt = attemptSharedLaneGeometry({
+			graph: prepared.graph,
+			geometry: selected.geometry,
+			ports: planSharedLanePorts(input, [contract]),
+			contracts: [contract],
+			acceptBridges: false,
+			state,
+			certificate: certifySharedLaneGeometry(prepared.graph, selected.geometry),
+		});
+		expect(typeof attempt).toBe('string');
+		expect(attempt).toBe(state.rejectedAlternatives[1]?.reason);
+		expect(attempt).not.toBe(state.rejectedAlternatives[0]?.reason);
 	});
 
 	it('chooses the shorter bridge-free LocalPassages candidate over Canonical', () => {

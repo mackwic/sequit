@@ -40,7 +40,11 @@ import {
 	certifySharedLaneRouteGeometry,
 	materializeParallelGeometryDelta,
 } from './shared-lane-route-delta';
-import { type RankedLaneRouteSelection, rankLaneRouteSelection } from './shared-lane-route-ranking';
+import {
+	type LaneCandidate,
+	type RankedLaneRouteSelection,
+	rankLaneRouteSelection,
+} from './shared-lane-route-ranking';
 import {
 	laneSelectionCollector,
 	searchParallelRouteAllocations,
@@ -112,21 +116,14 @@ export interface LaneAttemptInput {
 	readonly input: SharedLaneInput;
 	readonly ports: SharedLanePorts;
 	readonly contracts: readonly RegionIncidentContract[];
-	readonly collect?:
-		| ((
-				selection: RankedLaneRouteSelection<LaneCandidate>,
-				witness: RegionIncidentSearchWitness,
-		  ) => void)
-		| undefined;
-	readonly onAllocationReject?:
-		((strategyId: string, candidateId: string, reason: string) => void) | undefined;
+	readonly collect?: (
+		selection: RankedLaneRouteSelection<LaneCandidate>,
+		witness: RegionIncidentSearchWitness,
+	) => void;
+	readonly onAllocationReject?: (strategyId: string, candidateId: string, reason: string) => void;
+	readonly onSearchCompleted?: ((witness: RegionIncidentSearchWitness) => void) | undefined;
 }
 
-export interface LaneCandidate {
-	readonly geometry: SharedLaneGeometry;
-	readonly incidents: readonly RegionSolvedIncident[];
-	readonly bridges?: number | undefined;
-}
 export function parallelAttempt({
 	graph,
 	input,
@@ -134,6 +131,7 @@ export function parallelAttempt({
 	contracts,
 	collect,
 	onAllocationReject,
+	onSearchCompleted,
 }: LaneAttemptInput): SharedLaneAttempt {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
@@ -177,7 +175,7 @@ export function parallelAttempt({
 		ports,
 		contracts,
 		state,
-		collect: laneSelectionCollector(state, collect),
+		collect: laneSelectionCollector(state, contracts, collect),
 		evaluate: (candidate, acceptBridges, charge: RouteWorkCharge) => {
 			let base = certificatesByFrame.get(candidate.frame);
 			if (base === undefined) {
@@ -222,6 +220,7 @@ export function parallelAttempt({
 			return { geometry, incidents: attempt.incidents, bridges: attempt.bridges };
 		},
 	});
+	onSearchCompleted?.(searchWitness(state));
 	if (search.selected !== undefined)
 		return selectedLayout(
 			search.selected.geometry,
@@ -247,6 +246,7 @@ export function transverseAttempt({
 	contracts,
 	collect,
 	onAllocationReject,
+	onSearchCompleted,
 }: LaneAttemptInput): SharedLaneAttempt {
 	let firstIssue: string | undefined;
 	const state: IncidentSearchState = {
@@ -261,7 +261,7 @@ export function transverseAttempt({
 		{ readonly geometry: SharedLaneGeometry; readonly certificate: SharedLaneGeometryCertificate }
 	>();
 	const search = searchTransverseRouteOrders({
-		collect: laneSelectionCollector(state, collect),
+		collect: laneSelectionCollector(state, contracts, collect),
 		evaluate: (strategy) => {
 			state.strategyId = strategy.id;
 			state.candidateId = strategy.id;
@@ -288,6 +288,7 @@ export function transverseAttempt({
 			return { geometry: prepared.geometry, incidents: selected.incidents };
 		},
 	});
+	onSearchCompleted?.(searchWitness(state));
 	if (search.selected !== undefined)
 		return selectedLayout(
 			search.selected.geometry,

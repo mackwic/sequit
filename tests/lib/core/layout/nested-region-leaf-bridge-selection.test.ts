@@ -189,6 +189,9 @@ describe('persisted composed incident bridge selection', () => {
 		expect(firstLane.value).toEqual(originalLane);
 		const lanes = [firstLane.value];
 		let laneResult = laneSearch.next();
+		expect(laneResult.done).toBe(false);
+		if (laneResult.done === true) throw new Error('Missing second lane candidate');
+		expect(laneResult.value.witness.exhaustive).toBe(false);
 		while (laneResult.done === false) {
 			lanes.push(laneResult.value);
 			laneResult = laneSearch.next();
@@ -273,6 +276,7 @@ describe('persisted composed incident bridge selection', () => {
 		expect(secondOrdinary.value.witness.attempted).toBeGreaterThan(
 			originalOrdinary.witness.attempted,
 		);
+		const preservedWitness = JSON.stringify(secondOrdinary.value.witness);
 		let dedicatedResult = ordinarySearch.next();
 		let accepted = 2;
 		while (dedicatedResult.done === false) {
@@ -280,6 +284,7 @@ describe('persisted composed incident bridge selection', () => {
 			dedicatedResult = ordinarySearch.next();
 		}
 		if (dedicatedResult.done !== true) throw new Error('Incomplete dedicated search');
+		expect(JSON.stringify(secondOrdinary.value.witness)).toBe(preservedWitness);
 		expect(accepted).toBeGreaterThan(2);
 		expect(dedicatedResult.value.attempted).toBeLessThanOrEqual(8_192);
 		expect(

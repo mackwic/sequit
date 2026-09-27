@@ -78,7 +78,7 @@ export function witness(state: SearchState, exhaustive: boolean): RegionIncident
 	return {
 		attempted: state.attempted,
 		exhaustive,
-		rejectedAlternatives: state.rejected,
+		rejectedAlternatives: [...state.rejected],
 	};
 }
 

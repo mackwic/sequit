@@ -7,7 +7,7 @@ import type {
 } from '../regions/model/region-incident-contract';
 import { bestWithinBudgetStream } from '../search/bounded-search';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
-import { type IncidentSearchState, searchWitness } from './shared-lane-incident-search';
+import { completedIncidentWitness, type IncidentSearchState } from './shared-lane-incident-search';
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import {
@@ -28,6 +28,7 @@ import { TransverseRouteOrder } from './shared-transverse-routing';
 /** Snapshot rejection provenance when an accepted geometry is ranked. */
 export function laneSelectionCollector<Selection>(
 	state: IncidentSearchState,
+	contracts: readonly RegionIncidentContract[],
 	collect:
 		| ((
 				selection: RankedLaneRouteSelection<Selection>,
@@ -37,7 +38,7 @@ export function laneSelectionCollector<Selection>(
 ): ((selection: RankedLaneRouteSelection<Selection>) => void) | undefined {
 	if (collect === undefined) return undefined;
 	return (selection) => {
-		collect(selection, searchWitness(state));
+		collect(selection, completedIncidentWitness(state, contracts));
 	};
 }
 

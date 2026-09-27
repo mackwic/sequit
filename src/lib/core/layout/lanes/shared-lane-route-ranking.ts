@@ -5,6 +5,12 @@ import { routeRuns, type RouteWorkCharge } from '../bridges/route-runs';
 import type { RegionSolvedIncident } from '../regions/model/region-incident-contract';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 
+export interface LaneCandidate {
+	readonly geometry: SharedLaneGeometry;
+	readonly incidents: readonly RegionSolvedIncident[];
+	readonly bridges?: number | undefined;
+}
+
 export interface LaneRouteCandidateIdentity {
 	readonly historicalRank: number | undefined;
 	readonly allocationKey: string;

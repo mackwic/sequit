@@ -11,13 +11,12 @@ import {
 } from '../regions/model/region-incident-contract';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import {
+	completedIncidentWitness,
 	enumerateLaneIncidentPaths,
 	type IncidentSearchState,
-	searchWitness,
 } from './shared-lane-incident-search';
 import {
 	type LaneAttemptInput,
-	type LaneCandidate,
 	parallelAttempt,
 	selectedLayout,
 	type SelectedSharedLaneLayout,
@@ -31,6 +30,7 @@ import { prepareSharedLanes } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneAllocationSearchWitness } from './shared-lane-route-candidates';
 import {
+	type LaneCandidate,
 	laneRouteSelectionIsBetter,
 	type RankedLaneRouteSelection,
 } from './shared-lane-route-ranking';
@@ -87,7 +87,7 @@ function* routesForCandidate(input: {
 		contracts,
 		state,
 	}))
-		yield { incidents, witness: searchWitness(state) };
+		yield { incidents, witness: completedIncidentWitness(state, contracts) };
 	evidence.attempted += state.attempted;
 	evidence.exhaustive &&= state.exhaustive;
 	evidence.rejectedAlternatives.push(...state.rejectedAlternatives);
@@ -138,7 +138,19 @@ export function* enumerateSharedLaneLayouts(
 	) => {
 		rejectedAllocations.push({ strategyId, candidateId, reason });
 	};
-	const attempt = { graph, input, ports, contracts, collect, onAllocationReject };
+	let replayIncidentExhaustive = true;
+	const onSearchCompleted: NonNullable<LaneAttemptInput['onSearchCompleted']> = (witness) => {
+		replayIncidentExhaustive &&= witness.exhaustive;
+	};
+	const attempt = {
+		graph,
+		input,
+		ports,
+		contracts,
+		collect,
+		onAllocationReject,
+		onSearchCompleted,
+	};
 	let replay: SharedLaneAttempt;
 	if (input.orientation === LaneOrientation.Parallel) replay = parallelAttempt(attempt);
 	else replay = transverseAttempt(attempt);
@@ -150,7 +162,7 @@ export function* enumerateSharedLaneLayouts(
 	const seen = new Set([candidateKey(first.geometry, first.incidents)]);
 	const evidence: CandidateEvidence = {
 		attempted: replay.witness.attempted,
-		exhaustive: true,
+		exhaustive: replayIncidentExhaustive,
 		rejectedAlternatives: [...replay.witness.rejectedAlternatives],
 	};
 	for (const { ranked, witness } of collected) {
