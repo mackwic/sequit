@@ -71,7 +71,7 @@ function crossingDraft(input: PositionedChildren, relation: LogicRelation): Cros
 
 function trackDemand(draft: CrossingDraft): RoutingTrackDemand {
 	return {
-		relationId: draft.relation.id,
+		key: draft.relation.id,
 		start: draft.sourcePortal.point.x,
 		end: draft.targetPortal.point.x,
 	};
@@ -96,7 +96,7 @@ export function composeCrossings(
 		const bus = rowBus({
 			relation,
 			regionId,
-			offset: trackOffset(edge, defined(allocation.trackByRelationId.get(relation.id))),
+			offset: trackOffset(edge, defined(allocation.trackByKey.get(relation.id))),
 			source: sourcePortal.point,
 			target: targetPortal.point,
 			childTop: defined(input.placements[0]).bounds.y,

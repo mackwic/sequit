@@ -68,7 +68,7 @@ export enum ParallelRouteOrder {
 
 export interface ParallelRouteTrackOverrides {
 	readonly gutter?: RoutingTrackAllocation;
-	readonly railTrackByRelationId?: ReadonlyMap<string, number>;
+	readonly railTrackByKey?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -84,7 +84,7 @@ export function allocateParallelRoutes(
 	overrides?: ParallelRouteTrackOverrides,
 ): ParallelRouteAllocation {
 	const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
-		relationId: plan.id,
+		key: plan.id,
 		start: frame.contentLongStart,
 		end: frame.contentLongEnd,
 		order,
@@ -94,20 +94,20 @@ export function allocateParallelRoutes(
 		allocateNestedTracks(
 			frame.gutterEdge,
 			input.plans.map((plan) => ({
-				relationId: plan.id,
+				key: plan.id,
 				start: frame.contentLongStart,
 				end: frame.contentLongEnd,
 			})),
 		);
-	const railTracks = overrides?.railTrackByRelationId;
+	const railTracks = overrides?.railTrackByKey;
 	let exteriorRail: RoutingTrackAllocation;
 	let topExteriorRail: RoutingTrackAllocation;
 	if (railTracks === undefined) {
 		exteriorRail = allocateNestedTracks(frame.exteriorRailEdge, crossingDemands);
 		topExteriorRail = allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands);
 	} else {
-		exteriorRail = { edge: frame.exteriorRailEdge, trackByRelationId: railTracks };
-		topExteriorRail = { edge: frame.topExteriorRailEdge, trackByRelationId: railTracks };
+		exteriorRail = { edge: frame.exteriorRailEdge, trackByKey: railTracks };
+		topExteriorRail = { edge: frame.topExteriorRailEdge, trackByKey: railTracks };
 	}
 	return { gutter, exteriorRail, topExteriorRail };
 }
@@ -131,7 +131,7 @@ function adjacentPoints(
 
 /** The rail offset of a crossing plan, on the rail edge the route order selects. */
 function railOffset(allocation: RoutingTrackAllocation, plan: SharedLanePlan): number {
-	return trackOffset(allocation.edge, defined(allocation.trackByRelationId.get(plan.id)));
+	return trackOffset(allocation.edge, defined(allocation.trackByKey.get(plan.id)));
 }
 
 function passageTrack(
@@ -170,7 +170,7 @@ export function routeRailTrack(
 		const routeMidpoint = (position.sourceLong + position.targetLong) / 2;
 		if (routeMidpoint < contentMidpoint) rail = allocation.topExteriorRail;
 	}
-	return rail.trackByRelationId.get(plan.id);
+	return rail.trackByKey.get(plan.id);
 }
 
 function logicalPoints(
@@ -213,7 +213,7 @@ function routePosition(
 	plan: SharedLanePlan,
 	order: ParallelRouteOrder,
 ): RoutePosition {
-	const gutterTrack = defined(allocation.gutter.trackByRelationId.get(plan.id));
+	const gutterTrack = defined(allocation.gutter.trackByKey.get(plan.id));
 	return {
 		gutterOffset: SHARED_LANE_CLEARANCE + trackOffset(allocation.gutter.edge, gutterTrack),
 		sourceLong: portLong(defined(frame.boxes.get(plan.from)), plan.id, PortRole.Source, frame),

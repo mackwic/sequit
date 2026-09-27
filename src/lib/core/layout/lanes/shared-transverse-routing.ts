@@ -127,7 +127,7 @@ export function allocateTransverseRoutes(
 	const ordinals = declaredOrdinals(input, order);
 	const ranked = input.plans.map((plan) => ({ plan, ordinal: defined(ordinals.get(plan.id)) }));
 	const demandOf = (plan: SharedLanePlan, declaredOrder: number) => ({
-		relationId: plan.id,
+		key: plan.id,
 		start: 0,
 		end: frame.longExtent,
 		order: declaredOrder,
@@ -230,13 +230,10 @@ function routePosition(allocation: TransverseRouteAllocation, plan: SharedLanePl
 	return {
 		gutterOffset:
 			SHARED_LANE_CLEARANCE +
-			trackOffset(
-				allocation.gutter.edge,
-				defined(allocation.gutter.trackByRelationId.get(plan.id)),
-			),
+			trackOffset(allocation.gutter.edge, defined(allocation.gutter.trackByKey.get(plan.id))),
 		railOffset:
 			SHARED_LANE_CLEARANCE +
-			trackOffset(allocation.rail.edge, defined(allocation.rail.trackByRelationId.get(plan.id))),
+			trackOffset(allocation.rail.edge, defined(allocation.rail.trackByKey.get(plan.id))),
 	};
 }
 

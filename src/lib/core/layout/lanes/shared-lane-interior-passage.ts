@@ -58,7 +58,7 @@ function interiorPassageDemand(
 	const last = sourceBox.longitudinal - SHARED_LANE_CLEARANCE;
 	if (first >= last || first <= targetPort) return undefined;
 	if (last >= sourcePort) return undefined;
-	return { relationId: plan.id, start: first, end: last };
+	return { key: plan.id, start: first, end: last };
 }
 
 /**

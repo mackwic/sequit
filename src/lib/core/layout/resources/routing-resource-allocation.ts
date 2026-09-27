@@ -1,22 +1,17 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
-
-/** An edge owns a bounded number of parallel tracks inside its region. */
-export interface RoutingEdge {
-	readonly ownerId: string;
-	/** Number of tracks the edge owns. */
-	readonly capacity: number;
-	/** Clearance between two adjacent tracks. */
-	readonly spacing: number;
-}
+import type { RoutingEdge } from '../geometry/routing-edge';
 
 /** The interval a route occupies along its edge, in the owner's coordinates. */
 export interface RoutingTrackDemand {
-	readonly relationId: string;
+	/** Identity of the allocated occurrence, not the relation(s) carried by it. */
+	readonly key: string;
+	/** Optional source provenance; one run can carry several relations. */
+	readonly relationIds?: readonly string[];
 	readonly start: number;
 	readonly end: number;
 	/**
-	 * Declared rank of the demand among the demands of its edge; absent, the canonical identifier
+	 * Declared rank of the demand among the demands of its edge; absent, the canonical allocation-key
 	 * order decides, which is the order every edge used before an ordinal existed.
 	 */
 	readonly order?: number;
@@ -24,7 +19,7 @@ export interface RoutingTrackDemand {
 
 export interface RoutingTrackAllocation {
 	readonly edge: RoutingEdge;
-	readonly trackByRelationId: ReadonlyMap<string, number>;
+	readonly trackByKey: ReadonlyMap<string, number>;
 }
 
 /** The single track of an edge whose space is a free interval rather than a spacing grid. */
@@ -35,7 +30,7 @@ export interface CenteredTrackAllocation {
 }
 
 interface TrackInterval {
-	readonly relationId: string;
+	readonly key: string;
 	readonly order: number | undefined;
 	readonly minimum: number;
 	readonly maximum: number;
@@ -57,9 +52,9 @@ function strictlyContains(outer: TrackInterval, inner: TrackInterval): boolean {
 }
 
 /**
- * The order of two demands of the same edge: a declared ordinal first, then the canonical relation
- * identifier. A demand that declares no ordinal sorts after the declared ones, so an edge whose
- * demands all omit it keeps the pure canonical identifier order.
+ * The order of two demands of the same edge: a declared ordinal first, then the canonical allocation
+ * key. A demand that declares no ordinal sorts after the declared ones, so an edge whose
+ * demands all omit it keeps the pure canonical key order.
  */
 function compareTrackDemands(left: TrackInterval, right: TrackInterval): number {
 	const declaredLeft = left.order;
@@ -73,12 +68,12 @@ function compareTrackDemands(left: TrackInterval, right: TrackInterval): number 
 
 /** The canonical tie-break of two demands that declare the same ordinal, or none. */
 function canonicalOrder(left: TrackInterval, right: TrackInterval): number {
-	return compareCanonicalStrings(left.relationId, right.relationId);
+	return compareCanonicalStrings(left.key, right.key);
 }
 
 /**
  * Allocates one track per demand: innermost interval first (strict containment),
- * declared ordinal then canonical relation-id tie-break, track 0 nearest the children.
+ * declared ordinal then canonical allocation-key tie-break, track 0 nearest the children.
  */
 export function allocateNestedTracks(
 	edge: RoutingEdge,
@@ -88,8 +83,8 @@ export function allocateNestedTracks(
 		throw new Error(
 			`Routing edge ${edge.ownerId} owns ${edge.capacity} tracks for ${demands.length} demands.`,
 		);
-	const intervals = demands.map(({ relationId, order, start, end }) => ({
-		relationId,
+	const intervals = demands.map(({ key, order, start, end }) => ({
+		key,
 		order,
 		minimum: Math.min(start, end),
 		maximum: Math.max(start, end),
@@ -119,8 +114,8 @@ export function allocateNestedTracks(
 	}
 	return {
 		edge,
-		trackByRelationId: new Map(
-			intervals.map((interval, index) => [interval.relationId, defined(trackIndices[index])]),
+		trackByKey: new Map(
+			intervals.map((interval, index) => [interval.key, defined(trackIndices[index])]),
 		),
 	};
 }

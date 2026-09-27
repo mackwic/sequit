@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, type LogicRelation } from '../../document/logic-document';
-import { type RoutingEdge, trackOffset } from '../resources/routing-resource-allocation';
+import type { RoutingEdge } from '../geometry/routing-edge';
+import { trackOffset } from '../resources/routing-resource-allocation';
 import {
 	CROSSING_SPACING,
 	GRID_GUTTER_MIN_MARGIN,

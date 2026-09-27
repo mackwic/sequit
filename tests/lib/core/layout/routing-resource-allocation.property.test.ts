@@ -2,12 +2,12 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import type { RoutingEdge } from '../../../../src/lib/core/layout/geometry/routing-edge';
 import {
 	allocateCenteredTrack,
 	allocateNestedTracks,
 	centeredTrackOffset,
 	edgeExtent,
-	type RoutingEdge,
 	type RoutingTrackAllocation,
 	type RoutingTrackDemand,
 	trackOffset,
@@ -33,7 +33,7 @@ const intervals = fc
 
 function demandsOf(values: readonly Interval[]): readonly RoutingTrackDemand[] {
 	return values.map(({ minimum, maximum }, index) => ({
-		relationId: `r-${index}`,
+		key: `r-${index}`,
 		start: minimum,
 		end: maximum,
 	}));
@@ -46,7 +46,7 @@ function edgeFor(capacity: number): RoutingEdge {
 /** Declared-rank demands of one edge: identical intervals, so only the ordinal can order them. */
 function declaredDemands(ordinals: readonly number[]): readonly RoutingTrackDemand[] {
 	return ordinals.map((order, index) => ({
-		relationId: `r-${index}`,
+		key: `r-${index}`,
 		start: 0,
 		end: 100,
 		order,
@@ -79,8 +79,8 @@ function permute(
 	return permutation(values.length, seed).map((index) => defined(values[index]));
 }
 
-function trackOf(allocation: RoutingTrackAllocation, relationId: string): number {
-	return defined(allocation.trackByRelationId.get(relationId));
+function trackOf(allocation: RoutingTrackAllocation, key: string): number {
+	return defined(allocation.trackByKey.get(key));
 }
 
 function strictlyContains(outer: Interval, inner: Interval): boolean {
@@ -98,13 +98,29 @@ const allocationCase = fc
 	});
 
 describe('routing resource allocation', () => {
+	it('allocates split occurrences separately and a shared run only once', () => {
+		const demands: readonly RoutingTrackDemand[] = [
+			{ key: 'split/0', relationIds: ['r'], start: 0, end: 100 },
+			{ key: 'split/1', relationIds: ['r'], start: 20, end: 80 },
+			{ key: 'shared/0', relationIds: ['s', 't'], start: 10, end: 90 },
+		];
+		const allocation = allocateNestedTracks(edgeFor(3), demands);
+		expect(allocation.trackByKey.size).toBe(3);
+		expect(allocation.trackByKey.get('split/1')).toBeLessThan(
+			defined(allocation.trackByKey.get('split/0')),
+		);
+		expect(new Set(allocation.trackByKey.values()).size).toBe(3);
+		const reversed = allocateNestedTracks(edgeFor(3), [...demands].reverse());
+		expect(reversed.trackByKey).toEqual(allocation.trackByKey);
+	});
+
 	it('gives every demand a distinct track inside the edge capacity', () => {
 		fc.assert(
 			fc.property(fc.array(intervals, { minLength: 0, maxLength: 8 }), (values) => {
 				const edge = edgeFor(values.length);
 				const allocation = allocateNestedTracks(edge, demandsOf(values));
-				expect(allocation.trackByRelationId.size).toBe(values.length);
-				const tracks = [...allocation.trackByRelationId.values()];
+				expect(allocation.trackByKey.size).toBe(values.length);
+				const tracks = [...allocation.trackByKey.values()];
 				expect(new Set(tracks).size).toBe(tracks.length);
 				for (const track of tracks) {
 					expect(track).toBeGreaterThanOrEqual(0);
@@ -138,10 +154,10 @@ describe('routing resource allocation', () => {
 
 	it('orders a strict inner interval before its outer despite shared-bound demands', () => {
 		const demands: readonly RoutingTrackDemand[] = [
-			{ relationId: 'a-outer', start: 0, end: 100 },
-			{ relationId: 'b-inner', start: 25, end: 75 },
-			{ relationId: 'c-shared-start', start: 0, end: 40 },
-			{ relationId: 'd-shared-end', start: 60, end: 100 },
+			{ key: 'a-outer', start: 0, end: 100 },
+			{ key: 'b-inner', start: 25, end: 75 },
+			{ key: 'c-shared-start', start: 0, end: 40 },
+			{ key: 'd-shared-end', start: 60, end: 100 },
 		];
 		const edge = edgeFor(demands.length);
 		const allocation = allocateNestedTracks(edge, demands);
@@ -150,8 +166,7 @@ describe('routing resource allocation', () => {
 		expect(trackOf(allocation, 'a-outer')).toBe(1);
 		expect(trackOf(allocation, 'c-shared-start')).toBe(2);
 		expect(trackOf(allocation, 'd-shared-end')).toBe(3);
-		for (const { relationId } of demands)
-			expect(trackOf(shuffled, relationId)).toBe(trackOf(allocation, relationId));
+		for (const { key } of demands) expect(trackOf(shuffled, key)).toBe(trackOf(allocation, key));
 	});
 
 	it('is invariant under permutation of the demands', () => {
@@ -160,8 +175,8 @@ describe('routing resource allocation', () => {
 				const edge = edgeFor(demands.length);
 				const allocation = allocateNestedTracks(edge, demands);
 				const shuffled = allocateNestedTracks(edge, permuted);
-				for (const { relationId } of demands)
-					expect(trackOf(shuffled, relationId)).toBe(trackOf(allocation, relationId));
+				for (const { key } of demands)
+					expect(trackOf(shuffled, key)).toBe(trackOf(allocation, key));
 			}),
 			PROPERTY_PARAMETERS,
 		);
@@ -205,7 +220,7 @@ describe('routing resource allocation', () => {
 			fc.property(fc.integer({ min: 0, max: 8 }), (count) => {
 				const demands: readonly RoutingTrackDemand[] = Array.from(
 					{ length: count },
-					(_value, index) => ({ relationId: `r-${index}`, start: 0, end: 100 }),
+					(_value, index) => ({ key: `r-${index}`, start: 0, end: 100 }),
 				);
 				const allocation = allocateNestedTracks(edgeFor(count), demands);
 				for (const index of demands.keys()) expect(trackOf(allocation, `r-${index}`)).toBe(index);
@@ -226,14 +241,14 @@ describe('routing resource allocation', () => {
 					const declaredIds: string[] = [];
 					const plainIds: string[] = [];
 					for (const [index, [declared, order]] of entries.entries()) {
-						const relationId = `r-${index}`;
+						const key = `r-${index}`;
 						if (!declared) {
-							plainIds.push(relationId);
-							demands.push({ relationId, start: 0, end: 10 });
+							plainIds.push(key);
+							demands.push({ key, start: 0, end: 10 });
 							continue;
 						}
-						declaredIds.push(relationId);
-						demands.push({ relationId, start: 0, end: 10, order });
+						declaredIds.push(key);
+						demands.push({ key, start: 0, end: 10, order });
 					}
 					const allocation = allocateNestedTracks(edgeFor(demands.length), demands);
 					for (const declaredId of declaredIds)
@@ -254,8 +269,8 @@ describe('routing resource allocation', () => {
 					const demands = declaredDemands(ordinals);
 					const allocation = allocateNestedTracks(edgeFor(demands.length), demands);
 					const shuffled = allocateNestedTracks(edgeFor(demands.length), permute(demands, seed));
-					for (const { relationId } of demands)
-						expect(trackOf(shuffled, relationId)).toBe(trackOf(allocation, relationId));
+					for (const { key } of demands)
+						expect(trackOf(shuffled, key)).toBe(trackOf(allocation, key));
 				},
 			),
 			PROPERTY_PARAMETERS,
@@ -266,13 +281,13 @@ describe('routing resource allocation', () => {
 		fc.assert(
 			fc.property(freeIntervals, ({ start, end }) => {
 				const edge: RoutingEdge = { ownerId: 'passage', capacity: 1, spacing: 20 };
-				const allocation = allocateCenteredTrack(edge, { relationId: 'passage', start, end });
+				const allocation = allocateCenteredTrack(edge, { key: 'passage', start, end });
 				expect(allocation.track).toBe(0);
 				const coordinate = centeredTrackOffset(allocation);
 				expect(coordinate).toBeGreaterThan(start);
 				expect(coordinate).toBeLessThan(end);
 				const reversed = allocateCenteredTrack(edge, {
-					relationId: 'passage',
+					key: 'passage',
 					start: end,
 					end: start,
 				});

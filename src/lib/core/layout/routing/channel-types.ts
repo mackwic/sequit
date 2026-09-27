@@ -1,9 +1,4 @@
-/** Same resource-edge shape as the shared graph; routing does not depend outward on resources. */
-export interface ChannelRoutingEdge {
-	readonly ownerId: string;
-	readonly capacity: number;
-	readonly spacing: number;
-}
+import type { RoutingEdge } from '../geometry/routing-edge';
 
 export interface ChannelEndpoint {
 	readonly id: string;
@@ -29,7 +24,7 @@ export interface ChannelRun {
 	depth: number;
 }
 export interface ChannelRailAllocation {
-	readonly edge: ChannelRoutingEdge;
+	readonly edge: RoutingEdge;
 	readonly trackByRunKey: ReadonlyMap<number, number>;
 	readonly railCount: number;
 }

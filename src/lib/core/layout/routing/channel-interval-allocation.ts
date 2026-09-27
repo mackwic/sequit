@@ -1,5 +1,5 @@
 import { defined } from '../../document/logic-document';
-import type { ChannelRoutingEdge } from './channel-types';
+import type { RoutingEdge } from '../geometry/routing-edge';
 
 export interface ChannelIntervalDemand<Key extends string | number> {
 	/** Identity of this run occurrence, independent of its source relation(s). */
@@ -11,7 +11,7 @@ export interface ChannelIntervalDemand<Key extends string | number> {
 }
 
 export interface ChannelIntervalAllocation<Key extends string | number> {
-	readonly edge: ChannelRoutingEdge;
+	readonly edge: RoutingEdge;
 	readonly trackByRunKey: ReadonlyMap<Key, number>;
 	readonly trackCount: number;
 }
@@ -52,7 +52,7 @@ function pop(heap: TrackEnd[]): TrackEnd {
 
 /** Channel interval policy: stable start/end order, first released track and strict half-spacing clearance. */
 export function allocateChannelIntervals<Key extends string | number>(
-	edge: ChannelRoutingEdge,
+	edge: RoutingEdge,
 	demands: readonly ChannelIntervalDemand<Key>[],
 	offset: number,
 	trackByRunKey = new Map<Key, number>(),

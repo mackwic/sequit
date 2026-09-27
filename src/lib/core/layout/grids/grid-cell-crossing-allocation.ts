@@ -1,5 +1,6 @@
 import { defined } from '../../document/logic-document';
-import { allocateNestedTracks, type RoutingEdge } from '../resources/routing-resource-allocation';
+import type { RoutingEdge } from '../geometry/routing-edge';
+import { allocateNestedTracks } from '../resources/routing-resource-allocation';
 import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
@@ -72,12 +73,11 @@ function containmentOrder(
 		edge,
 		ids.map((relationId) => {
 			const portal = defined(input.portalByRelationId.get(relationId));
-			return { relationId, start: portal.source.y, end: portal.target.y };
+			return { key: relationId, start: portal.source.y, end: portal.target.y };
 		}),
 	);
 	const order = Array<string>(ids.length).fill(FREE_TRACK);
-	for (const relationId of ids)
-		order[defined(allocation.trackByRelationId.get(relationId))] = relationId;
+	for (const relationId of ids) order[defined(allocation.trackByKey.get(relationId))] = relationId;
 	return order;
 }
 
@@ -89,12 +89,12 @@ export function containmentCrossingAllocation(
 		input.edges.topBus,
 		input.crossingIds.map((relationId) => {
 			const portal = defined(input.portalByRelationId.get(relationId));
-			return { relationId, start: portal.source.x, end: portal.target.x };
+			return { key: relationId, start: portal.source.x, end: portal.target.x };
 		}),
 	);
 	const busOrder = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
 	for (const relationId of input.crossingIds)
-		busOrder[defined(bus.trackByRelationId.get(relationId))] = relationId;
+		busOrder[defined(bus.trackByKey.get(relationId))] = relationId;
 	return allocationOf(
 		input.gutterIds.map((ids, column) =>
 			containmentOrder(input, defined(input.edges.gutters[column]), ids),

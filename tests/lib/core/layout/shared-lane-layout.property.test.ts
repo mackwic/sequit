@@ -175,9 +175,9 @@ function exhaustiveBest(
 		for (const gutter of gutters)
 			for (const rail of rails) {
 				const allocation: ParallelRouteAllocation = {
-					gutter: { edge: plan.allocation.gutter.edge, trackByRelationId: gutter },
-					exteriorRail: { edge: plan.allocation.exteriorRail.edge, trackByRelationId: rail },
-					topExteriorRail: { edge: plan.allocation.topExteriorRail.edge, trackByRelationId: rail },
+					gutter: { edge: plan.allocation.gutter.edge, trackByKey: gutter },
+					exteriorRail: { edge: plan.allocation.exteriorRail.edge, trackByKey: rail },
+					topExteriorRail: { edge: plan.allocation.topExteriorRail.edge, trackByKey: rail },
 				};
 				const geometry = materializeParallelGeometry(input, plan.frame, plan.order, allocation);
 				const score = metrics(geometry);

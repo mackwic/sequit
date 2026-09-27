@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import type { RoutingEdge } from '../../../../src/lib/core/layout/geometry/routing-edge';
 import {
 	trackAllocationProductCount,
 	trackAllocationProducts,
 	type TrackAssignmentDomain,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-allocation-search';
-import type {
-	RoutingEdge,
-	RoutingTrackAllocation,
-} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
+import type { RoutingTrackAllocation } from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 
 function domain(
 	id: string,
@@ -19,7 +17,7 @@ function domain(
 	const edge: RoutingEdge = { ownerId: id, capacity: trackCount, spacing: 24 };
 	const baseline: RoutingTrackAllocation = {
 		edge,
-		trackByRelationId: new Map(baselineTracks),
+		trackByKey: new Map(baselineTracks),
 	};
 	return { id, edge, trackCount, relationIds, baseline };
 }
@@ -42,15 +40,13 @@ describe('shared lane allocation search', () => {
 		expect(trackAllocationProductCount(domains)).toBe(4n);
 		expect(products).toHaveLength(4);
 		expect(new Set(products.map(({ key }) => key)).size).toBe(4);
-		expect(products[0]?.allocations.map(({ trackByRelationId }) => [...trackByRelationId])).toEqual(
+		expect(products[0]?.allocations.map(({ trackByKey }) => [...trackByKey])).toEqual([
 			[
-				[
-					['a-to-b', 0],
-					['b-to-a', 1],
-				],
-				[['a-to-b', 0]],
+				['a-to-b', 0],
+				['b-to-a', 1],
 			],
-		);
+			[['a-to-b', 0]],
+		]);
 		const permutedDomains = [
 			domain(
 				'gutter',

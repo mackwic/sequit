@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
-import type { RoutingEdge, RoutingTrackAllocation } from '../resources/routing-resource-allocation';
+import type { RoutingEdge } from '../geometry/routing-edge';
+import type { RoutingTrackAllocation } from '../resources/routing-resource-allocation';
 
 /** One route band and the track assignments the selected strategy actually reads from it. */
 export interface TrackAssignmentDomain {
@@ -30,17 +31,17 @@ function allocationFor(
 	domain: TrackAssignmentDomain,
 	tracks: ReadonlyMap<string, number>,
 ): RoutingTrackAllocation {
-	return { edge: domain.edge, trackByRelationId: tracks };
+	return { edge: domain.edge, trackByKey: tracks };
 }
 
 function baselineFor({ domain, ids }: CanonicalDomain): RoutingTrackAllocation {
 	const tracks = new Map<string, number>();
-	for (const id of ids) tracks.set(id, defined(domain.baseline.trackByRelationId.get(id)));
+	for (const id of ids) tracks.set(id, defined(domain.baseline.trackByKey.get(id)));
 	return allocationFor(domain, tracks);
 }
 
 function assignmentKey(ids: readonly string[], allocation: RoutingTrackAllocation): string {
-	return JSON.stringify(ids.map((id) => [id, defined(allocation.trackByRelationId.get(id))]));
+	return JSON.stringify(ids.map((id) => [id, defined(allocation.trackByKey.get(id))]));
 }
 
 /** Exact number of injective assignments of the active routes to their used tracks. */

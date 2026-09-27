@@ -61,8 +61,8 @@ export function materializeParallelGeometryDelta(
 	const changedRouteIds = new Set<string>();
 	for (const plan of input.plans) {
 		const gutterChanged =
-			candidate.allocation.gutter.trackByRelationId.get(plan.id) !==
-			baseline.allocation.gutter.trackByRelationId.get(plan.id);
+			candidate.allocation.gutter.trackByKey.get(plan.id) !==
+			baseline.allocation.gutter.trackByKey.get(plan.id);
 		const railChanged =
 			routeRailTrack(candidate.frame, candidate.allocation, plan, candidate.order) !==
 			routeRailTrack(baseline.frame, baseline.allocation, plan, baseline.order);

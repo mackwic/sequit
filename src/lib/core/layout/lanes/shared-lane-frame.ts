@@ -1,8 +1,9 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
+import type { RoutingEdge } from '../geometry/routing-edge';
 import { BASE_RANK_GAP, OUTER_MARGIN, RAIL_SPACING } from '../layout-settings';
 import type { Bounds, LayoutElement, Point } from '../layout-types';
-import { type RoutingEdge, trackOffset } from '../resources/routing-resource-allocation';
+import { trackOffset } from '../resources/routing-resource-allocation';
 import type { SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneBounds } from './shared-lane-types';

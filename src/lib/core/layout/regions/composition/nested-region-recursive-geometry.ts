@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../../canonical-string';
 import { defined, type LogicRelation } from '../../../document/logic-document';
 import type { TopologicalRanks } from '../../../graph/topological-ranks';
+import type { RoutingEdge } from '../../geometry/routing-edge';
 import type {
 	Bounds,
 	LayoutElement,
@@ -8,7 +9,7 @@ import type {
 	LayoutResult,
 	Point,
 } from '../../layout-types';
-import { edgeExtent, type RoutingEdge } from '../../resources/routing-resource-allocation';
+import { edgeExtent } from '../../resources/routing-resource-allocation';
 import {
 	type RegionChildPlacement,
 	type RegionOwnedRoute,

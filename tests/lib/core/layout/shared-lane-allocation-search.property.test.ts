@@ -1,15 +1,13 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import type { RoutingEdge } from '../../../../src/lib/core/layout/geometry/routing-edge';
 import {
 	trackAllocationProductCount,
 	trackAllocationProducts,
 	type TrackAssignmentDomain,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-allocation-search';
-import type {
-	RoutingEdge,
-	RoutingTrackAllocation,
-} from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
+import type { RoutingTrackAllocation } from '../../../../src/lib/core/layout/resources/routing-resource-allocation';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 interface AllocationPropertyCase {
@@ -33,7 +31,7 @@ function domain(
 	]);
 	const baseline: RoutingTrackAllocation = {
 		edge,
-		trackByRelationId: new Map(baselineTracks),
+		trackByKey: new Map(baselineTracks),
 	};
 	return { id, edge, trackCount, relationIds, baseline };
 }
@@ -85,9 +83,7 @@ function encodedProduct(
 	return JSON.stringify(
 		domains.map((domain, index) => [
 			domain.id,
-			[...domain.relationIds]
-				.sort()
-				.map((id) => [id, allocations[index]?.trackByRelationId.get(id)]),
+			[...domain.relationIds].sort().map((id) => [id, allocations[index]?.trackByKey.get(id)]),
 		]),
 	);
 }
@@ -146,7 +142,7 @@ describe('shared lane allocation search property', () => {
 				const actualKeys = actual.map(({ allocations }) => encodedProduct(allocations, domains));
 				for (const entry of domains) {
 					if (entry.relationIds.length === 0) continue;
-					expect([...entry.baseline.trackByRelationId.values()]).not.toEqual(
+					expect([...entry.baseline.trackByKey.values()]).not.toEqual(
 						entry.relationIds.map((_, index) => index),
 					);
 				}
@@ -165,7 +161,7 @@ describe('shared lane allocation search property', () => {
 					relationIds: [...entry.relationIds].reverse(),
 					baseline: {
 						...entry.baseline,
-						trackByRelationId: new Map([...entry.baseline.trackByRelationId].reverse()),
+						trackByKey: new Map([...entry.baseline.trackByKey].reverse()),
 					},
 				}));
 				expect([...trackAllocationProducts(permuted)].map(({ key }) => key)).toEqual(

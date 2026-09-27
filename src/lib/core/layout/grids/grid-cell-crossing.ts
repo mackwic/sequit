@@ -5,13 +5,10 @@ import {
 	MetricDemandKind,
 	type MinimumEndpointExtentMetricDemand,
 } from '../contract/metric-demand';
+import type { RoutingEdge } from '../geometry/routing-edge';
 import type { Bounds, LayoutRelation, Point } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
-import {
-	edgeExtent,
-	type RoutingEdge,
-	trackOffset,
-} from '../resources/routing-resource-allocation';
+import { edgeExtent, trackOffset } from '../resources/routing-resource-allocation';
 import { equal } from './grid-cell-geometry-primitives';
 
 const PORT_INSET = 16;

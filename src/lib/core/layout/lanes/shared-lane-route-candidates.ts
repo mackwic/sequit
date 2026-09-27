@@ -189,7 +189,7 @@ function allocationCandidate(
 	const rail = defined(product.allocations[1]);
 	const overrides: ParallelRouteTrackOverrides = {
 		gutter,
-		railTrackByRelationId: rail.trackByRelationId,
+		railTrackByKey: rail.trackByKey,
 	};
 	const id = strategyId(plan.order, acceptBridges);
 	return {

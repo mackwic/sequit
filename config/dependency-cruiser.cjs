@@ -27,7 +27,7 @@ const layoutScopes = {
 // A directory may import itself and only the dependencies listed here.
 const layoutImports = {
 	base: [],
-	resources: [],
+	resources: ['geometry'],
 	search: ['geometry'],
 	bridges: ['geometry', 'base'],
 	'dedicated-candidate-validation': ['bridges', 'routing', 'structure', 'geometry', 'base'],
@@ -44,7 +44,7 @@ const layoutImports = {
 	],
 	contract: ['engine', 'rank', 'bridges', 'routing', 'structure', 'search', 'geometry', 'base'],
 	'regions/model': ['bridges', 'resources', 'search', 'geometry', 'base'],
-	'regions/composition': ['regions/model', 'bridges', 'resources', 'base'],
+	'regions/composition': ['regions/model', 'bridges', 'resources', 'geometry', 'base'],
 	lanes: [
 		'regions/composition',
 		'regions/model',
