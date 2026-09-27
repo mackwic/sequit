@@ -116,10 +116,14 @@ function contractIssues(
 
 export function regionLeafLaneDefinitionIssues(
 	definitions: readonly LayoutRegionDefinition[],
+	onComparison?: (ownerId: string) => void,
 ): readonly RegionPresentationIssue[] {
 	const parentIds = new Set(definitions.map(({ parentId }) => parentId));
 	const issues: RegionPresentationIssue[] = [];
-	for (const definition of [...definitions].sort((a, b) => compareCanonicalStrings(a.id, b.id)))
+	for (const definition of [...definitions].sort((a, b) => {
+		onComparison?.(a.id);
+		return compareCanonicalStrings(a.id, b.id);
+	}))
 		issues.push(...contractIssues(definition, parentIds));
 	return issues;
 }
@@ -179,6 +183,7 @@ export function regionLeafLaneAssignmentIssues(
 	endpoints: readonly Endpoint[],
 	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
 	ownership: ReadonlyMap<string, string>,
+	onComparison?: (ownerId: string) => void,
 ): readonly RegionPresentationIssue[] {
 	const format = document.persistenceFormat;
 	const earlierRegionFormat =
@@ -187,14 +192,20 @@ export function regionLeafLaneAssignmentIssues(
 	const rootLaneIds = new Set(document.presentation?.lanes.map(({ id }) => id) ?? []);
 	const context = { document, byRegionId, ownership, rootLaneIds };
 	const issues: RegionPresentationIssue[] = [];
-	for (const endpoint of [...endpoints].sort((a, b) => compareCanonicalStrings(a.id, b.id))) {
+	for (const endpoint of [...endpoints].sort((a, b) => {
+		onComparison?.(a.id);
+		return compareCanonicalStrings(a.id, b.id);
+	})) {
 		const issue = endpointLaneIssue(endpoint, context);
 		if (issue !== undefined) issues.push(issue);
 	}
 	return issues;
 }
 
-export function normalizedRegionLaneFields(definition: LayoutRegionDefinition): {
+export function normalizedRegionLaneFields(
+	definition: LayoutRegionDefinition,
+	onComparison?: (ownerId: string) => void,
+): {
 	readonly lanePresentation?: RegionLanePresentation;
 } {
 	const presentation = definition.lanePresentation;
@@ -202,11 +213,13 @@ export function normalizedRegionLaneFields(definition: LayoutRegionDefinition): 
 	return {
 		lanePresentation: {
 			...presentation,
-			lanes: [...presentation.lanes].sort(
-				(left, right) =>
+			lanes: [...presentation.lanes].sort((left, right) => {
+				onComparison?.(definition.id);
+				return (
 					compareCanonicalStrings(left.layoutOrder, right.layoutOrder) ||
-					compareCanonicalStrings(left.id, right.id),
-			),
+					compareCanonicalStrings(left.id, right.id)
+				);
+			}),
 		},
 	};
 }
@@ -222,10 +235,17 @@ function hasExplicitRegionPolicy(document: LogicDocument): boolean {
 export function migrateLegacyRegionDefinitions(
 	document: LogicDocument,
 	definitions: readonly LayoutRegionDefinition[],
+	onVisit?: (ownerId: string) => void,
 ): readonly LayoutRegionDefinition[] {
 	if (hasExplicitRegionPolicy(document)) return definitions;
-	const parentIds = new Set(definitions.map(({ parentId }) => parentId));
+	const parentIds = new Set(
+		definitions.map(({ id, parentId }) => {
+			onVisit?.(id);
+			return parentId;
+		}),
+	);
 	return definitions.map((definition) => {
+		onVisit?.(definition.id);
 		if (parentIds.has(definition.id)) return definition;
 		if (definition.lanePresentation === undefined && document.presentation === undefined)
 			return definition;

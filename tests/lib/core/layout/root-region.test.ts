@@ -19,12 +19,21 @@ import {
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	regionCompositionWorkBudgets,
+	RegionCompositionWork,
+	RegionWorkLimitExceeded,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-limits';
 import type { LayoutRelation, LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
-import { RegionCompositionStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import {
+	RegionCompositionDiagnosticCode,
+	RegionCompositionStatus,
+	RegionWorkPhase,
+} from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { solveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import {
@@ -47,7 +56,7 @@ import {
 	validLogicDocument,
 } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { gridOf } from '../../../support/performance/layout-resource-scenarios';
+import { gridOf, persistedRowOf } from '../../../support/performance/layout-resource-scenarios';
 import { gridInput, persistedGridDocument, prepareGrid } from './grid-cell-fixture';
 import {
 	persistedNestedGridDocument,
@@ -99,6 +108,35 @@ function persistedGridOf(document: LogicDocument, input: GridCellInput): LogicDo
 }
 
 describe('implicit root layout region', () => {
+	it('selects one thousand flat persisted leaves through the product entry', () => {
+		const prepared = prepareLayoutDocument(persistedRowOf(1000));
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(layout.regions).toHaveLength(1000);
+		expect(layout.elements).toHaveLength(1000);
+	});
+
+	it('diagnoses exhausted persisted presentation work before constructing a region input', () => {
+		const prepared = prepareLayoutDocument(persistedRowOf(100));
+		const work = new RegionCompositionWork({
+			...regionCompositionWorkBudgets(101, 0),
+			normalizationComparisons: 0,
+		});
+		let refused: unknown;
+		try {
+			nestedRegionInput(prepared.graph, work);
+		} catch (error) {
+			refused = error;
+		}
+		expect(refused).toBeInstanceOf(RegionWorkLimitExceeded);
+		if (refused instanceof RegionWorkLimitExceeded)
+			expect(refused.diagnostic).toMatchObject({
+				code: RegionCompositionDiagnosticCode.ResourceLimit,
+				phase: RegionWorkPhase.NormalizationComparisons,
+				limit: 0,
+				exhaustive: false,
+			});
+	});
+
 	it('selects a persisted 3×7 grid with 21 endpoints through the product entry', () => {
 		const { document, input } = gridOf(3, 7);
 		const prepared = prepareLayoutDocument(persistedGridOf(document, input));
@@ -110,41 +148,38 @@ describe('implicit root layout region', () => {
 		expect(layout.elements).toHaveLength(21);
 	});
 
-	it(
-		'selects a persisted 6×6 grid with thirty local relations through the product entry',
-		() => {
-			const { document, input } = gridOf(6, 6);
-			const populated = {
-				...document,
-				nodes: [
-					...document.nodes,
-					...document.nodes.slice(0, 30).map((node) => ({
-						...node,
-						id: `local-${node.id}`,
-						layoutOrder: orderKey('a9999'),
-					})),
-				],
-				relations: document.nodes.slice(0, 30).map((node) => ({
+	it('selects a persisted 6×6 grid with thirty local relations through the product entry', () => {
+		const { document, input } = gridOf(6, 6);
+		const populated = {
+			...document,
+			nodes: [
+				...document.nodes,
+				...document.nodes.slice(0, 30).map((node) => ({
+					...node,
 					id: `local-${node.id}`,
-					from: node.id,
-					to: `local-${node.id}`,
+					layoutOrder: orderKey('a9999'),
 				})),
-			};
-			const ownership = new Map(input.cellByEndpointId);
-			for (const node of document.nodes.slice(0, 30))
-				ownership.set(`local-${node.id}`, defined(input.cellByEndpointId.get(node.id)));
-			const prepared = prepareLayoutDocument(
-				persistedGridOf(populated, { ...input, cellByEndpointId: ownership }),
-			);
-			expect(normalizeRootRegion(prepared.graph, prepared.ranks).policy).toBe(
-				LayoutRegionPolicy.GridCells,
-			);
-			const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
-			expect(layout.regions).toHaveLength(36);
-			expect(layout.elements).toHaveLength(66);
-			expect(layout.relations).toHaveLength(30);
-		},
-	);
+			],
+			relations: document.nodes.slice(0, 30).map((node) => ({
+				id: `local-${node.id}`,
+				from: node.id,
+				to: `local-${node.id}`,
+			})),
+		};
+		const ownership = new Map(input.cellByEndpointId);
+		for (const node of document.nodes.slice(0, 30))
+			ownership.set(`local-${node.id}`, defined(input.cellByEndpointId.get(node.id)));
+		const prepared = prepareLayoutDocument(
+			persistedGridOf(populated, { ...input, cellByEndpointId: ownership }),
+		);
+		expect(normalizeRootRegion(prepared.graph, prepared.ranks).policy).toBe(
+			LayoutRegionPolicy.GridCells,
+		);
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		expect(layout.regions).toHaveLength(36);
+		expect(layout.elements).toHaveLength(66);
+		expect(layout.relations).toHaveLength(30);
+	});
 
 	it('normalizes a legacy document as one virtual region borrowing its graph and ranks', () => {
 		const prepared = prepareLayoutDocument(validLogicDocument());

@@ -1,17 +1,19 @@
 import type { LogicGraph } from '../../../graph/create-graph';
 import type { LayoutMeasurements, LayoutOptions } from '../../layout-types';
+import type { RegionCompositionWork } from '../model/region-composition-limits';
 import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutAttempt,
 } from '../model/region-composition-types';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
-import { solveRecursiveNestedRegionLayout } from './nested-region-recursive-layout';
+import { solveRecursiveNestedRegionLayoutWithWork } from './nested-region-recursive-layout';
 
 /** A projection may supply its own bounded leaf-layout cache. */
 export interface RegionExecutionContext {
 	readonly options: LayoutOptions;
 	readonly cache?: RegionLocalLayoutCache;
+	readonly work?: RegionCompositionWork;
 }
 
 export function solveNestedRegionLayout(
@@ -40,18 +42,23 @@ export function solveNestedRegionLayout(
 			status: RegionCompositionStatus.Unsupported,
 			reason: 'Combined routing inspection is not available.',
 		};
-	return solveRecursiveNestedRegionLayout(graph, measurements, input, execution.cache);
+	return solveRecursiveNestedRegionLayoutWithWork(graph, measurements, input, {
+		cache: execution.cache,
+		work: execution.work,
+	});
 }
 
-/** Projection-owned cache only; the public solver keeps its ordinary options API. */
+/** Projection-owned cache and monotone work envelope; public solver options stay unchanged. */
 export function solveNestedRegionLayoutForProjection(
 	graph: LogicGraph,
 	measurements: LayoutMeasurements,
 	input: RegionInput,
 	cache: RegionLocalLayoutCache,
+	work?: RegionCompositionWork,
 ): RegionLayoutAttempt {
 	return solveNestedRegionLayout(graph, measurements, input, {
 		options: {},
 		cache,
+		work,
 	});
 }

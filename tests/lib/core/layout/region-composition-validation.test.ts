@@ -401,9 +401,7 @@ describe('generic region composition geometry', () => {
 		expect(work.attempted(RegionWorkPhase.Comparisons)).toBeLessThan(4096);
 
 		const vertical = siblingFixture(100, 'y');
-		expect(
-			validateCompositionDiagnostic(vertical.model, vertical.candidate),
-		).toBeUndefined();
+		expect(validateCompositionDiagnostic(vertical.model, vertical.candidate)).toBeUndefined();
 	});
 
 	it('rejects an overlap among 100 sibling frames', () => {
@@ -411,6 +409,24 @@ describe('generic region composition geometry', () => {
 		expect(validateCompositionDiagnostic(model, candidate)).toMatchObject({
 			code: RegionGeometryDiagnosticCode.OverlappingChildren,
 			regionId: '@root',
+		});
+	});
+
+	it('rejects a numerically collapsed child before sweeping its interval', () => {
+		const { model, candidate } = siblingFixture(2);
+		const first = changedRegion(candidate, 'sibling-0', (region) => ({
+			...region,
+			bounds: { x: 1, y: 1e18, width: 2, height: 1 },
+			translation: { x: 1, y: 1e18 },
+			localLayout: { ...region.localLayout, height: 1 },
+		}));
+		const inflated = {
+			...first,
+			layout: { ...first.layout, width: 1e20, height: 1e20 },
+		};
+		expect(validateCompositionDiagnostic(model, inflated)).toMatchObject({
+			code: RegionGeometryDiagnosticCode.ChildOutsideParent,
+			regionId: 'sibling-0',
 		});
 	});
 

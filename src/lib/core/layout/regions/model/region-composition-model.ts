@@ -83,12 +83,20 @@ function unsupported(diagnostic: RegionCompositionDiagnostic): RegionComposition
 	};
 }
 
+function compareRegionWork(left: string, right: string, work?: RegionCompositionWork): number {
+	work?.charge(RegionWorkPhase.NormalizationComparisons, left);
+	return compareCanonicalStrings(left, right);
+}
+
 function assignmentFailure(
 	graph: LogicGraph,
 	input: RegionInput,
 	regionsById: ReadonlyMap<string, RegionCompositionNode>,
+	work?: RegionCompositionWork,
 ): RegionCompositionModelBuild | undefined {
-	const endpointIds = [...graph.endpointsById.keys()].sort(compareCanonicalStrings);
+	const endpointIds = [...graph.endpointsById.keys()].sort((left, right) =>
+		compareRegionWork(left, right, work),
+	);
 	for (const endpointId of endpointIds) {
 		const regionId = input.regionByEndpointId.get(endpointId);
 		if (regionId === undefined)
@@ -111,7 +119,9 @@ function assignmentFailure(
 				['endpoints', endpointId, 'regionId'],
 			);
 	}
-	for (const endpointId of [...input.regionByEndpointId.keys()].sort(compareCanonicalStrings))
+	for (const endpointId of [...input.regionByEndpointId.keys()].sort((left, right) =>
+		compareRegionWork(left, right, work),
+	))
 		if (!graph.endpointsById.has(endpointId))
 			return invalid(
 				RegionCompositionDiagnosticCode.UnknownEndpointAssignment,
@@ -122,7 +132,7 @@ function assignmentFailure(
 		...graph.document.groups,
 		...graph.document.nodes,
 		...graph.document.junctions,
-	].sort((left, right) => compareCanonicalStrings(left.id, right.id));
+	].sort((left, right) => compareRegionWork(left.id, right.id, work));
 	for (const endpoint of groupedEndpoints) {
 		if (endpoint.groupId === undefined) continue;
 		if (
@@ -166,7 +176,7 @@ function parseDefinitions(
 	work?: RegionCompositionWork,
 ): ParsedDefinitions | RegionCompositionModelBuild {
 	const definitions = new Map<string, RegionDefinition>();
-	const childCounts = regionChildCounts(input);
+	const childCounts = regionChildCounts(input, work);
 	for (const region of [...input.regions].sort((left, right) => {
 		work?.charge(RegionWorkPhase.NormalizationComparisons, left.id);
 		return compareCanonicalStrings(left.id, right.id);
@@ -215,10 +225,13 @@ function parseDefinitions(
 	return { definitions, rootId: root.id };
 }
 
-function duplicateRelationFailure(graph: LogicGraph): RegionCompositionModelBuild | undefined {
+function duplicateRelationFailure(
+	graph: LogicGraph,
+	work?: RegionCompositionWork,
+): RegionCompositionModelBuild | undefined {
 	const relationIds = [...graph.relations]
 		.map(({ relation }) => relation.id)
-		.sort(compareCanonicalStrings);
+		.sort((left, right) => compareRegionWork(left, right, work));
 	for (let index = 1; index < relationIds.length; index += 1) {
 		const relationId = relationIds[index];
 		if (relationId !== relationIds[index - 1]) continue;
@@ -237,54 +250,45 @@ export function normalizeRegionCompositionModel(
 	input: RegionInput,
 	work?: RegionCompositionWork,
 ): RegionCompositionModelBuild {
-	let parsed: ParsedDefinitions | RegionCompositionModelBuild;
 	try {
-		parsed = parseDefinitions(input, work);
+		const parsed = parseDefinitions(input, work);
+		if ('status' in parsed) return parsed;
+		const { preorderIds, byId: regionsById } = normalizedRegions(
+			parsed.rootId,
+			parsed.definitions,
+			work,
+		);
+		const assignments = assignmentFailure(graph, input, regionsById, work);
+		if (assignments !== undefined) return assignments;
+		const duplicate = duplicateRelationFailure(graph, work);
+		if (duplicate !== undefined) return duplicate;
+		const leafByEndpointId = new Map(
+			[...input.regionByEndpointId].sort(([left], [right]) => compareRegionWork(left, right, work)),
+		);
+		const parentGroupByEndpointId = new Map<string, string>();
+		for (const endpointId of [...graph.endpointsById.keys()].sort((left, right) =>
+			compareRegionWork(left, right, work),
+		)) {
+			const groupId = graph.endpointsById.get(endpointId)?.entity.groupId;
+			if (groupId !== undefined) parentGroupByEndpointId.set(endpointId, groupId);
+		}
+		const relations = relationOwnership(graph, leafByEndpointId, regionsById, work);
+		const partitions = partitionRelations(preorderIds, relations);
+		return {
+			status: RegionCompositionModelStatus.Ready,
+			model: {
+				rootId: parsed.rootId,
+				preorderIds,
+				regionsById,
+				leafByEndpointId,
+				parentGroupByEndpointId,
+				relations,
+				localRelationsByOwner: partitions.local,
+				crossingRelationsByOwner: partitions.crossing,
+			},
+		};
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
 		throw error;
 	}
-	if ('status' in parsed) return parsed;
-	const { rootId, definitions } = parsed;
-	let regions: ReturnType<typeof normalizedRegions>;
-	try {
-		regions = normalizedRegions(rootId, definitions, work);
-	} catch (error) {
-		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
-		throw error;
-	}
-	const { preorderIds, byId: regionsById } = regions;
-	const assignments = assignmentFailure(graph, input, regionsById);
-	if (assignments !== undefined) return assignments;
-	const duplicate = duplicateRelationFailure(graph);
-	if (duplicate !== undefined) return duplicate;
-	const leafByEndpointId = new Map(
-		[...input.regionByEndpointId].sort(([left], [right]) => compareCanonicalStrings(left, right)),
-	);
-	const parentGroupByEndpointId = new Map<string, string>();
-	for (const endpointId of [...graph.endpointsById.keys()].sort(compareCanonicalStrings)) {
-		const groupId = graph.endpointsById.get(endpointId)?.entity.groupId;
-		if (groupId !== undefined) parentGroupByEndpointId.set(endpointId, groupId);
-	}
-	let relations: readonly RegionRelationOwnership[];
-	try {
-		relations = relationOwnership(graph, leafByEndpointId, regionsById, work);
-	} catch (error) {
-		if (error instanceof RegionWorkLimitExceeded) return unsupported(error.diagnostic);
-		throw error;
-	}
-	const partitions = partitionRelations(preorderIds, relations);
-	return {
-		status: RegionCompositionModelStatus.Ready,
-		model: {
-			rootId,
-			preorderIds,
-			regionsById,
-			leafByEndpointId,
-			parentGroupByEndpointId,
-			relations,
-			localRelationsByOwner: partitions.local,
-			crossingRelationsByOwner: partitions.crossing,
-		},
-	};
 }

@@ -26,6 +26,7 @@ export function parentCycle(
 		const indexById = new Map<string, number>();
 		let current: string | undefined = start;
 		while (current !== undefined && !done.has(current)) {
+			work?.charge(RegionWorkPhase.Traversals, current);
 			const repeated = indexById.get(current);
 			if (repeated !== undefined) return [...path.slice(repeated), current];
 			indexById.set(current, path.length);
@@ -73,13 +74,15 @@ export function normalizedRegions(
 	while (pending.length > 0) {
 		const next = defined(pending.pop(), 'Unvalidated region traversal.');
 		const { id, depth } = next;
+		work?.charge(RegionWorkPhase.Traversals, id);
 		const definition = defined(definitions.get(id), 'Unvalidated region identity.');
 		const childIds = defined(children.get(id), 'Unvalidated region identity.');
 		preorderIds.push(id);
 		let node: RegionCompositionNode = { definition, id, childIds, depth };
 		if (definition.parentId !== undefined) node = { ...node, parentId: definition.parentId };
 		byId.set(id, node);
-		for (const childId of [...childIds].reverse()) pending.push({ id: childId, depth: depth + 1 });
+		for (let index = childIds.length - 1; index >= 0; index -= 1)
+			pending.push({ id: defined(childIds[index]), depth: depth + 1 });
 	}
 	return { preorderIds, byId };
 }

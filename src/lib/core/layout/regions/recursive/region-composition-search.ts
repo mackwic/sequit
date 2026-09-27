@@ -4,7 +4,10 @@ import { type RouteBridgeCache, validatedBridgesCached } from '../../bridges/bri
 import type { RegionGeometryDiagnostic } from '../../geometry/region-geometry-diagnostic';
 import type { LayoutMeasurements } from '../../layout-types';
 import type { SolvedRecursiveRegion } from '../composition/nested-region-recursive-geometry';
-import type { RecursiveContext } from '../composition/nested-region-recursive-model-adapter';
+import {
+	indexRegionLeafDocuments,
+	type RecursiveContext,
+} from '../composition/nested-region-recursive-model-adapter';
 import { betterCompositionCost, compositionCostCandidate } from '../leaf/region-composition-cost';
 import {
 	type enumerateRegionLeafLayoutsWithIncidents,
@@ -297,6 +300,7 @@ function searchPass(pass: PassInput): void {
 		cache,
 		model,
 		ownershipByRelationId: new Map(model.relations.map((owned) => [owned.relation.id, owned])),
+		leafDocuments: indexRegionLeafDocuments(graph, model, pass.work),
 		dispositionSideByRegionId: dispositionSides,
 	};
 	const retryState: RegionRetryState = { context, retriedOwners: new Set(), dispositionSides };

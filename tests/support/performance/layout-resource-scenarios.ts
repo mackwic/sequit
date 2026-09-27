@@ -1,5 +1,9 @@
 import {
+	defined,
 	EndpointKind,
+	LayoutPolicy,
+	REGION_PERSISTENCE_FORMAT,
+	REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	LayoutDirection,
 	type LogicDocument,
@@ -98,6 +102,30 @@ export function rowOf(count: number): { document: LogicDocument; input: RegionIn
 			],
 			regionByEndpointId: new Map(document.nodes.map((node, index) => [node.id, `child-${index}`])),
 		},
+	};
+}
+
+/** The same row presented through the persisted document/product entry. */
+export function persistedRowOf(count: number): LogicDocument {
+	const { document, input } = rowOf(count);
+	return {
+		...document,
+		persistenceFormat: REGION_PERSISTENCE_FORMAT,
+		regionPresentation: {
+			schemaVersion: REGION_PRESENTATION_SCHEMA,
+			regions: input.regions
+				.filter(({ parentId }) => parentId !== undefined)
+				.map(({ id, parentId, layoutOrder }) => ({
+					id,
+					parentId: defined(parentId),
+					layoutOrder: orderKey(layoutOrder),
+					policy: LayoutPolicy.Layered,
+				})),
+		},
+		nodes: document.nodes.map((node) => ({
+			...node,
+			regionId: defined(input.regionByEndpointId.get(node.id)),
+		})),
 	};
 }
 

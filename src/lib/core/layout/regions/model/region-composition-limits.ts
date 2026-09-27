@@ -42,11 +42,11 @@ export function regionCompositionWorkBudgets(
 	return {
 		normalizationComparisons: Math.max(
 			NESTED_REGION_COMPOSITION_WORK_BUDGETS.normalizationComparisons,
-			32 * size,
+			48 * size,
 		),
 		placements: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.placements, 2 * size),
 		comparisons: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.comparisons, 32 * size),
-		traversals: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.traversals, 8 * size),
+		traversals: Math.max(NESTED_REGION_COMPOSITION_WORK_BUDGETS.traversals, 24 * size),
 	};
 }
 
@@ -117,9 +117,13 @@ export function checkRegionStackDepth(
 }
 
 /** Children owned by each parent region, keyed by the parent identity. */
-export function regionChildCounts(input: RegionInput): ReadonlyMap<string, number> {
+export function regionChildCounts(
+	input: RegionInput,
+	work?: RegionCompositionWork,
+): ReadonlyMap<string, number> {
 	const counts = new Map<string, number>();
 	for (const region of input.regions) {
+		work?.charge(RegionWorkPhase.Traversals, region.id);
 		if (region.parentId === undefined) continue;
 		counts.set(region.parentId, (counts.get(region.parentId) ?? 0) + 1);
 	}

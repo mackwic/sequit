@@ -82,7 +82,10 @@ export function relationOwnership(
 	work?: RegionCompositionWork,
 ): readonly RegionRelationOwnership[] {
 	return [...graph.relations]
-		.sort((left, right) => compareCanonicalStrings(left.relation.id, right.relation.id))
+		.sort((left, right) => {
+			work?.charge(RegionWorkPhase.NormalizationComparisons, left.relation.id);
+			return compareCanonicalStrings(left.relation.id, right.relation.id);
+		})
 		.map(({ relation }) => {
 			work?.charge(RegionWorkPhase.Traversals, relation.id);
 			const sourceLeafId = leafByEndpointId.get(relation.from);

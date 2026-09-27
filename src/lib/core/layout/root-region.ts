@@ -11,7 +11,14 @@ import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-la
 import { layoutWithDedicatedEngine } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
+	regionCompositionWorkBudgets,
+	RegionCompositionWork,
+	RegionWorkLimitExceeded,
+} from './regions/model/region-composition-limits';
+import {
 	RegionCompositionStatus,
+	RegionWorkPhase,
+	type RegionCompositionDiagnostic,
 	type RegionInput,
 	type RegionLayoutAttempt,
 } from './regions/model/region-composition-types';
@@ -59,6 +66,7 @@ export class UnsupportedRegionLayoutError extends Error {
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
+		readonly diagnostic?: RegionCompositionDiagnostic,
 	) {
 		super(`Nested region layout is unsupported for document ${documentId}: ${reason}`);
 		this.name = 'UnsupportedRegionLayoutError';
@@ -80,6 +88,7 @@ export class UnsupportedGridCellLayoutError extends Error {
 	constructor(
 		readonly documentId: string,
 		readonly reason: string,
+		readonly diagnostic?: RegionCompositionDiagnostic,
 	) {
 		super(`Grid cell layout is unsupported for document ${documentId}: ${reason}`);
 		this.name = 'UnsupportedGridCellLayoutError';
@@ -137,7 +146,7 @@ export function normalizeRootRegion(graph: LogicGraph, ranks: TopologicalRanks):
 	};
 }
 
-export function nestedRegionInput(graph: LogicGraph): RegionInput {
+export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWork): RegionInput {
 	const definitions = graph.document.regionPresentation?.regions ?? [];
 	const assignments = new Map<string, string>();
 	for (const endpoint of [
@@ -145,9 +154,20 @@ export function nestedRegionInput(graph: LogicGraph): RegionInput {
 		...graph.document.nodes,
 		...graph.document.junctions,
 	]) {
+		work?.charge(RegionWorkPhase.Traversals, endpoint.id);
 		if (endpoint.regionId !== undefined) assignments.set(endpoint.id, endpoint.regionId);
 	}
-	const normalized = normalizeRegionPresentation(graph.document, definitions, assignments);
+	const normalized = normalizeRegionPresentation(
+		graph.document,
+		definitions,
+		assignments,
+		work === undefined
+			? undefined
+			: {
+					compare: (id) => work.charge(RegionWorkPhase.NormalizationComparisons, id),
+					visit: (id) => work.charge(RegionWorkPhase.Traversals, id),
+				},
+	);
 	if (normalized.status !== RegionPresentationStatus.Ready)
 		throw new UnsupportedRegionLayoutError(
 			graph.document.id,
@@ -165,6 +185,7 @@ export function nestedRegionInput(graph: LogicGraph): RegionInput {
 		root = { ...root, grid: graph.document.regionPresentation.grid };
 	const regions: RegionInput['regions'][number][] = [root];
 	for (const region of normalized.value.regions) {
+		work?.charge(RegionWorkPhase.Traversals, region.id);
 		if (region.id === ROOT_LAYOUT_REGION_ID) continue;
 		if (region.parentId === undefined || region.layoutOrder === undefined)
 			throw new UnsupportedRegionLayoutError(graph.document.id, 'Invalid normalized child region.');
@@ -188,26 +209,59 @@ function layoutWithNestedRegions(
 	execution: LayoutOptions | RegionExecutionContext,
 	gridRoot = false,
 ): LayoutResult {
+	const work =
+		'options' in execution && execution.work !== undefined
+			? execution.work
+			: new RegionCompositionWork(
+					regionCompositionWorkBudgets(
+						(graph.document.regionPresentation?.regions.length ?? 0) + 1,
+						graph.relations.length,
+					),
+				);
 	let input: RegionInput;
 	try {
-		input = nestedRegionInput(graph);
+		input = nestedRegionInput(graph, work);
 	} catch (error) {
+		if (error instanceof RegionWorkLimitExceeded) {
+			if (gridRoot)
+				throw new UnsupportedGridCellLayoutError(
+					graph.document.id,
+					error.message,
+					error.diagnostic,
+				);
+			throw new UnsupportedRegionLayoutError(graph.document.id, error.message, error.diagnostic);
+		}
 		if (gridRoot && error instanceof UnsupportedRegionLayoutError)
 			throw new UnsupportedGridCellLayoutError(graph.document.id, error.reason);
 		throw error;
 	}
 	let attempt: RegionLayoutAttempt;
 	if ('options' in execution && execution.cache !== undefined)
-		attempt = solveNestedRegionLayoutForProjection(graph, measurements, input, execution.cache);
-	else attempt = solveNestedRegionLayout(graph, measurements, input, layoutOptions(execution));
+		attempt = solveNestedRegionLayoutForProjection(
+			graph,
+			measurements,
+			input,
+			execution.cache,
+			work,
+		);
+	else
+		attempt = solveNestedRegionLayout(graph, measurements, input, {
+			options: layoutOptions(execution),
+			work,
+		});
 	if (attempt.status === RegionCompositionStatus.Selected)
 		return {
 			...attempt.layout,
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
 		};
 	if (attempt.status === RegionCompositionStatus.Unsupported) {
-		if (gridRoot) throw new UnsupportedGridCellLayoutError(graph.document.id, attempt.reason);
-		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason);
+		if (gridRoot)
+			throw new UnsupportedGridCellLayoutError(
+				graph.document.id,
+				attempt.reason,
+				attempt.diagnostic,
+			);
+		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason, attempt.diagnostic);
 	}
 	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);
 	throw new UnknownRegionLayoutError(graph.document.id, attempt.reason, attempt);

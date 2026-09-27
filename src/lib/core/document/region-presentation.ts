@@ -58,6 +58,17 @@ interface InvalidRegionPresentation {
 
 export type RegionPresentationResult = ReadyRegionPresentation | InvalidRegionPresentation;
 
+/** Optional deterministic accounting supplied by layout without reversing dependency direction. */
+export interface RegionPresentationWork {
+	readonly compare: (ownerId: string) => void;
+	readonly visit: (ownerId: string) => void;
+}
+
+function compareWithWork(left: string, right: string, work?: RegionPresentationWork): number {
+	work?.compare(left);
+	return compareCanonicalStrings(left, right);
+}
+
 function validRegionDefinition(definition: LayoutRegionDefinition): boolean {
 	const validId = definition.id.trim() !== '' && definition.id !== ROOT_LAYOUT_REGION_ID;
 	const validOrder = parseOrderKey(definition.layoutOrder) !== undefined;
@@ -69,13 +80,14 @@ function validRegionDefinition(definition: LayoutRegionDefinition): boolean {
 function regionIssues(
 	document: LogicDocument,
 	definitions: readonly LayoutRegionDefinition[],
+	work?: RegionPresentationWork,
 ): {
 	readonly byId: ReadonlyMap<string, LayoutRegionDefinition>;
 	readonly issues: readonly RegionPresentationIssue[];
 } {
 	const issues: RegionPresentationIssue[] = [];
 	const byId = new Map<string, LayoutRegionDefinition>();
-	const sorted = [...definitions].sort((left, right) => compareCanonicalStrings(left.id, right.id));
+	const sorted = [...definitions].sort((left, right) => compareWithWork(left.id, right.id, work));
 	for (const definition of sorted) {
 		if (!validRegionDefinition(definition))
 			issues.push({
@@ -91,7 +103,7 @@ function regionIssues(
 		}
 		byId.set(definition.id, definition);
 	}
-	issues.push(...regionLeafLaneDefinitionIssues(sorted));
+	issues.push(...regionLeafLaneDefinitionIssues(sorted, work?.compare));
 	const parentIds = new Set(sorted.map(({ parentId }) => parentId));
 	for (const definition of sorted) {
 		if (parentIds.has(definition.id)) continue;
@@ -124,15 +136,21 @@ function addCyclicMembers(path: readonly string[], firstIndex: number, cyclic: S
 	for (const member of path.slice(firstIndex)) cyclic.add(member);
 }
 
-function cyclicRegionIds(byId: ReadonlyMap<string, LayoutRegionDefinition>): ReadonlySet<string> {
+function cyclicRegionIds(
+	byId: ReadonlyMap<string, LayoutRegionDefinition>,
+	work?: RegionPresentationWork,
+): ReadonlySet<string> {
 	const cyclic = new Set<string>();
 	const visited = new Set<string>();
-	for (const startId of [...byId.keys()].sort(compareCanonicalStrings)) {
+	for (const startId of [...byId.keys()].sort((left, right) =>
+		compareWithWork(left, right, work),
+	)) {
 		if (visited.has(startId)) continue;
 		const path: string[] = [];
 		const indexById = new Map<string, number>();
 		let id: string | undefined = startId;
 		while (canVisitRegion(id, byId, visited)) {
+			work?.visit(id);
 			const cycleStart = indexById.get(id);
 			if (cycleStart !== undefined) {
 				addCyclicMembers(path, cycleStart, cyclic);
@@ -149,6 +167,7 @@ function cyclicRegionIds(byId: ReadonlyMap<string, LayoutRegionDefinition>): Rea
 
 function normalizedRegions(
 	byId: ReadonlyMap<string, LayoutRegionDefinition>,
+	work?: RegionPresentationWork,
 ): readonly NormalizedLayoutRegion[] {
 	const children = new Map<string, LayoutRegionDefinition[]>();
 	for (const definition of byId.values()) {
@@ -158,11 +177,13 @@ function normalizedRegions(
 		children.set(parentId, siblings);
 	}
 	for (const siblings of children.values())
-		siblings.sort(
-			(left, right) =>
+		siblings.sort((left, right) => {
+			work?.compare(left.id);
+			return (
 				compareCanonicalStrings(left.layoutOrder, right.layoutOrder) ||
-				compareCanonicalStrings(left.id, right.id),
-		);
+				compareCanonicalStrings(left.id, right.id)
+			);
+		});
 	const result: NormalizedLayoutRegion[] = [
 		{ id: ROOT_LAYOUT_REGION_ID, policy: LayoutPolicy.Layered },
 	];
@@ -170,6 +191,7 @@ function normalizedRegions(
 	while (stack.length > 0) {
 		const next = stack.pop();
 		if (next === undefined) continue;
+		work?.visit(next.id);
 		const gridFields: { grid?: NonNullable<LayoutRegionDefinition['grid']> } = {};
 		if (next.grid !== undefined) gridFields.grid = next.grid;
 		result.push({
@@ -177,7 +199,7 @@ function normalizedRegions(
 			parentId: next.parentId ?? ROOT_LAYOUT_REGION_ID,
 			layoutOrder: next.layoutOrder,
 			policy: next.policy,
-			...normalizedRegionLaneFields(next),
+			...normalizedRegionLaneFields(next, work?.compare),
 			...gridFields,
 		});
 		stack.push(...[...(children.get(next.id) ?? [])].reverse());
@@ -195,8 +217,9 @@ function validateAssignments(
 	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
 	assignments: ReadonlyMap<string, string>,
 	issues: RegionPresentationIssue[],
+	work?: RegionPresentationWork,
 ): void {
-	for (const [id, regionId] of [...assignments].sort(([a], [b]) => compareCanonicalStrings(a, b))) {
+	for (const [id, regionId] of [...assignments].sort(([a], [b]) => compareWithWork(a, b, work))) {
 		if (!byEndpointId.has(id))
 			issues.push({ code: RegionPresentationIssueCode.UnknownEndpoint, id });
 		if (regionId !== ROOT_LAYOUT_REGION_ID && !byRegionId.has(regionId))
@@ -212,11 +235,13 @@ function endpointPath(
 	byEndpointId: ReadonlyMap<string, Endpoint>,
 	ownership: ReadonlyMap<string, string>,
 	issues: RegionPresentationIssue[],
+	work?: RegionPresentationWork,
 ): readonly Endpoint[] {
 	const path: Endpoint[] = [];
 	const seen = new Set<string>();
 	let current: Endpoint = endpoint;
 	while (!ownership.has(current.id)) {
+		work?.visit(current.id);
 		if (seen.has(current.id)) {
 			issues.push({
 				code: RegionPresentationIssueCode.InvalidGroupParent,
@@ -272,6 +297,7 @@ function endpointIssues(
 	document: LogicDocument,
 	byRegionId: ReadonlyMap<string, LayoutRegionDefinition>,
 	assignments: ReadonlyMap<string, string>,
+	work?: RegionPresentationWork,
 ): {
 	readonly ownership: ReadonlyMap<string, string>;
 	readonly laneOwnership: ReadonlyMap<string, string | undefined>;
@@ -283,12 +309,14 @@ function endpointIssues(
 	const ownership = new Map<string, string>();
 	const laneOwnership = new Map<string, string | undefined>();
 	const context = { assignments, ownership, laneOwnership, issues };
-	validateAssignments(byEndpointId, byRegionId, assignments, issues);
-	for (const endpoint of [...endpoints].sort((a, b) => compareCanonicalStrings(a.id, b.id))) {
-		const path = endpointPath(endpoint, byEndpointId, ownership, issues);
+	validateAssignments(byEndpointId, byRegionId, assignments, issues, work);
+	for (const endpoint of [...endpoints].sort((a, b) => compareWithWork(a.id, b.id, work))) {
+		const path = endpointPath(endpoint, byEndpointId, ownership, issues, work);
 		ownEndpointPath(path, context);
 	}
-	issues.push(...regionLeafLaneAssignmentIssues(document, endpoints, byRegionId, ownership));
+	issues.push(
+		...regionLeafLaneAssignmentIssues(document, endpoints, byRegionId, ownership, work?.compare),
+	);
 	return { ownership, laneOwnership, issues };
 }
 
@@ -297,19 +325,24 @@ export function normalizeRegionPresentation(
 	document: LogicDocument,
 	definitions: readonly LayoutRegionDefinition[] = [],
 	assignments: ReadonlyMap<string, string> = new Map(),
+	work?: RegionPresentationWork,
 ): RegionPresentationResult {
-	const regionCheck = regionIssues(document, migrateLegacyRegionDefinitions(document, definitions));
-	const cyclic = cyclicRegionIds(regionCheck.byId);
+	const regionCheck = regionIssues(
+		document,
+		migrateLegacyRegionDefinitions(document, definitions),
+		work,
+	);
+	const cyclic = cyclicRegionIds(regionCheck.byId, work);
 	const issues: RegionPresentationIssue[] = [...regionCheck.issues];
-	for (const id of [...cyclic].sort(compareCanonicalStrings))
+	for (const id of [...cyclic].sort((left, right) => compareWithWork(left, right, work)))
 		issues.push({ code: RegionPresentationIssueCode.RegionCycle, id });
-	const endpointCheck = endpointIssues(document, regionCheck.byId, assignments);
+	const endpointCheck = endpointIssues(document, regionCheck.byId, assignments, work);
 	issues.push(...endpointCheck.issues);
 	if (issues.length > 0) return { status: RegionPresentationStatus.Invalid, issues };
 	return {
 		status: RegionPresentationStatus.Ready,
 		value: {
-			regions: normalizedRegions(regionCheck.byId),
+			regions: normalizedRegions(regionCheck.byId, work),
 			regionByEndpointId: endpointCheck.ownership,
 			laneByEndpointId: endpointCheck.laneOwnership,
 		},

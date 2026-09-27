@@ -78,7 +78,10 @@ function regionPlacementFailure(
 	let parent: Bounds | undefined = context.root;
 	if (region.parentId !== context.model.rootId)
 		parent = context.placements.get(region.parentId)?.bounds;
-	const invalidBounds = !finiteBounds(region.bounds);
+	const invalidBounds =
+		!finiteBounds(region.bounds) ||
+		region.bounds.x + region.bounds.width <= region.bounds.x ||
+		region.bounds.y + region.bounds.height <= region.bounds.y;
 	const outsideParent = parent !== undefined && !inside(parent, region.bounds);
 	if (parent === undefined || invalidBounds || outsideParent)
 		return diagnostic(Code.ChildOutsideParent, `Child region ${id} is outside its parent.`, {
@@ -160,41 +163,20 @@ function siblingsOverlap(
 			if (queryStart < middle) update(node * 2, start, middle);
 			if (queryEnd > middle) update(node * 2 + 1, middle, end);
 			maximumCoverage[node] =
-				lazyCoverage[node] +
-				Math.max(maximumCoverage[node * 2], maximumCoverage[node * 2 + 1]);
+				lazyCoverage[node] + Math.max(maximumCoverage[node * 2], maximumCoverage[node * 2 + 1]);
 		};
 		update(1, 0, intervalCount);
 	};
 	const maximumInRange = (queryStart: number, queryEnd: number): number => {
-		const query = (
-			node: number,
-			start: number,
-			end: number,
-			inheritedCoverage: number,
-		): number => {
+		const query = (node: number, start: number, end: number, inheritedCoverage: number): number => {
 			work?.charge(RegionWorkPhase.Comparisons, parentId);
-			if (queryStart <= start && end <= queryEnd)
-				return inheritedCoverage + maximumCoverage[node];
+			if (queryStart <= start && end <= queryEnd) return inheritedCoverage + maximumCoverage[node];
 			const childInheritedCoverage = inheritedCoverage + lazyCoverage[node];
 			const middle = Math.floor((start + end) / 2);
 			let maximum = Number.NEGATIVE_INFINITY;
-			if (queryStart < middle)
-				maximum = query(
-					node * 2,
-					start,
-					middle,
-					childInheritedCoverage,
-				);
+			if (queryStart < middle) maximum = query(node * 2, start, middle, childInheritedCoverage);
 			if (queryEnd > middle)
-				maximum = Math.max(
-					maximum,
-					query(
-						node * 2 + 1,
-						middle,
-						end,
-						childInheritedCoverage,
-					),
-				);
+				maximum = Math.max(maximum, query(node * 2 + 1, middle, end, childInheritedCoverage));
 			return maximum;
 		};
 		return query(1, 0, intervalCount, 0);

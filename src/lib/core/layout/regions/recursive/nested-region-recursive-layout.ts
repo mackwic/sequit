@@ -202,10 +202,10 @@ export function solveRecursiveNestedRegionLayoutWithWork(
 			reason: stack.message,
 			diagnostic: stack,
 		};
-	const failure = policyFailure(graph, normalized.model);
-	if (failure !== undefined)
-		return { status: RegionCompositionStatus.Unsupported, reason: failure };
 	try {
+		const failure = policyFailure(graph, normalized.model, work);
+		if (failure !== undefined)
+			return { status: RegionCompositionStatus.Unsupported, reason: failure };
 		return solveRecursiveCandidate(
 			{
 				graph,
