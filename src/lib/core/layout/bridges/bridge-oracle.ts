@@ -3,6 +3,7 @@ import { defined } from '../../document/logic-document';
 import { strictCrossing, strictlyBetween } from '../geometry/strict-crossing';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../layout-settings';
 import type { Point } from '../layout-types';
+import { indexRouteRuns, RunNeighborDirection } from './route-run-index';
 import {
 	type RoutedPath,
 	RouteOrientation,
@@ -229,13 +230,21 @@ export function routeBridgeAnalysis(
 		bridges: new Map(),
 		charge,
 	};
-	const previousRuns: RouteRun[] = [];
+	const runs = runsByPath.flat();
+	const indexed = indexRouteRuns(runs, {
+		direction: RunNeighborDirection.Earlier,
+		perpendicularOnly: true,
+		charge,
+	});
+	let runIndex = 0;
 	for (const pathRuns of runsByPath) {
-		for (const run of pathRuns) recordPairs(scan, run, previousRuns, charge);
-		previousRuns.push(...pathRuns);
+		for (const run of pathRuns) {
+			recordPairs(scan, run, indexed(runIndex), charge);
+			runIndex += 1;
+		}
 	}
 	return {
-		inspectedRuns: previousRuns.length,
+		inspectedRuns: runs.length,
 		crossings: [...scan.crossings.values()].sort((left, right) => {
 			charge?.(1);
 			const byPoint = left.x - right.x || left.y - right.y;
