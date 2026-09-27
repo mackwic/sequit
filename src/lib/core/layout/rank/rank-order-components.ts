@@ -64,16 +64,15 @@ function relationHolders(
 	byEndpoint: ReadonlyMap<string, number>,
 	owners: ReadonlyMap<string, ReadonlySet<number>>,
 ): readonly (readonly number[])[] {
-	const holders = (id: string): ReadonlySet<number> => {
-		const groupHolders = owners.get(id);
-		if (groupHolders !== undefined) return groupHolders;
-		const index = byEndpoint.get(id);
-		if (index === undefined) return new Set();
-		return new Set([index]);
-	};
+	const holds = (index: number, id: string): boolean =>
+		byEndpoint.get(id) === index || owners.get(id)?.has(index) === true;
 	return graph.relations.map(({ relation }) => {
-		const targets = holders(relation.to);
-		return [...holders(relation.from)].filter((index) => targets.has(index));
+		const groupHolders = owners.get(relation.from);
+		if (groupHolders !== undefined)
+			return [...groupHolders].filter((index) => holds(index, relation.to));
+		const index = byEndpoint.get(relation.from);
+		if (index === undefined || !holds(index, relation.to)) return [];
+		return [index];
 	});
 }
 

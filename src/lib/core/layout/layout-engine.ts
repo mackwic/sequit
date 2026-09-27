@@ -3,7 +3,7 @@ import type { TopologicalRanks } from '../graph/topological-ranks';
 import { buildLayoutResult } from './build-layout-result';
 import { createLayoutFrame } from './geometry/layout-frame';
 import { inspectRouting } from './inspection/routing-inspection';
-import { usesLayeredRouting } from './layout-routing-components';
+import { layeredRoutingComponents } from './layout-routing-components';
 import { reserveLayeredRouting } from './layout-routing-layers';
 import { reserveMixedRouting, reserveRouting } from './layout-routing-mixed';
 import type {
@@ -66,12 +66,9 @@ export function evaluateDedicatedLayout(
 		placeElements(workspace, baseGaps);
 	}
 	const layers = routingLayers(structure);
-	const layeredComponents = structure.components.filter((component) =>
-		usesLayeredRouting(structure, component),
-	);
-	const normalComponents = structure.components.filter(
-		(component) => !usesLayeredRouting(structure, component),
-	);
+	const layered = layeredRoutingComponents(structure);
+	const layeredComponents = structure.components.filter((component) => layered.has(component));
+	const normalComponents = structure.components.filter((component) => !layered.has(component));
 	let routes: ReadonlyMap<string, readonly Point[]> | undefined;
 	if (layeredComponents.length === 0) reserveRouting(workspace, baseGaps);
 	else if (

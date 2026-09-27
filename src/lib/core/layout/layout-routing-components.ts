@@ -4,6 +4,7 @@ import { placeWithPorts, portsChangePlacement } from './layout-port-placement';
 import { placeElements, type PlacementInput } from './placement/place-elements';
 import type { PortAllocation } from './routing/port-allocation';
 import type { NodeRouting } from './routing/reserve-node-routing';
+import type { RankedComponent } from './structure/placement-rows';
 import type { LayoutStructure } from './structure/prepare-layout';
 
 /** Routing orchestration extends the placement state without exposing the engine workspace. */
@@ -101,19 +102,22 @@ export function structureForComponents(
 	};
 }
 
-export function usesLayeredRouting(
-	structure: LayoutStructure,
-	component: LayoutStructure['components'][number],
-): boolean {
-	if (structure.maximumRank <= 1 && structure.junctionIds.size === 0) return false;
-	const ids = new Set(component.ids);
-	if (component.ids.some((id) => structure.junctionIds.has(id))) return true;
-	return structure.graph.relations.some(({ relation }) => {
-		if (!ids.has(relation.from) || !ids.has(relation.to)) return false;
+/** Components holding a junction or a relation that skips a rank are routed by layers. */
+export function layeredRoutingComponents(structure: LayoutStructure): ReadonlySet<RankedComponent> {
+	const layered = new Set<RankedComponent>();
+	if (structure.maximumRank <= 1 && structure.junctionIds.size === 0) return layered;
+	const byEndpoint = new Map<string, RankedComponent>();
+	for (const component of structure.components)
+		for (const id of component.ids) byEndpoint.set(id, component);
+	for (const id of structure.junctionIds) layered.add(defined(byEndpoint.get(id)));
+	for (const { relation } of structure.graph.relations) {
+		const component = defined(byEndpoint.get(relation.from));
+		if (byEndpoint.get(relation.to) !== component) continue;
 		const sourceRank = defined(structure.ranks.byEndpointId.get(relation.from));
 		const targetRank = defined(structure.ranks.byEndpointId.get(relation.to));
-		return sourceRank > targetRank + 1;
-	});
+		if (sourceRank > targetRank + 1) layered.add(component);
+	}
+	return layered;
 }
 
 export function scopePortAllocation(
