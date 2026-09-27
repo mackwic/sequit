@@ -5,14 +5,27 @@ import {
 	sideForRegion,
 } from '../composition/nested-region-recursive-model-adapter';
 import {
+	chooseCompositionIssue,
+	type CompositionCostCandidate,
+} from '../leaf/region-composition-cost';
+import {
 	UnknownRegionLeafLayoutError,
 	UnsupportedRegionLeafLayoutError,
 } from '../leaf/region-leaf-layout';
 import {
+	type RegionCompositionSearchWitness,
 	RegionCompositionStatus,
 	type RegionLayoutAttempt,
 	type RegionPortalSide,
 } from '../model/region-composition-types';
+import {
+	type RegionIncidentSearchWitness,
+	RegionIncidentUnknownCode,
+} from '../model/region-incident-contract';
+import {
+	RegionCompositionSearchCode,
+	RegionSearchProvenance,
+} from '../model/region-search-evidence';
 import {
 	retryOwnerForIncidentFailure,
 	retryOwnerForLeafContractFailure,
@@ -99,5 +112,85 @@ export function leafErrorAttempt(error: unknown): RegionLayoutAttempt | undefine
 		reason: error.reason,
 		...error.evidence,
 		...region,
+	};
+}
+
+export interface SearchState {
+	attempted: number;
+	exhaustive: boolean;
+	compositionBudgetExceeded: boolean;
+	leafFailure?: UnknownRegionLeafLayoutError;
+	localBudget?: { readonly regionId: string; readonly witness: RegionIncidentSearchWitness };
+	bestDetour?: CompositionCostCandidate;
+	bestBridge?: CompositionCostCandidate;
+	firstFailure?: DiagnosedCandidate;
+	readonly rejectedAlternatives: RegionCompositionSearchWitness['rejectedAlternatives'][number][];
+}
+
+export function compositionSearchOutcome(
+	state: SearchState,
+	leaves: readonly string[],
+): DiagnosedCandidate {
+	const issue = chooseCompositionIssue(state.bestDetour, state.bestBridge);
+	let witness: RegionCompositionSearchWitness = {
+		attempted: state.attempted,
+		exhaustive: state.exhaustive,
+		rejectedAlternatives: state.rejectedAlternatives,
+		bestDetour: state.bestDetour?.cost,
+		bestBridge: state.bestBridge?.cost,
+		bestDetourIndices: state.bestDetour?.indices,
+		bestBridgeIndices: state.bestBridge?.indices,
+	};
+	if (issue !== undefined) {
+		witness = { ...witness, selected: issue.issue };
+		let attempt = issue.selected.attempt;
+		if (leaves.length > 0) attempt = { ...attempt, searchWitness: witness };
+		return { attempt };
+	}
+	if (state.compositionBudgetExceeded)
+		return {
+			attempt: {
+				status: RegionCompositionStatus.Unknown,
+				provenance: RegionSearchProvenance.Composition,
+				code: RegionCompositionSearchCode.SearchBudgetExceeded,
+				reason: 'The bounded region composition search exhausted its alternative budget.',
+				searchWitness: witness,
+			},
+		};
+	if (state.leafFailure !== undefined) {
+		const error = state.leafFailure;
+		let region: { readonly regionId?: string } = {};
+		if (error.regionId !== undefined) region = { regionId: error.regionId };
+		return {
+			attempt: {
+				status: RegionCompositionStatus.Unknown,
+				reason: error.reason,
+				...error.evidence,
+				...region,
+				searchWitness: witness,
+			},
+		};
+	}
+	if (state.localBudget !== undefined)
+		return {
+			attempt: {
+				status: RegionCompositionStatus.Unknown,
+				reason: `Region ${state.localBudget.regionId}: local leaf alternatives were not exhausted.`,
+				provenance: RegionSearchProvenance.Incident,
+				code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+				witness: state.localBudget.witness,
+				regionId: state.localBudget.regionId,
+				searchWitness: witness,
+			},
+		};
+	const failure = state.firstFailure?.attempt;
+	if (failure?.status === RegionCompositionStatus.Unknown)
+		return { attempt: { ...failure, searchWitness: witness } };
+	return {
+		attempt: {
+			status: RegionCompositionStatus.Unknown,
+			reason: 'No complete region candidate was found within the bounded product search.',
+			searchWitness: witness,
+		},
 	};
 }

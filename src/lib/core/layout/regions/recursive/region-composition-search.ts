@@ -5,12 +5,7 @@ import type { RegionGeometryDiagnostic } from '../../geometry/region-geometry-di
 import type { LayoutMeasurements } from '../../layout-types';
 import type { SolvedRecursiveRegion } from '../composition/nested-region-recursive-geometry';
 import type { RecursiveContext } from '../composition/nested-region-recursive-model-adapter';
-import {
-	betterCompositionCost,
-	chooseCompositionIssue,
-	type CompositionCostCandidate,
-	compositionCostCandidate,
-} from '../leaf/region-composition-cost';
+import { betterCompositionCost, compositionCostCandidate } from '../leaf/region-composition-cost';
 import {
 	type enumerateRegionLeafLayoutsWithIncidents,
 	type RegionLeafIncidentSelected,
@@ -18,23 +13,24 @@ import {
 } from '../leaf/region-leaf-layout';
 import type { RegionCompositionModel } from '../model/region-composition-model';
 import {
-	type RegionCompositionSearchWitness,
 	RegionCompositionStatus,
 	type RegionLayoutSelected,
 	type RegionPortalSide,
 } from '../model/region-composition-types';
+import type { RegionIncidentSearchWitness } from '../model/region-incident-contract';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
-import { RegionCompositionSearchCode } from '../model/region-search-evidence';
 import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
 import { regionQualifiedFailure } from './nested-region-recursive-diagnostics';
 import { incidentLeafIds, indexVectors } from './region-composition-product';
 import {
+	compositionSearchOutcome,
 	type DiagnosedCandidate,
 	diagnosedFailure,
 	type RegionRetryState,
 	retryIncidentFailure,
 	retryLeafContractFailure,
+	type SearchState,
 } from './region-recursive-outcome';
 
 interface LeafStream {
@@ -42,6 +38,7 @@ interface LeafStream {
 	readonly iterator: ReturnType<typeof enumerateRegionLeafLayoutsWithIncidents>;
 	exhaustive: boolean;
 	complete: boolean;
+	witness?: RegionIncidentSearchWitness;
 }
 
 export interface LeafSelection {
@@ -58,15 +55,6 @@ export interface RecursiveCandidateInput {
 	readonly measurements: LayoutMeasurements;
 	readonly model: RegionCompositionModel;
 	readonly cache: RegionLocalLayoutCache | undefined;
-}
-
-interface SearchState {
-	attempted: number;
-	exhaustive: boolean;
-	bestDetour?: CompositionCostCandidate;
-	bestBridge?: CompositionCostCandidate;
-	firstFailure?: DiagnosedCandidate;
-	readonly rejectedAlternatives: RegionCompositionSearchWitness['rejectedAlternatives'][number][];
 }
 
 interface PassInput {
@@ -209,6 +197,7 @@ function searchDiagonal(side: SideSearchContext, diagonal: number): SideResult {
 	})) {
 		if (passAttempts.count >= REGION_COMPOSITION_PRODUCT_BUDGET) {
 			pass.state.exhaustive = false;
+			pass.state.compositionBudgetExceeded = true;
 			return { truncated: true };
 		}
 		const result = evaluateProduct(side, indices);
@@ -239,15 +228,14 @@ function searchSide(
 		if (result.sideFailure !== undefined) sideFailure = result.sideFailure;
 		if (searchedAllIndices(pass.leaves, diagonal, selection)) break;
 	}
-	for (const stream of selection.streams.values()) {
-		if (stream.exhaustive && !stream.complete) pass.state.exhaustive = false;
+	for (const id of pass.leaves) {
+		const stream = selection.streams.get(id);
+		if (stream?.exhaustive === true && !stream.complete) {
+			pass.state.exhaustive = false;
+			pass.state.localBudget ??= { regionId: id, witness: defined(stream.witness) };
+		}
 	}
 	return { truncated: false, sideFailure };
-}
-
-function noValidCandidate(state: SearchState): boolean {
-	const hasIssue = state.bestDetour !== undefined || state.bestBridge !== undefined;
-	return !hasIssue && state.firstFailure === undefined;
 }
 
 function newLeafSelection(preserveFirst: boolean): LeafSelection {
@@ -256,7 +244,7 @@ function newLeafSelection(preserveFirst: boolean): LeafSelection {
 
 function recordUnretriableLeaf(result: SideResult, state: SearchState): void {
 	if (result.leafFailure === undefined) return;
-	if (noValidCandidate(state)) throw result.leafFailure;
+	state.leafFailure ??= result.leafFailure;
 	state.exhaustive = false;
 }
 
@@ -298,41 +286,12 @@ export function solveRecursiveCandidate(
 	const relationOrder = new Map(
 		input.graph.relations.map(({ relation }, index) => [relation.id, index]),
 	);
-	const state: SearchState = { attempted: 0, exhaustive: true, rejectedAlternatives: [] };
+	const state: SearchState = {
+		attempted: 0,
+		exhaustive: true,
+		compositionBudgetExceeded: false,
+		rejectedAlternatives: [],
+	};
 	searchPass({ input, solveRoot, leaves, relationOrder, state });
-	const issue = chooseCompositionIssue(state.bestDetour, state.bestBridge);
-	let witness: RegionCompositionSearchWitness = {
-		attempted: state.attempted,
-		exhaustive: state.exhaustive,
-		rejectedAlternatives: state.rejectedAlternatives,
-		bestDetour: state.bestDetour?.cost,
-		bestBridge: state.bestBridge?.cost,
-		bestDetourIndices: state.bestDetour?.indices,
-		bestBridgeIndices: state.bestBridge?.indices,
-	};
-	if (issue !== undefined) {
-		witness = { ...witness, selected: issue.issue };
-		let attempt = issue.selected.attempt;
-		if (leaves.length > 0) attempt = { ...attempt, searchWitness: witness };
-		return { attempt };
-	}
-	if (!state.exhaustive)
-		return {
-			attempt: {
-				status: RegionCompositionStatus.Unknown,
-				code: RegionCompositionSearchCode.SearchBudgetExceeded,
-				reason: 'The bounded region composition search exhausted its alternative budget.',
-				searchWitness: witness,
-			},
-		};
-	const failure = state.firstFailure?.attempt;
-	if (failure?.status === RegionCompositionStatus.Unknown)
-		return { attempt: { ...failure, searchWitness: witness } };
-	return {
-		attempt: {
-			status: RegionCompositionStatus.Unknown,
-			reason: 'No complete region candidate was found within the bounded product search.',
-			searchWitness: witness,
-		},
-	};
+	return compositionSearchOutcome(state, leaves);
 }

@@ -66,6 +66,7 @@ function leafCandidate(
 		if (next.done === true) {
 			stream.exhaustive = true;
 			stream.complete = next.value.exhaustive;
+			stream.witness = next.value;
 		} else stream.candidates.push(next.value);
 	}
 	const candidate = stream.candidates[index];

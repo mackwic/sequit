@@ -24,6 +24,10 @@ import {
 	solveRegionLeafLayoutWithIncidents,
 } from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
 import {
+	type RegionLeafIncidentSelected,
+	UnknownRegionLeafLayoutError,
+} from '../../../../src/lib/core/layout/regions/leaf/region-leaf-layout';
+import {
 	normalizeRegionCompositionModel,
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
@@ -32,8 +36,12 @@ import {
 	type RegionLayoutSelected,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
-import { RegionCompositionSearchCode } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
+import {
+	RegionCompositionSearchCode,
+	RegionSearchProvenance,
+} from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { indexVectors } from '../../../../src/lib/core/layout/regions/recursive/region-composition-product';
@@ -210,8 +218,77 @@ describe('persisted composed incident bridge selection', () => {
 		expect(result.status).toBe(RegionCompositionStatus.Unknown);
 		if (result.status !== RegionCompositionStatus.Unknown) return;
 		expect(result.code).toBe(RegionCompositionSearchCode.SearchBudgetExceeded);
+		expect(result.provenance).toBe(RegionSearchProvenance.Composition);
 		expect(result.searchWitness).toMatchObject({ attempted: 64, exhaustive: false });
 		expect(result.searchWitness?.rejectedAlternatives[0]?.code).toBe(rejectedCode);
+	});
+	it('reports a bounded local leaf with its own identity and search witness', () => {
+		const { bridged } = alternatives();
+		const rejected: RegionLayoutSelected = { ...bridged, portals: [] };
+		const localWitness = { attempted: 3, exhaustive: false, rejectedAlternatives: [] };
+		const localCandidate: RegionLeafIncidentSelected = {
+			status: RegionCompositionStatus.Selected,
+			layout: bridged.layout,
+			ranks: topologicallyRank(preparedGraph),
+			incidents: [],
+			witness: localWitness,
+		};
+		function* localStream() {
+			yield localCandidate;
+			return localWitness;
+		}
+		const result = solveRecursiveCandidate(
+			{ graph: preparedGraph, measurements, model: readyModel, cache: undefined },
+			(_context, selection) => {
+				for (const id of selection.indices.keys())
+					selection.streams.set(id, {
+						candidates: [localCandidate],
+						iterator: localStream(),
+						exhaustive: true,
+						complete: id !== 'lane',
+						witness: localWitness,
+					});
+				return composedForSearch(rejected);
+			},
+		).attempt;
+		expect(result).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+			provenance: RegionSearchProvenance.Incident,
+			regionId: 'lane',
+			witness: localWitness,
+			searchWitness: { attempted: 1, exhaustive: false },
+		});
+	});
+	it('preserves a leaf unknown after a composition was rejected first', () => {
+		const { bridged } = alternatives();
+		const rejected: RegionLayoutSelected = { ...bridged, portals: [] };
+		const localWitness = { attempted: 2, exhaustive: false, rejectedAlternatives: [] };
+		let calls = 0;
+		const result = solveRecursiveCandidate(
+			{ graph: preparedGraph, measurements, model: readyModel, cache: undefined },
+			() => {
+				calls += 1;
+				if (calls === 1) return composedForSearch(rejected);
+				throw new UnknownRegionLeafLayoutError(
+					'Leaf lane exhausted its local routes.',
+					{
+						provenance: RegionSearchProvenance.Incident,
+						code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+						witness: localWitness,
+					},
+					'lane',
+				);
+			},
+		).attempt;
+		expect(result).toMatchObject({
+			status: RegionCompositionStatus.Unknown,
+			code: RegionIncidentUnknownCode.SearchBudgetExceeded,
+			provenance: RegionSearchProvenance.Incident,
+			regionId: 'lane',
+			witness: localWitness,
+			searchWitness: { attempted: 1, exhaustive: false },
+		});
 	});
 	it('prunes exhausted product dimensions even when their limits change during enumeration', () => {
 		const bounds = Array<number>(16).fill(0);
