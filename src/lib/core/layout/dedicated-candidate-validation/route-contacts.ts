@@ -1,7 +1,7 @@
 import { defined } from '../../document/logic-document';
 import { disallowedRouteContacts } from '../bridges/bridge-contact';
 import type { RouteBridgeAnalysis } from '../bridges/bridge-oracle';
-import { indexRouteRuns, RunNeighborDirection } from '../bridges/route-run-index';
+import { type IndexedRun, indexRouteRuns, RunNeighborDirection } from '../bridges/route-run-index';
 import { type RouteRun, routeRuns } from '../bridges/route-runs';
 import { validateSelfContacts } from '../bridges/route-self-contacts';
 import type { LayoutRelation } from '../layout-types';
@@ -9,9 +9,9 @@ import type { RejectedDedicatedCandidate } from './types';
 import { DedicatedCandidateRejectionCode, rejected } from './types';
 
 interface RouteContactIndex {
-	readonly byId: ReadonlyMap<string, number>;
+	readonly pathOrdinals: readonly number[];
 	readonly runsByRoute: readonly (readonly RouteRun[])[];
-	readonly neighbours: (index: number) => readonly RouteRun[];
+	readonly neighbours: (index: number) => readonly IndexedRun[];
 	cursor: number;
 }
 
@@ -20,7 +20,7 @@ function laterRoutes(index: RouteContactIndex, firstIndex: number): readonly num
 	const runs = defined(index.runsByRoute[firstIndex]);
 	for (const position of runs.keys()) {
 		for (const other of index.neighbours(index.cursor + position)) {
-			touching.add(defined(index.byId.get(other.pathId)));
+			touching.add(defined(index.pathOrdinals[other.index]));
 		}
 	}
 	index.cursor += runs.length;
@@ -32,12 +32,20 @@ export function contactFailure(
 	analysis: RouteBridgeAnalysis,
 ): RejectedDedicatedCandidate | undefined {
 	const runsByRoute = routes.map((route) => routeRuns(route));
+	const runs: RouteRun[] = [];
+	const pathOrdinals: number[] = [];
+	for (const [routeIndex, pathRuns] of runsByRoute.entries())
+		for (const run of pathRuns) {
+			runs.push(run);
+			pathOrdinals.push(routeIndex);
+		}
 	const index: RouteContactIndex = {
-		byId: new Map(routes.map((route, position) => [route.id, position] as const)),
+		pathOrdinals,
 		runsByRoute,
-		neighbours: indexRouteRuns(runsByRoute.flat(), {
+		neighbours: indexRouteRuns(runs, {
 			direction: RunNeighborDirection.Later,
 			perpendicularOnly: false,
+			pathOrdinals,
 		}),
 		cursor: 0,
 	};

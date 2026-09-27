@@ -74,7 +74,12 @@ export function evaluateDedicatedLayout(
 	);
 	let routes: ReadonlyMap<string, readonly Point[]> | undefined;
 	if (layeredComponents.length === 0) reserveRouting(workspace, baseGaps);
-	else if (normalComponents.length === 0 || structure.junctionIds.size === 0) {
+	else if (
+		normalComponents.every((component) =>
+			component.ids.every((id) => graph.outgoingByEndpointId.get(id)?.length === 0),
+		) ||
+		structure.junctionIds.size === 0
+	) {
 		const layered = reserveLayeredRouting(workspace, layers);
 		if (layered === undefined) reserveRouting(workspace, baseGaps);
 		else routes = layered.materialize();

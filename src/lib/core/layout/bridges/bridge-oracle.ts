@@ -3,7 +3,7 @@ import { defined } from '../../document/logic-document';
 import { strictCrossing, strictlyBetween } from '../geometry/strict-crossing';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../layout-settings';
 import type { Point } from '../layout-types';
-import { indexRouteRuns, RunNeighborDirection } from './route-run-index';
+import { type IndexedRun, indexRouteRuns, RunNeighborDirection } from './route-run-index';
 import {
 	type RoutedPath,
 	RouteOrientation,
@@ -184,10 +184,10 @@ function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previou
 function recordPairs(
 	scan: BridgeScan,
 	run: RouteRun,
-	previousRuns: readonly RouteRun[],
+	previousRuns: readonly IndexedRun[],
 	charge?: RouteWorkCharge,
 ): void {
-	for (const previous of previousRuns) {
+	for (const { run: previous } of previousRuns) {
 		charge?.(1);
 		const point = strictCrossing(run.start, run.end, previous.start, previous.end);
 		if (point === undefined) continue;

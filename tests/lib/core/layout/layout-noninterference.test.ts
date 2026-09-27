@@ -212,8 +212,24 @@ it('keeps ordinary component rails clear of an independent long-edge component',
 			({ from, to }) => ordinaryIds.has(from) && ordinaryIds.has(to),
 		),
 	};
+	const aRelationIds = ordinary.relations.map(({ id }) => id);
+	expect(aRelationIds).toEqual(['relation-000', 'relation-002']);
+	expect(combined.junctions).toHaveLength(0);
+	expect(
+		combined.relations.every(({ from, to }) => ordinaryIds.has(from) === ordinaryIds.has(to)),
+	).toBe(true);
 	const alone = prepareLayoutDocument(ordinary);
 	const together = prepareLayoutDocument(combined);
+	const bIds = new Set(combined.nodes.map(({ id }) => id).filter((id) => !ordinaryIds.has(id)));
+	expect(
+		combined.relations.some(
+			({ from, to }) =>
+				bIds.has(from) &&
+				bIds.has(to) &&
+				defined(together.ranks.byEndpointId.get(from)) >
+					defined(together.ranks.byEndpointId.get(to)) + 1,
+		),
+	).toBe(true);
 	for (const id of ordinaryIds)
 		expect(together.ranks.byEndpointId.get(id)).toBe(alone.ranks.byEndpointId.get(id));
 	const soloLayout = await layoutGraph(alone.graph, alone.ranks, alone.measurements);
@@ -222,9 +238,7 @@ it('keeps ordinary component rails clear of an independent long-edge component',
 	const combinedValidation = validateDedicatedCandidate({ ...together, layout: combinedLayout });
 	expect(soloValidation, JSON.stringify(soloValidation)).toMatchObject({ valid: true });
 	expect(combinedValidation, JSON.stringify(combinedValidation)).toMatchObject({ valid: true });
-	expect(
-		relationSignature(combinedLayout, combined.layout.direction, ['relation-000', 'relation-002']),
-	).toEqual(
-		relationSignature(soloLayout, ordinary.layout.direction, ['relation-000', 'relation-002']),
+	expect(relationSignature(combinedLayout, combined.layout.direction, aRelationIds)).toEqual(
+		relationSignature(soloLayout, ordinary.layout.direction, aRelationIds),
 	);
 });

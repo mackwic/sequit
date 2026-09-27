@@ -116,6 +116,36 @@ function referenceContactFailure(routes: readonly LayoutRelation[]) {
 	return undefined;
 }
 
+it('compares distinct homonymous routes with the exhaustive contact oracle', () => {
+	const routes: readonly LayoutRelation[] = [
+		{
+			id: 'same',
+			from: 'a',
+			to: 'b',
+			points: [
+				{ x: 0, y: 0 },
+				{ x: 30, y: 0 },
+			],
+		},
+		{
+			id: 'same',
+			from: 'c',
+			to: 'd',
+			points: [
+				{ x: 10, y: 0 },
+				{ x: 40, y: 0 },
+			],
+		},
+	];
+	const analysis = referenceRouteBridgeAnalysis(routes);
+	expect(contactFailure(routes, analysis)).toEqual(referenceContactFailure(routes));
+	expect(referenceContactFailure(routes)).toMatchObject({
+		code: DedicatedCandidateRejectionCode.RouteContact,
+		relationId: 'same',
+		otherRelationId: 'same',
+	});
+});
+
 it('matches exhaustive route contacts and bridges on orthogonal route sets', () => {
 	const coordinate = fc.integer({ min: -100, max: 100 });
 	const route = fc
@@ -127,17 +157,25 @@ it('matches exhaustive route contacts and bridges on orthogonal route sets', () 
 			{ x: endX, y: endY },
 		]);
 	fc.assert(
-		fc.property(fc.array(route, { minLength: 2, maxLength: 10 }), (ways) => {
-			const routes: LayoutRelation[] = ways.map((points, index) => ({
-				id: `relation-${index}`,
-				from: `source-${index}`,
-				to: `target-${index}`,
-				points,
-			}));
-			const expected = referenceRouteBridgeAnalysis(routes);
-			expect(routeBridgeAnalysis(routes)).toEqual(expected);
-			expect(contactFailure(routes, expected)).toEqual(referenceContactFailure(routes));
-		}),
+		fc.property(
+			fc.boolean(),
+			fc.array(route, { minLength: 2, maxLength: 10 }),
+			(homonyms, ways) => {
+				const routes: LayoutRelation[] = ways.map((points, index) => {
+					let routeOrdinal = index;
+					if (homonyms) routeOrdinal = Math.floor(index / 2);
+					return {
+						id: `relation-${routeOrdinal}`,
+						from: `source-${index}`,
+						to: `target-${index}`,
+						points,
+					};
+				});
+				const expected = referenceRouteBridgeAnalysis(routes);
+				expect(routeBridgeAnalysis(routes)).toEqual(expected);
+				expect(contactFailure(routes, expected)).toEqual(referenceContactFailure(routes));
+			},
+		),
 		PROPERTY_PARAMETERS,
 	);
 });

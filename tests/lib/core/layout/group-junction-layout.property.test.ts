@@ -348,6 +348,32 @@ it.each(LAYOUT_CONFIGURATIONS)(
 	},
 );
 
+it('keeps the group and junction disjoint when disconnected empty groups have tall frames', async () => {
+	const configuration = {
+		direction: LayoutDirection.TopToBottom,
+		bias: LayoutBias.Bottom,
+	} as const;
+	const document = interleavedGroupJunctionFixture(configuration, false, true);
+	const measurement = { minimumWidth: 140, minimumHeight: 405, headerHeight: 19, padding: 88 };
+	const { layout } = await layoutDocument(document, {
+		nodes: {
+			member: { width: 100, height: 50 },
+			outside: { width: 100, height: 50 },
+			'chain-first': { width: 100, height: 50 },
+			'chain-last': { width: 100, height: 50 },
+		},
+		groups: {
+			'empty-group': measurement,
+			'empty-inner': measurement,
+			group: measurement,
+			inner: measurement,
+			'separate-group': measurement,
+			'separate-inner': measurement,
+		},
+	});
+	expect(overlaps(boundsFor(layout, 'group'), boundsFor(layout, 'junction'))).toBe(false);
+});
+
 it('keeps generated non-descendant nodes outside every group envelope', async () => {
 	await fc.assert(
 		fc.asyncProperty(

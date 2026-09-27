@@ -8,7 +8,7 @@ interface Envelope {
 	readonly bottom: number;
 }
 
-interface IndexedRun {
+export interface IndexedRun {
 	readonly run: RouteRun;
 	readonly index: number;
 	readonly box: Envelope;
@@ -107,7 +107,7 @@ export interface RunIndexOptions {
 export function indexRouteRuns(
 	runs: readonly RouteRun[],
 	options: RunIndexOptions,
-): (index: number) => readonly RouteRun[] {
+): (index: number) => readonly IndexedRun[] {
 	const { charge, perpendicularOnly } = options;
 	const later = options.direction === RunNeighborDirection.Later;
 	const indexed = runs.map((run, index) => ({ run, index, box: envelope(run) }));
@@ -146,6 +146,6 @@ export function indexRouteRuns(
 			charge?.(1);
 			return first.index - second.index;
 		});
-		return matches.map(({ run }) => run);
+		return matches;
 	};
 }
