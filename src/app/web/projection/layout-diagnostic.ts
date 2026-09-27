@@ -1,5 +1,6 @@
 import { compareCanonicalStrings } from '../../../lib/core/canonical-string';
 import type { LogicDocument } from '../../../lib/core/document/logic-document';
+import { GroupRouteFailure } from '../../../lib/core/layout/layout-types';
 import {
 	UnknownGridCellLayoutError,
 	UnknownLayoutPresentationError,
@@ -21,6 +22,7 @@ export enum LayoutFailureReasonCode {
 	MissingGroupMeasurement = 'missing-group-measurement',
 	MissingJunctionMeasurement = 'missing-junction-measurement',
 	RoutingConstraintCycle = 'routing-constraint-cycle',
+	GroupPassage = 'group-route-no-valid-passage',
 	UnsupportedLaneLayout = 'unsupported-lane-layout',
 	UnknownLaneLayout = 'unknown-lane-layout',
 	UnsupportedRegionLayout = 'unsupported-region-layout',
@@ -33,6 +35,7 @@ interface LayoutFailureReason {
 	readonly code: LayoutFailureReasonCode;
 	readonly message: string;
 	readonly elementId?: string;
+	readonly relationId?: string;
 }
 
 export interface LayoutDiagnostic {
@@ -47,7 +50,13 @@ export interface LayoutDiagnostic {
 	readonly relationIds: readonly string[];
 }
 
-function regionFailureReason(cause: unknown): LayoutFailureReason | undefined {
+function typedFailureReason(cause: unknown): LayoutFailureReason | undefined {
+	if (cause instanceof GroupRouteFailure)
+		return {
+			code: LayoutFailureReasonCode.GroupPassage,
+			relationId: cause.relationId,
+			message: `Aucun passage valide pour la relation « ${cause.relationId} ».`,
+		};
 	if (cause instanceof UnsupportedGridCellLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedRegionLayout,
@@ -76,8 +85,8 @@ function regionFailureReason(cause: unknown): LayoutFailureReason | undefined {
 }
 
 function layoutFailureReason(document: LogicDocument, cause: unknown): LayoutFailureReason {
-	const regionReason = regionFailureReason(cause);
-	if (regionReason !== undefined) return regionReason;
+	const typedReason = typedFailureReason(cause);
+	if (typedReason !== undefined) return typedReason;
 	if (cause instanceof UnsupportedLayoutPresentationError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedLaneLayout,

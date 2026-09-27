@@ -13,8 +13,8 @@ import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './
 
 /** Shape-only eligibility weight; not a bound on route segments or validation work. */
 const MAX_ELIGIBILITY_WEIGHT = 4096;
-const MAX_COMPLETE_PIPELINES = 12;
-const MAX_UNIQUE_PROPOSALS = 48;
+export const MAX_COMPLETE_PIPELINES = 12;
+export const MAX_UNIQUE_PROPOSALS = 48;
 
 type ComponentEvidence = NonNullable<RankOrderSearchWitness['components']>[number];
 

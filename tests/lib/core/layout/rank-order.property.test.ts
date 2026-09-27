@@ -36,6 +36,7 @@ import type {
 	LayoutOptions,
 	LayoutResult,
 } from '../../../../src/lib/core/layout/layout-types';
+import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -76,10 +77,12 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { createYjsEntityMap } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { junctionObstacle } from '../../../support/fixtures/routing-obstacles';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { multirankTwo } from '../../../support/scenarios/dedicated-channel-witnesses';
 
 const bandSizes = fc.array(fc.integer({ min: 0, max: 4 }), { minLength: 1, maxLength: 3 });
 const domainCase = fc
@@ -1901,6 +1904,51 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(result.selected).toBeUndefined();
 		expect(result.unchangedBaseline).toBe(invalid);
 		expect(evaluations).toBe(0);
+	});
+
+	it('recovers from a physically blocked documentary group passage with a valid alternate order', () => {
+		const document: LogicDocument = {
+			...multirankTwo,
+			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Invalid grouped rank recovery graph');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const measurements = layoutMeasurementsFor(document, {
+			groups: {
+				group: { minimumWidth: 28, minimumHeight: 500, headerHeight: 4, padding: 0 },
+			},
+			nodes: { e: { width: 48, height: 60 }, f: { width: 48, height: 60 } },
+		});
+		const structure = prepareLayout(graph, ranks);
+		let documentaryFailure: unknown;
+		try {
+			evaluateDedicatedLayout(structure, measurements, undefined, true);
+		} catch (error) {
+			documentaryFailure = error;
+		}
+		expect(documentaryFailure).toMatchObject({
+			code: 'group-route-no-valid-passage',
+			relationId: 'c-to-f',
+		});
+		expect(documentaryFailure).toBeInstanceOf(GroupRouteFailure);
+		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+		expect(
+			validateDedicatedCandidate({ graph, ranks, measurements, layout: selected.layout }),
+		).toMatchObject({
+			valid: true,
+		});
+		const originalOrder = collectRankOrderDomain(structure).bands;
+		expect(selected.witness.selectedOrder).not.toEqual(originalOrder);
+		expect(selected.witness.rejected).toContainEqual({
+			order: originalOrder,
+			reason: {
+				valid: false,
+				code: DedicatedCandidateRejectionCode.GroupPassage,
+				relationId: 'c-to-f',
+			},
+		});
 	});
 
 	it('selects a valid order when a routed documentary baseline fails independent validation', () => {

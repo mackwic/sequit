@@ -31,12 +31,16 @@ import * as graph from '../../../../src/lib/core/graph/create-graph';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
-import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
+import {
+	layoutMeasurementsFor,
+	layoutMeasurementsForCanvas,
+} from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import {
 	CollaborativeFixture,
 	collaborativeFixture,
 } from '../../../support/fixtures/collaborative-document';
+import { multirankTwo } from '../../../support/scenarios/dedicated-channel-witnesses';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -416,6 +420,30 @@ describe('live document projection', () => {
 			name: LayoutProjectionError.name,
 			diagnostic: {
 				reason: { code: LayoutFailureReasonCode.UnknownFoldedGroupLayout },
+			},
+		});
+	});
+
+	it('preserves an obstructed group relation after every rank order fails', async () => {
+		const document: LogicDocument = {
+			...multirankTwo,
+			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
+		};
+		const measurements = layoutMeasurementsFor(document, {
+			groups: {
+				group: { minimumWidth: 28, minimumHeight: 1000, headerHeight: 4, padding: 0 },
+			},
+			nodes: { e: { width: 96, height: 60 }, f: { width: 96, height: 60 } },
+		});
+		const projection = createSharedCanvasProjection(document);
+		await expect(projection.createCanvasModel(measurements)).rejects.toMatchObject({
+			name: LayoutProjectionError.name,
+			diagnostic: {
+				reason: {
+					code: LayoutFailureReasonCode.GroupPassage,
+					relationId: 'c-to-f',
+					message: 'Aucun passage valide pour la relation « c-to-f ».',
+				},
 			},
 		});
 	});

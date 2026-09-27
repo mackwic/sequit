@@ -464,7 +464,10 @@
 				<h2 class="font-semibold">Échec du calcul de mise en page</h2>
 				<p>Le document courant est conservé. Sa géométrie complète ne peut pas être affichée.</p>
 				{#if display.diagnostic}
-					<p data-layout-reason={display.diagnostic.reason.code}>
+					<p
+						data-layout-reason={display.diagnostic.reason.code}
+						data-layout-relation-id={display.diagnostic.reason.relationId}
+					>
 						{display.diagnostic.reason.message}
 					</p>
 					<p data-document-id={display.diagnostic.documentId}>

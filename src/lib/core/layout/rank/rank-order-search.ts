@@ -11,6 +11,7 @@ import {
 	GroupRouteFailure,
 	type LayoutMeasurements,
 	type LayoutOptions,
+	type LayoutResult,
 } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import {
@@ -101,14 +102,15 @@ export interface RankOrderSearchInput {
 	readonly structure: LayoutStructure;
 	readonly domain: RankOrderDomain;
 	readonly measurements: LayoutMeasurements;
-	readonly baseline: DedicatedLayoutEvaluation;
+	readonly baseline: DedicatedLayoutEvaluation | GroupRouteFailure;
 	readonly evaluate: (order: RankOrder) => DedicatedLayoutEvaluation;
+	readonly admit?: ((layout: LayoutResult) => boolean) | undefined;
 	readonly limits: { readonly completePipelines: number; readonly uniqueProposals: number };
 }
 
 export interface RankOrderSearchResult {
 	readonly selected: ValidRankOrderCandidate | undefined;
-	readonly unchangedBaseline: DedicatedLayoutEvaluation;
+	readonly unchangedBaseline: DedicatedLayoutEvaluation | GroupRouteFailure;
 	readonly witness: RankOrderSearchWitness;
 }
 
@@ -182,6 +184,13 @@ class RankOrderSearch {
 			return;
 		}
 		this.routeRunsInspected += outcome.analysis.inspectedRuns;
+		if (this.input.admit?.(evaluation.result) === false) {
+			this.rejected.push({
+				order,
+				reason: rejected(DedicatedCandidateRejectionCode.IncidentAdmission),
+			});
+			return;
+		}
 		if (documentary) this.documentaryScore = outcome.score;
 		else if (
 			this.documentaryScore !== undefined &&
@@ -217,6 +226,14 @@ class RankOrderSearch {
 		return compareRankOrders(order, best.order) >= 0;
 	}
 
+	rejectGroupPassage(order: RankOrder, failure: GroupRouteFailure): void {
+		this.validations += 1;
+		this.rejected.push({
+			order,
+			reason: rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, failure.relationId),
+		});
+	}
+
 	propose(order: RankOrder): boolean {
 		const key = JSON.stringify(order);
 		if (this.seen.has(key)) return true;
@@ -233,11 +250,7 @@ class RankOrderSearch {
 			this.verify(order, this.input.evaluate(order));
 		} catch (error) {
 			if (!(error instanceof GroupRouteFailure)) throw error;
-			this.validations += 1;
-			this.rejected.push({
-				order,
-				reason: rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, error.relationId),
-			});
+			this.rejectGroupPassage(order, error);
 		}
 		return true;
 	}
@@ -280,7 +293,9 @@ class RankOrderSearch {
 /** Scores only complete, independently validated LayoutResults; the baseline is never rerun. */
 export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrderSearchResult {
 	const search = new RankOrderSearch(input);
-	search.verify(input.domain.bands, input.baseline, true);
+	if (input.baseline instanceof GroupRouteFailure)
+		search.rejectGroupPassage(input.domain.bands, input.baseline);
+	else search.verify(input.domain.bands, input.baseline, true);
 	const documentary = search.selected;
 	if (documentary !== undefined && documentaryNeedsNoSearch(documentary)) {
 		search.stop = RankSearchStop.OptimalBound;

@@ -13,7 +13,6 @@ import {
 	type DedicatedLayoutEvaluation,
 	GroupRouteFailure,
 	type LayoutMeasurements,
-	type LayoutOptions,
 	type LayoutResult,
 } from '../layout-types';
 import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
@@ -24,12 +23,8 @@ import {
 	type SearchBudgets,
 	searchBudgets,
 } from './rank-order-local';
-import {
-	type DedicatedLayoutEvaluator,
-	type RankOrderSearchWitness,
-	RankSearchMode,
-	RankSearchStop,
-} from './rank-order-search';
+import { recoverDocumentaryFailure, type SelectionServices } from './rank-order-recovery';
+import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-search';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 
 interface GlobalChoice {
@@ -40,12 +35,6 @@ interface GlobalChoice {
 	readonly incidentAdmissions: number;
 	readonly finalValidation?: RankOrderSearchWitness['finalValidation'];
 	readonly fallbackComponents: readonly (readonly string[])[];
-}
-
-interface SelectionServices {
-	readonly options: LayoutOptions;
-	readonly evaluate: DedicatedLayoutEvaluator;
-	readonly admit?: ((layout: LayoutResult, ranks: TopologicalRanks) => boolean) | undefined;
 }
 
 interface AssemblyInput {
@@ -307,7 +296,21 @@ export function selectDedicatedRankLayout(
 ): { readonly layout: LayoutResult; readonly witness: RankOrderSearchWitness } {
 	const structure = prepareLayout(graph, ranks);
 	const domain = collectRankOrderDomain(structure);
-	const baseline = services.evaluate(structure, measurements, services.options, true);
+	let baseline: DedicatedLayoutEvaluation;
+	try {
+		baseline = services.evaluate(structure, measurements, services.options, true);
+	} catch (error) {
+		if (!(error instanceof GroupRouteFailure)) throw error;
+		return recoverDocumentaryFailure({
+			ranks,
+			measurements,
+			structure,
+			domain,
+			budgets: searchBudgets(graph, structure, domain),
+			services,
+			failure: error,
+		});
+	}
 	const budgets = searchBudgets(graph, structure, domain);
 	const local = chooseLocal({
 		graph,
