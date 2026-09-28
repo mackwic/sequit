@@ -69,7 +69,10 @@
 			`[data-canvas-entity-key][data-endpoint-id="${CSS.escape(from)}"]`,
 		);
 		const visited: string[] = [];
-		let parent = source?.dataset['nodeGroupId'] ?? source?.dataset['groupParentId'];
+		let parent =
+			source?.dataset['nodeGroupId'] ??
+			source?.dataset['junctionGroupId'] ??
+			source?.dataset['groupParentId'];
 		while (parent !== undefined && !visited.includes(parent)) {
 			if (parent === to) return undefined;
 			visited.push(parent);

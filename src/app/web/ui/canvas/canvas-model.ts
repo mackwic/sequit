@@ -56,6 +56,7 @@ export interface RenderedCanvasGroup extends UnpositionedCanvasGroup {
 
 export interface RenderedCanvasJunction extends UnpositionedCanvasJunction {
 	readonly bounds: Bounds;
+	readonly groupId?: string;
 }
 
 interface CanvasRelationProjection {
@@ -134,6 +135,9 @@ export function createCanvasModel(
 	const bounds = new Map(layout.elements.map((element) => [element.id, element.bounds]));
 	const nodes = new Map(navigation?.document.nodes.map((node) => [node.id, node]));
 	const groups = new Map(navigation?.document.groups.map((group) => [group.id, group]));
+	const junctionGroups = new Map(
+		navigation?.document.junctions.map(({ id, groupId }) => [id, groupId]),
+	);
 	function boundsFor(id: string): Bounds {
 		const value = bounds.get(id);
 		if (!value) throw new Error(`Missing layout bounds: ${id}`);
@@ -207,10 +211,15 @@ export function createCanvasModel(
 				navigation: { ...groupNavigation, groupId: semanticGroup.groupId },
 			};
 		}),
-		junctions: measurement.junctions.map((junction) => ({
-			...junction,
-			bounds: boundsFor(junction.id),
-		})),
+		junctions: measurement.junctions.map((junction) => {
+			const renderedJunction: RenderedCanvasJunction = {
+				...junction,
+				bounds: boundsFor(junction.id),
+			};
+			const groupId = junctionGroups.get(junction.id);
+			if (groupId === undefined) return renderedJunction;
+			return { ...renderedJunction, groupId };
+		}),
 		relations: layout.relations.map(({ id, from, to, points }) => ({
 			id,
 			from,

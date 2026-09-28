@@ -238,6 +238,7 @@
 				tabindex={tabIndexFor(ref)}
 				data-junction-id={junction.id}
 				data-endpoint-id={junction.id}
+				data-junction-group-id={junction.groupId}
 				data-canvas-entity-key={entityKey(ref.kind, ref.id)}
 				style:left={`${junction.bounds.x}px`}
 				style:top={`${junction.bounds.y}px`}
