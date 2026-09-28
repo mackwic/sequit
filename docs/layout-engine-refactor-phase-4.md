@@ -5,7 +5,7 @@ Unique point d'entrée de la phase 4 : une session qui reprend sans historique l
 ## 1. Point de reprise
 
 - **Branche** : `codex/layout-contract-generalization`, tête de code `784460a4` (clôture de la phase 3), suivie du commit de ce document (branche `phase4/handoff`).
-- **Fusion** : dans `main`, **en local**, après `pnpm check` vert ; jamais poussée, pas de PR. Si `main` ne contient pas cette tête, la fusion n'a pas eu lieu : relancer `pnpm check` avant tout travail.
+- **Fusion** : faite le 28 septembre 2026, `main` avancé en local jusqu'à cette tête (non poussé, pas de PR). `pnpm check` était vert partout (4 809 tests web avec couverture, 67 worker, 292 propriétés, 215 E2E Chromium, performance snapshot et incrémentale, WebKit et mobile), **sauf Firefox** : les 55 E2E Firefox échouent au lancement du navigateur (`Could not find profile folder`). Le binaire Playwright `firefox-1543` échoue aussi seul sur `about:blank`, même après `playwright install --force firefox`. Le problème vient donc de l'environnement de la machine, pas du code. Il faut le rétablir, puis relancer `--project=firefox`, avant de pousser.
 - **Outils** : Node et pnpm via `mise exec -- …` (versions de `mise.toml`) ; un worktree par tranche ; formatage **uniquement** par `mise exec -- pnpm exec prettier --config config/prettier.config.js --ignore-path config/prettier.ignore --write <fichiers>`.
 
 | Porte                 | Contenu                                                                               | Qui, quand                         |
