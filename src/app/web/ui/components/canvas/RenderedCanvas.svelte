@@ -184,6 +184,7 @@
 				tabindex={tabIndexFor(ref)}
 				data-group-id={group.id}
 				data-endpoint-id={group.id}
+				data-group-parent-id={group.navigation?.groupId}
 				data-canvas-entity-key={entityKey(ref.kind, ref.id)}
 				data-group-color={group.color}
 				style:--group-color={group.color ?? '#78716c'}

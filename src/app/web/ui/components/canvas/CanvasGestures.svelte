@@ -60,6 +60,24 @@
 		}
 		return undefined;
 	}
+	/** A drop on a group that already encloses the dragged endpoint is not a connection. */
+	function connectionTargetAt(x: number, y: number, from: string): HTMLElement | undefined {
+		const candidate = endpointAt(x, y);
+		const to = candidate?.dataset['endpointId'];
+		if (to === undefined || to === from) return undefined;
+		const source = surface.querySelector<HTMLElement>(
+			`[data-canvas-entity-key][data-endpoint-id="${CSS.escape(from)}"]`,
+		);
+		const visited: string[] = [];
+		let parent = source?.dataset['nodeGroupId'] ?? source?.dataset['groupParentId'];
+		while (parent !== undefined && !visited.includes(parent)) {
+			if (parent === to) return undefined;
+			visited.push(parent);
+			parent = surface.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(parent)}"]`)
+				?.dataset['groupParentId'];
+		}
+		return candidate;
+	}
 	function clear() {
 		if (marquee?.active === true) applySelection(marquee.initial);
 		target?.removeAttribute('data-connection-target');
@@ -162,8 +180,7 @@
 		event.preventDefault();
 		drag = { ...drag, active: true, toX: event.clientX, toY: event.clientY };
 		target?.removeAttribute('data-connection-target');
-		target = endpointAt(event.clientX, event.clientY);
-		if (target?.dataset['endpointId'] === drag.from) target = undefined;
+		target = connectionTargetAt(event.clientX, event.clientY, drag.from);
 		target?.setAttribute('data-connection-target', 'true');
 	}
 	function up(event: PointerEvent) {
@@ -176,11 +193,12 @@
 		}
 		if (drag?.id !== event.pointerId) return;
 		const current = drag;
-		const to = endpointAt(event.clientX, event.clientY)?.dataset['endpointId'];
+		const to = connectionTargetAt(event.clientX, event.clientY, current.from)?.dataset[
+			'endpointId'
+		];
 		suppressClick = current.active;
 		clear();
-		if (current.active && to !== undefined && to !== current.from && enabled)
-			onconnect(current.from, to);
+		if (current.active && to !== undefined && enabled) onconnect(current.from, to);
 	}
 	function click(event: MouseEvent) {
 		if (!suppressClick) return;

@@ -850,6 +850,26 @@ test('double-click creates through a modal; Backspace and the delete action remo
 	await expect(page.locator('[data-node-id]')).toHaveCount(23);
 });
 
+test('dropping a member on its enclosing group background is a no-op', async ({ page }) => {
+	await page.goto('/');
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	const relations = await page.locator('[data-relation-id]').count();
+	const member = page.locator('[data-node-id="traceable-edits"]');
+	const group = page.locator('[data-group-id="use-cases"]');
+	await expect(member).toHaveAttribute('data-node-group-id', 'use-cases');
+	await member.scrollIntoViewIfNeeded();
+	const origin = await member.boundingBox();
+	const header = await group.locator('[data-group-header]').boundingBox();
+	if (!origin || !header) throw new Error('Missing geometry');
+	await page.mouse.move(origin.x + origin.width / 2, origin.y + origin.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(header.x + header.width / 2, header.y + header.height / 2, { steps: 8 });
+	await expect(group).not.toHaveAttribute('data-connection-target');
+	await page.mouse.up();
+	await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
+	await expect(page.getByText('Échec du calcul de mise en page')).toHaveCount(0);
+});
+
 test('deleting a selected relation preserves its endpoints', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
