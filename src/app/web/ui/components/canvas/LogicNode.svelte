@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { entityKey, EntityKind, entityRef } from '../../canvas/canvas-entity';
+	import {
+		activateEntityByKeyboard,
+		activateEntityByPointer,
+	} from '../../canvas/canvas-entity-events';
 	import type { RenderedCanvasNode, UnpositionedCanvasNode } from '../../canvas/canvas-model';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import NodeContent from './NodeContent.svelte';
@@ -49,23 +53,13 @@
 
 	function handleClick(event: MouseEvent) {
 		if (!session || !ref) return;
-		event.stopPropagation();
-		if (event.shiftKey || event.metaKey || event.ctrlKey) session.toggleEntity(ref);
-		else session.selectEntity(ref);
+		activateEntityByPointer(session, ref, event);
 	}
 
 	function handleKeyDown(event: KeyboardEvent) {
 		if (!session || !ref) return;
-		if (event.code === 'Space') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.toggleEntity(ref);
-		} else if (event.code === 'Enter') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.selectEntity(ref);
-			if ('bounds' in node) session.beginNodeMarkdownEdit(node);
-		}
+		if (!activateEntityByKeyboard(session, ref, event)) return;
+		if (event.code === 'Enter' && 'bounds' in node) session.beginNodeMarkdownEdit(node);
 	}
 
 	function handleDoubleClick(event: MouseEvent) {

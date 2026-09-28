@@ -11,6 +11,10 @@
 		entityRef,
 		entityRefFromKey,
 	} from '../../canvas/canvas-entity';
+	import {
+		activateEntityByKeyboard,
+		activateEntityByPointer,
+	} from '../../canvas/canvas-entity-events';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
 	import { renderRelationPaths } from '../../canvas/render-relations';
@@ -60,21 +64,11 @@
 	}
 
 	function handleClick(event: MouseEvent, ref: EntityRef) {
-		event.stopPropagation();
-		if (event.shiftKey || event.metaKey || event.ctrlKey) session.toggleEntity(ref);
-		else session.selectEntity(ref);
+		activateEntityByPointer(session, ref, event);
 	}
 
 	function handleKeyDown(event: KeyboardEvent, ref: EntityRef) {
-		if (event.code === 'Space') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.toggleEntity(ref);
-		} else if (event.code === 'Enter') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.selectEntity(ref);
-		}
+		activateEntityByKeyboard(session, ref, event);
 	}
 
 	function editGroup(event: MouseEvent, ref: EntityRef): void {

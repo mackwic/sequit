@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { entityKey, EntityKind, entityRef } from '../../canvas/canvas-entity';
+	import {
+		activateEntityByKeyboard,
+		activateEntityByPointer,
+	} from '../../canvas/canvas-entity-events';
 	import type { RenderedRelation } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import RelationPath from './RelationPath.svelte';
@@ -23,21 +27,11 @@
 	});
 
 	function handleClick(event: MouseEvent) {
-		event.stopPropagation();
-		if (event.metaKey || event.ctrlKey) session.toggleEntity(ref);
-		else session.selectEntity(ref);
+		activateEntityByPointer(session, ref, event);
 	}
 
 	function handleKeyDown(event: KeyboardEvent) {
-		if (event.code === 'Space') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.toggleEntity(ref);
-		} else if (event.code === 'Enter') {
-			event.preventDefault();
-			event.stopPropagation();
-			session.selectEntity(ref);
-		}
+		activateEntityByKeyboard(session, ref, event);
 	}
 </script>
 

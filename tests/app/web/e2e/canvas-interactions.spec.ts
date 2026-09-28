@@ -336,6 +336,24 @@ test.describe('accessible canvas selection', () => {
 		await expect(group).toHaveAttribute('aria-pressed', 'false');
 	});
 
+	test('toggles a relation with Shift, like every other entity kind', async ({ page }) => {
+		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
+		const relationSelector = '[data-relation-id="data-team-to-ai-content-generation"]';
+		const relation = page.locator(relationSelector);
+
+		await node.click();
+		const point = await visibleRelationPoint(page, relationSelector);
+		await page.keyboard.down('Shift');
+		await page.mouse.click(point.x, point.y);
+		await expect(node).toHaveAttribute('aria-pressed', 'true');
+		await expect(relation).toHaveAttribute('aria-pressed', 'true');
+
+		await page.mouse.click(point.x, point.y);
+		await page.keyboard.up('Shift');
+		await expect(node).toHaveAttribute('aria-pressed', 'true');
+		await expect(relation).toHaveAttribute('aria-pressed', 'false');
+	});
+
 	test('offers the floating toolbar for every selected entity kind', async ({ page }) => {
 		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
 		const group = page.locator('[data-group-id="data-team"]');
