@@ -155,7 +155,7 @@ Coût par tranche de phase 3 : moyenne 135 M, médiane 85 M.
 - Au plus une relecture et une vérification par tranche, guidées par les 5 familles de la section 8.
 - Orchestrateur compacté à 200 k ; une session par vague.
 
-**Budget.** Estimation de l'orchestrateur avant ce découpage : 15 tranches ≈ 1,2 G tokens avec ces leviers (fourchette 1,0 à 1,8 G), 2,0 G sans. Le tableau compte désormais 23 tranches, dont 7 de taille S ou S-M. Mesurer V0 (3 tranches M), en déduire le coût par tranche, extrapoler et soumettre le total à l'utilisateur avant V1.
+**Budget.** Le tableau compte 23 tranches, dont 7 de taille S ou S-M (comptées pour moitié), soit environ 19,5 équivalents M. Sur la base de l'audit (≈ 135 M par tranche sans levier, ≈ 80 M avec), la phase 4 est estimée à **≈ 1,6 G tokens avec ces leviers (fourchette 1,3 à 2,3 G)** et ≈ 2,6 G sans. Mesurer V0 (3 tranches M), recalculer le coût par tranche, et soumettre le total extrapolé à l'utilisateur avant V1.
 
 ## 8. Liste de vérification des writers
 
