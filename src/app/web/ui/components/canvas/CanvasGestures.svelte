@@ -2,6 +2,11 @@
 	import { onDestroy, type Snippet } from 'svelte';
 
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import {
+		isEditableTarget,
+		isUnclaimedKeyboardEvent,
+		isUnmodifiedKeyboardEvent,
+	} from '../../canvas/canvas-event-guard';
 	import { RelativeNodePosition } from '../../canvas/relative-node-creation';
 	import { selectionInsideEnvelope } from '../../canvas/selection-envelope';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
@@ -46,7 +51,6 @@
 	let target = $state<HTMLElement>();
 	let suppressClick = false;
 	onDestroy(clear);
-	const editable = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
 	function endpoint(element: Element | null): HTMLElement | undefined {
 		const result = element?.closest<HTMLElement>('[data-endpoint-id]');
@@ -127,7 +131,7 @@
 			event.altKey
 		)
 			return;
-		if (!(event.target instanceof Element) || event.target.closest(editable)) return;
+		if (!(event.target instanceof Element) || isEditableTarget(event.target)) return;
 		const groupBackground =
 			event.target.closest('[data-group-id]') !== null &&
 			event.target.closest('[data-group-header]') === null;
@@ -229,19 +233,8 @@
 			event.stopPropagation();
 			return;
 		}
-		if (
-			!enabled ||
-			session.editing ||
-			event.defaultPrevented ||
-			event.repeat ||
-			event.isComposing ||
-			event.ctrlKey ||
-			event.metaKey ||
-			event.altKey ||
-			event.shiftKey
-		)
-			return;
-		if (!(event.target instanceof Element) || event.target.closest(editable)) return;
+		if (!enabled || session.editing || !isUnmodifiedKeyboardEvent(event)) return;
+		if (isEditableTarget(event.target)) return;
 		if ((event.key === 'Backspace' || event.key === 'Delete') && session.selectionCount > 0) {
 			event.preventDefault();
 			ondelete();
@@ -250,9 +243,7 @@
 	function relativeKeydown(event: KeyboardEvent) {
 		if (
 			!enabled ||
-			event.defaultPrevented ||
-			event.repeat ||
-			event.isComposing ||
+			!isUnclaimedKeyboardEvent(event) ||
 			event.code !== 'Enter' ||
 			(!event.ctrlKey && !event.metaKey) ||
 			event.altKey ||

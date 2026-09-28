@@ -11,6 +11,10 @@
 	import { type RegionPreview, RegionPreviewKind } from '../../../projection/partial-region-layout';
 	import { SourceDocumentProjectionError } from '../../../projection/source-document-diagnostic';
 	import { createCanvasEntityIndex } from '../../canvas/canvas-entity';
+	import {
+		isNativeControlTarget,
+		isUnmodifiedKeyboardEvent,
+	} from '../../canvas/canvas-event-guard';
 	import type { CanvasMeasurementModel, CanvasModel } from '../../canvas/canvas-model';
 	import {
 		anchorPreservingScroll,
@@ -213,14 +217,9 @@
 			event.target === document.body && viewport?.matches(':hover') === true;
 		if (
 			event.code !== 'Space' ||
-			event.repeat ||
-			event.isComposing ||
-			event.ctrlKey ||
-			event.metaKey ||
-			event.altKey ||
-			event.shiftKey ||
+			!isUnmodifiedKeyboardEvent(event) ||
 			(!focusedHere && !hoveredWithoutControlFocus) ||
-			isNativeControl(event.target) ||
+			isNativeControlTarget(event.target) ||
 			isCanvasEntity(event.target)
 		)
 			return;
@@ -232,13 +231,6 @@
 		if (event.code !== 'Space') return;
 		spacePressed = false;
 		finishPanning();
-	}
-
-	function isNativeControl(target: EventTarget | null): boolean {
-		return (
-			target instanceof Element &&
-			target.closest('button, a, input, textarea, select, [contenteditable="true"]') !== null
-		);
 	}
 
 	function isCanvasBackground(target: EventTarget | null): boolean {
@@ -254,7 +246,7 @@
 	}
 
 	function startPanning(event: PointerEvent) {
-		if (isCanvasBackground(event.target) && !isNativeControl(event.target))
+		if (isCanvasBackground(event.target) && !isNativeControlTarget(event.target))
 			viewport?.focus({ preventScroll: true });
 		if (!spacePressed || event.button !== 0 || !viewport || !isCanvasBackground(event.target))
 			return;
