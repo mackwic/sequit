@@ -1,7 +1,18 @@
 <script lang="ts">
-	import { iconUrl } from '../../icons/phosphor';
+	import { isIconAvailable, loadIconUrl } from '../../icons/phosphor';
 	let { name, size = 16 }: { name: string; size?: number } = $props();
-	let url = $derived(iconUrl(name));
+	let url = $state<string>();
+	$effect(() => {
+		const requested = name;
+		url = undefined;
+		let current = true;
+		void loadIconUrl(requested).then((resolved) => {
+			if (current) url = resolved;
+		});
+		return () => {
+			current = false;
+		};
+	});
 </script>
 
 {#if name !== 'none'}
@@ -18,7 +29,7 @@
 				width={size}
 				height={size}
 			/>
-		{:else}<span class="unavailable">?</span>{/if}
+		{:else if !isIconAvailable(name)}<span class="unavailable">?</span>{/if}
 	</span>
 {/if}
 

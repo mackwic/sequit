@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 
 import { createCanvasMeasurementModel } from '../../../../src/app/web/ui/canvas/canvas-model';
 import { contentPalette } from '../../../../src/app/web/ui/content/content-palette';
-import { iconUrl } from '../../../../src/app/web/ui/icons/phosphor';
+import { isIconAvailable } from '../../../../src/app/web/ui/icons/phosphor';
 import { phosphorIcons } from '../../../../src/app/web/ui/icons/phosphor-catalogue';
 import { WorkshopDocument } from '../../../../src/app/workshop/runtime/workshop-document';
 import { duplicateWorkshopNodes } from '../../../../src/app/workshop/runtime/workshop-node-operations';
@@ -224,9 +224,9 @@ describe('content style contracts', () => {
 				validateLogicDocument(styleDocumentNature(validLogicDocument(), 'goal', { color })).ok,
 			).toBe(true);
 		expect(phosphorIcons.length).toBeGreaterThan(1000);
-		for (const icon of phosphorIcons) expect(iconUrl(icon.id)).toBeDefined();
-		expect(iconUrl('none')).toBeUndefined();
-		expect(iconUrl('custom-library:my-symbol')).toBeUndefined();
-		expect(iconUrl('https://example.com/icon.svg')).toBeUndefined();
+		for (const icon of phosphorIcons) expect(isIconAvailable(icon.id)).toBe(true);
+		expect(isIconAvailable('none')).toBe(false);
+		expect(isIconAvailable('custom-library:my-symbol')).toBe(false);
+		expect(isIconAvailable('https://example.com/icon.svg')).toBe(false);
 	});
 });

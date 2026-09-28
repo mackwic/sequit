@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { iconUrl } from '../../icons/phosphor';
+	import { isIconAvailable } from '../../icons/phosphor';
 	import type { PhosphorIconChoice } from '../../icons/phosphor-catalogue';
 	import Icon from '../ui/Icon.svelte';
 	let { value, onchange }: { value: string; onchange: (value: string) => void } = $props();
@@ -91,7 +91,7 @@
 			Le catalogue n’a pas pu être chargé.
 		</p>
 	{:else}<p>{matches.length} icônes · noms du catalogue en anglais</p>{/if}
-	{#if value !== 'none' && iconUrl(value) === undefined}<p class="unavailable">
+	{#if value !== 'none' && !isIconAvailable(value)}<p class="unavailable">
 			Icône indisponible ici. Sa référence est conservée dans le document.
 		</p>{/if}
 	<button
