@@ -17,14 +17,9 @@ Unique point d'entrée de la phase 4 : une session qui reprend sans historique l
 
 `VITEST_MAX_WORKERS=1` si le test dense (`indexed-route-materialization.test.ts`) dépasse son délai sous charge. `TEST_RELAXATION_BASE=<base>` fixe la base du rapport de relâchements de `quality:precommit`.
 
-**Worktrees non fusionnés** (vérifiés par `git cherry` contre `784460a4`) :
+**Worktrees** : aucun. Le 28 septembre 2026, les branches `phase3/budget-grid` et `phase3/rank-search-k32` (déjà contenues dans la tête) ont été supprimées, ainsi que `phase3/group-detour` (approche rejetée, remplacée par B2) et `phase3/collab-edit-cost`. Cette dernière reposait sur un rollback Yjs et une reprise de checkpoint que `main` a remplacés par une validation avant commit monotone (`df4cec9d`, `437cbda9`) ; sa fusion donnait des conflits dans 11 fichiers.
 
-- `../sequit-budget-grid` (`phase3/budget-grid`) : versions antérieures de `edb7a46d` et `fc25e8b8`, réécrites à l'intégration. À supprimer.
-- `../sequit-rank-k32` (`phase3/rank-search-k32`) : 39 commits, tous équivalents à des commits de la tête. À supprimer.
-- `../sequit-group-detour` (`phase3/group-detour`) : `7e5b217f`, détour certifié autour des groupes étrangers. **Approche rejetée** (correction après placement ; B2 la remplace) : ne pas intégrer.
-- `../sequit-collab-edit-cost` (`phase3/collab-edit-cost`) : 11 commits de collaboration Yjs (isolation du rollback, reprise de checkpoint, budgets d'édition). Hors layout : intégrer ou abandonner sur décision utilisateur.
-
-**Premiers gestes de la session suivante** : vérifier la fusion ; supprimer les deux worktrees obsolètes ; poser à l'utilisateur les trois questions de la section 5 et celle du worktree de collaboration ; lancer V0a avec un brief tiré de la section 4.
+**Premiers gestes de la session suivante** : vérifier que Firefox est rétabli, puis relancer `--project=firefox` ; lancer V0a avec un brief tiré de la section 4. Les décisions de la section 5 sont prises.
 
 ## 2. Objectif et non-objectifs
 
@@ -104,9 +99,9 @@ Tailles : S ≤ 5 fichiers de production, M de 6 à 20 ; aucune tranche L. Chaqu
 - V3 : V3a, puis V3b-e en parallèle, puis V3f.
 - Raison de l'ordre : le modèle transversal passe d'abord pour ne pas retyper deux fois les contrats ; les concepts qui sont des contrats de phase (M5 à M7) arrivent avec leur phase ; déplacements et règle d'import en dernier, sur des interfaces stables.
 
-## 5. Décisions en attente de l'utilisateur (V4)
+## 5. Décisions de l'utilisateur (V4)
 
-Recommandation de l'orchestrateur : **B2 oui, B1 avec B2, B3 dans le même ré-épinglage que B2.**
+**Décidé le 28 septembre 2026 : B1, B2 et B3 acceptés.** B1 et B3 se font dans le même ré-épinglage que B2 (une seule entrée de journal, un seul ré-épinglage des empreintes).
 
 - **B2 — Faut-il planifier les passages autour des enveloppes de groupes pendant le routage, au lieu de les corriger après placement (détour, sinon `GroupRouteFailure`) ?**
   - Plus gros gain de lisibilité et de simplicité : `Envelope` sort de `RoutingLayers.rows` ; la correction de `group-endpoint-routing.ts:253-293` disparaît.
