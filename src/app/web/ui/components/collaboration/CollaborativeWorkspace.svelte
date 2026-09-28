@@ -78,6 +78,7 @@
 	const projection = untrack(() => createSharedCanvasProjection(model));
 	let sourceState = $state.raw(untrack(() => client.readSourceState()));
 	let sourceValid = $derived(sourceState.kind === SourceDocumentStateKind.Valid);
+	let interactive = $derived(connected && sourceValid && !creating && editingGroupId === undefined);
 	onMount(() => {
 		const stop = client.subscribeToSourceState((state) => {
 			sourceState = state;
@@ -127,7 +128,7 @@
 		});
 	}
 	function deleteSelection() {
-		if (!connected || !sourceValid || canvas.editing) return;
+		if (!interactive || canvas.editing) return;
 		const selected = sharedSelection(canvas.selection.values());
 		const relationIds = selected
 			.filter(({ kind }) => kind === Kind.Relation)
@@ -221,7 +222,7 @@
 	<div class="canvas">
 		<CanvasGestures
 			session={canvas}
-			enabled={connected && sourceValid && !creating && editingGroupId === undefined}
+			enabled={interactive}
 			oncreate={(groupId: string | undefined) => {
 				creationGroupId = groupId;
 				creating = true;
@@ -234,6 +235,7 @@
 				document={projection}
 				session={canvas}
 				onGroup={groupSelection}
+				onDelete={deleteSelection}
 				onGroupEdit={(groupId: string) => {
 					editingGroupId = groupId;
 				}}

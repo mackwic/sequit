@@ -28,6 +28,7 @@
 	}
 	let busy = $state(false);
 	let error = $state('');
+	let interactive = $derived(!creating && editingGroup === undefined && !busy);
 	async function execute(action: () => Promise<LogicDocument>): Promise<boolean> {
 		busy = true;
 		try {
@@ -97,7 +98,7 @@
 	}
 	function deleteSelection() {
 		const current = opened;
-		if (!current.ok || !session) return;
+		if (!current.ok || !session || !interactive) return;
 		const selected = [...session.selection.values()];
 		void execute(() =>
 			current.value.deleteElements(
@@ -136,7 +137,7 @@
 	{#if opened.ok && session}
 		<CanvasGestures
 			{session}
-			enabled={!creating && editingGroup === undefined && !busy}
+			enabled={interactive}
 			oncreate={(groupId: string | undefined) => {
 				creationGroupId = groupId;
 				creating = true;
@@ -151,6 +152,7 @@
 				document={opened.value}
 				{session}
 				onGroupEdit={openGroupEditor}
+				onDelete={deleteSelection}
 				onGroup={() => {
 					void groupSelection();
 				}}

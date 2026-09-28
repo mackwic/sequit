@@ -268,9 +268,6 @@
 	onkeydown={keydown}
 >
 	{@render children()}
-	{#if enabled && session.selectionCount > 0 && !session.editing}
-		<button class="delete-selection" type="button" onclick={ondelete}>Supprimer</button>
-	{/if}
 	{#if drag?.active}
 		<svg class="ghost" aria-hidden="true"
 			><line x1={drag.x} y1={drag.y} x2={drag.toX} y2={drag.toY} /></svg
@@ -304,17 +301,6 @@
 	}
 	.gestures :global([data-connection-target]) {
 		filter: brightness(0.94);
-	}
-	.delete-selection {
-		position: absolute;
-		left: 16px;
-		bottom: 16px;
-		z-index: 35;
-		padding: 8px 14px;
-		border: 1px solid #d6d3d1;
-		border-radius: 8px;
-		background: white;
-		cursor: pointer;
 	}
 	.ghost {
 		position: fixed;

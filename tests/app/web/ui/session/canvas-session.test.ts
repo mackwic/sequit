@@ -199,17 +199,20 @@ describe('CanvasSession Markdown editing intents', () => {
 		return { commands: commandPort(() => pending), complete };
 	}
 
-	it('requires one selected node and freezes a value copy of accepted bounds', () => {
+	it('exposes any single selected entity as contextual and edits only nodes', () => {
 		const session = new CanvasSession();
-		expect(session.contextualNodeKey).toBeUndefined();
+		expect(session.contextualEntity).toBeUndefined();
 		expect(session.updateDraft('Ignored without an editor')).toBe(false);
 		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
-		session.selectEntity(entityRef(EntityKind.Group, editableNode.id));
-		expect(session.contextualNodeKey).toBeUndefined();
+		const group = entityRef(EntityKind.Group, editableNode.id);
+		session.selectEntity(group);
+		expect(session.contextualEntity).toEqual(group);
 		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
+		session.toggleEntity(node);
+		expect(session.contextualEntity).toBeUndefined();
 
 		session.selectEntity(node);
-		expect(session.contextualNodeKey).toBe(entityKey(EntityKind.Node, editableNode.id));
+		expect(session.contextualEntity).toEqual(node);
 		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(true);
 		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
 		expect(session.editing).toMatchObject({
@@ -222,7 +225,7 @@ describe('CanvasSession Markdown editing intents', () => {
 			availability: CanvasEditAvailability.Available,
 		});
 		expect(session.editing?.frozenBounds).not.toBe(editableNode.bounds);
-		expect(session.contextualNodeKey).toBeUndefined();
+		expect(session.contextualEntity).toBeUndefined();
 	});
 
 	it('does not save without an active editor', async () => {

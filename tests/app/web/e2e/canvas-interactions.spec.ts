@@ -336,6 +336,52 @@ test.describe('accessible canvas selection', () => {
 		await expect(group).toHaveAttribute('aria-pressed', 'false');
 	});
 
+	test('offers the floating toolbar for every selected entity kind', async ({ page }) => {
+		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
+		const group = page.locator('[data-group-id="data-team"]');
+		const junction = page.locator('[data-junction-id="word-ui-options"]');
+		const relationSelector = '[data-relation-id="data-team-to-ai-content-generation"]';
+		await expect(page.getByRole('button', { name: 'Supprimer', exact: true })).toHaveCount(0);
+
+		await node.click();
+		const nodeBar = page.getByRole('group', { name: 'Node actions' });
+		await expect(nodeBar.getByRole('button')).toHaveText(['Edit', 'Supprimer']);
+
+		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
+		const selectionBar = page.getByRole('group', { name: 'Selection actions' });
+		await expect(selectionBar.getByRole('button')).toHaveText(['Supprimer']);
+		await expect(nodeBar).toHaveCount(0);
+
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		const groupBar = page.getByRole('group', { name: 'Group actions' });
+		await groupBar.getByRole('button', { name: 'Edit group data-team' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Modifier le groupe' });
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toHaveCount(0);
+
+		await junction.click();
+		const junctionBar = page.getByRole('group', { name: 'Junction actions' });
+		await expect(junctionBar.getByRole('button')).toHaveText(['Supprimer']);
+		await junctionBar
+			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
+			.click();
+		await expect(junction).toHaveCount(0);
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+
+		const relationPoint = await visibleRelationPoint(page, relationSelector);
+		await page.mouse.click(relationPoint.x, relationPoint.y);
+		await page
+			.getByRole('group', { name: 'Relation actions' })
+			.getByRole('button', {
+				name: 'Supprimer la relation data-team-to-ai-content-generation',
+				exact: true,
+			})
+			.click();
+		await expect(page.locator(relationSelector)).toHaveCount(0);
+		await expect(group).toHaveCount(1);
+	});
+
 	test('selects nodes with envelopes, composes with Shift, and groups from the floating bar', async ({
 		page,
 	}) => {
@@ -798,7 +844,9 @@ test('double-click creates through a modal; Backspace and the delete action remo
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const existing = page.locator('[data-node-id]').first();
 	await existing.click();
-	await page.getByRole('button', { name: 'Supprimer', exact: true }).click();
+	const existingId = await existing.getAttribute('data-node-id');
+	await expect(page.getByRole('button', { name: 'Supprimer', exact: true })).toHaveCount(0);
+	await page.getByRole('button', { name: `Supprimer le nœud ${existingId}`, exact: true }).click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(23);
 });
 

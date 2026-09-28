@@ -36,6 +36,7 @@
 		hideToolbar = false,
 		oncanvas,
 		onGroup,
+		onDelete,
 		onGroupEdit,
 	}: {
 		document: CanvasProjection;
@@ -43,6 +44,7 @@
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: () => void;
+		onDelete?: () => void;
 		onGroupEdit?: (groupId: string) => void;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
@@ -529,6 +531,8 @@
 			{awareness}
 			{hideToolbar}
 			{onGroup}
+			{onGroupEdit}
+			{onDelete}
 		/>
 	{/if}
 </div>

@@ -91,13 +91,11 @@ export class CanvasSession {
 		return undefined;
 	}
 
-	get contextualNodeKey(): EntityKey | undefined {
+	get contextualEntity(): EntityRef | undefined {
 		if (this.activity.kind !== CanvasActivityKind.Idle || this.selectedEntities.size !== 1) {
 			return undefined;
 		}
-		const selected = [...this.selectedEntities.entries()][0];
-		if (selected?.[1].kind !== EntityKind.Node) return undefined;
-		return selected[0];
+		return [...this.selectedEntities.values()][0];
 	}
 
 	get relativeNodeCreationTarget(): EntityRef | undefined {
