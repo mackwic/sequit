@@ -11,6 +11,7 @@
 		entityRef,
 		entityRefFromKey,
 	} from '../../canvas/canvas-entity';
+	import { focusCanvasEntity } from '../../canvas/canvas-entity-dom';
 	import {
 		activateEntityByKeyboard,
 		activateEntityByPointer,
@@ -83,14 +84,7 @@
 	function focusAndSelect(ref: EntityRef): void {
 		if (!stage) return;
 		session.selectEntity(ref);
-		const nextKey = entityKey(ref.kind, ref.id);
-		for (const candidate of stage.querySelectorAll<HTMLElement | SVGElement>(
-			'[data-canvas-entity-key]',
-		)) {
-			if (candidate.getAttribute('data-canvas-entity-key') !== nextKey) continue;
-			candidate.focus();
-			break;
-		}
+		focusCanvasEntity(stage, entityKey(ref.kind, ref.id));
 	}
 
 	function navigationDirection(code: string): CanvasNavigationDirection | undefined {

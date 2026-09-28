@@ -2,6 +2,7 @@
 	import type { VirtualElement } from '@floating-ui/dom';
 
 	import { entityKey, EntityKind } from '../../canvas/canvas-entity';
+	import { canvasSelectionBounds } from '../../canvas/canvas-entity-dom';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
@@ -32,17 +33,8 @@
 		);
 		return {
 			contextElement: viewportElement,
-			getBoundingClientRect() {
-				const bounds = [...viewportElement.querySelectorAll('[data-canvas-entity-key]')]
-					.filter((element) => selected.has(element.getAttribute('data-canvas-entity-key') ?? ''))
-					.map((element) => element.getBoundingClientRect());
-				if (bounds.length === 0) return new DOMRect();
-				const left = Math.min(...bounds.map((box) => box.left));
-				const top = Math.min(...bounds.map((box) => box.top));
-				const right = Math.max(...bounds.map((box) => box.right));
-				const bottom = Math.max(...bounds.map((box) => box.bottom));
-				return new DOMRect(left, top, right - left, bottom - top);
-			},
+			getBoundingClientRect: () =>
+				canvasSelectionBounds(viewportElement, selected) ?? new DOMRect(),
 		};
 	});
 </script>

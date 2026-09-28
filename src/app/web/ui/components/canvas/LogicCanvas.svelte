@@ -11,6 +11,7 @@
 	import { type RegionPreview, RegionPreviewKind } from '../../../projection/partial-region-layout';
 	import { SourceDocumentProjectionError } from '../../../projection/source-document-diagnostic';
 	import { createCanvasEntityIndex } from '../../canvas/canvas-entity';
+	import { focusCanvasEntity } from '../../canvas/canvas-entity-dom';
 	import {
 		isNativeControlTarget,
 		isUnmodifiedKeyboardEvent,
@@ -299,14 +300,7 @@
 		if (target === undefined || currentViewport === undefined || currentCanvas === undefined)
 			return;
 		void tick().then(() => {
-			for (const candidate of currentViewport.querySelectorAll<HTMLElement | SVGElement>(
-				'[data-canvas-entity-key]',
-			)) {
-				if (candidate.getAttribute('data-canvas-entity-key') !== target) continue;
-				candidate.focus();
-				session.completeFocusRestoration(target);
-				return;
-			}
+			if (focusCanvasEntity(currentViewport, target)) session.completeFocusRestoration(target);
 		});
 	});
 

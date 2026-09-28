@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { entityKey, EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { canvasEntityElement } from '../../canvas/canvas-entity-dom';
 	import Icon from '../ui/Icon.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import FloatingActions from './FloatingActions.svelte';
@@ -31,12 +32,7 @@
 		'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950';
 	let floating = $state<HTMLDivElement>();
 
-	let anchor = $derived.by(() => {
-		const key = entityKey(entity.kind, entity.id);
-		return [...viewportElement.querySelectorAll('[data-canvas-entity-key]')].find(
-			(element) => element.getAttribute('data-canvas-entity-key') === key,
-		);
-	});
+	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
 </script>
 
 <CanvasShortcut
