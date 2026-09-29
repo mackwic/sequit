@@ -188,20 +188,29 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(secondRelation)).toBe(0);
 	});
 
-	it('reserves two distinct local exterior tracks for concurrent long relations', () => {
+	it('reserves two distinct local exterior tracks for concurrent blocked long relations', () => {
 		const reserve = layerPassages({
-			...input([['target', 'other-target'], ['ordinary'], ['source', 'other-source']], {
-				target: box(0, 0),
-				'other-target': box(0, 0),
-				ordinary: box(-200, 120),
-				source: box(0, 240),
-				'other-source': box(0, 240),
-			}),
+			...input(
+				[
+					['target', 'other-target'],
+					['ordinary', 'junction'],
+					['source', 'other-source'],
+				],
+				{
+					target: box(0, 0),
+					'other-target': box(0, 0),
+					ordinary: box(-200, 120),
+					junction: box(0, 120, 28),
+					source: box(0, 240),
+					'other-source': box(0, 240),
+				},
+			),
 			componentByEndpointId: new Map([
 				['target', 1],
 				['other-target', 1],
 				['source', 1],
 				['other-source', 1],
+				['junction', 1],
 				['ordinary', 0],
 			]),
 		});
@@ -280,7 +289,7 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 				{
 					target: box(480, 0),
 					'other-target': box(480, 0),
-					ordinary: box(400, 120),
+					ordinary: box(440, 120, 160),
 					junction: box(600, 120),
 					source: box(400, 240),
 					'other-source': box(400, 240),

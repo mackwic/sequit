@@ -308,8 +308,8 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		foreignGroupObstacles: foreignGroups,
 		layerSpan: [targetLayer, sourceLayer],
 	};
-	selection.candidates.push(...preferred);
 	selection.candidates.push(sourceCoordinate, targetCoordinate);
+	selection.candidates.push(...preferred);
 	selection.candidates.push(
 		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
 	);
