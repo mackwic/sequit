@@ -121,7 +121,9 @@ function matchingBands(
 	for (const [index, location] of local.locations.entries()) {
 		const ids = defined(local.bands[index]);
 		const candidate = indices.find((globalIndex) => {
-			if (defined(global.locations[globalIndex]).rank !== location.rank) return false;
+			const globalLocation = defined(global.locations[globalIndex]);
+			if (globalLocation.rank !== location.rank) return false;
+			if (globalLocation.container !== location.container) return false;
 			const original = defined(global.bands[globalIndex]);
 			return original.length === ids.length && ids.every((id) => original.includes(id));
 		});

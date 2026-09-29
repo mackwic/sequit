@@ -107,10 +107,12 @@ export function placeElements(
 	const gaps = modifiedGaps ?? rankGaps;
 	const channels = modifiedChannels ?? channelGaps;
 	const { graph } = structure;
-	const adjacency = {
-		parents: graph.outgoingByEndpointId,
-		children: graph.predecessorsByEndpointId,
-		containerOf: (id: string) => graph.endpointsById.get(id)?.entity.groupId,
+	const families = {
+		graph,
+		ranks: structure.ranks.byEndpointId,
+		hierarchy: structure.hierarchy,
+		groups: measurements.groups,
+		junctionIds: structure.junctionIds,
 	};
 	for (const [index, component] of structure.components.entries()) {
 		placement.components[index] = placeComponent({
@@ -120,7 +122,7 @@ export function placeElements(
 			primaryBandSizes: measurements.primaryBandSizes,
 			rankGap: measurements.rankGap,
 			rankGaps: gaps,
-			adjacency,
+			families,
 			junctions: structure.junctions,
 			channelGaps: channels,
 			transverseCenters: placement.transverseCenters,

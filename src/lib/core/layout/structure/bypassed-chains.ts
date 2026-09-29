@@ -1,6 +1,6 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import type { RankedComponent } from './placement-rows';
+import { weaklyConnectedComponents } from './layout-components';
 
 export interface BypassedChain {
 	readonly ids: readonly string[];
@@ -31,10 +31,12 @@ function chainIn(
 	return { ids, links, bypass };
 }
 
-/** A whole component in one containment context, with an ordinary chain and its direct bypass. */
+/**
+ * A whole relation component in one containment context, with an ordinary chain and its direct
+ * bypass. A block may gather several such components in one placement component.
+ */
 export function bypassedChains(
 	graph: LogicGraph,
-	components: readonly RankedComponent[],
 	ranks: ReadonlyMap<string, number>,
 ): readonly BypassedChain[] {
 	const outgoing = new Map<string, LogicRelation[]>();
@@ -44,13 +46,13 @@ export function bypassedChains(
 		outgoing.set(relation.from, links);
 	}
 	const chains: BypassedChain[] = [];
-	for (const component of components) {
-		if (component.ids.length < 3) continue;
-		const endpoints = component.ids.map((id) => defined(graph.endpointsById.get(id)));
+	for (const component of weaklyConnectedComponents(graph)) {
+		if (component.length < 3) continue;
+		const endpoints = component.map((id) => defined(graph.endpointsById.get(id)));
 		if (endpoints.some(({ kind }) => kind !== EndpointKind.Node)) continue;
 		const contexts = new Set(endpoints.map(({ entity }) => entity.groupId));
 		if (contexts.size !== 1) continue;
-		const ids = [...component.ids].sort((a, b) => defined(ranks.get(a)) - defined(ranks.get(b)));
+		const ids = [...component].sort((a, b) => defined(ranks.get(a)) - defined(ranks.get(b)));
 		if (ids.some((id, index) => ranks.get(id) !== index)) continue;
 		const chain = chainIn(ids, outgoing);
 		if (chain !== undefined) chains.push(chain);

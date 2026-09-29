@@ -1,9 +1,9 @@
 import { compareCanonicalStrings } from '../../canonical-string';
-import { defined, EndpointKind } from '../../document/logic-document';
+import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
-import type { RankOrderDomain } from './rank-ordering';
+import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
 
 interface LayeredRelation {
 	readonly from: string;
@@ -13,27 +13,13 @@ interface LayeredRelation {
 	readonly intermediate: readonly { readonly rank: number; readonly id: string }[];
 }
 
-function topologyRows(structure: LayoutStructure, domain: RankOrderDomain) {
+/** Ordinary then junction ids of every component row, components one after the other. */
+function topologyRows(structure: LayoutStructure): string[][] {
 	const rows: string[][] = [];
-	const endpointRanks = new Map<string, number>();
-	const movable = new Map<number, number>();
-	for (const component of structure.components) {
-		const offset = rows.length;
-		for (const [rank, ordinary] of component.rows.ordinary.entries()) {
-			const junction = defined(component.rows.junction[rank]);
-			const ids = [...ordinary, ...junction];
-			rows.push(ids);
-			for (const id of ids) endpointRanks.set(id, offset + rank);
-		}
-	}
-	let offset = 0;
-	for (const [componentIndex, component] of structure.components.entries()) {
-		for (const [bandIndex, location] of domain.locations.entries())
-			if (location.componentIndex === componentIndex)
-				movable.set(offset + location.rank, bandIndex);
-		offset += component.rows.ordinary.length;
-	}
-	return { rows, endpointRanks, movable };
+	for (const component of structure.components)
+		for (const [rank, ordinary] of component.rows.ordinary.entries())
+			rows.push([...ordinary, ...defined(component.rows.junction[rank])]);
+	return rows;
 }
 
 function appendSegments(
@@ -128,35 +114,25 @@ function compareRowEntries(left: RowEntry, right: RowEntry): number {
 
 /** Topology only: physical node widths, packing and rail coordinates never enter this oracle. */
 export class RankTopologyOracle {
-	private readonly rows: readonly (readonly string[])[];
-	private readonly movable: ReadonlyMap<number, number>;
+	private readonly domain: RankOrderDomain;
 	private readonly relations: readonly LayeredRelation[];
 	private readonly segments: readonly RankOrderRelation[];
 
 	constructor(structure: LayoutStructure, domain: RankOrderDomain) {
-		const { rows, endpointRanks, movable } = topologyRows(structure, domain);
+		const endpointRanks = new Map<string, number>();
+		for (const [rank, ids] of topologyRows(structure).entries())
+			for (const id of ids) endpointRanks.set(id, rank);
 		const { relations, segments } = layeredSegments(
 			structure.graph.effectiveRelations,
 			endpointRanks,
 		);
-		this.rows = rows;
-		this.movable = movable;
+		this.domain = domain;
 		this.relations = relations;
 		this.segments = segments;
 	}
 
 	count(structure: LayoutStructure, order: RankOrder, maximum = Number.POSITIVE_INFINITY): number {
-		const rows = this.rows.map((row, rank) => {
-			const bandIndex = this.movable.get(rank);
-			if (bandIndex === undefined) return [...row];
-			let ordinaryIndex = 0;
-			return row.map((id) => {
-				if (structure.graph.endpointsById.get(id)?.entity.kind !== EndpointKind.Node) return id;
-				const chosen = defined(order[bandIndex])[ordinaryIndex];
-				ordinaryIndex += 1;
-				return defined(chosen);
-			});
-		});
+		const rows = topologyRows(applyRankOrder(structure, this.domain, order));
 		const positions = transversePositions(structure, rows);
 		const dummies = rows.map((): RowEntry[] => []);
 		for (const relation of this.relations) {

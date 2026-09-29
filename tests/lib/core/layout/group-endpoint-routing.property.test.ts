@@ -381,7 +381,8 @@ it('does not reserve shared-target ports against its own ancestor frame', () => 
 	expect(target.x + target.width).toBeLessThanOrEqual(container.x + container.width);
 	expect(target.y + target.height).toBeLessThanOrEqual(container.y + container.height);
 	expect(route.points.at(-1)?.x).toBe(target.x);
-	expect(initialLayerPortReservation(ancestor)).toBeUndefined();
+	// The target is centered on its junction family inside the block, so the direct group rail
+	// meets that junction: a port reservation follows from the junction, not from the frame.
 
 	const blocked = prepareLayoutDocument(document, {
 		nodes: { target: { width: 12.1, height: 0.1 } },

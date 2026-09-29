@@ -17,6 +17,7 @@ import type { NodeRouting } from './routing/reserve-node-routing';
 import { improvesRoutes } from './routing/route-cost';
 import { directRoutingSpace } from './routing/routing-space';
 import { bypassedChains } from './structure/bypassed-chains';
+import { weaklyConnectedComponents } from './structure/layout-components';
 import type { LayoutStructure } from './structure/prepare-layout';
 export interface LayeredRoutingResult {
 	readonly materialize: () => ReadonlyMap<string, readonly Point[]>;
@@ -91,7 +92,7 @@ export function reserveLayeredRouting(
 		});
 	if (structure.junctionIds.size === 0 && !skipsOrdinaryRows) return undefined;
 	const alignment = alignBypassedChains(
-		bypassedChains(structure.graph, structure.components, structure.ranks.byEndpointId),
+		bypassedChains(structure.graph, structure.ranks.byEndpointId),
 		measurements.sizes,
 		frame.vertical,
 	);
@@ -103,9 +104,10 @@ export function reserveLayeredRouting(
 		ranks: structure.ranks.byEndpointId,
 		junctionIds: structure.junctionIds,
 		sizes: measurements.sizes,
+		// Relation components: a block gathers several of them without connecting their routes.
 		componentByEndpointId: new Map(
-			workspace.structure.components.flatMap((component, index) =>
-				component.ids.map((id) => [id, index] as const),
+			weaklyConnectedComponents(workspace.structure.graph).flatMap((ids, index) =>
+				ids.map((id) => [id, index] as const),
 			),
 		),
 	};

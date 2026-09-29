@@ -9,68 +9,46 @@ export interface BranchAlignment {
 	readonly offsets?: ReadonlyMap<string, number> | undefined;
 }
 
-/** The graph relations families follow, independent of any one row. */
-export interface FamilyAdjacency {
-	/** Outgoing adjacency: an endpoint's parents sit in the previous row. */
-	readonly parents: ReadonlyMap<string, readonly string[]>;
-	/** Incoming adjacency: an endpoint's children sit in the next row. */
-	readonly children: ReadonlyMap<string, readonly string[]>;
-	/** Direct container of an endpoint; undefined at the root. */
-	readonly containerOf: (id: string) => string | undefined;
+/** Related endpoints of each row item, by rank: parents in the previous row, children in the next. */
+export interface FamilyLinks {
+	readonly down: readonly ReadonlyMap<string, readonly string[]>[];
+	readonly up: readonly ReadonlyMap<string, readonly string[]>[];
+	/** Endpoints inside a block item carrying its links to the next row; the block centers them. */
+	readonly upAnchors?: readonly ReadonlyMap<string, readonly string[]>[] | undefined;
 }
 
 export interface FamilyAlignmentInput {
+	/** Row items by rank: endpoints, or blocks standing for a whole group. */
 	readonly rows: readonly (readonly string[])[];
-	readonly adjacency: FamilyAdjacency;
-	/** Junctions are transparent: a family continues through their rails. */
-	readonly junctionIds: ReadonlySet<string>;
-	readonly bounds: Map<string, MutableBounds>;
+	readonly links: FamilyLinks;
+	readonly bounds: ReadonlyMap<string, MutableBounds>;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
+	/** A multi-row item stays put in a row, as a wall for its neighbors. */
+	readonly isWall?: ((item: string, rank: number, sign: 1 | -1) => boolean) | undefined;
+	/** Moves an item rigidly; a block carries its whole content. */
+	readonly move?: ((item: string, shift: number) => void) | undefined;
+	/** Free space between two neighbor items; the item gap by default. */
+	readonly gapBetween?: ((left: string, right: string) => number) | undefined;
 }
 
-/** Consecutive row members sharing exactly the same related endpoints in the neighbor row. */
+/** Consecutive row items sharing exactly the same related endpoints in the neighbor row. */
 interface Family {
 	readonly members: string[];
 	readonly related: readonly string[];
-	/** A member related across containers stays put, as a wall for its neighbors. */
 	readonly fixed: boolean;
+	/** Endpoints centered on the related ones; the members themselves by default. */
+	readonly anchors?: string[] | undefined;
 }
 
 /** Families of every row, toward the previous row (down) and toward the next row (up). */
 interface FamilyPlan {
-	readonly parents: ReadonlyMap<string, readonly string[]>;
 	readonly down: readonly (readonly Family[])[];
 	readonly up: readonly (readonly Family[])[];
 }
 
-interface PlanPass {
-	readonly input: FamilyAlignmentInput;
-	readonly edges: ReadonlyMap<string, readonly string[]>;
-	readonly rowOf: ReadonlyMap<string, number>;
-	readonly neighborRank: number;
-}
-
-/** Rows and adjacency are fixed for a prepared structure; only bounds change between calls. */
-const plans = new WeakMap<readonly (readonly string[])[], FamilyPlan>();
-
-/** Related endpoints in the neighbor row, looking through junctions only when there are any. */
-function relatedAcrossJunctions(id: string, pass: PlanPass): readonly string[] {
-	const { edges, rowOf, neighborRank, input } = pass;
-	const direct = edges.get(id) ?? [];
-	if (!direct.some((next) => input.junctionIds.has(next)))
-		return direct.filter((next) => rowOf.get(next) === neighborRank);
-	const found = new Set<string>();
-	const seen = new Set<string>();
-	const pending = [...direct];
-	for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-		if (seen.has(next)) continue;
-		seen.add(next);
-		if (rowOf.get(next) === neighborRank) found.add(next);
-		else if (input.junctionIds.has(next)) pending.push(...(edges.get(next) ?? []));
-	}
-	return [...found];
-}
+/** Rows and links are fixed for a prepared structure; only bounds change between calls. */
+const plans = new WeakMap<FamilyLinks, FamilyPlan>();
 
 /** Identical adjacency lists are the common case; parallel relations may repeat an endpoint. */
 function sameMembers(left: readonly string[], right: readonly string[]): boolean {
@@ -82,49 +60,40 @@ function sameMembers(left: readonly string[], right: readonly string[]): boolean
 	return true;
 }
 
-/**
- * A family only follows related endpoints of its own container: aligning across containers
- * would fight the separation of their group envelopes.
- */
-function sameContainer(id: string, related: readonly string[], input: FamilyAlignmentInput) {
-	const { containerOf } = input.adjacency;
-	const container = containerOf(id);
-	return related.every((other) => containerOf(other) === container);
-}
-
-function rowFamilies(row: readonly string[], pass: PlanPass): readonly Family[] {
+function rowFamilies(
+	input: FamilyAlignmentInput,
+	rank: number,
+	sign: 1 | -1,
+	links: ReadonlyMap<string, readonly string[]> | undefined,
+): readonly Family[] {
 	const result: Family[] = [];
-	for (const id of row) {
-		const related = relatedAcrossJunctions(id, pass);
-		if (!sameContainer(id, related, pass.input)) {
+	for (const id of defined(input.rows[rank])) {
+		if (input.isWall?.(id, rank, sign) === true) {
 			result.push({ members: [id], related: [], fixed: true });
 			continue;
 		}
+		const related = links?.get(id) ?? [];
+		let anchors: readonly string[] = [id];
+		if (sign < 0) anchors = input.links.upAnchors?.[rank]?.get(id) ?? anchors;
 		const previous = result.at(-1);
 		const open = previous !== undefined && !previous.fixed;
 		const joins = open && related.length > 0;
-		if (joins && sameMembers(previous.related, related)) previous.members.push(id);
-		else result.push({ members: [id], related, fixed: false });
+		if (joins && sameMembers(previous.related, related)) {
+			previous.members.push(id);
+			previous.anchors?.push(...anchors);
+		} else result.push({ members: [id], related, fixed: false, anchors: [...anchors] });
 	}
 	return result;
 }
 
 function familyPlan(input: FamilyAlignmentInput): FamilyPlan {
-	const cached = plans.get(input.rows);
-	if (cached?.parents === input.adjacency.parents) return cached;
-	const rowOf = new Map<string, number>();
-	for (const [rank, row] of input.rows.entries()) for (const id of row) rowOf.set(id, rank);
-	const { parents, children } = input.adjacency;
+	const cached = plans.get(input.links);
+	if (cached !== undefined) return cached;
 	const plan = {
-		parents,
-		down: input.rows.map((row, rank) =>
-			rowFamilies(row, { input, edges: parents, rowOf, neighborRank: rank - 1 }),
-		),
-		up: input.rows.map((row, rank) =>
-			rowFamilies(row, { input, edges: children, rowOf, neighborRank: rank + 1 }),
-		),
+		down: input.rows.map((_, rank) => rowFamilies(input, rank, 1, input.links.down[rank])),
+		up: input.rows.map((_, rank) => rowFamilies(input, rank, -1, input.links.up[rank])),
 	};
-	plans.set(input.rows, plan);
+	plans.set(input.links, plan);
 	return plan;
 }
 
@@ -154,7 +123,10 @@ function familyItem(family: Family, input: FamilyAlignmentInput, sign: 1 | -1): 
 	const size = own.end - own.start;
 	if (family.related.length === 0) return { center: ownCenter, size, fixed: family.fixed };
 	const related = transverseEnvelope(family.related, bounds, vertical);
-	const target = center(related) + portOffset(family, input, sign);
+	// A block moves so that the endpoints it holds, not its frame, face the related ones.
+	const anchored = center(transverseEnvelope(family.anchors ?? family.members, bounds, vertical));
+	const offset = ownCenter - anchored;
+	const target = center(related) + portOffset(family, input, sign) + offset;
 	return { center: ownCenter, size, fixed: family.fixed, target };
 }
 
@@ -163,7 +135,13 @@ function familyItem(family: Family, input: FamilyAlignmentInput, sign: 1 | -1): 
  * blocks. The row order and the minimum gaps are preserved; the row may grow.
  */
 function alignRow(families: readonly Family[], input: FamilyAlignmentInput, sign: 1 | -1): void {
-	const items = families.map((family) => familyItem(family, input, sign));
+	const items = families.map((family, index) => {
+		const item = familyItem(family, input, sign);
+		const previous = families[index - 1]?.members.at(-1);
+		const first = defined(family.members[0]);
+		if (previous === undefined || input.gapBetween === undefined) return item;
+		return { ...item, gap: input.gapBetween(previous, first) };
+	});
 	let centers: readonly number[];
 	const [single] = items;
 	const alone = items.length === 1 && single !== undefined;
@@ -172,8 +150,11 @@ function alignRow(families: readonly Family[], input: FamilyAlignmentInput, sign
 	for (const [index, family] of families.entries()) {
 		const shift = defined(centers[index]) - defined(items[index]).center;
 		if (shift === 0) continue;
-		for (const id of family.members)
-			translateTransversely(defined(input.bounds.get(id)), shift, input.vertical);
+		for (const id of family.members) {
+			if (input.move === undefined)
+				translateTransversely(defined(input.bounds.get(id)), shift, input.vertical);
+			else input.move(id, shift);
+		}
 	}
 }
 
@@ -200,4 +181,49 @@ export function alignFamilies(input: FamilyAlignmentInput): void {
 	sweep(input, plan, 1);
 	sweep(input, plan, -1);
 	sweep(input, plan, 1);
+}
+
+interface LinkPass {
+	readonly edges: ReadonlyMap<string, readonly string[]>;
+	readonly junctionIds: ReadonlySet<string>;
+	readonly rowOf: ReadonlyMap<string, number>;
+	readonly neighborRank: number;
+}
+
+/** Related endpoints in the neighbor row, looking through junctions only when there are any. */
+function relatedAcrossJunctions(id: string, pass: LinkPass): readonly string[] {
+	const { edges, rowOf, neighborRank, junctionIds } = pass;
+	const direct = edges.get(id) ?? [];
+	if (!direct.some((next) => junctionIds.has(next)))
+		return direct.filter((next) => rowOf.get(next) === neighborRank);
+	const found = new Set<string>();
+	const seen = new Set<string>();
+	const pending = [...direct];
+	for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+		if (seen.has(next)) continue;
+		seen.add(next);
+		if (rowOf.get(next) === neighborRank) found.add(next);
+		else if (junctionIds.has(next)) pending.push(...(edges.get(next) ?? []));
+	}
+	return [...found];
+}
+
+/** Links of flat rows, every endpoint its own item: families follow direct relations. */
+export function flatFamilyLinks(input: {
+	readonly rows: readonly (readonly string[])[];
+	readonly parents: ReadonlyMap<string, readonly string[]>;
+	readonly children: ReadonlyMap<string, readonly string[]>;
+	readonly junctionIds: ReadonlySet<string>;
+}): FamilyLinks {
+	const rowOf = new Map<string, number>();
+	for (const [rank, row] of input.rows.entries()) for (const id of row) rowOf.set(id, rank);
+	const { junctionIds } = input;
+	const collect = (edges: ReadonlyMap<string, readonly string[]>, offset: number) =>
+		input.rows.map((row, rank) => {
+			const pass = { edges, junctionIds, rowOf, neighborRank: rank + offset };
+			const links = new Map<string, readonly string[]>();
+			for (const id of row) links.set(id, relatedAcrossJunctions(id, pass));
+			return links;
+		});
+	return { down: collect(input.parents, -1), up: collect(input.children, 1) };
 }

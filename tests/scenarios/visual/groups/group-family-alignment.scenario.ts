@@ -2,6 +2,7 @@ import { LayoutDirection } from '../../../../src/lib/core/document/logic-documen
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import {
 	familiesAroundGroup,
+	familyBeneathGroup,
 	familyBeneathMember,
 	familyBesideGroup,
 	familySplitByGroup,
@@ -36,7 +37,6 @@ const beside: LayoutScenario = {
 	label: 'Groupe à côté : la descendance reste sous son parent',
 	group: 'Groupes et familles',
 	order: 610,
-	expectedFailure: true,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const { data, groups } = familyBesideGroup(direction);
 		return layoutNodes({ ...data, direction, bias, groups });
@@ -46,6 +46,23 @@ const beside: LayoutScenario = {
 		check.group('g').isClearOfForeignBoxes(FRAME_CLEARANCE);
 		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow().haveNoCrossing();
 		centersFamilies(layout, BESIDE_FAMILIES);
+	},
+};
+
+const beneathGroup: LayoutScenario = {
+	id: 'group-family-beneath-group',
+	label: 'Groupe au-dessus : des enfants pointent vers le groupe',
+	group: 'Groupes et familles',
+	order: 620,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		const { data, groups } = familyBeneathGroup(direction);
+		return layoutNodes({ ...data, direction, bias, groups });
+	},
+	assert(layout) {
+		const check = AssertLayout(layout);
+		check.group('w').isClearOfForeignBoxes(FRAME_CLEARANCE);
+		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow().haveNoCrossing();
+		centersFamilies(layout, [[['k1', 'k2'], 'w']]);
 	},
 };
 
@@ -97,7 +114,6 @@ const split: LayoutScenario = {
 	label: 'Famille coupée par un groupe : l’enveloppe inclut le bloc',
 	group: 'Groupes et familles',
 	order: 650,
-	expectedFailure: true,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
 		const { data, groups } = familySplitByGroup(direction);
 		return layoutNodes({ ...data, direction, bias, groups });
@@ -132,5 +148,5 @@ export const scenario: LayoutScenario = {
 	...beside,
 	id: 'group-family-alignment',
 	label: 'Familles et groupes : ne pas partager les rangées à travers un groupe',
-	variants: [beside, beneathMember, around, split, ungrouped],
+	variants: [beside, beneathGroup, beneathMember, around, split, ungrouped],
 };

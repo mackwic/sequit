@@ -13,7 +13,9 @@ import type { Size } from '../layout-types';
 import type { JunctionPlacement } from '../structure/junction-structure';
 import type { PlacementRows } from '../structure/placement-rows';
 import { alignComponentCenters } from './align-component-centers';
-import { alignFamilies, type BranchAlignment, type FamilyAdjacency } from './align-families';
+import type { BranchAlignment } from './align-families';
+import { arrangeFamilies, clampBlockJunctions } from './block-placement';
+import type { FamilyContext } from './block-plan';
 import { junctionCrossPositions, railSpan } from './junction-rails';
 import { measureRows, type RowMetrics } from './row-metrics';
 
@@ -30,7 +32,8 @@ export interface ComponentPlacementInput {
 	readonly primaryBandSizes: readonly number[];
 	readonly rankGap: number;
 	readonly rankGaps: ReadonlyMap<number, number>;
-	readonly adjacency: FamilyAdjacency | undefined;
+	/** Families to center and blocks to keep rigid; none keeps the plain centered rows. */
+	readonly families: FamilyContext | undefined;
 	readonly junctions?: ReadonlyMap<string, JunctionPlacement>;
 	readonly channelGaps?: ReadonlyMap<number, readonly number[]> | undefined;
 	readonly transverseCenters?: ReadonlyMap<string, number> | undefined;
@@ -124,19 +127,22 @@ export function placeComponent(input: ComponentPlacementInput): ComponentLayout 
 	const bounds = new Map<string, MutableBounds>();
 	const placement = { input, metrics, bounds };
 	placeOrdinaryRows(placement);
-	const { adjacency } = input;
-	if (adjacency !== undefined)
-		alignFamilies({
-			rows: input.rows.ordinary,
-			adjacency,
-			junctionIds: new Set(input.junctions?.keys()),
+	const { families } = input;
+	const rows = input.rows;
+	if (families !== undefined)
+		arrangeFamilies({
+			rows,
+			context: families,
 			bounds,
 			vertical,
 			alignment: input.branchAlignment,
 		});
 	placeJunctionRows(placement);
 	let crossLength = metrics.crossLength;
-	if (adjacency !== undefined) crossLength = normalizeTransversely(bounds, vertical);
+	if (families !== undefined) {
+		clampBlockJunctions({ rows, context: families, bounds, vertical });
+		crossLength = normalizeTransversely(bounds, vertical);
+	}
 	if (input.transverseCenters !== undefined)
 		crossLength = alignComponentCenters(bounds, input.transverseCenters, vertical, crossLength);
 	if (vertical) return { boundsById: bounds, width: crossLength, height: metrics.primaryLength };

@@ -243,13 +243,13 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(hashes).toEqual({
 			'adjacent-2+2': '434436502a19e68bbaf5e254e6dd74a1d97387393caeadfc4f70099b2c091c19',
 			'adjacent-3+1': '064082e2065ad7f76e35849ee4e1c402e721cd164b5e4966e4d88d7868f9fd6d',
-			'ai-documentary-effort': 'd1c01ab7ffbf6ef2fd26fa478fd56343a4bd4fb02ae502662521e89f00c3893f',
-			'group-endpoint-route': '3b7425b712bce255483005865a4d3395b151a5973f99607cd68ef93c51383af0',
+			'ai-documentary-effort': 'edd2c4d081af177d6980374f8602592a4b53df4110a68e21dc4030fbb154cd4b',
+			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
 			'junction-network-layout': 'fa45dc4195f28d6bd1b64887120d1edb4e1efa0dff4f7943efbf524fc9fbb9b2',
 			'multirank-group-junction-one':
-				'4e07af523c65431b87788af3737148e1fbdc6e0d5d78541ba12c0dabea124f6b',
+				'5f724cce9f64ea07e1583cd51749855780de1fc81300a19a178b64c4cf50af74',
 			'multirank-group-junction-two':
-				'1709bd1beb86655f84d74102481401951603d39154e40e3d4582c11f4a909449',
+				'e9fedac15be5248ec258d801a1c377855addb6d0cb056aa656856fa2a6e1cab5',
 			'rail-clearance-12': 'e59dd321d0bf1c3b6e9e1393e99b3e52383b6c8c9b7399bcafbeb18e859e7288',
 			'rail-clearance-13': '79de632f84908a07bc2725b78167c51fe6f1e2fcc59f893c4d95b796a1cc21dc',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
@@ -289,9 +289,11 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(groupRoute).toMatchObject({ from: 'group', to: 'e' });
 		expect(groupRoute?.points.length).toBeGreaterThan(2);
 
+		// The group block takes the slot of its first member, a, so its member d precedes c in the
+		// documentary rows: the crossing the search must remove involves another pair of relations.
 		const crossingsByLayout = [
-			['multirank-group-junction-one', ['a-to-d', 'b-to-c'] as const],
-			['multirank-group-junction-two', ['c-to-f', 'd-to-e'] as const],
+			['multirank-group-junction-one', ['c-to-e', 'd-to-f'] as const],
+			['multirank-group-junction-two', ['a-to-c', 'b-to-d'] as const],
 		] as const;
 		for (const [id, relationIds] of crossingsByLayout) {
 			const selected = results[id];

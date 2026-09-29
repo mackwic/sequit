@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
-import { alignFamilies } from '../../../../src/lib/core/layout/placement/align-families';
+import {
+	alignFamilies,
+	flatFamilyLinks,
+} from '../../../../src/lib/core/layout/placement/align-families';
 
 function box(x: number, y: number): Bounds {
 	return { x, y, width: 60, height: 20 };
@@ -18,7 +21,7 @@ function align(
 	arrows: readonly (readonly [from: string, to: string])[],
 	options: {
 		readonly junctionIds?: ReadonlySet<string>;
-		readonly containers?: ReadonlyMap<string, string>;
+		readonly walls?: ReadonlySet<string>;
 	} = {},
 ): void {
 	const parents = new Map<string, string[]>();
@@ -27,13 +30,13 @@ function align(
 		parents.set(from, [...(parents.get(from) ?? []), to]);
 		children.set(to, [...(children.get(to) ?? []), from]);
 	}
-	const containers = options.containers ?? new Map<string, string>();
+	const junctionIds = options.junctionIds ?? new Set();
 	alignFamilies({
 		rows,
-		adjacency: { parents, children, containerOf: (id) => containers.get(id) },
-		junctionIds: options.junctionIds ?? new Set(),
+		links: flatFamilyLinks({ rows, parents, children, junctionIds }),
 		bounds,
 		vertical: true,
+		isWall: (item) => options.walls?.has(item) === true,
 	});
 }
 
@@ -82,28 +85,14 @@ describe('family alignment', () => {
 		expect(centers(bounds)).toEqual({ p: 430, a: 382, b: 478 });
 	});
 
-	it('keeps a family in place when its parent belongs to another container', () => {
+	it('keeps a wall in place: a family aimed past it stays on its own side, its parent above it', () => {
 		const bounds = new Map([
-			['p', box(400, 0)],
+			['p', box(300, 0)],
 			['a', box(0, 100)],
-			['b', box(96, 100)],
+			['w', box(320, 100)],
 		]);
-		const original = structuredClone(bounds);
-		align(
-			[['p'], ['a', 'b']],
-			bounds,
-			[
-				['a', 'p'],
-				['b', 'p'],
-			],
-			{
-				containers: new Map([
-					['a', 'group'],
-					['b', 'group'],
-				]),
-			},
-		);
-		expect(bounds).toEqual(original);
+		align([['p'], ['a', 'w']], bounds, [['a', 'p']], { walls: new Set(['w']) });
+		expect(centers(bounds)).toEqual({ p: 30, a: 30, w: 350 });
 	});
 
 	it('spreads parents so that each wide family is centered beneath its own parent', () => {

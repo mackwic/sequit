@@ -23,7 +23,7 @@ import {
 } from './rank-order';
 import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
-import type { RankOrderDomain } from './rank-ordering';
+import { type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 
 /** Rank selection only needs the retained evaluation path of the dedicated engine. */
 export type DedicatedLayoutEvaluator = (
@@ -249,7 +249,8 @@ class RankOrderSearch {
 		});
 	}
 
-	propose(order: RankOrder): boolean {
+	propose(candidate: RankOrder): boolean {
+		const order = repairBlockOrder(this.input.domain, candidate);
 		const key = JSON.stringify(order);
 		if (this.seen.has(key)) return true;
 		if (this.proposed >= this.input.limits.uniqueProposals)

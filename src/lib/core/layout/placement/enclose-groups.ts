@@ -1,6 +1,5 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { envelopeOf } from '../geometry/envelope';
 import {
 	biasedMainStart,
 	boundsOnAxes,
@@ -13,24 +12,9 @@ import {
 import { COMPONENT_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
+import { enclosure } from './group-enclosure';
 import type { PackingCursor } from './pack-components';
 import { type MainWindow, packGroupSiblings } from './pack-group-siblings';
-
-function enclosure(
-	measurement: GroupMeasurement,
-	members: readonly string[],
-	bounds: ReadonlyMap<string, MutableBounds>,
-): MutableBounds {
-	const envelope = envelopeOf(members, bounds);
-	const x = envelope.left - measurement.padding;
-	const y = envelope.top - measurement.headerHeight - measurement.padding;
-	return {
-		x,
-		y,
-		width: Math.max(measurement.minimumWidth, envelope.right - x + measurement.padding),
-		height: Math.max(measurement.minimumHeight, envelope.bottom - y + measurement.padding),
-	};
-}
 
 /** Capture minimum-gap spans; a junction may retreat as its adjacent channels grow. */
 export function groupSeparationWindows(

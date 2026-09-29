@@ -6,6 +6,8 @@ export interface RowAnchorItem {
 	readonly size: number;
 	readonly target?: number;
 	readonly fixed: boolean;
+	/** Free space before this item, after the previous one; the item gap by default. */
+	readonly gap?: number | undefined;
 }
 
 interface RowAnchor {
@@ -23,7 +25,7 @@ function minimumDistances(items: readonly RowAnchorItem[]): readonly number[] {
 		if (index > 0) {
 			const previous = defined(items[index - 1]);
 			const halfSizes = (previous.size + item.size) / 2;
-			distance += halfSizes + ITEM_GAP;
+			distance += halfSizes + (item.gap ?? ITEM_GAP);
 		}
 		distances.push(distance);
 	}

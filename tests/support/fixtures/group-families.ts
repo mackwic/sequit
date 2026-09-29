@@ -40,7 +40,24 @@ export function familyBesideGroup(direction: LayoutDirection, grouped = true): G
 	return { data, groups: { g: ['g1', 'g2', 'g3', 'g4'] } };
 }
 
-/** Four unrelated members form a wide group; two root children point to its last member only. */
+/** Four unrelated members form a wide group; two root children point to the group itself. */
+export function familyBeneathGroup(direction: LayoutDirection): GroupedGraph {
+	const data = graphFixtures
+		.routingNodes(['w1', 'w2', 'w3', 'w4', 'k1', 'k2'], direction, CONTENT)
+		.build();
+	return {
+		data: {
+			...data,
+			relations: [
+				{ id: 'k1-to-w', from: 'k1', to: 'w' },
+				{ id: 'k2-to-w', from: 'k2', to: 'w' },
+			],
+		},
+		groups: { w: ['w1', 'w2', 'w3', 'w4'] },
+	};
+}
+
+/** The same wide group; two root children point to its last member only. */
 export function familyBeneathMember(direction: LayoutDirection): GroupedGraph {
 	const data = graphFixtures
 		.routingNodes(['w1', 'w2', 'w3', 'w4', 'k1', 'k2'], direction, CONTENT)

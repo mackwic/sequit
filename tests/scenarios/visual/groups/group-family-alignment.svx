@@ -17,13 +17,18 @@ et à 24 unités de la boîte en face.
 
 L’alignement des familles s’applique ensuite autour du bloc, comme sans groupe :
 l’enveloppe des enfants d’un parent est centrée sur ce parent, quitte à élargir
-le layout. Si le parent est un membre du groupe, on centre sur ce membre.
+le layout. Une relation vers le groupe lui-même vise son cadre, en-tête compris ;
+une relation vers un membre vise ce membre.
 
 - **Groupe à côté** : P, hors groupe, pointe vers le haut du groupe. Ses enfants
   partagent le dernier rang du groupe, ses petits-enfants sont sous le groupe.
   Toute la descendance reste centrée sous P.
-- **Groupe au-dessus** : deux enfants pointent vers le dernier membre d’un
-  groupe large ; leur enveloppe est centrée sur ce membre, pas sur le groupe.
+- **Groupe au-dessus, relation vers le groupe** : deux enfants pointent vers un
+  groupe large ; leur enveloppe est centrée sur le cadre du groupe, en-tête
+  compris.
+- **Groupe au-dessus, relation vers un membre** : deux enfants pointent vers le
+  dernier membre d’un groupe large ; leur enveloppe est centrée sur ce membre,
+  pas sur le groupe.
 - **Groupe au milieu** : trois chaînes sous une racine commune T. L et R sont
   hors groupe ; M est dans un groupe avec son propre parent M0. L’ordre L,
   groupe, R est respecté, l’enveloppe L0, groupe, R0 est centrée sur T et chaque
@@ -33,7 +38,6 @@ le layout. Si le parent est un membre du groupe, on centre sur ce membre.
 - **Sans groupe** : le graphe du premier cas, sans groupe, garde l’alignement
   actuel.
 
-Les cas « groupe à côté » et « famille coupée » sont des contrats pas encore
-tenus par le moteur.
+Tous ces contrats sont tenus par le moteur.
 
 <VisualTest {scenario} {source} bind:settings />

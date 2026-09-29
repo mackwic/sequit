@@ -94,7 +94,7 @@ La [cible de refonte par IR et régions](layout-engine-refactor.md) documente le
 
 - `structure/` prépare les composantes, les rangées et les membres directs des groupes. Le parcours itératif de la hiérarchie mémorise racines et profondeurs. Les composantes du graphe classable et celles de l’assemblage des contenants sont distinctes ; leur ordre de parcours est explicite.
 - `geometry/` définit le repère physique, les translations des boîtes possédées et les enveloppes. Il ne connaît ni le workspace ni les décisions de placement et de routage.
-- `placement/` valide les mesures, calcule les métriques de rangées, place les éléments, centre les familles d’enfants sur leurs parents et construit les enveloppes des groupes. Les maxima principaux sont partagés globalement entre composantes ; les métriques transversales suivent les dimensions effectives.
+- `placement/` valide les mesures, calcule les métriques de rangées et place les éléments. Chaque groupe peuplé y est un bloc rigide : son intérieur est placé et encadré d’abord, puis il occupe un seul emplacement dans les rangées de son conteneur, où les familles d’enfants sont centrées sur le membre relié ou sur le cadre du groupe visé. Les maxima principaux sont partagés globalement entre composantes ; les métriques transversales suivent les dimensions effectives.
 - `routing/` sélectionne les couloirs, réserve les ports et les rails, puis matérialise les routes. La réservation et la production de points sont séparées.
 - `build-layout-result.ts` assemble les résultats dans l’ordre canonique. `inspection/` construit les explications seulement si l’option est activée.
 

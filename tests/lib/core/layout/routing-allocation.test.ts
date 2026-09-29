@@ -363,7 +363,9 @@ describe('rail and port reservations', () => {
 		for (const id of ['a', 'b', 'd', 'e'])
 			expect(overlaps(group, boundsFor(layout, id)), `Group must not contain ${id}`).toBe(false);
 		const independent = layout.relations.find(({ id }) => id === 'a-d');
-		const reusable = layout.relations.find(({ id }) => id === 'c-e');
+		// The group block takes its first member's documentary slot, ahead of b and e; the rail
+		// between b and the block is then the one the late corridor reuses.
+		const reusable = layout.relations.find(({ id }) => id === 'b-f');
 		if (independent === undefined || reusable === undefined)
 			throw new Error('Both routes must be materialized');
 		expect(independent.points[1]?.x).toBe(reusable.points[1]?.x);

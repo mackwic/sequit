@@ -39,7 +39,6 @@ import type {
 	LayoutOptions,
 	LayoutResult,
 } from '../../../../src/lib/core/layout/layout-types';
-import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import {
 	boundedRankOrderEnumerationSize,
 	compareRankOrders,
@@ -461,7 +460,7 @@ describe('ordinary node rank-order domains', () => {
 		expect(explicitInspection.complete()).toEqual(publicInspected);
 	});
 
-	it('pins relation-endpoint groups and rejects them as candidate nodes', () => {
+	it('orders a relation-endpoint group as one block slot and keeps its members contiguous', () => {
 		const base = corpusDocument(
 			['a', 'b', 'c', 'd'],
 			['a', 'b', 'c', 'd'],
@@ -484,18 +483,21 @@ describe('ordinary node rank-order domains', () => {
 		if (!created.ok) throw new Error('Expected valid grouped graph');
 		const structure = prepareLayout(created.value, topologicallyRank(created.value));
 		const domain = collectRankOrderDomain(structure);
-		expect(domain.bands).toEqual([['a', 'b', 'c']]);
+		// The group is one slot of the root band; its members form their own band inside it.
+		expect(domain.bands).toEqual([
+			['g', 'c'],
+			['a', 'b'],
+		]);
 		const original = structure.components.find(({ ids }) => ids.includes('g'));
 		if (original === undefined) throw new Error('Expected group relation component');
-		const originalRow = original.rows.ordinary.find((row) => row.includes('g'));
-		if (originalRow === undefined) throw new Error('Expected group ordinary row');
-		const groupPosition = originalRow.indexOf('g');
-		const reordered = applyRankOrder(structure, domain, [['c', 'b', 'a']]);
+		expect(original.rows.ordinary).toContainEqual(['a', 'b', 'c']);
+		const reordered = applyRankOrder(structure, domain, [
+			['c', 'g'],
+			['b', 'a'],
+		]);
 		const changed = reordered.components.find(({ ids }) => ids.includes('g'));
 		if (changed === undefined) throw new Error('Expected reordered group component');
-		const changedRow = changed.rows.ordinary.find((row) => row.includes('g'));
-		if (changedRow === undefined) throw new Error('Expected reordered group row');
-		expect(changedRow.indexOf('g')).toBe(groupPosition);
+		expect(changed.rows.ordinary).toContainEqual(['c', 'b', 'a']);
 		const measurements = {
 			nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 40 }])),
 			junctions: new Map(),
@@ -550,6 +552,12 @@ describe('ordinary node rank-order domains', () => {
 		expect(() => applyRankOrder(structure, domain, [['a', 'b', 'c', 'g']])).toThrow(
 			/Invalid ordinary-node rank order/,
 		);
+		expect(() =>
+			applyRankOrder(structure, domain, [
+				['g', 'a'],
+				['b', 'c'],
+			]),
+		).toThrow(/Invalid ordinary-node rank order/);
 	});
 
 	it('rejects candidate inputs with a duplicate, foreign ID or wrong band count', () => {
@@ -1939,7 +1947,7 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(evaluations).toBe(0);
 	});
 
-	it('recovers from a physically blocked documentary group passage with a valid alternate order', () => {
+	it('keeps the documentary passage past a tall group once the group is placed as one block', () => {
 		const document: LogicDocument = {
 			...multirankTwo,
 			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
@@ -1955,33 +1963,22 @@ describe('dedicated bounded geometric rank search', () => {
 			nodes: { e: { width: 48, height: 60 }, f: { width: 48, height: 60 } },
 		});
 		const structure = prepareLayout(graph, ranks);
-		let documentaryFailure: unknown;
-		try {
-			evaluateDedicatedLayout(structure, measurements, undefined, true);
-		} catch (error) {
-			documentaryFailure = error;
-		}
-		expect(documentaryFailure).toMatchObject({
-			code: 'group-route-no-valid-passage',
-			relationId: 'c-to-f',
-		});
-		expect(documentaryFailure).toBeInstanceOf(GroupRouteFailure);
+		// This tall group used to overlap the passage of c-to-f in documentary order; as a block,
+		// its members and every foreign row keep their own slots, and the passage stays open.
+		const documentary = evaluateDedicatedLayout(structure, measurements);
+		expect(
+			validateDedicatedCandidate({ graph, ranks, measurements, layout: documentary }),
+		).toMatchObject({ valid: true });
 		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		expect(
 			validateDedicatedCandidate({ graph, ranks, measurements, layout: selected.layout }),
 		).toMatchObject({
 			valid: true,
 		});
-		const originalOrder = collectRankOrderDomain(structure).bands;
-		expect(selected.witness.selectedOrder).not.toEqual(originalOrder);
-		expect(selected.witness.rejected).toContainEqual({
-			order: originalOrder,
-			reason: {
-				valid: false,
-				code: DedicatedCandidateRejectionCode.GroupPassage,
-				relationId: 'c-to-f',
-			},
-		});
+		const blockedPassages = selected.witness.rejected.filter(
+			({ reason }) => 'relationId' in reason && reason.relationId === 'c-to-f',
+		);
+		expect(blockedPassages).toEqual([]);
 	});
 
 	it('selects a valid order when a routed documentary baseline fails independent validation', () => {
@@ -2366,7 +2363,8 @@ it('searches projected group routes through the component of their target', () =
 			({ componentIndex }) => defined(structure.components[componentIndex]).ids,
 		),
 	);
-	expect(relevant.has('g')).toBe(false);
+	// The group endpoint is a block: it shares the component of its members and their target.
+	expect(relevant.has('g')).toBe(true);
 	expect(relevant.has('d')).toBe(true);
 	const measurements = {
 		nodes: new Map(document.nodes.map(({ id }) => [id, { width: 80, height: 60 }])),

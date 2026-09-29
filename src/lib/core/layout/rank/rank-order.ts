@@ -6,6 +6,8 @@ import { fractionalOrderKeySpace, type OrderKeySpace } from '../../ordering/orde
 /** Bands of endpoint identifiers sharing one rank, in the caller's band order. */
 export interface RankDomain {
 	readonly bands: readonly (readonly string[])[];
+	/** Blocks spanning several ranks: each stands once in every band of its container. */
+	readonly blockIds?: ReadonlySet<string> | undefined;
 }
 
 /** One full order per band of a {@link RankDomain}, in the same band order. */
@@ -83,7 +85,10 @@ export function documentaryRankOrder(domain: RankDomain, input: RankOrderInput):
 	);
 }
 
-/** Independent oracle: every band is a bijection of its domain band, with no repeated id. */
+/**
+ * Independent oracle: every band is a bijection of its domain band, with no repeated id. Only a
+ * block may stand in several bands of its container, once per rank it spans.
+ */
 export function validateRankOrder(domain: RankDomain, order: RankOrder): boolean {
 	if (order.length !== domain.bands.length) return false;
 	const seen = new Set<string>();
@@ -92,8 +97,12 @@ export function validateRankOrder(domain: RankDomain, order: RankOrder): boolean
 		const candidate = defined(order[index]);
 		if (candidate.length !== band.length) return false;
 		const members = new Set(band);
+		const inBand = new Set<string>();
 		for (const id of candidate) {
-			if (!members.has(id) || seen.has(id)) return false;
+			if (!members.has(id) || inBand.has(id)) return false;
+			inBand.add(id);
+			if (domain.blockIds?.has(id) === true) continue;
+			if (seen.has(id)) return false;
 			seen.add(id);
 		}
 	}

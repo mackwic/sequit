@@ -5,7 +5,10 @@ import {
 	transverseCenter,
 } from '../geometry/layout-frame';
 
-/** Apply component-local center constraints, then normalize before component packing. */
+/**
+ * Apply relative center constraints, then normalize before component packing. The first
+ * constrained box stays put: a chain aligns where it stands among unrelated boxes.
+ */
 export function alignComponentCenters(
 	bounds: Map<string, MutableBounds>,
 	centers: ReadonlyMap<string, number>,
@@ -13,10 +16,12 @@ export function alignComponentCenters(
 	crossLength: number,
 ): number {
 	let changed = false;
+	let origin: number | undefined;
 	for (const [id, box] of bounds) {
 		const center = centers.get(id);
 		if (center === undefined) continue;
-		translateTransversely(box, center - transverseCenter(box, vertical), vertical);
+		origin ??= transverseCenter(box, vertical) - center;
+		translateTransversely(box, center + origin - transverseCenter(box, vertical), vertical);
 		changed = true;
 	}
 	if (!changed) return crossLength;

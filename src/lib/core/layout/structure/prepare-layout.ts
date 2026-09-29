@@ -4,9 +4,10 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { orderEndpoints } from '../../ordering/endpoint-order';
 import { type BranchAnchor, branchAnchors } from './branch-anchors';
+import { groupBlocks } from './group-blocks';
 import { type GroupHierarchy, prepareGroupHierarchy } from './group-hierarchy';
 import { type JunctionPlacement, prepareJunctions } from './junction-structure';
-import { containmentComponents, weaklyConnectedComponents } from './layout-components';
+import { containmentComponents, rankedComponents } from './layout-components';
 import { preparePlacementRows, type RankedComponent } from './placement-rows';
 
 export interface LayoutStructure {
@@ -64,7 +65,8 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	const orderById = new Map(endpointOrder.map((id, index) => [id, index]));
 	// A target-local order edit can still move a whole disconnected component. Preserving
 	// this policy leaves stable component intent to a separate behavioral change.
-	const components = weaklyConnectedComponents(graph).map((ids): RankedComponent => ({
+	const blocks = groupBlocks(graph);
+	const components = rankedComponents(graph, blocks).map((ids): RankedComponent => ({
 		ids,
 		context: componentContext(graph, ids, hierarchy),
 		effectiveOrder: Math.min(
@@ -78,6 +80,7 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 			ranks: placementRanks,
 			junctionIds,
 			maximumRank,
+			blocks,
 		}),
 	}));
 	components.sort(
