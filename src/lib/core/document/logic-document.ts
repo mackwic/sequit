@@ -296,6 +296,17 @@ export function assertUniqueRelationIds(relations: readonly LogicRelation[]): vo
 	if (duplicateRelationIds(relations).length > 0) throw new Error('Duplicate relation IDs');
 }
 
+/** Another relation with the same source and target; an edit must not create such a repeat. */
+export function parallelRelation(
+	relations: readonly LogicRelation[],
+	relation: LogicRelation,
+): LogicRelation | undefined {
+	return relations.find(({ id, from, to }) => {
+		const sameEndpoints = from === relation.from && to === relation.to;
+		return sameEndpoints && id !== relation.id;
+	});
+}
+
 export interface LogicDocument {
 	readonly persistenceFormat:
 		| typeof PERSISTENCE_FORMAT

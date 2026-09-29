@@ -234,9 +234,9 @@ describe('AI for documentary effort', () => {
 			const before = await opened.createCanvasModel(measurements);
 
 			await opened.addRelation({
-				id: 'qualifying-source-b-to-target-a',
+				id: 'qualifying-source-b-to-target-b',
 				from: 'source-b',
-				to: 'target-a',
+				to: 'target-b',
 			});
 			const after = await opened.createCanvasModel(measurements);
 			const beforeBounds = new Map(before.nodes.map(({ id, bounds }) => [id, bounds]));

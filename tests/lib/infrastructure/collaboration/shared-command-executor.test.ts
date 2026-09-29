@@ -76,6 +76,42 @@ describe('shared document commands', () => {
 		doc.destroy();
 	});
 
+	it('Linked boxes: rejects repeating B → A by creation or by moving an endpoint', () => {
+		const doc = given(CollaborativeFixture.LinkedBoxes);
+		expect(() => {
+			executeSharedCommands(doc, [
+				{
+					op: Op.Create,
+					target: { kind: Kind.Relation, id: 'again' },
+					properties: { from: 'B', to: 'A' },
+				},
+			]);
+		}).toThrow('already exists');
+		executeSharedCommands(doc, [
+			{
+				op: Op.Create,
+				target: { kind: Kind.Junction, id: 'J' },
+				properties: { operator: JunctionOperator.Xor },
+			},
+			{
+				op: Op.Create,
+				target: { kind: Kind.Relation, id: 'BJ' },
+				properties: { from: 'B', to: 'J' },
+			},
+			{
+				op: Op.Create,
+				target: { kind: Kind.Relation, id: 'JA' },
+				properties: { from: 'J', to: 'A' },
+			},
+		]);
+		expect(() => {
+			executeSharedCommands(doc, [
+				{ op: Op.Update, target: { kind: Kind.Relation, id: 'JA' }, set: { from: 'B' }, unset: [] },
+			]);
+		}).toThrow('already exists');
+		doc.destroy();
+	});
+
 	it('Linked boxes: groups A and B atomically, preserving R', () => {
 		const doc = given(CollaborativeFixture.LinkedBoxes);
 		executeSharedCommands(doc, [{ op: Op.Group, id: 'G', label: 'Groupe', members: ['A', 'B'] }]);

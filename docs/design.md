@@ -95,6 +95,8 @@ Les racines sans parent sont au rang 1. Le rang d’un enfant vaut 1 + le plus g
 
 Le modèle visuel pourra ressembler à un arbre, mais le modèle logique visé est un graphe orienté acyclique (DAG). Cela autorise notamment plusieurs antécédents pour une même boîte et la convergence de plusieurs branches.
 
+Deux boîtes ne sont reliées qu'une fois dans un même sens : créer une relation, ou déplacer l'extrémité d'une relation existante, vers un couple source → cible déjà relié est refusé. Le sens inverse reste une relation distincte, soumise au refus des cycles. Un document qui contient déjà des relations parallèles reste lisible.
+
 La signification exacte d'une relation reste à définir : dépendance, contribution, prérequis, production, ou relation générique orientée.
 
 ## Représentation textuelle

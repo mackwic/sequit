@@ -5,6 +5,7 @@ import {
 	JunctionOperator,
 	type LogicDocument,
 	type LogicRelation,
+	parallelRelation,
 } from '../../../lib/core/document/logic-document';
 import { fractionalOrderKeySpace } from '../../../lib/core/ordering/order-key-space';
 
@@ -16,6 +17,8 @@ export function retargetWorkshopRelation(
 		document.relations.find(({ id }) => id === relation.id),
 		'Relation introuvable.',
 	);
+	if (parallelRelation(document.relations, relation) !== undefined)
+		throw new Error('Ces deux boîtes sont déjà reliées dans ce sens.');
 	return {
 		...document,
 		relations: document.relations.map((item) => {

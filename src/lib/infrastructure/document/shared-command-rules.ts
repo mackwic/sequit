@@ -4,6 +4,7 @@ import {
 	defined,
 	type LogicDocument,
 	nodeDescriptionFields,
+	parallelRelation,
 } from '../../core/document/logic-document';
 import { projectNodeAddition, projectRelationAddition } from '../../core/document/topology-edits';
 import { fractionalOrderKeySpace } from '../../core/ordering/order-key-space';
@@ -17,6 +18,21 @@ export function sharedElementOrder(id: string): string {
 	return fractionalOrderKeySpace.keyFor({}, id);
 }
 
+/** Moving an endpoint must not repeat another relation's source and target. */
+function finalizeUpdatedElement(
+	document: LogicDocument,
+	command: SharedDocumentCommand,
+): LogicDocument {
+	if (command.op !== SharedCommandKind.Update) return document;
+	if (command.target.kind !== SharedElementKind.Relation) return document;
+	const relationId = command.target.id;
+	const relation = defined(document.relations.find(({ id }) => id === relationId));
+	const existing = parallelRelation(document.relations, relation);
+	if (existing !== undefined)
+		throw new Error(`Relation ${relation.from} → ${relation.to} already exists: ${existing.id}`);
+	return document;
+}
+
 /** Use the same ordering and junction collection as local document commands. */
 export function finalizeSharedCommand(
 	before: LogicDocument,
@@ -28,7 +44,7 @@ export function finalizeSharedCommand(
 		if (command.target.kind === SharedElementKind.Nature) return after;
 		return collectJunctions(after);
 	}
-	if (command.op !== SharedCommandKind.Create) return after;
+	if (command.op !== SharedCommandKind.Create) return finalizeUpdatedElement(after, command);
 	let result;
 	if (command.target.kind === SharedElementKind.Node) {
 		const node = defined(after.nodes.find(({ id }) => id === command.target.id));

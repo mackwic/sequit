@@ -9,6 +9,7 @@ import {
 	type OrderKey,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { TopologyEditDiagnosticCode } from '../../../../src/lib/core/document/topology-edit-ordering';
 import {
 	projectConnectedNodeAddition,
 	projectNodeAddition,
@@ -66,6 +67,27 @@ describe('topology edits', () => {
 				fractionalOrderKeySpace,
 			).ok,
 		).toBe(false);
+	});
+
+	it('rejects a relation that repeats an existing source and target', () => {
+		const document = threeTargetScenario(['target-a', 'target-b', 'target-c']);
+		const result = projectRelationAddition(
+			document,
+			{ id: 'a-again', from: 'source-a', to: 'target-a' },
+			fractionalOrderKeySpace,
+		);
+		expect(result.ok).toBe(false);
+		if (result.ok) throw new Error('Expected the repeated relation to be rejected');
+		expect(result.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([
+			{ code: TopologyEditDiagnosticCode.DuplicateRelation, path: ['relations', 'a-again'] },
+		]);
+		expect(
+			projectRelationAddition(
+				document,
+				{ id: 'reverse', from: 'target-c', to: 'source-a' },
+				fractionalOrderKeySpace,
+			).ok,
+		).toBe(true);
 	});
 
 	it('allocates the first endpoint order key in an empty document', () => {

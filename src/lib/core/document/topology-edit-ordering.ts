@@ -19,6 +19,7 @@ import {
 
 export enum TopologyEditDiagnosticCode {
 	DuplicateRelationId = 'duplicate-relation-id',
+	DuplicateRelation = 'duplicate-relation',
 	EndpointOrderMaterializationFailed = 'endpoint-order-materialization-failed',
 }
 

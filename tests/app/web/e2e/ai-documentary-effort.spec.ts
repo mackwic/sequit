@@ -329,9 +329,9 @@ test.describe('AI for documentary effort', () => {
 			});
 			await capture('before');
 			await opened.addRelation({
-				id: 'qualifying-source-b-to-target-a',
+				id: 'qualifying-source-b-to-target-b',
 				from: 'source-b',
-				to: 'target-a',
+				to: 'target-b',
 			});
 			await capture('after');
 			await capture('stable');

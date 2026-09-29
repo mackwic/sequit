@@ -2,7 +2,7 @@ import { createGraph, type GraphDiagnostic } from '../graph/create-graph';
 import { topologicallyRank } from '../graph/topological-ranks';
 import { orderEndpoints } from '../ordering/endpoint-order';
 import type { OrderKeySpace } from '../ordering/order-key-space';
-import { defined } from './logic-document';
+import { defined, parallelRelation } from './logic-document';
 import {
 	EndpointKind,
 	type LogicDocument,
@@ -243,6 +243,19 @@ export function projectRelationAddition(
 				{
 					code: TopologyEditDiagnosticCode.DuplicateRelationId,
 					message: `Relation id already exists: ${relation.id}`,
+					path: ['relations', relation.id],
+				},
+			],
+		};
+	}
+	const existing = parallelRelation(document.relations, relation);
+	if (existing !== undefined) {
+		return {
+			ok: false,
+			diagnostics: [
+				{
+					code: TopologyEditDiagnosticCode.DuplicateRelation,
+					message: `Relation ${relation.from} → ${relation.to} already exists: ${existing.id}`,
 					path: ['relations', relation.id],
 				},
 			],
