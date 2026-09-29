@@ -85,8 +85,8 @@ describe('rank order comparison', () => {
 			validatedBridges: 0,
 		});
 		expect(twoTwo?.documentaryRouteScore).toMatchObject({
-			strictCrossings: 3,
-			validatedBridges: 3,
+			strictCrossings: 1,
+			validatedBridges: 1,
 		});
 		for (const entry of comparison.entries) {
 			if (entry.documentaryRouteScore === undefined || entry.selectedRouteScore === undefined)

@@ -1607,8 +1607,8 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(topology.count(structure, reversed)).toBeLessThan(
 			topology.count(structure, domain.bands),
 		);
-		expect(originalValidation.score.strictCrossings).toBe(3);
-		expect(alternateValidation.score.strictCrossings).toBe(4);
+		expect(originalValidation.score.strictCrossings).toBe(1);
+		expect(alternateValidation.score.strictCrossings).toBe(2);
 		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, entry.measurements);
 		expect(selected.witness.selectedOrder).not.toEqual(reversed);
 		expect(selected.witness.selectedOrder).toEqual([

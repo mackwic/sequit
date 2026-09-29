@@ -62,8 +62,8 @@ describe('dedicated candidate route scoring', () => {
 				return validation.score;
 			});
 		expect(scores).toEqual([
-			{ strictCrossings: 4, validatedBridges: 4 },
-			{ strictCrossings: 3, validatedBridges: 3 },
+			{ strictCrossings: 2, validatedBridges: 2 },
+			{ strictCrossings: 1, validatedBridges: 1 },
 		]);
 		const first = scores[0];
 		const second = scores[1];

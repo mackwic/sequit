@@ -191,6 +191,6 @@ describe('indexed channel route materialization', () => {
 		const result = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(result.elements).toHaveLength(1000);
 		expect(result.relations).toHaveLength(40169);
-		expect(digest(result)).toBe('71fd5a9307ae479e9c3e7350b6ca415a0d30ba081a491d5b8b7c7dc878bc2479');
+		expect(digest(result)).toBe('733f6ae2e9aeedf07dff100ae014afe0a723e54203ec8716fedc13b5555a1b6f');
 	});
 });

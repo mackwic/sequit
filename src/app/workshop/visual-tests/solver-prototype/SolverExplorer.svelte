@@ -11,7 +11,6 @@
 		solveSymbolicLaneSlice,
 	} from '../../solver-prototype/symbolic-lane-slice';
 	import LayoutPreview from '../LayoutPreview.svelte';
-	import AdjacentBridgeComparisonExplorer from './AdjacentBridgeComparisonExplorer.svelte';
 	import ComposedExplorer from './ComposedExplorer.svelte';
 	import ConditionalConflictsExplorer from './ConditionalConflictsExplorer.svelte';
 	import { type FoldedGroupWitness, runFoldedGroupWitness } from './folded-group';
@@ -30,7 +29,6 @@
 		| 'face-capacity'
 		| 'conditional-conflicts'
 		| 'joint-k32'
-		| 'adjacent-bridge-comparison'
 		| 'rank-order-comparison'
 		| 'composed'
 		| 'folded-group'
@@ -273,12 +271,6 @@
 		>
 		<button
 			type="button"
-			class:active={witnessId === 'adjacent-bridge-comparison'}
-			aria-pressed={witnessId === 'adjacent-bridge-comparison'}
-			onclick={() => (witnessId = 'adjacent-bridge-comparison')}>Pont × détour adjacent</button
-		>
-		<button
-			type="button"
 			class:active={witnessId === 'rank-order-comparison'}
 			aria-pressed={witnessId === 'rank-order-comparison'}
 			onclick={() => (witnessId = 'rank-order-comparison')}>Ordres dans le rang</button
@@ -321,9 +313,7 @@
 		>
 	</div>
 
-	{#if witnessId === 'adjacent-bridge-comparison'}
-		<AdjacentBridgeComparisonExplorer />
-	{:else if witnessId === 'rank-order-comparison'}
+	{#if witnessId === 'rank-order-comparison'}
 		<RankOrderComparisonExplorer />
 	{:else if witnessId === 'shared-lane-passage'}
 		<SharedLanePassageExplorer />

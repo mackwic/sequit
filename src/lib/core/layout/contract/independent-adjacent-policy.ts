@@ -4,8 +4,8 @@ import type { LayoutResult } from '../layout-types';
 import type { CandidateFaceChoice } from './validate-candidate';
 
 /** The default detour tolerances over the best bridged candidate. */
-export const DETOUR_AREA_TOLERANCE = 0.25;
-export const DETOUR_LENGTH_TOLERANCE = 0.2;
+const DETOUR_AREA_TOLERANCE = 0.25;
+const DETOUR_LENGTH_TOLERANCE = 0.2;
 
 export interface IndependentAdjacentPolicy {
 	readonly detourAreaTolerance: number;

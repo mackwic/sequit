@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import type { LogicRelation } from '../../../../src/lib/core/document/logic-document';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { routeCrossings } from '../../../support/assertions/route-geometry';
 import { layoutDocument } from '../../../support/harnesses/layout';
 import { VisualLayout } from '../../../support/harnesses/visual-layout';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
@@ -55,3 +56,20 @@ it.each(crossComponentLinks)(
 		expect(passagesOutsideNodeEnvelope(layout)).toEqual([]);
 	},
 );
+
+it('stacks a new shortcut into a shared target clear of its sibling arrival', async () => {
+	const layout = await documentaryEffortLayout([
+		{
+			id: 'freshness-tracking-to-interdependent-sections',
+			from: 'freshness-tracking',
+			to: 'interdependent-sections',
+		},
+	]);
+	AssertLayout(layout).routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
+	const sibling = 'ai-generation-orchestration-to-interdependent-sections';
+	expect(
+		routeCrossings(layout.relations).filter((crossing) =>
+			[crossing.horizontalId, crossing.verticalId].includes(sibling),
+		),
+	).toEqual([]);
+});

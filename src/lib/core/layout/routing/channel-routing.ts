@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import { RAIL_SPACING } from '../layout-settings';
+import { untangleChannelRails } from './channel-crossings';
 import { allocateChannelIntervals } from './channel-interval-allocation';
 import type {
 	ChannelEndpoint,
@@ -168,7 +169,11 @@ function mergeRuns(
 	return retained;
 }
 
-function assignRails(runs: readonly ChannelRun[], ownerId: string): ChannelRailAllocation {
+function assignRails(
+	runs: readonly ChannelRun[],
+	wires: readonly ChannelWire[],
+	ownerId: string,
+): ChannelRailAllocation {
 	const ready = runs.filter((segment) => segment.remaining === 0);
 	let nextRunKey = 0;
 	const layers: ChannelRun[][] = [];
@@ -191,6 +196,7 @@ function assignRails(runs: readonly ChannelRun[], ownerId: string): ChannelRailA
 		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
 	edge.capacity = count;
+	untangleChannelRails(wires, runs, trackByRunKey);
 	return { edge, trackByRunKey, railCount: count };
 }
 
@@ -229,7 +235,7 @@ export function routeOwnedChannel(
 			if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
 		}
 	}
-	return { wires, ...assignRails(runs, ownerId) };
+	return { wires, ...assignRails(runs, moving, ownerId) };
 }
 
 /** Share traverses at a common port, preserve distinct nets, then color transverse runs. */

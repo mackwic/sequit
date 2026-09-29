@@ -8,7 +8,7 @@ import type { ChannelEndpoint } from '../../../../src/lib/core/layout/routing/ch
 import { channelPoints } from '../../../../src/lib/core/layout/routing/materialize-node-routes';
 import { AssertRenderedPaths } from '../../../support/assertions/assert-rendered-paths';
 import { AssertRoutes } from '../../../support/assertions/assert-routes';
-import { routeSegments } from '../../../support/assertions/route-geometry';
+import { routeCrossings, routeSegments } from '../../../support/assertions/route-geometry';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 
 function pathsFor(input: readonly ChannelEndpoint[], vertical: boolean) {
@@ -46,6 +46,37 @@ it('joins arbitrary incoming families without column cycles or unrelated shared 
 						new Set(arrivals.map(({ points }) => JSON.stringify(defined(points.at(-1))))),
 					).toHaveLength(1);
 				}
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('stacks interleaved runs so that neither riser crosses the other traverse', () => {
+	fc.assert(
+		fc.property(
+			fc.tuple(
+				fc.integer({ min: 1, max: 5 }),
+				fc.integer({ min: 1, max: 5 }),
+				fc.integer({ min: 1, max: 5 }),
+			),
+			fc.boolean(),
+			fc.boolean(),
+			([first, second, third], leftward, vertical) => {
+				const p = 0;
+				const q = first * 24;
+				const r = (first + second) * 24;
+				const s = (first + second + third) * 24;
+				let input: ChannelEndpoint[] = [
+					{ id: 'outer', source: p, target: r },
+					{ id: 'inner', source: q, target: s },
+				];
+				if (leftward)
+					input = [
+						{ id: 'outer', source: s, target: q },
+						{ id: 'inner', source: r, target: p },
+					];
+				expect(routeCrossings(pathsFor(input, vertical))).toEqual([]);
 			},
 		),
 		PROPERTY_PARAMETERS,

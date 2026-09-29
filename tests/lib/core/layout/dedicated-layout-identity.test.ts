@@ -245,7 +245,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-3+1': 'a8607247aecf5781535b021a8316bf888046aee6b5585df26a1f5df5f78b99b2',
 			'ai-documentary-effort': 'fb3f7a88b5cb3548d69a2094dcc429e4c547c9cce89a33841531023c32ff0031',
 			'group-endpoint-route': 'bc431c08d86cd74f0baeeb20e2cb83118b739da0debe72d47b543dba908ed611',
-			'junction-network-layout': '45f5fe4e060ade9f470997da6b56b1b9aa7caa52dea13feeccb16f97420a5965',
+			'junction-network-layout': 'fa45dc4195f28d6bd1b64887120d1edb4e1efa0dff4f7943efbf524fc9fbb9b2',
 			'multirank-group-junction-one':
 				'a630fe9ae19dfd906835eebbe7900a74eb6284723ecf19d7f8382bac419fa7ad',
 			'multirank-group-junction-two':
@@ -254,7 +254,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			'rail-clearance-13': 'd33ef814c853a9cbc19a71d910cd2914dfae9803b17ad2796a6edd6dd5da88c6',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
 			'workshop-branching': '007f50ba4f616a515f8c8d08e082536958b139ee39d6ad2cb5ef12236c0e58c4',
-			'workshop-navigation': 'c221ef24353a854ddcc302190a4b7be21d0606552730c29d18b273ca0d3ec4aa',
+			'workshop-navigation': 'd1d0b7af050f8cb3040ebf67a1784a2f147a8071cff249c92866acf1c1b8d365',
 		});
 
 		const casesById = new Map(allCases.map(({ id, ...identityCase }) => [id, identityCase]));
