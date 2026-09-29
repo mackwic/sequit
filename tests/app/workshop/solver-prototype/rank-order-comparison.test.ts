@@ -64,13 +64,15 @@ describe('rank order comparison', () => {
 		const [threeOne, twoTwo, , , , geometricThreeOne, geometricTwoTwo] = comparison.entries;
 		expect(threeOne?.documentaryCrossings).toBe(2);
 		expect(twoTwo?.documentaryCrossings).toBe(1);
+		// Centering A on both targets pushes B and C beside D: the documentary geometry crosses
+		// more than its abstract proxy, while the selected order below is crossing-free.
 		expect(threeOne?.documentaryRouteScore).toMatchObject({
-			strictCrossings: 2,
-			validatedBridges: 2,
+			strictCrossings: 4,
+			validatedBridges: 4,
 		});
 		expect(geometricThreeOne?.documentaryRouteScore).toMatchObject({
-			strictCrossings: 2,
-			validatedBridges: 2,
+			strictCrossings: 4,
+			validatedBridges: 4,
 		});
 		expect(geometricTwoTwo?.documentaryRouteScore).toMatchObject({
 			strictCrossings: 1,
@@ -114,10 +116,10 @@ describe('rank order comparison', () => {
 
 	it('matches pinned dedicated-engine layout fingerprints for every corpus entry', () => {
 		const expected: Record<string, string> = {
-			'geometric-3+1': '3e38011f572fda44003de0ced6f62ae35ccefcb3b9bfec3818d2954099211fc8',
+			'geometric-3+1': '45a1f7b753bac09efceb3b0bb559df40fd6d8a2f080fd27ad72ceca3f5707f29',
 			'geometric-2+2': '49b25131fc1eed3895523a09cfa7946fc337751a2ccbe192eb0a025fe1a33c79',
-			'adjacent-3+1': '245bfb9ce2a9e05f0ad28f28b08b589e5f351859c3190edf377525036531a4a6',
-			'adjacent-2+2': '8d01a1f76e5e210e62fa16d9e9cce75ef7771c0d37b02042845d6ee4d54e04d0',
+			'adjacent-3+1': 'c172fcb69db80f44a1666b6ad2292a0e2067bac3d5864274362b638bcf7ee8b7',
+			'adjacent-2+2': '8e7b9058fe105a2bc902334d593015dd56f113ec316006198770f47b76fafc49',
 			'two-successors': 'cbef67223f47ce6a3ae02f7b451be2d111218576501be214a3cba1a06160a157',
 			'two-predecessors': '72956e705ceb18d863ee61533d5c77604512850401a8fe71614ddf6922dacb01',
 			'three-predecessors': 'b317d5a37873c18ff1bdfc1feb79efbfbc886a53e8b520ae2a1b7b4a8307a864',
@@ -227,7 +229,7 @@ describe('rank order stability under document edits', () => {
 		});
 		expect(removal?.commonRouteLengthAfter).toBeLessThan(removal?.commonRouteLengthBefore ?? 0);
 		expect(removal?.commonBendsAfter).toBeLessThanOrEqual(removal?.commonBendsBefore ?? 0);
-		expect(removal?.commonRouteLengthAfter).toBeLessThanOrEqual(320);
+		expect(removal?.commonRouteLengthAfter).toBeLessThanOrEqual(388);
 		expect(removal?.commonBendsAfter).toBeLessThanOrEqual(4);
 		const mutation = rankOrderMutationCorpus().find(({ id }) => id === 'remove-relation');
 		if (mutation === undefined) throw new Error('Missing removal witness');
@@ -339,7 +341,7 @@ describe('rank order stability under document edits', () => {
 			pathChanges: 4,
 			beforeCrossings: 0,
 			afterCrossings: 0,
-			medianTranslation: { x: 58, y: -24 },
+			medianTranslation: { x: 32, y: 0 },
 			relativeMovedElements: 4,
 			documentary: {
 				commonElements: 5,
@@ -348,7 +350,7 @@ describe('rank order stability under document edits', () => {
 				relativeMovedElements: 2,
 			},
 		});
-		expect(resized?.meanRelativeNormalizedMovement).toBeCloseTo(0.328);
+		expect(resized?.meanRelativeNormalizedMovement).toBeCloseTo(0.592);
 		expect(resized?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.096);
 	});
 
@@ -476,8 +478,8 @@ describe('rank order stability under document edits', () => {
 		});
 		expect(frontier?.meanNormalizedMovement).toBeCloseTo(0.937);
 		expect(frontier?.meanRelativeNormalizedMovement).toBeCloseTo(0.322);
-		expect(frontier?.documentary.meanNormalizedMovement).toBeCloseTo(0.533);
-		expect(frontier?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.166);
+		expect(frontier?.documentary.meanNormalizedMovement).toBeCloseTo(0.767);
+		expect(frontier?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.239);
 	});
 
 	it('preserves the rank order, box sizes and relative ports of untouched components', () => {

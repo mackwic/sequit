@@ -21,7 +21,7 @@ Le scénario s’exécute dans les quatre directions et les deux biais compatibl
 
 À gauche de J, les passages de U → P, V → P et W → Q sont libres. Ces routes
 restent dans l’enveloppe transversale de leurs propres extrémités ; elles ne
-contournent pas toute la jonction à droite. V → P reste droite ; W → Q peut
-conserver un coude local pour préserver l’espacement entre les boîtes.
+contournent pas toute la jonction à droite. U et V sont centrés ensemble sous P ;
+W → Q peut conserver un coude local pour préserver l’espacement entre les boîtes.
 
 <VisualTest {scenario} {source} bind:settings />

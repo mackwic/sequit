@@ -1,0 +1,23 @@
+<script>
+ import { scenario } from './family-envelopes.scenario';
+ import source from './family-envelopes.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Familles centrées sur leur parent, dans un groupe
+
+Ce graphe reprend le groupe « Use cases » de la carte de l’effort documentaire.
+Toutes ses boîtes appartiennent au même groupe.
+
+Sur l’axe transversal, l’enveloppe des enfants d’un parent est centrée sur ce
+parent, qu’il y ait un, deux ou trois enfants. Un enfant unique est donc dans
+l’axe de son parent et sa relation est droite. Une jonction est transparente :
+Intuitive et OnlyOffice sont centrés sous Familiar, à travers le XOR.
+
+Le layout peut s’élargir pour laisser la place aux familles larges, par exemple
+les trois enfants d’Orchestration. L’ordre des rangées ne change pas et les
+boîtes gardent leur espacement minimal. La règle s’applique dans les quatre
+directions ; seuls les axes changent.
+
+<VisualTest {scenario} {source} bind:settings />

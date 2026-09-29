@@ -1,0 +1,32 @@
+<script>
+ import { scenario } from './long-relation-reorder.scenario';
+ import source from './long-relation-reorder.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Relation longue : réordonner pour éviter les croisements
+
+Une relation longue saute plusieurs rangées. Sa route ne traverse pas ces
+rangées en biais : elle prend un seul passage droit, à côté des boîtes. Le
+passage est choisi du côté où ses deux raccords croisent le moins de relations.
+L’ordre des rangs tient compte de ce passage : une boîte peut changer de place
+pour que les deux extrémités soient du même côté.
+
+**L sous la chaîne de B.** L pointe vers B2 et vers T, au premier rang. Dans
+l’ordre documentaire A, T, B, la route de L → T devrait croiser la chaîne de B
+pour rejoindre T. T passe donc à droite de B et la route longe le bord droit.
+
+**L sous la chaîne de A.** C’est le miroir : T passe à gauche de A.
+
+**T déjà du bon côté.** Avec l’ordre documentaire A, B, T, il n’y a rien à
+corriger : l’ordre est conservé.
+
+**Use cases.** Dans le groupe de la carte de l’effort documentaire, la note
+« Does Word provide ALCOA+… » pointe vers ALCOA+, six rangées plus haut. ALCOA+
+passe à droite de « Training… », du côté de la note, et le graphe n’a plus de
+croisement.
+
+Les assertions s’appliquent dans les quatre directions et leurs biais.
+
+<VisualTest {scenario} {source} bind:settings />

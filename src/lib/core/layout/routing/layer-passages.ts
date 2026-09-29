@@ -9,6 +9,7 @@ import {
 	exteriorFor,
 } from './component-passages';
 import { commonGroupBounds, foreignGroupObstacles } from './group-passages';
+import { byJogCrossings, type PassageReservation } from './passage-jogs';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 
 interface PassageInput {
@@ -35,14 +36,9 @@ interface Interval {
 	readonly end: number;
 }
 
-interface PassageReservation {
-	readonly coordinate: number;
-	readonly sourceLayer: number;
-	readonly targetLayer: number;
-}
-
 interface PassageSelection {
 	readonly workspace: PassageWorkspace;
+	readonly relation: LogicRelation;
 	candidates: number[];
 	readonly endpoints: readonly [source: Bounds, target: Bounds];
 	readonly sourceCoordinate: number;
@@ -249,11 +245,11 @@ function candidateHitsObstacles(
 }
 
 function selectPassage(input: PassageSelection): number | undefined {
-	const { workspace, candidates } = input;
+	const { workspace } = input;
 	const [targetLayer, sourceLayer] = input.layerSpan;
 	let obstacleIndex: RouteObstacles | undefined;
 	let obstacleIndexReady = false;
-	for (const candidate of new Set(candidates)) {
+	for (const candidate of byJogCrossings(workspace, input)) {
 		const index = reservationIndex(input, candidate);
 		if (index === undefined) continue;
 		if (!obstacleIndexReady) {
@@ -261,7 +257,15 @@ function selectPassage(input: PassageSelection): number | undefined {
 			obstacleIndexReady = true;
 		}
 		if (candidateHitsObstacles(input, candidate, obstacleIndex)) continue;
-		workspace.reservations.splice(index, 0, { coordinate: candidate, sourceLayer, targetLayer });
+		workspace.reservations.splice(index, 0, {
+			coordinate: candidate,
+			sourceLayer,
+			targetLayer,
+			sourceId: input.relation.from,
+			targetId: input.relation.to,
+			sourceCoordinate: input.sourceCoordinate,
+			targetCoordinate: input.targetCoordinate,
+		});
 		return candidate;
 	}
 	return undefined;
@@ -300,6 +304,7 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	const fallback = exterior.fallback;
 	const selection: PassageSelection = {
 		workspace: input,
+		relation,
 		candidates: [],
 		endpoints: [source, target],
 		sourceCoordinate,

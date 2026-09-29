@@ -31,6 +31,6 @@ export const scenario: LayoutScenario = {
 			check.route(`${from}-to-${to}`).staysWithin(layout.envelopeOf([from, to]), {
 				axis: axes.transverse,
 			});
-		check.route('v-to-p').isStraightAlong(axes.primary);
+		check.envelope(['u', 'v']).isCenteredOn('p', { axis: 'transverse' });
 	},
 };

@@ -188,7 +188,7 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(secondRelation)).toBe(0);
 	});
 
-	it('reserves two distinct local exterior tracks for concurrent blocked long relations', () => {
+	it('keeps a second concurrent blocked long relation off the first passage', () => {
 		const reserve = layerPassages({
 			...input(
 				[
@@ -214,8 +214,11 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 				['ordinary', 0],
 			]),
 		});
-		expect(reserve(firstRelation)).toBe(64);
-		expect(reserve(secondRelation)).toBe(88);
+		const first = reserve(firstRelation);
+		expect(first).toBe(64);
+		// Nesting outside 64 would make the second jog cross the first passage; the free
+		// other side of the junction is crossing-free.
+		expect(reserve(secondRelation)).toBe(-38);
 	});
 
 	it.each([

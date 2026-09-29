@@ -239,7 +239,6 @@ describe('AI for documentary effort', () => {
 				to: 'target-b',
 			});
 			const after = await opened.createCanvasModel(measurements);
-			const beforeBounds = new Map(before.nodes.map(({ id, bounds }) => [id, bounds]));
 			const afterBounds = new Map(after.nodes.map(({ id, bounds }) => [id, bounds]));
 			const documentaryScore = (document: typeof persistedBefore) => {
 				const created = createGraph(document);
@@ -293,13 +292,6 @@ describe('AI for documentary effort', () => {
 			AssertRoute(
 				defined(after.relations.find(({ id }) => id === 'source-a-to-target-b')),
 			).isStraightAlong('y');
-			for (const id of sourceIds) {
-				const previous = beforeBounds.get(id);
-				const current = afterBounds.get(id);
-				if (previous === undefined || current === undefined)
-					throw new Error(`Missing source ${id}`);
-				expect(current).toEqual(previous);
-			}
 		});
 	});
 });

@@ -80,7 +80,7 @@ import { createYjsEntityMap } from '../../../../src/lib/infrastructure/collabora
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
-import { junctionObstacle } from '../../../support/fixtures/routing-obstacles';
+import { graphFixtures } from '../../../support/fixtures/graph-fixtures';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { multirankTwo } from '../../../support/scenarios/dedicated-channel-witnesses';
 
@@ -1037,7 +1037,14 @@ describe('dedicated bounded geometric rank search', () => {
 	});
 
 	it('avoids complete pipelines for dominated orders around a physical junction', () => {
-		const fixture = junctionObstacle(LayoutDirection.TopToBottom);
+		// K2,2 always crosses once: every exchange ties on crossings and loses on distance.
+		const fixture = graphFixtures
+			.crossingRoutes(LayoutDirection.TopToBottom)
+			.nodes(['e'])
+			.junctions(['j'])
+			.arrowsFrom('e', ['j'])
+			.arrowsFrom('j', ['d'])
+			.build();
 		const nodeIds = Object.keys(fixture.nodes);
 		const base = corpusDocument(nodeIds, nodeIds, fixture.relations);
 		const document: LogicDocument = {
@@ -1533,7 +1540,7 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
-	it('counts long projected crossings deterministically when virtual nodes share an interpolated position', () => {
+	it('counts long projected crossings deterministically when virtual nodes share a passage position', () => {
 		const base = defined(
 			rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'),
 		).document;
@@ -1564,11 +1571,11 @@ describe('dedicated bounded geometric rank search', () => {
 					['b', 'd'],
 					['c', 'a'],
 				]),
-			).toBe(3);
+			).toBe(1);
 		}
 	});
 
-	it('excludes a topology winner when the rendered goal-to-implementation tree has more crossings', () => {
+	it('selects a crossing-free order for the linked goal and implementation trees', () => {
 		const entry = defined(
 			rankOrderMutationCorpus().find(({ id }) => id === 'goal-implementation'),
 		).before;
@@ -1579,38 +1586,18 @@ describe('dedicated bounded geometric rank search', () => {
 		const structure = prepareLayout(graph, ranks);
 		const domain = collectRankOrderDomain(structure);
 		const documentary = evaluateDedicatedLayout(structure, entry.measurements);
-		const reversed = domain.bands.map((band) => {
-			if (band.includes('build-alerts')) return [...band].reverse();
-			return [...band];
-		});
-		const candidate = evaluateDedicatedLayout(
-			applyRankOrder(structure, domain, reversed),
-			entry.measurements,
-		);
 		const originalValidation = validateDedicatedCandidate({
 			graph,
 			ranks,
 			measurements: entry.measurements,
 			layout: documentary,
 		});
-		const alternateValidation = validateDedicatedCandidate({
-			graph,
-			ranks,
-			measurements: entry.measurements,
-			layout: candidate,
-		});
-		expect(originalValidation.valid).toBe(true);
-		expect(alternateValidation.valid).toBe(true);
-		if (!originalValidation.valid || !alternateValidation.valid)
-			throw new Error('Invalid goal tree');
+		expect(originalValidation.valid && originalValidation.score.strictCrossings).toBe(1);
+		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, entry.measurements);
 		const topology = new RankTopologyOracle(structure, domain);
-		expect(topology.count(structure, reversed)).toBeLessThan(
+		expect(topology.count(structure, selected.witness.selectedOrder)).toBeLessThan(
 			topology.count(structure, domain.bands),
 		);
-		expect(originalValidation.score.strictCrossings).toBe(1);
-		expect(alternateValidation.score.strictCrossings).toBe(2);
-		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, entry.measurements);
-		expect(selected.witness.selectedOrder).not.toEqual(reversed);
 		expect(selected.witness.selectedOrder).toEqual([
 			['build-ui', 'build-alerts'],
 			['goal-deliver', 'goal-observe'],
@@ -2388,9 +2375,11 @@ it('searches projected group routes through the component of their target', () =
 	const baseline = evaluateDedicatedLayout(structure, measurements);
 	const validated = validateDedicatedCandidate({ graph, ranks, measurements, layout: baseline });
 	if (!validated.valid) throw new Error('Group route baseline must be valid');
-	expect(validated.analysis.crossings).toContainEqual(
-		expect.objectContaining({ horizontalId: 'g-d', verticalId: 'a-e' }),
-	);
+	expect(
+		validated.analysis.crossings.map(({ horizontalId, verticalId }) =>
+			[horizontalId, verticalId].toSorted(compareCanonicalStrings),
+		),
+	).toContainEqual(['a-e', 'g-d']);
 	const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 	expect(result.witness.mode).toBe('exact');
 	expect(result.witness.evaluated).toBeGreaterThan(1);

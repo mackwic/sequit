@@ -9,7 +9,7 @@ import type { LayoutScenario } from '../scenario';
 
 export const scenario: LayoutScenario = {
 	id: 'mixed-branch-alignment',
-	label: 'Branches mixtes et trajets droits',
+	label: 'Branches mixtes centrées sur leur parent',
 	group: 'Rails et ports',
 	order: 168,
 	arrange(direction = LayoutDirection.TopToBottom, bias) {
@@ -23,7 +23,8 @@ export const scenario: LayoutScenario = {
 		check.nodes(parents).haveRank(2);
 		check.nodes(children).haveRank(3);
 		check.envelope(parents).isCenteredOn('r', { axis: 'transverse' });
-		check.route('v-to-p').isStraightAlong(axesFor(layout.direction).primary);
+		check.envelope(['u', 'v']).isCenteredOn('p', { axis: 'transverse' });
+		check.envelope(['g', 'x']).isCenteredOn('s', { axis: 'transverse' });
 		check.route('w-to-q').isStraightAlong(axesFor(layout.direction).primary);
 		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
 		check.routes().haveNoCrossing().haveOnlyAllowedSharedTrunks();

@@ -23,7 +23,16 @@ interface NodeFixture extends VisualGraphData {
 	readonly bias?: LayoutBias | undefined;
 	readonly edit?: VisualDocumentEdit;
 	readonly reference?: VisualGraphData | true;
+	/** Encloses every node and junction in one group with this ID. */
+	readonly enclosingGroup?: string;
 }
+
+const ENCLOSING_GROUP_MEASUREMENT = {
+	minimumWidth: 160,
+	minimumHeight: 90,
+	headerHeight: 42,
+	padding: 24,
+};
 
 /** Measured endpoint fixture using the actual graph, rank and layout pipelines. */
 export async function layoutNodes({
@@ -34,10 +43,17 @@ export async function layoutNodes({
 	relations,
 	edit,
 	reference,
+	enclosingGroup,
 }: NodeFixture): Promise<VisualLayout> {
 	const orders = new Map<string, OrderKey>();
 	let previous: OrderKey | undefined;
-	for (const id of [...Object.keys(nodes), ...Object.keys(junctions)]) {
+	const groupIds: string[] = [];
+	let membership: { readonly groupId?: string } = {};
+	if (enclosingGroup !== undefined) {
+		groupIds.push(enclosingGroup);
+		membership = { groupId: enclosingGroup };
+	}
+	for (const id of [...groupIds, ...Object.keys(nodes), ...Object.keys(junctions)]) {
 		let slot = {};
 		if (previous !== undefined) slot = { before: previous };
 		previous = fractionalOrderKeySpace.keyFor(slot);
@@ -52,12 +68,18 @@ export async function layoutNodes({
 			`Incompatible layout direction and bias: ${direction}, ${bias}`,
 		),
 		natures: [{ id: 'goal', label: 'Goal', color: '#285448' }],
-		groups: [],
+		groups: groupIds.map((id) => ({
+			id,
+			kind: EndpointKind.Group,
+			label: id.toUpperCase(),
+			layoutOrder: defined(orders.get(id)),
+		})),
 		junctions: Object.keys(junctions).map((id) => ({
 			id,
 			kind: EndpointKind.Junction,
 			operator: JunctionOperator.Xor,
 			layoutOrder: defined(orders.get(id)),
+			...membership,
 		})),
 		nodes: Object.keys(nodes).map((id) => ({
 			id,
@@ -65,6 +87,7 @@ export async function layoutNodes({
 			natureId: 'goal',
 			markdown: id.toUpperCase(),
 			layoutOrder: defined(orders.get(id)),
+			...membership,
 		})),
 		relations,
 	};
@@ -77,13 +100,13 @@ export async function layoutNodes({
 		ranks,
 		{
 			nodes: new Map(Object.entries(nodes)),
-			groups: new Map(),
+			groups: new Map(groupIds.map((id) => [id, ENCLOSING_GROUP_MEASUREMENT])),
 			junctions: new Map(Object.entries(junctions)),
 		},
 		{ inspectRouting: true },
 	);
 	let observedDocument: LogicDocument | undefined;
-	if (edit !== undefined) observedDocument = editedDocument;
+	if (edit !== undefined || enclosingGroup !== undefined) observedDocument = editedDocument;
 	const layout = new VisualLayout(
 		result,
 		ranks.byEndpointId,
@@ -94,6 +117,8 @@ export async function layoutNodes({
 	if (reference === undefined) return layout;
 	let referenceData: VisualGraphData = { nodes, junctions, relations };
 	if (reference !== true) referenceData = reference;
-	const before = await layoutNodes({ ...referenceData, direction, bias });
+	let group = {};
+	if (enclosingGroup !== undefined) group = { enclosingGroup };
+	const before = await layoutNodes({ ...referenceData, direction, bias, ...group });
 	return layout.withReference('Avant / référence', before);
 }

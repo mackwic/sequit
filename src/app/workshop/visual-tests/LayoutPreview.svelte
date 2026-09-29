@@ -22,6 +22,10 @@
 		targets?: AssertionTargets;
 	} = $props();
 	const markerId = $props.id();
+	/** Group frames stay transparent, so that their members and routes remain visible. */
+	function fillOpacity(kind: EndpointKind): number {
+		return Number(kind !== EndpointKind.Group);
+	}
 </script>
 
 <div class="layout-preview">
@@ -77,6 +81,7 @@
 						height={box.bounds.height}
 						rx="5"
 						fill="#f4f7ef"
+						fill-opacity={fillOpacity(box.kind)}
 						stroke="#456858"
 					/>
 					<text

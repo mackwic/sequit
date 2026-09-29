@@ -39,7 +39,7 @@ function bounds(
 		primaryBandSizes: [20],
 		rankGap: 72,
 		rankGaps: new Map(),
-		parents: undefined,
+		adjacency: undefined,
 	}).boundsById;
 }
 
@@ -158,7 +158,7 @@ function layoutJunctionFixture(
 		primaryBandSizes: primarySizes,
 		rankGap: 72,
 		rankGaps: new Map(),
-		parents: undefined,
+		adjacency: undefined,
 	});
 	return { bounds: result.boundsById, width: result.width, height: result.height };
 }
@@ -173,7 +173,7 @@ describe('component layout endpoint order', () => {
 				primaryBandSizes: [20],
 				rankGap: 72,
 				rankGaps: new Map(),
-				parents: undefined,
+				adjacency: undefined,
 			}),
 		).toThrow('Component rows must align with primary rank bands');
 	});
@@ -188,7 +188,7 @@ describe('component layout endpoint order', () => {
 				primaryBandSizes: configuration[2],
 				rankGap: 72,
 				rankGaps: new Map(),
-				parents: undefined,
+				adjacency: undefined,
 			}),
 		).toThrow('Missing measured size: missing');
 		expect(() =>
@@ -199,7 +199,7 @@ describe('component layout endpoint order', () => {
 				primaryBandSizes: configuration[2],
 				rankGap: 72,
 				rankGaps: new Map(),
-				parents: undefined,
+				adjacency: undefined,
 			}),
 		).toThrow('Missing measured size: missing');
 	});
@@ -221,7 +221,7 @@ describe('component layout endpoint order', () => {
 			primaryBandSizes: [20],
 			rankGap: 72,
 			rankGaps: new Map(),
-			parents: undefined,
+			adjacency: undefined,
 		});
 		const ordinary = result.boundsById.get('z');
 		const junction = result.boundsById.get('junction');

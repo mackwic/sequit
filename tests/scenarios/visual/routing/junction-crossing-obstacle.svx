@@ -9,8 +9,10 @@
 
 G rejoint S par une chaîne de deux jonctions, J2 puis J1. À côté, U0 rejoint P1
 et U2 rejoint P0 ainsi que P2 : leurs relations se croisent et demandent plusieurs
-rails. Les nœuds gardent des dimensions physiques de 80 × 60 px et les jonctions
-de 28 × 20 px, quelle que soit la direction du graphe.
+rails. U0, U1 et U2 rejoignent aussi S directement : sans ces relations,
+l’alignement des familles et le choix du côté des passages évitent tout
+croisement près des jonctions. Les nœuds gardent des dimensions physiques de 80 × 60 px et
+les jonctions de 28 × 20 px, quelle que soit la direction du graphe.
 
 Un passage peut être libre avant la réservation des rails, puis traverser une
 jonction après leur déplacement. Le dégagement doit donc rester garanti sur

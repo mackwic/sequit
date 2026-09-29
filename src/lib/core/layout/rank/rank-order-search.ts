@@ -1,3 +1,4 @@
+import { defined } from '../../document/logic-document';
 import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
 import {
 	DedicatedCandidateRejectionCode,
@@ -16,7 +17,6 @@ import {
 import type { LayoutStructure } from '../structure/prepare-layout';
 import {
 	boundedRankOrderEnumerationSize,
-	compareRankOrders,
 	lazyRankOrders,
 	type RankOrder,
 	rankOrderKendallDistance,
@@ -137,12 +137,16 @@ class RankOrderSearch {
 	private readonly seen: Set<string>;
 	private readonly frontier: RankOrder[];
 	private readonly topology: RankTopologyOracle;
+	private readonly positions: readonly ReadonlyMap<string, number>[];
 	private documentaryScore: DedicatedRouteScore | undefined;
 
 	constructor(private readonly input: RankOrderSearchInput) {
 		this.seen = new Set([JSON.stringify(input.domain.bands)]);
 		this.frontier = [input.domain.bands];
 		this.topology = new RankTopologyOracle(input.structure, input.domain);
+		this.positions = input.domain.bands.map(
+			(band) => new Map(band.map((id, position) => [id, position])),
+		);
 	}
 
 	result(): RankOrderSearchResult {
@@ -223,7 +227,18 @@ class RankOrderSearch {
 		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
 		const kendall = rankOrderKendallDistance(order, this.input.domain.bands);
 		if (kendall !== best.kendall) return kendall > best.kendall;
-		return compareRankOrders(order, best.order) >= 0;
+		return this.compareDocumentaryPositions(order, best.order) >= 0;
+	}
+
+	/** Ties prefer earlier documentary positions, so renaming an endpoint cannot change them. */
+	private compareDocumentaryPositions(left: RankOrder, right: RankOrder): number {
+		for (const [bandIndex, positions] of this.positions.entries())
+			for (const [index, id] of defined(left[bandIndex]).entries()) {
+				const other = defined(defined(right[bandIndex])[index]);
+				const difference = defined(positions.get(id)) - defined(positions.get(other));
+				if (difference !== 0) return difference;
+			}
+		return 0;
 	}
 
 	rejectGroupPassage(order: RankOrder, failure: GroupRouteFailure): void {

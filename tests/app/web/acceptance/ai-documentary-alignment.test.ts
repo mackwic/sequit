@@ -35,7 +35,7 @@ function rootComponent(canvas: CanvasModel): VisualLayout {
 	);
 }
 
-it('straightens both reported AI documentary routes through the page projection, with its real Data team group', async () => {
+it('centers the AI documentary families through the page projection, with its real Data team group', async () => {
 	const opened = openDocument(await aiDocumentaryEffortScenario());
 	if (!opened.ok) throw new Error('The example used by the page must open.');
 	try {
@@ -52,8 +52,8 @@ it('straightens both reported AI documentary routes through the page projection,
 		const check = AssertLayout(layout);
 		check.node('reduce-documentary-effort').hasRank(1);
 		check
-			.route('preserve-partner-content-to-preserve-documentary-guarantees')
-			.isStraightAlong(axesFor(layout.direction).primary);
+			.envelope(['alcoa-plus', 'preserve-partner-content'])
+			.isCenteredOn('preserve-documentary-guarantees', { axis: 'transverse' });
 		check
 			.route('docx-word-compatible-to-minimal-workflow-disruption')
 			.isStraightAlong(axesFor(layout.direction).primary);

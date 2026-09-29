@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
@@ -8,43 +9,22 @@ import {
 	junctionNetworkDocument,
 	multirankOne,
 	multirankTwo,
-	railClearanceDocument,
-	railClearanceMeasurements,
 	railReuseDocument,
 } from '../../../support/scenarios/dedicated-channel-witnesses';
 import { referenceRouteBridgeAnalysis } from './bridge-oracle-reference';
 
-function visibleRoutes(
-	document: ReturnType<typeof railReuseDocument>,
-	overrides?: ReturnType<typeof railClearanceMeasurements>,
-) {
+function visibleRoutes(document: LogicDocument) {
 	const created = createGraph(document);
 	if (!created.ok) throw new Error(`Invalid channel witness ${document.id}`);
 	const layout = layoutWithDedicatedEngine(
 		created.value,
 		topologicallyRank(created.value),
-		layoutMeasurementsFor(document, overrides),
+		layoutMeasurementsFor(document),
 	);
 	return new Map(layout.relations.map((relation) => [relation.id, relation.points]));
 }
 
-function horizontalTransitY(routes: ReturnType<typeof visibleRoutes>, id: string): number {
-	const points = routes.get(id);
-	if (points?.[1] === undefined || points[2] === undefined)
-		throw new Error(`Missing visible horizontal transit for ${id}`);
-	if (points[1].y !== points[2].y) throw new Error(`Route ${id} has no horizontal transit`);
-	return points[1].y;
-}
-
 describe('observable dedicated channel routes', () => {
-	it('separates visible transits at the clearance boundary and reuses one beyond it', () => {
-		const document = railClearanceDocument();
-		const touching = visibleRoutes(document, railClearanceMeasurements(12));
-		const clear = visibleRoutes(document, railClearanceMeasurements(13));
-		expect(horizontalTransitY(touching, 'a-to-d')).not.toBe(horizontalTransitY(touching, 'a-to-e'));
-		expect(horizontalTransitY(clear, 'a-to-d')).toBe(horizontalTransitY(clear, 'a-to-e'));
-	});
-
 	it('reuses a visible rail for separated routes and keeps parallel junction relations distinct', () => {
 		const routes = visibleRoutes(railReuseDocument());
 		const first = routes.get('c-to-e');

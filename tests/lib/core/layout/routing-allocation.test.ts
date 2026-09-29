@@ -7,7 +7,6 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { RoutingPortRole } from '../../../../src/lib/core/layout/layout-types';
-import { centerRelatedRows } from '../../../../src/lib/core/layout/placement/center-related-rows';
 import { allocateChannelIntervals } from '../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
@@ -519,21 +518,6 @@ describe('rail and port reservations', () => {
 	it('does not reserve a transverse rail for an empty or entirely straight channel', () => {
 		expect(routeChannel([]).railCount).toBe(0);
 		expect(routeChannel([{ id: 'direct', source: 0, target: 0 }]).railCount).toBe(0);
-	});
-	it('tolerates absent parent metadata and an empty component without invented alignment', () => {
-		const bounds = new Map<string, Bounds>([
-			['a', { x: 0, y: 0, width: 60, height: 20 }],
-			['b', { x: 0, y: 100, width: 60, height: 20 }],
-			['c', { x: 96, y: 100, width: 60, height: 20 }],
-		]);
-		for (const parents of [new Map<string, string[]>(), new Map([['b', ['a']]])]) {
-			const original = structuredClone(bounds);
-			centerRelatedRows({ rows: [['a'], ['b', 'c']], bounds, parents, vertical: true });
-			expect(bounds).toEqual(original);
-		}
-		expect(
-			centerRelatedRows({ rows: [[]], bounds: new Map(), parents: new Map(), vertical: true }),
-		).toBe(1);
 	});
 });
 

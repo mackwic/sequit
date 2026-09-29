@@ -130,7 +130,10 @@ function preferClearerSide(
 	return { preferred: NO_EXTERIOR.preferred, fallback: [...leading, ...trailing] };
 }
 
-/** Coordinates owned by one component, never the outermost coordinate of the whole canvas. */
+/**
+ * Coordinates owned by one component beside its envelope. Without a neighbor either side is a
+ * fallback; the passage selection then compares the crossings of their end jogs.
+ */
 export function componentExteriorCandidates(
 	input: ComponentPassageInput,
 ): ReadonlyMap<number, ExteriorCandidates> {
@@ -138,7 +141,6 @@ export function componentExteriorCandidates(
 	const counts = longRelationCounts(input);
 	if (counts.size === 0) return candidates;
 	const intervals = componentIntervals(input);
-	if (intervals.size < 2) return candidates;
 	for (const [owner, count] of counts) {
 		const interval = defined(intervals.get(owner));
 		const leading = Array.from(

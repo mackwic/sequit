@@ -82,11 +82,12 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			},
 		);
 
-		it('uses documentary order to choose between equally close siblings', async () => {
+		it('centers a two-child family on its parent and keeps a lone child straight', async () => {
 			const fixture = equalDistanceBranches(configuration.direction);
 			const layout = await layoutNodes({ ...fixture, ...configuration });
+			AssertLayout(layout).envelope(['u', 'v']).isCenteredOn('p', { axis: 'transverse' });
 			AssertLayout(layout)
-				.route('u-to-p')
+				.route('w-to-q')
 				.isStraightAlong(axesFor(configuration.direction).primary);
 			AssertLayout(layout).routes().haveNoCrossing();
 			separatedRow(layout, ['u', 'v', 'w']);
@@ -120,24 +121,29 @@ describe.each(LAYOUT_CONFIGURATIONS)(
 			safeGeometry(layout);
 		});
 
-		it('aligns to the actual offset port when another branch crosses an ordinary row', async () => {
-			const fixture = withRelation(mixedBranchAlignment(configuration.direction), {
-				id: 'x-to-r',
-				from: 'x',
-				to: 'r',
-			});
+		it('aligns a lone child to the actual offset port of its parent', async () => {
+			const base = mixedBranchAlignment(configuration.direction);
+			const fixture = {
+				...base,
+				nodes: { ...base.nodes, z: defined(base.nodes['x']) },
+				relations: [
+					...base.relations,
+					{ id: 'z-to-x', from: 'z', to: 'x' },
+					{ id: 'z-to-q', from: 'z', to: 'q' },
+				],
+			};
 			const layout = await layoutNodes({ ...fixture, ...configuration });
-			const route = defined(layout.relations.find(({ id }) => id === 'v-to-p'));
-			const parent = layout.getById('p').bounds;
+			const route = defined(layout.relations.find(({ id }) => id === 'w-to-q'));
+			const parent = layout.getById('q').bounds;
 			const axis = axesFor(configuration.direction).transverse;
 			let dimension: 'width' | 'height' = 'width';
 			if (axis === 'y') dimension = 'height';
 			expect(
 				Math.abs(defined(route.points.at(-1))[axis] - parent[axis] - parent[dimension] / 2),
 			).toBeGreaterThan(0);
-			AssertLayout(layout).ports('p', { role: 'incoming' }).haveCount(2);
+			AssertLayout(layout).ports('q', { role: 'incoming' }).haveCount(2);
 			AssertLayout(layout)
-				.route('v-to-p')
+				.route('w-to-q')
 				.isStraightAlong(axesFor(configuration.direction).primary);
 			separatedRow(layout, ['u', 'v', 'w', 'g', 'x']);
 			safeGeometry(layout);

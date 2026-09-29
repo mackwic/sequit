@@ -5,13 +5,6 @@ import type { LayoutStructure } from '../structure/prepare-layout';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
 import type { RankOrderDomain } from './rank-ordering';
 
-interface OrderedEndpoint {
-	readonly id: string;
-	readonly rank: number;
-	readonly ordinal: number;
-	readonly rowSize: number;
-}
-
 interface LayeredRelation {
 	readonly from: string;
 	readonly to: string;
@@ -84,6 +77,55 @@ function layeredSegments(
 	return { relations, segments };
 }
 
+interface PassagePosition {
+	readonly x: number;
+	/** Between equal positions, a source nearer the passage side nests inside. */
+	readonly tie: number;
+}
+
+/**
+ * Routing gives a long relation one straight passage beside the rows it skips, on the side
+ * nearer to both endpoints. Longer passages nest outside shorter ones, then a relation farther
+ * from that side nests outside a nearer one. Interpolating through the skipped rows would
+ * miss the crossings of its two end jogs.
+ */
+function passagePosition(sourceX: number, targetX: number, span: number): PassagePosition {
+	const average = (sourceX + targetX) / 2;
+	if (average < 0.5) return { x: -(span + average), tie: -sourceX };
+	return { x: 1 + span + (1 - average), tie: 1 - sourceX };
+}
+
+/**
+ * Normalized transverse positions by row ordinal. A junction rail is centered on its ordinary
+ * children, so it takes their mean position rather than the end of its row.
+ */
+function transversePositions(
+	structure: LayoutStructure,
+	rows: readonly (readonly string[])[],
+): ReadonlyMap<string, number> {
+	const positions = new Map<string, number>();
+	for (const row of rows)
+		for (const [ordinal, id] of row.entries()) positions.set(id, (ordinal + 1) / (row.length + 1));
+	for (const [id, junction] of structure.junctions) {
+		const children = junction.neighbors.filter((child) => positions.has(child));
+		if (children.length === 0 || !positions.has(id)) continue;
+		const sum = children.reduce((total, child) => total + defined(positions.get(child)), 0);
+		positions.set(id, sum / children.length);
+	}
+	return positions;
+}
+
+interface RowEntry {
+	readonly id: string;
+	readonly x: number;
+	readonly tie: number;
+}
+
+function compareRowEntries(left: RowEntry, right: RowEntry): number {
+	const byPosition = left.x - right.x || left.tie - right.tie;
+	return byPosition || compareCanonicalStrings(left.id, right.id);
+}
+
 /** Topology only: physical node widths, packing and rail coordinates never enter this oracle. */
 export class RankTopologyOracle {
 	private readonly rows: readonly (readonly string[])[];
@@ -115,26 +157,17 @@ export class RankTopologyOracle {
 				return defined(chosen);
 			});
 		});
-		const positions = new Map<string, OrderedEndpoint>();
-		for (const [rank, row] of rows.entries())
-			for (const [ordinal, id] of row.entries())
-				positions.set(id, { id, rank, ordinal, rowSize: row.length });
-		const dummies = rows.map(() => [] as { readonly id: string; readonly x: number }[]);
+		const positions = transversePositions(structure, rows);
+		const dummies = rows.map((): RowEntry[] => []);
 		for (const relation of this.relations) {
-			const source = defined(positions.get(relation.from));
-			const target = defined(positions.get(relation.to));
-			const sourceX = (source.ordinal + 1) / (source.rowSize + 1);
-			const targetX = (target.ordinal + 1) / (target.rowSize + 1);
-			for (const { rank, id } of relation.intermediate) {
-				const progress = (rank - relation.fromRank) / (relation.toRank - relation.fromRank);
-				defined(dummies[rank]).push({ id, x: sourceX + (targetX - sourceX) * progress });
-			}
+			const sourceX = defined(positions.get(relation.from));
+			const targetX = defined(positions.get(relation.to));
+			const { x, tie } = passagePosition(sourceX, targetX, relation.intermediate.length);
+			for (const { rank, id } of relation.intermediate) defined(dummies[rank]).push({ id, x, tie });
 		}
 		const augmented = rows.map((row, rank) => {
-			const fixed = row.map((id, ordinal) => ({ id, x: (ordinal + 1) / (row.length + 1) }));
-			return [...fixed, ...defined(dummies[rank])]
-				.sort((left, right) => left.x - right.x || compareCanonicalStrings(left.id, right.id))
-				.map(({ id }) => id);
+			const fixed = row.map((id) => ({ id, x: defined(positions.get(id)), tie: 0 }));
+			return [...fixed, ...defined(dummies[rank])].sort(compareRowEntries).map(({ id }) => id);
 		});
 		return countRankOrderCrossings(augmented, this.segments, maximum);
 	}
