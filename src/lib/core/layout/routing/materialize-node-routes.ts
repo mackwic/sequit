@@ -1,8 +1,9 @@
 import { defined, LayoutDirection } from '../../document/logic-document';
-import { pointOnAxes } from '../geometry/layout-frame';
+import { mainSize, pointOnAxes } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point } from '../layout-types';
 import type { ChannelWire } from './channel-types';
+import { freeOfGroupShells, type MainInterval } from './group-shells';
 import type { NodeRouting } from './reserve-node-routing';
 
 interface ChannelGeometry {
@@ -88,12 +89,44 @@ function principalFaces(input: {
 	return { nodes, rows };
 }
 
+/** Each channel's free span between its rows and the shells of group frames bordering it. */
+function channelSpans(
+	input: {
+		readonly plan: NodeRouting;
+		readonly frames: readonly Bounds[];
+		readonly vertical: boolean;
+		readonly sign: number;
+	},
+	rows: ReadonlyMap<number, PrincipalFaces>,
+): ReadonlyMap<number, MainInterval> {
+	const { plan, frames, vertical, sign } = input;
+	const ranks = [...new Set(plan.corridors.map(({ corridor }) => corridor.rank))];
+	const gaps = ranks
+		.map((rank) => ({
+			rank,
+			start: defined(rows.get(rank + 1)).departure,
+			end: defined(rows.get(rank)).arrival,
+		}))
+		.sort((left, right) => left.start - right.start);
+	const shells = frames.map((box) => {
+		let first = box.y;
+		if (!vertical) first = box.x;
+		const near = first * sign;
+		const far = (first + mainSize(box, vertical)) * sign;
+		return { start: Math.min(near, far), end: Math.max(near, far) };
+	});
+	const free = freeOfGroupShells(gaps, shells);
+	return new Map(gaps.map(({ rank }, index) => [rank, defined(free[index])]));
+}
+
 /** Materialize a previously reserved channel after row placement, without moving its ports. */
 export function applyNodeRouting(input: {
 	readonly plan: NodeRouting;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly direction: LayoutDirection;
 	readonly relationCount: number | undefined;
+	/** Populated group frames, whose shells are not routing space. */
+	readonly frames: readonly Bounds[];
 }): PlannedNodeRoutes {
 	const vertical = [LayoutDirection.TopToBottom, LayoutDirection.BottomToTop].includes(
 		input.direction,
@@ -104,6 +137,7 @@ export function applyNodeRouting(input: {
 	let sign = 1;
 	if (decreasing) sign = -1;
 	const faces = principalFaces({ ...input, vertical, sign });
+	const spans = channelSpans({ ...input, vertical, sign }, faces.rows);
 	let byIndex: (readonly Point[] | undefined)[] | undefined;
 	let byId: Map<string, readonly Point[]> | undefined;
 	if (input.relationCount === undefined) byId = new Map();
@@ -111,9 +145,8 @@ export function applyNodeRouting(input: {
 	for (const channel of input.plan.corridors) {
 		const rank = channel.corridor.rank;
 		const count = defined(input.plan.railCounts.get(rank));
-		const start = defined(faces.rows.get(rank + 1)).departure;
-		const end = defined(faces.rows.get(rank)).arrival;
-		const center = ((start + end) / 2) * sign;
+		const span = defined(spans.get(rank));
+		const center = ((span.start + span.end) / 2) * sign;
 		const halfSpan = ((count - 1) * RAIL_SPACING) / 2;
 		const geometry = {
 			vertical,

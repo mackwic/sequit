@@ -3,6 +3,11 @@ export const COMPONENT_GAP = 96;
 export const ITEM_GAP = 36;
 /** Default free space between ordinary rank bands, before local routing reservations. */
 export const BASE_RANK_GAP = 72;
+/**
+ * Free space along the flow between a group frame and the foreign row it faces. A rail crossing
+ * that gap runs centered in it, so it keeps 24px on each side, like a junction channel.
+ */
+export const GROUP_FRAME_CLEARANCE = 48;
 /** Leaves at least 24px on each side of a transverse turn, including the arrowhead. */
 export const JUNCTION_CLEARANCE = 48;
 /** Space for a bridge radius, a 9px arrowhead and 9px of visible air on either side. */

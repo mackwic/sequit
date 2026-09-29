@@ -3,13 +3,14 @@ import type { LayoutFrame } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, RoutingLayers } from '../layout-types';
 import { routePoints } from './endpoint-routes';
+import { freeOfGroupShells, type MainInterval } from './group-shells';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 import { layerExtent } from './routing-layers';
 
 export interface RoutingSpace {
 	readonly layers: RoutingLayers;
 	readonly enclosingGroups: ReadonlySet<string>;
-	readonly extents: readonly { readonly start: number; readonly end: number }[];
+	readonly extents: readonly MainInterval[];
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly frame: LayoutFrame;
 }
@@ -25,17 +26,47 @@ interface RoutingSpaceInput {
 	readonly enclosingGroups: ReadonlySet<string>;
 }
 
-/** A common rail stays outside every atomic box on the two bordering physical layers. */
+/**
+ * Rails between two layers leave both layers' boxes and the shells of group frames beginning or
+ * ending between them: each layer extent reaches to the free part of its bordering gaps.
+ */
+function clearOfFrames(
+	extents: readonly MainInterval[],
+	frames: readonly MainInterval[],
+): readonly MainInterval[] {
+	if (frames.length === 0) return extents;
+	const layers = extents.flatMap((extent, index) => {
+		if (Number.isFinite(extent.start) && Number.isFinite(extent.end)) return [index];
+		return [];
+	});
+	const gaps = layers.slice(1).map((layer, index) => ({
+		start: defined(extents[defined(layers[index])]).end,
+		end: defined(extents[layer]).start,
+	}));
+	const free = freeOfGroupShells(gaps, frames);
+	const result = extents.map(({ start, end }): { start: number; end: number } => ({ start, end }));
+	for (const [index, gap] of free.entries()) {
+		defined(result[defined(layers[index])]).end = gap.start;
+		defined(result[defined(layers[index + 1])]).start = gap.end;
+	}
+	return result;
+}
+
+/** A common rail stays outside every atomic box and group shell bordering its gap. */
 export function routingSpace(input: RoutingSpaceInput): RoutingSpace {
 	const { layers, bounds, frame, enclosingGroups } = input;
 	// A populated group is an envelope spanning its members, not a box on one physical layer.
-	const extents = layers.rows.map((row) =>
+	const boxes = layers.rows.map((row) =>
 		layerExtent(
 			row.filter((id) => !enclosingGroups.has(id)),
 			bounds,
 			frame,
 		),
 	);
+	const frames = [...enclosingGroups]
+		.filter((id) => bounds.has(id))
+		.map((id) => layerExtent([id], bounds, frame));
+	const extents = clearOfFrames(boxes, frames);
 	return { layers, enclosingGroups, extents, bounds, frame };
 }
 

@@ -67,6 +67,7 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 			bounds: input.bounds,
 			direction: input.frame.direction,
 			relationCount,
+			frames: [...input.space.enclosingGroups].flatMap((id) => input.bounds.get(id) ?? []),
 		});
 	}
 	const relations = input.graph.relations.map((entry, index) =>

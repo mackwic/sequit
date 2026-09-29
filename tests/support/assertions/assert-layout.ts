@@ -3,6 +3,7 @@ import type { BoxGeometry } from '../harnesses/box-geometry';
 import { axesFor } from '../harnesses/visual-directions';
 import type { VisualLayout } from '../harnesses/visual-layout';
 import { AssertBox } from './assert-box';
+import { assertGroupClearOfForeignBoxes, type FrameClearance } from './assert-group-frame';
 import { JunctionAssertions } from './assert-junctions';
 import { assertLayoutObstacles } from './assert-layout-obstacles';
 import { layoutRoutingAssertions } from './assert-layout-routing';
@@ -39,9 +40,13 @@ interface NodesCheck {
 	haveRank(expected: number): NodesCheck;
 	areAfter(reference: BoxReference, options?: OrderOptions): NodesCheck;
 }
+interface GroupCheck extends BoxCheck {
+	isClearOfForeignBoxes(clearance: FrameClearance): GroupCheck;
+}
 interface LayoutAssertions extends ReturnType<typeof layoutRoutingAssertions> {
 	node(id: string): NodeCheck;
 	junction(id: string): BoxCheck;
+	group(id: string): GroupCheck;
 	junctions(ids: readonly string[]): JunctionAssertions;
 	document(): VisualDocumentAssertions;
 	obstacles(): { haveClearance(clearance: number): void };
@@ -158,6 +163,18 @@ export function AssertLayout(layout: VisualLayout): LayoutAssertions {
 		},
 		junctions(ids) {
 			return new JunctionAssertions(layout, ids);
+		},
+		group(id) {
+			if (layout.getById(id).kind !== EndpointKind.Group)
+				throw new Error(`Expected a group: ${id}`);
+			const check: GroupCheck = {
+				...boxCheck(layout, layout.getById(id)),
+				isClearOfForeignBoxes(clearance) {
+					assertGroupClearOfForeignBoxes(layout, id, clearance);
+					return check;
+				},
+			};
+			return check;
 		},
 		document() {
 			return new VisualDocumentAssertions(layout);

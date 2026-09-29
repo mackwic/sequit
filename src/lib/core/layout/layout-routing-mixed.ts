@@ -12,6 +12,7 @@ import {
 import { type LayeredRoutingResult, reserveLayeredRouting } from './layout-routing-layers';
 import type { Point } from './layout-types';
 import { expandRowGaps } from './placement/expand-row-gaps';
+import { shellChannelGaps } from './routing/group-shells';
 import { allocatePorts } from './routing/port-allocation';
 import { type NodeRouting, planNodeRouting } from './routing/reserve-node-routing';
 import {
@@ -97,9 +98,22 @@ export function reserveRouting(
 			});
 		return routing;
 	}
-	placeWithRoutingPorts(workspace, ports, routingStructure, routing);
-	workspace.routing = routing;
-	return routing;
+	const frameIds = new Set(routingStructure.hierarchy?.membersById.keys());
+	const framed = {
+		...routing,
+		gaps: shellChannelGaps({
+			gaps: routing.gaps,
+			railCounts: routing.railCounts,
+			ranks: ranks.byEndpointId,
+			bounds: placement.bounds,
+			frameIds,
+			junctionIds: routingStructure.junctionIds,
+			vertical: frame.vertical,
+		}),
+	};
+	placeWithRoutingPorts(workspace, ports, routingStructure, framed);
+	workspace.routing = framed;
+	return framed;
 }
 
 interface StandardRoutingPlan {

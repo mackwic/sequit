@@ -50,18 +50,26 @@ export function groupJunctionInsets(
 	return result;
 }
 
+/** Container insets add to a slot: container clearances measured after placement are missing. */
+export interface JunctionChannelReservation {
+	readonly insets?: readonly number[] | undefined;
+	/** Structural minimum gap of each slot, whatever the channel already holds. */
+	readonly minimums?: readonly number[] | undefined;
+}
+
 /** Preserve already allocated slack before adding a container's missing channel clearance. */
 export function insetJunctionChannels(
 	rails: readonly JunctionRail[],
 	minimumSpan: number,
 	channels: readonly number[] | undefined,
-	insets: readonly number[],
+	reservation: JunctionChannelReservation,
 ): readonly number[] {
 	const span = railSpan(rails, channels);
 	const extra = Math.max(0, minimumSpan - span) / 2;
 	return Array.from({ length: rails.length + 1 }, (_, index) => {
 		let gap = channels?.[index] ?? JUNCTION_CLEARANCE;
 		if (index === 0 || index === rails.length) gap += extra;
-		return gap + (insets[index] ?? 0);
+		gap += reservation.insets?.[index] ?? 0;
+		return Math.max(gap, reservation.minimums?.[index] ?? 0);
 	});
 }

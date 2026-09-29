@@ -267,7 +267,15 @@ export function clearGroupEndpointRoutes(
 	)
 		return;
 	const context = prepareRoutingContext(graph, bounds, frame, routes);
-	for (const [index, route] of routes.entries()) {
+	// Group routes have no reserved rail: they yield to planned routes sharing their gap.
+	const groupRoutes = routes.map((route) =>
+		[route.from, route.to].some((id) => graph.endpointsById.get(id)?.kind === EndpointKind.Group),
+	);
+	const order = [...routes.keys()].sort(
+		(left, right) => Number(groupRoutes[right]) - Number(groupRoutes[left]),
+	);
+	for (const index of order) {
+		const route = defined(routes[index]);
 		context.activeIndex = index;
 		const groups = foreignGroupObstacles(context, route, 0);
 		if (!routeNeedsCorrection(route, context, groups)) continue;

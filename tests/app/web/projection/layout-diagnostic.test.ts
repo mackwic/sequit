@@ -5,6 +5,7 @@ import {
 	LayoutFailureReasonCode,
 	LayoutProjectionError,
 } from '../../../../src/app/web/projection/layout-diagnostic';
+import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import {
 	UnknownGridCellLayoutError,
 	UnknownLayoutPresentationError,
@@ -141,4 +142,17 @@ it('publishes a stable routing-cycle reason and hides arbitrary thrown details',
 		new Error('private implementation detail'),
 	);
 	expect(errorFailure.diagnostic.reason.code).toBe(LayoutFailureReasonCode.CalculationFailed);
+});
+
+it('keeps a typed group-passage failure and names its relation', () => {
+	const document = validLogicDocument();
+	const passage = new GroupRouteFailure('group-to-target');
+	const failure = new LayoutProjectionError(document, passage);
+	expect(failure.cause).toBe(passage);
+	expect(failure.message).toBe(passage.message);
+	expect(failure.diagnostic.reason).toEqual({
+		code: LayoutFailureReasonCode.GroupPassage,
+		relationId: 'group-to-target',
+		message: 'Aucun passage valide pour la relation « group-to-target ».',
+	});
 });

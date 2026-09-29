@@ -4,6 +4,7 @@ import { mainSize, transverseSize } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, PORT_INSET } from '../layout-settings';
 import type { GroupMeasurement, LayoutMeasurements, Size } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import { frameShellGaps } from './frame-shell-gaps';
 import { validateGroupMeasurement, validateSize } from './validate-measurements';
 
 export interface PreparedMeasurements {
@@ -12,6 +13,8 @@ export interface PreparedMeasurements {
 	readonly groups: ReadonlyMap<string, GroupMeasurement>;
 	readonly primaryBandSizes: readonly number[];
 	readonly rankGap: number;
+	/** Minimum junction channel gaps by interval and slot, holding frames ending on a rail. */
+	readonly junctionShellGaps: ReadonlyMap<number, readonly number[]>;
 }
 
 interface GroupReader {
@@ -138,13 +141,30 @@ export function prepareMeasurements(
 	const primaryBandSizes = Array.from({ length: structure.maximumRank + 1 }, () => 1);
 	for (const [id, size] of sizes) {
 		if (structure.junctionIds.has(id)) continue;
+		// A populated group endpoint is drawn as its members' frame, not as a box in one band.
+		if (structure.hierarchy?.membersById.has(id) === true) continue;
 		const rank = defined(structure.ranks.byEndpointId.get(id));
 		primaryBandSizes[rank] = Math.max(
 			defined(primaryBandSizes[rank]),
 			mainSize(size, frame.vertical),
 		);
 	}
-	const rankGap = relationGroupRankGap(structure, frame, groups);
+	const relationGap = relationGroupRankGap(structure, frame, groups);
+	const shells = frameShellGaps({
+		structure,
+		frame,
+		groups: groups.get,
+		sizes,
+		bandSizes: primaryBandSizes,
+		minimumGap: relationGap,
+	});
 	for (const group of structure.hierarchy?.deepestFirst ?? []) groups.get(group.id);
-	return { content, sizes, groups: groups.groups, primaryBandSizes, rankGap };
+	return {
+		content,
+		sizes,
+		groups: groups.groups,
+		primaryBandSizes,
+		rankGap: Math.max(relationGap, shells.rankGap),
+		junctionShellGaps: shells.junctionGaps,
+	};
 }

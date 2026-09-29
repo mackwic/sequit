@@ -30,12 +30,8 @@ import { validateLogicDocument } from '../../../../src/lib/core/document/validat
 import * as graph from '../../../../src/lib/core/graph/create-graph';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import { persistedGridDocument } from '../../../lib/core/layout/grid-cell-fixture';
-import {
-	layoutMeasurementsFor,
-	layoutMeasurementsForCanvas,
-} from '../../../support/builders/layout-measurements';
+import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import {
 	CollaborativeFixture,
@@ -420,37 +416,6 @@ describe('live document projection', () => {
 			name: LayoutProjectionError.name,
 			diagnostic: {
 				reason: { code: LayoutFailureReasonCode.UnknownFoldedGroupLayout },
-			},
-		});
-	});
-
-	it('reports an impossible group-to-target passage from its measured foreign frame', async () => {
-		const document: LogicDocument = {
-			...validLogicDocument(),
-			layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
-		};
-		const projection = createSharedCanvasProjection(document);
-		const measurements = layoutMeasurementsFor(document, {
-			nodes: { target: { width: 12.1, height: 0.1 } },
-			groups: {
-				container: { minimumWidth: 368, minimumHeight: 72, headerHeight: 36, padding: 24 },
-			},
-		});
-		const failure = await projection
-			.createCanvasModel(measurements)
-			.catch((error: unknown) => error);
-		expect(failure).toBeInstanceOf(LayoutProjectionError);
-		if (!(failure instanceof LayoutProjectionError))
-			throw new Error('Expected the canvas projection to reject this impossible passage');
-		expect(failure.cause).toBeInstanceOf(GroupRouteFailure);
-		if (!(failure.cause instanceof GroupRouteFailure))
-			throw new Error('Expected the original typed group-passage failure');
-		expect(failure.cause.relationId).toBe('group-to-target');
-		expect(failure.diagnostic).toMatchObject({
-			reason: {
-				code: LayoutFailureReasonCode.GroupPassage,
-				relationId: 'group-to-target',
-				message: 'Aucun passage valide pour la relation « group-to-target ».',
 			},
 		});
 	});

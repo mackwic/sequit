@@ -3,6 +3,7 @@ import { AssertLayout } from '../../../support/assertions/assert-layout';
 import {
 	DOCUMENTARY_USE_CASES,
 	documentaryUseCases,
+	USE_CASES_GROUPS,
 } from '../../../support/fixtures/documentary-use-cases';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { VisualLayout } from '../../../support/harnesses/visual-layout';
@@ -30,7 +31,7 @@ const reordered: LayoutScenario = {
 			...documentaryUseCases(direction),
 			direction,
 			bias,
-			enclosingGroup: 'use-cases',
+			groups: USE_CASES_GROUPS,
 		});
 	},
 	assert(layout) {
@@ -51,7 +52,7 @@ const mirrored: LayoutScenario = {
 			...documentaryUseCases(direction, DOCUMENTARY_USE_CASES.toReversed()),
 			direction,
 			bias,
-			enclosingGroup: 'use-cases',
+			groups: USE_CASES_GROUPS,
 		});
 	},
 	assert(layout) {
@@ -72,7 +73,7 @@ const kept: LayoutScenario = {
 			...documentaryUseCases(direction, TRACEABLE_LAST),
 			direction,
 			bias,
-			enclosingGroup: 'use-cases',
+			groups: USE_CASES_GROUPS,
 		});
 	},
 	assert(layout) {

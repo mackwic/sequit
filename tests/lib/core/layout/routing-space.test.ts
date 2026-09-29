@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
+import { GROUP_FRAME_CLEARANCE } from '../../../../src/lib/core/layout/layout-settings';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
+import {
+	freeOfGroupShells,
+	shellChannelGaps,
+} from '../../../../src/lib/core/layout/routing/group-shells';
 import {
 	directRouteFitsSpace,
 	directRouteRail,
@@ -68,6 +73,27 @@ describe.each(Object.values(LayoutDirection))('free routing space in %s', (direc
 		expect(directRouteFitsSpace(space, 'source', 'group')).toBe(false);
 		expect({ rows, boxes }).toEqual(original);
 		expect([...space.bounds]).toEqual(Object.entries(original.boxes));
+	});
+
+	it('centers a rail in the part of its gap outside the shells of frames bordering it', () => {
+		const rows = [
+			['target', 'group'],
+			['source', 'member', 'inner'],
+		];
+		const boxes = {
+			target: box(10, 40),
+			source: box(160, 200),
+			member: box(160, 200, 200),
+			// A frame starts inside the gap, one nested frame ends inside it, both beside the rail.
+			group: box(112, 300, 200, 200),
+			inner: box(-60, 64, 400),
+		};
+		const space = prepare(rows, boxes, [], ['group', 'inner']);
+		expect(space.extents).toEqual([
+			{ start: 10, end: 64 },
+			{ start: 112, end: 200 },
+		]);
+		expect(directRouteRail(space, 'source', 'target')).toBe(physical(88));
 	});
 
 	it('does not invent a rail for reversed endpoints or endpoints on the same layer', () => {
@@ -164,5 +190,38 @@ describe.each(Object.values(LayoutDirection))('free routing space in %s', (direc
 			{ start: Number.POSITIVE_INFINITY, end: Number.NEGATIVE_INFINITY },
 		]);
 		expect(emptyLayer.obstacles.size).toBe(0);
+	});
+});
+
+describe('group frame shells in row gaps', () => {
+	it('keeps the larger side beside a frame lying wholly inside a gap', () => {
+		expect(freeOfGroupShells([{ start: 0, end: 100 }], [{ start: 30, end: 50 }])).toEqual([
+			{ start: 50, end: 100 },
+		]);
+	});
+
+	it('measures a channel from its ordinary rows, not from a junction lying in its gap', () => {
+		const vertical = true;
+		const bounds = new Map<string, Bounds>([
+			['a', { x: 0, y: 0, width: 80, height: 40 }],
+			['junction', { x: 200, y: 100, width: 20, height: 20 }],
+			['b', { x: 0, y: 200, width: 80, height: 40 }],
+			// The frame ends between the first row and the junction rail.
+			['frame', { x: 100, y: -20, width: 80, height: 110 }],
+		]);
+		const gaps = shellChannelGaps({
+			gaps: new Map([[0, 72]]),
+			railCounts: new Map([[0, 1]]),
+			ranks: new Map([
+				['a', 0],
+				['junction', 0],
+				['b', 1],
+			]),
+			bounds,
+			frameIds: new Set(['frame']),
+			junctionIds: new Set(['junction']),
+			vertical,
+		});
+		expect(gaps.get(0)).toBe(50 + GROUP_FRAME_CLEARANCE);
 	});
 });

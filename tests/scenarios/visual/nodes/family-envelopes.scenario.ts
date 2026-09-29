@@ -1,6 +1,9 @@
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
-import { documentaryUseCases } from '../../../support/fixtures/documentary-use-cases';
+import {
+	documentaryUseCases,
+	USE_CASES_GROUPS,
+} from '../../../support/fixtures/documentary-use-cases';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import { axesFor } from '../../../support/harnesses/visual-directions';
 import type { LayoutScenario } from '../scenario';
@@ -39,7 +42,7 @@ export const scenario: LayoutScenario = {
 			...documentaryUseCases(direction),
 			direction,
 			bias,
-			enclosingGroup: 'use-cases',
+			groups: USE_CASES_GROUPS,
 		});
 	},
 	assert(layout) {

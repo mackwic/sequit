@@ -22,6 +22,9 @@ export const DOCUMENTARY_USE_CASES = [
 	'docx',
 ] as const;
 
+/** Every box and the XOR junction belong to the "Use cases" group. */
+export const USE_CASES_GROUPS = { 'use-cases': [...DOCUMENTARY_USE_CASES, 'xor'] } as const;
+
 export function documentaryUseCases(
 	direction: LayoutDirection,
 	order: readonly string[] = DOCUMENTARY_USE_CASES,

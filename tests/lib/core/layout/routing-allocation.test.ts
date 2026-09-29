@@ -319,19 +319,24 @@ describe('rail and port reservations', () => {
 		const ungrouped = { ...template };
 		delete ungrouped.groupId;
 		const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+		// Documentary slots and sizes where a-d crosses no corridor in the first placement; only
+		// the grouped placement after port growth opens its own corridor, which reuses the rails.
+		const slots = [6, 4, 1, 3, 2, 5];
 		const sizes = [
-			{ width: 167, height: 129 },
-			{ width: 86, height: 46 },
-			{ width: 151, height: 124 },
-			{ width: 122, height: 103 },
-			{ width: 126, height: 80 },
-			{ width: 135, height: 42 },
+			{ width: 42, height: 80 },
+			{ width: 153, height: 49 },
+			{ width: 41, height: 55 },
+			{ width: 43, height: 41 },
+			{ width: 167, height: 43 },
+			{ width: 67, height: 85 },
 		];
 		const document = {
 			...fixture,
 			nodes: ids.map((id, index) => {
-				const node = { ...ungrouped, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
-				if (id === 'f') return { ...node, groupId: 'group' };
+				const slot = slots[index];
+				if (slot === undefined) throw new Error('Every node requires a documentary slot');
+				const node = { ...ungrouped, id, markdown: id, layoutOrder: orderKey(`a${slot}`) };
+				if (id === 'c' || id === 'f') return { ...node, groupId: 'group' };
 				return node;
 			}),
 			junctions: [],
@@ -351,11 +356,11 @@ describe('rail and port reservations', () => {
 					return [id, size];
 				}),
 			),
-			groups: { group: { minimumWidth: 327, minimumHeight: 327, headerHeight: 53, padding: 40 } },
+			groups: { group: { minimumWidth: 48, minimumHeight: 262, headerHeight: 2, padding: 1 } },
 		});
 		const group = boundsFor(layout, 'group');
-		expect(contains(group, boundsFor(layout, 'f'))).toBe(true);
-		for (const id of ids.filter((id) => id !== 'f'))
+		for (const id of ['c', 'f']) expect(contains(group, boundsFor(layout, id))).toBe(true);
+		for (const id of ['a', 'b', 'd', 'e'])
 			expect(overlaps(group, boundsFor(layout, id)), `Group must not contain ${id}`).toBe(false);
 		const independent = layout.relations.find(({ id }) => id === 'a-d');
 		const reusable = layout.relations.find(({ id }) => id === 'c-e');

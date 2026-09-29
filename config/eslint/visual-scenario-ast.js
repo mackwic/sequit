@@ -18,6 +18,7 @@ const selections = new Set([
 	'trunks',
 	'junction',
 	'junctions',
+	'group',
 	'document',
 	'obstacles',
 ]);

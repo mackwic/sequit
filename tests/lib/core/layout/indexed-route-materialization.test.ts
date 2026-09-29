@@ -109,6 +109,7 @@ describe('indexed channel route materialization', () => {
 				bounds,
 				direction: frame.direction,
 				relationCount: graph.relations.length,
+				frames: [],
 			});
 			const directRouting = {
 				...routing,
@@ -127,6 +128,7 @@ describe('indexed channel route materialization', () => {
 				bounds,
 				direction: frame.direction,
 				relationCount: undefined,
+				frames: [],
 			});
 			for (const [index, { relation }] of graph.relations.entries())
 				expect(indexed.byIndex?.[index]).toEqual(fallback.byId?.get(relation.id));

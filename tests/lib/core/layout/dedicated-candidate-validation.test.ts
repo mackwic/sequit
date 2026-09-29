@@ -758,17 +758,20 @@ describe('dedicated candidate validation: boxes and groups', () => {
 			}),
 		).toMatchObject({ valid: false, code: DedicatedCandidateRejectionCode.Ports });
 
+		// A loop around the rail that re-enters it at its own bend, between the actual endpoints.
+		const rail = (first.y + last.y) / 2;
+		const loop = (first.x + last.x) / 2 + 16;
 		const selfContact = [
-			{ x: 174, y: 216 },
-			{ x: 174, y: 240 },
-			{ x: 252, y: 240 },
-			{ x: 252, y: 258 },
-			{ x: 220, y: 258 },
-			{ x: 220, y: 232 },
-			{ x: 252, y: 232 },
-			{ x: 252, y: 240 },
-			{ x: 302, y: 240 },
-			{ x: 302, y: 264 },
+			first,
+			{ x: first.x, y: rail },
+			{ x: loop, y: rail },
+			{ x: loop, y: rail + 18 },
+			{ x: loop - 32, y: rail + 18 },
+			{ x: loop - 32, y: rail - 8 },
+			{ x: loop, y: rail - 8 },
+			{ x: loop, y: rail },
+			{ x: last.x, y: rail },
+			last,
 		];
 		expect(
 			validateDedicatedCandidate({

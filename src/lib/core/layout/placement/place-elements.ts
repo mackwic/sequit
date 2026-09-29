@@ -83,7 +83,8 @@ export function placeElements(
 			junctions: structure.junctions,
 		});
 		const insets = placement.groupChannelInsets.get(rank);
-		if (insets !== undefined) {
+		const minimums = measurements.junctionShellGaps.get(rank);
+		if (insets !== undefined || minimums !== undefined) {
 			modifiedChannels ??= new Map(channelGaps);
 			modifiedChannels.set(
 				rank,
@@ -91,7 +92,7 @@ export function placeElements(
 					rails,
 					Math.max(measurements.rankGap, modifiedGaps.get(rank) ?? 0),
 					modifiedChannels.get(rank),
-					insets,
+					{ insets, minimums },
 				),
 			);
 		}

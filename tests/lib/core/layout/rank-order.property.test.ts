@@ -20,7 +20,10 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
-import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import {
+	type RouteBridgeAnalysis,
+	routeBridgeAnalysis,
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { routeRuns } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
@@ -2390,18 +2393,17 @@ it('searches projected group routes through the component of their target', () =
 
 it('searches a relation between two groups in the local document of their members', () => {
 	const base = corpusDocument(
-		['p', 'q', 'r', 'a', 'b'],
-		['p', 'q', 'r', 'a', 'b'],
+		['n0', 'n1', 'n2', 'n3'],
+		['n0', 'n1', 'n2', 'n3'],
 		[
-			{ id: 'p-q', from: 'p', to: 'q' },
-			{ id: 'r-a', from: 'r', to: 'a' },
-			{ id: 'r-b', from: 'r', to: 'b' },
+			{ id: 'n0-n3', from: 'n0', to: 'n3' },
 			{ id: 'g1-g2', from: 'g1', to: 'g2' },
 		],
 	);
 	const groupOf = new Map([
-		['q', 'g1'],
-		['a', 'g2'],
+		['n0', 'g1'],
+		['n1', 'g1'],
+		['n2', 'g2'],
 	]);
 	const document: LogicDocument = {
 		...base,
@@ -2418,16 +2420,30 @@ it('searches a relation between two groups in the local document of their member
 		}),
 	};
 	const { graph, ranks, measurements } = prepareLayoutDocument(document);
-	const documentary = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
-	expect(
-		validateDedicatedCandidate({ graph, ranks, measurements, layout: documentary }),
-	).toMatchObject({ valid: false, relationId: 'g1-g2' });
+	const documentary = validateDedicatedCandidate({
+		graph,
+		ranks,
+		measurements,
+		layout: evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),
+	});
+	if (!documentary.valid) throw new Error('Group relation baseline must be valid');
+	const crossingPairs = (analysis: RouteBridgeAnalysis) =>
+		analysis.crossings.map(({ horizontalId, verticalId }) =>
+			[horizontalId, verticalId].toSorted(compareCanonicalStrings),
+		);
+	expect(crossingPairs(documentary.analysis)).toContainEqual(['g1-g2', 'n0-n3']);
 	const result = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 	expect(result.witness.mode).toBe('exact');
+	expect(result.witness.evaluated).toBeGreaterThan(1);
 	expect(result.witness.valid).toBeGreaterThan(0);
-	expect(
-		validateDedicatedCandidate({ graph, ranks, measurements, layout: result.layout }).valid,
-	).toBe(true);
+	const selected = validateDedicatedCandidate({
+		graph,
+		ranks,
+		measurements,
+		layout: result.layout,
+	});
+	if (!selected.valid) throw new Error('Selected group relation layout must be valid');
+	expect(crossingPairs(selected.analysis)).not.toContainEqual(['g1-g2', 'n0-n3']);
 });
 
 it('leaves a permutable component unchanged when strict crossings belong to fixed junction routes', () => {

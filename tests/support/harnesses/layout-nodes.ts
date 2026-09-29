@@ -23,16 +23,50 @@ interface NodeFixture extends VisualGraphData {
 	readonly bias?: LayoutBias | undefined;
 	readonly edit?: VisualDocumentEdit;
 	readonly reference?: VisualGraphData | true;
-	/** Encloses every node and junction in one group with this ID. */
-	readonly enclosingGroup?: string;
+	/** Group ID → member IDs (nodes, junctions or groups); unlisted endpoints stay at the root. */
+	readonly groups?: Readonly<Record<string, readonly string[]>>;
 }
 
-const ENCLOSING_GROUP_MEASUREMENT = {
+const GROUP_MEASUREMENT = {
 	minimumWidth: 160,
 	minimumHeight: 90,
 	headerHeight: 42,
 	padding: 24,
 };
+
+function membershipsOf(
+	groups: Readonly<Record<string, readonly string[]>>,
+): ReadonlyMap<string, { readonly groupId: string }> {
+	const memberships = new Map<string, { readonly groupId: string }>();
+	for (const [groupId, members] of Object.entries(groups))
+		for (const id of members) {
+			if (memberships.has(id)) throw new Error(`Endpoint ${id} belongs to several groups.`);
+			memberships.set(id, { groupId });
+		}
+	return memberships;
+}
+
+/** Each group takes its documentary slot just before its first member; empty groups come last. */
+function documentaryOrder(
+	endpoints: readonly string[],
+	groupIds: readonly string[],
+	memberships: ReadonlyMap<string, { readonly groupId: string }>,
+): readonly string[] {
+	const order: string[] = [];
+	const placed = new Set<string>();
+	for (const id of endpoints) {
+		const ancestors: string[] = [];
+		for (
+			let group = memberships.get(id);
+			group !== undefined;
+			group = memberships.get(group.groupId)
+		)
+			if (!placed.has(group.groupId)) ancestors.unshift(group.groupId);
+		for (const group of [...ancestors, id]) placed.add(group);
+		order.push(...ancestors, id);
+	}
+	return [...order, ...groupIds.filter((id) => !placed.has(id))];
+}
 
 /** Measured endpoint fixture using the actual graph, rank and layout pipelines. */
 export async function layoutNodes({
@@ -43,17 +77,14 @@ export async function layoutNodes({
 	relations,
 	edit,
 	reference,
-	enclosingGroup,
+	groups = {},
 }: NodeFixture): Promise<VisualLayout> {
 	const orders = new Map<string, OrderKey>();
 	let previous: OrderKey | undefined;
-	const groupIds: string[] = [];
-	let membership: { readonly groupId?: string } = {};
-	if (enclosingGroup !== undefined) {
-		groupIds.push(enclosingGroup);
-		membership = { groupId: enclosingGroup };
-	}
-	for (const id of [...groupIds, ...Object.keys(nodes), ...Object.keys(junctions)]) {
+	const groupIds = Object.keys(groups);
+	const memberships = membershipsOf(groups);
+	const endpoints = [...Object.keys(nodes), ...Object.keys(junctions)];
+	for (const id of documentaryOrder(endpoints, groupIds, memberships)) {
 		let slot = {};
 		if (previous !== undefined) slot = { before: previous };
 		previous = fractionalOrderKeySpace.keyFor(slot);
@@ -73,13 +104,14 @@ export async function layoutNodes({
 			kind: EndpointKind.Group,
 			label: id.toUpperCase(),
 			layoutOrder: defined(orders.get(id)),
+			...memberships.get(id),
 		})),
 		junctions: Object.keys(junctions).map((id) => ({
 			id,
 			kind: EndpointKind.Junction,
 			operator: JunctionOperator.Xor,
 			layoutOrder: defined(orders.get(id)),
-			...membership,
+			...memberships.get(id),
 		})),
 		nodes: Object.keys(nodes).map((id) => ({
 			id,
@@ -87,7 +119,7 @@ export async function layoutNodes({
 			natureId: 'goal',
 			markdown: id.toUpperCase(),
 			layoutOrder: defined(orders.get(id)),
-			...membership,
+			...memberships.get(id),
 		})),
 		relations,
 	};
@@ -100,13 +132,13 @@ export async function layoutNodes({
 		ranks,
 		{
 			nodes: new Map(Object.entries(nodes)),
-			groups: new Map(groupIds.map((id) => [id, ENCLOSING_GROUP_MEASUREMENT])),
+			groups: new Map(groupIds.map((id) => [id, GROUP_MEASUREMENT])),
 			junctions: new Map(Object.entries(junctions)),
 		},
 		{ inspectRouting: true },
 	);
 	let observedDocument: LogicDocument | undefined;
-	if (edit !== undefined || enclosingGroup !== undefined) observedDocument = editedDocument;
+	if (edit !== undefined || groupIds.length > 0) observedDocument = editedDocument;
 	const layout = new VisualLayout(
 		result,
 		ranks.byEndpointId,
@@ -117,8 +149,6 @@ export async function layoutNodes({
 	if (reference === undefined) return layout;
 	let referenceData: VisualGraphData = { nodes, junctions, relations };
 	if (reference !== true) referenceData = reference;
-	let group = {};
-	if (enclosingGroup !== undefined) group = { enclosingGroup };
-	const before = await layoutNodes({ ...referenceData, direction, bias, ...group });
+	const before = await layoutNodes({ ...referenceData, direction, bias, groups });
 	return layout.withReference('Avant / référence', before);
 }

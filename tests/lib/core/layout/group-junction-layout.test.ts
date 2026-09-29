@@ -4,15 +4,21 @@ import {
 	defined,
 	EndpointKind,
 	LayoutBias,
+	type LayoutConfiguration,
 	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { isVerticalDirection } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { GROUP_FRAME_CLEARANCE } from '../../../../src/lib/core/layout/layout-settings';
+import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
+import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
+import { validLogicDocument } from '../../../support/builders/logic-document';
 import { groupJunctionFixture } from '../../../support/fixtures/group-junction-fixture';
 import {
 	boundsFor,
@@ -258,6 +264,123 @@ describe('dedicated layouts with nested group channels', () => {
 					),
 				).toBe(true);
 			}
+		},
+	);
+});
+
+describe('rank gaps holding group frame shells', () => {
+	it.each(LAYOUT_CONFIGURATIONS)(
+		'keeps a frame ending on a junction member clear of the facing row ($direction / $bias)',
+		async (configuration) => {
+			const document = { ...validLogicDocument(), layout: configuration };
+			const { layout, ranks } = await layoutDocument(document, {
+				nodes: {
+					'source-a': { width: 121, height: 54 },
+					'source-b': { width: 124, height: 122 },
+					target: { width: 6, height: 5 },
+					isolated: { width: 93, height: 55 },
+				},
+				junctions: { choice: { width: 257, height: 102 } },
+				groups: {
+					container: { minimumWidth: 82, minimumHeight: 86, headerHeight: 47, padding: 43 },
+					'endpoint-group': { minimumWidth: 116, minimumHeight: 248, headerHeight: 15, padding: 2 },
+					'orphan-group': { minimumWidth: 162, minimumHeight: 356, headerHeight: 44, padding: 11 },
+				},
+			});
+			AssertLayout(
+				new VisualLayout(layout, ranks.byEndpointId, configuration.direction, undefined, document),
+			)
+				.group('container')
+				.isClearOfForeignBoxes({ along: 48, across: 36 });
+		},
+	);
+
+	it.each(LAYOUT_CONFIGURATIONS)(
+		'keeps a one-rank frame grown by a nested minimum size clear of the next row ($direction / $bias)',
+		async (configuration) => {
+			const node = { kind: EndpointKind.Node, natureId: 'goal' } as const;
+			const document: LogicDocument = {
+				...validLogicDocument(),
+				layout: configuration,
+				groups: [
+					{ kind: EndpointKind.Group, id: 'outer', label: 'Outer', layoutOrder: orderKey('a0') },
+					{
+						kind: EndpointKind.Group,
+						id: 'inner',
+						label: 'Inner',
+						groupId: 'outer',
+						layoutOrder: orderKey('a1'),
+					},
+				],
+				nodes: [
+					{
+						...node,
+						id: 'member',
+						markdown: 'Member',
+						groupId: 'inner',
+						layoutOrder: orderKey('a2'),
+					},
+					{ ...node, id: 'outside', markdown: 'Outside', layoutOrder: orderKey('a3') },
+				],
+				junctions: [],
+				relations: [{ id: 'outside-member', from: 'outside', to: 'member' }],
+			};
+			const { layout, ranks } = await layoutDocument(document, {
+				nodes: { member: { width: 60, height: 40 }, outside: { width: 60, height: 40 } },
+				groups: {
+					outer: { minimumWidth: 420, minimumHeight: 420, headerHeight: 20, padding: 20 },
+					inner: { minimumWidth: 300, minimumHeight: 300, headerHeight: 20, padding: 20 },
+				},
+			});
+			AssertLayout(
+				new VisualLayout(layout, ranks.byEndpointId, configuration.direction, undefined, document),
+			)
+				.group('outer')
+				.isClearOfForeignBoxes({ along: 48, across: 36 });
+		},
+	);
+
+	function mainGap(layout: LayoutResult, ids: readonly [string, string]): number {
+		const [left, right] = ids.map((id) => {
+			const { x, width } = boundsFor(layout, id);
+			return { start: x, end: x + width };
+		});
+		if (left === undefined || right === undefined) throw new Error('Expected two boxes');
+		return Math.max(left.start - right.end, right.start - left.end);
+	}
+
+	function chainDocument(
+		configuration: LayoutConfiguration,
+		members: readonly string[],
+		chain: readonly string[],
+	): LogicDocument {
+		const node = { kind: EndpointKind.Node, natureId: 'goal' } as const;
+		return {
+			...validLogicDocument(),
+			layout: configuration,
+			groups: [{ kind: EndpointKind.Group, id: 'g', label: 'G', layoutOrder: orderKey('a0') }],
+			nodes: chain.map((id, index) => {
+				const entry = { ...node, id, markdown: id, layoutOrder: orderKey(`a${index + 1}`) };
+				if (members.includes(id)) return { ...entry, groupId: 'g' };
+				return entry;
+			}),
+			junctions: [],
+			relations: chain.slice(1).map((id, index) => {
+				const to = defined(chain[index]);
+				return { id: `${id}-${to}`, from: id, to };
+			}),
+		};
+	}
+
+	it.each(LAYOUT_CONFIGURATIONS.filter(({ direction }) => !isVerticalDirection(direction)))(
+		'reserves no transverse header along a horizontal flow ($direction / $bias)',
+		async (configuration) => {
+			const document = chainDocument(configuration, ['member'], ['outside', 'member']);
+			const { layout } = await layoutDocument(document, {
+				nodes: { member: { width: 60, height: 40 }, outside: { width: 60, height: 40 } },
+				groups: { g: { minimumWidth: 60, minimumHeight: 60, headerHeight: 30, padding: 40 } },
+			});
+			expect(mainGap(layout, ['g', 'outside'])).toBe(GROUP_FRAME_CLEARANCE);
 		},
 	);
 });
