@@ -2,7 +2,8 @@ import type { GroupMeasurement, LayoutMeasurements, Size } from '../../projectio
 
 const GROUP_MINIMUM_WIDTH = 160;
 const GROUP_MINIMUM_HEIGHT = 72;
-const GROUP_HORIZONTAL_PADDING = 24;
+/** A rail beside the members (24 px) still keeps 12 px of ink inside the frame. */
+const GROUP_HORIZONTAL_PADDING = 36;
 const GROUP_HEADER_VERTICAL_PADDING = 24;
 
 function measuredSizes(

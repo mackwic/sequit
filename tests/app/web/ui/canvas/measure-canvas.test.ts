@@ -31,7 +31,7 @@ describe('canvas measurement boundary', () => {
 			nodes: new Map([['node-a', { width: 220, height: 104.5 }]]),
 			junctions: new Map([['junction-a', { width: 32, height: 32 }]]),
 			groups: new Map([
-				['group-a', { minimumWidth: 160, minimumHeight: 72, headerHeight: 38, padding: 24 }],
+				['group-a', { minimumWidth: 160, minimumHeight: 72, headerHeight: 38, padding: 36 }],
 			]),
 		});
 	});
@@ -63,7 +63,7 @@ describe('canvas measurement boundary', () => {
 			nodes: new Map(),
 			junctions: new Map(),
 			groups: new Map([
-				['wide-group', { minimumWidth: 248, minimumHeight: 72, headerHeight: 44, padding: 24 }],
+				['wide-group', { minimumWidth: 272, minimumHeight: 72, headerHeight: 44, padding: 36 }],
 			]),
 		});
 	});
