@@ -1,4 +1,19 @@
+/// <reference types="node" />
+import { mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { defineConfig, devices } from '@playwright/test';
+
+// macOS 27 denies other apps access to ~/Library/Application Support/Firefox, which the
+// bundled Firefox still reads despite its temporary profile. Give it its own home until
+// Playwright ships Firefox 158 (https://github.com/microsoft/playwright/issues/42768).
+function firefoxLaunchOptions() {
+	if (process.platform !== 'darwin') return {};
+	const home = join(tmpdir(), 'sequit-playwright-firefox-home');
+	mkdirSync(home, { recursive: true });
+	return { env: { ...process.env, CFFIXED_USER_HOME: home } };
+}
 
 export default defineConfig({
 	testDir: '../tests/app',
@@ -15,7 +30,7 @@ export default defineConfig({
 		{ name: 'chromium', testIgnore: '**/mobile-reading.spec.ts' },
 		{
 			name: 'firefox',
-			use: { ...devices['Desktop Firefox'] },
+			use: { ...devices['Desktop Firefox'], launchOptions: firefoxLaunchOptions() },
 			testMatch: [
 				'**/shared-editor.spec.ts',
 				'**/canvas-live-projection.spec.ts',
