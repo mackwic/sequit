@@ -44,6 +44,19 @@ function ordinarySuccessors(
 	return neighbors;
 }
 
+/**
+ * A junction rail sits just before its nearest ordinary child. Without one, it keeps its own
+ * rank, yet never precedes a junction it feeds: that junction's rail may lie further along.
+ */
+function junctionInterval(
+	rank: number,
+	childRows: readonly number[],
+	parentIntervals: readonly number[],
+): number {
+	if (childRows.length > 0) return Math.max(0, Math.min(...childRows) - 1);
+	return Math.max(rank, ...parentIntervals);
+}
+
 /** Junction rails belong to physical intervals; logical ranks remain unchanged. */
 export function prepareJunctions(
 	graph: LogicGraph,
@@ -51,29 +64,25 @@ export function prepareJunctions(
 ): ReadonlyMap<string, JunctionPlacement> {
 	const ids = new Set(graph.document.junctions.map(({ id }) => id));
 	const successors = ordinarySuccessors(graph, ids);
-	const intervals = new Map<string, number>();
-	for (const id of ids) {
-		const neighbors = defined(successors.get(id));
-		let interval = defined(rows.get(id));
-		if (neighbors.length > 0)
-			interval = Math.min(...neighbors.map((node) => defined(rows.get(node)))) - 1;
-		intervals.set(id, Math.max(0, interval));
-	}
 	const result = new Map<string, JunctionPlacement>();
-	// Successors were inserted before parents; reverse that order for progressive depths.
+	// Successors were inserted before parents; reverse that order to place parents first.
 	for (const id of [...successors.keys()].reverse()) {
-		const interval = defined(intervals.get(id));
+		const parents = defined(graph.outgoingByEndpointId.get(id));
+		const children = defined(successors.get(id));
+		const interval = junctionInterval(
+			defined(rows.get(id)),
+			children.map((node) => defined(rows.get(node))),
+			parents.map((parent) => result.get(parent)?.interval ?? 0),
+		);
 		let depth = 0;
-		for (const parent of defined(graph.outgoingByEndpointId.get(id))) {
+		for (const parent of parents) {
 			const previous = result.get(parent);
 			if (previous?.interval === interval) depth = Math.max(depth, previous.depth + 1);
 		}
-		let neighbors = defined(successors.get(id)).filter((node) => rows.get(node) === interval + 1);
+		let neighbors = children.filter((node) => rows.get(node) === interval + 1);
 		// Without children beside it, a junction faces the parents of its own row instead.
 		if (neighbors.length === 0)
-			neighbors = defined(graph.outgoingByEndpointId.get(id)).filter(
-				(node) => !ids.has(node) && rows.get(node) === interval,
-			);
+			neighbors = parents.filter((node) => !ids.has(node) && rows.get(node) === interval);
 		result.set(id, { interval, depth, neighbors });
 	}
 	return result;
