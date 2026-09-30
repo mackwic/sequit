@@ -3,8 +3,18 @@
 
 	const SHOWN = 5;
 
-	let { participants, selfId }: { participants: readonly ParticipantPresence[]; selfId: number } =
-		$props();
+	let {
+		participants,
+		selfId,
+		following,
+		onfollow,
+	}: {
+		participants: readonly ParticipantPresence[];
+		selfId: number;
+		/** The participant currently followed on the canvas. */
+		following?: number | undefined;
+		onfollow?: ((clientId: number) => void) | undefined;
+	} = $props();
 	let ordered = $derived([
 		...participants.filter(({ clientId }) => clientId === selfId),
 		...participants.filter(({ clientId }) => clientId !== selfId),
@@ -19,17 +29,36 @@
 		if (words.length > 1) last = words.at(-1)?.[0] ?? '';
 		return `${first}${last}`.toUpperCase();
 	}
+
+	function followLabel(participant: ParticipantPresence): string {
+		if (participant.clientId === following) return `Ne plus suivre ${participant.name}`;
+		return `Suivre ${participant.name}`;
+	}
 </script>
 
 <ul class="avatars" aria-label="Participants">
 	{#each shown as participant (participant.clientId)}
-		<li
-			class="avatar"
-			style:background={participant.color}
-			title={participant.name}
-			aria-label={participant.name}
-		>
-			<span aria-hidden="true">{initials(participant.name)}</span>
+		<li aria-label={participant.name}>
+			{#if participant.clientId === selfId || onfollow === undefined}
+				<span class="avatar" style:background={participant.color} title={participant.name}>
+					<span aria-hidden="true">{initials(participant.name)}</span>
+				</span>
+			{:else}
+				<button
+					class="avatar"
+					class:followed={participant.clientId === following}
+					type="button"
+					style:background={participant.color}
+					title={followLabel(participant)}
+					aria-label={followLabel(participant)}
+					aria-pressed={participant.clientId === following}
+					onclick={() => {
+						onfollow(participant.clientId);
+					}}
+				>
+					<span aria-hidden="true">{initials(participant.name)}</span>
+				</button>
+			{/if}
 		</li>
 	{/each}
 	{#if hidden.length > 0}
@@ -50,12 +79,18 @@
 		padding: 0;
 		list-style: none;
 	}
+	li {
+		margin-left: -6px;
+	}
+	li:first-child {
+		margin-left: 0;
+	}
 	.avatar {
 		display: grid;
 		place-items: center;
 		width: 28px;
 		height: 28px;
-		margin-left: -6px;
+		padding: 0;
 		border: 2px solid var(--ui-surface);
 		border-radius: 999px;
 		color: white;
@@ -63,8 +98,15 @@
 		font-weight: 700;
 		letter-spacing: 0.02em;
 	}
-	.avatar:first-child {
-		margin-left: 0;
+	button.avatar {
+		cursor: pointer;
+	}
+	button.avatar:focus-visible {
+		outline: 2px solid var(--ui-accent);
+		outline-offset: 2px;
+	}
+	.followed {
+		box-shadow: 0 0 0 2px var(--ui-accent);
 	}
 	.more {
 		background: var(--ui-muted);

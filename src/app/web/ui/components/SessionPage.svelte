@@ -160,6 +160,10 @@
 			{#if session}<ParticipantAvatars
 					participants={session.participants}
 					selfId={session.client.document.clientID}
+					following={session.awareness.following}
+					onfollow={(clientId: number) => {
+						session?.awareness.follow(clientId);
+					}}
 				/>{/if}
 			<button
 				class="ui-action primary"
@@ -194,6 +198,7 @@
 				<CollaborativeWorkspace
 					client={session.client}
 					model={session.model}
+					awareness={session.awareness}
 					{name}
 					connected={session.connected}
 					textEditable={session.textEditable}

@@ -11,6 +11,19 @@ export interface CanvasAwarenessFrame {
 	readonly zoom: number;
 }
 
+export interface ViewportSize {
+	readonly width: number;
+	readonly height: number;
+}
+
+/** Where a chip stands for a pointer outside the viewport, and where it points. */
+export interface EdgeIndicator {
+	readonly x: number;
+	readonly y: number;
+	/** Degrees, clockwise from "pointing right". */
+	readonly angle: number;
+}
+
 const TARGET_KIND = {
 	[EntityKind.Node]: SharedElementKind.Node,
 	[EntityKind.Group]: SharedElementKind.Group,
@@ -28,4 +41,27 @@ export function documentPointer(point: PresencePoint, frame: CanvasAwarenessFram
 
 export function viewportPointer(point: PresencePoint, frame: CanvasAwarenessFrame): PresencePoint {
 	return { x: point.x * frame.zoom + frame.x, y: point.y * frame.zoom + frame.y };
+}
+
+/** A viewport-space point outside the visible area, by any distance. */
+export function isOutsideViewport(point: PresencePoint, size: ViewportSize): boolean {
+	if (point.x < 0 || point.y < 0) return true;
+	return point.x > size.width || point.y > size.height;
+}
+
+function clamp(value: number, low: number, high: number): number {
+	return Math.min(Math.max(value, low), Math.max(low, high));
+}
+
+/** Pins an off-screen pointer to the nearest edge, `margin` inside, facing the pointer. */
+export function edgeIndicator(
+	point: PresencePoint,
+	size: ViewportSize,
+	margin: number,
+): EdgeIndicator {
+	const x = clamp(point.x, margin, size.width - margin);
+	const y = clamp(point.y, margin, size.height - margin);
+	const radians = Math.atan2(point.y - y, point.x - x);
+	const angle = (radians * 180) / Math.PI;
+	return { x, y, angle };
 }

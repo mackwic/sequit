@@ -75,6 +75,7 @@
 					{name}
 					connected={session.connected}
 					textEditable={session.textEditable}
+					awareness={session.awareness}
 				/>
 			{/if}
 		{/key}

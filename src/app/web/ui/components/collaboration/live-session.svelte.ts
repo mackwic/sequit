@@ -8,10 +8,13 @@ import {
 import type { ParticipantPresence } from '../../../../../lib/infrastructure/collaboration/participant-presence';
 import { textEditable } from '../../../../../lib/infrastructure/collaboration/session-connection-status';
 import { refreshRejectedSession } from '../../../document/collaboration-rejection';
+import { CollaborationAwareness } from './collaboration-awareness.svelte';
 
 /** One collaborative session and the reactive state a page needs to render it. */
 export class LiveSession {
 	readonly client: CollaborativeDocumentSession;
+	/** Other participants' presence and the follow target, shared by the page and the canvas. */
+	readonly awareness: CollaborationAwareness;
 	model = $state.raw<LogicDocument>();
 	status = $state(CollaborationStatus.Connecting);
 	initialized = $state(false);
@@ -24,6 +27,7 @@ export class LiveSession {
 	constructor(initialDocument: LogicDocument, transport: CollaborationTransport) {
 		const client = createCollaborativeDocumentSession(initialDocument, transport);
 		this.client = client;
+		this.awareness = new CollaborationAwareness(client);
 		const refresh = (): void => {
 			if (this.replica !== client.replica()) {
 				this.replica = client.replica();
@@ -64,6 +68,7 @@ export class LiveSession {
 
 	destroy(): void {
 		for (const stop of this.#stops) stop();
+		this.awareness.destroy();
 		this.client.destroy();
 	}
 }

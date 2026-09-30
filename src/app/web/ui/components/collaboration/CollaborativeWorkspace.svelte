@@ -62,7 +62,7 @@
 	import { sharedSelection } from './canvas-awareness';
 	import CanvasAwareness from './CanvasAwareness.svelte';
 	import {
-		CollaborationAwareness,
+		type CollaborationAwareness,
 		setCollaborationAwareness,
 	} from './collaboration-awareness.svelte';
 	import SharedElementCard from './SharedElementCard.svelte';
@@ -77,6 +77,7 @@
 		name,
 		connected,
 		textEditable,
+		awareness,
 		panel = true,
 	}: {
 		client: CollaborativeDocumentSession;
@@ -84,15 +85,13 @@
 		name: string;
 		connected: boolean;
 		textEditable: boolean;
+		/** Owned by the session so that the page chrome shares the presence and follow state. */
+		awareness: CollaborationAwareness;
 		/** The shared-fields panel beside the canvas; the product shows the canvas alone. */
 		panel?: boolean;
 	} = $props();
 	const canvas = new CanvasSession(createNodeEditPort(untrack(() => client)));
-	const presence = new CollaborationAwareness(untrack(() => client));
-	setCollaborationAwareness(presence);
-	onMount(() => () => {
-		presence.destroy();
-	});
+	setCollaborationAwareness(untrack(() => awareness));
 	let error = $state('');
 	let creation = $state<{ plan: NodeCreationPlan; draft: NodeFields }>();
 	let editingGroup = $state<{

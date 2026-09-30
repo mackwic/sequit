@@ -97,6 +97,83 @@ test('a second participant joins through the link, and the name is shared', asyn
 	await bob.close();
 });
 
+async function joinFromLink(page: Page, link: string, name: string): Promise<void> {
+	await page.goto(link);
+	await page
+		.getByRole('dialog', { name: 'Session collaborative' })
+		.getByLabel('Ton nom')
+		.fill(name);
+	await page.getByRole('button', { name: 'Rejoindre la session' }).click();
+	await connected(page);
+	await page.locator('[data-node-id]').first().waitFor();
+}
+
+function canvasViewport(page: Page) {
+	return page.getByRole('region', { name: 'Canvas viewport' });
+}
+
+test('cursors stay after a blur, off-screen cursors get an edge chip, and avatars follow', async ({
+	browser,
+}) => {
+	const alice = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+	await alice.goto('/');
+	await alice.locator('[data-node-id]').first().waitFor();
+	await alice.getByRole('button', { name: 'Collaborer' }).click();
+	await alice.getByLabel('Ton nom').fill('Alice');
+	await alice.getByRole('button', { name: 'Démarrer la session' }).click();
+	await alice.waitForURL(/\/session\//);
+	await connected(alice);
+	const bob = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+	await joinFromLink(bob, alice.url(), 'Bob');
+
+	// Bob hovers a box both can see: Alice gets his cursor, then keeps it after he leaves.
+	const shared = bob.locator('[data-node-id="ai-generation-orchestration"]');
+	const box = await shared.boundingBox();
+	if (!box) throw new Error('Box not laid out');
+	await bob.mouse.move(box.x + 20, box.y + 20, { steps: 4 });
+	const pointer = alice.locator('[data-remote-pointer][data-participant="Bob"]');
+	await expect(pointer).toBeVisible();
+	await bob.mouse.move(4, 4);
+	await bob.evaluate(() => window.dispatchEvent(new Event('blur')));
+	await bob.waitForTimeout(400);
+	await expect(pointer).toBeVisible();
+
+	// Bob scrolls far right: his cursor leaves Alice's viewport and becomes an edge chip.
+	await canvasViewport(bob).evaluate((element) => {
+		element.scrollBy({ left: 1800 });
+	});
+	await bob.mouse.move(600, 500, { steps: 4 });
+	const chip = alice.getByRole('button', { name: 'Aller au curseur de Bob' });
+	await expect(chip).toBeVisible();
+	await expect(pointer).toHaveCount(0);
+	await chip.click();
+	await expect(pointer).toBeVisible();
+	await expect(chip).toHaveCount(0);
+
+	// Following Bob keeps Alice's viewport on him; her own scroll stops it.
+	await alice.getByRole('button', { name: 'Suivre Bob' }).click();
+	await expect(alice.getByRole('button', { name: 'Ne plus suivre Bob' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	);
+	await canvasViewport(bob).evaluate((element) => {
+		element.scrollTo({ left: 0 });
+	});
+	await bob.mouse.move(300, 450, { steps: 4 });
+	await expect
+		.poll(() => canvasViewport(alice).evaluate((element) => element.scrollLeft))
+		.toBeLessThan(400);
+	await expect(pointer).toBeVisible();
+	await canvasViewport(alice).hover();
+	await alice.mouse.wheel(200, 0);
+	await expect(alice.getByRole('button', { name: 'Suivre Bob' })).toHaveAttribute(
+		'aria-pressed',
+		'false',
+	);
+	await alice.close();
+	await bob.close();
+});
+
 test('leaving keeps a local copy of the shared document', async ({ page }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.TwoBoxes);
