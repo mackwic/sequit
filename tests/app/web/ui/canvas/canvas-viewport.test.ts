@@ -11,12 +11,12 @@ import {
 
 describe('canvas viewport calculations', () => {
 	it('clamps zoom and advances in deterministic decimal steps', () => {
-		expect(clampCanvasZoom(0.1)).toBe(0.5);
-		expect(clampCanvasZoom(3)).toBe(2);
+		expect(clampCanvasZoom(0.05)).toBe(0.1);
+		expect(clampCanvasZoom(3)).toBe(2.5);
 		expect(stepCanvasZoom(1, 1)).toBe(1.1);
 		expect(stepCanvasZoom(1.1, -1)).toBe(1);
-		expect(stepCanvasZoom(0.5, -1)).toBe(0.5);
-		expect(stepCanvasZoom(2, 1)).toBe(2);
+		expect(stepCanvasZoom(0.1, -1)).toBe(0.1);
+		expect(stepCanvasZoom(2.5, 1)).toBe(2.5);
 	});
 
 	it('includes unscaled stage padding in fractional zoom extents', () => {

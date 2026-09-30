@@ -14,8 +14,8 @@ export interface CanvasScrollPosition {
 }
 
 export const DEFAULT_CANVAS_ZOOM = 1;
-export const MIN_CANVAS_ZOOM = 0.5;
-export const MAX_CANVAS_ZOOM = 2;
+export const MIN_CANVAS_ZOOM = 0.1;
+export const MAX_CANVAS_ZOOM = 2.5;
 const CANVAS_ZOOM_STEP = 0.1;
 export const CANVAS_STAGE_PADDING = 64;
 

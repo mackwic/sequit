@@ -63,13 +63,13 @@ describe('CanvasSession viewport intents', () => {
 
 	it('stays bounded and reports boundary intents as no-ops', () => {
 		const session = new CanvasSession();
-		for (let index = 0; index < 20; index += 1) session.zoomOut();
-		expect(session.zoom).toBe(0.5);
+		for (let index = 0; index < 30; index += 1) session.zoomOut();
+		expect(session.zoom).toBe(0.1);
 		expect(session.canZoomOut).toBe(false);
 		expect(session.zoomOut()).toBe(false);
 
-		for (let index = 0; index < 20; index += 1) session.zoomIn();
-		expect(session.zoom).toBe(2);
+		for (let index = 0; index < 30; index += 1) session.zoomIn();
+		expect(session.zoom).toBe(2.5);
 		expect(session.canZoomIn).toBe(false);
 		expect(session.zoomIn()).toBe(false);
 	});
