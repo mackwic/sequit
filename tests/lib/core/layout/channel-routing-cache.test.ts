@@ -145,6 +145,40 @@ describe('projection-owned channel routing cache', () => {
 		expect(cache.stats).toMatchObject({ hits: 1, misses: 2 });
 	});
 
+	/** Its two interior wires share every column, so they can swap without changing the key. */
+	const SHORT_KEY: readonly ChannelEndpoint[] = [
+		{ id: 'head', source: 0, target: 48 },
+		{ id: 'inner-a', source: 96, target: 192 },
+		{ id: 'inner-b', source: 96, target: 192 },
+		{ id: 'tail', source: 240, target: 288 },
+	];
+	/** Same owner, flag, length, first and last ids and columns as `SHORT_KEY`. */
+	const sameShortKey: readonly (readonly [string, readonly ChannelEndpoint[]])[] = [
+		[
+			'a renamed interior wire',
+			SHORT_KEY.map((wire) => ({ ...wire, id: wire.id.replace('inner-a', 'inner-c') })),
+		],
+		[
+			'swapped interior wires',
+			[...SHORT_KEY.slice(0, 1), ...SHORT_KEY.slice(1, 3).toReversed(), ...SHORT_KEY.slice(3)],
+		],
+	];
+
+	it.each(sameShortKey)('misses a channel with the same short key and %s', (_name, endpoints) => {
+		const cache = new ChannelRoutingCache();
+		cache.route(wires(SHORT_KEY), false, OWNER);
+		const routed = cache.route(wires(endpoints), false, OWNER);
+		// One entry: the variant replaced the original under the same short key.
+		expect(cache.stats).toEqual({ entries: 1, wires: SHORT_KEY.length, hits: 0, misses: 2 });
+		expectFreshEquivalent(routed, routeOwnedChannel(wires(endpoints), false, OWNER));
+		cache.beginLayout();
+		expectFreshEquivalent(
+			cache.route(wires(SHORT_KEY), false, OWNER),
+			routeOwnedChannel(wires(SHORT_KEY), false, OWNER),
+		);
+		expect(cache.stats).toMatchObject({ hits: 0, misses: 3 });
+	});
+
 	it('keeps a routing used by one of the last two layouts and releases the others', () => {
 		const cache = new ChannelRoutingCache();
 		const other = CHANNEL.map((wire) => ({ ...wire, id: `other-${wire.id}` }));
@@ -163,13 +197,14 @@ describe('projection-owned channel routing cache', () => {
 		expect(cache.stats).toMatchObject({ entries: 0, wires: 0 });
 	});
 
-	it('stops remembering new routings at the ceiling but keeps routings reused from the previous layout', () => {
-		const straight = (prefix: string, count: number): ChannelEndpoint[] =>
-			Array.from({ length: count }, (_, index) => ({
-				id: `${prefix}-${index}`,
-				source: index,
-				target: index,
-			}));
+	const straight = (prefix: string, count: number): ChannelEndpoint[] =>
+		Array.from({ length: count }, (_, index) => ({
+			id: `${prefix}-${index}`,
+			source: index,
+			target: index,
+		}));
+
+	it('stops remembering new routings at the ceiling and carries a reused routing that fits', () => {
 		const full = straight('full', MAX_CHANNEL_ROUTING_GENERATION_WIRES);
 		const extra = straight('extra', 1);
 		const cache = new ChannelRoutingCache();
@@ -192,5 +227,21 @@ describe('projection-owned channel routing cache', () => {
 			hits: 2,
 			misses: 3,
 		});
+	});
+
+	it('retains at most the ceiling per layout when new routings precede reused ones', () => {
+		const half = MAX_CHANNEL_ROUTING_GENERATION_WIRES / 2;
+		const cache = new ChannelRoutingCache();
+		const routed: ChannelEndpoint[][] = [];
+		const retained: number[] = [];
+		for (let layout = 0; layout < 4; layout += 1) {
+			routed.unshift(straight(`layout-${layout}`, half));
+			for (const channel of routed) cache.route(wires(channel), false, OWNER);
+			cache.beginLayout();
+			retained.push(cache.stats.wires);
+		}
+		expect(retained).toEqual([half, 2 * half, 2 * half, 2 * half]);
+		// Each layout replays every channel of the previous one, even those it cannot carry over.
+		expect(cache.stats).toMatchObject({ hits: 5, misses: 5 });
 	});
 });

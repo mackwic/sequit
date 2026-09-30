@@ -4,11 +4,13 @@ import { routeOwnedChannel } from './channel-routing';
 import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
 
 /**
- * Wires one root layout may remember, counting the routings it reuses from the previous layout
- * and the new ones. Reused routings are always kept; once the generation holds this many wires,
- * new channels are routed normally and not remembered. The largest performance fixture
- * (1000-node `wide-bipartite-layers`) retains at most about 76,000 wires over two layouts, at
- * about 160 bytes per wire.
+ * Wires one root layout may remember, routings carried over from the previous layout and new
+ * ones alike. A channel is remembered, or carried over when the previous layout's routing
+ * replays, only while the generation stays within this ceiling; otherwise it is still routed or
+ * replayed, just not retained by this layout. The previous generation only shrinks, so the cache
+ * never holds more than twice this many wires. The largest performance fixture (1000-node
+ * `wide-bipartite-layers`) retains at most about 76,000 wires over two layouts, at about 160
+ * bytes per wire.
  */
 export const MAX_CHANNEL_ROUTING_GENERATION_WIRES = 200_000;
 
@@ -234,18 +236,21 @@ export class ChannelRoutingCache {
 			this.#hits += 1;
 			return replayRouting(current, wires);
 		}
+		const fits = this.#currentWires + wires.length <= MAX_CHANNEL_ROUTING_GENERATION_WIRES;
 		const previous = this.#previous.get(key);
 		if (previous !== undefined && sameInputs(previous, wires, nonInverted, ownerId)) {
 			this.#hits += 1;
-			this.#previous.delete(key);
-			this.#previousWires -= wires.length;
-			this.#remember(key, previous);
+			// A routing that does not fit stays behind: it still serves this layout, then expires.
+			if (fits) {
+				this.#previous.delete(key);
+				this.#previousWires -= wires.length;
+				this.#remember(key, previous);
+			}
 			return replayRouting(previous, wires);
 		}
 		this.#misses += 1;
 		const routing = routeOwnedChannel(wires, nonInverted, ownerId);
-		if (this.#currentWires + wires.length <= MAX_CHANNEL_ROUTING_GENERATION_WIRES)
-			this.#remember(key, captureRouting(routing, nonInverted, ownerId));
+		if (fits) this.#remember(key, captureRouting(routing, nonInverted, ownerId));
 		return routing;
 	}
 

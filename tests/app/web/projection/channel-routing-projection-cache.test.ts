@@ -23,7 +23,11 @@ import type {
 	ChannelRouting,
 	ChannelWire,
 } from '../../../../src/lib/core/layout/routing/channel-types';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { persistedRegionDocument } from '../../../lib/core/layout/nested-region-fixture';
+import {
+	type PreparedLayoutDocument,
+	prepareLayoutDocument,
+} from '../../../support/harnesses/layout';
 import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
 
 /** Its bottom-to-top corner corridor holds a shared-source family and a split wire. */
@@ -117,5 +121,28 @@ describe('projection-owned channel routing cache', () => {
 					wires.some(({ sharedSource }) => sharedSource !== undefined),
 			),
 		).toBe(true);
+	});
+
+	it('releases dedicated channel routings after two root layouts under another policy', async () => {
+		const caches = createProjectionLayoutCaches();
+		const dedicated = prepareLayoutDocument(splitFamilyDocument());
+		const regions = prepareLayoutDocument(persistedRegionDocument());
+		const layout = ({ graph, ranks, measurements }: PreparedLayoutDocument) =>
+			layoutGraphForProjection(graph, ranks, measurements, caches);
+		await layout(dedicated);
+		const routed = caches.channels.stats;
+		expect(routed.entries).toBeGreaterThan(0);
+		await layout(regions);
+		expect(caches.channels.stats).toEqual(routed);
+		await layout(regions);
+		expect(caches.channels.stats).toEqual({ ...routed, entries: 0, wires: 0 });
+		expect(await layout(dedicated)).toStrictEqual(
+			await layoutGraph(dedicated.graph, dedicated.ranks, dedicated.measurements),
+		);
+		// Nothing was left to replay: the relayout counts exactly as the first one did.
+		expect(caches.channels.stats).toMatchObject({
+			hits: 2 * routed.hits,
+			misses: 2 * routed.misses,
+		});
 	});
 });
