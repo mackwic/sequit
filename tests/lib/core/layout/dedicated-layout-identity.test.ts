@@ -243,7 +243,7 @@ describe('dedicated engine LayoutResult identity', () => {
 		expect(hashes).toEqual({
 			'adjacent-2+2': '434436502a19e68bbaf5e254e6dd74a1d97387393caeadfc4f70099b2c091c19',
 			'adjacent-3+1': '064082e2065ad7f76e35849ee4e1c402e721cd164b5e4966e4d88d7868f9fd6d',
-			'ai-documentary-effort': '5356b199b00b064a57d815244d0fafd804a62f8e9785d04f6d8eee52ac9d2e42',
+			'ai-documentary-effort': '23810c7b50f523acaedd01c6574ef9bb95527d63cd8d902cb0b6c436d3a9e54f',
 			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
 			'junction-network-layout': '5732e699fa828404b120005432cd8ce7d706ad33dfe862db6037cd1852895f50',
 			'multirank-group-junction-one':
