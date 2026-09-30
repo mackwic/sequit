@@ -61,11 +61,18 @@ function groupRankSpans(structure: LayoutStructure): ReadonlyMap<string, RankSpa
 	return spans;
 }
 
-/** Frame shells an endpoint's enclosing groups add toward the next and the previous rank. */
+/**
+ * Frame shells an endpoint's enclosing groups add toward the next and the previous rank. With
+ * `rails`, a frame holding a junction rail beyond the rank neither ends nor starts on it.
+ */
 function boundaryShells(
 	context: ShellContext,
 	spans: ReadonlyMap<string, RankSpan>,
-	input: { readonly id: string; readonly rank: number },
+	input: {
+		readonly id: string;
+		readonly rank: number;
+		readonly rails?: ReadonlyMap<string, RailSpan> | undefined;
+	},
 ): Shells {
 	const { structure, frame, groups } = context;
 	let next = 0;
@@ -75,15 +82,41 @@ function boundaryShells(
 	let groupId = structure.graph.endpointsById.get(input.id)?.entity.groupId;
 	while (groupId !== undefined && (ending || starting)) {
 		const span = defined(spans.get(groupId));
+		const rails = input.rails?.get(groupId);
+		// Rank r lies before interval r's rails, rank r + 1 after them.
+		const endsOnRail = (rails?.last.interval ?? Number.NEGATIVE_INFINITY) >= input.rank;
+		const startsOnRail = (rails?.first.interval ?? Number.POSITIVE_INFINITY) < input.rank;
 		const { padding, headerHeight } = groups(groupId);
 		const header = headerShells(frame, headerHeight);
-		ending &&= span.last === input.rank;
-		starting &&= span.first === input.rank;
+		const endsHere = span.last === input.rank && !endsOnRail;
+		const startsHere = span.first === input.rank && !startsOnRail;
+		ending &&= endsHere;
+		starting &&= startsHere;
 		if (ending) next += padding + header.next;
 		if (starting) previous += padding + header.previous;
 		groupId = structure.hierarchy?.byId.get(groupId)?.groupId;
 	}
 	return { next, previous };
+}
+
+/** Frame shells the ordinary boxes of each rank turn toward the next and the previous rank. */
+function rankShells(
+	context: ShellContext,
+	spans: ReadonlyMap<string, RankSpan>,
+	rails?: ReadonlyMap<string, RailSpan>,
+): readonly Shells[] {
+	const { structure } = context;
+	const base = Array.from({ length: structure.maximumRank + 1 }, () => ({ next: 0, previous: 0 }));
+	for (const [id, rank] of structure.ranks.byEndpointId) {
+		if (structure.junctionIds.has(id) || spans.has(id)) continue;
+		const shells = boundaryShells(context, spans, { id, rank, rails });
+		const current = defined(base[rank]);
+		base[rank] = {
+			next: Math.max(current.next, shells.next),
+			previous: Math.max(current.previous, shells.previous),
+		};
+	}
+	return base;
 }
 
 /** Physical main start of every rank band, for one uniform rank gap. */
@@ -196,18 +229,7 @@ function requiredGap(context: ShellContext, shells: BoundaryShells): number {
  * the physical bottom or right, and a clearance before any foreign box.
  */
 function frameBoundaryRankGap(context: ShellContext, spans: ReadonlyMap<string, RankSpan>): number {
-	const { structure } = context;
-	const base = Array.from({ length: structure.maximumRank + 1 }, () => ({ next: 0, previous: 0 }));
-	for (const [id, rank] of structure.ranks.byEndpointId) {
-		if (structure.junctionIds.has(id) || spans.has(id)) continue;
-		const shells = boundaryShells(context, spans, { id, rank });
-		const current = defined(base[rank]);
-		base[rank] = {
-			next: Math.max(current.next, shells.next),
-			previous: Math.max(current.previous, shells.previous),
-		};
-	}
-	return requiredGap(context, { spans, base });
+	return requiredGap(context, { spans, base: rankShells(context, spans) });
 }
 
 interface RailPosition {
@@ -284,8 +306,8 @@ function junctionShells(
 
 /**
  * A frame whose first or last member is a junction begins or ends on its rail. The channel
- * slot before or after that rail holds the frame's shell and its clearance before the facing
- * rail or row, whatever the channel already reserves.
+ * slot before or after that rail holds the frame's shell, the shell of any frame facing it
+ * from the neighbouring rank, and their clearance, whatever the channel already reserves.
  */
 function junctionShellGaps(
 	context: ShellContext,
@@ -295,15 +317,26 @@ function junctionShellGaps(
 	const result = new Map<number, number[]>();
 	if (structure.junctions.size === 0) return result;
 	const spans = { ranks, rails: groupRailSpans(structure) };
+	// Rank r faces the first rail of interval r, rank r + 1 faces its last rail.
+	const facing = rankShells(context, ranks, spans.rails);
+	const lastDepths = new Map<number, number>();
+	for (const { interval, depth } of structure.junctions.values())
+		lastDepths.set(interval, Math.max(lastDepths.get(interval) ?? 0, depth));
 	for (const [id, rail] of structure.junctions) {
 		const shells = junctionShells(context, spans, { id, rail });
+		let before = 0;
+		let after = 0;
+		if (rail.depth === 0) before = defined(facing[rail.interval]).next;
+		if (rail.depth === lastDepths.get(rail.interval))
+			after = facing[rail.interval + 1]?.previous ?? 0;
 		const slots = result.get(rail.interval) ?? [];
-		for (const [slot, shell] of [
-			[rail.depth, shells.previous],
-			[rail.depth + 1, shells.next],
+		for (const [slot, shell, opposite] of [
+			[rail.depth, shells.previous, before],
+			[rail.depth + 1, shells.next, after],
 		] as const) {
 			if (shell === 0) continue;
-			slots[slot] = Math.max(slots[slot] ?? 0, shell + GROUP_FRAME_CLEARANCE);
+			const required = shell + opposite + GROUP_FRAME_CLEARANCE;
+			slots[slot] = Math.max(slots[slot] ?? 0, required);
 		}
 		if (slots.length > 0) result.set(rail.interval, slots);
 	}

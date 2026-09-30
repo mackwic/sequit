@@ -34,6 +34,33 @@ describe('junction rails', () => {
 	});
 });
 
+describe('junction channel frame shells', () => {
+	it('keeps a frame ending on a junction rail clear of the frame starting on the next rank', () => {
+		// g2 ends on j0's rail; g1 starts on the next rank, and its header faces that rail's slot.
+		expect(
+			layoutWitness({
+				layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Bottom },
+				nodes: [
+					['n0', node, 'g1'],
+					['n2', node],
+					['n3', node],
+					['n4', { width: 100, height: 40 }, 'g2'],
+				],
+				junctions: [['j0', 'g2']],
+				groups: [
+					['g1', measurement(254, 155, 34, 16)],
+					['g2', measurement(183, 145, 15, 18)],
+				],
+				relations: [
+					['g1', 'g2'],
+					['n2', 'n4'],
+					['n3', 'g2'],
+				],
+			}),
+		).toMatchObject({ valid: true });
+	});
+});
+
 describe('channel rail constraints', () => {
 	it('breaks a cycle through a column that two unrelated relations reach', () => {
 		// r1 and r2 arrive at one column of the root channel, from which r0 leaves.
