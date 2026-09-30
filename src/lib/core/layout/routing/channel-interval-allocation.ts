@@ -16,37 +16,49 @@ export interface ChannelIntervalAllocation<Key extends string | number> {
 	readonly trackCount: number;
 }
 
-interface TrackEnd {
-	readonly end: number;
-	readonly track: number;
+/** A binary min-heap of released tracks by end, stored as parallel columns. */
+interface TrackHeap {
+	readonly ends: number[];
+	readonly tracks: number[];
 }
 
-function push(heap: TrackEnd[], value: TrackEnd): void {
-	let index = heap.length;
-	heap.push(value);
+function push(heap: TrackHeap, end: number, track: number): void {
+	const { ends, tracks } = heap;
+	let index = ends.length;
+	ends.push(end);
+	tracks.push(track);
 	while (index > 0) {
 		const parent = Math.floor((index - 1) / 2);
-		if (defined(heap[parent]).end <= value.end) break;
-		heap[index] = defined(heap[parent]);
+		const parentEnd = defined(ends[parent]);
+		if (parentEnd <= end) break;
+		ends[index] = parentEnd;
+		tracks[index] = defined(tracks[parent]);
 		index = parent;
 	}
-	heap[index] = value;
+	ends[index] = end;
+	tracks[index] = track;
 }
 
-function pop(heap: TrackEnd[]): TrackEnd {
-	const result = defined(heap[0]);
-	const last = defined(heap.pop());
-	if (heap.length === 0) return result;
+/** Remove the earliest-ending entry and return its track. */
+function pop(heap: TrackHeap): number {
+	const { ends, tracks } = heap;
+	const result = defined(tracks[0]);
+	const lastEnd = defined(ends.pop());
+	const lastTrack = defined(tracks.pop());
+	if (ends.length === 0) return result;
 	let index = 0;
-	while (index * 2 + 1 < heap.length) {
+	while (index * 2 + 1 < ends.length) {
 		let child = index * 2 + 1;
-		const sibling = heap[child + 1];
-		if (sibling !== undefined && sibling.end < defined(heap[child]).end) child += 1;
-		if (defined(heap[child]).end >= last.end) break;
-		heap[index] = defined(heap[child]);
+		const sibling = ends[child + 1];
+		if (sibling !== undefined && sibling < defined(ends[child])) child += 1;
+		const childEnd = defined(ends[child]);
+		if (childEnd >= lastEnd) break;
+		ends[index] = childEnd;
+		tracks[index] = defined(tracks[child]);
 		index = child;
 	}
-	heap[index] = last;
+	ends[index] = lastEnd;
+	tracks[index] = lastTrack;
 	return result;
 }
 
@@ -58,13 +70,13 @@ export function allocateChannelIntervals<Key extends string | number>(
 	trackByRunKey = new Map<Key, number>(),
 ): ChannelIntervalAllocation<Key> {
 	const ordered = [...demands].sort((a, b) => a.start - b.start || a.end - b.end);
-	const heap: TrackEnd[] = [];
+	const heap: TrackHeap = { ends: [], tracks: [] };
 	let trackCount = 0;
 	for (const demand of ordered) {
 		let track = offset + trackCount;
-		const first = heap[0];
+		const firstEnd = heap.ends[0];
 		const before = demand.start - edge.spacing / 2;
-		if (first !== undefined && first.end < before) track = pop(heap).track;
+		if (firstEnd !== undefined && firstEnd < before) track = pop(heap);
 		else {
 			if (offset + trackCount >= edge.capacity)
 				throw new Error(`Routing edge ${edge.ownerId} has insufficient channel tracks.`);
@@ -72,7 +84,7 @@ export function allocateChannelIntervals<Key extends string | number>(
 		}
 		demand.rail = track;
 		trackByRunKey.set(demand.key, track);
-		push(heap, { end: demand.end, track });
+		push(heap, demand.end, track);
 	}
 	return { edge, trackByRunKey, trackCount };
 }

@@ -20,44 +20,69 @@ function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
 	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
 }
 
-interface CycleFrame {
-	readonly wire: ChannelWire;
-	next: number;
+const UNVISITED = 0;
+const ON_PATH = 1;
+const EXPLORED = 2;
+const NO_ARRIVALS: readonly number[] = [];
+
+interface CycleSearch {
+	readonly wires: readonly ChannelWire[];
+	/** Wire indices by the column they reach. */
+	readonly arrivals: ReadonlyMap<number, readonly number[]>;
+	readonly state: Uint8Array;
+	readonly breaks: Set<ChannelWire>;
+}
+
+/** Explore the wires following `start`, breaking each wire that closes a cycle on the path. */
+function exploreCycles(search: CycleSearch, start: number): void {
+	const { wires, arrivals, state, breaks } = search;
+	const path = [start];
+	const offsets = [0];
+	state[start] = ON_PATH;
+	while (path.length > 0) {
+		const top = path.length - 1;
+		const wire = defined(path[top]);
+		const offset = defined(offsets[top]);
+		offsets[top] = offset + 1;
+		const column = arrivals.get(defined(wires[wire]).source) ?? NO_ARRIVALS;
+		const following = column[column.length - 1 - offset];
+		if (following === undefined) {
+			state[wire] = EXPLORED;
+			path.pop();
+			offsets.pop();
+		} else if (state[following] === ON_PATH) breaks.add(defined(wires[following]));
+		else if (state[following] === UNVISITED) {
+			state[following] = ON_PATH;
+			path.push(following);
+			offsets.push(0);
+		}
+	}
 }
 
 /**
  * A coincident departure must leave its column before another wire arrives there. Several
  * wires may arrive at one column, so these constraints form a general graph: a depth-first
- * search breaks the wire closing each cycle, following the latest arrival first.
+ * search breaks the wire closing each cycle, following the latest arrival first. A wire leaving
+ * a column that no wire reaches starts no search: it is never on a path when it is reached.
  */
 function cycleBreaks(wires: readonly ChannelWire[]): Set<ChannelWire> {
-	const arrivals = new Map<number, ChannelWire[]>();
-	for (const wire of wires) {
-		const column = arrivals.get(wire.target) ?? [];
-		column.push(wire);
-		arrivals.set(wire.target, column);
+	const arrivals = new Map<number, number[]>();
+	for (let index = 0; index < wires.length; index += 1) {
+		const target = defined(wires[index]).target;
+		const column = arrivals.get(target);
+		if (column === undefined) arrivals.set(target, [index]);
+		else column.push(index);
 	}
-	// True while a wire is on the search path, false once its descendants are explored.
-	const active = new Map<ChannelWire, boolean>();
-	const breaks = new Set<ChannelWire>();
-	for (const start of wires) {
-		if (active.has(start)) continue;
-		active.set(start, true);
-		const path: CycleFrame[] = [{ wire: start, next: 0 }];
-		for (let frame = path.at(-1); frame !== undefined; frame = path.at(-1)) {
-			const following = arrivals.get(frame.wire.source)?.at(-1 - frame.next);
-			frame.next += 1;
-			if (following === undefined) {
-				active.set(frame.wire, false);
-				path.pop();
-			} else if (active.get(following) === true) breaks.add(following);
-			else if (!active.has(following)) {
-				active.set(following, true);
-				path.push({ wire: following, next: 0 });
-			}
-		}
-	}
-	return breaks;
+	const search: CycleSearch = {
+		wires,
+		arrivals,
+		state: new Uint8Array(wires.length),
+		breaks: new Set<ChannelWire>(),
+	};
+	for (let start = 0; start < wires.length; start += 1)
+		if (search.state[start] === UNVISITED && arrivals.has(defined(wires[start]).source))
+			exploreCycles(search, start);
+	return search.breaks;
 }
 
 function run(source: number, target: number): ChannelRun {
@@ -75,6 +100,28 @@ function run(source: number, target: number): ChannelRun {
 function precedes(first: ChannelRun, last: ChannelRun): void {
 	first.next.push(last);
 	last.remaining += 1;
+}
+
+/** First index of `sorted`, ordered by source column, whose wire does not leave before `column`. */
+function firstDeparture(sorted: readonly ChannelWire[], column: number): number {
+	let low = 0;
+	let high = sorted.length;
+	while (low < high) {
+		const middle = (low + high) >>> 1;
+		if (defined(sorted[middle]).source < column) low = middle + 1;
+		else high = middle;
+	}
+	return low;
+}
+
+/** The turning wires leaving the column `wire` reaches must first leave it, in source order. */
+function orderDepartures(sorted: readonly ChannelWire[], wire: ChannelWire): void {
+	for (let index = firstDeparture(sorted, wire.target); index < sorted.length; index += 1) {
+		const departure = defined(sorted[index]);
+		if (departure.source !== wire.target) return;
+		if (departure.source === departure.target) continue;
+		if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
+	}
 }
 
 function makeRuns(
@@ -216,7 +263,7 @@ function assignRails(
 		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
 	edge.capacity = count;
-	untangleChannelRails(wires, runs, trackByRunKey);
+	untangleChannelRails(wires, ready, layers, trackByRunKey);
 	return { edge, trackByRunKey, railCount: count };
 }
 
@@ -244,20 +291,10 @@ export function routeOwnedChannel(
 		sharedEndpoints,
 	);
 	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
-	const bySource = new Map<number, ChannelWire[]>();
-	for (const wire of moving) {
-		const departures = bySource.get(wire.source) ?? [];
-		departures.push(wire);
-		bySource.set(wire.source, departures);
-	}
 	for (const wire of moving) {
 		// A straight wire keeps one column across the channel: it neither leaves nor reaches it on
 		// a traverse, so only the wires that turn there order their runs.
-		if (wire.source === wire.target) continue;
-		for (const departure of bySource.get(wire.target) ?? []) {
-			if (departure.source === departure.target) continue;
-			if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
-		}
+		if (wire.source !== wire.target) orderDepartures(moving, wire);
 	}
 	return { wires, ...assignRails(runs, moving, ownerId) };
 }
