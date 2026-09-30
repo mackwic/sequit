@@ -4,6 +4,7 @@ import { LAYOUT_PERFORMANCE_SCENARIOS } from '../../../../../src/app/workshop/fi
 import {
 	formatIncrementalLayoutCheckpointSummaries,
 	formatIncrementalLayoutSummaries,
+	incrementalLayoutCaches,
 	type IncrementalLayoutReplayResult,
 	prepareIncrementalLayoutReplay,
 	replayIncrementalLayout,
@@ -14,6 +15,7 @@ import {
 const inputs = LAYOUT_PERFORMANCE_SCENARIOS.map((scenario) =>
 	prepareIncrementalLayoutReplay(scenario, 1000),
 );
+const caches = incrementalLayoutCaches();
 const replaysByScenario = new Map<string, IncrementalLayoutReplayResult[]>();
 let reportGenerated = false;
 
@@ -21,10 +23,10 @@ async function generateIncrementalLayoutReport(): Promise<void> {
 	if (reportGenerated) return;
 	reportGenerated = true;
 	for (const input of inputs) {
-		await replayIncrementalLayout(input);
+		await replayIncrementalLayout(input, caches);
 		const measuredReplays: IncrementalLayoutReplayResult[] = [];
 		for (let replayIndex = 0; replayIndex < 3; replayIndex += 1) {
-			measuredReplays.push(await replayIncrementalLayout(input));
+			measuredReplays.push(await replayIncrementalLayout(input, caches));
 		}
 		replaysByScenario.set(input.scenario.name, measuredReplays);
 	}
@@ -42,7 +44,7 @@ async function generateIncrementalLayoutReport(): Promise<void> {
 	});
 	// eslint-disable-next-line no-console -- this benchmark exists to print a machine-readable report.
 	console.info(
-		`Incremental stage results (scenario,bucket-or-checkpoint,stage,p50Ms,p95Ms,maxMs,slowest insertion for buckets)\n${reports.join('\n')}`,
+		`Incremental stage results, layout caches: ${caches} (scenario,bucket-or-checkpoint,stage,p50Ms,p95Ms,maxMs,slowest insertion for buckets)\n${reports.join('\n')}`,
 	);
 }
 

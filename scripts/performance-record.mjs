@@ -18,10 +18,14 @@ import {
 } from './performance-context.mjs';
 
 async function record(suite, destination, filter = '') {
-	const commands = { snapshot: 'test:performance', incremental: 'test:incremental-performance' };
+	const commands = {
+		snapshot: 'test:performance',
+		incremental: 'test:incremental-performance',
+		'incremental-cold': 'test:incremental-performance:cold',
+	};
 	if (!Object.hasOwn(commands, suite) || !destination)
 		throw new Error(
-			'Usage : pnpm performance:record snapshot|incremental /chemin/rapport.json [filtre Vitest]',
+			'Usage : pnpm performance:record snapshot|incremental|incremental-cold /chemin/rapport.json [filtre Vitest]',
 		);
 	const output = resolve(destination);
 	const auxiliary = {

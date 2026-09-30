@@ -1,6 +1,9 @@
 import { performance } from 'node:perf_hooks';
 
-import { layoutGraph } from '../../../src/app/web/projection/layout-graph';
+import {
+	layoutGraph,
+	layoutGraphForProjection,
+} from '../../../src/app/web/projection/layout-graph';
 import { createCanvasMeasurementModel } from '../../../src/app/web/ui/canvas/canvas-model';
 import { applyLayoutPerformanceInsertion } from '../../../src/app/workshop/fixtures/layout-performance/apply-layout-performance-insertion';
 import type { LayoutPerformanceInsertion } from '../../../src/app/workshop/fixtures/layout-performance/scenario-types';
@@ -8,6 +11,7 @@ import type { LogicDocument } from '../../../src/lib/core/document/logic-documen
 import { validateLogicDocument } from '../../../src/lib/core/document/validate-logic-document';
 import { createGraph } from '../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../src/lib/core/graph/topological-ranks';
+import type { ProjectionLayoutCaches } from '../../../src/lib/core/layout/root-region';
 import { layoutMeasurementsFor } from '../builders/layout-measurements';
 
 export interface IncrementalLayoutTiming {
@@ -28,9 +32,11 @@ export interface TimedLayoutPerformanceInsertion {
 	readonly timing: IncrementalLayoutTiming;
 }
 
+/** Without caches the layout is cold; with them it reuses what earlier insertions laid out. */
 export async function timeLayoutPerformanceInsertion(
 	document: LogicDocument,
 	insertion: LayoutPerformanceInsertion,
+	caches: ProjectionLayoutCaches | undefined,
 ): Promise<TimedLayoutPerformanceInsertion> {
 	const totalStart = performance.now();
 	const updatedDocument = applyLayoutPerformanceInsertion(document, insertion);
@@ -53,7 +59,8 @@ export async function timeLayoutPerformanceInsertion(
 
 	const measurements = layoutMeasurementsFor(validation.value);
 	const syntheticMeasurementsCompletedAt = performance.now();
-	await layoutGraph(graphResult.value, ranks, measurements);
+	if (caches === undefined) await layoutGraph(graphResult.value, ranks, measurements);
+	else await layoutGraphForProjection(graphResult.value, ranks, measurements, caches);
 	const layoutCompletedAt = performance.now();
 
 	return {

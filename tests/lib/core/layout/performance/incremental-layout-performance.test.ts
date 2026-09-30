@@ -9,6 +9,7 @@ import {
 } from '../../../../support/performance/record-performance-measurements';
 import {
 	INCREMENTAL_LAYOUT_TIMING_STAGES,
+	incrementalLayoutCaches,
 	prepareIncrementalLayoutReplay,
 	replayIncrementalLayout,
 	summarizeIncrementalLayoutReplays,
@@ -18,6 +19,7 @@ const measurements: PerformanceMeasurement[] = [];
 const inputs = LAYOUT_PERFORMANCE_SCENARIOS.map((scenario) =>
 	prepareIncrementalLayoutReplay(scenario, 1000),
 );
+const caches = incrementalLayoutCaches();
 const calibrationRows: string[] = [];
 const uxRows: string[] = [];
 
@@ -31,10 +33,10 @@ describe('incremental layout performance', { concurrent: false }, () => {
 		it(
 			input.scenario.name,
 			async () => {
-				await replayIncrementalLayout(input);
+				await replayIncrementalLayout(input, caches);
 				const measuredReplays = [];
 				for (let replayIndex = 0; replayIndex < 3; replayIndex += 1) {
-					measuredReplays.push(await replayIncrementalLayout(input));
+					measuredReplays.push(await replayIncrementalLayout(input, caches));
 				}
 				const summaries = summarizeIncrementalLayoutReplays(measuredReplays);
 
@@ -77,6 +79,6 @@ describe('incremental layout performance', { concurrent: false }, () => {
 afterAll(() => {
 	recordPerformanceMeasurements(measurements);
 	process.stderr.write(
-		`\nIncremental calibration results (scenario,bucket,totalP95Ms,budgetMs)\n${calibrationRows.join('\n')}\n\nFixed UX goals (PASS or GAP; goals do not alter calibrated gates)\n${uxRows.join('\n')}\n`,
+		`\nIncremental calibration results, layout caches: ${caches} (scenario,bucket,totalP95Ms,budgetMs)\n${calibrationRows.join('\n')}\n\nFixed UX goals (PASS or GAP; goals do not alter calibrated gates)\n${uxRows.join('\n')}\n`,
 	);
 });

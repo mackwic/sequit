@@ -1,3 +1,4 @@
+import { createProjectionLayoutCaches } from '../../../src/app/web/projection/layout-graph';
 import {
 	LAYOUT_PERFORMANCE_NODE_COUNTS,
 	type LayoutPerformanceNodeCount,
@@ -7,6 +8,7 @@ import type {
 	NamedLayoutPerformanceScenario,
 } from '../../../src/app/workshop/fixtures/layout-performance/scenario-types';
 import type { LogicDocument } from '../../../src/lib/core/document/logic-document';
+import type { ProjectionLayoutCaches } from '../../../src/lib/core/layout/root-region';
 import {
 	INCREMENTAL_LAYOUT_GROWTH_BUCKETS,
 	type IncrementalLayoutGrowthBucketName,
@@ -30,6 +32,24 @@ export const INCREMENTAL_LAYOUT_TIMING_STAGES = [
 ] as const satisfies readonly (keyof IncrementalLayoutTiming)[];
 
 type IncrementalLayoutTimingStage = (typeof INCREMENTAL_LAYOUT_TIMING_STAGES)[number];
+
+/** How each replay lays out: as one opened document, or cold like the snapshot gate. */
+export enum IncrementalLayoutCaches {
+	Projection = 'projection',
+	Cold = 'cold',
+}
+
+const INCREMENTAL_LAYOUT_CACHES_VARIABLE = 'SEQUIT_INCREMENTAL_LAYOUT_CACHES';
+
+/** The gate replays through the projection caches unless the cold mode is requested. */
+export function incrementalLayoutCaches(
+	value = process.env[INCREMENTAL_LAYOUT_CACHES_VARIABLE],
+): IncrementalLayoutCaches {
+	if (value === undefined || value === IncrementalLayoutCaches.Projection.valueOf())
+		return IncrementalLayoutCaches.Projection;
+	if (value === IncrementalLayoutCaches.Cold.valueOf()) return IncrementalLayoutCaches.Cold;
+	throw new Error(`${INCREMENTAL_LAYOUT_CACHES_VARIABLE} must be projection or cold: ${value}`);
+}
 
 export interface IncrementalLayoutReplayInput {
 	readonly scenario: NamedLayoutPerformanceScenario;
@@ -83,13 +103,20 @@ export function prepareIncrementalLayoutReplay(
 	});
 }
 
+/**
+ * A replay models one opened document: in projection mode it owns one cache set, so the first
+ * insertion is cold and nothing leaks from the warm-up replay into the measured ones.
+ */
 export async function replayIncrementalLayout(
 	input: IncrementalLayoutReplayInput,
+	mode: IncrementalLayoutCaches,
 ): Promise<IncrementalLayoutReplayResult> {
+	let caches: ProjectionLayoutCaches | undefined;
+	if (mode === IncrementalLayoutCaches.Projection) caches = createProjectionLayoutCaches();
 	let document = input.initialDocument;
 	const results: IncrementalLayoutInsertionResult[] = [];
 	for (const insertion of input.insertions) {
-		const result = await timeLayoutPerformanceInsertion(document, insertion);
+		const result = await timeLayoutPerformanceInsertion(document, insertion, caches);
 		document = result.document;
 		results.push({ nodeIndex: result.nodeIndex, timing: result.timing });
 	}

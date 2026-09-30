@@ -9,7 +9,8 @@ This opt-in suite reports machine-specific snapshot costs for graph creation, to
 - `pnpm benchmark:performance` runs graph reporting followed by layout reporting.
 - `pnpm test:performance` runs the opt-in calibrated snapshot regression gate.
 - `pnpm benchmark:incremental` reports stage p50, p95, and maximum insertion latency.
-- `pnpm test:incremental-performance` runs calibrated incremental gates and reports fixed UX goals.
+- `pnpm test:incremental-performance` runs calibrated incremental gates and reports fixed UX goals. Each replay lays out through the projection caches of one opened document (see [Incremental Replay](#incremental-replay)).
+- `pnpm test:incremental-performance:cold` runs the same gate with cold layouts, as the history recorded before the projection caches was measured. `SEQUIT_INCREMENTAL_LAYOUT_CACHES=cold` selects the same mode for `pnpm benchmark:incremental`.
 
 `pnpm exec vitest bench --run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/long-relation-layout.bench.ts` measures a 100- or 1000-node chain with one additional relation from its last node to its first. Unlike the matrix's adjacent-rank `long-queue`, this profile activates obstacle routing without junctions. It reuses the same prepared-input boundary and sampling policy, reports timings, and introduces no calibrated budget.
 
@@ -61,7 +62,7 @@ Builders use `top-to-bottom` direction with `top` bias and stable fixed-width ID
 | Junction | 32 x 32                                 |
 | Group    | minimum 160 x 72, header 36, padding 24 |
 
-Scenarios are built and validated before benchmark registration. The immutable prepared products are reused by each sample; benchmark callbacks do not mutate them or retain prior layout results.
+Scenarios are built and validated before benchmark registration. The immutable prepared products are reused by each sample; benchmark callbacks do not mutate them or retain prior layout results. `layoutGraph` owns no cache: every snapshot sample is a cold layout.
 
 ## Stage Boundaries
 
@@ -79,7 +80,7 @@ Each registration uses a fixed 250 ms warmup and at least 1000 ms of measured sa
 
 ## Temporary Budget Headroom
 
-By explicit user decision, while the group-layout features land, both gates multiply every calibrated cell (snapshot and incremental) by `LAYOUT_PERFORMANCE_BUDGET_HEADROOM` (currently 2, in `layout-performance-policy.ts`). The tables below and in the budget files remain the calibrated ceilings; profiling and optimization work is expected to bring the factor back to 1.
+By explicit user decision, while the group-layout features land, both gates multiply every calibrated cell (snapshot and incremental) by `LAYOUT_PERFORMANCE_BUDGET_HEADROOM` (currently 2, in `layout-performance-policy.ts`). The tables below and in the budget files remain the calibrated ceilings; profiling and optimization work is expected to bring the factor back to 1. By explicit user decision, that rollback is judged on cold numbers only: the snapshot gate and `pnpm test:incremental-performance:cold`. Gains that come from the projection caches of the default incremental gate do not count toward it.
 
 ## Calibrated Snapshot Budgets
 
@@ -171,8 +172,12 @@ immutable document update
   -> topologicallyRank
   -> createCanvasMeasurementModel
   -> layoutMeasurementsFor
-  -> await layoutGraph
+  -> await layoutGraphForProjection (one projection cache set per replay)
 ```
+
+By explicit user decision (2026-09-30), the gate measures an opened document: each replay creates one set of projection caches with `createProjectionLayoutCaches()`, as a `DocumentProjection` does, and lays every insertion out through `layoutGraphForProjection`. The first insertion of a replay is cold; each later one replays the exact channel routings of the dedicated root that the previous two layouts routed, and the result equals the cold layout. The warm-up replay warms only the JIT: no cache entry reaches the measured replays. The staged pipeline is otherwise unchanged; `DocumentProjection` itself (topology signature, canvas model) stays outside the measurement.
+
+`pnpm test:incremental-performance:cold` (`SEQUIT_INCREMENTAL_LAYOUT_CACHES=cold`) keeps the earlier measurement, `await layoutGraph` with nothing retained between insertions, under the same budgets. Reports recorded before 2026-09-30 are cold measurements: compare them with cold reports only. The two modes are separate `performance:record` suites, so `performance:compare` never mixes them. The channel cache changes only the scenarios whose dedicated root routes crossing corridors (`wide-bipartite-layers`, `unbalanced-random`, `subgroups` and `shallow-groups`).
 
 The report records document update, validation, graph creation, ranking, semantic measurement projection, synthetic measurement construction, layout, synchronous projection, and total latency separately. `synchronousProjectionMs` covers validation through semantic measurement projection. `totalMs` begins before immutable transaction application and ends after layout resolves, so it also includes synthetic measurement construction even though that work is not browser DOM measurement.
 
@@ -180,7 +185,7 @@ The initial node at index 0 seeds each topology. Growth buckets cover subsequent
 
 ### Regression Baselines
 
-The opt-in gate compares total computational p95 in each growth bucket with the explicit matrix below. Calibration uses the worst p95 from three consecutive gate runs, adds 50% headroom, and rounds upward to a 5 ms boundary: `ceil(worstP95 * 1.5 / 5) * 5`. These values detect regressions on comparable hardware; they do not redefine the separate UX goals.
+The opt-in gate compares total computational p95 in each growth bucket with the explicit matrix below, in both modes. Calibration uses the worst p95 from three consecutive gate runs, adds 50% headroom, and rounds upward to a 5 ms boundary: `ceil(worstP95 * 1.5 / 5) * 5`. These values detect regressions on comparable hardware; they do not redefine the separate UX goals. They were calibrated on cold layouts and are unchanged by the projection caches: recalibrating `wide-bipartite-layers/100-999` with this rule would raise its 195 ms ceiling, so it stays as it is.
 
 | Scenario                  | 1-9 | 10-19 | 20-49 | 50-99 | 100-999 |
 | ------------------------- | --: | ----: | ----: | ----: | ------: |
@@ -271,7 +276,7 @@ mise exec -- pnpm performance:record snapshot /tmp/layout-after.json 'wide-bipar
 mise exec -- pnpm performance:compare /tmp/layout-before.json /tmp/layout-after.json
 ```
 
-Omit the last argument for the full snapshot matrix. Use `incremental` for one-node-at-a-time replay, optionally filtering by scenario name. The equivalent mise tasks are `mise run performance:record snapshot /tmp/layout-before.json 'wide-bipartite-layers/nodes=1000'` and `mise run performance:compare /tmp/layout-before.json /tmp/layout-after.json`.
+Omit the last argument for the full snapshot matrix. Use `incremental` for one-node-at-a-time replay through the projection caches, or `incremental-cold` for the cold replay comparable with earlier reports, optionally filtering by scenario name. The equivalent mise tasks are `mise run performance:record snapshot /tmp/layout-before.json 'wide-bipartite-layers/nodes=1000'` and `mise run performance:compare /tmp/layout-before.json /tmp/layout-after.json`.
 
 Each report identifies the machine, runtime, measurement protocol and source fingerprint, including uncommitted and untracked source files. A changed source fingerprint during the run invalidates the report. Comparison rejects different machines, runtimes, protocols, filters, budgets or case sets, as well as incomplete reports. Keep output outside the source tree. Existing report files are never overwritten.
 
