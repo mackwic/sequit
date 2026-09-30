@@ -3,14 +3,9 @@ import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { BlockPassageRepair } from './block-passage-repair';
-import {
-	type AdjacentRelation,
-	adjacentRelations,
-	closedPassages,
-	forcedBlockCrossings,
-} from './block-passages';
+import { type AdjacentRelation, adjacentRelations, forcedBlockCrossings } from './block-passages';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
-import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
+import { applyRankOrder, type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 import { topologyRows, transversePositions } from './transverse-positions';
 
 interface LayeredRelation {
@@ -120,10 +115,8 @@ export class RankTopologyOracle {
 
 	/** Crossings of an order; an order closing a block's passage cannot be routed at all. */
 	count(structure: LayoutStructure, order: RankOrder, maximum = Number.POSITIVE_INFINITY): number {
-		const applied = applyRankOrder(structure, this.domain, order);
-		if (closedPassages(applied, this.adjacent).next().done !== true)
-			return Number.POSITIVE_INFINITY;
-		return this.crossings(applied, maximum);
+		if (this.passages.closes(repairBlockOrder(this.domain, order))) return Number.POSITIVE_INFINITY;
+		return this.crossings(applyRankOrder(structure, this.domain, order), maximum);
 	}
 
 	/** Crossings of rows already ordered, whose passages are all open. */

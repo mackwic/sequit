@@ -1,10 +1,4 @@
-import {
-	commonContainer,
-	type GroupBlocks,
-	groupBlocks,
-	type RowContainers,
-	rowContainers,
-} from '../structure/group-blocks';
+import { commonContainer, type GroupBlocks, groupBlocks } from '../structure/group-blocks';
 import type { LayoutStructure } from '../structure/prepare-layout';
 
 export interface AdjacentRelation {
@@ -40,80 +34,6 @@ export function adjacentRelations(structure: LayoutStructure): readonly Adjacent
 			targetIds.flatMap((target) => adjacentPair(ranks, source, target) ?? []),
 		),
 	);
-}
-
-/** For each wall, whether it stands before `item` in the row. */
-function sidesOf(items: readonly string[], item: string, walls: readonly string[]): string {
-	const at = items.indexOf(item);
-	return walls.map((wall) => Number(items.indexOf(wall) < at)).join('');
-}
-
-/** A relation whose endpoints a wall separates, and where its lower item has to stand. */
-export interface ClosedPassage {
-	readonly relation: AdjacentRelation;
-	readonly container: string | undefined;
-	/** The item standing for the lower endpoint in the container. */
-	readonly item: string;
-	/** Walls standing before the upper endpoint's item, then those after it. */
-	readonly before: ReadonlySet<string>;
-	readonly after: ReadonlySet<string>;
-}
-
-function closedPassage(
-	relation: AdjacentRelation,
-	blocks: GroupBlocks,
-	rows: { readonly upper: RowContainers; readonly lower: RowContainers },
-): ClosedPassage | undefined {
-	const common = commonContainer(blocks, relation.upper, relation.lower);
-	if (common === undefined) return undefined;
-	const upper = rows.upper.slots.get(common.container);
-	const lower = rows.lower.slots.get(common.container);
-	if (upper === undefined || lower === undefined) return undefined;
-	const endpoints = new Set([common.left, common.right]);
-	const walls = upper.filter(
-		(id) => blocks.ids.has(id) && !endpoints.has(id) && lower.includes(id),
-	);
-	if (walls.length === 0) return undefined;
-	const side = sidesOf(upper, common.left, walls);
-	if (side === sidesOf(lower, common.right, walls)) return undefined;
-	const at = upper.indexOf(common.left);
-	const before = walls.filter((wall) => upper.indexOf(wall) < at);
-	return {
-		relation,
-		container: common.container,
-		item: common.right,
-		before: new Set(before),
-		after: new Set(walls.filter((wall) => !before.includes(wall))),
-	};
-}
-
-/**
- * A block present in two adjacent rows has one continuous frame between them: a relation whose
- * endpoints stand on different sides of it there cannot be routed, whatever the geometry.
- */
-export function* closedPassages(
-	structure: LayoutStructure,
-	relations: readonly AdjacentRelation[],
-): IterableIterator<ClosedPassage> {
-	const blocks = groupBlocks(structure.graph);
-	if (blocks.ids.size === 0) return;
-	const rowOf = new Map<string, readonly string[]>();
-	for (const component of structure.components)
-		for (const row of component.rows.ordinary) for (const id of row) rowOf.set(id, row);
-	const containers = new Map<readonly string[], RowContainers>();
-	const containersOf = (row: readonly string[]): RowContainers => {
-		const known = containers.get(row) ?? rowContainers(row, blocks);
-		containers.set(row, known);
-		return known;
-	};
-	for (const relation of relations) {
-		const upperRow = rowOf.get(relation.upper);
-		const lowerRow = rowOf.get(relation.lower);
-		if (upperRow === undefined || lowerRow === undefined) continue;
-		const rows = { upper: containersOf(upperRow), lower: containersOf(lowerRow) };
-		const passage = closedPassage(relation, blocks, rows);
-		if (passage !== undefined) yield passage;
-	}
 }
 
 function extend(spans: Map<string, RankSpan>, block: string, span: RankSpan): void {

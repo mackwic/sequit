@@ -24,9 +24,9 @@ import {
 } from './rank-order';
 import { adjacentOrders, BarycentricSweeper } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
-import { type RankOrderDomain, repairBlockOrder } from './rank-ordering';
+import { applyRankOrder, type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 
-/** Alternating barycentric sweeps proposed before local swaps. */
+/** Alternating barycentric sweeps before local swaps. */
 const MAX_SWEEPS = 4;
 
 /** Rank selection only needs the retained evaluation path of the dedicated engine. */
@@ -143,8 +143,6 @@ class RankOrderSearch {
 	truncated = false;
 	private readonly seen: Set<string>;
 	private readonly frontier: RankOrder[];
-	/** Reopened orders by candidate: neighbor sweeps meet the same candidates again and again. */
-	private readonly reopened = new Map<string, ReopenedOrder>();
 	private readonly topology: RankTopologyOracle;
 	readonly topologyBound: number;
 	private readonly positions: readonly ReadonlyMap<string, number>[];
@@ -231,10 +229,12 @@ class RankOrderSearch {
 	}
 
 	/** A dominated rank order cannot win even with perfect routes; still explore its neighbors. */
-	private cannotBeatSelected(order: RankOrder, applied: LayoutStructure): boolean {
+	private cannotBeatSelected(order: RankOrder): boolean {
 		const best = this.selected;
 		if (best === undefined) return false;
-		const crossings = this.topology.crossings(applied, best.topologyCrossings);
+		const { structure, domain } = this.input;
+		const rows = applyRankOrder(structure, domain, order);
+		const crossings = this.topology.crossings(rows, best.topologyCrossings);
 		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
 		const kendall = rankOrderKendallDistance(order, this.input.domain.bands);
 		if (kendall !== best.kendall) return kendall > best.kendall;
@@ -260,25 +260,22 @@ class RankOrderSearch {
 		});
 	}
 
-	/** Sibling blocks keep one order, then every passage a wall closes is reopened if it can be. */
-	private repaired(candidate: RankOrder): ReopenedOrder {
+	/**
+	 * Sibling blocks keep one order, then every passage a wall closes is reopened if it can be.
+	 * A candidate already met costs nothing: repaired ones are remembered as seen, unproposed.
+	 */
+	propose(candidate: RankOrder): boolean {
 		const order = repairBlockOrder(this.input.domain, candidate);
 		const key = JSON.stringify(order);
-		let reopened = this.reopened.get(key);
-		if (reopened === undefined) {
-			reopened = this.topology.passages.reopen(order);
-			this.reopened.set(key, reopened);
-		}
-		return reopened;
-	}
-
-	propose(candidate: RankOrder): boolean {
-		return this.admit(this.repaired(candidate));
+		if (this.seen.has(key)) return true;
+		const reopened = this.topology.passages.reopen(order);
+		if (reopened.order === order) return this.admit(reopened, key);
+		this.seen.add(key);
+		return this.admit(reopened, JSON.stringify(reopened.order));
 	}
 
 	/** An order still closing a passage cannot be routed: it is neither evaluated nor explored. */
-	private admit({ order, applied, closed }: ReopenedOrder): boolean {
-		const key = JSON.stringify(order);
+	private admit({ order, closed }: ReopenedOrder, key: string): boolean {
 		if (this.seen.has(key)) return true;
 		if (this.proposed >= this.input.limits.uniqueProposals)
 			return this.cutOff(RankSearchStop.ProposalBudget);
@@ -286,7 +283,7 @@ class RankOrderSearch {
 		this.proposed += 1;
 		if (closed) return true;
 		this.frontier.push(order);
-		if (this.cannotBeatSelected(order, applied)) return true;
+		if (this.cannotBeatSelected(order)) return true;
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;
@@ -308,20 +305,30 @@ class RankOrderSearch {
 
 	/**
 	 * Sweeps alternate their direction until two in a row change nothing, within a few passes:
-	 * bands coupled across containers need more than one round. Each sweep is proposed.
+	 * bands coupled across containers need more than one round. The first sweep and the last one
+	 * are proposed; the passes between only lead from one to the other.
 	 */
+	private sweeps(): boolean {
+		const { domain } = this.input;
+		const sweeper = new BarycentricSweeper(this.input);
+		let current: ReopenedOrder = { order: domain.bands, closed: false };
+		let key = JSON.stringify(current.order);
+		let unchanged = 0;
+		for (let pass = 0; pass < MAX_SWEEPS && unchanged < 2; pass += 1) {
+			const sweep = sweeper.sweep(current.order, pass % 2 === 1);
+			current = this.topology.passages.reopen(repairBlockOrder(domain, sweep));
+			const previous = key;
+			key = JSON.stringify(current.order);
+			unchanged += 1;
+			if (key !== previous) unchanged = 0;
+			if (pass === 0 && !this.admit(current, key)) return false;
+		}
+		return this.admit(current, key);
+	}
+
 	runHeuristic(): void {
 		this.mode = RankSearchMode.Heuristic;
-		let current: RankOrder = this.input.domain.bands;
-		let unchanged = 0;
-		const sweeper = new BarycentricSweeper(this.input);
-		for (let pass = 0; pass < MAX_SWEEPS && unchanged < 2; pass += 1) {
-			const swept = this.repaired(sweeper.sweep(current, pass % 2 === 1));
-			unchanged += 1;
-			if (JSON.stringify(swept.order) !== JSON.stringify(current)) unchanged = 0;
-			current = swept.order;
-			if (!this.admit(swept)) return;
-		}
+		if (!this.sweeps()) return;
 		this.localImprovements();
 		if (this.truncated) return;
 		for (const source of this.frontier)
