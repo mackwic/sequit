@@ -162,8 +162,9 @@ test('lanes are activated from the chip, and a double-click on a lane creates a 
 	const chip = layoutChip(page);
 	await expect(chip).toHaveText('But à gauche');
 
-	await chip.click();
-	await page.getByRole('menuitem', { name: 'Lanes…' }).click();
+	const lanesButton = page.locator('[data-layout-chip] [data-lanes-button]');
+	await expect(lanesButton).toHaveText('Layout simple');
+	await lanesButton.click();
 	const dialog = page.getByRole('dialog', { name: 'Lanes' });
 	await dialog.getByRole('button', { name: 'Activer les lanes' }).click();
 	await dialog.getByRole('textbox', { name: 'Nom de la lane 1' }).fill('Ventes');
@@ -171,7 +172,7 @@ test('lanes are activated from the chip, and a double-click on a lane creates a 
 	await dialog.getByRole('button', { name: 'Enregistrer' }).click();
 	await expect(dialog).toHaveCount(0);
 	await expect(page.locator('[data-lane-id]')).toHaveCount(2);
-	await expect(chip).toContainText('2 lanes');
+	await expect(lanesButton).toHaveText('2 lanes');
 	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
 
 	const client = page.locator('[data-lane-id]').nth(1);

@@ -33,7 +33,7 @@
 	} = $props();
 	let side = $derived(layoutSide(layout));
 	let laneSummary = $derived.by(() => {
-		if (lanes.length === 0) return 'Sans lanes';
+		if (lanes.length === 0) return 'Layout simple';
 		return `${lanes.length} lanes`;
 	});
 
@@ -43,12 +43,11 @@
 	}
 </script>
 
-<div class="layout-chip" data-layout-chip>
+<div class="layout-chip" class:solo={onlanes === undefined} data-layout-chip>
 	<DropdownMenu label="Mise en page" {disabled}>
 		{#snippet trigger(open)}
 			<Icon name={layoutDirectionIcons[layout.direction]} size={14} />
 			<span>{layoutDirectionLabels[layout.direction]}</span>
-			{#if lanes.length > 0}<span class="lanes">· {laneSummary}</span>{/if}
 			<Icon name={caretIcon(open === true)} size={12} />
 		{/snippet}
 
@@ -84,33 +83,65 @@
 				>
 			{/each}
 		</div>
-		{#if onlanes}
-			<div role="separator"></div>
-			<button role="menuitem" type="button" onclick={onlanes}
-				><Icon name="phosphor:columns" /><span>Lanes…</span><span class="hint">{laneSummary}</span
-				></button
-			>
-		{/if}
 	</DropdownMenu>
+	{#if onlanes}
+		<button
+			class="lanes"
+			type="button"
+			title="Lanes…"
+			data-lanes-button
+			{disabled}
+			onclick={onlanes}><Icon name="phosphor:columns" size={14} /><span>{laneSummary}</span></button
+		>
+	{/if}
 </div>
 
 <style>
-	.layout-chip :global(.dropdown-trigger) {
-		gap: 6px;
+	/* One pill, two segments: the direction menu and the lanes dialog. */
+	.layout-chip {
+		display: inline-flex;
+		align-items: stretch;
 		border: 1px solid var(--ui-border);
 		border-radius: 999px;
-		padding: 4px 10px 4px 9px;
 		background: var(--ui-surface);
 		box-shadow: 0 1px 2px #29252414;
 		color: var(--ui-muted);
 		font-size: 12px;
 		font-weight: 500;
 	}
+	.layout-chip :global(.dropdown-trigger),
+	.lanes {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 0;
+		border-radius: 999px 0 0 999px;
+		padding: 4px 10px 4px 9px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+		transition: background-color 90ms ease-out;
+	}
+	.layout-chip.solo :global(.dropdown-trigger) {
+		border-radius: 999px;
+	}
+	.lanes {
+		border-left: 1px solid var(--ui-border);
+		border-radius: 0 999px 999px 0;
+	}
 	.layout-chip :global(.dropdown-trigger:hover:not(:disabled)),
-	.layout-chip :global(.dropdown-trigger[aria-expanded='true']) {
+	.layout-chip :global(.dropdown-trigger[aria-expanded='true']),
+	.lanes:hover:not(:disabled) {
+		background: var(--ui-hover);
 		color: var(--ui-text);
 	}
-	.layout-chip :global(.dropdown-trigger:disabled) {
+	.lanes:focus-visible {
+		outline: 2px solid var(--ui-accent);
+		outline-offset: 2px;
+	}
+	.layout-chip :global(.dropdown-trigger:disabled),
+	.lanes:disabled {
 		cursor: default;
 	}
 	.heading {
@@ -137,13 +168,5 @@
 	}
 	[aria-checked='true'] {
 		font-weight: 550;
-	}
-	.lanes {
-		color: var(--ui-muted);
-	}
-	.hint {
-		margin-left: auto;
-		color: var(--ui-muted);
-		font-size: 12px;
 	}
 </style>
