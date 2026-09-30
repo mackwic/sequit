@@ -285,10 +285,10 @@ it.each([1005, 1006, 1015])(
 		const closed = new Promise<CloseEvent>((resolve) => {
 			client.socket.addEventListener('close', resolve, { once: true });
 		});
-		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), (instance, state) => {
+		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(name), async (instance, state) => {
 			const server = state.getWebSockets()[0];
 			if (server === undefined) throw new Error('Missing server socket');
-			instance.webSocketClose(server, code, 'Connection ended');
+			await instance.webSocketClose(server, code, 'Connection ended');
 		});
 		expect((await closed).code).toBe(1000);
 	},

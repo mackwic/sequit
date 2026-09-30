@@ -13,7 +13,7 @@ import {
 import type { RoomRefusalBudget } from './room-refusal-budget';
 import { sendRoomMessage } from './room-sockets';
 
-export enum RoomFailureKind {
+enum RoomFailureKind {
 	Retry = 'retry',
 	Rejected = 'rejected',
 }

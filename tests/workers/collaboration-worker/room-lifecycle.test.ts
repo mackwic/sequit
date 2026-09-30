@@ -15,9 +15,12 @@ import { MAX_ROOM_SOCKETS } from '../../../src/workers/collaboration-worker/coll
 import worker from '../../../src/workers/collaboration-worker/index';
 import {
 	archiveKeys,
+	emptyRoomState,
 	restoreArchivedRoom,
+	retireIdleRoom,
 } from '../../../src/workers/collaboration-worker/room-archive';
 import { roomJournal, roomLabel } from '../../../src/workers/collaboration-worker/room-log';
+import { restoreRoomState } from '../../../src/workers/collaboration-worker/room-storage';
 import { connectRoom, initializeRoom, type RoomClient } from './room-client';
 
 function stub(name: string) {
@@ -150,25 +153,49 @@ it('keeps the hot storage when the archive upload fails, and retries later', asy
 	error.mockRestore();
 });
 
+it('keeps a room hot when someone returns while it is being archived', async () => {
+	const name = 'returning-room';
+	const alice = await connectRoom(name);
+	await initializeRoom(name, alice);
+	await closeAndWaitForAlarm(alice, name);
+	await runInDurableObject(stub(name), async (_room, state) => {
+		const current = await restoreRoomState(state.storage, emptyRoomState(), name);
+		// The socket list is read again after the upload: a returning participant wins.
+		const host = {
+			ctx: { id: state.id, storage: state.storage, getWebSockets: () => [new WebSocketPair()[0]] },
+			env,
+			journal: roomJournal('test'),
+		};
+		expect(await retireIdleRoom(host, current)).toBeUndefined();
+		current.doc.destroy();
+	});
+	expect(await storedCommit(name)).toBe(1);
+	expect(await alarmScheduled(name)).toBe(true);
+	expect(await env.ROOM_ARCHIVE.get(archiveKeys(name).state)).not.toBeNull();
+});
+
 it('never lets a damaged archive into the hot storage', async () => {
 	const name = 'damaged-archive';
 	const keys = archiveKeys(name);
 	await env.ROOM_ARCHIVE.put(keys.state, new Uint8Array([1, 2, 3]), {
 		customMetadata: { commit: '3' },
 	});
-	await runInDurableObject(stub(name), async (_room, state) => {
-		await expect(restoreArchivedRoom(env.ROOM_ARCHIVE, state.storage, name)).rejects.toThrow(
-			'invalid',
-		);
-		expect(await state.storage.get(META_KEY)).toBeUndefined();
-	});
+	const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+	// The room refuses to open rather than starting over as an empty document.
+	await expect(
+		stub(name).fetch(`https://sequit.local/collab/${name}`, { headers: { upgrade: 'websocket' } }),
+	).rejects.toThrow('invalid');
+	expect(error).toHaveBeenCalledWith(expect.objectContaining({ event: 'room.restore-failed' }));
+	error.mockRestore();
+
 	await env.ROOM_ARCHIVE.put(keys.state, new Uint8Array([1, 2, 3]), {
 		customMetadata: { commit: 'soon' },
 	});
-	await runInDurableObject(stub(name), async (_room, state) => {
+	await runInDurableObject(stub('healthy-neighbour'), async (_room, state) => {
 		await expect(restoreArchivedRoom(env.ROOM_ARCHIVE, state.storage, name)).rejects.toThrow(
 			'metadata',
 		);
+		expect(await state.storage.get(META_KEY)).toBeUndefined();
 	});
 });
 
@@ -178,7 +205,15 @@ it('journals under a stable label that never reveals the room secret', async () 
 	expect(await roomLabel('secret-room-1234567890')).toBe(label);
 	expect(await roomLabel(undefined)).toBe('anonymous');
 	const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+	const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 	roomJournal(label).info('connected', { sockets: 1 });
+	roomJournal(label).error('archive-failed', 'quota exceeded');
 	expect(info).toHaveBeenCalledWith({ event: 'room.connected', room: label, sockets: 1 });
+	expect(error).toHaveBeenCalledWith({
+		event: 'room.archive-failed',
+		room: label,
+		error: 'quota exceeded',
+	});
 	info.mockRestore();
+	error.mockRestore();
 });

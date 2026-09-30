@@ -16,7 +16,7 @@ import {
 } from './room-storage';
 
 /** A room without any participant for this long leaves the Durable Object for the archive. */
-export const IDLE_BEFORE_ARCHIVE_MS = 24 * 60 * 60 * 1000;
+const IDLE_BEFORE_ARCHIVE_MS = 24 * 60 * 60 * 1000;
 
 const COMMIT_METADATA = 'commit';
 
@@ -30,7 +30,7 @@ export interface ArchivedRoom {
 	readonly bytes: number;
 }
 
-export async function archiveRoom(
+async function archiveRoom(
 	bucket: R2Bucket,
 	roomId: string,
 	state: RoomState,
@@ -89,9 +89,14 @@ export function emptyRoomState(): RoomState {
 	return { doc: new Y.Doc({ gc: false }), commit: 0, chunkCount: 0, acceptedProposals: new Map() };
 }
 
+/** The slice of the Durable Object the lifecycle needs; tests provide it without a real object. */
 export interface RoomHost {
-	readonly ctx: DurableObjectState;
-	readonly env: Env;
+	readonly ctx: {
+		readonly id: DurableObjectId;
+		readonly storage: DurableObjectStorage;
+		getWebSockets(): WebSocket[];
+	};
+	readonly env: { readonly ROOM_ARCHIVE: R2Bucket };
 	readonly journal: RoomJournal;
 }
 
@@ -115,7 +120,7 @@ export async function restoreRoom(host: RoomHost, current: RoomState): Promise<R
 	return state;
 }
 
-export function scheduleIdleAlarm(ctx: DurableObjectState): Promise<void> {
+export function scheduleIdleAlarm(ctx: RoomHost['ctx']): Promise<void> {
 	return ctx.storage.setAlarm(Date.now() + IDLE_BEFORE_ARCHIVE_MS);
 }
 

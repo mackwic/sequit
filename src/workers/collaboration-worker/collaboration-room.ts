@@ -63,7 +63,13 @@ export class CollaborationRoom extends DurableObject<Env> {
 		super(ctx, env);
 		void ctx.blockConcurrencyWhile(async () => {
 			this.journal = roomJournal(await roomLabel(ctx.id.name));
-			this.roomState = await restoreRoom(this.host(), this.roomState);
+			try {
+				this.roomState = await restoreRoom(this.host(), this.roomState);
+			} catch (error) {
+				// The object stays broken on purpose: a damaged archive must not open as an empty room.
+				this.journal.error('restore-failed', error);
+				throw error;
+			}
 		});
 	}
 

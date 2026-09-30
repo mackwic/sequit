@@ -9,6 +9,7 @@ export default defineConfig({
 	],
 	test: {
 		include: ['tests/workers/collaboration-worker/**/*.test.ts'],
+		setupFiles: ['tests/workers/collaboration-worker/silence-journal.ts'],
 		coverage: {
 			provider: 'istanbul',
 			include: ['src/workers/collaboration-worker/**/*.ts'],
