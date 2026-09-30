@@ -16,6 +16,8 @@ import {
 
 const junctionOperatorByValue: Readonly<Record<string, JunctionOperator>> = {
 	[JunctionOperator.Xor]: JunctionOperator.Xor,
+	[JunctionOperator.And]: JunctionOperator.And,
+	[JunctionOperator.Or]: JunctionOperator.Or,
 };
 
 function mapJunctionOperator(

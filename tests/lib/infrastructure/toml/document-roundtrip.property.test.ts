@@ -2,9 +2,11 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+	JunctionOperator,
 	type LogicDocument,
 	nodeDescriptionFields,
 } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -66,6 +68,29 @@ describe('generated persistent documents', () => {
 		const source = serializeSequitToml(validLogicDocument());
 		expect(source).toContain('group = "container"');
 		expect(parseSequitToml(source)).toMatchObject({ ok: true });
+	});
+
+	it('round trips and/or junction operators through TOML', () => {
+		const source = validLogicDocument();
+		const junction = source.junctions[0];
+		if (junction === undefined) throw new Error('Expected a junction in the source document');
+		const document: LogicDocument = {
+			...source,
+			junctions: [
+				{ ...junction, operator: JunctionOperator.And },
+				{
+					...junction,
+					id: 'or-choice',
+					operator: JunctionOperator.Or,
+					layoutOrder: orderKey('a8'),
+				},
+			],
+		};
+		const serialized = serializeSequitToml(document);
+		const parsed = parseSequitToml(serialized);
+		expect(parsed).toEqual({ ok: true, value: canonicalDocument(document) });
+		if (!parsed.ok) throw new Error('Expected junction operators to parse from TOML');
+		expect(serializeSequitToml(parsed.value)).toBe(serialized);
 	});
 
 	it('preserves every generated document through TOML serialization and parsing', () => {

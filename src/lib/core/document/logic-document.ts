@@ -176,6 +176,8 @@ export function layoutConfiguration(
 
 export enum JunctionOperator {
 	Xor = 'xor',
+	And = 'and',
+	Or = 'or',
 }
 export const JUNCTION_OPERATORS = Object.values(JunctionOperator);
 export enum EndpointKind {

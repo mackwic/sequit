@@ -87,7 +87,7 @@ describe('mapSequitDocument endpoint order', () => {
 		};
 		value['junctions'] = {
 			malformed: false,
-			unsupported: { operator: 'and', layoutOrder: 'a0' },
+			unsupported: { operator: 'nand', layoutOrder: 'a0' },
 		};
 		value['relations'] = {
 			malformed: false,
@@ -99,7 +99,7 @@ describe('mapSequitDocument endpoint order', () => {
 		if (result.ok) throw new Error('Expected malformed entities to fail');
 		expect(result.diagnostics).toContainEqual({
 			code: 'invalid-value',
-			message: 'Unsupported junction operator: and',
+			message: 'Unsupported junction operator: nand',
 			path: ['junctions', 'unsupported', 'operator'],
 		});
 		expect(

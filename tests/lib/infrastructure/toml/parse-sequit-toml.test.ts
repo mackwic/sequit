@@ -171,7 +171,7 @@ describe('parseSequitToml', () => {
 			'direction = "top-to-bottom"',
 			'direction = "sideways"',
 		);
-		const invalidOperator = original.replace('operator = "xor"', 'operator = "and"');
+		const invalidOperator = original.replace('operator = "xor"', 'operator = "nand"');
 
 		expect(expectFailure(parseSequitToml(invalidDirection))).toContainEqual(
 			expect.objectContaining({ code: 'invalid-value', path: ['layout', 'direction'] }),
