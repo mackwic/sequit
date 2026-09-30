@@ -144,4 +144,33 @@ describe('family alignment', () => {
 		expect((center('c') + center('d')) / 2).toBe(center('q'));
 		expect(center('c') - center('b')).toBeGreaterThanOrEqual(96);
 	});
+
+	it('spreads a parent that cannot follow its blocked child so both families stay centered', () => {
+		const bounds = new Map([
+			['w', box(-30, 0)],
+			['p2', box(66, 0)],
+			['p3', box(162, 0)],
+			['c2', box(0, 100)],
+			['a', box(96, 100)],
+			['b', box(192, 100)],
+			['c', box(288, 100)],
+		]);
+		align(
+			[
+				['w', 'p2', 'p3'],
+				['c2', 'a', 'b', 'c'],
+			],
+			bounds,
+			[
+				['c2', 'p2'],
+				['a', 'p3'],
+				['b', 'p3'],
+				['c', 'p3'],
+			],
+			{ walls: new Set(['w']) },
+		);
+		const center = (id: string) => defined(centers(bounds)[id]);
+		expect(center('c2')).toBe(center('p2'));
+		expect((center('a') + center('c')) / 2).toBe(center('p3'));
+	});
 });
