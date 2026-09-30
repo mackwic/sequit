@@ -30,7 +30,7 @@ import {
 	type RankOrderRelation,
 	validateRankOrder,
 } from '../../../lib/core/layout/rank/rank-order';
-import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-search';
+import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-witness';
 import {
 	applyRankOrder,
 	collectRankOrderDomain,

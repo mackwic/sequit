@@ -552,7 +552,7 @@ describe('rank order stability under document edits', () => {
 			rankChanges: 0,
 			beforeCrossings: 0,
 			afterCrossings: 0,
-			afterWitness: { stop: 'complete' },
+			afterWitness: { stop: 'crossing-free' },
 		});
 		const independent = unrelated?.components.find(({ ids }) => ids.includes('a'));
 		expect(independent).toMatchObject({ touched: false, selected: { invertedRankPairs: 0 } });

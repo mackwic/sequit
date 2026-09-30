@@ -24,7 +24,7 @@ import {
 	searchBudgets,
 } from './rank-order-local';
 import { recoverDocumentaryFailure, type SelectionServices } from './rank-order-recovery';
-import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-search';
+import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-witness';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 
 interface GlobalChoice {

@@ -834,7 +834,7 @@ function oracleLayout(
 	};
 }
 
-/** Rendered routes gate admission; stable topological order ranks the surviving candidates. */
+/** Rendered routes gate admission; the candidates keep their enumeration order. */
 function admissibleOracleLayouts(
 	candidates: OracleLayout[],
 	documentaryOrder: RankOrder,
@@ -844,14 +844,35 @@ function admissibleOracleLayouts(
 			band.every((id, position) => id === defined(documentaryOrder[index])[position]),
 		),
 	);
-	let admissible = candidates;
-	if (documentary !== undefined)
-		admissible = candidates.filter(
-			({ crossings, bridges }) =>
-				crossings < documentary.crossings ||
-				(crossings === documentary.crossings && bridges <= documentary.bridges),
-		);
-	return admissible.sort((left, right) => compareOracleLayouts(left, right, documentaryOrder));
+	if (documentary === undefined) return candidates;
+	return candidates.filter(
+		({ crossings, bridges }) =>
+			crossings < documentary.crossings ||
+			(crossings === documentary.crossings && bridges <= documentary.bridges),
+	);
+}
+
+/**
+ * Met by increasing inversions, then in documentary enumeration order, a candidate replaces the
+ * best one only if it ranks better by stable topological order; the first best one routed
+ * without crossing or bridge ends the search.
+ */
+function searchedOracleLayout(
+	admissible: readonly OracleLayout[],
+	documentaryOrder: RankOrder,
+): OracleLayout | undefined {
+	const met = admissible.toSorted(
+		(left, right) =>
+			oracleInversions(left.order, documentaryOrder) -
+			oracleInversions(right.order, documentaryOrder),
+	);
+	let best: OracleLayout | undefined;
+	for (const candidate of met) {
+		if (best === undefined || compareOracleLayouts(candidate, best, documentaryOrder) < 0)
+			best = candidate;
+		if (best.crossings === 0 && best.bridges === 0) return best;
+	}
+	return best;
 }
 
 function damageRouteAttachment(layout: LayoutResult, relationIds: readonly string[]): LayoutResult {
@@ -928,8 +949,9 @@ function assertCompleteOracle(
 			candidates.push(oracleLayout(order, layout, document.relations));
 	}
 	const admissible = admissibleOracleLayouts(candidates, domain.bands);
+	const expected = searchedOracleLayout(admissible, domain.bands);
 	const actual = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
-	if (admissible.length > 0) expect(actual.layout).toEqual(defined(admissible[0]).layout);
+	if (expected !== undefined) expect(actual.layout).toEqual(expected.layout);
 	else expect(actual.layout).toEqual(evaluateDedicatedLayout(structure, measurements));
 	expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
 	return admissible;
@@ -1031,14 +1053,17 @@ describe('dedicated bounded geometric rank search', () => {
 						if (validation.valid) return [oracleLayout(order, layout, document.relations)];
 						return [];
 					});
-					const admissible = admissibleOracleLayouts(valid, domain.bands);
-					if (admissible.length === 0) {
+					const expected = searchedOracleLayout(
+						admissibleOracleLayouts(valid, domain.bands),
+						domain.bands,
+					);
+					if (expected === undefined) {
 						expect(actual.witness.stop).toBe('baseline-fallback');
 						expect(actual.layout).toEqual(
 							evaluateDedicatedLayout(structure, measurements, options),
 						);
 					} else {
-						expect(actual.layout).toEqual(defined(admissible[0]).layout);
+						expect(actual.layout).toEqual(expected.layout);
 						expect(actual.witness.valid).toBeGreaterThan(0);
 					}
 					expect(actual.witness.evaluated).toBeLessThanOrEqual(12);
@@ -2352,7 +2377,7 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(result.selected?.order).toEqual([['source-b', 'source-a']]);
 		expect(result.witness).toMatchObject({
 			mode: 'exact',
-			stop: 'complete',
+			stop: 'crossing-free',
 			evaluated: 2,
 			valid: 1,
 			rejected: [{ reason: { code: DedicatedCandidateRejectionCode.RouteContact } }],
@@ -2418,26 +2443,45 @@ describe('rank-order heuristic cost and determinism', () => {
 		expect(noAdmissibleGeometry.witness.rejected).toHaveLength(
 			noAdmissibleGeometry.witness.evaluated,
 		);
+		const evaluate = (order: RankOrder) =>
+			evaluateDedicatedLayout(
+				applyRankOrder(structure, domain, order),
+				measurements,
+				undefined,
+				true,
+			);
 		const budget = searchDedicatedRankOrders({
 			structure,
 			domain,
 			measurements,
 			baseline,
-			evaluate: (order) =>
-				evaluateDedicatedLayout(
-					applyRankOrder(structure, domain, order),
-					measurements,
-					undefined,
-					true,
-				),
-			limits: { completePipelines: 12, uniqueProposals: 2 },
+			evaluate,
+			limits: { completePipelines: 12, uniqueProposals: 1 },
 		});
 		expect(budget.witness).toMatchObject({
 			mode: 'heuristic',
 			stop: 'proposal-budget',
-			proposed: 2,
+			proposed: 1,
 			exhaustive: false,
 			truncated: true,
+		});
+		// The first sweep already routes without crossing or bridge: nothing after it is evaluated.
+		const crossingFree = searchDedicatedRankOrders({
+			structure,
+			domain,
+			measurements,
+			baseline,
+			evaluate,
+			limits: { completePipelines: 12, uniqueProposals: 48 },
+		});
+		expect(crossingFree.selected?.routeScore).toEqual({ strictCrossings: 0, validatedBridges: 0 });
+		expect(crossingFree.witness).toMatchObject({
+			mode: 'heuristic',
+			stop: 'crossing-free',
+			proposed: 2,
+			evaluated: 2,
+			exhaustive: false,
+			truncated: false,
 		});
 		const first = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
 		const second = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);

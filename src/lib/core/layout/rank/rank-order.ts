@@ -232,16 +232,16 @@ function* lazyBandProduct(
 		yield* lazyBandProduct(rest, [...prefix, permutation]);
 }
 
-/** Yield the documentary order first, followed by the canonical permutation product, lazily. */
+/**
+ * Yield the permutation product in documentary order, lazily: the documentary order comes first,
+ * and ids never decide which order is met first.
+ */
 export function* lazyRankOrders(
 	domain: RankDomain,
 	documentary: RankOrder,
 ): IterableIterator<RankOrder> {
 	if (!validateRankOrder(domain, documentary)) throw new Error('Invalid documentary rank order');
-	yield documentary;
-	const bands = domain.bands.map((band) => [...band].sort(compareCanonicalStrings));
-	for (const order of lazyBandProduct(bands))
-		if (compareRankOrders(order, documentary) !== 0) yield order;
+	yield* lazyBandProduct(documentary);
 }
 
 /** Number of inversions relative to documentary order, independently within every band. */

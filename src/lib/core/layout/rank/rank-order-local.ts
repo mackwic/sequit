@@ -12,11 +12,8 @@ import {
 	rankSearchComponents,
 	visitRelationComponents,
 } from './rank-order-components';
-import {
-	type DedicatedLayoutEvaluator,
-	type RankOrderSearchWitness,
-	searchDedicatedRankOrders,
-} from './rank-order-search';
+import { type DedicatedLayoutEvaluator, searchDedicatedRankOrders } from './rank-order-search';
+import type { RankOrderSearchWitness } from './rank-order-witness';
 import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
 
 /** Shape-only eligibility weight; not a bound on route segments or validation work. */

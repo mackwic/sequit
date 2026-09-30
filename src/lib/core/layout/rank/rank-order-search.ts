@@ -24,6 +24,7 @@ import {
 } from './rank-order';
 import { adjacentOrders, BarycentricSweeper } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
+import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-witness';
 import { applyRankOrder, type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 
 /** Alternating barycentric sweeps before local swaps. */
@@ -36,63 +37,6 @@ export type DedicatedLayoutEvaluator = (
 	options: LayoutOptions | undefined,
 	retainForCompletion: true,
 ) => DedicatedLayoutEvaluation;
-
-export enum RankSearchMode {
-	Skipped = 'skipped',
-	Exact = 'exact',
-	Heuristic = 'heuristic',
-}
-
-export enum RankSearchStop {
-	ShapeEnvelope = 'shape-envelope',
-	NoBand = 'no-band',
-	BaselineFallback = 'baseline-fallback',
-	Complete = 'complete',
-	OptimalBound = 'optimal-bound',
-	EvaluationBudget = 'evaluation-budget',
-	ProposalBudget = 'proposal-budget',
-}
-
-interface ValidFinalRankValidation {
-	readonly valid: true;
-}
-
-export interface RankOrderSearchWitness {
-	readonly mode: RankSearchMode;
-	readonly stop: RankSearchStop;
-	readonly proposed: number;
-	readonly evaluated: number;
-	readonly valid: number;
-	readonly rejected: readonly {
-		readonly order: RankOrder;
-		readonly reason: RejectedDedicatedCandidate;
-	}[];
-	readonly unverified: number;
-	/** Final per-rank order, after all validation and component-level fallbacks. */
-	readonly selectedOrder: RankOrder;
-	/** Diagnostic of individually searched weak components; their scores are not global optima. */
-	readonly components?: readonly {
-		readonly ids: readonly string[];
-		readonly witness: RankOrderSearchWitness;
-		readonly pipelineLimit: number;
-		readonly selected: RankOrder;
-	}[];
-	readonly skippedComponents?: number;
-	readonly fallbackComponents?: readonly (readonly string[])[];
-	readonly finalValidation?: RejectedDedicatedCandidate | ValidFinalRankValidation;
-	readonly work: {
-		/** The per-component pipelines never process unrelated routes. */
-		readonly completePipelines: number;
-		readonly validations: number;
-		readonly routeRunsInspected: number;
-		readonly localCompletePipelines?: number;
-		readonly globalCompletePipelines?: number;
-		readonly globalValidations?: number;
-		readonly incidentAdmissions?: number;
-	};
-	readonly exhaustive: boolean;
-	readonly truncated: boolean;
-}
 
 interface ValidRankOrderCandidate {
 	readonly order: RankOrder;
@@ -118,13 +62,16 @@ export interface RankOrderSearchResult {
 	readonly witness: RankOrderSearchWitness;
 }
 
+function crossingFree(candidate: ValidRankOrderCandidate): boolean {
+	return candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0;
+}
+
 /**
  * No rank edit can improve bridge-free documentary routes, nor documentary rows already down
  * to the crossings every order keeps: a candidate must first cross less to win.
  */
 function documentaryNeedsNoSearch(candidate: ValidRankOrderCandidate, lowerBound: number): boolean {
-	if (candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0)
-		return true;
+	if (crossingFree(candidate)) return true;
 	return candidate.topologyCrossings <= lowerBound && candidate.kendall === 0;
 }
 
@@ -224,8 +171,12 @@ class RankOrderSearch {
 	}
 
 	private cutOff(stop: RankSearchStop): false {
-		this.stop = stop;
 		this.truncated = true;
+		return this.end(stop);
+	}
+
+	private end(stop: RankSearchStop): false {
+		this.stop = stop;
 		this.exhaustive = false;
 		return false;
 	}
@@ -276,7 +227,10 @@ class RankOrderSearch {
 		return this.admit(reopened, JSON.stringify(reopened.order));
 	}
 
-	/** An order still closing a passage cannot be routed: it is neither evaluated nor explored. */
+	/**
+	 * An order still closing a passage cannot be routed: it is neither evaluated nor explored.
+	 * Routes without crossing or bridge end the search, even if a closer order would route so too.
+	 */
 	private admit({ order, closed }: ReopenedOrder, key: string): boolean {
 		if (this.seen.has(key)) return true;
 		if (this.proposed >= this.input.limits.uniqueProposals)
@@ -295,13 +249,22 @@ class RankOrderSearch {
 			if (!(error instanceof GroupRouteFailure)) throw error;
 			this.rejectGroupPassage(order, error);
 		}
+		if (this.selected !== undefined && crossingFree(this.selected))
+			return this.end(RankSearchStop.CrossingFree);
 		return true;
 	}
 
+	/**
+	 * Orders closer to the documentary one are met first, so the first crossing-free order is the
+	 * closest one, unless a farther order crosses less in the topology.
+	 */
 	runExact(): void {
 		this.mode = RankSearchMode.Exact;
-		for (const order of lazyRankOrders(this.input.domain, this.input.domain.bands))
-			if (!this.propose(order)) return;
+		const { bands } = this.input.domain;
+		const orders = [...lazyRankOrders(this.input.domain, bands)]
+			.map((order) => ({ order, kendall: rankOrderKendallDistance(order, bands) }))
+			.toSorted((left, right) => left.kendall - right.kendall);
+		for (const { order } of orders) if (!this.propose(order)) return;
 		this.stop = RankSearchStop.Complete;
 	}
 
@@ -330,25 +293,25 @@ class RankOrderSearch {
 
 	runHeuristic(): void {
 		this.mode = RankSearchMode.Heuristic;
-		if (!this.sweeps()) return;
-		this.localImprovements();
-		if (this.truncated) return;
+		if (!this.sweeps() || !this.localImprovements()) return;
 		for (const source of this.frontier)
 			for (const order of adjacentOrders(source)) if (!this.propose(order)) return;
 		this.stop = RankSearchStop.Complete;
 	}
 
-	private localImprovements(): void {
+	/** False once the search has ended. */
+	private localImprovements(): boolean {
 		let changed = true;
 		while (changed) {
 			changed = false;
 			const best = this.selected;
-			if (best === undefined) return;
+			if (best === undefined) return true;
 			for (const order of adjacentOrders(best.order)) {
-				if (!this.propose(order)) return;
+				if (!this.propose(order)) return false;
 				if (this.selected !== best) changed = true;
 			}
 		}
+		return true;
 	}
 }
 

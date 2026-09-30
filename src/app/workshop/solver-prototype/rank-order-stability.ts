@@ -12,7 +12,7 @@ import {
 } from '../../../lib/core/layout/layout-engine';
 import type { LayoutRelation, LayoutResult, Point } from '../../../lib/core/layout/layout-types';
 import type { RankOrder } from '../../../lib/core/layout/rank/rank-order';
-import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-search';
+import type { RankOrderSearchWitness } from '../../../lib/core/layout/rank/rank-order-witness';
 import { collectRankOrderDomain } from '../../../lib/core/layout/rank/rank-ordering';
 import { prepareLayout } from '../../../lib/core/layout/structure/prepare-layout';
 import {
