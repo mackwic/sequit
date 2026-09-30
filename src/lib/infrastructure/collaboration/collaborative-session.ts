@@ -2,11 +2,7 @@ import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentCommandOutcome } from '../document/document-command-contracts';
-import {
-	type SharedDocumentCommand,
-	SharedElementKind,
-	type SharedTarget,
-} from '../document/shared-document-command';
+import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import { type CollaborationTransport, TransportStatus } from './collaboration-transport';
 import {
 	type CollaborationStatus,
@@ -195,10 +191,6 @@ export class CollaborativeSession
 	#canEditText(): boolean {
 		if (this.#rejected || this.#destroyed || this.#recoveringTextRefusal) return false;
 		return this.#initialized;
-	}
-
-	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
-		return this.updateText({ kind: SharedElementKind.Node, id: nodeId }, 'markdown', markdown);
 	}
 
 	destroy(): void {

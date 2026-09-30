@@ -101,7 +101,9 @@ it('preserves command identity and local text edits during a retryable service f
 		code: failure.code,
 		message: failure.message,
 	});
-	expect(room.client.replaceNodeMarkdown('A', 'Pendant la reprise')).toBe(true);
+	expect(
+		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Pendant la reprise'),
+	).toBe(true);
 	room.client.setPresence({ selected: [{ kind: Kind.Node, id: 'A' }] });
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	vi.advanceTimersByTime(50);
@@ -130,7 +132,9 @@ it('preserves command identity and local text edits during a retryable service f
 		room.sent.filter((message) => message.type === Message.Change && 'commands' in message),
 	).toEqual([original, original]);
 	expect(room.client.read().nodes[0]?.markdown).toBe('Pendant la reprise');
-	expect(room.client.replaceNodeMarkdown('A', 'After retry')).toBe(true);
+	expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'After retry')).toBe(
+		true,
+	);
 	expect(
 		room.sent.some(
 			(message) => message.type === Message.Change && 'id' in message && message.id === id,
@@ -144,7 +148,7 @@ it('does not send a text proposal when the requested content already matches', (
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
-	expect(room.client.replaceNodeMarkdown('A', 'Alpha')).toBe(true);
+	expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Alpha')).toBe(true);
 	vi.advanceTimersByTime(50);
 	expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(false);
 	room.destroy();
@@ -156,7 +160,9 @@ it('resends a queued text gesture before syncing after a transient retry', () =>
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
-	expect(room.client.replaceNodeMarkdown('A', 'Buffered before outage')).toBe(true);
+	expect(
+		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Buffered before outage'),
+	).toBe(true);
 	room.receive({
 		type: Message.Retry,
 		code: SessionFailureCode.StorageUnavailable,
@@ -227,7 +233,13 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 		}
 		room.sent.length = 0;
 		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
-		expect(room.client.replaceNodeMarkdown('A', 'Première pendant la reprise')).toBe(true);
+		expect(
+			room.client.updateText(
+				{ kind: Kind.Node, id: 'A' },
+				'markdown',
+				'Première pendant la reprise',
+			),
+		).toBe(true);
 		vi.advanceTimersByTime(60);
 		expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(
 			false,
@@ -239,7 +251,9 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 				frame.type === Message.Change && 'update' in frame,
 		);
 		expect(proposals).toHaveLength(1);
-		expect(room.client.replaceNodeMarkdown('A', 'Seconde après la réponse')).toBe(true);
+		expect(
+			room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Seconde après la réponse'),
+		).toBe(true);
 		vi.advanceTimersByTime(60);
 		expect(
 			room.sent.filter((frame) => frame.type === Message.Change && 'update' in frame),
@@ -334,8 +348,8 @@ it('flushes on target switch then resets a stale replica without replaying unack
 	const original = room.client.document;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('B', 'Brouillon perdu');
-	room.client.replaceNodeMarkdown('A', 'Saisie non acquittée');
+	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Brouillon perdu');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Saisie non acquittée');
 	const stale = room.sent.find((message) => message.type === Message.Change && 'update' in message);
 	if (stale?.type !== Message.Change || !('update' in stale) || stale.id === undefined)
 		throw new Error('Expected flushed B text proposal');
@@ -376,12 +390,20 @@ it('flushes on target switch then resets a stale replica without replaying unack
 	room.receive({ type: Message.Sync, payload: writeSyncResponse(room.authoritative) });
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Alpha' }]);
-	expect(room.client.replaceNodeMarkdown('A', 'Trop tôt')).toBe(false);
+	expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Trop tôt')).toBe(false);
 	room.receive({ type: Message.Sync, payload: writeSyncRequest(room.authoritative) });
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
-	expect(room.client.replaceNodeMarkdown('A', 'Encore modifiable')).toBe(true);
+	expect(
+		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Encore modifiable'),
+	).toBe(true);
 	room.pair.client.setStatus(TransportStatus.Disconnected);
-	expect(room.client.replaceNodeMarkdown('A', 'Modifiable hors ligne après refus')).toBe(true);
+	expect(
+		room.client.updateText(
+			{ kind: Kind.Node, id: 'A' },
+			'markdown',
+			'Modifiable hors ligne après refus',
+		),
+	).toBe(true);
 	room.destroy();
 });
 
@@ -525,7 +547,7 @@ it('discards an unsent document-title edit when an earlier box batch is refused'
 	room.sent.length = 0;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('B', 'Boîte à abandonner');
+	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Boîte à abandonner');
 	room.client.updateText({ kind: Kind.Document, id: 'room' }, 'title', 'Titre non acquitté');
 	vi.advanceTimersByTime(50);
 	const first = room.sent.find((message) => message.type === Message.Change && 'update' in message);
@@ -557,7 +579,7 @@ it('does not replay an acknowledged edit over a remote replacement after losing 
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
-	room.client.replaceNodeMarkdown('A', 'AlPHa');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'AlPHa');
 	vi.advanceTimersByTime(50);
 	const accepted = room.sent.find(
 		(message) => message.type === Message.Change && 'update' in message,
@@ -571,7 +593,7 @@ it('does not replay an acknowledged edit over a remote replacement after losing 
 		commit: 2,
 		update: Y.encodeStateAsUpdate(room.authoritative),
 	});
-	room.client.replaceNodeMarkdown('B', 'Pending');
+	room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Pending');
 	vi.advanceTimersByTime(50);
 	const stale = room.sent
 		.filter((message) => message.type === Message.Change && 'update' in message)
@@ -621,7 +643,9 @@ it('ignores a delayed refusal for a proposal that is no longer pending', () => {
 	});
 	expect(notices).not.toHaveBeenCalled();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
-	expect(room.client.replaceNodeMarkdown('A', 'Still connected')).toBe(true);
+	expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Still connected')).toBe(
+		true,
+	);
 	room.destroy();
 });
 
@@ -632,12 +656,12 @@ it('keeps a newer same-field edit pending when an older receipt arrives', () => 
 	room.sent.length = 0;
 	const notices = vi.fn();
 	room.client.subscribeToConflict(notices);
-	room.client.replaceNodeMarkdown('A', 'First');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'First');
 	vi.advanceTimersByTime(50);
 	const first = room.sent.at(-1);
 	if (first?.type !== Message.Change || !('update' in first) || first.id === undefined)
 		throw new Error('Expected first text proposal');
-	room.client.replaceNodeMarkdown('A', 'Second');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Second');
 	vi.advanceTimersByTime(50);
 	room.receive({
 		type: Message.Commit,
@@ -818,7 +842,9 @@ it('ignores malformed presence fields without rejecting the document session', (
 		]),
 	);
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
-	expect(room.client.replaceNodeMarkdown('A', 'Still editable')).toBe(true);
+	expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Still editable')).toBe(
+		true,
+	);
 	room.destroy();
 });
 
@@ -842,7 +868,7 @@ it('isolates failing document, presence, decision and rejection subscribers', ()
 	room.client.subscribeToRejection(fail);
 	const rejection = vi.fn();
 	room.client.subscribeToRejection(rejection);
-	room.client.replaceNodeMarkdown('A', 'Local');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Local');
 	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 	const ownedId = lastProposalId(room.sent);
 	room.receive({ type: Message.Presence, participants: [] });
@@ -903,7 +929,7 @@ describe('collaborative document session', () => {
 		const room = setup();
 		room.sync();
 		room.sent.length = 0;
-		room.client.replaceNodeMarkdown('A', 'Alpha modifié');
+		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Alpha modifié');
 		expect(room.client.read().nodes[0]?.markdown).toBe('Alpha modifié');
 		expect(room.sent).toEqual([]);
 		vi.advanceTimersByTime(50);
@@ -963,7 +989,9 @@ describe('collaborative document session', () => {
 		room.pair.client.setStatus(TransportStatus.Disconnected);
 		room.pair.client.setStatus(TransportStatus.Connected);
 		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
-		expect(room.client.replaceNodeMarkdown('A', 'Texte pendant la reprise')).toBe(true);
+		expect(
+			room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Texte pendant la reprise'),
+		).toBe(true);
 		expect(room.client.read().nodes[0]?.markdown).toBe('Texte pendant la reprise');
 		expect(() =>
 			room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]),
@@ -977,8 +1005,12 @@ describe('collaborative document session', () => {
 		room.sync();
 		room.sent.length = 0;
 		room.pair.client.setStatus(TransportStatus.Disconnected);
-		expect(room.client.replaceNodeMarkdown('A', 'Texte A hors ligne')).toBe(true);
-		expect(room.client.replaceNodeMarkdown('B', 'Texte B hors ligne')).toBe(true);
+		expect(
+			room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Texte A hors ligne'),
+		).toBe(true);
+		expect(
+			room.client.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Texte B hors ligne'),
+		).toBe(true);
 		expect(room.client.read().nodes.map(({ markdown }) => markdown)).toEqual([
 			'Texte A hors ligne',
 			'Texte B hors ligne',
@@ -1015,7 +1047,7 @@ describe('collaborative document session', () => {
 		const room = setup();
 		room.sync();
 		room.sent.length = 0;
-		room.client.replaceNodeMarkdown('A', 'Pending');
+		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Pending');
 		const rejected = vi.fn(() => {
 			expect(room.pair.client.status()).toBe(TransportStatus.Disconnected);
 		});
@@ -1024,7 +1056,7 @@ describe('collaborative document session', () => {
 		expect(rejected).toHaveBeenCalledWith('Refus');
 		vi.advanceTimersByTime(500);
 		expect(room.sent).toEqual([]);
-		expect(room.client.replaceNodeMarkdown('A', 'Later')).toBe(false);
+		expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Later')).toBe(false);
 		expect(room.client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
 		stop();
 		room.destroy();
@@ -1057,9 +1089,13 @@ describe('collaborative document session', () => {
 
 	it('fails terminally on malformed frames and tolerates missing/deleted text targets', () => {
 		const room = setup();
-		expect(room.client.replaceNodeMarkdown('A', 'Before sync')).toBe(false);
+		expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Before sync')).toBe(
+			false,
+		);
 		room.sync();
-		expect(room.client.replaceNodeMarkdown('missing', 'Missing')).toBe(false);
+		expect(room.client.updateText({ kind: Kind.Node, id: 'missing' }, 'markdown', 'Missing')).toBe(
+			false,
+		);
 		const rejection = vi.fn();
 		room.client.subscribeToRejection(rejection);
 		room.pair.client.injectFrame(new Uint8Array([255]));
@@ -1279,7 +1315,7 @@ it('sends buffered typing before deleting the edited node, without a later text 
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
-	room.client.replaceNodeMarkdown('A', 'Dernière frappe');
+	room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Dernière frappe');
 	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
 	expect(room.sent).toHaveLength(2);
 	const [text, command] = room.sent;

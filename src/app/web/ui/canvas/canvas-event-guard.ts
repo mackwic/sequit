@@ -26,3 +26,9 @@ export function isUnmodifiedKeyboardEvent(event: KeyboardEvent): boolean {
 	const modified = event.ctrlKey || event.metaKey || event.altKey || event.shiftKey;
 	return isUnclaimedKeyboardEvent(event) && !modified;
 }
+
+/** Punctuation such as `[` needs Alt or Shift on some layouts; only Ctrl and Cmd stay reserved. */
+export function isPlainKeyboardEvent(event: KeyboardEvent): boolean {
+	const reserved = event.ctrlKey || event.metaKey;
+	return isUnclaimedKeyboardEvent(event) && !reserved;
+}

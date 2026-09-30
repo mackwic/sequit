@@ -79,7 +79,7 @@ test('navigation searches and selects a real node and the minimap can return to 
 	await expect(node(page, 'etape-2')).toHaveAttribute('aria-pressed', 'true');
 	await expect(node(page, 'etape-2')).toBeInViewport();
 	await page.getByRole('button', { name: 'Tout cadrer', exact: true }).click();
-	await expect(page.getByRole('button', { name: 'Reset zoom' })).toContainText('%');
+	await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toContainText('%');
 });
 test('multiple mode, neighbors and rectangle retain their selection after mouseup', async ({
 	page,
@@ -339,10 +339,10 @@ test('two network sessions converge after offline editing and reconnect', async 
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
 	await bob.getByRole('button', { name: 'Modifier Boîte comparer', exact: true }).click();
 	await bob.getByLabel('Contenu comparer', { exact: true }).fill('Une modification hors ligne');
-	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
+	await bob.getByLabel('Contenu comparer', { exact: true }).press('Escape');
 	await alice.getByRole('button', { name: 'Modifier Boîte collecter', exact: true }).click();
 	await alice.getByLabel('Contenu collecter', { exact: true }).fill('Une observation distante');
-	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
+	await alice.getByLabel('Contenu collecter', { exact: true }).press('Escape');
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText(
@@ -405,7 +405,7 @@ test('modal editors reopen the shared text and close with Escape', async ({ page
 	const b = bob.getByLabel('Texte de comparer', { exact: true });
 	await expect(b).toHaveText('Le texte commun');
 	await b.fill('Le texte de Bob');
-	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
+	await b.press('Escape');
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText('Le texte de Bob');
 });
 
@@ -508,14 +508,14 @@ test('text follows clean graph edits and protects a draft when the graph changes
 	await open(page, 'SC-DOC-TEXT', 'split');
 	const source = page.getByLabel('Source du document');
 	await node(page, 'comparer').dblclick();
-	await page.getByLabel('Node Markdown').fill('Une modification du graphe');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await page.getByLabel('Contenu', { exact: true }).fill('Une modification du graphe');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(source).toHaveValue(/Une modification du graphe/);
 	await source.fill((await source.inputValue()).replace('Préparer une décision', 'Mon brouillon'));
 	const draft = await source.inputValue();
 	await node(page, 'comparer').dblclick();
-	await page.getByLabel('Node Markdown').fill('Nouvelle version du graphe');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await page.getByLabel('Contenu', { exact: true }).fill('Nouvelle version du graphe');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(source).toHaveValue(draft);
 	await expect(page.getByRole('button', { name: 'Appliquer le texte' })).toBeDisabled();
 	await expect(page.getByText('Graphe modifié · brouillon conservé')).toBeVisible();
@@ -556,10 +556,10 @@ test('closing an offline editor preserves text and permits editing another node'
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
 	await bob.locator('[data-node-id="comparer"]').dblclick();
 	await bob.getByLabel('Texte de comparer', { exact: true }).fill('Envoi à conserver');
-	await bob.getByRole('button', { name: 'Fermer', exact: true }).click();
+	await bob.getByLabel('Texte de comparer', { exact: true }).press('Escape');
 	await bob.locator('[data-node-id="collecter"]').dblclick();
 	await bob.getByLabel('Texte de collecter', { exact: true }).fill('Deuxième texte');
-	await page.getByRole('dialog').getByRole('button', { name: 'Fermer', exact: true }).click();
+	await bob.getByLabel('Texte de collecter', { exact: true }).press('Escape');
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText('Envoi à conserver');
 	await expect(alice.locator('[data-node-id="collecter"]')).toContainText('Deuxième texte');

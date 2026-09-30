@@ -4,18 +4,18 @@ import {
 	type DocumentCommandOutcome,
 	DocumentCommandOutcomeKind,
 } from '../../../../lib/infrastructure/document/document-command-contracts';
-import {
-	type CanvasEntityIndex,
-	type EntityKey,
-	entityKey,
-	EntityKind,
-	type EntityRef,
-} from '../canvas/canvas-entity';
+import type { NodeFields } from '../../../../lib/infrastructure/document/node-fields';
+import type { EntityKey } from '../canvas/canvas-entity';
 
+/** How the canvas reads and writes the node behind the box dialog. */
 export interface CanvasDocumentCommandPort {
-	readonly replaceNodeMarkdown: (
+	/** The current fields of a node, or `undefined` once it is gone. */
+	readonly readNode: (nodeId: string) => NodeFields | undefined;
+	/** Applies the changed fields; text goes through the node's text, properties through a command. */
+	readonly saveNode: (
 		nodeId: string,
-		markdown: string,
+		base: NodeFields,
+		draft: NodeFields,
 	) => Promise<DocumentCommandOutcome>;
 }
 
@@ -29,10 +29,6 @@ export enum CanvasEditAvailability {
 	Deleted = 'deleted',
 }
 
-export enum CanvasEditableField {
-	Markdown = 'markdown',
-}
-
 interface IdleCanvasActivity {
 	readonly kind: CanvasActivityKind.Idle;
 }
@@ -41,9 +37,8 @@ export interface EditingCanvasActivity {
 	readonly kind: CanvasActivityKind.Editing;
 	readonly target: EntityKey;
 	readonly nodeId: string;
-	readonly field: CanvasEditableField;
-	readonly baseValue: string;
-	readonly draft: string;
+	readonly base: NodeFields;
+	readonly draft: NodeFields;
 	readonly frozenBounds: Bounds;
 	readonly availability: CanvasEditAvailability;
 	readonly diagnostic: string | undefined;
@@ -54,87 +49,18 @@ export interface EditingCanvasActivity {
 
 export type CanvasActivity = IdleCanvasActivity | EditingCanvasActivity;
 
-export interface PendingNodeEdit {
-	readonly target: EntityKey;
-	readonly nodeId: string;
-	readonly markdown: string;
-}
-
-export interface NodeEditDraft {
-	readonly id: string;
-	readonly markdown: string;
-}
-
-export function queuePendingNodeEdit(
-	selection: Map<EntityKey, EntityRef>,
-	node: NodeEditDraft,
-): PendingNodeEdit {
-	const target = entityKey(EntityKind.Node, node.id);
-	selection.clear();
-	selection.set(target, { kind: EntityKind.Node, id: node.id });
-	return { target, nodeId: node.id, markdown: node.markdown };
-}
-
-export class PendingNodeCreation {
-	#cancel: (() => void) | undefined;
-
-	queue(cancel?: () => void): true {
-		this.#cancel = cancel;
-		return true;
-	}
-
-	commit(): void {
-		this.#cancel = undefined;
-	}
-
-	finish(commit: boolean): boolean {
-		if (commit) this.commit();
-		return this.cancel();
-	}
-
-	cancel(): boolean {
-		const cancel = this.#cancel;
-		this.#cancel = undefined;
-		cancel?.();
-		return cancel !== undefined;
-	}
-}
-
 export const idleCanvasActivity = (): IdleCanvasActivity => ({ kind: CanvasActivityKind.Idle });
 
-export function pendingNodeEditActivity(
-	pending: PendingNodeEdit | undefined,
-	index: CanvasEntityIndex,
-	layoutRevision: number,
-): EditingCanvasActivity | undefined {
-	if (pending === undefined) return undefined;
-	const bounds = index.get(pending.target)?.bounds;
-	if (bounds === undefined) return undefined;
-	return {
-		kind: CanvasActivityKind.Editing,
-		target: pending.target,
-		nodeId: pending.nodeId,
-		field: CanvasEditableField.Markdown,
-		baseValue: pending.markdown,
-		draft: pending.markdown,
-		frozenBounds: { ...bounds },
-		availability: CanvasEditAvailability.Available,
-		diagnostic: undefined,
-		saving: false,
-		layoutRevision,
-		saveId: undefined,
-	};
-}
-
 export const unavailableCanvasCommands: CanvasDocumentCommandPort = {
-	replaceNodeMarkdown: (nodeId) => {
+	readNode: () => undefined,
+	saveNode: (nodeId) => {
 		return Promise.resolve({
 			kind: DocumentCommandOutcomeKind.Rejected,
 			diagnostics: [
 				{
 					code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
-					message: `Node Markdown editing is unavailable: ${nodeId}`,
-					path: ['nodes', nodeId, 'markdown'],
+					message: `Node editing is unavailable: ${nodeId}`,
+					path: ['nodes', nodeId],
 				},
 			],
 		});

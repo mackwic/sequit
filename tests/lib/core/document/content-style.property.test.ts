@@ -26,6 +26,7 @@ import {
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import { SharedElementKind } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { mapSequitDocument } from '../../../../src/lib/infrastructure/toml/map-sequit-document';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
@@ -102,7 +103,13 @@ describe('content style contracts', () => {
 				icon: 'none',
 				markdown: 'Source A\n',
 			});
-			await store.opened.replaceNodeMarkdown('copy', 'Edited copy');
+			expect(
+				store.opened.session.updateText(
+					{ kind: SharedElementKind.Node, id: 'copy' },
+					'markdown',
+					'Edited copy',
+				),
+			).toBe(true);
 			expect(store.node('copy')).toMatchObject({
 				color: '#fed',
 				icon: 'none',

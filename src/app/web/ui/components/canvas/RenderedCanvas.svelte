@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { GroupState } from '../../../../../lib/core/document/logic-document';
 	import {
 		canvasEntityInDirection,
 		CanvasNavigationDirection,
@@ -18,8 +19,10 @@
 	} from '../../canvas/canvas-entity-events';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
+	import { foldActionLabel, foldShortcut } from '../../canvas/group-edit';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
+	import Icon from '../ui/Icon.svelte';
 	import CanvasRelation from './CanvasRelation.svelte';
 	import JunctionSymbol from './JunctionSymbol.svelte';
 	import LogicNode from './LogicNode.svelte';
@@ -32,11 +35,14 @@
 		zoom,
 		session,
 		onGroupEdit,
+		onGroupToggle,
 	}: {
 		canvas: CanvasModel;
 		zoom: number;
 		session: CanvasSession;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
+		/** Folds or unfolds a group; absent when the document is read-only. */
+		onGroupToggle?: ((groupId: string) => void) | undefined;
 	} = $props();
 
 	let relations = $derived(canvas.relations);
@@ -112,6 +118,10 @@
 		const nextRef = canvasEntityInDirection(entityIndex, typedCurrentKey, direction);
 		if (nextRef === undefined) return;
 		focusAndSelect(nextRef);
+	}
+	function caretIcon(closed: boolean): string {
+		if (closed) return 'phosphor:caret-right';
+		return 'phosphor:caret-down';
 	}
 </script>
 
@@ -194,6 +204,33 @@
 			>
 				<span class="group-header" data-group-header>{group.label}</span>
 			</button>
+			{#if onGroupToggle}
+				{@const closed = group.state === GroupState.Closed}
+				{@const label = foldActionLabel(closed)}
+				<button
+					class="group-fold"
+					type="button"
+					tabindex="-1"
+					data-group-fold={group.id}
+					aria-expanded={!closed}
+					aria-label={`${label} le groupe ${group.label}`}
+					title={`${label} (${foldShortcut(closed)})`}
+					style:left={`${group.bounds.x + group.bounds.width - 30}px`}
+					style:top={`${group.bounds.y + 5}px`}
+					onclick={(event) => {
+						event.stopPropagation();
+						onGroupToggle(group.id);
+					}}
+					ondblclick={(event) => {
+						event.stopPropagation();
+					}}
+					onpointerdown={(event) => {
+						event.stopPropagation();
+					}}
+				>
+					<Icon name={caretIcon(closed)} size={14} />
+				</button>
+			{/if}
 		{/each}
 
 		<svg
@@ -326,6 +363,27 @@
 		color: #44403c;
 		font-size: 0.75rem;
 		font-weight: 700;
+	}
+
+	.group-fold {
+		position: absolute;
+		z-index: 12;
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		padding: 0;
+		border: 0;
+		border-radius: 0.4rem;
+		background: transparent;
+		color: #44403c;
+		cursor: pointer;
+		transition-property: left, top, background-color;
+		transition-duration: var(--canvas-motion-duration);
+		transition-timing-function: var(--canvas-motion-easing);
+	}
+	.group-fold:hover {
+		background: color-mix(in srgb, var(--ui-accent) 15%, transparent);
 	}
 
 	.canvas-group.selected,

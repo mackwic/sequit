@@ -174,8 +174,8 @@ test.describe('canvas viewport interactions', () => {
 		await expect(page.locator('[data-graph-stage]')).toBeVisible();
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 
-		await page.getByRole('button', { name: 'Zoom in' }).click();
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('110%');
+		await page.getByRole('button', { name: 'Zoom avant' }).click();
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
 	});
 
 	test.beforeEach(async ({ page }) => {
@@ -193,18 +193,14 @@ test.describe('canvas viewport interactions', () => {
 		};
 		const before = await documentPointAt(page, center.x, center.y);
 
-		await page.getByRole('button', { name: 'Zoom in' }).click();
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('110%');
+		await page.getByRole('button', { name: 'Zoom avant' }).click();
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
 		const after = await documentPointAt(page, center.x, center.y);
 		expect(Math.abs(after.x - before.x)).toBeLessThan(1);
 		expect(Math.abs(after.y - before.y)).toBeLessThan(1);
 
-		await page.getByRole('button', { name: 'Reset zoom' }).click();
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('100%');
-		await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
-			'aria-pressed',
-			'true',
-		);
+		await page.getByRole('button', { name: 'Réinitialiser le zoom' }).click();
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('100%');
 		await expect(page.getByRole('button', { name: 'Add box' })).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'Connect boxes' })).toHaveCount(0);
 		await expect(page.getByRole('button', { name: 'AI for documentary effort' })).toHaveAttribute(
@@ -229,7 +225,7 @@ test.describe('canvas viewport interactions', () => {
 			ctrlKey: true,
 			deltaY: -100,
 		});
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('110%');
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
 		const after = await documentPointAt(page, pointer.x, pointer.y);
 		expect(Math.abs(after.x - before.x)).toBeLessThan(1);
 		expect(Math.abs(after.y - before.y)).toBeLessThan(1);
@@ -273,9 +269,9 @@ test.describe('canvas viewport interactions', () => {
 		expect(afterPan.left).toBeLessThan(beforePan.left);
 		expect(afterPan.top).toBeLessThan(beforePan.top);
 
-		await page.getByRole('button', { name: 'Zoom in' }).focus();
+		await page.getByRole('button', { name: 'Zoom avant' }).focus();
 		await page.keyboard.press('Space');
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('110%');
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	});
 });
@@ -362,24 +358,24 @@ test.describe('accessible canvas selection', () => {
 		await expect(page.getByRole('button', { name: 'Supprimer', exact: true })).toHaveCount(0);
 
 		await node.click();
-		const nodeBar = page.getByRole('group', { name: 'Node actions' });
-		await expect(nodeBar.getByRole('button')).toHaveText(['Edit', 'Supprimer']);
+		const nodeBar = page.getByRole('group', { name: 'Actions du nœud' });
+		await expect(nodeBar.getByRole('button')).toHaveText(['Éditer', 'Supprimer']);
 
 		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
-		const selectionBar = page.getByRole('group', { name: 'Selection actions' });
+		const selectionBar = page.getByRole('group', { name: 'Actions de la sélection' });
 		await expect(selectionBar.getByRole('button')).toHaveText(['Supprimer']);
 		await expect(nodeBar).toHaveCount(0);
 
 		await group.click({ position: { x: 8, y: 8 }, force: true });
-		const groupBar = page.getByRole('group', { name: 'Group actions' });
-		await groupBar.getByRole('button', { name: 'Edit group data-team' }).click();
+		const groupBar = page.getByRole('group', { name: 'Actions du groupe' });
+		await groupBar.getByRole('button', { name: 'Éditer le groupe data-team' }).click();
 		const dialog = page.getByRole('dialog', { name: 'Modifier le groupe' });
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toHaveCount(0);
 
 		await junction.click();
-		const junctionBar = page.getByRole('group', { name: 'Junction actions' });
+		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
 		await expect(junctionBar.getByRole('button')).toHaveText(['Supprimer']);
 		await junctionBar
 			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
@@ -390,7 +386,7 @@ test.describe('accessible canvas selection', () => {
 		const relationPoint = await visibleRelationPoint(page, relationSelector);
 		await page.mouse.click(relationPoint.x, relationPoint.y);
 		await page
-			.getByRole('group', { name: 'Relation actions' })
+			.getByRole('group', { name: 'Actions de la relation' })
 			.getByRole('button', {
 				name: 'Supprimer la relation data-team-to-ai-content-generation',
 				exact: true,
@@ -425,7 +421,7 @@ test.describe('accessible canvas selection', () => {
 			duration: '0.26s',
 			easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
 		});
-		await expect(page.getByRole('group', { name: 'Selection actions' })).toBeVisible();
+		await expect(page.getByRole('group', { name: 'Actions de la sélection' })).toBeVisible();
 
 		await first.click({ modifiers: ['Shift'] });
 		await expect(first).toHaveAttribute('aria-pressed', 'false');
@@ -439,11 +435,63 @@ test.describe('accessible canvas selection', () => {
 
 		await page.keyboard.press('g');
 		await expect(page.locator('[data-group-id]')).toHaveCount(previousGroups + 1);
-		await expect(page.getByRole('group', { name: 'Selection actions' })).toHaveCount(0);
+		await expect(page.getByRole('group', { name: 'Actions de la sélection' })).toHaveCount(0);
 		const groupId = await first.getAttribute('data-node-group-id');
 		expect(groupId).toBeTruthy();
 		expect(await second.getAttribute('data-node-group-id')).toBe(groupId);
 		expect(await added.getAttribute('data-node-group-id')).toBe(groupId);
+
+		// Grouping opens the dialog to name the group; the default name stays on cancel.
+		const naming = page.getByRole('dialog', { name: 'Nommer le groupe' });
+		await expect(naming).toBeVisible();
+		const title = naming.getByRole('textbox', { name: 'Titre du groupe' });
+		await expect(title).toBeFocused();
+		await expect(title).toHaveValue('Groupe');
+		await title.fill('Pistes');
+		await naming.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+		await expect(naming).toHaveCount(0);
+		const group = page.locator(`[data-group-id="${groupId}"]`);
+		await expect(group).toContainText('Pistes');
+		await expect(group).toHaveAttribute('aria-pressed', 'true');
+
+		// Folding hides the members and keeps the group; unfolding brings them back.
+		const nodeCount = await page.locator('[data-node-id]').count();
+		await page.getByRole('button', { name: 'Replier le groupe Pistes' }).click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount - 3);
+		await expect(group).toHaveCount(1);
+		await expect(page.getByRole('button', { name: 'Déplier le groupe Pistes' })).toBeVisible();
+		await page.locator(`[data-group-fold="${groupId}"]`).click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount);
+
+		// `[` folds and `]` unfolds the selected group; on a member, they act on its container.
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		await page.keyboard.press('[');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount - 3);
+		await page.keyboard.press('[');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount - 3);
+		await page.keyboard.press(']');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount);
+		await first.click();
+		await expect(page.getByRole('group', { name: 'Actions du nœud' })).toBeVisible();
+		await expect(
+			page.getByRole('group', { name: 'Actions du nœud' }).getByRole('button', { name: /Replier/ }),
+		).toHaveCount(0);
+		await page.keyboard.press('[');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount - 3);
+		await expect(group).toHaveCount(1);
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		await page.keyboard.press(']');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount);
+
+		// Dissolving keeps the members in their container and removes only the group.
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		await page
+			.getByRole('group', { name: 'Actions du groupe' })
+			.getByRole('button', { name: `Dissoudre le groupe ${groupId}` })
+			.click();
+		await expect(page.locator('[data-group-id]')).toHaveCount(previousGroups);
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodeCount);
+		await expect(first).toHaveAttribute('data-node-group-id', 'use-cases');
 	});
 
 	test('keeps keyboard focus visible and arbitrates Space away from panning', async ({ page }) => {
@@ -558,7 +606,7 @@ test.describe('accessible canvas selection', () => {
 	});
 });
 
-test.describe('resilient modal Markdown editing', () => {
+test.describe('box dialog editing and creation', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
@@ -571,38 +619,40 @@ test.describe('resilient modal Markdown editing', () => {
 		const measured = page.locator('[data-measure-node="traceable-edits"]');
 		await node.click();
 		const edit = page.getByRole('button', {
-			name: 'Edit Markdown for node traceable-edits',
+			name: 'Éditer le nœud traceable-edits',
 		});
 		await expect(edit).toBeVisible();
 		const nodeBounds = await node.boundingBox();
 		if (!nodeBounds) throw new Error('Selected node has no bounds');
 
 		await edit.click();
-		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toHaveAttribute('aria-modal', 'true');
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
 		await expect(textarea).toHaveValue('ALCOA+: All edits needs to be tracable\n');
-		await expect(dialog).toContainText('Editing node traceable-edits.');
 
 		await textarea.fill('A much longer local draft that must not remeasure the graph.\n'.repeat(8));
 		await expect(measured).toContainText('ALCOA+: All edits needs to be tracable');
 		await expect(measured).not.toContainText('A much longer local draft');
 		expect(await node.boundingBox()).toEqual(nodeBounds);
 		await page.keyboard.press('Tab');
-		await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
+		await expect(dialog.getByRole('textbox', { name: 'Description' })).toBeFocused();
 		await page.keyboard.press('Tab');
-		await expect(page.getByRole('button', { name: 'Save' })).toBeFocused();
+		await expect(dialog.locator(':focus')).toHaveCount(1);
+		const cancel = page.getByRole('button', { name: 'Annuler' });
+		const save = page.getByRole('button', { name: 'Enregistrer' });
+		await cancel.focus();
 		await page.keyboard.press('Tab');
-		await expect(textarea).toBeFocused();
+		await expect(save).toBeFocused();
+		await page.keyboard.press('Tab');
+		await expect(dialog.getByLabel('Nature')).toBeFocused();
 		await page.keyboard.press('Shift+Tab');
-		await expect(page.getByRole('button', { name: 'Save' })).toBeFocused();
+		await expect(save).toBeFocused();
 		await page.keyboard.press('Shift+Tab');
-		await expect(page.getByRole('button', { name: 'Cancel' })).toBeFocused();
-		await page.keyboard.press('Shift+Tab');
-		await expect(textarea).toBeFocused();
-		await page.getByRole('button', { name: 'Cancel' }).click();
+		await expect(cancel).toBeFocused();
+		await cancel.click();
 
 		await expect(dialog).toHaveCount(0);
 		await expect(node).toBeFocused();
@@ -615,7 +665,7 @@ test.describe('resilient modal Markdown editing', () => {
 	}) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.dblclick();
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
 		const replacement = [
 			'Saved through the typed document command.',
@@ -623,13 +673,13 @@ test.describe('resilient modal Markdown editing', () => {
 			'The accepted overlay must follow the node.',
 		].join('\n');
 		await textarea.fill(replacement);
-		await page.getByRole('button', { name: 'Save' }).click();
+		await page.getByRole('button', { name: 'Enregistrer' }).click();
 
-		await expect(page.locator('[data-node-markdown-editor="traceable-edits"]')).toHaveCount(0);
+		await expect(page.locator('[data-node-editor="traceable-edits"]')).toHaveCount(0);
 		await expect(node).toContainText('Saved through the typed document command.');
 		await expect(node).toBeFocused();
 		const edit = page.getByRole('button', {
-			name: 'Edit Markdown for node traceable-edits',
+			name: 'Éditer le nœud traceable-edits',
 		});
 		await expect(edit).toBeVisible();
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
@@ -639,14 +689,14 @@ test.describe('resilient modal Markdown editing', () => {
 			}
 		});
 		for (let index = 0; index < 4; index += 1) {
-			await page.getByRole('button', { name: 'Zoom in' }).click();
+			await page.getByRole('button', { name: 'Zoom avant' }).click();
 		}
-		await expect(page.getByRole('button', { name: 'Reset zoom' })).toHaveText('140%');
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('140%');
 		await node.scrollIntoViewIfNeeded();
 		await expect
 			.poll(async () => {
 				const nodeBounds = await node.boundingBox();
-				const barBounds = await page.getByRole('group', { name: 'Node actions' }).boundingBox();
+				const barBounds = await page.getByRole('group', { name: 'Actions du nœud' }).boundingBox();
 				if (!nodeBounds || !barBounds) return Number.POSITIVE_INFINITY;
 				const verticalGap = Math.min(
 					Math.abs(nodeBounds.y - (barBounds.y + barBounds.height)),
@@ -661,7 +711,7 @@ test.describe('resilient modal Markdown editing', () => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.focus();
 		await page.keyboard.press('Enter');
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
 		await textarea.fill('Draft cancelled from Escape');
 
@@ -675,27 +725,61 @@ test.describe('resilient modal Markdown editing', () => {
 	test('saves and closes the editor with Shift+Enter', async ({ page }) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.dblclick();
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
 		await textarea.fill('Saved and closed from Shift+Enter');
 
 		await page.keyboard.press('Shift+Enter');
 
-		await expect(page.getByRole('dialog', { name: 'Edit Markdown' })).toHaveCount(0);
+		await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toHaveCount(0);
 		await expect(node).toContainText('Saved and closed from Shift+Enter');
 		await expect(node).toBeFocused();
+	});
+	test('saves nature, description, and swatch color together', async ({ page }) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.dblclick();
+		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
+		const nature = dialog.getByLabel('Nature');
+		const currentNatureId = await nature.inputValue();
+		const options = await nature
+			.locator('option')
+			.evaluateAll((elements: HTMLOptionElement[]) =>
+				elements.map((element) => ({ id: element.value, label: element.textContent })),
+			);
+		const nextNature = required(
+			options.find(({ id }) => id !== currentNatureId),
+			'Expected another nature to select',
+		);
+		await nature.selectOption(nextNature.id);
+		await dialog.getByRole('textbox', { name: 'Description' }).fill('Description enregistrée');
+		await dialog.locator('details.style > summary').click();
+		await dialog.getByText('Palette · 54 couleurs').click();
+		await dialog.getByRole('button', { name: 'Bleu moyen' }).click();
+		await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+
+		await expect(node).toContainText(nextNature.label);
+		expect(
+			await node.evaluate((element) =>
+				getComputedStyle(element).getPropertyValue('--content-color'),
+			),
+		).toBe('#3b82f6');
+		await node.dblclick();
+		await expect(dialog.getByRole('textbox', { name: 'Description' })).toHaveValue(
+			'Description enregistrée',
+		);
+		await page.keyboard.press('Escape');
 	});
 
 	test('contains keyboard focus and remains usable at a narrow viewport', async ({ page }) => {
 		await page.setViewportSize({ width: 360, height: 640 });
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.dblclick();
-		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
+		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(dialog).toBeVisible();
 		await expect(textarea).toBeFocused();
 		const bounds = await dialog.boundingBox();
-		if (!bounds) throw new Error('Narrow Markdown dialog has no bounds');
+		if (!bounds) throw new Error('Narrow box dialog has no bounds');
 		expect(bounds.x).toBeGreaterThanOrEqual(15);
 		expect(bounds.x + bounds.width).toBeLessThanOrEqual(345);
 
@@ -704,38 +788,45 @@ test.describe('resilient modal Markdown editing', () => {
 		await expect(node).toBeFocused();
 	});
 
-	test('creates children and siblings from the keyboard while handing off the open editor', async ({
-		page,
-	}) => {
+	test('creates a connected child with N and keeps the sibling chord', async ({ page }) => {
 		const parent = page.locator('[data-node-id="ai-content-generation"]');
 		await parent.click();
-		await page.keyboard.press('Control+Enter');
+		await page.keyboard.press('n');
 
-		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
-		const textarea = page.getByRole('textbox', { name: 'Node Markdown' });
+		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
 		await expect(dialog).toBeVisible();
 		await expect(textarea).toBeFocused();
 		await expect(textarea).toHaveValue('');
-		const firstChildId = await dialog.getAttribute('data-node-markdown-editor');
-		if (firstChildId === null || firstChildId === '')
-			throw new Error('Created child editor has no node id');
+		const childId = await dialog.getAttribute('data-node-creator');
+		if (childId === null || childId === '') throw new Error('Created child dialog has no node id');
+		await textarea.fill('First keyboard child');
+		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+
+		const child = page.locator(`[data-node-id="${childId}"]`);
+		await expect(child).toBeVisible();
+		await expect(child).toHaveAttribute('aria-pressed', 'true');
 		await expect(
 			page.locator(
-				`[data-relation-id][data-edge-from="${firstChildId}"][data-edge-to="ai-content-generation"]`,
+				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="ai-content-generation"]`,
 			),
 		).toHaveCount(1);
 
-		await textarea.fill('First keyboard child');
+		await child.focus();
 		await page.keyboard.press('Control+Shift+Enter');
-		await expect(dialog).toBeVisible();
-		await expect(textarea).toBeFocused();
-		await expect(textarea).toHaveValue('');
-		const siblingId = await dialog.getAttribute('data-node-markdown-editor');
+		const siblingDialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		const siblingTextarea = siblingDialog.getByRole('textbox', { name: 'Contenu' });
+		await expect(siblingTextarea).toBeFocused();
+		await expect(siblingTextarea).toHaveValue('');
+		const siblingId = await siblingDialog.getAttribute('data-node-creator');
 		if (siblingId === null || siblingId === '')
-			throw new Error('Created sibling editor has no node id');
-		expect(siblingId).not.toBe(firstChildId);
-		await expect(page.locator(`[data-node-id="${firstChildId}"]`)).toContainText(
-			'First keyboard child',
+			throw new Error('Created sibling dialog has no node id');
+		expect(siblingId).not.toBe(childId);
+		await siblingTextarea.fill('Keyboard sibling');
+		await siblingDialog.getByRole('button', { name: 'Créer', exact: true }).click();
+		await expect(page.locator(`[data-node-id="${siblingId}"]`)).toHaveAttribute(
+			'aria-pressed',
+			'true',
 		);
 		await expect(
 			page.locator(
@@ -744,47 +835,81 @@ test.describe('resilient modal Markdown editing', () => {
 		).toHaveCount(1);
 	});
 
-	test('creates a root sibling and a child of a junction from the keyboard', async ({ page }) => {
-		const root = page.locator('[data-node-id="reduce-documentary-effort"]');
-		await root.click();
-		await page.keyboard.press('Control+Shift+Enter');
+	test('creates a root box with N when nothing is selected', async ({ page }) => {
+		await page.goto('/');
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		const focusedNode = page.locator('[data-node-id]').first();
+		await focusedNode.focus();
+		await expect(focusedNode).toHaveAttribute('aria-pressed', 'false');
+		await page.keyboard.press('n');
 
-		const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
-		await expect(dialog).toBeVisible();
-		const rootSiblingId = await dialog.getAttribute('data-node-markdown-editor');
-		if (rootSiblingId === null || rootSiblingId === '')
-			throw new Error('Created root sibling editor has no node id');
-		await expect(page.locator(`[data-relation-id][data-edge-from="${rootSiblingId}"]`)).toHaveCount(
-			0,
-		);
+		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
+		await expect(textarea).toBeFocused();
+		const rootId = await dialog.getAttribute('data-node-creator');
+		if (rootId === null || rootId === '') throw new Error('Created root dialog has no node id');
+		await textarea.fill('Root keyboard box');
+		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
 
+		const root = page.locator(`[data-node-id="${rootId}"]`);
+		await expect(root).toHaveAttribute('aria-pressed', 'true');
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${rootId}"], [data-relation-id][data-edge-to="${rootId}"]`,
+			),
+		).toHaveCount(0);
+	});
+
+	test('cancelling a new-box dialog with Escape creates nothing', async ({ page }) => {
+		await page.goto('/');
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		const count = await page.locator('[data-node-id]').count();
+		const focusedNode = page.locator('[data-node-id]').first();
+		await focusedNode.focus();
+		await page.keyboard.press('n');
+		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Cancelled creation');
+		await expect(page.locator('[data-node-id]')).toHaveCount(count);
 		await page.keyboard.press('Escape');
-		await expect(page.locator(`[data-node-id="${rootSiblingId}"]`)).toHaveCount(0);
+		await expect(dialog).toHaveCount(0);
+		await expect(page.locator('[data-node-id]')).toHaveCount(count);
+		await expect(page.getByText('Cancelled creation')).toHaveCount(0);
+	});
 
+	test('creates a connected box from the sidebar action', async ({ page }) => {
 		const parent = page.locator('[data-node-id="ai-content-generation"]');
 		await parent.click();
-		await page.keyboard.press('Control+Enter');
-		await expect(dialog).toBeVisible();
-		const childId = await dialog.getAttribute('data-node-markdown-editor');
-		if (childId === null || childId === '') throw new Error('Created child editor has no node id');
+		await page.getByRole('button', { name: 'Nouvelle boîte', exact: true }).click();
+
+		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		const nodeId = await dialog.getAttribute('data-node-creator');
+		if (nodeId === null || nodeId === '') throw new Error('Created box dialog has no node id');
+		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Sidebar-created child');
+		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+		await expect(page.locator(`[data-node-id="${nodeId}"]`)).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
 		await expect(
 			page.locator(
-				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="ai-content-generation"]`,
+				`[data-relation-id][data-edge-from="${nodeId}"][data-edge-to="ai-content-generation"]`,
 			),
 		).toHaveCount(1);
-		await page.keyboard.press('Escape');
-		await expect(page.locator(`[data-node-id="${childId}"]`)).toHaveCount(0);
+	});
 
+	test('creates a child of a junction with N', async ({ page }) => {
 		const junction = page.locator('[data-junction-id="word-ui-options"]');
 		await junction.click();
-		await page.keyboard.press('Control+Enter');
-		await expect(dialog).toBeVisible();
-		const junctionChildId = await dialog.getAttribute('data-node-markdown-editor');
-		if (junctionChildId === null || junctionChildId === '')
-			throw new Error('Created junction child editor has no node id');
+		await page.keyboard.press('n');
+		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+		const childId = await dialog.getAttribute('data-node-creator');
+		if (childId === null || childId === '')
+			throw new Error('Created junction child dialog has no node id');
+		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Junction child');
+		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
 		await expect(
 			page.locator(
-				`[data-relation-id][data-edge-from="${junctionChildId}"][data-edge-to="word-ui-options"]`,
+				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="word-ui-options"]`,
 			),
 		).toHaveCount(1);
 	});
@@ -810,23 +935,27 @@ test('double-clicking a group title edits its title and color', async ({ page })
 	await expect(group).toHaveAttribute('data-group-color', '#2563eb');
 });
 
-test('a keyboard child of a selected group is related to the group without becoming its member', async ({
-	page,
-}) => {
+test('a child of a selected node inside a group stays within that group', async ({ page }) => {
 	await page.goto('/examples/ai-documentary-effort');
-	const group = page.locator('[data-group-id="data-team"]');
-	await group.focus();
-	await group.press('Enter');
-	await page.keyboard.press('Control+Enter');
-	const dialog = page.getByRole('dialog', { name: 'Edit Markdown' });
+	const group = page.locator('[data-group-id="use-cases"]');
+	const target = page.locator('[data-node-id="traceable-edits"]');
+	await expect(target).toHaveAttribute('data-node-group-id', 'use-cases');
+	await target.click();
+	await page.keyboard.press('n');
+	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
 	await expect(dialog).toBeVisible();
-	const childId = await dialog.getAttribute('data-node-markdown-editor');
+	const childId = await dialog.getAttribute('data-node-creator');
 	if (childId === null || childId === '')
-		throw new Error('Created group child editor has no node id');
+		throw new Error('Created group child dialog has no node id');
+	await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Group keyboard child');
+	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
 	await expect(
-		page.locator(`[data-relation-id][data-edge-from="${childId}"][data-edge-to="data-team"]`),
+		page.locator(`[data-relation-id][data-edge-from="${childId}"][data-edge-to="traceable-edits"]`),
 	).toHaveCount(1);
 	const child = page.locator(`[data-node-id="${childId}"]`);
+	await expect(child).toHaveAttribute('aria-pressed', 'true');
+	await expect(child).toHaveAttribute('data-node-group-id', 'use-cases');
+	await settleCanvasMotion(page);
 	const childBox = await child.boundingBox();
 	const groupBox = await group.boundingBox();
 	if (!childBox || !groupBox) throw new Error('Created group child has no rendered geometry');
@@ -835,7 +964,7 @@ test('a keyboard child of a selected group is related to the group without becom
 			childBox.y >= groupBox.y &&
 			childBox.x + childBox.width <= groupBox.x + groupBox.width &&
 			childBox.y + childBox.height <= groupBox.y + groupBox.height,
-	).toBe(false);
+	).toBe(true);
 });
 
 test('double-click creates through a modal; Backspace and the delete action remove nodes', async ({

@@ -8,6 +8,7 @@
 
 <div class="element-card">
 	<strong>{label}</strong><button
+		class="ui-action"
 		type="button"
 		aria-label={`Modifier ${label}`}
 		onclick={() => {
@@ -33,12 +34,5 @@
 	strong {
 		font-size: 13px;
 		overflow-wrap: anywhere;
-	}
-	button {
-		padding: 5px 10px;
-		border: 1px solid #d6d3d1;
-		border-radius: 6px;
-		background: white;
-		cursor: pointer;
 	}
 </style>

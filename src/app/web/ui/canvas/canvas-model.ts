@@ -1,11 +1,12 @@
 import type {
 	ContentStyle,
+	GroupState,
 	JunctionOperator,
 	LayoutDirection,
 	LogicDocument,
 	OrderKey,
 } from '../../../../lib/core/document/logic-document';
-import { contentStyleFields } from '../../../../lib/core/document/logic-document';
+import { contentStyleFields, groupStateFields } from '../../../../lib/core/document/logic-document';
 import type { Bounds, LayoutResult, Point } from '../../projection/layout-graph';
 
 interface CanvasNature extends ContentStyle {
@@ -24,6 +25,7 @@ interface UnpositionedCanvasGroup {
 	readonly id: string;
 	readonly label: string;
 	readonly color?: string;
+	readonly state?: GroupState;
 }
 
 interface UnpositionedCanvasJunction {
@@ -118,10 +120,11 @@ export function createCanvasMeasurementModel(document: LogicDocument): CanvasMea
 				markdown: node.markdown,
 			};
 		}),
-		groups: document.groups.map(({ id, label, color }) => ({
+		groups: document.groups.map(({ id, label, color, state }) => ({
 			id,
 			label,
 			...contentStyleFields(color, undefined),
+			...groupStateFields(state),
 		})),
 		junctions: document.junctions.map(({ id, operator }) => ({ id, operator })),
 	};

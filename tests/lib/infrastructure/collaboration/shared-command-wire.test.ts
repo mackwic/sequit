@@ -46,7 +46,7 @@ it('executes decoded creation and property gestures across all entity kinds', ()
 			{
 				op: 'create',
 				target: { kind: 'junction', id: 'J' },
-				properties: { operator: 'xor', groupId: 'G' },
+				properties: { operator: 'or', groupId: 'G' },
 			},
 			{ op: 'create', target: { kind: 'relation', id: 'BC' }, properties: { from: 'B', to: 'C' } },
 		].map(readSharedCommand),
@@ -57,7 +57,7 @@ it('executes decoded creation and property gestures across all entity kinds', ()
 		groupId: 'H',
 	});
 	expect(created.groups.find(({ id }) => id === 'H')).toMatchObject({ state: GroupState.Closed });
-	expect(created.junctions[0]?.operator).toBe(JunctionOperator.Xor);
+	expect(created.junctions[0]?.operator).toBe(JunctionOperator.Or);
 	const changed = executeSharedCommands(
 		doc,
 		[
@@ -124,7 +124,7 @@ it.each([
 		target: { kind: 'group', id: 'H' },
 		properties: { label: 'Invalid state', state: 'hidden' },
 	},
-	{ op: 'create', target: { kind: 'junction', id: 'J' }, properties: { operator: 'neither' } },
+	{ op: 'create', target: { kind: 'junction', id: 'J' }, properties: { operator: 'nand' } },
 	{ op: 'delete', target: { kind: 'node', id: 'A' }, replacementId: 'B' },
 	{ op: 'update', target: { kind: 'relation', id: 'R' }, set: {}, unset: ['from'] },
 	{ op: 'update', target: { kind: 'nature', id: 'N' }, set: {}, unset: ['color'] },

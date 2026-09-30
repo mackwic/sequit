@@ -79,8 +79,8 @@ test('styles export and import with the document, including explicit absence of 
 	await expect(node).toHaveAttribute('data-content-color', '#123456');
 	await expect(node).toHaveAttribute('data-content-icon', 'none');
 	await node.dblclick();
-	await page.getByRole('textbox', { name: 'Node Markdown' }).fill('Texte modifié, style conservé');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await page.getByRole('textbox', { name: 'Contenu' }).fill('Texte modifié, style conservé');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(node).toHaveAttribute('data-content-color', '#123456');
 	await expect(node).toContainText('Texte modifié, style conservé');
 });

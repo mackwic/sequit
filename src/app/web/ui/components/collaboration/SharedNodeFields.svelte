@@ -6,8 +6,8 @@
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import SharedNodeText from './SharedNodeText.svelte';
 	import SharedPropertyFields from './SharedPropertyFields.svelte';
-	import SharedTextField from './SharedTextField.svelte';
 	let {
 		node,
 		client,
@@ -36,25 +36,7 @@
 		}}>Supprimer {node.id}</button
 	>
 </header>
-{#key client.text({ kind: Kind.Node, id: node.id }, 'markdown')}
-	<SharedTextField
-		{client}
-		connected={textEditable}
-		target={{ kind: Kind.Node, id: node.id }}
-		field="markdown"
-		{label}
-		autofocus={autofocusMarkdown}
-	/>
-{/key}
-{#key client.text({ kind: Kind.Node, id: node.id }, 'description')}
-	<SharedTextField
-		{client}
-		connected={textEditable}
-		target={{ kind: Kind.Node, id: node.id }}
-		field="description"
-		label={`Description de ${node.id}`}
-	/>
-{/key}
+<SharedNodeText {node} {client} {textEditable} {label} {autofocusMarkdown} />
 <SharedPropertyFields
 	target={{ kind: Kind.Node, id: node.id }}
 	properties={{

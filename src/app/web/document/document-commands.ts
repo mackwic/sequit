@@ -1,6 +1,8 @@
 import {
 	EndpointKind,
+	GroupState,
 	type LogicDocument,
+	type LogicGroup,
 	type LogicRelation,
 	type NewLogicNode,
 } from '../../../lib/core/document/logic-document';
@@ -9,7 +11,18 @@ import {
 	SharedCommandKind,
 	type SharedDocumentCommand,
 	SharedElementKind,
+	SharedProperty,
 } from '../../../lib/infrastructure/document/shared-document-command';
+
+/** What an author edits in the group dialog; `''` for colour means the default. */
+export interface GroupFields {
+	readonly label: string;
+	readonly color: string;
+}
+
+export function groupFields(group: LogicGroup): GroupFields {
+	return { label: group.label, color: group.color ?? '' };
+}
 
 /** Turns canvas intentions into the shared command vocabulary; every batch stays atomic. */
 
@@ -32,6 +45,40 @@ export function connectedNodeCreation(
 	relations: readonly LogicRelation[],
 ): readonly SharedDocumentCommand[] {
 	return [nodeCreation(node), ...relations.map(relationCreation)];
+}
+
+/** The executor derives the container from the members and refuses mixed containers. */
+export function groupCreation(id: string, members: readonly string[]): SharedDocumentCommand {
+	return { op: SharedCommandKind.Group, id, label: 'Groupe', members };
+}
+
+/** The label is a text: callers splice it through `updateText`; only the colour travels here. */
+export function groupStyleUpdate(
+	groupId: string,
+	before: GroupFields,
+	after: GroupFields,
+): SharedDocumentCommand | undefined {
+	if (before.color === after.color) return undefined;
+	const target = { kind: SharedElementKind.Group, id: groupId } as const;
+	if (after.color === '')
+		return { op: SharedCommandKind.Update, target, set: {}, unset: [SharedProperty.Color] };
+	return { op: SharedCommandKind.Update, target, set: { color: after.color }, unset: [] };
+}
+
+export function groupFoldToggle(group: LogicGroup): SharedDocumentCommand {
+	let state = GroupState.Closed;
+	if (group.state === GroupState.Closed) state = GroupState.Expanded;
+	return {
+		op: SharedCommandKind.Update,
+		target: { kind: SharedElementKind.Group, id: group.id },
+		set: { state },
+		unset: [],
+	};
+}
+
+/** Members stay in the parent container; the group and its own relations go. */
+export function groupDissolution(groupId: string): SharedDocumentCommand {
+	return { op: SharedCommandKind.Ungroup, id: groupId };
 }
 
 /**

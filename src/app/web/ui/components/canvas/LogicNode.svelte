@@ -59,7 +59,7 @@
 	function handleKeyDown(event: KeyboardEvent) {
 		if (!session || !ref) return;
 		if (!activateEntityByKeyboard(session, ref, event)) return;
-		if (event.code === 'Enter' && 'bounds' in node) session.beginNodeMarkdownEdit(node);
+		if (event.code === 'Enter' && 'bounds' in node) session.beginNodeEdit(node);
 	}
 
 	function handleDoubleClick(event: MouseEvent) {
@@ -67,7 +67,7 @@
 		event.preventDefault();
 		event.stopPropagation();
 		session.selectEntity(ref);
-		session.beginNodeMarkdownEdit(node);
+		session.beginNodeEdit(node);
 	}
 	function pixels(value: number | undefined): string | undefined {
 		if (value === undefined) return undefined;

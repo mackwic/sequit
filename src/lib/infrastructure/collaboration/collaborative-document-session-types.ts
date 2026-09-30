@@ -56,7 +56,6 @@ export interface DocumentSession {
 	text(target: SharedTarget, field: string): Y.Text | undefined;
 	/** Returns false when the target is gone or text is not editable right now. */
 	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean;
-	replaceNodeMarkdown(nodeId: string, markdown: string): boolean;
 	destroy(): void;
 }
 

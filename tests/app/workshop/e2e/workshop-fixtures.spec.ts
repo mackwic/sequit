@@ -18,7 +18,7 @@ for (const fixture of LAYOUT_PERFORMANCE_SCENARIO_NAMES) {
 	});
 }
 
-test('document choice persists across variants, reload and history; remarks identify the trial', async ({
+test('document choice persists across reload and history; remarks identify the trial', async ({
 	page,
 }) => {
 	await page.goto('/atelier?scenario=SC-BOX-EDIT');
@@ -30,26 +30,22 @@ test('document choice persists across variants, reload and history; remarks iden
 	await page.getByRole('button', { name: 'Charger le document' }).click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(50);
 	await expect(page.locator('[data-node-id="node-0000000000000000"]')).toBeInViewport();
-	await page
-		.getByRole('navigation', { name: 'Variantes' })
-		.getByRole('button', { name: /Panneau latéral/ })
-		.click();
 	await expect(page).toHaveURL(/fixture=binary-tree/);
 	await expect(page.locator('[data-node-id]')).toHaveCount(50);
 	await page.locator('[data-node-id="node-0000000000000000"]').dblclick();
-	await page.getByRole('textbox', { name: 'Markdown' }).fill('Un arbre modifié');
+	await page.getByRole('textbox', { name: 'Contenu', exact: true }).fill('Un arbre modifié');
 	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(page.locator('[data-node-id="node-0000000000000000"]')).toContainText(
 		'Un arbre modifié',
 	);
 	await page.getByText('Terminer ce parcours · mes remarques', { exact: true }).click();
 	await page
-		.getByRole('button', { name: 'Noter cet essai : panel / binary-tree-50', exact: true })
+		.getByRole('button', { name: 'Noter cet essai : modal / binary-tree-50', exact: true })
 		.click();
 	await page
-		.getByRole('button', { name: 'Noter cet essai : panel / binary-tree-50', exact: true })
+		.getByRole('button', { name: 'Noter cet essai : modal / binary-tree-50', exact: true })
 		.click();
-	await expect(page.getByLabel('Variantes essayées')).toHaveValue('panel / binary-tree-50');
+	await expect(page.getByLabel('Variantes essayées')).toHaveValue('modal / binary-tree-50');
 	await page.reload();
 	await expect(page.getByLabel('Document d’essai')).toBeEnabled();
 	await expect(page.getByLabel('Document d’essai')).toHaveValue('binary-tree');
@@ -60,7 +56,7 @@ test('document choice persists across variants, reload and history; remarks iden
 	await page.goBack();
 	await expect(page.locator('[data-node-id]')).toHaveCount(50);
 	await page.getByText('Terminer ce parcours · mes remarques', { exact: true }).click();
-	await expect(page.getByLabel('Variantes essayées')).toHaveValue('panel / binary-tree-50');
+	await expect(page.getByLabel('Variantes essayées')).toHaveValue('modal / binary-tree-50');
 });
 
 test('a thousand-node tree can locate, edit and recover a distant node', async ({ page }) => {
@@ -72,8 +68,10 @@ test('a thousand-node tree can locate, edit and recover a distant node', async (
 	const node = page.locator('[data-node-id="node-0000000000000999"]');
 	await expect(node).toBeInViewport();
 	await node.press('e');
-	await page.getByRole('textbox', { name: 'Markdown' }).fill('La dernière boîte modifiée');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await page
+		.getByRole('textbox', { name: 'Contenu', exact: true })
+		.fill('La dernière boîte modifiée');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(node).toContainText('La dernière boîte modifiée');
 	await page.getByRole('button', { name: 'Annuler la modification' }).click();
 	await expect(node).toContainText('Node 999');

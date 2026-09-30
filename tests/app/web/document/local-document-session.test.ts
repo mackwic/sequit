@@ -173,9 +173,17 @@ describe('local document session text', () => {
 		const subscriber = vi.fn();
 		session.subscribe(subscriber);
 
-		expect(session.replaceNodeMarkdown('missing', 'Ignored')).toBe(false);
+		expect(
+			session.updateText({ kind: SharedElementKind.Node, id: 'missing' }, 'markdown', 'Ignored'),
+		).toBe(false);
 		expect(subscriber).not.toHaveBeenCalled();
-		expect(session.replaceNodeMarkdown('traceable-edits', 'Replacement')).toBe(true);
+		expect(
+			session.updateText(
+				{ kind: SharedElementKind.Node, id: 'traceable-edits' },
+				'markdown',
+				'Replacement',
+			),
+		).toBe(true);
 
 		expect(subscriber).toHaveBeenCalledOnce();
 		expect(session.read().nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
@@ -185,7 +193,13 @@ describe('local document session text', () => {
 		expect(session.text({ kind: SharedElementKind.Node, id: 'traceable-edits' }, 'markdown')).toBe(
 			text,
 		);
-		expect(session.replaceNodeMarkdown('traceable-edits', 'Replacement')).toBe(true);
+		expect(
+			session.updateText(
+				{ kind: SharedElementKind.Node, id: 'traceable-edits' },
+				'markdown',
+				'Replacement',
+			),
+		).toBe(true);
 		expect(subscriber).toHaveBeenCalledOnce();
 	});
 
@@ -280,7 +294,7 @@ describe('local document session publication', () => {
 		const observed: string[] = [];
 		session.subscribe((document) => {
 			if (document.nodes.some(({ id }) => id === 'outer') && observed.length === 0)
-				session.replaceNodeMarkdown('outer', 'Nested');
+				session.updateText({ kind: SharedElementKind.Node, id: 'outer' }, 'markdown', 'Nested');
 		});
 		session.subscribe((document) => {
 			observed.push(document.nodes.find(({ id }) => id === 'outer')?.markdown ?? '');
@@ -296,7 +310,11 @@ describe('local document session publication', () => {
 		const { session, ydoc } = await attached();
 		const later = vi.fn();
 		session.subscribe(() => {
-			session.replaceNodeMarkdown('traceable-edits', 'Queued');
+			session.updateText(
+				{ kind: SharedElementKind.Node, id: 'traceable-edits' },
+				'markdown',
+				'Queued',
+			);
 			session.destroy();
 		});
 		session.subscribe(later);
@@ -341,7 +359,13 @@ describe('local document session lifecycle', () => {
 		expect(() => session.readSourceState()).toThrow(DocumentSessionError);
 		expect(() => session.subscribe(() => undefined)).toThrow(DocumentSessionError);
 		expect(() => session.subscribeToSourceState(() => undefined)).toThrow(DocumentSessionError);
-		expect(session.replaceNodeMarkdown('traceable-edits', 'Late')).toBe(false);
+		expect(
+			session.updateText(
+				{ kind: SharedElementKind.Node, id: 'traceable-edits' },
+				'markdown',
+				'Late',
+			),
+		).toBe(false);
 	});
 
 	it('closes a pending batch when its borrowed document is destroyed', async () => {

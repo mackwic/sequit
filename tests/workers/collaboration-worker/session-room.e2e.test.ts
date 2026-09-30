@@ -122,13 +122,17 @@ describe('real sessions through the Durable Object', () => {
 				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
 				expect(bob.connectionStatus()).toBe(CollaborationStatus.Ready);
 			});
-			alice.replaceNodeMarkdown('A', 'Alpha modifié');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Alpha modifié');
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('Alpha modifié');
 			});
 			const rejected = vi.fn();
 			alice.subscribeToRejection(rejected);
-			alice.replaceNodeMarkdown('B', 'Dernière frappe avant suppression');
+			alice.updateText(
+				{ kind: Kind.Node, id: 'B' },
+				'markdown',
+				'Dernière frappe avant suppression',
+			);
 			const deletion = alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await vi.waitFor(() => {
 				expect(bob.read().nodes.map((node) => node.id)).toEqual(['A']);
@@ -137,7 +141,7 @@ describe('real sessions through the Durable Object', () => {
 			if (accepted.kind !== DocumentCommandOutcomeKind.Accepted)
 				throw new Error('Expected accepted');
 			expect(accepted.document.nodes.map((node) => node.id)).toEqual(['A']);
-			alice.replaceNodeMarkdown('A', 'La session continue');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'La session continue');
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('La session continue');
 			});
@@ -179,8 +183,8 @@ describe('real sessions through the Durable Object', () => {
 				return message.type === Message.Change && 'update' in message;
 			};
 			vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-			alice.replaceNodeMarkdown('B', 'Brouillon perdu');
-			alice.replaceNodeMarkdown('A', 'Saisie abandonnée');
+			alice.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Brouillon perdu');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Saisie abandonnée');
 			const deleted = new Promise<void>((resolve) => {
 				const stop = bob.subscribe((document) => {
 					if (document.nodes.some(({ id }) => id === 'B')) return;
@@ -212,7 +216,7 @@ describe('real sessions through the Durable Object', () => {
 			expect(alice.document).not.toBe(replica);
 			expect(alice.replica()).toBe(1);
 			expect(alice.read().nodes.map(({ id }) => id)).toEqual(['A']);
-			alice.replaceNodeMarkdown('A', 'Encore modifiable');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Encore modifiable');
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('Encore modifiable');
 			});
@@ -251,8 +255,8 @@ describe('real sessions through the Durable Object', () => {
 				const message = decodeSessionMessage(frame);
 				return message.type === Message.Change && 'update' in message;
 			};
-			alice.replaceNodeMarkdown('B', 'Brouillon hors ligne');
-			alice.replaceNodeMarkdown('A', 'Autre brouillon hors ligne');
+			alice.updateText({ kind: Kind.Node, id: 'B' }, 'markdown', 'Brouillon hors ligne');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Autre brouillon hors ligne');
 			expect(old.held).toHaveLength(1);
 			old.close();
 			await vi.waitFor(() => {
@@ -273,7 +277,7 @@ describe('real sessions through the Durable Object', () => {
 			expect(alice.replica()).toBe(1);
 			expect(bob.read().nodes[0]?.markdown).toBe('Alpha');
 			expect(alice.read().nodes[0]?.markdown).toBe('Alpha');
-			alice.replaceNodeMarkdown('A', 'Après reconnexion');
+			alice.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Après reconnexion');
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('Après reconnexion');
 			});

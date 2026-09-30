@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	isEditableTarget,
 	isNativeControlTarget,
+	isPlainKeyboardEvent,
 	isUnclaimedKeyboardEvent,
 	isUnmodifiedKeyboardEvent,
 } from '../../../../../src/app/web/ui/canvas/canvas-event-guard';
@@ -71,4 +72,13 @@ describe('canvas key claims', () => {
 			);
 		},
 	);
+
+	it('lets punctuation keep the Alt or Shift a keyboard layout needs, never Ctrl or Cmd', () => {
+		const bracket = (init: KeyboardEventInit) =>
+			isPlainKeyboardEvent(new KeyboardEvent('keydown', { key: '[', ...init }));
+		expect(bracket({ altKey: true, shiftKey: true })).toBe(true);
+		expect(bracket({ ctrlKey: true })).toBe(false);
+		expect(bracket({ metaKey: true })).toBe(false);
+		expect(bracket({ repeat: true })).toBe(false);
+	});
 });

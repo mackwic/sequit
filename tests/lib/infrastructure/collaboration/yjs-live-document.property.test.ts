@@ -11,6 +11,7 @@ import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { SharedElementKind } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import {
 	nodeId,
 	richAcyclicLogicDocumentArbitrary,
@@ -56,7 +57,9 @@ function baselineFor(document: LogicDocument): Uint8Array {
 }
 
 function replaceMarkdown(session: LocalDocumentSession, index: number, markdown: string): void {
-	expect(session.replaceNodeMarkdown(nodeId(index), markdown)).toBe(true);
+	expect(
+		session.updateText({ kind: SharedElementKind.Node, id: nodeId(index) }, 'markdown', markdown),
+	).toBe(true);
 }
 
 function applyMarkdown(ydoc: Y.Doc, index: number, markdown: string): void {

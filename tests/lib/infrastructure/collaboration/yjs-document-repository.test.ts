@@ -196,7 +196,7 @@ const replaceMarkdownThroughSession = (
 ): boolean => {
 	const session = attachLocalDocumentSession(document);
 	try {
-		return session.replaceNodeMarkdown(nodeId, markdown);
+		return session.updateText({ kind: SharedElementKind.Node, id: nodeId }, 'markdown', markdown);
 	} finally {
 		session.destroy();
 	}
@@ -261,7 +261,7 @@ describe('yjsLiveDocumentFormat', () => {
 		defined(natures.get(natureId)).delete('color');
 		const junctions = invalid.getMap<Y.Map<unknown>>('sequit.junctions');
 		const junctionId = defined([...junctions.keys()][0]);
-		defined(junctions.get(junctionId)).set('operator', 'and');
+		defined(junctions.get(junctionId)).set('operator', 'nand');
 		const relations = invalid.getMap<Y.Map<unknown>>('sequit.relations');
 		const relationId = defined([...relations.keys()][0]);
 		defined(relations.get(relationId)).delete('to');
@@ -1535,7 +1535,13 @@ describe('repository presentation and invalid-physical boundaries', () => {
 			);
 		});
 		expect(repository.read().ok).toBe(true);
-		expect(session.replaceNodeMarkdown('target-a', 'After explicit repair')).toBe(true);
+		expect(
+			session.updateText(
+				{ kind: SharedElementKind.Node, id: 'target-a' },
+				'markdown',
+				'After explicit repair',
+			),
+		).toBe(true);
 		expect(survivor.get('markdown')).toBe(survivingText);
 		expect(survivingText.toJSON()).toBe('Remote invalid merge: Source A');
 		expect(session.read().nodes.find(({ id }) => id === 'target-a')?.markdown).toBe(

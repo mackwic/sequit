@@ -67,6 +67,7 @@
 	<div class="workbench-canvas">
 		<LogicCanvas
 			document={projected.document}
+			natures={model.natures}
 			{session}
 			hideToolbar={frame.contextualActions === 'custom'}
 			oncanvas={(value: CanvasModel, element: HTMLDivElement) => {

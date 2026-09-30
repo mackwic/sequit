@@ -30,10 +30,9 @@ import {
 	type DocumentSessionErrorReporter,
 	type DocumentSessionSubscriber,
 } from '../../../lib/infrastructure/document/document-session-contracts';
-import {
-	type SharedDocumentCommand,
-	SharedElementKind,
-	type SharedTarget,
+import type {
+	SharedDocumentCommand,
+	SharedTarget,
 } from '../../../lib/infrastructure/document/shared-document-command';
 
 type DocumentResult = YjsLiveDocumentResult<LogicDocument>;
@@ -115,10 +114,6 @@ export class LocalDocumentSession implements DocumentSession {
 			spliceSharedText(text, next);
 		}, this.#textOrigin);
 		return true;
-	}
-
-	replaceNodeMarkdown(nodeId: string, markdown: string): boolean {
-		return this.updateText({ kind: SharedElementKind.Node, id: nodeId }, 'markdown', markdown);
 	}
 
 	destroy(): void {

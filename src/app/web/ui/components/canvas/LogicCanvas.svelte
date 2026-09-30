@@ -2,6 +2,7 @@
 	import { type Snippet, tick, untrack } from 'svelte';
 
 	import { compareCanonicalStrings } from '../../../../../lib/core/canonical-string';
+	import type { LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { InvalidSourceDocumentState } from '../../../../../lib/infrastructure/collaboration/source-document-state';
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import {
@@ -36,6 +37,7 @@
 	let {
 		document: openedDocument,
 		session,
+		natures,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -43,14 +45,20 @@
 		onGroup,
 		onDelete,
 		onGroupEdit,
+		onGroupToggle,
+		onGroupDissolve,
 	}: {
 		document: CanvasProjection;
 		session: CanvasSession;
+		/** The natures offered by the box dialog. */
+		natures: readonly LogicNature[];
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
-		onGroup?: () => void;
+		onGroup?: (() => void) | undefined;
 		onDelete?: () => void;
 		onGroupEdit?: (groupId: string) => void;
+		onGroupToggle?: ((groupId: string) => void) | undefined;
+		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -393,7 +401,13 @@
 		onclick={handleBackgroundClick}
 	>
 		{#if display.kind === 'ready'}
-			<RenderedCanvas canvas={display.canvas} zoom={session.zoom} {session} {onGroupEdit} />
+			<RenderedCanvas
+				canvas={display.canvas}
+				zoom={session.zoom}
+				{session}
+				{onGroupEdit}
+				{onGroupToggle}
+			/>
 		{:else if display.kind === 'invalid-source'}
 			<section
 				role="alert"
@@ -513,11 +527,14 @@
 			{canvas}
 			viewportElement={viewport}
 			{session}
+			{natures}
 			{editor}
 			{awareness}
 			{hideToolbar}
 			{onGroup}
 			{onGroupEdit}
+			{onGroupToggle}
+			{onGroupDissolve}
 			{onDelete}
 		/>
 	{/if}

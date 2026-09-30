@@ -1,7 +1,7 @@
 # Atelier d’interactions
 
 Route locale : `/atelier`. Le catalogue est dans `src/app/workshop/catalogue.ts`. L'atelier reste dans la même application SvelteKit, mais son code est exclu des builds de production ; la route y renvoie 404. Voir [les frontières de modules](architecture.md).
-L’atelier expose 15 parcours et 33 variantes sous 11 thèmes. Chaque variante est accessible par `/atelier?scenario=SC-…&variant=…` ; l’URL suit les changements, le rechargement et les boutons précédent/suivant du navigateur. Le lien sous le canvas permet de retrouver la variante.
+L’atelier expose 15 parcours et 31 variantes sous 11 thèmes. Chaque variante est accessible par `/atelier?scenario=SC-…&variant=…` ; l’URL suit les changements, le rechargement et les boutons précédent/suivant du navigateur. Le lien sous le canvas permet de retrouver la variante.
 
 La majorité des essais manipulent un document local réinitialisable. `SC-COL-WORK` ouvre deux sessions indépendantes reliées au vrai serveur WebSocket local. Lancer la pile avec `mise exec -- pnpm dev:stack` ou lancer `dev:web` et `dev:collaboration` séparément. Vite relaie `/collab` vers `COLLABORATION_PORT` (8787 par défaut). Les tests E2E démarrent leur propre serveur sur 8788.
 
@@ -11,14 +11,14 @@ La majorité des essais manipulent un document local réinitialisable. `SC-COL-W
 - `workshop-types.ts` : contrats typés. Chaque groupe contient des scénarios et chaque scénario au moins une variante. Les IDs doivent être uniques dans leur groupe (scénarios) et scénario (variantes).
 - `catalogue.ts` et `catalogue-workbench.ts` : métadonnées, source TOML, état initial et composants de scène. Les IDs existants restent stables pour les discussions.
 - `Playground.svelte` : hôte de canvas partagé. Ouvre le document, initialise zoom et sélection, puis détruit la session au démontage. La source et l’état initial sont capturés à la création ; le cadre remonte la scène lors d’un changement de scénario, de variante ou d’un redémarrage.
-- `ModalScene`, `InlineScene`, `PanelScene` : compositions explicites de l’hôte et des éditeurs. L’hôte ignore les IDs des variantes.
-- `NodeMarkdownForm.svelte` : formulaire commun à la modale du produit et aux alternatives. Affiche le brouillon de `CanvasSession`, les diagnostics et les états de sauvegarde ; gère Échap quel que soit son conteneur. Chaque formulaire a ses propres IDs. Pendant un envoi, Fermer ferme l’éditeur et indique que la commande reste en attente. Les conteneurs gèrent placement, focus initial et modalité.
+- `ModalScene` : composition de l’hôte avec le dialogue de boîte commun.
+- `NodeEditor.svelte` : éditeur par défaut de `LogicCanvas`, partagé avec l’interface produit ; brouillon, diagnostics, sauvegarde et annulation restent dans `CanvasSession`.
 - `CanvasShortcut.svelte` et `FloatingActions.svelte` : raccourcis limités aux surfaces concernées, exclusion de la saisie et des modificateurs ; positionnement Floating UI partagé, groupes de boutons et menu avec navigation au clavier et retour du focus.
 
 - `WorkbenchScene.svelte` : hôte des autres interactions ; compose le vrai `LogicCanvas`, `CanvasSession` et un outil de parcours. `WorkshopFrame` déclare le placement des outils (`left`, `right`, `split`, `overlay`) et le remplacement éventuel des actions contextuelles. L’hôte n’importe aucun composant de `tools/` et ne connaît aucun ID de variante. `WorkbenchToolProps` fournit le document, la sélection, le canvas rendu, les préférences de vue et des callbacks de mise à jour.
 - `tools/` : contrôles comparés dans les variantes. Les composants partagent styles et services, et ne connaissent pas le catalogue global.
 - `runtime/workshop-document.ts` : adaptateur expérimental local. Les commandes existantes passent par `DocumentSession`. Les commandes absentes du produit valident document et graphe, puis appliquent une transaction Yjs différentielle ; les objets `Y.Text` existants sont conservés. Un `UndoManager` garde l’historique de cette séance. Cette surface devra rejoindre des commandes métier explicites avant une intégration collaborative.
-- `runtime/workshop-commands.ts` : surface de commandes locales nommées (boîtes, groupes, natures, relations, présentation, document et disposition). Les outils reçoivent seulement ces commandes, la lecture et l’import explicite ; ils n’ont plus accès à `apply`, `edit`, Yjs ou à la session ouverte. Chaque commande expérimentale lit le document courant avant une transaction validée. L’ajout de relation conserve la commande du produit. Le remplacement Markdown continue via `CanvasSession` et son port existant. Cette surface locale ne constitue pas un nouveau protocole collaboratif : une opération retenue pour le produit doit rejoindre les commandes métier et leur autorité.
+- `runtime/workshop-commands.ts` : surface de commandes locales nommées (boîtes, groupes, natures, relations, présentation, document et disposition). Les outils reçoivent seulement ces commandes, la lecture et l’import explicite ; ils n’ont plus accès à `apply`, `edit`, Yjs ou à la session ouverte. Chaque commande expérimentale lit le document courant avant une transaction validée. L’ajout de relation conserve la commande du produit. L’édition d’une boîte utilise `NodeEditPort` : le texte passe par son `Y.Text`, les propriétés par une commande `Update`. Cette surface locale ne constitue pas un nouveau protocole collaboratif : une opération retenue pour le produit doit rejoindre les commandes métier et leur autorité.
 - `runtime/workshop-nature-operations.ts`, `workshop-relation-operations.ts` et `workshop-metadata-operations.ts` : transformations pures extraites des composants. Les IDs viennent de l’appelant ; les fonctions ne dépendent ni de Svelte ni de Yjs. Les variantes réutilisent les mêmes opérations et les commandes les exécutent sur l’état courant.
 - `runtime/workshop-node-operations.ts` et `workshop-group-operations.ts` : transformations pures testables. La création et la connexion réutilisent les projections du produit. `WorkshopDocument.edit` lit le document courant, valide l’opération entière puis applique une transaction : création reliée et duplication multiple ont chacune une seule étape d’annulation. Le placement en premier utilise les clés canoniques et les pairs de même groupe/rang.
 - `WorkshopHistory.svelte` : historique commun aux workbenches, boutons et Ctrl/Cmd + Z / Maj + Z. Les champs de saisie conservent leur propre historique ; l’historique du document reste désactivé pendant l’édition.
@@ -61,15 +61,15 @@ Les nouveaux champs optionnels traversent parseur, sérialiseur, validation, Yjs
 ## Ajouter un scénario ou un design
 
 1. Ajouter un scénario au groupe concerné dans le catalogue, ou un nouveau groupe. Fournir ID, libellé, consigne, document TOML valide et état initial (zoom et sélection par identifiants stables).
-2. Réutiliser les scènes existantes ou créer un composant respectant `WorkshopSceneProps`. Pour un design du canvas, composer `Playground` avec un éditeur et son placement. Pour une autre interaction du canvas, fournir un composant `tools` à `WorkbenchScene` ; pour un autre support, la scène peut composer directement les composants du produit. Le cadre n’impose pas de canvas.
+2. Réutiliser les scènes existantes ou créer un composant respectant `WorkshopSceneProps`. `Playground` fournit le `NodeEditor` du canvas ; pour une autre interaction, fournir un composant `tools` à `WorkbenchScene` ; pour un autre support, la scène peut composer directement les composants du produit. Le cadre n’impose pas de canvas.
 3. Référencer ce composant dans une variante avec son ID, son libellé, sa description et la question à discuter. Déclarer le placement et les actions contextuelles via `frame`. Ne pas ajouter de condition sur cet ID dans le cadre ou l’hôte.
 4. Ajouter le scénario observable aux tests E2E, puis exécuter les gates du dépôt via `mise exec -- pnpm ...`.
 
 Les nouveaux états spécifiques à un parcours doivent être décrits explicitement dans le contrat de scène quand le besoin apparaît. Ne pas ajouter de logique métier au catalogue ou recopier les commandes du produit dans l’atelier. Les nouvelles commandes expérimentales restent dans l’adaptateur local validé jusqu’à ce que leur contrat produit soit décidé.
 
-## Limites des propositions actuelles
+## Variantes d’édition retirées
 
-L’édition « dans la boîte » est une surcouche ancrée, repositionnée aux bords de l’écran. Le panneau se superpose au canvas sur petit écran. Ces choix sont des propositions à discuter, pas des comportements de référence à généraliser.
+Les variantes « Dans la boîte » (`inline`) et « Panneau latéral » (`panel`) sont retirées ; l’atelier utilise désormais le dialogue unique de boîte.
 
 ## Catalogue de discussion et retours
 

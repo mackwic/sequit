@@ -16,6 +16,7 @@ import {
 	type DocumentCommandOutcome,
 	DocumentCommandOutcomeKind,
 } from '../../../../../src/lib/infrastructure/document/document-command-contracts';
+import type { NodeFields } from '../../../../../src/lib/infrastructure/document/node-fields';
 import { validLogicDocument } from '../../../../support/builders/logic-document';
 
 function entityIndex(...refs: ReturnType<typeof entityRef>[]): CanvasEntityIndex {
@@ -31,14 +32,25 @@ function entityIndex(...refs: ReturnType<typeof entityRef>[]): CanvasEntityIndex
 }
 
 function commandPort(
-	implementation: CanvasDocumentCommandPort['replaceNodeMarkdown'],
+	implementation: CanvasDocumentCommandPort['saveNode'] = () =>
+		Promise.resolve({
+			kind: DocumentCommandOutcomeKind.Accepted,
+			document: validLogicDocument(),
+		}),
 ): CanvasDocumentCommandPort {
-	return { replaceNodeMarkdown: vi.fn(implementation) };
+	return { readNode: vi.fn(() => fields), saveNode: vi.fn(implementation) };
 }
+
+const fields: NodeFields = {
+	natureId: 'goal',
+	markdown: 'Original Markdown',
+	description: '',
+	color: '',
+	icon: '',
+};
 
 const editableNode = {
 	id: 'shared',
-	markdown: 'Original Markdown',
 	bounds: { x: 12, y: 34, width: 220, height: 96 },
 };
 
@@ -176,16 +188,12 @@ describe('CanvasSession selection intents', () => {
 		expect(session.selectionCount).toBe(0);
 		expect(session.announcement).toBe('1 selected entity is no longer available.');
 	});
-
-	it('keeps Select as the only active mode', () => {
-		expect(new CanvasSession().selectModeActive).toBe(true);
-	});
 });
 
-describe('CanvasSession Markdown editing intents', () => {
+describe('CanvasSession box editing intents', () => {
 	const node = entityRef(EntityKind.Node, editableNode.id);
 
-	function selectedSession(commands?: CanvasDocumentCommandPort) {
+	function selectedSession(commands: CanvasDocumentCommandPort = commandPort()) {
 		const session = new CanvasSession(commands);
 		session.selectEntity(node);
 		return session;
@@ -199,72 +207,63 @@ describe('CanvasSession Markdown editing intents', () => {
 		return { commands: commandPort(() => pending), complete };
 	}
 
-	it('exposes any single selected entity as contextual and edits only nodes', () => {
-		const session = new CanvasSession();
-		expect(session.contextualEntity).toBeUndefined();
-		expect(session.updateDraft('Ignored without an editor')).toBe(false);
-		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
-		const group = entityRef(EntityKind.Group, editableNode.id);
-		session.selectEntity(group);
-		expect(session.contextualEntity).toEqual(group);
-		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
-		session.toggleEntity(node);
-		expect(session.contextualEntity).toBeUndefined();
-
+	it('begins only for the sole selected node when the document can read it', () => {
+		const session = new CanvasSession(commandPort());
+		expect(session.beginNodeEdit(editableNode)).toBe(false);
 		session.selectEntity(node);
-		expect(session.contextualEntity).toEqual(node);
-		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(true);
-		expect(session.beginNodeMarkdownEdit(editableNode)).toBe(false);
+		expect(session.beginNodeEdit(editableNode)).toBe(true);
+		expect(session.beginNodeEdit(editableNode)).toBe(false);
 		expect(session.editing).toMatchObject({
 			kind: CanvasActivityKind.Editing,
 			target: entityKey(EntityKind.Node, editableNode.id),
-			field: 'markdown',
-			baseValue: editableNode.markdown,
-			draft: editableNode.markdown,
+			base: fields,
+			draft: fields,
 			frozenBounds: editableNode.bounds,
 			availability: CanvasEditAvailability.Available,
 		});
 		expect(session.editing?.frozenBounds).not.toBe(editableNode.bounds);
-		expect(session.contextualEntity).toBeUndefined();
+	});
+
+	it('does not begin for a non-node, multiple selection, or missing document node', () => {
+		const groupSession = new CanvasSession(commandPort());
+		groupSession.selectEntity(entityRef(EntityKind.Group, editableNode.id));
+		expect(groupSession.beginNodeEdit(editableNode)).toBe(false);
+
+		const multipleSession = selectedSession();
+		multipleSession.addEntity(entityRef(EntityKind.Node, 'other'));
+		expect(multipleSession.beginNodeEdit(editableNode)).toBe(false);
+
+		const missingSession = new CanvasSession({
+			readNode: vi.fn(() => undefined),
+			saveNode: vi.fn(),
+		});
+		missingSession.selectEntity(node);
+		expect(missingSession.beginNodeEdit(editableNode)).toBe(false);
 	});
 
 	it('does not save without an active editor', async () => {
 		await expect(new CanvasSession().saveDraft()).resolves.toBeUndefined();
 	});
 
-	it('reports the default unavailable command without discarding the draft', async () => {
+	it('updates changed fields only and locks selection until editing exits', () => {
 		const session = selectedSession();
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Locally preserved');
+		session.beginNodeEdit(editableNode);
 
-		await expect(session.saveDraft()).resolves.toMatchObject({
-			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [{ code: 'node-markdown-unavailable' }],
-		});
-		expect(session.editing).toMatchObject({
-			draft: 'Locally preserved',
-			diagnostic: 'Node Markdown editing is unavailable: shared',
-		});
-	});
-
-	it('updates a copyable draft and locks selection until editing exits', () => {
-		const session = selectedSession();
-		session.beginNodeMarkdownEdit(editableNode);
-
-		expect(session.updateDraft('Edited Markdown')).toBe(true);
-		expect(session.updateDraft('Edited Markdown')).toBe(false);
+		expect(session.updateDraft({ markdown: 'Edited Markdown' })).toBe(true);
+		expect(session.updateDraft({ markdown: 'Edited Markdown' })).toBe(false);
+		expect(session.updateDraft({ color: '' })).toBe(false);
 		expect(session.selectEntity(entityRef(EntityKind.Node, 'other'))).toBe(false);
 		expect(session.addEntity(entityRef(EntityKind.Group, 'other'))).toBe(false);
 		expect(session.toggleEntity(node)).toBe(false);
 		expect(session.clearSelection()).toBe(false);
-		expect(session.editing?.draft).toBe('Edited Markdown');
+		expect(session.editing?.draft).toEqual({ ...fields, markdown: 'Edited Markdown' });
 		expect([...session.selection.values()]).toEqual([node]);
 	});
 
-	it('cancels editing before selection and requests immediate keyed focus restoration', () => {
+	it('cancels editing before selection and requests keyed focus restoration', () => {
 		const session = selectedSession();
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Discarded draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Discarded draft' });
 
 		expect(session.cancel()).toBe(true);
 		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
@@ -279,15 +278,16 @@ describe('CanvasSession Markdown editing intents', () => {
 		expect(session.selectionCount).toBe(0);
 	});
 
-	it('keeps editing pending until acceptance and waits for a newer accepted layout', async () => {
+	it('saves the base and draft, then waits for the accepted layout before restoring focus', async () => {
 		const controlled = controlledCommand();
 		const session = selectedSession(controlled.commands);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Accepted Markdown');
+		session.beginNodeEdit(editableNode);
+		const draft = { ...fields, markdown: 'Accepted Markdown' };
+		session.updateDraft({ markdown: draft.markdown });
 
 		const pending = session.saveDraft();
 		expect(session.editing?.saving).toBe(true);
-		expect(session.updateDraft('Too late')).toBe(false);
+		expect(session.updateDraft({ markdown: 'Too late' })).toBe(false);
 		expect(await session.saveDraft()).toBeUndefined();
 		controlled.complete({
 			kind: DocumentCommandOutcomeKind.Accepted,
@@ -295,10 +295,7 @@ describe('CanvasSession Markdown editing intents', () => {
 		});
 		await expect(pending).resolves.toMatchObject({ kind: DocumentCommandOutcomeKind.Accepted });
 
-		expect(controlled.commands.replaceNodeMarkdown).toHaveBeenCalledWith(
-			'shared',
-			'Accepted Markdown',
-		);
+		expect(controlled.commands.saveNode).toHaveBeenCalledWith('shared', fields, draft);
 		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
 		expect(session.awaitingAcceptedLayout).toBe(true);
 		expect(session.focusRestorationTarget).toBeUndefined();
@@ -310,7 +307,7 @@ describe('CanvasSession Markdown editing intents', () => {
 	it('recognizes acceptance after layout wins the acknowledgement race', async () => {
 		const controlled = controlledCommand();
 		const session = selectedSession(controlled.commands);
-		session.beginNodeMarkdownEdit(editableNode);
+		session.beginNodeEdit(editableNode);
 		const pending = session.saveDraft();
 		session.reconcile(entityIndex(node));
 
@@ -324,79 +321,12 @@ describe('CanvasSession Markdown editing intents', () => {
 		expect(session.focusRestorationTarget).toBe(entityKey(EntityKind.Node, editableNode.id));
 	});
 
-	it('keeps the current editor open while saving and hands off to a created node after layout', async () => {
-		const commands = commandPort(() =>
-			Promise.resolve({
-				kind: DocumentCommandOutcomeKind.Accepted,
-				document: validLogicDocument(),
-			}),
-		);
-		const session = selectedSession(commands);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Saved before the handoff');
-
-		await expect(session.saveDraft(false)).resolves.toMatchObject({
-			kind: DocumentCommandOutcomeKind.Accepted,
-		});
-		expect(session.editing).toMatchObject({
-			nodeId: 'shared',
-			baseValue: 'Saved before the handoff',
-			saving: false,
-		});
-
-		expect(session.queueNodeMarkdownEdit({ id: 'created', markdown: '' })).toBe(true);
-		expect([...session.selection.values()]).toEqual([entityRef(EntityKind.Node, 'created')]);
-		expect(session.awaitingAcceptedLayout).toBe(true);
-		expect(session.reconcile(entityIndex(node))).toBe(false);
-		expect(session.editing?.nodeId).toBe('shared');
-
-		const createdRef = entityRef(EntityKind.Node, 'created');
-		const createdIndex: CanvasEntityIndex = new Map([
-			[
-				entityKey(createdRef.kind, createdRef.id),
-				{
-					ref: createdRef,
-					bounds: { x: 1, y: 2, width: 3, height: 4 },
-					navigationPoint: { x: 2.5, y: 4 },
-				},
-			],
-		]);
-		expect(session.reconcile(createdIndex)).toBe(true);
-		expect(session.awaitingAcceptedLayout).toBe(false);
-		expect(session.editing).toMatchObject({
-			nodeId: 'created',
-			draft: '',
-			frozenBounds: { x: 1, y: 2, width: 3, height: 4 },
-		});
-	});
-
-	it('rolls back a queued node creation when its editor is cancelled', () => {
-		const session = selectedSession();
-		const cancelCreation = vi.fn();
-		session.beginNodeMarkdownEdit(editableNode);
-		session.queueNodeMarkdownEdit({ id: 'created', markdown: '' }, cancelCreation);
-
-		expect(session.cancel()).toBe(true);
-		expect(cancelCreation).toHaveBeenCalledOnce();
-		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
-		expect(session.editing).toBeUndefined();
-	});
-
-	it('keeps a queued node creation when its live editor is committed', () => {
-		const session = selectedSession();
-		const cancelCreation = vi.fn();
-		session.queueNodeMarkdownEdit({ id: 'created', markdown: '' }, cancelCreation);
-
-		expect(session.cancel(true)).toBe(true);
-		expect(cancelCreation).not.toHaveBeenCalled();
-	});
-
 	it.each([
 		{
 			name: 'rejection',
 			outcome: {
 				kind: DocumentCommandOutcomeKind.Rejected,
-				diagnostics: [{ code: 'policy', message: 'Markdown rejected', path: ['nodes'] }],
+				diagnostics: [{ code: 'policy', message: 'Node rejected', path: ['nodes'] }],
 			} as const,
 		},
 		{
@@ -412,12 +342,15 @@ describe('CanvasSession Markdown editing intents', () => {
 		},
 	])('preserves draft, selection, and activity after $name', async ({ outcome }) => {
 		const session = selectedSession(commandPort(() => Promise.resolve(outcome)));
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Preserved draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Preserved draft' });
 
 		await session.saveDraft();
 
-		expect(session.editing).toMatchObject({ draft: 'Preserved draft', saving: false });
+		expect(session.editing).toMatchObject({
+			draft: { ...fields, markdown: 'Preserved draft' },
+			saving: false,
+		});
 		expect(session.editing?.diagnostic).toBeTruthy();
 		expect(session.selectionCount).toBe(1);
 		expect(session.announcement).toContain('Could not save node shared');
@@ -427,44 +360,39 @@ describe('CanvasSession Markdown editing intents', () => {
 		const session = selectedSession(
 			commandPort(() => Promise.reject(new Error('Gateway disconnected'))),
 		);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Offline draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Offline draft' });
 
 		expect(await session.saveDraft()).toEqual({
 			kind: DocumentCommandOutcomeKind.Failed,
 			error: new Error('Gateway disconnected'),
 		});
-		expect(session.editing?.draft).toBe('Offline draft');
+		expect(session.editing?.draft).toEqual({ ...fields, markdown: 'Offline draft' });
 		expect(session.editing?.diagnostic).toBe('Gateway disconnected');
 	});
 
 	it('preserves an orphaned draft and selected key when the target is removed', async () => {
-		const commands = commandPort(() =>
-			Promise.resolve({
-				kind: DocumentCommandOutcomeKind.Accepted,
-				document: validLogicDocument(),
-			}),
-		);
+		const commands = commandPort();
 		const session = selectedSession(commands);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Copyable orphaned draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Copyable orphaned draft' });
 
 		expect(session.reconcile(entityIndex())).toBe(true);
 		expect(session.editing).toMatchObject({
-			draft: 'Copyable orphaned draft',
+			draft: { ...fields, markdown: 'Copyable orphaned draft' },
 			availability: CanvasEditAvailability.Deleted,
 		});
 		expect(session.selectionCount).toBe(1);
 		expect(await session.saveDraft()).toBeUndefined();
-		expect(commands.replaceNodeMarkdown).not.toHaveBeenCalled();
+		expect(commands.saveNode).not.toHaveBeenCalled();
 		expect(session.cancel()).toBe(true);
 	});
 
 	it('marks a save/deletion race as deleted and keeps the attempted draft', async () => {
 		const controlled = controlledCommand();
 		const session = selectedSession(controlled.commands);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Racing draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Racing draft' });
 		const pending = session.saveDraft();
 		session.reconcile(entityIndex());
 		controlled.complete({
@@ -480,7 +408,7 @@ describe('CanvasSession Markdown editing intents', () => {
 
 		await pending;
 		expect(session.editing).toMatchObject({
-			draft: 'Racing draft',
+			draft: { ...fields, markdown: 'Racing draft' },
 			availability: CanvasEditAvailability.Deleted,
 			diagnostic: 'Node no longer exists: shared',
 		});
@@ -490,8 +418,8 @@ describe('CanvasSession Markdown editing intents', () => {
 	it('does not let delayed acceptance discard a draft orphaned by reconciliation', async () => {
 		const controlled = controlledCommand();
 		const session = selectedSession(controlled.commands);
-		session.beginNodeMarkdownEdit(editableNode);
-		session.updateDraft('Accepted but orphaned draft');
+		session.beginNodeEdit(editableNode);
+		session.updateDraft({ markdown: 'Accepted but orphaned draft' });
 		const pending = session.saveDraft();
 		session.reconcile(entityIndex());
 		controlled.complete({
@@ -501,7 +429,7 @@ describe('CanvasSession Markdown editing intents', () => {
 
 		await pending;
 		expect(session.editing).toMatchObject({
-			draft: 'Accepted but orphaned draft',
+			draft: { ...fields, markdown: 'Accepted but orphaned draft' },
 			availability: CanvasEditAvailability.Deleted,
 			saving: false,
 			saveId: undefined,
@@ -513,7 +441,7 @@ describe('CanvasSession Markdown editing intents', () => {
 	it('closing a submitted edit preserves the pending command and prevents late UI overwrite', async () => {
 		const controlled = controlledCommand();
 		const session = selectedSession(controlled.commands);
-		session.beginNodeMarkdownEdit(editableNode);
+		session.beginNodeEdit(editableNode);
 		const pending = session.saveDraft();
 		session.cancel();
 		expect(session.announcement).toContain('Submitted change remains pending');
@@ -529,7 +457,7 @@ describe('CanvasSession Markdown editing intents', () => {
 
 	it('drops a pending focus request when its keyed target is absent from accepted layout', () => {
 		const session = selectedSession();
-		session.beginNodeMarkdownEdit(editableNode);
+		session.beginNodeEdit(editableNode);
 		session.cancel();
 
 		expect(session.reconcile(entityIndex())).toBe(true);

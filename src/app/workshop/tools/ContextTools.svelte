@@ -66,7 +66,7 @@
 	scopes={[viewport, bar]}
 	enabled={selected.length === 1 && Boolean(node) && !session.editing}
 	onactivate={() => {
-		if (node) session.beginNodeMarkdownEdit(node);
+		if (node) session.beginNodeEdit(node);
 	}}
 />
 
@@ -111,7 +111,7 @@
 			onclick={() => {
 				if (selected.length !== 1) return;
 				menu = false;
-				if (node) session.beginNodeMarkdownEdit(node);
+				if (node) session.beginNodeEdit(node);
 			}}><Icon name="phosphor:pencil-simple" /><span><u>É</u>diter</span></button
 		>
 		<button

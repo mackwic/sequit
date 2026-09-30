@@ -4,9 +4,15 @@ import * as Y from 'yjs';
 import {
 	connectedNodeCreation,
 	deletion,
+	groupCreation,
+	groupDissolution,
+	groupFields,
+	groupFoldToggle,
+	groupStyleUpdate,
 } from '../../../../src/app/web/document/document-commands';
 import {
 	EndpointKind,
+	GroupState,
 	JunctionOperator,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -186,4 +192,49 @@ it('creates a node before the relations that reference it, in one executable bat
 		markdown: 'New',
 	});
 	expect(result.relations).toEqual(relations);
+});
+
+it('groups siblings with a default name, then dissolves the group keeping its members', () => {
+	const model = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'commands');
+	const grouped = execute(model, [groupCreation('G1', ['A', 'B'])]);
+	expect(grouped.groups).toMatchObject([{ kind: EndpointKind.Group, id: 'G1', label: 'Groupe' }]);
+	expect(grouped.nodes.map(({ groupId }) => groupId)).toEqual(['G1', 'G1']);
+
+	const dissolved = execute(grouped, [groupDissolution('G1')]);
+	expect(dissolved.groups).toEqual([]);
+	expect(dissolved.nodes.map(({ id, groupId }) => [id, groupId])).toEqual([
+		['A', undefined],
+		['B', undefined],
+	]);
+});
+
+it('sends the colour only when it changed, and clears it back to the default', () => {
+	const model = nestedGroups();
+	const group = model.groups.find(({ id }) => id === 'G');
+	if (group === undefined) throw new Error('Expected group G');
+	const base = groupFields(group);
+	expect(base).toEqual({ label: group.label, color: group.color ?? '' });
+
+	expect(groupStyleUpdate('G', base, { ...base, label: 'Renamed' })).toBeUndefined();
+	const coloured = groupStyleUpdate('G', base, { ...base, color: '#123456' });
+	if (coloured === undefined) throw new Error('Expected a colour update');
+	expect(execute(model, [coloured]).groups.find(({ id }) => id === 'G')?.color).toBe('#123456');
+	const cleared = groupStyleUpdate('G', { ...base, color: '#123456' }, { ...base, color: '' });
+	if (cleared === undefined) throw new Error('Expected a colour reset');
+	expect(
+		execute(execute(model, [coloured]), [cleared]).groups.find(({ id }) => id === 'G')?.color,
+	).toBeUndefined();
+});
+
+it('toggles a group between closed and expanded from its current state', () => {
+	const model = nestedGroups();
+	const group = model.groups.find(({ id }) => id === 'G');
+	if (group === undefined) throw new Error('Expected group G');
+	const closed = execute(model, [groupFoldToggle(group)]);
+	const closedGroup = closed.groups.find(({ id }) => id === 'G');
+	expect(closedGroup?.state).toBe(GroupState.Closed);
+	if (closedGroup === undefined) throw new Error('Expected the closed group');
+	expect(
+		execute(closed, [groupFoldToggle(closedGroup)]).groups.find(({ id }) => id === 'G')?.state,
+	).toBe(GroupState.Expanded);
 });

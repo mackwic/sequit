@@ -85,7 +85,7 @@ function projectSharedSnapshot(
 	};
 }
 
-class SharedCanvasProjection implements CanvasProjection {
+export class SharedCanvasProjection implements CanvasProjection {
 	readonly #projection: DocumentProjection;
 	#document: LogicDocument;
 	#sourceState: SourceDocumentState | undefined;

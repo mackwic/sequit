@@ -46,10 +46,15 @@
 		enabled={groupable && onGroup !== undefined}
 		onactivate={() => onGroup?.()}
 	/>
-	<FloatingActions {anchor} label="Selection actions" bind:element={floating}>
+	<FloatingActions
+		{anchor}
+		boundary={viewportElement}
+		label="Actions de la sélection"
+		bind:element={floating}
+	>
 		{#if groupable}
 			<button
-				class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950 disabled:cursor-not-allowed disabled:opacity-50"
+				class="ui-action quiet"
 				type="button"
 				disabled={onGroup === undefined}
 				aria-label={`Grouper ${selectedNodeIds.length} nœuds`}
@@ -63,7 +68,7 @@
 		{/if}
 		{#if onDelete}
 			<button
-				class="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950"
+				class="ui-action quiet"
 				type="button"
 				aria-label={`Supprimer ${session.selectionCount} éléments`}
 				aria-keyshortcuts="Delete"

@@ -23,7 +23,9 @@ it('reads current state for consecutive commands and keeps Y.Text identity and l
 	const store = open();
 	const node = store.ydoc.getMap<Y.Map<unknown>>(YjsCollection.Nodes).get('collecter');
 	const text = node?.get('markdown');
-	await store.opened.replaceNodeMarkdown('collecter', 'Texte récent');
+	const base = store.opened.readNode('collecter');
+	if (base === undefined) throw new Error('Expected the editable node');
+	await store.opened.saveNode('collecter', base, { ...base, markdown: 'Texte récent' });
 	store.commands.renameDocument('Titre récent');
 	store.commands.saveNature({ id: 'review', label: 'Revue', color: '#123456' });
 	store.commands.assignNature('review', new Set(['collecter']));

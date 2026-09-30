@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { EntityKind } from '../../../../../src/app/web/ui/canvas/canvas-entity';
-import {
-	planRelativeNodeCreation,
-	RelativeNodePosition,
-} from '../../../../../src/app/web/ui/canvas/relative-node-creation';
+import { planNodeCreation } from '../../../../../src/app/web/ui/canvas/relative-node-creation';
 import {
 	EndpointKind,
-	JunctionOperator,
 	type LogicDocument,
 } from '../../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
@@ -18,8 +14,28 @@ function ids(lastNatureId?: string) {
 	return { nodeId: 'new', relationId: () => `new-relation-${relation++}`, lastNatureId };
 }
 
-describe('relative node creation', () => {
-	it('creates a child of a node with inherited nature and containment', () => {
+describe('node creation planning', () => {
+	it('creates roots using the last available nature or the first fallback and requested group', () => {
+		const document = validLogicDocument();
+		const lastNatureId = document.natures.at(-1)?.id;
+		if (lastNatureId === undefined) throw new Error('Expected document natures');
+
+		expect(planNodeCreation(document, { groupId: 'container' }, ids(lastNatureId))).toEqual({
+			node: {
+				id: 'new',
+				natureId: lastNatureId,
+				markdown: '',
+				groupId: 'container',
+			},
+			relations: [],
+		});
+		expect(planNodeCreation(document, {}, ids('missing'))).toEqual({
+			node: { id: 'new', natureId: document.natures[0]?.id, markdown: '' },
+			relations: [],
+		});
+	});
+
+	it('creates a child of a node with inherited nature, containment, and one relation', () => {
 		const document: LogicDocument = {
 			...validLogicDocument(),
 			groups: [
@@ -49,10 +65,9 @@ describe('relative node creation', () => {
 		};
 
 		expect(
-			planRelativeNodeCreation(
+			planNodeCreation(
 				document,
-				{ kind: EntityKind.Node, id: 'selected' },
-				RelativeNodePosition.Child,
+				{ target: { kind: EntityKind.Node, id: 'selected' } },
 				ids('first'),
 			),
 		).toEqual({
@@ -61,9 +76,59 @@ describe('relative node creation', () => {
 		});
 	});
 
-	it('creates a graph child of a selected group beside that group in its container', () => {
+	it('creates a sibling with each parent of the target and none for a root target', () => {
+		const base = validLogicDocument();
 		const document: LogicDocument = {
-			...validLogicDocument(),
+			...base,
+			nodes: [
+				...base.nodes,
+				{
+					kind: EndpointKind.Node,
+					id: 'selected',
+					natureId: base.natures[0]?.id ?? '',
+					markdown: 'Selected',
+					layoutOrder: orderKey('a2'),
+				},
+			],
+			relations: [
+				{ id: 'first-parent', from: 'selected', to: 'target' },
+				{ id: 'second-parent', from: 'selected', to: 'endpoint-group' },
+			],
+		};
+
+		expect(
+			planNodeCreation(
+				document,
+				{
+					target: { kind: EntityKind.Node, id: 'selected' },
+					sibling: true,
+				},
+				ids('missing'),
+			),
+		).toMatchObject({
+			node: { natureId: base.natures[0]?.id },
+			relations: [
+				{ id: 'new-relation-0', from: 'new', to: 'target' },
+				{ id: 'new-relation-1', from: 'new', to: 'endpoint-group' },
+			],
+		});
+
+		expect(
+			planNodeCreation(
+				base,
+				{
+					target: { kind: EntityKind.Node, id: 'isolated' },
+					sibling: true,
+				},
+				ids(),
+			),
+		).toMatchObject({ relations: [] });
+	});
+
+	it('preserves the container when the target is inside a group', () => {
+		const base = validLogicDocument();
+		const document: LogicDocument = {
+			...base,
 			groups: [
 				{
 					kind: EndpointKind.Group,
@@ -73,90 +138,36 @@ describe('relative node creation', () => {
 				},
 				{
 					kind: EndpointKind.Group,
-					id: 'selected',
-					label: 'Selected',
+					id: 'inner',
+					label: 'Inner',
 					groupId: 'outer',
 					layoutOrder: orderKey('a1'),
 				},
 			],
-			natures: [
-				{ id: 'first', label: 'First', color: '#111111' },
-				{ id: 'recent', label: 'Recent', color: '#222222' },
-			],
-			nodes: [],
-			junctions: [],
-			relations: [],
-		};
-
-		expect(
-			planRelativeNodeCreation(
-				document,
-				{ kind: EntityKind.Group, id: 'selected' },
-				RelativeNodePosition.Child,
-				ids('recent'),
-			),
-		).toEqual({
-			node: { id: 'new', natureId: 'recent', markdown: '', groupId: 'outer' },
-			relations: [{ id: 'new-relation-0', from: 'new', to: 'selected' }],
-		});
-	});
-
-	it('duplicates every parent for a junction sibling and falls back to the first nature', () => {
-		const base = validLogicDocument();
-		const document: LogicDocument = {
-			...base,
-			junctions: [
+			nodes: [
 				{
-					kind: EndpointKind.Junction,
+					kind: EndpointKind.Node,
 					id: 'selected',
-					operator: JunctionOperator.Xor,
-					layoutOrder: orderKey('a0'),
+					natureId: base.natures[0]?.id ?? '',
+					groupId: 'inner',
+					markdown: 'Selected',
+					layoutOrder: orderKey('a2'),
 				},
 			],
-			relations: [
-				{ id: 'first-parent', from: 'selected', to: 'target' },
-				{ id: 'second-parent', from: 'selected', to: 'endpoint-group' },
-			],
+			junctions: [],
 		};
 
-		const plan = planRelativeNodeCreation(
-			document,
-			{ kind: EntityKind.Junction, id: 'selected' },
-			RelativeNodePosition.Sibling,
-			ids('missing'),
-		);
-		expect(plan?.node.natureId).toBe(document.natures[0]?.id);
-		expect(plan?.relations).toEqual([
-			{ id: 'new-relation-0', from: 'new', to: 'target' },
-			{ id: 'new-relation-1', from: 'new', to: 'endpoint-group' },
-		]);
+		expect(
+			planNodeCreation(document, { target: { kind: EntityKind.Node, id: 'selected' } }, ids())
+				?.node,
+		).toMatchObject({ groupId: 'inner' });
 	});
 
-	it('creates an unconnected root sibling and rejects unavailable targets or natures', () => {
+	it('rejects missing targets and documents without a nature', () => {
 		const document = validLogicDocument();
 		expect(
-			planRelativeNodeCreation(
-				document,
-				{ kind: EntityKind.Node, id: 'isolated' },
-				RelativeNodePosition.Sibling,
-				ids(),
-			),
-		).toMatchObject({ relations: [] });
-		expect(
-			planRelativeNodeCreation(
-				document,
-				{ kind: EntityKind.Relation, id: 'R' },
-				RelativeNodePosition.Child,
-				ids(),
-			),
+			planNodeCreation(document, { target: { kind: EntityKind.Node, id: 'missing' } }, ids()),
 		).toBeUndefined();
-		expect(
-			planRelativeNodeCreation(
-				{ ...document, natures: [] },
-				{ kind: EntityKind.Junction, id: 'choice' },
-				RelativeNodePosition.Child,
-				ids(),
-			),
-		).toBeUndefined();
+		expect(planNodeCreation({ ...document, natures: [] }, {}, ids())).toBeUndefined();
 	});
 });

@@ -11,7 +11,6 @@ export interface WorkshopViewSettings {
 	collapsed: string[];
 	spacing: number;
 }
-export type EditorPlacement = 'overlay' | 'panel';
 export interface WorkshopInitialState {
 	readonly zoom: number;
 	readonly selection: readonly EntityRef[];

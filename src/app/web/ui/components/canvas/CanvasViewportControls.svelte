@@ -6,31 +6,32 @@
 </script>
 
 <div
-	class="absolute right-4 bottom-4 z-20 flex items-center gap-1 rounded-lg border border-stone-200 bg-white p-1 shadow-sm"
-	aria-label="Canvas zoom"
+	class="absolute right-4 bottom-4 z-20 flex items-center gap-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm"
+	role="group"
+	aria-label="Zoom du canvas"
 >
 	<button
-		class="grid size-8 place-items-center rounded-md text-stone-500 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950 disabled:cursor-not-allowed disabled:opacity-40"
+		class="ui-action quiet"
 		type="button"
-		aria-label="Zoom out"
+		aria-label="Zoom arrière"
 		disabled={!session.canZoomOut}
 		onclick={() => session.zoomOut()}
 	>
 		<Icon name="phosphor:minus" />
 	</button>
 	<button
-		class="w-12 rounded-md py-2 text-center text-xs font-medium text-stone-600 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950"
+		class="ui-action quiet min-w-12"
 		type="button"
-		aria-label="Reset zoom"
-		title="Reset zoom to 100%"
+		aria-label="Réinitialiser le zoom"
+		title="Revenir à 100 %"
 		onclick={() => session.resetZoom()}
 	>
 		{session.zoomPercentage}%
 	</button>
 	<button
-		class="grid size-8 place-items-center rounded-md text-stone-500 hover:bg-stone-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-950 disabled:cursor-not-allowed disabled:opacity-40"
+		class="ui-action quiet"
 		type="button"
-		aria-label="Zoom in"
+		aria-label="Zoom avant"
 		disabled={!session.canZoomIn}
 		onclick={() => session.zoomIn()}
 	>

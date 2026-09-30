@@ -98,7 +98,7 @@ test('node body offers inline emphasis while its description has separate rich e
 	await details.press('ControlOrMeta+a');
 	await description.getByRole('button', { name: 'Gras', exact: true }).click();
 	await expect(details.locator('strong')).toHaveText('Des précisions');
-	await page.getByRole('button', { name: 'Fermer', exact: true }).click();
+	await details.press('Escape');
 	await expect(page.locator('[data-node-id="A"]')).toHaveAccessibleName('Action Alpha');
 	await page.getByRole('button', { name: 'Modifier Boîte A', exact: true }).click();
 	await expect(content.locator('u')).toHaveText('Alpha');

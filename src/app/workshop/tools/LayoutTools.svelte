@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 
-	import { defined, LAYOUT_DIRECTIONS, LayoutDirection } from '$lib/core/document/logic-document';
+	import {
+		defined,
+		LAYOUT_DIRECTIONS,
+		type LayoutDirection,
+	} from '$lib/core/document/logic-document';
 
+	import { layoutDirectionLabels } from '../../web/ui/canvas/layout-direction-labels';
 	import Icon from '../../web/ui/components/ui/Icon.svelte';
 	import type { WorkbenchToolProps } from '../workshop-types';
 	let { model, workbench, view, setView, presentation, report }: WorkbenchToolProps = $props();
@@ -60,11 +65,9 @@
 				changeDirection(event.currentTarget.value);
 			}}
 		>
-			<option value={LayoutDirection.TopToBottom}>De haut en bas</option><option
-				value={LayoutDirection.BottomToTop}>De bas en haut</option
-			><option value={LayoutDirection.LeftToRight}>De gauche à droite</option><option
-				value={LayoutDirection.RightToLeft}>De droite à gauche</option
-			>
+			{#each LAYOUT_DIRECTIONS as option (option)}<option value={option}
+					>{layoutDirectionLabels[option]}</option
+				>{/each}
 		</select></label
 	>
 	<label

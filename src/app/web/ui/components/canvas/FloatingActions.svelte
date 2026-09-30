@@ -11,6 +11,7 @@
 	let {
 		anchor,
 		trigger,
+		boundary,
 		fixed = false,
 		menu = false,
 		label,
@@ -20,6 +21,7 @@
 	}: {
 		anchor: ReferenceElement | undefined;
 		trigger?: HTMLElement | undefined;
+		boundary?: Element | undefined;
 		fixed?: boolean;
 		menu?: boolean;
 		label: string;
@@ -31,6 +33,7 @@
 		const bar = element;
 		const reference = anchor;
 		if (!bar || !reference || fixed) return;
+		const overflow = { boundary: boundary ?? 'clippingAncestors', padding: 12 } as const;
 		let active = true;
 		let revision = 0;
 		const stop = autoUpdate(
@@ -41,7 +44,7 @@
 				void computePosition(reference, bar, {
 					strategy: 'fixed',
 					placement: 'top',
-					middleware: [offset(10), flip(), shift({ padding: 12 })],
+					middleware: [offset(10), flip(overflow), shift({ ...overflow, crossAxis: true })],
 				}).then(({ x, y }) => {
 					if (!active || request !== revision) return;
 					bar.style.left = `${x}px`;
@@ -119,8 +122,8 @@
 		padding: 6px;
 		border: 1px solid var(--ui-border);
 		border-radius: 12px;
-		background: white;
-		box-shadow: 0 10px 30px #0002;
+		background: var(--ui-surface);
+		box-shadow: var(--ui-shadow);
 	}
 	.floating-actions.fixed {
 		position: absolute;

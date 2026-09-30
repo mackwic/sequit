@@ -296,21 +296,28 @@ describe('openDocument', () => {
 		});
 	});
 
-	it('forwards typed Markdown replacement and reprojects through the narrow opened port', async () => {
+	it('saves changed Markdown through the node text and reprojects the accepted document', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
 		const updates = vi.fn();
 		result.value.subscribe(updates);
+		const base = result.value.readNode('traceable-edits');
+		if (base === undefined) throw new Error('Expected the editable node');
 
-		const outcome = await result.value.replaceNodeMarkdown(
-			'traceable-edits',
-			'Opened-document replacement',
-		);
+		const outcome = await result.value.saveNode('traceable-edits', base, {
+			...base,
+			markdown: 'Opened-document replacement',
+		});
 		const canvas = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
 
 		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		if (outcome.kind !== DocumentCommandOutcomeKind.Accepted)
+			throw new Error('Expected acceptance');
+		expect(outcome.document.nodes.find(({ id }) => id === 'traceable-edits')?.markdown).toBe(
+			'Opened-document replacement',
+		);
 		expect(
 			result.value.measurementModel.nodes.find(({ id }) => id === 'traceable-edits')?.markdown,
 		).toBe('Opened-document replacement');
@@ -318,6 +325,67 @@ describe('openDocument', () => {
 			'Opened-document replacement',
 		);
 		expect(updates).toHaveBeenCalledOnce();
+	});
+
+	it('notifies subscribers of a title-only change and folds a closed group locally', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const updates = vi.fn();
+		result.value.subscribe(updates);
+
+		expect(
+			result.value.session.updateText(
+				{ kind: SharedElementKind.Document, id: result.value.read().id },
+				'title',
+				'Titre renommé',
+			),
+		).toBe(true);
+		expect(updates).toHaveBeenCalledOnce();
+		expect(result.value.read().title).toBe('Titre renommé');
+
+		const members = result.value.read().nodes.filter(({ groupId }) => groupId === 'use-cases');
+		const closed = await result.value.session.dispatch([
+			{
+				op: SharedCommandKind.Update,
+				target: { kind: SharedElementKind.Group, id: 'use-cases' },
+				set: { state: GroupState.Closed },
+				unset: [],
+			},
+		]);
+		expect(closed.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		expect(result.value.measurementModel.nodes.map(({ id }) => id)).not.toContain(members[0]?.id);
+		const canvas = await result.value.createCanvasModel(
+			layoutMeasurementsForCanvas(result.value.measurementModel),
+		);
+		expect(canvas.groups.find(({ id }) => id === 'use-cases')?.state).toBe(GroupState.Closed);
+		expect(canvas.nodes).toHaveLength(result.value.read().nodes.length - members.length);
+		expect(result.value.read().nodes).toHaveLength(24);
+	});
+
+	it('dispatches one Update when only the node colour changes', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const base = result.value.readNode('traceable-edits');
+		if (base === undefined) throw new Error('Expected the editable node');
+		const dispatch = vi.spyOn(result.value.session, 'dispatch');
+
+		const outcome = await result.value.saveNode('traceable-edits', base, {
+			...base,
+			color: '#123456',
+		});
+
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Accepted);
+		expect(dispatch).toHaveBeenCalledExactlyOnceWith([
+			{
+				op: SharedCommandKind.Update,
+				target: { kind: SharedElementKind.Node, id: 'traceable-edits' },
+				set: { color: '#123456' },
+				unset: [],
+			},
+		]);
+		expect(result.value.read().nodes.find(({ id }) => id === 'traceable-edits')?.color).toBe(
+			'#123456',
+		);
 	});
 
 	it('forwards group presentation updates and reprojects the canvas group', async () => {
@@ -354,24 +422,37 @@ describe('openDocument', () => {
 		const later = vi.fn();
 		result.value.subscribe(later);
 
-		await result.value.replaceNodeMarkdown('traceable-edits', 'Subscriber isolation');
+		const base = result.value.readNode('traceable-edits');
+		if (base === undefined) throw new Error('Expected the editable node');
+		await result.value.saveNode('traceable-edits', base, {
+			...base,
+			markdown: 'Subscriber isolation',
+		});
 
 		expect(isolated).toHaveBeenCalledOnce();
 		expect(skipped).not.toHaveBeenCalled();
 		expect(later).toHaveBeenCalledOnce();
 	});
 
-	it('returns typed missing and closed rejections without widening opened-document access', async () => {
+	it('rejects missing-node and closed-session edits and reads a missing node as undefined', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
+		const base = result.value.readNode('traceable-edits');
+		if (base === undefined) throw new Error('Expected the editable node');
 
-		await expect(result.value.replaceNodeMarkdown('missing', 'Ignored')).resolves.toMatchObject({
+		expect(result.value.readNode('missing')).toBeUndefined();
+		await expect(
+			result.value.saveNode('missing', base, { ...base, markdown: 'Ignored' }),
+		).resolves.toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
 			diagnostics: [{ code: 'node-not-found' }],
 		});
 		result.value.destroy();
 		await expect(
-			result.value.replaceNodeMarkdown('traceable-edits', 'Ignored after close'),
+			result.value.saveNode('traceable-edits', base, {
+				...base,
+				markdown: 'Ignored after close',
+			}),
 		).resolves.toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
 			diagnostics: [{ code: 'document-session-closed' }],

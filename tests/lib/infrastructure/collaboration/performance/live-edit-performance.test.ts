@@ -22,6 +22,7 @@ import {
 	writeSyncResponse,
 } from '../../../../../src/lib/infrastructure/collaboration/sync-steps';
 import { importLogicDocument } from '../../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { SharedElementKind } from '../../../../../src/lib/infrastructure/document/shared-document-command';
 import { validLogicDocument } from '../../../../support/builders/logic-document';
 import { createMemoryTransportPair } from '../../../../support/harnesses/memory-transport';
 import { median } from '../../../../support/performance/performance-statistics';
@@ -94,12 +95,22 @@ describe('collaborative live-edit performance', { concurrent: false }, () => {
 		const scenario = 'Markdown replacement in a 3,200-node repository document';
 		try {
 			for (let index = 0; index < WARMUP_RUNS; index += 1)
-				expect(session.replaceNodeMarkdown('source-a', `repository warmup ${index}`)).toBe(true);
+				expect(
+					session.updateText(
+						{ kind: SharedElementKind.Node, id: 'source-a' },
+						'markdown',
+						`repository warmup ${index}`,
+					),
+				).toBe(true);
 
 			const durations: number[] = [];
 			for (let index = 0; index < SAMPLE_RUNS; index += 1) {
 				const started = performance.now();
-				const updated = session.replaceNodeMarkdown('source-a', `repository sample ${index}`);
+				const updated = session.updateText(
+					{ kind: SharedElementKind.Node, id: 'source-a' },
+					'markdown',
+					`repository sample ${index}`,
+				);
 				durations.push(performance.now() - started);
 				expect(updated).toBe(true);
 			}
@@ -128,14 +139,22 @@ describe('collaborative live-edit performance', { concurrent: false }, () => {
 		try {
 			expect(participant.connectionStatus()).toBe(CollaborationStatus.Ready);
 			for (let index = 0; index < WARMUP_RUNS; index += 1)
-				expect(participant.replaceNodeMarkdown('source-a', `participant warmup ${index}`)).toBe(
-					true,
-				);
+				expect(
+					participant.updateText(
+						{ kind: SharedElementKind.Node, id: 'source-a' },
+						'markdown',
+						`participant warmup ${index}`,
+					),
+				).toBe(true);
 
 			const durations: number[] = [];
 			for (let index = 0; index < SAMPLE_RUNS; index += 1) {
 				const started = performance.now();
-				const updated = participant.replaceNodeMarkdown('source-a', `participant sample ${index}`);
+				const updated = participant.updateText(
+					{ kind: SharedElementKind.Node, id: 'source-a' },
+					'markdown',
+					`participant sample ${index}`,
+				);
 				durations.push(performance.now() - started);
 				expect(updated).toBe(true);
 			}
@@ -149,7 +168,7 @@ describe('collaborative live-edit performance', { concurrent: false }, () => {
 				details: {
 					warmupRuns: WARMUP_RUNS,
 					samples: durations,
-					path: 'CollaborativeSession.replaceNodeMarkdown -> TextUpdateBuffer.push + readSourceDocumentState',
+					path: 'DocumentSession.updateText -> TextUpdateBuffer.push + readSourceDocumentState',
 					budgetScope: 'local web session; worker authorization and persistence excluded',
 					transportLatencyIncluded: false,
 				},

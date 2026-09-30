@@ -7,7 +7,7 @@
 		isUnclaimedKeyboardEvent,
 		isUnmodifiedKeyboardEvent,
 	} from '../../canvas/canvas-event-guard';
-	import { RelativeNodePosition } from '../../canvas/relative-node-creation';
+	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { selectionInsideEnvelope } from '../../canvas/selection-envelope';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 
@@ -17,15 +17,14 @@
 		oncreate,
 		onconnect,
 		ondelete,
-		oncreaterelative,
 		children,
 	}: {
 		session: CanvasSession;
 		enabled: boolean;
-		oncreate: (groupId?: string) => void;
+		/** A new box: a root on the double-clicked background, or attached to the selection with N. */
+		oncreate: (request: NodeCreationRequest) => void;
 		onconnect: (from: string, to: string) => void;
 		ondelete: () => void;
-		oncreaterelative: (position: RelativeNodePosition) => void;
 		children: Snippet;
 	} = $props();
 	let surface: HTMLDivElement;
@@ -223,7 +222,8 @@
 		)
 			return;
 		event.preventDefault();
-		oncreate(groupId);
+		session.clearSelection();
+		oncreate({ groupId });
 	}
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && (drag || marquee)) {
@@ -238,25 +238,31 @@
 		if ((event.key === 'Backspace' || event.key === 'Delete') && session.selectionCount > 0) {
 			event.preventDefault();
 			ondelete();
+			return;
+		}
+		if (event.key.toLowerCase() === 'n' && !event.repeat) {
+			event.preventDefault();
+			oncreate({ target: session.relativeNodeCreationTarget });
 		}
 	}
-	function relativeKeydown(event: KeyboardEvent) {
+	/** The sibling chord stays while its future is undecided; a child is created with N. */
+	function siblingKeydown(event: KeyboardEvent) {
+		const target = session.relativeNodeCreationTarget;
 		if (
 			!enabled ||
 			!isUnclaimedKeyboardEvent(event) ||
 			event.code !== 'Enter' ||
 			(!event.ctrlKey && !event.metaKey) ||
+			!event.shiftKey ||
 			event.altKey ||
 			!(event.target instanceof Node) ||
 			!surface.contains(event.target) ||
-			session.relativeNodeCreationTarget === undefined
+			target === undefined
 		)
 			return;
 		event.preventDefault();
 		event.stopPropagation();
-		let position = RelativeNodePosition.Child;
-		if (event.shiftKey) position = RelativeNodePosition.Sibling;
-		oncreaterelative(position);
+		oncreate({ target, sibling: true });
 	}
 </script>
 
@@ -265,7 +271,7 @@
 	onpointerup={up}
 	onpointercancel={clear}
 	onblur={clear}
-	onkeydowncapture={relativeKeydown}
+	onkeydowncapture={siblingKeydown}
 />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div

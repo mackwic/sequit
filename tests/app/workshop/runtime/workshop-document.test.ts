@@ -54,7 +54,9 @@ describe('workshop document operations', () => {
 	it('undoes and redoes both mature and experimental edits', async () => {
 		const store = open();
 		const original = store.text();
-		await store.opened.replaceNodeMarkdown('comparer', 'Un autre contenu');
+		const base = store.opened.readNode('comparer');
+		if (base === undefined) throw new Error('Expected the editable node');
+		await store.opened.saveNode('comparer', base, { ...base, markdown: 'Un autre contenu' });
 		expect(store.history.canUndo()).toBe(true);
 		store.history.undo();
 		expect(store.text()).toBe(original);
