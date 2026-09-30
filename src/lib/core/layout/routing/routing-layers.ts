@@ -51,26 +51,40 @@ export function layerLinks(
 		sourceOffsets,
 		targetOffsets,
 	});
-	return graph.relations
+	const links = graph.relations
 		.filter(({ relation, source, target }) => {
 			if (source.kind !== EndpointKind.Group && target.kind !== EndpointKind.Group) return true;
 			return defined(layers.byId.get(relation.from)) > defined(layers.byId.get(relation.to));
 		})
-		.map(({ relation, target }) => {
-			const sourceLayer = defined(layers.byId.get(relation.from));
-			const targetLayer = defined(layers.byId.get(relation.to));
-			let passage;
-			if (sourceLayer > targetLayer + 1) {
-				passage = localPassage(relation) ?? arrivals.get(relation.to);
-				if (passage === undefined) {
-					outside += RAIL_SPACING;
-					passage = outside;
-				}
-			}
-			if (passage !== undefined && target.kind === EndpointKind.Junction)
-				arrivals.set(relation.to, passage);
-			return { relation, sourceLayer, targetLayer, passage };
-		});
+		.map(({ relation, target }) => ({
+			relation,
+			target,
+			sourceLayer: defined(layers.byId.get(relation.from)),
+			targetLayer: defined(layers.byId.get(relation.to)),
+		}));
+	const passages = new Map<LogicRelation, number>();
+	// Nested spans stay nested: a shorter relation takes the nearer passage before a longer one.
+	const long = links
+		.filter(({ sourceLayer, targetLayer }) => sourceLayer > targetLayer + 1)
+		.toSorted(
+			(left, right) =>
+				left.sourceLayer - left.targetLayer - (right.sourceLayer - right.targetLayer),
+		);
+	for (const { relation, target } of long) {
+		let passage = localPassage(relation) ?? arrivals.get(relation.to);
+		if (passage === undefined) {
+			outside += RAIL_SPACING;
+			passage = outside;
+		}
+		if (target.kind === EndpointKind.Junction) arrivals.set(relation.to, passage);
+		passages.set(relation, passage);
+	}
+	return links.map(({ relation, sourceLayer, targetLayer }) => ({
+		relation,
+		sourceLayer,
+		targetLayer,
+		passage: passages.get(relation),
+	}));
 }
 
 export function layerExtent(

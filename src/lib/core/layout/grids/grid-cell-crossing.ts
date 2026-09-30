@@ -143,7 +143,6 @@ export function crossingIncidence(
 			byEndpoint.set(id, incident);
 		}
 	}
-	for (const incident of byEndpoint.values()) incident.sort(compareCanonicalStrings);
 	return byEndpoint;
 }
 

@@ -42,8 +42,8 @@ describe('shared lane allocation search', () => {
 		expect(new Set(products.map(({ key }) => key)).size).toBe(4);
 		expect(products[0]?.allocations.map(({ trackByKey }) => [...trackByKey])).toEqual([
 			[
-				['a-to-b', 0],
 				['b-to-a', 1],
+				['a-to-b', 0],
 			],
 			[['a-to-b', 0]],
 		]);
@@ -59,8 +59,32 @@ describe('shared lane allocation search', () => {
 			),
 			domain('rail', ['a-to-b'], [['a-to-b', 0]], 2),
 		];
-		expect([...trackAllocationProducts(permutedDomains)].map(({ key }) => key)).toEqual(
-			products.map(({ key }) => key),
+		expect([...trackAllocationProducts(permutedDomains)].map(({ key }) => key).sort()).toEqual(
+			products.map(({ key }) => key).sort(),
+		);
+	});
+
+	it('keeps allocation tie keys independent of relation IDs at each documentary position', () => {
+		const original = domain(
+			'gutter',
+			['z-route', 'a-route'],
+			[
+				['z-route', 0],
+				['a-route', 1],
+			],
+			2,
+		);
+		const renamed = domain(
+			'gutter',
+			['first-relation', 'second-relation'],
+			[
+				['first-relation', 0],
+				['second-relation', 1],
+			],
+			2,
+		);
+		expect([...trackAllocationProducts([renamed])].map(({ key }) => key)).toEqual(
+			[...trackAllocationProducts([original])].map(({ key }) => key),
 		);
 	});
 

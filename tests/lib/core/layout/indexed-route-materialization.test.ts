@@ -3,12 +3,17 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { WideBipartiteLayersScenarioBuilder } from '../../../../src/app/workshop/fixtures/layout-performance/builders/wide-bipartite-layers-scenario';
+import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { buildLayoutResult } from '../../../../src/lib/core/layout/build-layout-result';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
-import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import {
+	layoutWithDedicatedEngine,
+	layoutWithDedicatedEngineForProjection,
+} from '../../../../src/lib/core/layout/layout-engine';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
+import { ChannelRoutingCache } from '../../../../src/lib/core/layout/routing/channel-routing-cache';
 import { applyNodeRouting } from '../../../../src/lib/core/layout/routing/materialize-node-routes';
 import { allocatePorts } from '../../../../src/lib/core/layout/routing/port-allocation';
 import { planNodeRouting } from '../../../../src/lib/core/layout/routing/reserve-node-routing';
@@ -142,7 +147,7 @@ describe('indexed channel route materialization', () => {
 		}
 	});
 
-	it('does not certify reordered or repeated direct graph relations', () => {
+	it('certifies graph relations in any order, but not repeated ones', () => {
 		const { graph, bounds } = crossingFixture(true);
 		const ranks = new Map<string, number>([
 			['source-a', 1],
@@ -152,13 +157,16 @@ describe('indexed channel route materialization', () => {
 		]);
 		const first = graph.relations[0];
 		if (first === undefined) throw new Error('Expected a fixture relation');
-		for (const relations of [[first, ...graph.relations], graph.relations.toReversed()]) {
+		for (const [relations, certified] of [
+			[graph.relations.toReversed(), true],
+			[[first, ...graph.relations], false],
+		] as const) {
 			const directGraph = { ...graph, relations };
 			const corridors = crossingCorridors({ graph: directGraph, ranks, bounds, vertical: true });
 			expect(corridors.length).toBeGreaterThan(0);
 			expect(
 				corridors.every((corridor) => corridorCarriesCanonicalIndexes(corridor, directGraph)),
-			).toBe(false);
+			).toBe(certified);
 		}
 	});
 
@@ -177,7 +185,11 @@ describe('indexed channel route materialization', () => {
 		const direct = buildLayoutResult({ ...common, routing: emptyRouting });
 		expect(direct).toEqual(buildLayoutResult({ ...common, routing: undefined }));
 		expect(direct.relations.map(({ id }) => id)).toEqual(
-			graph.relations.map(({ relation }) => relation.id),
+			graph.relations.map(({ relation }) => relation.id).toSorted(compareCanonicalStrings),
+		);
+		const reorderedGraph = { ...graph, relations: graph.relations.toReversed() };
+		expect(buildLayoutResult({ ...common, graph: reorderedGraph, routing: emptyRouting })).toEqual(
+			direct,
 		);
 		expect(direct.relations.find(({ id }) => id === 'source-a-target')?.points).toEqual([
 			{ x: 40, y: 120 },
@@ -185,6 +197,61 @@ describe('indexed channel route materialization', () => {
 			{ x: 140, y: 90 },
 			{ x: 140, y: 60 },
 		]);
+	});
+
+	it('updates cached public relation order across projection edits', () => {
+		const { graph } = crossingFixture(true);
+		const channels = new ChannelRoutingCache();
+		const initial = prepareLayoutDocument(graph.document);
+		const first = layoutWithDedicatedEngineForProjection(
+			initial.graph,
+			initial.ranks,
+			initial.measurements,
+			{ channels },
+		);
+		expect(first.relations.map(({ id }) => id)).toEqual(
+			graph.document.relations.map(({ id }) => id).toSorted(compareCanonicalStrings),
+		);
+
+		const addedRelations = [
+			{ id: 'a-added-parallel', from: 'source-a', to: 'target' },
+			{ id: 'source-b-new', from: 'source-b', to: 'target' },
+		];
+		const addedDocument = {
+			...graph.document,
+			relations: [...graph.document.relations, ...addedRelations],
+		};
+		const added = prepareLayoutDocument(addedDocument);
+		const incrementalAdd = layoutWithDedicatedEngineForProjection(
+			added.graph,
+			added.ranks,
+			added.measurements,
+			{ channels },
+		);
+		expect(incrementalAdd).toEqual(
+			layoutWithDedicatedEngine(added.graph, added.ranks, added.measurements),
+		);
+		expect(incrementalAdd.relations.map(({ id }) => id)).toEqual(
+			addedDocument.relations.map(({ id }) => id).toSorted(compareCanonicalStrings),
+		);
+
+		const removedDocument = {
+			...addedDocument,
+			relations: addedDocument.relations.filter(({ id }) => id !== 'source-b-isolated'),
+		};
+		const removed = prepareLayoutDocument(removedDocument);
+		const incrementalRemove = layoutWithDedicatedEngineForProjection(
+			removed.graph,
+			removed.ranks,
+			removed.measurements,
+			{ channels },
+		);
+		expect(incrementalRemove).toEqual(
+			layoutWithDedicatedEngine(removed.graph, removed.ranks, removed.measurements),
+		);
+		expect(incrementalRemove.relations.map(({ id }) => id)).toEqual(
+			removedDocument.relations.map(({ id }) => id).toSorted(compareCanonicalStrings),
+		);
 	});
 
 	it('preserves the full dense adjacent-rank result', () => {

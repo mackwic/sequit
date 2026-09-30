@@ -155,8 +155,8 @@ describe('shared lane allocation search property', () => {
 						trackByKey: new Map([...entry.baseline.trackByKey].reverse()),
 					},
 				}));
-				expect([...trackAllocationProducts(permuted)].map(({ key }) => key)).toEqual(
-					actual.map(({ key }) => key),
+				expect([...trackAllocationProducts(permuted)].map(({ key }) => key).sort()).toEqual(
+					actual.map(({ key }) => key).sort(),
 				);
 			}),
 			PROPERTY_PARAMETERS,

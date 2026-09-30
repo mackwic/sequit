@@ -30,7 +30,10 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import {
+	incidentEndpointPositions,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { nestedRegionLocalMeasurements } from '../../../../src/lib/core/layout/regions/recursive/nested-region-local-measurements';
 import {
 	solveRecursiveNestedRegionLayout,
@@ -76,6 +79,7 @@ describe('recursive region model and row policy', () => {
 			model: normalized.model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(
 				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 			),
@@ -119,6 +123,7 @@ describe('recursive region model and row policy', () => {
 			model: normalized.model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(),
 		};
 		const document = leafDocument(context, 'left');

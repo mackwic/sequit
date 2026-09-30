@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import { RAIL_SPACING } from '../layout-settings';
 import { untangleChannelRails } from './channel-crossings';
@@ -280,10 +279,8 @@ export function routeOwnedChannel(
 			if (shared) sharedEndpoints = true;
 			return wire.source !== wire.target || shared;
 		})
-		.sort((a, b) => {
-			const difference = a.source - b.source || a.target - b.target;
-			return difference || compareCanonicalStrings(a.id, b.id);
-		});
+		// Wires at the same coordinates keep the caller's documentary order, never their ids.
+		.sort((a, b) => a.source - b.source || a.target - b.target);
 	const arrivals = mergeRuns(
 		moving,
 		makeRuns(moving, sharedEndpoints, nonInverted),

@@ -97,6 +97,35 @@ describe('the bridge oracle', () => {
 		]);
 	});
 
+	it('keeps the bridge carrier fixed when a crossing route id changes', () => {
+		const firstVertical = relation('v1', [
+			{ x: 100, y: 0 },
+			{ x: 100, y: 200 },
+		]);
+		const secondVertical = relation('v2', [
+			{ x: 140, y: 0 },
+			{ x: 140, y: 200 },
+		]);
+		const originalCarrier = routeBridgeAnalysis([
+			relation('a-h', [
+				{ x: 0, y: 100 },
+				{ x: 200, y: 100 },
+			]),
+			firstVertical,
+			secondVertical,
+		]).bridges.find(({ x }) => x === 100)?.carrierIds;
+		const renamedCarrier = routeBridgeAnalysis([
+			relation('z-h', [
+				{ x: 0, y: 100 },
+				{ x: 200, y: 100 },
+			]),
+			firstVertical,
+			secondVertical,
+		]).bridges.find(({ x }) => x === 100)?.carrierIds;
+		expect(originalCarrier).toEqual(['v1']);
+		expect(renamedCarrier).toEqual(originalCarrier);
+	});
+
 	it('does not carry a prior candidate bridge into a different route set', () => {
 		const crossing = [horizontalCrossing, verticalCrossing];
 		const disjoint = [

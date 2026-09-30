@@ -168,33 +168,34 @@ describe('per-projection local region layout cache', () => {
 		};
 		const contracts = [outgoing, incoming];
 		const base = regionLocalLayoutKey(local, measurements);
-		expect(base).toBe(regionLocalLayoutKey(local, measurements, undefined, []));
-		const key = regionLocalLayoutKey(local, measurements, undefined, contracts);
+		expect(base).toBe(regionLocalLayoutKey(local, measurements, undefined, { contracts: [] }));
+		const key = regionLocalLayoutKey(local, measurements, undefined, { contracts });
+		// Input permutations canonicalize to the same documentary incident order.
 		expect(key).toBe(
-			regionLocalLayoutKey(local, measurements, undefined, [...contracts].reverse()),
+			regionLocalLayoutKey(local, measurements, undefined, {
+				contracts: [...contracts].reverse(),
+			}),
 		);
 		expect(key).not.toBe(base);
 		expect(key).not.toBe(
-			regionLocalLayoutKey(local, measurements, undefined, [
-				{ ...outgoing, allowedSides: [...outgoing.allowedSides].reverse() },
-				incoming,
-			]),
+			regionLocalLayoutKey(local, measurements, undefined, {
+				contracts: [{ ...outgoing, allowedSides: [...outgoing.allowedSides].reverse() }, incoming],
+			}),
 		);
 		expect(key).not.toBe(
-			regionLocalLayoutKey(local, measurements, undefined, [
-				{ ...outgoing, relation: { ...outgoing.relation, to: 'another' } },
-				incoming,
-			]),
+			regionLocalLayoutKey(local, measurements, undefined, {
+				contracts: [{ ...outgoing, relation: { ...outgoing.relation, to: 'another' } }, incoming],
+			}),
 		);
 		const selfRelation = { id: 'self', from: 'a-target', to: 'a-target' };
 		expect(
-			regionLocalLayoutKey(local, measurements, undefined, [
-				{ ...outgoing, relation: selfRelation },
-			]),
+			regionLocalLayoutKey(local, measurements, undefined, {
+				contracts: [{ ...outgoing, relation: selfRelation }],
+			}),
 		).not.toBe(
-			regionLocalLayoutKey(local, measurements, undefined, [
-				{ ...outgoing, relation: selfRelation, role: RegionIncidentRole.Target },
-			]),
+			regionLocalLayoutKey(local, measurements, undefined, {
+				contracts: [{ ...outgoing, relation: selfRelation, role: RegionIncidentRole.Target }],
+			}),
 		);
 		const cache = new RegionLocalLayoutCache();
 		let calculations = 0;
@@ -250,7 +251,7 @@ describe('per-projection local region layout cache', () => {
 		const hit = cache.getOrComputeContract({
 			document: local,
 			measurements,
-			contracts: [...contracts].reverse(),
+			contracts,
 			compute: calculate,
 		});
 		expect(calculations).toBe(1);
@@ -258,6 +259,13 @@ describe('per-projection local region layout cache', () => {
 		expect(hit.incidents?.[0]?.portal.y).toBe(10);
 		expect(hit.incidents?.[0]?.points[0]?.x).toBe(1);
 		expect(hit.witness?.rejectedAlternatives[0]?.reason).toBeUndefined();
+		cache.getOrComputeContract({
+			document: local,
+			measurements,
+			contracts: [...contracts].reverse(),
+			compute: calculate,
+		});
+		expect(calculations).toBe(1);
 	});
 
 	it('retains at most twelve bounded child results and keeps callers from mutating entries', () => {

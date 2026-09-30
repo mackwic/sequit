@@ -41,7 +41,10 @@ import {
 	type RegionLayoutSelected,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionIncidentUnknownCode } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import {
+	incidentEndpointPositions,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import {
 	RegionCompositionSearchCode,
@@ -392,7 +395,7 @@ describe('persisted composed incident bridge selection', () => {
 			expect(validateNestedRegionLeafIncidents(model.model, candidate)).toBeUndefined();
 		}
 		expect(validatedBridges(bridged.layout.relations)).toMatchObject([
-			{ carrierIds: ['lane-local'], crossedIds: ['cross'] },
+			{ carrierIds: ['cross'], crossedIds: ['lane-local'] },
 		]);
 		expect(validatedBridges(unbridged.layout.relations)).toEqual([]);
 		expect(layoutRouteCost(bridged.layout)).toEqual({
@@ -413,6 +416,7 @@ describe('persisted composed incident bridge selection', () => {
 			model: model.model,
 			measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(preparedGraph.document),
 			ownershipByRelationId: new Map(
 				model.model.relations.map((owned) => [owned.relation.id, owned]),
 			),
@@ -641,12 +645,19 @@ describe('persisted composed incident bridge selection', () => {
 			indices: [0, 0],
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
-		expect(cold.searchWitness?.bestDetour).toBeDefined();
-		expect(cold.searchWitness?.bestDetour).toEqual(layoutRouteCost(cold.layout));
-		expect(cold.searchWitness?.bestBridge?.routeLength).toBeGreaterThan(
-			layoutRouteCost(cold.layout).routeLength,
-		);
+		// The geometry-first product search reaches a cheaper bridge-free detour within its budget.
+		expect(cold.searchWitness?.bestDetour).toEqual({
+			area: 888704,
+			bends: 14,
+			routeLength: 2606.6666666666665,
+		});
+		expect(cold.searchWitness?.bestBridge).toEqual({
+			area: 888704,
+			bends: 14,
+			routeLength: 2710.6666666666665,
+		});
 		expect(cold.searchWitness?.bestBridgeIndices).toEqual([0, 3]);
+		expect(cold.searchWitness?.bestDetourIndices).toEqual([1, 3]);
 		expect(cold.searchWitness?.selected).toBe('detour');
 		expect(validatedBridges(cold.layout.relations)).toEqual([]);
 		const normalized = normalizeRegionCompositionModel(graph.value, input);

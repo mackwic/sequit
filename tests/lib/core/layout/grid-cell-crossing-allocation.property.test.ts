@@ -153,7 +153,9 @@ describe('grid crossing allocation route geometry properties', () => {
 						},
 						[...fixture.crossing].reverse(),
 					);
-					expect(reversed.rowGutterIds).toEqual(resources.rowGutterIds);
+					expect(reversed.rowGutterIds).toEqual(
+						resources.rowGutterIds.map((ids) => [...ids].reverse()),
+					);
 					expect(reversed.edges.rowGutters).toEqual(resources.edges.rowGutters);
 				},
 			),

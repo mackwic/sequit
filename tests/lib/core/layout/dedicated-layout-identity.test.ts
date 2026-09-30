@@ -245,7 +245,9 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-3+1': '064082e2065ad7f76e35849ee4e1c402e721cd164b5e4966e4d88d7868f9fd6d',
 			'ai-documentary-effort': '23810c7b50f523acaedd01c6574ef9bb95527d63cd8d902cb0b6c436d3a9e54f',
 			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
-			'junction-network-layout': '5732e699fa828404b120005432cd8ce7d706ad33dfe862db6037cd1852895f50',
+			// The two relations towards sink now take the inner passages and both relations towards d
+			// the outer ones (they used to follow the ids): 8 crossings and 2 bridges instead of 10 and 4.
+			'junction-network-layout': '912296d92876579a4889ffeeeff55261a79f3cb0e12eb1b0421be4968523db76',
 			'multirank-group-junction-one':
 				'5f724cce9f64ea07e1583cd51749855780de1fc81300a19a178b64c4cf50af74',
 			'multirank-group-junction-two':

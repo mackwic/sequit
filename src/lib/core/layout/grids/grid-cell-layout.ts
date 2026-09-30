@@ -289,12 +289,23 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
 	const search = searchGridCrossingAllocations(withSpans, routed, placed.allocationBudgets);
-	if ('selected' in search)
+	if ('selected' in search) {
+		const selected = search.selected;
 		return {
-			...search.selected.candidate,
-			allocation: search.selected.allocation,
+			...selected.candidate,
+			layout: {
+				...selected.candidate.layout,
+				relations: [...selected.candidate.layout.relations].sort((left, right) =>
+					compareCanonicalStrings(left.id, right.id),
+				),
+			},
+			portals: [...selected.candidate.portals].sort((left, right) =>
+				compareCanonicalStrings(left.relationId, right.relationId),
+			),
+			allocation: selected.allocation,
 			witness: search.witness,
 		} satisfies GridCellAllocationSelected;
+	}
 	let failure = search.failure;
 	if (missingRow >= 0)
 		failure = regionGeometryDiagnostic(

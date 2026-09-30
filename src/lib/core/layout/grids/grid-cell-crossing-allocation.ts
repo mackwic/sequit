@@ -68,12 +68,18 @@ function containmentOrder(
 	input: CrossingAllocationInput,
 	edge: RoutingEdge,
 	ids: readonly string[],
+	relationOrder: ReadonlyMap<string, number>,
 ): readonly string[] {
 	const allocation = allocateNestedTracks(
 		edge,
 		ids.map((relationId) => {
 			const portal = defined(input.portalByRelationId.get(relationId));
-			return { key: relationId, start: portal.source.y, end: portal.target.y };
+			return {
+				key: relationId,
+				order: defined(relationOrder.get(relationId)),
+				start: portal.source.y,
+				end: portal.target.y,
+			};
 		}),
 	);
 	const order = Array<string>(ids.length).fill(FREE_TRACK);
@@ -81,15 +87,21 @@ function containmentOrder(
 	return order;
 }
 
-/** The containment allocation: gutters by interval inclusion on y, the bus on x, ports canonical. */
+/** The containment allocation: gutters by interval inclusion on y, bus on x, ports documentary. */
 export function containmentCrossingAllocation(
 	input: CrossingAllocationInput,
 ): GridCrossingAllocation {
+	const relationOrder = new Map(input.crossingIds.map((id, index) => [id, index]));
 	const bus = allocateNestedTracks(
 		input.edges.topBus,
 		input.crossingIds.map((relationId) => {
 			const portal = defined(input.portalByRelationId.get(relationId));
-			return { key: relationId, start: portal.source.x, end: portal.target.x };
+			return {
+				key: relationId,
+				order: defined(relationOrder.get(relationId)),
+				start: portal.source.x,
+				end: portal.target.x,
+			};
 		}),
 	);
 	const busOrder = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
@@ -97,13 +109,13 @@ export function containmentCrossingAllocation(
 		busOrder[defined(bus.trackByKey.get(relationId))] = relationId;
 	return allocationOf(
 		input.gutterIds.map((ids, column) =>
-			containmentOrder(input, defined(input.edges.gutters[column]), ids),
+			containmentOrder(input, defined(input.edges.gutters[column]), ids, relationOrder),
 		),
 		busOrder,
 		input.incidence,
 		(input.rowGutterIds ?? []).map((ids, row) => {
 			if (ids.length === 0) return [];
-			return containmentOrder(input, defined(input.edges.rowGutters[row]), ids);
+			return containmentOrder(input, defined(input.edges.rowGutters[row]), ids, relationOrder);
 		}),
 	);
 }

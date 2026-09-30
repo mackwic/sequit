@@ -22,18 +22,18 @@ const targetIncident: RegionIncidentContract = {
 };
 
 describe('region incident contracts', () => {
-	it('sorts by relation identity, deduplicates sides, and preserves side preference', () => {
+	it('orders incidents by endpoint and role, deduplicates sides, and preserves side preference', () => {
 		const normalized = normalizeRegionIncidentContracts([
 			sourceIncident,
 			targetIncident,
 			sourceIncident,
 		]);
 		expect(normalized).toEqual([
-			targetIncident,
 			{
 				...sourceIncident,
 				allowedSides: [RegionPortalSide.Bottom, RegionPortalSide.Right],
 			},
+			targetIncident,
 		]);
 		expect(normalizeRegionIncidentContracts([targetIncident, sourceIncident])).toEqual(normalized);
 		expect(Object.isFrozen(normalized)).toBe(true);
@@ -48,6 +48,27 @@ describe('region incident contracts', () => {
 			RegionIncidentRole.Source,
 			RegionIncidentRole.Target,
 		]);
+	});
+
+	it('uses opposite endpoint positions before relation IDs', () => {
+		const later = {
+			...sourceIncident,
+			relation: { id: 'a', from: 'local', to: 'z' },
+		};
+		const earlier = {
+			...sourceIncident,
+			relation: { id: 'z', from: 'local', to: 'a' },
+		};
+		const positions = new Map([
+			['local', 0],
+			['a', 1],
+			['z', 2],
+		]);
+		expect(
+			normalizeRegionIncidentContracts([later, earlier], positions).map(
+				({ relation }) => relation.id,
+			),
+		).toEqual(['z', 'a']);
 	});
 
 	it('rejects mismatched endpoints, unsupported sides, and conflicting duplicates', () => {

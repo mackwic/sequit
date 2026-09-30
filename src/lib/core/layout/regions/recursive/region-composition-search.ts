@@ -24,7 +24,10 @@ import {
 	type RegionLayoutSelected,
 	type RegionPortalSide,
 } from '../model/region-composition-types';
-import type { RegionIncidentSearchWitness } from '../model/region-incident-contract';
+import {
+	incidentEndpointPositions,
+	type RegionIncidentSearchWitness,
+} from '../model/region-incident-contract';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
 import { validateNestedRegionLeafIncidents } from '../validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../validation/region-composition-validation';
@@ -87,6 +90,7 @@ interface PassInput {
 		selection: LeafSelection,
 	) => SolvedRecursiveRegion;
 	readonly leaves: readonly string[];
+	readonly endpointPositions: ReadonlyMap<string, number>;
 	readonly relationOrder: ReadonlyMap<string, number>;
 	readonly state: SearchState;
 	readonly work?: RegionCompositionWork | undefined;
@@ -299,6 +303,7 @@ function searchPass(pass: PassInput): void {
 		measurements,
 		cache,
 		model,
+		endpointPositions: pass.endpointPositions,
 		ownershipByRelationId: new Map(model.relations.map((owned) => [owned.relation.id, owned])),
 		leafDocuments: indexRegionLeafDocuments(graph, model, pass.work),
 		dispositionSideByRegionId: dispositionSides,
@@ -327,10 +332,9 @@ export function solveRecursiveCandidate(
 	solveRoot: PassInput['solveRoot'],
 	work?: RegionCompositionWork,
 ): DiagnosedCandidate {
-	const leaves = incidentLeafIds(input.model);
-	const relationOrder = new Map(
-		input.graph.relations.map(({ relation }, index) => [relation.id, index]),
-	);
+	const endpointPositions = incidentEndpointPositions(input.graph.document);
+	const leaves = incidentLeafIds(input.model, endpointPositions);
+	const relationOrder = new Map(input.graph.relations.map(({ relation }, at) => [relation.id, at]));
 	const state: SearchState = {
 		attempted: 0,
 		exhaustive: true,
@@ -338,7 +342,7 @@ export function solveRecursiveCandidate(
 		rejectedAlternatives: [],
 	};
 	try {
-		searchPass({ input, solveRoot, leaves, relationOrder, state, work });
+		searchPass({ input, solveRoot, leaves, endpointPositions, relationOrder, state, work });
 	} catch (error) {
 		if (!(error instanceof RegionWorkLimitExceeded)) throw error;
 		if (state.bestDetour === undefined && state.bestBridge === undefined) throw error;

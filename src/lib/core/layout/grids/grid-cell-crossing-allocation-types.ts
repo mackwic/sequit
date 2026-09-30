@@ -11,7 +11,7 @@ export interface GridCrossingAllocation {
 	readonly portTrackByEndpointId: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
-/** The two portal points a crossing relation leaves from, in canonical port order. */
+/** The two portal points a crossing relation leaves from, in documentary port order. */
 export interface CrossingPortalSpan {
 	readonly source: Point;
 	readonly target: Point;
@@ -19,16 +19,16 @@ export interface CrossingPortalSpan {
 
 export interface CrossingAllocationInput {
 	readonly edges: GridRoutingEdges;
-	/** Crossing relation identities in canonical order. */
+	/** Crossing relation identities in documentary order. */
 	readonly crossingIds: readonly string[];
-	/** Relations whose endpoints use different rails and therefore use a bus track geometrically. */
+	/** Relations whose endpoints use different rails, in documentary order. */
 	readonly busRelevantRelationIds: readonly string[];
-	/** Crossing relations with an endpoint in each column, in canonical order, per column. */
+	/** Crossing relations with an endpoint in each column, in documentary order, per column. */
 	readonly gutterIds: readonly (readonly string[])[];
 	readonly rowGutterIds?: readonly (readonly string[])[];
 	/** An inherited incident already uses the outer track of these gutters. */
 	readonly blockedExtraGutterColumns?: ReadonlySet<number> | undefined;
-	/** Canonical port order per endpoint. */
+	/** Documentary port order per endpoint. */
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 	readonly portalByRelationId: ReadonlyMap<string, CrossingPortalSpan>;
 }

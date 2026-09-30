@@ -334,13 +334,13 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		);
 		expect(alternateSelected).toEqual(cold);
 		expect(
-			regionLocalLayoutKey(source, prepared.measurements, undefined, [
-				outgoingContract(source, 'leaves-b'),
-			]),
+			regionLocalLayoutKey(source, prepared.measurements, undefined, {
+				contracts: [outgoingContract(source, 'leaves-b')],
+			}),
 		).not.toBe(
-			regionLocalLayoutKey(source, prepared.measurements, undefined, [
-				outgoingContract(edited, 'edited-leaves-b'),
-			]),
+			regionLocalLayoutKey(source, prepared.measurements, undefined, {
+				contracts: [outgoingContract(edited, 'edited-leaves-b')],
+			}),
 		);
 		const widened = resizedB2(prepared.measurements);
 		const nodes = new Map(widened.nodes);

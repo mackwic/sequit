@@ -483,8 +483,8 @@ describe('recursive nested-region leaf incident validation', () => {
 		expect(validateRegionCompositionGeometry(model, candidate)).toBeUndefined();
 		expect(validateIncidentDiagnostic(model, candidate)).toMatchObject({
 			code: 'incident-touches-incident',
-			relationId: 'across-second',
-			relatedRelationId: 'across-middle',
+			relationId: 'across-middle',
+			relatedRelationId: 'across-second',
 			regionId: 'left',
 		});
 		expect(validateNestedRegionGeometry(graph, input, candidate)).toContain(

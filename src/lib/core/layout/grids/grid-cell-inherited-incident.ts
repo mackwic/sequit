@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { Point } from '../layout-types';
 import {
@@ -218,8 +217,7 @@ export function gridCellInheritedIncidentPaths(
 		columns: input.selected.columnWidths.length,
 		rows: input.selected.rowHeights.length,
 	};
-	const ordered = [...input.incidentSides].sort(([a], [b]) => compareCanonicalStrings(a, b));
-	for (const [relationId, sides] of ordered) {
+	for (const [relationId, sides] of input.incidentSides) {
 		const owned = defined(input.context.ownershipByRelationId.get(relationId));
 		const source = owned.sourcePathToOwner.includes(input.regionId);
 		let endpointId = owned.relation.to;

@@ -15,7 +15,10 @@ import {
 	type LogicRelation,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import {
+	type SharedLaneGeometry,
+	validateSharedLaneGeometry,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
@@ -177,6 +180,40 @@ describe('transverse shared lane layout', () => {
 		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
 		if (result.status !== SharedLaneLayoutStatus.Selected) return;
 		expect(result.layout.relations.map(({ id }) => id)).toEqual(['a-to-b', 'b-to-c']);
+	});
+
+	it('keeps transverse lane geometry invariant under relation ID renaming', () => {
+		const document = transverseDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'z-route', from: 'a1', to: 'c1' },
+			{ id: 'a-route', from: 'a2', to: 'c1' },
+		]);
+		const renamedDocument: LogicDocument = {
+			...document,
+			relations: document.relations.map((relation, index) => {
+				let id = 'z-route';
+				if (index === 0) id = 'a-route';
+				return { ...relation, id };
+			}),
+		};
+		const original = solve(document).result;
+		const renamed = solve(renamedDocument).result;
+		expect(original.status).toBe(SharedLaneLayoutStatus.Selected);
+		expect(renamed.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (
+			original.status !== SharedLaneLayoutStatus.Selected ||
+			renamed.status !== SharedLaneLayoutStatus.Selected
+		)
+			return;
+		const geometryWithoutRelationIds = (geometry: SharedLaneGeometry) => ({
+			width: geometry.width,
+			height: geometry.height,
+			lanes: geometry.lanes,
+			elements: geometry.elements,
+			relations: geometry.relations.map(({ from, to, points }) => ({ from, to, points })),
+		});
+		expect(geometryWithoutRelationIds(renamed.geometry)).toEqual(
+			geometryWithoutRelationIds(original.geometry),
+		);
 	});
 
 	it('keeps output deterministic under input permutation and grows a lane with content', () => {

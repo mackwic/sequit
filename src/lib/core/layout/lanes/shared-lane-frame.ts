@@ -129,6 +129,7 @@ function rowStarts(
 	return { starts, end };
 }
 
+/** Cross-lane plans group by endpoint rows, preserving documentary order for row ties. */
 function sortedCrossLanePlans(input: SharedLaneInput): readonly SharedLanePlan[] {
 	const plans = input.plans.filter(({ sameLane }) => !sameLane);
 	plans.sort((a, b) => {
@@ -138,7 +139,7 @@ function sortedCrossLanePlans(input: SharedLaneInput): readonly SharedLanePlan[]
 		const aTarget = defined(input.endpoints.get(a.to)).row;
 		const bTarget = defined(input.endpoints.get(b.to)).row;
 		if (aTarget !== bTarget) return aTarget - bTarget;
-		return compareCanonicalStrings(a.id, b.id);
+		return 0;
 	});
 	return plans;
 }

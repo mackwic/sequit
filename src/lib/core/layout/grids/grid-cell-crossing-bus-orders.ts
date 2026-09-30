@@ -1,12 +1,16 @@
-import { compareCanonicalStrings } from '../../canonical-string';
+import { defined } from '../../document/logic-document';
 import type { CrossingAllocationInput } from './grid-cell-crossing-allocation-types';
 import { trackOrders } from './grid-cell-crossing-orders';
 
-/** Lexicographic first representative of each effective bus geometry: irrelevant routes retain
- * their relative canonical order rather than multiplying the same geometry factorially. */
+/** Documentary-first representative of each effective bus geometry: irrelevant routes retain
+ * their relative documentary order rather than multiplying the same geometry factorially. */
 function* distinctBusOrders(
 	relevant: readonly string[],
-	context: { readonly inert: readonly string[]; readonly capacity: number },
+	context: {
+		readonly inert: readonly string[];
+		readonly capacity: number;
+		readonly relationOrder: ReadonlyMap<string, number>;
+	},
 	inertIndex: number,
 	prefix: string[],
 ): Generator<readonly string[], undefined, undefined> {
@@ -16,7 +20,11 @@ function* distinctBusOrders(
 	}
 	const nextInert = context.inert[inertIndex];
 	let choices = relevant;
-	if (nextInert !== undefined) choices = [...relevant, nextInert].sort(compareCanonicalStrings);
+	if (nextInert !== undefined)
+		choices = [...relevant, nextInert].sort(
+			(left, right) =>
+				defined(context.relationOrder.get(left)) - defined(context.relationOrder.get(right)),
+		);
 	for (const id of choices) {
 		prefix.push(id);
 		if (id === nextInert) yield* distinctBusOrders(relevant, context, inertIndex + 1, prefix);
@@ -31,33 +39,39 @@ function* distinctBusOrders(
 	}
 }
 
-/** Exactly one constructed bus proposal per effective assignment, canonical first. A priority
- * frontier freezes inert and nonconflicting relations; the complete suffix permits relevant
- * relations to occupy any bus slot while fixing inert routes in canonical relative order. */
-export function* crossingBusOrderCandidates(
+function busOrderCandidates(
 	input: CrossingAllocationInput,
-	active?: ReadonlySet<string>,
-): Generator<readonly string[], undefined, undefined> {
-	const canonical = input.crossingIds;
-	yield canonical;
-	const relevant = new Set(input.busRelevantRelationIds);
-	let orders: Iterable<readonly string[]>;
+	active: ReadonlySet<string> | undefined,
+	relevant: ReadonlySet<string>,
+	documentary: readonly string[],
+): Iterable<readonly string[]> {
 	if (active === undefined)
-		orders = distinctBusOrders(
+		return distinctBusOrders(
 			input.busRelevantRelationIds,
 			{
 				inert: input.crossingIds.filter((id) => !relevant.has(id)),
 				capacity: input.edges.topBus.capacity,
+				relationOrder: new Map(input.crossingIds.map((id, index) => [id, index])),
 			},
 			0,
 			[],
 		);
-	else
-		orders = trackOrders(
-			input.busRelevantRelationIds,
-			input.edges.topBus.capacity,
-			new Set(input.busRelevantRelationIds.filter((id) => active.has(id))),
-			canonical,
-		);
-	for (const order of orders) if (order.some((id, index) => id !== canonical[index])) yield order;
+	return trackOrders(
+		input.busRelevantRelationIds,
+		input.edges.topBus.capacity,
+		new Set(input.busRelevantRelationIds.filter((id) => active.has(id))),
+		documentary,
+	);
+}
+
+/** Documentary-first bus proposals; inert routes retain documentary relative order. */
+export function* crossingBusOrderCandidates(
+	input: CrossingAllocationInput,
+	active?: ReadonlySet<string>,
+): Generator<readonly string[], undefined, undefined> {
+	const documentary = input.crossingIds;
+	yield documentary;
+	const relevant = new Set(input.busRelevantRelationIds);
+	const orders = busOrderCandidates(input, active, relevant, documentary);
+	for (const order of orders) if (order.some((id, index) => id !== documentary[index])) yield order;
 }

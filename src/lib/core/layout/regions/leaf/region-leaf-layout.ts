@@ -36,8 +36,9 @@ export interface RegionLeafIncidentInput {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
 	readonly leafPolicy: LayoutPolicy;
-	readonly cache?: RegionLocalLayoutCache | undefined;
 	readonly contracts: readonly RegionIncidentContract[];
+	readonly endpointPositions?: ReadonlyMap<string, number> | undefined;
+	readonly cache?: RegionLocalLayoutCache | undefined;
 }
 
 export interface RegionLeafIncidentSelected {
@@ -73,7 +74,7 @@ export function solveRegionLeafLayoutWithIncidents(
 ): RegionLeafIncidentAttempt {
 	let contracts: readonly RegionIncidentContract[];
 	try {
-		contracts = normalizeRegionIncidentContracts(input.contracts);
+		contracts = normalizeRegionIncidentContracts(input.contracts, input.endpointPositions);
 	} catch (error) {
 		return {
 			status: RegionCompositionStatus.Unknown,
@@ -124,6 +125,7 @@ export function solveRegionLeafLayoutWithIncidents(
 				measurements: input.measurements,
 				policy: input.leafPolicy,
 				contracts,
+				endpointPositions: input.endpointPositions,
 				compute,
 			}) ?? compute();
 		// Every cache writer defines both fields for this key: the lane compute above, the

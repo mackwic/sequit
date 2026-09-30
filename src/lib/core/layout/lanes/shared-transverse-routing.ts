@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LayoutRelation, Point } from '../layout-types';
 import {
@@ -75,26 +74,20 @@ export interface TransverseRouteAllocation {
 	readonly rail: RoutingTrackAllocation;
 }
 
-/** The order the transverse allocation ranks its plans by: the identifier, or the lane span. */
-function planOrder(
-	order: TransverseRouteOrder,
-): (left: SharedLanePlan, right: SharedLanePlan) => number {
-	if (order === TransverseRouteOrder.Canonical)
-		return (left, right) => compareCanonicalStrings(left.id, right.id);
-	return (left, right) => {
-		const spanLeft = Math.abs(left.sourceLaneIndex - left.targetLaneIndex);
-		const spanRight = Math.abs(right.sourceLaneIndex - right.targetLaneIndex);
-		if (spanLeft !== spanRight) return spanLeft - spanRight;
-		return compareCanonicalStrings(left.id, right.id);
-	};
+/** Stable plan-order ties keep nested ordinals independent of relation IDs. */
+function compareLaneSpan(left: SharedLanePlan, right: SharedLanePlan): number {
+	const spanLeft = Math.abs(left.sourceLaneIndex - left.targetLaneIndex);
+	const spanRight = Math.abs(right.sourceLaneIndex - right.targetLaneIndex);
+	return spanLeft - spanRight;
 }
 
-/** The declared ordinal of both transverse bands of one plan, by plan identifier. */
+/** The declared ordinal of both transverse bands of one plan, in documentary plan order. */
 function declaredOrdinals(
 	input: SharedLaneInput,
 	order: TransverseRouteOrder,
 ): ReadonlyMap<string, { readonly gutter: number; readonly rail: number }> {
-	const ranked = [...input.plans].sort(planOrder(order));
+	let ranked: readonly SharedLanePlan[] = input.plans;
+	if (order === TransverseRouteOrder.Nested) ranked = [...input.plans].sort(compareLaneSpan);
 	const ordinals = new Map<string, { readonly gutter: number; readonly rail: number }>();
 	for (const [index, plan] of ranked.entries()) {
 		let rail = index;
@@ -111,10 +104,10 @@ export interface TransverseRouteTrackOverrides {
 
 /**
  * The transverse allocation: every plan owns its declared track on the shared gutter corridor and
- * on the lane rails. The canonical order declares the identifier rank the frame has always placed;
- * the nested order declares the lane span, read in opposite directions so the plan with the innermost
- * gutter track takes the outermost rail track. Every demand declares the frame's whole longitudinal
- * extent, so the declared ordinal orders it and no interval containment can move it.
+ * on the lane rails. Canonical order preserves documentary plan order; nested order groups by lane
+ * span, read in opposite directions so the plan with the innermost gutter track takes the outermost
+ * rail track. Every demand declares the frame's whole longitudinal extent, so the declared ordinal
+ * orders it and no interval containment can move it.
  */
 export function allocateTransverseRoutes(
 	input: SharedLaneInput,
@@ -237,15 +230,14 @@ function routePosition(allocation: TransverseRouteAllocation, plan: SharedLanePl
 	};
 }
 
-/** The route of every plan of the frame, in the canonical plan order. */
+/** The route of every plan of the frame, in documentary plan order. */
 export function routeTransverseLanes(
 	input: SharedLaneInput,
 	frame: TransverseLaneFrame,
 	allocation: TransverseRouteAllocation,
 	order: TransverseRouteOrder = TransverseRouteOrder.Canonical,
 ): readonly LayoutRelation[] {
-	const plans = [...input.plans].sort((left, right) => compareCanonicalStrings(left.id, right.id));
-	return plans.map((plan) => {
+	return input.plans.map((plan) => {
 		const points = logicalRoute(plan, frame, {
 			position: routePosition(allocation, plan),
 			order,

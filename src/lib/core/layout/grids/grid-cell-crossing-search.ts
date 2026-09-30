@@ -1,5 +1,8 @@
 import { defined } from '../../document/logic-document';
-import type { RegionGeometryDiagnostic } from '../geometry/region-geometry-diagnostic';
+import {
+	type RegionGeometryDiagnostic,
+	RegionGeometryDiagnosticCode,
+} from '../geometry/region-geometry-diagnostic';
 import { boundedCounter } from '../search/bounded-search';
 import {
 	CrossingAllocationPhaseId,
@@ -53,13 +56,39 @@ interface GridCrossingAllocationPhaseResult<Candidate> {
 	readonly evidence: GridCrossingAllocationWitness['phases'][number];
 }
 
+/**
+ * A route entering an element on the bus can only escape by swapping tracks with its bus
+ * neighbours, so make those neighbours movable in the priority search.
+ */
+function addAdjacentBusRoutes(
+	active: Set<string>,
+	allocation: GridCrossingAllocation,
+	relationId: string,
+): void {
+	const track = allocation.busTrackByRelationId.get(relationId);
+	if (track === undefined) return;
+	for (const [candidateId, candidateTrack] of allocation.busTrackByRelationId) {
+		const distance = Math.abs(candidateTrack - track);
+		if (distance === 1) active.add(candidateId);
+	}
+}
+
 function addConflictingRoutes(
 	active: Set<string>,
 	input: CrossingAllocationInput,
+	allocation: GridCrossingAllocation,
 	failure: RegionGeometryDiagnostic,
 ): void {
-	for (const id of [failure.relationId, failure.relatedRelationId])
-		if (id !== undefined && input.crossingIds.includes(id)) active.add(id);
+	for (const id of [failure.relationId, failure.relatedRelationId]) {
+		if (id === undefined || !input.crossingIds.includes(id)) continue;
+		active.add(id);
+		if (
+			failure.code !== RegionGeometryDiagnosticCode.GridCrossingEntersElement ||
+			failure.endpointId === undefined
+		)
+			continue;
+		addAdjacentBusRoutes(active, allocation, id);
+	}
 }
 
 /** Rebuild the priority prefix when a rejection reveals a new route; then visit every remaining
@@ -126,7 +155,7 @@ function searchGridCrossingPhase<Candidate>(
 		});
 		// Rejections enlarge the priority frontier; the canonical suffix still covers every
 		// declared allocation, including routes that were never named by a diagnostic.
-		addConflictingRoutes(active, input, attempt.failure);
+		addConflictingRoutes(active, input, allocation, attempt.failure);
 		if (BigInt(explored.attempted) === total) break;
 	}
 	const exhaustive = BigInt(explored.attempted) === total;

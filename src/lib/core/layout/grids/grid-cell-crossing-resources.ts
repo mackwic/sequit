@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, type LogicRelation } from '../../document/logic-document';
 import type { RoutingEdge } from '../geometry/routing-edge';
 import { trackOffset } from '../resources/routing-resource-allocation';
@@ -40,7 +39,6 @@ export function gridCrossingResources(
 			for (let row = Math.min(sourceRow, targetRow); row < Math.max(sourceRow, targetRow); row += 1)
 				defined(rowGutterIds[row]).push(id);
 	}
-	for (const ids of [...gutterIds, ...rowGutterIds]) ids.sort(compareCanonicalStrings);
 	return {
 		edges: gridRoutingEdges(input.rootId, gutterIds, crossing.length, rowGutterIds),
 		gutterIds,

@@ -13,7 +13,7 @@ import {
 export const MAX_REGION_LOCAL_CACHE_ENTRIES = 12;
 
 /** Bump this when the local child solver's geometry contract changes. */
-const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v10';
+const LOCAL_LAYOUT_ALGORITHM = 'shared-or-dedicated-child-layout-v11';
 const INCIDENT_CONTRACT = 'region-incident-contract-v1';
 
 export interface RegionLocalLayout {
@@ -35,6 +35,7 @@ interface RegionContractCacheInput {
 	readonly measurements: LayoutMeasurements;
 	readonly policy?: LayoutPolicy | undefined;
 	readonly contracts: readonly RegionIncidentContract[];
+	readonly endpointPositions?: ReadonlyMap<string, number> | undefined;
 	readonly compute: () => RegionLocalLayout;
 }
 
@@ -42,14 +43,22 @@ function canonicalById<T extends { readonly id: string }>(items: readonly T[]): 
 	return [...items].sort((left, right) => compareCanonicalStrings(left.id, right.id));
 }
 
+export interface RegionLocalLayoutKeyOptions {
+	readonly contracts?: readonly RegionIncidentContract[];
+	readonly endpointPositions?: ReadonlyMap<string, number> | undefined;
+}
+
 /** Geometry inputs only. Content and foreign relations cannot change a child's local solve. */
 export function regionLocalLayoutKey(
 	document: LogicDocument,
 	measurements: LayoutMeasurements,
 	policy?: LayoutPolicy,
-	inputContracts: readonly RegionIncidentContract[] = [],
+	options: RegionLocalLayoutKeyOptions = {},
 ): string {
-	const contracts = normalizeRegionIncidentContracts(inputContracts);
+	const contracts = normalizeRegionIncidentContracts(
+		options.contracts ?? [],
+		options.endpointPositions,
+	);
 	const nodes = canonicalById(document.nodes);
 	const groups = canonicalById(document.groups);
 	const junctions = canonicalById(document.junctions);
@@ -196,8 +205,11 @@ export class RegionLocalLayoutCache {
 	}
 
 	getOrComputeContract(input: RegionContractCacheInput): RegionLocalLayout {
-		const { document, measurements, policy, contracts, compute } = input;
-		const key = regionLocalLayoutKey(document, measurements, policy, contracts);
+		const { document, measurements, policy, contracts, endpointPositions, compute } = input;
+		const key = regionLocalLayoutKey(document, measurements, policy, {
+			contracts,
+			endpointPositions,
+		});
 		return this.#getOrComputeKey(key, compute);
 	}
 

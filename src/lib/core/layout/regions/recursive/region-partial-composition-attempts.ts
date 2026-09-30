@@ -18,6 +18,7 @@ import {
 	type RegionLayoutAttempt,
 	RegionWorkPhase,
 } from '../model/region-composition-types';
+import { incidentEndpointPositions } from '../model/region-incident-contract';
 import type { RegionLocalLayoutCache } from '../model/region-local-cache';
 import type { RegionCompositionFailureEvidence } from '../model/region-search-evidence';
 import { solveNestedRegionLayoutForProjection } from './nested-region-layout';
@@ -275,6 +276,7 @@ export function runRegionPartialCompositionAttempts({
 			model,
 			measurements,
 			cache,
+			endpointPositions: incidentEndpointPositions(graph.document),
 			ownershipByRelationId: index.ownershipByRelationId,
 			leafDocuments,
 		};

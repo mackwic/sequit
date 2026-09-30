@@ -49,7 +49,7 @@ export function leafIncidentContracts(
 			allowedSides: sides,
 		});
 	}
-	return normalizeRegionIncidentContracts(contracts);
+	return normalizeRegionIncidentContracts(contracts, context.endpointPositions);
 }
 
 export interface RecursiveContext {
@@ -57,6 +57,7 @@ export interface RecursiveContext {
 	readonly model: RegionCompositionModel;
 	readonly measurements: LayoutMeasurements;
 	readonly cache: RegionLocalLayoutCache | undefined;
+	readonly endpointPositions: ReadonlyMap<string, number>;
 	readonly ownershipByRelationId: ReadonlyMap<string, RegionRelationOwnership>;
 	readonly dispositionSideByRegionId?: ReadonlyMap<string, RegionPortalSide>;
 	readonly leafDocuments?: RegionLeafDocumentIndex;

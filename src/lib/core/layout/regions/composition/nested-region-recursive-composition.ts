@@ -69,9 +69,10 @@ function crossingDraft(input: PositionedChildren, relation: LogicRelation): Cros
 	};
 }
 
-function trackDemand(draft: CrossingDraft): RoutingTrackDemand {
+function trackDemand(draft: CrossingDraft, order: number): RoutingTrackDemand {
 	return {
 		key: draft.relation.id,
+		order,
 		start: draft.sourcePortal.point.x,
 		end: draft.targetPortal.point.x,
 	};
@@ -90,7 +91,10 @@ export function composeCrossings(
 	const { regionId } = input;
 	const drafts = input.crossings.map((relation) => crossingDraft(input, relation));
 	const edge = rowBusEdge(regionId, input.crossings.length);
-	const allocation = allocateNestedTracks(edge, drafts.map(trackDemand));
+	const allocation = allocateNestedTracks(
+		edge,
+		drafts.map((draft, index) => trackDemand(draft, index)),
+	);
 	for (const draft of drafts) {
 		const { relation, sourcePath, targetPath, sourcePortal, targetPortal } = draft;
 		const bus = rowBus({

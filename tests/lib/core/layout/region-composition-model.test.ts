@@ -111,8 +111,8 @@ describe('recursive region composition model', () => {
 		expect(
 			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
 		).toEqual([
-			['across-middle', '@root', 'crossing'],
 			['inside-a', 'left', 'local'],
+			['across-middle', '@root', 'crossing'],
 		]);
 		expect(model.localRelationsByOwner.get('left')?.map(({ id }) => id)).toEqual(['inside-a']);
 		expect(model.crossingRelationsByOwner.get('@root')?.map(({ id }) => id)).toEqual([
@@ -126,9 +126,9 @@ describe('recursive region composition model', () => {
 		expect(
 			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
 		).toEqual([
-			['at-root', '@root', 'crossing'],
 			['inside-a', 'left', 'local'],
 			['inside-branch', 'branch', 'crossing'],
+			['at-root', '@root', 'crossing'],
 		]);
 		expect(model.crossingRelationsByOwner.get('branch')?.map(({ id }) => id)).toEqual([
 			'inside-branch',
@@ -141,9 +141,9 @@ describe('recursive region composition model', () => {
 		expect(model.regionsById.get('deep')?.depth).toBe(3);
 		expect(model.leafByEndpointId.get('a-source')).toBe('deep');
 		expect(model.relations.map(({ relation, ownerId }) => [relation.id, ownerId])).toEqual([
-			['at-root', '@root'],
 			['inside-a', 'deep'],
 			['inside-branch', 'branch'],
+			['at-root', '@root'],
 		]);
 		const incident = model.relations.find(({ relation }) => relation.id === 'inside-branch');
 		expect(incident?.sourcePathToOwner).toEqual(['deep', 'left']);

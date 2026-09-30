@@ -229,17 +229,16 @@ function duplicateRelationFailure(
 	graph: LogicGraph,
 	work?: RegionCompositionWork,
 ): RegionCompositionModelBuild | undefined {
-	const relationIds = [...graph.relations]
-		.map(({ relation }) => relation.id)
-		.sort((left, right) => compareRegionWork(left, right, work));
-	for (let index = 1; index < relationIds.length; index += 1) {
-		const relationId = relationIds[index];
-		if (relationId !== relationIds[index - 1]) continue;
-		return invalid(
-			RegionCompositionDiagnosticCode.DuplicateRelationId,
-			`Duplicate relation identity ${relationId}.`,
-			['relations', relationId ?? ''],
-		);
+	const relationIds = new Set<string>();
+	for (const { relation } of graph.relations) {
+		if (relationIds.size > 0) work?.charge(RegionWorkPhase.NormalizationComparisons, relation.id);
+		if (relationIds.has(relation.id))
+			return invalid(
+				RegionCompositionDiagnosticCode.DuplicateRelationId,
+				`Duplicate relation identity ${relation.id}.`,
+				['relations', relation.id],
+			);
+		relationIds.add(relation.id);
 	}
 	return undefined;
 }

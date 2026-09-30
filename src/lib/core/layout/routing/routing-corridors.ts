@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
@@ -36,6 +35,33 @@ export function corridorsIndexGraph(
 	return corridors.every((corridor) => corridorCarriesCanonicalIndexes(corridor, graph));
 }
 
+interface RelationIndexCache {
+	readonly positions: ReadonlyMap<string, number>;
+	readonly uniqueIds: boolean;
+}
+
+const relationIndexByGraph = new WeakMap<LogicGraph, RelationIndexCache>();
+
+function relationIndexCache(graph: LogicGraph): RelationIndexCache {
+	const cached = relationIndexByGraph.get(graph);
+	if (cached !== undefined) return cached;
+	const positions = new Map<string, number>();
+	for (const [index, { relation }] of graph.relations.entries()) positions.set(relation.id, index);
+	const index = { positions, uniqueIds: positions.size === graph.relations.length };
+	relationIndexByGraph.set(graph, index);
+	return index;
+}
+
+/** Relation indexes and uniqueness are computed together and shared across routing passes. */
+export function relationPositions(graph: LogicGraph): ReadonlyMap<string, number> {
+	return relationIndexCache(graph).positions;
+}
+
+/** createGraph guarantees unique relation ids; direct graph consumers are checked once per graph. */
+export function relationIdsAreUnique(graph: LogicGraph): boolean {
+	return relationIndexCache(graph).uniqueIds;
+}
+
 /** The link of `graph`'s relation at `relationIndex`, between its endpoint centers. */
 export function corridorLink(
 	relation: LogicRelation,
@@ -51,10 +77,11 @@ export function corridorLink(
 	};
 }
 
+/** Equal links keep the documentary order of their relations, never the order of their ids. */
 function compareLinks(a: CorridorLink, b: CorridorLink): number {
 	const source = a.source - b.source;
 	const target = a.target - b.target;
-	return source || target || compareCanonicalStrings(a.relation.id, b.relation.id);
+	return source || target || defined(a.relationIndex) - defined(b.relationIndex);
 }
 
 function intersectingClusters(links: readonly CorridorLink[]): CorridorLink[][] {
@@ -129,7 +156,7 @@ function independentTurns(cluster: readonly CorridorLink[]): boolean {
 function collectCorridors(
 	byRank: ReadonlyMap<number, CorridorLink[]>,
 	graph: LogicGraph,
-	canonicalIds: boolean,
+	uniqueIds: boolean,
 ): RoutingCorridor[] {
 	const result: RoutingCorridor[] = [];
 	for (const [rank, links] of byRank) {
@@ -141,7 +168,7 @@ function collectCorridors(
 			if (!needsCorridor) continue;
 			let corridor: RoutingCorridor = { rank, links: cluster };
 			if (!crossing) corridor = { rank, links: cluster, cornerOnly: true };
-			if (canonicalIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
+			if (uniqueIds) Object.defineProperty(corridor, canonicalGraph, { value: graph });
 			result.push(corridor);
 		}
 	}
@@ -164,12 +191,7 @@ export function crossingCorridors(input: {
 	});
 	if (aligned) return [];
 	const byRank = new Map<number, CorridorLink[]>();
-	let canonicalIds = true;
-	let previousId: string | undefined;
 	for (const [relationIndex, { relation, source, target }] of input.graph.relations.entries()) {
-		if (previousId !== undefined && compareCanonicalStrings(previousId, relation.id) >= 0)
-			canonicalIds = false;
-		previousId = relation.id;
 		if (source.kind === EndpointKind.Group || target.kind === EndpointKind.Group) continue;
 		const hasJunction =
 			source.kind === EndpointKind.Junction || target.kind === EndpointKind.Junction;
@@ -180,7 +202,7 @@ export function crossingCorridors(input: {
 		links.push(corridorLink(relation, relationIndex, input.bounds, input.vertical));
 		byRank.set(rank, links);
 	}
-	return collectCorridors(byRank, input.graph, canonicalIds);
+	return collectCorridors(byRank, input.graph, relationIdsAreUnique(input.graph));
 }
 
 interface CornerPortSharing {

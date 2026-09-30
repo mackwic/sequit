@@ -4,7 +4,7 @@ import { defined } from '../../document/logic-document';
 /** Empty routing track owned by an edge but unused by a relation. */
 export const FREE_TRACK = '';
 
-/** Preserve canonical relation order when converting allocated tracks back to proposal slots. */
+/** Preserve documentary relation order when converting allocated tracks back to proposal slots. */
 export function trackOrderFromMap(
 	ids: readonly string[],
 	tracks: ReadonlyMap<string, number>,
@@ -41,7 +41,7 @@ function frozenTracks(
 	return frozen;
 }
 
-/** Every assignment of the identifiers onto `trackCount` tracks, in lexicographic order. */
+/** Every assignment of identifiers onto `trackCount` tracks, in input order. */
 export function* trackOrders(
 	ids: readonly string[],
 	trackCount: number,
@@ -55,10 +55,10 @@ export function* trackOrders(
 		);
 		const movable = ids.filter((id) => active.has(id));
 		const slots = [
-			...movable,
 			...Array<string>(positions.length - movable.length).fill(FREE_TRACK),
+			...movable,
 		];
-		for (const order of permutations(slots.sort(compareCanonicalStrings))) {
+		for (const order of permutations(slots)) {
 			const result = Array<string>(trackCount).fill(FREE_TRACK);
 			for (const [index, id] of frozen) result[index] = id;
 			for (const [index, position] of positions.entries()) result[position] = defined(order[index]);
@@ -66,8 +66,8 @@ export function* trackOrders(
 		}
 		return;
 	}
-	const slots = [...ids, ...Array<string>(trackCount - ids.length).fill(FREE_TRACK)];
-	yield* permutations([...slots].sort(compareCanonicalStrings));
+	const slots = [...Array<string>(trackCount - ids.length).fill(FREE_TRACK), ...ids];
+	yield* permutations(slots);
 }
 
 export function* portOrders(

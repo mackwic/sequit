@@ -131,8 +131,7 @@ function canonicalBridgeKey(bridge: LayoutBridge): string {
 
 /**
  * Records one strict crossing's bridge, preferring the current run's orientation before the
- * previous run's. Routes are scanned canonically, preserving the historical choice while making
- * it independent of input permutation.
+ * previous run's. Point-sequence scan order makes the choice independent of ids and input order.
  */
 function recordBridge(scan: BridgeScan, point: Point, current: RouteRun, previous: RouteRun): void {
 	const { charge } = scan;
@@ -207,12 +206,33 @@ function recordPairs(
 	}
 }
 
+/** Route ids are only a tie-break when the complete geometric paths are identical. */
+function compareRouteGeometry(
+	left: RoutedPath,
+	right: RoutedPath,
+	charge?: RouteWorkCharge,
+): number {
+	const sharedLength = Math.min(left.points.length, right.points.length);
+	for (let index = 0; index < sharedLength; index += 1) {
+		charge?.(1);
+		const leftPoint = defined(left.points[index]);
+		const rightPoint = defined(right.points[index]);
+		const byX = leftPoint.x - rightPoint.x;
+		if (byX !== 0) return byX;
+		const byY = leftPoint.y - rightPoint.y;
+		if (byY !== 0) return byY;
+	}
+	const byLength = left.points.length - right.points.length;
+	if (byLength !== 0) return byLength;
+	return compareCanonicalStrings(left.id, right.id);
+}
+
 /**
- * One pass over the declared routes: every strict crossing, and the bridges the canvas can draw
- * there. A bridge keeps `BRIDGE_RADIUS + BRIDGE_CLEARANCE` from every run end and twice the radius
- * plus the clearance from the next bridge on its carrier, which is exactly what the canvas draws.
- * The bridges are the derived mark shared by the rendering, the validators and the searches: no
- * layout result stores them.
+ * One pass over routes in canonical point-sequence order: every strict crossing, and the bridges
+ * the canvas can draw there. A bridge keeps `BRIDGE_RADIUS + BRIDGE_CLEARANCE` from every run end
+ * and twice the radius plus the clearance from the next bridge on its carrier, which is exactly
+ * what the canvas draws. The bridges are the derived mark shared by rendering, validators and
+ * searches: no layout result stores them.
  */
 export function routeBridgeAnalysis(
 	paths: readonly RoutedPath[],
@@ -220,7 +240,7 @@ export function routeBridgeAnalysis(
 ): RouteBridgeAnalysis {
 	const sortedPaths = [...paths].sort((left, right) => {
 		charge?.(1);
-		return compareCanonicalStrings(left.id, right.id);
+		return compareRouteGeometry(left, right, charge);
 	});
 	const runsByPath = sortedPaths.map((path) => routeRuns(path, charge));
 	const scan: BridgeScan = {

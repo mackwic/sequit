@@ -15,7 +15,10 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { makeSharedLaneFrame } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
-import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
+import {
+	type SharedLaneGeometry,
+	validateSharedLaneGeometry,
+} from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
@@ -138,7 +141,7 @@ describe('S | SD | C shared process', () => {
 		expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
 	});
 
-	it('preserves pre-refactor canonical geometry for the four-message crossing', () => {
+	it('keeps four-message canonical geometry fixed by relation identity', () => {
 		const prepared = prepareLayoutDocument(
 			processDocument(LayoutDirection.TopToBottom, LayoutBias.Top),
 		);
@@ -158,52 +161,42 @@ describe('S | SD | C shared process', () => {
 				TransverseRouteOrder.Canonical,
 			),
 		};
-		expect(canonical.relations.map(({ id, points }) => ({ id, points }))).toEqual([
-			{
-				id: 'completion',
-				points: [
-					{ x: 416, y: 648 },
-					{ x: 416, y: 588 },
-					{ x: 136, y: 588 },
-					{ x: 136, y: 372 },
-					{ x: 330, y: 372 },
-					{ x: 330, y: 312 },
-				],
-			},
-			{
-				id: 'dispatch',
-				points: [
-					{ x: 550, y: 312 },
-					{ x: 550, y: 396 },
-					{ x: 768, y: 396 },
-					{ x: 768, y: 564 },
-					{ x: 464, y: 564 },
-					{ x: 464, y: 648 },
-				],
-			},
-			{
-				id: 'request',
-				points: [
-					{ x: 574, y: 1100 },
-					{ x: 574, y: 992 },
-					{ x: 88, y: 992 },
-					{ x: 88, y: 420 },
-					{ x: 598, y: 420 },
-					{ x: 598, y: 312 },
-				],
-			},
-			{
-				id: 'response',
-				points: [
-					{ x: 282, y: 312 },
-					{ x: 282, y: 444 },
-					{ x: 816, y: 444 },
-					{ x: 816, y: 968 },
-					{ x: 306, y: 968 },
-					{ x: 306, y: 1100 },
-				],
-			},
-		]);
+		expect(
+			Object.fromEntries(canonical.relations.map(({ id, points }) => [id, points] as const)),
+		).toEqual({
+			completion: [
+				{ x: 416, y: 648 },
+				{ x: 416, y: 540 },
+				{ x: 88, y: 540 },
+				{ x: 88, y: 420 },
+				{ x: 330, y: 420 },
+				{ x: 330, y: 312 },
+			],
+			dispatch: [
+				{ x: 550, y: 312 },
+				{ x: 550, y: 396 },
+				{ x: 768, y: 396 },
+				{ x: 768, y: 564 },
+				{ x: 464, y: 564 },
+				{ x: 464, y: 648 },
+			],
+			request: [
+				{ x: 574, y: 1100 },
+				{ x: 574, y: 1040 },
+				{ x: 136, y: 1040 },
+				{ x: 136, y: 372 },
+				{ x: 598, y: 372 },
+				{ x: 598, y: 312 },
+			],
+			response: [
+				{ x: 282, y: 312 },
+				{ x: 282, y: 444 },
+				{ x: 816, y: 444 },
+				{ x: 816, y: 968 },
+				{ x: 306, y: 968 },
+				{ x: 306, y: 1100 },
+			],
+		});
 		const nested = {
 			...base,
 			relations: routeTransverseLanes(
@@ -326,7 +319,7 @@ describe('S | SD | C shared process', () => {
 						id: defined(relationIds.get(relation.id)),
 					})),
 				};
-				const prepared = prepareLayoutDocument(renamed, {
+				const measurements = {
 					nodes: {
 						'c-request': { width: 344, height: 148 },
 						's-receive': { width: 300, height: 100 },
@@ -334,13 +327,44 @@ describe('S | SD | C shared process', () => {
 						's-reply': { width: 420, height: 128 },
 						'c-done': { width: 260, height: 160 },
 					},
-				});
+				};
+				const originalPrepared = prepareLayoutDocument(source, measurements);
+				const prepared = prepareLayoutDocument(renamed, measurements);
+				const original = solveSharedLaneLayout(
+					originalPrepared.graph,
+					originalPrepared.ranks,
+					originalPrepared.measurements,
+				);
 				const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+				expect(original.status, `${orientation}: ${JSON.stringify(original)}`).toBe(
+					SharedLaneLayoutStatus.Selected,
+				);
 				expect(result.status, `${orientation}: ${JSON.stringify(result)}`).toBe(
 					SharedLaneLayoutStatus.Selected,
 				);
-				if (result.status !== SharedLaneLayoutStatus.Selected) continue;
+				if (
+					original.status !== SharedLaneLayoutStatus.Selected ||
+					result.status !== SharedLaneLayoutStatus.Selected
+				)
+					continue;
+				expect(
+					validateSharedLaneGeometry(originalPrepared.graph, original.geometry),
+				).toBeUndefined();
 				expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+				const geometryByEndpoints = (geometry: SharedLaneGeometry) => ({
+					width: geometry.width,
+					height: geometry.height,
+					lanes: geometry.lanes,
+					elements: geometry.elements,
+					relations: Object.fromEntries(
+						geometry.relations.map(
+							({ from, to, points }) => [JSON.stringify([from, to]), points] as const,
+						),
+					),
+				});
+				expect(geometryByEndpoints(result.geometry)).toEqual(
+					geometryByEndpoints(original.geometry),
+				);
 			}
 		},
 	);

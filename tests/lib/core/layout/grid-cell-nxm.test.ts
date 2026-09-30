@@ -27,6 +27,7 @@ import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { incidentEndpointPositions } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
@@ -67,7 +68,7 @@ const SHAPES: readonly NxmShape[] = [
 ];
 
 describe('grid bus allocation', () => {
-	it('charges only endpoint gutters, once per relation in a shared column', () => {
+	it('charges endpoint gutters in relation input order, once per shared-column crossing', () => {
 		const input = nxmThreeByTwoInput();
 		const crossing = nxmThreeByTwoDocument().relations;
 		const resources = gridCrossingResources(input, crossing);
@@ -83,7 +84,7 @@ describe('grid bus allocation', () => {
 			[...crossing].reverse(),
 		);
 		expect(reversed.edges).toEqual(resources.edges);
-		expect(reversed.gutterIds).toEqual(resources.gutterIds);
+		expect(reversed.gutterIds).toEqual([['a-c', 'a-b'], ['a-b'], ['c-f', 'a-c']]);
 	});
 	it('selects a noncanonical bus after every canonical order fails without row alternatives', () => {
 		const source = {
@@ -325,6 +326,7 @@ describe('N by M grid region arrangement', () => {
 			model: normalized.model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(
 				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 			),

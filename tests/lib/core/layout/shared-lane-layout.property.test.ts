@@ -21,6 +21,7 @@ import {
 	validateSharedLaneGeometry,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
+	type SharedLaneLayoutOutcome,
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
@@ -205,6 +206,49 @@ const smallDocuments = fc
 		return count <= 2;
 	});
 
+const relationIdPermutationCases = smallDocuments.chain((value) => {
+	const [mask, directionIndex, reverse] = value;
+	const document = documentFor(mask, directionIndex, reverse);
+	const indices = document.relations.map((_relation, index) => index);
+	return fc
+		.shuffledSubarray(indices, {
+			minLength: indices.length,
+			maxLength: indices.length,
+		})
+		.map((permutation) => ({ value, permutation }));
+});
+
+function outcomeByOriginalRelationId(
+	outcome: SharedLaneLayoutOutcome,
+	originalIdByCurrentId: ReadonlyMap<string, string>,
+) {
+	if (outcome.status !== SharedLaneLayoutStatus.Selected) {
+		let reason = outcome.reason;
+		const substitutions = [...originalIdByCurrentId.entries()];
+		for (const [index, [currentId]] of substitutions.entries())
+			reason = reason.replaceAll(currentId, `\u0000${index}\u0000`);
+		for (const [index, [, originalId]] of substitutions.entries())
+			reason = reason.replaceAll(`\u0000${index}\u0000`, originalId);
+		return { status: outcome.status, reason };
+	}
+	const routesByOriginalId = new Map(
+		outcome.geometry.relations.map(({ id, ...route }) => {
+			const originalId = originalIdByCurrentId.get(id);
+			if (originalId === undefined) throw new Error(`Missing original relation ID for ${id}.`);
+			return [originalId, route] as const;
+		}),
+	);
+	const relationIds = [...originalIdByCurrentId.values()];
+	return {
+		status: outcome.status,
+		width: outcome.geometry.width,
+		height: outcome.geometry.height,
+		lanes: outcome.geometry.lanes,
+		elements: outcome.geometry.elements,
+		routes: relationIds.map((id) => [id, routesByOriginalId.get(id)] as const),
+	};
+}
+
 describe('shared lane layout optimality property', () => {
 	it('matches independent exhaustive assignments for small documents and relation permutations', () => {
 		fc.assert(
@@ -225,6 +269,48 @@ describe('shared lane layout optimality property', () => {
 					permuted.measurements,
 				);
 				expect(permutedResult).toEqual(result);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
+	it('preserves lane geometry under relation ID permutations', () => {
+		fc.assert(
+			fc.property(relationIdPermutationCases, ({ value, permutation }) => {
+				const [mask, directionIndex, reverse] = value;
+				const document = documentFor(mask, directionIndex, reverse);
+				const originalIds = document.relations.map(({ id }) => id);
+				const renamedRelations = document.relations.map((relation, index) => {
+					const assignedIndex = permutation[index];
+					if (assignedIndex === undefined) throw new Error('Missing a relation permutation index.');
+					const id = originalIds[assignedIndex];
+					if (id === undefined) throw new Error('Missing the permuted relation ID.');
+					return { ...relation, id };
+				});
+				const renamedDocument: LogicDocument = { ...document, relations: renamedRelations };
+				const originalPrepared = prepareLayoutDocument(document);
+				const renamedPrepared = prepareLayoutDocument(renamedDocument);
+				const original = solveSharedLaneLayout(
+					originalPrepared.graph,
+					originalPrepared.ranks,
+					originalPrepared.measurements,
+				);
+				const renamed = solveSharedLaneLayout(
+					renamedPrepared.graph,
+					renamedPrepared.ranks,
+					renamedPrepared.measurements,
+				);
+				const originalIdByRenamedId = new Map(
+					renamedRelations.map((relation, index) => {
+						const originalId = originalIds[index];
+						if (originalId === undefined) throw new Error('Missing the original relation ID.');
+						return [relation.id, originalId] as const;
+					}),
+				);
+				const identity = new Map(originalIds.map((id) => [id, id] as const));
+				expect(outcomeByOriginalRelationId(renamed, originalIdByRenamedId)).toEqual(
+					outcomeByOriginalRelationId(original, identity),
+				);
 			}),
 			PROPERTY_PARAMETERS,
 		);

@@ -17,6 +17,8 @@ import {
 	type CorridorLink,
 	corridorLink,
 	corridorsIndexGraph,
+	relationIdsAreUnique,
+	relationPositions,
 	type RoutingCorridor,
 } from './routing-corridors';
 
@@ -59,17 +61,25 @@ interface FaceAllocation {
 	readonly metricDemands: readonly PortMetricDemand[];
 }
 
-function compareOutgoingLinks(a: CorridorLink, b: CorridorLink): number {
-	return a.target - b.target || compareCanonicalStrings(a.relation.id, b.relation.id);
+/** Links towards the same opposite coordinate keep the documentary order of their relations. */
+function sortFaceLinks(
+	links: CorridorLink[],
+	outgoing: boolean,
+	position: (relation: LogicRelation) => number,
+): void {
+	const documentary = (a: CorridorLink, b: CorridorLink) =>
+		position(a.relation) - position(b.relation);
+	if (outgoing) links.sort((a, b) => a.target - b.target || documentary(a, b));
+	else links.sort((a, b) => a.source - b.source || documentary(a, b));
 }
 
-function compareIncomingLinks(a: CorridorLink, b: CorridorLink): number {
-	return a.source - b.source || compareCanonicalStrings(a.relation.id, b.relation.id);
-}
-
-function sortFaceLinks(links: CorridorLink[], outgoing: boolean): void {
-	if (outgoing) links.sort(compareOutgoingLinks);
-	else links.sort(compareIncomingLinks);
+/** The documentary position of a relation of `graph`, indexed only once a tie needs it. */
+function documentaryPosition(graph: LogicGraph): (relation: LogicRelation) => number {
+	let positions: ReadonlyMap<string, number> | undefined;
+	return (relation) => {
+		positions ??= relationPositions(graph);
+		return defined(positions.get(relation.id));
+	};
 }
 
 function allocateFace(input: {
@@ -77,8 +87,9 @@ function allocateFace(input: {
 	readonly outgoing: boolean;
 	readonly sortLinks: boolean;
 	readonly graph: LogicGraph;
-	/** Every link carries its index in `graph`, whose relation ids strictly increase. */
+	/** Every link carries its index in `graph`, whose relation ids are unique. */
 	readonly indexed: boolean;
+	readonly position: (relation: LogicRelation) => number;
 	readonly shared?: ReadonlySet<string>;
 }): FaceAllocation {
 	let offsets: PortOffsetsBuilder = new Map<string, number>();
@@ -89,7 +100,7 @@ function allocateFace(input: {
 			for (const link of links) assignPortOffset(offsets, link, 0);
 			continue;
 		}
-		if (input.sortLinks) sortFaceLinks(links, input.outgoing);
+		if (input.sortLinks) sortFaceLinks(links, input.outgoing, input.position);
 		const kind = defined(input.graph.endpointsById.get(id)).kind;
 		const spacing = portSpacing(kind);
 		let role = RoutingPortRole.Incoming;
@@ -145,7 +156,7 @@ interface PortAllocationInput {
 interface FaceLinks {
 	readonly outgoing: Map<string, CorridorLink[]>;
 	readonly incoming: Map<string, CorridorLink[]>;
-	readonly routedRelationIds: Set<string>;
+	readonly routedRelationIds: Set<string> | undefined;
 	readonly routedRelationRefs: Set<LogicRelation> | undefined;
 }
 
@@ -153,8 +164,8 @@ function recordFaceLink(faceLinks: FaceLinks, link: CorridorLink): void {
 	const { outgoing, incoming, routedRelationIds, routedRelationRefs } = faceLinks;
 	const { relation } = link;
 	if (routedRelationRefs === undefined) {
-		if (routedRelationIds.has(relation.id)) return;
-		routedRelationIds.add(relation.id);
+		if (routedRelationIds?.has(relation.id) === true) return;
+		routedRelationIds?.add(relation.id);
 	} else routedRelationRefs.add(relation);
 	let sources = outgoing.get(relation.from);
 	if (sources === undefined) {
@@ -173,32 +184,24 @@ function recordFaceLink(faceLinks: FaceLinks, link: CorridorLink): void {
 function collectFaceLinks(input: PortAllocationInput): FaceLinks {
 	const outgoing = new Map<string, CorridorLink[]>();
 	const incoming = new Map<string, CorridorLink[]>();
-	const routedRelationIds = new Set<string>();
+	let routedRelationIds: Set<string> | undefined;
 	let routedRelationRefs: Set<LogicRelation> | undefined;
-	let sortedUniqueIds = input.fromCrossingCorridors === true;
-	if (sortedUniqueIds)
-		for (let index = 1; index < input.graph.relations.length; index += 1) {
-			const previous = defined(input.graph.relations[index - 1]).relation.id;
-			const current = defined(input.graph.relations[index]).relation.id;
-			if (compareCanonicalStrings(previous, current) < 0) continue;
-			sortedUniqueIds = false;
-			break;
-		}
-	if (sortedUniqueIds) routedRelationRefs = new Set<LogicRelation>();
+	let uniqueIds = input.fromCrossingCorridors === true;
+	if (uniqueIds) uniqueIds = relationIdsAreUnique(input.graph);
+	if (uniqueIds) routedRelationRefs = new Set<LogicRelation>();
+	else routedRelationIds = new Set<string>();
 	const faceLinks = { outgoing, incoming, routedRelationIds, routedRelationRefs };
 	for (const corridor of input.corridors)
 		for (const link of corridor.links) recordFaceLink(faceLinks, link);
 	return faceLinks;
 }
 
-function appendDirectFaceLinks(
-	input: PortAllocationInput,
-	faceLinks: ReturnType<typeof collectFaceLinks>,
-): boolean {
+function appendDirectFaceLinks(input: PortAllocationInput, faceLinks: FaceLinks): boolean {
 	const { outgoing, incoming, routedRelationIds, routedRelationRefs } = faceLinks;
 	let appended = false;
 	for (const [relationIndex, { relation }] of input.graph.relations.entries()) {
-		if (routedRelationRefs?.has(relation) === true || routedRelationIds.has(relation.id)) continue;
+		if (routedRelationRefs?.has(relation) === true || routedRelationIds?.has(relation.id) === true)
+			continue;
 		const source = outgoing.get(relation.from);
 		const target = incoming.get(relation.to);
 		if (source === undefined && target === undefined) continue;
@@ -219,6 +222,7 @@ export function allocatePorts(input: PortAllocationInput): PortAllocation {
 		sortLinks: input.fromCrossingCorridors !== true || appendedDirectLinks,
 		indexed:
 			input.fromCrossingCorridors === true && corridorsIndexGraph(input.corridors, input.graph),
+		position: documentaryPosition(input.graph),
 	};
 	const shared = input.sharedSources ?? new Set<string>();
 	const source = allocateFace({

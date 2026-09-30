@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LayoutRelation, Point } from '../layout-types';
 import {
@@ -93,10 +92,11 @@ export function allocateParallelRoutes(
 		overrides?.gutter ??
 		allocateNestedTracks(
 			frame.gutterEdge,
-			input.plans.map((plan) => ({
+			input.plans.map((plan, order) => ({
 				key: plan.id,
 				start: frame.contentLongStart,
 				end: frame.contentLongEnd,
+				order,
 			})),
 		);
 	const railTracks = overrides?.railTrackByKey;
@@ -202,10 +202,6 @@ function logicalPoints(
 	];
 }
 
-function canonicalPlans(input: SharedLaneInput): readonly SharedLanePlan[] {
-	return [...input.plans].sort((a, b) => compareCanonicalStrings(a.id, b.id));
-}
-
 /** The granted gutter track, the ports and the order of one plan's route. */
 function routePosition(
 	frame: SharedLaneFrame,
@@ -252,14 +248,12 @@ export function routeSharedLane({
 	};
 }
 
-/** The route of every plan of the frame, in the canonical plan order. */
+/** The route of every plan of the frame, in documentary plan order. */
 export function routeSharedLanes(
 	input: SharedLaneInput,
 	frame: SharedLaneFrame,
 	allocation: ParallelRouteAllocation,
 	order: ParallelRouteOrder = ParallelRouteOrder.Canonical,
 ): readonly LayoutRelation[] {
-	return canonicalPlans(input).map((plan) =>
-		routeSharedLane({ input, frame, allocation, order, plan }),
-	);
+	return input.plans.map((plan) => routeSharedLane({ input, frame, allocation, order, plan }));
 }

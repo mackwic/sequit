@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from '../../../canonical-string';
 import { defined } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
@@ -91,6 +92,7 @@ function solveLeaf(
 		leafPolicy: regionLeafPolicy(definition),
 		cache: context.cache,
 		contracts: leafIncidentContracts(context, regionId, incidentSides),
+		endpointPositions: context.endpointPositions,
 	};
 	const solved = leafCandidate(input, regionId, selection);
 	if (solved.status === RegionCompositionStatus.Unknown)
@@ -206,7 +208,7 @@ export function solveRecursiveNestedRegionLayoutWithWork(
 		const failure = policyFailure(graph, normalized.model, work);
 		if (failure !== undefined)
 			return { status: RegionCompositionStatus.Unsupported, reason: failure };
-		return solveRecursiveCandidate(
+		const attempt = solveRecursiveCandidate(
 			{
 				graph,
 				measurements,
@@ -217,6 +219,19 @@ export function solveRecursiveNestedRegionLayoutWithWork(
 				solveRegion(context, normalized.model.rootId, new Map(), { selection, work }),
 			work,
 		).attempt;
+		if (attempt.status !== RegionCompositionStatus.Selected) return attempt;
+		return {
+			...attempt,
+			layout: {
+				...attempt.layout,
+				relations: [...attempt.layout.relations].sort((left, right) =>
+					compareCanonicalStrings(left.id, right.id),
+				),
+			},
+			portals: [...attempt.portals].sort((left, right) =>
+				compareCanonicalStrings(left.relationId, right.relationId),
+			),
+		};
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded)
 			return {

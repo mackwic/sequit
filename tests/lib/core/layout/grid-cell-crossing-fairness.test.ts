@@ -127,7 +127,7 @@ function obstacleProbe(
 				failure: regionGeometryDiagnostic(
 					RegionGeometryDiagnosticCode.GridCrossingEntersElement,
 					'The charged route intersects a declared obstacle.',
-					{ relationId: relation.id },
+					{ relationId: relation.id, endpointId: 'declared-obstacle' },
 				),
 			};
 		return { candidate: allocation };

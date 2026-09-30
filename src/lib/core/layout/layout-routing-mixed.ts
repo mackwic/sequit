@@ -142,6 +142,7 @@ function materializeStandardRoutes(
 		graph: structure.graph,
 		bounds: placement.bounds,
 		routing: placedRouting,
+		channels: workspace.channels,
 		frame,
 		space: routingSpace({
 			layers: routingLayers(structure),

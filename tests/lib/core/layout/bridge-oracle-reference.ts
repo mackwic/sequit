@@ -38,7 +38,7 @@ function strictPoint(first: RouteRun, second: RouteRun): Point | undefined {
 	return { x, y };
 }
 
-/** The old oracle's unindexed scan checks every run in canonical path order. */
+/** The old oracle's unindexed scan checks every run in canonical geometric path order. */
 function allCarriers(runs: readonly RouteRun[], run: RouteRun, point: Point): readonly RouteRun[] {
 	return runs.filter((candidate) => {
 		if (candidate.orientation !== run.orientation) return false;
@@ -153,9 +153,25 @@ function referenceRuns(path: RoutedPath): RouteRun[] {
 	return runs;
 }
 
+function compareRouteGeometry(left: RoutedPath, right: RoutedPath): number {
+	const sharedLength = Math.min(left.points.length, right.points.length);
+	for (let index = 0; index < sharedLength; index += 1) {
+		const leftPoint = left.points[index];
+		const rightPoint = right.points[index];
+		if (leftPoint === undefined || rightPoint === undefined) continue;
+		const byX = leftPoint.x - rightPoint.x;
+		if (byX !== 0) return byX;
+		const byY = leftPoint.y - rightPoint.y;
+		if (byY !== 0) return byY;
+	}
+	const byLength = left.points.length - right.points.length;
+	if (byLength !== 0) return byLength;
+	return compareCanonicalStrings(left.id, right.id);
+}
+
 /** Independent, exhaustive pre-index crossing/carrier oracle; no production bridge analysis calls. */
 export function referenceRouteBridgeAnalysis(paths: readonly RoutedPath[]): RouteBridgeAnalysis {
-	const sortedPaths = [...paths].sort((left, right) => compareCanonicalStrings(left.id, right.id));
+	const sortedPaths = [...paths].sort(compareRouteGeometry);
 	const runsByPath = sortedPaths.map(referenceRuns);
 	const scan: ReferenceScan = {
 		runs: runsByPath.flat(),

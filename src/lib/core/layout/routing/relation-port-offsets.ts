@@ -1,27 +1,22 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import {
 	corridorCarriesCanonicalIndexes,
 	type CorridorLink,
+	relationPositions,
 	type RoutingCorridor,
 } from './routing-corridors';
 
-/** Lookups by id answered by binary search before the map view pays for itself. */
-const SEARCHED_LOOKUPS = 64;
-
 /**
- * Port offsets stored by relation index, for a graph whose relation ids strictly increase.
- * Offsets are assigned while the allocation is built, then only read: routing reads them by
- * index; lookups by id search the sorted relations until they become frequent, and the map
- * view, in assignment order, is built only when needed.
+ * Port offsets stored by relation index for a graph whose relation ids are unique. Routing reads
+ * them by index; the map view in assignment order is built only when iteration is requested.
  */
 export class RelationPortOffsets implements ReadonlyMap<string, number> {
 	readonly #graph: LogicGraph;
 	readonly #values: Float64Array;
 	readonly #order: number[] = [];
 	#map: Map<string, number> | undefined;
-	#lookups = 0;
+	#positions: ReadonlyMap<string, number> | undefined;
 	#read = false;
 
 	constructor(graph: LogicGraph) {
@@ -53,20 +48,11 @@ export class RelationPortOffsets implements ReadonlyMap<string, number> {
 	}
 
 	get(relationId: string): number | undefined {
-		if (this.#map !== undefined) return this.#map.get(relationId);
-		this.#lookups += 1;
-		if (this.#lookups > SEARCHED_LOOKUPS) return this.#view().get(relationId);
-		const relations = this.#graph.relations;
-		let low = 0;
-		let high = relations.length;
-		while (low < high) {
-			const middle = (low + high) >>> 1;
-			const order = compareCanonicalStrings(defined(relations[middle]).relation.id, relationId);
-			if (order === 0) return this.at(middle);
-			if (order < 0) low = middle + 1;
-			else high = middle;
-		}
-		return undefined;
+		this.#read = true;
+		const positions = (this.#positions ??= relationPositions(this.#graph));
+		const index = positions.get(relationId);
+		if (index === undefined) return undefined;
+		return this.at(index);
 	}
 
 	has(relationId: string): boolean {

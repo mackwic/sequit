@@ -260,7 +260,7 @@ describe('renderRelationPaths', () => {
 	});
 
 	it.each([0, 1, 2, 3])(
-		'keeps the canonical crossing route as carrier near a parallel trunk after %s quarter turns',
+		'bridges crossings beside a parallel trunk after %s quarter turns',
 		(turns) => {
 			function rotate(points: LayoutRelation['points']): LayoutRelation['points'] {
 				return points.map((point) => {
@@ -292,11 +292,36 @@ describe('renderRelationPaths', () => {
 					]),
 				),
 			]);
-			// The non-canonical array order does not override the route-ID carrier choice.
-			expect(paths[0]?.path).toContain('A 6 6 0 0 1 ');
 			AssertRenderedPaths(paths).haveBridgeAtEveryCrossing();
 		},
 	);
+
+	it('keeps the bridge arc on its geometric route when both relation ids are renamed', () => {
+		const original = renderRelationPaths([
+			relation('a-horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+			relation('z-vertical', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 100 },
+			]),
+		]);
+		const renamed = renderRelationPaths([
+			relation('z-horizontal', [
+				{ x: 0, y: 50 },
+				{ x: 100, y: 50 },
+			]),
+			relation('a-vertical', [
+				{ x: 50, y: 0 },
+				{ x: 50, y: 100 },
+			]),
+		]);
+		expect(original.find(({ id }) => id === 'a-horizontal')?.path).not.toContain(' A ');
+		expect(original.find(({ id }) => id === 'z-vertical')?.path).toContain(' A 6 6 0 0 1 ');
+		expect(renamed.find(({ id }) => id === 'z-horizontal')?.path).not.toContain(' A ');
+		expect(renamed.find(({ id }) => id === 'a-vertical')?.path).toContain(' A 6 6 0 0 1 ');
+	});
 
 	it('uses stable, uniform arrow colors for distant routes without crossings', () => {
 		const rendered = renderRelationPaths([

@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../../canonical-string';
 import type { LogicRelation } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
 import type { RegionCompositionWork } from './region-composition-limits';
@@ -81,30 +80,25 @@ export function relationOwnership(
 	regionsById: ReadonlyMap<string, RegionCompositionNode>,
 	work?: RegionCompositionWork,
 ): readonly RegionRelationOwnership[] {
-	return [...graph.relations]
-		.sort((left, right) => {
-			work?.charge(RegionWorkPhase.NormalizationComparisons, left.relation.id);
-			return compareCanonicalStrings(left.relation.id, right.relation.id);
-		})
-		.map(({ relation }) => {
-			work?.charge(RegionWorkPhase.Traversals, relation.id);
-			const sourceLeafId = leafByEndpointId.get(relation.from);
-			const targetLeafId = leafByEndpointId.get(relation.to);
-			if (sourceLeafId === undefined || targetLeafId === undefined)
-				throw new Error('Relation has an unvalidated endpoint assignment.');
-			const ownerId = leastCommonAncestor(sourceLeafId, targetLeafId, regionsById, work);
-			let kind = RegionRelationKind.Crossing;
-			if (sourceLeafId === targetLeafId) kind = RegionRelationKind.Local;
-			return {
-				relation,
-				sourceLeafId,
-				targetLeafId,
-				ownerId,
-				kind,
-				sourcePathToOwner: pathToOwner(sourceLeafId, ownerId, regionsById, work),
-				targetPathToOwner: pathToOwner(targetLeafId, ownerId, regionsById, work),
-			};
-		});
+	return graph.relations.map(({ relation }) => {
+		work?.charge(RegionWorkPhase.Traversals, relation.id);
+		const sourceLeafId = leafByEndpointId.get(relation.from);
+		const targetLeafId = leafByEndpointId.get(relation.to);
+		if (sourceLeafId === undefined || targetLeafId === undefined)
+			throw new Error('Relation has an unvalidated endpoint assignment.');
+		const ownerId = leastCommonAncestor(sourceLeafId, targetLeafId, regionsById, work);
+		let kind = RegionRelationKind.Crossing;
+		if (sourceLeafId === targetLeafId) kind = RegionRelationKind.Local;
+		return {
+			relation,
+			sourceLeafId,
+			targetLeafId,
+			ownerId,
+			kind,
+			sourcePathToOwner: pathToOwner(sourceLeafId, ownerId, regionsById, work),
+			targetPathToOwner: pathToOwner(targetLeafId, ownerId, regionsById, work),
+		};
+	});
 }
 
 export function partitionRelations(

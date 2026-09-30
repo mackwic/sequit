@@ -602,6 +602,112 @@ describe('variable persisted region trees through the production layout entry', 
 			);
 		});
 	}
+	it('preserves nested geometry when relation identifiers are permuted', () => {
+		fc.assert(
+			fc.property(
+				fc.tuple(
+					treeCases(1, 'root').filter(({ firstLeafPair }) => firstLeafPair),
+					fc
+						.shuffledSubarray([0, 1, 2], { minLength: 3, maxLength: 3 })
+						.filter((indices) => indices[0] !== 0 || indices[1] !== 1 || indices[2] !== 2),
+				),
+				([sample, permutation]) => {
+					const baseTree = buildTree(sample);
+					const local = defined(
+						baseTree.document.relations.find(({ id }) => id === 'inside-first'),
+					);
+					const crossing = defined(
+						baseTree.document.relations.find(({ id }) => id === 'across-tree'),
+					);
+					const tree = {
+						...baseTree,
+						document: {
+							...baseTree.document,
+							relations: [
+								...baseTree.document.relations,
+								{
+									id: 'across-tree-extra',
+									from: local.from,
+									to: crossing.to,
+								},
+							],
+						},
+					};
+					const relationIds = tree.document.relations.map(({ id }) => id);
+					const renamedToOriginal = new Map<string, string>();
+					const renamedDocument = {
+						...tree.document,
+						relations: tree.document.relations.map((relation, index) => {
+							const id = defined(tree.document.relations[defined(permutation[index])]).id;
+							renamedToOriginal.set(id, relation.id);
+							return { ...relation, id };
+						}),
+					};
+					const originalPrepared = prepareLayoutDocument(tree.document, {
+						nodes: tree.sizesById,
+					});
+					const original = solveNestedRegionLayout(
+						originalPrepared.graph,
+						originalPrepared.measurements,
+						tree.input,
+					);
+					const renamedPrepared = prepareLayoutDocument(renamedDocument, {
+						nodes: tree.sizesById,
+					});
+					const renamed = solveNestedRegionLayout(
+						renamedPrepared.graph,
+						renamedPrepared.measurements,
+						tree.input,
+					);
+					const normalize = (
+						attempt: typeof original,
+						idsToOriginal: ReadonlyMap<string, string>,
+					): unknown => {
+						if (attempt.status !== RegionCompositionStatus.Selected) {
+							let reason = '';
+							if ('reason' in attempt) {
+								reason = attempt.reason;
+								const replacements = [...idsToOriginal].map(([id, originalId], index) => ({
+									id,
+									originalId,
+									placeholder: `\u0000${index}\u0000`,
+								}));
+								for (const replacement of replacements)
+									reason = reason.replaceAll(replacement.id, replacement.placeholder);
+								for (const replacement of replacements)
+									reason = reason.replaceAll(replacement.placeholder, replacement.originalId);
+							}
+							return { status: attempt.status, reason };
+						}
+						const portalsByRelation = new Map<string, RegionLayoutSelected['portals'][number][]>();
+						for (const portal of attempt.portals) {
+							const originalId = idsToOriginal.get(portal.relationId) ?? portal.relationId;
+							const portals = portalsByRelation.get(originalId) ?? [];
+							portals.push({ ...portal, relationId: originalId });
+							portalsByRelation.set(originalId, portals);
+						}
+						return {
+							status: attempt.status,
+							width: attempt.layout.width,
+							height: attempt.layout.height,
+							elements: attempt.layout.elements,
+							routes: Object.fromEntries(
+								attempt.layout.relations.map(
+									({ id, ...route }) => [idsToOriginal.get(id) ?? id, route] as const,
+								),
+							),
+							regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
+							portals: Object.fromEntries(portalsByRelation),
+						};
+					};
+					expect(normalize(renamed, renamedToOriginal)).toEqual(
+						normalize(original, new Map(relationIds.map((id) => [id, id]))),
+					);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	}, 10_000);
 	// Each run composes an edit sequence incrementally and cold: 3.2 s alone, 5.75 s in full coverage.
 	it('matches cold composition through reordered local, crossing, size and collection edits', async () => {
 		await fc.assert(fc.asyncProperty(sequenceCases, checkSequenceCase), PROPERTY_PARAMETERS);

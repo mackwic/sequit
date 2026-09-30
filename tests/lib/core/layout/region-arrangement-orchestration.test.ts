@@ -10,6 +10,7 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { incidentEndpointPositions } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { solveArrangedRegion } from '../../../../src/lib/core/layout/regions/recursive/region-arrangement-orchestration';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
@@ -37,6 +38,7 @@ function contextFor(side: RegionPortalSide): RecursiveContext {
 		model: normalized.model,
 		measurements: prepared.measurements,
 		cache: undefined,
+		endpointPositions: incidentEndpointPositions(prepared.graph.document),
 		ownershipByRelationId: new Map(
 			normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 		),

@@ -117,12 +117,16 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 	});
 }
 
-function compareIncidences(a: PortIncidence, b: PortIncidence): number {
+function compareIncidences(
+	a: PortIncidence,
+	b: PortIncidence,
+	relationOrder: ReadonlyMap<string, number>,
+): number {
 	const row = a.oppositeRow - b.oppositeRow;
 	if (row !== 0) return row;
 	const other = compareCanonicalStrings(a.oppositeId, b.oppositeId);
 	if (other !== 0) return other;
-	return compareCanonicalStrings(a.relationId, b.relationId);
+	return defined(relationOrder.get(a.relationId)) - defined(relationOrder.get(b.relationId));
 }
 
 function reservePhysicalGroup(
@@ -160,18 +164,32 @@ function incidentFaces(
 	return faces;
 }
 
-function compareContracts(left: RegionIncidentContract, right: RegionIncidentContract): number {
-	const relation = compareCanonicalStrings(left.relation.id, right.relation.id);
-	if (relation !== 0) return relation;
+function compareContracts(
+	left: RegionIncidentContract,
+	right: RegionIncidentContract,
+	relationOrder: ReadonlyMap<string, number>,
+): number {
+	const leftOrder = relationOrder.get(left.relation.id);
+	const rightOrder = relationOrder.get(right.relation.id);
+	if (leftOrder !== undefined && rightOrder !== undefined) {
+		const order = leftOrder - rightOrder;
+		if (order !== 0) return order;
+	} else if (leftOrder !== undefined) return -1;
+	else if (rightOrder !== undefined) return 1;
+	const source = compareCanonicalStrings(left.relation.from, right.relation.from);
+	if (source !== 0) return source;
+	const target = compareCanonicalStrings(left.relation.to, right.relation.to);
+	if (target !== 0) return target;
 	return compareCanonicalStrings(left.role, right.role);
 }
 
 function incidentOffsets(
 	faces: ReadonlyMap<string, IncidentFaceGroup>,
+	relationOrder: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, number> {
 	const offsets = new Map<string, number>();
 	for (const face of faces.values()) {
-		face.contracts.sort(compareContracts);
+		face.contracts.sort((left, right) => compareContracts(left, right, relationOrder));
 		for (const [index, contract] of face.contracts.entries())
 			offsets.set(incidentFaceKey(contract, face.side), index * PORT_SPACING);
 	}
@@ -182,6 +200,7 @@ export function planSharedLanePorts(
 	input: SharedLaneInput,
 	contracts: readonly RegionIncidentContract[] = [],
 ): SharedLanePorts {
+	const relationOrder = new Map(input.plans.map(({ id }, index) => [id, index]));
 	const groups = new Map<string, PortGroup>();
 	for (const plan of input.plans) {
 		const source = defined(input.endpoints.get(plan.from));
@@ -204,9 +223,9 @@ export function planSharedLanePorts(
 	const offsetByIncidence = new Map<string, number>();
 	const demandByEndpoint = new Map<string, number>();
 	const faces = incidentFaces(input, contracts, groups);
-	const incidentOffsetByFace = incidentOffsets(faces);
+	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
-		group.incidences.sort(compareIncidences);
+		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder));
 		const count = group.incidences.length;
 		const side = physicalSide(input, group.side);
 		const reserved = faces.get(JSON.stringify([group.endpointId, side]))?.contracts.length ?? 0;

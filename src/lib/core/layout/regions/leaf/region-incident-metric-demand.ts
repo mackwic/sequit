@@ -21,9 +21,10 @@ function sideAxis(side: RegionPortalSide): MetricAxis {
 /** Reserve enough transverse face length for every declared side alternative. */
 export function incidentMetricDemands(
 	contracts: readonly RegionIncidentContract[],
+	endpointPositions?: ReadonlyMap<string, number>,
 ): readonly MinimumEndpointExtentMetricDemand[] {
 	const counts = new Map<string, Map<RegionPortalSide, number>>();
-	for (const contract of normalizeRegionIncidentContracts(contracts)) {
+	for (const contract of normalizeRegionIncidentContracts(contracts, endpointPositions)) {
 		const bySide = counts.get(contract.endpointId) ?? new Map<RegionPortalSide, number>();
 		for (const side of contract.allowedSides) bySide.set(side, (bySide.get(side) ?? 0) + 1);
 		counts.set(contract.endpointId, bySide);

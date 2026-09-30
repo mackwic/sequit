@@ -51,10 +51,10 @@ describe('grid cells in the common region ownership model', () => {
 		expect(
 			model.relations.map(({ relation, ownerId, kind }) => [relation.id, ownerId, kind]),
 		).toEqual([
-			['across-grid', '@root', 'crossing'],
 			['inside-a', 'a', 'local'],
+			['across-grid', '@root', 'crossing'],
 		]);
-		expect(model.relations[0]).toMatchObject({
+		expect(model.relations.find(({ relation }) => relation.id === 'across-grid')).toMatchObject({
 			sourceLeafId: 'a',
 			targetLeafId: 'd',
 			sourcePathToOwner: ['a'],

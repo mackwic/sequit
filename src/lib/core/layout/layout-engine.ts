@@ -112,6 +112,7 @@ function evaluateRetainedLayout(
 		bounds: workspace.placement.bounds,
 		routing: workspace.routing,
 		frame,
+		channels: workspace.channels,
 		routes,
 		space,
 	});

@@ -38,6 +38,7 @@ export interface DedicatedRegionLeafIncidentInput {
 	readonly document: LogicDocument;
 	readonly measurements: LayoutMeasurements;
 	readonly contracts: readonly RegionIncidentContract[];
+	readonly endpointPositions?: ReadonlyMap<string, number> | undefined;
 	readonly cache?: RegionLocalLayoutCache | undefined;
 }
 
@@ -246,9 +247,10 @@ export function solveDedicatedRegionLeafWithIncidents(
 			newSearchState(),
 			true,
 		);
+	const endpointPositions = input.endpointPositions;
 	let contracts: readonly RegionIncidentContract[];
 	try {
-		contracts = normalizeRegionIncidentContracts(input.contracts);
+		contracts = normalizeRegionIncidentContracts(input.contracts, endpointPositions);
 	} catch (error) {
 		let reason = String(error);
 		if (error instanceof Error) reason = error.message;
@@ -260,7 +262,7 @@ export function solveDedicatedRegionLeafWithIncidents(
 			...input.document.groups.map(({ id }) => id),
 			...input.document.junctions.map(({ id }) => id),
 		]);
-		const demands = incidentMetricDemands(contracts).filter(({ endpointId }) =>
+		const demands = incidentMetricDemands(contracts, endpointPositions).filter(({ endpointId }) =>
 			endpointIds.has(endpointId),
 		);
 		const demanded = satisfyMetricDemands(
@@ -299,6 +301,7 @@ export function solveDedicatedRegionLeafWithIncidents(
 				measurements: input.measurements,
 				policy: LayoutPolicy.Layered,
 				contracts,
+				endpointPositions,
 				compute,
 			});
 		// Every writer of a `RegionLocalLayout` in this cache defines both fields: this solver's own
@@ -331,8 +334,7 @@ export function* enumerateDedicatedRegionLeafWithIncidents(
 	const first = solveDedicatedRegionLeafWithIncidents(input);
 	if (first.status !== RegionCompositionStatus.Selected) return first.witness;
 	yield first;
-	if (first.incidents.length === 0) return first.witness;
-	const contracts = normalizeRegionIncidentContracts(input.contracts);
+	const contracts = normalizeRegionIncidentContracts(input.contracts, input.endpointPositions);
 	const elements = new Map(first.layout.elements.map((element) => [element.id, element]));
 	const endpoints = contracts.map((contract) => defined(elements.get(contract.endpointId)));
 	const state = newSearchState();

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it } from 'vitest';
 
+import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
@@ -12,7 +13,7 @@ function digest(value: unknown): string {
 }
 
 describe('bounded grid LayoutResult identity', () => {
-	it('matches five reference layouts from the original grid solver', () => {
+	it('pins five grid layout identities with canonical public relation order', () => {
 		const base = prepareGrid();
 		const source = gridDocument();
 		const sameColumn = prepareGrid({
@@ -65,14 +66,55 @@ describe('bounded grid LayoutResult identity', () => {
 				return [name, digest(result.layout)];
 			}),
 		);
+		// The first four preserve canonical ID serialization. In multiple crossings, the elements
+		// and dimensions stay fixed while documentary row-gutter order changes three route tracks.
 		expect(hashes).toEqual({
 			base: '56c8759cf1eb73dbe8f016cb610e37a4ff2e0f5ea1e437419789e7528ae473c4',
 			'same-column': '6f21fc83aee4537f1de1d6f421a3bce94b09a66ecf256af426792adec64d91b9',
-			// Three crossings occupy the left gutter; only two reach the right gutter.
-			// Its reserved width falls by 24px, while the bus-free bottom margin falls by 48px.
-			'multiple-crossings': 'a4acab99dba7f47cc0deb83b8465c76bfcad2916339ed3dba607e5c587bbdb9c',
+			'multiple-crossings': 'b4efc24dd6cf95920561154b4f4341af45b3e26260d084f83b8e3a09279c2e38',
 			'widened-group': 'e6f40b540c2a0b6d3e782039b2024263171a7023a1dd35ffbb41f3b42274b34d',
 			'expanded-tracks': '18d8b6c5333b15b1082fc3761ae01bb2830f11633f413af9521526cbb53afe48',
 		});
+	});
+
+	it('keeps every grid route geometry when relation ids are permuted', () => {
+		const source = gridDocument();
+		const relations = [
+			...source.relations,
+			{ id: 'second-crossing', from: 'a-bottom', to: 'c' },
+			{ id: 'third-crossing', from: 'a-top', to: 'd' },
+		];
+		const renamedIds = ['z-inside-a', 'y-across-grid', 'x-second-crossing', 'a-third-crossing'];
+		const originalIdByRenamed = new Map(
+			relations.map(({ id }, index) => [defined(renamedIds[index]), id]),
+		);
+		const originalDocument = { ...source, relations };
+		const renamedDocument = {
+			...source,
+			relations: relations.map((relation, index) => ({
+				...relation,
+				id: defined(renamedIds[index]),
+			})),
+		};
+		const solve = (
+			document: typeof originalDocument,
+			originalIdFor: ReadonlyMap<string, string>,
+		) => {
+			const prepared = prepareGrid(document);
+			const attempt = solveGridCellLayout(prepared.graph, prepared.measurements, gridInput());
+			if (attempt.status !== GridCellLayoutStatus.Selected)
+				throw new Error(`Expected a selected grid: ${attempt.reason}`);
+			return {
+				...attempt.layout,
+				relations: [...attempt.layout.relations]
+					.map((relation) => ({
+						...relation,
+						id: originalIdFor.get(relation.id) ?? relation.id,
+					}))
+					.sort((left, right) => compareCanonicalStrings(left.id, right.id)),
+			};
+		};
+		const identity = new Map(relations.map(({ id }) => [id, id]));
+		expect(solve(renamedDocument, originalIdByRenamed)).toEqual(solve(originalDocument, identity));
 	});
 });

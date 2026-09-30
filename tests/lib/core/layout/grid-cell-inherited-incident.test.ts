@@ -20,7 +20,10 @@ import {
 	RegionCompositionModelStatus,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import {
+	incidentEndpointPositions,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedNestedGridWithTwoOuterIncidentsDocument } from './nested-region-fixture';
@@ -41,6 +44,7 @@ function contextFor(document: LogicDocument): RecursiveContext {
 		model: normalized.model,
 		measurements: prepared.measurements,
 		cache: undefined,
+		endpointPositions: incidentEndpointPositions(prepared.graph.document),
 		ownershipByRelationId: new Map(
 			normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 		),

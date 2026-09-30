@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, LaneOrientation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
@@ -101,7 +102,7 @@ export function selectedLayout(
 			height: geometry.height,
 			lanes: geometry.lanes,
 			elements: geometry.elements,
-			relations: geometry.relations,
+			relations: geometry.relations.toSorted((a, b) => compareCanonicalStrings(a.id, b.id)),
 		},
 		geometry,
 		incidents,

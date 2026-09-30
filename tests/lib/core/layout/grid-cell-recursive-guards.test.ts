@@ -18,7 +18,10 @@ import {
 	RegionCompositionStatus,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionIncidentRole } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import {
+	incidentEndpointPositions,
+	RegionIncidentRole,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
@@ -37,6 +40,7 @@ describe('recursive grid boundaries', () => {
 			model: normalized.model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(
 				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 			),

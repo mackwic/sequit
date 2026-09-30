@@ -34,6 +34,7 @@ import {
 	type RegionInput,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
+	incidentEndpointPositions,
 	RegionIncidentRejectionCode,
 	type RegionIncidentSearchWitness,
 	RegionIncidentUnknownCode,
@@ -76,6 +77,7 @@ function retryState(): RegionRetryState {
 			model: normalized.model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(
 				normalized.model.relations.map((owned) => [owned.relation.id, owned]),
 			),
@@ -171,6 +173,7 @@ function actualIncidentFailure(): {
 			model,
 			measurements: prepared.measurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(prepared.graph.document),
 			ownershipByRelationId: new Map(model.relations.map((owned) => [owned.relation.id, owned])),
 		},
 		retriedOwners: new Set<string>(),

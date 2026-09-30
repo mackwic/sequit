@@ -86,29 +86,63 @@ function collectRelations(
 	diagnostics: GraphDiagnostic[],
 ): GraphRelation[] {
 	const relations: GraphRelation[] = [];
-	let previousId: string | undefined;
-	let reportedDuplicateId: string | undefined;
-	for (const relation of [...document.relations].sort((left, right) =>
-		compareCanonicalStrings(left.id, right.id),
-	)) {
-		if (relation.id === previousId) {
-			if (relation.id !== reportedDuplicateId)
+	const seenIds = new Set<string>();
+	const reportedDuplicateIds = new Set<string>();
+	for (const relation of document.relations) {
+		if (seenIds.has(relation.id)) {
+			if (!reportedDuplicateIds.has(relation.id)) {
 				diagnostics.push({
 					code: GraphDiagnosticCode.DuplicateRelationId,
 					message: `Duplicate relation id: ${relation.id}`,
 					path: ['relations', relation.id],
 				});
-			reportedDuplicateId = relation.id;
+				reportedDuplicateIds.add(relation.id);
+			}
 			continue;
 		}
-		previousId = relation.id;
+		seenIds.add(relation.id);
 		const source = endpointsById.get(relation.from);
 		const target = endpointsById.get(relation.to);
 		if (!source) diagnostics.push(unknownEndpointDiagnostic(relation, 'from'));
 		if (!target) diagnostics.push(unknownEndpointDiagnostic(relation, 'to'));
 		if (source && target) relations.push({ relation, source, target });
 	}
-	return relations;
+	return documentaryRelations(relations, endpointsById);
+}
+
+/**
+ * Relations carry no order of their own: they follow the documentary order of their source, then
+ * of their target, so that renaming a relation never moves it. Only parallel relations between the
+ * same endpoints fall back to their identifiers.
+ */
+function documentaryRelations(
+	relations: readonly GraphRelation[],
+	endpointsById: ReadonlyMap<string, GraphEndpoint>,
+): GraphRelation[] {
+	const positions = new Map(
+		[...endpointsById.values()]
+			.map(({ entity }) => entity)
+			.sort(
+				(left, right) =>
+					compareCanonicalStrings(left.layoutOrder, right.layoutOrder) ||
+					compareCanonicalStrings(left.id, right.id),
+			)
+			.map(({ id }, index) => [id, index]),
+	);
+	const sourcePositions = new Int32Array(relations.length);
+	const targetPositions = new Int32Array(relations.length);
+	const indexes = Array.from({ length: relations.length }, (_, index) => index);
+	for (const [index, { source, target }] of relations.entries()) {
+		sourcePositions[index] = defined(positions.get(source.entity.id));
+		targetPositions[index] = defined(positions.get(target.entity.id));
+	}
+	const id = (index: number) => defined(relations[index]).relation.id;
+	indexes.sort((left, right) => {
+		const bySource = defined(sourcePositions[left]) - defined(sourcePositions[right]);
+		const byTarget = defined(targetPositions[left]) - defined(targetPositions[right]);
+		return bySource || byTarget || compareCanonicalStrings(id(left), id(right));
+	});
+	return indexes.map((index) => defined(relations[index]));
 }
 
 function unknownEndpointDiagnostic(

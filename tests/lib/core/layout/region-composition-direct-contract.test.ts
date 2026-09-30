@@ -35,6 +35,7 @@ import {
 	type RegionInput,
 	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
+import { incidentEndpointPositions } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 const emptyMeasurements: LayoutMeasurements = {
@@ -132,6 +133,7 @@ describe('direct region composition contracts', () => {
 			model,
 			measurements: emptyMeasurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(source.document),
 			ownershipByRelationId: new Map(),
 		};
 		expect(leafDocument(context, 'left')[collection].map(({ id }) => id)).toContain(endpointId);
@@ -165,6 +167,7 @@ describe('direct region composition contracts', () => {
 			model,
 			measurements: emptyMeasurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(source.document),
 			ownershipByRelationId: new Map(model.relations.map((owned) => [owned.relation.id, owned])),
 		};
 		expect(directChild(context, '@root', 'a-target')).toBe('branch');
@@ -192,8 +195,8 @@ describe('direct region composition contracts', () => {
 			localSide: RegionPortalSide.Top,
 		});
 		expect([...sourceLeaf]).toEqual([
-			['at-root', [RegionPortalSide.Bottom]],
 			['inside-branch', [RegionPortalSide.Top]],
+			['at-root', [RegionPortalSide.Bottom]],
 		]);
 		const targetLeaf = childSides({
 			context,
@@ -236,6 +239,7 @@ describe('direct region composition contracts', () => {
 			model,
 			measurements: emptyMeasurements,
 			cache: undefined,
+			endpointPositions: incidentEndpointPositions(source.document),
 			ownershipByRelationId: new Map(),
 		};
 		const context: RecursiveContext = {

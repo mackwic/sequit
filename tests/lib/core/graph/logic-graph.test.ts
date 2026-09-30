@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import { EndpointKind, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import {
+	defined,
+	EndpointKind,
+	type LogicDocument,
+} from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
 	createGraph,
@@ -184,14 +188,52 @@ describe('LogicGraph', () => {
 			],
 		};
 		const graph = graphFrom(document);
+		// The parent precedes its child in the documentary order, so its relation comes first.
 		expect(graph.effectiveRelations).toEqual([
-			{ relationId: 'first', sourceIds: ['source-a'], targetIds: ['source-b'] },
 			{ relationId: 'second', sourceIds: ['source-a'], targetIds: ['source-b'] },
+			{ relationId: 'first', sourceIds: ['source-a'], targetIds: ['source-b'] },
 		]);
 		expect(graph.outgoingByEndpointId.get('source-a')).toEqual(['source-b']);
 		expect(
 			graphFrom({ ...document, relations: [...document.relations].reverse() }).effectiveRelations,
 		).toEqual(graph.effectiveRelations);
+	});
+
+	it('orders relations by the documentary positions of their source, then of their target', () => {
+		const base = validLogicDocument();
+		const ends = [
+			['target', 'isolated'],
+			['source-b', 'target'],
+			['source-a', 'target'],
+			['source-a', 'isolated'],
+			['source-a', 'isolated'],
+		] as const;
+		const orderOf = (ids: readonly string[]) =>
+			graphFrom({
+				...base,
+				junctions: [],
+				relations: ends.map(([from, to], index) => ({ id: defined(ids[index]), from, to })),
+			}).relations.map(({ relation }) => [relation.from, relation.to]);
+		const expected = [
+			['source-a', 'target'],
+			['source-a', 'isolated'],
+			['source-a', 'isolated'],
+			['source-b', 'target'],
+			['target', 'isolated'],
+		];
+		expect(orderOf(['a', 'b', 'c', 'd', 'e'])).toEqual(expected);
+		expect(orderOf(['e', 'd', 'c', 'b', 'a'])).toEqual(expected);
+		// Only parallel relations between the same endpoints fall back to their identifiers.
+		expect(
+			graphFrom({
+				...base,
+				junctions: [],
+				relations: [
+					{ id: 'z', from: 'source-a', to: 'target' },
+					{ id: 'y', from: 'source-a', to: 'target' },
+				],
+			}).relations.map(({ relation }) => relation.id),
+		).toEqual(['y', 'z']);
 	});
 
 	it.each(['before', 'after'])(
