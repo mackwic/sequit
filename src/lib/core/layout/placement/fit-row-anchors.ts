@@ -101,7 +101,8 @@ function spacing(row: SlideRow, index: number): number {
  */
 function slideTowardTargets(row: SlideRow, sliders: readonly number[]): void {
 	const { items, centers } = row;
-	for (const index of sliders.toReversed()) {
+	for (let position = sliders.length - 1; position >= 0; position -= 1) {
+		const index = defined(sliders[position]);
 		const wanted = defined(items[index]?.target);
 		const current = defined(centers[index]);
 		const next = centers[index + 1];
@@ -136,7 +137,9 @@ export function fitRowAnchors(
 	const distances = minimumDistances(items);
 	const anchors = selectAnchors(items, distances);
 	const centers = items.map((item) => item.center);
-	const sliders: number[] = [];
+	// Only a row that may slide collects its sliders.
+	let sliders: number[] | undefined;
+	if (passages !== undefined) sliders = [];
 	let lower = Number.NEGATIVE_INFINITY;
 	let next = 0;
 	for (const [index, item] of items.entries()) {
@@ -147,14 +150,14 @@ export function fitRowAnchors(
 			next += 1;
 			continue;
 		}
-		if (!item.fixed && item.target !== undefined) sliders.push(index);
+		if (!item.fixed && item.target !== undefined) sliders?.push(index);
 		const distance = defined(distances[index]);
 		const coordinate = item.center - distance;
 		const upper = anchor?.coordinate ?? Number.POSITIVE_INFINITY;
 		if (coordinate < lower) centers[index] = lower + distance;
 		else if (coordinate > upper) centers[index] = upper + distance;
 	}
-	if (passages !== undefined && sliders.length > 0)
-		slideTowardTargets({ items, centers, passages: passages() }, sliders);
+	if (passages === undefined || sliders === undefined) return centers;
+	if (sliders.length > 0) slideTowardTargets({ items, centers, passages: passages() }, sliders);
 	return centers;
 }

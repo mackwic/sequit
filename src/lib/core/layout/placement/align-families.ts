@@ -14,8 +14,8 @@ export interface FamilyLinks {
 	readonly related: (item: string, rank: number, sign: 1 | -1) => readonly string[];
 	/** Endpoints inside a block item carrying its links to the next row; the block centers them. */
 	readonly upAnchors?: ((item: string, rank: number) => readonly string[] | undefined) | undefined;
-	/** Endpoints of the long relations crossing each row, possibly between two of its items. */
-	readonly passages?: readonly (readonly RowPassage[])[] | undefined;
+	/** Endpoints of the long relations crossing a row, possibly between two of its items. */
+	readonly passages?: ((rank: number) => readonly RowPassage[]) | undefined;
 }
 
 /** The two endpoints of a relation skipping a row, in rows before and after it. */
@@ -147,7 +147,7 @@ function familyItem(family: Family, input: FamilyAlignmentInput, sign: 1 | -1): 
 /** Spans between the endpoint centers of the long relations crossing a row. */
 function rowPassages(input: FamilyAlignmentInput, rank: number): readonly Interval[] {
 	const { bounds, vertical } = input;
-	return (input.links.passages?.[rank] ?? []).map(([source, target]) => {
+	return (input.links.passages?.(rank) ?? []).map(([source, target]) => {
 		const from = center(transverseEnvelope([source], bounds, vertical));
 		const to = center(transverseEnvelope([target], bounds, vertical));
 		return { start: Math.min(from, to), end: Math.max(from, to) };
@@ -275,12 +275,17 @@ export function flatFamilyLinks(input: {
 	const rowOf = new Map<string, number>();
 	for (const [rank, row] of input.rows.entries()) for (const id of row) rowOf.set(id, rank);
 	const { junctionIds } = input;
+	// Only a sliding family reads the passages: most layouts never index them.
+	let crossing: readonly (readonly RowPassage[])[] | undefined;
 	return {
 		related: (item, rank, sign) => {
 			let edges = input.children;
 			if (sign > 0) edges = input.parents;
 			return relatedAcrossJunctions(item, { edges, junctionIds, rowOf, neighborRank: rank - sign });
 		},
-		passages: crossingRelations(input.rows, input.parents, rowOf),
+		passages: (rank) => {
+			crossing ??= crossingRelations(input.rows, input.parents, rowOf);
+			return crossing[rank] ?? [];
+		},
 	};
 }

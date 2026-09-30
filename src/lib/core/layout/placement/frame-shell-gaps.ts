@@ -147,6 +147,8 @@ interface FrameExtent {
 	/** Physical main extent of the frame. */
 	readonly start: number;
 	readonly end: number;
+	/** Whether the frame spans several ranks and its content is shorter than its minimum size. */
+	readonly short: boolean;
 }
 
 interface PlacedFrames {
@@ -195,11 +197,14 @@ function frameExtent(context: ShellContext, placed: PlacedFrames, input: ExtentI
 		minimum = minimumHeight;
 		header = headerHeight;
 	}
-	if (span.first !== span.last && !input.spanning) minimum = 0;
+	const spansRanks = span.first !== span.last;
 	const start = first - padding - header;
+	const contentEnd = last + padding;
+	const short = spansRanks && start + minimum > contentEnd;
+	if (spansRanks && !input.spanning) minimum = 0;
 	let rank = span.first;
 	if (frame.forward) rank = span.last;
-	return { rank, start, end: Math.max(start + minimum, last + padding) };
+	return { rank, start, end: Math.max(start + minimum, last + padding), short };
 }
 
 interface BoundaryShells {
@@ -210,8 +215,14 @@ interface BoundaryShells {
 	readonly spanning: boolean;
 }
 
-/** Gap needed by the frame shells facing each other across each rank gap, zero if none. */
-function requiredGaps(context: ShellContext, shells: BoundaryShells): readonly number[] {
+interface RequiredGaps {
+	/** Gap needed by the frame shells facing each other across each rank gap, zero if none. */
+	readonly gaps: readonly number[];
+	/** Whether a frame spanning several ranks is shorter than its minimum main size. */
+	readonly short: boolean;
+}
+
+function requiredGaps(context: ShellContext, shells: BoundaryShells): RequiredGaps {
 	const { structure, frame, bandSizes } = context;
 	const starts = bandStarts(context, shells.gap);
 	const next = shells.base.map(({ next: value }) => value);
@@ -222,17 +233,20 @@ function requiredGaps(context: ShellContext, shells: BoundaryShells): readonly n
 	const nested = new Map<string, FrameExtent>();
 	const placed = { nested, starts };
 	const { spanning } = shells;
+	let short = false;
 	for (const [groupId, span] of shells.spans) {
 		const extent = frameExtent(context, placed, { groupId, span, spanning });
 		nested.set(groupId, extent);
+		short ||= extent.short;
 		const bandEnd = defined(starts[extent.rank]) + defined(bandSizes[extent.rank]);
 		far[extent.rank] = Math.max(defined(far[extent.rank]), extent.end - bandEnd);
 	}
-	return Array.from({ length: structure.maximumRank }, (_, rank) => {
+	const gaps = Array.from({ length: structure.maximumRank }, (_, rank) => {
 		const facing = defined(next[rank]) + defined(previous[rank + 1]);
 		if (facing > 0) return facing + GROUP_FRAME_CLEARANCE;
 		return 0;
 	});
+	return { gaps, short };
 }
 
 /**
@@ -249,10 +263,13 @@ function frameBoundaryRankGaps(
 ): FrameRankGaps {
 	const base = rankShells(context, spans);
 	const shells = { spans, base, gap: context.minimumGap, spanning: false };
-	const rankGap = requiredGaps(context, shells).reduce((left, right) => Math.max(left, right), 0);
-	const gap = Math.max(context.minimumGap, rankGap);
-	const spanning = requiredGaps(context, { ...shells, gap, spanning: true });
+	const measured = requiredGaps(context, shells);
+	const rankGap = measured.gaps.reduce((left, right) => Math.max(left, right), 0);
 	const rankGaps = new Map<number, number>();
+	// A wider gap only lengthens a frame's content: a frame long enough already cannot overflow.
+	if (!measured.short) return { rankGap, rankGaps };
+	const gap = Math.max(context.minimumGap, rankGap);
+	const spanning = requiredGaps(context, { ...shells, gap, spanning: true }).gaps;
 	for (const [rank, required] of spanning.entries())
 		if (required > gap) rankGaps.set(rank, required);
 	return { rankGap, rankGaps };
