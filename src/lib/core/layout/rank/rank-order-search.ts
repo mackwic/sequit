@@ -114,11 +114,14 @@ export interface RankOrderSearchResult {
 	readonly witness: RankOrderSearchWitness;
 }
 
-/** No rank edit can improve bridge-free documentary routes or zero documentary inversions. */
-function documentaryNeedsNoSearch(candidate: ValidRankOrderCandidate): boolean {
+/**
+ * No rank edit can improve bridge-free documentary routes, nor documentary rows already down
+ * to the crossings every order keeps: a candidate must first cross less to win.
+ */
+function documentaryNeedsNoSearch(candidate: ValidRankOrderCandidate, lowerBound: number): boolean {
 	if (candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0)
 		return true;
-	return candidate.topologyCrossings === 0 && candidate.kendall === 0;
+	return candidate.topologyCrossings <= lowerBound && candidate.kendall === 0;
 }
 
 class RankOrderSearch {
@@ -137,6 +140,7 @@ class RankOrderSearch {
 	private readonly seen: Set<string>;
 	private readonly frontier: RankOrder[];
 	private readonly topology: RankTopologyOracle;
+	readonly topologyBound: number;
 	private readonly positions: readonly ReadonlyMap<string, number>[];
 	private documentaryScore: DedicatedRouteScore | undefined;
 
@@ -144,6 +148,7 @@ class RankOrderSearch {
 		this.seen = new Set([JSON.stringify(input.domain.bands)]);
 		this.frontier = [input.domain.bands];
 		this.topology = new RankTopologyOracle(input.structure, input.domain);
+		this.topologyBound = this.topology.lowerBound;
 		this.positions = input.domain.bands.map(
 			(band) => new Map(band.map((id, position) => [id, position])),
 		);
@@ -313,7 +318,7 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 		search.rejectGroupPassage(input.domain.bands, input.baseline);
 	else search.verify(input.domain.bands, input.baseline, true);
 	const documentary = search.selected;
-	if (documentary !== undefined && documentaryNeedsNoSearch(documentary)) {
+	if (documentary !== undefined && documentaryNeedsNoSearch(documentary, search.topologyBound)) {
 		search.stop = RankSearchStop.OptimalBound;
 		search.exhaustive = true;
 		return search.result();

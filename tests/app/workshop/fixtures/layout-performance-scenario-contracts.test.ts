@@ -11,12 +11,15 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { SHARED_LANE_CLEARANCE } from '../../../../src/lib/core/layout/lanes/shared-lane-frame';
 import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-engine';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import {
 	buildPreparedScenarioTwice,
 	layoutPreparedScenario,
@@ -148,6 +151,34 @@ describe('layout performance scenario contracts', () => {
 			expect(pass.work).toBeLessThanOrEqual(pass.workBudget);
 		}
 	});
+
+	// Two groups interleave a binary tree: root nodes relate to both blocks across rows where
+	// the blocks stand as walls. The documentary order itself must route around their frames.
+	it.each([
+		['subgroups', 24],
+		['subgroups', 60],
+		['shallow-groups', 24],
+		['shallow-groups', 60],
+	] as const)(
+		'%s keeps a valid documentary layout around its group blocks at %i nodes',
+		async (name, nodeCount) => {
+			const scenario = LAYOUT_PERFORMANCE_SCENARIOS.find((candidate) => candidate.name === name);
+			if (scenario === undefined) throw new Error(`Missing performance scenario ${name}`);
+			const { graph, ranks, measurements } = prepareLayoutPerformanceScenario(scenario, nodeCount);
+			const documentary = evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements);
+			expect(
+				validateDedicatedCandidate({ graph, ranks, measurements, layout: documentary }),
+			).toMatchObject({ valid: true });
+			const shipped = await layoutPreparedScenario(
+				prepareLayoutPerformanceScenario(scenario, nodeCount),
+			);
+			expect(
+				validateDedicatedCandidate({ graph, ranks, measurements, layout: shipped }),
+			).toMatchObject({
+				valid: true,
+			});
+		},
+	);
 
 	it.each(LAYOUT_PERFORMANCE_SCENARIOS)(
 		'$name rejects invalid node counts',

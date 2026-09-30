@@ -56,8 +56,8 @@ function groupOwners(
 
 /**
  * Components whose local document keeps both endpoints of each relation, by relation index. A
- * relation between two groups is projected onto their members: it belongs to the members'
- * component, although each group endpoint forms a rank component of its own.
+ * relation between two groups is projected onto their members: it belongs to the component of
+ * the members, where each populated group stands as the block of its members.
  */
 function relationHolders(
 	graph: LogicGraph,

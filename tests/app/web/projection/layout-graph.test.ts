@@ -651,12 +651,13 @@ describe('layoutGraph', () => {
 		const container = bounds.get('container');
 		if (!container) throw new Error('Expected populated group bounds');
 
-		// Inside the container block, the search may keep or mirror the documentary rows; either
-		// way source-b → target-b and target-a → long-target must not cross.
-		const x = (id: string) => bounds.get(id)?.x ?? Number.NaN;
-		expect(Math.sign(x('source-b') - x('target-a'))).toBe(
-			Math.sign(x('target-b') - x('long-target')),
-		);
+		// The empty endpoint stands right of the container block and relates to target-b inside
+		// it: the documentary rows would cross its route twice, so the search mirrors both rows
+		// of the block, target-b facing it.
+		const right = (id: string) => (bounds.get(id)?.x ?? Number.NaN) + (bounds.get(id)?.width ?? 0);
+		expect(bounds.get('empty-endpoint')?.x).toBeGreaterThan(right('container'));
+		expect(bounds.get('target-b')?.x).toBeGreaterThan(right('long-target'));
+		expect(bounds.get('source-b')?.x).toBeGreaterThan(right('target-a'));
 		expect(bounds.get('choice')?.y).not.toBe(bounds.get('source-a')?.y);
 		expect(bounds.get('empty-endpoint')).toMatchObject({ width: 160, height: 84 });
 		for (const id of ['source-a', 'source-b', 'choice', 'target-a', 'target-b', 'long-target']) {

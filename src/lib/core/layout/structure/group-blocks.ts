@@ -58,19 +58,41 @@ function inherited<T>(
 	};
 }
 
+/**
+ * The innermost block enclosing every endpoint and group, resolved once: a group that is not a
+ * block hands its own enclosing block down, so the walk stays linear in the hierarchy.
+ */
+function blockParents(graph: LogicGraph, ids: ReadonlySet<string>): ReadonlyMap<string, string> {
+	const parents = new Map<string, string>();
+	const resolved = new Set<string>();
+	const resolve = (id: string): string | undefined => {
+		const pending: string[] = [];
+		let current: string | undefined = id;
+		while (current !== undefined && !resolved.has(current)) {
+			pending.push(current);
+			current = groupOf(graph, current);
+		}
+		for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+			resolved.add(next);
+			const group = groupOf(graph, next);
+			if (group === undefined) continue;
+			let parent = parents.get(group);
+			if (ids.has(group)) parent = group;
+			if (parent !== undefined) parents.set(next, parent);
+		}
+		return parents.get(id);
+	};
+	for (const id of graph.endpointsById.keys()) resolve(id);
+	return parents;
+}
+
 /** Blocks and their nesting for a graph; rows, rank orders and placement share one instance. */
 export function groupBlocks(graph: LogicGraph): GroupBlocks {
 	const cached = cache.get(graph);
 	if (cached !== undefined) return cached;
 	const ids = blockIds(graph);
-	const parents = new Map<string, string | undefined>();
-	const parentOf = (id: string): string | undefined => {
-		if (parents.has(id)) return parents.get(id);
-		let group = groupOf(graph, id);
-		while (group !== undefined && !ids.has(group)) group = groupOf(graph, group);
-		parents.set(id, group);
-		return group;
-	};
+	const parents = blockParents(graph, ids);
+	const parentOf = (id: string): string | undefined => parents.get(id);
 	const blocks: GroupBlocks = {
 		ids,
 		parentOf,

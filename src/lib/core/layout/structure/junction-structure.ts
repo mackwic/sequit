@@ -68,7 +68,12 @@ export function prepareJunctions(
 			const previous = result.get(parent);
 			if (previous?.interval === interval) depth = Math.max(depth, previous.depth + 1);
 		}
-		const neighbors = defined(successors.get(id)).filter((node) => rows.get(node) === interval + 1);
+		let neighbors = defined(successors.get(id)).filter((node) => rows.get(node) === interval + 1);
+		// Without children beside it, a junction faces the parents of its own row instead.
+		if (neighbors.length === 0)
+			neighbors = defined(graph.outgoingByEndpointId.get(id)).filter(
+				(node) => !ids.has(node) && rows.get(node) === interval,
+			);
 		result.set(id, { interval, depth, neighbors });
 	}
 	return result;

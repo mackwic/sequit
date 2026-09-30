@@ -2,6 +2,12 @@ import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import {
+	type AdjacentRelation,
+	adjacentRelations,
+	closesBlockPassage,
+	forcedBlockCrossings,
+} from './block-passages';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
 import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
 
@@ -117,6 +123,9 @@ export class RankTopologyOracle {
 	private readonly domain: RankOrderDomain;
 	private readonly relations: readonly LayeredRelation[];
 	private readonly segments: readonly RankOrderRelation[];
+	private readonly adjacent: readonly AdjacentRelation[];
+	/** Crossings every order keeps: block-forced pairs; zero without blocks. */
+	readonly lowerBound: number;
 
 	constructor(structure: LayoutStructure, domain: RankOrderDomain) {
 		const endpointRanks = new Map<string, number>();
@@ -129,10 +138,15 @@ export class RankTopologyOracle {
 		this.domain = domain;
 		this.relations = relations;
 		this.segments = segments;
+		this.adjacent = adjacentRelations(structure);
+		this.lowerBound = forcedBlockCrossings(structure, this.adjacent);
 	}
 
+	/** Crossings of an order; an order closing a block's passage cannot be routed at all. */
 	count(structure: LayoutStructure, order: RankOrder, maximum = Number.POSITIVE_INFINITY): number {
-		const rows = topologyRows(applyRankOrder(structure, this.domain, order));
+		const applied = applyRankOrder(structure, this.domain, order);
+		if (closesBlockPassage(applied, this.adjacent)) return Number.POSITIVE_INFINITY;
+		const rows = topologyRows(applied);
 		const positions = transversePositions(structure, rows);
 		const dummies = rows.map((): RowEntry[] => []);
 		for (const relation of this.relations) {

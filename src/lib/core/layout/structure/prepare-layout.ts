@@ -9,6 +9,9 @@ import { type GroupHierarchy, prepareGroupHierarchy } from './group-hierarchy';
 import { type JunctionPlacement, prepareJunctions } from './junction-structure';
 import { containmentComponents, rankedComponents } from './layout-components';
 import { preparePlacementRows, type RankedComponent } from './placement-rows';
+import { type RawAdjacency, rawAdjacency } from './relation-adjacency';
+
+const NO_ADJACENCY: RawAdjacency = { parents: new Map(), children: new Map() };
 
 export interface LayoutStructure {
 	readonly graph: LogicGraph;
@@ -66,6 +69,9 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	// A target-local order edit can still move a whole disconnected component. Preserving
 	// this policy leaves stable component intent to a separate behavioral change.
 	const blocks = groupBlocks(graph);
+	// Rows only consult relations to keep block walls; without blocks they are not needed.
+	let adjacency: RawAdjacency = NO_ADJACENCY;
+	if (blocks.ids.size > 0) adjacency = rawAdjacency(graph);
 	const components = rankedComponents(graph, blocks).map((ids): RankedComponent => ({
 		ids,
 		context: componentContext(graph, ids, hierarchy),
@@ -81,6 +87,11 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 			junctionIds,
 			maximumRank,
 			blocks,
+			relations: {
+				outgoing: adjacency.parents,
+				incoming: adjacency.children,
+				junctionIds,
+			},
 		}),
 	}));
 	components.sort(

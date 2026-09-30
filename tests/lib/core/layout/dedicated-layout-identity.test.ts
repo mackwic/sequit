@@ -245,7 +245,7 @@ describe('dedicated engine LayoutResult identity', () => {
 			'adjacent-3+1': '064082e2065ad7f76e35849ee4e1c402e721cd164b5e4966e4d88d7868f9fd6d',
 			'ai-documentary-effort': 'edd2c4d081af177d6980374f8602592a4b53df4110a68e21dc4030fbb154cd4b',
 			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
-			'junction-network-layout': 'fa45dc4195f28d6bd1b64887120d1edb4e1efa0dff4f7943efbf524fc9fbb9b2',
+			'junction-network-layout': '5732e699fa828404b120005432cd8ce7d706ad33dfe862db6037cd1852895f50',
 			'multirank-group-junction-one':
 				'5f724cce9f64ea07e1583cd51749855780de1fc81300a19a178b64c4cf50af74',
 			'multirank-group-junction-two':

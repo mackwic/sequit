@@ -30,6 +30,7 @@ import {
 	routeHitsObstacles,
 } from '../../../../src/lib/core/layout/routing/route-obstacles';
 import { directRoutingSpace } from '../../../../src/lib/core/layout/routing/routing-space';
+import { relationComponentIndex } from '../../../../src/lib/core/layout/structure/layout-components';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { routingLayers } from '../../../../src/lib/core/layout/structure/routing-layers';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -106,7 +107,11 @@ const directions = [
 	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
 ] as const satisfies readonly LayoutConfiguration[];
 
-function initialLayerPortReservation(prepared: PreparedLayoutDocument) {
+/** Ports reserved on the first placement; `ignoredFrames` are left out of the routing space. */
+function initialLayerPortReservation(
+	prepared: PreparedLayoutDocument,
+	ignoredFrames: readonly string[] = [],
+) {
 	const structure = prepareLayout(prepared.graph, prepared.ranks);
 	const frame = createLayoutFrame(
 		prepared.document.layout.direction,
@@ -134,18 +139,20 @@ function initialLayerPortReservation(prepared: PreparedLayoutDocument) {
 		placeElements(workspace, new Map());
 	}
 	const layers = routingLayers(structure);
-	const bounds = workspace.placement.bounds;
-	const componentByEndpointId = new Map(
-		structure.components.flatMap((component, index) =>
-			component.ids.map((id) => [id, index] as const),
-		),
-	);
+	const bounds = new Map(workspace.placement.bounds);
+	for (const id of ignoredFrames) bounds.delete(id);
+	// As in production: passage owners are relation components, not block placement components.
+	const componentByEndpointId = relationComponentIndex(prepared.graph);
 	const space = directRoutingSpace({
 		layers,
 		bounds,
 		frame,
 		junctionIds: structure.junctionIds,
-		enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
+		enclosingGroups: new Set(
+			[...(structure.hierarchy?.membersById.keys() ?? [])].filter(
+				(id) => !ignoredFrames.includes(id),
+			),
+		),
 	});
 	return allocateLayerPorts({
 		graph: prepared.graph,
@@ -381,8 +388,11 @@ it('does not reserve shared-target ports against its own ancestor frame', () => 
 	expect(target.x + target.width).toBeLessThanOrEqual(container.x + container.width);
 	expect(target.y + target.height).toBeLessThanOrEqual(container.y + container.height);
 	expect(route.points.at(-1)?.x).toBe(target.x);
-	// The target is centered on its junction family inside the block, so the direct group rail
-	// meets that junction: a port reservation follows from the junction, not from the frame.
+	// Centered on its family, the target may need distinct ports; its ancestor frame never adds
+	// any: the reservation is the same with the frame left out of the routing space.
+	expect(initialLayerPortReservation(ancestor)).toEqual(
+		initialLayerPortReservation(ancestor, ['container']),
+	);
 
 	const blocked = prepareLayoutDocument(document, {
 		nodes: { target: { width: 12.1, height: 0.1 } },
@@ -397,6 +407,8 @@ it('does not reserve shared-target ports against its own ancestor frame', () => 
 	});
 	const blockedPlan = initialLayerPortReservation(blocked);
 	if (blockedPlan === undefined) throw new Error('Missing ports for a blocked shared target');
+	// The comparison above does see a frame: here the container is foreign and blocks the rail.
+	expect(initialLayerPortReservation(blocked, ['container'])).not.toEqual(blockedPlan);
 	const groupOffset = blockedPlan.targetOffsets.get('group-to-target');
 	const choiceOffset = blockedPlan.targetOffsets.get('choice-to-target');
 	if (groupOffset === undefined || choiceOffset === undefined)

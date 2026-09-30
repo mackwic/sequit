@@ -18,7 +18,12 @@ function enqueueUnvisited(
 	}
 }
 
+const componentsByGraph = new WeakMap<LogicGraph, readonly (readonly string[])[]>();
+
+/** Relation components of a graph, computed once per graph and shared by every phase. */
 export function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly string[])[] {
+	const cached = componentsByGraph.get(graph);
+	if (cached !== undefined) return cached;
 	const visited = new Set<string>();
 	const result: string[][] = [];
 	const completedNeighbors = new Set<Iterable<string>>();
@@ -46,7 +51,21 @@ export function weaklyConnectedComponents(graph: LogicGraph): readonly (readonly
 		component.sort(compareCanonicalStrings);
 		result.push(component);
 	}
+	componentsByGraph.set(graph, result);
 	return result;
+}
+
+const componentIndexByGraph = new WeakMap<LogicGraph, ReadonlyMap<string, number>>();
+
+/** Index of each rankable endpoint's relation component, computed once per graph. */
+export function relationComponentIndex(graph: LogicGraph): ReadonlyMap<string, number> {
+	const cached = componentIndexByGraph.get(graph);
+	if (cached !== undefined) return cached;
+	const index = new Map<string, number>();
+	for (const [component, ids] of weaklyConnectedComponents(graph).entries())
+		for (const id of ids) index.set(id, component);
+	componentIndexByGraph.set(graph, index);
+	return index;
 }
 
 function rootIndex(parents: number[], index: number): number {
