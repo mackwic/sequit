@@ -2,6 +2,7 @@ import type { LogicRelation } from '../../document/logic-document';
 import { defined } from '../../document/logic-document';
 import { groupBlocks } from '../structure/group-blocks';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import { throughJunctions } from '../structure/relation-adjacency';
 import type { RankOrder } from './rank-order';
 import type { RankOrderDomain } from './rank-ordering';
 
@@ -10,36 +11,55 @@ interface SweepInput {
 	readonly domain: RankOrderDomain;
 }
 
-function neighbourPosition(
-	id: string,
-	from: string,
-	to: string,
-	positions: ReadonlyMap<string, number>,
-): number | undefined {
-	if (from === id) return positions.get(to);
-	if (to === id) return positions.get(from);
-	return undefined;
+interface Barycentre {
+	sum: number;
+	count: number;
+}
+
+interface Reach {
+	readonly positions: ReadonlyMap<string, number>;
+	readonly structure: LayoutStructure;
+}
+
+function addPosition(total: Barycentre, position: number | undefined): void {
+	total.sum += position ?? 0;
+	total.count += Number(position !== undefined);
+}
+
+/**
+ * A relation contributes the position of its other endpoint. Junctions have no slot in the
+ * bands: an unplaced junction stands for the endpoints beyond it, on the same side.
+ */
+function addNeighbour(total: Barycentre, neighbour: string, forward: boolean, reach: Reach): void {
+	const { positions, structure } = reach;
+	const position = positions.get(neighbour);
+	if (position !== undefined || !structure.junctionIds.has(neighbour)) {
+		addPosition(total, position);
+		return;
+	}
+	let edges = structure.graph.predecessorsByEndpointId;
+	if (forward) edges = structure.graph.outgoingByEndpointId;
+	for (const beyond of throughJunctions(neighbour, edges, structure.junctionIds))
+		addPosition(total, positions.get(beyond));
 }
 
 function connectedAverage(
 	id: string,
 	relations: readonly LogicRelation[],
-	positions: ReadonlyMap<string, number>,
-): { sum: number; count: number } {
-	let sum = 0;
-	let count = 0;
+	reach: Reach,
+): Barycentre {
+	const total = { sum: 0, count: 0 };
 	for (const { from, to } of relations) {
-		const position = neighbourPosition(id, from, to, positions);
-		sum += position ?? 0;
-		count += Number(position !== undefined);
+		if (from === id) addNeighbour(total, to, true, reach);
+		else if (to === id) addNeighbour(total, from, false, reach);
 	}
-	return { sum, count };
+	return total;
 }
 
 function compareBarycentres(
 	left: string,
 	right: string,
-	averages: ReadonlyMap<string, { sum: number; count: number }>,
+	averages: ReadonlyMap<string, Barycentre>,
 	documentaryPosition: ReadonlyMap<string, number>,
 ): number {
 	const a = defined(averages.get(left));
@@ -57,20 +77,16 @@ function compareBarycentres(
 function blockAverage(
 	inside: ReadonlySet<string>,
 	relations: readonly LogicRelation[],
-	positions: ReadonlyMap<string, number>,
-): { sum: number; count: number } {
-	let sum = 0;
-	let count = 0;
+	reach: Reach,
+): Barycentre {
+	const total = { sum: 0, count: 0 };
 	for (const { from, to } of relations) {
 		const fromInside = inside.has(from);
 		if (fromInside === inside.has(to)) continue;
-		let neighbour = from;
-		if (fromInside) neighbour = to;
-		const position = positions.get(neighbour);
-		sum += position ?? 0;
-		count += Number(position !== undefined);
+		if (fromInside) addNeighbour(total, to, true, reach);
+		else addNeighbour(total, from, false, reach);
 	}
-	return { sum, count };
+	return total;
 }
 
 /** Endpoints inside each block of the bands, the block included; other blocks are not visited. */
@@ -117,11 +133,12 @@ export function barycentricSweep(input: SweepInput, order: RankOrder, reverse: b
 		const row = defined(bands[index]);
 		const documentary = defined(input.domain.bands[index]);
 		const documentaryPosition = new Map(documentary.map((id, position) => [id, position]));
+		const reach = { positions, structure: input.structure };
 		const averages = new Map(
 			row.map((id) => {
 				const inside = members.get(id);
-				if (inside === undefined) return [id, connectedAverage(id, relations, positions)] as const;
-				return [id, blockAverage(inside, relations, positions)] as const;
+				if (inside === undefined) return [id, connectedAverage(id, relations, reach)] as const;
+				return [id, blockAverage(inside, relations, reach)] as const;
 			}),
 		);
 		row.sort((left, right) => compareBarycentres(left, right, averages, documentaryPosition));

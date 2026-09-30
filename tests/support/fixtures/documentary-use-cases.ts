@@ -48,3 +48,47 @@ export function documentaryUseCases(
 		.arrowsFrom('docx', ['lossless'])
 		.build();
 }
+
+/**
+ * The same group as the map documents it today, in its documentary order. The XOR family's
+ * parent stands right of another family's parent, while the documentary order puts it first.
+ */
+const REWORKED_USE_CASES = [
+	'orchestration',
+	'all-edits',
+	'conclusion',
+	'documents-live',
+	'docx',
+	'familiar',
+	'freshness',
+	'interdependent',
+	'intuitive',
+	'isolated',
+	'lossless',
+	'onlyoffice',
+	'regenerate',
+	'traceable',
+	'training',
+	'word-alcoa',
+] as const;
+
+export const REWORKED_USE_CASES_GROUPS = { 'use-cases': [...REWORKED_USE_CASES, 'xor'] } as const;
+
+export function reworkedUseCases(direction: LayoutDirection): VisualGraphData {
+	return graphFixtures
+		.routingNodes(REWORKED_USE_CASES, direction, 204)
+		.junctions(['xor'])
+		.arrowsFrom('regenerate', ['documents-live'])
+		.arrowsFrom('freshness', ['regenerate'])
+		.arrowsFrom('word-alcoa', ['traceable'])
+		.arrowsFrom('familiar', ['training'])
+		.arrowsFrom('lossless', ['isolated'])
+		.arrowsFrom('docx', ['lossless'])
+		.arrowsFrom('orchestration', ['interdependent'])
+		.arrowsFrom('conclusion', ['interdependent'])
+		.arrowsFrom('all-edits', ['xor'])
+		.arrowsFrom('intuitive', ['xor'])
+		.arrowsFrom('onlyoffice', ['xor'])
+		.arrowsFrom('xor', ['familiar'])
+		.build();
+}

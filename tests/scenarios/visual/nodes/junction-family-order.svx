@@ -1,0 +1,21 @@
+<script>
+	import { scenario } from './junction-family-order.scenario';
+	import source from './junction-family-order.scenario.ts?raw';
+	import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+	let { settings = $bindable() } = $props();
+</script>
+
+# Une famille derrière une jonction rejoint son parent
+
+Ce graphe reprend le groupe « Use cases » de la carte de l’effort documentaire,
+tel qu’elle est documentée aujourd’hui. All edits, Intuitive et OnlyOffice
+passent par le XOR pour rejoindre Familiar. L’ordre documentaire les place
+avant Docx, alors que Familiar est à droite de Lossless, le parent de Docx.
+
+L’ordre des rangées regarde à travers la jonction : les trois enfants du XOR
+comptent pour Familiar. Docx passe donc avant eux. L’enveloppe des trois
+enfants, le XOR et Familiar sont dans le même axe, et aucune relation ne se
+croise. La règle s’applique dans les quatre directions ; seuls les axes
+changent.
+
+<VisualTest {scenario} {source} bind:settings />
