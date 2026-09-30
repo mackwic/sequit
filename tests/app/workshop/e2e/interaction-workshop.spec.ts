@@ -61,7 +61,7 @@ for (const label of ['Modale']) {
 		await expect(input).toBeFocused();
 		await input.fill('Lettr');
 		await input.press('e');
-		await expect(input).toHaveValue('Lettre');
+		await expect(input).toHaveText('Lettre');
 		await page.keyboard.press('Escape');
 		await expect(node).toBeFocused();
 		await expect(toolbar).toBeVisible();

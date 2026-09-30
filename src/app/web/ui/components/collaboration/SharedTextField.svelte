@@ -1,5 +1,6 @@
 <script lang="ts">
 	import 'quill/dist/quill.snow.css';
+	import '../../styles/text-field.css';
 
 	import type Quill from 'quill';
 	import { onMount } from 'svelte';
@@ -9,6 +10,7 @@
 	import type { SharedTarget } from '../../../../../lib/infrastructure/document/shared-document-command';
 	import { bindQuillMarkdown, type QuillMarkdownEditor } from '../../../document/quill-editor';
 	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
+	import { describeQuillField } from '../../../document/quill-field';
 	import { getCollaborationAwareness } from './collaboration-awareness.svelte';
 	import QuillPresence from './QuillPresence.svelte';
 
@@ -17,13 +19,19 @@
 		target,
 		field,
 		label,
+		title = label,
+		placeholder,
 		connected,
 		autofocus = false,
 	}: {
 		client: CollaborativeDocumentSession;
 		target: SharedTarget;
 		field: string;
+		/** Accessible name of the text box. */
 		label: string;
+		/** Visible heading; the accessible name by default. */
+		title?: string;
+		placeholder?: string | undefined;
 		connected: boolean;
 		autofocus?: boolean;
 	} = $props();
@@ -50,10 +58,16 @@
 		async function initialize(): Promise<void> {
 			const { default: Editor } = await import('quill');
 			if (disposed || text === undefined) return;
-			const quill = new Editor(host, quillEditorOptions(profile));
-			quill.root.setAttribute('aria-label', label);
-			quill.root.setAttribute('role', 'textbox');
-			quill.root.setAttribute('aria-multiline', 'true');
+			const quill = new Editor(
+				host,
+				quillEditorOptions(profile, {
+					placeholder,
+					showSource: () => {
+						editor?.showSource();
+					},
+				}),
+			);
+			const undescribe = describeQuillField(quill, label);
 			const binding = bindQuillMarkdown(
 				quill,
 				{
@@ -106,7 +120,6 @@
 			};
 			quill.root.addEventListener('blur', clear);
 			window.addEventListener('blur', clear);
-			labelToolbar(quill);
 			quill.history.clear();
 			quill.enable(connected);
 			quillInstance = quill;
@@ -119,6 +132,7 @@
 				quill.off('editor-change', changed);
 				quill.root.removeEventListener('blur', clear);
 				window.removeEventListener('blur', clear);
+				undescribe();
 				clear();
 			};
 		}
@@ -130,84 +144,26 @@
 			cleanup?.();
 		};
 	});
-
-	function labelToolbar(quill: Quill): void {
-		const labels: Record<string, string> = {
-			bold: 'Gras',
-			italic: 'Italique',
-			underline: 'Souligné',
-			strike: 'Barré',
-			code: 'Code',
-			blockquote: 'Citation',
-			'code-block': 'Bloc de code',
-			link: 'Lien',
-			clean: 'Effacer la mise en forme',
-			list: 'Liste',
-		};
-		for (const [format, title] of Object.entries(labels)) {
-			for (const button of quill.container.parentElement?.querySelectorAll(`button.ql-${format}`) ??
-				[])
-				button.setAttribute('aria-label', title);
-		}
-	}
 </script>
 
-<div class="shared-text-field" data-text-field={field}>
-	<span class="field-label">{label}</span>
-	{#if sourceMode && profile !== QuillEditorProfile.Plain}
-		<p class="source-notice" role="status">
-			Ce contenu s’édite en texte source pour conserver toutes ses mises en forme.
-		</p>
-	{:else if editor && profile === QuillEditorProfile.Description}
-		<button type="button" disabled={!connected} onclick={() => editor?.showSource()}
-			>Texte source</button
-		>
-	{/if}
+<div class="text-field" data-text-field={field}>
+	<div class="text-field-heading">
+		<span class="text-field-title">{title}</span>
+		{#if sourceMode && profile !== QuillEditorProfile.Plain}
+			<p class="text-field-note" role="status">
+				Édité en texte source pour conserver toutes ses mises en forme.
+			</p>
+		{/if}
+	</div>
 	<div
-		class="editor-wrapper"
+		class="text-field-editor"
 		class:source-mode={sourceMode && profile !== QuillEditorProfile.Plain}
+		class:disabled={!connected}
 	>
 		<div bind:this={host}></div>
 		{#if editor && text}<QuillPresence {editor} {text} />{/if}
 	</div>
-	{#if failure}<p role="alert">Impossible d’ouvrir l’éditeur : {failure}</p>{/if}
+	{#if failure}<p class="ui-notice error" role="alert">
+			Impossible d’ouvrir l’éditeur : {failure}
+		</p>{/if}
 </div>
-
-<style>
-	.field-label {
-		display: block;
-		font-size: 13px;
-		font-weight: 600;
-		margin-bottom: 8px;
-	}
-	.editor-wrapper {
-		position: relative;
-		background: white;
-		color: #292524;
-		border-radius: 8px;
-	}
-	.editor-wrapper :global(.ql-editor) {
-		min-height: 150px;
-		max-height: 42vh;
-		overflow-y: auto;
-		font-size: 16px;
-		line-height: 1.6;
-	}
-	.editor-wrapper :global(.ql-toolbar) {
-		border-radius: 8px 8px 0 0;
-	}
-	.editor-wrapper :global(.ql-container) {
-		border-radius: 0 0 8px 8px;
-	}
-	.source-mode :global(.ql-toolbar) {
-		display: none;
-	}
-	.source-mode :global(.ql-editor) {
-		font-family: monospace;
-	}
-	.source-notice {
-		font-size: 12px;
-		color: #57534e;
-		margin: 0 0 8px;
-	}
-</style>

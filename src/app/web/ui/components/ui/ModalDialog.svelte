@@ -81,9 +81,9 @@
 	}
 
 	function tabbable(element: HTMLElement): boolean {
-		return (
-			element.tabIndex >= 0 && !element.matches(':disabled') && element.getClientRects().length > 0
-		);
+		// `checkVisibility` also excludes the content of a closed `<details>`, which keeps
+		// zero-sized client rects under `content-visibility: hidden`.
+		return element.tabIndex >= 0 && !element.matches(':disabled') && element.checkVisibility();
 	}
 
 	function containFocus(event: KeyboardEvent): void {

@@ -2,6 +2,7 @@
 	import type { LogicDocument } from '../../../../../lib/core/document/logic-document';
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import { SharedElementKind as Kind } from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
 	import SharedTextField from './SharedTextField.svelte';
 	let {
 		node,
@@ -26,6 +27,8 @@
 		{target}
 		field="markdown"
 		{label}
+		title="Contenu"
+		placeholder={NODE_TEXT_PLACEHOLDERS.markdown}
 		autofocus={autofocusMarkdown}
 	/>
 {/key}
@@ -36,5 +39,7 @@
 		{target}
 		field="description"
 		label={`Description de ${node.id}`}
+		title="Description"
+		placeholder={NODE_TEXT_PLACEHOLDERS.description}
 	/>
 {/key}

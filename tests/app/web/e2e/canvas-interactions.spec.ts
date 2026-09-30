@@ -687,7 +687,7 @@ test.describe('accessible canvas selection', () => {
 			.getByRole('textbox', { name: 'Contenu' });
 		await expect(content).toBeFocused();
 		await page.keyboard.press('?');
-		await expect(content).toHaveValue(/\?/);
+		await expect(content).toHaveText(/\?/);
 		await expect(panel).toHaveCount(0);
 	});
 });
@@ -717,12 +717,16 @@ test.describe('box dialog editing and creation', () => {
 		await expect(dialog).toHaveAttribute('aria-modal', 'true');
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
-		await expect(textarea).toHaveValue('ALCOA+: All edits needs to be tracable\n');
+		await expect(textarea).toHaveText('ALCOA+: All edits needs to be tracable');
 
 		await textarea.fill('A much longer local draft that must not remeasure the graph.\n'.repeat(8));
 		await expect(measured).toContainText('ALCOA+: All edits needs to be tracable');
 		await expect(measured).not.toContainText('A much longer local draft');
 		expect(await node.boundingBox()).toEqual(nodeBounds);
+		await page.keyboard.press('Tab');
+		await expect(
+			dialog.locator('[data-text-field="description"] .ql-toolbar').getByRole('button').first(),
+		).toBeFocused();
 		await page.keyboard.press('Tab');
 		await expect(dialog.getByRole('textbox', { name: 'Description' })).toBeFocused();
 		await page.keyboard.press('Tab');
@@ -849,7 +853,7 @@ test.describe('box dialog editing and creation', () => {
 			),
 		).toBe('#3b82f6');
 		await node.dblclick();
-		await expect(dialog.getByRole('textbox', { name: 'Description' })).toHaveValue(
+		await expect(dialog.getByRole('textbox', { name: 'Description' })).toHaveText(
 			'Description enregistrée',
 		);
 		await page.keyboard.press('Escape');
@@ -882,7 +886,7 @@ test.describe('box dialog editing and creation', () => {
 		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
 		await expect(dialog).toBeVisible();
 		await expect(textarea).toBeFocused();
-		await expect(textarea).toHaveValue('');
+		await expect(textarea).toHaveText('');
 		const childId = await dialog.getAttribute('data-node-creator');
 		if (childId === null || childId === '') throw new Error('Created child dialog has no node id');
 		await textarea.fill('First keyboard child');
@@ -902,7 +906,7 @@ test.describe('box dialog editing and creation', () => {
 		const siblingDialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
 		const siblingTextarea = siblingDialog.getByRole('textbox', { name: 'Contenu' });
 		await expect(siblingTextarea).toBeFocused();
-		await expect(siblingTextarea).toHaveValue('');
+		await expect(siblingTextarea).toHaveText('');
 		const siblingId = await siblingDialog.getAttribute('data-node-creator');
 		if (siblingId === null || siblingId === '')
 			throw new Error('Created sibling dialog has no node id');

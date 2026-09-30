@@ -6,8 +6,29 @@ export enum QuillEditorProfile {
 	Description = 'description',
 }
 
+export interface QuillFieldOptions {
+	/** Shown while the field is empty. */
+	readonly placeholder?: string | undefined;
+	/** Adds a « Texte source » toolbar button to descriptions. */
+	readonly showSource?: (() => void) | undefined;
+}
+
+/** Tab moves to the next field of the dialog instead of indenting; `null` drops a default binding. */
+const TAB_LEAVES_FIELD: Readonly<Record<string, null>> = {
+	tab: null,
+	indent: null,
+	outdent: null,
+	'remove tab': null,
+	'indent code-block': null,
+	'outdent code-block': null,
+	'table tab': null,
+};
+
 /** The body stays compact; descriptions may use the editor's larger Markdown subset. */
-export function quillEditorOptions(profile: QuillEditorProfile): QuillOptions {
+export function quillEditorOptions(
+	profile: QuillEditorProfile,
+	{ placeholder, showSource }: QuillFieldOptions = {},
+): QuillOptions {
 	let formats = ['bold', 'italic', 'underline'];
 	let toolbar: QuillOptions['modules'] = { toolbar: [['bold', 'italic', 'underline'], ['clean']] };
 	if (profile === QuillEditorProfile.Plain) {
@@ -27,15 +48,28 @@ export function quillEditorOptions(profile: QuillEditorProfile): QuillOptions {
 			'link',
 			'image',
 		];
-		toolbar = {
-			toolbar: [
-				[{ header: [1, 2, 3, false] }],
-				['bold', 'italic', 'underline', 'strike', 'code'],
-				[{ list: 'ordered' }, { list: 'bullet' }],
-				['blockquote', 'code-block', 'link'],
-				['clean'],
-			],
-		};
+		const container = [
+			[{ header: [1, 2, 3, false] }],
+			['bold', 'italic', 'underline', 'strike', 'code'],
+			[{ list: 'ordered' }, { list: 'bullet' }],
+			['blockquote', 'code-block', 'link'],
+			['clean'],
+		];
+		toolbar = { toolbar: container };
+		if (showSource !== undefined)
+			toolbar = {
+				toolbar: { container: [...container, ['source']], handlers: { source: showSource } },
+			};
 	}
-	return { theme: 'snow', formats, modules: { ...toolbar, history: { userOnly: true } } };
+	const options: QuillOptions = {
+		theme: 'snow',
+		formats,
+		modules: {
+			...toolbar,
+			keyboard: { bindings: TAB_LEAVES_FIELD },
+			history: { userOnly: true },
+		},
+	};
+	if (placeholder !== undefined) options.placeholder = placeholder;
+	return options;
 }

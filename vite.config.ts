@@ -7,8 +7,13 @@ import { defineConfig } from 'vite';
 import { productionBoundaries } from './config/production-boundaries.ts';
 
 const collaborationPort = process.env['COLLABORATION_PORT'] ?? '8787';
+// The optimizer cache is not safe for concurrent writers: a second dev server (E2E) that
+// rewrites it under a running one leaves browsers with mismatched dependency chunks.
+const cache: { cacheDir?: string } = {};
+if (process.env['VITE_CACHE_DIR'] !== undefined) cache.cacheDir = process.env['VITE_CACHE_DIR'];
 
 export default defineConfig({
+	...cache,
 	// These UI modules are loaded on demand. Prebundle them before opening a room so
 	// dependency discovery cannot invalidate already loaded chunks (HTTP 504) mid-edit.
 	optimizeDeps: {

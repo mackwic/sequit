@@ -9,7 +9,7 @@
 		"dev:stack": "node scripts/dev.mjs",
 		"dev:web": "vite dev",
 		"dev:collaboration": "wrangler dev --config src/workers/collaboration-worker/wrangler.jsonc",
-		"dev:e2e": "pnpm run dev:web --port 4174",
+		"dev:e2e": "VITE_CACHE_DIR=node_modules/.vite/e2e pnpm run dev:web --port 4174",
 		"build": "pnpm run build:web && pnpm run build:collaboration",
 		"build:web": "vite build",
 		"build:collaboration": "wrangler deploy --dry-run --config src/workers/collaboration-worker/wrangler.jsonc --outdir .wrangler/dist/collaboration",
