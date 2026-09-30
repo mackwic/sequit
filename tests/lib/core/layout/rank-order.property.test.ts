@@ -2456,6 +2456,67 @@ it('keeps a grouped member with no incident relation at documentary position', (
 	expect(barycentricSweep({ structure, domain }, domain.bands, false)).toEqual(domain.bands);
 });
 
+it('reopens a passage by moving the lower endpoint beside the wall, on its neighbour side', () => {
+	const base = corpusDocument(
+		['r', 'a', 'b', 'p', 'c'],
+		['r', 'a', 'b', 'p', 'c'],
+		[
+			{ id: 'a-r', from: 'a', to: 'r' },
+			{ id: 'p-r', from: 'p', to: 'r' },
+			{ id: 'b-a', from: 'b', to: 'a' },
+			{ id: 'c-p', from: 'c', to: 'p' },
+		],
+	);
+	const document = {
+		...base,
+		groups: [
+			{ kind: EndpointKind.Group as const, id: 'g', label: 'Group', layoutOrder: orderKey('a0') },
+		],
+		nodes: base.nodes.map((node) => {
+			if (node.id === 'a' || node.id === 'b') return { ...node, groupId: 'g' };
+			return node;
+		}),
+	};
+	const created = createGraph(document);
+	if (!created.ok) throw new Error('Invalid walled graph');
+	const structure = prepareLayout(created.value, topologicallyRank(created.value));
+	const domain = collectRankOrderDomain(structure);
+	const topology = new RankTopologyOracle(structure, domain);
+	expect(domain.bands).toEqual([
+		['g', 'p'],
+		['g', 'c'],
+	]);
+	// The frame of G runs between both rows: C → P cannot cross it.
+	for (const [closed, open] of [
+		[
+			[
+				['g', 'p'],
+				['c', 'g'],
+			],
+			[
+				['g', 'p'],
+				['g', 'c'],
+			],
+		],
+		[
+			[
+				['p', 'g'],
+				['g', 'c'],
+			],
+			[
+				['p', 'g'],
+				['c', 'g'],
+			],
+		],
+	]) {
+		expect(topology.count(structure, defined(closed))).toBe(Number.POSITIVE_INFINITY);
+		const reopened = topology.passages.reopen(defined(closed));
+		expect(reopened.order).toEqual(open);
+		expect(reopened.closed).toBe(false);
+		expect(topology.count(structure, reopened.order)).toBe(0);
+	}
+});
+
 it('searches projected group routes through the component of their target', () => {
 	const base = corpusDocument(
 		['a', 'b', 'd', 'e'],

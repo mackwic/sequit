@@ -48,34 +48,55 @@ function sidesOf(items: readonly string[], item: string, walls: readonly string[
 	return walls.map((wall) => Number(items.indexOf(wall) < at)).join('');
 }
 
-function blocksBetween(
+/** A relation whose endpoints a wall separates, and where its lower item has to stand. */
+export interface ClosedPassage {
+	readonly relation: AdjacentRelation;
+	readonly container: string | undefined;
+	/** The item standing for the lower endpoint in the container. */
+	readonly item: string;
+	/** Walls standing before the upper endpoint's item, then those after it. */
+	readonly before: ReadonlySet<string>;
+	readonly after: ReadonlySet<string>;
+}
+
+function closedPassage(
 	relation: AdjacentRelation,
 	blocks: GroupBlocks,
 	rows: { readonly upper: RowContainers; readonly lower: RowContainers },
-): boolean {
+): ClosedPassage | undefined {
 	const common = commonContainer(blocks, relation.upper, relation.lower);
-	if (common === undefined) return false;
+	if (common === undefined) return undefined;
 	const upper = rows.upper.slots.get(common.container);
 	const lower = rows.lower.slots.get(common.container);
-	if (upper === undefined || lower === undefined) return false;
+	if (upper === undefined || lower === undefined) return undefined;
 	const endpoints = new Set([common.left, common.right]);
 	const walls = upper.filter(
 		(id) => blocks.ids.has(id) && !endpoints.has(id) && lower.includes(id),
 	);
-	if (walls.length === 0) return false;
-	return sidesOf(upper, common.left, walls) !== sidesOf(lower, common.right, walls);
+	if (walls.length === 0) return undefined;
+	const side = sidesOf(upper, common.left, walls);
+	if (side === sidesOf(lower, common.right, walls)) return undefined;
+	const at = upper.indexOf(common.left);
+	const before = walls.filter((wall) => upper.indexOf(wall) < at);
+	return {
+		relation,
+		container: common.container,
+		item: common.right,
+		before: new Set(before),
+		after: new Set(walls.filter((wall) => !before.includes(wall))),
+	};
 }
 
 /**
  * A block present in two adjacent rows has one continuous frame between them: a relation whose
  * endpoints stand on different sides of it there cannot be routed, whatever the geometry.
  */
-export function closesBlockPassage(
+export function* closedPassages(
 	structure: LayoutStructure,
 	relations: readonly AdjacentRelation[],
-): boolean {
+): IterableIterator<ClosedPassage> {
 	const blocks = groupBlocks(structure.graph);
-	if (blocks.ids.size === 0) return false;
+	if (blocks.ids.size === 0) return;
 	const rowOf = new Map<string, readonly string[]>();
 	for (const component of structure.components)
 		for (const row of component.rows.ordinary) for (const id of row) rowOf.set(id, row);
@@ -85,13 +106,14 @@ export function closesBlockPassage(
 		containers.set(row, known);
 		return known;
 	};
-	return relations.some((relation) => {
+	for (const relation of relations) {
 		const upperRow = rowOf.get(relation.upper);
 		const lowerRow = rowOf.get(relation.lower);
-		if (upperRow === undefined || lowerRow === undefined) return false;
+		if (upperRow === undefined || lowerRow === undefined) continue;
 		const rows = { upper: containersOf(upperRow), lower: containersOf(lowerRow) };
-		return blocksBetween(relation, blocks, rows);
-	});
+		const passage = closedPassage(relation, blocks, rows);
+		if (passage !== undefined) yield passage;
+	}
 }
 
 function extend(spans: Map<string, RankSpan>, block: string, span: RankSpan): void {

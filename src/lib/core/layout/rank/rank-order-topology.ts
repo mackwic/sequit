@@ -2,10 +2,11 @@ import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import { BlockPassageRepair } from './block-passage-repair';
 import {
 	type AdjacentRelation,
 	adjacentRelations,
-	closesBlockPassage,
+	closedPassages,
 	forcedBlockCrossings,
 } from './block-passages';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
@@ -98,6 +99,8 @@ export class RankTopologyOracle {
 	private readonly adjacent: readonly AdjacentRelation[];
 	/** Crossings every order keeps: block-forced pairs; zero without blocks. */
 	readonly lowerBound: number;
+	/** Reopens the passages a wall closes, with the same adjacent relations. */
+	readonly passages: BlockPassageRepair;
 
 	constructor(structure: LayoutStructure, domain: RankOrderDomain) {
 		const endpointRanks = new Map<string, number>();
@@ -112,14 +115,21 @@ export class RankTopologyOracle {
 		this.segments = segments;
 		this.adjacent = adjacentRelations(structure);
 		this.lowerBound = forcedBlockCrossings(structure, this.adjacent);
+		this.passages = new BlockPassageRepair(structure, domain, this.adjacent);
 	}
 
 	/** Crossings of an order; an order closing a block's passage cannot be routed at all. */
 	count(structure: LayoutStructure, order: RankOrder, maximum = Number.POSITIVE_INFINITY): number {
 		const applied = applyRankOrder(structure, this.domain, order);
-		if (closesBlockPassage(applied, this.adjacent)) return Number.POSITIVE_INFINITY;
+		if (closedPassages(applied, this.adjacent).next().done !== true)
+			return Number.POSITIVE_INFINITY;
+		return this.crossings(applied, maximum);
+	}
+
+	/** Crossings of rows already ordered, whose passages are all open. */
+	crossings(applied: LayoutStructure, maximum = Number.POSITIVE_INFINITY): number {
 		const rows = topologyRows(applied);
-		const positions = transversePositions(structure, rows);
+		const positions = transversePositions(applied, rows);
 		const dummies = rows.map((): RowEntry[] => []);
 		for (const relation of this.relations) {
 			const sourceX = defined(positions.get(relation.from));

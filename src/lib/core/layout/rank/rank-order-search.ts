@@ -15,6 +15,7 @@ import {
 	type LayoutResult,
 } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import type { ReopenedOrder } from './block-passage-repair';
 import {
 	boundedRankOrderEnumerationSize,
 	lazyRankOrders,
@@ -24,6 +25,9 @@ import {
 import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
 import { type RankOrderDomain, repairBlockOrder } from './rank-ordering';
+
+/** Alternating barycentric sweeps proposed before local swaps. */
+const MAX_SWEEPS = 4;
 
 /** Rank selection only needs the retained evaluation path of the dedicated engine. */
 export type DedicatedLayoutEvaluator = (
@@ -139,6 +143,8 @@ class RankOrderSearch {
 	truncated = false;
 	private readonly seen: Set<string>;
 	private readonly frontier: RankOrder[];
+	/** Reopened orders by candidate: neighbor sweeps meet the same candidates again and again. */
+	private readonly reopened = new Map<string, ReopenedOrder>();
 	private readonly topology: RankTopologyOracle;
 	readonly topologyBound: number;
 	private readonly positions: readonly ReadonlyMap<string, number>[];
@@ -225,10 +231,10 @@ class RankOrderSearch {
 	}
 
 	/** A dominated rank order cannot win even with perfect routes; still explore its neighbors. */
-	private cannotBeatSelected(order: RankOrder): boolean {
+	private cannotBeatSelected(order: RankOrder, applied: LayoutStructure): boolean {
 		const best = this.selected;
 		if (best === undefined) return false;
-		const crossings = this.topology.count(this.input.structure, order, best.topologyCrossings);
+		const crossings = this.topology.crossings(applied, best.topologyCrossings);
 		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
 		const kendall = rankOrderKendallDistance(order, this.input.domain.bands);
 		if (kendall !== best.kendall) return kendall > best.kendall;
@@ -254,16 +260,33 @@ class RankOrderSearch {
 		});
 	}
 
-	propose(candidate: RankOrder): boolean {
+	/** Sibling blocks keep one order, then every passage a wall closes is reopened if it can be. */
+	private repaired(candidate: RankOrder): ReopenedOrder {
 		const order = repairBlockOrder(this.input.domain, candidate);
+		const key = JSON.stringify(order);
+		let reopened = this.reopened.get(key);
+		if (reopened === undefined) {
+			reopened = this.topology.passages.reopen(order);
+			this.reopened.set(key, reopened);
+		}
+		return reopened;
+	}
+
+	propose(candidate: RankOrder): boolean {
+		return this.admit(this.repaired(candidate));
+	}
+
+	/** An order still closing a passage cannot be routed: it is neither evaluated nor explored. */
+	private admit({ order, applied, closed }: ReopenedOrder): boolean {
 		const key = JSON.stringify(order);
 		if (this.seen.has(key)) return true;
 		if (this.proposed >= this.input.limits.uniqueProposals)
 			return this.cutOff(RankSearchStop.ProposalBudget);
 		this.seen.add(key);
 		this.proposed += 1;
+		if (closed) return true;
 		this.frontier.push(order);
-		if (this.cannotBeatSelected(order)) return true;
+		if (this.cannotBeatSelected(order, applied)) return true;
 		if (this.evaluated >= this.input.limits.completePipelines)
 			return this.cutOff(RankSearchStop.EvaluationBudget);
 		this.evaluated += 1;
@@ -283,12 +306,20 @@ class RankOrderSearch {
 		this.stop = RankSearchStop.Complete;
 	}
 
+	/**
+	 * Sweeps alternate their direction until two in a row change nothing, within a few passes:
+	 * bands coupled across containers need more than one round. Each sweep is proposed.
+	 */
 	runHeuristic(): void {
 		this.mode = RankSearchMode.Heuristic;
 		let current: RankOrder = this.input.domain.bands;
-		for (const reverse of [false, true]) {
-			current = barycentricSweep(this.input, current, reverse);
-			if (!this.propose(current)) return;
+		let unchanged = 0;
+		for (let pass = 0; pass < MAX_SWEEPS && unchanged < 2; pass += 1) {
+			const swept = this.repaired(barycentricSweep(this.input, current, pass % 2 === 1));
+			unchanged += 1;
+			if (JSON.stringify(swept.order) !== JSON.stringify(current)) unchanged = 0;
+			current = swept.order;
+			if (!this.admit(swept)) return;
 		}
 		this.localImprovements();
 		if (this.truncated) return;
