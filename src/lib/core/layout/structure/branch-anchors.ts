@@ -14,16 +14,18 @@ export function branchAnchors(
 	graph: LogicGraph,
 	ranks: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, BranchAnchor> {
-	const candidates = new Map<string, BranchAnchor | null>();
-	for (const { relation, target } of graph.relations) {
-		let anchor: BranchAnchor | null = null;
-		const adjacent = ranks.get(relation.from) === (ranks.get(relation.to) ?? 0) + 1;
-		if (target.kind === EndpointKind.Node && adjacent)
-			anchor = { parentId: relation.to, relationId: relation.id };
-		if (candidates.has(relation.from)) anchor = null;
-		candidates.set(relation.from, anchor);
+	const lone = new Map<string, LogicGraph['relations'][number] | undefined>();
+	for (const entry of graph.relations) {
+		const from = entry.relation.from;
+		if (lone.has(from)) lone.set(from, undefined);
+		else lone.set(from, entry);
 	}
 	const result = new Map<string, BranchAnchor>();
-	for (const [id, anchor] of candidates) if (anchor !== null) result.set(id, anchor);
+	for (const [id, entry] of lone) {
+		if (entry?.target.kind !== EndpointKind.Node) continue;
+		const { relation } = entry;
+		if (ranks.get(relation.from) !== (ranks.get(relation.to) ?? 0) + 1) continue;
+		result.set(id, { parentId: relation.to, relationId: relation.id });
+	}
 	return result;
 }

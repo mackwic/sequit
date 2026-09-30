@@ -54,34 +54,55 @@ function groupOwners(
 	return owners;
 }
 
-/**
- * Components whose local document keeps both endpoints of each relation, by relation index. A
- * relation between two groups is projected onto their members: it belongs to the component of
- * the members, where each populated group stands as the block of its members.
- */
-function relationHolders(
-	graph: LogicGraph,
-	byEndpoint: ReadonlyMap<string, number>,
-	owners: ReadonlyMap<string, ReadonlySet<number>>,
-): readonly (readonly number[])[] {
-	const holds = (index: number, id: string): boolean =>
-		byEndpoint.get(id) === index || owners.get(id)?.has(index) === true;
-	return graph.relations.map(({ relation }) => {
-		const groupHolders = owners.get(relation.from);
-		if (groupHolders !== undefined)
-			return [...groupHolders].filter((index) => holds(index, relation.to));
-		const index = byEndpoint.get(relation.from);
-		if (index === undefined || !holds(index, relation.to)) return [];
-		return [index];
-	});
+/** Receives one component holding a relation; returning `false` stops the visit. */
+type RelationHolderVisitor = (relationIndex: number, holder: number) => boolean;
+
+interface HolderContext {
+	readonly byEndpoint: ReadonlyMap<string, number>;
+	readonly owners: ReadonlyMap<string, ReadonlySet<number>>;
+	readonly visit: RelationHolderVisitor;
 }
 
-/** The rank components holding each relation, by relation index, as `rankSearchComponents` does. */
-export function relationComponents(
+function holds(context: HolderContext, index: number, id: string): boolean {
+	return context.byEndpoint.get(id) === index || context.owners.get(id)?.has(index) === true;
+}
+
+/** Visit the components holding one relation; `false` once the visitor stops. */
+function visitHolders(
+	context: HolderContext,
+	relationIndex: number,
+	relation: LogicRelation,
+): boolean {
+	const groupHolders = context.owners.get(relation.from);
+	if (groupHolders === undefined) {
+		const holder = context.byEndpoint.get(relation.from);
+		if (holder === undefined || !holds(context, holder, relation.to)) return true;
+		return context.visit(relationIndex, holder);
+	}
+	for (const holder of groupHolders)
+		if (holds(context, holder, relation.to) && !context.visit(relationIndex, holder)) return false;
+	return true;
+}
+
+/**
+ * Visit the components whose local document keeps both endpoints of each relation, by relation
+ * index. A relation between two groups is projected onto their members: it belongs to the
+ * component of the members, where each populated group stands as the block of its members.
+ */
+function visitRelationHolders(graph: LogicGraph, context: HolderContext): void {
+	for (let relationIndex = 0; relationIndex < graph.relations.length; relationIndex += 1) {
+		const { relation } = defined(graph.relations[relationIndex]);
+		if (!visitHolders(context, relationIndex, relation)) return;
+	}
+}
+
+/** The rank components holding each relation, in relation order, as `rankSearchComponents` does. */
+export function visitRelationComponents(
 	graph: LogicGraph,
 	byEndpoint: ReadonlyMap<string, number>,
-): readonly (readonly number[])[] {
-	return relationHolders(graph, byEndpoint, groupOwners(graph, byEndpoint));
+	visit: RelationHolderVisitor,
+): void {
+	visitRelationHolders(graph, { byEndpoint, owners: groupOwners(graph, byEndpoint), visit });
 }
 
 /** Partition the document once; a shared enclosing group is retained in each local context. */
@@ -111,10 +132,14 @@ export function rankSearchComponents(
 		parts.get(byEndpoint.get(junction.id) ?? -1)?.junctions.push(junction);
 	for (const group of graph.document.groups)
 		for (const index of owners.get(group.id) ?? []) defined(parts.get(index)).groups.push(group);
-	const holders = relationHolders(graph, byEndpoint, owners);
-	for (const [index, { relation }] of graph.relations.entries())
-		for (const holder of defined(holders[index]))
-			defined(parts.get(holder)).relations.push(relation);
+	visitRelationHolders(graph, {
+		byEndpoint,
+		owners,
+		visit: (relationIndex, holder) => {
+			defined(parts.get(holder)).relations.push(defined(graph.relations[relationIndex]).relation);
+			return true;
+		},
+	});
 	return [...parts].map(([index, part]) => {
 		const document = {
 			...graph.document,

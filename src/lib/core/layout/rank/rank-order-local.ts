@@ -10,7 +10,7 @@ import type { RankOrder } from './rank-order';
 import {
 	type RankSearchComponent,
 	rankSearchComponents,
-	relationComponents,
+	visitRelationComponents,
 } from './rank-order-components';
 import {
 	type DedicatedLayoutEvaluator,
@@ -82,7 +82,10 @@ function componentBands(domain: RankOrderDomain): ReadonlyMap<number, readonly n
 	return byComponent;
 }
 
-/** Count each relation once per local document holding it, with its projected member pairs. */
+/**
+ * Count each relation once per local document holding it, with its projected member pairs. A
+ * count only grows, so counting stops once every component exceeds the search budget.
+ */
 export function searchBudgets(
 	graph: LogicGraph,
 	structure: LayoutStructure,
@@ -96,12 +99,16 @@ export function searchBudgets(
 		for (const id of component.ids) byEndpoint.set(id, index);
 	const counts = new Map<number, number>();
 	for (const index of bands.keys()) counts.set(index, 0);
-	const holders = relationComponents(graph, byEndpoint);
-	for (const [index, effective] of graph.effectiveRelations.entries()) {
-		const pairs = effective.sourceIds.length * effective.targetIds.length;
-		for (const holder of defined(holders[index]))
-			if (bands.has(holder)) counts.set(holder, defined(counts.get(holder)) + pairs);
-	}
+	let searchable = bands.size;
+	visitRelationComponents(graph, byEndpoint, (relationIndex, holder) => {
+		const count = counts.get(holder);
+		if (count === undefined || localPipelineLimit(count) < 2) return true;
+		const effective = defined(graph.effectiveRelations[relationIndex]);
+		const next = count + effective.sourceIds.length * effective.targetIds.length;
+		counts.set(holder, next);
+		if (localPipelineLimit(next) < 2) searchable -= 1;
+		return searchable > 0;
+	});
 	let skippedComponents = 0;
 	for (const index of bands.keys()) {
 		const limit = localPipelineLimit(defined(counts.get(index)));
