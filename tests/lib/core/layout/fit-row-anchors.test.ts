@@ -90,6 +90,48 @@ describe('ordered row anchors', () => {
 	});
 });
 
+describe('sliding row anchors', () => {
+	const open = () => [];
+
+	it('slides a target that lost its conflict against the retained anchor', () => {
+		expect(fitRowAnchors([item(0, { target: 20 }), item(100, { target: 60 })], open)).toEqual([
+			20, 96,
+		]);
+		expect(fitRowAnchors([item(0, { target: 80 }), item(100, { target: 110 })], open)).toEqual([
+			34, 110,
+		]);
+		expect(
+			fitRowAnchors([item(0, { target: 190 }), item(100, { fixed: true, target: 1_000 })], open),
+		).toEqual([24, 100]);
+	});
+
+	it('slides several lower-priority items in turn, without pushing an untargeted one', () => {
+		expect(
+			fitRowAnchors(
+				[item(0, { target: 90 }), item(100, { target: 190 }), item(200, { target: 210 })],
+				open,
+			),
+		).toEqual([58, 134, 210]);
+		expect(
+			fitRowAnchors([item(0, { target: 300 }), item(100), item(200, { target: 200 })], open),
+		).toEqual([24, 100, 200]);
+	});
+
+	it('leaves a track per long relation spanning the gap, never moving away from a target', () => {
+		const row = [item(0, { target: 300 }), item(200), item(300, { target: 300 })];
+		expect(fitRowAnchors(row, open)).toEqual([124, 200, 300]);
+		// Two spans meet the gap: three rail spacings, 200 - (40 + 72); a distant one does not.
+		const spans = [
+			{ start: 50, end: 150 },
+			{ start: 170, end: 400 },
+			{ start: 250, end: 260 },
+		];
+		expect(fitRowAnchors(row, () => spans)).toEqual([88, 200, 300]);
+		const fixed = [item(0, { target: 90 }), item(76, { fixed: true })];
+		expect(fitRowAnchors(fixed, () => [{ start: 30, end: 40 }])).toEqual([0, 76]);
+	});
+});
+
 const row = fc
 	.array(
 		fc.record({
@@ -113,28 +155,56 @@ const row = fc
 
 it('preserves spacing, fixed items, determinism and translation on varied immutable rows', () => {
 	fc.assert(
-		fc.property(row, fc.integer({ min: -1_000, max: 1_000 }), (items, shift) => {
-			const snapshot = structuredClone(items);
-			const centers = fitRowAnchors(Object.freeze(items));
-			expect(centers).toHaveLength(items.length);
-			expect(fitRowAnchors(items)).toEqual(centers);
-			expect(items).toEqual(snapshot);
+		fc.property(
+			row,
+			fc.integer({ min: -1_000, max: 1_000 }),
+			fc.boolean(),
+			(items, shift, slide) => {
+				let passages: (() => never[]) | undefined;
+				if (slide) passages = () => [];
+				const snapshot = structuredClone(items);
+				const centers = fitRowAnchors(Object.freeze(items), passages);
+				expect(centers).toHaveLength(items.length);
+				expect(fitRowAnchors(items, passages)).toEqual(centers);
+				expect(items).toEqual(snapshot);
+				for (const [index, entry] of items.entries()) {
+					const center = defined(centers[index]);
+					expect(Number.isFinite(center)).toBe(true);
+					if (entry.fixed) expect(center).toBe(entry.center);
+					if (index === 0) continue;
+					const before = defined(items[index - 1]);
+					expect(center - defined(centers[index - 1])).toBeGreaterThanOrEqual(
+						(before.size + entry.size) / 2 + ITEM_GAP,
+					);
+				}
+				const translated = items.map((entry) => {
+					let result = { ...entry, center: entry.center + shift };
+					if (entry.target !== undefined) result = { ...result, target: entry.target + shift };
+					return result;
+				});
+				expect(fitRowAnchors(translated, passages)).toEqual(
+					centers.map((center) => center + shift),
+				);
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('slides a movable item off its target only against the neighbor facing that target', () => {
+	fc.assert(
+		fc.property(row, (items) => {
+			const centers = fitRowAnchors(items, () => []);
+			const touches = (left: number, right: number): boolean => {
+				const spacing = (defined(items[left]).size + defined(items[right]).size) / 2 + ITEM_GAP;
+				return defined(centers[right]) - defined(centers[left]) === spacing;
+			};
 			for (const [index, entry] of items.entries()) {
 				const center = defined(centers[index]);
-				expect(Number.isFinite(center)).toBe(true);
-				if (entry.fixed) expect(center).toBe(entry.center);
-				if (index === 0) continue;
-				const before = defined(items[index - 1]);
-				expect(center - defined(centers[index - 1])).toBeGreaterThanOrEqual(
-					(before.size + entry.size) / 2 + ITEM_GAP,
-				);
+				if (entry.fixed || entry.target === undefined || center === entry.target) continue;
+				if (entry.target > center) expect(touches(index, index + 1)).toBe(true);
+				else expect(touches(index - 1, index)).toBe(true);
 			}
-			const translated = items.map((entry) => {
-				let result = { ...entry, center: entry.center + shift };
-				if (entry.target !== undefined) result = { ...result, target: entry.target + shift };
-				return result;
-			});
-			expect(fitRowAnchors(translated)).toEqual(centers.map((center) => center + shift));
 		}),
 		PROPERTY_PARAMETERS,
 	);

@@ -95,6 +95,28 @@ describe('family alignment', () => {
 		expect(centers(bounds)).toEqual({ p: 30, a: 30, w: 350 });
 	});
 
+	it('slides a family toward a fixed parent against a wall, leaving a track for a long relation', () => {
+		const layout = (arrows: readonly (readonly [string, string])[]) => {
+			const bounds = new Map([
+				['p', box(300, 0)],
+				['a', box(0, 100)],
+				['w', box(320, 100)],
+				['z', box(0, 200)],
+			]);
+			align([['p'], ['a', 'w'], ['z']], bounds, arrows, { walls: new Set(['p', 'w']) });
+			return centers(bounds);
+		};
+		// 350 - 60 - 36: one item gap before the wall.
+		expect(layout([['a', 'p']])).toMatchObject({ p: 330, a: 254 });
+		// 350 - 60 - 48: z-to-p spans the gap, which keeps a rail spacing on both sides of it.
+		expect(
+			layout([
+				['a', 'p'],
+				['z', 'p'],
+			]),
+		).toMatchObject({ p: 330, a: 242 });
+	});
+
 	it('spreads parents so that each wide family is centered beneath its own parent', () => {
 		const bounds = new Map([
 			['p', box(0, 0)],

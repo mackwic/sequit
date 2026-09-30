@@ -1,0 +1,19 @@
+<script>
+ import { scenario } from './blocked-family.scenario';
+ import source from './blocked-family.scenario.ts?raw';
+ import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+ let { settings = $bindable() } = $props();
+</script>
+
+# Enfant bloqué contre la famille voisine
+
+La racine R a quatre enfants A, B, C et D. Au rang suivant, A1 est centré sous
+A et la famille D2, D1 est centrée sous D. C1 voudrait être centré sous son
+parent C, mais la famille de D occupe déjà cette place.
+
+C1 ne revient donc pas à sa position d’origine : il glisse vers son parent
+jusqu’à la famille voisine et s’arrête contre D1, à l’espacement minimal entre
+boîtes. Il reste ainsi en face d’une partie de C, du côté de son parent. La règle
+s’applique dans les quatre directions ; seuls les axes changent.
+
+<VisualTest {scenario} {source} bind:settings />

@@ -14,7 +14,12 @@ export interface FamilyLinks {
 	readonly related: (item: string, rank: number, sign: 1 | -1) => readonly string[];
 	/** Endpoints inside a block item carrying its links to the next row; the block centers them. */
 	readonly upAnchors?: ((item: string, rank: number) => readonly string[] | undefined) | undefined;
+	/** Endpoints of the long relations crossing each row, possibly between two of its items. */
+	readonly passages?: readonly (readonly RowPassage[])[] | undefined;
 }
+
+/** The two endpoints of a relation skipping a row, in rows before and after it. */
+type RowPassage = readonly [string, string];
 
 interface MutableBoundsLookup {
 	get(id: string): MutableBounds | undefined;
@@ -139,11 +144,32 @@ function familyItem(family: Family, input: FamilyAlignmentInput, sign: 1 | -1): 
 	return { center: ownCenter, size, fixed: family.fixed, target };
 }
 
+/** Spans between the endpoint centers of the long relations crossing a row. */
+function rowPassages(input: FamilyAlignmentInput, rank: number): readonly Interval[] {
+	const { bounds, vertical } = input;
+	return (input.links.passages?.[rank] ?? []).map(([source, target]) => {
+		const from = center(transverseEnvelope([source], bounds, vertical));
+		const to = center(transverseEnvelope([target], bounds, vertical));
+		return { start: Math.min(from, to), end: Math.max(from, to) };
+	});
+}
+
+interface RowPass {
+	readonly sign: 1 | -1;
+	/** Only the last pass slides blocked families: earlier ones still revise the rows around. */
+	readonly final: boolean;
+}
+
 /**
  * Center each family on the envelope of its related endpoints, moving families as rigid
  * blocks. The row order and the minimum gaps are preserved; the row may grow.
  */
-function alignRow(families: readonly Family[], input: FamilyAlignmentInput, sign: 1 | -1): void {
+function alignRow(
+	families: readonly Family[],
+	input: FamilyAlignmentInput,
+	row: RowPass & { readonly rank: number },
+): void {
+	const { rank, sign } = row;
 	const items = families.map((family, index) => {
 		const item = familyItem(family, input, sign);
 		const previous = families[index - 1]?.members.at(-1);
@@ -154,8 +180,10 @@ function alignRow(families: readonly Family[], input: FamilyAlignmentInput, sign
 	let centers: readonly number[];
 	const [single] = items;
 	const alone = items.length === 1 && single !== undefined;
+	let passages: (() => readonly Interval[]) | undefined;
+	if (row.final) passages = () => rowPassages(input, rank);
 	if (alone && !single.fixed) centers = [single.target ?? single.center];
-	else centers = fitRowAnchors(items);
+	else centers = fitRowAnchors(items, passages);
 	for (const [index, family] of families.entries()) {
 		const shift = defined(centers[index]) - defined(items[index]).center;
 		if (shift === 0) continue;
@@ -167,29 +195,31 @@ function alignRow(families: readonly Family[], input: FamilyAlignmentInput, sign
 	}
 }
 
-function sweep(input: FamilyAlignmentInput, plan: FamilyPlan, direction: 1 | -1): void {
+function sweep(input: FamilyAlignmentInput, plan: FamilyPlan, pass: RowPass): void {
 	let rows = plan.down;
 	let rank = 1;
-	if (direction < 0) {
+	if (pass.sign < 0) {
 		rows = plan.up;
 		rank = rows.length - 2;
 	}
-	for (; rank >= 0 && rank < rows.length; rank += direction) {
+	for (; rank >= 0 && rank < rows.length; rank += pass.sign) {
 		const families = defined(rows[rank]);
-		if (families.some(({ related }) => related.length > 0)) alignRow(families, input, direction);
+		if (families.some(({ related }) => related.length > 0))
+			alignRow(families, input, { ...pass, rank });
 	}
 }
 
 /**
  * Center the transverse envelope of every family of children on its parents. A downward
  * pass centers children, an upward pass makes room for wide families beneath their parents,
- * and a final downward pass gives children the last word.
+ * and a final downward pass gives children the last word: a family that cannot reach its
+ * parents then slides toward them as far as its neighbors and crossing relations allow.
  */
 export function alignFamilies(input: FamilyAlignmentInput): void {
 	const plan = familyPlan(input);
-	sweep(input, plan, 1);
-	sweep(input, plan, -1);
-	sweep(input, plan, 1);
+	sweep(input, plan, { sign: 1, final: false });
+	sweep(input, plan, { sign: -1, final: false });
+	sweep(input, plan, { sign: 1, final: true });
 }
 
 interface LinkPass {
@@ -217,6 +247,24 @@ function relatedAcrossJunctions(id: string, pass: LinkPass): readonly string[] {
 	return [...found];
 }
 
+/** Direct relations skipping rows, listed in every row they cross; junctions keep rails. */
+function crossingRelations(
+	rows: readonly (readonly string[])[],
+	parents: ReadonlyMap<string, readonly string[]>,
+	rowOf: ReadonlyMap<string, number>,
+): readonly (readonly RowPassage[])[] {
+	const crossing = rows.map((): RowPassage[] => []);
+	// Row order is the insertion order of `rowOf`: the index stays deterministic.
+	for (const [id, rank] of rowOf)
+		for (const parent of parents.get(id) ?? []) {
+			const other = rowOf.get(parent) ?? rank;
+			const last = Math.max(rank, other);
+			for (let between = Math.min(rank, other) + 1; between < last; between += 1)
+				defined(crossing[between]).push([id, parent]);
+		}
+	return crossing;
+}
+
 /** Links of flat rows, every endpoint its own item: families follow direct relations. */
 export function flatFamilyLinks(input: {
 	readonly rows: readonly (readonly string[])[];
@@ -233,5 +281,6 @@ export function flatFamilyLinks(input: {
 			if (sign > 0) edges = input.parents;
 			return relatedAcrossJunctions(item, { edges, junctionIds, rowOf, neighborRank: rank - sign });
 		},
+		passages: crossingRelations(input.rows, input.parents, rowOf),
 	};
 }
