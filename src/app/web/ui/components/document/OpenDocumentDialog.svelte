@@ -1,13 +1,23 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 
-	import { openDocument,type OpenDocumentResult } from '../../../projection/open-document';
+	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import Icon from '../ui/Icon.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
+	import OpenDiagnostics from './OpenDiagnostics.svelte';
 
 	type Diagnostics = Extract<OpenDocumentResult, { ok: false }>['diagnostics'];
 
-	let { onopen, onclose }: { onopen: (source: string) => void; onclose: () => void } = $props();
+	let {
+		retained,
+		onopen,
+		onclose,
+	}: {
+		/** Whether the current document is kept in this browser's recent documents. */
+		retained: boolean;
+		onopen: (source: string) => void;
+		onclose: () => void;
+	} = $props();
 	const inputId = $props.id();
 	let input = $state<HTMLInputElement>();
 	let filename = $state('');
@@ -15,6 +25,12 @@
 	// A file read finishing after Annuler, or after a newer selection, must not replace the document.
 	let alive = true;
 	let request = 0;
+	let description = $derived(openDescription(retained));
+
+	function openDescription(kept: boolean): string {
+		if (kept) return 'Le document courant reste disponible dans « Documents récents… ».';
+		return 'Le document courant est remplacé sans être enregistré ; exporte-le d’abord si tu veux le conserver.';
+	}
 
 	onMount(() => {
 		void tick().then(() => input?.focus());
@@ -41,18 +57,9 @@
 		trial.value.destroy();
 		onopen(source);
 	}
-
-	function location(diagnostic: Diagnostics[number]): string {
-		if (diagnostic.line === undefined) return diagnostic.path.join('.');
-		return `ligne ${diagnostic.line}`;
-	}
 </script>
 
-<ModalDialog
-	title="Ouvrir un document"
-	description="Le document courant est remplacé sans être enregistré ; exporte-le d’abord si tu veux le conserver."
-	{onclose}
->
+<ModalDialog title="Ouvrir un document" {description} {onclose}>
 	<label class="ui-label" for={inputId}>Fichier Sequit (.sequit.toml)</label>
 	<input
 		class="ui-field"
@@ -63,17 +70,7 @@
 		onchange={(event) => void chosen(event)}
 	/>
 	{#if diagnostics.length > 0}
-		<div class="ui-notice error" role="alert">
-			<Icon name="phosphor:warning-circle" />
-			<div>
-				<p class="m-0 font-semibold">{filename} n’est pas un document Sequit valide.</p>
-				<ul class="m-0 mt-1 list-disc pl-5">
-					{#each diagnostics as diagnostic, index (index)}
-						<li>{diagnostic.message} <span class="opacity-70">({location(diagnostic)})</span></li>
-					{/each}
-				</ul>
-			</div>
-		</div>
+		<OpenDiagnostics name={filename} {diagnostics} />
 	{/if}
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>

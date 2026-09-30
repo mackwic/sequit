@@ -5,8 +5,14 @@
 	let {
 		title,
 		onopen,
+		onrecent,
 		onexport,
-	}: { title: string; onopen: () => void; onexport?: (() => void) | undefined } = $props();
+	}: {
+		title: string;
+		onopen: () => void;
+		onrecent: () => void;
+		onexport?: (() => void) | undefined;
+	} = $props();
 
 	function printDocument(): void {
 		window.print();
@@ -27,6 +33,9 @@
 
 	<button role="menuitem" type="button" onclick={onopen}
 		><Icon name="phosphor:folder-open" />Ouvrir…</button
+	>
+	<button role="menuitem" type="button" onclick={onrecent}
+		><Icon name="phosphor:clock-counter-clockwise" />Documents récents…</button
 	>
 	{#if onexport}
 		<div role="separator"></div>

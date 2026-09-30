@@ -49,6 +49,10 @@ to = "a"
 [junctions]
 `;
 
+const OTHER_DOCUMENT = SMALL_DOCUMENT.replace('petit-document', 'autre-document')
+	.replace('Petit document', 'Autre document')
+	.replace('Une seule boîte', 'Autre boîte');
+
 async function chooseFile(page: Page, name: string, content: string): Promise<void> {
 	await page
 		.getByRole('dialog', { name: 'Ouvrir un document' })
@@ -150,4 +154,84 @@ test('reopening the same file after an edit restores its content', async ({ page
 	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
 	await expect(page.getByRole('dialog', { name: 'Ouvrir un document' })).toHaveCount(0);
 	await expect(page.locator('[data-node-id="seul"]')).toContainText('Une seule boîte');
+});
+
+test('edits and opened files survive a reload', async ({ page }) => {
+	await page.goto('/');
+	const node = page.locator('[data-node-id="traceable-edits"]');
+	await node.click();
+	await node.press('e');
+	await page.getByRole('textbox', { name: 'Contenu' }).fill('Contenu conservé');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+	await expect(node).toContainText('Contenu conservé');
+
+	await page.reload();
+	await expect(page.locator('[data-node-id="traceable-edits"]')).toContainText('Contenu conservé');
+	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await page.reload();
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await expect(page.locator('[data-node-id="seul"]')).toContainText('Une seule boîte');
+});
+
+test('recent documents can be reopened and forgotten', async ({ page }) => {
+	await page.goto('/');
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await openMenuItem(page, 'Ouvrir…');
+	const openDialog = page.getByRole('dialog', { name: 'Ouvrir un document' });
+	await expect(openDialog).toContainText('reste disponible dans « Documents récents… »');
+	await chooseFile(page, 'autre.sequit.toml', OTHER_DOCUMENT);
+	await expect(menuTrigger(page)).toContainText('Autre document');
+
+	await openMenuItem(page, 'Documents récents…');
+	const dialog = page.getByRole('dialog', { name: 'Documents récents' });
+	const entries = dialog.getByRole('listitem');
+	await expect(entries).toHaveCount(2);
+	await expect(entries.nth(0)).toContainText('Autre document (ouvert)');
+	await expect(entries.nth(1)).toContainText('Petit document');
+	await expect(dialog.getByRole('button', { name: 'Ouvrir Autre document' })).toBeDisabled();
+	await dialog.getByRole('button', { name: 'Ouvrir Petit document' }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await expect(page.locator('[data-node-id="seul"]')).toContainText('Une seule boîte');
+
+	await openMenuItem(page, 'Documents récents…');
+	await dialog.getByRole('button', { name: 'Retirer Autre document' }).click();
+	await expect(entries).toHaveCount(1);
+	await expect(entries.nth(0)).toContainText('Petit document (ouvert)');
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+});
+
+test('leaving with edits the browser cannot keep asks for confirmation', async ({ page }) => {
+	await page.addInitScript(() => {
+		Storage.prototype.setItem = () => {
+			throw new Error('quota exceeded');
+		};
+	});
+	await page.goto('/');
+	const node = page.locator('[data-node-id="traceable-edits"]');
+	await node.click();
+	await node.press('e');
+	await page.getByRole('textbox', { name: 'Contenu' }).fill('Contenu perdu');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+	await expect(node).toContainText('Contenu perdu');
+
+	await openMenuItem(page, 'Ouvrir…');
+	const openDialog = page.getByRole('dialog', { name: 'Ouvrir un document' });
+	await expect(openDialog).toContainText('remplacé sans être enregistré');
+	await page.keyboard.press('Escape');
+
+	const prompted = page.waitForEvent('dialog');
+	const reloaded = page.reload();
+	const prompt = await prompted;
+	expect(prompt.type()).toBe('beforeunload');
+	await prompt.accept();
+	await reloaded;
+	await expect(page.locator('[data-node-id="traceable-edits"]')).not.toContainText('Contenu perdu');
 });
