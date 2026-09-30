@@ -47,6 +47,7 @@
 		hiddenRelationFields,
 	} from '../../../projection/visible-relation-commands';
 	import { EntityKind } from '../../canvas/canvas-entity';
+	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
 	import {
@@ -99,6 +100,8 @@
 	const canvas = new CanvasSession(createNodeEditPort(untrack(() => client)));
 	setCollaborationAwareness(untrack(() => awareness));
 	let error = $state('');
+	/** The canvas viewport, where `?` opens the shortcuts panel. */
+	let canvasViewport = $state<HTMLDivElement>();
 	let creation = $state<{ plan: NodeCreationPlan; draft: NodeFields }>();
 	let editingGroup = $state<{
 		id: string;
@@ -300,7 +303,7 @@
 <div class="workspace" class:solo={!panel}>
 	<div class="canvas">
 		{#if !panel}
-			<CanvasViewportControls session={canvas} />
+			<CanvasViewportControls session={canvas} viewportElement={canvasViewport} />
 			<CanvasInteractionStatus session={canvas} />
 			{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
 					{error}
@@ -324,6 +327,9 @@
 				document={projection}
 				session={canvas}
 				natures={model.natures}
+				oncanvas={(_model: CanvasModel, element: HTMLDivElement) => {
+					canvasViewport = element;
+				}}
 				onGroup={groupAction}
 				onDelete={deleteSelection}
 				onGroupEdit={openGroupEditor}

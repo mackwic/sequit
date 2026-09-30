@@ -30,6 +30,7 @@
 	} from '../../../document/document-commands';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind } from '../../canvas/canvas-entity';
+	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
@@ -266,6 +267,8 @@
 		if (!opened.ok) return undefined;
 		return new CanvasSession(opened.value);
 	});
+	/** The canvas viewport, where `?` opens the shortcuts panel. */
+	let canvasViewport = $state<HTMLDivElement>();
 
 	$effect(() => {
 		const current = opened;
@@ -325,6 +328,9 @@
 				document={opened.value}
 				{natures}
 				{session}
+				oncanvas={(_canvas: CanvasModel, element: HTMLDivElement) => {
+					canvasViewport = element;
+				}}
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}
 				onGroupDissolve={(groupId: string) => {
@@ -398,7 +404,7 @@
 		{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
 				{error}
 			</p>{/if}
-		<CanvasViewportControls {session} />
+		<CanvasViewportControls {session} viewportElement={canvasViewport} />
 		<CanvasActions
 			{session}
 			enabled={interactive}

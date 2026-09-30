@@ -1,11 +1,17 @@
 <script lang="ts">
 	import { type CanvasShortcut, shortcutHint } from '../../canvas/canvas-shortcuts';
 
-	let { shortcut }: { shortcut: CanvasShortcut } = $props();
+	let {
+		shortcut,
+		announced = false,
+	}: {
+		shortcut: CanvasShortcut;
+		/** Read only where the key is the content; a button announces it by `aria-keyshortcuts`. */
+		announced?: boolean;
+	} = $props();
 </script>
 
-<!-- Hidden from the accessible name: the button announces its key through `aria-keyshortcuts`. -->
-<kbd aria-hidden="true">{shortcutHint(shortcut)}</kbd>
+<kbd aria-hidden={!announced}>{shortcutHint(shortcut)}</kbd>
 
 <style>
 	kbd {

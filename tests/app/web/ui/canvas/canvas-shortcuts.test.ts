@@ -2,9 +2,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	CANVAS_SHORTCUT_SECTIONS,
 	CANVAS_SHORTCUTS,
 	CanvasShortcutId,
 	matchesShortcut,
+	sectionShortcuts,
 	shortcutHint,
 	shortcutKeyshortcuts,
 	shortcutTitle,
@@ -81,6 +83,14 @@ describe('matchesShortcut', () => {
 		expect(press(CanvasShortcutId.Confirm, { key: 'e', shiftKey: true })).toBe(false);
 	});
 
+	it('opens the help with ?, keeping the Shift a layout needs, never with Ctrl or Cmd', () => {
+		expect(press(CanvasShortcutId.Help, { key: '?', shiftKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.Help, { key: '?' })).toBe(true);
+		expect(press(CanvasShortcutId.Help, { key: '/', shiftKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Help, { key: '?', shiftKey: true, ctrlKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Help, { key: '?', shiftKey: true, metaKey: true })).toBe(false);
+	});
+
 	it.each(Object.values(CANVAS_SHORTCUTS))(
 		'yields $id when repeated, composing, or already answered',
 		(shortcut) => {
@@ -126,6 +136,15 @@ it.each([
 		'Control+Shift+z Meta+Shift+z',
 	],
 	[CanvasShortcutId.Confirm, 'Maj+Entrée', 'Valider · Maj+Entrée', 'Shift+Enter'],
+	[CanvasShortcutId.Help, '?', 'Raccourcis clavier · ?', '?'],
+	[
+		CanvasShortcutId.Navigate,
+		'Flèches',
+		'Aller à l’élément voisin · Flèches',
+		'ArrowUp ArrowDown ArrowLeft ArrowRight',
+	],
+	[CanvasShortcutId.Select, 'Espace', 'Sélectionner / étendre · Espace', 'Space'],
+	[CanvasShortcutId.Cancel, 'Échap', 'Annuler le geste, fermer · Échap', 'Escape'],
 ])('announces %s as %s, titled %s, with aria-keyshortcuts %s', (id, hint, title, aria) => {
 	const shortcut = CANVAS_SHORTCUTS[id];
 	expect(shortcutHint(shortcut)).toBe(hint);
@@ -152,4 +171,15 @@ it('keys every entry by its own id, and never binds one key twice under the same
 			claimed.add(slot);
 		}
 	}
+});
+
+it('lists every entry in exactly one panel section, and leaves no section empty', () => {
+	const listed = CANVAS_SHORTCUT_SECTIONS.flatMap(({ section }) => {
+		const entries = sectionShortcuts(section);
+		expect(entries.length).toBeGreaterThan(0);
+		expect(entries.every((shortcut) => shortcut.section === section)).toBe(true);
+		return entries.map(({ id }) => id);
+	});
+	expect(listed).toHaveLength(Object.values(CanvasShortcutId).length);
+	expect(new Set(listed)).toEqual(new Set(Object.values(CanvasShortcutId)));
 });

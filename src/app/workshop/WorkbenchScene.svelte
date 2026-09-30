@@ -77,6 +77,7 @@
 		/>
 		<WorkshopViewportStart {canvas} {viewport} /><CanvasViewportControls
 			{session}
+			viewportElement={viewport}
 		/><CanvasInteractionStatus {session} />
 	</div>
 	<div class="workbench-tools">
