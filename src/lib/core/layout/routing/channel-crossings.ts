@@ -86,32 +86,14 @@ function firstEndingAfter(runs: readonly RunRisers[], column: number): number {
 	return low;
 }
 
-/** Where `stackingGain` also files each pair's gain: at the block of its lower or upper run. */
-interface Attribution {
-	readonly blocks: readonly number[];
-	readonly ofUpper: boolean;
-	readonly gains: number[];
-}
-
-/** File `pair` at the block of run `left` of the lower track, or of run `right` of the upper one. */
-function attribute(
-	attribution: Attribution | undefined,
-	left: number,
-	right: number,
-	pair: number,
-) {
-	if (attribution === undefined) return;
-	let index = left;
-	if (attribution.ofUpper) index = right;
-	const block = defined(attribution.blocks[index]);
-	attribution.gains[block] = defined(attribution.gains[block]) + pair;
-}
+/** Files the gain of the pair made of run `left` of the lower track and run `right` of the upper. */
+type Attribute = (left: number, right: number, pair: number) => void;
 
 /**
  * Crossings removed by stacking `upper` below `lower`. Runs of one track are disjoint and sorted,
  * so a merge over their shared span visits only overlapping pairs.
  */
-function stackingGain(lower: Track, upper: Track, attribution?: Attribution): number {
+function stackingGain(lower: Track, upper: Track, attribute?: Attribute): number {
 	if (lower.start >= upper.end || upper.start >= lower.end) return 0;
 	let gain = 0;
 	let left = firstEndingAfter(lower.runs, upper.start);
@@ -123,7 +105,7 @@ function stackingGain(lower: Track, upper: Track, attribution?: Attribution): nu
 		if (low.run.start < high.run.end && high.run.start < low.run.end) {
 			const pair = crossingsBelow(low, high) - crossingsBelow(high, low);
 			gain += pair;
-			attribute(attribution, left, right, pair);
+			attribute?.(left, right, pair);
 		}
 		if (low.run.end <= high.run.end) left += 1;
 		else right += 1;
@@ -194,11 +176,12 @@ function sinkTracks(tracks: Track[]): void {
 	}
 }
 
-/** The block of every run of two tracks, by track, and how many blocks there are. */
+/** The block of every run of two tracks, by track, how many blocks hold runs of both tracks. */
 interface Blocks {
 	readonly lower: number[];
 	readonly upper: number[];
 	count: number;
+	mixed: number;
 }
 
 /**
@@ -207,7 +190,7 @@ interface Blocks {
  * form a block that may change track as a whole.
  */
 function blocksOf(lower: Track, upper: Track): Blocks {
-	const blocks: Blocks = { lower: [], upper: [], count: 0 };
+	const blocks: Blocks = { lower: [], upper: [], count: 0, mixed: 0 };
 	let reach = -Infinity;
 	while (blocks.lower.length < lower.runs.length || blocks.upper.length < upper.runs.length) {
 		const low = lower.runs[blocks.lower.length];
@@ -216,34 +199,63 @@ function blocksOf(lower: Track, upper: Track): Blocks {
 		const highStart = high?.run.start ?? Infinity;
 		if (reach + RAIL_SPACING / 2 < Math.min(lowStart, highStart)) blocks.count += 1;
 		let entry = high;
+		let own = blocks.upper;
+		let other = blocks.lower;
 		if (lowStart <= highStart) {
 			entry = low;
-			blocks.lower.push(blocks.count - 1);
-		} else blocks.upper.push(blocks.count - 1);
+			own = blocks.lower;
+			other = blocks.upper;
+		}
+		const block = blocks.count - 1;
+		const opens = own.at(-1) !== block;
+		if (opens && other.at(-1) === block) blocks.mixed += 1;
+		own.push(block);
 		reach = Math.max(reach, defined(entry).run.end);
 	}
 	return blocks;
 }
 
 /**
+ * Whether no block can gain, known without pricing each one, once every pair of adjacent tracks
+ * from `lower` to `upper` was found sunk, each gaining nothing by the swap. A block holding the
+ * runs of one track only overlaps no run of the other. Between adjacent tracks, the blocks' gains
+ * then add up to the pair's, at most zero, so a gaining block needs a losing mixed sibling. A
+ * single block gains the pair's gain plus those of the sunk pairs it passes, at most zero each.
+ */
+function provablySettled(tracks: readonly Track[], lower: number, upper: number, blocks: Blocks) {
+	for (let index = lower; index < upper; index += 1)
+		if (defined(tracks[index]).keepsAbove !== tracks[index + 1]) return false;
+	if (upper === lower + 1) return blocks.mixed < 2;
+	return blocks.count === 1 && stackingGain(defined(tracks[lower]), defined(tracks[upper])) <= 0;
+}
+
+/**
  * Exchange between two tracks every block that crosses less on the other track: its lower runs
  * pass above its upper runs and above the tracks in between, which its upper runs pass below.
  * Other blocks keep clear of its span and tracks outside the pair keep their side of every moved
- * run, so each block is priced alone. Tracks of one run at most could only swap whole, which is
- * left to sinking.
+ * run, so each block is priced alone. Adjacent tracks of one run at most could only swap whole,
+ * which is left to sinking; farther such pairs are not tried.
  */
 function exchangeBlocks(tracks: Track[], lower: number, upper: number): boolean {
 	const low = defined(tracks[lower]);
 	const high = defined(tracks[upper]);
 	if (low.runs.length < 2 && high.runs.length < 2) return false;
 	const blocks = blocksOf(low, high);
+	if (provablySettled(tracks, lower, upper, blocks)) return false;
 	const gains = new Array<number>(blocks.count).fill(0);
-	const rising: Attribution = { blocks: blocks.lower, ofUpper: false, gains };
+	const rising: Attribute = (left, _right, pair) => {
+		const block = defined(blocks.lower[left]);
+		gains[block] = defined(gains[block]) + pair;
+	};
+	const sinking: Attribute = (_left, right, pair) => {
+		const block = defined(blocks.upper[right]);
+		gains[block] = defined(gains[block]) + pair;
+	};
 	stackingGain(low, high, rising);
 	for (let index = lower + 1; index < upper; index += 1) {
 		const between = defined(tracks[index]);
 		stackingGain(low, between, rising);
-		stackingGain(between, high, { blocks: blocks.upper, ofUpper: true, gains });
+		stackingGain(between, high, sinking);
 	}
 	if (gains.every((gain) => gain <= 0)) return false;
 	const lowerRuns: RunRisers[] = [];
@@ -266,8 +278,10 @@ function exchangeBlocks(tracks: Track[], lower: number, upper: number): boolean 
  * The allocator packs disjoint runs on one track whatever their risers, so whole-track swaps
  * cannot part two runs that must pass on opposite sides of a run on a neighbouring track. Once
  * sunk, one sweep of block exchanges does; the tracks it rebuilt then sink again. Each kept swap
- * or exchange removes crossings. Sweeping until nothing moves found nothing more on the corpora,
- * while dense channels would pay a sweep per crossing removed.
+ * or exchange removes crossings. An exchange across a track may leave one of its two tracks
+ * empty: rails stay valid and the layer keeps its range, one rail merely goes unused. Sweeping
+ * until nothing moves found nothing more on the corpora, while dense channels would pay a sweep
+ * per crossing removed.
  */
 function untangleLayer(runs: readonly ChannelRun[], risers: readonly RunRisers[]) {
 	const { rails, tracks } = tracksOf(runs, risers);
