@@ -218,8 +218,9 @@ test('keeps direction across screens and automatically updates the drawn geometr
 test('browses groups and searches scenarios by their stable identifier', async ({ page }) => {
 	await page.goto('/atelier/tests-visuels');
 	const navigation = page.getByRole('navigation', { name: 'Scénarios d’assertions visuelles' });
-	await expect(navigation.locator('details')).toHaveCount(6);
+	await expect(navigation.locator('details')).toHaveCount(7);
 	await expect(navigation.getByText('Jonctions et rails', { exact: false })).toBeVisible();
+	await expect(navigation.getByText('Groupes et familles', { exact: false })).toBeVisible();
 	await navigation.getByText('Rangs et progression', { exact: false }).click();
 	await expect(
 		navigation.getByRole('button', { name: 'B → A · A racine', exact: true }),
