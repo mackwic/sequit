@@ -19,6 +19,17 @@
 		DocumentCommandOutcomeKind,
 	} from '../../../../../lib/infrastructure/document/document-command-contracts';
 	import {
+		natureCreation,
+		natureDeletion,
+		type NatureEditing,
+		natureEditing,
+		NatureEditingMode,
+		type NatureFields,
+		natureStyleUpdate,
+		natureUsage,
+		newNatureEditing,
+	} from '../../../../../lib/infrastructure/document/nature-fields';
+	import {
 		newNodeFrom,
 		type NodeFields,
 		nodeFields,
@@ -63,6 +74,7 @@
 	import GroupDialog from '../canvas/GroupDialog.svelte';
 	import JunctionDialog from '../canvas/JunctionDialog.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
+	import NatureDialog from '../canvas/NatureDialog.svelte';
 	import NodeDialog from '../canvas/NodeDialog.svelte';
 	import NodeEditor from '../canvas/NodeEditor.svelte';
 	import { sharedSelection } from './canvas-awareness';
@@ -114,6 +126,24 @@
 	let editedJunction = $derived(model.junctions.find(({ id }) => id === editingJunction?.id));
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
+	let natureManager = $state(false);
+	let editingNature = $state<NatureEditing>();
+	/**
+	 * An edited nature that a peer removed falls back to the list. Its label is live shared text,
+	 * so the preview follows the room rather than the snapshot taken when the form opened.
+	 */
+	let editedNature = $derived.by((): NatureEditing | undefined => {
+		const editing = editingNature;
+		if (editing === undefined) return undefined;
+		if (editing.mode === NatureEditingMode.Create) return editing;
+		const nature = model.natures.find(({ id }) => id === editing.id);
+		if (nature === undefined) return undefined;
+		return {
+			...editing,
+			base: { ...editing.base, label: nature.label },
+			draft: { ...editing.draft, label: nature.label },
+		};
+	});
 	/** « Grouper » is offered only for a groupable selection. */
 	let groupAction = $derived.by((): (() => void) | undefined => {
 		if (groupable === undefined) return undefined;
@@ -128,6 +158,7 @@
 			creation === undefined &&
 			editingGroup === undefined &&
 			editingJunction === undefined &&
+			!natureManager &&
 			canvas.editing === undefined,
 	);
 	onMount(() => {
@@ -287,6 +318,36 @@
 		canvas.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
 		openJunctionEditor(plan.junction.id);
 	}
+	function openNatures(): void {
+		if (!interactive) return;
+		editingNature = undefined;
+		natureManager = true;
+	}
+	function closeNatures(): void {
+		natureManager = false;
+		editingNature = undefined;
+	}
+	function selectNature(natureId: string): void {
+		const nature = model.natures.find(({ id }) => id === natureId);
+		if (nature !== undefined) editingNature = natureEditing(nature);
+	}
+	/** The label of an existing nature is live shared text; only its style travels here. */
+	function saveNature(): void {
+		const editing = editingNature;
+		if (editing === undefined) return;
+		if (editing.mode === NatureEditingMode.Create) {
+			if (!dispatchMany([natureCreation(editing.id, editing.draft)])) return;
+		} else {
+			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
+			if (style !== undefined && !dispatchMany([style])) return;
+		}
+		editingNature = undefined;
+	}
+	function deleteNature(replacementId: string | undefined): void {
+		const editing = editingNature;
+		if (editing === undefined) return;
+		if (dispatchMany([natureDeletion(editing.id, replacementId)])) editingNature = undefined;
+	}
 
 	$effect(() => {
 		client.setPresence({
@@ -312,6 +373,7 @@
 			oncreate={() => {
 				openCreation({ target: canvas.relativeNodeCreationTarget });
 			}}
+			onnatures={openNatures}
 		/>
 		<CanvasGestures
 			session={canvas}
@@ -438,6 +500,45 @@
 					creation = undefined;
 				}}
 			/>{/if}
+		{#if sourceValid && natureManager}
+			<NatureDialog
+				natures={model.natures}
+				usage={natureUsage(model)}
+				editing={editedNature}
+				description="Le libellé d’une nature est partagé en direct ; couleur et icône partent à l’enregistrement."
+				data={{ 'data-nature-manager': '' }}
+				onselect={selectNature}
+				oncreate={() => {
+					editingNature = newNatureEditing(crypto.randomUUID());
+				}}
+				onchange={(patch: Partial<NatureFields>) => {
+					if (editingNature !== undefined)
+						editingNature = { ...editingNature, draft: { ...editingNature.draft, ...patch } };
+				}}
+				onsubmit={saveNature}
+				onback={() => {
+					editingNature = undefined;
+				}}
+				ondelete={deleteNature}
+				onclose={closeNatures}
+			>
+				{#snippet text()}
+					{#if editedNature}
+						{@const target = { kind: Kind.Nature, id: editedNature.id } as const}
+						{#key client.text(target, 'label')}
+							<SharedTextField
+								{client}
+								connected={textEditable}
+								{target}
+								field="label"
+								label="Libellé de la nature"
+								autofocus
+							/>
+						{/key}
+					{/if}
+				{/snippet}
+			</NatureDialog>
+		{/if}
 	</div>
 	{#if panel}<aside aria-label="Document partagé">
 			{#if !sourceValid}
@@ -547,13 +648,6 @@
 								{connected}
 								{dispatch}
 							/>
-							<button
-								type="button"
-								disabled={!connected}
-								onclick={() => {
-									dispatch({ op: Op.Delete, target: { kind: Kind.Nature, id: nature.id } });
-								}}>Supprimer la nature {nature.id}</button
-							>
 						</SharedElementCard>
 					</section>
 				{/each}

@@ -808,7 +808,6 @@ test.describe('box dialog editing and creation', () => {
 		await nature.selectOption(nextNature.id);
 		await dialog.getByRole('textbox', { name: 'Description' }).fill('Description enregistrée');
 		await dialog.locator('details.style > summary').click();
-		await dialog.getByText('Palette · 54 couleurs').click();
 		await dialog.getByRole('button', { name: 'Bleu moyen' }).click();
 		await dialog.getByRole('button', { name: 'Enregistrer' }).click();
 

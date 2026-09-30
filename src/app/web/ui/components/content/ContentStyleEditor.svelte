@@ -17,7 +17,7 @@
 <div class="style-editor">
 	<section aria-label="Style de couleur">
 		<div class="heading">
-			<strong>Couleur</strong>{#if inherited}<span
+			<strong class="ui-label">Couleur</strong>{#if inherited}<span
 					>{#if value.color === undefined}Hérité de la nature{:else}Personnalisé{/if}</span
 				>{/if}
 		</div>
@@ -37,7 +37,7 @@
 	</section>
 	<section aria-label="Style d’icône">
 		<div class="heading">
-			<strong>Icône</strong>{#if inherited}<span
+			<strong class="ui-label">Icône</strong>{#if inherited}<span
 					>{#if value.icon === undefined}Hérité de la nature{:else}Personnalisé{/if}</span
 				>{/if}
 		</div>
@@ -60,7 +60,7 @@
 <style>
 	.style-editor {
 		display: grid;
-		gap: 16px;
+		gap: 20px;
 		color: var(--ui-text);
 	}
 	section {
@@ -73,14 +73,13 @@
 		justify-content: space-between;
 		align-items: baseline;
 		gap: 8px;
-		font-size: 12px;
 	}
 	.heading span {
 		color: var(--ui-muted);
-		font-size: 10px;
+		font-size: 11px;
 	}
 	.reset {
 		justify-self: start;
-		font-size: 10px;
+		font-size: 11px;
 	}
 </style>

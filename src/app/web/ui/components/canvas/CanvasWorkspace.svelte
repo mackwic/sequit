@@ -10,6 +10,17 @@
 	} from '../../../../../lib/infrastructure/document/document-command-contracts';
 	import type { DocumentHistoryAvailability } from '../../../../../lib/infrastructure/document/document-session-contracts';
 	import {
+		natureCreation,
+		natureDeletion,
+		type NatureEditing,
+		natureEditing,
+		NatureEditingMode,
+		type NatureFields,
+		natureStyleUpdate,
+		natureUsage,
+		newNatureEditing,
+	} from '../../../../../lib/infrastructure/document/nature-fields';
+	import {
 		newNodeFrom,
 		type NodeFields,
 		nodeFields,
@@ -48,6 +59,7 @@
 	import GroupDialog from './GroupDialog.svelte';
 	import JunctionDialog from './JunctionDialog.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
+	import NatureDialog from './NatureDialog.svelte';
 	import NodeDialog from './NodeDialog.svelte';
 
 	let {
@@ -68,6 +80,8 @@
 		draft: GroupFields;
 	}>();
 	let editingJunction = $state<{ id: string; base: JunctionOperator; draft: JunctionOperator }>();
+	let natureManager = $state(false);
+	let editingNature = $state<NatureEditing>();
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
 	let busy = $state(false);
@@ -77,7 +91,11 @@
 	let layoutDirection = $derived(model?.layout.direction);
 	let natures = $derived(model?.natures ?? []);
 	let interactive = $derived(
-		creation === undefined && editingGroup === undefined && editingJunction === undefined && !busy,
+		creation === undefined &&
+			editingGroup === undefined &&
+			editingJunction === undefined &&
+			!natureManager &&
+			!busy,
 	);
 	let groupable = $derived.by(() => {
 		if (model === undefined || session === undefined) return undefined;
@@ -262,6 +280,54 @@
 		session.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
 		openJunctionEditor(plan.junction.id);
 	}
+	function openNatures(): void {
+		if (!opened.ok || busy) return;
+		editingNature = undefined;
+		natureManager = true;
+	}
+	function closeNatures(): void {
+		natureManager = false;
+		editingNature = undefined;
+	}
+	function selectNature(natureId: string): void {
+		const nature = model?.natures.find(({ id }) => id === natureId);
+		if (nature !== undefined) editingNature = natureEditing(nature);
+	}
+	async function saveNature(): Promise<void> {
+		const current = opened;
+		const editing = editingNature;
+		if (!current.ok || editing === undefined || busy) return;
+		if (editing.mode === NatureEditingMode.Create) {
+			const created = await execute(() =>
+				current.value.session.dispatch([natureCreation(editing.id, editing.draft)]),
+			);
+			if (created) editingNature = undefined;
+			return;
+		}
+		const target = { kind: SharedElementKind.Nature, id: editing.id } as const;
+		const label = editing.draft.label.trim();
+		const saved = await execute(() => {
+			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
+				throw new Error(`Nature no longer exists: ${editing.id}`);
+			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
+			if (style === undefined)
+				return Promise.resolve({
+					kind: DocumentCommandOutcomeKind.Accepted,
+					document: current.value.read(),
+				});
+			return current.value.session.dispatch([style]);
+		});
+		if (saved) editingNature = undefined;
+	}
+	async function deleteNature(replacementId: string | undefined): Promise<void> {
+		const current = opened;
+		const editing = editingNature;
+		if (!current.ok || editing === undefined || busy) return;
+		const removed = await execute(() =>
+			current.value.session.dispatch([natureDeletion(editing.id, replacementId)]),
+		);
+		if (removed) editingNature = undefined;
+	}
 	let session = $derived.by(() => {
 		if (!opened.ok) return undefined;
 		return new CanvasSession(opened.value);
@@ -395,6 +461,33 @@
 				onsubmit={createBox}
 			/>
 		{/if}
+		{#if natureManager && model}
+			<NatureDialog
+				{natures}
+				usage={natureUsage(model)}
+				editing={editingNature}
+				{busy}
+				data={{ 'data-nature-manager': '' }}
+				onselect={selectNature}
+				oncreate={() => {
+					editingNature = newNatureEditing(crypto.randomUUID());
+				}}
+				onchange={(patch: Partial<NatureFields>) => {
+					if (editingNature !== undefined)
+						editingNature = { ...editingNature, draft: { ...editingNature.draft, ...patch } };
+				}}
+				onsubmit={() => {
+					void saveNature();
+				}}
+				onback={() => {
+					editingNature = undefined;
+				}}
+				ondelete={(replacementId: string | undefined) => {
+					void deleteNature(replacementId);
+				}}
+				onclose={closeNatures}
+			/>
+		{/if}
 		{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
 				{error}
 			</p>{/if}
@@ -405,6 +498,7 @@
 			oncreate={() => {
 				openCreation({ target: session.relativeNodeCreationTarget });
 			}}
+			onnatures={openNatures}
 		/>
 		<CanvasInteractionStatus {session} />
 	{:else if !opened.ok}

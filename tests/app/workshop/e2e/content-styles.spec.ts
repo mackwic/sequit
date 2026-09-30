@@ -13,8 +13,6 @@ async function chooseColor(page: Page, color: string): Promise<void> {
 }
 
 async function chooseIcon(page: Page, name: string): Promise<void> {
-	const picker = page.locator('details.icon-picker');
-	if ((await picker.getAttribute('open')) === null) await picker.locator('summary').click();
 	await page.getByRole('searchbox', { name: 'Rechercher une icône' }).fill(name);
 	await page
 		.getByRole('group', { name: 'Icônes Phosphor' })
@@ -61,7 +59,6 @@ test('styles export and import with the document, including explicit absence of 
 }) => {
 	await openStyle(page);
 	await chooseColor(page, '#123456');
-	await page.locator('details.icon-picker summary').click();
 	await page.getByRole('button', { name: 'Sans icône', exact: true }).click();
 	await expect(page.locator('[data-node-id="comparer"] .node-header [data-icon]')).toHaveCount(0);
 	const downloadEvent = page.waitForEvent('download');
@@ -90,7 +87,6 @@ test('palette and full icon search work by keyboard and keep E scoped to the can
 }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await openStyle(page);
-	await page.getByText('Palette · 54 couleurs', { exact: true }).click();
 	const swatch = page.getByRole('button', { name: 'Jaune clair', exact: true });
 	await swatch.focus();
 	await page.keyboard.press('Enter');
@@ -98,7 +94,6 @@ test('palette and full icon search work by keyboard and keep E scoped to the can
 		'data-content-color',
 		'#fef08a',
 	);
-	await page.locator('details.icon-picker summary').click();
 	await page.getByRole('searchbox', { name: 'Rechercher une icône' }).fill('tree evergreen');
 	const icon = page.getByRole('button', { name: 'tree evergreen', exact: true });
 	await icon.focus();

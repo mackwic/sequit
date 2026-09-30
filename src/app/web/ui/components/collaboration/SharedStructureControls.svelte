@@ -41,16 +41,6 @@
 		onclick={() => {
 			dispatch({
 				op: Op.Create,
-				target: { kind: Kind.Nature, id: crypto.randomUUID() },
-				properties: { label: 'Nouvelle nature', color: '#6f70e8' },
-			});
-		}}>Ajouter une nature</button
-	>
-	<button
-		type="button"
-		onclick={() => {
-			dispatch({
-				op: Op.Create,
 				target: { kind: Kind.Junction, id: crypto.randomUUID() },
 				properties: { operator: JunctionOperator.Xor },
 			});

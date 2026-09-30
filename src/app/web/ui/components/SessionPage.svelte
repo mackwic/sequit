@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
+	import { defaultNatures } from '../../../../lib/core/document/default-natures';
 	import {
 		LayoutBias,
 		LayoutDirection,
@@ -70,14 +71,17 @@
 		toast = conflict;
 	});
 
-	/** A joiner proposes nothing: the server keeps the room's state and ignores this document. */
+	/**
+	 * A joiner proposes nothing: the server keeps the room's state and ignores this document. A
+	 * room opened without a seed starts from it, so it carries the default natures.
+	 */
 	function emptyDocument(): LogicDocument {
 		return {
 			persistenceFormat: PERSISTENCE_FORMAT,
 			id: room,
 			title: UNTITLED,
 			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-			natures: [],
+			natures: defaultNatures(),
 			groups: [],
 			nodes: [],
 			junctions: [],
