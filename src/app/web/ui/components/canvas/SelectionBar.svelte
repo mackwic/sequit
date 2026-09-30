@@ -3,6 +3,12 @@
 
 	import { entityKey, EntityKind } from '../../canvas/canvas-entity';
 	import { canvasSelectionBounds } from '../../canvas/canvas-entity-dom';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+		shortcutTitle,
+	} from '../../canvas/canvas-shortcuts';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
@@ -20,6 +26,8 @@
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	let floating = $state<HTMLDivElement>();
+	const groupShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Group];
+	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 	let selectedNodeIds = $derived(
 		[...session.selection.values()]
 			.filter(({ kind }) => kind === EntityKind.Node)
@@ -41,7 +49,7 @@
 
 {#if anchor}
 	<CanvasShortcut
-		key="g"
+		shortcut={groupShortcut}
 		scopes={[viewportElement, floating]}
 		enabled={groupable && onGroup !== undefined}
 		onactivate={() => onGroup?.()}
@@ -58,8 +66,8 @@
 				type="button"
 				disabled={onGroup === undefined}
 				aria-label={`Grouper ${selectedNodeIds.length} nœuds`}
-				aria-keyshortcuts="g"
-				title="Grouper (G)"
+				aria-keyshortcuts={shortcutKeyshortcuts(groupShortcut)}
+				title={shortcutTitle(groupShortcut)}
 				onclick={() => onGroup?.()}
 			>
 				<Icon name="phosphor:folder-plus" />
@@ -71,8 +79,8 @@
 				class="ui-action quiet"
 				type="button"
 				aria-label={`Supprimer ${session.selectionCount} éléments`}
-				aria-keyshortcuts="Delete"
-				title="Supprimer (Suppr)"
+				aria-keyshortcuts={shortcutKeyshortcuts(deleteShortcut)}
+				title={shortcutTitle(deleteShortcut)}
 				onclick={onDelete}
 			>
 				<Icon name="phosphor:trash" />

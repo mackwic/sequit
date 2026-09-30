@@ -1,11 +1,18 @@
 <script lang="ts">
 	import { EntityKind } from '../../web/ui/canvas/canvas-entity';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+		shortcutTitle,
+	} from '../../web/ui/canvas/canvas-shortcuts';
 	import CanvasShortcut from '../../web/ui/components/canvas/CanvasShortcut.svelte';
 	import FloatingActions from '../../web/ui/components/canvas/FloatingActions.svelte';
 	import Icon from '../../web/ui/components/ui/Icon.svelte';
 	import type { WorkbenchToolProps } from '../workshop-types';
 	let { workbench, session, viewport, canvas, presentation, report }: WorkbenchToolProps = $props();
 	let bar = $state<HTMLDivElement>();
+	const editShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Edit];
 	let menu = $state(false);
 	let selected = $derived(
 		[...session.selection.values()].filter((ref) => ref.kind === EntityKind.Node),
@@ -62,7 +69,7 @@
 </script>
 
 <CanvasShortcut
-	key="e"
+	shortcut={editShortcut}
 	scopes={[viewport, bar]}
 	enabled={selected.length === 1 && Boolean(node) && !session.editing}
 	onactivate={() => {
@@ -106,8 +113,8 @@
 			tabindex={actionTabIndex}
 			disabled={selected.length !== 1 && presentation !== 'menu'}
 			aria-disabled={selected.length !== 1}
-			aria-keyshortcuts="e"
-			title="Éditer (E)"
+			aria-keyshortcuts={shortcutKeyshortcuts(editShortcut)}
+			title={shortcutTitle(editShortcut)}
 			onclick={() => {
 				if (selected.length !== 1) return;
 				menu = false;

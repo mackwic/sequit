@@ -2,11 +2,17 @@
 	import { tick, untrack } from 'svelte';
 
 	import { EntityKind, entityRef } from '../../web/ui/canvas/canvas-entity';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutHint,
+	} from '../../web/ui/canvas/canvas-shortcuts';
 	import CanvasShortcut from '../../web/ui/components/canvas/CanvasShortcut.svelte';
 	import Icon from '../../web/ui/components/ui/Icon.svelte';
 	import type { WorkbenchToolProps } from '../workshop-types';
 	let { workbench, session, model, presentation, report, viewport }: WorkbenchToolProps = $props();
 	let open = $state(false);
+	const createShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Create];
 	let content = $state('');
 	let input = $state<HTMLTextAreaElement>();
 	$effect(() => {
@@ -54,7 +60,7 @@
 </script>
 
 <CanvasShortcut
-	key="n"
+	shortcut={createShortcut}
 	scopes={[viewport]}
 	enabled={presentation === 'keyboard' && !session.editing}
 	onactivate={() => {
@@ -69,7 +75,9 @@
 		onclick={() => {
 			open = !open;
 		}}
-		><Icon name="phosphor:plus" /> Nouvelle boîte {#if presentation === 'keyboard'}(N){/if}</button
+		><Icon name="phosphor:plus" /> Nouvelle boîte {#if presentation === 'keyboard'}({shortcutHint(
+				createShortcut,
+			)}){/if}</button
 	><button type="button" disabled={selected === undefined} onclick={duplicate}
 		><Icon name="phosphor:copy" /> Dupliquer la sélection</button
 	>

@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { entityKey, EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import { canvasEntityElement } from '../../canvas/canvas-entity-dom';
-	import { foldActionLabel, foldShortcut } from '../../canvas/group-edit';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+		shortcutTitle,
+	} from '../../canvas/canvas-shortcuts';
+	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
 	import Icon from '../ui/Icon.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import FloatingActions from './FloatingActions.svelte';
@@ -37,6 +43,8 @@
 		[EntityKind.Relation]: 'Supprimer la relation',
 	};
 	let floating = $state<HTMLDivElement>();
+	const editShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Edit];
+	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 
 	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
 	function foldIcon(closed: boolean): string {
@@ -53,19 +61,19 @@
 </script>
 
 <CanvasShortcut
-	key="e"
+	shortcut={editShortcut}
 	scopes={[viewportElement, floating]}
 	enabled={edit !== undefined}
 	onactivate={() => edit?.run()}
 />
 <CanvasShortcut
-	key="["
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Fold]}
 	scopes={[viewportElement, floating]}
 	enabled={foldKey}
 	onactivate={() => fold?.run()}
 />
 <CanvasShortcut
-	key="]"
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Unfold]}
 	scopes={[viewportElement, floating]}
 	enabled={unfoldKey}
 	onactivate={() => fold?.run()}
@@ -82,8 +90,8 @@
 				class="ui-action quiet"
 				type="button"
 				aria-label={edit.label}
-				aria-keyshortcuts="e"
-				title="Éditer (E)"
+				aria-keyshortcuts={shortcutKeyshortcuts(editShortcut)}
+				title={shortcutTitle(editShortcut)}
 				onclick={edit.run}
 			>
 				<Icon name="phosphor:pencil-simple" />
@@ -91,14 +99,15 @@
 			</button>
 		{/if}
 		{#if ownFold}
+			{@const toggle = foldToggleShortcut(ownFold.closed)}
 			{@const label = foldActionLabel(ownFold.closed)}
 			<button
 				class="ui-action quiet"
 				type="button"
 				aria-label={`${label} le groupe ${entity.id}`}
 				aria-expanded={!ownFold.closed}
-				aria-keyshortcuts={foldShortcut(ownFold.closed)}
-				title={`${label} (${foldShortcut(ownFold.closed)})`}
+				aria-keyshortcuts={shortcutKeyshortcuts(toggle)}
+				title={shortcutTitle(toggle)}
 				onclick={ownFold.run}
 			>
 				<Icon name={foldIcon(ownFold.closed)} />
@@ -122,8 +131,8 @@
 				class="ui-action quiet"
 				type="button"
 				aria-label={`${deleteLabel[entity.kind]} ${entity.id}`}
-				aria-keyshortcuts="Delete"
-				title="Supprimer (Suppr)"
+				aria-keyshortcuts={shortcutKeyshortcuts(deleteShortcut)}
+				title={shortcutTitle(deleteShortcut)}
 				onclick={onDelete}
 			>
 				<Icon name="phosphor:trash" />

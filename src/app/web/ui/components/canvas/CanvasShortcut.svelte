@@ -1,29 +1,20 @@
 <script lang="ts">
-	import {
-		isEditableTarget,
-		isPlainKeyboardEvent,
-		isUnmodifiedKeyboardEvent,
-	} from '../../canvas/canvas-event-guard';
+	import { isEditableTarget } from '../../canvas/canvas-event-guard';
+	import { type CanvasShortcut, matchesShortcut } from '../../canvas/canvas-shortcuts';
 
 	let {
-		key,
+		shortcut,
 		scopes,
 		enabled = true,
 		onactivate,
 	}: {
-		key: string;
+		shortcut: CanvasShortcut;
 		scopes: readonly (Element | undefined)[];
 		enabled?: boolean;
 		onactivate: () => void;
 	} = $props();
-	/** Letters must be bare; punctuation may need a layout modifier such as Alt on macOS AZERTY. */
-	function claimable(event: KeyboardEvent): boolean {
-		if (/^[a-z]$/i.test(key)) return isUnmodifiedKeyboardEvent(event);
-		return isPlainKeyboardEvent(event);
-	}
 	function handle(event: KeyboardEvent) {
-		if (!enabled || !claimable(event)) return;
-		if (event.key.toLowerCase() !== key.toLowerCase()) return;
+		if (!enabled || !matchesShortcut(shortcut, event)) return;
 		const target = event.target;
 		if (!(target instanceof Element)) return;
 		if (isEditableTarget(target)) return;

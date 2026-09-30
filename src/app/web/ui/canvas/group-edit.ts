@@ -1,5 +1,6 @@
 import type { LogicDocument } from '../../../../lib/core/document/logic-document';
 import { EntityKind, type EntityRef } from './canvas-entity';
+import { CANVAS_SHORTCUTS, type CanvasShortcut, CanvasShortcutId } from './canvas-shortcuts';
 
 /** Grouping needs at least two nodes, nothing else selected, all in the same container. */
 export function groupableNodeIds(
@@ -22,14 +23,13 @@ export function groupableNodeIds(
 	return members;
 }
 
-/** The fold action names its effect, never the current state. */
-export function foldActionLabel(closed: boolean): string {
-	if (closed) return 'Déplier';
-	return 'Replier';
+/** `[` folds, `]` unfolds, as in an editor: the shortcut that applies now. */
+export function foldToggleShortcut(closed: boolean): CanvasShortcut {
+	if (closed) return CANVAS_SHORTCUTS[CanvasShortcutId.Unfold];
+	return CANVAS_SHORTCUTS[CanvasShortcutId.Fold];
 }
 
-/** `[` folds, `]` unfolds, as in an editor; the hint names the key that applies now. */
-export function foldShortcut(closed: boolean): string {
-	if (closed) return ']';
-	return '[';
+/** The fold action names its effect, never the current state. */
+export function foldActionLabel(closed: boolean): string {
+	return foldToggleShortcut(closed).label;
 }

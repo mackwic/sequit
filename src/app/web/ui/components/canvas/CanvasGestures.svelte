@@ -2,11 +2,12 @@
 	import { onDestroy, type Snippet } from 'svelte';
 
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { isEditableTarget } from '../../canvas/canvas-event-guard';
 	import {
-		isEditableTarget,
-		isUnclaimedKeyboardEvent,
-		isUnmodifiedKeyboardEvent,
-	} from '../../canvas/canvas-event-guard';
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		matchesShortcut,
+	} from '../../canvas/canvas-shortcuts';
 	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { selectionInsideEnvelope } from '../../canvas/selection-envelope';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
@@ -233,14 +234,16 @@
 			event.stopPropagation();
 			return;
 		}
-		if (!enabled || session.editing || !isUnmodifiedKeyboardEvent(event)) return;
-		if (isEditableTarget(event.target)) return;
-		if ((event.key === 'Backspace' || event.key === 'Delete') && session.selectionCount > 0) {
+		if (!enabled || session.editing || isEditableTarget(event.target)) return;
+		if (
+			matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.Delete], event) &&
+			session.selectionCount > 0
+		) {
 			event.preventDefault();
 			ondelete();
 			return;
 		}
-		if (event.key.toLowerCase() === 'n' && !event.repeat) {
+		if (matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.Create], event)) {
 			event.preventDefault();
 			oncreate({ target: session.relativeNodeCreationTarget });
 		}
@@ -250,11 +253,7 @@
 		const target = session.relativeNodeCreationTarget;
 		if (
 			!enabled ||
-			!isUnclaimedKeyboardEvent(event) ||
-			event.code !== 'Enter' ||
-			(!event.ctrlKey && !event.metaKey) ||
-			!event.shiftKey ||
-			event.altKey ||
+			!matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.CreateSibling], event) ||
 			!(event.target instanceof Node) ||
 			!surface.contains(event.target) ||
 			target === undefined

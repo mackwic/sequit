@@ -1,4 +1,10 @@
 <script lang="ts">
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+		shortcutTitle,
+	} from '../../canvas/canvas-shortcuts';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
 
@@ -12,10 +18,11 @@
 		/** With one selected endpoint, the new box is attached to it. */
 		oncreate: () => void;
 	} = $props();
+	const createShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Create];
 	let attached = $derived(session.relativeNodeCreationTarget !== undefined);
 	let title = $derived.by(() => {
-		if (attached) return 'Nouvelle boîte reliée à la sélection (N)';
-		return 'Nouvelle boîte (N)';
+		if (attached) return shortcutTitle(createShortcut, 'Nouvelle boîte reliée à la sélection');
+		return shortcutTitle(createShortcut);
 	});
 </script>
 
@@ -26,8 +33,8 @@
 	<button
 		class="ui-action quiet"
 		type="button"
-		aria-label="Nouvelle boîte"
-		aria-keyshortcuts="n"
+		aria-label={createShortcut.label}
+		aria-keyshortcuts={shortcutKeyshortcuts(createShortcut)}
 		{title}
 		disabled={!enabled}
 		onclick={oncreate}

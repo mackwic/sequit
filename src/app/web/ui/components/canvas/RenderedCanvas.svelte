@@ -18,8 +18,9 @@
 		activateEntityByPointer,
 	} from '../../canvas/canvas-entity-events';
 	import type { CanvasModel } from '../../canvas/canvas-model';
+	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
-	import { foldActionLabel, foldShortcut } from '../../canvas/group-edit';
+	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
@@ -214,7 +215,7 @@
 					data-group-fold={group.id}
 					aria-expanded={!closed}
 					aria-label={`${label} le groupe ${group.label}`}
-					title={`${label} (${foldShortcut(closed)})`}
+					title={shortcutTitle(foldToggleShortcut(closed))}
 					style:left={`${group.bounds.x + group.bounds.width - 30}px`}
 					style:top={`${group.bounds.y + 5}px`}
 					onclick={(event) => {

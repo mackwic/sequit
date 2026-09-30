@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { EntityKind, entityRef } from '../../../../../src/app/web/ui/canvas/canvas-entity';
-import { foldActionLabel, groupableNodeIds } from '../../../../../src/app/web/ui/canvas/group-edit';
+import { shortcutHint } from '../../../../../src/app/web/ui/canvas/canvas-shortcuts';
+import {
+	foldActionLabel,
+	foldToggleShortcut,
+	groupableNodeIds,
+} from '../../../../../src/app/web/ui/canvas/group-edit';
 import type { LogicDocument } from '../../../../../src/lib/core/document/logic-document';
 import {
 	CollaborativeFixture,
@@ -52,4 +57,9 @@ describe('groupableNodeIds', () => {
 it('names the fold action by its effect', () => {
 	expect(foldActionLabel(true)).toBe('Déplier');
 	expect(foldActionLabel(false)).toBe('Replier');
+});
+
+it('offers the key that applies now: ] on a closed group, [ on an open one', () => {
+	expect(shortcutHint(foldToggleShortcut(true))).toBe(']');
+	expect(shortcutHint(foldToggleShortcut(false))).toBe('[');
 });
