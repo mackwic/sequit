@@ -142,6 +142,8 @@ class RankOrderSearch {
 	exhaustive = true;
 	truncated = false;
 	private readonly seen: Set<string>;
+	/** Block-repaired candidates already proposed: their reopened order was admitted once. */
+	private readonly repaired = new Set<string>();
 	private readonly frontier: RankOrder[];
 	private readonly topology: RankTopologyOracle;
 	readonly topologyBound: number;
@@ -262,15 +264,15 @@ class RankOrderSearch {
 
 	/**
 	 * Sibling blocks keep one order, then every passage a wall closes is reopened if it can be.
-	 * A candidate already met costs nothing: repaired ones are remembered as seen, unproposed.
+	 * A candidate already met costs nothing: its reopened order was admitted the first time.
 	 */
 	propose(candidate: RankOrder): boolean {
 		const order = repairBlockOrder(this.input.domain, candidate);
 		const key = JSON.stringify(order);
-		if (this.seen.has(key)) return true;
+		if (this.repaired.has(key)) return true;
+		this.repaired.add(key);
 		const reopened = this.topology.passages.reopen(order);
 		if (reopened.order === order) return this.admit(reopened, key);
-		this.seen.add(key);
 		return this.admit(reopened, JSON.stringify(reopened.order));
 	}
 
@@ -316,7 +318,7 @@ class RankOrderSearch {
 		let unchanged = 0;
 		for (let pass = 0; pass < MAX_SWEEPS && unchanged < 2; pass += 1) {
 			const sweep = sweeper.sweep(current.order, pass % 2 === 1);
-			current = this.topology.passages.reopen(repairBlockOrder(domain, sweep));
+			current = this.topology.passages.reopen(sweep);
 			const previous = key;
 			key = JSON.stringify(current.order);
 			unchanged += 1;

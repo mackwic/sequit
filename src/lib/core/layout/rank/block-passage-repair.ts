@@ -38,12 +38,15 @@ interface WalledRelation {
 	readonly upper: ContainerSide;
 	readonly lower: ContainerSide;
 	readonly walls: readonly string[];
+	/** Rank, component, then the documentary row positions of the lower and upper endpoints. */
+	readonly documentary: readonly number[];
 }
 
 interface RowLocation {
 	readonly componentIndex: number;
 	readonly rank: number;
 	readonly row: readonly string[];
+	readonly position: number;
 }
 
 function bandKey(componentIndex: number, rank: number, container: string | undefined): string {
@@ -148,10 +151,19 @@ function walledRelation(
 		(id) => blocks.ids.has(id) && !endpoints.has(id) && lower.slots.includes(id),
 	);
 	if (walls.length === 0) return undefined;
-	return { upper, lower, walls };
+	const documentary = [relation.rank, lowerAt.componentIndex, lowerAt.position, upperAt.position];
+	return { upper, lower, walls, documentary };
 }
 
-/** Relations that a wall may separate, top down. */
+function compareDocumentary(left: WalledRelation, right: WalledRelation): number {
+	for (const [index, value] of left.documentary.entries()) {
+		const difference = value - defined(right.documentary[index]);
+		if (difference !== 0) return difference;
+	}
+	return 0;
+}
+
+/** Relations that a wall may separate, top down, then in documentary order within a rank. */
 function walledRelations(
 	structure: LayoutStructure,
 	domain: RankOrderDomain,
@@ -162,18 +174,19 @@ function walledRelations(
 	const locations = new Map<string, RowLocation>();
 	for (const [componentIndex, component] of structure.components.entries())
 		for (const [rank, row] of component.rows.ordinary.entries())
-			for (const id of row) locations.set(id, { componentIndex, rank, row });
+			for (const [position, id] of row.entries())
+				locations.set(id, { componentIndex, rank, row, position });
 	const sides = new ContainerSides(domain, blocks);
 	return relations
-		.toSorted((left, right) => left.rank - right.rank)
-		.flatMap((relation) => walledRelation(relation, blocks, sides, locations) ?? []);
+		.flatMap((relation) => walledRelation(relation, blocks, sides, locations) ?? [])
+		.toSorted(compareDocumentary);
 }
 
 /**
  * Rows are ordered top down, as placement orders them: a lower endpoint that a wall separates
- * from its upper neighbour moves beside that wall, on its neighbour's side. Each relation is
- * repaired once; a block moved this way keeps its sibling order in every band. Passages are read
- * on the bands directly, without applying the order to the rows.
+ * from its upper neighbour moves beside that wall, on its neighbour's side. Relations of one rank
+ * are repaired in documentary order, each once; a block moved this way keeps its sibling order
+ * in every band. Passages are read on the bands directly, without applying the order to the rows.
  */
 export class BlockPassageRepair {
 	private readonly walled: readonly WalledRelation[];
@@ -191,11 +204,12 @@ export class BlockPassageRepair {
 		return this.walled.some((relation) => closedBy(order, relation));
 	}
 
-	reopen(order: RankOrder): ReopenedOrder {
+	/** Any order: sibling blocks are first given one order, as `closes` requires. */
+	reopen(candidate: RankOrder): ReopenedOrder {
 		const repaired = new Set<WalledRelation>();
 		const next = (current: RankOrder): WalledRelation | undefined =>
 			this.walled.find((relation) => !repaired.has(relation) && closedBy(current, relation));
-		let current = order;
+		let current = repairBlockOrder(this.domain, candidate);
 		for (let relation = next(current); relation !== undefined; relation = next(current)) {
 			repaired.add(relation);
 			const band = besideWalls(current, relation);

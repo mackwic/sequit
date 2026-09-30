@@ -1604,6 +1604,86 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 	});
 
+	it('reopens walled passages in documentary order whatever ids the relations carry', () => {
+		// U and V both stand beyond block B from their upper neighbour in block A: each repair moves
+		// its item just before the wall, so the one repaired last ends nearer to it. Which one that
+		// is used to follow the relation ids.
+		const base = validLogicDocument();
+		const ends: readonly (readonly [string, string])[] = [
+			['at', 'ab'],
+			['bt', 'bb'],
+			['u', 'ab'],
+			['v', 'ab'],
+			['bt', 'ab'],
+		];
+		const members = new Map([
+			['at', 'A'],
+			['ab', 'A'],
+			['bt', 'B'],
+			['bb', 'B'],
+		]);
+		const outcome = (relationIds: readonly string[]) => {
+			const document: LogicDocument = {
+				...base,
+				layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+				groups: ['A', 'B'].map((id, index) => ({
+					kind: EndpointKind.Group,
+					id,
+					label: id,
+					layoutOrder: orderKey(`a${index}`),
+				})),
+				junctions: [],
+				nodes: ['at', 'ab', 'bt', 'bb', 'u', 'v'].map((id, index) => {
+					const node: LogicNode = {
+						kind: EndpointKind.Node,
+						id,
+						natureId: defined(base.nodes[0]).natureId,
+						markdown: id,
+						layoutOrder: orderKey(`a${index + 2}`),
+					};
+					const groupId = members.get(id);
+					if (groupId === undefined) return node;
+					return { ...node, groupId };
+				}),
+				relations: ends.map(([from, to], index) => ({ id: defined(relationIds[index]), from, to })),
+			};
+			const { graph, ranks, measurements } = prepareLayoutDocument(document);
+			const structure = prepareLayout(graph, ranks);
+			const domain = collectRankOrderDomain(structure);
+			expect(domain.bands).toEqual([
+				['A', 'B'],
+				['A', 'u', 'v', 'B'],
+			]);
+			const topology = new RankTopologyOracle(structure, domain);
+			return {
+				reopened: topology.passages.reopen([
+					['A', 'B'],
+					['A', 'B', 'u', 'v'],
+				]),
+				selected: layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements).witness
+					.selectedOrder,
+			};
+		};
+		const names = ends.map((_, index) => `r${index + 1}`);
+		const reference = outcome(names);
+		expect(reference.reopened).toEqual({
+			order: [
+				['A', 'B'],
+				['A', 'u', 'v', 'B'],
+			],
+			closed: false,
+		});
+		fc.assert(
+			fc.property(
+				fc.shuffledSubarray(names, { minLength: names.length, maxLength: names.length }),
+				(renamed) => {
+					expect(outcome(renamed)).toEqual(reference);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('counts long projected crossings deterministically when virtual nodes share a passage position', () => {
 		const base = defined(
 			rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'),
