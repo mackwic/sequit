@@ -107,7 +107,8 @@ export function repairBlockOrder(domain: RankOrderDomain, order: RankOrder): Ran
 	return repaired ?? order;
 }
 
-function reorderedRow(
+/** A row with the movable slots of some containers replaced by their bands, in band order. */
+export function reorderedRow(
 	structure: LayoutStructure,
 	row: readonly string[],
 	bands: ReadonlyMap<string | undefined, readonly string[]>,

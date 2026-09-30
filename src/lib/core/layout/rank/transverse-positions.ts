@@ -31,9 +31,14 @@ function junctionAnchors(
 }
 
 /**
- * Normalized transverse positions by row ordinal, the one coordinate system shared by the
- * topology oracle and the barycentric sweep. A junction takes the mean position of its anchors.
+ * The one coordinate system shared by the topology oracle and the barycentric sweep: an item's
+ * ordinal in its row, ordinary items then junction rails, normalized by the row's length.
  */
+export function rowPosition(ordinal: number, rowLength: number): number {
+	return (ordinal + 1) / (rowLength + 1);
+}
+
+/** Normalized transverse positions by row ordinal. A junction takes the mean of its anchors. */
 export function transversePositions(
 	structure: LayoutStructure,
 	rows: readonly (readonly string[])[],
@@ -42,7 +47,7 @@ export function transversePositions(
 	const rowOf = new Map<string, number>();
 	for (const [index, row] of rows.entries())
 		for (const [ordinal, id] of row.entries()) {
-			positions.set(id, (ordinal + 1) / (row.length + 1));
+			positions.set(id, rowPosition(ordinal, row.length));
 			rowOf.set(id, index);
 		}
 	for (const [id, junction] of structure.junctions) {

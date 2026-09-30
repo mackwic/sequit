@@ -1552,6 +1552,58 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
+	it('keeps the same sweeps and selected order whatever ids the relations carry', () => {
+		// A and B share three parents, so their barycentres are equal sums of the same fractions:
+		// only the order of the relations, sorted by id, could tell them apart.
+		const ends: readonly (readonly [string, string])[] = [
+			['a', 'p1'],
+			['a', 'p3'],
+			['a', 'p2'],
+			['b', 'p1'],
+			['b', 'p2'],
+			['b', 'p3'],
+			['c', 'p0'],
+			['c', 'p1'],
+		];
+		const ids = ['p0', 'p1', 'p2', 'p3', 'a', 'b', 'c'];
+		const measurements = {
+			nodes: new Map(ids.map((id) => [id, { width: 80, height: 40 }])),
+			groups: new Map(),
+			junctions: new Map(),
+		};
+		const outcome = (relationIds: readonly string[]) => {
+			const document = corpusDocument(
+				ids,
+				ids,
+				ends.map(([from, to], index) => ({ id: defined(relationIds[index]), from, to })),
+			);
+			const created = createGraph(document);
+			if (!created.ok) throw new Error('Invalid shared-parents witness');
+			const graph = created.value;
+			const ranks = topologicallyRank(graph);
+			const structure = prepareLayout(graph, ranks);
+			const domain = collectRankOrderDomain(structure);
+			return {
+				forward: barycentricSweep({ structure, domain }, domain.bands, false),
+				reverse: barycentricSweep({ structure, domain }, domain.bands, true),
+				selected: layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements).witness
+					.selectedOrder,
+			};
+		};
+		const names = ends.map((_, index) => `r${index + 1}`);
+		const reference = outcome(names);
+		expect(reference.forward.at(-1)).toEqual(['c', 'a', 'b']);
+		fc.assert(
+			fc.property(
+				fc.shuffledSubarray(names, { minLength: names.length, maxLength: names.length }),
+				(renamed) => {
+					expect(outcome(renamed)).toEqual(reference);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
+
 	it('counts long projected crossings deterministically when virtual nodes share a passage position', () => {
 		const base = defined(
 			rankOrderComparisonCorpus().find(({ id }) => id === 'adjacent-2+2'),

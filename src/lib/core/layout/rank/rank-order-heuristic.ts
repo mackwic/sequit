@@ -3,17 +3,12 @@ import { groupBlocks } from '../structure/group-blocks';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { throughJunctions } from '../structure/relation-adjacency';
 import type { RankOrder } from './rank-order';
-import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
-import { topologyRows, transversePositions } from './transverse-positions';
+import type { RankOrderDomain } from './rank-ordering';
+import { SweepRows } from './sweep-rows';
 
 interface SweepInput {
 	readonly structure: LayoutStructure;
 	readonly domain: RankOrderDomain;
-}
-
-interface Barycentre {
-	sum: number;
-	count: number;
 }
 
 interface Neighbour {
@@ -22,25 +17,12 @@ interface Neighbour {
 	readonly outgoing: boolean;
 }
 
-/** An applied order in the topology oracle's coordinates, with the rank of every row item. */
-interface RowModel {
-	readonly positions: ReadonlyMap<string, number>;
-	readonly ranks: ReadonlyMap<string, number>;
-	/** Positions of each block's descendants, by rank. */
-	readonly blocks: ReadonlyMap<string, ReadonlyMap<number, Barycentre>>;
-}
-
 interface SweepContext {
 	readonly structure: LayoutStructure;
 	readonly neighbours: ReadonlyMap<string, readonly Neighbour[]>;
-	readonly model: RowModel;
+	readonly rows: SweepRows;
 	readonly rank: number;
 	readonly reverse: boolean;
-}
-
-function addPosition(total: Barycentre, position: number): void {
-	total.sum += position;
-	total.count += 1;
 }
 
 /** Relations as effective endpoint pairs, parallel relations counted once each. */
@@ -61,37 +43,6 @@ function relationNeighbours(structure: LayoutStructure): ReadonlyMap<string, rea
 	return neighbours;
 }
 
-function addToBlocks(
-	totals: Map<string, Map<number, Barycentre>>,
-	parentOf: (id: string) => string | undefined,
-	id: string,
-	at: { readonly rank: number; readonly position: number },
-): void {
-	for (let block = parentOf(id); block !== undefined; block = parentOf(block)) {
-		const byRank = totals.get(block) ?? new Map<number, Barycentre>();
-		totals.set(block, byRank);
-		const total = byRank.get(at.rank) ?? { sum: 0, count: 0 };
-		byRank.set(at.rank, total);
-		addPosition(total, at.position);
-	}
-}
-
-/** Flat rows of the applied order: members stand inline, a block where its descendants are. */
-function rowModel(input: SweepInput, order: RankOrder): RowModel {
-	const applied = applyRankOrder(input.structure, input.domain, order);
-	const positions = transversePositions(applied, topologyRows(applied));
-	const { parentOf } = groupBlocks(input.structure.graph);
-	const ranks = new Map<string, number>();
-	const blocks = new Map<string, Map<number, Barycentre>>();
-	for (const component of applied.components)
-		for (const [rank, row] of component.rows.ordinary.entries())
-			for (const id of row) {
-				ranks.set(id, rank);
-				addToBlocks(blocks, parentOf, id, { rank, position: defined(positions.get(id)) });
-			}
-	return { positions, ranks, blocks };
-}
-
 /** Only rows the sweep has already placed pull an item; the row being sorted never does. */
 function placed(context: SweepContext, rank: number): boolean {
 	if (context.reverse) return rank > context.rank;
@@ -103,12 +54,12 @@ function placed(context: SweepContext, rank: number): boolean {
  * bands: a junction stands for the endpoints beyond it, on the same side.
  */
 function addNeighbour(
-	total: Barycentre,
+	pulls: number[],
 	context: SweepContext,
 	neighbour: Neighbour,
 	inside: ReadonlySet<string> = new Set(),
 ): void {
-	const { structure, model } = context;
+	const { structure, rows } = context;
 	let ends: Iterable<string> = [neighbour.id];
 	if (structure.junctionIds.has(neighbour.id)) {
 		let edges = structure.graph.predecessorsByEndpointId;
@@ -116,52 +67,50 @@ function addNeighbour(
 		ends = throughJunctions(neighbour.id, edges, structure.junctionIds);
 	}
 	for (const end of ends) {
-		const rank = model.ranks.get(end);
+		const rank = rows.ranks.get(end);
 		if (rank === undefined || inside.has(end)) continue;
-		if (placed(context, rank)) addPosition(total, defined(model.positions.get(end)));
+		if (placed(context, rank)) pulls.push(defined(rows.positions.get(end)));
 	}
-}
-
-function blockPosition(model: RowModel, block: string, rank: number): number | undefined {
-	const total = model.blocks.get(block)?.get(rank);
-	if (total === undefined) return undefined;
-	return total.sum / total.count;
 }
 
 /**
  * A block is rigid across its rows: it stays where it stands in the adjacent row already placed,
- * and the relations crossing its frame pull it, from any descendant.
+ * and the relations crossing its frame pull it, from any descendant. Its own position there
+ * weighs as much as one relation.
  */
-function blockBarycentre(
-	context: SweepContext,
-	block: string,
-	inside: ReadonlySet<string>,
-): Barycentre {
-	const total = { sum: 0, count: 0 };
+function blockPulls(context: SweepContext, block: string, inside: ReadonlySet<string>): number[] {
+	const pulls: number[] = [];
 	for (const member of inside)
 		for (const neighbour of context.neighbours.get(member) ?? [])
-			if (!inside.has(neighbour.id)) addNeighbour(total, context, neighbour, inside);
+			if (!inside.has(neighbour.id)) addNeighbour(pulls, context, neighbour, inside);
 	let adjacent = context.rank - 1;
 	if (context.reverse) adjacent = context.rank + 1;
-	const spanned = blockPosition(context.model, block, adjacent);
-	if (spanned !== undefined) addPosition(total, spanned);
-	return total;
+	const spanned = context.rows.blockPosition(block, adjacent);
+	if (spanned !== undefined) pulls.push(spanned);
+	return pulls;
 }
 
-/** An item without a placed neighbour keeps its current position. */
+/**
+ * The mean of the pulls, summed in ascending order: the same neighbours give the same target
+ * whatever the order of the relations, so relation ids never break a tie. An item without a
+ * placed neighbour keeps its current position.
+ */
 function targetPosition(
 	context: SweepContext,
 	id: string,
 	inside: ReadonlySet<string> | undefined,
 ): number {
-	let total = { sum: 0, count: 0 };
+	let pulls: number[] = [];
 	if (inside === undefined)
 		for (const neighbour of context.neighbours.get(id) ?? [])
-			addNeighbour(total, context, neighbour);
-	else total = blockBarycentre(context, id, inside);
-	if (total.count > 0) return total.sum / total.count;
-	if (inside === undefined) return defined(context.model.positions.get(id));
-	return defined(blockPosition(context.model, id, context.rank));
+			addNeighbour(pulls, context, neighbour);
+	else pulls = blockPulls(context, id, inside);
+	if (pulls.length > 0)
+		return (
+			pulls.sort((left, right) => left - right).reduce((sum, pull) => sum + pull, 0) / pulls.length
+		);
+	if (inside === undefined) return defined(context.rows.positions.get(id));
+	return defined(context.rows.blockPosition(id, context.rank));
 }
 
 /** Endpoints inside each block of the bands, the block included; other blocks are not visited. */
@@ -196,33 +145,54 @@ function blockMembers(
 
 /**
  * Every band is sorted in the flat rows of the component, the topology oracle's coordinates,
- * by its neighbours in the rows already placed; the rows are measured again after each change.
+ * by its neighbours in the rows already placed; a row is measured again when its band changes.
+ * Successive sweeps share the relations, the blocks' members and the measured rows.
  */
-export function barycentricSweep(input: SweepInput, order: RankOrder, reverse: boolean): RankOrder {
-	const bands = order.map((band) => [...band]);
-	const indices = bands.map((_, index) => index);
-	if (reverse) indices.reverse();
-	const neighbours = relationNeighbours(input.structure);
-	const members = blockMembers(input.structure, order);
-	let model = rowModel(input, bands);
-	for (const index of indices) {
-		const row = defined(bands[index]);
-		const { rank } = defined(input.domain.locations[index]);
-		const context = { structure: input.structure, neighbours, model, rank, reverse };
-		const targets = new Map(row.map((id) => [id, targetPosition(context, id, members.get(id))]));
-		const documentary = new Map(
-			defined(input.domain.bands[index]).map((id, position) => [id, position]),
+export class BarycentricSweeper {
+	private readonly neighbours: ReadonlyMap<string, readonly Neighbour[]>;
+	private readonly members: ReadonlyMap<string, ReadonlySet<string>>;
+	private readonly documentary: readonly ReadonlyMap<string, number>[];
+	private rows: SweepRows | undefined;
+
+	constructor(private readonly input: SweepInput) {
+		this.neighbours = relationNeighbours(input.structure);
+		this.members = blockMembers(input.structure, input.domain.bands);
+		this.documentary = input.domain.bands.map(
+			(band) => new Map(band.map((id, position) => [id, position])),
 		);
-		const sorted = row.toSorted(
-			(left, right) =>
-				defined(targets.get(left)) - defined(targets.get(right)) ||
-				defined(documentary.get(left)) - defined(documentary.get(right)),
-		);
-		if (sorted.every((id, position) => id === row[position])) continue;
-		bands[index] = sorted;
-		model = rowModel(input, bands);
 	}
-	return bands;
+
+	sweep(order: RankOrder, reverse: boolean): RankOrder {
+		const { structure, domain } = this.input;
+		const bands = order.map((band) => [...band]);
+		const indices = bands.map((_, index) => index);
+		if (reverse) indices.reverse();
+		const rows = this.rows ?? new SweepRows(structure, domain, bands);
+		this.rows = rows;
+		rows.update(bands);
+		for (const index of indices) {
+			const row = defined(bands[index]);
+			const { rank } = defined(domain.locations[index]);
+			const context = { structure, neighbours: this.neighbours, rows, rank, reverse };
+			const targets = new Map(
+				row.map((id) => [id, targetPosition(context, id, this.members.get(id))]),
+			);
+			const documentary = defined(this.documentary[index]);
+			const sorted = row.toSorted(
+				(left, right) =>
+					defined(targets.get(left)) - defined(targets.get(right)) ||
+					defined(documentary.get(left)) - defined(documentary.get(right)),
+			);
+			if (sorted.every((id, position) => id === row[position])) continue;
+			bands[index] = sorted;
+			rows.update(bands);
+		}
+		return bands;
+	}
+}
+
+export function barycentricSweep(input: SweepInput, order: RankOrder, reverse: boolean): RankOrder {
+	return new BarycentricSweeper(input).sweep(order, reverse);
 }
 
 export function* adjacentOrders(order: RankOrder): IterableIterator<RankOrder> {

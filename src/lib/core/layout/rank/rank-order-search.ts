@@ -22,7 +22,7 @@ import {
 	type RankOrder,
 	rankOrderKendallDistance,
 } from './rank-order';
-import { adjacentOrders, barycentricSweep } from './rank-order-heuristic';
+import { adjacentOrders, BarycentricSweeper } from './rank-order-heuristic';
 import { RankTopologyOracle } from './rank-order-topology';
 import { type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 
@@ -314,8 +314,9 @@ class RankOrderSearch {
 		this.mode = RankSearchMode.Heuristic;
 		let current: RankOrder = this.input.domain.bands;
 		let unchanged = 0;
+		const sweeper = new BarycentricSweeper(this.input);
 		for (let pass = 0; pass < MAX_SWEEPS && unchanged < 2; pass += 1) {
-			const swept = this.repaired(barycentricSweep(this.input, current, pass % 2 === 1));
+			const swept = this.repaired(sweeper.sweep(current, pass % 2 === 1));
 			unchanged += 1;
 			if (JSON.stringify(swept.order) !== JSON.stringify(current)) unchanged = 0;
 			current = swept.order;
