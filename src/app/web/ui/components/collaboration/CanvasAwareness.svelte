@@ -20,7 +20,7 @@
 	import { getCollaborationAwareness } from './collaboration-awareness.svelte';
 
 	/** Pointer positions leave at most this often; the remote side eases between them. */
-	const PUBLISH_INTERVAL_MS = 80;
+	const PUBLISH_INTERVAL_MS = 50;
 	/** A pointer that has not moved for this long is shown dimmed. */
 	const IDLE_AFTER_MS = 6000;
 	const EDGE_MARGIN = 28;
