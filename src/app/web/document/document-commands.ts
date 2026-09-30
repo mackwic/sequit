@@ -2,6 +2,7 @@ import {
 	EndpointKind,
 	GroupState,
 	type JunctionOperator,
+	type LayoutConfiguration,
 	type LogicDocument,
 	type LogicGroup,
 	type LogicRelation,
@@ -13,16 +14,21 @@ import {
 	type SharedDocumentCommand,
 	SharedElementKind,
 	SharedProperty,
+	type SharedRootLanes,
 } from '../../../lib/infrastructure/document/shared-document-command';
 
-/** What an author edits in the group dialog; `''` for colour means the default. */
+/**
+ * What an author edits in the group dialog; `''` for colour means the default, for the lane a
+ * nested group (inherits) or a document without lanes.
+ */
 export interface GroupFields {
 	readonly label: string;
 	readonly color: string;
+	readonly laneId: string;
 }
 
 export function groupFields(group: LogicGroup): GroupFields {
-	return { label: group.label, color: group.color ?? '' };
+	return { label: group.label, color: group.color ?? '', laneId: group.laneId ?? '' };
 }
 
 /** Turns canvas intentions into the shared command vocabulary; every batch stays atomic. */
@@ -89,17 +95,22 @@ export function groupCreation(id: string, members: readonly string[]): SharedDoc
 	return { op: SharedCommandKind.Group, id, label: 'Groupe', members };
 }
 
-/** The label is a text: callers splice it through `updateText`; only the colour travels here. */
+/** The label is a text: callers splice it through `updateText`; colour and lane travel here. */
 export function groupStyleUpdate(
 	groupId: string,
 	before: GroupFields,
 	after: GroupFields,
 ): SharedDocumentCommand | undefined {
-	if (before.color === after.color) return undefined;
+	const set: { color?: string; laneId?: string } = {};
+	const unset: SharedProperty.Color[] = [];
+	if (before.color !== after.color) {
+		if (after.color === '') unset.push(SharedProperty.Color);
+		else set.color = after.color;
+	}
+	if (before.laneId !== after.laneId && after.laneId !== '') set.laneId = after.laneId;
+	if (Object.keys(set).length === 0 && unset.length === 0) return undefined;
 	const target = { kind: SharedElementKind.Group, id: groupId } as const;
-	if (after.color === '')
-		return { op: SharedCommandKind.Update, target, set: {}, unset: [SharedProperty.Color] };
-	return { op: SharedCommandKind.Update, target, set: { color: after.color }, unset: [] };
+	return { op: SharedCommandKind.Update, target, set, unset };
 }
 
 export function groupFoldToggle(group: LogicGroup): SharedDocumentCommand {
@@ -118,9 +129,35 @@ export function groupDissolution(groupId: string): SharedDocumentCommand {
 	return { op: SharedCommandKind.Ungroup, id: groupId };
 }
 
+/** Drops the elements into a group, or onto the canvas root; the executor refuses cycles. */
+export function containerMove(
+	ids: readonly string[],
+	groupId: string | undefined,
+): SharedDocumentCommand {
+	if (groupId === undefined) return { op: SharedCommandKind.Move, ids };
+	return { op: SharedCommandKind.Move, ids, groupId };
+}
+
+/** Direction and bias always change together; the layout recomputes from the same document. */
+export function layoutUpdate(layout: LayoutConfiguration): SharedDocumentCommand {
+	return { op: SharedCommandKind.UpdateLayout, layout };
+}
+
+/** The whole root lane set in one refusable step; `undefined` returns to a single implicit lane. */
+export function lanesUpdate(
+	lanes: SharedRootLanes | undefined,
+	transfers: Readonly<Record<string, string>> = {},
+): SharedDocumentCommand {
+	if (lanes === undefined) return { op: SharedCommandKind.UpdateLanes };
+	return { op: SharedCommandKind.UpdateLanes, lanes, transfers };
+}
+
 /**
  * Deletes a selection with its group descendants and every incident relation. Relations go first
  * so no later removal finds a missing target; an emptied group is then dissolved.
+ *
+ * A removed junction's surviving sources are first related to its surviving targets, so its
+ * deletion keeps the flow it carried; creations precede removals like a junction insertion.
  *
  * A junction exists only while anchored on both sides: the executor collects unanchored junctions
  * after every deletion, so removing a junction's relations removes the junction. An explicit
@@ -131,9 +168,10 @@ export function deletion(
 	document: LogicDocument,
 	endpointIds: readonly string[],
 	relationIds: readonly string[],
+	relationId: () => string,
 ): readonly SharedDocumentCommand[] {
-	const changes = projectDeletion(document, endpointIds, relationIds);
-	const commands: SharedDocumentCommand[] = [];
+	const changes = projectDeletion(document, endpointIds, relationIds, relationId);
+	const commands = changes.relationAdditions.map(relationCreation);
 	const relations = changes.relationRemovals ?? [];
 	if (relations.length > 0)
 		commands.push({ op: SharedCommandKind.DeleteRelations, ids: relations });

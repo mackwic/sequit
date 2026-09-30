@@ -6,6 +6,7 @@
 		GroupState,
 		type JunctionOperator,
 		JunctionOperator as Operator,
+		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
@@ -50,6 +51,7 @@
 		groupStyleUpdate,
 		junctionInsertion,
 		junctionOperatorUpdate,
+		layoutUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { createSharedCanvasProjection } from '../../../projection/open-document';
@@ -65,6 +67,7 @@
 		type NodeCreationRequest,
 		planNodeCreation,
 	} from '../../canvas/relative-node-creation';
+	import { rootLanes } from '../../canvas/root-lanes';
 	import { CanvasSession, type EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import { createNodeEditPort } from '../../session/node-edit-port';
 	import CanvasActions from '../canvas/CanvasActions.svelte';
@@ -73,6 +76,8 @@
 	import CanvasViewportControls from '../canvas/CanvasViewportControls.svelte';
 	import GroupDialog from '../canvas/GroupDialog.svelte';
 	import JunctionDialog from '../canvas/JunctionDialog.svelte';
+	import LanesDialog from '../canvas/LanesDialog.svelte';
+	import LayoutChip from '../canvas/LayoutChip.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import NatureDialog from '../canvas/NatureDialog.svelte';
 	import NodeDialog from '../canvas/NodeDialog.svelte';
@@ -127,6 +132,8 @@
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
 	let natureManager = $state(false);
+	let lanesDialog = $state(false);
+	let lanes = $derived(rootLanes(model));
 	let editingNature = $state<NatureEditing>();
 	/**
 	 * An edited nature that a peer removed falls back to the list. Its label is live shared text,
@@ -159,6 +166,7 @@
 			editingGroup === undefined &&
 			editingJunction === undefined &&
 			!natureManager &&
+			!lanesDialog &&
 			canvas.editing === undefined,
 	);
 	onMount(() => {
@@ -232,7 +240,7 @@
 		endpointIds: readonly string[],
 		relationIds: readonly string[],
 	): boolean {
-		const commands = deletion(model, endpointIds, relationIds);
+		const commands = deletion(model, endpointIds, relationIds, () => crypto.randomUUID());
 		return commands.length > 0 && dispatchMany(commands);
 	}
 	function openCreation(request: NodeCreationRequest): void {
@@ -261,7 +269,7 @@
 	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const group = model.groups.find(({ id }) => id === groupId);
-		let fields: GroupFields = { label: 'Groupe', color: '' };
+		let fields: GroupFields = { label: 'Groupe', color: '', laneId: '' };
 		if (group !== undefined) fields = groupFields(group);
 		editingGroup = { id: groupId, mode, base: fields, draft: fields };
 	}
@@ -327,6 +335,10 @@
 		natureManager = false;
 		editingNature = undefined;
 	}
+	function openLanes(): void {
+		if (!interactive) return;
+		lanesDialog = true;
+	}
 	function selectNature(natureId: string): void {
 		const nature = model.natures.find(({ id }) => id === natureId);
 		if (nature !== undefined) editingNature = natureEditing(nature);
@@ -363,6 +375,17 @@
 		{#if !panel}
 			<CanvasViewportControls session={canvas} />
 			<CanvasInteractionStatus session={canvas} />
+			<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2">
+				<LayoutChip
+					layout={model.layout}
+					{lanes}
+					disabled={!interactive}
+					onchange={(layout: LayoutConfiguration) => {
+						dispatch(layoutUpdate(layout));
+					}}
+					onlanes={openLanes}
+				/>
+			</div>
 			{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
 					{error}
 				</p>{/if}
@@ -386,6 +409,7 @@
 				document={projection}
 				session={canvas}
 				natures={model.natures}
+				{lanes}
 				onGroup={groupAction}
 				onDelete={deleteSelection}
 				onGroupEdit={openGroupEditor}
@@ -401,6 +425,7 @@
 						{editing}
 						session={canvas}
 						natures={model.natures}
+						{lanes}
 						description="Le contenu est partagé en direct."
 					>
 						{#snippet text()}
@@ -443,6 +468,7 @@
 			<GroupDialog
 				mode={editing.mode}
 				draft={editing.draft}
+				{lanes}
 				description="Le titre est partagé en direct ; la couleur part à l’enregistrement."
 				data={{ 'data-group-editor': editing.id }}
 				onchange={(patch: Partial<GroupFields>) => {
@@ -489,6 +515,7 @@
 		{#if creation}<NodeDialog
 				mode="create"
 				natures={model.natures}
+				{lanes}
 				draft={creation.draft}
 				onchange={(patch: Partial<NodeFields>) => {
 					const current = creation;
@@ -500,6 +527,17 @@
 					creation = undefined;
 				}}
 			/>{/if}
+		{#if sourceValid && lanesDialog}
+			<LanesDialog
+				document={model}
+				onsubmit={(command: SharedDocumentCommand) => {
+					if (dispatchMany([command])) lanesDialog = false;
+				}}
+				onclose={() => {
+					lanesDialog = false;
+				}}
+			/>
+		{/if}
 		{#if sourceValid && natureManager}
 			<NatureDialog
 				natures={model.natures}

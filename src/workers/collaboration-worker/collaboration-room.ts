@@ -1,42 +1,43 @@
 import { DurableObject } from 'cloudflare:workers';
 import * as Y from 'yjs';
 
-import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
 import type { CommandSequence } from '../../lib/infrastructure/collaboration/command-sequence';
 import { compactRoomDocument } from '../../lib/infrastructure/collaboration/compact-room-document';
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
-	BusinessCommandRefusal,
 	RetryableSessionFailure,
 	SessionFailureCode,
-	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
 import {
 	decodeSessionEnvelope,
-	type IdentifiedTextMessage,
 	type SessionMessage,
 	SessionMessageKind,
 } from '../../lib/infrastructure/collaboration/session-wire';
-import { executeSharedCommands } from '../../lib/infrastructure/collaboration/shared-command-executor';
 import {
 	readSyncStep,
 	SyncStepKind,
 	writeSyncRequest,
 	writeSyncResponse,
 } from '../../lib/infrastructure/collaboration/sync-steps';
-import {
-	assertKnownTextDeletions,
-	assertTextStructParents,
-} from '../../lib/infrastructure/collaboration/text-parent-validation';
-import {
-	assertSyntacticTextProposal,
-	isLiveTextTarget,
-} from '../../lib/infrastructure/collaboration/text-update-validation';
-import { defaultUpdateGuards } from '../../lib/infrastructure/collaboration/update-guards';
-import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
-import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { readCommandReceipt } from './command-receipts';
-import { commandConflictCode, handleRoomFailure, refuseTextTarget } from './room-failures';
+import {
+	emptyRoomState,
+	restoreRoom,
+	retireIdleRoom,
+	type RoomHost,
+	scheduleIdleAlarm,
+} from './room-archive';
+import { handleRoomFailure } from './room-failures';
+import { type RoomJournal, roomJournal, roomLabel } from './room-log';
+import {
+	authorizeCommands,
+	authorizeInitialization,
+	authorizeTextUpdate,
+	type CommandsMessage,
+	type InitializeMessage,
+	type ProposalContext,
+	type TextChangeMessage,
+} from './room-proposals';
 import { RoomRefusalBudget } from './room-refusal-budget';
 import {
 	broadcastRoomPresence,
@@ -45,31 +46,51 @@ import {
 	sendRoomMessage,
 	storeSocketPresence,
 } from './room-sockets';
-import { persistRoomState, restoreRoomState, type RoomState } from './room-storage';
+import { persistRoomState } from './room-storage';
 
-function emptyRoomState(): RoomState {
-	return { doc: new Y.Doc({ gc: false }), commit: 0, chunkCount: 0, acceptedProposals: new Map() };
-}
+/** One Durable Object serves a room on a single thread; beyond this the room is full. */
+export const MAX_ROOM_SOCKETS = 50;
 
 export class CollaborationRoom extends DurableObject<Env> {
 	private roomState = emptyRoomState();
 	private processing: Promise<void> = Promise.resolve();
 	private readonly refusalBudget = new RoomRefusalBudget();
+	private journal: RoomJournal = roomJournal('starting');
+	/** Set by the alarm once the storage is gone while this instance is still in memory. */
+	private purged = false;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		void ctx.blockConcurrencyWhile(async () => {
-			this.roomState = await restoreRoomState(this.ctx.storage, this.roomState, this.ctx.id.name);
+			this.journal = roomJournal(await roomLabel(ctx.id.name));
+			this.roomState = await restoreRoom(this.host(), this.roomState);
 		});
 	}
 
-	override fetch(request: Request): Response {
+	private host(): RoomHost {
+		return { ctx: this.ctx, env: this.env, journal: this.journal };
+	}
+
+	override async fetch(request: Request): Promise<Response> {
 		if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
 			return Response.json({ error: 'WebSocket upgrade required' }, { status: 426 });
+		const sockets = this.ctx.getWebSockets().length;
+		if (sockets >= MAX_ROOM_SOCKETS) {
+			this.journal.warn('full', { sockets });
+			return Response.json({ error: 'Room full' }, { status: 429 });
+		}
+		if (this.purged) {
+			await this.ctx.blockConcurrencyWhile(async () => {
+				this.roomState = await restoreRoom(this.host(), this.roomState);
+			});
+			this.purged = false;
+		}
 		const pair = new WebSocketPair();
 		this.ctx.acceptWebSocket(pair[1]);
+		await scheduleIdleAlarm(this.ctx);
 		pair[1].send(JSON.stringify({ type: 'ready' }));
 		sendRoomMessage(pair[1], roomPresence(this.ctx.getWebSockets()));
+		this.journal.info('connected', { sockets: sockets + 1, commit: this.roomState.commit });
 		return new Response(null, { status: 101, webSocket: pair[0] });
 	}
 
@@ -87,7 +108,8 @@ export class CollaborationRoom extends DurableObject<Env> {
 				code = SessionFailureCode.InvalidDocument;
 				await this.handle(socket, message.message);
 			} catch (error) {
-				handleRoomFailure(socket, error, code);
+				const outcome = handleRoomFailure(socket, error, code);
+				if (outcome !== undefined) this.journal.warn(outcome.kind, { ...outcome });
 			}
 		};
 		this.processing = this.processing.then(run, run);
@@ -149,50 +171,38 @@ export class CollaborationRoom extends DurableObject<Env> {
 		}
 	}
 
-	private async initialize(
-		socket: WebSocket,
-		message: Extract<SessionMessage, { type: SessionMessageKind.Initialize }>,
-	): Promise<void> {
+	private proposal(socket: WebSocket): ProposalContext {
+		return { state: this.roomState, socket, budget: this.refusalBudget };
+	}
+
+	/** Answers a replayed proposal with the current state so the client catches up. */
+	private replayCurrent(socket: WebSocket, id: string): void {
+		sendRoomMessage(socket, {
+			type: SessionMessageKind.Commit,
+			id,
+			commit: this.roomState.commit,
+			update: Y.encodeStateAsUpdate(this.roomState.doc),
+		});
+	}
+
+	private async initialize(socket: WebSocket, message: InitializeMessage): Promise<void> {
+		// The room may have been initialized by another participant during the handshake.
 		if (this.roomState.commit > 0) {
-			// The room may have been initialized by another participant during the handshake.
-			sendRoomMessage(socket, {
-				type: SessionMessageKind.Commit,
-				id: message.id,
-				commit: this.roomState.commit,
-				update: Y.encodeStateAsUpdate(this.roomState.doc),
-			});
+			this.replayCurrent(socket, message.id);
 			return;
 		}
-		const result = await authorizeProposal({
-			proposalId: message.id,
-			authoritative: this.roomState.doc,
-			acceptedDocument: undefined,
-			proposedUpdate: message.update,
-			guards: defaultUpdateGuards,
-		});
-		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+		const candidate = await authorizeInitialization(this.roomState, this.ctx.id.name, message);
 		try {
-			if (result.value.candidateDocument.id !== this.ctx.id.name)
-				throw new Error('Le document ne correspond pas à la room.');
-			upgradeSharedTexts(result.value.candidate);
-			await this.commit(result.value.candidate, message.id, undefined, socket);
+			await this.commit(candidate, message.id, undefined, socket);
 		} finally {
-			result.value.candidate.destroy();
+			candidate.destroy();
 		}
 	}
 
-	private async acceptCommands(
-		socket: WebSocket,
-		message: Extract<SessionMessage, { readonly commands: unknown }>,
-	): Promise<void> {
+	private async acceptCommands(socket: WebSocket, message: CommandsMessage): Promise<void> {
 		const acceptedSequence = await readCommandReceipt(this.ctx.storage, message);
 		if (message.sequence <= acceptedSequence) {
-			sendRoomMessage(socket, {
-				type: SessionMessageKind.Commit,
-				id: message.id,
-				commit: this.roomState.commit,
-				update: Y.encodeStateAsUpdate(this.roomState.doc),
-			});
+			this.replayCurrent(socket, message.id);
 			return;
 		}
 		if (message.sequence !== acceptedSequence + 1)
@@ -200,29 +210,9 @@ export class CollaborationRoom extends DurableObject<Env> {
 				SessionFailureCode.CommandGap,
 				'Une commande précédente manque. Synchronisation en cours.',
 			);
-		if (this.roomState.commit === 0)
-			throw new Error('Initialisez le document avant les commandes.');
-		const candidate = new Y.Doc({ gc: false });
+		const candidate = authorizeCommands(this.proposal(socket), message, acceptedSequence);
+		if (candidate === undefined) return;
 		try {
-			Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.roomState.doc));
-			try {
-				executeSharedCommands(candidate, message.commands);
-			} catch (error) {
-				if (!(error instanceof BusinessCommandRefusal)) throw error;
-				if (!this.refusalBudget.allow(socket, message.id))
-					throw new TerminalSessionFailure(
-						SessionFailureCode.RepeatedCommandRefusal,
-						'Cette proposition a été refusée trop souvent.',
-					);
-				sendRoomMessage(socket, {
-					type: SessionMessageKind.Conflict,
-					code: commandConflictCode(error),
-					message: error.message,
-					id: message.id,
-					lastAcceptedSequence: acceptedSequence,
-				});
-				return;
-			}
 			await this.commit(candidate, message.id, message, socket);
 		} finally {
 			candidate.destroy();
@@ -232,38 +222,12 @@ export class CollaborationRoom extends DurableObject<Env> {
 	private async acceptUpdate(
 		socket: WebSocket,
 		update: Uint8Array,
-		message?: Extract<
-			SessionMessage,
-			{ readonly update: Uint8Array; readonly type: SessionMessageKind.Change }
-		>,
+		message?: TextChangeMessage,
 	): Promise<void> {
-		const decoded = Y.decodeUpdate(update);
-		const empty = decoded.structs.length === 0 && decoded.ds.clients.size === 0;
-		let textTarget: IdentifiedTextMessage | undefined;
-		if (message?.id !== undefined) {
-			textTarget = message;
-			assertSyntacticTextProposal(message, decoded);
-			if (!isLiveTextTarget(this.roomState.doc, message)) {
-				assertTextStructParents(this.roomState.doc, message, decoded.structs);
-				assertKnownTextDeletions(this.roomState.doc, message, decoded.ds.clients);
-				refuseTextTarget(socket, message, this.refusalBudget);
-				return;
-			}
-		}
-		if (empty) return;
-		const accepted = readLogicDocument(this.roomState.doc);
-		if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
-		const result = await authorizeProposal({
-			authoritative: this.roomState.doc,
-			acceptedDocument: accepted.value,
-			proposedUpdate: update,
-			guards: defaultUpdateGuards,
-			textOnly: true,
-			textTarget,
-		});
-		if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+		const candidate = await authorizeTextUpdate(this.proposal(socket), update, message);
+		if (candidate === undefined) return;
 		try {
-			await this.commit(result.value.candidate);
+			await this.commit(candidate);
 			if (message?.id !== undefined)
 				sendRoomMessage(socket, {
 					type: SessionMessageKind.Commit,
@@ -275,7 +239,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 					),
 				});
 		} finally {
-			result.value.candidate.destroy();
+			candidate.destroy();
 		}
 	}
 
@@ -314,12 +278,47 @@ export class CollaborationRoom extends DurableObject<Env> {
 			if (peer === origin && id !== undefined) sendRoomMessage(peer, { ...message, id });
 			else sendRoomMessage(peer, message);
 		}
+		// Text syncs arrive with every keystroke batch; only structural commits are journaled.
+		if (command !== undefined)
+			this.journal.info('commands', {
+				commit,
+				session: command.sessionId,
+				sequence: command.sequence,
+			});
+		else if (id !== undefined)
+			this.journal.info('initialized', { commit, bytes: update.byteLength });
 	}
 
-	override webSocketClose(socket: WebSocket, code: number, reason: string): void {
+	override async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
 		let outgoingCode = code;
 		if ([1005, 1006, 1015].includes(code)) outgoingCode = 1000;
 		socket.close(outgoingCode, reason);
-		broadcastRoomPresence(this.ctx.getWebSockets(), socket);
+		const remaining = this.ctx.getWebSockets().filter((peer) => peer !== socket);
+		broadcastRoomPresence(remaining, socket);
+		this.journal.info('disconnected', { code, sockets: remaining.length });
+		await scheduleIdleAlarm(this.ctx);
+	}
+
+	/** Fires once no participant has connected for a day: archive to R2, then free the object. */
+	override async alarm(): Promise<void> {
+		const sockets = this.ctx.getWebSockets().length;
+		if (sockets > 0) {
+			this.journal.info('idle-deferred', { sockets });
+			await scheduleIdleAlarm(this.ctx);
+			return;
+		}
+		const run = async (): Promise<void> => {
+			const retired = await retireIdleRoom(this.host(), this.roomState);
+			if (retired === undefined) return;
+			this.roomState = retired;
+			this.purged = true;
+		};
+		this.processing = this.processing.then(run, run);
+		try {
+			await this.processing;
+		} catch (error) {
+			this.journal.error('archive-failed', error);
+			throw error;
+		}
 	}
 }

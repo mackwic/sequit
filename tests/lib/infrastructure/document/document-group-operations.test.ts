@@ -8,9 +8,9 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
-	changeDocumentMembership,
 	dissolveDocumentGroup,
 	groupDocumentNodes,
+	moveDocumentElements,
 } from '../../../../src/lib/infrastructure/document/document-group-operations';
 import {
 	explicitLaneLogicDocument,
@@ -69,17 +69,36 @@ describe('product node grouping', () => {
 		).toThrow('même voie');
 	});
 
-	it('moves a node into a group and restores the group lane when removed', () => {
+	it('moves a node into a group and restores the group lane when it returns to the root', () => {
 		const source = explicitLaneLogicDocument();
-		const added = changeDocumentMembership(source, 'orphan-group', new Set(['target']), true);
+		const added = moveDocumentElements(source, new Set(['target']), 'orphan-group');
 		expect(added.nodes.find(({ id }) => id === 'target')).toMatchObject({
 			groupId: 'orphan-group',
 		});
 		expect(added.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('laneId');
-		const removed = changeDocumentMembership(added, 'orphan-group', new Set(['target']), false);
+		const removed = moveDocumentElements(added, new Set(['target']), undefined);
 		expect(removed.nodes.find(({ id }) => id === 'target')).toMatchObject({
 			laneId: 'right',
 		});
+		expect(removed.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('groupId');
+	});
+
+	it('moves junctions and groups between containers and refuses to nest a group in itself', () => {
+		const source = validLogicDocument();
+		const inner = groupDocumentNodes(source, { id: 'inner', label: 'Inner' }, new Set(['target']));
+		const outer = groupDocumentNodes(inner, { id: 'outer', label: 'Outer' }, new Set(['isolated']));
+		const junctionId = outer.junctions[0]?.id ?? '';
+		const nested = moveDocumentElements(outer, new Set(['inner', junctionId]), 'outer');
+		expect(nested.groups.find(({ id }) => id === 'inner')).toMatchObject({ groupId: 'outer' });
+		expect(nested.junctions.find(({ id }) => id === junctionId)).toMatchObject({
+			groupId: 'outer',
+		});
+		expect(nested.nodes.find(({ id }) => id === 'target')).toMatchObject({ groupId: 'inner' });
+		expect(() => moveDocumentElements(nested, new Set(['outer']), 'inner')).toThrow('lui-même');
+		expect(() => moveDocumentElements(nested, new Set(['inner']), 'inner')).toThrow('lui-même');
+		const root = moveDocumentElements(nested, new Set(['inner', 'target']), undefined);
+		expect(root.groups.find(({ id }) => id === 'inner')).not.toHaveProperty('groupId');
+		expect(root.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('groupId');
 	});
 
 	it('keeps region ownership when grouping, moving and dissolving a root group', () => {
@@ -115,9 +134,9 @@ describe('product node grouping', () => {
 		expect(dissolved.nodes.find(({ id }) => id === 'target')).toMatchObject({
 			regionId: 'zone',
 		});
-		const added = changeDocumentMembership(source, 'container', new Set(['target']), true);
+		const added = moveDocumentElements(source, new Set(['target']), 'container');
 		expect(added.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('regionId');
-		const removed = changeDocumentMembership(added, 'container', new Set(['target']), false);
+		const removed = moveDocumentElements(added, new Set(['target']), undefined);
 		expect(removed.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('regionId');
 	});
 
@@ -162,7 +181,7 @@ describe('product node grouping', () => {
 			laneId: 'service',
 		});
 		expect(grouped.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('laneId');
-		const restored = changeDocumentMembership(grouped, 'service-group', new Set(['target']), false);
+		const restored = moveDocumentElements(grouped, new Set(['target']), undefined);
 		expect(restored.nodes.find(({ id }) => id === 'target')).toMatchObject({
 			regionId: 'shared',
 			laneId: 'service',
@@ -229,17 +248,17 @@ describe('product node grouping', () => {
 		).toThrow('même région');
 	});
 
-	it('rejects membership changes with an unconfigured region assignment', () => {
+	it('rejects leaving a group when the region assignment is unconfigured', () => {
 		const legacy = validLogicDocument();
 		const source = {
 			...legacy,
 			persistenceFormat: REGION_PERSISTENCE_FORMAT,
 			nodes: legacy.nodes.map((node) => {
-				if (node.id === 'target') return { ...node, regionId: 'missing' };
+				if (node.id === 'target') return { ...node, groupId: 'container', regionId: 'missing' };
 				return node;
 			}),
 		};
-		expect(() => changeDocumentMembership(source, 'container', new Set(['target']), true)).toThrow(
+		expect(() => moveDocumentElements(source, new Set(['target']), undefined)).toThrow(
 			'présentation des régions est invalide',
 		);
 	});

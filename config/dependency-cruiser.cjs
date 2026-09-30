@@ -397,6 +397,7 @@ module.exports = {
 				path: '^src/lib/',
 				pathNot: [
 					'^src/lib/infrastructure/collaboration/',
+					'^src/lib/infrastructure/toml/serialize-sequit-toml[.]ts$',
 					'^src/lib/core/document/(logic-document|validate-logic-document)[.]ts$',
 				],
 			},

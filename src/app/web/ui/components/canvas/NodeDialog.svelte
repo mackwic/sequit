@@ -4,6 +4,7 @@
 	import {
 		type ContentStyle,
 		contentStyleFields,
+		type LayoutLane,
 		type LogicNature,
 	} from '../../../../../lib/core/document/logic-document';
 	import type { NodeFields } from '../../../../../lib/infrastructure/document/node-fields';
@@ -14,6 +15,7 @@
 	let {
 		mode,
 		natures,
+		lanes = [],
 		draft,
 		onchange,
 		onsubmit,
@@ -27,6 +29,8 @@
 	}: {
 		mode: 'create' | 'edit';
 		natures: readonly LogicNature[];
+		/** Root lanes in reading order; the selector shows for a top-level box only. */
+		lanes?: readonly LayoutLane[];
 		draft: NodeFields;
 		onchange: (patch: Partial<NodeFields>) => void;
 		/** Create or save; the caller decides what the fields become. */
@@ -98,6 +102,20 @@
 		{#if natures.length === 0}<p class="ui-notice warning">
 				Ajoutez d’abord une nature au document.
 			</p>{/if}
+		{#if lanes.length > 0 && draft.laneId !== ''}
+			<label class="ui-label"
+				>Lane<select
+					class="ui-field"
+					value={draft.laneId}
+					disabled={busy}
+					onchange={(event) => {
+						onchange({ laneId: event.currentTarget.value });
+					}}
+					>{#each lanes as lane (lane.id)}<option value={lane.id}>{lane.label}</option
+						>{/each}</select
+				></label
+			>
+		{/if}
 		{#if text}
 			{@render text()}
 		{:else}

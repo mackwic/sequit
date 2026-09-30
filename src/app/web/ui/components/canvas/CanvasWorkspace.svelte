@@ -2,6 +2,7 @@
 	import {
 		type JunctionOperator,
 		JunctionOperator as Operator,
+		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
 	import {
@@ -25,7 +26,10 @@
 		type NodeFields,
 		nodeFields,
 	} from '../../../../../lib/infrastructure/document/node-fields';
-	import { SharedElementKind } from '../../../../../lib/infrastructure/document/shared-document-command';
+	import {
+		type SharedDocumentCommand,
+		SharedElementKind,
+	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import {
 		connectedNodeCreation,
 		deletion,
@@ -37,6 +41,7 @@
 		groupStyleUpdate,
 		junctionInsertion,
 		junctionOperatorUpdate,
+		layoutUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
@@ -44,12 +49,12 @@
 	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
-	import { layoutDirectionLabels } from '../../canvas/layout-direction-labels';
 	import {
 		type NodeCreationPlan,
 		type NodeCreationRequest,
 		planNodeCreation,
 	} from '../../canvas/relative-node-creation';
+	import { rootLanes } from '../../canvas/root-lanes';
 	import { CanvasSession } from '../../session/canvas-session.svelte';
 	import CanvasActions from './CanvasActions.svelte';
 	import CanvasGestures from './CanvasGestures.svelte';
@@ -58,6 +63,8 @@
 	import CanvasViewportControls from './CanvasViewportControls.svelte';
 	import GroupDialog from './GroupDialog.svelte';
 	import JunctionDialog from './JunctionDialog.svelte';
+	import LanesDialog from './LanesDialog.svelte';
+	import LayoutChip from './LayoutChip.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
 	import NatureDialog from './NatureDialog.svelte';
 	import NodeDialog from './NodeDialog.svelte';
@@ -81,6 +88,7 @@
 	}>();
 	let editingJunction = $state<{ id: string; base: JunctionOperator; draft: JunctionOperator }>();
 	let natureManager = $state(false);
+	let lanesDialog = $state(false);
 	let editingNature = $state<NatureEditing>();
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
@@ -88,13 +96,18 @@
 	let error = $state('');
 	let model = $state.raw<LogicDocument>();
 	let history = $state<DocumentHistoryAvailability>({ undo: false, redo: false });
-	let layoutDirection = $derived(model?.layout.direction);
+	let layout = $derived(model?.layout);
 	let natures = $derived(model?.natures ?? []);
+	let lanes = $derived.by(() => {
+		if (model === undefined) return [];
+		return rootLanes(model);
+	});
 	let interactive = $derived(
 		creation === undefined &&
 			editingGroup === undefined &&
 			editingJunction === undefined &&
 			!natureManager &&
+			!lanesDialog &&
 			!busy,
 	);
 	let groupable = $derived.by(() => {
@@ -218,6 +231,11 @@
 		if (group === undefined) return;
 		void execute(() => current.value.session.dispatch([groupFoldToggle(group)]));
 	}
+	function changeLayout(next: LayoutConfiguration): void {
+		const current = opened;
+		if (!current.ok || busy) return;
+		void execute(() => current.value.session.dispatch([layoutUpdate(next)]));
+	}
 	function deleteSelection() {
 		const current = opened;
 		if (!current.ok || !session || !interactive) return;
@@ -228,6 +246,7 @@
 					current.value.read(),
 					selected.filter(({ kind }) => kind !== EntityKind.Relation).map(({ id }) => id),
 					selected.filter(({ kind }) => kind === EntityKind.Relation).map(({ id }) => id),
+					() => crypto.randomUUID(),
 				),
 			),
 		);
@@ -288,6 +307,16 @@
 	function closeNatures(): void {
 		natureManager = false;
 		editingNature = undefined;
+	}
+	function openLanes(): void {
+		if (!opened.ok || busy) return;
+		lanesDialog = true;
+	}
+	async function saveLanes(command: SharedDocumentCommand): Promise<void> {
+		const current = opened;
+		if (!current.ok || busy) return;
+		const saved = await execute(() => current.value.session.dispatch([command]));
+		if (saved) lanesDialog = false;
 	}
 	function selectNature(natureId: string): void {
 		const nature = model?.natures.find(({ id }) => id === natureId);
@@ -390,6 +419,7 @@
 			<LogicCanvas
 				document={opened.value}
 				{natures}
+				{lanes}
 				{session}
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}
@@ -409,6 +439,7 @@
 			<GroupDialog
 				mode={editing.mode}
 				draft={editing.draft}
+				{lanes}
 				{busy}
 				data={{ 'data-group-editor': editing.id }}
 				onchange={(patch: Partial<GroupFields>) => {
@@ -448,6 +479,7 @@
 			<NodeDialog
 				mode="create"
 				{natures}
+				{lanes}
 				draft={creation.draft}
 				{busy}
 				data={{ 'data-node-creator': creation.plan.node.id }}
@@ -459,6 +491,18 @@
 					creation = undefined;
 				}}
 				onsubmit={createBox}
+			/>
+		{/if}
+		{#if lanesDialog && model}
+			<LanesDialog
+				document={model}
+				{busy}
+				onsubmit={(command: SharedDocumentCommand) => {
+					void saveLanes(command);
+				}}
+				onclose={() => {
+					lanesDialog = false;
+				}}
 			/>
 		{/if}
 		{#if natureManager && model}
@@ -509,13 +553,15 @@
 		</div>
 	{/if}
 
-	{#if layoutDirection}
-		<div class="pointer-events-none absolute top-7 left-1/2 z-20 -translate-x-1/2">
-			<p
-				class="rounded-full border border-[var(--ui-border)] bg-[var(--ui-surface)] px-3 py-1 text-xs font-medium text-[var(--ui-muted)] shadow-sm"
-			>
-				Disposition automatique · {layoutDirectionLabels[layoutDirection]}
-			</p>
+	{#if layout}
+		<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2">
+			<LayoutChip
+				{layout}
+				{lanes}
+				disabled={!interactive}
+				onchange={changeLayout}
+				onlanes={openLanes}
+			/>
 		</div>
 	{/if}
 </section>

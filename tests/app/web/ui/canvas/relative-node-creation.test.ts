@@ -7,7 +7,10 @@ import {
 	type LogicDocument,
 } from '../../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
-import { validLogicDocument } from '../../../../support/builders/logic-document';
+import {
+	explicitLaneLogicDocument,
+	validLogicDocument,
+} from '../../../../support/builders/logic-document';
 
 function ids(lastNatureId?: string) {
 	let relation = 0;
@@ -33,6 +36,22 @@ describe('node creation planning', () => {
 			node: { id: 'new', natureId: document.natures[0]?.id, markdown: '' },
 			relations: [],
 		});
+	});
+
+	it('gives a top-level box the double-clicked lane, else the target’s, else the first lane', () => {
+		const document = explicitLaneLogicDocument();
+		const isolated = document.nodes.find(({ id }) => id === 'isolated');
+		if (isolated?.laneId !== 'right') throw new Error('Expected the isolated node in "right"');
+		const lane = (request: Parameters<typeof planNodeCreation>[1]) =>
+			planNodeCreation(document, request, ids())?.node.laneId;
+		expect(lane({ laneId: 'right' })).toBe('right');
+		expect(lane({ laneId: 'unknown' })).toBe('left');
+		expect(lane({})).toBe('left');
+		expect(lane({ target: { kind: EntityKind.Node, id: 'isolated' } })).toBe('right');
+		expect(lane({ groupId: 'orphan-group', laneId: 'right' })).toBeUndefined();
+		expect(planNodeCreation(validLogicDocument(), { laneId: 'right' }, ids())?.node.laneId).toBe(
+			undefined,
+		);
 	});
 
 	it('creates a child of a node with inherited nature, containment, and one relation', () => {

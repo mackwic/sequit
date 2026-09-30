@@ -328,13 +328,13 @@
 		font-weight: 600;
 	}
 
+	/* Lanes sit under every element: a double-click on their free space creates a box inside. */
 	.canvas-lane {
 		position: absolute;
 		box-sizing: border-box;
 		border: 1px dashed #cbd5e1;
 		border-radius: 0.875rem;
 		background: color-mix(in srgb, #e2e8f0 20%, transparent);
-		pointer-events: none;
 	}
 
 	.canvas-lane-label {

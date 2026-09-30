@@ -1,5 +1,7 @@
 import type {
+	LaneOrientation,
 	LayoutConfiguration,
+	LayoutLane,
 	LogicGroup,
 	LogicJunction,
 	LogicNature,
@@ -23,7 +25,9 @@ export enum SharedCommandKind {
 	DeleteRelations = 'deleteRelations',
 	Group = 'group',
 	Ungroup = 'ungroup',
+	Move = 'move',
 	UpdateLayout = 'updateLayout',
+	UpdateLanes = 'updateLanes',
 }
 
 export interface SharedTarget<K extends SharedElementKind = SharedElementKind> {
@@ -175,9 +179,32 @@ interface UngroupElements {
 	readonly id: string;
 }
 
+/** Nodes, junctions and groups enter `groupId`, or return to the root when it is omitted. */
+interface MoveElements {
+	readonly op: SharedCommandKind.Move;
+	readonly ids: readonly string[];
+	readonly groupId?: string;
+}
+
 interface UpdateSharedLayout {
 	readonly op: SharedCommandKind.UpdateLayout;
 	readonly layout: LayoutConfiguration;
+}
+
+export interface SharedRootLanes {
+	readonly laneOrientation: LaneOrientation;
+	readonly lanes: readonly LayoutLane[];
+}
+
+/**
+ * Replaces the root lanes in one atomic step. Top-level elements keep their lane when it survives;
+ * the content of a removed lane follows `transfers`, or lands in the first lane. Omitting `lanes`
+ * returns the document to its single implicit lane.
+ */
+interface UpdateSharedLanes {
+	readonly op: SharedCommandKind.UpdateLanes;
+	readonly lanes?: SharedRootLanes;
+	readonly transfers?: Readonly<Record<string, string>>;
 }
 
 export type SharedDocumentCommand =
@@ -188,4 +215,6 @@ export type SharedDocumentCommand =
 	| DeleteRelations
 	| GroupElements
 	| UngroupElements
-	| UpdateSharedLayout;
+	| MoveElements
+	| UpdateSharedLayout
+	| UpdateSharedLanes;

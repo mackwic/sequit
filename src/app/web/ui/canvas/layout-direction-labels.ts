@@ -1,8 +1,9 @@
 import { LayoutDirection } from '../../../../lib/core/document/logic-document';
 
+/** Where the root (the goal every arrow points at) sits on screen. */
 export const layoutDirectionLabels: Readonly<Record<LayoutDirection, string>> = {
-	[LayoutDirection.TopToBottom]: 'De haut en bas',
-	[LayoutDirection.BottomToTop]: 'De bas en haut',
-	[LayoutDirection.LeftToRight]: 'De gauche à droite',
-	[LayoutDirection.RightToLeft]: 'De droite à gauche',
+	[LayoutDirection.TopToBottom]: 'But en haut',
+	[LayoutDirection.BottomToTop]: 'But en bas',
+	[LayoutDirection.LeftToRight]: 'But à gauche',
+	[LayoutDirection.RightToLeft]: 'But à droite',
 };

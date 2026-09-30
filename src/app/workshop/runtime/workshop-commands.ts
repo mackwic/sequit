@@ -8,9 +8,9 @@ import type {
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
 import {
-	changeWorkshopMembership,
 	dissolveWorkshopGroup,
 	groupWorkshopNodes,
+	moveWorkshopElements,
 } from './workshop-group-operations';
 import {
 	arrangeWorkshopDocument,
@@ -61,8 +61,17 @@ export class WorkshopCommands {
 	): void {
 		this.edit((current) => groupWorkshopNodes(current, group, ids));
 	}
+	/** Adds the nodes to the group, or returns those it contains to the root. */
 	changeMembership(groupId: string, ids: ReadonlySet<string>, add: boolean): void {
-		this.edit((current) => changeWorkshopMembership(current, groupId, ids, add));
+		this.edit((current) => {
+			if (add) return moveWorkshopElements(current, ids, groupId);
+			const members = new Set(
+				current.nodes
+					.filter((node) => ids.has(node.id) && node.groupId === groupId)
+					.map(({ id }) => id),
+			);
+			return moveWorkshopElements(current, members, undefined);
+		});
 	}
 	dissolveGroup(id: string): void {
 		this.edit((current) => dissolveWorkshopGroup(current, id));

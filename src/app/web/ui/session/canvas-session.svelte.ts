@@ -194,6 +194,7 @@ export class CanvasSession {
 			'description',
 			'color',
 			'icon',
+			'laneId',
 		];
 		if (keys.every((key) => editing.draft[key] === draft[key])) return false;
 		this.activity = { ...editing, draft, diagnostic: undefined };

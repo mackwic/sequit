@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isRoomId, newRoomId } from '../../../../../src/app/web/ui/document/room-id';
+import { isRoomId, newRoomId } from '../../../../src/lib/infrastructure/collaboration/room-id';
 
 describe('room identifiers', () => {
 	it('generates identifiers the route accepts and that do not collide', () => {

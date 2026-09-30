@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import type { LogicNature } from '../../../../../lib/core/document/logic-document';
+	import type { LayoutLane, LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { NodeFields } from '../../../../../lib/infrastructure/document/node-fields';
 	import {
 		CanvasEditAvailability,
@@ -14,12 +14,14 @@
 		editing,
 		session,
 		natures,
+		lanes = [],
 		description,
 		text,
 	}: {
 		editing: EditingCanvasActivity;
 		session: CanvasSession;
 		natures: readonly LogicNature[];
+		lanes?: readonly LayoutLane[];
 		description?: string | undefined;
 		/** Live shared text fields, when the session edits text in place. */
 		text?: Snippet;
@@ -30,6 +32,7 @@
 	<NodeDialog
 		mode="edit"
 		{natures}
+		{lanes}
 		draft={editing.draft}
 		busy={editing.saving}
 		deleted={editing.availability === CanvasEditAvailability.Deleted}

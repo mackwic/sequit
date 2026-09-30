@@ -7,14 +7,20 @@
 
 	let {
 		label,
+		disabled = false,
 		trigger,
 		children,
 	}: {
 		label: string;
+		/** Keeps the trigger visible but inert, e.g. while a shared session is offline. */
+		disabled?: boolean;
 		trigger: Snippet<[boolean]>;
 		children: Snippet;
 	} = $props();
 
+	/** Plain and radio items share navigation and close the menu once activated. */
+	const ITEM = '[role="menuitem"], [role="menuitemradio"]';
+	const ENABLED_ITEM = '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)';
 	let open = $state(false);
 	let ready = $state(false);
 	let triggerElement = $state<HTMLButtonElement>();
@@ -30,10 +36,7 @@
 	}
 
 	function enabledItems(): HTMLButtonElement[] {
-		return [
-			...(menuElement?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ??
-				[]),
-		];
+		return [...(menuElement?.querySelectorAll<HTMLButtonElement>(ENABLED_ITEM) ?? [])];
 	}
 
 	function focusAt(index: number): void {
@@ -77,7 +80,7 @@
 
 	function select(event: MouseEvent): void {
 		if (!(event.target instanceof Element)) return;
-		const item = event.target.closest<HTMLButtonElement>('[role="menuitem"]');
+		const item = event.target.closest<HTMLButtonElement>(ITEM);
 		if (!item || item.disabled) return;
 		close(false);
 	}
@@ -116,9 +119,7 @@
 	$effect(() => {
 		if (!open || !menuElement) return;
 		const menu = menuElement;
-		void tick().then(() =>
-			menu.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus(),
-		);
+		void tick().then(() => menu.querySelector<HTMLButtonElement>(ENABLED_ITEM)?.focus());
 	});
 </script>
 
@@ -129,7 +130,7 @@
 	type="button"
 	aria-haspopup="menu"
 	aria-expanded={open}
-	disabled={!ready}
+	disabled={!ready || disabled}
 	bind:this={triggerElement}
 	onclick={() => (open = !open)}
 	onkeydown={triggerKeydown}
@@ -189,7 +190,8 @@
 		box-shadow: 0 14px 38px #2925241c;
 		transform-origin: top left;
 	}
-	.dropdown-surface :global([role='menuitem']) {
+	.dropdown-surface :global([role='menuitem']),
+	.dropdown-surface :global([role='menuitemradio']) {
 		display: flex;
 		width: 100%;
 		align-items: center;
@@ -210,17 +212,22 @@
 			transform 80ms ease-out;
 	}
 	.dropdown-surface :global([role='menuitem']:hover:not(:disabled)),
-	.dropdown-surface :global([role='menuitem']:focus-visible) {
+	.dropdown-surface :global([role='menuitemradio']:hover:not(:disabled)),
+	.dropdown-surface :global([role='menuitem']:focus-visible),
+	.dropdown-surface :global([role='menuitemradio']:focus-visible) {
 		background: var(--ui-hover);
 	}
-	.dropdown-surface :global([role='menuitem']:active:not(:disabled)) {
+	.dropdown-surface :global([role='menuitem']:active:not(:disabled)),
+	.dropdown-surface :global([role='menuitemradio']:active:not(:disabled)) {
 		transform: scale(0.99);
 	}
-	.dropdown-surface :global([role='menuitem']:focus-visible) {
+	.dropdown-surface :global([role='menuitem']:focus-visible),
+	.dropdown-surface :global([role='menuitemradio']:focus-visible) {
 		outline: 2px solid var(--ui-accent);
 		outline-offset: -2px;
 	}
-	.dropdown-surface :global([role='menuitem']:disabled) {
+	.dropdown-surface :global([role='menuitem']:disabled),
+	.dropdown-surface :global([role='menuitemradio']:disabled) {
 		color: var(--ui-muted);
 		cursor: default;
 		opacity: 0.5;
@@ -232,7 +239,8 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.dropdown-trigger,
-		.dropdown-surface :global([role='menuitem']) {
+		.dropdown-surface :global([role='menuitem']),
+		.dropdown-surface :global([role='menuitemradio']) {
 			transition: none;
 		}
 	}

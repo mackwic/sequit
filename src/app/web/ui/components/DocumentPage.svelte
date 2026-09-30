@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
+	import { newRoomId } from '../../../../lib/infrastructure/collaboration/room-id';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { documentFilename } from '../document/document-filename';
@@ -14,7 +15,6 @@
 		type RecentDocuments,
 		RecentDocumentsStore,
 	} from '../document/recent-documents';
-	import { newRoomId } from '../document/room-id';
 	import { stashRoomSeed } from '../document/room-seed';
 	import AppHeader from './AppHeader.svelte';
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';

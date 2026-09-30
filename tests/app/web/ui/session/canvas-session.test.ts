@@ -47,6 +47,7 @@ const fields: NodeFields = {
 	description: '',
 	color: '',
 	icon: '',
+	laneId: '',
 };
 
 const editableNode = {

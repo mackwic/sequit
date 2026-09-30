@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	GroupState,
+	LaneOrientation,
 	LayoutBias,
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
@@ -59,6 +60,18 @@ const commandMessages: SessionMessage[] = [
 				op: SharedCommandKind.UpdateLayout,
 				layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
 			},
+			{
+				op: SharedCommandKind.UpdateLanes,
+				lanes: {
+					laneOrientation: LaneOrientation.Transverse,
+					lanes: [
+						{ id: 'S', label: 'Sales', layoutOrder: 'a0' },
+						{ id: 'C', label: 'Customer', layoutOrder: 'a1' },
+					],
+				},
+				transfers: { old: 'S' },
+			},
+			{ op: SharedCommandKind.UpdateLanes },
 		],
 	},
 	{ type: SessionMessageKind.Commit, commit: 1, update: new Uint8Array([0, 0]) },
@@ -258,6 +271,13 @@ describe('CBOR session protocol', () => {
 		{ op: 'group', id: 'G', label: 'G', members: null },
 		{ op: 'updateLayout', layout: { direction: 'left-to-right', bias: 'top' } },
 		{ op: 'updateLayout', layout: { direction: 'unknown', bias: 'left' } },
+		{ op: 'updateLanes', lanes: { laneOrientation: 'diagonal', lanes: [] } },
+		{ op: 'updateLanes', lanes: { laneOrientation: 'parallel', lanes: [{ id: 'S', label: 'S' }] } },
+		{
+			op: 'updateLanes',
+			lanes: { laneOrientation: 'parallel', lanes: [{ id: 'S', label: 'S', layoutOrder: '!' }] },
+		},
+		{ op: 'updateLanes', transfers: { old: 5 } },
 	])('rejects malformed commands before execution: %j', (command) => {
 		expect(() => decodeSessionMessage(invalidCommand(command))).toThrow();
 	});

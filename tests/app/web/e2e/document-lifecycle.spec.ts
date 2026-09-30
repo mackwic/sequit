@@ -69,6 +69,10 @@ async function openMenuItem(page: Page, name: string): Promise<void> {
 	await page.getByRole('menuitem', { name }).click();
 }
 
+function layoutChip(page: Page) {
+	return page.locator('[data-layout-chip] button[aria-haspopup="menu"]');
+}
+
 test('export downloads the current document with its edits', async ({ page }) => {
 	await page.goto('/');
 	const node = page.locator('[data-node-id="traceable-edits"]');
@@ -99,7 +103,7 @@ test('opening a file replaces the document, and an invalid file keeps it', async
 	await expect(dialog).toHaveCount(0);
 	await expect(page.locator('[data-node-id]')).toHaveCount(1);
 	await expect(menuTrigger(page)).toContainText('Petit document');
-	await expect(page.getByText('Disposition automatique · De gauche à droite')).toBeVisible();
+	await expect(layoutChip(page)).toHaveText('But à gauche');
 
 	await openMenuItem(page, 'Ouvrir…');
 	await chooseFile(page, 'cassé.toml', 'persistenceFormat = 2\n[document]\nid = "x"\n');
@@ -111,6 +115,89 @@ test('opening a file replaces the document, and an invalid file keeps it', async
 	await expect(dialog).toHaveCount(0);
 	await expect(page.locator('[data-node-id]')).toHaveCount(1);
 	await expect(menuTrigger(page)).toContainText('Petit document');
+});
+
+test('the layout chip changes the direction and keeps the chosen side', async ({ page }) => {
+	await page.goto('/');
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	const chip = layoutChip(page);
+	const menu = page.getByRole('menu', { name: 'Mise en page' });
+	await expect(chip).toHaveText('But à gauche');
+
+	await chip.click();
+	await expect(menu.getByRole('menuitemradio', { name: 'But à gauche' })).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
+	await expect(menu.getByRole('menuitemradio', { name: 'Serrer vers le but' })).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
+	await menu.getByRole('menuitemradio', { name: 'Aligner les points de départ' }).click();
+	await expect(menu).toHaveCount(0);
+
+	await chip.click();
+	await menu.getByRole('menuitemradio', { name: 'But en haut' }).click();
+	await expect(chip).toHaveText('But en haut');
+	await chip.click();
+	await expect(
+		menu.getByRole('menuitemradio', { name: 'Aligner les points de départ' }),
+	).toHaveAttribute('aria-checked', 'true');
+	await page.keyboard.press('Escape');
+
+	const downloading = page.waitForEvent('download');
+	await openMenuItem(page, 'Exporter…');
+	const exported = await readFile(await (await downloading).path(), 'utf8');
+	expect(exported).toContain('direction = "top-to-bottom"');
+	expect(exported).toContain('bias = "bottom"');
+});
+
+test('lanes are activated from the chip, and a double-click on a lane creates a box inside', async ({
+	page,
+}) => {
+	await page.goto('/');
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	const chip = layoutChip(page);
+	await expect(chip).toHaveText('But à gauche');
+
+	await chip.click();
+	await page.getByRole('menuitem', { name: 'Lanes…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Lanes' });
+	await dialog.getByRole('button', { name: 'Activer les lanes' }).click();
+	await dialog.getByRole('textbox', { name: 'Nom de la lane 1' }).fill('Ventes');
+	await dialog.getByRole('textbox', { name: 'Nom de la lane 2' }).fill('Client');
+	await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(page.locator('[data-lane-id]')).toHaveCount(2);
+	await expect(chip).toContainText('2 lanes');
+	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+
+	const client = page.locator('[data-lane-id]').nth(1);
+	await expect(client).toContainText('Client');
+	await client.dblclick({ position: { x: 40, y: 40 } });
+	const creator = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+	await expect(creator.getByRole('combobox', { name: 'Lane' })).toHaveValue(/lane-/);
+	await expect(
+		creator.getByRole('combobox', { name: 'Lane' }).locator('option:checked'),
+	).toHaveText('Client');
+	await creator.getByRole('textbox', { name: 'Contenu' }).fill('Dans la lane Client');
+	await creator.getByRole('button', { name: 'Créer' }).click();
+	await expect(creator).toHaveCount(0);
+	const created = page.locator('[data-node-id]', { hasText: 'Dans la lane Client' });
+	const laneBox = await client.boundingBox();
+	const nodeBox = await created.boundingBox();
+	if (laneBox === null || nodeBox === null) throw new Error('Expected visible lane and node');
+	expect(nodeBox.y).toBeGreaterThan(laneBox.y);
+	expect(nodeBox.y + nodeBox.height).toBeLessThan(laneBox.y + laneBox.height);
+
+	const downloading = page.waitForEvent('download');
+	await openMenuItem(page, 'Exporter…');
+	const exported = await readFile(await (await downloading).path(), 'utf8');
+	expect(exported).toContain('persistenceFormat = 3');
+	expect(exported).toContain('laneOrientation = "parallel"');
+	expect(exported).toMatch(/label = "Client"/);
 });
 
 test('a file the canvas refuses keeps the edited document and its export', async ({ page }) => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, type Snippet, tick } from 'svelte';
 
+	import type { LayoutLane } from '../../../../../lib/core/document/logic-document';
 	import type { GroupFields } from '../../../document/document-commands';
 	import ContentColorPicker from '../content/ContentColorPicker.svelte';
 	import Icon from '../ui/Icon.svelte';
@@ -9,6 +10,7 @@
 	let {
 		mode,
 		draft,
+		lanes = [],
 		onchange,
 		onsubmit,
 		onclose,
@@ -21,6 +23,8 @@
 		/** `name` right after grouping, `edit` from an existing group. */
 		mode: 'name' | 'edit';
 		draft: GroupFields;
+		/** Root lanes in reading order; the selector shows for a top-level group only. */
+		lanes?: readonly LayoutLane[];
 		onchange: (patch: Partial<GroupFields>) => void;
 		onsubmit: () => void;
 		/** Cancel keeps the group as it is, including the default name after grouping. */
@@ -80,6 +84,21 @@
 						onchange({ label: event.currentTarget.value });
 					}}
 				/></label
+			>
+		{/if}
+		{#if lanes.length > 0 && draft.laneId !== ''}
+			<label class="ui-label"
+				>Lane<select
+					class="ui-field"
+					aria-label="Lane du groupe"
+					value={draft.laneId}
+					disabled={busy}
+					onchange={(event) => {
+						onchange({ laneId: event.currentTarget.value });
+					}}
+					>{#each lanes as lane (lane.id)}<option value={lane.id}>{lane.label}</option
+						>{/each}</select
+				></label
 			>
 		{/if}
 		<div class="color">

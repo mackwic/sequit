@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 
-import { isRoomId } from '../../../app/web/ui/document/room-id';
+import { isRoomId } from '../../../lib/infrastructure/collaboration/room-id';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = ({ params }) => {

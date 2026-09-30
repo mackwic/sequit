@@ -84,18 +84,18 @@ export function groupDocumentNodes(
 	};
 }
 
-export function changeDocumentMembership(
+interface Containable {
+	readonly id: string;
+	readonly groupId?: string;
+	readonly laneId?: string;
+	readonly regionId?: string;
+}
+
+/** The lane and region a member of `groupId` returns to when it leaves for the root. */
+function containerOwnership(
 	document: LogicDocument,
 	groupId: string,
-	ids: ReadonlySet<string>,
-	add: boolean,
-): LogicDocument {
-	defined(
-		document.groups.find(({ id }) => id === groupId),
-		'Groupe introuvable.',
-	);
-	let laneId: string | undefined;
-	let regionId: string | undefined;
+): { laneId?: string; regionId?: string } {
 	if (hasRegionPresentation(document)) {
 		const assignments = new Map<string, string>();
 		for (const endpoint of [...document.groups, ...document.nodes, ...document.junctions])
@@ -107,27 +107,62 @@ export function changeDocumentMembership(
 		);
 		if (normalized.status !== RegionPresentationStatus.Ready)
 			throw new Error('La présentation des régions est invalide.');
-		regionId = normalized.value.regionByEndpointId.get(groupId);
-		laneId = normalized.value.laneByEndpointId.get(groupId);
-	} else if (document.presentation !== undefined)
-		laneId = normalizeRootLayout(document).laneByEndpointId.get(groupId);
+		const result: { laneId?: string; regionId?: string } = {};
+		const laneId = normalized.value.laneByEndpointId.get(groupId);
+		const regionId = normalized.value.regionByEndpointId.get(groupId);
+		if (laneId !== undefined) result.laneId = laneId;
+		if (regionId !== undefined && regionId !== ROOT_LAYOUT_REGION_ID) result.regionId = regionId;
+		return result;
+	}
+	if (document.presentation === undefined) return {};
+	const laneId = normalizeRootLayout(document).laneByEndpointId.get(groupId);
+	return laneId === undefined ? {} : { laneId };
+}
+
+/**
+ * Moves nodes, junctions and groups into `groupId`, or to the root when it is `undefined`.
+ * Members inherit their container's lane and region; an element leaving for the root takes
+ * the lane and region of the group it leaves. A group never moves into itself or a descendant.
+ */
+export function moveDocumentElements(
+	document: LogicDocument,
+	ids: ReadonlySet<string>,
+	groupId: string | undefined,
+): LogicDocument {
+	if (groupId !== undefined) {
+		defined(
+			document.groups.find((group) => group.id === groupId),
+			'Groupe introuvable.',
+		);
+		const visited = new Set<string>();
+		for (let ancestor: string | undefined = groupId; ancestor !== undefined;) {
+			if (ids.has(ancestor)) throw new Error('Un groupe ne peut pas entrer dans lui-même.');
+			if (visited.has(ancestor)) break;
+			visited.add(ancestor);
+			ancestor = document.groups.find((group) => group.id === ancestor)?.groupId;
+		}
+	}
+	const ownerships = new Map<string, { laneId?: string; regionId?: string }>();
+	const move = <T extends Containable>(item: T): T => {
+		if (!ids.has(item.id) || item.groupId === groupId) return item;
+		const result = { ...item };
+		delete result.groupId;
+		delete result.laneId;
+		delete result.regionId;
+		if (groupId !== undefined) return { ...result, groupId };
+		const left = defined(item.groupId);
+		let ownership = ownerships.get(left);
+		if (ownership === undefined) {
+			ownership = containerOwnership(document, left);
+			ownerships.set(left, ownership);
+		}
+		return { ...result, ...ownership };
+	};
 	return {
 		...document,
-		nodes: document.nodes.map((node) => {
-			if (!ids.has(node.id)) return node;
-			if (add) {
-				const result = { ...node, groupId };
-				delete result.laneId;
-				delete result.regionId;
-				return result;
-			}
-			if (node.groupId !== groupId) return node;
-			const result = { ...node };
-			delete result.groupId;
-			if (laneId !== undefined) result.laneId = laneId;
-			if (regionId !== undefined && regionId !== ROOT_LAYOUT_REGION_ID) result.regionId = regionId;
-			return result;
-		}),
+		groups: document.groups.map(move),
+		nodes: document.nodes.map(move),
+		junctions: document.junctions.map(move),
 	};
 }
 

@@ -1,3 +1,5 @@
+import { isRoomId } from '../../lib/infrastructure/collaboration/room-id';
+
 export { CollaborationRoom } from './collaboration-room';
 
 const json = (body: unknown, status = 200) =>
@@ -29,6 +31,7 @@ export default {
 		} catch {
 			return json({ error: 'Malformed room id' }, 400);
 		}
+		if (!isRoomId(roomId)) return json({ error: 'Malformed room id' }, 400);
 		const room = env.COLLABORATION_ROOMS.getByName(roomId);
 		return room.fetch(request);
 	},

@@ -13,19 +13,31 @@ import {
 import type { RoomRefusalBudget } from './room-refusal-budget';
 import { sendRoomMessage } from './room-sockets';
 
+export enum RoomFailureKind {
+	Retry = 'retry',
+	Rejected = 'rejected',
+}
+
+export interface RoomFailureOutcome {
+	readonly kind: RoomFailureKind;
+	readonly code: SessionFailureCode;
+	readonly message: string;
+}
+
+/** Answers the socket and reports what was sent; malformed presence is dropped silently. */
 export function handleRoomFailure(
 	socket: WebSocket,
 	error: unknown,
 	defaultCode: SessionFailureCode,
-): void {
-	if (error instanceof InvalidPresenceError) return;
+): RoomFailureOutcome | undefined {
+	if (error instanceof InvalidPresenceError) return undefined;
 	if (error instanceof RetryableSessionFailure) {
 		sendRoomMessage(socket, {
 			type: SessionMessageKind.Retry,
 			code: error.code,
 			message: error.message,
 		});
-		return;
+		return { kind: RoomFailureKind.Retry, code: error.code, message: error.message };
 	}
 	let code = defaultCode;
 	if (error instanceof TerminalSessionFailure) code = error.code;
@@ -33,6 +45,7 @@ export function handleRoomFailure(
 	if (error instanceof Error) message = error.message;
 	sendRoomMessage(socket, { type: SessionMessageKind.Reject, code, message });
 	socket.close(1008, 'Change rejected');
+	return { kind: RoomFailureKind.Rejected, code, message };
 }
 
 export function commandConflictCode(

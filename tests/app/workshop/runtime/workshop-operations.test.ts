@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import source from '../../../../src/app/workshop/branching.toml?raw';
 import { WorkshopDocument } from '../../../../src/app/workshop/runtime/workshop-document';
 import {
-	changeWorkshopMembership,
 	dissolveWorkshopGroup,
 	groupWorkshopNodes,
+	moveWorkshopElements,
 } from '../../../../src/app/workshop/runtime/workshop-group-operations';
 import {
 	addWorkshopNode,
@@ -166,14 +166,12 @@ describe('group transformations', () => {
 		store.edit((current) =>
 			groupWorkshopNodes(current, { id: 'other', label: 'Autre' }, new Set(['explorer'])),
 		);
-		store.edit((current) =>
-			changeWorkshopMembership(current, 'g', new Set(['collecter', 'explorer']), false),
-		);
+		store.commands.changeMembership('g', new Set(['collecter', 'explorer']), false);
 		expect(store.node('collecter')).not.toHaveProperty('groupId');
 		expect(store.node('explorer').groupId).toBe('other');
-		store.edit((current) => changeWorkshopMembership(current, 'g', new Set(['explorer']), true));
+		store.commands.changeMembership('g', new Set(['explorer']), true);
 		expect(store.node('explorer').groupId).toBe('g');
-		expect(() => changeWorkshopMembership(store.read(), 'missing', new Set(), true)).toThrow();
+		expect(() => moveWorkshopElements(store.read(), new Set(), 'missing')).toThrow();
 	});
 	it('dissolves nested groups into their parent, preserving descendants and unrelated links', () => {
 		const store = open();

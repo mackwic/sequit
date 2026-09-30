@@ -8,7 +8,10 @@ export function newRoomId(): string {
 	return [...bytes].map((byte) => ALPHABET.charAt(byte % ALPHABET.length)).join('');
 }
 
-/** Room identifiers are also document identifiers and URL segments: keep them plain. */
+/**
+ * Room identifiers are also document identifiers, URL segments and archive keys: keep them plain.
+ * The worker refuses anything else before a Durable Object is ever named after it.
+ */
 export function isRoomId(value: string): boolean {
 	return ROOM_ID.test(value);
 }

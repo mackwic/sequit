@@ -215,7 +215,13 @@ it('sends the colour only when it changed, and clears it back to the default', (
 	const group = model.groups.find(({ id }) => id === 'G');
 	if (group === undefined) throw new Error('Expected group G');
 	const base = groupFields(group);
-	expect(base).toEqual({ label: group.label, color: group.color ?? '' });
+	expect(base).toEqual({ label: group.label, color: group.color ?? '', laneId: '' });
+	expect(groupStyleUpdate('G', base, { ...base, laneId: 'sales' })).toEqual({
+		op: Op.Update,
+		target: { kind: Kind.Group, id: 'G' },
+		set: { laneId: 'sales' },
+		unset: [],
+	});
 
 	expect(groupStyleUpdate('G', base, { ...base, label: 'Renamed' })).toBeUndefined();
 	const coloured = groupStyleUpdate('G', base, { ...base, color: '#123456' });

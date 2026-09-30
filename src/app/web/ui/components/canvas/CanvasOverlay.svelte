@@ -1,7 +1,11 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	import { GroupState, type LogicNature } from '../../../../../lib/core/document/logic-document';
+	import {
+		GroupState,
+		type LayoutLane,
+		type LogicNature,
+	} from '../../../../../lib/core/document/logic-document';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { hostsJunction } from '../../canvas/junction-insertion';
@@ -15,6 +19,7 @@
 		viewportElement,
 		session,
 		natures,
+		lanes = [],
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -30,6 +35,8 @@
 		viewportElement: HTMLDivElement | undefined;
 		session: CanvasSession;
 		natures: readonly LogicNature[];
+		/** Root lanes offered by the box dialog for a top-level box. */
+		lanes?: readonly LayoutLane[];
 		hideToolbar?: boolean;
 		onGroup?: (() => void) | undefined;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
@@ -162,7 +169,7 @@
 		{#if editor}
 			{@render editor(session.editing, viewportElement)}
 		{:else}
-			<NodeEditor editing={session.editing} {session} {natures} />
+			<NodeEditor editing={session.editing} {session} {natures} {lanes} />
 		{/if}
 	{/if}
 </div>

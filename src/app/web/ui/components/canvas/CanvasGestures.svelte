@@ -224,7 +224,8 @@
 			return;
 		event.preventDefault();
 		session.clearSelection();
-		oncreate({ groupId });
+		const lane = event.target.closest('[data-lane-id]:not([data-lane-region-id])');
+		oncreate({ groupId, laneId: lane?.getAttribute('data-lane-id') ?? undefined });
 	}
 	function keydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && (drag || marquee)) {

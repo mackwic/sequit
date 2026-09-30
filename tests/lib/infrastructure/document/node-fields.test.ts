@@ -18,7 +18,15 @@ it('builds node updates only for changed non-text properties', () => {
 		description: '',
 		color: '#112233',
 		icon: 'phosphor:flag',
+		laneId: 'sales',
 	};
+
+	expect(nodeUpdate('N1', before, { ...before, laneId: 'delivery' })).toEqual({
+		op: Op.Update,
+		target: { kind: Kind.Node, id: 'N1' },
+		set: { laneId: 'delivery' },
+		unset: [],
+	});
 
 	expect(nodeUpdate('N1', before, before)).toBeUndefined();
 	expect(nodeUpdate('N1', before, { ...before, natureId: 'action' })).toEqual({
@@ -44,7 +52,16 @@ it('creates nodes without empty optional fields and preserves group membership',
 		description: '',
 		color: '',
 		icon: '',
+		laneId: 'sales',
 	};
+
+	// The lane belongs to top-level boxes only; a member inherits its group's lane.
+	expect(newNodeFrom('N0', fields)).toEqual({
+		id: 'N0',
+		natureId: 'goal',
+		markdown: 'Content',
+		laneId: 'sales',
+	});
 
 	expect(newNodeFrom('N1', fields, 'group')).toEqual({
 		id: 'N1',
@@ -53,7 +70,13 @@ it('creates nodes without empty optional fields and preserves group membership',
 		groupId: 'group',
 	});
 	expect(
-		newNodeFrom('N2', { ...fields, description: 'Details', color: '#123456', icon: 'icon' }),
+		newNodeFrom('N2', {
+			...fields,
+			description: 'Details',
+			color: '#123456',
+			icon: 'icon',
+			laneId: '',
+		}),
 	).toEqual({
 		id: 'N2',
 		natureId: 'goal',
@@ -79,5 +102,6 @@ it('reads a node into fields and back without losing optional values', () => {
 		description: '',
 		color: '',
 		icon: '',
+		laneId: '',
 	});
 });

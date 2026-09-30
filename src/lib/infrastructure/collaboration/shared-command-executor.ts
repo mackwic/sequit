@@ -11,7 +11,8 @@ import {
 	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { ROOT_LAYOUT_REGION_ID } from '../../core/document/region-presentation';
-import { dissolveDocumentGroup } from '../document/document-group-operations';
+import { dissolveDocumentGroup, moveDocumentElements } from '../document/document-group-operations';
+import { updateDocumentRootLanes } from '../document/document-lane-operations';
 import { finalizeSharedCommand, sharedElementOrder } from '../document/shared-command-rules';
 import {
 	SharedCommandKind,
@@ -216,10 +217,30 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 			reconcileSharedDocument(document, dissolveDocumentGroup(current.value, command.id), command);
 			return;
 		}
+		case SharedCommandKind.Move: {
+			const current = readLogicDocument(document);
+			if (!current.ok) throw new Error('Document invalide.');
+			reconcileSharedDocument(
+				document,
+				moveDocumentElements(current.value, new Set(command.ids), command.groupId),
+				command,
+			);
+			return;
+		}
 		case SharedCommandKind.UpdateLayout:
 			document.getMap(YjsCollection.Meta).set('layoutDirection', command.layout.direction);
 			document.getMap(YjsCollection.Meta).set('layoutBias', command.layout.bias);
 			return;
+		case SharedCommandKind.UpdateLanes: {
+			const current = readLogicDocument(document);
+			if (!current.ok) throw new Error('Document invalide.');
+			reconcileSharedDocument(
+				document,
+				updateDocumentRootLanes(current.value, command.lanes, command.transfers),
+				command,
+			);
+			return;
+		}
 		default:
 			throw new Error('Unknown command');
 	}

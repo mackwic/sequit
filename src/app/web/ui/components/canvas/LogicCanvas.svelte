@@ -2,7 +2,7 @@
 	import { type Snippet, tick, untrack } from 'svelte';
 
 	import { compareCanonicalStrings } from '../../../../../lib/core/canonical-string';
-	import type { LogicNature } from '../../../../../lib/core/document/logic-document';
+	import type { LayoutLane, LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { InvalidSourceDocumentState } from '../../../../../lib/infrastructure/collaboration/source-document-state';
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import {
@@ -38,6 +38,7 @@
 		document: openedDocument,
 		session,
 		natures,
+		lanes = [],
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -54,6 +55,8 @@
 		session: CanvasSession;
 		/** The natures offered by the box dialog. */
 		natures: readonly LogicNature[];
+		/** Root lanes offered by the box dialog for a top-level box. */
+		lanes?: readonly LayoutLane[];
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -534,6 +537,7 @@
 			viewportElement={viewport}
 			{session}
 			{natures}
+			{lanes}
 			{editor}
 			{awareness}
 			{hideToolbar}

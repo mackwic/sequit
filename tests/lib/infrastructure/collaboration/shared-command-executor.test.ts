@@ -4,9 +4,13 @@ import * as Y from 'yjs';
 import {
 	GroupState,
 	JunctionOperator,
+	LANE_PERSISTENCE_FORMAT,
+	LaneOrientation,
 	LayoutBias,
 	LayoutDirection,
+	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
+import { BusinessCommandRefusal } from '../../../../src/lib/infrastructure/collaboration/session-failure';
 import { readSharedCommand } from '../../../../src/lib/infrastructure/collaboration/shared-command-codec';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
@@ -146,6 +150,78 @@ describe('shared document commands', () => {
 		executeSharedCommands(doc, [{ op: Op.UpdateLayout, layout }]);
 		expect(read(doc).layout).toEqual(layout);
 		doc.destroy();
+	});
+
+	describe('root lanes', () => {
+		const lanes = {
+			laneOrientation: LaneOrientation.Parallel,
+			lanes: [
+				{ id: 'S', label: 'Sales', layoutOrder: 'a0' },
+				{ id: 'C', label: 'Customer', layoutOrder: 'a1' },
+			],
+		};
+
+		it('Open group: activates lanes, keeps members inheriting, then removes a lane with a transfer', () => {
+			const doc = given(CollaborativeFixture.OpenGroup);
+			executeSharedCommands(doc, [{ op: Op.UpdateLanes, lanes }]);
+			let current = read(doc);
+			expect(current.persistenceFormat).toBe(LANE_PERSISTENCE_FORMAT);
+			expect(current.presentation?.lanes.map(({ id }) => id).sort()).toEqual(['C', 'S']);
+			expect(current.groups.map(({ laneId }) => laneId)).toEqual(['S']);
+			expect(current.nodes.every(({ laneId }) => laneId === undefined)).toBe(true);
+			executeSharedCommands(doc, [
+				{ op: Op.Update, target: { kind: Kind.Group, id: 'G' }, set: { laneId: 'C' }, unset: [] },
+				{
+					op: Op.UpdateLanes,
+					lanes: {
+						laneOrientation: LaneOrientation.Transverse,
+						lanes: [
+							{ id: 'S', label: 'Sales', layoutOrder: 'a0' },
+							{ id: 'D', label: 'Delivery', layoutOrder: 'a1' },
+						],
+					},
+					transfers: { C: 'D' },
+				},
+			]);
+			current = read(doc);
+			expect(current.presentation?.laneOrientation).toBe(LaneOrientation.Transverse);
+			expect(current.groups.map(({ laneId }) => laneId)).toEqual(['D']);
+			executeSharedCommands(doc, [{ op: Op.UpdateLanes }]);
+			current = read(doc);
+			expect(current.persistenceFormat).toBe(PERSISTENCE_FORMAT);
+			expect(current.presentation).toBeUndefined();
+			expect(current.groups.every(({ laneId }) => laneId === undefined)).toBe(true);
+			doc.destroy();
+		});
+
+		it('Linked boxes: an orphaned element joins the first lane by order, and fewer than two lanes is refused', () => {
+			const doc = given(CollaborativeFixture.LinkedBoxes);
+			executeSharedCommands(doc, [
+				{
+					op: Op.UpdateLanes,
+					lanes: {
+						laneOrientation: LaneOrientation.Parallel,
+						lanes: [
+							{ id: 'late', label: 'Late', layoutOrder: 'a1' },
+							{ id: 'early', label: 'Early', layoutOrder: 'a0' },
+						],
+					},
+				},
+			]);
+			expect(read(doc).nodes.map(({ laneId }) => laneId)).toEqual(['early', 'early']);
+			expect(() =>
+				executeSharedCommands(doc, [
+					{
+						op: Op.UpdateLanes,
+						lanes: { ...lanes, lanes: lanes.lanes.slice(0, 1) },
+					},
+				]),
+			).toThrow(BusinessCommandRefusal);
+			expect(() =>
+				executeSharedCommands(doc, [{ op: Op.UpdateLanes, lanes, transfers: { late: 'nowhere' } }]),
+			).toThrow('Lane de destination inconnue');
+			doc.destroy();
+		});
 	});
 });
 
