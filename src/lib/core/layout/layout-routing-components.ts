@@ -1,7 +1,7 @@
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import { placeWithPorts, portsChangePlacement } from './layout-port-placement';
-import { placeElements, type PlacementInput } from './placement/place-elements';
+import { mergeGapMaps, placeElements, type PlacementInput } from './placement/place-elements';
 import type { PortAllocation } from './routing/port-allocation';
 import type { NodeRouting } from './routing/reserve-node-routing';
 import type { RankedComponent } from './structure/placement-rows';
@@ -14,15 +14,6 @@ export interface LayoutRoutingWorkspace extends PlacementInput {
 export interface RoutingReservation {
 	readonly gaps: ReadonlyMap<number, number>;
 	readonly channelGaps?: ReadonlyMap<number, readonly number[]>;
-}
-
-export function mergeGapMaps(
-	left: ReadonlyMap<number, number>,
-	right: ReadonlyMap<number, number>,
-): ReadonlyMap<number, number> {
-	const result = new Map(left);
-	for (const [rank, gap] of right) result.set(rank, Math.max(result.get(rank) ?? 0, gap));
-	return result;
 }
 
 function mergeChannelGapMaps(

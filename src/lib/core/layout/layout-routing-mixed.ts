@@ -2,7 +2,6 @@ import { buildLayoutResult } from './build-layout-result';
 import {
 	componentPortsChangePlacement,
 	type LayoutRoutingWorkspace,
-	mergeGapMaps,
 	mergeReservations,
 	placeWithRoutingPorts,
 	type RoutingReservation,
@@ -12,6 +11,7 @@ import {
 import { type LayeredRoutingResult, reserveLayeredRouting } from './layout-routing-layers';
 import type { Point } from './layout-types';
 import { expandRowGaps } from './placement/expand-row-gaps';
+import { mergeGapMaps } from './placement/place-elements';
 import { shellChannelGaps } from './routing/group-shells';
 import { allocatePorts } from './routing/port-allocation';
 import { type NodeRouting, planNodeRouting } from './routing/reserve-node-routing';

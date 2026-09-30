@@ -19,9 +19,17 @@ export interface ShellContext {
 	readonly minimumGap: number;
 }
 
-export interface FrameShellGaps {
+interface FrameRankGaps {
 	/** Uniform rank gap holding every frame shell that begins or ends on a rank. */
 	readonly rankGap: number;
+	/**
+	 * Rank gaps by interval exceeding the uniform one, holding the minimum-size overflow of
+	 * frames spanning several ranks.
+	 */
+	readonly rankGaps: ReadonlyMap<number, number>;
+}
+
+export interface FrameShellGaps extends FrameRankGaps {
 	/** Minimum channel gap by junction interval and slot, for frames ending on a junction rail. */
 	readonly junctionGaps: ReadonlyMap<number, readonly number[]>;
 }
@@ -146,19 +154,20 @@ interface PlacedFrames {
 	readonly starts: readonly number[];
 }
 
+interface ExtentInput {
+	readonly groupId: string;
+	readonly span: RankSpan;
+	/** Whether a frame spanning several ranks also grows to its minimum main size. */
+	readonly spanning: boolean;
+}
+
 /**
  * A frame starts its header and padding before its first physical member and ends after its
- * padded content. A one-rank frame also grows to its minimum main size, physically down or
- * right. A frame spanning several ranks may still overflow its last band when its minimum size
- * exceeds its content: that overflow is not reserved along the flow, and foreign boxes beside
- * it are separated transversely instead. Junction members lie in rails and are reserved by
+ * padded content. It grows to its minimum main size physically down or right; without
+ * `spanning`, only one-rank frames do. Junction members lie in rails and are reserved by
  * `junctionShellGaps`.
  */
-function frameExtent(
-	context: ShellContext,
-	placed: PlacedFrames,
-	input: { readonly groupId: string; readonly span: RankSpan },
-): FrameExtent {
+function frameExtent(context: ShellContext, placed: PlacedFrames, input: ExtentInput): FrameExtent {
 	const { structure, frame, sizes, bandSizes } = context;
 	const { groupId, span } = input;
 	const { padding, headerHeight, minimumWidth, minimumHeight } = context.groups(groupId);
@@ -186,7 +195,7 @@ function frameExtent(
 		minimum = minimumHeight;
 		header = headerHeight;
 	}
-	if (span.first !== span.last) minimum = 0;
+	if (span.first !== span.last && !input.spanning) minimum = 0;
 	const start = first - padding - header;
 	let rank = span.first;
 	if (frame.forward) rank = span.last;
@@ -196,12 +205,15 @@ function frameExtent(
 interface BoundaryShells {
 	readonly spans: ReadonlyMap<string, RankSpan>;
 	readonly base: readonly Shells[];
+	/** Uniform rank gap between the bands the frames are measured in. */
+	readonly gap: number;
+	readonly spanning: boolean;
 }
 
-/** The largest gap needed by the frame shells facing each other across a rank gap. */
-function requiredGap(context: ShellContext, shells: BoundaryShells): number {
+/** Gap needed by the frame shells facing each other across each rank gap, zero if none. */
+function requiredGaps(context: ShellContext, shells: BoundaryShells): readonly number[] {
 	const { structure, frame, bandSizes } = context;
-	const starts = bandStarts(context, context.minimumGap);
+	const starts = bandStarts(context, shells.gap);
 	const next = shells.base.map(({ next: value }) => value);
 	const previous = shells.base.map(({ previous: value }) => value);
 	// The physical bottom or right side never carries the header.
@@ -209,27 +221,41 @@ function requiredGap(context: ShellContext, shells: BoundaryShells): number {
 	if (frame.forward) far = next;
 	const nested = new Map<string, FrameExtent>();
 	const placed = { nested, starts };
+	const { spanning } = shells;
 	for (const [groupId, span] of shells.spans) {
-		const extent = frameExtent(context, placed, { groupId, span });
+		const extent = frameExtent(context, placed, { groupId, span, spanning });
 		nested.set(groupId, extent);
 		const bandEnd = defined(starts[extent.rank]) + defined(bandSizes[extent.rank]);
 		far[extent.rank] = Math.max(defined(far[extent.rank]), extent.end - bandEnd);
 	}
-	let required = 0;
-	for (let rank = 0; rank < structure.maximumRank; rank += 1) {
+	return Array.from({ length: structure.maximumRank }, (_, rank) => {
 		const facing = defined(next[rank]) + defined(previous[rank + 1]);
-		if (facing > 0) required = Math.max(required, facing + GROUP_FRAME_CLEARANCE);
-	}
-	return required;
+		if (facing > 0) return facing + GROUP_FRAME_CLEARANCE;
+		return 0;
+	});
 }
 
 /**
  * A frame ending on one rank faces the next rank's boxes: the gap holds the frame's padding,
- * its header when that side is physically on top, a one-rank frame's minimum-size overflow on
- * the physical bottom or right, and a clearance before any foreign box.
+ * its header when that side is physically on top, its minimum-size overflow on the physical
+ * bottom or right, and a clearance before any foreign box. Every rank gap holds the shells
+ * and one-rank overflows. The overflow of a frame spanning several ranks is measured with that
+ * uniform gap inside the frame and reserved in the one gap it faces only: widening every gap
+ * would also lengthen the frame's content, and would space every other rank for one frame.
  */
-function frameBoundaryRankGap(context: ShellContext, spans: ReadonlyMap<string, RankSpan>): number {
-	return requiredGap(context, { spans, base: rankShells(context, spans) });
+function frameBoundaryRankGaps(
+	context: ShellContext,
+	spans: ReadonlyMap<string, RankSpan>,
+): FrameRankGaps {
+	const base = rankShells(context, spans);
+	const shells = { spans, base, gap: context.minimumGap, spanning: false };
+	const rankGap = requiredGaps(context, shells).reduce((left, right) => Math.max(left, right), 0);
+	const gap = Math.max(context.minimumGap, rankGap);
+	const spanning = requiredGaps(context, { ...shells, gap, spanning: true });
+	const rankGaps = new Map<number, number>();
+	for (const [rank, required] of spanning.entries())
+		if (required > gap) rankGaps.set(rank, required);
+	return { rankGap, rankGaps };
 }
 
 interface RailPosition {
@@ -345,10 +371,11 @@ function junctionShellGaps(
 
 /** Gaps every group frame shell needs, whether it ends on a rank or on a junction rail. */
 export function frameShellGaps(context: ShellContext): FrameShellGaps {
-	if (context.structure.hierarchy === undefined) return { rankGap: 0, junctionGaps: new Map() };
+	if (context.structure.hierarchy === undefined)
+		return { rankGap: 0, rankGaps: new Map(), junctionGaps: new Map() };
 	const spans = groupRankSpans(context.structure);
 	return {
-		rankGap: frameBoundaryRankGap(context, spans),
+		...frameBoundaryRankGaps(context, spans),
 		junctionGaps: junctionShellGaps(context, spans),
 	};
 }

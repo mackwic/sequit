@@ -35,6 +35,11 @@ une relation vers un membre vise ce membre.
   paire d’enfants est centrée sur son parent.
 - **Famille coupée** : l’enfant du milieu de P est dans un groupe. L’enveloppe
   complète, bloc compris, est centrée sur P.
+- **Groupe plus long que ses rangs** : un groupe A → B a une taille minimale
+  bien plus grande que ses deux membres, sur deux rangs. L’excédent, en bas ou à
+  droite du cadre, est réservé le long du flux dans l’écart que ce côté borde :
+  C, l’enfant de B hors groupe, reste dans l’axe de B, à au moins 48 unités du
+  cadre, au lieu d’être poussé de côté.
 - **Sans groupe** : le graphe du premier cas, sans groupe, garde l’alignement
   actuel.
 

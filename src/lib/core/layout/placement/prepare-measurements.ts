@@ -13,6 +13,8 @@ export interface PreparedMeasurements {
 	readonly groups: ReadonlyMap<string, GroupMeasurement>;
 	readonly primaryBandSizes: readonly number[];
 	readonly rankGap: number;
+	/** Rank gaps by interval exceeding `rankGap`, holding frames spanning several ranks. */
+	readonly frameRankGaps: ReadonlyMap<number, number>;
 	/** Minimum junction channel gaps by interval and slot, holding frames ending on a rail. */
 	readonly junctionShellGaps: ReadonlyMap<number, readonly number[]>;
 }
@@ -165,6 +167,7 @@ export function prepareMeasurements(
 		groups: groups.groups,
 		primaryBandSizes,
 		rankGap: Math.max(relationGap, shells.rankGap),
+		frameRankGaps: shells.rankGaps,
 		junctionShellGaps: shells.junctionGaps,
 	};
 }

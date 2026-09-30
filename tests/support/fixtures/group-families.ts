@@ -1,5 +1,7 @@
 import type { LayoutDirection } from '../../../src/lib/core/document/logic-document';
+import type { GroupMeasurement } from '../../../src/lib/core/layout/layout-types';
 import type { VisualGraphData } from '../builders/visual-graph-builder';
+import { axesFor } from '../harnesses/visual-directions';
 import { graphFixtures } from './graph-fixtures';
 
 type Groups = Readonly<Record<string, readonly string[]>>;
@@ -8,6 +10,8 @@ type Groups = Readonly<Record<string, readonly string[]>>;
 export interface GroupedGraph {
 	readonly data: VisualGraphData;
 	readonly groups: Groups;
+	/** Group ID → measurement replacing the default one. */
+	readonly groupMeasurements?: Readonly<Record<string, GroupMeasurement>>;
 }
 
 const CONTENT = 120;
@@ -104,4 +108,28 @@ export function familySplitByGroup(direction: LayoutDirection): GroupedGraph {
 		.arrowsFrom('b1', ['b'])
 		.build();
 	return { data, groups: { g: ['b', 'b1'] } };
+}
+
+/** Main-axis minimum of a group far longer than its two members, whatever the flow. */
+const TALL_GROUP_MINIMUM = 400;
+
+/**
+ * A two-rank group A → B whose minimum main size exceeds its members, above B's child C
+ * outside the group, beside an isolated root D.
+ */
+export function familyBeneathTallGroup(direction: LayoutDirection): GroupedGraph {
+	const data = graphFixtures
+		.routingNodes(['a', 'b', 'c', 'd'], direction, 100)
+		.arrowsFrom('b', ['a'])
+		.arrowsFrom('c', ['b'])
+		.build();
+	let measurement: GroupMeasurement = {
+		minimumWidth: 160,
+		minimumHeight: TALL_GROUP_MINIMUM,
+		headerHeight: 42,
+		padding: 24,
+	};
+	if (axesFor(direction).primary === 'x')
+		measurement = { ...measurement, minimumWidth: TALL_GROUP_MINIMUM, minimumHeight: 90 };
+	return { data, groups: { g: ['a', 'b'] }, groupMeasurements: { g: measurement } };
 }

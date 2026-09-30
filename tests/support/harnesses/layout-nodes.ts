@@ -12,6 +12,7 @@ import {
 import type { OrderKey } from '../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../src/lib/core/graph/topological-ranks';
+import type { GroupMeasurement } from '../../../src/lib/core/layout/layout-types';
 import { fractionalOrderKeySpace } from '../../../src/lib/core/ordering/order-key-space';
 import type { VisualGraphData } from '../builders/visual-graph-builder';
 import { defaultBiasFor } from './visual-directions';
@@ -25,9 +26,11 @@ interface NodeFixture extends VisualGraphData {
 	readonly reference?: VisualGraphData | true;
 	/** Group ID → member IDs (nodes, junctions or groups); unlisted endpoints stay at the root. */
 	readonly groups?: Readonly<Record<string, readonly string[]>>;
+	/** Group ID → measurement replacing the default one. */
+	readonly groupMeasurements?: Readonly<Record<string, GroupMeasurement>> | undefined;
 }
 
-const GROUP_MEASUREMENT = {
+const GROUP_MEASUREMENT: GroupMeasurement = {
 	minimumWidth: 160,
 	minimumHeight: 90,
 	headerHeight: 42,
@@ -78,6 +81,7 @@ export async function layoutNodes({
 	edit,
 	reference,
 	groups = {},
+	groupMeasurements = {},
 }: NodeFixture): Promise<VisualLayout> {
 	const orders = new Map<string, OrderKey>();
 	let previous: OrderKey | undefined;
@@ -132,7 +136,7 @@ export async function layoutNodes({
 		ranks,
 		{
 			nodes: new Map(Object.entries(nodes)),
-			groups: new Map(groupIds.map((id) => [id, GROUP_MEASUREMENT])),
+			groups: new Map(groupIds.map((id) => [id, groupMeasurements[id] ?? GROUP_MEASUREMENT])),
 			junctions: new Map(Object.entries(junctions)),
 		},
 		{ inspectRouting: true },
@@ -149,6 +153,12 @@ export async function layoutNodes({
 	if (reference === undefined) return layout;
 	let referenceData: VisualGraphData = { nodes, junctions, relations };
 	if (reference !== true) referenceData = reference;
-	const before = await layoutNodes({ ...referenceData, direction, bias, groups });
+	const before = await layoutNodes({
+		...referenceData,
+		direction,
+		bias,
+		groups,
+		groupMeasurements,
+	});
 	return layout.withReference('Avant / référence', before);
 }

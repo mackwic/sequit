@@ -59,13 +59,25 @@ function minimumGapWindows(
 	);
 }
 
+/** The larger of two gaps for every rank interval either one sets. */
+export function mergeGapMaps(
+	left: ReadonlyMap<number, number>,
+	right: ReadonlyMap<number, number>,
+): ReadonlyMap<number, number> {
+	if (right.size === 0) return left;
+	const result = new Map(left);
+	for (const [rank, gap] of right) result.set(rank, Math.max(result.get(rank) ?? 0, gap));
+	return result;
+}
+
 /** Replace this call's placement, retaining its structure and reusable component list. */
 export function placeElements(
 	input: PlacementInput,
-	rankGaps: ReadonlyMap<number, number>,
+	reservedGaps: ReadonlyMap<number, number>,
 	channelGaps?: ReadonlyMap<number, readonly number[]>,
 ): Map<string, MutableBounds> {
 	const { structure, measurements, frame, placement } = input;
+	const rankGaps = mergeGapMaps(reservedGaps, measurements.frameRankGaps);
 	let modifiedGaps: Map<number, number> | undefined;
 	let modifiedChannels: Map<number, readonly number[]> | undefined;
 	const junctionRows = new Map<number, string[]>();

@@ -383,4 +383,44 @@ describe('rank gaps holding group frame shells', () => {
 			expect(mainGap(layout, ['g', 'outside'])).toBe(GROUP_FRAME_CLEARANCE);
 		},
 	);
+
+	it.each(LAYOUT_CONFIGURATIONS)(
+		'reserves a nested multi-rank minimum size in the rank gap it faces ($direction / $bias)',
+		async (configuration) => {
+			const base = chainDocument(configuration, [], ['p', 'a', 'b', 'c']);
+			const inner = {
+				kind: EndpointKind.Group,
+				id: 'inner',
+				label: 'Inner',
+				groupId: 'g',
+			} as const;
+			const document: LogicDocument = {
+				...base,
+				groups: [...base.groups, { ...inner, layoutOrder: orderKey('a5') }],
+				nodes: base.nodes.map((node) => {
+					if (node.id === 'a' || node.id === 'b') return { ...node, groupId: 'inner' };
+					return node;
+				}),
+			};
+			let tall = { minimumWidth: 160, minimumHeight: 600 };
+			if (!isVerticalDirection(configuration.direction))
+				tall = { minimumWidth: 600, minimumHeight: 90 };
+			const size = { width: 100, height: 60 };
+			const { layout, ranks } = await layoutDocument(document, {
+				nodes: { p: size, a: size, b: size, c: size },
+				groups: {
+					g: { minimumWidth: 60, minimumHeight: 60, headerHeight: 30, padding: 20 },
+					inner: { ...tall, headerHeight: 42, padding: 24 },
+				},
+			});
+			const check = AssertLayout(
+				new VisualLayout(layout, ranks.byEndpointId, configuration.direction, undefined, document),
+			);
+			check.group('g').isClearOfForeignBoxes({ along: GROUP_FRAME_CLEARANCE, across: 36 });
+			// Neither neighbour is pushed aside: the overflow lies along the flow, whichever its side,
+			// and the families stay centered, the block with its parent and the child under its own.
+			check.envelope(['g']).isCenteredOn('p', { axis: 'transverse' });
+			check.node('c').isCenteredOn('b', { axis: 'transverse' });
+		},
+	);
 });

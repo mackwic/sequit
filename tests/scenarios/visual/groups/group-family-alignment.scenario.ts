@@ -4,6 +4,7 @@ import {
 	familiesAroundGroup,
 	familyBeneathGroup,
 	familyBeneathMember,
+	familyBeneathTallGroup,
 	familyBesideGroup,
 	familySplitByGroup,
 } from '../../../support/fixtures/group-families';
@@ -128,6 +129,23 @@ const split: LayoutScenario = {
 	},
 };
 
+const beneathTallGroup: LayoutScenario = {
+	id: 'group-family-beneath-tall-group',
+	label: 'Groupe plus long que ses rangs : l’enfant suivant reste dans l’axe de son parent',
+	group: 'Groupes et familles',
+	order: 655,
+	arrange(direction = LayoutDirection.TopToBottom, bias) {
+		const { data, groups, groupMeasurements } = familyBeneathTallGroup(direction);
+		return layoutNodes({ ...data, direction, bias, groups, groupMeasurements });
+	},
+	assert(layout) {
+		const check = AssertLayout(layout);
+		check.group('g').isClearOfForeignBoxes(FRAME_CLEARANCE);
+		check.routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow().haveNoCrossing();
+		centersFamilies(layout, [[['c'], 'b']]);
+	},
+};
+
 const ungrouped: LayoutScenario = {
 	id: 'group-family-ungrouped',
 	label: 'Sans groupe : le même graphe garde l’alignement actuel',
@@ -148,5 +166,5 @@ export const scenario: LayoutScenario = {
 	...beside,
 	id: 'group-family-alignment',
 	label: 'Familles et groupes : ne pas partager les rangées à travers un groupe',
-	variants: [beside, beneathGroup, beneathMember, around, split, ungrouped],
+	variants: [beside, beneathGroup, beneathMember, around, split, beneathTallGroup, ungrouped],
 };

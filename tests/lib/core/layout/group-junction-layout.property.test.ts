@@ -13,6 +13,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
+import { GROUP_FRAME_CLEARANCE, ITEM_GAP } from '../../../../src/lib/core/layout/layout-settings';
 import { groupSeparationWindows } from '../../../../src/lib/core/layout/placement/enclose-groups';
 import { packGroupSiblings } from '../../../../src/lib/core/layout/placement/pack-group-siblings';
 import {
@@ -448,14 +449,18 @@ async function assertDistantGroups(
 			empty: { minimumWidth: 140, minimumHeight: 110, headerHeight: 20, padding: 15 },
 		},
 	};
-	const { layout } = await layoutDocument(variant, overrides);
+	const { layout, ranks } = await layoutDocument(variant, overrides);
 	assertDisjointNodesAndForeignGroups(variant, layout);
 	const parent = boundsFor(layout, 'parent');
-	if (configuration.direction === LayoutDirection.TopToBottom) {
-		const distant = boundsFor(layout, 't0');
-		expect(parent.y).toBeLessThan(distant.y + distant.height);
-		expect(distant.y).toBeLessThan(parent.y + parent.height);
-	}
+	// The tall child frame ends on rank 1: rank 2 resumes the chain beyond it, overflow included.
+	expect(
+		progressesFromTo(boundsFor(layout, 'child'), boundsFor(layout, 't6'), configuration.direction),
+	).toBe(true);
+	const check = AssertLayout(
+		new VisualLayout(layout, ranks.byEndpointId, configuration.direction, undefined, variant),
+	);
+	for (const group of ['parent', 'child'])
+		check.group(group).isClearOfForeignBoxes({ along: GROUP_FRAME_CLEARANCE, across: ITEM_GAP });
 	expect(contains(parent, boundsFor(layout, 'child'))).toBe(true);
 	expect(contains(boundsFor(layout, 'parent'), boundsFor(layout, 'empty'))).toBe(true);
 	const { layout: reordered } = await layoutDocument(
@@ -496,7 +501,7 @@ it.each(LAYOUT_CONFIGURATIONS)(
 	},
 );
 
-it('keeps an unrelated six-rank chain aligned and its routes short after local separation', async () => {
+it('keeps an unrelated six-rank chain aligned and its routes straight across a reserved overflow', async () => {
 	const configuration = LAYOUT_CONFIGURATIONS[0];
 	const base = tallNestedInterleaving(configuration);
 	const chain = Array.from({ length: 6 }, (_, index) => `u${index}`);
@@ -552,7 +557,12 @@ it('keeps an unrelated six-rank chain aligned and its routes short after local s
 				}),
 			)
 			.reduce((sum, length) => sum + length, 0);
-	expect(routeLength(expanded.layout) - routeLength(baseline.layout)).toBeLessThan(100);
+	// The chain crosses the rank gap reserved for the tall child's overflow: its routes lengthen by
+	// that gap along the flow, never by a detour around the frame.
+	const span = (layout: typeof expanded.layout): number =>
+		boundsFor(layout, 'u5').y - boundsFor(layout, 'u0').y;
+	const lengthening = routeLength(expanded.layout) - routeLength(baseline.layout);
+	expect(lengthening - (span(expanded.layout) - span(baseline.layout))).toBeLessThan(100);
 	expect(expanded.layout.width - baseline.layout.width).toBeLessThan(10000);
 });
 
