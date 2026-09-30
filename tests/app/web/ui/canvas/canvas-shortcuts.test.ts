@@ -5,11 +5,15 @@ import {
 	CANVAS_SHORTCUT_SECTIONS,
 	CANVAS_SHORTCUTS,
 	CanvasShortcutId,
+	detectShortcutPlatform,
 	matchesShortcut,
 	sectionShortcuts,
+	shortcutCaps,
 	shortcutHint,
 	shortcutKeyshortcuts,
+	ShortcutPlatform,
 	shortcutTitle,
+	shortcutWords,
 } from '../../../../../src/app/web/ui/canvas/canvas-shortcuts';
 
 function press(id: CanvasShortcutId, init: KeyboardEventInit): boolean {
@@ -115,41 +119,52 @@ describe('matchesShortcut', () => {
 });
 
 it.each([
-	[CanvasShortcutId.Edit, 'E', 'Éditer · E', 'e'],
-	[CanvasShortcutId.Fold, '[', 'Replier · [', '['],
-	[CanvasShortcutId.Unfold, ']', 'Déplier · ]', ']'],
-	[CanvasShortcutId.Group, 'G', 'Grouper · G', 'g'],
-	[CanvasShortcutId.Junction, 'J', 'Jonction · J', 'j'],
-	[CanvasShortcutId.Create, 'N', 'Nouvelle boîte · N', 'n'],
+	[CanvasShortcutId.Edit, 'E', 'E', 'e'],
+	[CanvasShortcutId.Fold, '[', '[', '['],
+	[CanvasShortcutId.Unfold, ']', ']', ']'],
+	[CanvasShortcutId.Group, 'G', 'G', 'g'],
+	[CanvasShortcutId.Junction, 'J', 'J', 'j'],
+	[CanvasShortcutId.Create, 'N', 'N', 'n'],
 	[
 		CanvasShortcutId.CreateSibling,
-		'Cmd/Ctrl+Maj+Entrée',
-		'Nouvelle boîte sœur · Cmd/Ctrl+Maj+Entrée',
+		'Ctrl+Maj+Entrée',
+		'⇧⌘↵',
 		'Control+Shift+Enter Meta+Shift+Enter',
 	],
-	[CanvasShortcutId.Delete, 'Suppr', 'Supprimer · Suppr', 'Delete Backspace'],
-	[CanvasShortcutId.Undo, 'Cmd/Ctrl+Z', 'Annuler · Cmd/Ctrl+Z', 'Control+z Meta+z'],
-	[
-		CanvasShortcutId.Redo,
-		'Cmd/Ctrl+Maj+Z',
-		'Rétablir · Cmd/Ctrl+Maj+Z',
-		'Control+Shift+z Meta+Shift+z',
-	],
-	[CanvasShortcutId.Confirm, 'Maj+Entrée', 'Valider · Maj+Entrée', 'Shift+Enter'],
-	[CanvasShortcutId.Help, '?', 'Raccourcis clavier · ?', '?'],
-	[
-		CanvasShortcutId.Navigate,
-		'Flèches',
-		'Aller à l’élément voisin · Flèches',
-		'ArrowUp ArrowDown ArrowLeft ArrowRight',
-	],
-	[CanvasShortcutId.Select, 'Espace', 'Sélectionner / étendre · Espace', 'Space'],
-	[CanvasShortcutId.Cancel, 'Échap', 'Annuler le geste, fermer · Échap', 'Escape'],
-])('announces %s as %s, titled %s, with aria-keyshortcuts %s', (id, hint, title, aria) => {
+	[CanvasShortcutId.Delete, 'Suppr', '⌫', 'Delete Backspace'],
+	[CanvasShortcutId.Undo, 'Ctrl+Z', '⌘Z', 'Control+z Meta+z'],
+	[CanvasShortcutId.Redo, 'Ctrl+Maj+Z', '⇧⌘Z', 'Control+Shift+z Meta+Shift+z'],
+	[CanvasShortcutId.Confirm, 'Maj+Entrée', '⇧↵', 'Shift+Enter'],
+	[CanvasShortcutId.Help, '?', '?', '?'],
+	[CanvasShortcutId.Navigate, 'Flèches', 'Flèches', 'ArrowUp ArrowDown ArrowLeft ArrowRight'],
+	[CanvasShortcutId.Select, 'Espace', 'Espace', 'Space'],
+	[CanvasShortcutId.Cancel, 'Échap', 'Échap', 'Escape'],
+])('announces %s as %s, or %s on macOS, with aria-keyshortcuts %s', (id, words, symbols, aria) => {
 	const shortcut = CANVAS_SHORTCUTS[id];
-	expect(shortcutHint(shortcut)).toBe(hint);
-	expect(shortcutTitle(shortcut)).toBe(title);
+	expect(shortcutHint(shortcut, ShortcutPlatform.Other)).toBe(words);
+	expect(shortcutHint(shortcut, ShortcutPlatform.Mac)).toBe(symbols);
+	expect(shortcutTitle(shortcut, shortcut.label, ShortcutPlatform.Other)).toBe(
+		`${shortcut.label} · ${words}`,
+	);
 	expect(shortcutKeyshortcuts(shortcut)).toBe(aria);
+});
+
+it('splits a chord into one cap per key, modifiers in the platform order', () => {
+	const redo = CANVAS_SHORTCUTS[CanvasShortcutId.Redo];
+	expect(shortcutCaps(redo, ShortcutPlatform.Other)).toEqual(['Ctrl', 'Maj', 'Z']);
+	expect(shortcutCaps(redo, ShortcutPlatform.Mac)).toEqual(['⇧', '⌘', 'Z']);
+	expect(shortcutCaps(CANVAS_SHORTCUTS[CanvasShortcutId.Navigate], ShortcutPlatform.Mac)).toEqual([
+		'Flèches',
+	]);
+});
+
+it('speaks macOS symbols as words, naming the command key', () => {
+	const sibling = CANVAS_SHORTCUTS[CanvasShortcutId.CreateSibling];
+	expect(shortcutWords(sibling, ShortcutPlatform.Mac)).toBe('Cmd+Maj+Entrée');
+	expect(shortcutWords(sibling, ShortcutPlatform.Other)).toBe('Ctrl+Maj+Entrée');
+	expect(shortcutWords(CANVAS_SHORTCUTS[CanvasShortcutId.Delete], ShortcutPlatform.Mac)).toBe(
+		'Suppr',
+	);
 });
 
 it('titles a button with its own wording and the catalogue hint', () => {
@@ -157,8 +172,22 @@ it('titles a button with its own wording and the catalogue hint', () => {
 		shortcutTitle(
 			CANVAS_SHORTCUTS[CanvasShortcutId.Create],
 			'Nouvelle boîte reliée à la sélection',
+			ShortcutPlatform.Mac,
 		),
 	).toBe('Nouvelle boîte reliée à la sélection · N');
+});
+
+it('detects macOS from userAgentData first, then navigator.platform, and defaults to Other', () => {
+	expect(detectShortcutPlatform({ userAgentData: { platform: 'macOS' } })).toBe(
+		ShortcutPlatform.Mac,
+	);
+	expect(detectShortcutPlatform({ platform: 'MacIntel' })).toBe(ShortcutPlatform.Mac);
+	expect(detectShortcutPlatform({ platform: 'iPhone' })).toBe(ShortcutPlatform.Mac);
+	expect(
+		detectShortcutPlatform({ userAgentData: { platform: 'Windows' }, platform: 'MacIntel' }),
+	).toBe(ShortcutPlatform.Other);
+	expect(detectShortcutPlatform({ platform: 'Linux x86_64' })).toBe(ShortcutPlatform.Other);
+	expect(detectShortcutPlatform(undefined)).toBe(ShortcutPlatform.Other);
 });
 
 it('keys every entry by its own id, and never binds one key twice under the same chord', () => {

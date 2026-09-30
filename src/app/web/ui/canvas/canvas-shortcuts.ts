@@ -166,12 +166,73 @@ export function sectionShortcuts(section: CanvasShortcutSection): CanvasShortcut
 }
 
 const LETTER = /^[a-z]$/i;
-/** Named keys spelled as a French keyboard labels them; any other key is shown upper-cased. */
-const KEY_HINTS: Readonly<Record<string, string>> = {
+
+/** How a platform labels its keys: macOS uses its key symbols, everything else words. */
+export enum ShortcutPlatform {
+	Mac = 'mac',
+	Other = 'other',
+}
+
+interface PlatformNavigator {
+	readonly platform?: string;
+	readonly userAgentData?: { readonly platform?: string };
+}
+
+/** Reads the platform once from `navigator`; absent (server, tests) means `Other`. */
+export function detectShortcutPlatform(navigator: PlatformNavigator | undefined): ShortcutPlatform {
+	const platform = navigator?.userAgentData?.platform ?? navigator?.platform ?? '';
+	if (/mac|iphone|ipad|ipod/i.test(platform)) return ShortcutPlatform.Mac;
+	return ShortcutPlatform.Other;
+}
+
+const CURRENT_PLATFORM = detectShortcutPlatform(globalThis.navigator);
+
+type ChordModifier = keyof NonNullable<CanvasShortcut['chord']>;
+
+/** How a platform prints its keys: symbols on macOS, words elsewhere. */
+interface KeyCaps {
+	/** Modifiers in the order the platform writes them: ⇧⌘Z on macOS, Ctrl+Maj+Z elsewhere. */
+	readonly modifiers: readonly (readonly [ChordModifier, string])[];
+	/** Named keys; any other key is shown upper-cased. */
+	readonly keys: Readonly<Record<string, string>>;
+	/** What joins the caps in one line of text. */
+	readonly joiner: string;
+}
+
+const WORD_KEYS: Readonly<Record<string, string>> = {
 	Delete: 'Suppr',
 	Enter: 'Entrée',
 	Escape: 'Échap',
 	' ': 'Espace',
+};
+const KEY_CAPS: Readonly<Record<ShortcutPlatform, KeyCaps>> = {
+	[ShortcutPlatform.Mac]: {
+		modifiers: [
+			['shift', '⇧'],
+			['primary', '⌘'],
+		],
+		keys: { ...WORD_KEYS, Delete: '⌫', Enter: '↵' },
+		joiner: '',
+	},
+	[ShortcutPlatform.Other]: {
+		modifiers: [
+			['primary', 'Ctrl'],
+			['shift', 'Maj'],
+		],
+		keys: WORD_KEYS,
+		joiner: '+',
+	},
+};
+/** The same keys as words, for speech: Mac symbols are not read aloud. */
+const KEY_WORDS: Readonly<Record<ShortcutPlatform, KeyCaps>> = {
+	[ShortcutPlatform.Mac]: {
+		...KEY_CAPS[ShortcutPlatform.Other],
+		modifiers: [
+			['primary', 'Cmd'],
+			['shift', 'Maj'],
+		],
+	},
+	[ShortcutPlatform.Other]: KEY_CAPS[ShortcutPlatform.Other],
 };
 /** `aria-keyshortcuts` separates alternatives with spaces, so the space bar is spelled out. */
 const ARIA_KEYS: Readonly<Record<string, string>> = { ' ': 'Space' };
@@ -203,19 +264,40 @@ export function matchesShortcut(shortcut: CanvasShortcut, event: KeyboardEvent):
 	return shortcut.keys.some((key) => claimsKey(key, event));
 }
 
-/** Human hint for a `title` or `<kbd>`: 'E', '[', 'Suppr', 'Maj+Entrée', 'Cmd/Ctrl+Maj+Entrée'. */
-export function shortcutHint(shortcut: CanvasShortcut): string {
-	if (shortcut.hint !== undefined) return shortcut.hint;
+function caps(shortcut: CanvasShortcut, style: KeyCaps): readonly string[] {
+	if (shortcut.hint !== undefined) return [shortcut.hint];
 	const [key] = shortcut.keys;
-	const parts = [KEY_HINTS[key] ?? key.toUpperCase()];
-	if (shortcut.chord?.shift === true) parts.unshift('Maj');
-	if (shortcut.chord?.primary === true) parts.unshift('Cmd/Ctrl');
-	return parts.join('+');
+	const modifiers = style.modifiers
+		.filter(([modifier]) => shortcut.chord?.[modifier] === true)
+		.map(([, cap]) => cap);
+	return [...modifiers, style.keys[key] ?? key.toUpperCase()];
+}
+
+/** One cap per key, modifiers first: ['⇧', '⌘', '↵'] on macOS, ['Ctrl', 'Maj', 'Entrée'] elsewhere. */
+export function shortcutCaps(
+	shortcut: CanvasShortcut,
+	platform = CURRENT_PLATFORM,
+): readonly string[] {
+	return caps(shortcut, KEY_CAPS[platform]);
+}
+
+/** Human hint for a `title`: 'E', '⌫' or 'Suppr', '⇧⌘↵' or 'Ctrl+Maj+Entrée'. */
+export function shortcutHint(shortcut: CanvasShortcut, platform = CURRENT_PLATFORM): string {
+	return shortcutCaps(shortcut, platform).join(KEY_CAPS[platform].joiner);
+}
+
+/** The hint in words a screen reader can say: 'Cmd+Maj+Entrée' on macOS, 'Ctrl+Maj+Entrée' elsewhere. */
+export function shortcutWords(shortcut: CanvasShortcut, platform = CURRENT_PLATFORM): string {
+	return caps(shortcut, KEY_WORDS[platform]).join(KEY_WORDS[platform].joiner);
 }
 
 /** `title` text of every action button: the label, a middle dot, then the hint. */
-export function shortcutTitle(shortcut: CanvasShortcut, label = shortcut.label): string {
-	return `${label} · ${shortcutHint(shortcut)}`;
+export function shortcutTitle(
+	shortcut: CanvasShortcut,
+	label = shortcut.label,
+	platform = CURRENT_PLATFORM,
+): string {
+	return `${label} · ${shortcutHint(shortcut, platform)}`;
 }
 
 /** WAI-ARIA `aria-keyshortcuts`: alternatives separated by spaces, chords joined with `+`. */
