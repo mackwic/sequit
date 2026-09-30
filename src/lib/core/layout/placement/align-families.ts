@@ -24,7 +24,10 @@ export interface FamilyAlignmentInput {
 	/** Row items by rank: endpoints, or blocks standing for a whole group. */
 	readonly rows: readonly (readonly string[])[];
 	readonly links: FamilyLinks;
-	/** Current bounds by id; only reads are needed when `move` is given. */
+	/**
+	 * Current bounds by id; only reads are needed when `move` is given, and each box read is used
+	 * before the next lookup.
+	 */
 	readonly bounds: MutableBoundsLookup;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;

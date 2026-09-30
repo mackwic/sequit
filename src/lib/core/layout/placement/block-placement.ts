@@ -10,6 +10,7 @@ import { ITEM_GAP } from '../layout-settings';
 import { groupBlocks } from '../structure/group-blocks';
 import type { PlacementRows } from '../structure/placement-rows';
 import { alignFamilies, type BranchAlignment } from './align-families';
+import { arrangeOnce } from './arrangement-reuse';
 import {
 	type BlockPlan,
 	blockPlan,
@@ -29,6 +30,8 @@ interface Arrangement {
 	readonly alignment?: BranchAlignment | undefined;
 	/** Shifts a moved block still owes its content; settled once every container is arranged. */
 	readonly pending: Map<string, number>;
+	/** The one box shifted reads are written to: envelopes read each box before the next. */
+	readonly scratch: MutableBounds;
 }
 
 /** A block moves its frame now and its content later, so a move costs the same at any depth. */
@@ -38,13 +41,16 @@ function moveItem(arrangement: Arrangement, item: string, shift: number): void {
 	if (plan.spans.has(item)) pending.set(item, (pending.get(item) ?? 0) + shift);
 }
 
-/** Current bounds of an endpoint inside a container, including what its blocks still owe. */
+/**
+ * Current bounds of an endpoint inside a container, including what its blocks still owe. A
+ * shifted box is written to the arrangement's scratch box, valid until the next read.
+ */
 function currentBounds(
 	arrangement: Arrangement,
 	container: string | undefined,
 	id: string,
 ): MutableBounds | undefined {
-	const { bounds, plan, pending, vertical } = arrangement;
+	const { bounds, plan, pending, vertical, scratch } = arrangement;
 	const box = bounds.get(id);
 	if (box === undefined || pending.size === 0) return box;
 	let shift = 0;
@@ -55,9 +61,12 @@ function currentBounds(
 	)
 		shift += pending.get(block) ?? 0;
 	if (shift === 0) return box;
-	const moved = { ...box };
-	translateTransversely(moved, shift, vertical);
-	return moved;
+	scratch.x = box.x;
+	scratch.y = box.y;
+	scratch.width = box.width;
+	scratch.height = box.height;
+	translateTransversely(scratch, shift, vertical);
+	return scratch;
 }
 
 /** Hand every owed shift down, outermost blocks first, to the items each block carries. */
@@ -160,7 +169,7 @@ function isWall(plan: BlockPlan, item: string, rank: number, sign: 1 | -1): bool
 }
 
 function arrangeContainer(arrangement: Arrangement, container: ContainerPlan): void {
-	const { plan, bounds, vertical, context } = arrangement;
+	const { plan, vertical } = arrangement;
 	initialPlacement(arrangement, container);
 	alignFamilies({
 		rows: container.rows,
@@ -175,6 +184,12 @@ function arrangeContainer(arrangement: Arrangement, container: ContainerPlan): v
 		gapBetween: (left, right) => gapBetween(plan, left, right),
 	});
 	separateRows(arrangement, container);
+	encloseContainer(arrangement, container);
+}
+
+/** The frame of a block around its members, as they now stand. */
+function encloseContainer(arrangement: Arrangement, container: ContainerPlan): void {
+	const { bounds, context } = arrangement;
 	if (container.id === undefined) return;
 	const members = (context.hierarchy?.membersById.get(container.id) ?? []).filter((id) =>
 		bounds.has(id),
@@ -204,12 +219,24 @@ export function arrangeFamilies(input: {
 		return;
 	}
 	const plan = blockPlan(input.rows, input.context);
-	const arrangement = { ...input, plan, pending: new Map<string, number>() };
+	const arrangement = {
+		...input,
+		plan,
+		pending: new Map<string, number>(),
+		scratch: { x: 0, y: 0, width: 0, height: 0 },
+	};
 	const [root] = plan.containers;
 	if (plan.spans.size === 0 && root !== undefined) {
 		alignFamilies({ ...input, rows: root.rows, links: root.links });
 		return;
 	}
-	for (const container of plan.containers) arrangeContainer(arrangement, container);
-	settlePending(arrangement);
+	arrangeOnce(input, {
+		arrange: () => {
+			for (const container of plan.containers) arrangeContainer(arrangement, container);
+			settlePending(arrangement);
+		},
+		rebuildFrames: () => {
+			for (const container of plan.containers) encloseContainer(arrangement, container);
+		},
+	});
 }
