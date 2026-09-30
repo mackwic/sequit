@@ -13,6 +13,7 @@ export enum CanvasShortcutId {
 	Fold = 'fold',
 	Unfold = 'unfold',
 	Group = 'group',
+	Junction = 'junction',
 	Create = 'create',
 	CreateSibling = 'create-sibling',
 	Delete = 'delete',
@@ -33,6 +34,7 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 	[CanvasShortcutId.Fold]: { id: CanvasShortcutId.Fold, label: 'Replier', keys: ['['] },
 	[CanvasShortcutId.Unfold]: { id: CanvasShortcutId.Unfold, label: 'Déplier', keys: [']'] },
 	[CanvasShortcutId.Group]: { id: CanvasShortcutId.Group, label: 'Grouper', keys: ['g'] },
+	[CanvasShortcutId.Junction]: { id: CanvasShortcutId.Junction, label: 'Jonction', keys: ['j'] },
 	[CanvasShortcutId.Create]: { id: CanvasShortcutId.Create, label: 'Nouvelle boîte', keys: ['n'] },
 	[CanvasShortcutId.CreateSibling]: {
 		id: CanvasShortcutId.CreateSibling,

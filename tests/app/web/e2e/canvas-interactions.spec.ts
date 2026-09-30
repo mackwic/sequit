@@ -376,7 +376,7 @@ test.describe('accessible canvas selection', () => {
 
 		await junction.click();
 		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
-		await expect(junctionBar.getByRole('button')).toHaveText(['Supprimer']);
+		await expect(junctionBar.getByRole('button')).toHaveText(['Éditer', 'Supprimer']);
 		await junctionBar
 			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
 			.click();
@@ -394,6 +394,61 @@ test.describe('accessible canvas selection', () => {
 			.click();
 		await expect(page.locator(relationSelector)).toHaveCount(0);
 		await expect(group).toHaveCount(1);
+	});
+
+	test('inserts a junction on a relation with J, names its operator, and edits it with E', async ({
+		page,
+	}) => {
+		const relationSelector = '[data-relation-id="data-team-to-ai-content-generation"]';
+		const relationCount = await page.locator('[data-relation-id]').count();
+		const relationPoint = await visibleRelationPoint(page, relationSelector);
+		await page.mouse.click(relationPoint.x, relationPoint.y);
+		const relationBar = page.getByRole('group', { name: 'Actions de la relation' });
+		await expect(relationBar.getByRole('button')).toHaveText(['Jonction', 'Supprimer']);
+		await page.keyboard.press('j');
+
+		// The junction replaces the relation and opens its dialog with the default operator.
+		const dialog = page.getByRole('dialog', { name: 'Opérateur de la jonction' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeChecked();
+		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeFocused();
+		await expect(page.locator(relationSelector)).toHaveCount(0);
+		await expect(page.locator('[data-junction-id]')).toHaveCount(2);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relationCount + 1);
+		const junction = page.locator('[data-junction-id]:not([data-junction-id="word-ui-options"])');
+		await expect(junction).toHaveAttribute('aria-pressed', 'true');
+		const junctionId = await junction.getAttribute('data-junction-id');
+		await expect(
+			page.locator(`[data-relation-id][data-edge-from="data-team"][data-edge-to="${junctionId}"]`),
+		).toHaveCount(1);
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${junctionId}"][data-edge-to="ai-content-generation"]`,
+			),
+		).toHaveCount(1);
+
+		await dialog.getByRole('radio', { name: 'ET' }).check();
+		await dialog.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+		await expect(dialog).toHaveCount(0);
+		await expect(junction.locator('[data-junction-symbol="and"]')).toHaveCount(1);
+
+		// E reopens the dialog on the selected junction; cancelling keeps the operator.
+		await junction.click();
+		await page.keyboard.press('e');
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('radio', { name: 'ET' })).toBeChecked();
+		await dialog.getByRole('radio', { name: 'OU', exact: true }).check();
+		await page.keyboard.press('Escape');
+		await expect(dialog).toHaveCount(0);
+		await expect(junction.locator('[data-junction-symbol="and"]')).toHaveCount(1);
+
+		// Double-clicking the junction edits it; Shift+Enter saves.
+		await junction.dblclick();
+		await expect(dialog).toBeVisible();
+		await dialog.getByRole('radio', { name: 'OU', exact: true }).check();
+		await page.keyboard.press('Shift+Enter');
+		await expect(dialog).toHaveCount(0);
+		await expect(junction.locator('[data-junction-symbol="or"]')).toHaveCount(1);
 	});
 
 	test('selects nodes with envelopes, composes with Shift, and groups from the floating bar', async ({

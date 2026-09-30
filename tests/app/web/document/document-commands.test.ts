@@ -9,6 +9,8 @@ import {
 	groupFields,
 	groupFoldToggle,
 	groupStyleUpdate,
+	junctionInsertion,
+	junctionOperatorUpdate,
 } from '../../../../src/app/web/document/document-commands';
 import {
 	EndpointKind,
@@ -237,4 +239,49 @@ it('toggles a group between closed and expanded from its current state', () => {
 	expect(
 		execute(closed, [groupFoldToggle(closedGroup)]).groups.find(({ id }) => id === 'G')?.state,
 	).toBe(GroupState.Expanded);
+});
+
+it('inserts a junction on a relation in one batch, then changes its operator', () => {
+	const model = collaborativeFixture(CollaborativeFixture.OpenGroup, 'commands');
+	const inserted = execute(model, [
+		...junctionInsertion({
+			junction: { id: 'J', operator: JunctionOperator.Xor, groupId: 'G' },
+			incoming: { id: 'BJ', from: 'B', to: 'J' },
+			outgoing: { id: 'JA', from: 'J', to: 'A' },
+			replacedRelationId: 'R',
+		}),
+	]);
+	expect(inserted.junctions).toMatchObject([
+		{ id: 'J', operator: JunctionOperator.Xor, groupId: 'G' },
+	]);
+	expect(inserted.relations.map(({ id, from, to }) => [id, from, to])).toEqual([
+		['BJ', 'B', 'J'],
+		['JA', 'J', 'A'],
+	]);
+
+	const updated = execute(inserted, [junctionOperatorUpdate('J', JunctionOperator.And)]);
+	expect(updated.junctions.map(({ operator }) => operator)).toEqual([JunctionOperator.And]);
+});
+
+it('keeps a junction that feeds the replaced relation anchored through the new one', () => {
+	const model = collaborativeFixture(CollaborativeFixture.OpenGroup, 'commands');
+	const withJunction = execute(model, [
+		...junctionInsertion({
+			junction: { id: 'J', operator: JunctionOperator.Xor, groupId: 'G' },
+			incoming: { id: 'BJ', from: 'B', to: 'J' },
+			outgoing: { id: 'JA', from: 'J', to: 'A' },
+			replacedRelationId: 'R',
+		}),
+	]);
+	// Splitting J → A: J keeps an outgoing relation at every step, so it is never collected.
+	const twice = execute(withJunction, [
+		...junctionInsertion({
+			junction: { id: 'K', operator: JunctionOperator.Or, groupId: 'G' },
+			incoming: { id: 'JK', from: 'J', to: 'K' },
+			outgoing: { id: 'KA', from: 'K', to: 'A' },
+			replacedRelationId: 'JA',
+		}),
+	]);
+	expect(twice.junctions.map(({ id }) => id)).toEqual(['J', 'K']);
+	expect(twice.relations.map(({ id }) => id)).toEqual(['BJ', 'JK', 'KA']);
 });

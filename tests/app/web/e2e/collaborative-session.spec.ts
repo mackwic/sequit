@@ -558,6 +558,36 @@ test('Grouping from the canvas names the group live, folds and dissolves it acro
 	await bob.close();
 });
 
+test('Inserting a junction with J replaces the relation for every collaborator', async ({
+	browser,
+}) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.OpenGroup);
+	const alice = await browser.newPage();
+	const bob = await browser.newPage();
+	await alice.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+	await bob.goto(`/atelier/collaboration?room=${room}&name=Bob`);
+	await expect(alice.getByRole('status', { name: 'Connexion', exact: true })).toHaveText(
+		'Connecté',
+	);
+	const relation = alice.locator('[data-relation-id="R"]');
+	await relation.focus();
+	await relation.press('Space');
+	await relation.press('j');
+	const dialog = alice.getByRole('dialog', { name: 'Opérateur de la jonction' });
+	await expect(dialog).toBeVisible();
+	const junction = bob.locator('[data-junction-id]');
+	await expect(junction).toHaveAttribute('data-junction-group-id', 'G');
+	await expect(bob.locator('[data-relation-id="R"]')).toHaveCount(0);
+	await expect(bob.locator('[data-relation-id]')).toHaveCount(2);
+	await dialog.getByRole('radio', { name: 'ET' }).check();
+	await dialog.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(junction.locator('[data-junction-symbol="and"]')).toHaveCount(1);
+	await alice.close();
+	await bob.close();
+});
+
 test('Keyboard child and sibling creation are proposed across collaborators', async ({
 	browser,
 }) => {

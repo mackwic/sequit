@@ -47,6 +47,8 @@
 		onGroupEdit,
 		onGroupToggle,
 		onGroupDissolve,
+		onJunctionEdit,
+		onRelationSplit,
 	}: {
 		document: CanvasProjection;
 		session: CanvasSession;
@@ -59,6 +61,8 @@
 		onGroupEdit?: (groupId: string) => void;
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
+		onJunctionEdit?: ((junctionId: string) => void) | undefined;
+		onRelationSplit?: ((relationId: string) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -407,6 +411,8 @@
 				{session}
 				{onGroupEdit}
 				{onGroupToggle}
+				{onJunctionEdit}
+				{onRelationSplit}
 			/>
 		{:else if display.kind === 'invalid-source'}
 			<section
@@ -535,6 +541,8 @@
 			{onGroupEdit}
 			{onGroupToggle}
 			{onGroupDissolve}
+			{onJunctionEdit}
+			{onRelationSplit}
 			{onDelete}
 		/>
 	{/if}

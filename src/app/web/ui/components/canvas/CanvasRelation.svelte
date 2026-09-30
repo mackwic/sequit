@@ -13,11 +13,14 @@
 		session,
 		markerId,
 		tabbable = false,
+		ondblclick,
 	}: {
 		relation: RenderedRelation;
 		session: CanvasSession;
 		markerId: string;
 		tabbable?: boolean;
+		/** Double-click inserts a junction on this relation. */
+		ondblclick?: ((relationId: string) => void) | undefined;
 	} = $props();
 	let ref = $derived(entityRef(EntityKind.Relation, relation.id));
 	let selected = $derived(session.isSelected(ref));
@@ -54,6 +57,13 @@
 	aria-label={`Relation ${relation.id} from ${relation.from} to ${relation.to}`}
 	aria-pressed={selected}
 	onclick={handleClick}
+	ondblclick={(event) => {
+		if (ondblclick === undefined) return;
+		event.preventDefault();
+		event.stopPropagation();
+		session.selectEntity(ref);
+		ondblclick(relation.id);
+	}}
 	onkeydown={handleKeyDown}
 ></path>
 

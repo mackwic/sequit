@@ -4,6 +4,7 @@
 	import { GroupState, type LogicNature } from '../../../../../lib/core/document/logic-document';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
+	import { hostsJunction } from '../../canvas/junction-insertion';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import ContextualBar from './ContextualBar.svelte';
 	import NodeEditor from './NodeEditor.svelte';
@@ -21,6 +22,8 @@
 		onGroupEdit,
 		onGroupToggle,
 		onGroupDissolve,
+		onJunctionEdit,
+		onRelationSplit,
 		onDelete,
 	}: {
 		canvas: CanvasModel | undefined;
@@ -32,6 +35,8 @@
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
+		onJunctionEdit?: ((junctionId: string) => void) | undefined;
+		onRelationSplit?: ((relationId: string) => void) | undefined;
 		onDelete?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
@@ -47,6 +52,8 @@
 		readonly edit?: { readonly label: string; readonly run: () => void };
 		readonly fold?: FoldAction;
 		readonly dissolve?: () => void;
+		/** Inserts a junction on the selected relation. */
+		readonly split?: () => void;
 	}
 	function foldAction(groupId: string | undefined): { fold: FoldAction } | Record<string, never> {
 		const toggle = onGroupToggle;
@@ -108,10 +115,30 @@
 		if (entity.kind === EntityKind.Junction) {
 			const junction = canvas.junctions.find(({ id }) => id === entity.id);
 			if (junction === undefined) return undefined;
-			return { entity, ...foldAction(junction.groupId) };
+			const edit = onJunctionEdit;
+			let actions: ContextualActions = { entity, ...foldAction(junction.groupId) };
+			if (edit)
+				actions = {
+					...actions,
+					edit: {
+						label: `Éditer la jonction ${entity.id}`,
+						run: () => {
+							edit(entity.id);
+						},
+					},
+				};
+			return actions;
 		}
-		if (!canvas.relations.some(({ id }) => id === entity.id)) return undefined;
-		return { entity };
+		const relation = canvas.relations.find(({ id }) => id === entity.id);
+		if (relation === undefined) return undefined;
+		const split = onRelationSplit;
+		if (split === undefined || !hostsJunction(relation)) return { entity };
+		return {
+			entity,
+			split: () => {
+				split(entity.id);
+			},
+		};
 	});
 </script>
 
@@ -123,6 +150,7 @@
 			edit={contextual.edit}
 			fold={contextual.fold}
 			dissolve={contextual.dissolve}
+			split={contextual.split}
 			{viewportElement}
 			{onDelete}
 		/>

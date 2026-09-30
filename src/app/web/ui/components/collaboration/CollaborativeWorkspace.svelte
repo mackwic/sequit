@@ -4,6 +4,8 @@
 	import {
 		defined,
 		GroupState,
+		type JunctionOperator,
+		JunctionOperator as Operator,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
@@ -35,6 +37,8 @@
 		groupFields,
 		groupFoldToggle,
 		groupStyleUpdate,
+		junctionInsertion,
+		junctionOperatorUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { createSharedCanvasProjection } from '../../../projection/open-document';
@@ -44,6 +48,7 @@
 	} from '../../../projection/visible-relation-commands';
 	import { EntityKind } from '../../canvas/canvas-entity';
 	import { groupableNodeIds } from '../../canvas/group-edit';
+	import { planJunctionInsertion } from '../../canvas/junction-insertion';
 	import {
 		type NodeCreationPlan,
 		type NodeCreationRequest,
@@ -56,6 +61,7 @@
 	import CanvasInteractionStatus from '../canvas/CanvasInteractionStatus.svelte';
 	import CanvasViewportControls from '../canvas/CanvasViewportControls.svelte';
 	import GroupDialog from '../canvas/GroupDialog.svelte';
+	import JunctionDialog from '../canvas/JunctionDialog.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import NodeDialog from '../canvas/NodeDialog.svelte';
 	import NodeEditor from '../canvas/NodeEditor.svelte';
@@ -103,6 +109,10 @@
 	/** The dialog waits for the room to publish the group, e.g. right after grouping. */
 	let editedGroup = $derived(model.groups.find(({ id }) => id === editingGroup?.id));
 	let groupable = $derived(groupableNodeIds(model, canvas.selection.values()));
+	let editingJunction = $state<{ id: string; base: JunctionOperator; draft: JunctionOperator }>();
+	/** As for groups, the dialog shows once the room has published the junction. */
+	let editedJunction = $derived(model.junctions.find(({ id }) => id === editingJunction?.id));
+	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
 	/** « Grouper » is offered only for a groupable selection. */
 	let groupAction = $derived.by((): (() => void) | undefined => {
@@ -117,6 +127,7 @@
 			sourceValid &&
 			creation === undefined &&
 			editingGroup === undefined &&
+			editingJunction === undefined &&
 			canvas.editing === undefined,
 	);
 	onMount(() => {
@@ -248,6 +259,34 @@
 		canvas.selectEntity({ kind: EntityKind.Group, id: groupId });
 		openGroupEditor(groupId, 'name');
 	}
+	function openJunctionEditor(junctionId: string): void {
+		const junction = model.junctions.find(({ id }) => id === junctionId);
+		const operator = junction?.operator ?? lastOperator;
+		editingJunction = { id: junctionId, base: operator, draft: operator };
+	}
+	function saveJunction(): void {
+		const editing = editingJunction;
+		if (editing === undefined) return;
+		if (
+			editing.draft !== editing.base &&
+			!dispatchMany([junctionOperatorUpdate(editing.id, editing.draft)])
+		)
+			return;
+		lastOperator = editing.draft;
+		editingJunction = undefined;
+	}
+	/** Proposes the junction on the relation, selects it, then asks for its operator. */
+	function insertJunction(relationId: string): void {
+		if (!interactive) return;
+		const plan = planJunctionInsertion(model, relationId, {
+			junctionId: crypto.randomUUID(),
+			relationId: () => crypto.randomUUID(),
+			operator: lastOperator,
+		});
+		if (plan === undefined || !dispatchMany(junctionInsertion(plan))) return;
+		canvas.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
+		openJunctionEditor(plan.junction.id);
+	}
 
 	$effect(() => {
 		client.setPresence({
@@ -290,6 +329,8 @@
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}
 				onGroupDissolve={dissolveGroup}
+				onJunctionEdit={openJunctionEditor}
+				onRelationSplit={insertJunction}
 			>
 				{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
 				{#snippet editor(editing: EditingCanvasActivity)}
@@ -367,6 +408,21 @@
 					{/key}
 				{/snippet}
 			</GroupDialog>
+		{/if}
+		{#if sourceValid && editingJunction && editedJunction}
+			{@const editing = editingJunction}
+			<JunctionDialog
+				operator={editing.draft}
+				data={{ 'data-junction-editor': editing.id }}
+				onchange={(operator: JunctionOperator) => {
+					if (editingJunction !== undefined)
+						editingJunction = { ...editingJunction, draft: operator };
+				}}
+				onsubmit={saveJunction}
+				onclose={() => {
+					editingJunction = undefined;
+				}}
+			/>
 		{/if}
 		{#if creation}<NodeDialog
 				mode="create"

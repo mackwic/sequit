@@ -21,6 +21,7 @@
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
 	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
+	import { hostsJunction } from '../../canvas/junction-insertion';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
@@ -37,6 +38,8 @@
 		session,
 		onGroupEdit,
 		onGroupToggle,
+		onJunctionEdit,
+		onRelationSplit,
 	}: {
 		canvas: CanvasModel;
 		zoom: number;
@@ -44,7 +47,15 @@
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		/** Folds or unfolds a group; absent when the document is read-only. */
 		onGroupToggle?: ((groupId: string) => void) | undefined;
+		onJunctionEdit?: ((junctionId: string) => void) | undefined;
+		/** Inserts a junction on a double-clicked relation; absent for aggregates and read-only views. */
+		onRelationSplit?: ((relationId: string) => void) | undefined;
 	} = $props();
+	function splitAction(relationId: string): ((relationId: string) => void) | undefined {
+		const relation = canvas.relations.find(({ id }) => id === relationId);
+		if (relation === undefined || !hostsJunction(relation)) return undefined;
+		return onRelationSplit;
+	}
 
 	let relations = $derived(canvas.relations);
 	let renderedRelations = $derived(renderRelationPaths(relations));
@@ -248,6 +259,7 @@
 					{session}
 					{markerId}
 					tabbable={entityKey(EntityKind.Relation, relation.id) === tabEntryKey}
+					ondblclick={splitAction(relation.id)}
 				/>
 			{/each}
 		</svg>
@@ -275,6 +287,13 @@
 				aria-pressed={session.isSelected(ref)}
 				onclick={(event) => {
 					handleClick(event, ref);
+				}}
+				ondblclick={(event) => {
+					if (onJunctionEdit === undefined) return;
+					event.preventDefault();
+					event.stopPropagation();
+					session.selectEntity(ref);
+					onJunctionEdit(junction.id);
 				}}
 				onkeydown={(event) => {
 					handleKeyDown(event, ref);

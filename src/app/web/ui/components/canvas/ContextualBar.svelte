@@ -18,6 +18,7 @@
 		edit,
 		fold,
 		dissolve,
+		split,
 		onDelete,
 	}: {
 		entity: EntityRef;
@@ -28,6 +29,8 @@
 			{ readonly groupId: string; readonly closed: boolean; readonly run: () => void } | undefined;
 		/** Group only: members stay, the group goes. */
 		dissolve?: (() => void) | undefined;
+		/** Relation only: inserts a junction between its endpoints. */
+		split?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	const actionsLabel = {
@@ -45,6 +48,7 @@
 	let floating = $state<HTMLDivElement>();
 	const editShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Edit];
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
+	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
 
 	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
 	function foldIcon(closed: boolean): string {
@@ -78,7 +82,13 @@
 	enabled={unfoldKey}
 	onactivate={() => fold?.run()}
 />
-{#if edit ?? ownFold ?? dissolve ?? onDelete}
+<CanvasShortcut
+	shortcut={junctionShortcut}
+	scopes={[viewportElement, floating]}
+	enabled={split !== undefined}
+	onactivate={() => split?.()}
+/>
+{#if edit ?? ownFold ?? dissolve ?? split ?? onDelete}
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
@@ -124,6 +134,19 @@
 			>
 				<Icon name="phosphor:squares-four" />
 				<span>Dissoudre</span>
+			</button>
+		{/if}
+		{#if split}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-label={`Insérer une jonction sur ${entity.id}`}
+				aria-keyshortcuts={shortcutKeyshortcuts(junctionShortcut)}
+				title={shortcutTitle(junctionShortcut)}
+				onclick={split}
+			>
+				<Icon name="phosphor:git-merge" />
+				<span><span class="underline decoration-1 underline-offset-2">J</span>onction</span>
 			</button>
 		{/if}
 		{#if onDelete}

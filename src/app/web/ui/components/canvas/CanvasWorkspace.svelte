@@ -1,5 +1,9 @@
 <script lang="ts">
-	import type { LogicDocument } from '../../../../../lib/core/document/logic-document';
+	import {
+		type JunctionOperator,
+		JunctionOperator as Operator,
+		type LogicDocument,
+	} from '../../../../../lib/core/document/logic-document';
 	import {
 		type DocumentCommandOutcome,
 		DocumentCommandOutcomeKind,
@@ -19,11 +23,14 @@
 		groupFields,
 		groupFoldToggle,
 		groupStyleUpdate,
+		junctionInsertion,
+		junctionOperatorUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind } from '../../canvas/canvas-entity';
 	import { groupableNodeIds } from '../../canvas/group-edit';
+	import { planJunctionInsertion } from '../../canvas/junction-insertion';
 	import { layoutDirectionLabels } from '../../canvas/layout-direction-labels';
 	import {
 		type NodeCreationPlan,
@@ -36,6 +43,7 @@
 	import CanvasInteractionStatus from './CanvasInteractionStatus.svelte';
 	import CanvasViewportControls from './CanvasViewportControls.svelte';
 	import GroupDialog from './GroupDialog.svelte';
+	import JunctionDialog from './JunctionDialog.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
 	import NodeDialog from './NodeDialog.svelte';
 
@@ -56,13 +64,17 @@
 		base: GroupFields;
 		draft: GroupFields;
 	}>();
+	let editingJunction = $state<{ id: string; base: JunctionOperator; draft: JunctionOperator }>();
+	let lastOperator = $state<JunctionOperator>(Operator.Xor);
 	let lastNatureId = $state<string>();
 	let busy = $state(false);
 	let error = $state('');
 	let model = $state.raw<LogicDocument>();
 	let layoutDirection = $derived(model?.layout.direction);
 	let natures = $derived(model?.natures ?? []);
-	let interactive = $derived(creation === undefined && editingGroup === undefined && !busy);
+	let interactive = $derived(
+		creation === undefined && editingGroup === undefined && editingJunction === undefined && !busy,
+	);
 	let groupable = $derived.by(() => {
 		if (model === undefined || session === undefined) return undefined;
 		return groupableNodeIds(model, session.selection.values());
@@ -211,6 +223,41 @@
 		session.selectEntity({ kind: EntityKind.Group, id: groupId });
 		openGroupEditor(groupId, 'name');
 	}
+	function openJunctionEditor(junctionId: string): void {
+		const current = opened;
+		if (!current.ok) return;
+		const junction = current.value.read().junctions.find(({ id }) => id === junctionId);
+		if (junction === undefined) return;
+		editingJunction = { id: junctionId, base: junction.operator, draft: junction.operator };
+	}
+	async function saveJunction(): Promise<void> {
+		const current = opened;
+		const editing = editingJunction;
+		if (!current.ok || editing === undefined || busy) return;
+		if (editing.draft !== editing.base) {
+			const saved = await execute(() =>
+				current.value.session.dispatch([junctionOperatorUpdate(editing.id, editing.draft)]),
+			);
+			if (!saved) return;
+		}
+		lastOperator = editing.draft;
+		editingJunction = undefined;
+	}
+	/** Threads a junction through the relation, selects it, then asks for its operator. */
+	async function insertJunction(relationId: string): Promise<void> {
+		const current = opened;
+		if (!current.ok || !session || busy) return;
+		const plan = planJunctionInsertion(current.value.read(), relationId, {
+			junctionId: crypto.randomUUID(),
+			relationId: () => crypto.randomUUID(),
+			operator: lastOperator,
+		});
+		if (plan === undefined) return;
+		const inserted = await execute(() => current.value.session.dispatch(junctionInsertion(plan)));
+		if (!inserted) return;
+		session.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
+		openJunctionEditor(plan.junction.id);
+	}
 	let session = $derived.by(() => {
 		if (!opened.ok) return undefined;
 		return new CanvasSession(opened.value);
@@ -253,6 +300,10 @@
 				onGroupDissolve={(groupId: string) => {
 					void dissolveGroup(groupId);
 				}}
+				onJunctionEdit={openJunctionEditor}
+				onRelationSplit={(relationId: string) => {
+					void insertJunction(relationId);
+				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}
 			/>
@@ -276,6 +327,24 @@
 				}}
 				ondissolve={() => {
 					void dissolveGroup(editing.id);
+				}}
+			/>
+		{/if}
+		{#if editingJunction}
+			{@const editing = editingJunction}
+			<JunctionDialog
+				operator={editing.draft}
+				{busy}
+				data={{ 'data-junction-editor': editing.id }}
+				onchange={(operator: JunctionOperator) => {
+					if (editingJunction !== undefined)
+						editingJunction = { ...editingJunction, draft: operator };
+				}}
+				onclose={() => {
+					editingJunction = undefined;
+				}}
+				onsubmit={() => {
+					void saveJunction();
 				}}
 			/>
 		{/if}

@@ -1,6 +1,7 @@
 import {
 	EndpointKind,
 	GroupState,
+	type JunctionOperator,
 	type LogicDocument,
 	type LogicGroup,
 	type LogicRelation,
@@ -45,6 +46,42 @@ export function connectedNodeCreation(
 	relations: readonly LogicRelation[],
 ): readonly SharedDocumentCommand[] {
 	return [nodeCreation(node), ...relations.map(relationCreation)];
+}
+
+/** Threads a junction through a relation: creations first, so no junction is ever unanchored. */
+export interface JunctionInsertion {
+	readonly junction: {
+		readonly id: string;
+		readonly operator: JunctionOperator;
+		readonly groupId?: string;
+		readonly laneId?: string;
+		readonly regionId?: string;
+	};
+	readonly incoming: LogicRelation;
+	readonly outgoing: LogicRelation;
+	readonly replacedRelationId: string;
+}
+
+export function junctionInsertion(plan: JunctionInsertion): readonly SharedDocumentCommand[] {
+	const { id, ...properties } = plan.junction;
+	return [
+		{ op: SharedCommandKind.Create, target: { kind: SharedElementKind.Junction, id }, properties },
+		relationCreation(plan.incoming),
+		relationCreation(plan.outgoing),
+		{ op: SharedCommandKind.DeleteRelations, ids: [plan.replacedRelationId] },
+	];
+}
+
+export function junctionOperatorUpdate(
+	junctionId: string,
+	operator: JunctionOperator,
+): SharedDocumentCommand {
+	return {
+		op: SharedCommandKind.Update,
+		target: { kind: SharedElementKind.Junction, id: junctionId },
+		set: { operator },
+		unset: [],
+	};
 }
 
 /** The executor derives the container from the members and refuses mixed containers. */
