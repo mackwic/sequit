@@ -56,12 +56,6 @@ function rootIndex(parents: number[], index: number): number {
 	return root;
 }
 
-function outermostBlock(blocks: GroupBlocks, id: string): string | undefined {
-	const outermost = blocks.chainOf(id)[0];
-	if (outermost === undefined && blocks.ids.has(id)) return id;
-	return outermost;
-}
-
 /** Join the two sets; returns whether they were distinct. */
 function union(parents: number[], left: number, right: number): boolean {
 	const leftRoot = rootIndex(parents, left);
@@ -86,7 +80,7 @@ export function rankedComponents(
 	let merged = false;
 	for (const [index, ids] of components.entries())
 		for (const id of ids) {
-			const outermost = outermostBlock(blocks, id);
+			const outermost = blocks.outermostOf(id);
 			if (outermost === undefined) continue;
 			const other = byBlock.get(outermost);
 			if (other === undefined) byBlock.set(outermost, index);

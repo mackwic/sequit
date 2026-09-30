@@ -30,9 +30,14 @@ export function envelopeOf(ids: readonly string[], bounds: ReadonlyMap<string, B
 	return { left: x, top: y, right, bottom };
 }
 
+/** Where boxes currently are; a map, or a view resolving moves still owed to them. */
+export interface BoundsLookup {
+	get(id: string): Bounds | undefined;
+}
+
 export function transverseEnvelope(
 	ids: readonly string[],
-	bounds: ReadonlyMap<string, Bounds>,
+	bounds: BoundsLookup,
 	vertical: boolean,
 ): Interval {
 	let start = Number.POSITIVE_INFINITY;

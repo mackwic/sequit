@@ -25,13 +25,52 @@ interface Arrangement {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
+	/** Shifts a moved block still owes its content; settled once every container is arranged. */
+	readonly pending: Map<string, number>;
 }
 
+/** A block moves its frame now and its content later, so a move costs the same at any depth. */
 function moveItem(arrangement: Arrangement, item: string, shift: number): void {
-	const { bounds, vertical, plan } = arrangement;
+	const { bounds, vertical, plan, pending } = arrangement;
 	translateTransversely(defined(bounds.get(item)), shift, vertical);
-	for (const id of plan.contents.get(item) ?? [])
-		translateTransversely(defined(bounds.get(id)), shift, vertical);
+	if (plan.spans.has(item)) pending.set(item, (pending.get(item) ?? 0) + shift);
+}
+
+/** Current bounds of an endpoint inside a container, including what its blocks still owe. */
+function currentBounds(
+	arrangement: Arrangement,
+	container: string | undefined,
+	id: string,
+): MutableBounds | undefined {
+	const { bounds, plan, pending, vertical } = arrangement;
+	const box = bounds.get(id);
+	if (box === undefined || pending.size === 0) return box;
+	let shift = 0;
+	for (
+		let block = plan.blocks.parentOf(id);
+		block !== undefined && block !== container;
+		block = plan.blocks.parentOf(block)
+	)
+		shift += pending.get(block) ?? 0;
+	if (shift === 0) return box;
+	const moved = { ...box };
+	translateTransversely(moved, shift, vertical);
+	return moved;
+}
+
+/** Hand every owed shift down, outermost blocks first, to the items each block carries. */
+function settlePending(arrangement: Arrangement): void {
+	const { bounds, plan, pending, vertical } = arrangement;
+	for (const container of plan.containers.toReversed()) {
+		if (container.id === undefined) continue;
+		const shift = pending.get(container.id) ?? 0;
+		if (shift === 0) continue;
+		for (const id of plan.children.get(container.id) ?? []) {
+			translateTransversely(defined(bounds.get(id)), shift, vertical);
+			if (plan.spans.has(id)) pending.set(id, (pending.get(id) ?? 0) + shift);
+		}
+	}
+	pending.clear();
 }
 
 function sizeOf(arrangement: Arrangement, item: string): number {
@@ -123,10 +162,10 @@ function arrangeContainer(arrangement: Arrangement, container: ContainerPlan): v
 	alignFamilies({
 		rows: container.rows,
 		links: container.links,
-		bounds,
+		bounds: { get: (id) => currentBounds(arrangement, container.id, id) },
 		vertical,
 		alignment: arrangement.alignment,
-		isWall: (item, rank, sign) => isWall(plan, item, rank, sign),
+		isWall: (item, index, sign) => isWall(plan, item, defined(container.ranks[index]), sign),
 		move: (item, shift) => {
 			moveItem(arrangement, item, shift);
 		},
@@ -153,13 +192,14 @@ export function arrangeFamilies(input: {
 	readonly alignment?: BranchAlignment | undefined;
 }): void {
 	const plan = blockPlan(input.rows, input.context);
-	const arrangement = { ...input, plan };
+	const arrangement = { ...input, plan, pending: new Map<string, number>() };
 	const [root] = plan.containers;
 	if (plan.spans.size === 0 && root !== undefined) {
 		alignFamilies({ ...input, rows: root.rows, links: root.links });
 		return;
 	}
 	for (const container of plan.containers) arrangeContainer(arrangement, container);
+	settlePending(arrangement);
 }
 
 /** Junction members of a block stay within its padding, where its frame already stands. */
@@ -173,7 +213,7 @@ export function clampBlockJunctions(input: {
 	const plan = blockPlan(rows, context);
 	if (plan.spans.size === 0) return;
 	for (const id of rows.junction.flat()) {
-		const block = plan.blocks.chainOf(id).at(-1);
+		const block = plan.blocks.parentOf(id);
 		if (block === undefined) continue;
 		const frame = defined(bounds.get(block));
 		const box = defined(bounds.get(id));

@@ -1,6 +1,6 @@
 import { defined } from '../../document/logic-document';
 import { deriveEndpointRows, type EndpointRows } from '../../ordering/endpoint-order';
-import type { GroupBlocks } from './group-blocks';
+import { expandSlots, type GroupBlocks, rowContainers } from './group-blocks';
 
 /** Placement rows currently follow logical rank; junction rows occupy the following interval. */
 export type PlacementRows = EndpointRows;
@@ -22,16 +22,11 @@ function contiguousRow(
 	blocks: GroupBlocks,
 	keys: ReadonlyMap<string, number>,
 ): readonly string[] {
-	const chains = new Map(row.map((id) => [id, [...blocks.chainOf(id), id]]));
-	return row.toSorted((left, right) => {
-		const leftChain = defined(chains.get(left));
-		const rightChain = defined(chains.get(right));
-		let depth = 0;
-		while (leftChain[depth] === rightChain[depth]) depth += 1;
-		return (
-			defined(keys.get(defined(leftChain[depth]))) - defined(keys.get(defined(rightChain[depth])))
-		);
-	});
+	if (row.length < 2) return row;
+	const { top, slots } = rowContainers(row, blocks);
+	for (const items of slots.values())
+		items.sort((left, right) => defined(keys.get(left)) - defined(keys.get(right)));
+	return expandSlots(slots, top);
 }
 
 /** Documentary keys of items and blocks: a block takes its first descendant's key. */
@@ -41,10 +36,21 @@ function blockSlotKeys(
 	orderById: ReadonlyMap<string, number>,
 ): ReadonlyMap<string, number> {
 	const keys = new Map<string, number>();
-	for (const id of ids) {
+	const lower = (id: string, key: number): boolean => {
+		const known = keys.get(id);
+		if (known !== undefined && known <= key) return false;
+		keys.set(id, key);
+		return true;
+	};
+	// Each key climbs only while it lowers a block key, so every block is lowered at most once
+	// per smaller descendant key met in increasing order.
+	for (const id of ids.toSorted(
+		(left, right) => defined(orderById.get(left)) - defined(orderById.get(right)),
+	)) {
 		const key = defined(orderById.get(id));
 		keys.set(id, key);
-		for (const block of blocks.chainOf(id)) keys.set(block, Math.min(keys.get(block) ?? key, key));
+		for (let block = blocks.parentOf(id); block !== undefined; block = blocks.parentOf(block))
+			if (!lower(block, key)) break;
 	}
 	return keys;
 }
@@ -69,7 +75,7 @@ export function preparePlacementRows(input: {
 		junctionIds: input.junctionIds,
 		maximumRank: input.maximumRank,
 	});
-	if (!ids.some((id) => blocks.chainOf(id).length > 0)) return rows;
+	if (!ids.some((id) => blocks.parentOf(id) !== undefined)) return rows;
 	const keys = blockSlotKeys(
 		ids.filter((id) => !input.junctionIds.has(id)),
 		blocks,

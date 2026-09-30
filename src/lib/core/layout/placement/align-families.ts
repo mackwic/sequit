@@ -17,11 +17,16 @@ export interface FamilyLinks {
 	readonly upAnchors?: readonly ReadonlyMap<string, readonly string[]>[] | undefined;
 }
 
+interface MutableBoundsLookup {
+	get(id: string): MutableBounds | undefined;
+}
+
 export interface FamilyAlignmentInput {
 	/** Row items by rank: endpoints, or blocks standing for a whole group. */
 	readonly rows: readonly (readonly string[])[];
 	readonly links: FamilyLinks;
-	readonly bounds: ReadonlyMap<string, MutableBounds>;
+	/** Current bounds by id; only reads are needed when `move` is given. */
+	readonly bounds: MutableBoundsLookup;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
 	/** A multi-row item stays put in a row, as a wall for its neighbors. */

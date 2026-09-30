@@ -73,16 +73,33 @@ function blockAverage(
 	return { sum, count };
 }
 
-function blockMembers(structure: LayoutStructure): ReadonlyMap<string, ReadonlySet<string>> {
+/** Endpoints inside each block of the bands, the block included; other blocks are not visited. */
+function blockMembers(
+	structure: LayoutStructure,
+	order: RankOrder,
+): ReadonlyMap<string, ReadonlySet<string>> {
 	const blocks = groupBlocks(structure.graph);
 	const members = new Map<string, Set<string>>();
-	if (blocks.ids.size === 0) return members;
-	for (const id of structure.graph.rankableEndpointIds)
-		for (const block of blocks.chainOf(id)) {
-			const inside = members.get(block) ?? new Set([block]);
-			inside.add(id);
-			members.set(block, inside);
-		}
+	const banded = order.flat().filter((id) => blocks.ids.has(id));
+	if (banded.length === 0) return members;
+	const children = new Map<string, string[]>();
+	for (const id of new Set([...structure.graph.rankableEndpointIds, ...blocks.ids])) {
+		const parent = blocks.parentOf(id);
+		if (parent === undefined) continue;
+		const list = children.get(parent) ?? [];
+		list.push(id);
+		children.set(parent, list);
+	}
+	for (const block of banded) {
+		const inside = new Set([block]);
+		const pending = [block];
+		for (let next = pending.pop(); next !== undefined; next = pending.pop())
+			for (const child of children.get(next) ?? []) {
+				inside.add(child);
+				pending.push(child);
+			}
+		members.set(block, inside);
+	}
 	return members;
 }
 
@@ -95,7 +112,7 @@ export function barycentricSweep(input: SweepInput, order: RankOrder, reverse: b
 	const indices = bands.map((_, index) => index);
 	if (reverse) indices.reverse();
 	const relations = input.structure.graph.relations.map(({ relation }) => relation);
-	const members = blockMembers(input.structure);
+	const members = blockMembers(input.structure, order);
 	for (const index of indices) {
 		const row = defined(bands[index]);
 		const documentary = defined(input.domain.bands[index]);

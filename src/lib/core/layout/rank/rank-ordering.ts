@@ -1,5 +1,11 @@
 import { defined, EndpointKind } from '../../document/logic-document';
-import { type GroupBlocks, groupBlocks } from '../structure/group-blocks';
+import {
+	expandSlots,
+	type GroupBlocks,
+	groupBlocks,
+	type RowContainers,
+	rowContainers,
+} from '../structure/group-blocks';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import type { RankDomain, RankOrder } from './rank-order';
 import { validateRankOrder } from './rank-order';
@@ -17,36 +23,6 @@ export interface RankOrderDomain extends RankDomain {
 	readonly blockIds: ReadonlySet<string>;
 }
 
-/** Direct slots of every container present in a contiguous row, root first, then preorder. */
-function containerSlots(
-	row: readonly string[],
-	blocks: GroupBlocks,
-): Map<string | undefined, string[]> {
-	const slots = new Map<string | undefined, string[]>();
-	for (const id of row) {
-		const chain = [...blocks.chainOf(id), id];
-		let container: string | undefined;
-		for (const slot of chain) {
-			const list = slots.get(container) ?? [];
-			if (list.at(-1) !== slot) list.push(slot);
-			slots.set(container, list);
-			container = slot;
-		}
-	}
-	return slots;
-}
-
-function expandSlots(
-	slots: ReadonlyMap<string | undefined, readonly string[]>,
-	container: string | undefined,
-	row: string[],
-): void {
-	for (const slot of slots.get(container) ?? []) {
-		if (slots.has(slot)) expandSlots(slots, slot, row);
-		else row.push(slot);
-	}
-}
-
 function movable(structure: LayoutStructure, blocks: GroupBlocks, id: string): boolean {
 	if (blocks.ids.has(id)) return true;
 	return structure.graph.endpointsById.get(id)?.entity.kind === EndpointKind.Node;
@@ -58,7 +34,8 @@ function rowBands(
 	row: readonly string[],
 ): readonly (readonly [string | undefined, string[]])[] {
 	const bands: (readonly [string | undefined, string[]])[] = [];
-	for (const [container, slots] of containerSlots(row, blocks)) {
+	if (row.length < 2) return bands;
+	for (const [container, slots] of rowContainers(row, blocks).slots) {
 		const band = slots.filter((id) => movable(structure, blocks, id));
 		if (band.length >= 2) bands.push([container, band]);
 	}
@@ -136,7 +113,7 @@ function reorderedRow(
 	bands: ReadonlyMap<string | undefined, readonly string[]>,
 ): readonly string[] {
 	const blocks = groupBlocks(structure.graph);
-	const slots = containerSlots(row, blocks);
+	const { top, slots } = rowContainers(row, blocks);
 	for (const [container, band] of bands) {
 		const next = band.values();
 		slots.set(
@@ -147,9 +124,7 @@ function reorderedRow(
 			}),
 		);
 	}
-	const result: string[] = [];
-	expandSlots(slots, undefined, result);
-	return result;
+	return expandSlots(slots, top);
 }
 
 /** Apply a validated slot permutation, block orders repaired, retaining every pinned slot. */
@@ -162,10 +137,18 @@ export function applyRankOrder(
 	const repaired = repairBlockOrder(domain, order);
 	const blocks = groupBlocks(structure.graph);
 	const changed = new Map<number, Map<number, Map<string | undefined, readonly string[]>>>();
+	// Several bands share a row, one per container: group the row once.
+	const rowsByRow = new Map<readonly string[], RowContainers>();
 	for (const [bandIndex, location] of domain.locations.entries()) {
 		const band = defined(repaired[bandIndex]);
 		const component = defined(structure.components[location.componentIndex]);
-		const current = containerSlots(defined(component.rows.ordinary[location.rank]), blocks)
+		const row = defined(component.rows.ordinary[location.rank]);
+		let containers = rowsByRow.get(row);
+		if (containers === undefined) {
+			containers = rowContainers(row, blocks);
+			rowsByRow.set(row, containers);
+		}
+		const current = containers.slots
 			.get(location.container)
 			?.filter((id) => movable(structure, blocks, id));
 		if (band.every((id, index) => id === current?.[index])) continue;
