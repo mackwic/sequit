@@ -77,6 +77,10 @@ Validation, scenario generation, graph/rank preparation for layout, measurement 
 
 Each registration uses a fixed 250 ms warmup and at least 1000 ms of measured sampling. Sampling duration, rather than a fixed iteration count, allows fast cases to collect many observations without making slow cases unbounded. Vitest's benchmark table is the detailed report; generated machine-specific output is not committed as a golden baseline.
 
+## Temporary Budget Headroom
+
+By explicit user decision, while the group-layout features land, both gates multiply every calibrated cell (snapshot and incremental) by `LAYOUT_PERFORMANCE_BUDGET_HEADROOM` (currently 2, in `layout-performance-policy.ts`). The tables below and in the budget files remain the calibrated ceilings; profiling and optimization work is expected to bring the factor back to 1.
+
 ## Calibrated Snapshot Budgets
 
 The gate warms each prepared case three times, records 11 independent public-API durations with `performance.now()`, and compares their median with the strict upper bound below. The complete matrix is materialized in `snapshot-layout-budgets.ts`. Historical cells retain their original calibration; both lane rows below use the separately recorded calibration.

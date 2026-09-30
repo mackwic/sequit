@@ -2,6 +2,7 @@ import {
 	LAYOUT_PERFORMANCE_SCENARIO_NAMES,
 	type LayoutPerformanceScenarioName,
 } from '../../../src/app/workshop/fixtures/layout-performance/scenario-name';
+import { LAYOUT_PERFORMANCE_BUDGET_HEADROOM } from './layout-performance-policy';
 
 export const INCREMENTAL_LAYOUT_GROWTH_BUCKETS = [
 	{ name: '1-9', minimumNodeIndex: 1, maximumNodeIndex: 9 },
@@ -78,5 +79,5 @@ export function incrementalLayoutBudgetMs(
 	scenario: LayoutPerformanceScenarioName,
 	bucket: IncrementalLayoutGrowthBucketName,
 ): number | undefined {
-	return INCREMENTAL_LAYOUT_BUDGETS_MS[scenario][bucket];
+	return INCREMENTAL_LAYOUT_BUDGETS_MS[scenario][bucket] * LAYOUT_PERFORMANCE_BUDGET_HEADROOM;
 }

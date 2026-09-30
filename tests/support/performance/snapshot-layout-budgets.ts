@@ -6,6 +6,7 @@ import {
 	LAYOUT_PERFORMANCE_SCENARIO_NAMES,
 	type LayoutPerformanceScenarioName,
 } from '../../../src/app/workshop/fixtures/layout-performance/scenario-name';
+import { LAYOUT_PERFORMANCE_BUDGET_HEADROOM } from './layout-performance-policy';
 
 type SnapshotLayoutBudgets = Readonly<
 	Record<
@@ -60,5 +61,5 @@ export function layoutPerformanceBudgetMs(
 	scenario: LayoutPerformanceScenarioName,
 	nodeCount: LayoutPerformanceNodeCount,
 ): number | undefined {
-	return SNAPSHOT_LAYOUT_BUDGETS_MS[scenario][nodeCount];
+	return SNAPSHOT_LAYOUT_BUDGETS_MS[scenario][nodeCount] * LAYOUT_PERFORMANCE_BUDGET_HEADROOM;
 }
