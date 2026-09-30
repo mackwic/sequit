@@ -2,7 +2,10 @@ import type * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
 import type { DocumentCommandOutcome } from '../document/document-command-contracts';
-import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
+import type {
+	DocumentHistory,
+	DocumentSessionSubscriber,
+} from '../document/document-session-contracts';
 import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import type { ConflictCode } from './session-failure';
 import type { LocalPresence, ParticipantPresence } from './session-wire';
@@ -56,6 +59,8 @@ export interface DocumentSession {
 	text(target: SharedTarget, field: string): Y.Text | undefined;
 	/** Returns false when the target is gone or text is not editable right now. */
 	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean;
+	/** Local sessions keep a history of their own edits; a collaborative session has none yet. */
+	readonly history?: DocumentHistory;
 	destroy(): void;
 }
 

@@ -8,6 +8,7 @@
 		type DocumentCommandOutcome,
 		DocumentCommandOutcomeKind,
 	} from '../../../../../lib/infrastructure/document/document-command-contracts';
+	import type { DocumentHistoryAvailability } from '../../../../../lib/infrastructure/document/document-session-contracts';
 	import {
 		newNodeFrom,
 		type NodeFields,
@@ -29,6 +30,7 @@
 	} from '../../../document/document-commands';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind } from '../../canvas/canvas-entity';
+	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
 	import { layoutDirectionLabels } from '../../canvas/layout-direction-labels';
@@ -41,6 +43,7 @@
 	import CanvasActions from './CanvasActions.svelte';
 	import CanvasGestures from './CanvasGestures.svelte';
 	import CanvasInteractionStatus from './CanvasInteractionStatus.svelte';
+	import CanvasShortcut from './CanvasShortcut.svelte';
 	import CanvasViewportControls from './CanvasViewportControls.svelte';
 	import GroupDialog from './GroupDialog.svelte';
 	import JunctionDialog from './JunctionDialog.svelte';
@@ -70,6 +73,7 @@
 	let busy = $state(false);
 	let error = $state('');
 	let model = $state.raw<LogicDocument>();
+	let history = $state<DocumentHistoryAvailability>({ undo: false, redo: false });
 	let layoutDirection = $derived(model?.layout.direction);
 	let natures = $derived(model?.natures ?? []);
 	let interactive = $derived(
@@ -267,6 +271,7 @@
 		const current = opened;
 		if (!current.ok) {
 			model = undefined;
+			history = { undo: false, redo: false };
 			onopened?.(undefined);
 			return;
 		}
@@ -275,15 +280,40 @@
 		const stop = current.value.subscribe(() => {
 			model = current.value.read();
 		});
+		const sessionHistory = current.value.session.history;
+		history = sessionHistory?.availability() ?? { undo: false, redo: false };
+		const stopHistory = sessionHistory?.subscribe((availability) => {
+			history = availability;
+		});
 		return () => {
 			stop();
+			stopHistory?.();
 			current.value.destroy();
 		};
 	});
+	/** History steps publish like any change; nothing else to refresh. */
+	function undo(): void {
+		if (!opened.ok || !interactive) return;
+		opened.value.session.history?.undo();
+	}
+	function redo(): void {
+		if (!opened.ok || !interactive) return;
+		opened.value.session.history?.redo();
+	}
 </script>
 
 <section class="relative min-h-0 flex-1 overflow-hidden" aria-label="Canvas logique">
 	{#if opened.ok && session}
+		<CanvasShortcut
+			shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Undo]}
+			enabled={interactive && history.undo}
+			onactivate={undo}
+		/>
+		<CanvasShortcut
+			shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Redo]}
+			enabled={interactive && history.redo}
+			onactivate={redo}
+		/>
 		<CanvasGestures
 			{session}
 			enabled={interactive}

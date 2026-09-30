@@ -1105,6 +1105,60 @@ test('deleting a selected relation preserves its endpoints', async ({ page }) =>
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 });
 
+test('undoes and redoes accepted edits step by step, leaving a text field its own history', async ({
+	page,
+}) => {
+	await page.goto('/');
+	const node = page.locator('[data-node-id="traceable-edits"]');
+	await expect(node).toContainText('ALCOA+');
+	const nodes = await page.locator('[data-node-id]').count();
+	const relations = await page.locator('[data-relation-id]').count();
+
+	// Nothing to undo yet: the chord is inert.
+	await page.getByRole('region', { name: 'Canvas viewport' }).focus();
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes);
+
+	// One text save is one step; inside the field, the chord stays native.
+	await node.dblclick();
+	const textarea = page.getByRole('textbox', { name: 'Contenu' });
+	await textarea.fill('Première version');
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toBeVisible();
+	await textarea.fill('Seconde version');
+	await page.keyboard.press('Shift+Enter');
+	await expect(node).toContainText('Seconde version');
+
+	// A deletion with its incident relations is one step too.
+	await node.click();
+	await page.keyboard.press('Delete');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes - 1);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(relations - 1);
+
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
+	await expect(node).toContainText('Seconde version');
+
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(node).toContainText('ALCOA+');
+
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(node).toContainText('Seconde version');
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes - 1);
+
+	// A new edit drops the redo branch.
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes);
+	await page.locator('[data-node-id="training-roi"]').click();
+	await page.keyboard.press('Delete');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes - 1);
+	await page.keyboard.press('ControlOrMeta+Shift+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(nodes - 1);
+	await expect(node).toHaveCount(1);
+});
+
 test('double-click on group background creates a member; canvas background resets the parent', async ({
 	page,
 }) => {

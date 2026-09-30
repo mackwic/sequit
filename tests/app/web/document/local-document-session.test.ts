@@ -426,3 +426,73 @@ describe('local document session lifecycle', () => {
 		expect(ydoc.getMap('sequit.meta').get('title')).toBe(title);
 	});
 });
+
+describe('local document history', () => {
+	it('steps back over one accepted batch at a time and forward again, publishing each step', async () => {
+		const document = await reference();
+		const session = createLocalDocumentSession(document);
+		const subscriber = vi.fn();
+		session.subscribe(subscriber);
+		const availability = vi.fn();
+		session.history.subscribe(availability);
+		expect(session.history.availability()).toEqual({ undo: false, redo: false });
+		expect(session.history.undo()).toBe(false);
+		expect(session.history.redo()).toBe(false);
+		expect(subscriber).not.toHaveBeenCalled();
+
+		await session.dispatch([goal('first')]);
+		await session.dispatch([
+			goal('second'),
+			relationCreation({ id: 'first-second', from: 'first', to: 'second' }),
+		]);
+		expect(availability).toHaveBeenLastCalledWith({ undo: true, redo: false });
+
+		expect(session.history.undo()).toBe(true);
+		expect(session.read().nodes.map(({ id }) => id)).toContain('first');
+		expect(session.read().nodes.map(({ id }) => id)).not.toContain('second');
+		expect(session.read().relations.map(({ id }) => id)).not.toContain('first-second');
+		expect(session.history.availability()).toEqual({ undo: true, redo: true });
+
+		expect(session.history.undo()).toBe(true);
+		expect(session.read()).toEqual(document);
+		expect(session.history.availability()).toEqual({ undo: false, redo: true });
+
+		expect(session.history.redo()).toBe(true);
+		expect(session.read().nodes.map(({ id }) => id)).toContain('first');
+		expect(subscriber).toHaveBeenCalledTimes(5);
+		expect(session.readSourceState()).toMatchObject({ kind: SourceDocumentStateKind.Valid });
+		session.destroy();
+	});
+
+	it('treats a text save as one step and drops the redo branch after a new edit', async () => {
+		const document = await reference();
+		const session = createLocalDocumentSession(document);
+		const [node] = document.nodes;
+		if (node === undefined) throw new Error('Expected a reference node');
+		const target = { kind: SharedElementKind.Node, id: node.id } as const;
+
+		expect(session.updateText(target, 'markdown', 'Changed once')).toBe(true);
+		expect(session.updateText(target, 'markdown', 'Changed twice')).toBe(true);
+		expect(session.history.undo()).toBe(true);
+		expect(session.read().nodes.find(({ id }) => id === node.id)?.markdown).toBe('Changed once');
+
+		await session.dispatch([goal('after-undo')]);
+		expect(session.history.availability()).toEqual({ undo: true, redo: false });
+		expect(session.history.redo()).toBe(false);
+
+		session.history.undo();
+		session.history.undo();
+		expect(session.read()).toEqual(document);
+		session.destroy();
+	});
+
+	it('leaves a refused batch out of the history', async () => {
+		const session = createLocalDocumentSession(await reference());
+		const outcome = await session.dispatch([
+			relationCreation({ id: 'dangling', from: 'missing', to: 'also-missing' }),
+		]);
+		expect(outcome.kind).toBe(DocumentCommandOutcomeKind.Rejected);
+		expect(session.history.availability()).toEqual({ undo: false, redo: false });
+		session.destroy();
+	});
+});

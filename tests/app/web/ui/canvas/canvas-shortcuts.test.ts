@@ -60,13 +60,24 @@ describe('matchesShortcut', () => {
 		);
 	});
 
+	it('undoes with Ctrl or Cmd plus Z, redoes with Shift as well, whatever the case of Z', () => {
+		expect(press(CanvasShortcutId.Undo, { key: 'z', ctrlKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.Undo, { key: 'z', metaKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.Undo, { key: 'z' })).toBe(false);
+		expect(press(CanvasShortcutId.Undo, { key: 'z', ctrlKey: true, shiftKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Undo, { key: 'z', ctrlKey: true, altKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Redo, { key: 'Z', metaKey: true, shiftKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.Redo, { key: 'z', ctrlKey: true, shiftKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.Redo, { key: 'z', ctrlKey: true })).toBe(false);
+	});
+
 	it.each(Object.values(CANVAS_SHORTCUTS))(
 		'yields $id when repeated, composing, or already answered',
 		(shortcut) => {
 			const init: KeyboardEventInit = {
 				key: shortcut.keys[0],
 				cancelable: true,
-				...(shortcut.chord && { ctrlKey: true, shiftKey: true }),
+				...(shortcut.chord && { ctrlKey: true, shiftKey: shortcut.chord.shift === true }),
 			};
 			expect(matchesShortcut(shortcut, new KeyboardEvent('keydown', init))).toBe(true);
 			expect(
@@ -95,6 +106,13 @@ it.each([
 		'Control+Shift+Enter Meta+Shift+Enter',
 	],
 	[CanvasShortcutId.Delete, 'Suppr', 'Supprimer (Suppr)', 'Delete Backspace'],
+	[CanvasShortcutId.Undo, 'Cmd/Ctrl+Z', 'Annuler (Cmd/Ctrl+Z)', 'Control+z Meta+z'],
+	[
+		CanvasShortcutId.Redo,
+		'Cmd/Ctrl+Maj+Z',
+		'Rétablir (Cmd/Ctrl+Maj+Z)',
+		'Control+Shift+z Meta+Shift+z',
+	],
 ])('announces %s as %s, titled %s, with aria-keyshortcuts %s', (id, hint, title, aria) => {
 	const shortcut = CANVAS_SHORTCUTS[id];
 	expect(shortcutHint(shortcut)).toBe(hint);

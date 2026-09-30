@@ -34,6 +34,7 @@ import type {
 	SharedDocumentCommand,
 	SharedTarget,
 } from '../../../lib/infrastructure/document/shared-document-command';
+import { LocalDocumentHistory } from './local-document-history';
 
 type DocumentResult = YjsLiveDocumentResult<LogicDocument>;
 
@@ -52,6 +53,7 @@ export class LocalDocumentSession implements DocumentSession {
 	readonly #publicationQueue: DocumentResult[] = [];
 	readonly #commandOrigin = Symbol('sequit local document command');
 	readonly #textOrigin = Symbol('sequit local document text');
+	readonly history: LocalDocumentHistory;
 	#dispatchQueue: Promise<unknown> = Promise.resolve();
 	#committed: DocumentResult | undefined;
 	#published: LogicDocument;
@@ -69,6 +71,7 @@ export class LocalDocumentSession implements DocumentSession {
 		this.#sourceState = { kind: SourceDocumentStateKind.Valid, document: initial, revision: 0 };
 		this.#repository = new YjsDocumentRepository(document);
 		this.#stopRepository = this.#repository.observe(this.#observe);
+		this.history = new LocalDocumentHistory(document, [this.#commandOrigin, this.#textOrigin]);
 	}
 
 	read(): LogicDocument {
@@ -119,6 +122,7 @@ export class LocalDocumentSession implements DocumentSession {
 	destroy(): void {
 		if (this.#destroyed) return;
 		this.#destroyed = true;
+		this.history.destroy();
 		this.#stopRepository();
 		this.#repository.destroy();
 		this.#subscribers.clear();

@@ -9,7 +9,8 @@
 		onactivate,
 	}: {
 		shortcut: CanvasShortcut;
-		scopes: readonly (Element | undefined)[];
+		/** Elements the focus must be within; absent, the shortcut applies anywhere in the page. */
+		scopes?: readonly (Element | undefined)[];
 		enabled?: boolean;
 		onactivate: () => void;
 	} = $props();
@@ -18,7 +19,7 @@
 		const target = event.target;
 		if (!(target instanceof Element)) return;
 		if (isEditableTarget(target)) return;
-		if (!scopes.some((scope) => scope?.contains(target) === true)) return;
+		if (scopes !== undefined && !scopes.some((scope) => scope?.contains(target) === true)) return;
 		event.preventDefault();
 		onactivate();
 	}
