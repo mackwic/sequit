@@ -4,10 +4,18 @@ import { COMPONENT_GAP, ITEM_GAP } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import { commonContainer, type GroupBlocks, groupBlocks } from '../structure/group-blocks';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
-import { weaklyConnectedComponents } from '../structure/layout-components';
+import { relationComponentIndex } from '../structure/layout-components';
 import type { PlacementRows } from '../structure/placement-rows';
+import { rawAdjacency, throughJunctions } from '../structure/relation-adjacency';
 import { type FamilyLinks, flatFamilyLinks } from './align-families';
-import { blockSpans, type ContainerRows, containerRowsOf, type RankSpan } from './container-rows';
+import {
+	type BlockSpans,
+	blockSpans,
+	type ContainerRows,
+	containerRowsOf,
+	type RankSpan,
+	type RelatedAbove,
+} from './container-rows';
 
 /** The graph and group measurements families and blocks follow, independent of any one row. */
 export interface FamilyContext {
@@ -35,51 +43,8 @@ export interface BlockPlan {
 	readonly clusters: ReadonlyMap<string, readonly number[]>;
 }
 
-interface RawAdjacency {
-	readonly parents: ReadonlyMap<string, readonly string[]>;
-	readonly children: ReadonlyMap<string, readonly string[]>;
-}
-
 const plans = new WeakMap<PlacementRows, BlockPlan>();
-const adjacencies = new WeakMap<LogicGraph, RawAdjacency>();
-
-/** Relations as documented: a relation to a group reaches its frame, not its members. */
-function rawAdjacency(graph: LogicGraph): RawAdjacency {
-	const cached = adjacencies.get(graph);
-	if (cached !== undefined) return cached;
-	const parents = new Map<string, string[]>();
-	const children = new Map<string, string[]>();
-	const add = (edges: Map<string, string[]>, from: string, to: string): void => {
-		const list = edges.get(from) ?? [];
-		list.push(to);
-		edges.set(from, list);
-	};
-	for (const { relation } of graph.relations) {
-		add(parents, relation.from, relation.to);
-		add(children, relation.to, relation.from);
-	}
-	const adjacency = { parents, children };
-	adjacencies.set(graph, adjacency);
-	return adjacency;
-}
-
-/** Related ordinary endpoints, looking through junctions. */
-function throughJunctions(
-	id: string,
-	edges: ReadonlyMap<string, readonly string[]>,
-	junctionIds: ReadonlySet<string>,
-): ReadonlySet<string> {
-	const found = new Set<string>();
-	const seen = new Set<string>();
-	const pending = [...(edges.get(id) ?? [])];
-	for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-		if (seen.has(next)) continue;
-		seen.add(next);
-		if (junctionIds.has(next)) pending.push(...(edges.get(next) ?? []));
-		else found.add(next);
-	}
-	return found;
-}
+const NO_BLOCKS: BlockSpans = { spans: new Map(), innermostFirst: [] };
 
 interface MutableLinks {
 	readonly down: Map<string, string[]>[];
@@ -110,6 +75,12 @@ interface LinkContext extends LinkInput {
 	readonly linksOf: (container: string | undefined) => MutableLinks;
 }
 
+function spans(context: LinkContext, item: string, rank: number): boolean {
+	const span = context.spans.get(item);
+	if (span === undefined) return false;
+	return span.first <= rank && rank <= span.last;
+}
+
 function rangeOf(context: LinkContext, id: string): RankSpan | undefined {
 	const span = context.spans.get(id);
 	if (span !== undefined) return span;
@@ -131,6 +102,9 @@ function addRelation(context: LinkContext, child: string, parent: string): void 
 	const common = commonContainer(context.blocks, child, parent);
 	if (common === undefined) return;
 	const { container, left: childItem, right: parentItem } = common;
+	// A block standing in the other endpoint's row is beside it, not above or below it.
+	if (spans(context, childItem, parentRange.last) || spans(context, parentItem, childRange.first))
+		return;
 	const { indexOf } = defined(context.rows.get(container));
 	const links = context.linksOf(container);
 	// A block has no row where it is alone in the middle of its span: it is a wall there.
@@ -162,7 +136,38 @@ function blockLinks(
 	for (const child of [...rows.ordinary.flat(), ...input.spans.keys()])
 		for (const parent of throughJunctions(child, parents, context.junctionIds))
 			addRelation(linkContext, child, parent);
-	return byContainer;
+	return new Map([...byContainer].map(([container, links]) => [container, lookupOf(links)]));
+}
+
+function lookupOf(links: MutableLinks): FamilyLinks {
+	return {
+		related: (item, rank, sign) => {
+			let byRank = links.up;
+			if (sign > 0) byRank = links.down;
+			return byRank[rank]?.get(item) ?? [];
+		},
+		upAnchors: (item, rank) => links.upAnchors[rank]?.get(item),
+	};
+}
+
+const NO_LINKS: FamilyLinks = { related: () => [] };
+
+/** Items of a container a row item relates to, looking through junctions; blocks carry none. */
+function relatedItems(context: FamilyContext, blocks: GroupBlocks): RelatedAbove {
+	const { parents, children } = rawAdjacency(context.graph);
+	const itemFacing = (item: string, neighbor: string, container: string | undefined) => {
+		const common = commonContainer(blocks, item, neighbor);
+		if (common === undefined || common.container !== container) return [];
+		return [common.right];
+	};
+	return (item, _rank, container) => {
+		if (blocks.ids.has(item)) return [];
+		return [parents, children].flatMap((edges) =>
+			[...throughJunctions(item, edges, context.junctionIds)].flatMap((neighbor) =>
+				itemFacing(item, neighbor, container),
+			),
+		);
+	};
 }
 
 function childrenOf(
@@ -186,11 +191,15 @@ function childrenOf(
 function clustersOf(
 	graph: LogicGraph,
 	children: ReadonlyMap<string, readonly string[]>,
-	innermostFirst: readonly string[],
+	input: { readonly ids: readonly string[]; readonly innermostFirst: readonly string[] },
 ): ReadonlyMap<string, readonly number[]> {
+	const componentOf = relationComponentIndex(graph);
 	const clusters = new Map<string, readonly number[]>();
-	for (const [index, ids] of weaklyConnectedComponents(graph).entries())
-		for (const id of ids) clusters.set(id, [index]);
+	for (const id of input.ids) {
+		const index = componentOf.get(id);
+		if (index !== undefined) clusters.set(id, [index]);
+	}
+	const { innermostFirst } = input;
 	for (const block of innermostFirst) {
 		const union = new Set(clusters.get(block));
 		for (const id of children.get(block) ?? [])
@@ -200,20 +209,32 @@ function clustersOf(
 	return clusters;
 }
 
+const flatLinkCache = new WeakMap<PlacementRows, FamilyLinks>();
+
+/** Links of rows without blocks: every endpoint its own item, cached with the rows. */
+export function flatLinks(rows: PlacementRows, context: FamilyContext): FamilyLinks {
+	const cached = flatLinkCache.get(rows);
+	if (cached !== undefined) return cached;
+	const links = flatFamilyLinks({
+		rows: rows.ordinary,
+		parents: context.graph.outgoingByEndpointId,
+		children: context.graph.predecessorsByEndpointId,
+		junctionIds: context.junctionIds,
+	});
+	flatLinkCache.set(rows, links);
+	return links;
+}
+
 export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPlan {
 	const cached = plans.get(rows);
 	if (cached !== undefined) return cached;
 	const blocks = groupBlocks(context.graph);
-	const blockOrder = blockSpans(rows, blocks);
+	let blockOrder: BlockSpans = NO_BLOCKS;
+	if (blocks.ids.size > 0) blockOrder = blockSpans(rows, blocks);
 	const { spans, innermostFirst } = blockOrder;
 	let plan: BlockPlan;
 	if (spans.size === 0) {
-		const links = flatFamilyLinks({
-			rows: rows.ordinary,
-			parents: context.graph.outgoingByEndpointId,
-			children: context.graph.predecessorsByEndpointId,
-			junctionIds: context.junctionIds,
-		});
+		const links = flatLinks(rows, context);
 		plan = {
 			blocks,
 			containers: [
@@ -230,15 +251,18 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 			clusters: new Map(),
 		};
 	} else {
-		const containerRows = containerRowsOf(rows, blocks, blockOrder);
+		const containerRows = containerRowsOf(rows, blocks, blockOrder, relatedItems(context, blocks));
 		const links = blockLinks(rows, context, { blocks, spans, rows: containerRows });
 		const containers = [...innermostFirst, undefined].map((id) => ({
 			id,
 			...defined(containerRows.get(id)),
-			links: links.get(id) ?? { down: [], up: [] },
+			links: links.get(id) ?? NO_LINKS,
 		}));
 		const children = childrenOf(rows, blocks, spans);
-		const clusters = clustersOf(context.graph, children, innermostFirst);
+		const clusters = clustersOf(context.graph, children, {
+			ids: [...rows.ordinary.flat(), ...spans.keys()],
+			innermostFirst,
+		});
 		plan = { blocks, containers, spans, children, clusters };
 	}
 	plans.set(rows, plan);

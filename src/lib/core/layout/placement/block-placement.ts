@@ -7,6 +7,7 @@ import {
 	transverseStart,
 } from '../geometry/layout-frame';
 import { ITEM_GAP } from '../layout-settings';
+import { groupBlocks } from '../structure/group-blocks';
 import type { PlacementRows } from '../structure/placement-rows';
 import { alignFamilies, type BranchAlignment } from './align-families';
 import {
@@ -14,6 +15,7 @@ import {
 	blockPlan,
 	type ContainerPlan,
 	type FamilyContext,
+	flatLinks,
 	gapBetween,
 } from './block-plan';
 import { fitRowAnchors } from './fit-row-anchors';
@@ -94,10 +96,11 @@ function rowSize(arrangement: Arrangement, row: readonly string[]): number {
 function initialPlacement(arrangement: Arrangement, container: ContainerPlan): void {
 	const { bounds, vertical } = arrangement;
 	const placed = new Set<string>();
-	const crossLength = Math.max(0, ...container.rows.map((row) => rowSize(arrangement, row)));
-	for (const row of container.rows) {
+	const sizes = container.rows.map((row) => rowSize(arrangement, row));
+	const crossLength = Math.max(0, ...sizes);
+	for (const [rowIndex, row] of container.rows.entries()) {
 		if (row.length === 0) continue;
-		let cursor = (crossLength - rowSize(arrangement, row)) / 2;
+		let cursor = (crossLength - defined(sizes[rowIndex])) / 2;
 		const items = row.map((item, index) => {
 			const previous = row[index - 1];
 			let gap = ITEM_GAP;
@@ -191,6 +194,15 @@ export function arrangeFamilies(input: {
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
 }): void {
+	// Without any block, rows are flat: no plan, containers or frames to build.
+	if (groupBlocks(input.context.graph).ids.size === 0) {
+		alignFamilies({
+			...input,
+			rows: input.rows.ordinary,
+			links: flatLinks(input.rows, input.context),
+		});
+		return;
+	}
 	const plan = blockPlan(input.rows, input.context);
 	const arrangement = { ...input, plan, pending: new Map<string, number>() };
 	const [root] = plan.containers;
@@ -200,32 +212,4 @@ export function arrangeFamilies(input: {
 	}
 	for (const container of plan.containers) arrangeContainer(arrangement, container);
 	settlePending(arrangement);
-}
-
-/** Junction members of a block stay within its padding, where its frame already stands. */
-export function clampBlockJunctions(input: {
-	readonly rows: PlacementRows;
-	readonly context: FamilyContext;
-	readonly bounds: Map<string, MutableBounds>;
-	readonly vertical: boolean;
-}): void {
-	const { rows, context, bounds, vertical } = input;
-	const plan = blockPlan(rows, context);
-	if (plan.spans.size === 0) return;
-	for (const id of rows.junction.flat()) {
-		const block = plan.blocks.parentOf(id);
-		if (block === undefined) continue;
-		const frame = defined(bounds.get(block));
-		const box = defined(bounds.get(id));
-		const { padding, headerHeight } = defined(context.groups.get(block));
-		let low = transverseStart(frame, vertical) + padding;
-		if (!vertical) low += headerHeight;
-		const high = transverseStart(frame, vertical) + transverseSize(frame, vertical) - padding;
-		const size = transverseSize(box, vertical);
-		const start = transverseStart(box, vertical);
-		let target = Math.min(Math.max(start, low), high - size);
-		const overflow = size - (high - low);
-		if (overflow > 0) target = low - overflow / 2;
-		if (target !== start) translateTransversely(box, target - start, vertical);
-	}
 }

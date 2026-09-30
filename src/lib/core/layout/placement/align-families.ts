@@ -9,12 +9,11 @@ export interface BranchAlignment {
 	readonly offsets?: ReadonlyMap<string, number> | undefined;
 }
 
-/** Related endpoints of each row item, by rank: parents in the previous row, children in the next. */
+/** Related endpoints of row items: parents in the previous row (sign 1), children in the next. */
 export interface FamilyLinks {
-	readonly down: readonly ReadonlyMap<string, readonly string[]>[];
-	readonly up: readonly ReadonlyMap<string, readonly string[]>[];
+	readonly related: (item: string, rank: number, sign: 1 | -1) => readonly string[];
 	/** Endpoints inside a block item carrying its links to the next row; the block centers them. */
-	readonly upAnchors?: readonly ReadonlyMap<string, readonly string[]>[] | undefined;
+	readonly upAnchors?: ((item: string, rank: number) => readonly string[] | undefined) | undefined;
 }
 
 interface MutableBoundsLookup {
@@ -65,28 +64,30 @@ function sameMembers(left: readonly string[], right: readonly string[]): boolean
 	return true;
 }
 
-function rowFamilies(
-	input: FamilyAlignmentInput,
-	rank: number,
-	sign: 1 | -1,
-	links: ReadonlyMap<string, readonly string[]> | undefined,
-): readonly Family[] {
+/** Anchors of an item facing the next row; undefined when only its own box faces it. */
+function anchorsOf(input: FamilyAlignmentInput, id: string, rank: number, sign: 1 | -1) {
+	const { upAnchors } = input.links;
+	if (upAnchors === undefined) return undefined;
+	if (sign > 0) return [id];
+	return [...(upAnchors(id, rank) ?? [id])];
+}
+
+function rowFamilies(input: FamilyAlignmentInput, rank: number, sign: 1 | -1): readonly Family[] {
 	const result: Family[] = [];
 	for (const id of defined(input.rows[rank])) {
 		if (input.isWall?.(id, rank, sign) === true) {
 			result.push({ members: [id], related: [], fixed: true });
 			continue;
 		}
-		const related = links?.get(id) ?? [];
-		let anchors: readonly string[] = [id];
-		if (sign < 0) anchors = input.links.upAnchors?.[rank]?.get(id) ?? anchors;
+		const related = input.links.related(id, rank, sign);
+		const anchors = anchorsOf(input, id, rank, sign);
 		const previous = result.at(-1);
 		const open = previous !== undefined && !previous.fixed;
 		const joins = open && related.length > 0;
 		if (joins && sameMembers(previous.related, related)) {
 			previous.members.push(id);
-			previous.anchors?.push(...anchors);
-		} else result.push({ members: [id], related, fixed: false, anchors: [...anchors] });
+			if (anchors !== undefined) previous.anchors?.push(...anchors);
+		} else result.push({ members: [id], related, fixed: false, anchors });
 	}
 	return result;
 }
@@ -95,8 +96,8 @@ function familyPlan(input: FamilyAlignmentInput): FamilyPlan {
 	const cached = plans.get(input.links);
 	if (cached !== undefined) return cached;
 	const plan = {
-		down: input.rows.map((_, rank) => rowFamilies(input, rank, 1, input.links.down[rank])),
-		up: input.rows.map((_, rank) => rowFamilies(input, rank, -1, input.links.up[rank])),
+		down: input.rows.map((_, rank) => rowFamilies(input, rank, 1)),
+		up: input.rows.map((_, rank) => rowFamilies(input, rank, -1)),
 	};
 	plans.set(input.links, plan);
 	return plan;
@@ -223,12 +224,11 @@ export function flatFamilyLinks(input: {
 	const rowOf = new Map<string, number>();
 	for (const [rank, row] of input.rows.entries()) for (const id of row) rowOf.set(id, rank);
 	const { junctionIds } = input;
-	const collect = (edges: ReadonlyMap<string, readonly string[]>, offset: number) =>
-		input.rows.map((row, rank) => {
-			const pass = { edges, junctionIds, rowOf, neighborRank: rank + offset };
-			const links = new Map<string, readonly string[]>();
-			for (const id of row) links.set(id, relatedAcrossJunctions(id, pass));
-			return links;
-		});
-	return { down: collect(input.parents, -1), up: collect(input.children, 1) };
+	return {
+		related: (item, rank, sign) => {
+			let edges = input.children;
+			if (sign > 0) edges = input.parents;
+			return relatedAcrossJunctions(item, { edges, junctionIds, rowOf, neighborRank: rank - sign });
+		},
+	};
 }
