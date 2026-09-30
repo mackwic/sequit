@@ -1,0 +1,29 @@
+<script>
+	import { scenario } from './goal-into-group.scenario';
+	import source from './goal-into-group.scenario.ts?raw';
+	import VisualTest from '../../../../src/app/workshop/visual-tests/VisualTest.svelte';
+	let { settings = $bindable() } = $props();
+</script>
+
+# Un but relié à un besoin du groupe
+
+Ce graphe reprend toute la carte de l’effort documentaire : l’arbre du but à la
+racine, avec le groupe vide « Data team », et le groupe « Use cases » à côté.
+
+- **Séparés** : la carte actuelle. Le but et le groupe forment deux
+  composantes. Aucune relation ne se croise, chaque famille est centrée sur son
+  parent et aucune boîte étrangère n’entre dans le cadre du groupe.
+- **Reliés** : le but pointe vers « ALCOA+: All edits needs to be tracable »
+  (Traceable). Le but descend d’un rang et les deux arbres ne forment plus
+  qu’une composante. On attend que la carte reste aussi propre : le but à
+  droite du groupe, Traceable au bord droit de sa rangée, face au but, pour
+  que la relation entre dans le cadre sans croiser les autres. Toutes les
+  familles restent centrées et aucune relation ne se croise.
+
+Le cas « reliés » est un contrat pas encore tenu par le moteur : aujourd’hui,
+le but reste à gauche du groupe, sa relation traverse toute la première
+rangée du groupe, et l’ordre du groupe se défait (12 croisements, sept
+familles décentrées). La règle s’applique dans les quatre directions ; seuls
+les axes changent.
+
+<VisualTest {scenario} {source} bind:settings />
