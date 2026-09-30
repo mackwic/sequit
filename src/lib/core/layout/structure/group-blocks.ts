@@ -2,7 +2,7 @@ import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 
 /**
- * Groups enclosing a ranked ordinary endpoint. In layout each one is a rigid block: in every
+ * Groups enclosing a node. In layout each one is a rigid block: in every
  * row it spans, it occupies one contiguous slot of its container at one transverse position.
  * Nesting is exposed through parent links only, so deep hierarchies stay linear.
  */
@@ -22,10 +22,14 @@ function groupOf(graph: LogicGraph, id: string): string | undefined {
 	return graph.endpointsById.get(id)?.entity.groupId;
 }
 
+/**
+ * Only a node makes a group a block. A group holding nothing but empty groups expands to no
+ * endpoint, so its relations end on the group itself and it keeps an ordinary row slot.
+ */
 function blockIds(graph: LogicGraph): ReadonlySet<string> {
 	const ids = new Set<string>();
 	for (const id of graph.rankableEndpointIds) {
-		if (graph.endpointsById.get(id)?.kind === EndpointKind.Junction) continue;
+		if (graph.endpointsById.get(id)?.kind !== EndpointKind.Node) continue;
 		for (let group = groupOf(graph, id); group !== undefined; group = groupOf(graph, group)) {
 			if (ids.has(group)) break;
 			ids.add(group);
