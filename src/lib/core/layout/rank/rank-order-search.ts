@@ -18,7 +18,7 @@ import type { LayoutStructure } from '../structure/prepare-layout';
 import type { ReopenedOrder } from './block-passage-repair';
 import {
 	boundedRankOrderEnumerationSize,
-	lazyRankOrders,
+	enumerateRankOrders,
 	type RankOrder,
 	rankOrderKendallDistance,
 } from './rank-order';
@@ -261,7 +261,7 @@ class RankOrderSearch {
 	runExact(): void {
 		this.mode = RankSearchMode.Exact;
 		const { bands } = this.input.domain;
-		const orders = [...lazyRankOrders(this.input.domain, bands)]
+		const orders = enumerateRankOrders(this.input.domain, this.input.limits.completePipelines)
 			.map((order) => ({ order, kendall: rankOrderKendallDistance(order, bands) }))
 			.toSorted((left, right) => left.kendall - right.kendall);
 		for (const { order } of orders) if (!this.propose(order)) return;

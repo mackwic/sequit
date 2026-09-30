@@ -46,7 +46,6 @@ import {
 	countRankOrderCrossings,
 	documentaryRankOrder,
 	enumerateRankOrders,
-	lazyRankOrders,
 	type RankDomain,
 	type RankOrder,
 	type RankOrderAlgorithm,
@@ -716,19 +715,21 @@ describe('bounded lazy rank orders', () => {
 	});
 
 	it('visits documentary first, then every alternative exactly once, and measures inversions within bands', () => {
-		const domain = {
-			bands: [
-				['c', 'a', 'b'],
-				['y', 'x'],
-			],
-		};
 		const documentary = [
 			['b', 'c', 'a'],
 			['x', 'y'],
 		];
-		const orders = [...lazyRankOrders(domain, documentary)];
-		expect(() => [...lazyRankOrders(domain, [['x'], ['y']])]).toThrow(/documentary/);
+		const orders = enumerateRankOrders({ bands: documentary }, 12);
 		expect(orders[0]).toEqual(documentary);
+		// The last band varies fastest, from the documentary positions, never from the ids.
+		expect(orders[1]).toEqual([
+			['b', 'c', 'a'],
+			['y', 'x'],
+		]);
+		expect(orders[2]).toEqual([
+			['b', 'a', 'c'],
+			['x', 'y'],
+		]);
 		expect(orders).toHaveLength(12);
 		expect(new Set(orders.map((order) => JSON.stringify(order))).size).toBe(12);
 		expect(rankOrderKendallDistance(documentary, documentary)).toBe(0);
@@ -1631,8 +1632,9 @@ describe('dedicated bounded geometric rank search', () => {
 
 	it('reopens walled passages in documentary order whatever ids the relations carry', () => {
 		// U and V both stand beyond block B from their upper neighbour in block A: each repair moves
-		// its item just before the wall, so the one repaired last ends nearer to it. Which one that
-		// is used to follow the relation ids.
+		// its item just past the wall, before it when A is on the left and after it when A is on the
+		// right. Which one ended nearer to the wall used to follow the relation ids, then the
+		// repair order, reversing U and V when they moved rightward.
 		const base = validLogicDocument();
 		const ends: readonly (readonly [string, string])[] = [
 			['at', 'ab'],
@@ -1681,9 +1683,13 @@ describe('dedicated bounded geometric rank search', () => {
 			]);
 			const topology = new RankTopologyOracle(structure, domain);
 			return {
-				reopened: topology.passages.reopen([
+				leftward: topology.passages.reopen([
 					['A', 'B'],
 					['A', 'B', 'u', 'v'],
+				]),
+				rightward: topology.passages.reopen([
+					['B', 'A'],
+					['u', 'v', 'B', 'A'],
 				]),
 				selected: layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements).witness
 					.selectedOrder,
@@ -1691,10 +1697,17 @@ describe('dedicated bounded geometric rank search', () => {
 		};
 		const names = ends.map((_, index) => `r${index + 1}`);
 		const reference = outcome(names);
-		expect(reference.reopened).toEqual({
+		expect(reference.leftward).toEqual({
 			order: [
 				['A', 'B'],
 				['A', 'u', 'v', 'B'],
+			],
+			closed: false,
+		});
+		expect(reference.rightward).toEqual({
+			order: [
+				['B', 'A'],
+				['B', 'u', 'v', 'A'],
 			],
 			closed: false,
 		});

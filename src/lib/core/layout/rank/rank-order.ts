@@ -204,46 +204,6 @@ export function boundedRankOrderEnumerationSize(
 	return product;
 }
 
-function* lazyBandPermutations(
-	available: readonly string[],
-	chosen: readonly string[] = [],
-): IterableIterator<readonly string[]> {
-	if (available.length === 0) {
-		yield chosen;
-		return;
-	}
-	for (let index = 0; index < available.length; index += 1)
-		yield* lazyBandPermutations(
-			available.filter((_, other) => index !== other),
-			[...chosen, defined(available[index])],
-		);
-}
-
-function* lazyBandProduct(
-	bands: readonly (readonly string[])[],
-	prefix: RankOrder = [],
-): IterableIterator<RankOrder> {
-	if (bands.length === 0) {
-		yield prefix;
-		return;
-	}
-	const [band, ...rest] = bands;
-	for (const permutation of lazyBandPermutations(defined(band)))
-		yield* lazyBandProduct(rest, [...prefix, permutation]);
-}
-
-/**
- * Yield the permutation product in documentary order, lazily: the documentary order comes first,
- * and ids never decide which order is met first.
- */
-export function* lazyRankOrders(
-	domain: RankDomain,
-	documentary: RankOrder,
-): IterableIterator<RankOrder> {
-	if (!validateRankOrder(domain, documentary)) throw new Error('Invalid documentary rank order');
-	yield* lazyBandProduct(documentary);
-}
-
 /** Number of inversions relative to documentary order, independently within every band. */
 export function rankOrderKendallDistance(order: RankOrder, documentary: RankOrder): number {
 	return order.reduce((distance, band, index) => {

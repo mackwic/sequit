@@ -78,8 +78,16 @@ function closedBy(order: RankOrder, relation: WalledRelation): boolean {
 	return above.some((wall) => !below.includes(wall));
 }
 
-/** The lower band with its item moved just past the walls it stands on the wrong side of. */
-function besideWalls(order: RankOrder, relation: WalledRelation): string[] | undefined {
+/**
+ * The lower band with its item moved just past the walls it stands on the wrong side of. Items
+ * are moved in documentary order: one moved past a wall on its right goes after those already
+ * moved there, as one moved before a wall on its left does by itself.
+ */
+function besideWalls(
+	order: RankOrder,
+	relation: WalledRelation,
+	moved: ReadonlySet<string>,
+): string[] | undefined {
 	const { lower, walls } = relation;
 	if (lower.band === undefined) return undefined;
 	const band = defined(order[lower.band]);
@@ -94,7 +102,9 @@ function besideWalls(order: RankOrder, relation: WalledRelation): string[] | und
 		else if (walls.includes(id)) high = Math.min(high, index);
 	}
 	if (low > high) return undefined;
-	rest.splice(Math.min(Math.max(at, low), high), 0, lower.item);
+	let target = Math.min(Math.max(at, low), high);
+	if (at < low) while (target < high && moved.has(defined(rest[target]))) target += 1;
+	rest.splice(target, 0, lower.item);
 	return rest;
 }
 
@@ -207,16 +217,18 @@ export class BlockPassageRepair {
 	/** Any order: sibling blocks are first given one order, as `closes` requires. */
 	reopen(candidate: RankOrder): ReopenedOrder {
 		const repaired = new Set<WalledRelation>();
+		const moved = new Set<string>();
 		const next = (current: RankOrder): WalledRelation | undefined =>
 			this.walled.find((relation) => !repaired.has(relation) && closedBy(current, relation));
 		let current = repairBlockOrder(this.domain, candidate);
 		for (let relation = next(current); relation !== undefined; relation = next(current)) {
 			repaired.add(relation);
-			const band = besideWalls(current, relation);
+			const band = besideWalls(current, relation, moved);
 			if (band === undefined) continue;
-			const moved = [...current];
-			moved[defined(relation.lower.band)] = band;
-			current = repairBlockOrder(this.domain, moved);
+			moved.add(relation.lower.item);
+			const bands = [...current];
+			bands[defined(relation.lower.band)] = band;
+			current = repairBlockOrder(this.domain, bands);
 		}
 		return { order: current, closed: this.closes(current) };
 	}
