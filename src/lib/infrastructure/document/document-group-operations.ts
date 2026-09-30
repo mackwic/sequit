@@ -1,3 +1,4 @@
+import { placeJunctions } from '../../core/document/junction-placement';
 import { normalizeRootLayout } from '../../core/document/layout-presentation';
 import {
 	defined,
@@ -60,7 +61,7 @@ export function groupDocumentNodes(
 		throw new Error('Les nœuds doivent appartenir à la même région.');
 	const regionFields: { regionId?: string } = {};
 	if (regionFormat && regionId !== ROOT_LAYOUT_REGION_ID) regionFields.regionId = regionId;
-	return {
+	return placeJunctions({
 		...document,
 		groups: [
 			...document.groups,
@@ -81,14 +82,14 @@ export function groupDocumentNodes(
 			}
 			return node;
 		}),
-	};
+	});
 }
 
 interface Containable {
 	readonly id: string;
-	readonly groupId?: string;
-	readonly laneId?: string;
-	readonly regionId?: string;
+	groupId?: string;
+	laneId?: string;
+	regionId?: string;
 }
 
 /** The lane and region a member of `groupId` returns to when it leaves for the root. */
@@ -116,13 +117,15 @@ function containerOwnership(
 	}
 	if (document.presentation === undefined) return {};
 	const laneId = normalizeRootLayout(document).laneByEndpointId.get(groupId);
-	return laneId === undefined ? {} : { laneId };
+	if (laneId === undefined) return {};
+	return { laneId };
 }
 
 /**
- * Moves nodes, junctions and groups into `groupId`, or to the root when it is `undefined`.
- * Members inherit their container's lane and region; an element leaving for the root takes
- * the lane and region of the group it leaves. A group never moves into itself or a descendant.
+ * Moves nodes and groups into `groupId`, or to the root when it is `undefined`; a junction is
+ * never moved on its own and follows its targets instead. Members inherit their container's lane
+ * and region; an element leaving for the root takes the lane and region of the group it leaves.
+ * A group never moves into itself or a descendant.
  */
 export function moveDocumentElements(
 	document: LogicDocument,
@@ -158,12 +161,11 @@ export function moveDocumentElements(
 		}
 		return { ...result, ...ownership };
 	};
-	return {
+	return placeJunctions({
 		...document,
 		groups: document.groups.map(move),
 		nodes: document.nodes.map(move),
-		junctions: document.junctions.map(move),
-	};
+	});
 }
 
 export function dissolveDocumentGroup(document: LogicDocument, id: string): LogicDocument {

@@ -7,6 +7,7 @@ import type {
 	LogicRelation,
 	NewLogicNode,
 } from '../../../lib/core/document/logic-document';
+import { emptyDocument } from '../../../lib/infrastructure/document/document-creation';
 import {
 	dissolveWorkshopGroup,
 	groupWorkshopNodes,
@@ -14,7 +15,6 @@ import {
 } from './workshop-group-operations';
 import {
 	arrangeWorkshopDocument,
-	emptyWorkshopDocument,
 	renameWorkshopDocument,
 	renameWorkshopGroup,
 } from './workshop-metadata-operations';
@@ -107,7 +107,7 @@ export class WorkshopCommands {
 		this.edit((current) => renameWorkshopDocument(current, title));
 	}
 	newDocument(id: string): void {
-		this.edit((current) => emptyWorkshopDocument(current, id));
+		this.edit((current) => emptyDocument(current, id));
 	}
 	arrange(direction: LayoutDirection): void {
 		this.edit((current) => arrangeWorkshopDocument(current, direction));

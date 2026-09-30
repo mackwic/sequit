@@ -8,6 +8,14 @@
 		CanvasShortcutId,
 		matchesShortcut,
 	} from '../../canvas/canvas-shortcuts';
+	import {
+		CONNECTION_BAND,
+		type DropCandidate,
+		DropKind,
+		type DropPlan,
+		insideConnectionBand,
+		planDrop,
+	} from '../../canvas/drag-drop';
 	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { selectionInsideEnvelope } from '../../canvas/selection-envelope';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
@@ -17,6 +25,7 @@
 		enabled,
 		oncreate,
 		onconnect,
+		onmove,
 		ondelete,
 		children,
 	}: {
@@ -25,6 +34,8 @@
 		/** A new box: a root on the double-clicked background, or attached to the selection with N. */
 		oncreate: (request: NodeCreationRequest) => void;
 		onconnect: (from: string, to: string) => void;
+		/** The dragged elements enter the group, or return to the root when it is `undefined`. */
+		onmove: (ids: readonly string[], groupId: string | undefined) => void;
 		ondelete: () => void;
 		children: Snippet;
 	} = $props();
@@ -49,6 +60,11 @@
 		initial: readonly EntityRef[];
 	}>();
 	let target = $state<HTMLElement>();
+	/** Present while a connection or move drag is under way; groups then reveal their band. */
+	let dragActive = $derived.by((): '' | undefined => {
+		if (drag?.active === true) return '';
+		return undefined;
+	});
 	let suppressClick = false;
 	onDestroy(clear);
 
@@ -64,30 +80,53 @@
 		}
 		return undefined;
 	}
-	/** A drop on a group that already encloses the dragged endpoint is not a connection. */
-	function connectionTargetAt(x: number, y: number, from: string): HTMLElement | undefined {
-		const candidate = endpointAt(x, y);
-		const to = candidate?.dataset['endpointId'];
-		if (to === undefined || to === from) return undefined;
-		const source = surface.querySelector<HTMLElement>(
-			`[data-canvas-entity-key][data-endpoint-id="${CSS.escape(from)}"]`,
+	function containerOf(id: string): string | undefined {
+		const element = surface.querySelector<HTMLElement>(
+			`[data-canvas-entity-key][data-endpoint-id="${CSS.escape(id)}"]`,
 		);
-		const visited: string[] = [];
-		let parent =
-			source?.dataset['nodeGroupId'] ??
-			source?.dataset['junctionGroupId'] ??
-			source?.dataset['groupParentId'];
-		while (parent !== undefined && !visited.includes(parent)) {
-			if (parent === to) return undefined;
-			visited.push(parent);
-			parent = surface.querySelector<HTMLElement>(`[data-group-id="${CSS.escape(parent)}"]`)
-				?.dataset['groupParentId'];
-		}
-		return candidate;
+		return (
+			element?.dataset['nodeGroupId'] ??
+			element?.dataset['junctionGroupId'] ??
+			element?.dataset['groupParentId']
+		);
+	}
+	/** Reads the pointer's surroundings; `planDrop` decides between connecting and moving. */
+	function dropAt(
+		x: number,
+		y: number,
+		from: string,
+	): { plan: DropPlan; element: HTMLElement | undefined } | undefined {
+		const element = endpointAt(x, y);
+		const id = element?.dataset['endpointId'];
+		let candidate: DropCandidate | undefined;
+		if (element !== undefined && id !== undefined) {
+			const group = element.dataset['groupId'] !== undefined;
+			const band =
+				group &&
+				insideConnectionBand(
+					element.getBoundingClientRect(),
+					element.querySelector('[data-group-header]')?.getBoundingClientRect(),
+					x,
+					y,
+				);
+			candidate = { id, group, band };
+		} else if (
+			!document
+				.elementsFromPoint(x, y)
+				.some((hit) => hit.matches('[data-canvas-viewport]') && surface.contains(hit))
+		)
+			return undefined;
+		const selected = [...session.selection.values()]
+			.filter(({ kind }) => kind !== EntityKind.Relation)
+			.map((ref) => ref.id);
+		const plan = planDrop({ from, selected, containerOf }, candidate);
+		if (plan === undefined) return undefined;
+		return { plan, element };
 	}
 	function clear() {
 		if (marquee?.active === true) applySelection(marquee.initial);
 		target?.removeAttribute('data-connection-target');
+		target?.removeAttribute('data-move-target');
 		target = undefined;
 		drag = undefined;
 		marquee = undefined;
@@ -187,8 +226,12 @@
 		event.preventDefault();
 		drag = { ...drag, active: true, toX: event.clientX, toY: event.clientY };
 		target?.removeAttribute('data-connection-target');
-		target = connectionTargetAt(event.clientX, event.clientY, drag.from);
-		target?.setAttribute('data-connection-target', 'true');
+		target?.removeAttribute('data-move-target');
+		const drop = dropAt(event.clientX, event.clientY, drag.from);
+		target = drop?.element;
+		if (drop?.plan.kind === DropKind.Connect)
+			target?.setAttribute('data-connection-target', 'true');
+		if (drop?.plan.kind === DropKind.Move) target?.setAttribute('data-move-target', 'true');
 	}
 	function up(event: PointerEvent) {
 		if (marquee?.id === event.pointerId) {
@@ -200,12 +243,13 @@
 		}
 		if (drag?.id !== event.pointerId) return;
 		const current = drag;
-		const to = connectionTargetAt(event.clientX, event.clientY, current.from)?.dataset[
-			'endpointId'
-		];
 		suppressClick = current.active;
 		clear();
-		if (current.active && to !== undefined && enabled) onconnect(current.from, to);
+		if (!current.active || !enabled) return;
+		const plan = dropAt(event.clientX, event.clientY, current.from)?.plan;
+		if (plan === undefined) return;
+		if (plan.kind === DropKind.Connect) onconnect(current.from, plan.to);
+		else onmove(plan.ids, plan.groupId);
 	}
 	function click(event: MouseEvent) {
 		if (!suppressClick) return;
@@ -276,6 +320,8 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="gestures"
+	data-drag-active={dragActive}
+	style:--connection-band={`${CONNECTION_BAND}px`}
 	bind:this={surface}
 	ondragstart={(event) => {
 		if (drag) event.preventDefault();
@@ -319,6 +365,25 @@
 	}
 	.gestures :global([data-connection-target]) {
 		filter: brightness(0.94);
+	}
+	.gestures :global([data-move-target]) {
+		outline: 3px dashed var(--ui-accent);
+		outline-offset: 3px;
+	}
+	/* While dragging, every group shows the band that connects, in its own colour. */
+	.gestures[data-drag-active] :global([data-group-id]) {
+		box-shadow:
+			inset 0 0 0 var(--connection-band) color-mix(in srgb, var(--group-color) 40%, transparent),
+			inset 0 0 0 calc(var(--connection-band) + 1px) var(--group-color);
+	}
+	.gestures[data-drag-active] :global([data-group-id][data-connection-target]) {
+		outline-color: var(--group-color);
+		box-shadow:
+			inset 0 0 0 var(--connection-band) color-mix(in srgb, var(--group-color) 65%, transparent),
+			inset 0 0 0 calc(var(--connection-band) + 1px) var(--group-color);
+	}
+	.gestures[data-drag-active] :global([data-group-id][data-move-target]) {
+		outline-color: var(--group-color);
 	}
 	.ghost {
 		position: fixed;

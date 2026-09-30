@@ -32,6 +32,7 @@
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import {
 		connectedNodeCreation,
+		containerMove,
 		deletion,
 		groupCreation,
 		groupDissolution,
@@ -187,6 +188,11 @@
 			void execute(() =>
 				current.value.session.dispatch([relationCreation({ id: crypto.randomUUID(), from, to })]),
 			);
+	}
+	function moveSelection(ids: readonly string[], groupId: string | undefined) {
+		const current = opened;
+		if (current.ok)
+			void execute(() => current.value.session.dispatch([containerMove(ids, groupId)]));
 	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const current = opened;
@@ -417,6 +423,7 @@
 			enabled={interactive}
 			oncreate={openCreation}
 			onconnect={connect}
+			onmove={moveSelection}
 			ondelete={deleteSelection}
 		>
 			<LogicCanvas

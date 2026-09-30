@@ -179,7 +179,10 @@ interface UngroupElements {
 	readonly id: string;
 }
 
-/** Nodes, junctions and groups enter `groupId`, or return to the root when it is omitted. */
+/**
+ * Nodes and groups enter `groupId`, or return to the root when it is omitted; a listed junction
+ * stays with its targets.
+ */
 interface MoveElements {
 	readonly op: SharedCommandKind.Move;
 	readonly ids: readonly string[];

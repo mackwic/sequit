@@ -42,6 +42,7 @@
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import {
 		connectedNodeCreation,
+		containerMove,
 		deletion,
 		groupCreation,
 		groupDissolution,
@@ -225,6 +226,10 @@
 		}
 		dispatch(relationCreation(relation));
 	}
+	function moveSelection(ids: readonly string[], groupId: string | undefined) {
+		if (!connected || !sourceValid) return;
+		dispatch(containerMove(ids, groupId));
+	}
 	function deleteSelection() {
 		if (!interactive || canvas.editing) return;
 		const selected = sharedSelection(canvas.selection.values());
@@ -406,6 +411,7 @@
 			enabled={interactive}
 			oncreate={openCreation}
 			onconnect={connect}
+			onmove={moveSelection}
 			ondelete={deleteSelection}
 		>
 			<LogicCanvas

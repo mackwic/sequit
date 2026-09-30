@@ -10,18 +10,6 @@ export function renameWorkshopDocument(document: LogicDocument, title: string): 
 	return { ...document, title };
 }
 
-export function emptyWorkshopDocument(document: LogicDocument, id: string): LogicDocument {
-	return {
-		...document,
-		id,
-		title: 'Sans titre',
-		nodes: [],
-		groups: [],
-		junctions: [],
-		relations: [],
-	};
-}
-
 export function arrangeWorkshopDocument(
 	document: LogicDocument,
 	direction: LayoutDirection,

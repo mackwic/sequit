@@ -5,6 +5,10 @@
 	import { resolve } from '$app/paths';
 
 	import { newRoomId } from '../../../../lib/infrastructure/collaboration/room-id';
+	import {
+		emptyDocument,
+		UNTITLED_DOCUMENT_TITLE,
+	} from '../../../../lib/infrastructure/document/document-creation';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { documentFilename } from '../document/document-filename';
@@ -20,18 +24,19 @@
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';
 	import CollaborationDialog from './collaboration/CollaborationDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import NewDocumentDialog from './document/NewDocumentDialog.svelte';
 	import OpenDocumentDialog from './document/OpenDocumentDialog.svelte';
 	import RecentDocumentsDialog from './document/RecentDocumentsDialog.svelte';
 	import Icon from './ui/Icon.svelte';
 
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
-	const UNTITLED = 'Sans titre';
+	const UNTITLED = UNTITLED_DOCUMENT_TITLE;
 	const SAVE_DELAY_MS = 400;
 	let { source: initialSource }: { source: string } = $props();
 	let source = $state(untrack(() => initialSource));
 	let opened = $state<OpenedDocument>();
 	let title = $state(UNTITLED);
-	let dialog = $state<'open' | 'recent' | 'collaborate'>();
+	let dialog = $state<'new' | 'open' | 'recent' | 'collaborate'>();
 	// Each successful open is a new document, even when the bytes match the previous source.
 	let generation = $state(0);
 	let recent = $state<RecentDocuments>({ currentId: undefined, documents: [] });
@@ -141,6 +146,15 @@
 		openSource(next);
 	}
 
+	/** A blank document with the current natures; the current one follows the usual open path. */
+	function createDocument(): void {
+		const current = opened;
+		if (!current) return;
+		openChosen(
+			serializeSequitToml(emptyDocument(current.read(), `document-${crypto.randomUUID()}`)),
+		);
+	}
+
 	// Called from the workspace's effect: reading page state here would make that effect re-run
 	// (and destroy the document) whenever the page state changes.
 	function workspaceOpened(document: OpenedDocument | undefined): void {
@@ -190,6 +204,9 @@
 	<AppHeader>
 		<DocumentMenu
 			{title}
+			onnew={() => {
+				dialog = 'new';
+			}}
 			onopen={() => {
 				dialog = 'open';
 			}}
@@ -215,7 +232,15 @@
 	{#key generation}
 		<CanvasWorkspace {source} onopened={workspaceOpened} />
 	{/key}
-	{#if dialog === 'open'}
+	{#if dialog === 'new'}
+		<NewDocumentDialog
+			retained={currentRetained}
+			oncreate={createDocument}
+			onclose={() => {
+				dialog = undefined;
+			}}
+		/>
+	{:else if dialog === 'open'}
 		<OpenDocumentDialog
 			retained={currentRetained}
 			onopen={openChosen}

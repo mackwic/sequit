@@ -13,6 +13,7 @@
 	} from '../../../../lib/core/document/logic-document';
 	import { CollaborationStatus } from '../../../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../../../lib/infrastructure/collaboration/websocket-collaboration-transport';
+	import { UNTITLED_DOCUMENT_TITLE } from '../../../../lib/infrastructure/document/document-creation';
 	import { parseSequitToml } from '../../../../lib/infrastructure/toml/parse-sequit-toml';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import { consumeCollaborationError } from '../../document/collaboration-rejection';
@@ -30,7 +31,7 @@
 	import DocumentMenu from './document/DocumentMenu.svelte';
 	import Icon from './ui/Icon.svelte';
 
-	const UNTITLED = 'Sans titre';
+	const UNTITLED = UNTITLED_DOCUMENT_TITLE;
 	let { room }: { room: string } = $props();
 	let name = $state('');
 	let session = $state<LiveSession>();

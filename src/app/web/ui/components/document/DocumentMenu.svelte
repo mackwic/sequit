@@ -4,11 +4,13 @@
 
 	let {
 		title,
+		onnew,
 		onopen,
 		onrecent,
 		onexport,
 	}: {
 		title: string;
+		onnew?: (() => void) | undefined;
 		onopen?: (() => void) | undefined;
 		onrecent?: (() => void) | undefined;
 		onexport?: (() => void) | undefined;
@@ -31,6 +33,11 @@
 		<Icon name={caretIcon(open === true)} size={13} />
 	{/snippet}
 
+	{#if onnew}
+		<button role="menuitem" type="button" onclick={onnew}
+			><Icon name="phosphor:file-plus" />Nouveau document</button
+		>
+	{/if}
 	{#if onopen}
 		<button role="menuitem" type="button" onclick={onopen}
 			><Icon name="phosphor:folder-open" />Ouvrir…</button
@@ -42,7 +49,9 @@
 		>
 	{/if}
 	{#if onexport}
-		{#if onopen !== undefined || onrecent !== undefined}<div role="separator"></div>{/if}
+		{#if onnew !== undefined || onopen !== undefined || onrecent !== undefined}<div
+				role="separator"
+			></div>{/if}
 		<button role="menuitem" type="button" onclick={onexport}
 			><Icon name="phosphor:export" />Exporter…</button
 		>

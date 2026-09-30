@@ -83,15 +83,15 @@ describe('product node grouping', () => {
 		expect(removed.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('groupId');
 	});
 
-	it('moves junctions and groups between containers and refuses to nest a group in itself', () => {
+	it('moves groups between containers, the junction following its target and never moving alone', () => {
 		const source = validLogicDocument();
 		const inner = groupDocumentNodes(source, { id: 'inner', label: 'Inner' }, new Set(['target']));
+		expect(inner.junctions.find(({ id }) => id === 'choice')).toMatchObject({ groupId: 'inner' });
 		const outer = groupDocumentNodes(inner, { id: 'outer', label: 'Outer' }, new Set(['isolated']));
-		const junctionId = outer.junctions[0]?.id ?? '';
-		const nested = moveDocumentElements(outer, new Set(['inner', junctionId]), 'outer');
+		const nested = moveDocumentElements(outer, new Set(['inner', 'choice']), 'outer');
 		expect(nested.groups.find(({ id }) => id === 'inner')).toMatchObject({ groupId: 'outer' });
-		expect(nested.junctions.find(({ id }) => id === junctionId)).toMatchObject({
-			groupId: 'outer',
+		expect(nested.junctions.find(({ id }) => id === 'choice')).toMatchObject({
+			groupId: 'inner',
 		});
 		expect(nested.nodes.find(({ id }) => id === 'target')).toMatchObject({ groupId: 'inner' });
 		expect(() => moveDocumentElements(nested, new Set(['outer']), 'inner')).toThrow('lui-même');
@@ -99,6 +99,7 @@ describe('product node grouping', () => {
 		const root = moveDocumentElements(nested, new Set(['inner', 'target']), undefined);
 		expect(root.groups.find(({ id }) => id === 'inner')).not.toHaveProperty('groupId');
 		expect(root.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('groupId');
+		expect(root.junctions.find(({ id }) => id === 'choice')).not.toHaveProperty('groupId');
 	});
 
 	it('keeps region ownership when grouping, moving and dissolving a root group', () => {

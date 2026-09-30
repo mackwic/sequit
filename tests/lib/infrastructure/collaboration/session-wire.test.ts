@@ -56,6 +56,8 @@ const commandMessages: SessionMessage[] = [
 			},
 			{ op: SharedCommandKind.Group, id: 'G', label: 'Groupe', members: ['A', 'B'] },
 			{ op: SharedCommandKind.Ungroup, id: 'G' },
+			{ op: SharedCommandKind.Move, ids: ['A', 'B'], groupId: 'G' },
+			{ op: SharedCommandKind.Move, ids: ['A'] },
 			{
 				op: SharedCommandKind.UpdateLayout,
 				layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },

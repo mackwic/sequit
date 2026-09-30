@@ -144,6 +144,22 @@ describe('shared document commands', () => {
 		doc.destroy();
 	});
 
+	it('Open group: moves a member to the root and back, refusing a group inside itself', () => {
+		const doc = given(CollaborativeFixture.OpenGroup);
+		executeSharedCommands(doc, [{ op: Op.Move, ids: ['A'] }]);
+		expect(read(doc).nodes.find(({ id }) => id === 'A')).not.toHaveProperty('groupId');
+		expect(read(doc).nodes.find(({ id }) => id === 'B')).toMatchObject({ groupId: 'G' });
+		executeSharedCommands(doc, [{ op: Op.Move, ids: ['A'], groupId: 'G' }]);
+		expect(read(doc).nodes.every((node) => node.groupId === 'G')).toBe(true);
+		expect(() => executeSharedCommands(doc, [{ op: Op.Move, ids: ['G'], groupId: 'G' }])).toThrow(
+			'lui-même',
+		);
+		expect(() =>
+			executeSharedCommands(doc, [{ op: Op.Move, ids: ['A'], groupId: 'nope' }]),
+		).toThrow('Groupe introuvable');
+		doc.destroy();
+	});
+
 	it('Linked boxes: updates direction and bias together', () => {
 		const doc = given(CollaborativeFixture.LinkedBoxes);
 		const layout = { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left } as const;

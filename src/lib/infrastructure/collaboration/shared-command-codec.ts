@@ -82,6 +82,14 @@ function readLanesUpdate(command: Record<string, unknown>): SharedDocumentComman
 	return result;
 }
 
+function readMove(command: Record<string, unknown>): SharedDocumentCommand {
+	wireKeys(command, ['op', 'ids', 'groupId']);
+	const ids = wireStrings(command['ids']).map(wireId);
+	if (ids.length === 0) throw new Error('Select elements to move');
+	if (command['groupId'] === undefined) return { op: SharedCommandKind.Move, ids };
+	return { op: SharedCommandKind.Move, ids, groupId: wireId(command['groupId']) };
+}
+
 export function readSharedCommand(value: unknown): SharedDocumentCommand {
 	const command = wireObject(value);
 	switch (command['op']) {
@@ -129,13 +137,8 @@ export function readSharedCommand(value: unknown): SharedDocumentCommand {
 		case SharedCommandKind.Ungroup:
 			wireKeys(command, ['op', 'id']);
 			return { op: SharedCommandKind.Ungroup, id: wireId(command['id']) };
-		case SharedCommandKind.Move: {
-			wireKeys(command, ['op', 'ids', 'groupId']);
-			const ids = wireStrings(command['ids']).map(wireId);
-			if (ids.length === 0) throw new Error('Select elements to move');
-			if (command['groupId'] === undefined) return { op: SharedCommandKind.Move, ids };
-			return { op: SharedCommandKind.Move, ids, groupId: wireId(command['groupId']) };
-		}
+		case SharedCommandKind.Move:
+			return readMove(command);
 		case SharedCommandKind.DeleteRelations: {
 			wireKeys(command, ['op', 'ids']);
 			const ids = wireStrings(command['ids']).map(wireId);
