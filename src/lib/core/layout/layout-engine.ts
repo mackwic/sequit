@@ -144,7 +144,10 @@ export function layoutWithDedicatedEngine(
 	}).layout;
 }
 
-/** Every rank-order evaluation of this projection layout routes through its channel cache. */
+/**
+ * Every rank-order evaluation of this projection layout routes through its channel cache. The
+ * projection passes no layout option, so candidates are evaluated with none either.
+ */
 export function layoutWithDedicatedEngineForProjection(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
@@ -153,8 +156,8 @@ export function layoutWithDedicatedEngineForProjection(
 ): LayoutResult {
 	return selectDedicatedRankLayout(graph, ranks, measurements, {
 		options: {},
-		evaluate: (structure, measured, options) =>
-			evaluateRetainedLayout(structure, measured, options ?? {}, caches.channels),
+		evaluate: (structure, measured) =>
+			evaluateRetainedLayout(structure, measured, {}, caches.channels),
 	}).layout;
 }
 

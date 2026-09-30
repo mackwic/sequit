@@ -10,7 +10,7 @@ This opt-in suite reports machine-specific snapshot costs for graph creation, to
 - `pnpm test:performance` runs the opt-in calibrated snapshot regression gate.
 - `pnpm benchmark:incremental` reports stage p50, p95, and maximum insertion latency.
 - `pnpm test:incremental-performance` runs calibrated incremental gates and reports fixed UX goals. Each replay lays out through the projection caches of one opened document (see [Incremental Replay](#incremental-replay)).
-- `pnpm test:incremental-performance:cold` runs the same gate with cold layouts, as the history recorded before the projection caches was measured. `SEQUIT_INCREMENTAL_LAYOUT_CACHES=cold` selects the same mode for `pnpm benchmark:incremental`.
+- `pnpm test:incremental-performance:cold` runs the same gate with cold layouts, as the history recorded before the projection caches was measured. It is run on demand only: `pnpm check` runs the default gate. `SEQUIT_INCREMENTAL_LAYOUT_CACHES=cold` selects the same mode for `pnpm benchmark:incremental`.
 
 `pnpm exec vitest bench --run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/long-relation-layout.bench.ts` measures a 100- or 1000-node chain with one additional relation from its last node to its first. Unlike the matrix's adjacent-rank `long-queue`, this profile activates obstacle routing without junctions. It reuses the same prepared-input boundary and sampling policy, reports timings, and introduces no calibrated budget.
 

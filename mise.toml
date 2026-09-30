@@ -17,7 +17,7 @@ run = "pnpm dev"
 [tasks."performance:record"]
 description = "Record reproducible layout performance measurements"
 usage = """
-arg "<suite>" help="snapshot or incremental"
+arg "<suite>" help="snapshot, incremental or incremental-cold"
 arg "<output>" help="New JSON report path"
 arg "[filter]" help="Optional Vitest test-name pattern"
 """

@@ -45,7 +45,8 @@ const INCREMENTAL_LAYOUT_CACHES_VARIABLE = 'SEQUIT_INCREMENTAL_LAYOUT_CACHES';
 export function incrementalLayoutCaches(
 	value = process.env[INCREMENTAL_LAYOUT_CACHES_VARIABLE],
 ): IncrementalLayoutCaches {
-	if (value === undefined || value === IncrementalLayoutCaches.Projection.valueOf())
+	if (value === undefined || value === '') return IncrementalLayoutCaches.Projection;
+	if (value === IncrementalLayoutCaches.Projection.valueOf())
 		return IncrementalLayoutCaches.Projection;
 	if (value === IncrementalLayoutCaches.Cold.valueOf()) return IncrementalLayoutCaches.Cold;
 	throw new Error(`${INCREMENTAL_LAYOUT_CACHES_VARIABLE} must be projection or cold: ${value}`);

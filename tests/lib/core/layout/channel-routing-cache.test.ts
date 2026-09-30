@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { routeOwnedChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
 	ChannelRoutingCache,
-	MAX_NEW_CHANNEL_ROUTING_WIRES,
+	MAX_CHANNEL_ROUTING_GENERATION_WIRES,
 } from '../../../../src/lib/core/layout/routing/channel-routing-cache';
 import type {
 	ChannelEndpoint,
@@ -170,14 +170,14 @@ describe('projection-owned channel routing cache', () => {
 				source: index,
 				target: index,
 			}));
-		const full = straight('full', MAX_NEW_CHANNEL_ROUTING_WIRES);
+		const full = straight('full', MAX_CHANNEL_ROUTING_GENERATION_WIRES);
 		const extra = straight('extra', 1);
 		const cache = new ChannelRoutingCache();
 		cache.route(wires(full), false, OWNER);
 		cache.route(wires(extra), false, OWNER);
 		expect(cache.stats).toEqual({
 			entries: 1,
-			wires: MAX_NEW_CHANNEL_ROUTING_WIRES,
+			wires: MAX_CHANNEL_ROUTING_GENERATION_WIRES,
 			hits: 0,
 			misses: 2,
 		});
@@ -188,7 +188,7 @@ describe('projection-owned channel routing cache', () => {
 		cache.route(wires(full), false, OWNER);
 		expect(cache.stats).toEqual({
 			entries: 1,
-			wires: MAX_NEW_CHANNEL_ROUTING_WIRES,
+			wires: MAX_CHANNEL_ROUTING_GENERATION_WIRES,
 			hits: 2,
 			misses: 3,
 		});

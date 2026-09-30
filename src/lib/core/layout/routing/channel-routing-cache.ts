@@ -4,12 +4,13 @@ import { routeOwnedChannel } from './channel-routing';
 import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
 
 /**
- * Wires of new routings one root layout may remember; routings it reuses from the previous
- * layout are always kept. Channels beyond the ceiling are routed normally and not remembered.
- * The largest performance fixture (1000-node `wide-bipartite-layers`) retains at most about
- * 76,000 wires over two layouts, at about 160 bytes per wire.
+ * Wires one root layout may remember, counting the routings it reuses from the previous layout
+ * and the new ones. Reused routings are always kept; once the generation holds this many wires,
+ * new channels are routed normally and not remembered. The largest performance fixture
+ * (1000-node `wide-bipartite-layers`) retains at most about 76,000 wires over two layouts, at
+ * about 160 bytes per wire.
  */
-export const MAX_NEW_CHANNEL_ROUTING_WIRES = 200_000;
+export const MAX_CHANNEL_ROUTING_GENERATION_WIRES = 200_000;
 
 export interface ChannelRoutingCacheStats {
 	/** Remembered channels of the current and previous layouts. */
@@ -243,7 +244,7 @@ export class ChannelRoutingCache {
 		}
 		this.#misses += 1;
 		const routing = routeOwnedChannel(wires, nonInverted, ownerId);
-		if (this.#currentWires + wires.length <= MAX_NEW_CHANNEL_ROUTING_WIRES)
+		if (this.#currentWires + wires.length <= MAX_CHANNEL_ROUTING_GENERATION_WIRES)
 			this.#remember(key, captureRouting(routing, nonInverted, ownerId));
 		return routing;
 	}
