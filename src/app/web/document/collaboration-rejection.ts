@@ -1,20 +1,22 @@
-import { replaceState } from '$app/navigation';
-import { resolve } from '$app/paths';
-import type { Pathname } from '$app/types';
+const ERROR_KEY = 'sequit:collaboration-error';
 
-const ERROR_PARAMETER = 'collaboration-error';
-
+/** A terminal rejection reloads the page; the message survives the reload for one display. */
 export function refreshRejectedSession(message: string): void {
-	const url = new URL(window.location.href);
-	url.searchParams.set(ERROR_PARAMETER, message);
-	window.location.replace(url.href);
+	try {
+		sessionStorage.setItem(ERROR_KEY, message);
+	} catch {
+		// Without storage the page still recovers; only the explanation is lost.
+	}
+	window.location.reload();
 }
 
-export function consumeCollaborationError(path: Pathname): string | undefined {
-	const url = new URL(window.location.href);
-	const message = url.searchParams.get(ERROR_PARAMETER);
-	if (message === null) return undefined;
-	url.searchParams.delete(ERROR_PARAMETER);
-	replaceState(resolve(`${path}?${url.searchParams.toString()}${url.hash}`), {});
-	return message;
+export function consumeCollaborationError(): string | undefined {
+	try {
+		const message = sessionStorage.getItem(ERROR_KEY);
+		if (message === null) return undefined;
+		sessionStorage.removeItem(ERROR_KEY);
+		return message;
+	} catch {
+		return undefined;
+	}
 }

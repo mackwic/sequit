@@ -8,6 +8,13 @@
 		"binding": "ASSETS",
 		"directory": "../.svelte-kit/cloudflare",
 	},
+	// `/collab/<room>` upgrades are forwarded to the collaboration worker; see src/routes/collab.
+	"services": [
+		{
+			"binding": "COLLABORATION",
+			"service": "sequit-collaboration",
+		},
+	],
 	"workers_dev": true,
 	"preview_urls": true,
 }

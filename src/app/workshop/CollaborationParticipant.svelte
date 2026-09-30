@@ -1,81 +1,36 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	import type { Pathname } from '$app/types';
-
-	import type { LogicDocument } from '../../lib/core/document/logic-document';
-	import {
-		CollaborationStatus,
-		type CollaborativeDocumentSession,
-		createCollaborativeDocumentSession,
-	} from '../../lib/infrastructure/collaboration/collaborative-document-session';
-	import { textEditable } from '../../lib/infrastructure/collaboration/session-connection-status';
-	import type { ParticipantPresence } from '../../lib/infrastructure/collaboration/session-wire';
+	import { CollaborationStatus } from '../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { parseSequitToml } from '../../lib/infrastructure/toml/parse-sequit-toml';
-	import {
-		consumeCollaborationError,
-		refreshRejectedSession,
-	} from '../web/document/collaboration-rejection';
+	import { consumeCollaborationError } from '../web/document/collaboration-rejection';
 	import CollaborativeWorkspace from '../web/ui/components/collaboration/CollaborativeWorkspace.svelte';
+	import { LiveSession } from '../web/ui/components/collaboration/live-session.svelte';
 	import { WorkshopTransport } from './runtime/workshop-transport';
-	let {
-		source,
-		room,
-		name,
-		path = '/atelier/collaboration',
-	}: { source: string; room: string; name: string; path?: Pathname } = $props();
-	let model = $state.raw<LogicDocument>();
-	let client = $state<CollaborativeDocumentSession>();
-	let participants = $state<readonly ParticipantPresence[]>([]);
+	let { source, room, name }: { source: string; room: string; name: string } = $props();
+	let session = $state<LiveSession>();
 	let transport: WorkshopTransport | undefined;
-	let status = $state(CollaborationStatus.Connecting);
-	let initialized = $state(false);
-	let replica = $state(0);
 	let paused = $state(false);
 	let toast = $state<string>();
 	onMount(() => {
-		toast = consumeCollaborationError(path);
+		toast = consumeCollaborationError();
 		const parsed = parseSequitToml(source);
 		if (!parsed.ok) return;
 		const socket = new WorkshopTransport(() =>
 			createWebSocketCollaborationTransport(room, window.location.origin),
 		);
 		transport = socket;
-		const current = createCollaborativeDocumentSession({ ...parsed.value, id: room }, socket);
-		client = current;
-		const updateStatus = (): void => {
-			if (replica !== current.replica()) {
-				replica = current.replica();
-				model = undefined;
-				initialized = false;
-			}
-			status = current.connectionStatus();
-			if (status === CollaborationStatus.Ready) {
-				model ??= current.read();
-				initialized = true;
-			}
-		};
-		const cleanup = [
-			current.subscribe((value) => {
-				model = value;
-			}),
-			current.subscribeToRejection(refreshRejectedSession),
-			current.subscribeToConflict((message) => {
-				toast = message;
-				updateStatus();
-			}),
-			current.subscribeToSourceState(updateStatus),
-			current.subscribeToPresence((value) => {
-				participants = value;
-			}),
-			socket.subscribeToFrames(updateStatus),
-			socket.subscribeToStatus(updateStatus),
-		];
+		const current = new LiveSession({ ...parsed.value, id: room }, socket);
+		session = current;
 		return () => {
-			for (const stop of cleanup) stop();
 			current.destroy();
 		};
+	});
+	$effect(() => {
+		const conflict = session?.conflict;
+		if (conflict === undefined) return;
+		toast = conflict;
 	});
 </script>
 
@@ -83,12 +38,12 @@
 	<header>
 		<strong>{name}</strong>
 		<span role="status" aria-label="Connexion"
-			>{#if status === CollaborationStatus.Ready}Connecté{:else if status === CollaborationStatus.Disconnected}Hors
-				ligne{:else if status === CollaborationStatus.Synchronizing}Synchronisation…{:else}Connexion…{/if}</span
+			>{#if session?.status === CollaborationStatus.Ready}Connecté{:else if session?.status === CollaborationStatus.Disconnected}Hors
+				ligne{:else if session?.status === CollaborationStatus.Synchronizing}Synchronisation…{:else}Connexion…{/if}</span
 		>
 		<button
 			type="button"
-			disabled={!initialized}
+			disabled={session?.initialized !== true}
 			onclick={() => {
 				if (paused) transport?.resume();
 				else transport?.pause();
@@ -97,7 +52,7 @@
 			>{#if paused}Reconnecter{:else}Mettre hors ligne{/if}</button
 		>
 		<span aria-label="Participants"
-			>{participants
+			>{(session?.participants ?? [])
 				.map((person) => `${person.name} ${person.selected.map((item) => item.id).join(', ')}`)
 				.join(' · ')}</span
 		>
@@ -111,17 +66,19 @@
 				}}>×</button
 			>
 		</div>{/if}
-	{#key replica}
-		{#if client && model && initialized}
-			<CollaborativeWorkspace
-				{client}
-				{model}
-				{name}
-				connected={status === CollaborationStatus.Ready}
-				textEditable={textEditable(status, initialized)}
-			/>
-		{/if}
-	{/key}
+	{#if session}
+		{#key session.replica}
+			{#if session.model && session.initialized}
+				<CollaborativeWorkspace
+					client={session.client}
+					model={session.model}
+					{name}
+					connected={session.connected}
+					textEditable={session.textEditable}
+				/>
+			{/if}
+		{/key}
+	{/if}
 </section>
 
 <style>

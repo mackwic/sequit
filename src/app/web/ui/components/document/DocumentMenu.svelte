@@ -9,8 +9,8 @@
 		onexport,
 	}: {
 		title: string;
-		onopen: () => void;
-		onrecent: () => void;
+		onopen?: (() => void) | undefined;
+		onrecent?: (() => void) | undefined;
 		onexport?: (() => void) | undefined;
 	} = $props();
 
@@ -31,14 +31,18 @@
 		<Icon name={caretIcon(open === true)} size={13} />
 	{/snippet}
 
-	<button role="menuitem" type="button" onclick={onopen}
-		><Icon name="phosphor:folder-open" />Ouvrir…</button
-	>
-	<button role="menuitem" type="button" onclick={onrecent}
-		><Icon name="phosphor:clock-counter-clockwise" />Documents récents…</button
-	>
+	{#if onopen}
+		<button role="menuitem" type="button" onclick={onopen}
+			><Icon name="phosphor:folder-open" />Ouvrir…</button
+		>
+	{/if}
+	{#if onrecent}
+		<button role="menuitem" type="button" onclick={onrecent}
+			><Icon name="phosphor:clock-counter-clockwise" />Documents récents…</button
+		>
+	{/if}
 	{#if onexport}
-		<div role="separator"></div>
+		{#if onopen !== undefined || onrecent !== undefined}<div role="separator"></div>{/if}
 		<button role="menuitem" type="button" onclick={onexport}
 			><Icon name="phosphor:export" />Exporter…</button
 		>

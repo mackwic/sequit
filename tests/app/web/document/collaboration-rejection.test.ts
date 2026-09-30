@@ -1,45 +1,57 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$app/navigation', () => ({ replaceState: vi.fn() }));
-vi.mock('$app/paths', () => ({ resolve: (path: string) => path }));
-import { replaceState } from '$app/navigation';
-
 import {
 	consumeCollaborationError,
 	refreshRejectedSession,
 } from '../../../../src/app/web/document/collaboration-rejection';
 
+function memoryStorage(): Storage {
+	const entries = new Map<string, string>();
+	return {
+		get length() {
+			return entries.size;
+		},
+		clear: () => {
+			entries.clear();
+		},
+		getItem: (key) => entries.get(key) ?? null,
+		key: (index) => [...entries.keys()][index] ?? null,
+		removeItem: (key) => {
+			entries.delete(key);
+		},
+		setItem: (key, value) => {
+			entries.set(key, value);
+		},
+	};
+}
+
 afterEach(() => {
 	vi.unstubAllGlobals();
-	vi.clearAllMocks();
 });
 
-describe('terminal rejection navigation', () => {
-	it('encodes the toast message in the refresh URL while preserving the room', () => {
-		const replace = vi.fn();
-		vi.stubGlobal('window', {
-			location: {
-				href: 'https://sequit.local/atelier/collaboration?room=test&name=Alice',
-				replace,
-			},
-		});
+describe('terminal rejection refresh', () => {
+	it('reloads the page and hands the message to the next load exactly once', () => {
+		const reload = vi.fn();
+		vi.stubGlobal('sessionStorage', memoryStorage());
+		vi.stubGlobal('window', { location: { reload } });
 		refreshRejectedSession('Refus : A & B');
-		const url = new URL(String(replace.mock.calls[0]?.[0]));
-		expect(url.searchParams.get('room')).toBe('test');
-		expect(url.searchParams.get('collaboration-error')).toBe('Refus : A & B');
+		expect(reload).toHaveBeenCalledOnce();
+		expect(consumeCollaborationError()).toBe('Refus : A & B');
+		expect(consumeCollaborationError()).toBeUndefined();
 	});
-	it('consumes the error once and removes it without another navigation', () => {
-		vi.stubGlobal('window', {
-			location: {
-				href: 'https://sequit.local/atelier/collaboration?room=test&collaboration-error=Refus#canvas',
+	it('still reloads when storage refuses the message', () => {
+		const reload = vi.fn();
+		vi.stubGlobal('sessionStorage', {
+			setItem: () => {
+				throw new Error('quota');
+			},
+			getItem: () => {
+				throw new Error('quota');
 			},
 		});
-		expect(consumeCollaborationError('/atelier/collaboration')).toBe('Refus');
-		expect(replaceState).toHaveBeenCalledWith('/atelier/collaboration?room=test#canvas', {});
-	});
-	it('does not alter a URL without an error', () => {
-		vi.stubGlobal('window', { location: { href: 'https://sequit.local/atelier?room=test' } });
-		expect(consumeCollaborationError('/atelier')).toBeUndefined();
-		expect(replaceState).not.toHaveBeenCalled();
+		vi.stubGlobal('window', { location: { reload } });
+		refreshRejectedSession('Refus');
+		expect(reload).toHaveBeenCalledOnce();
+		expect(consumeCollaborationError()).toBeUndefined();
 	});
 });

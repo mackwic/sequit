@@ -39,6 +39,8 @@
 	} from '../../canvas/relative-node-creation';
 	import { CanvasSession, type EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import CanvasGestures from '../canvas/CanvasGestures.svelte';
+	import CanvasInteractionStatus from '../canvas/CanvasInteractionStatus.svelte';
+	import CanvasViewportControls from '../canvas/CanvasViewportControls.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import { sharedSelection } from './canvas-awareness';
 	import CanvasAwareness from './CanvasAwareness.svelte';
@@ -60,12 +62,15 @@
 		name,
 		connected,
 		textEditable,
+		panel = true,
 	}: {
 		client: CollaborativeDocumentSession;
 		model: LogicDocument;
 		name: string;
 		connected: boolean;
 		textEditable: boolean;
+		/** The shared-fields panel beside the canvas; the product shows the canvas alone. */
+		panel?: boolean;
 	} = $props();
 	const canvas = new CanvasSession();
 	const presence = new CollaborationAwareness(untrack(() => client));
@@ -207,8 +212,15 @@
 	});
 </script>
 
-<div class="workspace">
+<div class="workspace" class:solo={!panel}>
 	<div class="canvas">
+		{#if !panel}
+			<CanvasViewportControls session={canvas} />
+			<CanvasInteractionStatus session={canvas} />
+			{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
+					{error}
+				</p>{/if}
+		{/if}
 		<CanvasGestures
 			session={canvas}
 			enabled={interactive}
@@ -281,7 +293,7 @@
 				}}
 			/>{/if}
 	</div>
-	<aside aria-label="Document partagé">
+	{#if panel}<aside aria-label="Document partagé">
 		{#if !sourceValid}
 			<p>Le document courant ne peut pas être édité tant que sa source est invalide.</p>
 		{:else}
@@ -440,7 +452,7 @@
 					</li>{/each}
 			</ul>
 		{/if}
-	</aside>
+	</aside>{/if}
 </div>
 
 <style>
@@ -449,6 +461,9 @@
 		grid-template-columns: minmax(240px, 1fr) 330px;
 		flex: 1;
 		min-height: 0;
+	}
+	.workspace.solo {
+		grid-template-columns: minmax(0, 1fr);
 	}
 	.editor-step {
 		animation: editor-step-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -490,7 +505,7 @@
 		opacity: 0.5;
 	}
 	@media (max-width: 640px) {
-		.workspace {
+		.workspace:not(.solo) {
 			grid-template-columns: minmax(0, 1fr);
 			grid-template-rows: minmax(320px, 60vh) minmax(0, 1fr);
 		}

@@ -1,21 +1,28 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { documentFilename } from '../document/document-filename';
 	import { downloadText } from '../document/download-text';
+	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import {
 		type RecentDocument,
 		type RecentDocuments,
 		RecentDocumentsStore,
 	} from '../document/recent-documents';
+	import { newRoomId } from '../document/room-id';
+	import { stashRoomSeed } from '../document/room-seed';
+	import AppHeader from './AppHeader.svelte';
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';
+	import CollaborationDialog from './collaboration/CollaborationDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
 	import OpenDocumentDialog from './document/OpenDocumentDialog.svelte';
 	import RecentDocumentsDialog from './document/RecentDocumentsDialog.svelte';
+	import Icon from './ui/Icon.svelte';
 
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	const UNTITLED = 'Sans titre';
@@ -24,7 +31,7 @@
 	let source = $state(untrack(() => initialSource));
 	let opened = $state<OpenedDocument>();
 	let title = $state(UNTITLED);
-	let dialog = $state<'open' | 'recent'>();
+	let dialog = $state<'open' | 'recent' | 'collaborate'>();
 	// Each successful open is a new document, even when the bytes match the previous source.
 	let generation = $state(0);
 	let recent = $state<RecentDocuments>({ currentId: undefined, documents: [] });
@@ -155,6 +162,18 @@
 			retained = false;
 		}
 	}
+
+	function startSession(name: string): void {
+		const current = opened;
+		if (!current) return;
+		writeParticipantName(name);
+		persist();
+		// The room takes the document's identity: the server requires both names to match.
+		const room = newRoomId();
+		stashRoomSeed(room, serializeSequitToml({ ...current.read(), id: room }));
+		dialog = undefined;
+		void goto(resolve('/session/[room]', { room }));
+	}
 </script>
 
 <svelte:head>
@@ -168,34 +187,30 @@
 <main
 	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)]"
 >
-	<header
-		class="z-20 flex h-14 shrink-0 items-center justify-between border-b border-[var(--ui-border)] bg-[var(--ui-surface)] px-4"
-	>
-		<div class="flex min-w-0 items-center gap-4">
-			<a
-				class="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--ui-accent)]"
-				href={resolve('/')}
-				aria-label="Accueil Sequit"
+	<AppHeader>
+		<DocumentMenu
+			{title}
+			onopen={() => {
+				dialog = 'open';
+			}}
+			onrecent={() => {
+				dialog = 'recent';
+			}}
+			onexport={exportAction}
+		/>
+		{#snippet actions()}
+			<button
+				class="ui-action"
+				type="button"
+				disabled={!opened}
+				onclick={() => {
+					dialog = 'collaborate';
+				}}
 			>
-				<span
-					class="grid size-7 place-items-center rounded-lg bg-[var(--ui-text)] text-sm font-bold text-[var(--ui-surface)]"
-					>S</span
-				>
-				<span>Sequit</span>
-			</a>
-			<div class="h-5 w-px bg-[var(--ui-border)]"></div>
-			<DocumentMenu
-				{title}
-				onopen={() => {
-					dialog = 'open';
-				}}
-				onrecent={() => {
-					dialog = 'recent';
-				}}
-				onexport={exportAction}
-			/>
-		</div>
-	</header>
+				<Icon name="phosphor:users" /> Collaborer
+			</button>
+		{/snippet}
+	</AppHeader>
 
 	{#key generation}
 		<CanvasWorkspace {source} onopened={workspaceOpened} />
@@ -217,6 +232,14 @@
 				openChosen(document.source);
 			}}
 			onforget={forget}
+			onclose={() => {
+				dialog = undefined;
+			}}
+		/>
+	{:else if dialog === 'collaborate'}
+		<CollaborationDialog
+			name={readParticipantName()}
+			onstart={startSession}
 			onclose={() => {
 				dialog = undefined;
 			}}
