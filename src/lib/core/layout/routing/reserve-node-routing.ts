@@ -6,7 +6,12 @@ import { routeOwnedChannel } from './channel-routing';
 import type { ChannelWire } from './channel-types';
 import type { ChannelRouting } from './channel-types';
 import { type PortAllocation, sharedSourcePorts } from './port-allocation';
-import type { RoutingCorridor } from './routing-corridors';
+import { RelationPortOffsets } from './relation-port-offsets';
+import {
+	corridorCarriesCanonicalIndexes,
+	type CorridorLink,
+	type RoutingCorridor,
+} from './routing-corridors';
 
 interface PlannedCorridor extends ChannelRouting {
 	readonly corridor: RoutingCorridor;
@@ -43,6 +48,19 @@ function corridorSourcePorts(
 	);
 }
 
+/** A link's port offset, by relation index when the corridor indexes the allocation's graph. */
+function offsetReader(
+	offsets: ReadonlyMap<string, number>,
+	corridor: RoutingCorridor,
+): (link: CorridorLink) => number {
+	if (
+		offsets instanceof RelationPortOffsets &&
+		corridorCarriesCanonicalIndexes(corridor, offsets.graph)
+	)
+		return (link) => defined(offsets.at(defined(link.relationIndex)));
+	return (link) => defined(offsets.get(link.relation.id));
+}
+
 export function planNodeRouting(input: {
 	readonly corridors: readonly RoutingCorridor[];
 	readonly ports: PortAllocation;
@@ -61,25 +79,25 @@ export function planNodeRouting(input: {
 		);
 	const corridors = input.corridors.map((corridor) => {
 		const sourcePorts = corridorSourcePorts(corridor, input.ports);
+		const sourceOffset = offsetReader(input.ports.sourceOffsets, corridor);
+		const targetOffset = offsetReader(input.ports.targetOffsets, corridor);
 		let wires: ChannelWire[];
 		if (centers === undefined) {
-			wires = corridor.links.map(({ relation, source, target }) => ({
-				id: relation.id,
-				sharedSource: sourcePorts?.get(relation.id),
-				source: source + defined(input.ports.sourceOffsets.get(relation.id)),
-				target: target + defined(input.ports.targetOffsets.get(relation.id)),
+			wires = corridor.links.map((link) => ({
+				id: link.relation.id,
+				sharedSource: sourcePorts?.get(link.relation.id),
+				source: link.source + sourceOffset(link),
+				target: link.target + targetOffset(link),
 				first: undefined,
 				last: undefined,
 				middle: undefined,
 			}));
 		} else {
-			wires = corridor.links.map(({ relation }) => ({
-				id: relation.id,
-				sharedSource: sourcePorts?.get(relation.id),
-				source:
-					defined(centers.get(relation.from)) + defined(input.ports.sourceOffsets.get(relation.id)),
-				target:
-					defined(centers.get(relation.to)) + defined(input.ports.targetOffsets.get(relation.id)),
+			wires = corridor.links.map((link) => ({
+				id: link.relation.id,
+				sharedSource: sourcePorts?.get(link.relation.id),
+				source: defined(centers.get(link.relation.from)) + sourceOffset(link),
+				target: defined(centers.get(link.relation.to)) + targetOffset(link),
 				first: undefined,
 				last: undefined,
 				middle: undefined,

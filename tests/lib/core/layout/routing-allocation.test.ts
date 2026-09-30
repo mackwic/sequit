@@ -11,6 +11,7 @@ import { allocateChannelIntervals } from '../../../../src/lib/core/layout/routin
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
 	allocatePorts,
+	type PortAllocation,
 	PortMetricDemandKind,
 	sharedSourcePorts,
 	sharedTargetPorts,
@@ -85,10 +86,16 @@ describe('rail and port reservations', () => {
 				const sizes = new Map(
 					[...bounds].map(([id, box]) => [id, { width: box.width, height: box.height }] as const),
 				);
+				// Offsets are compared as ordered entries: indexed corridors keep them by relation index.
+				const entries = (ports: PortAllocation) => ({
+					...ports,
+					sourceOffsets: [...ports.sourceOffsets],
+					targetOffsets: [...ports.targetOffsets],
+				});
 				const compare = (links: typeof corridors) => {
 					const input = { corridors: links, sizes, vertical, graph: graph.value, bounds };
-					expect(allocatePorts({ ...input, fromCrossingCorridors: true })).toEqual(
-						allocatePorts(input),
+					expect(entries(allocatePorts({ ...input, fromCrossingCorridors: true }))).toEqual(
+						entries(allocatePorts(input)),
 					);
 				};
 				compare(corridors);
@@ -99,8 +106,8 @@ describe('rail and port reservations', () => {
 					graph: duplicateGraph,
 					bounds,
 				};
-				expect(allocatePorts({ ...duplicateInput, fromCrossingCorridors: true })).toEqual(
-					allocatePorts(duplicateInput),
+				expect(entries(allocatePorts({ ...duplicateInput, fromCrossingCorridors: true }))).toEqual(
+					entries(allocatePorts(duplicateInput)),
 				);
 				compare(
 					corridors.map((corridor) => ({

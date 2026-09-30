@@ -27,6 +27,15 @@ export function corridorCarriesCanonicalIndexes(
 	return corridor[canonicalGraph] === graph;
 }
 
+/** Canonical crossing corridors of `graph` index every relation routed through them. */
+export function corridorsIndexGraph(
+	corridors: readonly RoutingCorridor[],
+	graph: LogicGraph,
+): boolean {
+	if (corridors.length === 0) return false;
+	return corridors.every((corridor) => corridorCarriesCanonicalIndexes(corridor, graph));
+}
+
 function compareLinks(a: CorridorLink, b: CorridorLink): number {
 	const source = a.source - b.source;
 	const target = a.target - b.target;

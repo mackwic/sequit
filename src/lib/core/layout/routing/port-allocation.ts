@@ -9,7 +9,12 @@ import {
 	PORT_SPACING,
 } from '../layout-settings';
 import { type Bounds, RoutingPortRole, type Size } from '../layout-types';
-import type { CorridorLink, RoutingCorridor } from './routing-corridors';
+import {
+	assignPortOffset,
+	type PortOffsetsBuilder,
+	RelationPortOffsets,
+} from './relation-port-offsets';
+import { type CorridorLink, corridorsIndexGraph, type RoutingCorridor } from './routing-corridors';
 
 function portSpacing(kind: EndpointKind): number {
 	if (kind === EndpointKind.Junction) return JUNCTION_PORT_SPACING;
@@ -68,13 +73,16 @@ function allocateFace(input: {
 	readonly outgoing: boolean;
 	readonly sortLinks: boolean;
 	readonly graph: LogicGraph;
+	/** Every link carries its index in `graph`, whose relation ids strictly increase. */
+	readonly indexed: boolean;
 	readonly shared?: ReadonlySet<string>;
 }): FaceAllocation {
-	const offsets = new Map<string, number>();
+	let offsets: PortOffsetsBuilder = new Map<string, number>();
+	if (input.indexed) offsets = new RelationPortOffsets(input.graph);
 	const metricDemands: PortMetricDemand[] = [];
 	for (const [id, links] of input.faces) {
 		if (input.shared?.has(id) === true) {
-			for (const { relation } of links) offsets.set(relation.id, 0);
+			for (const link of links) assignPortOffset(offsets, link, 0);
 			continue;
 		}
 		if (input.sortLinks) sortFaceLinks(links, input.outgoing);
@@ -91,7 +99,7 @@ function allocateFace(input: {
 		});
 		const centerIndex = (links.length - 1) / 2;
 		for (const [index, link] of links.entries())
-			offsets.set(link.relation.id, (index - centerIndex) * spacing);
+			assignPortOffset(offsets, link, (index - centerIndex) * spacing);
 	}
 	return { offsets, metricDemands };
 }
@@ -185,7 +193,7 @@ function appendDirectFaceLinks(
 ): boolean {
 	const { outgoing, incoming, routedRelationIds, routedRelationRefs } = faceLinks;
 	let appended = false;
-	for (const { relation } of input.graph.relations) {
+	for (const [relationIndex, { relation }] of input.graph.relations.entries()) {
 		if (routedRelationRefs?.has(relation) === true || routedRelationIds.has(relation.id)) continue;
 		const source = outgoing.get(relation.from);
 		const target = incoming.get(relation.to);
@@ -195,6 +203,7 @@ function appendDirectFaceLinks(
 			relation,
 			source: transverseCenter(defined(input.bounds.get(relation.from)), input.vertical),
 			target: transverseCenter(defined(input.bounds.get(relation.to)), input.vertical),
+			relationIndex,
 		};
 		source?.push(link);
 		target?.push(link);
@@ -209,6 +218,8 @@ export function allocatePorts(input: PortAllocationInput): PortAllocation {
 	const face = {
 		graph: input.graph,
 		sortLinks: input.fromCrossingCorridors !== true || appendedDirectLinks,
+		indexed:
+			input.fromCrossingCorridors === true && corridorsIndexGraph(input.corridors, input.graph),
 	};
 	const shared = input.sharedSources ?? new Set<string>();
 	const source = allocateFace({

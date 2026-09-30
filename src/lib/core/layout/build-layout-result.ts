@@ -7,6 +7,7 @@ import { OUTER_MARGIN } from './layout-settings';
 import type { Bounds, LayoutElement, LayoutRelation, LayoutResult, Point } from './layout-types';
 import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint-routes';
 import { applyNodeRouting, type PlannedNodeRoutes } from './routing/materialize-node-routes';
+import { relationPortOffset } from './routing/relation-port-offsets';
 import type { NodeRouting } from './routing/reserve-node-routing';
 import { corridorCarriesCanonicalIndexes } from './routing/routing-corridors';
 import { directRouteRail, type RoutingSpace } from './routing/routing-space';
@@ -45,8 +46,8 @@ function layoutRelation(
 			target,
 			direction: input.frame.direction,
 			rail: directRouteRail(input.space, relation.from, relation.to),
-			sourceOffset: input.routing?.ports.sourceOffsets.get(relation.id),
-			targetOffset: input.routing?.ports.targetOffsets.get(relation.id),
+			sourceOffset: relationPortOffset(input.routing?.ports.sourceOffsets, input.graph, index),
+			targetOffset: relationPortOffset(input.routing?.ports.targetOffsets, input.graph, index),
 		});
 	return { id: relation.id, from: relation.from, to: relation.to, points };
 }
