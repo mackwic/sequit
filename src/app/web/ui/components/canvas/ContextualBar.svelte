@@ -105,7 +105,7 @@
 				onclick={edit.run}
 			>
 				<Icon name="phosphor:pencil-simple" />
-				<span><span class="underline decoration-1 underline-offset-2">É</span>diter</span>
+				<span>{editShortcut.label}</span>
 			</button>
 		{/if}
 		{#if ownFold}
@@ -146,7 +146,7 @@
 				onclick={split}
 			>
 				<Icon name="phosphor:git-merge" />
-				<span><span class="underline decoration-1 underline-offset-2">J</span>onction</span>
+				<span>{junctionShortcut.label}</span>
 			</button>
 		{/if}
 		{#if onDelete}

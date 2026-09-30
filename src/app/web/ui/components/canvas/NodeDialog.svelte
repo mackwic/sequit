@@ -7,8 +7,14 @@
 		type LogicNature,
 	} from '../../../../../lib/core/document/logic-document';
 	import type { NodeFields } from '../../../../../lib/infrastructure/document/node-fields';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+	} from '../../canvas/canvas-shortcuts';
 	import ContentStyleEditor from '../content/ContentStyleEditor.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import Kbd from '../ui/Kbd.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
 
 	let {
@@ -43,6 +49,7 @@
 		text?: Snippet | undefined;
 	} = $props();
 	const formId = $props.id();
+	const confirmShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Confirm];
 	let content = $state<HTMLTextAreaElement>();
 	let nature = $derived(natures.find(({ id }) => id === draft.natureId));
 	let submittable = $derived(!busy && !deleted && nature !== undefined);
@@ -146,11 +153,13 @@
 			type="submit"
 			form={`node-dialog-${formId}`}
 			disabled={!submittable}
+			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
 			{#if mode === 'create'}<Icon name="phosphor:plus" /> Créer{:else}<Icon
 					name="phosphor:check"
 				/>
 				{#if busy}Enregistrement…{:else}Enregistrer{/if}{/if}
+			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}
 </ModalDialog>
