@@ -10,6 +10,7 @@ import {
 } from './block-passages';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
 import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
+import { topologyRows, transversePositions } from './transverse-positions';
 
 interface LayeredRelation {
 	readonly from: string;
@@ -17,15 +18,6 @@ interface LayeredRelation {
 	readonly fromRank: number;
 	readonly toRank: number;
 	readonly intermediate: readonly { readonly rank: number; readonly id: string }[];
-}
-
-/** Ordinary then junction ids of every component row, components one after the other. */
-function topologyRows(structure: LayoutStructure): string[][] {
-	const rows: string[][] = [];
-	for (const component of structure.components)
-		for (const [rank, ordinary] of component.rows.ordinary.entries())
-			rows.push([...ordinary, ...defined(component.rows.junction[rank])]);
-	return rows;
 }
 
 function appendSegments(
@@ -85,26 +77,6 @@ function passagePosition(sourceX: number, targetX: number, span: number): Passag
 	const average = (sourceX + targetX) / 2;
 	if (average < 0.5) return { x: -(span + average), tie: -sourceX };
 	return { x: 1 + span + (1 - average), tie: 1 - sourceX };
-}
-
-/**
- * Normalized transverse positions by row ordinal. A junction rail is centered on its ordinary
- * children, so it takes their mean position rather than the end of its row.
- */
-function transversePositions(
-	structure: LayoutStructure,
-	rows: readonly (readonly string[])[],
-): ReadonlyMap<string, number> {
-	const positions = new Map<string, number>();
-	for (const row of rows)
-		for (const [ordinal, id] of row.entries()) positions.set(id, (ordinal + 1) / (row.length + 1));
-	for (const [id, junction] of structure.junctions) {
-		const children = junction.neighbors.filter((child) => positions.has(child));
-		if (children.length === 0 || !positions.has(id)) continue;
-		const sum = children.reduce((total, child) => total + defined(positions.get(child)), 0);
-		positions.set(id, sum / children.length);
-	}
-	return positions;
 }
 
 interface RowEntry {

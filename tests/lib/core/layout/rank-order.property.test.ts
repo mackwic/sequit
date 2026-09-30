@@ -1587,6 +1587,64 @@ describe('dedicated bounded geometric rank search', () => {
 		}
 	});
 
+	it('places a junction under its parent row, not on its longer child row scale', () => {
+		const ids = ['r', 'a', 'f', 'h', 'd1', 'd2', 'd3', 'c', 'g'];
+		const base = corpusDocument(ids, ids, [
+			{ id: 'a-r', from: 'a', to: 'r' },
+			{ id: 'f-r', from: 'f', to: 'r' },
+			{ id: 'h-r', from: 'h', to: 'r' },
+			{ id: 'd1-a', from: 'd1', to: 'a' },
+			{ id: 'd2-a', from: 'd2', to: 'a' },
+			{ id: 'd3-a', from: 'd3', to: 'a' },
+			{ id: 'c-j', from: 'c', to: 'j' },
+			{ id: 'j-f', from: 'j', to: 'f' },
+			{ id: 'g-h', from: 'g', to: 'h' },
+		]);
+		const document: LogicDocument = {
+			...base,
+			junctions: [
+				{
+					kind: EndpointKind.Junction,
+					id: 'j',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('b00'),
+				},
+			],
+		};
+		const created = createGraph(document);
+		if (!created.ok) throw new Error('Invalid junction scale witness');
+		const graph = created.value;
+		const ranks = topologicallyRank(graph);
+		const structure = prepareLayout(graph, ranks);
+		const domain = collectRankOrderDomain(structure);
+		const topology = new RankTopologyOracle(structure, domain);
+		expect(domain.bands).toEqual([
+			['a', 'f', 'h'],
+			['d1', 'd2', 'd3', 'c', 'g'],
+		]);
+		// The child row has five slots, the junction's row three: on the child row's scale the
+		// junction would stand right of H, and C → J would cross G → H.
+		expect(topology.count(structure, domain.bands)).toBe(0);
+		const measurements = {
+			nodes: new Map(ids.map((id) => [id, { width: 80, height: 40 }])),
+			groups: new Map(),
+			junctions: new Map([['j', { width: 24, height: 24 }]]),
+		};
+		const validation = validateDedicatedCandidate({
+			graph,
+			ranks,
+			measurements,
+			layout: evaluateDedicatedLayout(structure, measurements),
+		});
+		expect(validation.valid && validation.score.strictCrossings).toBe(0);
+		expect(
+			topology.count(structure, [
+				['a', 'f', 'h'],
+				['d1', 'd2', 'd3', 'g', 'c'],
+			]),
+		).toBe(1);
+	});
+
 	it('selects a crossing-free order for the linked goal and implementation trees', () => {
 		const entry = defined(
 			rankOrderMutationCorpus().find(({ id }) => id === 'goal-implementation'),
