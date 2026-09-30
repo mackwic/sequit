@@ -2,6 +2,17 @@ import { defined } from '../../document/logic-document';
 import type { Interval } from '../geometry/envelope';
 import { ITEM_GAP, RAIL_SPACING } from '../layout-settings';
 
+/** Where an item's related endpoints stand relative to its center once it faces them. */
+interface RowAnchorReach {
+	readonly start: number;
+	readonly end: number;
+	/**
+	 * Free space their row keeps after the related endpoints of the previous reaching item;
+	 * undefined when both sets share or interleave endpoints, which then bind nothing.
+	 */
+	readonly gap: number | undefined;
+}
+
 export interface RowAnchorItem {
 	readonly center: number;
 	readonly size: number;
@@ -9,6 +20,11 @@ export interface RowAnchorItem {
 	readonly fixed: boolean;
 	/** Free space before this item, after the previous one; the item gap by default. */
 	readonly gap?: number | undefined;
+	/**
+	 * Related endpoints that must fit beside the previous reaching item's once both items face
+	 * them: two parents stand far enough apart for both families to be centered below them.
+	 */
+	readonly reach?: RowAnchorReach | undefined;
 }
 
 interface RowAnchor {
@@ -19,15 +35,28 @@ interface RowAnchor {
 	readonly fixed: boolean;
 }
 
+/** The last item with a reach so far: its minimum distance and where its reach ends. */
+interface Reached {
+	readonly distance: number;
+	readonly end: number;
+}
+
 function minimumDistances(items: readonly RowAnchorItem[]): readonly number[] {
 	const distances: number[] = [];
 	let distance = 0;
+	let reached: Reached | undefined;
 	for (const [index, item] of items.entries()) {
 		if (index > 0) {
 			const previous = defined(items[index - 1]);
 			const halfSizes = (previous.size + item.size) / 2;
 			distance += halfSizes + (item.gap ?? ITEM_GAP);
 		}
+		const { reach } = item;
+		if (reach?.gap !== undefined && reached !== undefined) {
+			const clearance = reached.end + reach.gap - reach.start;
+			distance = Math.max(distance, reached.distance + clearance);
+		}
+		if (reach !== undefined) reached = { distance, end: reach.end };
 		distances.push(distance);
 	}
 	return distances;

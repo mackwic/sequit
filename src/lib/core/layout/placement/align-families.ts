@@ -2,6 +2,7 @@ import { defined } from '../../document/logic-document';
 import { type Interval, transverseEnvelope } from '../geometry/envelope';
 import { type MutableBounds, translateTransversely } from '../geometry/layout-frame';
 import type { BranchAnchor } from '../structure/branch-anchors';
+import { withReaches } from './family-reach';
 import { fitRowAnchors, type RowAnchorItem } from './fit-row-anchors';
 
 export interface BranchAlignment {
@@ -170,13 +171,19 @@ function alignRow(
 	row: RowPass & { readonly rank: number },
 ): void {
 	const { rank, sign } = row;
-	const items = families.map((family, index) => {
+	let items: readonly RowAnchorItem[] = families.map((family, index) => {
 		const item = familyItem(family, input, sign);
 		const previous = families[index - 1]?.members.at(-1);
 		const first = defined(family.members[0]);
 		if (previous === undefined || input.gapBetween === undefined) return item;
 		return { ...item, gap: input.gapBetween(previous, first) };
 	});
+	if (sign < 0)
+		items = withReaches(
+			items,
+			families.map(({ related }) => related),
+			input,
+		);
 	let centers: readonly number[];
 	const [single] = items;
 	const alone = items.length === 1 && single !== undefined;
