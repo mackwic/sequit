@@ -14,6 +14,7 @@ import {
 	competingValidations,
 	git,
 	performanceContext,
+	performanceEnvironment,
 	sourceState,
 } from './performance-context.mjs';
 
@@ -58,7 +59,7 @@ async function record(suite, destination, filter = '') {
 			result = await new Promise((resolveRun, reject) => {
 				const child = spawn('pnpm', args, {
 					stdio: ['ignore', log, log],
-					env: { ...process.env, SEQUIT_PERFORMANCE_MEASUREMENTS: auxiliary.measurements },
+					env: performanceEnvironment(suite, auxiliary.measurements),
 				});
 				const monitor = setInterval(() => {
 					try {

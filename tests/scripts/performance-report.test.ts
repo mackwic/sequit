@@ -16,6 +16,7 @@ import {
 	competingValidations,
 	findCompetingValidations,
 	performanceContext,
+	performanceEnvironment,
 	performanceProtocolFingerprint,
 	performanceProtocolPaths,
 	sourceState,
@@ -26,6 +27,10 @@ import {
 	validateReport,
 } from '../../scripts/performance-report.mjs';
 import { defined } from '../../src/lib/core/document/logic-document';
+import {
+	IncrementalLayoutCaches,
+	incrementalLayoutCaches,
+} from '../support/performance/replay-incremental-layout';
 
 function report(values = [2, 12, 12, 2]) {
 	return {
@@ -114,6 +119,23 @@ describe('performance comparisons', () => {
 		expect(typeof state.dirty).toBe('boolean');
 		expect(state.fingerprint).toMatch(/^[a-f0-9]{64}$/);
 	});
+	it.each([
+		['incremental', IncrementalLayoutCaches.Cold, IncrementalLayoutCaches.Projection],
+		['incremental-cold', IncrementalLayoutCaches.Projection, IncrementalLayoutCaches.Cold],
+	])(
+		'measures the %s suite in its own cache mode despite an inherited %s',
+		(suite, inherited, mode) => {
+			const environment = performanceEnvironment(suite, '/tmp/measurements.json', {
+				PATH: '/bin',
+				SEQUIT_INCREMENTAL_LAYOUT_CACHES: inherited,
+			});
+			expect(incrementalLayoutCaches(environment['SEQUIT_INCREMENTAL_LAYOUT_CACHES'])).toBe(mode);
+			expect(environment).toMatchObject({
+				PATH: '/bin',
+				SEQUIT_PERFORMANCE_MEASUREMENTS: '/tmp/measurements.json',
+			});
+		},
+	);
 	it('changes the protocol fingerprint when a previously readable workspace path disappears', () => {
 		const directory = mkdtempSync(join('tests', `performance-protocol-${randomUUID()}-`));
 		const target = join(directory, 'target.ts');

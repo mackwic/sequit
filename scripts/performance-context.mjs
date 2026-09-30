@@ -87,6 +87,21 @@ export function performanceContext(suite, filter) {
 	};
 }
 
+/** Cache mode of each incremental suite, so an inherited value cannot relabel a report. */
+const suiteLayoutCaches = { incremental: 'projection', 'incremental-cold': 'cold' };
+
+/**
+ * The measured command's environment: the suite, not the caller, selects the layout caches.
+ * @returns {Record<string, string | undefined>}
+ */
+export function performanceEnvironment(suite, measurements, environment = process.env) {
+	return {
+		...environment,
+		SEQUIT_INCREMENTAL_LAYOUT_CACHES: suiteLayoutCaches[suite],
+		SEQUIT_PERFORMANCE_MEASUREMENTS: measurements,
+	};
+}
+
 /** Best-effort check of known heavy validations, not a claim that the machine is idle. */
 export function competingValidations(excludedRoot = process.pid) {
 	const rows = execFileSync('ps', ['-axo', 'pid=,ppid=,args='], { encoding: 'utf8' }).split('\n');
