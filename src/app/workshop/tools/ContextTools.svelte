@@ -9,6 +9,7 @@
 	import CanvasShortcut from '../../web/ui/components/canvas/CanvasShortcut.svelte';
 	import FloatingActions from '../../web/ui/components/canvas/FloatingActions.svelte';
 	import Icon from '../../web/ui/components/ui/Icon.svelte';
+	import Kbd from '../../web/ui/components/ui/Kbd.svelte';
 	import type { WorkbenchToolProps } from '../workshop-types';
 	let { workbench, session, viewport, canvas, presentation, report }: WorkbenchToolProps = $props();
 	let bar = $state<HTMLDivElement>();
@@ -119,7 +120,9 @@
 				if (selected.length !== 1) return;
 				menu = false;
 				if (node) session.beginNodeEdit(node);
-			}}><Icon name="phosphor:pencil-simple" /><span><u>É</u>diter</span></button
+			}}
+			><Icon name="phosphor:pencil-simple" /><span>{editShortcut.label}</span
+			>{#if presentation === 'menu'}<Kbd shortcut={editShortcut} />{/if}</button
 		>
 		<button
 			class="action"

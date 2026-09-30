@@ -5,7 +5,13 @@
 		JUNCTION_OPERATORS,
 		type JunctionOperator,
 	} from '../../../../../lib/core/document/logic-document';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+	} from '../../canvas/canvas-shortcuts';
 	import Icon from '../ui/Icon.svelte';
+	import Kbd from '../ui/Kbd.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
 
 	let {
@@ -27,6 +33,7 @@
 		data?: Record<`data-${string}`, string>;
 	} = $props();
 	const formId = $props.id();
+	const confirmShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Confirm];
 	const labels: Record<JunctionOperator, { readonly title: string; readonly hint: string }> = {
 		and: { title: 'ET', hint: 'Toutes les origines sont nécessaires.' },
 		or: { title: 'OU', hint: 'Au moins une origine suffit.' },
@@ -100,9 +107,11 @@
 			type="submit"
 			form={`junction-dialog-${formId}`}
 			disabled={busy}
+			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
 			<Icon name="phosphor:check" />
 			{#if busy}Enregistrement…{:else}Enregistrer{/if}
+			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}
 </ModalDialog>

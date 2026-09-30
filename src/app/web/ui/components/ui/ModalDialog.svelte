@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount, type Snippet } from 'svelte';
 
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		matchesShortcut,
+	} from '../../canvas/canvas-shortcuts';
+
 	let {
 		title,
 		eyebrow,
@@ -23,7 +29,7 @@
 		onclose: () => void;
 		/** Escape, when it must differ from `onclose`. */
 		oncancel?: (() => void) | undefined;
-		/** Shift+Enter anywhere in the dialog, captured before the focused field. */
+		/** Confirm (Shift+Enter) anywhere in the dialog, captured before the focused field. */
 		oncommit?: (() => void) | undefined;
 		children: Snippet;
 		footer?: Snippet;
@@ -66,14 +72,7 @@
 	function commit(event: KeyboardEvent): void {
 		if (
 			oncommit === undefined ||
-			event.key !== 'Enter' ||
-			!event.shiftKey ||
-			event.ctrlKey ||
-			event.metaKey ||
-			event.altKey ||
-			event.repeat ||
-			event.isComposing ||
-			event.defaultPrevented
+			!matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.Confirm], event)
 		)
 			return;
 		event.preventDefault();

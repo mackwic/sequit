@@ -659,6 +659,37 @@ test.describe('accessible canvas selection', () => {
 		await expect(measuredNodes.first()).not.toHaveAttribute('aria-pressed', /.+/);
 		await expect(page.locator('.measurement-layer')).toHaveAttribute('aria-hidden', 'true');
 	});
+
+	test('opens the keyboard shortcuts panel from its button or ?, never from a text field', async ({
+		page,
+	}) => {
+		const help = page.getByRole('button', { name: 'Raccourcis clavier', exact: true });
+		const panel = page.getByRole('dialog', { name: 'Raccourcis clavier' });
+		await help.click();
+		await expect(panel).toBeVisible();
+		await expect(panel).toContainText('Éditer');
+		await expect(panel).toContainText('Supprimer');
+		await page.keyboard.press('Escape');
+		await expect(panel).toHaveCount(0);
+		await expect(help).toBeFocused();
+
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.focus();
+		await page.keyboard.press('?');
+		await expect(panel).toBeVisible();
+		await page.keyboard.press('Escape');
+		await expect(panel).toHaveCount(0);
+		await expect(node).toBeFocused();
+
+		await node.dblclick();
+		const content = page
+			.getByRole('dialog', { name: 'Modifier la boîte' })
+			.getByRole('textbox', { name: 'Contenu' });
+		await expect(content).toBeFocused();
+		await page.keyboard.press('?');
+		await expect(content).toHaveValue(/\?/);
+		await expect(panel).toHaveCount(0);
+	});
 });
 
 test.describe('box dialog editing and creation', () => {

@@ -71,7 +71,7 @@
 				onclick={() => onGroup?.()}
 			>
 				<Icon name="phosphor:folder-plus" />
-				<span><span class="underline decoration-1 underline-offset-2">G</span>rouper</span>
+				<span>{groupShortcut.label}</span>
 			</button>
 		{/if}
 		{#if onDelete}

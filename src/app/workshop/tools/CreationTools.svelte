@@ -5,14 +5,20 @@
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
-		shortcutHint,
+		shortcutKeyshortcuts,
 	} from '../../web/ui/canvas/canvas-shortcuts';
 	import CanvasShortcut from '../../web/ui/components/canvas/CanvasShortcut.svelte';
 	import Icon from '../../web/ui/components/ui/Icon.svelte';
+	import Kbd from '../../web/ui/components/ui/Kbd.svelte';
 	import type { WorkbenchToolProps } from '../workshop-types';
 	let { workbench, session, model, presentation, report, viewport }: WorkbenchToolProps = $props();
 	let open = $state(false);
 	const createShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Create];
+	/** Only the keyboard variant binds N. */
+	let keyshortcuts = $derived.by(() => {
+		if (presentation === 'keyboard') return shortcutKeyshortcuts(createShortcut);
+		return undefined;
+	});
 	let content = $state('');
 	let input = $state<HTMLTextAreaElement>();
 	$effect(() => {
@@ -72,12 +78,13 @@
 	<button
 		class="primary"
 		type="button"
+		aria-keyshortcuts={keyshortcuts}
 		onclick={() => {
 			open = !open;
 		}}
-		><Icon name="phosphor:plus" /> Nouvelle boîte {#if presentation === 'keyboard'}({shortcutHint(
-				createShortcut,
-			)}){/if}</button
+		><Icon name="phosphor:plus" /> Nouvelle boîte {#if presentation === 'keyboard'}<Kbd
+				shortcut={createShortcut}
+			/>{/if}</button
 	><button type="button" disabled={selected === undefined} onclick={duplicate}
 		><Icon name="phosphor:copy" /> Dupliquer la sélection</button
 	>

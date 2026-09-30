@@ -60,7 +60,7 @@
 		<div class="canvas">
 			<LogicCanvas {oncanvas} document={opened.value} natures={model.natures} {session} />
 			<WorkshopViewportStart canvas={initialCanvas} viewport={initialViewport} />
-			<CanvasViewportControls {session} />
+			<CanvasViewportControls {session} viewportElement={initialViewport} />
 			<CanvasInteractionStatus {session} />
 		</div>
 	</div>

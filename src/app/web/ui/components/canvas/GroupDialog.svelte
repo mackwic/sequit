@@ -3,8 +3,14 @@
 
 	import type { LayoutLane } from '../../../../../lib/core/document/logic-document';
 	import type { GroupFields } from '../../../document/document-commands';
+	import {
+		CANVAS_SHORTCUTS,
+		CanvasShortcutId,
+		shortcutKeyshortcuts,
+	} from '../../canvas/canvas-shortcuts';
 	import ContentColorPicker from '../content/ContentColorPicker.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import Kbd from '../ui/Kbd.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
 
 	let {
@@ -38,6 +44,7 @@
 		text?: Snippet | undefined;
 	} = $props();
 	const formId = $props.id();
+	const confirmShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Confirm];
 	let titleInput = $state<HTMLInputElement>();
 	let submittable = $derived(!busy && (text !== undefined || draft.label.trim() !== ''));
 	let subtitle = $derived.by((): { description: string } | Record<string, never> => {
@@ -131,9 +138,11 @@
 			type="submit"
 			form={`group-dialog-${formId}`}
 			disabled={!submittable}
+			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
 			<Icon name="phosphor:check" />
 			{#if busy}Enregistrement…{:else}Enregistrer{/if}
+			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}
 </ModalDialog>
