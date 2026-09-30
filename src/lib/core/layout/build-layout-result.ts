@@ -9,7 +9,7 @@ import { assertRelationBoundsAreDisjoint, routePoints } from './routing/endpoint
 import { applyNodeRouting, type PlannedNodeRoutes } from './routing/materialize-node-routes';
 import { relationPortOffset } from './routing/relation-port-offsets';
 import type { NodeRouting } from './routing/reserve-node-routing';
-import { corridorCarriesCanonicalIndexes } from './routing/routing-corridors';
+import { corridorsIndexGraph } from './routing/routing-corridors';
 import { directRouteRail, type RoutingSpace } from './routing/routing-space';
 
 interface ResultInput {
@@ -56,13 +56,8 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 	let planned: PlannedNodeRoutes | undefined;
 	if (input.routing !== undefined) {
 		let relationCount: number | undefined;
-		if (
-			input.routing.corridors.length > 0 &&
-			input.routing.corridors.every(({ corridor }) =>
-				corridorCarriesCanonicalIndexes(corridor, input.graph),
-			)
-		)
-			relationCount = input.graph.relations.length;
+		const corridors = input.routing.corridors.map(({ corridor }) => corridor);
+		if (corridorsIndexGraph(corridors, input.graph)) relationCount = input.graph.relations.length;
 		planned = applyNodeRouting({
 			plan: input.routing,
 			bounds: input.bounds,

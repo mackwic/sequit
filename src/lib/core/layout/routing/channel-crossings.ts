@@ -12,7 +12,11 @@ interface Track {
 	readonly runs: readonly RunRisers[];
 	readonly start: number;
 	readonly end: number;
-	/** The track last found to gain nothing by sinking below this one; the gain is pure. */
+	/**
+	 * The track last found to gain nothing by sinking below this one. The gain is pure: it reads
+	 * only run spans and risers, which stay fixed while tracks are reordered (rails are written
+	 * after the loop), so the verdict for this ordered pair survives any neighbour swap.
+	 */
 	keepsAbove: Track | undefined;
 }
 

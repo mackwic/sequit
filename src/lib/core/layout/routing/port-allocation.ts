@@ -1,7 +1,6 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { transverseCenter } from '../geometry/layout-frame';
 import {
 	JUNCTION_PORT_INSET,
 	JUNCTION_PORT_SPACING,
@@ -14,7 +13,12 @@ import {
 	type PortOffsetsBuilder,
 	RelationPortOffsets,
 } from './relation-port-offsets';
-import { type CorridorLink, corridorsIndexGraph, type RoutingCorridor } from './routing-corridors';
+import {
+	type CorridorLink,
+	corridorLink,
+	corridorsIndexGraph,
+	type RoutingCorridor,
+} from './routing-corridors';
 
 function portSpacing(kind: EndpointKind): number {
 	if (kind === EndpointKind.Junction) return JUNCTION_PORT_SPACING;
@@ -176,7 +180,7 @@ function collectFaceLinks(input: PortAllocationInput): FaceLinks {
 		for (let index = 1; index < input.graph.relations.length; index += 1) {
 			const previous = defined(input.graph.relations[index - 1]).relation.id;
 			const current = defined(input.graph.relations[index]).relation.id;
-			if (previous < current) continue;
+			if (compareCanonicalStrings(previous, current) < 0) continue;
 			sortedUniqueIds = false;
 			break;
 		}
@@ -199,12 +203,7 @@ function appendDirectFaceLinks(
 		const target = incoming.get(relation.to);
 		if (source === undefined && target === undefined) continue;
 		appended = true;
-		const link = {
-			relation,
-			source: transverseCenter(defined(input.bounds.get(relation.from)), input.vertical),
-			target: transverseCenter(defined(input.bounds.get(relation.to)), input.vertical),
-			relationIndex,
-		};
+		const link = corridorLink(relation, relationIndex, input.bounds, input.vertical);
 		source?.push(link);
 		target?.push(link);
 	}

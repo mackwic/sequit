@@ -7,11 +7,7 @@ import type { ChannelWire } from './channel-types';
 import type { ChannelRouting } from './channel-types';
 import { type PortAllocation, sharedSourcePorts } from './port-allocation';
 import { RelationPortOffsets } from './relation-port-offsets';
-import {
-	corridorCarriesCanonicalIndexes,
-	type CorridorLink,
-	type RoutingCorridor,
-} from './routing-corridors';
+import type { CorridorLink, RoutingCorridor } from './routing-corridors';
 
 interface PlannedCorridor extends ChannelRouting {
 	readonly corridor: RoutingCorridor;
@@ -53,10 +49,7 @@ function offsetReader(
 	offsets: ReadonlyMap<string, number>,
 	corridor: RoutingCorridor,
 ): (link: CorridorLink) => number {
-	if (
-		offsets instanceof RelationPortOffsets &&
-		corridorCarriesCanonicalIndexes(corridor, offsets.graph)
-	)
+	if (offsets instanceof RelationPortOffsets && offsets.indexesCorridor(corridor))
 		return (link) => defined(offsets.at(defined(link.relationIndex)));
 	return (link) => defined(offsets.get(link.relation.id));
 }

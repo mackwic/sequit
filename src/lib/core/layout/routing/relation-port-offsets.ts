@@ -1,35 +1,52 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import type { CorridorLink } from './routing-corridors';
+import {
+	corridorCarriesCanonicalIndexes,
+	type CorridorLink,
+	type RoutingCorridor,
+} from './routing-corridors';
 
 /** Lookups by id answered by binary search before the map view pays for itself. */
 const SEARCHED_LOOKUPS = 64;
 
 /**
  * Port offsets stored by relation index, for a graph whose relation ids strictly increase.
- * Routing reads them by index; lookups by id search the sorted relations until they become
- * frequent, and the map view, in assignment order, is built only when needed.
+ * Offsets are assigned while the allocation is built, then only read: routing reads them by
+ * index; lookups by id search the sorted relations until they become frequent, and the map
+ * view, in assignment order, is built only when needed.
  */
 export class RelationPortOffsets implements ReadonlyMap<string, number> {
-	readonly graph: LogicGraph;
+	readonly #graph: LogicGraph;
 	readonly #values: Float64Array;
 	readonly #order: number[] = [];
 	#map: Map<string, number> | undefined;
 	#lookups = 0;
+	#read = false;
 
 	constructor(graph: LogicGraph) {
-		this.graph = graph;
+		this.#graph = graph;
 		this.#values = new Float64Array(graph.relations.length).fill(Number.NaN);
 	}
 
+	/** Whether these offsets are addressed by the relation indices of `graph`. */
+	indexes(graph: LogicGraph): boolean {
+		return this.#graph === graph;
+	}
+
+	/** Whether `corridor` carries relation indices of the graph these offsets are addressed by. */
+	indexesCorridor(corridor: RoutingCorridor): boolean {
+		return corridorCarriesCanonicalIndexes(corridor, this.#graph);
+	}
+
 	assign(relationIndex: number, offset: number): void {
+		if (this.#read) throw new Error('Port offsets are read-only once they have been read.');
 		if (Number.isNaN(defined(this.#values[relationIndex]))) this.#order.push(relationIndex);
 		this.#values[relationIndex] = offset;
-		this.#map = undefined;
 	}
 
 	at(relationIndex: number): number | undefined {
+		this.#read = true;
 		const offset = this.#values[relationIndex];
 		if (offset === undefined || Number.isNaN(offset)) return undefined;
 		return offset;
@@ -39,7 +56,7 @@ export class RelationPortOffsets implements ReadonlyMap<string, number> {
 		if (this.#map !== undefined) return this.#map.get(relationId);
 		this.#lookups += 1;
 		if (this.#lookups > SEARCHED_LOOKUPS) return this.#view().get(relationId);
-		const { relations } = this.graph;
+		const relations = this.#graph.relations;
 		let low = 0;
 		let high = relations.length;
 		while (low < high) {
@@ -61,10 +78,11 @@ export class RelationPortOffsets implements ReadonlyMap<string, number> {
 	}
 
 	#view(): Map<string, number> {
+		this.#read = true;
 		if (this.#map !== undefined) return this.#map;
 		const map = new Map<string, number>();
 		for (const index of this.#order)
-			map.set(defined(this.graph.relations[index]).relation.id, defined(this.#values[index]));
+			map.set(defined(this.#graph.relations[index]).relation.id, defined(this.#values[index]));
 		this.#map = map;
 		return map;
 	}
@@ -99,7 +117,7 @@ export function relationPortOffset(
 	graph: LogicGraph,
 	index: number,
 ): number | undefined {
-	if (offsets instanceof RelationPortOffsets && offsets.graph === graph) return offsets.at(index);
+	if (offsets instanceof RelationPortOffsets && offsets.indexes(graph)) return offsets.at(index);
 	return offsets?.get(defined(graph.relations[index]).relation.id);
 }
 

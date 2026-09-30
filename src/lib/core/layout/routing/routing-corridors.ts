@@ -36,6 +36,21 @@ export function corridorsIndexGraph(
 	return corridors.every((corridor) => corridorCarriesCanonicalIndexes(corridor, graph));
 }
 
+/** The link of `graph`'s relation at `relationIndex`, between its endpoint centers. */
+export function corridorLink(
+	relation: LogicRelation,
+	relationIndex: number,
+	bounds: ReadonlyMap<string, Bounds>,
+	vertical: boolean,
+): CorridorLink {
+	return {
+		relation,
+		source: transverseCenter(defined(bounds.get(relation.from)), vertical),
+		target: transverseCenter(defined(bounds.get(relation.to)), vertical),
+		relationIndex,
+	};
+}
+
 function compareLinks(a: CorridorLink, b: CorridorLink): number {
 	const source = a.source - b.source;
 	const target = a.target - b.target;
@@ -162,12 +177,7 @@ export function crossingCorridors(input: {
 		const rank = defined(input.ranks.get(relation.to));
 		if (input.ranks.get(relation.from) !== rank + 1) continue;
 		const links = byRank.get(rank) ?? [];
-		links.push({
-			relation,
-			source: transverseCenter(defined(input.bounds.get(relation.from)), input.vertical),
-			target: transverseCenter(defined(input.bounds.get(relation.to)), input.vertical),
-			relationIndex,
-		});
+		links.push(corridorLink(relation, relationIndex, input.bounds, input.vertical));
 		byRank.set(rank, links);
 	}
 	return collectCorridors(byRank, input.graph, canonicalIds);
