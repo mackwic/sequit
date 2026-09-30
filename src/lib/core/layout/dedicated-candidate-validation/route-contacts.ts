@@ -55,7 +55,9 @@ export function contactFailure(
 			return rejected(DedicatedCandidateRejectionCode.SelfContact, undefined, first.id);
 		for (const secondIndex of laterRoutes(index, firstIndex)) {
 			const second = defined(routes[secondIndex]);
-			const invalidContact = disallowedRouteContacts(first, second, analysis.bridges)[0];
+			const invalidContact = disallowedRouteContacts(first, second, analysis.bridges, {
+				sortedByPoint: true,
+			})[0];
 			if (invalidContact === undefined) continue;
 			return {
 				valid: false,
