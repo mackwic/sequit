@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
+import type { DocumentCommandOutcome } from '../document/document-command-contracts';
 import {
 	type SharedDocumentCommand,
 	SharedElementKind,
@@ -14,12 +15,11 @@ import {
 	SourceDocumentStateKind,
 } from './collaborative-document-session-types';
 import { notifySubscribers } from './notify-subscribers';
-import { type PendingCommandFrame, prepareSessionCommand } from './session-command-frame';
+import { prepareSessionCommand } from './session-command-frame';
 import { recoverSessionCommandConflict } from './session-conflict-recovery';
 import { connectionStatus } from './session-connection-status';
 import { ConflictCode } from './session-failure';
 import {
-	announceAcceptedReceipt,
 	createInitializationMessage,
 	handleIncomingMessage,
 	receiveSessionFrame,
@@ -48,7 +48,6 @@ export class CollaborativeSession
 {
 	document = new Y.Doc();
 	#replica = 0;
-	readonly #pending = new Map<string, PendingCommandFrame>();
 	#textFlow: SessionTextFlow;
 	#resumingText = false;
 	#recoveringTextRefusal = false;
@@ -83,7 +82,7 @@ export class CollaborativeSession
 			document: () => this.document,
 			initialized: () => this.#initialized,
 			buffer: () => this.#textFlow.buffer,
-			pending: this.#pending,
+			pending: this.pending,
 			send: (message) => {
 				this.#send(message);
 			},
@@ -152,16 +151,16 @@ export class CollaborativeSession
 		return connectionStatus(this.#rejected, this.transport.status(), this.#ready);
 	}
 
-	dispatch(commands: readonly SharedDocumentCommand[]): string {
+	dispatch(commands: readonly SharedDocumentCommand[]): Promise<DocumentCommandOutcome> {
 		if (!this.#ready || this.#rejected || this.#destroyed)
 			throw new Error('La session doit être connectée.');
 		const pending = prepareSessionCommand(commands, this.#sessionId, this.#sequence);
 		// Validate before consuming a sequence; flush text before deleting its target.
 		this.#textFlow.buffer.flush();
 		this.#sequence = pending.sequence;
-		this.#pending.set(pending.id, pending);
+		const decision = this.propose(pending);
 		this.transport.send(pending.frame);
-		return pending.id;
+		return decision;
 	}
 
 	text(target: SharedTarget, field: string): Y.Text | undefined {
@@ -214,7 +213,7 @@ export class CollaborativeSession
 		this.document.off('update', this.#updated);
 		this.document.destroy();
 		this.clearNotifications();
-		this.#pending.clear();
+		this.closeProposals();
 	}
 
 	readonly #updated = (update: Uint8Array, origin: unknown): void => {
@@ -253,7 +252,7 @@ export class CollaborativeSession
 			onCommit: (id, commit) => {
 				const receipt = resolveCommitReceipt(
 					id,
-					this.#pending,
+					this.pending,
 					this.#textFlow.edits,
 					this.#initialization?.id,
 				);
@@ -264,8 +263,7 @@ export class CollaborativeSession
 				const synchronized = this.#initialized && !this.#resumingText;
 				if (synchronized && this.#synchronizer.attempts === 0) this.#ready = true;
 				if (receipt.initialization) this.#initialization = undefined;
-				if (receipt.decision && id !== undefined)
-					announceAcceptedReceipt(this.decisionListeners, id, commit);
+				if (receipt.decision && id !== undefined) this.announceAccepted(id, commit);
 			},
 			onReject: (reason) => {
 				this.#reject(reason);
@@ -304,11 +302,11 @@ export class CollaborativeSession
 			if (this.#textFlow.pending.has(message.id)) this.#resetReplica();
 			return;
 		}
-		const recovered = recoverSessionCommandConflict(message, this.#pending);
+		const recovered = recoverSessionCommandConflict(message, this.pending);
 		if (recovered === undefined) return;
 		this.#sequence = recovered.sequence;
 		this.#ready = false;
-		notifySubscribers(this.decisionListeners, recovered.decision);
+		this.announceDecision(recovered.decision);
 		notifySubscribers(this.conflictListeners, recovered.notice);
 		this.#synchronizer.start();
 	}
@@ -345,7 +343,7 @@ export class CollaborativeSession
 		this.#textFlow.close();
 		this.#presence.destroy();
 		this.#synchronizer.stop();
-		this.#pending.clear();
+		this.closeProposals();
 
 		this.transport.close();
 		notifySubscribers(this.rejectionListeners, message);

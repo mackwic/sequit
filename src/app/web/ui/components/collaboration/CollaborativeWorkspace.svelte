@@ -3,11 +3,9 @@
 
 	import {
 		defined,
-		EndpointKind,
 		GroupState,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
-	import { projectDeletion } from '../../../../../lib/core/document/topology-deletions';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
 	import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
 	import {
@@ -15,10 +13,20 @@
 		SourceDocumentStateKind,
 	} from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import {
+		type DocumentCommandOutcome,
+		DocumentCommandOutcomeKind,
+	} from '../../../../../lib/infrastructure/document/document-command-contracts';
+	import {
 		SharedCommandKind as Op,
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import {
+		connectedNodeCreation,
+		deletion,
+		nodeCreation,
+		relationCreation,
+	} from '../../../document/document-commands';
 	import { createSharedCanvasProjection } from '../../../projection/open-document';
 	import {
 		deleteVisibleRelation,
@@ -102,30 +110,35 @@
 	function dispatch(command: SharedDocumentCommand): void {
 		dispatchMany([command]);
 	}
+	/** Returns whether the batch was proposed; the room's refusal surfaces later in `error`. */
 	function dispatchMany(commands: readonly SharedDocumentCommand[]): boolean {
 		if (!sourceValid) return false;
+		let decision: Promise<DocumentCommandOutcome>;
 		try {
-			client.dispatch(commands);
-			error = '';
-			return true;
+			decision = client.dispatch(commands);
 		} catch (failure) {
 			if (failure instanceof Error) error = failure.message;
 			return false;
 		}
+		error = '';
+		void decision.then(reportRefusal);
+		return true;
+	}
+	function reportRefusal(outcome: DocumentCommandOutcome): void {
+		if (outcome.kind === DocumentCommandOutcomeKind.Rejected)
+			error = outcome.diagnostics.map(({ message }) => message).join('; ');
+		else if (outcome.kind === DocumentCommandOutcomeKind.Failed) error = String(outcome.error);
 	}
 	function connect(from: string, to: string) {
 		if (!connected || !sourceValid) return;
 		const relation = { id: crypto.randomUUID(), from, to };
+		// Refuse a cycle locally rather than after a round trip to the room.
 		const candidate = projectRelationAddition(model, relation, fractionalOrderKeySpace);
 		if (!candidate.ok) {
 			error = candidate.diagnostics.map(({ message }) => message).join('; ');
 			return;
 		}
-		dispatch({
-			op: Op.Create,
-			target: { kind: Kind.Relation, id: relation.id },
-			properties: { from, to },
-		});
+		dispatch(relationCreation(relation));
 	}
 	function deleteSelection() {
 		if (!interactive || canvas.editing) return;
@@ -145,18 +158,7 @@
 		endpointIds: readonly string[],
 		relationIds: readonly string[],
 	): boolean {
-		const changes = projectDeletion(model, endpointIds, relationIds);
-		const commands: SharedDocumentCommand[] = [];
-		const relations = changes.relationRemovals ?? [];
-		if (relations.length > 0) commands.push({ op: Op.DeleteRelations, ids: relations });
-		for (const { endpointKind, endpointId } of changes.endpointRemovals ?? []) {
-			if (endpointKind === EndpointKind.Group) commands.push({ op: Op.Ungroup, id: endpointId });
-			else {
-				let kind = Kind.Node;
-				if (endpointKind === EndpointKind.Junction) kind = Kind.Junction;
-				commands.push({ op: Op.Delete, target: { kind, id: endpointId } });
-			}
-		}
+		const commands = deletion(model, endpointIds, relationIds);
 		return commands.length > 0 && dispatchMany(commands);
 	}
 	function createRelativeNode(position: RelativeNodePosition): void {
@@ -171,20 +173,7 @@
 			error = 'Ajoutez d’abord une nature au document.';
 			return;
 		}
-		const { id: nodeId, ...properties } = plan.node;
-		const commands: SharedDocumentCommand[] = [
-			{
-				op: Op.Create,
-				target: { kind: Kind.Node, id: nodeId },
-				properties,
-			},
-			...plan.relations.map(({ id, from, to }) => ({
-				op: Op.Create as const,
-				target: { kind: Kind.Relation as const, id },
-				properties: { from, to },
-			})),
-		];
-		if (!dispatchMany(commands)) return;
+		if (!dispatchMany(connectedNodeCreation(plan.node, plan.relations))) return;
 		lastNatureId = plan.node.natureId;
 		canvas.queueNodeMarkdownEdit(plan.node, () => {
 			dispatchDeletion([plan.node.id], []);
@@ -285,11 +274,7 @@
 					lastNatureId = natureId;
 					if (
 						dispatchMany([
-							{
-								op: Op.Create,
-								target: { kind: Kind.Node, id: crypto.randomUUID() },
-								properties: { natureId, markdown, ...creationParent() },
-							},
+							nodeCreation({ id: crypto.randomUUID(), natureId, markdown, ...creationParent() }),
 						])
 					)
 						creating = false;

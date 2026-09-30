@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createDocumentSession } from '../../../../src/app/web/document/yjs-document-session';
+import {
+	connectedNodeCreation,
+	nodeCreation,
+	relationCreation,
+} from '../../../../src/app/web/document/document-commands';
+import { createLocalDocumentSession } from '../../../../src/app/web/document/local-document-session';
 import { LayoutProjectionError } from '../../../../src/app/web/projection/layout-diagnostic';
 import {
 	createSharedCanvasProjection,
@@ -16,7 +21,13 @@ import {
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import type { DocumentSession } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
 import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import {
+	SharedCommandKind,
+	type SharedDocumentCommand,
+	SharedElementKind,
+} from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
 import { layoutMeasurementsForCanvas } from '../../../support/builders/layout-measurements';
 import { crossingDocument } from '../../../support/fixtures';
@@ -25,6 +36,13 @@ import {
 	collaborativeFixture,
 } from '../../../support/fixtures/collaborative-document';
 import { aiDocumentaryEffortScenario } from '../../../support/scenarios/ai-documentary-effort';
+
+async function accept(
+	opened: { readonly session: DocumentSession },
+	commands: readonly SharedDocumentCommand[],
+): Promise<void> {
+	expect((await opened.session.dispatch(commands)).kind).toBe(DocumentCommandOutcomeKind.Accepted);
+}
 
 describe('openDocument', () => {
 	it('opens persisted lanes and projects their shared geometry', async () => {
@@ -80,7 +98,7 @@ describe('openDocument', () => {
 			'from = "word-alcoa-question"',
 			'from = "missing-endpoint"',
 		);
-		const sessionFactory = vi.fn(createDocumentSession);
+		const sessionFactory = vi.fn(createLocalDocumentSession);
 
 		expect(openDocument(source, sessionFactory)).toEqual({
 			ok: false,
@@ -128,7 +146,7 @@ describe('openDocument', () => {
 		const source = await aiDocumentaryEffortScenario();
 		const destroyed = vi.fn();
 		const sessionFactory = vi.fn((document: LogicDocument) => {
-			const session = createDocumentSession(document);
+			const session = createLocalDocumentSession(document);
 			vi.spyOn(session, 'subscribe').mockImplementation(() => {
 				throw new Error('Subscription unavailable');
 			});
@@ -144,7 +162,7 @@ describe('openDocument', () => {
 
 	it('preserves result diagnostics when failed construction cleanup also fails', async () => {
 		const result = openDocument(await aiDocumentaryEffortScenario(), (document) => {
-			const session = createDocumentSession(document);
+			const session = createLocalDocumentSession(document);
 			vi.spyOn(session, 'subscribe').mockImplementation(() => {
 				throw new Error('Subscription unavailable');
 			});
@@ -205,11 +223,9 @@ describe('openDocument', () => {
 		const initial = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
-		await result.value.addNode({
-			id: 'current-node',
-			natureId: 'goal',
-			markdown: 'Current',
-		});
+		await accept(result.value, [
+			nodeCreation({ id: 'current-node', natureId: 'goal', markdown: 'Current' }),
+		]);
 		const complete = layoutMeasurementsForCanvas(result.value.measurementModel);
 		const incomplete = { ...complete, nodes: new Map(complete.nodes) };
 		incomplete.nodes.delete('current-node');
@@ -238,16 +254,12 @@ describe('openDocument', () => {
 		const result = openDocument(await aiDocumentaryEffortScenario());
 		if (!result.ok) throw new Error('Expected the reference document to open');
 
-		await result.value.addNode({
-			id: 'zz-added-first',
-			natureId: 'goal',
-			markdown: 'Added first',
-		});
-		await result.value.addNode({
-			id: 'aa-added-second',
-			natureId: 'goal',
-			markdown: 'Added second',
-		});
+		await accept(result.value, [
+			nodeCreation({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' }),
+		]);
+		await accept(result.value, [
+			nodeCreation({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' }),
+		]);
 		const canvas = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
@@ -268,13 +280,12 @@ describe('openDocument', () => {
 		const beforeNodes = result.value.read().nodes.length;
 		const beforeRelations = result.value.read().relations.length;
 
-		await result.value.addConnectedNode({ id: 'connected-child', natureId: 'goal', markdown: '' }, [
-			{
-				id: 'connected-child-to-parent',
-				from: 'connected-child',
-				to: 'traceable-edits',
-			},
-		]);
+		await accept(
+			result.value,
+			connectedNodeCreation({ id: 'connected-child', natureId: 'goal', markdown: '' }, [
+				{ id: 'connected-child-to-parent', from: 'connected-child', to: 'traceable-edits' },
+			]),
+		);
 
 		expect(result.value.read().nodes).toHaveLength(beforeNodes + 1);
 		expect(result.value.read().relations).toHaveLength(beforeRelations + 1);
@@ -315,11 +326,11 @@ describe('openDocument', () => {
 		const original = result.value.read().groups.find(({ id }) => id === 'use-cases');
 		if (original === undefined) throw new Error('Expected the use-cases group');
 
-		await result.value.updateGroup({
-			...original,
-			label: 'Cas d’usage',
-			color: '#2563eb',
-		});
+		const group = { kind: SharedElementKind.Group, id: original.id } as const;
+		expect(result.value.session.updateText(group, 'label', 'Cas d’usage')).toBe(true);
+		await accept(result.value, [
+			{ op: SharedCommandKind.Update, target: group, set: { color: '#2563eb' }, unset: [] },
+		]);
 		const canvas = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);
@@ -382,11 +393,9 @@ describe('openDocument', () => {
 		const successorBefore = before.nodes.find(({ id }) => id === 'successor')?.bounds;
 		const isolatedBefore = before.nodes.find(({ id }) => id === 'isolated')?.bounds;
 
-		await result.value.addRelation({
-			id: 'source-a-to-target-b',
-			from: 'source-a',
-			to: 'target-b',
-		});
+		await accept(result.value, [
+			relationCreation({ id: 'source-a-to-target-b', from: 'source-a', to: 'target-b' }),
+		]);
 		const after = await result.value.createCanvasModel(
 			layoutMeasurementsForCanvas(result.value.measurementModel),
 		);

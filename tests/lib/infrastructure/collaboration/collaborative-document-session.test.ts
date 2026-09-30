@@ -33,6 +33,10 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import {
+	DocumentCommandOutcomeKind,
+	sessionClosedOutcome,
+} from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import {
 	SharedCommandKind as Op,
 	SharedElementKind as Kind,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
@@ -67,6 +71,16 @@ function setup(initialized = true) {
 	return { client, authoritative, pair, sent, receive, sync, destroy };
 }
 
+/** The proposal ID travels on the wire; the dispatch promise carries only the decision. */
+function lastProposalId(sent: readonly SessionMessage[]): string {
+	const proposal = sent.findLast(
+		(message) => message.type === Message.Change && 'commands' in message,
+	);
+	if (proposal?.type !== Message.Change || !('commands' in proposal))
+		throw new Error('Expected a structural proposal');
+	return proposal.id;
+}
+
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
@@ -78,8 +92,9 @@ it('preserves command identity and local text edits during a retryable service f
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
-	const id = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 	const original = room.sent[0];
+	const id = lastProposalId(room.sent);
 	const failure = new RetryableSessionFailure(SessionFailureCode.StorageUnavailable, 'Retry');
 	room.receive({
 		type: Message.Retry,
@@ -200,7 +215,8 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 			});
 			vi.advanceTimersByTime(1_000);
 		} else {
-			const id = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			const id = lastProposalId(room.sent);
 			room.receive({
 				type: Message.Conflict,
 				code: ConflictCode.CommandConflict,
@@ -261,14 +277,16 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 	},
 );
 
-it('refuses only the stale command and renumbers the next gesture without closing', () => {
+it('refuses only the stale command and renumbers the next gesture without closing', async () => {
 	const room = setup();
 	room.sync();
 	room.sent.length = 0;
 	const decisions = vi.fn();
 	room.client.subscribeToDecisions(decisions);
-	const first = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
-	const second = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
+	const refusal = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	const first = lastProposalId(room.sent);
+	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
+	const second = lastProposalId(room.sent);
 	room.receive({
 		type: Message.Conflict,
 		code: ConflictCode.CommandConflict,
@@ -280,6 +298,10 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	expect(decisions).toHaveBeenCalledWith(
 		expect.objectContaining({ type: 'refused', proposalId: first }),
 	);
+	await expect(refusal).resolves.toEqual({
+		kind: DocumentCommandOutcomeKind.Rejected,
+		diagnostics: [{ code: ConflictCode.CommandConflict, message: 'Élément déplacé', path: [] }],
+	});
 	room.sync();
 	expect(
 		room.sent.filter((message) => message.type === Message.Change && 'commands' in message).at(-1),
@@ -287,6 +309,22 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	room.destroy();
 });
+
+it.each(['destroy', 'terminal rejection'] as const)(
+	'settles pending proposals as session-closed on %s instead of leaving them hanging',
+	async (cause) => {
+		const room = setup();
+		room.sync();
+		const pending = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+		if (cause === 'destroy') room.client.destroy();
+		else room.receive({ type: Message.Reject, message: 'Room closed' });
+		await expect(pending).resolves.toEqual(sessionClosedOutcome());
+		expect(() =>
+			room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]),
+		).toThrow();
+		room.destroy();
+	},
+);
 
 it('flushes on target switch then resets a stale replica without replaying unacknowledged edits', () => {
 	vi.useFakeTimers();
@@ -755,7 +793,7 @@ it('rejects invalid local gestures without consuming a sequence or poisoning rec
 	room.sync();
 	room.sent.length = 0;
 	expect(() => room.client.dispatch([])).toThrow();
-	room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 	expect(room.sent[0]).toMatchObject({ type: Message.Change, sequence: 1 });
 	room.sync();
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
@@ -805,7 +843,8 @@ it('isolates failing document, presence, decision and rejection subscribers', ()
 	const rejection = vi.fn();
 	room.client.subscribeToRejection(rejection);
 	room.client.replaceNodeMarkdown('A', 'Local');
-	const ownedId = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+	const ownedId = lastProposalId(room.sent);
 	room.receive({ type: Message.Presence, participants: [] });
 	room.receive({
 		type: Message.Commit,
@@ -878,12 +917,17 @@ describe('collaborative document session', () => {
 		room.destroy();
 	});
 
-	it('waits for the server before applying structural commands and retries the same command ID after reconnect', () => {
+	it('waits for the server before applying structural commands and retries the same command ID after reconnect', async () => {
 		const room = setup();
 		room.sync();
 		room.sent.length = 0;
 		const commands = [{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }] as const;
-		const id = room.client.dispatch(commands);
+		const settled = vi.fn();
+		const outcome = room.client.dispatch(commands).then((result) => {
+			settled();
+			return result;
+		});
+		const id = lastProposalId(room.sent);
 		expect(room.client.read().nodes).toHaveLength(2);
 		room.pair.client.setStatus(TransportStatus.Disconnected);
 		expect(() => room.client.dispatch(commands)).toThrow();
@@ -893,8 +937,11 @@ describe('collaborative document session', () => {
 		expect(replays).toHaveLength(2);
 		expect(replays[0]).toMatchObject({ id, commands, sequence: 1 });
 		expect(replays[1]).toEqual(replays[0]);
+		await Promise.resolve();
+		expect(settled).not.toHaveBeenCalled();
 		const decisions = vi.fn();
 		const stop = room.client.subscribeToDecisions(decisions);
+		executeSharedCommands(room.authoritative, commands);
 		room.receive({
 			type: Message.Commit,
 			id,
@@ -902,6 +949,10 @@ describe('collaborative document session', () => {
 			commit: 2,
 		});
 		expect(decisions).toHaveBeenCalledOnce();
+		const accepted = await outcome;
+		if (accepted.kind !== DocumentCommandOutcomeKind.Accepted) throw new Error('Expected accepted');
+		expect(accepted.document.nodes.map((node) => node.id)).toEqual(['A']);
+		expect(accepted.document).toEqual(room.client.read());
 		stop();
 		room.destroy();
 	});
@@ -1229,7 +1280,7 @@ it('sends buffered typing before deleting the edited node, without a later text 
 	room.sync();
 	room.sent.length = 0;
 	room.client.replaceNodeMarkdown('A', 'Dernière frappe');
-	room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
+	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]);
 	expect(room.sent).toHaveLength(2);
 	const [text, command] = room.sent;
 	if (text?.type !== Message.Change || !('update' in text))

@@ -11,7 +11,6 @@ import {
 	changeDocumentMembership,
 	dissolveDocumentGroup,
 	groupDocumentNodes,
-	groupSiblingDocumentNodes,
 } from '../../../../src/lib/infrastructure/document/document-group-operations';
 import {
 	explicitLaneLogicDocument,
@@ -22,7 +21,7 @@ import { persistedNestedGridDocument } from '../../core/layout/nested-region-fix
 
 describe('product node grouping', () => {
 	it('creates a root group around root siblings', () => {
-		const grouped = groupSiblingDocumentNodes(
+		const grouped = groupDocumentNodes(
 			validLogicDocument(),
 			{ id: 'root-group', label: 'Groupe' },
 			new Set(['target', 'isolated']),
@@ -43,37 +42,9 @@ describe('product node grouping', () => {
 		).toEqual(['root-group', 'root-group']);
 	});
 
-	it('nests the new group when every selected node has the same parent', () => {
-		const grouped = groupSiblingDocumentNodes(
-			validLogicDocument(),
-			{ id: 'nested-group', label: 'Groupe' },
-			new Set(['source-a', 'source-b']),
-		);
-
-		expect(grouped.groups.find(({ id }) => id === 'nested-group')).toMatchObject({
-			groupId: 'container',
-		});
-	});
-
-	it.each([
-		['an empty selection', 'candidate', new Set<string>(), 'Sélectionnez les nœuds à regrouper.'],
-		['a missing node', 'candidate', new Set(['missing']), 'Nœud introuvable : missing'],
-		[
-			'mixed parents',
-			'candidate',
-			new Set(['source-a', 'target']),
-			'Les nœuds doivent appartenir au même groupe.',
-		],
-		['a duplicate id', 'container', new Set(['target']), 'Cet identifiant existe déjà : container'],
-	] as const)('rejects %s', (_name, id, ids, message) => {
-		expect(() =>
-			groupSiblingDocumentNodes(validLogicDocument(), { id, label: 'Groupe' }, ids),
-		).toThrow(message);
-	});
-
 	it('transfers lane ownership between root groups and their members', () => {
 		const source = explicitLaneLogicDocument();
-		const grouped = groupSiblingDocumentNodes(
+		const grouped = groupDocumentNodes(
 			source,
 			{ id: 'lane-group', label: 'Lane group' },
 			new Set(['target']),
@@ -90,7 +61,7 @@ describe('product node grouping', () => {
 
 	it('rejects grouping nodes from different lanes', () => {
 		expect(() =>
-			groupSiblingDocumentNodes(
+			groupDocumentNodes(
 				explicitLaneLogicDocument(),
 				{ id: 'cross-lane', label: 'Cross lane' },
 				new Set(['target', 'isolated']),
@@ -131,7 +102,7 @@ describe('product node grouping', () => {
 				return node;
 			}),
 		};
-		const grouped = groupSiblingDocumentNodes(
+		const grouped = groupDocumentNodes(
 			source,
 			{ id: 'region-group', label: 'Region group' },
 			new Set(['target', 'isolated']),
@@ -171,7 +142,7 @@ describe('product node grouping', () => {
 			}),
 		};
 		expect(() =>
-			groupSiblingDocumentNodes(
+			groupDocumentNodes(
 				source,
 				{ id: 'cross-region', label: 'Cross region' },
 				new Set(['target', 'isolated']),
@@ -181,7 +152,7 @@ describe('product node grouping', () => {
 
 	it('transfers a leaf-local lane to a new group and restores it when membership ends', () => {
 		const source = regionLaneDocument();
-		const grouped = groupSiblingDocumentNodes(
+		const grouped = groupDocumentNodes(
 			source,
 			{ id: 'service-group', label: 'Service group' },
 			new Set(['target']),
@@ -215,7 +186,7 @@ describe('product node grouping', () => {
 			],
 		};
 		expect(() =>
-			groupSiblingDocumentNodes(
+			groupDocumentNodes(
 				withNeighbor,
 				{ id: 'cross-local-lane', label: 'Cross lane' },
 				new Set(['target', 'sales-neighbor']),
@@ -275,7 +246,7 @@ describe('product node grouping', () => {
 
 	it('keeps cell ownership while grouping and ungrouping nodes in format 7', () => {
 		const source = persistedNestedGridDocument();
-		const grouped = groupSiblingDocumentNodes(
+		const grouped = groupDocumentNodes(
 			source,
 			{ id: 'cell-group', label: 'Cell group' },
 			new Set(['a-source', 'a-target']),

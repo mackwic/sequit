@@ -11,7 +11,6 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { TopologyEditDiagnosticCode } from '../../../../src/lib/core/document/topology-edit-ordering';
 import {
-	projectConnectedNodeAddition,
 	projectNodeAddition,
 	projectRelationAddition,
 } from '../../../../src/lib/core/document/topology-edits';
@@ -20,55 +19,6 @@ import { fractionalOrderKeySpace } from '../../../../src/lib/core/ordering/order
 import { crossingAwareDirectionScenario } from '../../../support/builders/crossing-aware-direction-scenario';
 
 describe('topology edits', () => {
-	it('projects a connected node and all relations as one change set', () => {
-		const document = threeTargetScenario(['target-a', 'target-b', 'target-c']);
-		const result = projectConnectedNodeAddition(
-			document,
-			{ id: 'new-child', natureId: 'goal', markdown: '' },
-			[
-				{ id: 'new-to-a', from: 'new-child', to: 'target-a' },
-				{ id: 'new-to-b', from: 'new-child', to: 'target-b' },
-			],
-			fractionalOrderKeySpace,
-		);
-		expect(result.ok).toBe(true);
-		if (!result.ok) throw new Error('Expected connected node addition to succeed');
-		expect(result.value.changes.nodeAdditions).toHaveLength(1);
-		expect(result.value.changes.relationAdditions.map(({ id }) => id)).toEqual([
-			'new-to-a',
-			'new-to-b',
-		]);
-		expect(result.value.document.relations).toEqual(
-			expect.arrayContaining([
-				{ id: 'new-to-a', from: 'new-child', to: 'target-a' },
-				{ id: 'new-to-b', from: 'new-child', to: 'target-b' },
-			]),
-		);
-	});
-
-	it('rejects the whole connected projection when a node or relation is invalid', () => {
-		const document = threeTargetScenario(['target-a', 'target-b', 'target-c']);
-		expect(
-			projectConnectedNodeAddition(
-				document,
-				{ id: 'source-a', natureId: 'goal', markdown: '' },
-				[],
-				fractionalOrderKeySpace,
-			).ok,
-		).toBe(false);
-		expect(
-			projectConnectedNodeAddition(
-				document,
-				{ id: 'new-child', natureId: 'goal', markdown: '' },
-				[
-					{ id: 'duplicate', from: 'new-child', to: 'target-a' },
-					{ id: 'duplicate', from: 'new-child', to: 'target-b' },
-				],
-				fractionalOrderKeySpace,
-			).ok,
-		).toBe(false);
-	});
-
 	it('rejects a relation that repeats an existing source and target', () => {
 		const document = threeTargetScenario(['target-a', 'target-b', 'target-c']);
 		const result = projectRelationAddition(

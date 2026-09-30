@@ -4,7 +4,6 @@ import {
 	EndpointKind,
 	GRID_PERSISTENCE_FORMAT,
 	type LogicDocument,
-	type LogicGroup,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
@@ -81,49 +80,6 @@ export function groupDocumentNodes(
 				return member;
 			}
 			return node;
-		}),
-	};
-}
-
-export function groupSiblingDocumentNodes(
-	document: LogicDocument,
-	group: { readonly id: string; readonly label: string },
-	ids: ReadonlySet<string>,
-): LogicDocument {
-	if (ids.size === 0) throw new Error('Sélectionnez les nœuds à regrouper.');
-	const members = [...ids].map((id) =>
-		defined(
-			document.nodes.find((node) => node.id === id),
-			`Nœud introuvable : ${id}`,
-		),
-	);
-	const parent = members[0]?.groupId;
-	if (members.some((member) => member.groupId !== parent))
-		throw new Error('Les nœuds doivent appartenir au même groupe.');
-	const laneMismatch = members.some((member) => member.laneId !== members[0]?.laneId);
-	const regionId = members[0]?.regionId ?? ROOT_LAYOUT_REGION_ID;
-	const regionMismatch = members.some(
-		(member) => (member.regionId ?? ROOT_LAYOUT_REGION_ID) !== regionId,
-	);
-	const atRoot = parent === undefined;
-	if (hasLanePresentation(document, regionId) && atRoot && laneMismatch)
-		throw new Error('Les nœuds doivent appartenir à la même voie.');
-	const regionFormat = hasRegionPresentation(document);
-	if (regionFormat && atRoot && regionMismatch)
-		throw new Error('Les nœuds doivent appartenir à la même région.');
-	if (
-		[...document.groups, ...document.nodes, ...document.junctions].some(
-			(endpoint) => endpoint.id === group.id,
-		)
-	)
-		throw new Error(`Cet identifiant existe déjà : ${group.id}`);
-	const grouped = groupDocumentNodes(document, group, ids);
-	if (parent === undefined) return grouped;
-	return {
-		...grouped,
-		groups: grouped.groups.map((candidate): LogicGroup => {
-			if (candidate.id !== group.id) return candidate;
-			return { ...candidate, groupId: parent };
 		}),
 	};
 }

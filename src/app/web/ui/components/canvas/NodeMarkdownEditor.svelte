@@ -22,7 +22,7 @@
 		const currentTextarea = textarea;
 		if (!currentTextarea) return;
 		void tick().then(() => {
-			if (editing.nodeId === nodeId) currentTextarea.focus();
+			if (session.editing?.nodeId === nodeId) currentTextarea.focus();
 		});
 	});
 

@@ -3,7 +3,7 @@ import { performance } from 'node:perf_hooks';
 import { afterAll, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
-import { attachDocumentSession } from '../../../../../src/app/web/document/yjs-document-session';
+import { attachLocalDocumentSession } from '../../../../../src/app/web/document/local-document-session';
 import {
 	EndpointKind,
 	type LogicDocument,
@@ -87,23 +87,21 @@ afterAll(() => {
 });
 
 describe('collaborative live-edit performance', { concurrent: false }, () => {
-	it('Markdown replacement in a 3,200-node repository document', async () => {
+	it('Markdown replacement in a 3,200-node repository document', () => {
 		const document = new Y.Doc();
 		importLogicDocument(document, largeLiveDocument());
-		const session = attachDocumentSession(document);
+		const session = attachLocalDocumentSession(document);
 		const scenario = 'Markdown replacement in a 3,200-node repository document';
 		try {
-			for (let index = 0; index < WARMUP_RUNS; index += 1) {
-				const warmup = await session.replaceNodeMarkdown('source-a', `repository warmup ${index}`);
-				expect(warmup.kind).toBe('accepted');
-			}
+			for (let index = 0; index < WARMUP_RUNS; index += 1)
+				expect(session.replaceNodeMarkdown('source-a', `repository warmup ${index}`)).toBe(true);
 
 			const durations: number[] = [];
 			for (let index = 0; index < SAMPLE_RUNS; index += 1) {
 				const started = performance.now();
-				const outcome = await session.replaceNodeMarkdown('source-a', `repository sample ${index}`);
+				const updated = session.replaceNodeMarkdown('source-a', `repository sample ${index}`);
 				durations.push(performance.now() - started);
-				expect(outcome.kind).toBe('accepted');
+				expect(updated).toBe(true);
 			}
 			const observedMs = median(durations);
 			measurements.push({

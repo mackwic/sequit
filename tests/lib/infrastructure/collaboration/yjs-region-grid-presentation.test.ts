@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { nodeCreation } from '../../../../src/app/web/document/document-commands';
+import { attachLocalDocumentSession } from '../../../../src/app/web/document/local-document-session';
 import { compareCanonicalStrings } from '../../../../src/lib/core/canonical-string';
 import {
-	EndpointKind,
 	LayoutPolicy,
 	type LogicDocument,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
@@ -22,7 +23,6 @@ import {
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { regionLaneDocument } from '../../../support/builders/region-lane-document';
 import { persistedGridDocument } from '../../core/layout/grid-cell-fixture';
@@ -290,35 +290,24 @@ describe('Yjs region grid presentation', () => {
 		document.destroy();
 	});
 
-	it('keeps the region grid while the live repository adds an endpoint to a cell', async () => {
+	it('keeps the region grid while a shared command adds an endpoint to a cell', async () => {
 		const document = restored(compositionGridDocument());
 		const grid = regionGrid(document);
-		const repository = new YjsDocumentRepository(document);
+		const session = attachLocalDocumentSession(document);
 		try {
-			const result = await repository.persist({
-				nodeAdditions: [
-					{
-						kind: EndpointKind.Node,
-						id: 'a-new',
-						natureId: 'task',
-						markdown: 'New task',
-						layoutOrder: orderKey('a8'),
-						regionId: 'a',
-					},
-				],
-				groupAdditions: [],
-				relationAdditions: [],
-				endpointOrderChanges: [],
-				nodeMarkdownReplacements: [],
-			});
-			expect(result).toMatchObject({ ok: true });
+			const result = await session.dispatch([
+				nodeCreation({
+					id: 'a-new',
+					natureId: 'task',
+					markdown: 'New task',
+					regionId: 'a',
+				}),
+			]);
+			expect(result).toMatchObject({ kind: 'accepted' });
 			expect(regionGrid(document)).toBe(grid);
-			const read = repository.read();
-			expect(read).toMatchObject({ ok: true });
-			if (!read.ok) throw new Error('Expected valid updated region grid document');
-			expect(read.value.nodes.find(({ id }) => id === 'a-new')?.regionId).toBe('a');
+			expect(session.read().nodes.find(({ id }) => id === 'a-new')?.regionId).toBe('a');
 		} finally {
-			repository.destroy();
+			session.destroy();
 			document.destroy();
 		}
 	});

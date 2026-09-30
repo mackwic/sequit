@@ -1,15 +1,42 @@
 import type { LogicDocument } from '../../core/document/logic-document';
+import {
+	type DocumentCommandOutcome,
+	DocumentCommandOutcomeKind,
+	sessionClosedOutcome,
+} from '../document/document-command-contracts';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
-import type { ProposalDecision, SourceDocumentState } from './collaborative-document-session-types';
-import { subscribeToSet } from './notify-subscribers';
+import {
+	type ProposalDecision,
+	ProposalDecisionKind,
+	type SourceDocumentState,
+} from './collaborative-document-session-types';
+import { notifySubscribers, subscribeToSet } from './notify-subscribers';
+import type { PendingCommandFrame } from './session-command-frame';
 
-/** Keeps listeners alive across an in-place replica replacement. */
-export class SessionNotifications {
+function decisionOutcome(
+	decision: ProposalDecision,
+	read: () => LogicDocument,
+): DocumentCommandOutcome {
+	if (decision.type === ProposalDecisionKind.Accepted)
+		return { kind: DocumentCommandOutcomeKind.Accepted, document: read() };
+	return {
+		kind: DocumentCommandOutcomeKind.Rejected,
+		diagnostics: [{ code: decision.code, message: decision.message, path: [] }],
+	};
+}
+
+/** Keeps listeners and undecided proposals alive across an in-place replica replacement. */
+export abstract class SessionNotifications {
 	protected readonly subscribers = new Set<DocumentSessionSubscriber>();
 	protected readonly sourceStateListeners = new Set<(state: SourceDocumentState) => void>();
 	protected readonly decisionListeners = new Set<(decision: ProposalDecision) => void>();
 	protected readonly rejectionListeners = new Set<(message: string) => void>();
 	protected readonly conflictListeners = new Set<(message: string) => void>();
+	/** Structural proposals sent to the room and not yet decided, in sequence order. */
+	protected readonly pending = new Map<string, PendingCommandFrame>();
+	readonly #outcomes = new Map<string, (outcome: DocumentCommandOutcome) => void>();
+
+	abstract read(): LogicDocument;
 
 	subscribe(listener: (document: LogicDocument) => void): () => void {
 		return subscribeToSet(this.subscribers, listener);
@@ -29,6 +56,42 @@ export class SessionNotifications {
 
 	subscribeToConflict(listener: (message: string) => void): () => void {
 		return subscribeToSet(this.conflictListeners, listener);
+	}
+
+	/** The returned promise settles with the room's decision on the proposal, or on session close. */
+	protected propose(proposal: PendingCommandFrame): Promise<DocumentCommandOutcome> {
+		this.pending.set(proposal.id, proposal);
+		return new Promise((resolve) => {
+			this.#outcomes.set(proposal.id, resolve);
+		});
+	}
+
+	protected announceAccepted(proposalId: string, commit: number): void {
+		this.announceDecision({ type: ProposalDecisionKind.Accepted, proposalId, commit });
+	}
+
+	/**
+	 * Notifies decision listeners and settles the proposal's dispatch. The outcome is captured
+	 * first so a listener that closes the session cannot change or break it.
+	 */
+	protected announceDecision(decision: ProposalDecision): void {
+		const settle = this.#outcomes.get(decision.proposalId);
+		this.#outcomes.delete(decision.proposalId);
+		if (settle === undefined) {
+			notifySubscribers(this.decisionListeners, decision);
+			return;
+		}
+		const outcome = decisionOutcome(decision, () => this.read());
+		notifySubscribers(this.decisionListeners, decision);
+		settle(outcome);
+	}
+
+	/** A closed session never decides its pending proposals: their dispatches must not hang. */
+	protected closeProposals(): void {
+		this.pending.clear();
+		const unsettled = [...this.#outcomes.values()];
+		this.#outcomes.clear();
+		for (const settle of unsettled) settle(sessionClosedOutcome());
 	}
 
 	protected clearNotifications(): void {

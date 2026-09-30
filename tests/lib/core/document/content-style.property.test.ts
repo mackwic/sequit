@@ -3,6 +3,7 @@ import { parse } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { nodeCreation } from '../../../../src/app/web/document/document-commands';
 import { createCanvasMeasurementModel } from '../../../../src/app/web/ui/canvas/canvas-model';
 import { contentPalette } from '../../../../src/app/web/ui/content/content-palette';
 import { isIconAvailable } from '../../../../src/app/web/ui/icons/phosphor';
@@ -24,6 +25,7 @@ import {
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
+import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import { mapSequitDocument } from '../../../../src/lib/infrastructure/toml/map-sequit-document';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
@@ -115,13 +117,16 @@ describe('content style contracts', () => {
 			expect(store.node('copy')).not.toHaveProperty('icon');
 			store.import(styled);
 			expect(store.text()).toBe(styled);
-			await store.opened.addNode({
-				id: 'command-node',
-				natureId: 'goal',
-				markdown: 'Created through the product command',
-				color: '#345678',
-				icon: 'phosphor:scales',
-			});
+			const created = await store.opened.session.dispatch([
+				nodeCreation({
+					id: 'command-node',
+					natureId: 'goal',
+					markdown: 'Created through the product command',
+					color: '#345678',
+					icon: 'phosphor:scales',
+				}),
+			]);
+			expect(created.kind).toBe(DocumentCommandOutcomeKind.Accepted);
 			expect(store.node('command-node')).toMatchObject({
 				color: '#345678',
 				icon: 'phosphor:scales',

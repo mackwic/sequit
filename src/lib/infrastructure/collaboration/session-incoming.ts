@@ -1,11 +1,6 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
-import {
-	type ProposalDecision,
-	ProposalDecisionKind,
-} from './collaborative-document-session-types';
-import { notifySubscribers } from './notify-subscribers';
 import { InvalidPresenceError } from './participant-presence';
 import type { PendingCommandFrame } from './session-command-frame';
 import {
@@ -128,12 +123,4 @@ export function receiveSessionFrame(
 	} catch (error) {
 		return error instanceof InvalidPresenceError;
 	}
-}
-
-export function announceAcceptedReceipt(
-	listeners: Iterable<(decision: ProposalDecision) => void>,
-	id: string,
-	commit: number,
-): void {
-	notifySubscribers(listeners, { type: ProposalDecisionKind.Accepted, proposalId: id, commit });
 }

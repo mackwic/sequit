@@ -44,11 +44,6 @@ interface NodeAdditionProjection {
 	readonly changes: DocumentChangeSet;
 }
 
-interface ConnectedNodeAdditionProjection {
-	readonly document: LogicDocument;
-	readonly changes: DocumentChangeSet;
-}
-
 interface EndpointOrderChange {
 	readonly endpointKind: EndpointKind;
 	readonly endpointId: string;
@@ -92,13 +87,6 @@ interface NodeAdditionFailure {
 }
 
 export type NodeAdditionResult = NodeAdditionSuccess | NodeAdditionFailure;
-
-interface ConnectedNodeAdditionSuccess {
-	readonly ok: true;
-	readonly value: ConnectedNodeAdditionProjection;
-}
-
-export type ConnectedNodeAdditionResult = ConnectedNodeAdditionSuccess | NodeAdditionFailure;
 
 interface RelationAdditionSuccess {
 	readonly ok: true;
@@ -188,43 +176,6 @@ export function projectNodeAddition(
 				nodeAdditions: [keyedNode],
 				relationAdditions: [],
 				endpointOrderChanges: [],
-				nodeMarkdownReplacements: [],
-			},
-		},
-	};
-}
-
-/** Adds one node and all of its requested relations as one validated change set. */
-export function projectConnectedNodeAddition(
-	document: LogicDocument,
-	node: NewLogicNode,
-	relations: readonly LogicRelation[],
-	orderKeySpace: OrderKeySpace,
-): ConnectedNodeAdditionResult {
-	const nodeProjection = projectNodeAddition(document, node, orderKeySpace);
-	if (!nodeProjection.ok) return nodeProjection;
-
-	let projectedDocument = nodeProjection.value.document;
-	const relationAdditions: LogicRelation[] = [];
-	const orderChanges = new Map<string, EndpointOrderChange>();
-	for (const relation of relations) {
-		const relationProjection = projectRelationAddition(projectedDocument, relation, orderKeySpace);
-		if (!relationProjection.ok) return relationProjection;
-		projectedDocument = relationProjection.value.document;
-		relationAdditions.push(...relationProjection.value.changes.relationAdditions);
-		for (const change of relationProjection.value.changes.endpointOrderChanges) {
-			orderChanges.set(`${change.endpointKind}:${change.endpointId}`, change);
-		}
-	}
-
-	return {
-		ok: true,
-		value: {
-			document: projectedDocument,
-			changes: {
-				nodeAdditions: nodeProjection.value.changes.nodeAdditions,
-				relationAdditions,
-				endpointOrderChanges: [...orderChanges.values()],
 				nodeMarkdownReplacements: [],
 			},
 		},

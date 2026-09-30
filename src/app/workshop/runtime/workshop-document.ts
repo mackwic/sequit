@@ -1,6 +1,10 @@
 import * as Y from 'yjs';
 
-import { defined, type LogicDocument } from '../../../lib/core/document/logic-document';
+import {
+	defined,
+	type LogicDocument,
+	type LogicRelation,
+} from '../../../lib/core/document/logic-document';
 import { validateLogicDocument } from '../../../lib/core/document/validate-logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { reconcileSharedDocument } from '../../../lib/infrastructure/collaboration/reconcile-shared-document';
@@ -9,13 +13,16 @@ import {
 	readLogicDocument,
 } from '../../../lib/infrastructure/collaboration/yjs-document-codec';
 import { YjsCollection } from '../../../lib/infrastructure/collaboration/yjs-document-schema';
+import { DocumentCommandOutcomeKind } from '../../../lib/infrastructure/document/document-command-contracts';
+import { DocumentSessionError } from '../../../lib/infrastructure/document/document-session-contracts';
 import { parseSequitToml } from '../../../lib/infrastructure/toml/parse-sequit-toml';
 import { serializeSequitToml } from '../../../lib/infrastructure/toml/serialize-sequit-toml';
-import { attachDocumentSession } from '../../web/document/yjs-document-session';
+import { relationCreation } from '../../web/document/document-commands';
+import { attachLocalDocumentSession } from '../../web/document/local-document-session';
 import { openDocument } from '../../web/projection/open-document';
 import { WorkshopCommands } from './workshop-commands';
 
-/** Local prototype adapter. Existing commands still run through DocumentSession.
+/** Local prototype adapter. Relations still run through the local document session.
  * Experimental edits are validated before a fine-grained Yjs transaction.
  * This adapter is never used by the collaboration authority. */
 export class WorkshopDocument {
@@ -33,7 +40,7 @@ export class WorkshopDocument {
 		if (!graph.ok) throw new Error(graph.diagnostics.map(({ message }) => message).join('; '));
 		this.ydoc = new Y.Doc();
 		importLogicDocument(this.ydoc, parsed.value);
-		const opened = openDocument(source, () => attachDocumentSession(this.ydoc));
+		const opened = openDocument(source, () => attachLocalDocumentSession(this.ydoc));
 		if (!opened.ok) {
 			this.ydoc.destroy();
 			throw new Error(opened.diagnostics.map(({ message }) => message).join('; '));
@@ -43,7 +50,7 @@ export class WorkshopDocument {
 			(change) => {
 				this.edit(change);
 			},
-			(relation) => this.opened.addRelation(relation),
+			(relation) => this.addRelation(relation),
 		);
 		this.history = new Y.UndoManager(
 			Object.values(YjsCollection).map((name) => this.ydoc.getMap(name)),
@@ -63,6 +70,16 @@ export class WorkshopDocument {
 		const current = readLogicDocument(this.ydoc);
 		if (!current.ok) throw new Error(current.diagnostics.map(({ message }) => message).join('; '));
 		return current.value;
+	}
+	/** Keeps the workshop contract: an accepted relation yields its document, a refusal throws. */
+	private async addRelation(relation: LogicRelation): Promise<LogicDocument> {
+		const outcome = await this.opened.session.dispatch([relationCreation(relation)]);
+		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return outcome.document;
+		if (outcome.kind === DocumentCommandOutcomeKind.Failed) throw outcome.error;
+		throw new DocumentSessionError(
+			outcome.diagnostics.map(({ message }) => message).join('; '),
+			outcome.diagnostics,
+		);
 	}
 	/** Read at invocation, validate the complete operation, then commit once. */
 	edit(change: (current: LogicDocument) => LogicDocument): void {

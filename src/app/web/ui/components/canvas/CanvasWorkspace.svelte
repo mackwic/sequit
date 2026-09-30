@@ -1,6 +1,19 @@
 <script lang="ts">
-	import type { LogicDocument, LogicGroup } from '../../../../../lib/core/document/logic-document';
-	import { DocumentCommandOutcomeKind } from '../../../../../lib/infrastructure/document/document-command-contracts';
+	import type { LogicGroup } from '../../../../../lib/core/document/logic-document';
+	import {
+		type DocumentCommandOutcome,
+		DocumentCommandOutcomeKind,
+	} from '../../../../../lib/infrastructure/document/document-command-contracts';
+	import {
+		SharedCommandKind,
+		SharedElementKind,
+	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import {
+		connectedNodeCreation,
+		deletion,
+		nodeCreation,
+		relationCreation,
+	} from '../../../document/document-commands';
 	import { openDocument } from '../../../projection/open-document';
 	import { EntityKind } from '../../canvas/canvas-entity';
 	import {
@@ -29,10 +42,20 @@
 	let busy = $state(false);
 	let error = $state('');
 	let interactive = $derived(!creating && editingGroup === undefined && !busy);
-	async function execute(action: () => Promise<LogicDocument>): Promise<boolean> {
+	/** The refusal or failure a user must see, or `undefined` once the batch is accepted. */
+	function outcomeError(outcome: DocumentCommandOutcome): string | undefined {
+		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return undefined;
+		if (outcome.kind === DocumentCommandOutcomeKind.Failed) return String(outcome.error);
+		return outcome.diagnostics.map(({ message }) => message).join('; ');
+	}
+	async function execute(action: () => Promise<DocumentCommandOutcome>): Promise<boolean> {
 		busy = true;
 		try {
-			await action();
+			const refusal = outcomeError(await action());
+			if (refusal !== undefined) {
+				error = refusal;
+				return false;
+			}
 			error = '';
 			creating = false;
 			return true;
@@ -48,7 +71,9 @@
 		lastNatureId = natureId;
 		if (current.ok)
 			void execute(() =>
-				current.value.addNode({ id: crypto.randomUUID(), natureId, markdown, ...creationParent() }),
+				current.value.session.dispatch([
+					nodeCreation({ id: crypto.randomUUID(), natureId, markdown, ...creationParent() }),
+				]),
 			);
 	}
 	async function createRelativeNode(position: RelativeNodePosition): Promise<void> {
@@ -67,10 +92,18 @@
 				lastNatureId,
 			});
 			if (plan === undefined) throw new Error('Ajoutez d’abord une nature au document.');
-			await current.value.addConnectedNode(plan.node, plan.relations);
+			const refusal = outcomeError(
+				await current.value.session.dispatch(connectedNodeCreation(plan.node, plan.relations)),
+			);
+			if (refusal !== undefined) {
+				error = refusal;
+				return;
+			}
 			lastNatureId = plan.node.natureId;
 			session.queueNodeMarkdownEdit(plan.node, () => {
-				void execute(() => current.value.deleteElements([plan.node.id], []));
+				void execute(() =>
+					current.value.session.dispatch(deletion(current.value.read(), [plan.node.id], [])),
+				);
 			});
 			error = '';
 		} catch (failure) {
@@ -82,7 +115,9 @@
 	function connect(from: string, to: string) {
 		const current = opened;
 		if (current.ok)
-			void execute(() => current.value.addRelation({ id: crypto.randomUUID(), from, to }));
+			void execute(() =>
+				current.value.session.dispatch([relationCreation({ id: crypto.randomUUID(), from, to })]),
+			);
 	}
 	function openGroupEditor(groupId: string): void {
 		const current = opened;
@@ -93,7 +128,14 @@
 		const current = opened;
 		const group = editingGroup;
 		if (!current.ok || group === undefined || busy) return;
-		const saved = await execute(() => current.value.updateGroup({ ...group, label, color }));
+		const target = { kind: SharedElementKind.Group, id: group.id } as const;
+		const saved = await execute(() => {
+			if (!current.value.session.updateText(target, 'label', label))
+				throw new Error(`Group no longer exists: ${group.id}`);
+			return current.value.session.dispatch([
+				{ op: SharedCommandKind.Update, target, set: { color }, unset: [] },
+			]);
+		});
 		if (saved) editingGroup = undefined;
 	}
 	function deleteSelection() {
@@ -101,21 +143,26 @@
 		if (!current.ok || !session || !interactive) return;
 		const selected = [...session.selection.values()];
 		void execute(() =>
-			current.value.deleteElements(
-				selected.filter(({ kind }) => kind !== EntityKind.Relation).map(({ id }) => id),
-				selected.filter(({ kind }) => kind === EntityKind.Relation).map(({ id }) => id),
+			current.value.session.dispatch(
+				deletion(
+					current.value.read(),
+					selected.filter(({ kind }) => kind !== EntityKind.Relation).map(({ id }) => id),
+					selected.filter(({ kind }) => kind === EntityKind.Relation).map(({ id }) => id),
+				),
 			),
 		);
 	}
 	async function groupSelection(): Promise<void> {
 		const current = opened;
 		if (!current.ok || !session) return;
-		const nodeIds = [...session.selection.values()]
+		const members = [...session.selection.values()]
 			.filter(({ kind }) => kind === EntityKind.Node)
 			.map(({ id }) => id);
-		if (nodeIds.length < 2 || nodeIds.length !== session.selectionCount) return;
+		if (members.length < 2 || members.length !== session.selectionCount) return;
 		const grouped = await execute(() =>
-			current.value.groupNodes({ id: crypto.randomUUID(), label: 'Groupe' }, nodeIds),
+			current.value.session.dispatch([
+				{ op: SharedCommandKind.Group, id: crypto.randomUUID(), label: 'Groupe', members },
+			]),
 		);
 		if (grouped) session.clearSelection();
 	}

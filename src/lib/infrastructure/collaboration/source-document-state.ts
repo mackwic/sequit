@@ -94,7 +94,8 @@ function physicalSourceSnapshot(document: Y.Doc): SourceDocumentSnapshot {
 	return snapshot;
 }
 
-function sourceDocumentState(
+/** The source state of an already decoded physical Y.Doc, so a transaction is decoded once. */
+export function sourceDocumentState(
 	document: Y.Doc,
 	result: YjsLiveDocumentResult<LogicDocument>,
 	revision: number,

@@ -5,6 +5,7 @@ import {
 	CollaborationStatus,
 	createCollaborativeDocumentSession,
 } from '../../../src/lib/infrastructure/collaboration/collaborative-document-session';
+import { ConflictCode } from '../../../src/lib/infrastructure/collaboration/session-failure';
 import {
 	decodeSessionMessage,
 	SessionMessageKind as Message,
@@ -14,6 +15,7 @@ import {
 	type CollaborationWebSocketFactory,
 	createWebSocketCollaborationTransport,
 } from '../../../src/lib/infrastructure/collaboration/websocket-collaboration-transport';
+import { DocumentCommandOutcomeKind } from '../../../src/lib/infrastructure/document/document-command-contracts';
 import {
 	SharedCommandKind as Op,
 	SharedElementKind as Kind,
@@ -127,10 +129,14 @@ describe('real sessions through the Durable Object', () => {
 			const rejected = vi.fn();
 			alice.subscribeToRejection(rejected);
 			alice.replaceNodeMarkdown('B', 'Dernière frappe avant suppression');
-			alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			const deletion = alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await vi.waitFor(() => {
 				expect(bob.read().nodes.map((node) => node.id)).toEqual(['A']);
 			});
+			const accepted = await deletion;
+			if (accepted.kind !== DocumentCommandOutcomeKind.Accepted)
+				throw new Error('Expected accepted');
+			expect(accepted.document.nodes.map((node) => node.id)).toEqual(['A']);
 			alice.replaceNodeMarkdown('A', 'La session continue');
 			await vi.waitFor(() => {
 				expect(bob.read().nodes[0]?.markdown).toBe('La session continue');
@@ -182,7 +188,7 @@ describe('real sessions through the Durable Object', () => {
 					resolve();
 				});
 			});
-			bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			void bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await deleted;
 			expect(socket.held).toHaveLength(1); // Switching boxes flushed B before deletion.
 			vi.advanceTimersByTime(50);
@@ -252,7 +258,7 @@ describe('real sessions through the Durable Object', () => {
 			await vi.waitFor(() => {
 				expect(alice.connectionStatus()).toBe(CollaborationStatus.Disconnected);
 			});
-			bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			void bob.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 			await vi.waitFor(() => {
 				expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
 			});
@@ -310,27 +316,30 @@ describe('real sessions through the Durable Object', () => {
 			await vi.waitFor(() => {
 				expect(socket?.held).toHaveLength(1);
 			});
-			bob.dispatch([{ op: Op.Group, id: 'moved', label: 'Moved', members: ['A'] }]);
+			void bob.dispatch([{ op: Op.Group, id: 'moved', label: 'Moved', members: ['A'] }]);
 			await vi.waitFor(() => {
 				expect(bob.read().groups.map(({ id }) => id)).toContain('moved');
 			});
 			socket.hold = undefined;
 			socket.release();
-			await vi.waitFor(() => {
-				expect(decisions).toHaveBeenCalledWith(
-					expect.objectContaining({ type: 'refused', proposalId: refused }),
-				);
+			await expect(refused).resolves.toEqual({
+				kind: DocumentCommandOutcomeKind.Rejected,
+				diagnostics: [expect.objectContaining({ code: ConflictCode.CommandConflict, path: [] })],
 			});
+			expect(decisions).toHaveBeenCalledWith(expect.objectContaining({ type: 'refused' }));
 			await vi.waitFor(() => {
 				expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
 			});
-			const accepted = alice.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
+			const accepted = await alice.dispatch([
+				{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } },
+			]);
+			if (accepted.kind !== DocumentCommandOutcomeKind.Accepted)
+				throw new Error('Expected accepted');
+			expect(accepted.document.nodes.map(({ id }) => id)).toEqual(['A']);
+			expect(decisions).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'accepted' }));
 			await vi.waitFor(() => {
-				expect(decisions).toHaveBeenCalledWith(
-					expect.objectContaining({ type: 'accepted', proposalId: accepted }),
-				);
+				expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
 			});
-			expect(bob.read().nodes.map(({ id }) => id)).toEqual(['A']);
 		} finally {
 			alice.destroy();
 			bob.destroy();
@@ -358,12 +367,14 @@ describe('real sessions through the Durable Object', () => {
 					properties: { from: 'A', to: 'B' },
 				},
 			]);
-			await vi.waitFor(() => {
-				expect(decisions).toHaveBeenCalledWith(
-					expect.objectContaining({ type: 'refused', proposalId: refused }),
-				);
+			await expect(refused).resolves.toEqual({
+				kind: DocumentCommandOutcomeKind.Rejected,
+				diagnostics: [expect.objectContaining({ code: ConflictCode.InvalidCommand, path: [] })],
 			});
-			expect(client.connectionStatus()).toBe(CollaborationStatus.Ready);
+			expect(decisions).toHaveBeenCalledWith(expect.objectContaining({ type: 'refused' }));
+			await vi.waitFor(() => {
+				expect(client.connectionStatus()).toBe(CollaborationStatus.Ready);
+			});
 			expect(refresh).not.toHaveBeenCalled();
 			expect(client.read().relations).toHaveLength(1);
 		} finally {

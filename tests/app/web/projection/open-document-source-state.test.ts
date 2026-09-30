@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { attachDocumentSession } from '../../../../src/app/web/document/yjs-document-session';
+import { attachLocalDocumentSession } from '../../../../src/app/web/document/local-document-session';
 import { openDocument } from '../../../../src/app/web/projection/open-document';
 import { SourceDocumentProjectionError } from '../../../../src/app/web/projection/source-document-diagnostic';
 import { SourceDocumentStateKind } from '../../../../src/lib/infrastructure/collaboration/source-document-state';
@@ -20,7 +20,7 @@ it('notifies the canvas of a physical invalid snapshot, then renders again after
 	if (!parsed.ok) throw new Error('Reference document must parse');
 	const ydoc = new Y.Doc();
 	importLogicDocument(ydoc, parsed.value);
-	const result = openDocument(source, () => attachDocumentSession(ydoc));
+	const result = openDocument(source, () => attachLocalDocumentSession(ydoc));
 	if (!result.ok) throw new Error('Reference document must open');
 	const opened = result.value;
 	const accepted = opened.read();

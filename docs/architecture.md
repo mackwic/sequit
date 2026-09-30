@@ -76,7 +76,7 @@ catalogue TypeScript ne charge pas ces fiches, ce qui permet à Vitest de foncti
 
 ## Frontières applicatives
 
-`DocumentSession` et `LocalDocumentCommandGateway` exécutent et publient les commandes. Leurs contrats sont partagés avec les implémentations techniques dans `infrastructure/document`, afin que Yjs ne dépende pas d'une classe de l'application web. L'assemblage `yjs-document-session.ts` appartient à `app/web/document`.
+Les sessions locale et collaborative implémentent la même interface `DocumentSession` et reçoivent les mêmes lots `SharedDocumentCommand`. `LocalDocumentSession`, dans `app/web/document`, exécute chaque lot avec `executeSharedCommands` sur un candidat détaché, puis fusionne sa mise à jour dans le `Y.Doc` ; le dépôt Yjs observe seulement le document et publie chaque transaction, locale ou distante. Les contrats de résultat et de session restent dans `infrastructure/document`, afin que Yjs ne dépende pas d'une classe de l'application web.
 
 La session collaborative reste regroupée avec son protocole et ses documents Yjs. Cette organisation n'introduit pas de moteur de synchronisation abstrait indépendant de Yjs.
 

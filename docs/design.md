@@ -208,6 +208,34 @@ Fonctions centrales envisagées :
 - « Supprimer », Suppr et Backspace suppriment la sélection et les relations incidentes aux éléments supprimés. Supprimer une relation conserve ses extrémités. Supprimer un groupe supprime son contenu ; l’action distincte « Dissoudre » conserve les membres. Une sélection composée est supprimée atomiquement, y compris les relations sources d’une flèche agrégée.
 - Les raccourcis de suppression sont limités au canvas et ignorent les champs de saisie. Pendant l’édition, glisser sélectionne le texte et Backspace efface du texte. Les commandes structurelles du canvas partagé sont disponibles uniquement lorsque la session est connectée.
 
+### Modèle d’interaction auteur retenu (30 septembre 2026)
+
+Ce modèle remplace les variantes hypothétiques de l’atelier pour les parcours concernés. La section précédente décrit le comportement livré ; elle est mise à jour à mesure que chaque ligne est intégrée.
+
+Conventions :
+
+- Dans le canvas, les raccourcis sont des lettres nues, actives seulement quand le focus est sur le canvas et jamais dans un champ de saisie. Les modificateurs sont réservés aux gestes système : `Cmd/Ctrl+Z`, `Cmd/Ctrl+Maj+Z`, Suppr, Échap.
+- Dans une modale, les raccourcis reprennent le préfixe `Cmd/Ctrl`.
+- Une action a un seul bouton et une seule touche ; son effet dépend de la sélection courante. Une action inapplicable à la sélection est absente, pas désactivée.
+- Une seule modale par type d’élément : la création et l’édition d’une boîte, d’un groupe ou d’une jonction utilisent la même modale. Annuler une création ne crée rien ; aucune suppression compensatoire n’est nécessaire.
+
+| Action             | Sélection requise                     | Geste                                                                                 | Touche                         | Effet                                                                                                                                                                    |
+| ------------------ | ------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Nouvelle boîte     | aucune                                | bouton de la barre latérale, double-clic sur le fond                                  | `N`                            | Boîte racine, dans le groupe dont le fond a été double-cliqué le cas échéant.                                                                                            |
+| Nouvelle boîte     | un nœud, groupe ou jonction           | même bouton                                                                           | `N`                            | Boîte enfant reliée à la sélection, dans son conteneur.                                                                                                                  |
+| Éditer             | un élément                            | double-clic, bouton contextuel                                                        | `E`                            | Modale de l’élément : nature, contenu, description, couleur et icône pour une boîte ; libellé et couleur pour un groupe ; opérateur pour une jonction.                   |
+| Relier             | —                                     | glissement depuis toute la surface d’un élément vers la destination                   | —                              | Inchangé. Aucune poignée.                                                                                                                                                |
+| Jonction           | une relation                          | double-clic sur la relation, bouton contextuel                                        | `J`                            | Insère une jonction sur la relation (origine → jonction → destination) et ouvre sa modale pour l’opérateur. Avec plusieurs éléments sélectionnés, `J` n’est pas proposé. |
+| Grouper            | au moins deux nœuds du même conteneur | bouton contextuel                                                                     | `G`                            | Crée le groupe puis ouvre sa modale pour le nommer.                                                                                                                      |
+| Replier / déplier  | un groupe                             | chevron dans l’en-tête                                                                | `Espace`                       | Change `state` ; la projection repliée existante s’applique.                                                                                                             |
+| Dissoudre          | un groupe                             | modale du groupe, bouton contextuel                                                   | —                              | Conserve les membres ; distinct de Supprimer, qui supprime le contenu.                                                                                                   |
+| Supprimer          | au moins un élément                   | bouton contextuel                                                                     | Suppr, Backspace               | Inchangé.                                                                                                                                                                |
+| Annuler / rétablir | —                                     | aucun bouton                                                                          | `Cmd/Ctrl+Z`, `Cmd/Ctrl+Maj+Z` | Historique local. Dans un champ de saisie, l’historique natif du champ prévaut.                                                                                          |
+| Natures            | —                                     | menu document « Natures… », lien « Gérer les natures… » depuis le sélecteur de nature | —                              | Créer, renommer, recolorer, changer l’icône, supprimer avec réaffectation obligatoire des boîtes concernées.                                                             |
+| Mise en page       | —                                     | chip de layout cliquable, un par région ; menu document « Mise en page… »             | —                              | Direction et biais, libellés orientés lecture (but en haut, début à gauche…). Lanes, régions et grille attendent la fin de la refonte du moteur.                         |
+
+Points ouverts : la réaffectation d’une extrémité de relation sans poignée (supprimer puis relier, ou geste dédié) ; le maintien du sibling `Cmd/Ctrl+Maj+Entrée`. Les opérateurs de jonction `and` et `or` s’ajoutent à `xor` avant l’intégration de la modale de jonction. La réaffectation de lanes, régions et cellules n’a pas encore de geste.
+
 ## Collaboration
 
 La collaboration doit porter sur des objets structurés :
@@ -376,3 +404,4 @@ Aucune décision n'est encore prise concernant :
 - L'application est déployée sur Cloudflare.
 - La collaboration passe par un Worker TypeScript et un Durable Object par document.
 - Tailwind CSS habille l'interface ; les couleurs configurables des natures restent des données du document exposées par variables CSS.
+- Une seule famille de commandes structurelles, `SharedDocumentCommand`, sert les sessions locale et collaborative derrière une interface de session commune. La session locale exécute ces commandes avec l’exécuteur partagé, sans réseau ; `DocumentCommandKind` et le gateway local sont remplacés, pas doublés.

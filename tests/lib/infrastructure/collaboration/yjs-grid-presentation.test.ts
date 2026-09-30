@@ -1,22 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { nodeCreation } from '../../../../src/app/web/document/document-commands';
+import { attachLocalDocumentSession } from '../../../../src/app/web/document/local-document-session';
 import {
-	EndpointKind,
 	GRID_PERSISTENCE_FORMAT,
 	GRID_REGION_PRESENTATION_SCHEMA,
 	type LogicDocument,
 	REGION_PERSISTENCE_FORMAT,
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
-import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { reconcileSharedDocument } from '../../../../src/lib/infrastructure/collaboration/reconcile-shared-document';
 import {
 	importLogicDocument,
 	readLogicDocument,
 	YJS_GRID_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import {
 	persistedGridDocument,
@@ -172,43 +171,23 @@ describe('Yjs grid presentation', () => {
 		document.destroy();
 	});
 
-	it('preserves cell ownership when the repository adds a node and an empty group', async () => {
+	it('preserves cell ownership when a shared command adds a node to a cell', async () => {
 		const document = restored(persistedGridDocument());
-		const repository = new YjsDocumentRepository(document);
+		const session = attachLocalDocumentSession(document);
 		try {
-			const result = await repository.persist({
-				nodeAdditions: [
-					{
-						kind: EndpointKind.Node,
-						id: 'a-new',
-						natureId: 'task',
-						markdown: 'A new task',
-						layoutOrder: orderKey('a8'),
-						regionId: 'a',
-					},
-				],
-				groupAdditions: [
-					{
-						kind: EndpointKind.Group,
-						id: 'c-empty-group',
-						label: 'Empty group',
-						layoutOrder: orderKey('a9'),
-						regionId: 'c',
-					},
-				],
-				relationAdditions: [],
-				endpointOrderChanges: [],
-				nodeMarkdownReplacements: [],
-			});
-			expect(result).toMatchObject({ ok: true });
-			const read = repository.read();
-			if (!read.ok) throw new Error('Expected updated grid document');
-			expect(read.value.nodes.find(({ id }) => id === 'a-new')).toMatchObject({ regionId: 'a' });
-			expect(read.value.groups.find(({ id }) => id === 'c-empty-group')).toMatchObject({
-				regionId: 'c',
-			});
+			const result = await session.dispatch([
+				nodeCreation({
+					id: 'a-new',
+					natureId: 'task',
+					markdown: 'A new task',
+					regionId: 'a',
+				}),
+			]);
+			expect(result).toMatchObject({ kind: 'accepted' });
+			const read = session.read();
+			expect(read.nodes.find(({ id }) => id === 'a-new')?.regionId).toBe('a');
 		} finally {
-			repository.destroy();
+			session.destroy();
 			document.destroy();
 		}
 	});

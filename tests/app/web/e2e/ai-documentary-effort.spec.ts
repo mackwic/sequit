@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import type { Component } from 'svelte';
 
+import type {
+	nodeCreation,
+	relationCreation,
+} from '../../../../src/app/web/document/document-commands';
 import type { OpenDocumentResult } from '../../../../src/app/web/projection/open-document';
 import type { CanvasModel } from '../../../../src/app/web/ui/canvas/canvas-model';
 import { twoByTwoInversionDocument } from '../../../support/fixtures';
@@ -259,6 +263,19 @@ test.describe('AI for documentary effort', () => {
 					typeof value.mount === 'function'
 				);
 			}
+			function isDocumentCommandsModule(value: unknown): value is {
+				nodeCreation: typeof nodeCreation;
+				relationCreation: typeof relationCreation;
+			} {
+				return (
+					typeof value === 'object' &&
+					value !== null &&
+					'nodeCreation' in value &&
+					typeof value.nodeCreation === 'function' &&
+					'relationCreation' in value &&
+					typeof value.relationCreation === 'function'
+				);
+			}
 			function isCanvasSessionModule(value: unknown): value is { CanvasSession: new () => object } {
 				return (
 					typeof value === 'object' &&
@@ -270,6 +287,9 @@ test.describe('AI for documentary effort', () => {
 			const importModule = (specifier: string): Promise<unknown> =>
 				import(/* @vite-ignore */ specifier);
 			const openDocumentModule = await importModule('/src/app/web/projection/open-document.ts');
+			const documentCommandsModule = await importModule(
+				'/src/app/web/document/document-commands.ts',
+			);
 			const renderedCanvasModule = await importModule(
 				'/src/app/web/ui/components/canvas/RenderedCanvas.svelte',
 			);
@@ -279,11 +299,14 @@ test.describe('AI for documentary effort', () => {
 			const svelteModule = await importModule('/@id/svelte');
 			if (!isOpenDocumentModule(openDocumentModule))
 				throw new Error('Invalid open document module');
+			if (!isDocumentCommandsModule(documentCommandsModule))
+				throw new Error('Invalid document commands module');
 			if (!isRenderedCanvasModule(renderedCanvasModule)) throw new Error('Invalid canvas module');
 			if (!isCanvasSessionModule(canvasSessionModule))
 				throw new Error('Invalid canvas session module');
 			if (!isSvelteModule(svelteModule)) throw new Error('Invalid Svelte module');
 			const { openDocument } = openDocumentModule;
+			const { nodeCreation: createNode, relationCreation: createRelation } = documentCommandsModule;
 			const { default: RenderedCanvas } = renderedCanvasModule;
 			const { CanvasSession } = canvasSessionModule;
 			const { mount } = svelteModule;
@@ -310,29 +333,41 @@ test.describe('AI for documentary effort', () => {
 			const capture = async (state: string) => {
 				renderStates.push([state, await opened.createCanvasModel(measurements)]);
 			};
+			const accept = async (command: ReturnType<typeof createNode>) => {
+				const outcome = await opened.session.dispatch([command]);
+				if (!('document' in outcome)) throw new Error(`Refused E2E command: ${outcome.kind}`);
+			};
 			await capture('initial');
-			await opened.addNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' });
+			await accept(createNode({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' }));
 			measurements.nodes.set('zz-added-first', { width: 180, height: 80 });
 			await capture('first-added');
-			await opened.addNode({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' });
+			await accept(
+				createNode({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' }),
+			);
 			measurements.nodes.set('aa-added-second', { width: 180, height: 88 });
 			await capture('appended');
-			await opened.addRelation({
-				id: 'zz-added-first-to-successor',
-				from: 'zz-added-first',
-				to: 'successor',
-			});
-			await opened.addRelation({
-				id: 'aa-added-second-to-successor',
-				from: 'aa-added-second',
-				to: 'successor',
-			});
+			await accept(
+				createRelation({
+					id: 'zz-added-first-to-successor',
+					from: 'zz-added-first',
+					to: 'successor',
+				}),
+			);
+			await accept(
+				createRelation({
+					id: 'aa-added-second-to-successor',
+					from: 'aa-added-second',
+					to: 'successor',
+				}),
+			);
 			await capture('before');
-			await opened.addRelation({
-				id: 'qualifying-source-b-to-target-b',
-				from: 'source-b',
-				to: 'target-b',
-			});
+			await accept(
+				createRelation({
+					id: 'qualifying-source-b-to-target-b',
+					from: 'source-b',
+					to: 'target-b',
+				}),
+			);
 			await capture('after');
 			await capture('stable');
 			const fixture = document.createElement('section');

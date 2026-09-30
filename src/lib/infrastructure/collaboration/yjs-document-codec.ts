@@ -12,7 +12,6 @@ import {
 	REGION_PERSISTENCE_FORMAT,
 	REGION_POLICY_PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
-import { validateLogicDocument } from '../../core/document/validate-logic-document';
 import { createGraph } from '../../core/graph/create-graph';
 import { sharedFieldValue } from './shared-text';
 import {
@@ -266,30 +265,6 @@ export function importLogicDocument(
 			}),
 		);
 	}, origin);
-}
-
-interface CandidateDocumentSuccess {
-	readonly ok: true;
-	readonly value: LogicDocument;
-}
-
-interface CandidateDocumentFailure {
-	readonly ok: false;
-	readonly diagnostics: readonly {
-		readonly code: string;
-		readonly message: string;
-		readonly path: readonly string[];
-	}[];
-}
-
-export function validateCandidateLogicDocument(
-	document: LogicDocument,
-): CandidateDocumentSuccess | CandidateDocumentFailure {
-	const validated = validateLogicDocument(document);
-	if (!validated.ok) return { ok: false, diagnostics: validated.diagnostics };
-	const graph = createGraph(validated.value);
-	if (!graph.ok) return { ok: false, diagnostics: graph.diagnostics };
-	return { ok: true, value: validated.value };
 }
 
 export function readLogicDocument(ydoc: Y.Doc): YjsLiveDocumentResult<LogicDocument> {

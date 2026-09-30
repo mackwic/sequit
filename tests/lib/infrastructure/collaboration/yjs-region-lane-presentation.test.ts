@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { nodeCreation } from '../../../../src/app/web/document/document-commands';
+import { attachLocalDocumentSession } from '../../../../src/app/web/document/local-document-session';
 import {
 	EndpointKind,
 	JunctionOperator,
@@ -26,7 +28,6 @@ import {
 	YJS_REGION_LANE_DOCUMENT_FORMAT,
 	YJS_REGION_POLICY_DOCUMENT_FORMAT,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { YjsDocumentRepository } from '../../../../src/lib/infrastructure/collaboration/yjs-document-repository';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { SharedCommandKind } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -441,7 +442,7 @@ describe('Yjs region lane presentation', () => {
 		}
 	});
 
-	it('round trips a region-local junction and persists a new node in its lane', async () => {
+	it('round trips a region-local junction and creates a node in its lane', async () => {
 		const source = regionLaneDocument();
 		const withJunction: LogicDocument = {
 			...source,
@@ -461,41 +462,28 @@ describe('Yjs region lane presentation', () => {
 		const shared = document.getMap<Y.Map<unknown>>(YjsCollection.Junctions).get('decision');
 		expect(shared?.get('regionId')).toBe('shared');
 		expect(shared?.get('laneId')).toBe('sales');
-		const repository = new YjsDocumentRepository(document);
+		const session = attachLocalDocumentSession(document);
 		try {
-			const before = repository.read();
-			if (!before.ok) throw new Error(before.diagnostics.map(({ message }) => message).join('; '));
-			expect(before.value.junctions.find(({ id }) => id === 'decision')).toMatchObject({
+			expect(session.read().junctions.find(({ id }) => id === 'decision')).toMatchObject({
 				regionId: 'shared',
 				laneId: 'sales',
 			});
-			const result = await repository.persist({
-				nodeAdditions: [
-					{
-						kind: EndpointKind.Node,
-						id: 'new-sales',
-						natureId: 'goal',
-						markdown: 'New sales task',
-						layoutOrder: orderKey('a8'),
-						regionId: 'shared',
-						laneId: 'sales',
-					},
-				],
-				groupAdditions: [],
-				relationAdditions: [],
-				endpointOrderChanges: [],
-				nodeMarkdownReplacements: [],
-			});
-			expect(result).toMatchObject({ ok: true });
-			const updated = repository.read();
-			expect(updated).toMatchObject({ ok: true });
-			if (!updated.ok) throw new Error('Expected updated lane document');
-			expect(updated.value.nodes.find(({ id }) => id === 'new-sales')).toMatchObject({
+			const result = await session.dispatch([
+				nodeCreation({
+					id: 'new-sales',
+					natureId: 'goal',
+					markdown: 'New sales task',
+					regionId: 'shared',
+					laneId: 'sales',
+				}),
+			]);
+			expect(result).toMatchObject({ kind: 'accepted' });
+			expect(session.read().nodes.find(({ id }) => id === 'new-sales')).toMatchObject({
 				regionId: 'shared',
 				laneId: 'sales',
 			});
 		} finally {
-			repository.destroy();
+			session.destroy();
 			document.destroy();
 		}
 	});

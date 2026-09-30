@@ -1,15 +1,15 @@
-import type {
-	LogicDocument,
-	LogicGroup,
-	LogicRelation,
-	NewLogicNode,
-} from '../../../lib/core/document/logic-document';
+import type { LogicDocument } from '../../../lib/core/document/logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
+import type { DocumentSession } from '../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 import { SourceDocumentStateKind } from '../../../lib/infrastructure/collaboration/source-document-state';
-import type { DocumentCommandOutcome } from '../../../lib/infrastructure/document/document-command-contracts';
+import {
+	DocumentCommandDiagnosticCode,
+	type DocumentCommandOutcome,
+	DocumentCommandOutcomeKind,
+	sessionClosedOutcome,
+} from '../../../lib/infrastructure/document/document-command-contracts';
 import { parseSequitToml } from '../../../lib/infrastructure/toml/parse-sequit-toml';
-import type { DocumentSession } from '../document/document-session';
-import { createDocumentSession } from '../document/yjs-document-session';
+import { createLocalDocumentSession } from '../document/local-document-session';
 import type { CanvasMeasurementModel, CanvasModel } from '../ui/canvas/canvas-model';
 import type { CanvasProjection } from './canvas-projection';
 import { DocumentProjection } from './document-projection';
@@ -33,7 +33,7 @@ class OpenedDocument implements CanvasProjection {
 	#destroyed = false;
 
 	constructor(
-		private readonly session: DocumentSession,
+		readonly session: DocumentSession,
 		projection: DocumentProjection,
 	) {
 		this.#projection = projection;
@@ -41,7 +41,7 @@ class OpenedDocument implements CanvasProjection {
 			this.#projection.update(document);
 			this.#notify();
 		});
-		this.#unsubscribeSource = this.session.subscribeSourceState((state) => {
+		this.#unsubscribeSource = this.session.subscribeToSourceState((state) => {
 			if (state.kind === SourceDocumentStateKind.Invalid) this.#notify();
 		});
 	}
@@ -62,7 +62,7 @@ class OpenedDocument implements CanvasProjection {
 
 	async createCanvasModel(measurements: LayoutMeasurements): Promise<CanvasModel> {
 		const source = this.session.readSourceState();
-		if (source?.kind === SourceDocumentStateKind.Invalid)
+		if (source.kind === SourceDocumentStateKind.Invalid)
 			throw new SourceDocumentProjectionError(source);
 		const document = this.session.read();
 		let canvas: CanvasModel;
@@ -70,12 +70,12 @@ class OpenedDocument implements CanvasProjection {
 			canvas = await this.#projection.createCanvasModel(measurements);
 		} catch (cause) {
 			const current = this.session.readSourceState();
-			if (current?.kind === SourceDocumentStateKind.Invalid)
+			if (current.kind === SourceDocumentStateKind.Invalid)
 				throw new SourceDocumentProjectionError(current);
 			throw new LayoutProjectionError(document, cause);
 		}
 		const current = this.session.readSourceState();
-		if (current?.kind === SourceDocumentStateKind.Invalid)
+		if (current.kind === SourceDocumentStateKind.Invalid)
 			throw new SourceDocumentProjectionError(current);
 		return canvas;
 	}
@@ -84,41 +84,24 @@ class OpenedDocument implements CanvasProjection {
 		return this.session.read();
 	}
 
-	deleteElements(
-		endpointIds: readonly string[],
-		relationIds: readonly string[],
-	): Promise<LogicDocument> {
-		return this.session.deleteElements(endpointIds, relationIds);
-	}
-
-	addNode(node: NewLogicNode): Promise<LogicDocument> {
-		return this.session.addNode(node);
-	}
-
-	addConnectedNode(
-		node: NewLogicNode,
-		relations: readonly LogicRelation[],
-	): Promise<LogicDocument> {
-		return this.session.addConnectedNode(node, relations);
-	}
-
-	addRelation(relation: LogicRelation): Promise<LogicDocument> {
-		return this.session.addRelation(relation);
-	}
-
-	groupNodes(
-		group: { readonly id: string; readonly label: string },
-		nodeIds: readonly string[],
-	): Promise<LogicDocument> {
-		return this.session.groupNodes(group, nodeIds);
-	}
-
-	updateGroup(group: LogicGroup): Promise<LogicDocument> {
-		return this.session.updateGroup(group);
-	}
-
+	/** The canvas edit port: a synchronous text splice reported as a command outcome. */
 	replaceNodeMarkdown(nodeId: string, markdown: string): Promise<DocumentCommandOutcome> {
-		return this.session.replaceNodeMarkdown(nodeId, markdown);
+		if (this.#destroyed) return Promise.resolve(sessionClosedOutcome());
+		if (this.session.replaceNodeMarkdown(nodeId, markdown))
+			return Promise.resolve({
+				kind: DocumentCommandOutcomeKind.Accepted,
+				document: this.session.read(),
+			});
+		return Promise.resolve({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.NodeNotFound,
+					message: `Node no longer exists: ${nodeId}`,
+					path: ['nodes', nodeId],
+				},
+			],
+		});
 	}
 
 	subscribe(subscriber: () => void): () => void {
@@ -156,7 +139,7 @@ function errorMessage(error: unknown): string {
 
 export function openDocument(
 	source: string,
-	createSession: (document: LogicDocument) => DocumentSession = createDocumentSession,
+	createSession: (document: LogicDocument) => DocumentSession = createLocalDocumentSession,
 ): OpenDocumentResult {
 	const parsed = parseSequitToml(source);
 	if (!parsed.ok) return parsed;

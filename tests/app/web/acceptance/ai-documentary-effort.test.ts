@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { nodeCreation, relationCreation } from '../../../../src/app/web/document/document-commands';
 import { openDocument } from '../../../../src/app/web/projection/open-document';
 import { defined } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
@@ -12,10 +13,13 @@ import { evaluateDedicatedLayout } from '../../../../src/lib/core/layout/layout-
 import { weightedInversionScore } from '../../../../src/lib/core/layout/rank/crossing-aware-order';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { orderEndpoints } from '../../../../src/lib/core/ordering/endpoint-order';
+import type { DocumentSession } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
 import {
 	importLogicDocument,
 	readLogicDocument,
 } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
+import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import type { SharedDocumentCommand } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { AssertRoute } from '../../../support/assertions/assert-route';
 import { AssertRoutes } from '../../../support/assertions/assert-routes';
@@ -28,6 +32,13 @@ function expectDocument<T>(result: { ok: boolean; value?: T }): T {
 	expect(result.ok).toBe(true);
 	if (!result.ok || result.value === undefined) throw new Error('Expected a valid document');
 	return result.value;
+}
+
+async function accept(
+	opened: { readonly session: DocumentSession },
+	commands: readonly SharedDocumentCommand[],
+): Promise<void> {
+	expect((await opened.session.dispatch(commands)).kind).toBe(DocumentCommandOutcomeKind.Accepted);
 }
 
 function orderedIds(
@@ -95,11 +106,13 @@ describe('AI for documentary effort', () => {
 			const before = await opened.createCanvasModel(
 				layoutMeasurementsForCanvas(opened.measurementModel),
 			);
-			await opened.addRelation({
-				id: 'freshness-tracking-to-documents-live-18-months',
-				from: 'freshness-tracking',
-				to: 'documents-live-18-months',
-			});
+			await accept(opened, [
+				relationCreation({
+					id: 'freshness-tracking-to-documents-live-18-months',
+					from: 'freshness-tracking',
+					to: 'documents-live-18-months',
+				}),
+			]);
 			const after = await opened.createCanvasModel(
 				layoutMeasurementsForCanvas(opened.measurementModel),
 			);
@@ -200,16 +213,12 @@ describe('AI for documentary effort', () => {
 					.map(({ id, bounds }) => [id, bounds.x]),
 			);
 
-			await opened.addNode({
-				id: 'zz-added-first',
-				natureId: 'goal',
-				markdown: 'Added first',
-			});
-			await opened.addNode({
-				id: 'aa-added-second',
-				natureId: 'goal',
-				markdown: 'Added second',
-			});
+			await accept(opened, [
+				nodeCreation({ id: 'zz-added-first', natureId: 'goal', markdown: 'Added first' }),
+			]);
+			await accept(opened, [
+				nodeCreation({ id: 'aa-added-second', natureId: 'goal', markdown: 'Added second' }),
+			]);
 			const after = await opened.createCanvasModel(
 				layoutMeasurementsForCanvas(opened.measurementModel),
 			);
@@ -233,11 +242,13 @@ describe('AI for documentary effort', () => {
 			const persistedBefore = opened.read();
 			const before = await opened.createCanvasModel(measurements);
 
-			await opened.addRelation({
-				id: 'qualifying-source-b-to-target-b',
-				from: 'source-b',
-				to: 'target-b',
-			});
+			await accept(opened, [
+				relationCreation({
+					id: 'qualifying-source-b-to-target-b',
+					from: 'source-b',
+					to: 'target-b',
+				}),
+			]);
 			const after = await opened.createCanvasModel(measurements);
 			const afterBounds = new Map(after.nodes.map(({ id, bounds }) => [id, bounds]));
 			const documentaryScore = (document: typeof persistedBefore) => {

@@ -400,13 +400,6 @@ describe('CanvasSession Markdown editing intents', () => {
 			} as const,
 		},
 		{
-			name: 'rollback',
-			outcome: {
-				kind: DocumentCommandOutcomeKind.RolledBack,
-				diagnostics: [{ code: 'rollback', message: 'Markdown rolled back', path: ['nodes'] }],
-			} as const,
-		},
-		{
 			name: 'failure',
 			outcome: {
 				kind: DocumentCommandOutcomeKind.Failed,
