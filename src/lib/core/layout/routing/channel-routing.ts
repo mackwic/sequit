@@ -20,22 +20,42 @@ function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
 	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
 }
 
-/** A coincident departure must leave its column before another wire arrives there. */
+interface CycleFrame {
+	readonly wire: ChannelWire;
+	next: number;
+}
+
+/**
+ * A coincident departure must leave its column before another wire arrives there. Several
+ * wires may arrive at one column, so these constraints form a general graph: a depth-first
+ * search breaks the wire closing each cycle, following the latest arrival first.
+ */
 function cycleBreaks(wires: readonly ChannelWire[]): Set<ChannelWire> {
-	const byTarget = new Map<number, ChannelWire>();
-	for (const wire of wires) byTarget.set(wire.target, wire);
-	const visited = new Map<ChannelWire, number>();
-	let traversal = 0;
+	const arrivals = new Map<number, ChannelWire[]>();
+	for (const wire of wires) {
+		const column = arrivals.get(wire.target) ?? [];
+		column.push(wire);
+		arrivals.set(wire.target, column);
+	}
+	// True while a wire is on the search path, false once its descendants are explored.
+	const active = new Map<ChannelWire, boolean>();
 	const breaks = new Set<ChannelWire>();
 	for (const start of wires) {
-		if (visited.has(start)) continue;
-		traversal += 1;
-		let wire: ChannelWire | undefined = start;
-		while (wire !== undefined && !visited.has(wire)) {
-			visited.set(wire, traversal);
-			wire = byTarget.get(wire.source);
+		if (active.has(start)) continue;
+		active.set(start, true);
+		const path: CycleFrame[] = [{ wire: start, next: 0 }];
+		for (let frame = path.at(-1); frame !== undefined; frame = path.at(-1)) {
+			const following = arrivals.get(frame.wire.source)?.at(-1 - frame.next);
+			frame.next += 1;
+			if (following === undefined) {
+				active.set(frame.wire, false);
+				path.pop();
+			} else if (active.get(following) === true) breaks.add(following);
+			else if (!active.has(following)) {
+				active.set(following, true);
+				path.push({ wire: following, next: 0 });
+			}
 		}
-		if (wire !== undefined && visited.get(wire) === traversal) breaks.add(wire);
 	}
 	return breaks;
 }
@@ -231,7 +251,11 @@ export function routeOwnedChannel(
 		bySource.set(wire.source, departures);
 	}
 	for (const wire of moving) {
+		// A straight wire keeps one column across the channel: it neither leaves nor reaches it on
+		// a traverse, so only the wires that turn there order their runs.
+		if (wire.source === wire.target) continue;
 		for (const departure of bySource.get(wire.target) ?? []) {
+			if (departure.source === departure.target) continue;
 			if (departure.first !== wire.last) precedes(defined(departure.first), defined(wire.last));
 		}
 	}
