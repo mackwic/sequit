@@ -193,6 +193,8 @@ describe('indexed channel route materialization', () => {
 		const result = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(result.elements).toHaveLength(1000);
 		expect(result.relations).toHaveLength(40169);
-		expect(digest(result)).toBe('733f6ae2e9aeedf07dff100ae014afe0a723e54203ec8716fedc13b5555a1b6f');
+		// Re-pinned for channel block exchanges: same boxes and relations, rails reassigned where
+		// that removes crossings (the 100-node snapshot of this topology goes from 68378 to 68064).
+		expect(digest(result)).toBe('512ea3da4e742f275dc435b533c838cf70db1b0badb28a4007ab09de39e8df10');
 	});
 });

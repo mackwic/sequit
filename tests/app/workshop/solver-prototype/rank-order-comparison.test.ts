@@ -64,15 +64,16 @@ describe('rank order comparison', () => {
 		const [threeOne, twoTwo, , , , geometricThreeOne, geometricTwoTwo] = comparison.entries;
 		expect(threeOne?.documentaryCrossings).toBe(2);
 		expect(twoTwo?.documentaryCrossings).toBe(1);
-		// Centering A on both targets pushes B and C beside D: the documentary geometry crosses
-		// more than its abstract proxy, while the selected order below is crossing-free.
+		// Centering A on both targets pushes B and C beside D: the documentary geometry keeps the
+		// two crossings of A → E with the arrivals of B and C on D. Those arrivals share D and are
+		// stacked on distinct rails without crossing each other; the selected order crosses nothing.
 		expect(threeOne?.documentaryRouteScore).toMatchObject({
-			strictCrossings: 4,
-			validatedBridges: 4,
+			strictCrossings: 2,
+			validatedBridges: 2,
 		});
 		expect(geometricThreeOne?.documentaryRouteScore).toMatchObject({
-			strictCrossings: 4,
-			validatedBridges: 4,
+			strictCrossings: 2,
+			validatedBridges: 2,
 		});
 		expect(geometricTwoTwo?.documentaryRouteScore).toMatchObject({
 			strictCrossings: 1,
