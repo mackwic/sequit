@@ -18,17 +18,17 @@ test('document menu is responsive, animated, and keyboard accessible', async ({ 
 		return animation?.effect?.getTiming().duration;
 	});
 	expect(animationDuration).toBe(110);
-	const print = menu.getByRole('menuitem', { name: 'Imprimer…' });
-	await expect(print).toBeFocused();
-	await print.hover();
-	await expect(print).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+	const first = menu.getByRole('menuitem', { name: 'Ouvrir…' });
+	await expect(first).toBeFocused();
+	await first.hover();
+	await expect(first).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
 	await page.keyboard.press('Escape');
 	await expect(menu).toHaveCount(0);
 	await expect(trigger).toBeFocused();
 
 	await trigger.press('ArrowDown');
-	await expect(menu.getByRole('menuitem', { name: 'Imprimer…' })).toBeFocused();
+	await expect(menu.getByRole('menuitem', { name: 'Ouvrir…' })).toBeFocused();
 	await page.keyboard.press('Tab');
 	await expect(menu).toHaveCount(0);
 });

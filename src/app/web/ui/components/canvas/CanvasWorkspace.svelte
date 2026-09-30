@@ -14,7 +14,7 @@
 		nodeCreation,
 		relationCreation,
 	} from '../../../document/document-commands';
-	import { openDocument } from '../../../projection/open-document';
+	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind } from '../../canvas/canvas-entity';
 	import {
 		planRelativeNodeCreation,
@@ -29,7 +29,15 @@
 	import GroupEditDialog from './GroupEditDialog.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
 
-	let { source }: { source: string } = $props();
+	let {
+		source,
+		onopened,
+	}: {
+		source: string;
+		/** Receives the opened document, or `undefined` while the source is invalid. */
+		onopened?: ((document: OpenedDocument | undefined) => void) | undefined;
+	} = $props();
+	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	let opened = $derived(openDocument(source));
 	let creating = $state(false);
 	let editingGroup = $state<LogicGroup>();
@@ -173,7 +181,11 @@
 
 	$effect(() => {
 		const current = opened;
-		if (!current.ok) return;
+		if (!current.ok) {
+			onopened?.(undefined);
+			return;
+		}
+		onopened?.(current.value);
 		return () => {
 			current.value.destroy();
 		};

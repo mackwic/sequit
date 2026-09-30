@@ -57,6 +57,10 @@
 	color: var(--ui-danger);
 	background: var(--ui-danger-soft);
 }
+.ui-action.quiet {
+	border-color: transparent;
+	background: transparent;
+}
 .ui-action:disabled {
 	opacity: 0.45;
 	cursor: default;
@@ -81,4 +85,36 @@
 .ui-notice.warning {
 	color: var(--ui-warning);
 	background: var(--ui-warning-soft);
+}
+.ui-label {
+	display: grid;
+	gap: 6px;
+	color: var(--ui-text);
+	font-size: 13px;
+	font-weight: 600;
+}
+.ui-field {
+	width: 100%;
+	min-height: 36px;
+	border: 1px solid var(--ui-border);
+	border-radius: 8px;
+	padding: 8px 10px;
+	background: var(--ui-surface);
+	color: var(--ui-text);
+	font: inherit;
+	font-size: 14px;
+	font-weight: 400;
+}
+textarea.ui-field {
+	resize: vertical;
+	line-height: 1.5;
+}
+.ui-field:focus {
+	border-color: var(--ui-accent);
+	outline: 2px solid color-mix(in srgb, var(--ui-accent) 28%, transparent);
+	outline-offset: 0;
+}
+.ui-field:disabled {
+	background: var(--ui-subtle);
+	color: var(--ui-muted);
 }

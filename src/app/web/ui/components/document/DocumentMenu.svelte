@@ -2,7 +2,11 @@
 	import DropdownMenu from '../ui/DropdownMenu.svelte';
 	import Icon from '../ui/Icon.svelte';
 
-	let { title }: { title: string } = $props();
+	let {
+		title,
+		onopen,
+		onexport,
+	}: { title: string; onopen: () => void; onexport?: (() => void) | undefined } = $props();
 
 	function printDocument(): void {
 		window.print();
@@ -21,26 +25,17 @@
 		<Icon name={caretIcon(open === true)} size={13} />
 	{/snippet}
 
-	<button role="menuitem" type="button" disabled><Icon name="phosphor:folder-open" />Ouvrir…</button
+	<button role="menuitem" type="button" onclick={onopen}
+		><Icon name="phosphor:folder-open" />Ouvrir…</button
 	>
-	<button role="menuitem" type="button" disabled
-		><Icon name="phosphor:clock-counter-clockwise" />Documents récents</button
-	>
-	<div role="separator"></div>
-	<button role="menuitem" type="button" disabled
-		><Icon name="phosphor:file-text" />Réglages du document…</button
-	>
-	<button role="menuitem" type="button" disabled><Icon name="phosphor:stack" />Natures…</button>
-	<button role="menuitem" type="button" disabled
-		><Icon name="phosphor:flow-arrow" />Mise en page…</button
-	>
-	<div role="separator"></div>
-	<button role="menuitem" type="button" disabled><Icon name="phosphor:export" />Exporter…</button>
+	{#if onexport}
+		<div role="separator"></div>
+		<button role="menuitem" type="button" onclick={onexport}
+			><Icon name="phosphor:export" />Exporter…</button
+		>
+	{/if}
 	<button role="menuitem" type="button" onclick={printDocument}
 		><Icon name="phosphor:printer" />Imprimer…</button
-	>
-	<button role="menuitem" type="button" disabled
-		><Icon name="phosphor:copy" />Créer une copie…</button
 	>
 </DropdownMenu>
 

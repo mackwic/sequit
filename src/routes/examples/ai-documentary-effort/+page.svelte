@@ -5,4 +5,4 @@
 	let { data }: PageProps = $props();
 </script>
 
-<DocumentPage source={data.source} title="AI for documentary effort" />
+<DocumentPage source={data.source} />
