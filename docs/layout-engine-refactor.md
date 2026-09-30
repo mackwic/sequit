@@ -278,6 +278,8 @@ Le fingerprint de topologie normalise désormais l’ordre des collections avant
 
 Les tests de projection vérifient les réutilisations, invalidations et l'égalité du résultat incrémental au calcul froid ; leurs séquences et profils sont dans le [journal](layout-engine-refactor-journal-2026-09-24.md).
 
+Le routage des canaux de la racine dédiée a son propre cache, `ChannelRoutingCache`, possédé par la projection avec le cache des feuilles de régions (`createProjectionLayoutCaches`). Son empreinte est l'entrée exacte de `routeOwnedChannel` : pour chaque fil, dans l'ordre, l'identifiant, les deux colonnes (en distinguant `-0` de `0`) et les deux extrémités partagées, plus l'indicateur de coin et le propriétaire du canal. L'espacement des rails est la constante `RAIL_SPACING` ; s'il devenait une option, il devrait rejoindre l'empreinte. Une clé courte (propriétaire, indicateur, longueur, premier et dernier identifiants, somme de contrôle des bits des colonnes) sélectionne l'entrée, qui est ensuite comparée exactement : une collision n'est qu'un défaut de cache. Un succès reconstruit des runs, une arête et une table de pistes neufs, sans alias avec le résultat retenu d'une autre évaluation. Deux générations bornent la mémoire : chaque layout racine de la projection commence une génération, quelle que soit sa politique, et le cache garde les routages utilisés par l'un des deux derniers layouts racine, pour toutes leurs évaluations d'ordre de rang. Une génération mémorise au plus 200 000 fils de nouveaux routages ; ceux qu'elle réutilise de la précédente sont toujours conservés. `layoutGraph`, le banc instantané et les régions imbriquées restent froids. Les tests `channel-routing-cache.test.ts` et `channel-routing-projection-cache.test.ts` comparent le résultat incrémental au calcul froid.
+
 | Modification                            | Recalcul minimal attendu                                                                                               |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Couleur ou style de rendu sans métrique | Aucun calcul de layout                                                                                                 |
@@ -305,7 +307,7 @@ L’arrondi au demi-pixel inférieur n’est pas une règle générale du modèl
 
 Un éventuel `StabilityHint` versionné ne suffit pas, à lui seul, à garantir la convergence entre pairs : s’il vient de leur dernier dessin local, leurs hints peuvent différer malgré un document courant identique. Pour le résultat stabilisé, il ne serait admissible que s’il est dérivé canoniquement des mêmes inputs partagés ; sinon il reste un indice de transition éphémère, sans effet sur le solveur final. Le cache ne choisit jamais implicitement une solution différente du calcul froid.
 
-Le cache doit rester borné et appartenir à la projection d’un document. Le cœur du moteur garde un `LayoutWorkspace` par appel et aucun état mutable inter-appels.
+Le cache doit rester borné et appartenir à la projection d’un document. Le cœur du moteur garde un `LayoutWorkspace` par appel et aucun état mutable inter-appels hors des caches que la projection lui prête explicitement.
 
 ## Pli/dépli et continuité perceptive
 

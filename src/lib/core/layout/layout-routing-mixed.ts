@@ -81,6 +81,7 @@ export function reserveRouting(
 		vertical: frame.vertical,
 		ranks: ranks.byEndpointId,
 		reuseCorridorCenters: reusePlacement,
+		channels: workspace.channels,
 	});
 	if (routingStructure.hierarchy === undefined && routingStructure.junctionIds.size === 0) {
 		workspace.routing = routing;
@@ -135,6 +136,7 @@ function materializeStandardRoutes(
 			bounds: placement.bounds,
 			vertical: frame.vertical,
 			ranks: structure.ranks.byEndpointId,
+			channels: workspace.channels,
 		});
 	const result = buildLayoutResult({
 		graph: structure.graph,

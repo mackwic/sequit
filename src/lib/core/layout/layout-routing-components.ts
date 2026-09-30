@@ -2,6 +2,7 @@ import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
 import { placeWithPorts, portsChangePlacement } from './layout-port-placement';
 import { mergeGapMaps, placeElements, type PlacementInput } from './placement/place-elements';
+import type { ChannelRoutingCache } from './routing/channel-routing-cache';
 import type { PortAllocation } from './routing/port-allocation';
 import type { NodeRouting } from './routing/reserve-node-routing';
 import type { RankedComponent } from './structure/placement-rows';
@@ -10,6 +11,8 @@ import type { LayoutStructure } from './structure/prepare-layout';
 /** Routing orchestration extends the placement state without exposing the engine workspace. */
 export interface LayoutRoutingWorkspace extends PlacementInput {
 	routing: NodeRouting | undefined;
+	/** Borrowed from the projection; absent on cold layouts. */
+	readonly channels?: ChannelRoutingCache | undefined;
 }
 export interface RoutingReservation {
 	readonly gaps: ReadonlyMap<number, number>;

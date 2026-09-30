@@ -24,6 +24,7 @@ import {
 	layoutWithRootRegionForProjection,
 	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
+import { ChannelRoutingCache } from '../../../../src/lib/core/layout/routing/channel-routing-cache';
 
 const measurements: LayoutMeasurements = {
 	nodes: new Map([
@@ -106,12 +107,10 @@ function solve(
 ) {
 	const graph = createGraph(document);
 	if (!graph.ok) throw new Error(graph.diagnostics.map(({ message }) => message).join('; '));
-	return layoutWithRootRegionForProjection(
-		graph.value,
-		topologicallyRank(graph.value),
-		sizes,
-		cache,
-	);
+	return layoutWithRootRegionForProjection(graph.value, topologicallyRank(graph.value), sizes, {
+		regions: cache,
+		channels: new ChannelRoutingCache(),
+	});
 }
 
 function contains(outer: Bounds, inner: Bounds): boolean {

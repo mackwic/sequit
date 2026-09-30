@@ -19,9 +19,15 @@ import { placeElements } from './placement/place-elements';
 import { prepareMeasurements } from './placement/prepare-measurements';
 import { selectDedicatedRankLayout } from './rank/rank-order-selection';
 import type { RankOrderSearchWitness } from './rank/rank-order-witness';
+import type { ChannelRoutingCache } from './routing/channel-routing-cache';
 import { routingSpace } from './routing/routing-space';
 import type { LayoutStructure } from './structure/prepare-layout';
 import { routingLayers } from './structure/routing-layers';
+
+/** Borrowed from the projection that owns them; a layout call never owns their state. */
+export interface DedicatedLayoutCaches {
+	readonly channels: ChannelRoutingCache;
+}
 
 export function evaluateDedicatedLayout(
 	structure: LayoutStructure,
@@ -40,6 +46,17 @@ export function evaluateDedicatedLayout(
 	options: LayoutOptions = {},
 	retainForCompletion = false,
 ): LayoutResult | DedicatedLayoutEvaluation {
+	const evaluation = evaluateRetainedLayout(structure, measurements, options, undefined);
+	if (retainForCompletion) return evaluation;
+	return evaluation.complete();
+}
+
+function evaluateRetainedLayout(
+	structure: LayoutStructure,
+	measurements: LayoutMeasurements,
+	options: LayoutOptions,
+	channels: ChannelRoutingCache | undefined,
+): DedicatedLayoutEvaluation {
 	const graph = structure.graph;
 	const ranks = structure.ranks;
 	const frame = createLayoutFrame(graph.document.layout.direction, graph.document.layout.bias);
@@ -53,6 +70,7 @@ export function evaluateDedicatedLayout(
 			groupChannelInsets: new Map(),
 		},
 		routing: undefined,
+		channels,
 	};
 	const baseGaps = new Map<number, number>();
 	placeElements(workspace, baseGaps);
@@ -97,10 +115,7 @@ export function evaluateDedicatedLayout(
 		routes,
 		space,
 	});
-	if (options.inspectRouting !== true) {
-		if (!retainForCompletion) return result;
-		return { result, complete: () => result };
-	}
+	if (options.inspectRouting !== true) return { result, complete: () => result };
 	const inspectionInput = {
 		layout: result,
 		measurements,
@@ -108,8 +123,6 @@ export function evaluateDedicatedLayout(
 		direction: frame.direction,
 		plan: workspace.routing,
 	};
-	if (!retainForCompletion)
-		return { ...result, routingInspection: inspectRouting(inspectionInput) };
 	return {
 		result,
 		complete: () => ({
@@ -128,6 +141,20 @@ export function layoutWithDedicatedEngine(
 	return selectDedicatedRankLayout(graph, ranks, measurements, {
 		options,
 		evaluate: evaluateDedicatedLayout,
+	}).layout;
+}
+
+/** Every rank-order evaluation of this projection layout routes through its channel cache. */
+export function layoutWithDedicatedEngineForProjection(
+	graph: LogicGraph,
+	ranks: TopologicalRanks,
+	measurements: LayoutMeasurements,
+	caches: DedicatedLayoutCaches,
+): LayoutResult {
+	return selectDedicatedRankLayout(graph, ranks, measurements, {
+		options: {},
+		evaluate: (structure, measured, options) =>
+			evaluateRetainedLayout(structure, measured, options ?? {}, caches.channels),
 	}).layout;
 }
 

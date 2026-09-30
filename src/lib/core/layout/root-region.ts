@@ -9,7 +9,11 @@ import type { LogicGraph } from '../graph/create-graph';
 import type { TopologicalRanks } from '../graph/topological-ranks';
 import type { RegionGeometryDiagnosticCode } from './geometry/region-geometry-diagnostic';
 import { SharedLaneLayoutStatus, solveSharedLaneLayout } from './lanes/shared-lane-layout';
-import { layoutWithDedicatedEngine } from './layout-engine';
+import {
+	type DedicatedLayoutCaches,
+	layoutWithDedicatedEngine,
+	layoutWithDedicatedEngineForProjection,
+} from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
 	RegionCompositionWork,
@@ -272,7 +276,14 @@ function layoutWithNestedRegions(
 	throw new UnknownRegionLayoutError(graph.document.id, attempt.reason, attempt);
 }
 
-function layoutOptions(execution: LayoutOptions | RegionExecutionContext): LayoutOptions {
+/** Projection-owned caches, passed separately from the public layout options. */
+export interface ProjectionLayoutCaches extends DedicatedLayoutCaches {
+	readonly regions: RegionLocalLayoutCache;
+}
+
+type RootExecutionContext = RegionExecutionContext & Partial<DedicatedLayoutCaches>;
+
+function layoutOptions(execution: LayoutOptions | RootExecutionContext): LayoutOptions {
 	if ('options' in execution) return execution.options;
 	return execution;
 }
@@ -281,12 +292,17 @@ function layoutWithRootRegionExecution(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	execution: LayoutOptions | RegionExecutionContext,
+	execution: LayoutOptions | RootExecutionContext,
 ): LayoutResult {
 	const options = layoutOptions(execution);
 	const region = normalizeRootRegion(graph, ranks);
-	if (region.policy === LayoutRegionPolicy.Dedicated)
+	if (region.policy === LayoutRegionPolicy.Dedicated) {
+		if ('options' in execution && execution.channels !== undefined)
+			return layoutWithDedicatedEngineForProjection(region.graph, region.ranks, measurements, {
+				channels: execution.channels,
+			});
 		return layoutWithDedicatedEngine(region.graph, region.ranks, measurements, options);
+	}
 	if (region.policy === LayoutRegionPolicy.NestedRegions)
 		return layoutWithNestedRegions(region.graph, measurements, execution);
 	if (region.policy === LayoutRegionPolicy.GridCells)
@@ -308,15 +324,20 @@ export function layoutWithRootRegion(
 	return layoutWithRootRegionExecution(graph, ranks, measurements, options);
 }
 
-/** Projection-owned cache is passed separately from the public layout options. */
+/**
+ * One root layout of an opened projection: every policy starts a new channel generation, so
+ * routings unused by the last two root layouts are released whatever policy runs.
+ */
 export function layoutWithRootRegionForProjection(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	cache: RegionLocalLayoutCache,
+	caches: ProjectionLayoutCaches,
 ): LayoutResult {
+	caches.channels.beginLayout();
 	return layoutWithRootRegionExecution(graph, ranks, measurements, {
 		options: {},
-		cache,
+		cache: caches.regions,
+		channels: caches.channels,
 	});
 }

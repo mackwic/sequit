@@ -82,13 +82,13 @@ La session collaborative reste regroupée avec son protocole et ses documents Yj
 
 `CanvasProjection` décrit les données mesurables, la publication des changements et la production du modèle visuel. Le produit et l'atelier fournissent chacun ce contrat. Le canvas ne dérive plus son interface du résultat d'ouverture d'un fichier TOML.
 
-Le moteur de layout est synchrone et pur ; l'enveloppe asynchrone est dans `app/web/projection`. La mesure des éléments DOM et les brouillons, sélections, zooms et demandes de focus restent dans l'UI.
+Le moteur de layout est synchrone et pur : son résultat est une fonction des seuls inputs. L'enveloppe asynchrone est dans `app/web/projection`. La mesure des éléments DOM et les brouillons, sélections, zooms et demandes de focus restent dans l'UI.
 
 Les listes d’adjacence du graphe sont en lecture seule. Une relation de groupe peut partager le même voisinage entre plusieurs membres ; une relation propre à un membre détache ce voisinage avant de le modifier. Les rangs regroupent les parents d’une même frontière qui partagent exactement leur liste d’enfants, en conservant le rang maximal et le nombre de parents traités. Le graphe, les rangs et les composantes conservent ainsi leurs résultats et leurs ordres sans répéter les mêmes parcours.
 
 ## Organisation du moteur de layout
 
-`layout/layout-engine.ts` orchestre un calcul couplé de placement et de routage. Un `LayoutWorkspace` existe pour cet appel seulement : il emprunte le graphe et les rangs, conserve la préparation stable, puis possède les dimensions effectives et les boîtes modifiées. Aucun état géométrique ne survit pour être réutilisé par l’appel suivant.
+`layout/layout-engine.ts` orchestre un calcul couplé de placement et de routage. Un `LayoutWorkspace` existe pour cet appel seulement : il emprunte le graphe et les rangs, conserve la préparation stable, puis possède les dimensions effectives et les boîtes modifiées. Aucun état géométrique ne survit pour être réutilisé par l’appel suivant, à une exception bornée près : une projection ouverte peut prêter au layout de sa racine dédiée un `ChannelRoutingCache` qu'elle possède, comme elle prête déjà son `RegionLocalLayoutCache` aux régions imbriquées. Ce cache rejoue le routage d'un canal seulement si toutes ses entrées exactes sont identiques, dans de nouveaux objets, et le résultat reste égal au calcul froid. Le cœur ne contient aucun état de module ; `layoutGraph` n'emprunte aucun cache.
 
 La [cible de refonte par IR et régions](layout-engine-refactor.md) documente le découpage proposé, la boucle bornée entre routage et géométrie, les contrats de mémoïsation et le plan de migration. Elle décrit une cible ; le présent chapitre reste la description du moteur exécuté aujourd’hui.
 

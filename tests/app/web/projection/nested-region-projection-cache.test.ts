@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { DocumentProjection } from '../../../../src/app/web/projection/document-projection';
+import { createProjectionLayoutCaches } from '../../../../src/app/web/projection/layout-graph';
 import {
 	LaneGrowth,
 	LaneOrientation,
@@ -17,6 +18,7 @@ import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,
 } from '../../../../src/lib/core/layout/root-region';
+import { ChannelRoutingCache } from '../../../../src/lib/core/layout/routing/channel-routing-cache';
 import {
 	depthTwoRegionDocument,
 	persistedDepthTwoRegionDocument,
@@ -188,9 +190,12 @@ it('keeps child cache state inside one DocumentProjection across source and meas
 		await new DocumentProjection(foreignRelationEdit).createCanvasModel(resized),
 	);
 	const prepared = prepareLayoutDocument(foreignRelationEdit);
-	expect(layoutWithRootRegionForProjection(prepared.graph, prepared.ranks, resized, cache)).toEqual(
-		layoutWithRootRegion(prepared.graph, prepared.ranks, resized),
-	);
+	expect(
+		layoutWithRootRegionForProjection(prepared.graph, prepared.ranks, resized, {
+			regions: cache,
+			channels: new ChannelRoutingCache(),
+		}),
+	).toEqual(layoutWithRootRegion(prepared.graph, prepared.ranks, resized));
 });
 
 it('keeps nested-region incremental layouts equal to cold layouts through an edit sequence', async () => {
@@ -201,7 +206,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 	});
 	const projection = new DocumentProjection(source);
 	const measurements = layoutMeasurementsForCanvas(projection.measurementModel);
-	const localCache = new RegionLocalLayoutCache();
+	const localCaches = createProjectionLayoutCaches();
 	const resolver = vi.spyOn(RegionLocalLayoutCache.prototype, 'getOrComputeContract');
 	const check = async (
 		document: typeof source,
@@ -221,7 +226,7 @@ it('keeps nested-region incremental layouts equal to cold layouts through an edi
 			prepared.graph,
 			prepared.ranks,
 			sizes,
-			localCache,
+			localCaches,
 		);
 		expect(incremental).toEqual(layoutWithRootRegion(prepared.graph, prepared.ranks, sizes));
 		return incremental;

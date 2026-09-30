@@ -43,6 +43,7 @@ import { validateNestedRegionGeometry } from '../../../../src/lib/core/layout/re
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { UnknownRegionLayoutError } from '../../../../src/lib/core/layout/root-region';
+import { ChannelRoutingCache } from '../../../../src/lib/core/layout/routing/channel-routing-cache';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
@@ -502,6 +503,7 @@ function applySequenceEdit(tree: BuiltTree, sample: SequenceCase, edit: EditKind
 
 async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 	const cache = new RegionLocalLayoutCache();
+	const caches = { regions: cache, channels: new ChannelRoutingCache() };
 	let tree = buildTree(sample.tree);
 	let previous: ReturnType<typeof solveNestedRegionLayoutForProjection> | undefined;
 	let completedEdits: readonly EditKind[] = [];
@@ -538,7 +540,7 @@ async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 					reason: incremental.reason,
 				});
 				await expect(
-					layoutGraphForProjection(prepared.graph, prepared.ranks, measurements, cache),
+					layoutGraphForProjection(prepared.graph, prepared.ranks, measurements, caches),
 				).rejects.toMatchObject({
 					name: UnknownRegionLayoutError.name,
 					reason: incremental.reason,
@@ -556,7 +558,7 @@ async function checkSequenceCase(sample: SequenceCase): Promise<void> {
 				prepared.graph,
 				prepared.ranks,
 				measurements,
-				cache,
+				caches,
 			);
 			const publicCold = await layoutGraph(prepared.graph, prepared.ranks, measurements);
 			expect(publicIncremental).toEqual(publicCold);

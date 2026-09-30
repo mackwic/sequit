@@ -249,7 +249,7 @@ describe('live document projection', () => {
 	});
 
 	it('keeps inherited documents cache-equivalent without an explicit presentation', async () => {
-		const calculate = vi.spyOn(layout, 'layoutGraph');
+		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'room');
 		expect(source.persistenceFormat).toBe(PERSISTENCE_FORMAT);
 		expect(source.presentation).toBeUndefined();
@@ -269,7 +269,7 @@ describe('live document projection', () => {
 	});
 
 	it('reuses geometry across collection permutations and invalidates topology and document order edits', async () => {
-		const calculate = vi.spyOn(layout, 'layoutGraph');
+		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const original = validLogicDocument();
 		const source = {
 			...original,
@@ -535,7 +535,7 @@ describe('live document projection', () => {
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
 	});
 	it('reuses geometry for text/style changes of equal measured size and keeps each result immutable', async () => {
-		const calculate = vi.spyOn(layout, 'layoutGraph');
+		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'room');
 		const projection = new DocumentProjection(source);
 		const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
@@ -585,7 +585,7 @@ describe('live document projection', () => {
 	});
 
 	it('refreshes aggregate source relations and editing capabilities without recalculating geometry', async () => {
-		const calculate = vi.spyOn(layout, 'layoutGraph');
+		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const source = collaborativeFixture(CollaborativeFixture.OpenGroup, 'room');
 		const outside = defined(collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room').nodes[0]);
 		const document = {
@@ -657,7 +657,7 @@ describe('live document projection', () => {
 	});
 
 	it('invalidates geometry for topology, direction and measured-size changes', async () => {
-		const calculate = vi.spyOn(layout, 'layoutGraph');
+		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 		const projection = new DocumentProjection(source);
 		const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
@@ -752,7 +752,9 @@ describe('live document projection', () => {
 		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 		const projection = new DocumentProjection(source);
 		const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
-		vi.spyOn(layout, 'layoutGraph').mockRejectedValueOnce(new Error('Temporary layout failure'));
+		vi.spyOn(layout, 'layoutGraphForProjection').mockRejectedValueOnce(
+			new Error('Temporary layout failure'),
+		);
 		await expect(projection.createCanvasModel(sizes)).rejects.toThrow('Temporary');
 		await expect(projection.createCanvasModel(sizes)).resolves.toMatchObject({
 			nodes: [{ id: 'A' }, { id: 'B' }],
@@ -764,7 +766,9 @@ describe('live document projection', () => {
 		const projection = new DocumentProjection(source);
 		const sizes = layoutMeasurementsForCanvas(projection.measurementModel);
 		const delayed = Promise.withResolvers<layout.LayoutResult>();
-		const calculate = vi.spyOn(layout, 'layoutGraph').mockReturnValueOnce(delayed.promise);
+		const calculate = vi
+			.spyOn(layout, 'layoutGraphForProjection')
+			.mockReturnValueOnce(delayed.promise);
 		const obsolete = projection.createCanvasModel(sizes);
 		const larger = { ...sizes, nodes: new Map(sizes.nodes) };
 		larger.nodes.set('A', { width: 400, height: 200 });

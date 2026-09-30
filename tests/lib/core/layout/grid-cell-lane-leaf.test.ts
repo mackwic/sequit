@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
+import { createProjectionLayoutCaches } from '../../../../src/app/web/projection/layout-graph';
 import {
 	defined,
 	LaneOrientation,
@@ -207,7 +208,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			prepared.graph,
 			prepared.ranks,
 			prepared.measurements,
-			new RegionLocalLayoutCache(),
+			createProjectionLayoutCaches(),
 		);
 		expect(projected.lanes).toEqual(lanes);
 	});
@@ -273,7 +274,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				prepared.graph,
 				prepared.ranks,
 				prepared.measurements,
-				new RegionLocalLayoutCache(),
+				createProjectionLayoutCaches(),
 			),
 		).toEqual({
 			...selected.layout,
@@ -666,7 +667,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				prepared.graph,
 				prepared.ranks,
 				prepared.measurements,
-				new RegionLocalLayoutCache(),
+				createProjectionLayoutCaches(),
 			),
 		).toEqual({
 			...selected.layout,

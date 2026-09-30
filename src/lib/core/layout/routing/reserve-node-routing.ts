@@ -3,8 +3,8 @@ import { transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { routeOwnedChannel } from './channel-routing';
-import type { ChannelWire } from './channel-types';
-import type { ChannelRouting } from './channel-types';
+import type { ChannelRoutingCache } from './channel-routing-cache';
+import type { ChannelRouting, ChannelWire } from './channel-types';
 import { type PortAllocation, sharedSourcePorts } from './port-allocation';
 import { RelationPortOffsets } from './relation-port-offsets';
 import type { CorridorLink, RoutingCorridor } from './routing-corridors';
@@ -62,7 +62,14 @@ export function planNodeRouting(input: {
 	readonly vertical: boolean;
 	/** Input corridor coordinates remain valid when port allocation did not move the placement. */
 	readonly reuseCorridorCenters?: boolean;
+	/** Borrowed from the projection: exact channel inputs replay a remembered routing. */
+	readonly channels?: ChannelRoutingCache | undefined;
 }): NodeRouting {
+	const channels = input.channels;
+	let route: (wires: ChannelWire[], nonInverted: boolean, ownerId: string) => ChannelRouting =
+		routeOwnedChannel;
+	if (channels !== undefined)
+		route = (wires, nonInverted, ownerId) => channels.route(wires, nonInverted, ownerId);
 	const gaps = new Map<number, number>();
 	const railCounts = new Map<number, number>();
 	let centers: Map<string, number> | undefined;
@@ -96,7 +103,7 @@ export function planNodeRouting(input: {
 				middle: undefined,
 			}));
 		}
-		const channel = routeOwnedChannel(
+		const channel = route(
 			wires,
 			corridor.cornerOnly === true,
 			`@root/channel/corridor-${corridor.rank}`,

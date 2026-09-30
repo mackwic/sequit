@@ -5,11 +5,13 @@ import type {
 	LayoutOptions,
 	LayoutResult,
 } from '../../../lib/core/layout/layout-types';
-import type { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
+import { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
 import {
 	layoutWithRootRegion,
 	layoutWithRootRegionForProjection,
+	type ProjectionLayoutCaches,
 } from '../../../lib/core/layout/root-region';
+import { ChannelRoutingCache } from '../../../lib/core/layout/routing/channel-routing-cache';
 
 export type {
 	Bounds,
@@ -21,6 +23,7 @@ export type {
 	Size,
 } from '../../../lib/core/layout/layout-types';
 
+/** Cold: nothing survives the call. */
 export function layoutGraph(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
@@ -30,14 +33,22 @@ export function layoutGraph(
 	return Promise.resolve().then(() => layoutWithRootRegion(graph, ranks, measurements, options));
 }
 
-/** Reuse local child layouts only for the nested-region policy of an opened projection. */
+/** The caches of one opened document; they live and die with its projection. */
+export function createProjectionLayoutCaches(): ProjectionLayoutCaches {
+	return { regions: new RegionLocalLayoutCache(), channels: new ChannelRoutingCache() };
+}
+
+/**
+ * Reuse local child layouts of nested regions and exact channel routings of the dedicated root
+ * from the previous layouts of an opened projection; the result equals `layoutGraph`.
+ */
 export function layoutGraphForProjection(
 	graph: LogicGraph,
 	ranks: TopologicalRanks,
 	measurements: LayoutMeasurements,
-	cache: RegionLocalLayoutCache,
+	caches: ProjectionLayoutCaches,
 ): Promise<LayoutResult> {
 	return Promise.resolve().then(() =>
-		layoutWithRootRegionForProjection(graph, ranks, measurements, cache),
+		layoutWithRootRegionForProjection(graph, ranks, measurements, caches),
 	);
 }

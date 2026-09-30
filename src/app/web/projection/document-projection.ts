@@ -10,7 +10,6 @@ import {
 	type TopologicalRanks,
 } from '../../../lib/core/graph/topological-ranks';
 import type { LayoutMeasurements, LayoutResult } from '../../../lib/core/layout/layout-types';
-import { RegionLocalLayoutCache } from '../../../lib/core/layout/regions/model/region-local-cache';
 import {
 	type CanvasMeasurementModel,
 	type CanvasModel,
@@ -19,7 +18,7 @@ import {
 	createCanvasModel,
 } from '../ui/canvas/canvas-model';
 import { layoutMeasurementSignature } from '../ui/canvas/measure-canvas';
-import { layoutGraph, layoutGraphForProjection } from './layout-graph';
+import { createProjectionLayoutCaches, layoutGraphForProjection } from './layout-graph';
 import { partialRegionFailure } from './partial-region-layout';
 
 function regionLaneSignature(presentation: RegionLanePresentation | undefined): unknown {
@@ -145,7 +144,7 @@ export class DocumentProjection {
 	#measurementModel: CanvasMeasurementModel;
 	#measurementSignature: string;
 	#layout: MeasuredLayout | undefined;
-	readonly #nestedRegionCache = new RegionLocalLayoutCache();
+	readonly #caches = createProjectionLayoutCaches();
 
 	constructor(document: LogicDocument, graph?: LogicGraph) {
 		this.#document = document;
@@ -186,16 +185,12 @@ export class DocumentProjection {
 		const signature = layoutMeasurementSignature(measurements);
 		let layout = this.#layout;
 		if (layout?.topology !== topology || layout.signature !== signature) {
-			let result: Promise<LayoutResult>;
-			if (topology.graph.document.regionPresentation === undefined)
-				result = layoutGraph(topology.graph, topology.ranks, measurements);
-			else
-				result = layoutGraphForProjection(
-					topology.graph,
-					topology.ranks,
-					measurements,
-					this.#nestedRegionCache,
-				);
+			const result = layoutGraphForProjection(
+				topology.graph,
+				topology.ranks,
+				measurements,
+				this.#caches,
+			);
 			layout = {
 				topology,
 				signature,
@@ -217,7 +212,7 @@ export class DocumentProjection {
 				error,
 				{ ...topology.graph, document },
 				measurements,
-				this.#nestedRegionCache,
+				this.#caches.regions,
 			);
 		}
 	}
