@@ -33,6 +33,19 @@ Run `mise run clean` (or `pnpm clean`) to remove generated builds, framework cac
 browser-test output, and mutation-test sandboxes. Installed dependencies and local environment files
 are preserved.
 
+## Deployment
+
+Authenticate once, then deploy both Workers:
+
+```bash
+mise run deploy:login
+mise run deploy
+```
+
+The task deploys `sequit-collaboration` first, because the `sequit` web Worker binds to it as the `COLLABORATION` service, then builds and deploys the web Worker. `pnpm deploy:collaboration` and `pnpm deploy:web` deploy each Worker separately.
+
+Wrangler creates the R2 bucket `sequit-room-archive` on the first deploy. Two settings live outside the code: the WAF rate-limiting rule on `/collab/*` and the R2 lifecycle rule for archive retention, both described in [the design notes](docs/design.md).
+
 ## Local quality gates
 
 During implementation, run `pnpm quality:precommit`, then `pnpm quality:fast`. The precommit

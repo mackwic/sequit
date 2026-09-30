@@ -34,7 +34,8 @@ export default defineConfig({
 					return true;
 				},
 			},
-			adapter: adapter(),
+			// Without this path the adapter finds no Wrangler config and targets Cloudflare Pages.
+			adapter: adapter({ config: 'config/wrangler.jsonc' }),
 		}),
 	],
 	server: {

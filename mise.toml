@@ -14,6 +14,14 @@ run = "pnpm run clean"
 description = "Run the local web and collaboration stack"
 run = "pnpm dev"
 
+[tasks."deploy:login"]
+description = "Authenticate Wrangler with the Cloudflare account"
+run = "pnpm exec wrangler login"
+
+[tasks.deploy]
+description = "Deploy the collaboration and web workers to Cloudflare"
+run = "pnpm run deploy:collaboration && pnpm run deploy:web"
+
 [tasks."performance:record"]
 description = "Record reproducible layout performance measurements"
 usage = """
