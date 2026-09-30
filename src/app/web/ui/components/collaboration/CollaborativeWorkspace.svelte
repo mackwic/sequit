@@ -330,7 +330,7 @@
 			relationId: () => crypto.randomUUID(),
 			operator: lastOperator,
 		});
-		if (plan === undefined || !dispatchMany(junctionInsertion(plan))) return;
+		if (plan === undefined || !dispatchMany(junctionInsertion(model, plan))) return;
 		canvas.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
 		openJunctionEditor(plan.junction.id);
 	}

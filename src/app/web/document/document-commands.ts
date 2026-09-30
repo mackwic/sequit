@@ -1,3 +1,4 @@
+import { junctionPlacement } from '../../../lib/core/document/junction-placement';
 import {
 	EndpointKind,
 	GroupState,
@@ -54,22 +55,23 @@ export function connectedNodeCreation(
 	return [nodeCreation(node), ...relations.map(relationCreation)];
 }
 
-/** Threads a junction through a relation: creations first, so no junction is ever unanchored. */
+/**
+ * Threads a junction through a relation: creations first, so no junction is ever unanchored. The
+ * junction is created where its only target, the destination, puts it.
+ */
 export interface JunctionInsertion {
-	readonly junction: {
-		readonly id: string;
-		readonly operator: JunctionOperator;
-		readonly groupId?: string;
-		readonly laneId?: string;
-		readonly regionId?: string;
-	};
+	readonly junction: { readonly id: string; readonly operator: JunctionOperator };
 	readonly incoming: LogicRelation;
 	readonly outgoing: LogicRelation;
 	readonly replacedRelationId: string;
 }
 
-export function junctionInsertion(plan: JunctionInsertion): readonly SharedDocumentCommand[] {
-	const { id, ...properties } = plan.junction;
+export function junctionInsertion(
+	document: LogicDocument,
+	plan: JunctionInsertion,
+): readonly SharedDocumentCommand[] {
+	const { id, operator } = plan.junction;
+	const properties = { operator, ...junctionPlacement(document, [plan.outgoing.to]) };
 	return [
 		{ op: SharedCommandKind.Create, target: { kind: SharedElementKind.Junction, id }, properties },
 		relationCreation(plan.incoming),

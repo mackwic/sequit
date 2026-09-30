@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 
 import {
 	connectedNodeCreation,
+	containerMove,
 	deletion,
 	groupCreation,
 	groupDissolution,
@@ -83,9 +84,17 @@ function execute(model: LogicDocument, commands: readonly SharedDocumentCommand[
 	}
 }
 
+function sequentialIds(): () => string {
+	let next = 0;
+	return () => {
+		next += 1;
+		return `bridge-${String(next)}`;
+	};
+}
+
 it('deletes a group subtree after its incident relations and dissolves the emptied groups', () => {
 	const model = nestedGroups();
-	const commands = deletion(model, ['G'], []);
+	const commands = deletion(model, ['G'], [], sequentialIds());
 
 	const [first, ...rest] = commands;
 	if (first?.op !== Op.DeleteRelations) throw new Error('Expected relations removed first');
@@ -108,7 +117,7 @@ it('deletes a group subtree after its incident relations and dissolves the empti
 
 it('removes a relation selected with its endpoint only once', () => {
 	const model = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'commands');
-	const commands = deletion(model, ['B'], ['R']);
+	const commands = deletion(model, ['B'], ['R'], sequentialIds());
 
 	expect(commands).toEqual([
 		{ op: Op.DeleteRelations, ids: ['R'] },
@@ -122,8 +131,10 @@ it('removes a relation selected with its endpoint only once', () => {
 it('deletes a lone relation without touching its endpoints and proposes nothing for an empty selection', () => {
 	const model = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'commands');
 
-	expect(deletion(model, [], ['R'])).toEqual([{ op: Op.DeleteRelations, ids: ['R'] }]);
-	expect(deletion(model, [], [])).toEqual([]);
+	expect(deletion(model, [], ['R'], sequentialIds())).toEqual([
+		{ op: Op.DeleteRelations, ids: ['R'] },
+	]);
+	expect(deletion(model, [], [], sequentialIds())).toEqual([]);
 });
 
 function withJunctions(
@@ -145,7 +156,7 @@ function withJunctions(
 
 it('deletes several lone junctions with a single explicit removal that collects the others', () => {
 	const model = withJunctions(['J1', 'J2'], []);
-	const commands = deletion(model, ['J1', 'J2'], []);
+	const commands = deletion(model, ['J1', 'J2'], [], sequentialIds());
 
 	expect(commands).toEqual([{ op: Op.Delete, target: { kind: Kind.Junction, id: 'J1' } }]);
 	const result = execute(model, commands);
@@ -159,13 +170,91 @@ it('removes a junction selected with its relations through relation removal alon
 		{ id: 'JB', from: 'J', to: 'B' },
 	];
 	const model = withJunctions(['J'], relations);
-	const commands = deletion(model, ['J'], ['AJ', 'JB']);
+	const commands = deletion(model, ['J'], ['AJ', 'JB'], sequentialIds());
 
 	expect(commands).toEqual([{ op: Op.DeleteRelations, ids: ['AJ', 'JB'] }]);
 	const result = execute(model, commands);
 	expect(result.junctions).toEqual([]);
 	expect(result.relations).toEqual([]);
 	expect(result.nodes.map(({ id }) => id)).toEqual(['A', 'B']);
+});
+
+/** Adds a third box P after the junctions, so a junction can feed it. */
+function withTarget(model: LogicDocument): LogicDocument {
+	return {
+		...model,
+		nodes: [
+			...model.nodes,
+			{
+				kind: EndpointKind.Node,
+				id: 'P',
+				natureId: 'N',
+				markdown: 'Papa',
+				layoutOrder: orderKey('a9'),
+			},
+		],
+	};
+}
+
+it('relates the sources of a deleted junction to its targets before removing it', () => {
+	const model = withTarget(
+		withJunctions(
+			['J'],
+			[
+				{ id: 'AJ', from: 'A', to: 'J' },
+				{ id: 'BJ', from: 'B', to: 'J' },
+				{ id: 'JP', from: 'J', to: 'P' },
+			],
+		),
+	);
+	const commands = deletion(model, ['J'], [], sequentialIds());
+
+	expect(commands).toEqual([
+		{
+			op: Op.Create,
+			target: { kind: Kind.Relation, id: 'bridge-1' },
+			properties: { from: 'A', to: 'P' },
+		},
+		{
+			op: Op.Create,
+			target: { kind: Kind.Relation, id: 'bridge-2' },
+			properties: { from: 'B', to: 'P' },
+		},
+		{ op: Op.DeleteRelations, ids: ['AJ', 'BJ', 'JP'] },
+	]);
+	const result = execute(model, commands);
+	expect(result.junctions).toEqual([]);
+	expect(result.nodes.map(({ id }) => id)).toEqual(['A', 'B', 'P']);
+	expect(result.relations).toEqual([
+		{ id: 'bridge-1', from: 'A', to: 'P' },
+		{ id: 'bridge-2', from: 'B', to: 'P' },
+	]);
+});
+
+it('bridges across deleted chained junctions without repeating a relation or reviving a selected one', () => {
+	const model = withTarget(
+		withJunctions(
+			['J1', 'J2'],
+			[
+				{ id: 'AJ1', from: 'A', to: 'J1' },
+				{ id: 'J1J2', from: 'J1', to: 'J2' },
+				{ id: 'J2B', from: 'J2', to: 'B' },
+				{ id: 'J2P', from: 'J2', to: 'P' },
+				{ id: 'AP', from: 'A', to: 'P' },
+			],
+		),
+	);
+
+	const bridged = execute(model, deletion(model, ['J1', 'J2'], [], sequentialIds()));
+	expect(bridged.junctions).toEqual([]);
+	expect(bridged.relations).toEqual([
+		{ id: 'AP', from: 'A', to: 'P' },
+		{ id: 'bridge-1', from: 'A', to: 'B' },
+	]);
+
+	const cut = execute(model, deletion(model, ['J1', 'J2'], ['J2B'], sequentialIds()));
+	expect(cut.junctions).toEqual([]);
+	expect(cut.relations).toEqual([{ id: 'AP', from: 'A', to: 'P' }]);
 });
 
 it('creates a node before the relations that reference it, in one executable batch', () => {
@@ -250,8 +339,8 @@ it('toggles a group between closed and expanded from its current state', () => {
 it('inserts a junction on a relation in one batch, then changes its operator', () => {
 	const model = collaborativeFixture(CollaborativeFixture.OpenGroup, 'commands');
 	const inserted = execute(model, [
-		...junctionInsertion({
-			junction: { id: 'J', operator: JunctionOperator.Xor, groupId: 'G' },
+		...junctionInsertion(model, {
+			junction: { id: 'J', operator: JunctionOperator.Xor },
 			incoming: { id: 'BJ', from: 'B', to: 'J' },
 			outgoing: { id: 'JA', from: 'J', to: 'A' },
 			replacedRelationId: 'R',
@@ -272,8 +361,8 @@ it('inserts a junction on a relation in one batch, then changes its operator', (
 it('keeps a junction that feeds the replaced relation anchored through the new one', () => {
 	const model = collaborativeFixture(CollaborativeFixture.OpenGroup, 'commands');
 	const withJunction = execute(model, [
-		...junctionInsertion({
-			junction: { id: 'J', operator: JunctionOperator.Xor, groupId: 'G' },
+		...junctionInsertion(model, {
+			junction: { id: 'J', operator: JunctionOperator.Xor },
 			incoming: { id: 'BJ', from: 'B', to: 'J' },
 			outgoing: { id: 'JA', from: 'J', to: 'A' },
 			replacedRelationId: 'R',
@@ -281,8 +370,8 @@ it('keeps a junction that feeds the replaced relation anchored through the new o
 	]);
 	// Splitting J → A: J keeps an outgoing relation at every step, so it is never collected.
 	const twice = execute(withJunction, [
-		...junctionInsertion({
-			junction: { id: 'K', operator: JunctionOperator.Or, groupId: 'G' },
+		...junctionInsertion(withJunction, {
+			junction: { id: 'K', operator: JunctionOperator.Or },
 			incoming: { id: 'JK', from: 'J', to: 'K' },
 			outgoing: { id: 'KA', from: 'K', to: 'A' },
 			replacedRelationId: 'JA',
@@ -290,4 +379,54 @@ it('keeps a junction that feeds the replaced relation anchored through the new o
 	]);
 	expect(twice.junctions.map(({ id }) => id)).toEqual(['J', 'K']);
 	expect(twice.relations.map(({ id }) => id)).toEqual(['BJ', 'JK', 'KA']);
+});
+
+it('creates the junction in its destination’s group, even when the origin is outside it', () => {
+	const model = collaborativeFixture(CollaborativeFixture.OpenGroup, 'commands');
+	const outside: LogicDocument = {
+		...model,
+		nodes: model.nodes.map((node) => {
+			if (node.id !== 'B') return node;
+			return {
+				kind: node.kind,
+				id: 'B',
+				natureId: 'N',
+				markdown: 'Bravo',
+				layoutOrder: node.layoutOrder,
+			};
+		}),
+	};
+	const commands = junctionInsertion(outside, {
+		junction: { id: 'J', operator: JunctionOperator.Xor },
+		incoming: { id: 'BJ', from: 'B', to: 'J' },
+		outgoing: { id: 'JA', from: 'J', to: 'A' },
+		replacedRelationId: 'R',
+	});
+	expect(commands[0]).toEqual({
+		op: Op.Create,
+		target: { kind: Kind.Junction, id: 'J' },
+		properties: { operator: JunctionOperator.Xor, groupId: 'G' },
+	});
+	expect(execute(outside, commands).junctions).toMatchObject([{ id: 'J', groupId: 'G' }]);
+});
+
+it('keeps a junction with its target through grouping and moves, never moving it alone', () => {
+	const model = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'commands');
+	const inserted = execute(
+		model,
+		junctionInsertion(model, {
+			junction: { id: 'J', operator: JunctionOperator.Xor },
+			incoming: { id: 'BJ', from: 'B', to: 'J' },
+			outgoing: { id: 'JA', from: 'J', to: 'A' },
+			replacedRelationId: 'R',
+		}),
+	);
+	expect(inserted.junctions[0]).not.toHaveProperty('groupId');
+
+	const grouped = execute(inserted, [groupCreation('G', ['A', 'B'])]);
+	expect(grouped.junctions[0]).toMatchObject({ groupId: 'G' });
+	const left = execute(grouped, [containerMove(['A'], undefined)]);
+	expect(left.junctions[0]).not.toHaveProperty('groupId');
+	expect(execute(left, [containerMove(['J'], 'G')]).junctions[0]).not.toHaveProperty('groupId');
+	expect(execute(left, [containerMove(['A'], 'G')]).junctions[0]).toMatchObject({ groupId: 'G' });
 });

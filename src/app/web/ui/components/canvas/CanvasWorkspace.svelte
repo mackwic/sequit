@@ -301,7 +301,9 @@
 			operator: lastOperator,
 		});
 		if (plan === undefined) return;
-		const inserted = await execute(() => current.value.session.dispatch(junctionInsertion(plan)));
+		const inserted = await execute(() =>
+			current.value.session.dispatch(junctionInsertion(current.value.read(), plan)),
+		);
 		if (!inserted) return;
 		session.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
 		openJunctionEditor(plan.junction.id);

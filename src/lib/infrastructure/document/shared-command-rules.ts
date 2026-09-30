@@ -1,4 +1,5 @@
 import { collectJunctions } from '../../core/document/collect-junctions';
+import { placeJunctions } from '../../core/document/junction-placement';
 import {
 	contentStyleFields,
 	defined,
@@ -33,8 +34,7 @@ function finalizeUpdatedElement(
 	return document;
 }
 
-/** Use the same ordering and junction collection as local document commands. */
-export function finalizeSharedCommand(
+function finalizedCommand(
 	before: LogicDocument,
 	after: LogicDocument,
 	command: SharedDocumentCommand,
@@ -67,4 +67,16 @@ export function finalizeSharedCommand(
 	if (result === undefined) return after;
 	if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
 	return result.value.document;
+}
+
+/**
+ * Use the same ordering and junction collection as local document commands; every surviving
+ * junction then follows its targets, whichever command moved, grouped or rewired them.
+ */
+export function finalizeSharedCommand(
+	before: LogicDocument,
+	after: LogicDocument,
+	command: SharedDocumentCommand,
+): LogicDocument {
+	return placeJunctions(finalizedCommand(before, after, command));
 }

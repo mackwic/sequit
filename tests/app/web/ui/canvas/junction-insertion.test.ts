@@ -6,7 +6,6 @@ import {
 } from '../../../../../src/app/web/ui/canvas/junction-insertion';
 import { projectCollapsedDocument } from '../../../../../src/lib/core/document/collapsed-document';
 import {
-	EndpointKind,
 	JunctionOperator,
 	type LogicDocument,
 } from '../../../../../src/lib/core/document/logic-document';
@@ -42,38 +41,11 @@ describe('planJunctionInsertion', () => {
 	it('threads the junction between the endpoints and drops the replaced relation last', () => {
 		const plan = planJunctionInsertion(document(), 'R', ids());
 		expect(plan).toEqual({
-			junction: { id: 'J', operator: JunctionOperator.And, groupId: 'G' },
+			junction: { id: 'J', operator: JunctionOperator.And },
 			incoming: { id: 'R1', from: 'B', to: 'J' },
 			outgoing: { id: 'R2', from: 'J', to: 'A' },
 			replacedRelationId: 'R',
 		});
-	});
-
-	it('places the junction at the root when the endpoints share no group', () => {
-		const plan = planJunctionInsertion(document(), 'CA', ids());
-		expect(plan?.junction).toEqual({ id: 'J', operator: JunctionOperator.And });
-	});
-
-	it('places the junction in the deepest group common to both endpoints', () => {
-		const model = document();
-		const nested: LogicDocument = {
-			...model,
-			groups: [
-				...model.groups,
-				{
-					kind: EndpointKind.Group,
-					id: 'H',
-					label: 'H',
-					groupId: 'G',
-					layoutOrder: orderKey('a4'),
-				},
-			],
-			nodes: model.nodes.map((node) => {
-				if (node.id === 'B') return { ...node, groupId: 'H' };
-				return node;
-			}),
-		};
-		expect(planJunctionInsertion(nested, 'R', ids())?.junction.groupId).toBe('G');
 	});
 
 	it('returns nothing for a relation the document no longer has', () => {

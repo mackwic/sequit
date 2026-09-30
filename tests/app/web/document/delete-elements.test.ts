@@ -23,7 +23,9 @@ async function deleteElements(
 	endpointIds: readonly string[],
 	relationIds: readonly string[],
 ): Promise<LogicDocument> {
-	const outcome = await session.dispatch(deletion(session.read(), endpointIds, relationIds));
+	const outcome = await session.dispatch(
+		deletion(session.read(), endpointIds, relationIds, () => crypto.randomUUID()),
+	);
 	if (outcome.kind !== DocumentCommandOutcomeKind.Accepted)
 		throw new Error(`Expected an accepted deletion, got ${outcome.kind}`);
 	return outcome.document;
