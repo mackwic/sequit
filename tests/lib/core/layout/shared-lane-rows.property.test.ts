@@ -84,18 +84,13 @@ describe('shared lane rows property', () => {
 					);
 					expect(progresses, `${child} → ${parent}`).toBe(true);
 				}
-				for (const route of result.layout.relations) {
-					const last = route.points.length - 1;
-					for (let index = 1; index <= last; index += 1) {
+				for (const route of result.layout.relations)
+					for (let index = 1; index < route.points.length; index += 1) {
 						const start = defined(route.points[index - 1]);
 						const end = defined(route.points[index]);
-						for (const [id, box] of bounds) {
-							const ownStub =
-								(id === route.from && index === 1) || (id === route.to && index === last);
-							if (!ownStub) expect(entersBox(start, end, box), `${route.id} × ${id}`).toBe(false);
-						}
+						for (const [id, box] of bounds)
+							expect(entersBox(start, end, box), `${route.id} × ${id}`).toBe(false);
 					}
-				}
 			}),
 			PROPERTY_PARAMETERS,
 		);

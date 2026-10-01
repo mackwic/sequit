@@ -2,7 +2,6 @@ import { defined } from '../../document/logic-document';
 import type { RoutingEdge } from '../geometry/routing-edge';
 import { BASE_RANK_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { LayoutElement } from '../layout-types';
-import { compareBandOrder } from './shared-lane-bands';
 import {
 	frameEdgeBand,
 	frameExteriorRailEdge,
@@ -10,7 +9,11 @@ import {
 	frameOwnerId,
 	physicalBounds,
 } from './shared-lane-frame';
-import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
+import {
+	compareLayoutOrder,
+	type SharedLaneEndpoint,
+	type SharedLaneInput,
+} from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import type { LogicalBox, SharedLaneBounds } from './shared-lane-types';
 
@@ -51,7 +54,7 @@ function orderedEndpoints(
 		.sort((a, b) => {
 			const row = a.row - b.row;
 			if (row !== 0) return row;
-			return compareBandOrder(a, b);
+			return compareLayoutOrder(a, b);
 		});
 }
 

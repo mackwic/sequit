@@ -69,14 +69,18 @@ export function laneSide(sourceIndex: number, targetIndex: number, laneCount: nu
 	return 1;
 }
 
+/** Documentary order of lanes, and of the endpoints of one lane row: `layoutOrder`, then the id. */
+export function compareLayoutOrder(
+	a: { readonly layoutOrder: string; readonly id: string },
+	b: { readonly layoutOrder: string; readonly id: string },
+): number {
+	const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
+	if (order !== 0) return order;
+	return compareCanonicalStrings(a.id, b.id);
+}
+
 export function orderedLaneIds(document: LogicDocument): readonly string[] {
-	const lanes = [...defined(document.presentation).lanes];
-	lanes.sort((a, b) => {
-		const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
-		if (order !== 0) return order;
-		return compareCanonicalStrings(a.id, b.id);
-	});
-	return lanes.map(({ id }) => id);
+	return [...defined(document.presentation).lanes].sort(compareLayoutOrder).map(({ id }) => id);
 }
 
 function measuredSize(

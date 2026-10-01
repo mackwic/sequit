@@ -1,19 +1,27 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Point } from '../layout-types';
-import type { LaneSide, SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
+import {
+	compareLayoutOrder,
+	type LaneSide,
+	type SharedLaneEndpoint,
+	type SharedLaneInput,
+} from './shared-lane-model';
 import { incidenceKey, PortRole } from './shared-lane-ports';
 import type { LogicalBox } from './shared-lane-types';
 
 /** Free cross space between two neighbours of a band when no detour runs between them. */
 const SLOT_GAP = 48;
 
-/** Documentary order of the endpoints of one band: `layoutOrder`, then the identifier. */
-export function compareBandOrder(a: SharedLaneEndpoint, b: SharedLaneEndpoint): number {
-	const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
-	if (order !== 0) return order;
-	return compareCanonicalStrings(a.id, b.id);
+/** The row boundary a detour leaves by: before its row (-1) or after it (1). */
+type BoundarySide = -1 | 1;
+
+interface DetourCorridors {
+	/** The slot gap the detour runs along, keyed by `[lane, row, slot before it]`. */
+	readonly gap: string;
+	/** The row boundary the detour crosses its lane in, keyed by `[lane, boundary]`. */
+	readonly boundary: string;
+	readonly boundaryIndex: number;
 }
 
 /** One lateral port whose face looks at a neighbour of its band: it leaves between two rows. */
@@ -22,8 +30,9 @@ interface BandDetour {
 	readonly endpoint: SharedLaneEndpoint;
 	readonly side: LaneSide;
 	readonly slot: number;
-	/** The row boundary it leaves by: after its row (1) or before it (-1), toward the other end. */
-	readonly direction: LaneSide;
+	/** Toward the row of the relation's other end. */
+	readonly direction: BoundarySide;
+	readonly corridors: DetourCorridors;
 }
 
 /**
@@ -50,16 +59,12 @@ function slotGapKey(laneIndex: number, row: number, slot: number): string {
 	return JSON.stringify([laneIndex, row, slot]);
 }
 
-interface DetourCorridors {
-	/** The slot gap the detour descends, keyed by `[lane, row, slot before it]`. */
-	readonly gap: string;
-	/** The row boundary the detour crosses its lane in, keyed by `[lane, boundary]`. */
-	readonly boundary: string;
-	readonly boundaryIndex: number;
-}
-
-function detourCorridors(detour: BandDetour): DetourCorridors {
-	const { endpoint, side, slot, direction } = detour;
+function detourCorridors(
+	endpoint: SharedLaneEndpoint,
+	side: LaneSide,
+	slot: number,
+	direction: BoundarySide,
+): DetourCorridors {
 	let gapSlot = slot - 1;
 	if (side === 1) gapSlot = slot;
 	let boundaryIndex = endpoint.row;
@@ -71,22 +76,38 @@ function detourCorridors(detour: BandDetour): DetourCorridors {
 	};
 }
 
-function groupBands(input: SharedLaneInput): Map<string, SharedLaneEndpoint[]> {
+/** The slot of an endpoint in its band and the last slot of that band. */
+interface BandSlot {
+	readonly slot: number;
+	readonly last: number;
+}
+
+function groupBands(input: SharedLaneInput): {
+	readonly bands: ReadonlyMap<string, readonly SharedLaneEndpoint[]>;
+	readonly slots: ReadonlyMap<string, BandSlot>;
+	readonly rowCount: number;
+} {
 	const bands = new Map<string, SharedLaneEndpoint[]>();
+	let rowCount = 0;
 	for (const endpoint of input.endpoints.values()) {
 		const key = JSON.stringify([endpoint.laneIndex, endpoint.row]);
 		const band = bands.get(key) ?? [];
 		band.push(endpoint);
 		bands.set(key, band);
+		rowCount = Math.max(rowCount, endpoint.row + 1);
 	}
-	for (const band of bands.values()) band.sort(compareBandOrder);
-	return bands;
+	const slots = new Map<string, BandSlot>();
+	for (const band of bands.values()) {
+		band.sort(compareLayoutOrder);
+		const last = band.length - 1;
+		for (const [slot, endpoint] of band.entries()) slots.set(endpoint.id, { slot, last });
+	}
+	return { bands, slots, rowCount };
 }
 
 function bandDetours(
 	input: SharedLaneInput,
-	bands: ReadonlyMap<string, readonly SharedLaneEndpoint[]>,
-	slotById: ReadonlyMap<string, number>,
+	slots: ReadonlyMap<string, BandSlot>,
 ): readonly BandDetour[] {
 	const detours: BandDetour[] = [];
 	for (const plan of input.plans) {
@@ -97,15 +118,20 @@ function bandDetours(
 			{ endpoint: target, other: source, side: plan.targetSide, role: PortRole.Target },
 		];
 		for (const { endpoint, other, side, role } of incidences) {
-			const slot = defined(slotById.get(endpoint.id));
-			const last =
-				defined(bands.get(JSON.stringify([endpoint.laneIndex, endpoint.row]))).length - 1;
+			const { slot, last } = defined(slots.get(endpoint.id));
 			const blockedAfter = side > 0 && slot < last;
 			const blockedBefore = side < 0 && slot > 0;
-			let direction: LaneSide = -1;
+			if (!blockedAfter && !blockedBefore) continue;
+			let direction: BoundarySide = -1;
 			if (other.row > endpoint.row) direction = 1;
-			if (blockedAfter || blockedBefore)
-				detours.push({ key: incidenceKey(plan.id, role), endpoint, side, slot, direction });
+			detours.push({
+				key: incidenceKey(plan.id, role),
+				endpoint,
+				side,
+				slot,
+				direction,
+				corridors: detourCorridors(endpoint, side, slot, direction),
+			});
 		}
 	}
 	return detours;
@@ -118,13 +144,13 @@ function countBy(keys: readonly string[]): Map<string, number> {
 }
 
 /** n tracks at rail spacing, centred: the outer ones keep half a spacing from each side. */
-function boundarySizes(input: SharedLaneInput, detours: readonly BandDetour[]): number[] {
-	const rowCount = Math.max(0, ...[...input.endpoints.values()].map(({ row }) => row + 1));
+function boundarySizes(rowCount: number, detours: readonly BandDetour[]): number[] {
 	const tracks = Array.from({ length: rowCount + 1 }, () => 0);
-	const corridors = detours.map(detourCorridors);
-	const counts = countBy(corridors.map(({ boundary }) => boundary));
-	for (const { boundary, boundaryIndex } of corridors)
-		tracks[boundaryIndex] = Math.max(defined(tracks[boundaryIndex]), defined(counts.get(boundary)));
+	const counts = countBy(detours.map(({ corridors }) => corridors.boundary));
+	for (const { corridors } of detours) {
+		const index = corridors.boundaryIndex;
+		tracks[index] = Math.max(defined(tracks[index]), defined(counts.get(corridors.boundary)));
+	}
 	return tracks.map((count, boundary) => {
 		const size = count * RAIL_SPACING;
 		if (boundary === 0 || boundary === rowCount) return size;
@@ -133,19 +159,17 @@ function boundarySizes(input: SharedLaneInput, detours: readonly BandDetour[]): 
 }
 
 export function planLaneBands(input: SharedLaneInput): LaneBands {
-	const bands = groupBands(input);
-	const slotById = new Map<string, number>();
-	for (const band of bands.values())
-		for (const [slot, endpoint] of band.entries()) slotById.set(endpoint.id, slot);
-	const detours = bandDetours(input, bands, slotById);
+	const { bands, slots, rowCount } = groupBands(input);
+	const detours = bandDetours(input, slots);
 	const slotGaps = new Map<string, number>();
-	const gapTracks = countBy(detours.map((detour) => detourCorridors(detour).gap));
+	const gapTracks = countBy(detours.map(({ corridors }) => corridors.gap));
 	for (const band of bands.values())
-		for (const [slot, endpoint] of band.slice(0, -1).entries()) {
+		for (let slot = 0; slot < band.length - 1; slot += 1) {
+			const endpoint = defined(band[slot]);
 			const key = slotGapKey(endpoint.laneIndex, endpoint.row, slot);
 			slotGaps.set(key, Math.max(SLOT_GAP, (gapTracks.get(key) ?? 0) * RAIL_SPACING));
 		}
-	return { bands, detours, slotGaps, boundaries: boundarySizes(input, detours) };
+	return { bands, detours, slotGaps, boundaries: boundarySizes(rowCount, detours) };
 }
 
 /** The cross width a band occupies, and the offset of each of its endpoints inside it. */
@@ -216,65 +240,38 @@ function compareBoundaryDetours(a: PlacedDetour, b: PlacedDetour): number {
 	return depth * a.detour.direction;
 }
 
-function groupedDetours(
+interface CorridorKind {
+	readonly keyOf: (corridors: DetourCorridors) => string;
+	readonly compare: (a: PlacedDetour, b: PlacedDetour) => number;
+	/** The coordinate of the track at `index` among the `count` detours of one corridor. */
+	readonly track: (item: PlacedDetour, count: number, index: number) => number;
+}
+
+/** The track of every detour along one kind of corridor, keyed by incidence. */
+function corridorTracks(
 	placed: readonly PlacedDetour[],
-	keyOf: (detour: BandDetour) => string,
-	compare: (a: PlacedDetour, b: PlacedDetour) => number,
-): ReadonlyMap<string, readonly PlacedDetour[]> {
+	kind: CorridorKind,
+): ReadonlyMap<string, number> {
 	const groups = new Map<string, PlacedDetour[]>();
 	for (const item of placed) {
-		const key = keyOf(item.detour);
+		const key = kind.keyOf(item.detour.corridors);
 		const group = groups.get(key) ?? [];
 		group.push(item);
 		groups.set(key, group);
 	}
-	for (const group of groups.values()) group.sort(compare);
-	return groups;
-}
-
-interface DetourCorridorGroups {
-	readonly gaps: ReadonlyMap<string, readonly PlacedDetour[]>;
-	readonly boundaries: ReadonlyMap<string, readonly PlacedDetour[]>;
-}
-
-function detourAccess(
-	item: PlacedDetour,
-	lanes: LaneBands,
-	placement: BandPlacement,
-	groups: DetourCorridorGroups,
-): PortAccess {
-	const { detour, box, long } = item;
-	const corridors = detourCorridors(detour);
-	const gap = defined(groups.gaps.get(corridors.gap));
-	const boundary = defined(groups.boundaries.get(corridors.boundary));
-	const width = defined(lanes.slotGaps.get(corridors.gap));
-	let face = box.cross;
-	let gapStart = box.cross - width;
-	if (detour.side === 1) {
-		face = box.cross + box.crossSize;
-		gapStart = face;
+	const tracks = new Map<string, number>();
+	for (const group of groups.values()) {
+		group.sort(kind.compare);
+		for (const [index, item] of group.entries())
+			tracks.set(item.detour.key, kind.track(item, group.length, index));
 	}
-	const x = corridorTrack(gapStart, width, gap.length, gap.indexOf(item));
-	const y = corridorTrack(
-		defined(placement.boundaryStarts[corridors.boundaryIndex]),
-		defined(lanes.boundaries[corridors.boundaryIndex]),
-		boundary.length,
-		boundary.indexOf(item),
-	);
-	return {
-		points: [
-			{ x: face, y: long },
-			{ x, y: long },
-			{ x, y },
-		],
-		reach: y,
-	};
+	return tracks;
 }
 
 /**
  * The access of every port of a parallel frame. A port whose face is free reaches its gutter
  * straight across its lane; a port facing a band neighbour enters the slot gap, runs to the row
- * boundary on its side and crosses the lane between the rows.
+ * boundary on the side of the relation's other end and crosses the lane between the rows.
  */
 export function bandPortAccess(
 	input: SharedLaneInput,
@@ -302,13 +299,30 @@ export function bandPortAccess(
 		const long = defined(access.get(detour.key)).reach;
 		return { detour, box, long, outward: long * detour.direction };
 	});
-	const gaps = groupedDetours(placed, (detour) => detourCorridors(detour).gap, compareGapDetours);
-	const boundaries = groupedDetours(
-		placed,
-		(detour) => detourCorridors(detour).boundary,
-		compareBoundaryDetours,
-	);
-	for (const item of placed)
-		access.set(item.detour.key, detourAccess(item, lanes, placement, { gaps, boundaries }));
+	const xs = corridorTracks(placed, {
+		keyOf: ({ gap }) => gap,
+		compare: compareGapDetours,
+		track: ({ detour, box }, count, index) => {
+			const width = defined(lanes.slotGaps.get(detour.corridors.gap));
+			let start = box.cross - width;
+			if (detour.side === 1) start = box.cross + box.crossSize;
+			return corridorTrack(start, width, count, index);
+		},
+	});
+	const ys = corridorTracks(placed, {
+		keyOf: ({ boundary }) => boundary,
+		compare: compareBoundaryDetours,
+		track: ({ detour }, count, index) => {
+			const boundary = detour.corridors.boundaryIndex;
+			const start = defined(placement.boundaryStarts[boundary]);
+			return corridorTrack(start, defined(lanes.boundaries[boundary]), count, index);
+		},
+	});
+	for (const { detour, long } of placed) {
+		const [port] = defined(access.get(detour.key)).points;
+		const x = defined(xs.get(detour.key));
+		const y = defined(ys.get(detour.key));
+		access.set(detour.key, { points: [defined(port), { x, y: long }, { x, y }], reach: y });
+	}
 	return access;
 }
