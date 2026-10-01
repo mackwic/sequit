@@ -30,7 +30,7 @@ interface BandDetour {
 	readonly endpoint: SharedLaneEndpoint;
 	readonly side: LaneSide;
 	readonly slot: number;
-	/** Toward the row of the relation's other end. */
+	/** Before its row for a port blocked on its +1 face, after it for one blocked on its -1 face. */
 	readonly direction: BoundarySide;
 	readonly corridors: DetourCorridors;
 }
@@ -105,25 +105,29 @@ function groupBands(input: SharedLaneInput): {
 	return { bands, slots, rowCount };
 }
 
+/**
+ * A port blocked on its +1 face leaves before its row, one blocked on its -1 face after it: two
+ * neighbours whose blocked ports face each other never share a row boundary, so their detours never
+ * have to cross in the slot gap between them.
+ */
 function bandDetours(
 	input: SharedLaneInput,
 	slots: ReadonlyMap<string, BandSlot>,
 ): readonly BandDetour[] {
 	const detours: BandDetour[] = [];
 	for (const plan of input.plans) {
-		const source = defined(input.endpoints.get(plan.from));
-		const target = defined(input.endpoints.get(plan.to));
 		const incidences = [
-			{ endpoint: source, other: target, side: plan.sourceSide, role: PortRole.Source },
-			{ endpoint: target, other: source, side: plan.targetSide, role: PortRole.Target },
+			{ id: plan.from, side: plan.sourceSide, role: PortRole.Source },
+			{ id: plan.to, side: plan.targetSide, role: PortRole.Target },
 		];
-		for (const { endpoint, other, side, role } of incidences) {
-			const { slot, last } = defined(slots.get(endpoint.id));
+		for (const { id, side, role } of incidences) {
+			const { slot, last } = defined(slots.get(id));
 			const blockedAfter = side > 0 && slot < last;
 			const blockedBefore = side < 0 && slot > 0;
 			if (!blockedAfter && !blockedBefore) continue;
-			let direction: BoundarySide = -1;
-			if (other.row > endpoint.row) direction = 1;
+			const endpoint = defined(input.endpoints.get(id));
+			let direction: BoundarySide = 1;
+			if (blockedAfter) direction = -1;
 			detours.push({
 				key: incidenceKey(plan.id, role),
 				endpoint,
@@ -271,7 +275,7 @@ function corridorTracks(
 /**
  * The access of every port of a parallel frame. A port whose face is free reaches its gutter
  * straight across its lane; a port facing a band neighbour enters the slot gap, runs to the row
- * boundary on the side of the relation's other end and crosses the lane between the rows.
+ * boundary its face selects and crosses the lane between the rows.
  */
 export function bandPortAccess(
 	input: SharedLaneInput,
