@@ -24,6 +24,7 @@ const UNVISITED = 0;
 const ON_PATH = 1;
 const EXPLORED = 2;
 const NO_ARRIVALS: readonly number[] = [];
+const NO_FAMILY_BREAKS: readonly ChannelWire[] = [];
 
 interface CycleSearch {
 	readonly wires: readonly ChannelWire[];
@@ -152,6 +153,7 @@ function makeRuns(
 	wires: readonly ChannelWire[],
 	sharedEndpoints: boolean,
 	nonInverted: boolean,
+	familyBreaks: ReadonlySet<ChannelWire> | undefined,
 ): ChannelRun[] {
 	let moving = wires;
 	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
@@ -159,6 +161,7 @@ function makeRuns(
 	if (sharedEndpoints) breaks = sharedEndpointBreaks(wires, moving);
 	else if (nonInverted) breaks = new Set();
 	else breaks = cycleBreaks(moving);
+	for (const wire of familyBreaks ?? NO_FAMILY_BREAKS) breaks.add(wire);
 	const distinct = new Set<number>();
 	if (breaks.size > 0)
 		for (const wire of wires) {
@@ -260,7 +263,7 @@ function assignRails(
 	runs: readonly ChannelRun[],
 	wires: readonly ChannelWire[],
 	ownerId: string,
-): ChannelRailAllocation {
+): ChannelRailAllocation | undefined {
 	const ready = runs.filter((segment) => segment.remaining === 0);
 	let nextRunKey = 0;
 	const layers: ChannelRun[][] = [];
@@ -275,7 +278,7 @@ function assignRails(
 			if (next.remaining === 0) ready.push(next);
 		}
 	}
-	if (ready.length !== runs.length) throw new Error('Unresolved channel routing constraint cycle');
+	if (ready.length !== runs.length) return undefined;
 	let count = 0;
 	const edge = { ownerId, capacity: runs.length, spacing: RAIL_SPACING };
 	const trackByRunKey = new Map<number, number>();
@@ -303,20 +306,32 @@ export function routeOwnedChannel(
 		})
 		// Wires at the same coordinates keep the caller's documentary order, never their ids.
 		.sort((a, b) => a.source - b.source || a.target - b.target);
-	const arrivals = mergeRuns(
-		moving,
-		makeRuns(moving, sharedEndpoints, nonInverted),
-		RunSide.Last,
-		sharedEndpoints,
-	);
-	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
-	for (const wire of moving) {
-		// A straight wire keeps one column across the channel: it neither leaves nor reaches it on
-		// a traverse, so only the wires that turn there order their runs.
-		if (wire.source !== wire.target) orderDepartures(moving, wire);
+	let familyBreaks: Set<ChannelWire> | undefined;
+	for (;;) {
+		const arrivals = mergeRuns(
+			moving,
+			makeRuns(moving, sharedEndpoints, nonInverted, familyBreaks),
+			RunSide.Last,
+			sharedEndpoints,
+		);
+		const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
+		for (const wire of moving) {
+			// Straight wires keep their column and impose no traverse order.
+			if (wire.source !== wire.target) orderDepartures(moving, wire);
+		}
+		nestChannelEndpointRuns(moving);
+		const allocation = assignRails(runs, moving, ownerId);
+		if (allocation !== undefined) return { wires, ...allocation };
+		// Family nesting can close a column dependency cycle absent from the original wires.
+		// Split an unresolved departure, rather than dropping its endpoint-family precedence.
+		const divided = moving.find((wire) => {
+			if (wire.middle !== undefined || wire.source === wire.target) return false;
+			return defined(wire.last).remaining > 0;
+		});
+		if (divided === undefined) throw new Error('Unresolved channel routing constraint cycle');
+		familyBreaks ??= new Set<ChannelWire>();
+		familyBreaks.add(divided);
 	}
-	nestChannelEndpointRuns(moving);
-	return { wires, ...assignRails(runs, moving, ownerId) };
 }
 
 /** Share traverses at a common port, preserve distinct nets, then color transverse runs. */

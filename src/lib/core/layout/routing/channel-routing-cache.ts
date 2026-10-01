@@ -1,4 +1,5 @@
 import { defined } from '../../document/logic-document';
+import type { GraphEndpoint } from '../../graph/create-graph';
 import type { RoutingEdge } from '../geometry/routing-edge';
 import { routeOwnedChannel } from './channel-routing';
 import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
@@ -32,6 +33,16 @@ type EndpointColumns = {
 };
 type SameColumn = (columns: EndpointColumns, wires: readonly ChannelWire[]) => boolean;
 
+/** Graph creation renews handles; their canonical documentary identity survives an unrelated edit. */
+function sameEndpoint(
+	first: GraphEndpoint | undefined,
+	second: GraphEndpoint | undefined,
+): boolean {
+	const sameKind = first?.kind === second?.kind;
+	const sameId = first?.entity.id === second?.entity.id;
+	return sameKind && sameId;
+}
+
 /** Exact positional comparison; `Object.is` distinguishes -0 from 0. */
 const SAME_ENDPOINT_COLUMNS: readonly SameColumn[] = Object.values({
 	id: (columns, wires) => wires.every(({ id }, index) => columns.id[index] === id),
@@ -40,9 +51,13 @@ const SAME_ENDPOINT_COLUMNS: readonly SameColumn[] = Object.values({
 	target: (columns, wires) =>
 		wires.every(({ target }, index) => Object.is(columns.target[index], target)),
 	sourceEndpoint: (columns, wires) =>
-		wires.every(({ sourceEndpoint }, index) => columns.sourceEndpoint[index] === sourceEndpoint),
+		wires.every(({ sourceEndpoint }, index) =>
+			sameEndpoint(columns.sourceEndpoint[index], sourceEndpoint),
+		),
 	targetEndpoint: (columns, wires) =>
-		wires.every(({ targetEndpoint }, index) => columns.targetEndpoint[index] === targetEndpoint),
+		wires.every(({ targetEndpoint }, index) =>
+			sameEndpoint(columns.targetEndpoint[index], targetEndpoint),
+		),
 	sharedSource: (columns, wires) =>
 		wires.every(({ sharedSource }, index) => columns.sharedSource[index] === sharedSource),
 	sharedTarget: (columns, wires) =>

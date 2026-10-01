@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { WideBipartiteLayersScenarioBuilder } from '../../../../src/app/workshop/fixtures/layout-performance/builders/wide-bipartite-layers-scenario';
 import {
 	EndpointKind,
 	LayoutDirection,
@@ -87,6 +88,27 @@ const familyCases = [
 ] as const;
 
 describe.each(Object.values(LayoutDirection))('nested endpoint families in %s', (direction) => {
+	it('splits the column cycle closed by endpoint nesting in the fifteenth dense insertion', () => {
+		const snapshot = new WideBipartiteLayersScenarioBuilder().buildSnapshot(15).document;
+		const configuration = LAYOUT_CONFIGURATIONS.find(
+			(candidate) => candidate.direction === direction,
+		);
+		if (configuration === undefined) throw new Error('Missing layout direction configuration');
+		const document = { ...snapshot, layout: configuration };
+		const routes = visibleRoutes(document);
+		const paths = document.relations.map((relation) => ({
+			...relation,
+			points: routes.get(relation.id) ?? [],
+		}));
+		for (const field of ['from', 'to'] as const) {
+			for (const endpoint of new Set(paths.map((path) => path[field]))) {
+				expect(
+					referenceRouteBridgeAnalysis(paths.filter((path) => path[field] === endpoint)).crossings,
+				).toEqual([]);
+			}
+		}
+	});
+
 	it.each(familyCases)('removes every family bridge in $id', ({ id, ids, pairs, crossings }) => {
 		const configuration = LAYOUT_CONFIGURATIONS.find(
 			(candidate) => candidate.direction === direction,

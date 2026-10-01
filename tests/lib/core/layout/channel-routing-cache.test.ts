@@ -83,13 +83,20 @@ describe('projection-owned channel routing cache', () => {
 		cache.beginLayout();
 		expectFreshEquivalent(cache.route(wires(k33), false, OWNER), cold);
 		expect(cache.stats).toMatchObject({ hits: 1, misses: 1 });
+		const rebuilt = structuredClone(k33);
+		cache.beginLayout();
+		expectFreshEquivalent(
+			cache.route(wires(rebuilt), false, OWNER),
+			routeOwnedChannel(wires(rebuilt), false, OWNER),
+		);
+		expect(cache.stats).toMatchObject({ hits: 2, misses: 1 });
 		for (const field of ['sourceEndpoint', 'targetEndpoint'] as const) {
 			const changed = k33.map((wire) => ({ ...wire, [field]: undefined }));
 			const withoutFamily = routeOwnedChannel(wires(changed), false, OWNER);
 			expectFreshEquivalent(cache.route(wires(changed), false, OWNER), withoutFamily);
 			expect(withoutFamily.railCount).toBeLessThan(cold.railCount);
 		}
-		expect(cache.stats).toMatchObject({ hits: 1, misses: 3 });
+		expect(cache.stats).toMatchObject({ hits: 2, misses: 3 });
 	});
 
 	it('replays a routed channel into fresh objects equal to a cold routing', () => {

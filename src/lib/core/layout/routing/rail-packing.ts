@@ -7,9 +7,13 @@ enum FamilyField {
 	Source = 'sourceEndpoint',
 	Target = 'targetEndpoint',
 }
+const FAMILY_FIELDS = [FamilyField.Source, FamilyField.Target] as const;
 
 /** A shared traverse belongs to a family only when every owner has that endpoint. */
-function endpointFamilies(wires: readonly ChannelWire[], field: FamilyField): ChannelWire[][] {
+function endpointFamilies(
+	wires: readonly ChannelWire[],
+	field: FamilyField,
+): Iterable<ChannelWire[]> {
 	const owners = new Map<ChannelRun, GraphEndpoint | undefined>();
 	for (const wire of wires) {
 		const segment = defined(wire.last);
@@ -26,7 +30,7 @@ function endpointFamilies(wires: readonly ChannelWire[], field: FamilyField): Ch
 		if (family === undefined) families.set(endpoint, [wire]);
 		else family.push(wire);
 	}
-	return [...families.values()];
+	return families.values();
 }
 
 function nestFamily(family: ChannelWire[], field: FamilyField): void {
@@ -72,7 +76,7 @@ function nestFamily(family: ChannelWire[], field: FamilyField): void {
 
 /** Families on one side nest before coloring, including the arrival runs of split wires. */
 export function nestChannelEndpointRuns(wires: readonly ChannelWire[]): void {
-	for (const field of [FamilyField.Source, FamilyField.Target])
+	for (const field of FAMILY_FIELDS)
 		for (const family of endpointFamilies(wires, field)) nestFamily(family, field);
 }
 
@@ -108,14 +112,11 @@ function placeRun(rails: ChannelRun[][], run: ChannelRun, minimum: number): numb
 	}
 }
 
-/** Reuse disjoint rails across depths without reversing any established precedence. */
-export function compactChannelRails(
-	runs: readonly ChannelRun[],
-	tracks: Map<number, number>,
-): number {
+/** Sort the owned visitation queue after untangling, reusing disjoint rails without reversing precedence. */
+export function compactChannelRails(runs: ChannelRun[], tracks: Map<number, number>): number {
 	const minimum = new Int32Array(runs.length);
 	const rails: ChannelRun[][] = [];
-	for (const run of [...runs].sort((a, b) => a.rail - b.rail || a.start - b.start)) {
+	for (const run of runs.sort((a, b) => a.rail - b.rail || a.start - b.start)) {
 		const rail = placeRun(rails, run, defined(minimum[run.key]));
 		run.rail = rail;
 		tracks.set(run.key, rail);
