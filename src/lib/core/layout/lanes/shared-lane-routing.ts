@@ -7,28 +7,13 @@ import {
 	type RoutingTrackAllocation,
 	trackOffset,
 } from '../resources/routing-resource-allocation';
-import {
-	type LogicalBox,
-	physicalPoint,
-	SHARED_LANE_CLEARANCE,
-	type SharedLaneFrame,
-} from './shared-lane-frame';
+import type { PortAccess } from './shared-lane-bands';
+import { physicalPoint, SHARED_LANE_CLEARANCE, type SharedLaneFrame } from './shared-lane-frame';
 import type { LaneSide, SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import { incidenceKey, PortRole } from './shared-lane-ports';
 
-function portLong(
-	box: LogicalBox,
-	relationId: string,
-	role: PortRole,
-	frame: SharedLaneFrame,
-): number {
-	const offset = defined(frame.portOffsetByIncidence.get(incidenceKey(relationId, role)));
-	return box.longitudinal + box.longSize / 2 + offset;
-}
-
-function face(box: LogicalBox, side: LaneSide): number {
-	if (side === 1) return box.cross + box.crossSize;
-	return box.cross;
+function portAccess(frame: SharedLaneFrame, relationId: string, role: PortRole): PortAccess {
+	return defined(frame.portAccessByIncidence.get(incidenceKey(relationId, role)));
 }
 
 function gutter(
@@ -45,8 +30,8 @@ function gutter(
 /** The tracks one plan's route reads: the gutter offset it was granted, its ports and its order. */
 interface RoutePosition {
 	readonly gutterOffset: number;
-	readonly sourceLong: number;
-	readonly targetLong: number;
+	readonly source: PortAccess;
+	readonly target: PortAccess;
 	readonly order: ParallelRouteOrder;
 }
 
@@ -113,19 +98,20 @@ export function allocateParallelRoutes(
 }
 
 function adjacentPoints(
-	start: Point,
-	end: Point,
+	sourceLong: number,
+	targetLong: number,
 	sourceGutter: number,
 	targetGutter: number,
 ): readonly Point[] {
-	if (start.y === end.y)
-		return [start, { x: sourceGutter, y: start.y }, { x: targetGutter, y: end.y }, end];
+	if (sourceLong === targetLong)
+		return [
+			{ x: sourceGutter, y: sourceLong },
+			{ x: targetGutter, y: targetLong },
+		];
 	return [
-		start,
-		{ x: sourceGutter, y: start.y },
-		{ x: sourceGutter, y: end.y },
-		{ x: targetGutter, y: end.y },
-		end,
+		{ x: sourceGutter, y: sourceLong },
+		{ x: sourceGutter, y: targetLong },
+		{ x: targetGutter, y: targetLong },
 	];
 }
 
@@ -146,7 +132,7 @@ function passageTrack(
 		return frame.topExteriorBase + railOffset(allocation.topExteriorRail, plan);
 	if (position.order === ParallelRouteOrder.LocalPassages) {
 		const contentMidpoint = (frame.contentLongStart + frame.contentLongEnd) / 2;
-		const routeMidpoint = (position.sourceLong + position.targetLong) / 2;
+		const routeMidpoint = (position.source.reach + position.target.reach) / 2;
 		if (routeMidpoint < contentMidpoint)
 			return frame.topExteriorBase + railOffset(allocation.topExteriorRail, plan);
 	}
@@ -167,38 +153,52 @@ export function routeRailTrack(
 	if (order === ParallelRouteOrder.ReservedTopPassage) rail = allocation.topExteriorRail;
 	if (order === ParallelRouteOrder.LocalPassages) {
 		const contentMidpoint = (frame.contentLongStart + frame.contentLongEnd) / 2;
-		const routeMidpoint = (position.sourceLong + position.targetLong) / 2;
+		const routeMidpoint = (position.source.reach + position.target.reach) / 2;
 		if (routeMidpoint < contentMidpoint) rail = allocation.topExteriorRail;
 	}
 	return rail.trackByKey.get(plan.id);
 }
 
+/** The gutter part of a route, between the gutter entries of its two ports. */
+function gutterPoints(
+	plan: SharedLanePlan,
+	frame: SharedLaneFrame,
+	allocation: ParallelRouteAllocation,
+	position: RoutePosition,
+): readonly Point[] {
+	const sourceLong = position.source.reach;
+	const targetLong = position.target.reach;
+	const { gutterOffset } = position;
+	const sourceGutter = gutter(frame, plan.sourceLaneIndex, plan.sourceSide, gutterOffset);
+	const targetGutter = gutter(frame, plan.targetLaneIndex, plan.targetSide, gutterOffset);
+	if (plan.sameLane)
+		return [
+			{ x: sourceGutter, y: sourceLong },
+			{ x: sourceGutter, y: targetLong },
+		];
+	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
+	if (position.order === ParallelRouteOrder.LocalPassages && laneSpan === 1)
+		return adjacentPoints(sourceLong, targetLong, sourceGutter, targetGutter);
+	const track = passageTrack(frame, allocation, plan, position);
+	return [
+		{ x: sourceGutter, y: sourceLong },
+		{ x: sourceGutter, y: track },
+		{ x: targetGutter, y: track },
+		{ x: targetGutter, y: targetLong },
+	];
+}
+
+/** A route leaves its source port, follows the gutters and enters its target port the same way. */
 function logicalPoints(
 	plan: SharedLanePlan,
 	frame: SharedLaneFrame,
 	allocation: ParallelRouteAllocation,
 	position: RoutePosition,
 ): readonly Point[] {
-	const source = defined(frame.boxes.get(plan.from));
-	const target = defined(frame.boxes.get(plan.to));
-	const { sourceLong, targetLong, gutterOffset } = position;
-	const sourceGutter = gutter(frame, plan.sourceLaneIndex, plan.sourceSide, gutterOffset);
-	const targetGutter = gutter(frame, plan.targetLaneIndex, plan.targetSide, gutterOffset);
-	const start = { x: face(source, plan.sourceSide), y: sourceLong };
-	const end = { x: face(target, plan.targetSide), y: targetLong };
-	if (plan.sameLane)
-		return [start, { x: sourceGutter, y: sourceLong }, { x: sourceGutter, y: targetLong }, end];
-	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
-	if (position.order === ParallelRouteOrder.LocalPassages && laneSpan === 1)
-		return adjacentPoints(start, end, sourceGutter, targetGutter);
-	const track = passageTrack(frame, allocation, plan, position);
 	return [
-		start,
-		{ x: sourceGutter, y: sourceLong },
-		{ x: sourceGutter, y: track },
-		{ x: targetGutter, y: track },
-		{ x: targetGutter, y: targetLong },
-		end,
+		...position.source.points,
+		...gutterPoints(plan, frame, allocation, position),
+		...position.target.points.toReversed(),
 	];
 }
 
@@ -212,8 +212,8 @@ function routePosition(
 	const gutterTrack = defined(allocation.gutter.trackByKey.get(plan.id));
 	return {
 		gutterOffset: SHARED_LANE_CLEARANCE + trackOffset(allocation.gutter.edge, gutterTrack),
-		sourceLong: portLong(defined(frame.boxes.get(plan.from)), plan.id, PortRole.Source, frame),
-		targetLong: portLong(defined(frame.boxes.get(plan.to)), plan.id, PortRole.Target, frame),
+		source: portAccess(frame, plan.id, PortRole.Source),
+		target: portAccess(frame, plan.id, PortRole.Target),
 		order,
 	};
 }

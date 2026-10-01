@@ -5,9 +5,10 @@ import {
 	type RoutingTrackAllocation,
 	trackOffset,
 } from '../resources/routing-resource-allocation';
-import { type LogicalBox, physicalPoint, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
+import { physicalPoint, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import type { LaneSide, SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import { incidenceKey, PortRole } from './shared-lane-ports';
+import type { LogicalBox } from './shared-lane-types';
 import type { TransverseLaneFrame } from './shared-transverse-frame';
 
 function portCross(

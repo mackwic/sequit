@@ -1,18 +1,18 @@
 import { defined } from '../../document/logic-document';
 import type { RoutingEdge } from '../geometry/routing-edge';
-import { OUTER_MARGIN } from '../layout-settings';
+import { BASE_RANK_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { LayoutElement } from '../layout-types';
+import { compareBandOrder } from './shared-lane-bands';
 import {
 	frameEdgeBand,
 	frameExteriorRailEdge,
 	frameGutterEdge,
 	frameOwnerId,
-	type LogicalBox,
 	physicalBounds,
 } from './shared-lane-frame';
 import type { SharedLaneEndpoint, SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
-import type { SharedLaneBounds } from './shared-lane-types';
+import type { LogicalBox, SharedLaneBounds } from './shared-lane-types';
 
 const LANE_INSET = 24;
 const ENDPOINT_GAP = 48;
@@ -38,13 +38,21 @@ export interface TransverseLaneFrame {
 	readonly railEdge: RoutingEdge;
 }
 
+/**
+ * The endpoints of one lane in cross order: by row, then documentary order inside a row. Each keeps
+ * its own cross column, so a port leaves the lane along the rank axis without meeting a neighbour.
+ */
 function orderedEndpoints(
 	input: SharedLaneInput,
 	laneIndex: number,
 ): readonly SharedLaneEndpoint[] {
 	return [...input.endpoints.values()]
 		.filter((item) => item.laneIndex === laneIndex)
-		.sort((a, b) => a.row - b.row);
+		.sort((a, b) => {
+			const row = a.row - b.row;
+			if (row !== 0) return row;
+			return compareBandOrder(a, b);
+		});
 }
 
 function endpointCrossSize(item: SharedLaneEndpoint, ports: SharedLanePorts): number {
@@ -58,26 +66,48 @@ function contentCrossSize(items: readonly SharedLaneEndpoint[], ports: SharedLan
 	return content;
 }
 
-function laneMetrics(
-	input: SharedLaneInput,
-	ports: SharedLanePorts,
-): {
+interface LaneRow {
+	readonly offset: number;
+	readonly size: number;
+}
+
+/** The rows of one lane along the rank axis, in row order, and the content length they span. */
+interface LaneRows {
+	readonly rows: ReadonlyMap<number, LaneRow>;
+	readonly content: number;
+}
+
+function laneRows(items: readonly SharedLaneEndpoint[]): LaneRows {
+	const sizes = new Map<number, number>();
+	for (const item of items) sizes.set(item.row, Math.max(sizes.get(item.row) ?? 0, item.longSize));
+	const rows = new Map<number, LaneRow>();
+	let cursor = 0;
+	for (const [row, size] of sizes) {
+		if (rows.size > 0) cursor += BASE_RANK_GAP;
+		rows.set(row, { offset: cursor, size });
+		cursor += size;
+	}
+	return { rows, content: cursor };
+}
+
+interface TransverseLaneMetrics {
 	readonly items: readonly (readonly SharedLaneEndpoint[])[];
+	readonly rows: readonly LaneRows[];
 	readonly lengths: readonly number[];
 	readonly occupiedCross: readonly number[];
 	readonly crossSize: number;
-} {
+}
+
+function laneMetrics(input: SharedLaneInput, ports: SharedLanePorts): TransverseLaneMetrics {
 	const items = input.laneIds.map((_id, index) => orderedEndpoints(input, index));
-	const lengths = items.map((lane) => {
-		const contentLength = Math.max(0, ...lane.map((item) => item.longSize));
-		return Math.max(MINIMUM_LANE_SIZE, contentLength + 2 * LANE_INSET);
-	});
+	const rows = items.map(laneRows);
+	const lengths = rows.map(({ content }) => Math.max(MINIMUM_LANE_SIZE, content + 2 * LANE_INSET));
 	const occupiedCross = items.map((lane) => contentCrossSize(lane, ports));
 	const crossSize = Math.max(
 		MINIMUM_LANE_SIZE,
 		...occupiedCross.map((width) => width + 2 * LANE_INSET),
 	);
-	return { items, lengths, occupiedCross, crossSize };
+	return { items, rows, lengths, occupiedCross, crossSize };
 }
 
 function longitudinalPositions(
@@ -106,7 +136,7 @@ interface TransversePositioning {
 function positionEndpoints(
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
-	metrics: ReturnType<typeof laneMetrics>,
+	metrics: TransverseLaneMetrics,
 	positioning: TransversePositioning,
 ): {
 	readonly boxes: ReadonlyMap<string, LogicalBox>;
@@ -116,12 +146,15 @@ function positionEndpoints(
 	const elements: LayoutElement[] = [];
 	for (const [laneIndex, laneItems] of metrics.items.entries()) {
 		const freeCross = metrics.crossSize - defined(metrics.occupiedCross[laneIndex]);
+		const lane = defined(metrics.rows[laneIndex]);
+		const laneStart = defined(positioning.longitudinal.starts[laneIndex]);
+		const contentStart = laneStart + (defined(metrics.lengths[laneIndex]) - lane.content) / 2;
 		let cursor = positioning.crossStart + freeCross / 2;
 		for (const item of laneItems) {
 			const crossSize = endpointCrossSize(item, ports);
-			const laneStart = defined(positioning.longitudinal.starts[laneIndex]);
-			const laneLength = defined(metrics.lengths[laneIndex]);
-			const longitudinal = laneStart + (laneLength - item.longSize) / 2;
+			const row = defined(lane.rows.get(item.row));
+			const rowStart = contentStart + row.offset;
+			const longitudinal = rowStart + (row.size - item.longSize) / 2;
 			const logical = { cross: cursor, longitudinal, crossSize, longSize: item.longSize };
 			boxes.set(item.id, logical);
 			elements.push({
@@ -137,7 +170,7 @@ function positionEndpoints(
 
 function positionedLanes(
 	input: SharedLaneInput,
-	metrics: ReturnType<typeof laneMetrics>,
+	metrics: TransverseLaneMetrics,
 	positions: ReturnType<typeof longitudinalPositions>,
 	crossStart: number,
 ): readonly SharedLaneBounds[] {
@@ -156,6 +189,10 @@ function positionedLanes(
 	}));
 }
 
+/**
+ * The transverse frame: lanes stacked along the rank axis, each holding its rows in rank order; the
+ * endpoints of one row sit side by side and every endpoint keeps its own cross column in its lane.
+ */
 export function makeTransverseLaneFrame(
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
