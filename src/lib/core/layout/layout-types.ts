@@ -66,6 +66,27 @@ export class GroupRouteFailure extends Error {
 	}
 }
 
+/** A candidate placed the two endpoints of a relation over each other: no route can join them. */
+export class RelationBoundsOverlap extends Error {
+	readonly code = 'relation-bounds-overlap' as const;
+
+	constructor(
+		readonly relationId: string,
+		readonly from: string,
+		readonly to: string,
+	) {
+		super(`Relation bounds overlap: ${relationId} (${from} -> ${to})`);
+		this.name = 'RelationBoundsOverlap';
+	}
+}
+
+/** Geometric failures that reject one dedicated candidate; any other error is a defect. */
+export type DedicatedCandidateFailure = GroupRouteFailure | RelationBoundsOverlap;
+
+export function isDedicatedCandidateFailure(error: unknown): error is DedicatedCandidateFailure {
+	return error instanceof GroupRouteFailure || error instanceof RelationBoundsOverlap;
+}
+
 export interface LayoutOptions {
 	readonly inspectRouting?: boolean;
 }

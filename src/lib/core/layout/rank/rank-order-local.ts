@@ -1,8 +1,9 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import {
+	type DedicatedCandidateFailure,
 	type DedicatedLayoutEvaluation,
-	GroupRouteFailure,
+	isDedicatedCandidateFailure,
 	type LayoutMeasurements,
 } from '../layout-types';
 import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
@@ -35,6 +36,10 @@ export interface LocalChoice {
 	readonly changed: Set<number>;
 	readonly evidence: ComponentEvidence[];
 	readonly skippedComponents: number;
+	/** One search covered the whole document: its validations are global ones. */
+	readonly wholeDocument: boolean;
+	/** That search validated the documentary layout and kept it. */
+	readonly provenBaseline: boolean;
 }
 
 interface LocalSearchInput {
@@ -61,6 +66,7 @@ interface ComponentSearchResult {
 	readonly evidence: ComponentEvidence;
 	readonly matched: readonly number[];
 	readonly selected: RankOrder;
+	readonly provenBaseline: boolean;
 }
 
 /** Bound shape-only projected dependency pairs, not measured route or validation work. */
@@ -139,13 +145,13 @@ function matchingBands(
 function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
 	const { component, global, globalStructure, sharedBaseline, indices, limit, evaluate } = input;
 	let structure = globalStructure;
-	let baseline: DedicatedLayoutEvaluation | GroupRouteFailure = sharedBaseline;
+	let baseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure = sharedBaseline;
 	if (component.graph !== globalStructure.graph) {
 		structure = prepareLayout(component.graph, component.ranks);
 		try {
 			baseline = evaluate(structure, component.measurements, {}, true);
 		} catch (error) {
-			if (!(error instanceof GroupRouteFailure)) throw error;
+			if (!isDedicatedCandidateFailure(error)) throw error;
 			baseline = error;
 		}
 	}
@@ -161,6 +167,9 @@ function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
 		limits: { completePipelines: limit, uniqueProposals: MAX_UNIQUE_PROPOSALS },
 	});
 	const selected = search.selected?.order ?? domain.bands;
+	let provenBaseline = false;
+	if (component.graph === globalStructure.graph)
+		provenBaseline = search.selected?.evaluation === sharedBaseline;
 	return {
 		evidence: {
 			ids: component.ids,
@@ -170,6 +179,7 @@ function searchComponent(input: ComponentSearchInput): ComponentSearchResult {
 		},
 		matched,
 		selected,
+		provenBaseline,
 	};
 }
 
@@ -196,7 +206,14 @@ export function chooseLocal(input: LocalSearchInput): LocalChoice {
 	const changed = new Set<number>();
 	const evidence: ComponentEvidence[] = [];
 	if (budgets.limits.size === 0)
-		return { orders, changed, evidence, skippedComponents: budgets.skippedComponents };
+		return {
+			orders,
+			changed,
+			evidence,
+			skippedComponents: budgets.skippedComponents,
+			wholeDocument: false,
+			provenBaseline: false,
+		};
 	let components: readonly RankSearchComponent[];
 	if (structure.components.length === 1 && budgets.limits.has(0)) {
 		components = [
@@ -217,6 +234,7 @@ export function chooseLocal(input: LocalSearchInput): LocalChoice {
 			new Set(budgets.limits.keys()),
 		);
 	}
+	let provenBaseline = false;
 	for (const component of components) {
 		const searched = searchComponent({
 			component,
@@ -229,6 +247,14 @@ export function chooseLocal(input: LocalSearchInput): LocalChoice {
 		});
 		evidence.push(searched.evidence);
 		if (recordSelectedBands(domain, searched, orders)) changed.add(component.index);
+		provenBaseline ||= searched.provenBaseline;
 	}
-	return { orders, changed, evidence, skippedComponents: budgets.skippedComponents };
+	return {
+		orders,
+		changed,
+		evidence,
+		skippedComponents: budgets.skippedComponents,
+		wholeDocument: components.length === 1 && components[0]?.graph === graph,
+		provenBaseline,
+	};
 }

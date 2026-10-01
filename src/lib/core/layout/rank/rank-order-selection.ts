@@ -1,22 +1,15 @@
-import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
-import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
-import {
-	DedicatedCandidateRejectionCode,
-	type DedicatedRouteScore,
-	rejected,
-	type RejectedDedicatedCandidate,
-} from '../dedicated-candidate-validation/types';
-import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
+import type { RejectedDedicatedCandidate } from '../dedicated-candidate-validation/types';
 import {
 	type DedicatedLayoutEvaluation,
-	GroupRouteFailure,
+	isDedicatedCandidateFailure,
 	type LayoutMeasurements,
 	type LayoutResult,
 } from '../layout-types';
-import { type LayoutStructure, prepareLayout } from '../structure/prepare-layout';
+import { prepareLayout } from '../structure/prepare-layout';
 import type { RankOrder } from './rank-order';
+import { assembleGlobal, type GlobalChoice } from './rank-order-assembly';
 import {
 	chooseLocal,
 	type LocalChoice,
@@ -25,196 +18,65 @@ import {
 } from './rank-order-local';
 import { recoverDocumentaryFailure, type SelectionServices } from './rank-order-recovery';
 import { type RankOrderSearchWitness, RankSearchMode, RankSearchStop } from './rank-order-witness';
-import { applyRankOrder, collectRankOrderDomain, type RankOrderDomain } from './rank-ordering';
+import { collectRankOrderDomain } from './rank-ordering';
 
-interface GlobalChoice {
-	readonly evaluation: DedicatedLayoutEvaluation;
-	readonly pipelines: number;
-	readonly validations: number;
-	readonly runsInspected: number;
-	readonly incidentAdmissions: number;
-	readonly finalValidation?: RankOrderSearchWitness['finalValidation'];
-	readonly fallbackComponents: readonly (readonly string[])[];
+interface SearchTally {
+	mode: RankSearchMode;
+	stop: RankSearchStop;
+	proposed: number;
+	evaluated: number;
+	valid: number;
+	unverified: number;
+	validations: number;
+	runs: number;
+	truncated: boolean;
+	exhaustive: boolean;
+	selectedOrder: RankOrder;
+	readonly rejected: { order: RankOrder; reason: RejectedDedicatedCandidate }[];
 }
 
-interface AssemblyInput {
-	readonly graph: LogicGraph;
-	readonly ranks: TopologicalRanks;
-	readonly measurements: LayoutMeasurements;
-	readonly structure: LayoutStructure;
-	readonly domain: RankOrderDomain;
-	readonly baseline: DedicatedLayoutEvaluation;
-	readonly budgets: SearchBudgets;
-	readonly local: LocalChoice;
-	readonly services: SelectionServices;
-}
-
-function faultyComponents(
-	failure: RejectedDedicatedCandidate,
-	modified: ReadonlySet<number>,
-	byEndpoint: ReadonlyMap<string, number>,
-	byRelation: ReadonlyMap<string, readonly number[]>,
-): ReadonlySet<number> {
-	const implicated = new Set<number>();
-	for (const id of [failure.endpointId, failure.otherEndpointId]) {
-		const index = byEndpoint.get(id ?? '');
-		if (index !== undefined && modified.has(index)) implicated.add(index);
-	}
-	for (const id of [failure.relationId, failure.otherRelationId])
-		for (const index of byRelation.get(id ?? '') ?? [])
-			if (modified.has(index)) implicated.add(index);
-	// An inventory/canvas failure or a fault in an untouched component has no safe attribution.
-	if (implicated.size === 0) return modified;
-	return implicated;
-}
-
-function relationOwners(
-	graph: LogicGraph,
-	byEndpoint: ReadonlyMap<string, number>,
-): ReadonlyMap<string, readonly number[]> {
-	return new Map(
-		graph.relations.map(({ relation }) => {
-			const source = defined(byEndpoint.get(relation.from));
-			const target = defined(byEndpoint.get(relation.to));
-			const indices = [source];
-			if (target !== source) indices.push(target);
-			return [relation.id, indices] as const;
-		}),
-	);
-}
-
-function restoreDocumentary(
-	input: AssemblyInput,
-	components: ReadonlySet<number>,
-): readonly (readonly string[])[] {
-	const { local, budgets, domain, structure } = input;
-	const fallen: (readonly string[])[] = [];
-	for (const index of components) {
-		fallen.push(defined(structure.components[index]).ids);
-		for (const bandIndex of defined(budgets.bands.get(index)))
-			local.orders[bandIndex] = [...defined(domain.bands[bandIndex])];
-		local.changed.delete(index);
-	}
-	return fallen;
-}
-
-function rejectedRenderedQuality(
-	baseline: ReturnType<typeof validateDedicatedCandidate>,
-	trialScore: DedicatedRouteScore,
-): boolean {
-	if (!baseline.valid) return false;
-	return compareDedicatedRouteScores(trialScore, baseline.score) > 0;
-}
-
-function evaluateAssembled(input: AssemblyInput): DedicatedLayoutEvaluation | GroupRouteFailure {
-	const { structure, domain, local, measurements, services } = input;
-	try {
-		return services.evaluate(
-			applyRankOrder(structure, domain, local.orders),
-			measurements,
-			services.options,
-			true,
-		);
-	} catch (error) {
-		if (error instanceof GroupRouteFailure) return error;
-		throw error;
-	}
-}
-
-/** Validate the baseline once, then each assembled trial; every rejection removes at least one edit. */
-function assembleGlobal(input: AssemblyInput): GlobalChoice {
-	const { graph, ranks, measurements, baseline, budgets, local, services } = input;
-	if (local.changed.size === 0)
-		return {
-			evaluation: baseline,
-			pipelines: 1,
-			validations: 0,
-			runsInspected: 0,
-			incidentAdmissions: 0,
-			fallbackComponents: [],
-		};
-	const documentary = validateDedicatedCandidate({
-		graph,
-		ranks,
-		measurements,
-		layout: baseline.result,
-	});
-	const owners = relationOwners(graph, budgets.byEndpoint);
-	const fallbackComponents: (readonly string[])[] = [];
-	let pipelines = 1;
-	let validations = 1;
-	let runsInspected: number;
-	if (documentary.valid) runsInspected = documentary.analysis.inspectedRuns;
-	else runsInspected = documentary.inspectedRuns ?? 0;
-	let incidentAdmissions = 0;
-	let finalValidation: RankOrderSearchWitness['finalValidation'];
-	while (local.changed.size > 0) {
-		pipelines += 1;
-		validations += 1;
-		const trial = evaluateAssembled(input);
-		if (trial instanceof GroupRouteFailure) {
-			const failure = rejected(
-				DedicatedCandidateRejectionCode.GroupPassage,
-				undefined,
-				trial.relationId,
-			);
-			finalValidation = failure;
-			fallbackComponents.push(
-				...restoreDocumentary(
-					input,
-					faultyComponents(failure, local.changed, budgets.byEndpoint, owners),
-				),
-			);
-			continue;
-		}
-		const outcome = validateDedicatedCandidate({
-			graph,
-			ranks,
-			measurements,
-			layout: trial.result,
-		});
-		if (!outcome.valid) {
-			runsInspected += outcome.inspectedRuns ?? 0;
-			finalValidation = outcome;
-			fallbackComponents.push(
-				...restoreDocumentary(
-					input,
-					faultyComponents(outcome, local.changed, budgets.byEndpoint, owners),
-				),
-			);
-			continue;
-		}
-		runsInspected += outcome.analysis.inspectedRuns;
-		finalValidation = { valid: true };
-		if (rejectedRenderedQuality(documentary, outcome.score)) {
-			fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
-			continue;
-		}
-		if (services.admit !== undefined) incidentAdmissions += 1;
-		// Partial incident conflicts have no reliable component provenance; restore every rank edit.
-		if (services.admit?.(trial.result, ranks) === false) {
-			fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
-			continue;
-		}
-		return {
-			evaluation: trial,
-			pipelines,
-			validations,
-			runsInspected,
-			incidentAdmissions,
-			fallbackComponents,
-			finalValidation,
-		};
-	}
-	return {
-		evaluation: baseline,
-		pipelines,
-		validations,
-		runsInspected,
-		incidentAdmissions,
-		fallbackComponents,
-		...(finalValidation !== undefined && { finalValidation }),
+function tallyLocal(local: LocalChoice): SearchTally {
+	const tally: SearchTally = {
+		mode: RankSearchMode.Skipped,
+		stop: RankSearchStop.NoBand,
+		proposed: 0,
+		evaluated: 0,
+		valid: 0,
+		unverified: 0,
+		validations: 0,
+		runs: 0,
+		truncated: false,
+		exhaustive: local.skippedComponents === 0,
+		selectedOrder: local.orders,
+		rejected: [],
 	};
+	for (const { witness } of local.evidence) {
+		tally.proposed += witness.proposed;
+		tally.evaluated += witness.evaluated;
+		tally.valid += witness.valid;
+		tally.unverified += witness.unverified;
+		tally.validations += witness.work.validations;
+		tally.runs += witness.work.routeRunsInspected;
+		tally.rejected.push(...witness.rejected);
+		tally.truncated ||= witness.truncated;
+		tally.exhaustive &&= witness.exhaustive;
+		if (witness.mode === RankSearchMode.Heuristic || tally.mode === RankSearchMode.Skipped)
+			tally.mode = witness.mode;
+		if (witness.truncated || tally.stop === RankSearchStop.NoBand) tally.stop = witness.stop;
+	}
+	return tally;
+}
+
+/** The repair search judged the documentary order the assembly already counted. */
+function tallyRepair(tally: SearchTally, repair: RankOrderSearchWitness): void {
+	tally.proposed += repair.proposed - 1;
+	tally.evaluated += repair.evaluated - 1;
+	tally.valid += repair.valid;
+	tally.rejected.push(...repair.rejected);
+	tally.truncated ||= repair.truncated;
+	tally.exhaustive &&= repair.exhaustive;
+	tally.stop = repair.stop;
+	tally.selectedOrder = repair.selectedOrder;
 }
 
 function selectionWitness(
@@ -222,37 +84,13 @@ function selectionWitness(
 	local: LocalChoice,
 	global: GlobalChoice,
 ): RankOrderSearchWitness {
-	let mode = RankSearchMode.Skipped;
-	let stop = RankSearchStop.NoBand;
-	let proposed = 0;
-	let evaluated = 0;
-	let valid = 0;
-	let unverified = 0;
-	let localValidations = 0;
-	let localRuns = 0;
-	let truncated = false;
-	let exhaustive = local.skippedComponents === 0;
-	const rejected: { order: RankOrder; reason: RejectedDedicatedCandidate }[] = [];
-	for (const { witness } of local.evidence) {
-		proposed += witness.proposed;
-		evaluated += witness.evaluated;
-		valid += witness.valid;
-		unverified += witness.unverified;
-		localValidations += witness.work.validations;
-		localRuns += witness.work.routeRunsInspected;
-		rejected.push(...witness.rejected);
-		truncated ||= witness.truncated;
-		exhaustive &&= witness.exhaustive;
-		if (witness.mode === RankSearchMode.Heuristic || mode === RankSearchMode.Skipped)
-			mode = witness.mode;
-		if (witness.truncated || stop === RankSearchStop.NoBand) stop = witness.stop;
-	}
-	if (local.evidence.length === 0 && budgets.bands.size > 0) stop = RankSearchStop.ShapeEnvelope;
-	if (global.fallbackComponents.length > 0) stop = RankSearchStop.BaselineFallback;
-	if (budgets.bands.size === 0) unverified = 1;
-	const localPipelines = evaluated;
-	if (evaluated === 0) evaluated = 1;
-	if (proposed === 0) proposed = 1;
+	const tally = tallyLocal(local);
+	if (local.evidence.length === 0 && budgets.bands.size > 0)
+		tally.stop = RankSearchStop.ShapeEnvelope;
+	if (global.fallbackComponents.length > 0) tally.stop = RankSearchStop.BaselineFallback;
+	if (global.unverified) tally.unverified = 1;
+	const localPipelines = tally.evaluated;
+	if (global.repair !== undefined) tallyRepair(tally, global.repair);
 	const extras: {
 		skippedComponents?: number;
 		fallbackComponents?: readonly (readonly string[])[];
@@ -262,28 +100,28 @@ function selectionWitness(
 	if (global.fallbackComponents.length > 0) extras.fallbackComponents = global.fallbackComponents;
 	if (global.finalValidation !== undefined) extras.finalValidation = global.finalValidation;
 	return {
-		mode,
-		stop,
-		proposed,
-		evaluated,
-		valid,
-		rejected,
-		unverified,
-		selectedOrder: local.orders,
+		mode: tally.mode,
+		stop: tally.stop,
+		proposed: Math.max(1, tally.proposed),
+		evaluated: Math.max(1, tally.evaluated),
+		valid: tally.valid,
+		rejected: tally.rejected,
+		unverified: tally.unverified,
+		selectedOrder: tally.selectedOrder,
 		...extras,
 		components: local.evidence,
 		work: {
 			completePipelines: localPipelines + global.pipelines,
-			validations: localValidations + global.validations,
-			routeRunsInspected: localRuns + global.runsInspected,
+			validations: tally.validations + global.validations,
+			routeRunsInspected: tally.runs + global.runsInspected,
 			localCompletePipelines: localPipelines,
 			globalCompletePipelines: global.pipelines,
 			globalValidations: global.validations,
 			incidentAdmissions: global.incidentAdmissions,
 		},
-		// This only describes the local search frontier, never a global score proof.
-		exhaustive,
-		truncated,
+		// Local frontiers and the whole-document repair search only, never a global score proof.
+		exhaustive: tally.exhaustive,
+		truncated: tally.truncated,
 	};
 }
 
@@ -300,7 +138,7 @@ export function selectDedicatedRankLayout(
 	try {
 		baseline = services.evaluate(structure, measurements, services.options, true);
 	} catch (error) {
-		if (!(error instanceof GroupRouteFailure)) throw error;
+		if (!isDedicatedCandidateFailure(error)) throw error;
 		return recoverDocumentaryFailure({
 			ranks,
 			measurements,

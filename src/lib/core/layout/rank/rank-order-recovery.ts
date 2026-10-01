@@ -1,6 +1,7 @@
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { RejectedDedicatedCandidate } from '../dedicated-candidate-validation/types';
 import type {
-	GroupRouteFailure,
+	DedicatedCandidateFailure,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
@@ -11,7 +12,11 @@ import {
 	MAX_UNIQUE_PROPOSALS,
 	type SearchBudgets,
 } from './rank-order-local';
-import { type DedicatedLayoutEvaluator, searchDedicatedRankOrders } from './rank-order-search';
+import {
+	type DedicatedLayoutEvaluator,
+	type RankOrderSearchResult,
+	searchDedicatedRankOrders,
+} from './rank-order-search';
 import type { RankOrderSearchWitness } from './rank-order-witness';
 import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
 
@@ -28,13 +33,17 @@ export interface RecoveryInput {
 	readonly domain: RankOrderDomain;
 	readonly budgets: SearchBudgets;
 	readonly services: SelectionServices;
-	readonly failure: GroupRouteFailure;
+	/** Why the documentary layout cannot be published; it is never routed or validated again. */
+	readonly failure: DedicatedCandidateFailure | RejectedDedicatedCandidate;
 }
 
-/** The documentary layout has no geometry to reuse; search complete global candidates directly. */
-export function recoverDocumentaryFailure(input: RecoveryInput): {
-	readonly layout: LayoutResult;
-	readonly witness: RankOrderSearchWitness;
+/**
+ * Search complete global candidates, each validated on the whole document, within the pipelines
+ * the local searches were granted together, capped at the budget of a single search.
+ */
+export function searchGlobalOrders(input: RecoveryInput): {
+	readonly search: RankOrderSearchResult;
+	readonly admissions: number;
 } {
 	const { structure, domain, measurements, budgets, services, ranks, failure } = input;
 	let completePipelines = 0;
@@ -67,8 +76,19 @@ export function recoverDocumentaryFailure(input: RecoveryInput): {
 		}),
 		limits: { completePipelines, uniqueProposals: MAX_UNIQUE_PROPOSALS },
 	});
+	return { search, admissions };
+}
+
+/** The documentary layout has no geometry to reuse; search complete global candidates directly. */
+export function recoverDocumentaryFailure(
+	input: RecoveryInput & { readonly failure: DedicatedCandidateFailure },
+): {
+	readonly layout: LayoutResult;
+	readonly witness: RankOrderSearchWitness;
+} {
+	const { search, admissions } = searchGlobalOrders(input);
 	const selected = search.selected;
-	if (selected === undefined) throw failure;
+	if (selected === undefined) throw input.failure;
 	return {
 		layout: selected.evaluation.complete(),
 		witness: {

@@ -19,6 +19,47 @@ export interface LayerLink {
 	readonly passage: number | undefined;
 }
 
+/**
+ * Boxes that bound the outer columns of a component routed apart from its neighbours: its own
+ * endpoints and the frames enclosing them. Undefined when the whole document is routed together.
+ */
+function exteriorIds(
+	graph: LogicGraph,
+	layers: RoutingLayers,
+	owners: ReadonlyMap<string, number> | undefined,
+): ReadonlySet<string> | undefined {
+	const routedOwners = new Set<number>();
+	for (const id of layers.byId.keys()) {
+		const owner = owners?.get(id);
+		if (owner !== undefined) routedOwners.add(owner);
+	}
+	if ([...(owners?.values() ?? [])].every((owner) => routedOwners.has(owner))) return undefined;
+	const ids = new Set(layers.byId.keys());
+	for (const id of layers.byId.keys()) {
+		let parent = graph.endpointsById.get(id)?.entity.groupId;
+		while (parent !== undefined && !ids.has(parent)) {
+			ids.add(parent);
+			parent = graph.endpointsById.get(parent)?.entity.groupId;
+		}
+	}
+	return ids;
+}
+
+/** A neighbour's extent never pushes the outer columns of a component routed apart. */
+function exteriorEdge(
+	bounds: ReadonlyMap<string, Bounds>,
+	vertical: boolean,
+	ids: ReadonlySet<string> | undefined,
+): number {
+	let edge = Number.NEGATIVE_INFINITY;
+	for (const [id, box] of bounds) {
+		if (ids !== undefined && !ids.has(id)) continue;
+		const end = transverseStart(box, vertical) + transverseSize(box, vertical);
+		edge = Math.max(edge, end);
+	}
+	return edge;
+}
+
 /** Long relations use an outside column, or a validated straight passage relative to their source. */
 export function layerLinks(
 	graph: LogicGraph,
@@ -36,13 +77,10 @@ export function layerLinks(
 		readonly targetOffsets?: ReadonlyMap<string, number> | undefined;
 	},
 ): readonly LayerLink[] {
-	let outside = Math.max(
-		...[...bounds.values()].map(
-			(box) => transverseStart(box, vertical) + transverseSize(box, vertical),
-		),
-	);
+	const exterior = exteriorIds(graph, layers, componentByEndpointId);
+	let outside = exteriorEdge(bounds, vertical, exterior);
 	const arrivals = new Map<string, number>();
-	const localPassage = layerPassages({
+	const reserve = layerPassages({
 		graph,
 		layers,
 		bounds,
@@ -71,10 +109,10 @@ export function layerLinks(
 				left.sourceLayer - left.targetLayer - (right.sourceLayer - right.targetLayer),
 		);
 	for (const { relation, target } of long) {
-		let passage = localPassage(relation) ?? arrivals.get(relation.to);
+		let passage = reserve(relation) ?? arrivals.get(relation.to);
 		if (passage === undefined) {
-			outside += RAIL_SPACING;
-			passage = outside;
+			passage = reserve.outer(relation, outside + RAIL_SPACING);
+			outside = passage;
 		}
 		if (target.kind === EndpointKind.Junction) arrivals.set(relation.to, passage);
 		passages.set(relation, passage);

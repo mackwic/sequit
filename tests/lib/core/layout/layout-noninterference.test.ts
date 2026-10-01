@@ -242,3 +242,182 @@ it('keeps ordinary component rails clear of an independent long-edge component',
 		relationSignature(soloLayout, ordinary.layout.direction, aRelationIds),
 	);
 });
+
+interface IndependentComponent {
+	readonly nodes: readonly string[];
+	readonly junctions: readonly string[];
+	readonly relations: readonly {
+		readonly id: string;
+		readonly from: string;
+		readonly to: string;
+	}[];
+}
+
+function componentDocument(
+	direction: LayoutDirection,
+	components: readonly IndependentComponent[],
+	documentaryOrder: readonly string[],
+): LogicDocument {
+	const included = new Set(components.flatMap(({ nodes, junctions }) => [...nodes, ...junctions]));
+	const order = new Map(
+		documentaryOrder
+			.filter((id) => included.has(id))
+			.map((id, index) => [id, orderKey(`a${index.toString().padStart(2, '0')}1`)]),
+	);
+	return {
+		...validLogicDocument(),
+		layout: defined(layoutConfiguration(direction, biasByDirection[direction])),
+		groups: [],
+		nodes: components.flatMap(({ nodes }) =>
+			nodes.map((id) => ({
+				kind: EndpointKind.Node as const,
+				id,
+				layoutOrder: defined(order.get(id)),
+				natureId: 'goal',
+				markdown: id,
+			})),
+		),
+		junctions: components.flatMap(({ junctions }) =>
+			junctions.map((id) => ({
+				kind: EndpointKind.Junction as const,
+				id,
+				layoutOrder: defined(order.get(id)),
+				operator: JunctionOperator.Xor,
+			})),
+		),
+		relations: components.flatMap(({ relations }) => relations),
+	};
+}
+
+/** True when a route of `subject` runs strictly inside the transverse band of `other`'s boxes. */
+function entersEnvelope(
+	layout: LayoutResult,
+	direction: LayoutDirection,
+	subject: IndependentComponent,
+	other: IndependentComponent,
+): boolean {
+	const vertical =
+		direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+	const bounds = new Map(layout.elements.map(({ id, bounds: box }) => [id, box]));
+	const boxes = [...other.nodes, ...other.junctions].map((id) => defined(bounds.get(id)));
+	let start = Math.min(...boxes.map(({ y }) => y));
+	let end = Math.max(...boxes.map(({ y, height }) => y + height));
+	if (vertical) {
+		start = Math.min(...boxes.map(({ x }) => x));
+		end = Math.max(...boxes.map(({ x, width }) => x + width));
+	}
+	const relationIds = new Set(subject.relations.map(({ id }) => id));
+	return layout.relations
+		.filter(({ id }) => relationIds.has(id))
+		.some(({ points }) =>
+			points.some((point) => {
+				let transverse = point.y;
+				if (vertical) transverse = point.x;
+				return transverse > start && transverse < end;
+			}),
+		);
+}
+
+const junctionBesideFork = fc.record({
+	targets: fc.integer({ min: 2, max: 4 }),
+	shortcuts: fc.array(fc.tuple(fc.nat(3), fc.nat(3)), { maxLength: 3 }),
+	spokes: fc.integer({ min: 1, max: 4 }),
+	chain: fc.boolean(),
+	interleave: fc.array(fc.nat(), { minLength: 10, maxLength: 10 }),
+});
+
+type JunctionBesideFork = typeof junctionBesideFork extends fc.Arbitrary<infer T> ? T : never;
+
+// A junction J feeds targets; shortcuts between targets make J skip a row, the D-01 shape.
+function junctionAndFork(
+	value: JunctionBesideFork,
+): readonly [IndependentComponent, IndependentComponent, readonly string[]] {
+	const targets = Array.from({ length: value.targets }, (_, index) => `t${index}`);
+	const relations = targets.map((id) => ({ id: `J-${id}`, from: 'J', to: id }));
+	for (const [first, second] of value.shortcuts) {
+		const from = Math.max(first, second) % value.targets;
+		const to = Math.min(first, second) % value.targets;
+		if (from <= to || relations.some(({ id }) => id === `t${from}-t${to}`)) continue;
+		relations.push({ id: `t${from}-t${to}`, from: `t${from}`, to: `t${to}` });
+	}
+	const spokes = Array.from({ length: value.spokes }, (_, index) => `q${index + 1}`);
+	const forkRelations = spokes.map((id) => ({ id: `q0-${id}`, from: 'q0', to: id }));
+	if (value.chain && value.spokes > 1) forkRelations.push({ id: 'q1-q2', from: 'q1', to: 'q2' });
+	const ids = [...targets, 'J', 'q0', ...spokes];
+	const interleaved = ids
+		.map((id, index) => ({ id, key: value.interleave[index] ?? 0, index }))
+		.toSorted((left, right) => left.key - right.key || left.index - right.index)
+		.map(({ id }) => id);
+	return [
+		{ nodes: targets, junctions: ['J'], relations },
+		{ nodes: ['q0', ...spokes], junctions: [], relations: forkRelations },
+		interleaved,
+	];
+}
+
+// Reduced witness M2-01: J's long arrival used to take a column beyond B, then run along B's trunk.
+const junctionWitness: IndependentComponent = {
+	nodes: ['n3', 'n4', 'n7'],
+	junctions: ['j0'],
+	relations: [
+		{ id: 'j0-n3', from: 'j0', to: 'n3' },
+		{ id: 'j0-n4', from: 'j0', to: 'n4' },
+		{ id: 'j0-n7', from: 'j0', to: 'n7' },
+		{ id: 'n3-n7', from: 'n3', to: 'n7' },
+	],
+};
+const forkWitness: IndependentComponent = {
+	nodes: ['n5', 'n6', 'x'],
+	junctions: [],
+	relations: [
+		{ id: 'n6-n5', from: 'n6', to: 'n5' },
+		{ id: 'n6-x', from: 'n6', to: 'x' },
+	],
+};
+
+it('keeps a junction component and an ordinary fork out of each other in every documentary role', async () => {
+	const scenarios = [
+		[junctionWitness, forkWitness, ['n3', 'n4', 'n5', 'n6', 'n7', 'x', 'j0']] as const,
+		// Both components skip a row: J's outer column used to land on the fork's exterior column.
+		junctionAndFork({
+			targets: 4,
+			shortcuts: [
+				[2, 0],
+				[0, 3],
+			],
+			spokes: 2,
+			chain: true,
+			interleave: [
+				244_431_020, 137_142_185, 2_417_445, 1_151_986_867, 1_780_458_079, 227_489_033, 116_771_775,
+				1_163_926_708, 229_541_709, 1_863_083_920,
+			],
+		}),
+		...fc.sample(junctionBesideFork, { seed: 1_592_915_777, numRuns: 30 }).map(junctionAndFork),
+	];
+	for (const [index, [junction, fork, interleaved]] of scenarios.entries()) {
+		const junctionIds = [...junction.nodes, ...junction.junctions];
+		const forkIds = [...fork.nodes, ...fork.junctions];
+		const roles = [interleaved, [...junctionIds, ...forkIds], [...forkIds, ...junctionIds]];
+		for (const direction of Object.values(LayoutDirection))
+			for (const order of roles) {
+				const label = `${index} ${direction} ${order.join(',')}`;
+				const together = prepareLayoutDocument(
+					componentDocument(direction, [junction, fork], order),
+				);
+				for (const component of [junction, fork]) {
+					const alone = prepareLayoutDocument(componentDocument(direction, [component], order));
+					for (const id of [...component.nodes, ...component.junctions])
+						expect(together.ranks.byEndpointId.get(id), label).toBe(
+							alone.ranks.byEndpointId.get(id),
+						);
+				}
+				const layout = await layoutGraph(together.graph, together.ranks, together.measurements);
+				const validation = validateDedicatedCandidate({ ...together, layout });
+				expect(validation, `${label}: ${JSON.stringify(validation)}`).toMatchObject({
+					valid: true,
+				});
+				expect(entersEnvelope(layout, direction, junction, fork), label).toBe(false);
+				expect(entersEnvelope(layout, direction, fork, junction), label).toBe(false);
+			}
+	}
+}, 120_000);

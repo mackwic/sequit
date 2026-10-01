@@ -1409,6 +1409,8 @@ describe('dedicated bounded geometric rank search', () => {
 			mode: 'skipped',
 			stop: 'shape-envelope',
 			skippedComponents: 1,
+			// Nothing affordable validated the published documentary layout.
+			unverified: 1,
 		});
 		expect(result.layout).toEqual(
 			evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),

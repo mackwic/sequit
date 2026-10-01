@@ -1,5 +1,5 @@
 import { LayoutDirection } from '../../document/logic-document';
-import type { Bounds, Point } from '../layout-types';
+import { type Bounds, type Point, RelationBoundsOverlap } from '../layout-types';
 
 /** All endpoint kinds attach on the principal faces, including groups with headers. */
 export function routePoints({
@@ -59,5 +59,5 @@ export function assertRelationBoundsAreDisjoint(input: RelationBounds): void {
 	const horizontallyDisjoint = sourceBeforeTarget || targetBeforeSource;
 	const verticallyDisjoint = sourceAboveTarget || targetAboveSource;
 	const disjoint = horizontallyDisjoint || verticallyDisjoint;
-	if (!disjoint) throw new Error(`Relation bounds overlap: ${relationId} (${from} -> ${to})`);
+	if (!disjoint) throw new RelationBoundsOverlap(relationId, from, to);
 }

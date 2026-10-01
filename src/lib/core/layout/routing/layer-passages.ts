@@ -1,6 +1,5 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { transverseCenter } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point, RoutingLayers } from '../layout-types';
 import {
@@ -9,6 +8,7 @@ import {
 	exteriorFor,
 } from './component-passages';
 import { commonGroupBounds, foreignGroupObstacles } from './group-passages';
+import { freeColumnIndex, holdOuterColumn, passageEnds } from './passage-columns';
 import { byJogCrossings, type PassageReservation } from './passage-jogs';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 
@@ -51,18 +51,6 @@ interface PassageSelection {
 function column(coordinate: number, box: Bounds, vertical: boolean): Point {
 	if (vertical) return { x: coordinate, y: box.y + box.height / 2 };
 	return { x: box.x + box.width / 2, y: coordinate };
-}
-
-/** Lower bound in the sorted reservation index; equal coordinates stay adjacent. */
-function insertionIndex(reservations: readonly PassageReservation[], coordinate: number): number {
-	let start = 0;
-	let end = reservations.length;
-	while (start < end) {
-		const middle = Math.floor((start + end) / 2);
-		if (defined(reservations[middle]).coordinate < coordinate) start = middle + 1;
-		else end = middle;
-	}
-	return start;
 }
 
 function obstaclesAcross(
@@ -203,27 +191,6 @@ function occupiedIntervals(
 	return intervals;
 }
 
-function reservationIndex(selection: PassageSelection, coordinate: number): number | undefined {
-	const { workspace, group } = selection;
-	const [targetLayer, sourceLayer] = selection.layerSpan;
-	if (group !== undefined) {
-		if (coordinate < group.start || coordinate > group.end) return undefined;
-	}
-	const reservations = workspace.reservations;
-	const index = insertionIndex(reservations, coordinate);
-	for (let before = index - 1; before >= 0; before -= 1) {
-		const held = defined(reservations[before]);
-		if (coordinate - held.coordinate >= RAIL_SPACING) break;
-		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
-	}
-	for (let after = index; after < reservations.length; after += 1) {
-		const held = defined(reservations[after]);
-		if (held.coordinate - coordinate >= RAIL_SPACING) break;
-		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
-	}
-	return index;
-}
-
 function candidateHitsObstacles(
 	selection: PassageSelection,
 	candidate: number,
@@ -250,7 +217,11 @@ function selectPassage(input: PassageSelection): number | undefined {
 	let obstacleIndex: RouteObstacles | undefined;
 	let obstacleIndexReady = false;
 	for (const candidate of byJogCrossings(workspace, input)) {
-		const index = reservationIndex(input, candidate);
+		const { group } = input;
+		if (group !== undefined) {
+			if (candidate < group.start || candidate > group.end) continue;
+		}
+		const index = freeColumnIndex(workspace.reservations, input.layerSpan, candidate);
 		if (index === undefined) continue;
 		if (!obstacleIndexReady) {
 			obstacleIndex = obstaclesAcross(workspace, targetLayer, sourceLayer);
@@ -272,15 +243,11 @@ function selectPassage(input: PassageSelection): number | undefined {
 }
 
 function reservePassage(input: PassageWorkspace, relation: LogicRelation): number | undefined {
-	const sourceLayer = defined(input.layers.byId.get(relation.from));
-	const targetLayer = defined(input.layers.byId.get(relation.to));
+	const { layerSpan, sourceCoordinate, targetCoordinate } = passageEnds(input, relation);
+	const [targetLayer, sourceLayer] = layerSpan;
 	if (sourceLayer <= targetLayer + 1) return undefined;
 	const source = defined(input.bounds.get(relation.from));
 	const target = defined(input.bounds.get(relation.to));
-	const sourceOffset = input.sourceOffsets?.get(relation.id) ?? 0;
-	const targetOffset = input.targetOffsets?.get(relation.id) ?? 0;
-	const sourceCoordinate = transverseCenter(source, input.vertical) + sourceOffset;
-	const targetCoordinate = transverseCenter(target, input.vertical) + targetOffset;
 	const group = commonGroupBounds(input, relation);
 	const foreignGroups = foreignGroupObstacles(input, relation);
 	let occupied = occupiedIntervals(input, targetLayer, sourceLayer);
@@ -311,7 +278,7 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 		targetCoordinate,
 		group,
 		foreignGroupObstacles: foreignGroups,
-		layerSpan: [targetLayer, sourceLayer],
+		layerSpan,
 	};
 	selection.candidates.push(sourceCoordinate, targetCoordinate);
 	selection.candidates.push(...preferred);
@@ -324,10 +291,23 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	return selectPassage(selection);
 }
 
+/** An outer column held like the other passages, so that no later passage runs along it. */
+function reserveOuterColumn(
+	input: PassageWorkspace,
+	relation: LogicRelation,
+	start: number,
+): number {
+	return holdOuterColumn(input.reservations, relation, passageEnds(input, relation), start);
+}
+
+/** A straight, internal or exterior passage, or undefined when none is free. */
+export interface LayerPassageAllocator {
+	(relation: LogicRelation): number | undefined;
+	readonly outer: (relation: LogicRelation, start: number) => number;
+}
+
 /** A new allocator belongs to one geometry phase; nothing survives the next placement. */
-export function layerPassages(
-	input: PassageInput,
-): (relation: LogicRelation) => number | undefined {
+export function layerPassages(input: PassageInput): LayerPassageAllocator {
 	const workspace: PassageWorkspace = {
 		...input,
 		ancestorCache: new Map(),
@@ -336,5 +316,8 @@ export function layerPassages(
 		reservations: [],
 		groupObstacleCache: new Map(),
 	};
-	return (relation) => reservePassage(workspace, relation);
+	return Object.assign((relation: LogicRelation) => reservePassage(workspace, relation), {
+		outer: (relation: LogicRelation, start: number) =>
+			reserveOuterColumn(workspace, relation, start),
+	});
 }
