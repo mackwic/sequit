@@ -258,9 +258,9 @@ describe('dedicated engine LayoutResult identity', () => {
 			'rail-clearance-13': '1bbafa53570b8784c8fc6e7bc2bbd0f3a9f16351d7558c4a4c2efb63e0e40943',
 			'rail-reuse': 'c29117ffc17d3aa0da68e71bc498c1c0fff892ee228ed9f55e7f60a9b5f8cc9e',
 			'workshop-branching': '007f50ba4f616a515f8c8d08e082536958b139ee39d6ad2cb5ef12236c0e58c4',
-			// Re-pinned: block exchanges between channel tracks take its routes from 2 strict
-			// crossings and 2 bridges to none.
-			'workshop-navigation': 'c5607f4660c584babb37d41073e6866311836b42a646be2a012db3e8be4bef97',
+			// D-05: compact disjoint runs across precedence depths; the navigation witness
+			// retains zero strict crossings and bridges while its rail geometry changes.
+			'workshop-navigation': '942750f8633b35d985e632e3d0d1b8cfdc4d436a852783fcb768b248ce3b626f',
 		});
 
 		const casesById = new Map(allCases.map(({ id, ...identityCase }) => [id, identityCase]));

@@ -9,6 +9,7 @@ import type {
 	ChannelRun,
 	ChannelWire,
 } from './channel-types';
+import { compactChannelRails, nestChannelEndpointRuns } from './rail-packing';
 
 enum RunSide {
 	First = 'first',
@@ -281,8 +282,9 @@ function assignRails(
 	for (const layer of layers) {
 		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
-	edge.capacity = count;
 	untangleChannelRails(wires, ready, layers, trackByRunKey);
+	count = compactChannelRails(ready, trackByRunKey);
+	edge.capacity = count;
 	return { edge, trackByRunKey, railCount: count };
 }
 
@@ -313,6 +315,7 @@ export function routeOwnedChannel(
 		// a traverse, so only the wires that turn there order their runs.
 		if (wire.source !== wire.target) orderDepartures(moving, wire);
 	}
+	nestChannelEndpointRuns(moving);
 	return { wires, ...assignRails(runs, moving, ownerId) };
 }
 

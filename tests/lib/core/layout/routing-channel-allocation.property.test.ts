@@ -1,13 +1,18 @@
 import fc from 'fast-check';
 import { expect, it } from 'vitest';
 
+import { EndpointKind, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
+import type { GraphEndpoint } from '../../../../src/lib/core/graph/create-graph';
 import { allocateChannelIntervals } from '../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import type {
 	ChannelRouting,
 	ChannelRun,
 } from '../../../../src/lib/core/layout/routing/channel-types';
+import { channelPoints } from '../../../../src/lib/core/layout/routing/materialize-node-routes';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
+import { referenceRouteBridgeAnalysis } from './bridge-oracle-reference';
 
 function retainedRuns(channel: ChannelRouting): Set<ChannelRun> {
 	return new Set(
@@ -82,6 +87,134 @@ it('never reuses a track at or below the strict half-spacing clearance', () => {
 					}
 				}
 				expect(allocation.trackByRunKey.size).toBe(demands.length);
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('nests both endpoint families in every direction with the minimum clique capacity', () => {
+	const endpoint: GraphEndpoint = {
+		kind: EndpointKind.Node,
+		entity: {
+			id: 'family',
+			kind: EndpointKind.Node,
+			natureId: 'task',
+			markdown: 'family',
+			layoutOrder: orderKey('a1'),
+		},
+	};
+	fc.assert(
+		fc.property(
+			fc.integer({ min: 2, max: 8 }),
+			fc.integer({ min: -1000, max: 1000 }),
+			fc.integer({ min: 48, max: 100 }),
+			(count, shift, spacing) => {
+				for (const sourceFamily of [true, false])
+					for (const side of [-1, 1]) {
+						let sourceEndpoint: GraphEndpoint | undefined;
+						let targetEndpoint: GraphEndpoint | undefined;
+						if (sourceFamily) sourceEndpoint = endpoint;
+						else targetEndpoint = endpoint;
+						const inputs = Array.from({ length: count }, (_, index) => ({
+							id: String(index),
+							source: shift + side * spacing * index,
+							target: shift + side * spacing * (count * 2 + index),
+							sourceEndpoint,
+							targetEndpoint,
+						}));
+						const channel = routeChannel(inputs);
+						expect(channel.railCount).toBe(count);
+						for (const direction of Object.values(LayoutDirection)) {
+							const vertical =
+								direction === LayoutDirection.TopToBottom ||
+								direction === LayoutDirection.BottomToTop;
+							let sign = -1;
+							if (
+								direction === LayoutDirection.TopToBottom ||
+								direction === LayoutDirection.LeftToRight
+							)
+								sign = 1;
+							const paths = channel.wires.map((wire) => ({
+								id: wire.id,
+								points: channelPoints(wire, 0, sign * spacing * (count + 2), {
+									vertical,
+									railStart: sign * spacing,
+									railStep: sign * 24,
+								}),
+							}));
+							expect(referenceRouteBridgeAnalysis(paths).crossings).toEqual([]);
+						}
+					}
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('keeps sparse channel source and target families crossing-free under input permutation', () => {
+	const endpoints = Array.from({ length: 10 }, (_, index): GraphEndpoint => ({
+		kind: EndpointKind.Node,
+		entity: {
+			id: String(index),
+			kind: EndpointKind.Node,
+			natureId: 'task',
+			markdown: String(index),
+			layoutOrder: orderKey('a1'),
+		},
+	}));
+	fc.assert(
+		fc.property(
+			fc.uniqueArray(fc.tuple(fc.integer({ min: 0, max: 4 }), fc.integer({ min: 0, max: 4 })), {
+				minLength: 1,
+				maxLength: 25,
+				selector: ([source, target]) => `${source}:${target}`,
+			}),
+			(pairs) => {
+				const inputs = pairs.map(([source, target]) => ({
+					id: `${source}:${target}`,
+					source: 200 + 1000 * source + 48 * target,
+					target: 200 + 1000 * target + 48 * source,
+					sourceEndpoint: endpoints[source],
+					targetEndpoint: endpoints[target + 5],
+				}));
+				const channel = routeChannel(inputs);
+				const reverse = routeChannel(inputs.toReversed());
+				for (const direction of Object.values(LayoutDirection)) {
+					const vertical =
+						direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+					let sign = -1;
+					if (
+						direction === LayoutDirection.TopToBottom ||
+						direction === LayoutDirection.LeftToRight
+					)
+						sign = 1;
+					const paths = channel.wires.map((wire) => ({
+						...wire,
+						points: channelPoints(wire, 0, sign * (channel.railCount + 2) * 24, {
+							vertical,
+							railStart: sign * 24,
+							railStep: sign * 24,
+						}),
+					}));
+					for (const field of ['sourceEndpoint', 'targetEndpoint'] as const) {
+						for (const endpoint of endpoints) {
+							expect(
+								referenceRouteBridgeAnalysis(paths.filter((path) => path[field] === endpoint))
+									.crossings,
+							).toEqual([]);
+						}
+					}
+				}
+				expect(reverse.railCount).toBe(channel.railCount);
+				for (const wire of channel.wires) {
+					const other = reverse.wires.find(({ id }) => id === wire.id);
+					expect([other?.first?.rail, other?.last?.rail, other?.middle]).toEqual([
+						wire.first?.rail,
+						wire.last?.rail,
+						wire.middle,
+					]);
+				}
 			},
 		),
 		PROPERTY_PARAMETERS,

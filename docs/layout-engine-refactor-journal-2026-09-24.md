@@ -737,3 +737,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Commit `fix(layout): invariance dédiée — somme canonique des ancres de jonction` : la somme flottante des positions est précédée d’un tri numérique, pour retirer le résidu d’ordre lexical découvert en relecture R-01.
 - Le témoin minimal à trois ancres est rouge avant correction dans les huit configurations (0,4000000000000001 contre 0,39999999999999997) ; le générateur d’invariance est élargi aux groupes imbriqués, aux jonctions membres de groupes et à plusieurs jonctions.
 - Aucun SHA dédié ré-épinglé. Le départage structurel n’est pas une optimisation des routes : la relecture mesure un effet global neutre sur les croisements stricts (2185 → 2186, sur 2515 documents valides des deux côtés dans un corpus de 3000).
+
+## Correctifs du 1er octobre 2026 — rails dédiés
+
+Commit `fix(layout): dedicated-rails — emboîter les familles avant la coloration` : D-05, K3,3 passe de 13 à 9 croisements stricts et les deux témoins clairsemés de 3 à 1, sans pont de famille dans les quatre directions.
+Le témoin dense à 100 nœuds passe de 68 064 à 52 992 croisements stricts, dont 6 348 → 0 dans une même famille ; l’empreinte dense à 1 000 nœuds devient `db5736cd918e763d9d45c588bd1317da09d35e3dda69909bfb79188dec943e24` (ancienne : `512ea3da4e742f275dc435b533c838cf70db1b0badb28a4007ab09de39e8df10`).
+La compaction des rails entre profondeurs modifie aussi `workshop-navigation`, toujours à zéro croisement : `c5607f4660c584babb37d41073e6866311836b42a646be2a012db3e8be4bef97` → `942750f8633b35d985e632e3d0d1b8cfdc4d436a852783fcb768b248ce3b626f`. Les onze autres empreintes dédiées restent identiques.
+Les ports, l’ordre documentaire et les seuils ne changent pas. Les capacités nécessaires augmentent sur K3,3 (5 → 7), les deux témoins clairsemés (2 → 3) et `junction-crossing-obstacle` (11 → 13 dans son grand corridor) ; trois croisements de famille entre passages de couches restent hors de cette coloration.

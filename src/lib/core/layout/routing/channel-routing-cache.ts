@@ -39,6 +39,10 @@ const SAME_ENDPOINT_COLUMNS: readonly SameColumn[] = Object.values({
 		wires.every(({ source }, index) => Object.is(columns.source[index], source)),
 	target: (columns, wires) =>
 		wires.every(({ target }, index) => Object.is(columns.target[index], target)),
+	sourceEndpoint: (columns, wires) =>
+		wires.every(({ sourceEndpoint }, index) => columns.sourceEndpoint[index] === sourceEndpoint),
+	targetEndpoint: (columns, wires) =>
+		wires.every(({ targetEndpoint }, index) => columns.targetEndpoint[index] === targetEndpoint),
 	sharedSource: (columns, wires) =>
 		wires.every(({ sharedSource }, index) => columns.sharedSource[index] === sharedSource),
 	sharedTarget: (columns, wires) =>
@@ -81,6 +85,8 @@ function endpointColumns(wires: readonly ChannelWire[]): EndpointColumns {
 		id: wires.map(({ id }) => id),
 		source: wires.map(({ source }) => source),
 		target: wires.map(({ target }) => target),
+		sourceEndpoint: wires.map(({ sourceEndpoint }) => sourceEndpoint),
+		targetEndpoint: wires.map(({ targetEndpoint }) => targetEndpoint),
 		sharedSource: wires.map(({ sharedSource }) => sharedSource),
 		sharedTarget: wires.map(({ sharedTarget }) => sharedTarget),
 	};

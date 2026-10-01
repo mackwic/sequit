@@ -36,8 +36,14 @@ function runRisers(
 	const risers = runs.map((run): RunRisers => ({ run, up: [], down: [] }));
 	for (const wire of wires) {
 		if (wire.first === undefined) continue;
-		defined(risers[wire.first.key]).down.push(wire.source);
-		defined(risers[defined(wire.last).key]).up.push(wire.target);
+		const first = defined(risers[wire.first.key]);
+		const last = defined(risers[defined(wire.last).key]);
+		first.down.push(wire.source);
+		last.up.push(wire.target);
+		if (wire.middle !== undefined) {
+			first.up.push(wire.middle);
+			last.down.push(wire.middle);
+		}
 	}
 	for (const { up, down } of risers) {
 		if (up.length > 1) up.sort((a, b) => a - b);

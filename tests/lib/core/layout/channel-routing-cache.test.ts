@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { EndpointKind } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
+import type { GraphEndpoint } from '../../../../src/lib/core/graph/create-graph';
 import { routeOwnedChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import {
 	ChannelRoutingCache,
@@ -54,6 +57,41 @@ function expectFreshEquivalent(actual: ChannelRouting, expected: ChannelRouting)
 }
 
 describe('projection-owned channel routing cache', () => {
+	it('replays K3,3 nesting and invalidates changed endpoint families at identical ports', () => {
+		const endpoints = ['x', 'y', 'z', 'a', 'b', 'c'].map((id, index): GraphEndpoint => ({
+			kind: EndpointKind.Node,
+			entity: {
+				id,
+				kind: EndpointKind.Node,
+				natureId: 'task',
+				markdown: id,
+				layoutOrder: orderKey(`a${index + 1}`),
+			},
+		}));
+		const k33: ChannelEndpoint[] = endpoints.slice(0, 3).flatMap((sourceEndpoint, source) =>
+			endpoints.slice(3).map((targetEndpoint, target) => ({
+				id: `${sourceEndpoint.entity.id}-to-${targetEndpoint.entity.id}`,
+				sourceEndpoint,
+				targetEndpoint,
+				source: 102 + 256 * source + 48 * target,
+				target: 102 + 256 * target + 48 * source,
+			})),
+		);
+		const cache = new ChannelRoutingCache();
+		const cold = routeOwnedChannel(wires(k33), false, OWNER);
+		expectFreshEquivalent(cache.route(wires(k33), false, OWNER), cold);
+		cache.beginLayout();
+		expectFreshEquivalent(cache.route(wires(k33), false, OWNER), cold);
+		expect(cache.stats).toMatchObject({ hits: 1, misses: 1 });
+		for (const field of ['sourceEndpoint', 'targetEndpoint'] as const) {
+			const changed = k33.map((wire) => ({ ...wire, [field]: undefined }));
+			const withoutFamily = routeOwnedChannel(wires(changed), false, OWNER);
+			expectFreshEquivalent(cache.route(wires(changed), false, OWNER), withoutFamily);
+			expect(withoutFamily.railCount).toBeLessThan(cold.railCount);
+		}
+		expect(cache.stats).toMatchObject({ hits: 1, misses: 3 });
+	});
+
 	it('replays a routed channel into fresh objects equal to a cold routing', () => {
 		const cache = new ChannelRoutingCache();
 		const first = cache.route(wires(CHANNEL), false, OWNER);
