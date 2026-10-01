@@ -42,7 +42,7 @@ import {
 import { type GridCrossingResources, gridCrossingResources } from './grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
-	crossingRoute,
+	crossingRoutes,
 	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
 } from './grid-cell-crossing-routing';
@@ -201,6 +201,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		cellByEndpointId: input.cellByEndpointId,
 		edges,
 		incidence,
+		nestedEndpointIds: new Set(
+			[...incidence.keys()].filter(
+				(endpointId) =>
+					model.leafByEndpointId.get(endpointId) !== input.cellByEndpointId.get(endpointId),
+			),
+		),
 	};
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
@@ -222,12 +228,9 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		allocation: GridCrossingAllocation,
 		acceptBridges: boolean,
 	): RoutedGridCrossing => {
-		const crossingRoutes = crossing.map((relation) => crossingRoute(routing, allocation, relation));
+		const routes = crossingRoutes(routing, allocation);
 		const routesById = new Map(
-			[...localRoutes, ...crossingRoutes.map(({ route }) => route)].map((route) => [
-				route.id,
-				route,
-			]),
+			[...localRoutes, ...routes.map(({ route }) => route)].map((route) => [route.id, route]),
 		);
 		let layout: LayoutResult = {
 			width: gridRight + gridGutterMargin(defined(edges.gutters[columnCount - 1])),
@@ -244,7 +247,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			cells,
 			columnWidths,
 			rowHeights,
-			portals: crossingRoutes.flatMap(({ portals }) => portals),
+			portals: routes.flatMap(({ portals }) => portals),
 		};
 		const failure = validateGridCellGeometryDiagnostic(candidate, graph, input);
 		if (failure !== undefined) return { candidate, failure };
@@ -252,7 +255,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		if (acceptBridges) bridgeRelations = layout.relations;
 		const contact = diagnoseParentRouteContacts(
 			model,
-			gridCrossingOwnedRoutes(input.rootId, input.cellByEndpointId, crossing, routesById),
+			gridCrossingOwnedRoutes(input.rootId, crossing, routesById, candidate.portals),
 			bridgeRelations,
 		);
 		if (contact !== undefined) return { candidate, failure: contact };

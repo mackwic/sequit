@@ -18,6 +18,11 @@ import {
 	within,
 } from './grid-cell-geometry-primitives';
 import { validateGridCellGroupContainment } from './grid-cell-group-validation';
+import {
+	gridIncidentPieceFailure,
+	type IncidentPieceEnds,
+	incidentPieceEnds,
+} from './grid-cell-incident-route';
 import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
 import { gridRectangle } from './grid-cell-model';
 import {
@@ -156,7 +161,7 @@ function checkLocalRoute(route: LayoutRelation, cell: GridCellPlacement): string
 function checkSegment(
 	candidate: GridCellSelected,
 	route: LayoutRelation,
-	context: CrossContext,
+	context: CrossContext & IncidentPieceEnds,
 	index: number,
 ): RegionGeometryDiagnostic | undefined {
 	const start = defined(route.points[index]);
@@ -166,8 +171,8 @@ function checkSegment(
 	if (index === 0) allowedGroupIds = ancestorGroups(context.graph, route.from);
 	if (index === last) allowedGroupIds = ancestorGroups(context.graph, route.to);
 	const crossedCell = candidate.cells.find((cell) => {
-		if (index === 0 && cell.id === context.fromCell.id) return false;
-		if (index === last && cell.id === context.toCell.id) return false;
+		if (index < context.sourceEnd && cell.id === context.fromCell.id) return false;
+		if (index >= context.targetStart && cell.id === context.toCell.id) return false;
 		return entersInterior(start, end, cell.bounds);
 	});
 	if (crossedCell !== undefined)
@@ -207,8 +212,16 @@ function checkCrossRoute(
 				relationId: route.id,
 			},
 		);
+	const [sourcePortal, targetPortal] = candidate.portals.filter(
+		({ relationId }) => relationId === route.id,
+	);
+	const pieces = incidentPieceEnds(
+		route.points,
+		defined(sourcePortal).point,
+		defined(targetPortal).point,
+	);
 	for (let index = 0; index < route.points.length - 1; index += 1) {
-		const diagnostic = checkSegment(candidate, route, context, index);
+		const diagnostic = checkSegment(candidate, route, { ...context, ...defined(pieces) }, index);
 		if (diagnostic !== undefined) return diagnostic;
 	}
 	return undefined;
@@ -288,7 +301,7 @@ function relationGeometry(
 				relatedRelationId: overlap.secondId,
 			},
 		);
-	return undefined;
+	return gridIncidentPieceFailure(candidate, crossing);
 }
 
 /** Separate typed geometric checker for every candidate selected by the grid composer. */

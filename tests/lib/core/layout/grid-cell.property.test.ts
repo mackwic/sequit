@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 import {
 	defined,
 	EndpointKind,
+	GRID_PERSISTENCE_FORMAT,
+	GRID_REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	layoutConfiguration,
 	LayoutDirection,
+	LayoutPolicy,
 	type LogicDocument,
 	type LogicNode,
 	type LogicRelation,
@@ -20,7 +23,10 @@ import {
 	GRID_CROSSING_REALLOCATION_BUDGET,
 	GRID_CROSSING_ROW_GUTTER_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
-import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import {
+	entersInterior,
+	within,
+} from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -28,6 +34,10 @@ import {
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import {
+	layoutWithRootRegion,
+	UnknownGridCellLayoutError,
+} from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
@@ -131,6 +141,72 @@ function nodeOverrides(
 	return overrides;
 }
 
+const FLOWS = [
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+] as const;
+
+/** A persisted grid of one to three nodes per cell; each pair links a later node to an earlier one. */
+function multiNodeGrid(
+	[columns, rows]: readonly number[],
+	counts: readonly number[],
+	pairs: readonly (readonly [number, number])[],
+	flow: (typeof FLOWS)[number],
+): LogicDocument {
+	const cellIds = Array.from({ length: defined(columns) * defined(rows) }, (_, cell) => `c${cell}`);
+	const nodes: LogicNode[] = cellIds
+		.flatMap((regionId, cell) =>
+			Array.from({ length: defined(counts[cell]) }, (_, member) => ({
+				kind: EndpointKind.Node as const,
+				id: `${regionId}-${member}`,
+				natureId: 'task',
+				markdown: `${regionId}-${member}\n`,
+				regionId,
+			})),
+		)
+		.map((node, order) => ({
+			...node,
+			layoutOrder: orderKey(`a${order.toString(36).toUpperCase()}`),
+		}));
+	const relations = new Map<string, LogicRelation>();
+	for (const [first, second] of pairs) {
+		const from = first % nodes.length;
+		const to = second % nodes.length;
+		const id = `r${from}-${to}`;
+		if (from > to)
+			relations.set(id, { id, from: defined(nodes[from]).id, to: defined(nodes[to]).id });
+	}
+	return {
+		persistenceFormat: GRID_PERSISTENCE_FORMAT,
+		id: 'grid-multi-node-property',
+		title: 'Grid multi-node property',
+		layout: flow,
+		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
+		groups: [],
+		junctions: [],
+		nodes,
+		relations: [...relations.values()],
+		regionPresentation: {
+			schemaVersion: GRID_REGION_PRESENTATION_SCHEMA,
+			regions: cellIds.map((id, cell) => ({
+				id,
+				layoutOrder: orderKey(`a${cell}`),
+				policy: LayoutPolicy.Layered,
+			})),
+			grid: {
+				minimumColumnWidths: Array.from({ length: defined(columns) }, () => 0),
+				minimumRowHeights: Array.from({ length: defined(rows) }, () => 0),
+				cells: cellIds.map((regionId, cell) => ({
+					regionId,
+					row: Math.floor(cell / defined(columns)),
+					column: cell % defined(columns),
+				})),
+			},
+		},
+	};
+}
 /** The grid owns the middle piece of each crossing route: the contact oracle compares those. */
 function gridOwnedUnbridgedContact(
 	layout: LayoutResult,
@@ -381,6 +457,52 @@ describe('grid-cell real-pipeline properties', () => {
 					expect(solveGridCellLayout(permuted.graph, reversedMeasurements, reversedInput)).toEqual(
 						solved,
 					);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	}, 600_000);
+	it('reaches every endpoint of multi-node cells in the four directions without entering a foreign box or cell', () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					shape: fc.constantFrom([2, 2], [3, 2], [2, 3]),
+					counts: fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 6, maxLength: 6 }),
+					pairs: fc.array(fc.tuple(fc.nat(17), fc.nat(17)), { maxLength: 6 }),
+					flow: fc.constantFrom(...FLOWS),
+				}),
+				({ shape, counts, pairs, flow }) => {
+					const document = multiNodeGrid(shape, counts, pairs, flow);
+					const prepared = prepareLayoutDocument(document);
+					let layout: LayoutResult;
+					try {
+						layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+					} catch (error) {
+						// An unresolved grid stays a typed unknown: never unsupported, never a partial layout.
+						expect(error).toBeInstanceOf(UnknownGridCellLayoutError);
+						return;
+					}
+					const cellOf = new Map(document.nodes.map(({ id, regionId }) => [id, defined(regionId)]));
+					const cells = new Map((layout.regions ?? []).map(({ id, bounds }) => [id, bounds]));
+					for (const element of layout.elements)
+						expect(
+							within(defined(cells.get(defined(cellOf.get(element.id)))), element.bounds),
+						).toBe(true);
+					for (const route of layout.relations) {
+						const own = new Set([cellOf.get(route.from), cellOf.get(route.to)]);
+						const last = route.points.length - 2;
+						for (const [index, end] of route.points.slice(1).entries()) {
+							const start = defined(route.points[index]);
+							for (const element of layout.elements) {
+								const attached =
+									(index === 0 && element.id === route.from) ||
+									(index === last && element.id === route.to);
+								if (!attached) expect(entersInterior(start, end, element.bounds)).toBe(false);
+							}
+							for (const [cellId, bounds] of cells)
+								if (!own.has(cellId)) expect(entersInterior(start, end, bounds)).toBe(false);
+						}
+					}
 				},
 			),
 			PROPERTY_PARAMETERS,

@@ -12,7 +12,8 @@ import { ROOT_LAYOUT_REGION_ID } from '../../../../src/lib/core/document/region-
 import { validateLogicDocument } from '../../../../src/lib/core/document/validate-logic-document';
 import { disallowedRouteContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
+import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
+import { within } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { validateGridCellLaneGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-lane-validation';
 import type { SharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import {
@@ -381,45 +382,45 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 		expect(cache.stats.misses).toBe(statsBeforeSwitch.misses + 2);
 	});
 
-	it('rejects an inner-lane crossing without its single local passage', () => {
-		const source = persistedNestedGridWithInnerLaneCrossingDocument();
-		const document: LogicDocument = {
-			...source,
-			relations: source.relations.filter(({ id }) => id !== 'inside-b'),
-		};
+	it.each([
+		{
+			blocker: 'b2',
+			change: (source: LogicDocument): LogicDocument => ({
+				...source,
+				relations: source.relations.filter(({ id }) => id !== 'inside-b'),
+			}),
+		},
+		{
+			blocker: 'b3',
+			change: (source: LogicDocument): LogicDocument => {
+				const b2 = defined(source.nodes.find(({ id }) => id === 'b2'));
+				const b3 = { ...b2, id: 'b3', markdown: 'B3\n', layoutOrder: orderKey('a7') };
+				return { ...source, nodes: [...source.nodes, b3] };
+			},
+		},
+	])('routes an inner-lane crossing around $blocker inside its own cell', ({ blocker, change }) => {
+		const document = change(persistedNestedGridWithInnerLaneCrossingDocument());
 		expect(validateLogicDocument(document)).toMatchObject({ ok: true });
 		const prepared = prepareLayoutDocument(document);
-		const attempt = solveRecursiveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			regionInput(document),
-		);
-		expect(attempt).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
-		});
-		if (attempt.status === RegionCompositionStatus.Unknown)
-			expect(attempt.reason).toContain('enters element b2');
-	});
-
-	it('returns unknown when an outer-lane node blocks the reserved corridor', () => {
-		const source = persistedNestedGridWithInnerLaneCrossingDocument();
-		const b2 = defined(source.nodes.find(({ id }) => id === 'b2'));
-		const document: LogicDocument = {
-			...source,
-			nodes: [...source.nodes, { ...b2, id: 'b3', markdown: 'B3\n', layoutOrder: orderKey('a7') }],
-		};
-		expect(validateLogicDocument(document)).toMatchObject({ ok: true });
-		const prepared = prepareLayoutDocument(document);
-		const attempt = solveRecursiveNestedRegionLayout(
-			prepared.graph,
-			prepared.measurements,
-			regionInput(document),
-		);
-		expect(attempt.status).toBe(RegionCompositionStatus.Unknown);
-		if (attempt.status !== RegionCompositionStatus.Unknown) return;
-		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
-		expect(attempt.reason).toContain('enters element b3');
+		const input = regionInput(document);
+		const selected = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected a corridor around ${blocker}: ${selected.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, input);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected normalized region composition');
+		expect(validateRegionCompositionGeometry(normalized.model, selected)).toBeUndefined();
+		expect(validateNestedRegionLeafIncidents(normalized.model, selected)).toBeUndefined();
+		const piece = defined(
+			selected.ownedRoutes.find(({ relationId, regionId }) => {
+				return relationId === 'leaves-b' && regionId === 'b';
+			}),
+		).points;
+		const cell = defined(selected.regions.find(({ id }) => id === 'b')).bounds;
+		const obstacle = defined(selected.layout.elements.find(({ id }) => id === blocker)).bounds;
+		expect(piece.length).toBeGreaterThan(2);
+		expect(segmentEnters(piece, obstacle)).toBe(false);
+		for (const point of piece) expect(within(cell, { ...point, width: 0, height: 0 })).toBe(true);
 	});
 
 	it('rejects forged face capacity or a node obstructing the reserved lane passage', () => {

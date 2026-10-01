@@ -231,9 +231,9 @@ function routeGrid(input: ArrangementRouteInput<GridPlaced>): SolvedRecursiveReg
 			...placedChildren.ownedRoutes,
 			...gridCrossingOwnedRoutes(
 				regionId,
-				placement.input.cellByEndpointId,
 				defined(context.model.crossingRelationsByOwner.get(regionId)),
 				new Map(attempt.layout.relations.map((route) => [route.id, route])),
+				attempt.portals,
 			),
 		],
 		incidentPaths,

@@ -12,6 +12,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
@@ -42,7 +43,6 @@ import {
 	layoutWithRootRegion,
 	nestedRegionInput,
 	normalizeRootRegion,
-	UnknownGridCellLayoutError,
 	UnsupportedGridCellLayoutError,
 	UnsupportedLayoutPresentationError,
 	UnsupportedRegionLayoutError,
@@ -403,14 +403,17 @@ describe('implicit root layout region', () => {
 		expect(groupedPort.x).toBe(groupedMember.bounds.x + groupedMember.bounds.width);
 		expect(foreignCellEntry(groupedLayout, groupedRoute, ['a', 'c'])).toBeUndefined();
 
-		const blocked = prepareGrid({
+		// Left to right hides a-bottom behind a-top: the crossing now leaves through a cell corridor.
+		const hidden = prepareGrid({
 			...source,
 			layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
 			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 		});
-		expect(() => layoutWithRootRegion(blocked.graph, blocked.ranks, blocked.measurements)).toThrow(
-			UnknownGridCellLayoutError,
-		);
+		const hiddenLayout = layoutWithRootRegion(hidden.graph, hidden.ranks, hidden.measurements);
+		const hiddenRoute = defined(hiddenLayout.relations.find(({ id }) => id === 'across-grid'));
+		expect(foreignCellEntry(hiddenLayout, hiddenRoute, ['b', 'c'])).toBeUndefined();
+		const top = defined(hiddenLayout.elements.find(({ id }) => id === 'a-top')).bounds;
+		expect(segmentEnters(hiddenRoute.points, top)).toBe(false);
 	});
 
 	it('keeps a row-routed crossing inside a same-column crossing on their shared face', () => {

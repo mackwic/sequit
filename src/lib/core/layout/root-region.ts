@@ -16,6 +16,7 @@ import {
 } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
+	RegionCompositionDiagnosticCode,
 	RegionCompositionWork,
 	regionCompositionWorkBudgets,
 	RegionWorkLimitExceeded,
@@ -105,6 +106,7 @@ export class UnknownGridCellLayoutError extends Error {
 		| RegionGeometryDiagnosticCode
 		| RegionIncidentUnknownCode
 		| RegionCompositionSearchCode
+		| RegionCompositionDiagnosticCode.ResourceLimit
 		| undefined;
 	readonly regionId: string | undefined;
 	readonly relationId: string | undefined;
@@ -114,7 +116,10 @@ export class UnknownGridCellLayoutError extends Error {
 		readonly reason: string,
 		diagnostic?: {
 			readonly code?:
-				RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | RegionCompositionSearchCode;
+				| RegionGeometryDiagnosticCode
+				| RegionIncidentUnknownCode
+				| RegionCompositionSearchCode
+				| RegionCompositionDiagnosticCode.ResourceLimit;
 			readonly regionId?: string;
 			readonly relationId?: string;
 		},
@@ -213,6 +218,19 @@ export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWor
 	return { regions, regionByEndpointId: normalized.value.regionByEndpointId };
 }
 
+/**
+ * Exhausted composition work proves nothing about the document's shape: a grid reports it as an
+ * unresolved layout carrying `ResourceLimit`, never as an unsupported presentation.
+ */
+function resourceLimitGridError(
+	graph: LogicGraph,
+	diagnostic: RegionCompositionDiagnostic,
+): UnknownGridCellLayoutError {
+	return new UnknownGridCellLayoutError(graph.document.id, diagnostic.message, {
+		code: RegionCompositionDiagnosticCode.ResourceLimit,
+	});
+}
+
 function nestedRegionInputWithWork(
 	graph: LogicGraph,
 	work: RegionCompositionWork,
@@ -222,12 +240,7 @@ function nestedRegionInputWithWork(
 		return nestedRegionInput(graph, work);
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded) {
-			if (gridRoot)
-				throw new UnsupportedGridCellLayoutError(
-					graph.document.id,
-					error.message,
-					error.diagnostic,
-				);
+			if (gridRoot) throw resourceLimitGridError(graph, error.diagnostic);
 			throw new UnsupportedRegionLayoutError(graph.document.id, error.message, error.diagnostic);
 		}
 		if (gridRoot && error instanceof UnsupportedRegionLayoutError)
@@ -264,6 +277,8 @@ function layoutWithNestedRegions(
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
 		};
 	if (attempt.status === RegionCompositionStatus.Unsupported) {
+		if (gridRoot && attempt.diagnostic?.code === RegionCompositionDiagnosticCode.ResourceLimit)
+			throw resourceLimitGridError(graph, attempt.diagnostic);
 		if (gridRoot)
 			throw new UnsupportedGridCellLayoutError(
 				graph.document.id,

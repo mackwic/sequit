@@ -30,6 +30,7 @@ import {
 	effectiveRouteGeometry,
 	routeGridFixture,
 	variedGridRoutingCase,
+	walledGridRoutingCase,
 } from './grid-cell-crossing-allocation-fixture';
 
 function busOrder(allocation: GridCrossingAllocation): readonly string[] {
@@ -219,7 +220,8 @@ describe('grid crossing allocation search examples', () => {
 		expect(route(result.selected.allocation, true).failure).toBeUndefined();
 	});
 	it('does not prioritize containment when the observed route failure leaves that unrelated route fixed', () => {
-		const fixture = variedGridRoutingCase(3, 2, 4);
+		// target-2 walls target-0 off its portal: route-0 fails alone, in every allocation.
+		const fixture = walledGridRoutingCase(variedGridRoutingCase(3, 2, 4), 'target-2');
 		const canonical = canonicalCrossingAllocation(fixture.input);
 		const conflict = defined(routeGridFixture(fixture, canonical, false).failure);
 		expect(conflict.relationId).toBe('route-0');
@@ -281,7 +283,8 @@ describe('grid crossing allocation search examples', () => {
 	});
 
 	it('returns the real geometry failure when all phase geometries are exhausted', () => {
-		const fixture = variedGridRoutingCase(2, 2, 0);
+		// target-1 walls target-0 off its portal: no allocation can route route-0.
+		const fixture = walledGridRoutingCase(variedGridRoutingCase(2, 2, 0), 'target-1');
 		const phases = crossingAllocationPhases(fixture.input);
 		const budgets: GridCrossingAllocationBudgets = {
 			rowGutter: Number(defined(phases[0]).totalGeometries()),
