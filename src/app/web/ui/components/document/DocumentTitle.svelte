@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
+	import Icon from '../ui/Icon.svelte';
+
 	let {
 		title,
 		onrename,
@@ -40,53 +42,64 @@
 	}
 </script>
 
-<span class="title" data-value={draft}>
-	<input
-		bind:this={input}
-		bind:value={draft}
-		type="text"
-		aria-label="Titre du document"
-		autocomplete="off"
-		enterkeyhint="done"
-		onblur={() => {
-			finish(true, false);
-		}}
-		onkeydown={keydown}
-	/>
+<!-- The frame takes the menu trigger's place and box: the title text does not move. -->
+<span class="field">
+	<Icon name="phosphor:pencil-simple" size={18} />
+	<span class="sizer" data-value={draft}>
+		<input
+			bind:this={input}
+			bind:value={draft}
+			type="text"
+			aria-label="Titre du document"
+			autocomplete="off"
+			enterkeyhint="done"
+			onblur={() => {
+				finish(true, false);
+			}}
+			onkeydown={keydown}
+		/>
+	</span>
 </span>
 
 <style>
-	.title {
+	.field {
+		display: inline-flex;
+		min-width: 0;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid var(--ui-accent);
+		border-radius: 8px;
+		padding: 5px 9px 5px 7px;
+		background: var(--ui-surface);
+		box-shadow: 0 0 0 3px var(--ui-accent-soft);
+		color: var(--ui-accent);
+	}
+	.sizer {
 		display: inline-grid;
 		min-width: 0;
 		max-width: min(40vw, 26rem);
 	}
 	/* An invisible copy of the text sizes the field to its content, up to the maximum width. */
-	.title::after,
+	.sizer::after,
 	input {
 		grid-area: 1 / 1;
-		border: 1px solid transparent;
-		border-radius: 8px;
-		padding: 5px 7px;
+		border: 0;
+		padding: 0;
 		font: inherit;
 		font-size: 14px;
 		font-weight: 550;
 	}
-	.title::after {
+	.sizer::after {
 		content: attr(data-value) ' ';
 		overflow: hidden;
 		block-size: 0;
-		padding-block: 0;
-		border-block-width: 0;
 		visibility: hidden;
 		white-space: pre;
 	}
 	input {
 		min-width: 8ch;
 		width: 100%;
-		border-color: var(--ui-accent);
-		background: var(--ui-surface);
-		box-shadow: 0 0 0 3px var(--ui-accent-soft);
+		background: transparent;
 		color: var(--ui-text);
 		outline: none;
 	}

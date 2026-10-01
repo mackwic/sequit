@@ -44,24 +44,20 @@
 		renaming = false;
 		if (restoreFocus) void tick().then(() => menuTrigger?.focus());
 	}
-
-	function caretIcon(open: boolean): string {
-		if (open) return 'phosphor:caret-up';
-		return 'phosphor:caret-down';
-	}
 </script>
 
-<div class="flex min-w-0 items-center">
+<!-- Pulled back by the trigger's padding: the icon, not the hover surface, keeps the header's gap. -->
+<div class="-ml-2 flex min-w-0 items-center">
 	{#if renaming && onrename}
 		<DocumentTitle {title} {onrename} onclose={closeRename} />
 	{/if}
 	<!-- Kept mounted while renaming, so focus can come back to the same trigger. -->
 	<div class="flex min-w-0" hidden={renaming}>
 		<DropdownMenu label="Menu du document" bind:triggerElement={menuTrigger}>
-			{#snippet trigger(open)}
-				<span class="flex min-w-0 items-center gap-1.5">
+			{#snippet trigger()}
+				<span class="flex min-w-0 items-center gap-2">
+					<span class="menu-icon"><Icon name="phosphor:list" size={18} /></span>
 					<span class="title">{title}</span>
-					<span class="caret"><Icon name={caretIcon(open === true)} size={14} /></span>
 				</span>
 			{/snippet}
 
@@ -117,7 +113,7 @@
 		font-size: 14px;
 		font-weight: 550;
 	}
-	.caret {
+	.menu-icon {
 		display: inline-flex;
 		flex: none;
 		color: var(--ui-muted);
