@@ -19,6 +19,7 @@
 		fold,
 		dissolve,
 		split,
+		child,
 		onDelete,
 	}: {
 		entity: EntityRef;
@@ -31,6 +32,8 @@
 		dissolve?: (() => void) | undefined;
 		/** Relation only: inserts a junction between its endpoints. */
 		split?: (() => void) | undefined;
+		/** Node or junction only: opens the box dialog for a child attached to it. */
+		child?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	const actionsLabel = {
@@ -49,6 +52,7 @@
 	const editShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Edit];
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
+	const childShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.CreateChild];
 
 	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
 	function foldIcon(closed: boolean): string {
@@ -88,7 +92,13 @@
 	enabled={split !== undefined}
 	onactivate={() => split?.()}
 />
-{#if edit ?? ownFold ?? dissolve ?? split ?? onDelete}
+<CanvasShortcut
+	shortcut={childShortcut}
+	scopes={[viewportElement, floating]}
+	enabled={child !== undefined}
+	onactivate={() => child?.()}
+/>
+{#if edit ?? child ?? ownFold ?? dissolve ?? split ?? onDelete}
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
@@ -106,6 +116,19 @@
 			>
 				<Icon name="phosphor:pencil-simple" />
 				<span>{editShortcut.label}</span>
+			</button>
+		{/if}
+		{#if child}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-label={`Créer un enfant de ${entity.id}`}
+				aria-keyshortcuts={shortcutKeyshortcuts(childShortcut)}
+				title={shortcutTitle(childShortcut)}
+				onclick={child}
+			>
+				<Icon name="phosphor:tree-structure" />
+				<span>{childShortcut.label}</span>
 			</button>
 		{/if}
 		{#if ownFold}

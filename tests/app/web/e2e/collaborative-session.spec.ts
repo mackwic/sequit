@@ -602,7 +602,7 @@ test('Keyboard child and sibling creation are proposed across collaborators', as
 	);
 
 	await alice.locator('[data-node-id="A"]').click();
-	await alice.keyboard.press('n');
+	await alice.keyboard.press('c');
 	const childCreation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
 	await expect(childCreation).toBeVisible();
 	await childCreation
@@ -725,7 +725,7 @@ test('Escape cancels a keyboard creation without creating a shared node or relat
 	);
 
 	await alice.locator('[data-node-id="A"]').click();
-	await alice.keyboard.press('n');
+	await alice.keyboard.press('c');
 	const creation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
 	await expect(creation).toBeVisible();
 	await creation.getByRole('textbox', { name: 'Contenu', exact: true }).fill('Annulé');

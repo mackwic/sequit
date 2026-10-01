@@ -29,6 +29,7 @@
 		onGroupDissolve,
 		onJunctionEdit,
 		onRelationSplit,
+		onCreateChild,
 		onDelete,
 	}: {
 		canvas: CanvasModel | undefined;
@@ -44,6 +45,8 @@
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
 		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Opens the box dialog for a child of the selected node or junction. */
+		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		onDelete?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
@@ -61,6 +64,8 @@
 		readonly dissolve?: () => void;
 		/** Inserts a junction on the selected relation. */
 		readonly split?: () => void;
+		/** Creates a child of the selected node or junction. */
+		readonly child?: () => void;
 	}
 	function foldAction(groupId: string | undefined): { fold: FoldAction } | Record<string, never> {
 		const toggle = onGroupToggle;
@@ -74,6 +79,15 @@
 				run: () => {
 					toggle(groupId);
 				},
+			},
+		};
+	}
+	function childAction(entity: EntityRef): { child: () => void } | Record<string, never> {
+		const create = onCreateChild;
+		if (create === undefined) return {};
+		return {
+			child: () => {
+				create(entity);
 			},
 		};
 	}
@@ -112,6 +126,7 @@
 					label: `Éditer le nœud ${node.id}`,
 					run: () => session.beginNodeEdit(node),
 				},
+				...childAction(entity),
 				...foldAction(node.navigation?.groupId),
 			};
 		}
@@ -123,7 +138,11 @@
 			const junction = canvas.junctions.find(({ id }) => id === entity.id);
 			if (junction === undefined) return undefined;
 			const edit = onJunctionEdit;
-			let actions: ContextualActions = { entity, ...foldAction(junction.groupId) };
+			let actions: ContextualActions = {
+				entity,
+				...childAction(entity),
+				...foldAction(junction.groupId),
+			};
 			if (edit)
 				actions = {
 					...actions,
@@ -161,6 +180,7 @@
 			fold={contextual.fold}
 			dissolve={contextual.dissolve}
 			split={contextual.split}
+			child={contextual.child}
 			{viewportElement}
 			{onDelete}
 		/>

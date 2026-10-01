@@ -38,7 +38,7 @@ describe('node creation planning', () => {
 		});
 	});
 
-	it('gives a top-level box the double-clicked lane, else the target’s, else the first lane', () => {
+	it('gives a top-level box the double-clicked lane, else the target’s or nearby selection’s, else the first lane', () => {
 		const document = explicitLaneLogicDocument();
 		const isolated = document.nodes.find(({ id }) => id === 'isolated');
 		if (isolated?.laneId !== 'right') throw new Error('Expected the isolated node in "right"');
@@ -48,10 +48,23 @@ describe('node creation planning', () => {
 		expect(lane({ laneId: 'unknown' })).toBe('left');
 		expect(lane({})).toBe('left');
 		expect(lane({ target: { kind: EntityKind.Node, id: 'isolated' } })).toBe('right');
+		expect(lane({ near: { kind: EntityKind.Node, id: 'isolated' } })).toBe('right');
+		expect(lane({ near: { kind: EntityKind.Node, id: 'missing' } })).toBe('left');
 		expect(lane({ groupId: 'orphan-group', laneId: 'right' })).toBeUndefined();
 		expect(planNodeCreation(validLogicDocument(), { laneId: 'right' }, ids())?.node.laneId).toBe(
 			undefined,
 		);
+	});
+
+	it('creates a root beside the selection without relation or nature from it', () => {
+		const base = explicitLaneLogicDocument();
+		const need = { id: 'need', label: 'Need', color: '#aa0044' };
+		const document = { ...base, natures: [...base.natures, need] };
+		const near = { kind: EntityKind.Node, id: 'isolated' } as const;
+		expect(planNodeCreation(document, { near }, ids('need'))).toEqual({
+			node: { id: 'new', natureId: 'need', markdown: '', laneId: 'right' },
+			relations: [],
+		});
 	});
 
 	it('creates a child of a node with inherited nature, containment, and one relation', () => {
@@ -180,6 +193,9 @@ describe('node creation planning', () => {
 			planNodeCreation(document, { target: { kind: EntityKind.Node, id: 'selected' } }, ids())
 				?.node,
 		).toMatchObject({ groupId: 'inner' });
+		expect(
+			planNodeCreation(document, { near: { kind: EntityKind.Node, id: 'selected' } }, ids())?.node,
+		).not.toHaveProperty('groupId');
 	});
 
 	it('rejects missing targets and documents without a nature', () => {

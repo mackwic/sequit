@@ -8,7 +8,10 @@ import { EndpointKind } from '../../../../lib/core/document/logic-document';
 import { EntityKind, type EntityRef } from './canvas-entity';
 import { rootLanes } from './root-lanes';
 
-/** Where a new box goes: a root, optionally inside a group, or attached to a selected endpoint. */
+/**
+ * Where a new box goes: a root, optionally inside a group or beside the selection, or attached
+ * to a selected endpoint.
+ */
 export interface NodeCreationRequest {
 	/** The group whose background was double-clicked. */
 	readonly groupId?: string | undefined;
@@ -16,6 +19,8 @@ export interface NodeCreationRequest {
 	readonly laneId?: string | undefined;
 	/** The selected endpoint the box is attached to; it also decides the group. */
 	readonly target?: EntityRef | undefined;
+	/** The selection a root box stands beside: it only lends its lane; no relation, no group. */
+	readonly near?: EntityRef | undefined;
 	/** A sibling shares the target's parents instead of pointing to the target. */
 	readonly sibling?: boolean | undefined;
 }
@@ -78,6 +83,14 @@ function laneFor(
 	return lanes[0];
 }
 
+function nearEndpoint(
+	document: LogicDocument,
+	request: NodeCreationRequest,
+): LogicEndpoint | undefined {
+	if (request.near === undefined) return undefined;
+	return selectedEndpoint(document, request.near);
+}
+
 /**
  * Resolves graph parentage independently from group containment. Returns `undefined` when the
  * document has no nature or the target is gone.
@@ -99,7 +112,7 @@ export function planNodeCreation(
 	let containedNode = node;
 	if (groupId !== undefined) containedNode = { ...node, groupId };
 	else {
-		const laneId = laneFor(document, request, target);
+		const laneId = laneFor(document, request, target ?? nearEndpoint(document, request));
 		if (laneId !== undefined) containedNode = { ...node, laneId };
 	}
 	if (target === undefined) return { node: containedNode, relations: [] };

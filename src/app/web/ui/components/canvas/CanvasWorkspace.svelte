@@ -46,7 +46,7 @@
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
-	import { EntityKind } from '../../canvas/canvas-entity';
+	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
@@ -448,6 +448,9 @@
 				onRelationSplit={(relationId: string) => {
 					void insertJunction(relationId);
 				}}
+				onCreateChild={(target: EntityRef) => {
+					openCreation({ target });
+				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}
 			/>
@@ -555,10 +558,9 @@
 			</p>{/if}
 		<CanvasViewportControls {session} viewportElement={canvasViewport} />
 		<CanvasActions
-			{session}
 			enabled={interactive}
 			oncreate={() => {
-				openCreation({ target: session.relativeNodeCreationTarget });
+				openCreation({ near: session.relativeNodeCreationTarget });
 			}}
 			onnatures={openNatures}
 		/>

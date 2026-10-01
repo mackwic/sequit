@@ -15,6 +15,7 @@ export enum CanvasShortcutId {
 	Group = 'group',
 	Junction = 'junction',
 	Create = 'create',
+	CreateChild = 'create-child',
 	CreateSibling = 'create-sibling',
 	Delete = 'delete',
 	Undo = 'undo',
@@ -98,6 +99,12 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 		section: CanvasShortcutSection.Canvas,
 		label: 'Nouvelle boîte',
 		keys: ['n'],
+	},
+	[CanvasShortcutId.CreateChild]: {
+		id: CanvasShortcutId.CreateChild,
+		section: CanvasShortcutSection.Selection,
+		label: 'Créer un enfant',
+		keys: ['c'],
 	},
 	[CanvasShortcutId.CreateSibling]: {
 		id: CanvasShortcutId.CreateSibling,
@@ -292,12 +299,8 @@ export function shortcutWords(shortcut: CanvasShortcut, platform = CURRENT_PLATF
 }
 
 /** `title` text of every action button: the label, a middle dot, then the hint. */
-export function shortcutTitle(
-	shortcut: CanvasShortcut,
-	label = shortcut.label,
-	platform = CURRENT_PLATFORM,
-): string {
-	return `${label} · ${shortcutHint(shortcut, platform)}`;
+export function shortcutTitle(shortcut: CanvasShortcut, platform = CURRENT_PLATFORM): string {
+	return `${shortcut.label} · ${shortcutHint(shortcut, platform)}`;
 }
 
 /** WAI-ARIA `aria-keyshortcuts`: alternatives separated by spaces, chords joined with `+`. */

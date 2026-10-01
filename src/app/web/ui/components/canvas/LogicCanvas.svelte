@@ -11,7 +11,7 @@
 	} from '../../../projection/layout-diagnostic';
 	import { type RegionPreview, RegionPreviewKind } from '../../../projection/partial-region-layout';
 	import { SourceDocumentProjectionError } from '../../../projection/source-document-diagnostic';
-	import { createCanvasEntityIndex } from '../../canvas/canvas-entity';
+	import { createCanvasEntityIndex, type EntityRef } from '../../canvas/canvas-entity';
 	import { focusCanvasEntity } from '../../canvas/canvas-entity-dom';
 	import {
 		isNativeControlTarget,
@@ -50,6 +50,7 @@
 		onGroupDissolve,
 		onJunctionEdit,
 		onRelationSplit,
+		onCreateChild,
 	}: {
 		document: CanvasProjection;
 		session: CanvasSession;
@@ -66,6 +67,7 @@
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
 		onRelationSplit?: ((relationId: string) => void) | undefined;
+		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -547,6 +549,7 @@
 			{onGroupDissolve}
 			{onJunctionEdit}
 			{onRelationSplit}
+			{onCreateChild}
 			{onDelete}
 		/>
 	{/if}

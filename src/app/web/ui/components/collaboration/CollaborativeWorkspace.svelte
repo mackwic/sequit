@@ -60,7 +60,7 @@
 		deleteVisibleRelation,
 		hiddenRelationFields,
 	} from '../../../projection/visible-relation-commands';
-	import { EntityKind } from '../../canvas/canvas-entity';
+	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
@@ -399,10 +399,9 @@
 				</p>{/if}
 		{/if}
 		<CanvasActions
-			session={canvas}
 			enabled={interactive}
 			oncreate={() => {
-				openCreation({ target: canvas.relativeNodeCreationTarget });
+				openCreation({ near: canvas.relativeNodeCreationTarget });
 			}}
 			onnatures={openNatures}
 		/>
@@ -429,6 +428,9 @@
 				onGroupDissolve={dissolveGroup}
 				onJunctionEdit={openJunctionEditor}
 				onRelationSplit={insertJunction}
+				onCreateChild={(target: EntityRef) => {
+					openCreation({ target });
+				}}
 			>
 				{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
 				{#snippet editor(editing: EditingCanvasActivity)}

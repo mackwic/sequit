@@ -5,29 +5,22 @@
 		shortcutKeyshortcuts,
 		shortcutTitle,
 	} from '../../canvas/canvas-shortcuts';
-	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
 
 	let {
-		session,
 		enabled,
 		oncreate,
 		onnatures,
 	}: {
-		session: CanvasSession;
 		enabled: boolean;
-		/** With one selected endpoint, the new box is attached to it. */
+		/** A root box, in the lane of the selection when there is one. */
 		oncreate: () => void;
 		/** Opens the document's nature library. */
 		onnatures: () => void;
 	} = $props();
 	const createShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Create];
 	const NATURES_LABEL = 'Natures';
-	let attached = $derived(session.relativeNodeCreationTarget !== undefined);
-	let createTip = $derived.by(() => {
-		if (attached) return shortcutTitle(createShortcut, 'Nouvelle boîte reliée à la sélection');
-		return shortcutTitle(createShortcut);
-	});
+	const createTip = shortcutTitle(createShortcut);
 </script>
 
 <nav

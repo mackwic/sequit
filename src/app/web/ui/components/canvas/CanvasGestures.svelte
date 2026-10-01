@@ -31,7 +31,7 @@
 	}: {
 		session: CanvasSession;
 		enabled: boolean;
-		/** A new box: a root on the double-clicked background, or attached to the selection with N. */
+		/** A new box: a root on the double-clicked background, or with N beside the selection. */
 		oncreate: (request: NodeCreationRequest) => void;
 		onconnect: (from: string, to: string) => void;
 		/** The dragged elements enter the group, or return to the root when it is `undefined`. */
@@ -290,10 +290,10 @@
 		}
 		if (matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.Create], event)) {
 			event.preventDefault();
-			oncreate({ target: session.relativeNodeCreationTarget });
+			oncreate({ near: session.relativeNodeCreationTarget });
 		}
 	}
-	/** The sibling chord stays while its future is undecided; a child is created with N. */
+	/** The sibling chord stays while its future is undecided; a child is created with C. */
 	function siblingKeydown(event: KeyboardEvent) {
 		const target = session.relativeNodeCreationTarget;
 		if (

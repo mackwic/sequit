@@ -125,6 +125,7 @@ it.each([
 	[CanvasShortcutId.Group, 'G', 'G', 'g'],
 	[CanvasShortcutId.Junction, 'J', 'J', 'j'],
 	[CanvasShortcutId.Create, 'N', 'N', 'n'],
+	[CanvasShortcutId.CreateChild, 'C', 'C', 'c'],
 	[
 		CanvasShortcutId.CreateSibling,
 		'Ctrl+Maj+Entrée',
@@ -143,9 +144,7 @@ it.each([
 	const shortcut = CANVAS_SHORTCUTS[id];
 	expect(shortcutHint(shortcut, ShortcutPlatform.Other)).toBe(words);
 	expect(shortcutHint(shortcut, ShortcutPlatform.Mac)).toBe(symbols);
-	expect(shortcutTitle(shortcut, shortcut.label, ShortcutPlatform.Other)).toBe(
-		`${shortcut.label} · ${words}`,
-	);
+	expect(shortcutTitle(shortcut, ShortcutPlatform.Other)).toBe(`${shortcut.label} · ${words}`);
 	expect(shortcutKeyshortcuts(shortcut)).toBe(aria);
 });
 
@@ -165,16 +164,6 @@ it('speaks macOS symbols as words, naming the command key', () => {
 	expect(shortcutWords(CANVAS_SHORTCUTS[CanvasShortcutId.Delete], ShortcutPlatform.Mac)).toBe(
 		'Suppr',
 	);
-});
-
-it('titles a button with its own wording and the catalogue hint', () => {
-	expect(
-		shortcutTitle(
-			CANVAS_SHORTCUTS[CanvasShortcutId.Create],
-			'Nouvelle boîte reliée à la sélection',
-			ShortcutPlatform.Mac,
-		),
-	).toBe('Nouvelle boîte reliée à la sélection · N');
 });
 
 it('detects macOS from userAgentData first, then navigator.platform, and defaults to Other', () => {

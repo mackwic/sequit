@@ -877,10 +877,10 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toBeFocused();
 	});
 
-	test('creates a connected child with N and keeps the sibling chord', async ({ page }) => {
+	test('creates a connected child with C and keeps the sibling chord', async ({ page }) => {
 		const parent = page.locator('[data-node-id="ai-content-generation"]');
 		await parent.click();
-		await page.keyboard.press('n');
+		await page.keyboard.press('c');
 
 		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
 		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
@@ -965,31 +965,39 @@ test.describe('box dialog editing and creation', () => {
 		await expect(page.getByText('Cancelled creation')).toHaveCount(0);
 	});
 
-	test('creates a connected box from the sidebar action', async ({ page }) => {
-		const parent = page.locator('[data-node-id="ai-content-generation"]');
-		await parent.click();
-		await page.getByRole('button', { name: 'Nouvelle boîte', exact: true }).click();
-
-		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		const nodeId = await dialog.getAttribute('data-node-creator');
-		if (nodeId === null || nodeId === '') throw new Error('Created box dialog has no node id');
-		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Sidebar-created child');
-		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
-		await expect(page.locator(`[data-node-id="${nodeId}"]`)).toHaveAttribute(
-			'aria-pressed',
-			'true',
-		);
-		await expect(
-			page.locator(
-				`[data-relation-id][data-edge-from="${nodeId}"][data-edge-to="ai-content-generation"]`,
-			),
-		).toHaveCount(1);
+	test('N and the sidebar action create a root box, even with a selection', async ({ page }) => {
+		const triggers = [
+			() => page.keyboard.press('n'),
+			() => page.getByRole('button', { name: 'Nouvelle boîte', exact: true }).click(),
+		];
+		for (const [index, trigger] of triggers.entries()) {
+			await page.locator('[data-node-id="ai-content-generation"]').click();
+			await trigger();
+			const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
+			const nodeId = await dialog.getAttribute('data-node-creator');
+			if (nodeId === null || nodeId === '') throw new Error('Created box dialog has no node id');
+			await dialog.getByRole('textbox', { name: 'Contenu' }).fill(`Root beside selection ${index}`);
+			await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+			await expect(page.locator(`[data-node-id="${nodeId}"]`)).toHaveAttribute(
+				'aria-pressed',
+				'true',
+			);
+			await expect(
+				page.locator(
+					`[data-relation-id][data-edge-from="${nodeId}"], [data-relation-id][data-edge-to="${nodeId}"]`,
+				),
+			).toHaveCount(0);
+		}
 	});
 
-	test('creates a child of a junction with N', async ({ page }) => {
+	test('creates a child of a junction from its contextual action', async ({ page }) => {
 		const junction = page.locator('[data-junction-id="word-ui-options"]');
 		await junction.click();
-		await page.keyboard.press('n');
+		const create = page
+			.getByRole('group', { name: 'Actions de la jonction' })
+			.getByRole('button', { name: 'Créer un enfant de word-ui-options', exact: true });
+		await expect(create).toHaveAttribute('aria-keyshortcuts', 'c');
+		await create.click();
 		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
 		const childId = await dialog.getAttribute('data-node-creator');
 		if (childId === null || childId === '')
@@ -1030,7 +1038,7 @@ test('a child of a selected node inside a group stays within that group', async 
 	const target = page.locator('[data-node-id="traceable-edits"]');
 	await expect(target).toHaveAttribute('data-node-group-id', 'use-cases');
 	await target.click();
-	await page.keyboard.press('n');
+	await page.keyboard.press('c');
 	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
 	await expect(dialog).toBeVisible();
 	const childId = await dialog.getAttribute('data-node-creator');
