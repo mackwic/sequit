@@ -11,10 +11,18 @@ export interface GridCrossingAllocation {
 	readonly portTrackByEndpointId: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
-/** The two portal points a crossing relation leaves from, in documentary port order. */
+/** One end of a crossing relation: its endpoint, the endpoint's cell and its declared portal. */
+export interface CrossingPortal {
+	readonly endpointId: string;
+	readonly row: number;
+	readonly column: number;
+	readonly point: Point;
+}
+
+/** The two portals a crossing relation leaves from, by role, at their documentary ports. */
 export interface CrossingPortalSpan {
-	readonly source: Point;
-	readonly target: Point;
+	readonly source: CrossingPortal;
+	readonly target: CrossingPortal;
 }
 
 export interface CrossingAllocationInput {

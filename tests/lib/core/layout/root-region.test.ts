@@ -413,6 +413,33 @@ describe('implicit root layout region', () => {
 		);
 	});
 
+	it('keeps a row-routed crossing inside a same-column crossing on their shared face', () => {
+		const source = persistedGridDocument();
+		const prepared = prepareGrid({
+			...source,
+			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
+		});
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		const routes = new Map(layout.relations.map((route) => [route.id, route]));
+		const across = defined(routes.get('across-grid'));
+		const groupCrossing = defined(routes.get('group-crossing'));
+		// From d, both runs climb the right gutter: across-grid to the row boundary on the inner
+		// track, group-crossing to the group above on the outer one. The inner run takes d's upper
+		// port, so neither horizontal leg cuts the other run and across-grid needs no top-bus detour.
+		const gridTop = Math.min(...(layout.regions ?? []).map(({ bounds }) => bounds.y));
+		expect(Math.min(...across.points.map(({ y }) => y))).toBeGreaterThan(gridTop);
+		expect(defined(across.points.at(-1)).y).toBeLessThan(defined(groupCrossing.points.at(-1)).y);
+		let length = 0;
+		for (const route of [across, groupCrossing])
+			for (const [index, point] of route.points.entries()) {
+				const previous = route.points[index - 1] ?? point;
+				const horizontal = Math.abs(point.x - previous.x);
+				length += horizontal + Math.abs(point.y - previous.y);
+			}
+		// 3814 before relations were ordered documentarily; the top-bus detour costs 4594.
+		expect(length).toBeLessThanOrEqual(3814);
+	});
+
 	it('rejects a grid presentation whose cell or region hierarchy was changed after validation', () => {
 		const prepared = prepareGrid(persistedGridDocument());
 		const source = prepared.document;

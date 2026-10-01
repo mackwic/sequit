@@ -10,6 +10,7 @@ import {
 	type GridRoutingEdges,
 } from './grid-cell-crossing';
 import type {
+	CrossingPortal,
 	CrossingPortalSpan,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
@@ -118,17 +119,22 @@ export function crossingRoute(
 	};
 }
 
-/** The canonical portals of each crossing relation: the containment rule reads them before allocating. */
+/** The canonical portals of each crossing relation: the containment rule reads their points and
+ * the port order reads their cells before allocating. */
 export function crossingPortalSpans(
 	routing: GridCrossingRouting,
 	allocation: GridCrossingAllocation,
 ): ReadonlyMap<string, CrossingPortalSpan> {
 	const spans = new Map<string, CrossingPortalSpan>();
-	for (const relation of routing.crossing) {
-		const source = crossingEndpoint(routing, allocation, relation, relation.from);
-		const target = crossingEndpoint(routing, allocation, relation, relation.to);
-		spans.set(relation.id, { source: source.portal.point, target: target.portal.point });
-	}
+	const portalOf = (relation: LogicRelation, endpointId: string): CrossingPortal => {
+		const { portal, cell } = crossingEndpoint(routing, allocation, relation, endpointId);
+		return { endpointId, row: cell.row, column: cell.column, point: portal.point };
+	};
+	for (const relation of routing.crossing)
+		spans.set(relation.id, {
+			source: portalOf(relation, relation.from),
+			target: portalOf(relation, relation.to),
+		});
 	return spans;
 }
 

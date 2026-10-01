@@ -18,6 +18,7 @@ import {
 	crossingCanonicalBusGeometryCount,
 	GRID_CROSSING_REALLOCATION_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import {
@@ -183,7 +184,9 @@ describe('grid crossing allocation route geometry properties', () => {
 					const reallocation = [...defined(phases[1]).candidates()];
 					const extraTrack = [...defined(phases[2]).candidates()];
 					const bridge = [...defined(phases[3]).candidates()];
-					expect(reallocation[0]).toEqual(canonicalCrossingAllocation(input));
+					expect(reallocation[0]).toEqual(
+						routedPortAllocation(input, canonicalCrossingAllocation(input)),
+					);
 					for (const [phaseIndex, candidates] of [
 						rowGutter,
 						reallocation,

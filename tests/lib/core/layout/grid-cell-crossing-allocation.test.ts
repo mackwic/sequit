@@ -20,6 +20,7 @@ import {
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import type {
 	CrossingAllocationInput,
+	CrossingPortal,
 	GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import {
@@ -27,6 +28,7 @@ import {
 	CrossingAllocationPhaseId,
 	crossingAllocationPhases,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import {
 	effectiveRouteGeometry,
@@ -35,22 +37,27 @@ import {
 
 const CROSSING_IDS = ['a-b', 'a-c', 'a-d'] as const;
 
+function portal(
+	endpointId: string,
+	row: number,
+	column: number,
+	x: number,
+	y: number,
+): CrossingPortal {
+	return { endpointId, row, column, point: { x, y } };
+}
+
+/** a and c share the first column; b and d the second. */
 function allocationInput(): CrossingAllocationInput {
+	const gutterIds = [
+		['a-b', 'a-c', 'a-d'],
+		['a-b', 'a-d'],
+	];
 	return {
-		edges: gridRoutingEdges(
-			'grid',
-			[
-				['a-b', 'a-c'],
-				['a-b', 'a-d'],
-			],
-			CROSSING_IDS.length,
-		),
+		edges: gridRoutingEdges('grid', gutterIds, CROSSING_IDS.length),
 		crossingIds: [...CROSSING_IDS],
 		busRelevantRelationIds: [...CROSSING_IDS],
-		gutterIds: [
-			['a-b', 'a-c'],
-			['a-b', 'a-d'],
-		],
+		gutterIds,
 		incidence: new Map([
 			['a', [...CROSSING_IDS]],
 			['b', ['a-b']],
@@ -58,9 +65,9 @@ function allocationInput(): CrossingAllocationInput {
 			['d', ['a-d']],
 		]),
 		portalByRelationId: new Map([
-			['a-b', { source: { x: 100, y: 300 }, target: { x: 900, y: 260 } }],
-			['a-c', { source: { x: 100, y: 300 }, target: { x: 200, y: 500 } }],
-			['a-d', { source: { x: 100, y: 300 }, target: { x: 900, y: 500 } }],
+			['a-b', { source: portal('a', 0, 0, 100, 300), target: portal('b', 0, 1, 900, 260) }],
+			['a-c', { source: portal('a', 0, 0, 100, 300), target: portal('c', 1, 0, 200, 500) }],
+			['a-d', { source: portal('a', 0, 0, 100, 300), target: portal('d', 1, 1, 900, 500) }],
 		]),
 	};
 }
@@ -133,10 +140,7 @@ describe('grid crossing allocation', () => {
 			portalByRelationId: new Map(
 				ids.map((id) => [
 					id,
-					{
-						source: { x: 100, y: 200 },
-						target: { x: 300, y: 400 },
-					},
+					{ source: portal('a', 0, 0, 100, 200), target: portal('b', 1, 1, 300, 400) },
 				]),
 			),
 		};
@@ -213,6 +217,7 @@ describe('grid crossing allocation', () => {
 		expect(gutterTracks(canonical, 0)).toEqual([
 			['a-b', 0],
 			['a-c', 1],
+			['a-d', 2],
 		]);
 		expect(gutterTracks(canonical, 1)).toEqual([
 			['a-b', 0],
@@ -238,6 +243,7 @@ describe('grid crossing allocation', () => {
 		expect(gutterTracks(containment, 0)).toEqual([
 			['a-b', 0],
 			['a-c', 1],
+			['a-d', 2],
 		]);
 		expect(gutterTracks(containment, 1)).toEqual([
 			['a-b', 0],
@@ -248,6 +254,51 @@ describe('grid crossing allocation', () => {
 			['a-c', 1],
 			['a-d', 2],
 		]);
+	});
+
+	it('orders each face by its routed runs: upward inner tracks highest, downward ones lowest', () => {
+		const input = allocationInput();
+		const canonical = canonicalCrossingAllocation(input);
+		const outerSameColumn = {
+			...canonical,
+			gutterTrackByRelationId: [
+				new Map([
+					['a-d', 0],
+					['a-b', 1],
+					['a-c', 2],
+				]),
+				defined(canonical.gutterTrackByRelationId[1]),
+			],
+		};
+		// Over the bus, a-d and a-b climb from a (inner first); a-c runs down to c below.
+		expect(
+			defined(routedPortAllocation(input, outerSameColumn).portTrackByEndpointId.get('a')),
+		).toEqual(
+			new Map([
+				['a-d', 0],
+				['a-b', 1],
+				['a-c', 2],
+			]),
+		);
+		// On the row boundary below a, a-d runs down too, inside a-c: the outer run leaves above it.
+		const rowRouted = { ...outerSameColumn, rowTrackByRelationId: [new Map([['a-d', 0]])] };
+		const routed = routedPortAllocation(input, rowRouted);
+		expect([...defined(routed.portTrackByEndpointId.get('a'))]).toEqual([
+			['a-b', 0],
+			['a-c', 1],
+			['a-d', 2],
+		]);
+		expect(defined(routed.portTrackByEndpointId.get('d'))).toEqual(new Map([['a-d', 0]]));
+		// A conflict-first prefix moves only its active relations, on the ports they hold: a-c
+		// keeps its middle port, a-d and a-b swap the outer two.
+		const prefix = routedPortAllocation(input, outerSameColumn, new Set(['a-b', 'a-d']));
+		expect(defined(prefix.portTrackByEndpointId.get('a'))).toEqual(
+			new Map([
+				['a-b', 2],
+				['a-c', 1],
+				['a-d', 0],
+			]),
+		);
 	});
 
 	it('keeps the canonical bus order first, then explores every distinct bus order', () => {
@@ -279,7 +330,7 @@ describe('grid crossing allocation', () => {
 		const { input, routing, crossing } = variedGridRoutingCase(3, 2, 1);
 		const candidates = [...crossingAllocationCandidates(input)];
 		expect(BigInt(candidates.length)).toBe(crossingAllocationGeometryCount(input));
-		expect(candidates[0]).toEqual(canonicalCrossingAllocation(input));
+		expect(candidates[0]).toEqual(routedPortAllocation(input, canonicalCrossingAllocation(input)));
 		const geometries = candidates.map((allocation) =>
 			effectiveRouteGeometry(routing, crossing, allocation),
 		);

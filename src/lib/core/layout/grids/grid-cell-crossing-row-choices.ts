@@ -4,6 +4,7 @@ import type {
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
 import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
+import { routedPortAllocation } from './grid-cell-crossing-port-order';
 
 function chosenRowTracks(
 	allocation: GridCrossingAllocation,
@@ -17,6 +18,8 @@ function chosenRowTracks(
 }
 
 interface RowChoiceContext {
+	readonly input: CrossingAllocationInput;
+	readonly active: ReadonlySet<string> | undefined;
 	readonly eligible: readonly string[];
 	readonly rowsByRelationId: ReadonlyMap<string, readonly number[]>;
 	readonly seen: Set<string>;
@@ -64,11 +67,15 @@ function rowRoutedInnermost(
 	};
 }
 
+/** Each allocation with its ports ordered by the routed runs first, then as declared. */
 function* uniqueCandidates(
 	candidates: readonly GridCrossingAllocation[],
 	context: RowChoiceContext,
 ): Generator<GridCrossingAllocation> {
-	for (const candidate of candidates) {
+	const routed = candidates.map((candidate) =>
+		routedPortAllocation(context.input, candidate, context.active),
+	);
+	for (const candidate of [...routed, ...candidates]) {
 		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
 		if (context.seen.has(key)) continue;
 		context.seen.add(key);
@@ -106,10 +113,12 @@ function* choicesForCost(
 }
 
 /** A relation chooses one eligible row separation or the top bus. Increasing total
- * choice cost exposes each relation's alternatives before expanding the Cartesian tail. */
+ * choice cost exposes each relation's alternatives before expanding the Cartesian tail. Each
+ * choice first takes the port order of its routed runs, restricted to `active` relations. */
 export function* withRowRouteChoices(
 	input: CrossingAllocationInput,
 	allocations: Generator<GridCrossingAllocation>,
+	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation> {
 	const rowsByRelationId = new Map<string, number[]>();
 	for (const [row, ids] of (input.rowGutterIds ?? []).entries())
@@ -122,17 +131,19 @@ export function* withRowRouteChoices(
 			rows.push(row);
 		}
 	const eligible = input.crossingIds.filter((id) => rowsByRelationId.has(id));
-	if (eligible.length === 0) {
-		yield* allocations;
-		return;
-	}
 	const context = {
+		input,
+		active,
 		eligible,
 		rowsByRelationId,
 		seen: new Set<string>(),
 		busRelevant: new Set(input.busRelevantRelationIds),
 		chosenRowById: new Map<string, number>(),
 	};
+	if (eligible.length === 0) {
+		for (const allocation of allocations) yield* uniqueCandidates([allocation], context);
+		return;
+	}
 	const maximumCost = eligible.reduce(
 		(sum, id) => sum + Math.max(1, defined(rowsByRelationId.get(id)).length - 1),
 		0,

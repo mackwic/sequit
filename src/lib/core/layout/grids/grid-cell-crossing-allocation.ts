@@ -77,8 +77,8 @@ function containmentOrder(
 			return {
 				key: relationId,
 				order: defined(relationOrder.get(relationId)),
-				start: portal.source.y,
-				end: portal.target.y,
+				start: portal.source.point.y,
+				end: portal.target.point.y,
 			};
 		}),
 	);
@@ -99,8 +99,8 @@ export function containmentCrossingAllocation(
 			return {
 				key: relationId,
 				order: defined(relationOrder.get(relationId)),
-				start: portal.source.x,
-				end: portal.target.x,
+				start: portal.source.point.x,
+				end: portal.target.point.x,
 			};
 		}),
 	);
@@ -287,7 +287,11 @@ export function* crossingAllocationCandidates(
 	active?: ReadonlySet<string>,
 	prioritizeBus = false,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
-	yield* withRowRouteChoices(input, baseCrossingAllocationCandidates(input, active, prioritizeBus));
+	yield* withRowRouteChoices(
+		input,
+		baseCrossingAllocationCandidates(input, active, prioritizeBus),
+		active,
+	);
 }
 
 /** One extra column track, with the same row/upper-bus alternatives. */
@@ -295,5 +299,9 @@ export function* crossingAllocationCandidatesWithExtraTrack(
 	input: CrossingAllocationInput,
 	active?: ReadonlySet<string>,
 ): Generator<GridCrossingAllocation, undefined, undefined> {
-	yield* withRowRouteChoices(input, baseCrossingAllocationCandidatesWithExtraTrack(input, active));
+	yield* withRowRouteChoices(
+		input,
+		baseCrossingAllocationCandidatesWithExtraTrack(input, active),
+		active,
+	);
 }

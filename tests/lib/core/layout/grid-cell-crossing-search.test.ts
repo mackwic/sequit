@@ -19,6 +19,7 @@ import {
 	crossingCanonicalBusGeometryCount,
 	type GridCrossingAllocationBudgets,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	GridCrossingSearchMode,
@@ -238,22 +239,24 @@ describe('grid crossing allocation search examples', () => {
 		);
 		expect(unrelatedMove).toBe(true);
 		const candidates = [...crossingAllocationCandidates(fixture.input, active)];
-		const containmentGeometry = effectiveRouteGeometry(
-			fixture.routing,
-			fixture.crossing,
-			containment,
-		);
-		const ordinaryCandidates = [...crossingAllocationCandidates(fixture.input)];
-		expect(
-			effectiveRouteGeometry(fixture.routing, fixture.crossing, defined(ordinaryCandidates[1])),
-		).toBe(containmentGeometry);
-		expect(
-			candidates.findIndex(
-				(candidate) =>
-					effectiveRouteGeometry(fixture.routing, fixture.crossing, candidate) ===
-					containmentGeometry,
+		const geometry = (candidate: GridCrossingAllocation) =>
+			effectiveRouteGeometry(fixture.routing, fixture.crossing, candidate);
+		const containmentGeometry = geometry(containment);
+		// Unprioritized, canonical then containment, each first with its routed port order.
+		const start = [
+			...new Set(
+				[
+					routedPortAllocation(fixture.input, canonical),
+					canonical,
+					routedPortAllocation(fixture.input, containment),
+					containment,
+				].map(geometry),
 			),
-		).toBe(-1);
+		];
+		expect(
+			[...crossingAllocationCandidates(fixture.input)].slice(0, start.length).map(geometry),
+		).toEqual(start);
+		expect(candidates.map(geometry)).not.toContain(containmentGeometry);
 		for (const candidate of candidates)
 			sharesUnchangedTracks(candidate, canonical, fixture.input, active);
 	});

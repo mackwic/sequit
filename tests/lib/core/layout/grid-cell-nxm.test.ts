@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { defined } from '../../../../src/lib/core/document/logic-document';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	crossingEndpointSide,
@@ -339,13 +340,21 @@ describe('N by M grid region arrangement', () => {
 		);
 		expect([...blockedExtraGutterColumns]).toEqual([1]);
 		const crossing = nxmThreeByTwoDocument().relations;
+		// Extra-track candidates read each portal's cell to order ports, never its point.
+		const portal = (endpointId: string) => {
+			const cellId = defined(cellInput.cellByEndpointId.get(endpointId));
+			const { row, column } = defined(cellInput.cells.find(({ id }) => id === cellId));
+			return { endpointId, row, column, point: { x: 0, y: 0 } };
+		};
 		const allocationInput = {
 			edges: resources.edges,
 			crossingIds: crossing.map(({ id }) => id),
 			busRelevantRelationIds: ['a-b', 'a-c'],
 			gutterIds: resources.gutterIds,
 			incidence: crossingIncidence(crossing),
-			portalByRelationId: new Map(),
+			portalByRelationId: new Map(
+				crossing.map(({ id, from, to }) => [id, { source: portal(from), target: portal(to) }]),
+			),
 			blockedExtraGutterColumns,
 		};
 		const unconstrained = [
