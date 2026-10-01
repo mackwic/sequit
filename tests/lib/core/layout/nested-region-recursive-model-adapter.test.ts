@@ -6,6 +6,7 @@ import {
 	LayoutBias,
 	layoutConfiguration,
 	LayoutDirection,
+	LayoutPolicy,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
@@ -49,7 +50,11 @@ import {
 	shallowForestOf,
 } from '../../../support/performance/layout-resource-scenarios';
 import { persistedGridDocument } from './grid-cell-fixture';
-import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
+import {
+	depthTwoRegionDocument,
+	depthTwoRegionInput,
+	persistedNestedGridDocument,
+} from './nested-region-fixture';
 
 function solve(input: RegionInput) {
 	const prepared = prepareLayoutDocument(depthTwoRegionDocument());
@@ -544,6 +549,51 @@ describe('recursive region model and row policy', () => {
 			expect(attempt).toMatchObject({
 				status: RegionCompositionStatus.Unsupported,
 				reason: 'An entirely empty grid is not supported; at least one cell must own an endpoint.',
+			});
+		},
+	);
+
+	it.each(Object.values(LayoutDirection))(
+		'does not misdiagnose descendant cell content as an entirely empty grid in %s',
+		(direction) => {
+			const base = persistedNestedGridDocument();
+			const presentation = base.regionPresentation;
+			const document = {
+				...base,
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				regionPresentation: {
+					...presentation,
+					regions: [
+						...presentation.regions,
+						{
+							id: 'a-inner',
+							parentId: 'a',
+							layoutOrder: orderKey('a0'),
+							policy: LayoutPolicy.Layered,
+						},
+					],
+				},
+				nodes: base.nodes
+					.filter(({ id }) => id.startsWith('a-') || id === 'outside')
+					.map((node) => {
+						if (node.regionId === 'a') return { ...node, regionId: 'a-inner' };
+						return node;
+					}),
+				relations: base.relations.filter(({ id }) => id === 'inside-a'),
+			};
+			const prepared = prepareLayoutDocument(document);
+			expect(
+				solveRecursiveNestedRegionLayout(
+					prepared.graph,
+					prepared.measurements,
+					nestedRegionInput(prepared.graph),
+				),
+			).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				reason: 'Grid cells with child regions are outside the bounded grid policy.',
 			});
 		},
 	);

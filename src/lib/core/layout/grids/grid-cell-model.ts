@@ -185,14 +185,36 @@ export function localMeasurements(
 	};
 }
 
-/** Empty cells carry only an empty geometry inventory, never a computed child layout. */
-export function emptyGridCellLayout(document: LogicDocument): RegionLocalLayout | undefined {
+export enum GridCellLeafContentKind {
+	Empty = 'empty',
+	Populated = 'populated',
+}
+
+interface EmptyGridCellLeafContent {
+	readonly kind: GridCellLeafContentKind.Empty;
+	readonly localLayout: RegionLocalLayout & {
+		readonly layout: RegionLocalLayout['layout'] & { readonly width: 0; readonly height: 0 };
+	};
+}
+
+interface PopulatedGridCellLeafContent {
+	readonly kind: GridCellLeafContentKind.Populated;
+	readonly document: LogicDocument;
+}
+
+export type GridCellLeafContent = EmptyGridCellLeafContent | PopulatedGridCellLeafContent;
+
+/** Classify once before solving; empty geometry cannot demand a computed content extent. */
+export function gridCellLeafContent(document: LogicDocument): GridCellLeafContent {
 	if (document.nodes.length + document.groups.length + document.junctions.length > 0)
-		return undefined;
+		return { kind: GridCellLeafContentKind.Populated, document };
 	return {
-		layout: { width: 0, height: 0, elements: [], relations: [] },
-		ranks: { bands: [], byEndpointId: new Map() },
-		incidents: [],
-		witness: { attempted: 0, exhaustive: true, rejectedAlternatives: [] },
+		kind: GridCellLeafContentKind.Empty,
+		localLayout: {
+			layout: { width: 0, height: 0, elements: [], relations: [] },
+			ranks: { bands: [], byEndpointId: new Map() },
+			incidents: [],
+			witness: { attempted: 0, exhaustive: true, rejectedAlternatives: [] },
+		},
 	};
 }

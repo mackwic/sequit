@@ -20,6 +20,7 @@ import {
 	GRID_CROSSING_REALLOCATION_BUDGET,
 	GRID_CROSSING_ROW_GUTTER_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -158,15 +159,43 @@ describe('grid-cell real-pipeline properties', () => {
 				fc.integer({ min: 2, max: 3 }),
 				fc.integer({ min: 2, max: 3 }),
 				fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),
+				fc.integer({ min: 0, max: 8 }),
+				fc.integer({ min: 0, max: 8 }),
+				fc.integer({ min: 0, max: 8 }),
 				fc.integer({ min: 0, max: 600 }),
 				fc.integer({ min: 0, max: 600 }),
-				(rows, columns, occupied, minimumWidth, minimumHeight) => {
+				(
+					rows,
+					columns,
+					occupied,
+					emptyOffset,
+					sourceOffset,
+					targetOffset,
+					minimumWidth,
+					minimumHeight,
+				) => {
 					const shape = { rows, columns };
 					const base = gridDocument(shape);
-					const nodes = base.nodes.filter(
-						(_, index) =>
-							index < base.nodes.length - 1 && (index === 0 || occupied[index] === true),
-					);
+					const count = base.nodes.length;
+					const emptyIndex = emptyOffset % count;
+					const firstPopulated = (emptyIndex + 1) % count;
+					const secondPopulated = (emptyIndex + 2) % count;
+					const nodes = base.nodes.filter((_, index) => {
+						if (index === emptyIndex) return false;
+						return (
+							index === firstPopulated || index === secondPopulated || occupied[index] === true
+						);
+					});
+					const sourceIndex = sourceOffset % nodes.length;
+					let targetIndex = targetOffset % nodes.length;
+					if (targetIndex === sourceIndex) targetIndex = (targetIndex + 1) % nodes.length;
+					const relations = [
+						{
+							id: 'empty-grid-crossing',
+							from: defined(nodes[sourceIndex]).id,
+							to: defined(nodes[targetIndex]).id,
+						},
+					];
 					const ids = new Set(nodes.map(({ id }) => id));
 					const baseInput = cellInput(
 						shape,
@@ -187,7 +216,7 @@ describe('grid-cell real-pipeline properties', () => {
 									layoutConfiguration(direction, LayoutBias.Left),
 							),
 							nodes,
-							relations: [],
+							relations,
 						};
 						const prepared = prepareLayoutDocument(document);
 						const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
@@ -196,6 +225,18 @@ describe('grid-cell real-pipeline properties', () => {
 						for (const cell of result.cells) {
 							expect(cell.bounds.width).toBeGreaterThanOrEqual(Math.max(64, minimumWidth));
 							expect(cell.bounds.height).toBeGreaterThanOrEqual(Math.max(64, minimumHeight));
+						}
+						for (const cell of result.cells) {
+							if (ids.has(cell.id)) continue;
+							for (const route of result.layout.relations)
+								for (let index = 1; index < route.points.length; index += 1)
+									expect(
+										entersInterior(
+											defined(route.points[index - 1]),
+											defined(route.points[index]),
+											cell.bounds,
+										),
+									).toBe(false);
 						}
 						const reversed = prepareLayoutDocument({ ...document, nodes: [...nodes].reverse() });
 						expect(

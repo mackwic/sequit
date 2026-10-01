@@ -30,20 +30,14 @@ function columnExtent(
 ): number {
 	const demands = children
 		.filter(({ cell }) => cell.column === column)
-		.map(({ layout }) => {
-			if (layout.elements.length === 0) return EMPTY_CELL_MIN_SIZE;
-			return layout.width + CELL_PADDING * 2;
-		});
+		.map(({ layout }) => layout.width + EMPTY_CELL_MIN_SIZE);
 	return Math.max(minimum, ...demands);
 }
 
 function rowExtent(children: readonly SolvedGridCell[], row: number, minimum: number): number {
 	const demands = children
 		.filter(({ cell }) => cell.row === row)
-		.map(({ layout }) => {
-			if (layout.elements.length === 0) return EMPTY_CELL_MIN_SIZE;
-			return layout.height + CELL_PADDING * 2;
-		});
+		.map(({ layout }) => layout.height + EMPTY_CELL_MIN_SIZE);
 	return Math.max(minimum, ...demands);
 }
 

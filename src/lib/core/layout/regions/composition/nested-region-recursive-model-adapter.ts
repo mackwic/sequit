@@ -74,8 +74,12 @@ function regionPolicyFailure(
 		const parent = model.regionsById.get(region.parentId ?? '');
 		if (parent?.definition.grid === undefined) return 'Each leaf region must own an endpoint.';
 	}
-	if (region.definition.grid !== undefined && !region.childIds.some((id) => occupiedLeaves.has(id)))
-		return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
+	if (region.definition.grid !== undefined) {
+		if (region.childIds.some((id) => defined(model.regionsById.get(id)).childIds.length > 0))
+			return 'Grid cells with child regions are outside the bounded grid policy.';
+		if (!region.childIds.some((id) => occupiedLeaves.has(id)))
+			return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
+	}
 	return undefined;
 }
 

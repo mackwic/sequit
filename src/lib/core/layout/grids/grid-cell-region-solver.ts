@@ -9,7 +9,12 @@ import { regionLeafPolicy } from '../regions/leaf/region-leaf-policy';
 import type { RegionCompositionModel } from '../regions/model/region-composition-model';
 import type { RegionLocalLayoutCache } from '../regions/model/region-local-cache';
 import type { SolvedGridCell } from './grid-cell-disposition';
-import { emptyGridCellLayout, type GridModel, localMeasurements } from './grid-cell-model';
+import {
+	gridCellLeafContent,
+	GridCellLeafContentKind,
+	type GridModel,
+	localMeasurements,
+} from './grid-cell-model';
 import { gridCellRegionLeafDocument } from './grid-cell-region-model';
 
 interface GridRegionSolveInput {
@@ -29,8 +34,8 @@ function solveCellLeaf(
 	const region = defined(model.regionsById.get(regionId));
 	const cell = defined(cellsById.get(regionId));
 	const document = gridCellRegionLeafDocument(graph, model, regionId);
-	const empty = emptyGridCellLayout(document);
-	if (empty !== undefined) return [{ cell, ...empty }];
+	const content = gridCellLeafContent(document);
+	if (content.kind === GridCellLeafContentKind.Empty) return [{ cell, ...content.localLayout }];
 	try {
 		return [
 			{
