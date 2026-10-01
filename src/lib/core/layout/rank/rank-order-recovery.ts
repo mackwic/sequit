@@ -2,6 +2,7 @@ import type { TopologicalRanks } from '../../graph/topological-ranks';
 import type { RejectedDedicatedCandidate } from '../dedicated-candidate-validation/types';
 import type {
 	DedicatedCandidateFailure,
+	DedicatedLayoutEvaluation,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
@@ -33,8 +34,10 @@ export interface RecoveryInput {
 	readonly domain: RankOrderDomain;
 	readonly budgets: SearchBudgets;
 	readonly services: SelectionServices;
-	/** Why the documentary layout cannot be published; it is never routed or validated again. */
-	readonly failure: DedicatedCandidateFailure | RejectedDedicatedCandidate;
+	/** The documentary layout, or why it could not be built. */
+	readonly baseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
+	/** The caller's rejection of the documentary layout; it is never routed or validated again. */
+	readonly documentaryRejection?: RejectedDedicatedCandidate | undefined;
 }
 
 /**
@@ -45,7 +48,7 @@ export function searchGlobalOrders(input: RecoveryInput): {
 	readonly search: RankOrderSearchResult;
 	readonly admissions: number;
 } {
-	const { structure, domain, measurements, budgets, services, ranks, failure } = input;
+	const { structure, domain, measurements, budgets, services, ranks } = input;
 	let completePipelines = 0;
 	for (const limit of budgets.limits.values()) completePipelines += limit;
 	let minimumPipelines = 1;
@@ -60,7 +63,8 @@ export function searchGlobalOrders(input: RecoveryInput): {
 		structure,
 		domain,
 		measurements,
-		baseline: failure,
+		baseline: input.baseline,
+		documentaryRejection: input.documentaryRejection,
 		evaluate: (order) =>
 			services.evaluate(
 				applyRankOrder(structure, domain, order),
@@ -81,14 +85,14 @@ export function searchGlobalOrders(input: RecoveryInput): {
 
 /** The documentary layout has no geometry to reuse; search complete global candidates directly. */
 export function recoverDocumentaryFailure(
-	input: RecoveryInput & { readonly failure: DedicatedCandidateFailure },
+	input: RecoveryInput & { readonly baseline: DedicatedCandidateFailure },
 ): {
 	readonly layout: LayoutResult;
 	readonly witness: RankOrderSearchWitness;
 } {
 	const { search, admissions } = searchGlobalOrders(input);
 	const selected = search.selected;
-	if (selected === undefined) throw input.failure;
+	if (selected === undefined) throw input.baseline;
 	return {
 		layout: selected.evaluation.complete(),
 		witness: {

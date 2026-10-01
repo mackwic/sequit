@@ -13,6 +13,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { acyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
@@ -418,6 +419,15 @@ it('keeps a junction component and an ordinary fork out of each other in every d
 				});
 				expect(entersEnvelope(layout, direction, junction, fork), label).toBe(false);
 				expect(entersEnvelope(layout, direction, fork, junction), label).toBe(false);
+				// Separately searched components publish only after a whole-document validation.
+				const { witness } = layoutWithDedicatedEngineAndRankOrderWitness(
+					together.graph,
+					together.ranks,
+					together.measurements,
+				);
+				if ((witness.components?.length ?? 0) > 0)
+					expect(witness, label).toMatchObject({ unverified: 0, finalValidation: { valid: true } });
+				if (index === 0) expect(witness.work.globalValidations, label).toBe(1);
 			}
 	}
 }, 120_000);

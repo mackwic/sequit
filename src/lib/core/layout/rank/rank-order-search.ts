@@ -48,18 +48,13 @@ interface ValidRankOrderCandidate {
 	readonly kendall: number;
 }
 
-/**
- * The documentary baseline is routed, failed to build, or was already rejected by a validation
- * the caller ran on the same document.
- */
-type DocumentaryBaseline =
-	DedicatedLayoutEvaluation | DedicatedCandidateFailure | RejectedDedicatedCandidate;
-
 export interface RankOrderSearchInput {
 	readonly structure: LayoutStructure;
 	readonly domain: RankOrderDomain;
 	readonly measurements: LayoutMeasurements;
-	readonly baseline: DocumentaryBaseline;
+	readonly baseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
+	/** A rejection the caller already validated on the same document; the baseline is not judged again. */
+	readonly documentaryRejection?: RejectedDedicatedCandidate | undefined;
 	readonly evaluate: (order: RankOrder) => DedicatedLayoutEvaluation;
 	readonly admit?: ((layout: LayoutResult) => boolean) | undefined;
 	readonly limits: { readonly completePipelines: number; readonly uniqueProposals: number };
@@ -67,7 +62,7 @@ export interface RankOrderSearchInput {
 
 export interface RankOrderSearchResult {
 	readonly selected: ValidRankOrderCandidate | undefined;
-	readonly unchangedBaseline: DocumentaryBaseline;
+	readonly unchangedBaseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
 	readonly witness: RankOrderSearchWitness;
 }
 
@@ -76,11 +71,8 @@ export function failureRejection(failure: DedicatedCandidateFailure): RejectedDe
 	if (failure instanceof GroupRouteFailure)
 		return rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, failure.relationId);
 	return {
-		valid: false,
-		code: DedicatedCandidateRejectionCode.ElementOverlap,
-		endpointId: failure.from,
+		...rejected(DedicatedCandidateRejectionCode.ElementOverlap, failure.from, failure.relationId),
 		otherEndpointId: failure.to,
-		relationId: failure.relationId,
 	};
 }
 
@@ -227,8 +219,8 @@ class RankOrderSearch {
 		return 0;
 	}
 
+	/** A candidate that could not be built is rejected without any validation call. */
 	rejectFailure(order: RankOrder, failure: DedicatedCandidateFailure): void {
-		this.validations += 1;
 		this.rejected.push({ order, reason: failureRejection(failure) });
 	}
 
@@ -337,10 +329,11 @@ class RankOrderSearch {
 /** Scores only complete, independently validated LayoutResults; the baseline is never rerun. */
 export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrderSearchResult {
 	const search = new RankOrderSearch(input);
-	const { baseline } = input;
-	if (isDedicatedCandidateFailure(baseline)) search.rejectFailure(input.domain.bands, baseline);
-	else if ('valid' in baseline)
-		search.rejected.push({ order: input.domain.bands, reason: baseline });
+	const { baseline, documentaryRejection } = input;
+	if (documentaryRejection !== undefined)
+		search.rejected.push({ order: input.domain.bands, reason: documentaryRejection });
+	else if (isDedicatedCandidateFailure(baseline))
+		search.rejectFailure(input.domain.bands, baseline);
 	else search.verify(input.domain.bands, baseline, true);
 	const documentary = search.selected;
 	if (documentary !== undefined && documentaryNeedsNoSearch(documentary, search.topologyBound)) {

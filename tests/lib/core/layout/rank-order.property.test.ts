@@ -2035,10 +2035,12 @@ describe('dedicated bounded geometric rank search', () => {
 			evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),
 		);
 		expect(fullFallback.witness.fallbackComponents).toHaveLength(2);
-		expect(fullFallback.witness.finalValidation).toMatchObject({
-			valid: false,
-			code: DedicatedCandidateRejectionCode.RelationInventory,
-		});
+		// The rejected trial only restores its components: the final validation judges the
+		// published documentary geometry.
+		expect(fullFallback.witness.finalValidation).toEqual({ valid: true });
+		expect(
+			validateDedicatedCandidate({ graph, ranks, measurements, layout: fullFallback.layout }).valid,
+		).toBe(true);
 		const incidentDenied = selectDedicatedRankLayout(graph, ranks, measurements, {
 			options: {},
 			evaluate: evaluateDedicatedLayout,

@@ -28,12 +28,19 @@ function exteriorIds(
 	layers: RoutingLayers,
 	owners: ReadonlyMap<string, number> | undefined,
 ): ReadonlySet<string> | undefined {
+	if (owners === undefined) return undefined;
 	const routedOwners = new Set<number>();
 	for (const id of layers.byId.keys()) {
-		const owner = owners?.get(id);
+		const owner = owners.get(id);
 		if (owner !== undefined) routedOwners.add(owner);
 	}
-	if ([...(owners?.values() ?? [])].every((owner) => routedOwners.has(owner))) return undefined;
+	let apart = false;
+	for (const owner of owners.values()) {
+		if (routedOwners.has(owner)) continue;
+		apart = true;
+		break;
+	}
+	if (!apart) return undefined;
 	const ids = new Set(layers.byId.keys());
 	for (const id of layers.byId.keys()) {
 		let parent = graph.endpointsById.get(id)?.entity.groupId;

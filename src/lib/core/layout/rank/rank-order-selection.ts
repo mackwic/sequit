@@ -67,16 +67,29 @@ function tallyLocal(local: LocalChoice): SearchTally {
 	return tally;
 }
 
-/** The repair search judged the documentary order the assembly already counted. */
+/** The repair search evaluated the documentary order once more, from the assembly's rejection. */
 function tallyRepair(tally: SearchTally, repair: RankOrderSearchWitness): void {
-	tally.proposed += repair.proposed - 1;
-	tally.evaluated += repair.evaluated - 1;
+	tally.proposed += repair.proposed;
+	tally.evaluated += repair.evaluated;
 	tally.valid += repair.valid;
 	tally.rejected.push(...repair.rejected);
 	tally.truncated ||= repair.truncated;
 	tally.exhaustive &&= repair.exhaustive;
 	tally.stop = repair.stop;
 	tally.selectedOrder = repair.selectedOrder;
+}
+
+/**
+ * A rejected documentary layout that stays published counts as unverified, not rejected: its
+ * rejection is the final validation, so each evaluated order is counted once.
+ */
+function publishRejection(tally: SearchTally, global: GlobalChoice): void {
+	if (!global.unverified) return;
+	tally.unverified = 1;
+	const published = global.finalValidation;
+	if (published?.valid !== false) return;
+	const index = tally.rejected.findIndex(({ reason }) => reason === published);
+	if (index >= 0) tally.rejected.splice(index, 1);
 }
 
 function selectionWitness(
@@ -88,9 +101,9 @@ function selectionWitness(
 	if (local.evidence.length === 0 && budgets.bands.size > 0)
 		tally.stop = RankSearchStop.ShapeEnvelope;
 	if (global.fallbackComponents.length > 0) tally.stop = RankSearchStop.BaselineFallback;
-	if (global.unverified) tally.unverified = 1;
 	const localPipelines = tally.evaluated;
 	if (global.repair !== undefined) tallyRepair(tally, global.repair);
+	publishRejection(tally, global);
 	const extras: {
 		skippedComponents?: number;
 		fallbackComponents?: readonly (readonly string[])[];
@@ -146,7 +159,7 @@ export function selectDedicatedRankLayout(
 			domain,
 			budgets: searchBudgets(graph, structure, domain),
 			services,
-			failure: error,
+			baseline: error,
 		});
 	}
 	const budgets = searchBudgets(graph, structure, domain);

@@ -8,7 +8,6 @@ import {
 	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
-	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -23,15 +22,18 @@ import {
 } from '../../../../src/lib/core/layout/layout-engine';
 import {
 	type DedicatedLayoutEvaluation,
+	GroupRouteFailure,
 	type LayoutResult,
 	RelationBoundsOverlap,
 } from '../../../../src/lib/core/layout/layout-types';
 import type { DedicatedLayoutEvaluator } from '../../../../src/lib/core/layout/rank/rank-order-search';
 import { selectDedicatedRankLayout } from '../../../../src/lib/core/layout/rank/rank-order-selection';
+import type { RankOrderSearchWitness } from '../../../../src/lib/core/layout/rank/rank-order-witness';
 import { collectRankOrderDomain } from '../../../../src/lib/core/layout/rank/rank-ordering';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { richAcyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
+import { junctionObstacle } from '../../../support/fixtures/routing-obstacles';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
 it('publishes only independently valid layouts for rich acyclic documents', async () => {
@@ -95,70 +97,17 @@ it('publishes only validated routes beside an independent junction-group branch'
 	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 });
 
-const biasByDirection: Record<LayoutDirection, LayoutBias> = {
-	[LayoutDirection.TopToBottom]: LayoutBias.Top,
-	[LayoutDirection.BottomToTop]: LayoutBias.Bottom,
-	[LayoutDirection.LeftToRight]: LayoutBias.Left,
-	[LayoutDirection.RightToLeft]: LayoutBias.Right,
-};
-
-// M2-01: A = j0 -> {n3, n4, n7}, n3 -> n7 beside B = n6 -> {n5, x}; each is valid alone.
-function interferingComponents(direction: LayoutDirection): LogicDocument {
-	return {
-		...validLogicDocument(),
-		layout: defined(layoutConfiguration(direction, biasByDirection[direction])),
-		groups: [],
-		nodes: ['n3', 'n4', 'n5', 'n6', 'n7', 'x'].map((id, index) => ({
-			kind: EndpointKind.Node,
-			id,
-			layoutOrder: orderKey(`a${index + 1}`),
-			natureId: 'goal',
-			markdown: id,
-		})),
-		junctions: [
-			{
-				kind: EndpointKind.Junction,
-				id: 'j0',
-				layoutOrder: orderKey('a7'),
-				operator: JunctionOperator.Xor,
-			},
-		],
-		relations: [
-			{ id: 'j0-n3', from: 'j0', to: 'n3' },
-			{ id: 'j0-n4', from: 'j0', to: 'n4' },
-			{ id: 'j0-n7', from: 'j0', to: 'n7' },
-			{ id: 'n3-n7', from: 'n3', to: 'n7' },
-			{ id: 'n6-n5', from: 'n6', to: 'n5' },
-			{ id: 'n6-x', from: 'n6', to: 'x' },
-		],
-	};
+/** Every evaluated order is counted once: valid, rejected, or published unverified. */
+function expectCountedOnce(witness: RankOrderSearchWitness): void {
+	expect(witness.valid + witness.rejected.length + witness.unverified).toBe(witness.evaluated);
 }
 
-it('validates the assembly of separately searched components before publishing it', async () => {
-	for (const direction of Object.values(LayoutDirection)) {
-		const prepared = prepareLayoutDocument(interferingComponents(direction));
-		const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
-		const validation = validateDedicatedCandidate({ ...prepared, layout });
-		expect(validation, `${direction}: ${JSON.stringify(validation)}`).toMatchObject({
-			valid: true,
-		});
-		const { witness } = layoutWithDedicatedEngineAndRankOrderWitness(
-			prepared.graph,
-			prepared.ranks,
-			prepared.measurements,
-		);
-		expect(witness.components, direction).toHaveLength(2);
-		expect(witness, direction).toMatchObject({
-			unverified: 0,
-			finalValidation: { valid: true },
-			work: { globalValidations: 1 },
-		});
-	}
-});
-
-/** Two copies of a two-successor fork: each local search keeps its documentary order. */
-function twinForks() {
-	const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'two-successors'));
+/**
+ * Two disconnected copies of a corpus entry. Each local search keeps the documentary order of
+ * `two-successors` and reorders `geometric-2+2`.
+ */
+function twinForks(corpusId = 'two-successors') {
+	const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === corpusId));
 	const document: LogicDocument = {
 		...entry.document,
 		nodes: [
@@ -222,6 +171,7 @@ it('replaces a rejected documentary assembly by an order validated on the whole 
 	expect(witness.finalValidation).toEqual({ valid: true });
 	expect(witness.work.globalCompletePipelines).toBeGreaterThan(1);
 	expect(witness.work.globalValidations).toBeGreaterThan(1);
+	expectCountedOnce(witness);
 });
 
 it('witnesses the rejection when no order of the whole document passes validation', () => {
@@ -236,6 +186,11 @@ it('witnesses the rejection when no order of the whole document passes validatio
 	});
 	expect(selected.witness.unverified).toBe(1);
 	expect(selected.witness.work.globalCompletePipelines).toBeGreaterThan(1);
+	// The published documentary order is unverified, no longer among the rejected orders.
+	expect(selected.witness.rejected.map(({ reason }) => reason)).not.toContain(
+		selected.witness.finalValidation,
+	);
+	expectCountedOnce(selected.witness);
 });
 
 it('rejects with a typed reason a candidate whose relation endpoints overlap', () => {
@@ -265,7 +220,92 @@ it('rejects with a typed reason a candidate whose relation endpoints overlap', (
 			otherEndpointId: 'd',
 			relationId: 'a-d',
 		});
-	expect(selected.witness.valid + selected.witness.rejected.length).toBe(
-		selected.witness.evaluated,
+	expectCountedOnce(selected.witness);
+});
+
+// Witness of the open junction-port point: with these sizes, every order of this single
+// component is rejected (ports at j), so the documentary layout stays published.
+it('counts a rejected published layout once, as unverified, after a whole-document search', () => {
+	const fixture = junctionObstacle(LayoutDirection.LeftToRight, {
+		nodes: {
+			p: { width: 80, height: 177 },
+			q: { width: 278, height: 54 },
+			s: { width: 97, height: 91 },
+			u: { width: 279, height: 176 },
+			v: { width: 83, height: 176 },
+			w: { width: 87, height: 127 },
+			g: { width: 236, height: 40 },
+			x: { width: 276, height: 43 },
+		},
+		junction: { width: 56, height: 14 },
+	});
+	const junctions = fixture.junctions ?? {};
+	const ids = [...Object.keys(fixture.nodes), ...Object.keys(junctions)];
+	const order = (id: string) => orderKey(`a${ids.indexOf(id).toString().padStart(2, '0')}1`);
+	const created = createGraph({
+		...validLogicDocument(),
+		layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		groups: [],
+		nodes: Object.keys(fixture.nodes).map((id) => ({
+			kind: EndpointKind.Node,
+			id,
+			natureId: 'goal',
+			markdown: id,
+			layoutOrder: order(id),
+		})),
+		junctions: Object.keys(junctions).map((id) => ({
+			kind: EndpointKind.Junction,
+			id,
+			operator: JunctionOperator.Xor,
+			layoutOrder: order(id),
+		})),
+		relations: fixture.relations,
+	});
+	if (!created.ok) throw new Error('Invalid junction-port witness');
+	const graph = created.value;
+	const ranks = topologicallyRank(graph);
+	const measurements = {
+		nodes: new Map(Object.entries(fixture.nodes)),
+		groups: new Map(),
+		junctions: new Map(Object.entries(junctions)),
+	};
+	const { layout, witness } = layoutWithDedicatedEngineAndRankOrderWitness(
+		graph,
+		ranks,
+		measurements,
 	);
+	const verdict = validateDedicatedCandidate({ graph, ranks, measurements, layout });
+	expect(verdict).toMatchObject({ valid: false, code: DedicatedCandidateRejectionCode.Ports });
+	expect(witness.finalValidation).toEqual(verdict);
+	expect(witness.unverified).toBe(1);
+	expect(witness.valid).toBe(0);
+	// The local search over the whole document already judged it: no global validation again.
+	expect(witness.work.globalValidations).toBe(0);
+	expectCountedOnce(witness);
+});
+
+it('validates the published geometry, never a discarded trial, and counts real validations', () => {
+	const { graph, ranks, measurements } = twinForks('geometric-2+2');
+	let globalPipelines = 0;
+	const selected = selectDedicatedRankLayout(graph, ranks, measurements, {
+		options: {},
+		evaluate: (structure, sizes, options) => {
+			if (structure.graph === graph) globalPipelines += 1;
+			// Every reordered assembly fails before routing; the documentary one routes.
+			if (structure.graph === graph && globalPipelines > 1) throw new GroupRouteFailure('a-d');
+			return evaluateDedicatedLayout(structure, sizes, options, true);
+		},
+	});
+	expect(selected.layout).toEqual(
+		evaluateDedicatedLayout(prepareLayout(graph, ranks), measurements),
+	);
+	expect(
+		validateDedicatedCandidate({ graph, ranks, measurements, layout: selected.layout }).valid,
+	).toBe(true);
+	expect(selected.witness.fallbackComponents).toHaveLength(2);
+	expect(selected.witness.finalValidation).toEqual({ valid: true });
+	expect(selected.witness.unverified).toBe(0);
+	// Two trials failed to build and were never validated: only the documentary one was.
+	expect(selected.witness.work.globalCompletePipelines).toBe(3);
+	expect(selected.witness.work.globalValidations).toBe(1);
 });

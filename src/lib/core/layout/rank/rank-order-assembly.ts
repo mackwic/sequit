@@ -3,6 +3,7 @@ import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
 import { compareDedicatedRouteScores } from '../dedicated-candidate-validation/route-score';
 import type {
+	DedicatedCandidateValidation,
 	DedicatedRouteScore,
 	RejectedDedicatedCandidate,
 } from '../dedicated-candidate-validation/types';
@@ -28,7 +29,10 @@ export interface GlobalChoice {
 	readonly incidentAdmissions: number;
 	readonly finalValidation?: RankOrderSearchWitness['finalValidation'];
 	readonly fallbackComponents: readonly (readonly string[])[];
-	/** No validation on the whole document covers the published layout. */
+	/**
+	 * No positive validation on the whole document covers the published layout; when it was
+	 * rejected, `finalValidation` holds that rejection.
+	 */
 	readonly unverified: boolean;
 	/** The whole-document order search that replaced a rejected documentary assembly. */
 	readonly repair?: RankOrderSearchWitness;
@@ -125,7 +129,6 @@ interface AssemblyWork {
 	validations: number;
 	runsInspected: number;
 	incidentAdmissions: number;
-	finalValidation?: RankOrderSearchWitness['finalValidation'];
 	readonly fallbackComponents: (readonly string[])[];
 }
 
@@ -148,49 +151,49 @@ export function assembleGlobal(input: AssemblyInput): GlobalChoice {
 			fallbackComponents: [],
 			unverified: !local.provenBaseline,
 		};
-	const documentary = validateDedicatedCandidate({
-		graph,
-		ranks,
-		measurements,
-		layout: baseline.result,
-	});
-	let runsInspected: number;
-	if (documentary.valid) runsInspected = documentary.analysis.inspectedRuns;
-	else runsInspected = documentary.inspectedRuns ?? 0;
+	let documentary: DedicatedCandidateValidation | undefined = local.documentaryRejection;
 	const work: AssemblyWork = {
 		pipelines: 1,
-		validations: 1,
-		runsInspected,
+		validations: 0,
+		runsInspected: 0,
 		incidentAdmissions: 0,
 		fallbackComponents: [],
 	};
+	// A search over the whole document already rejected this layout: its verdict is reused.
+	if (documentary === undefined) {
+		documentary = validateDedicatedCandidate({
+			graph,
+			ranks,
+			measurements,
+			layout: baseline.result,
+		});
+		work.validations = 1;
+		if (documentary.valid) work.runsInspected = documentary.analysis.inspectedRuns;
+		else work.runsInspected = documentary.inspectedRuns ?? 0;
+	}
 	const trial = assembleTrials(input, documentary, work);
-	if (trial !== undefined) return { ...work, evaluation: trial, unverified: false };
+	// The final validation always judges the published geometry, never a discarded trial.
+	if (trial !== undefined)
+		return { ...work, evaluation: trial, finalValidation: { valid: true }, unverified: false };
 	if (documentary.valid)
-		return {
-			...work,
-			evaluation: baseline,
-			finalValidation: work.finalValidation ?? { valid: true },
-			unverified: false,
-		};
+		return { ...work, evaluation: baseline, finalValidation: { valid: true }, unverified: false };
 	return repairAssembly(input, documentary, work);
 }
 
 /** Validate each assembled trial; every rejection removes at least one component edit. */
 function assembleTrials(
 	input: AssemblyInput,
-	documentary: ReturnType<typeof validateDedicatedCandidate>,
+	documentary: DedicatedCandidateValidation,
 	work: AssemblyWork,
 ): DedicatedLayoutEvaluation | undefined {
 	const { graph, ranks, measurements, budgets, local, services } = input;
+	if (local.changed.size === 0) return undefined;
 	const owners = relationOwners(graph, budgets.byEndpoint);
 	while (local.changed.size > 0) {
 		work.pipelines += 1;
-		work.validations += 1;
 		const trial = evaluateAssembled(input);
 		if (isDedicatedCandidateFailure(trial)) {
 			const failure = failureRejection(trial);
-			work.finalValidation = failure;
 			work.fallbackComponents.push(
 				...restoreDocumentary(
 					input,
@@ -199,6 +202,7 @@ function assembleTrials(
 			);
 			continue;
 		}
+		work.validations += 1;
 		const outcome = validateDedicatedCandidate({
 			graph,
 			ranks,
@@ -207,7 +211,6 @@ function assembleTrials(
 		});
 		if (!outcome.valid) {
 			work.runsInspected += outcome.inspectedRuns ?? 0;
-			work.finalValidation = outcome;
 			work.fallbackComponents.push(
 				...restoreDocumentary(
 					input,
@@ -217,7 +220,6 @@ function assembleTrials(
 			continue;
 		}
 		work.runsInspected += outcome.analysis.inspectedRuns;
-		work.finalValidation = { valid: true };
 		if (rejectedRenderedQuality(documentary, outcome.score)) {
 			work.fallbackComponents.push(...restoreDocumentary(input, new Set(local.changed)));
 			continue;
@@ -252,9 +254,12 @@ function repairAssembly(
 		unverified: true,
 	};
 	if (input.local.wholeDocument) return rejectedBaseline;
-	const { search, admissions } = searchGlobalOrders({ ...input, failure: documentary });
+	const { search, admissions } = searchGlobalOrders({
+		...input,
+		documentaryRejection: documentary,
+	});
 	const repair = search.witness;
-	// The search counts the documentary order as evaluated without routing it again.
+	// The search judges the documentary order from this rejection: no pipeline routes it again.
 	const searched = {
 		pipelines: work.pipelines + repair.evaluated - 1,
 		validations: work.validations + repair.work.validations,
