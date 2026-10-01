@@ -48,6 +48,7 @@ interface PortIncidence {
 	readonly oppositeHalf: number;
 	readonly laneOrder: number;
 	readonly oppositeRow: number;
+	readonly oppositePosition: number;
 	readonly oppositeLayoutOrder: string;
 }
 
@@ -100,12 +101,13 @@ interface IncidenceInput {
 	readonly plan: SharedLanePlan;
 	readonly endpoint: SharedLaneEndpoint;
 	readonly other: SharedLaneEndpoint;
+	readonly otherPosition: number;
 	readonly side: LaneSide;
 	readonly role: PortRole;
 }
 
 function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): void {
-	const { plan, endpoint, other, side, role } = input;
+	const { plan, endpoint, other, otherPosition, side, role } = input;
 	const key = JSON.stringify([endpoint.id, side]);
 	let group = groups.get(key);
 	if (group === undefined) {
@@ -119,6 +121,7 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 		oppositeHalf: incidenceHalf(endpoint, other),
 		laneOrder: -Math.abs(other.laneIndex - endpoint.laneIndex),
 		oppositeRow: other.row,
+		oppositePosition: otherPosition,
 		oppositeLayoutOrder: other.layoutOrder,
 	});
 }
@@ -148,6 +151,8 @@ function compareIncidences(
 		if (a.oppositeHalf > 0) localOrder = -localOrder;
 		return localOrder;
 	}
+	const position = direction * (a.oppositePosition - b.oppositePosition);
+	if (position !== 0) return position;
 	const lane = a.laneOrder - b.laneOrder;
 	if (lane !== 0) return lane;
 	const other = direction * compareCanonicalStrings(a.oppositeLayoutOrder, b.oppositeLayoutOrder);
@@ -225,11 +230,34 @@ function incidentOffsets(
 	return offsets;
 }
 
+function bandPositions(input: SharedLaneInput): ReadonlyMap<string, number> {
+	const ordered = [...input.endpoints.values()].sort((a, b) => {
+		const lane = a.laneIndex - b.laneIndex;
+		if (lane !== 0) return lane;
+		const row = a.row - b.row;
+		if (row !== 0) return row;
+		return compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
+	});
+	const positions = new Map<string, number>();
+	let previousLane = -1;
+	let previousRow = -1;
+	let position = 0;
+	for (const endpoint of ordered) {
+		if (endpoint.laneIndex !== previousLane || endpoint.row !== previousRow) position = 0;
+		positions.set(endpoint.id, position);
+		position += 1;
+		previousLane = endpoint.laneIndex;
+		previousRow = endpoint.row;
+	}
+	return positions;
+}
+
 export function planSharedLanePorts(
 	input: SharedLaneInput,
 	contracts: readonly RegionIncidentContract[] = [],
 ): SharedLanePorts {
 	const relationOrder = new Map(input.plans.map(({ id }, index) => [id, index]));
+	const positions = bandPositions(input);
 	const groups = new Map<string, PortGroup>();
 	for (const plan of input.plans) {
 		const source = defined(input.endpoints.get(plan.from));
@@ -238,6 +266,7 @@ export function planSharedLanePorts(
 			plan,
 			endpoint: source,
 			other: target,
+			otherPosition: defined(positions.get(target.id)),
 			side: plan.sourceSide,
 			role: PortRole.Source,
 		});
@@ -245,6 +274,7 @@ export function planSharedLanePorts(
 			plan,
 			endpoint: target,
 			other: source,
+			otherPosition: defined(positions.get(source.id)),
 			side: plan.targetSide,
 			role: PortRole.Target,
 		});
