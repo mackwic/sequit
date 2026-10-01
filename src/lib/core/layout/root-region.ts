@@ -219,15 +219,20 @@ export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWor
 }
 
 /**
- * Exhausted composition work proves nothing about the document's shape: a grid reports it as an
- * unresolved layout carrying `ResourceLimit`, never as an unsupported presentation.
+ * The error of a grid root that the composer did not select as unsupported. Exhausted composition
+ * work proves nothing about the document's shape: it is an unresolved layout carrying
+ * `ResourceLimit` and the region that ran out, never an unsupported presentation.
  */
-function resourceLimitGridError(
-	graph: LogicGraph,
-	diagnostic: RegionCompositionDiagnostic,
-): UnknownGridCellLayoutError {
-	return new UnknownGridCellLayoutError(graph.document.id, diagnostic.message, {
+export function unsupportedGridOutcomeError(
+	documentId: string,
+	reason: string,
+	diagnostic?: RegionCompositionDiagnostic,
+): UnknownGridCellLayoutError | UnsupportedGridCellLayoutError {
+	if (diagnostic?.code !== RegionCompositionDiagnosticCode.ResourceLimit)
+		return new UnsupportedGridCellLayoutError(documentId, reason, diagnostic);
+	return new UnknownGridCellLayoutError(documentId, diagnostic.message, {
 		code: RegionCompositionDiagnosticCode.ResourceLimit,
+		regionId: defined(diagnostic.path[1], 'A work limit names the region that ran out.'),
 	});
 }
 
@@ -240,7 +245,8 @@ function nestedRegionInputWithWork(
 		return nestedRegionInput(graph, work);
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded) {
-			if (gridRoot) throw resourceLimitGridError(graph, error.diagnostic);
+			if (gridRoot)
+				throw unsupportedGridOutcomeError(graph.document.id, error.message, error.diagnostic);
 			throw new UnsupportedRegionLayoutError(graph.document.id, error.message, error.diagnostic);
 		}
 		if (gridRoot && error instanceof UnsupportedRegionLayoutError)
@@ -277,14 +283,8 @@ function layoutWithNestedRegions(
 			regions: attempt.regions.map(({ id, bounds }) => ({ id, bounds })),
 		};
 	if (attempt.status === RegionCompositionStatus.Unsupported) {
-		if (gridRoot && attempt.diagnostic?.code === RegionCompositionDiagnosticCode.ResourceLimit)
-			throw resourceLimitGridError(graph, attempt.diagnostic);
 		if (gridRoot)
-			throw new UnsupportedGridCellLayoutError(
-				graph.document.id,
-				attempt.reason,
-				attempt.diagnostic,
-			);
+			throw unsupportedGridOutcomeError(graph.document.id, attempt.reason, attempt.diagnostic);
 		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason, attempt.diagnostic);
 	}
 	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);

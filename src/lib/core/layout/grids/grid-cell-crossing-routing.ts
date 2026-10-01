@@ -14,16 +14,18 @@ import type {
 	CrossingPortalSpan,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { crossingPortShift } from './grid-cell-crossing-port-stack';
 import { crossingRowY } from './grid-cell-crossing-resources';
 import {
-	crossingPortShift,
+	type CellObstacles,
+	cellObstacles,
 	incidentPieceEnds,
 	routeGridCellIncidents,
 } from './grid-cell-incident-route';
 import type { GridCellInput, GridCellPlacement, GridCellPortal } from './grid-cell-types';
 
-/** The placed cells and the allocated tracks a grid region routes its crossings with. */
-export interface GridCrossingRouting {
+/** The placed cells and the declared tracks a grid region routes its crossings with. */
+export interface GridCrossingRoutingInput {
 	readonly rootId: string;
 	readonly crossing: readonly LogicRelation[];
 	readonly columnCount: number;
@@ -33,6 +35,28 @@ export interface GridCrossingRouting {
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 	/** Crossing endpoints lying in a nested region of their cell rather than in the cell itself. */
 	readonly nestedEndpointIds: ReadonlySet<string>;
+}
+
+/** The routing input with what no allocation changes: port stack shifts and cell obstacles. */
+export interface GridCrossingRouting extends GridCrossingRoutingInput {
+	readonly portShiftByEndpointId: ReadonlyMap<string, number>;
+	readonly obstaclesByCellId: ReadonlyMap<string, CellObstacles>;
+}
+
+/** Compute once, before the allocation search, the routing data every allocation shares. */
+export function gridCrossingRouting(input: GridCrossingRoutingInput): GridCrossingRouting {
+	const cellById = new Map(input.cells.map((cell) => [cell.id, cell]));
+	const fromById = new Map(input.crossing.map(({ id, from }) => [id, from]));
+	const portShiftByEndpointId = new Map<string, number>();
+	const obstaclesByCellId = new Map<string, CellObstacles>();
+	for (const [endpointId, relationIds] of input.incidence) {
+		const cell = defined(cellById.get(defined(input.cellByEndpointId.get(endpointId))));
+		const side = crossingEndpointSide(cell.column, input.columnCount);
+		const sources = relationIds.map((id) => fromById.get(id) === endpointId);
+		portShiftByEndpointId.set(endpointId, crossingPortShift(cell, endpointId, side, sources));
+		if (!obstaclesByCellId.has(cell.id)) obstaclesByCellId.set(cell.id, cellObstacles(cell));
+	}
+	return { ...input, portShiftByEndpointId, obstaclesByCellId };
 }
 
 /** The port, portal side and rail of one crossing endpoint, read from the allocated tracks. */
@@ -62,10 +86,6 @@ function crossingEndpoint(
 		portalX += cell.bounds.width;
 	}
 	const incident = defined(incidence.get(endpointId));
-	const sources = incident.map(
-		(relationId) =>
-			defined(routing.crossing.find(({ id }) => id === relationId)).from === endpointId,
-	);
 	const port = {
 		x: portX,
 		y:
@@ -77,7 +97,7 @@ function crossingEndpoint(
 				},
 				crossingFaceEdge(endpointId, incident.length),
 				defined(defined(allocation.portTrackByEndpointId.get(endpointId)).get(relation.id)),
-			) + crossingPortShift(cell, endpointId, side, sources),
+			) + defined(routing.portShiftByEndpointId.get(endpointId)),
 	};
 	const edge = defined(edges.gutters[cell.column]);
 	const track = defined(defined(allocation.gutterTrackByRelationId[cell.column]).get(relation.id));
@@ -142,6 +162,7 @@ export function crossingRoutes(
 		target: crossingEndpoint(routing, allocation, relation, relation.to),
 	}));
 	const pieces = routeGridCellIncidents(
+		routing.obstaclesByCellId,
 		ends.flatMap(({ relation, source, target }) =>
 			[source, target].map(({ endpointId, cell, side, port }) => ({
 				relationId: relation.id,

@@ -1,8 +1,10 @@
 import {
+	defined,
 	EndpointKind,
 	GRID_PERSISTENCE_FORMAT,
 	GRID_REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	LayoutPolicy,
 	type LogicDocument,
@@ -335,5 +337,55 @@ export function persistedNxmInnerGridDocument(): LogicDocument {
 			},
 		],
 		relations: [{ id: 'b-out', from: 'b', to: 'outside' }],
+	};
+}
+
+/**
+ * A persisted grid whose cells `c0…` hold the listed nodes, in row-major order; nodes keep their
+ * listing order as layout order, relation `rN` is the N-th pair `from → to`, track minima are zero.
+ */
+export function persistedCellGrid(
+	columns: number,
+	cells: readonly (readonly string[])[],
+	relations: readonly (readonly [string, string])[],
+	layout: { readonly direction: LayoutDirection; readonly bias: LayoutBias },
+): LogicDocument {
+	const cellIds = cells.map((_, cell) => `c${cell}`);
+	return {
+		persistenceFormat: GRID_PERSISTENCE_FORMAT,
+		id: 'cell-grid',
+		title: 'Cell grid',
+		layout: defined(layoutConfiguration(layout.direction, layout.bias)),
+		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
+		groups: [],
+		junctions: [],
+		nodes: cells
+			.flatMap((members, cell) =>
+				members.map((id) => ({ kind: EndpointKind.Node as const, id, regionId: `c${cell}` })),
+			)
+			.map((node, order) => ({
+				...node,
+				natureId: 'task',
+				markdown: `${node.id}\n`,
+				layoutOrder: orderKey(`a${order.toString(36).toUpperCase()}`),
+			})),
+		relations: relations.map(([from, to], index) => ({ id: `r${index}`, from, to })),
+		regionPresentation: {
+			schemaVersion: GRID_REGION_PRESENTATION_SCHEMA,
+			regions: cellIds.map((id, cell) => ({
+				id,
+				layoutOrder: orderKey(`a${cell.toString(36).toUpperCase()}`),
+				policy: LayoutPolicy.Layered,
+			})),
+			grid: {
+				minimumColumnWidths: Array.from({ length: columns }, () => 0),
+				minimumRowHeights: Array.from({ length: Math.ceil(cells.length / columns) }, () => 0),
+				cells: cellIds.map((regionId, cell) => ({
+					regionId,
+					row: Math.floor(cell / columns),
+					column: cell % columns,
+				})),
+			},
+		},
 	};
 }

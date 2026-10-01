@@ -28,6 +28,7 @@ import {
 	crossingRoutes,
 	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
+	gridCrossingRouting,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import type { GridCellPlacement } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
@@ -123,7 +124,7 @@ export function variedGridRoutingCase(
 		minimumRowHeights: Array<number>(rowCount).fill(300),
 	};
 	const { edges, gutterIds } = gridCrossingResources(gridInput, crossing);
-	const routing: GridCrossingRouting = {
+	const routing = gridCrossingRouting({
 		rootId: 'property-grid',
 		crossing,
 		columnCount,
@@ -132,7 +133,7 @@ export function variedGridRoutingCase(
 		edges,
 		incidence,
 		nestedEndpointIds: new Set(),
-	};
+	});
 	const allocationInput: CrossingAllocationInput = {
 		edges,
 		crossingIds: crossing.map(({ id }) => id),
@@ -198,7 +199,7 @@ export function walledGridRoutingCase(
 			}),
 		},
 	}));
-	const routing = { ...fixture.routing, cells };
+	const routing = gridCrossingRouting({ ...fixture.routing, cells });
 	const canonical = canonicalCrossingAllocation(fixture.input);
 	return {
 		...fixture,

@@ -7,15 +7,11 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../geometry/region-geometry-diagnostic';
-import type { Bounds, LayoutElement, Point } from '../layout-types';
+import type { LayoutElement, Point } from '../layout-types';
 import { routeCandidates } from '../regions/leaf/region-leaf-incident-geometry';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
-import { CROSSING_SPACING, crossingPortPositions } from './grid-cell-crossing';
-import { equal, samePoint } from './grid-cell-geometry-primitives';
+import { samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement, GridCellSelected } from './grid-cell-types';
-
-/** Least distance between a shifted crossing port and a corner of its face. */
-const PORT_CORNER_CLEARANCE = CROSSING_SPACING / 2;
 
 /** One end of a crossing inside its own cell: from its port to the cell portal side. */
 export interface GridCellIncident {
@@ -33,7 +29,8 @@ export interface GridCellIncident {
 	readonly nested: boolean;
 }
 
-interface CellObstacles {
+/** A cell's boxes and local routes in grid coordinates: what its crossing pieces must avoid. */
+export interface CellObstacles {
 	readonly elements: readonly LayoutElement[];
 	readonly relations: readonly EndpointRoute[];
 }
@@ -42,7 +39,7 @@ function translated(point: Point, delta: Point): Point {
 	return { x: point.x + delta.x, y: point.y + delta.y };
 }
 
-function cellObstacles(cell: GridCellPlacement): CellObstacles {
+export function cellObstacles(cell: GridCellPlacement): CellObstacles {
 	const { translation } = cell;
 	return {
 		elements: cell.localLayout.elements.map((element) => ({
@@ -80,6 +77,30 @@ function entersElement(
 	});
 }
 
+/** Closed point spans: routes whose spans neither meet nor touch cannot contact each other. */
+function spansMeet(first: readonly Point[], second: readonly Point[]): boolean {
+	const [left, right] = [first, second].map((points) => ({
+		low: { x: Math.min(...points.map(({ x }) => x)), y: Math.min(...points.map(({ y }) => y)) },
+		high: { x: Math.max(...points.map(({ x }) => x)), y: Math.max(...points.map(({ y }) => y)) },
+	}));
+	const { low, high } = defined(left);
+	const other = defined(right);
+	if (low.x > other.high.x || other.low.x > high.x) return false;
+	return low.y <= other.high.y && other.low.y <= high.y;
+}
+
+/** The first route a piece overlaps or T-touches; strict crossings wait for the bridges. */
+function firstContact(
+	route: EndpointRoute,
+	others: readonly EndpointRoute[],
+): EndpointRoute | undefined {
+	return others.find(
+		(other) =>
+			spansMeet(route.points, other.points) &&
+			disallowedProvisionalRouteContacts(route, other).length > 0,
+	);
+}
+
 function clear(
 	incident: GridCellIncident,
 	points: readonly Point[],
@@ -88,15 +109,14 @@ function clear(
 ): boolean {
 	if (entersElement(incident, points, obstacles)) return false;
 	const route = incidentRoute(incident, points);
-	const touches = (other: EndpointRoute) =>
-		disallowedProvisionalRouteContacts(route, other).length > 0;
-	return !obstacles.relations.some(touches) && !earlier.some(touches);
+	if (firstContact(route, obstacles.relations) !== undefined) return false;
+	return firstContact(route, earlier) === undefined;
 }
 
 /**
- * The leaf router's candidates with the cell frame as canvas, so its portal is the cell boundary:
- * the direct attachment first, then corridors at `CORRIDOR_CLEARANCE` from the face. Without a
- * clear one the direct attachment stays, and the grid validator names the obstacle.
+ * The direct attachment when it is clear, else the leaf router's corridors with the cell frame as
+ * canvas, at `CORRIDOR_CLEARANCE` from the face. Without a clear one the direct attachment stays,
+ * and the grid validator names the obstacle.
  */
 function routeIncident(
 	incident: GridCellIncident,
@@ -104,15 +124,16 @@ function routeIncident(
 	earlier: readonly EndpointRoute[],
 ): readonly Point[] {
 	const { bounds } = incident.cell;
+	let portalX = bounds.x;
+	if (incident.side === RegionPortalSide.Right) portalX += bounds.width;
+	const direct = [incident.port, { x: portalX, y: incident.port.y }];
+	if (incident.nested || clear(incident, direct, obstacles, earlier)) return direct;
 	const anchor = { x: incident.port.x - bounds.x, y: incident.port.y - bounds.y };
 	const canvas = { width: bounds.width, height: bounds.height, elements: [], relations: [] };
-	const candidates = routeCandidates(anchor, incident.side, canvas).map((points) => [
-		incident.port,
-		...points.slice(1).map((point) => translated(point, bounds)),
-	]);
-	const direct = defined(candidates[0]);
-	if (incident.nested) return direct;
-	return candidates.find((points) => clear(incident, points, obstacles, earlier)) ?? direct;
+	const corridors = routeCandidates(anchor, incident.side, canvas)
+		.slice(1)
+		.map((points) => [incident.port, ...points.slice(1).map((point) => translated(point, bounds))]);
+	return corridors.find((points) => clear(incident, points, obstacles, earlier)) ?? direct;
 }
 
 function compareIncidents(left: GridCellIncident, right: GridCellIncident): number {
@@ -129,9 +150,9 @@ function compareIncidents(left: GridCellIncident, right: GridCellIncident): numb
  * routed there. Returns the pieces, port first, in the order of `incidents`.
  */
 export function routeGridCellIncidents(
+	obstaclesByCellId: ReadonlyMap<string, CellObstacles>,
 	incidents: readonly GridCellIncident[],
 ): readonly (readonly Point[])[] {
-	const obstaclesByCell = new Map<string, CellObstacles>();
 	const earlierByCell = new Map<string, EndpointRoute[]>();
 	const pieces: (readonly Point[])[] = [];
 	const order = incidents.map((_, index) => index);
@@ -141,8 +162,7 @@ export function routeGridCellIncidents(
 	for (const index of order) {
 		const incident = defined(incidents[index]);
 		const cellId = incident.cell.id;
-		const obstacles = obstaclesByCell.get(cellId) ?? cellObstacles(incident.cell);
-		obstaclesByCell.set(cellId, obstacles);
+		const obstacles = defined(obstaclesByCellId.get(cellId));
 		const earlier = earlierByCell.get(cellId) ?? [];
 		earlierByCell.set(cellId, earlier);
 		const piece = routeIncident(incident, obstacles, earlier);
@@ -177,94 +197,20 @@ export function incidentPieceEnds(
 	return { sourceEnd, targetStart };
 }
 
-function stackInsideFace(ys: readonly number[], face: Bounds): boolean {
-	const top = defined(ys[0]) - face.y;
-	const bottom = face.y + face.height - defined(ys.at(-1));
-	return top >= PORT_CORNER_CLEARANCE && bottom >= PORT_CORNER_CLEARANCE;
-}
-
-/**
- * The whole-track shift of an endpoint's crossing port stack. The centred stack stays unless a
- * local relation attaches on one of its points of the portal-side face with a role some crossing
- * of this endpoint does not share: that local family and the crossing would then run together off
- * the face. The nearest free shift inside the face is taken, upwards first; without one the centred
- * stack stays and the validator names the contact.
- */
-export function crossingPortShift(
-	cell: GridCellPlacement,
-	endpointId: string,
-	side: RegionPortalSide.Left | RegionPortalSide.Right,
-	crossingSources: readonly boolean[],
-): number {
-	const face = defined(cell.localLayout.elements.find(({ id }) => id === endpointId)).bounds;
-	let faceX = face.x;
-	if (side === RegionPortalSide.Right) faceX += face.width;
-	const foreignRole = (source: boolean) =>
-		crossingSources.some((crossingSource) => crossingSource !== source);
-	const attached = cell.localLayout.relations
-		.flatMap(({ from, to, points }) => [
-			{ source: true, own: from === endpointId, end: points[0] },
-			{ source: false, own: to === endpointId, end: points.at(-1) },
-		])
-		.filter(({ own, end }) => own && end !== undefined)
-		.filter(({ source, end }) => equal(defined(end).x, faceX) && foreignRole(source))
-		.map(({ end }) => defined(end).y);
-	const positions = crossingPortPositions(endpointId, face, crossingSources.length);
-	const free = (shift: number) =>
-		positions.every((y) => !attached.some((attachment) => equal(attachment, y + shift)));
-	if (free(0)) return 0;
-	const reach = Math.ceil(face.height / CROSSING_SPACING);
-	const shifts = Array.from({ length: 2 * reach }, (_, index) => {
-		const tracks = Math.floor(index / 2) + 1;
-		const upwards = defined([-1, 1][index % 2]);
-		return tracks * CROSSING_SPACING * upwards;
-	});
-	const fits = (shift: number) =>
-		stackInsideFace(
-			positions.map((y) => y + shift),
-			face,
-		);
-	return shifts.find((shift) => fits(shift) && free(shift)) ?? 0;
-}
-
-/** One crossing port: a declared face position, or one moved by whole tracks inside the face. */
-export function crossingPortOnFace(face: Bounds, incidenceCount: number, y: number): boolean {
-	return crossingPortPositions('', face, incidenceCount).some((position) => {
-		const tracks = (y - position) / CROSSING_SPACING;
-		if (!equal(tracks, Math.round(tracks))) return false;
-		return equal(y, position) || stackInsideFace([y], face);
-	});
-}
-
-/**
- * The crossing ports of one face, sorted: the centred stack, or that stack moved by whole tracks
- * while every port keeps its clearance from the face corners.
- */
-export function validCrossingPortStack(face: Bounds, ys: readonly number[]): boolean {
-	const positions = crossingPortPositions('', face, ys.length);
-	const shift = defined(ys[0]) - defined(positions[0]);
-	const tracks = shift / CROSSING_SPACING;
-	if (!equal(tracks, Math.round(tracks))) return false;
-	if (!ys.every((y, track) => equal(y - defined(positions[track]), shift))) return false;
-	return equal(shift, 0) || stackInsideFace(ys, face);
-}
-
 function pieceFailure(
 	route: EndpointRoute,
 	cellId: string,
 	obstacles: CellObstacles,
 	earlier: readonly EndpointRoute[],
 ): RegionGeometryDiagnostic | undefined {
-	const touches = (other: EndpointRoute) =>
-		disallowedProvisionalRouteContacts(route, other).length > 0;
-	const local = obstacles.relations.find(touches);
+	const local = firstContact(route, obstacles.relations);
 	if (local !== undefined)
 		return regionGeometryDiagnostic(
 			RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
 			`Cross-cell relation ${route.id} touches local relation ${local.id} in cell ${cellId}.`,
 			{ relationId: route.id, regionId: cellId, relatedRelationId: local.id },
 		);
-	const other = earlier.find(touches);
+	const other = firstContact(route, earlier);
 	if (other === undefined) return undefined;
 	return regionGeometryDiagnostic(
 		RegionGeometryDiagnosticCode.IncidentTouchesIncident,
@@ -283,7 +229,8 @@ export function gridIncidentPieceFailure(
 	crossing: readonly LogicRelation[],
 ): RegionGeometryDiagnostic | undefined {
 	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
-	const obstaclesByCell = new Map(candidate.cells.map((cell) => [cell.id, cellObstacles(cell)]));
+	const cellById = new Map(candidate.cells.map((cell) => [cell.id, cell]));
+	const obstaclesByCell = new Map<string, CellObstacles>();
 	const earlierByCell = new Map<string, EndpointRoute[]>();
 	for (const relation of crossing) {
 		const { points } = defined(routes.get(relation.id));
@@ -304,10 +251,12 @@ export function gridIncidentPieceFailure(
 		for (const { cellId, ...piece } of pieces) {
 			const route = { id: relation.id, ...piece };
 			const earlier = earlierByCell.get(cellId) ?? [];
-			const obstacles = defined(obstaclesByCell.get(cellId));
+			earlierByCell.set(cellId, earlier);
+			const obstacles = obstaclesByCell.get(cellId) ?? cellObstacles(defined(cellById.get(cellId)));
+			obstaclesByCell.set(cellId, obstacles);
 			const failure = pieceFailure(route, cellId, obstacles, earlier);
 			if (failure !== undefined) return failure;
-			earlierByCell.set(cellId, [...earlier, route]);
+			earlier.push(route);
 		}
 	}
 	return undefined;

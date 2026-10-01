@@ -7,12 +7,9 @@ import {
 import type { Bounds, LayoutRelation, Point } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import { crossingEndpointSide, crossingIncidence } from './grid-cell-crossing';
+import { crossingPortOnFace, validCrossingPortStack } from './grid-cell-crossing-port-stack';
 import { equal, samePoint, within } from './grid-cell-geometry-primitives';
-import {
-	crossingPortOnFace,
-	incidentPieceEnds,
-	validCrossingPortStack,
-} from './grid-cell-incident-route';
+import { incidentPieceEnds } from './grid-cell-incident-route';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
 
 interface CrossPortContext {

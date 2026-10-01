@@ -44,7 +44,7 @@ import {
 	crossingPortalSpans,
 	crossingRoutes,
 	gridCrossingOwnedRoutes,
-	type GridCrossingRouting,
+	gridCrossingRouting,
 } from './grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from './grid-cell-crossing-search';
 import {
@@ -193,7 +193,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		(ids, row) => ids.length > 0 && edges.rowGutters[row] === undefined,
 	);
 
-	const routing: GridCrossingRouting = {
+	const routing = gridCrossingRouting({
 		rootId: input.rootId,
 		crossing,
 		columnCount,
@@ -207,7 +207,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 					model.leafByEndpointId.get(endpointId) !== input.cellByEndpointId.get(endpointId),
 			),
 		),
-	};
+	});
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,

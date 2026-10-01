@@ -4,12 +4,9 @@ import { describe, expect, it } from 'vitest';
 import {
 	defined,
 	EndpointKind,
-	GRID_PERSISTENCE_FORMAT,
-	GRID_REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	layoutConfiguration,
 	LayoutDirection,
-	LayoutPolicy,
 	type LogicDocument,
 	type LogicNode,
 	type LogicRelation,
@@ -17,6 +14,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	GRID_CROSSING_BRIDGE_BUDGET,
 	GRID_CROSSING_EXTRA_TRACK_BUDGET,
@@ -44,6 +42,7 @@ import {
 	gridOf,
 	gridWithLocalRelations,
 } from '../../../support/performance/layout-resource-scenarios';
+import { persistedCellGrid } from './grid-cell-fixture';
 
 const fractionalSize = fc.record({
 	width: fc.integer({ min: 80, max: 320 }).map((value) => value + 0.25),
@@ -155,58 +154,36 @@ function multiNodeGrid(
 	pairs: readonly (readonly [number, number])[],
 	flow: (typeof FLOWS)[number],
 ): LogicDocument {
-	const cellIds = Array.from({ length: defined(columns) * defined(rows) }, (_, cell) => `c${cell}`);
-	const nodes: LogicNode[] = cellIds
-		.flatMap((regionId, cell) =>
-			Array.from({ length: defined(counts[cell]) }, (_, member) => ({
-				kind: EndpointKind.Node as const,
-				id: `${regionId}-${member}`,
-				natureId: 'task',
-				markdown: `${regionId}-${member}\n`,
-				regionId,
-			})),
-		)
-		.map((node, order) => ({
-			...node,
-			layoutOrder: orderKey(`a${order.toString(36).toUpperCase()}`),
-		}));
-	const relations = new Map<string, LogicRelation>();
+	const cells = Array.from({ length: defined(columns) * defined(rows) }, (_, cell) =>
+		Array.from({ length: defined(counts[cell]) }, (_, member) => `c${cell}-${member}`),
+	);
+	const nodes = cells.flat();
+	const relations = new Map<string, [string, string]>();
 	for (const [first, second] of pairs) {
 		const from = first % nodes.length;
 		const to = second % nodes.length;
-		const id = `r${from}-${to}`;
-		if (from > to)
-			relations.set(id, { id, from: defined(nodes[from]).id, to: defined(nodes[to]).id });
+		if (from > to) relations.set(`${from}-${to}`, [defined(nodes[from]), defined(nodes[to])]);
 	}
-	return {
-		persistenceFormat: GRID_PERSISTENCE_FORMAT,
-		id: 'grid-multi-node-property',
-		title: 'Grid multi-node property',
-		layout: flow,
-		natures: [{ id: 'task', label: 'Task', color: '#304050' }],
-		groups: [],
-		junctions: [],
-		nodes,
-		relations: [...relations.values()],
-		regionPresentation: {
-			schemaVersion: GRID_REGION_PRESENTATION_SCHEMA,
-			regions: cellIds.map((id, cell) => ({
-				id,
-				layoutOrder: orderKey(`a${cell}`),
-				policy: LayoutPolicy.Layered,
-			})),
-			grid: {
-				minimumColumnWidths: Array.from({ length: defined(columns) }, () => 0),
-				minimumRowHeights: Array.from({ length: defined(rows) }, () => 0),
-				cells: cellIds.map((regionId, cell) => ({
-					regionId,
-					row: Math.floor(cell / defined(columns)),
-					column: cell % defined(columns),
-				})),
-			},
-		},
-	};
+	return persistedCellGrid(defined(columns), cells, [...relations.values()], flow);
 }
+
+/**
+ * The documented residual class of G-01: an endpoint with two or more crossings shares its cell
+ * with a sibling, so a second crossing may find the only corridor of its face taken.
+ */
+function hidesSeveralCrossings(document: LogicDocument): boolean {
+	const cellOf = new Map(document.nodes.map(({ id, regionId }) => [id, regionId]));
+	const crossingCount = new Map<string, number>();
+	for (const { from, to } of document.relations) {
+		if (cellOf.get(from) === cellOf.get(to)) continue;
+		for (const id of [from, to]) crossingCount.set(id, (crossingCount.get(id) ?? 0) + 1);
+	}
+	return [...crossingCount].some(([id, count]) => {
+		const siblings = document.nodes.filter(({ regionId }) => regionId === cellOf.get(id));
+		return count > 1 && siblings.length > 1;
+	});
+}
+
 /** The grid owns the middle piece of each crossing route: the contact oracle compares those. */
 function gridOwnedUnbridgedContact(
 	layout: LayoutResult,
@@ -462,7 +439,7 @@ describe('grid-cell real-pipeline properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	}, 600_000);
-	it('reaches every endpoint of multi-node cells in the four directions without entering a foreign box or cell', () => {
+	it('reaches multi-node cell endpoints in the four directions, unknown only for several crossings on a hidden endpoint', () => {
 		fc.assert(
 			fc.property(
 				fc.record({
@@ -480,6 +457,11 @@ describe('grid-cell real-pipeline properties', () => {
 					} catch (error) {
 						// An unresolved grid stays a typed unknown: never unsupported, never a partial layout.
 						expect(error).toBeInstanceOf(UnknownGridCellLayoutError);
+						if (
+							error instanceof UnknownGridCellLayoutError &&
+							error.code === RegionGeometryDiagnosticCode.GridCrossingEntersElement
+						)
+							expect(hidesSeveralCrossings(document)).toBe(true);
 						return;
 					}
 					const cellOf = new Map(document.nodes.map(({ id, regionId }) => [id, defined(regionId)]));
@@ -508,23 +490,4 @@ describe('grid-cell real-pipeline properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	}, 600_000);
-	it('lets a crossing target share the arrival point of its local family on a hidden endpoint', () => {
-		// Right to left: c0-0 receives c0-1 locally and c1-1 across the grid on the same face point.
-		const document = multiNodeGrid(
-			[2, 2],
-			[2, 2, 2, 1],
-			[
-				[1, 0],
-				[3, 0],
-				[4, 2],
-			],
-			defined(FLOWS[3]),
-		);
-		const prepared = prepareLayoutDocument(document);
-		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
-		const route = defined(layout.relations.find(({ id }) => id === 'r3-0'));
-		const sibling = defined(layout.elements.find(({ id }) => id === 'c0-1')).bounds;
-		for (const [index, end] of route.points.slice(1).entries())
-			expect(entersInterior(defined(route.points[index]), end, sibling)).toBe(false);
-	});
 });

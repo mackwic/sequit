@@ -20,6 +20,7 @@ import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/gri
 import {
 	crossingPortalSpans,
 	crossingRoutes,
+	gridCrossingRouting,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-search';
 import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
@@ -72,7 +73,7 @@ function chargedGrid(pairs: readonly (readonly [number, number])[]) {
 	if (placed.status !== GridCellLayoutStatus.Selected) throw new Error(placed.reason);
 	const resources = gridCrossingResources(input, crossing);
 	const incidence = crossingIncidence(crossing);
-	const routing = {
+	const routing = gridCrossingRouting({
 		rootId: input.rootId,
 		crossing,
 		columnCount: 4,
@@ -81,7 +82,7 @@ function chargedGrid(pairs: readonly (readonly [number, number])[]) {
 		edges: resources.edges,
 		incidence,
 		nestedEndpointIds: new Set<string>(),
-	};
+	});
 	const base = {
 		edges: resources.edges,
 		crossingIds: crossing.map(({ id }) => id),
