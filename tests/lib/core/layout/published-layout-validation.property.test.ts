@@ -147,8 +147,8 @@ it('never publishes a rejected layout as verified when groups have random member
 				prepared.ranks,
 				prepared.measurements,
 			);
-			const unverified = witness.unverified > 0 && witness.finalValidation === undefined;
-			if (unverified || witness.finalValidation?.valid === false) continue;
+			// A rejected publication always says unverified; a verified one is never rejected.
+			if (witness.unverified > 0 && witness.finalValidation?.valid !== true) continue;
 			failures.push(JSON.stringify({ index, direction, result, witness: witness.work }));
 		}
 	expect(failures).toEqual([]);

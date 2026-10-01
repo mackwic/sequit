@@ -234,7 +234,7 @@ it('witnesses the rejection when no order of the whole document passes validatio
 		valid: false,
 		code: DedicatedCandidateRejectionCode.RelationInventory,
 	});
-	expect(selected.witness.unverified).toBe(0);
+	expect(selected.witness.unverified).toBe(1);
 	expect(selected.witness.work.globalCompletePipelines).toBeGreaterThan(1);
 });
 

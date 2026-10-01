@@ -244,11 +244,12 @@ function repairAssembly(
 	documentary: RejectedDedicatedCandidate,
 	work: AssemblyWork,
 ): GlobalChoice {
+	// Published although rejected: the witness says unverified and keeps the rejection.
 	const rejectedBaseline = {
 		...work,
 		evaluation: input.baseline,
 		finalValidation: documentary,
-		unverified: false,
+		unverified: true,
 	};
 	if (input.local.wholeDocument) return rejectedBaseline;
 	const { search, admissions } = searchGlobalOrders({ ...input, failure: documentary });
