@@ -713,3 +713,9 @@ La **vue stabilisée** ne conserve pas le dernier layout valide. Un tel fallback
 ### Atelier des contacts de régions
 
 L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deux documents réels sur leurs mesures et cadres respectifs : `inside-branch` + `c→d` avec portails séparés, puis relation locale dans une cellule avec sortie externe contournant son nœud. Le même cadre est conservé entre les panneaux d'une rangée, avec un zoom synchronisé sur le contact. Deux modifications de route et de portail sont rejetées par les validateurs de composition ; une sonde de croisement strict est étiquetée comme hypothèse rejetée par l'oracle de contact, sans prétendre qu'un pont existe. Le parcours navigateur Chromium vérifie statuts, portails, propriétaires et bascule de zoom. Les captures `region-contact-workshop.png` et `region-contact-workshop-focused.png` conservent les vues complète et focalisée. L'arbitrage entre corridor distinct, tronc partagé explicitement sémantique et pont reste ouvert.
+
+## Correctifs du 1er octobre 2026 — invariance dédiée
+
+- Commit `fix(layout): invariance dédiée — départages structurels des jonctions et contextes` : D-02 et D-08 corrigés à la source, sans changement de routage ni de recherche.
+- Le témoin D-02 conserve désormais l’ordre à zéro croisement dans les quatre directions ; les contextes des groupes peuplés suivent l’ordre documentaire avant la racine virtuelle. Les groupes vides de même profondeur et les frères de même origine transversale suivent aussi leurs clés d’ordre, sans départage lexical.
+- Les douze empreintes de `dedicated-layout-identity.test.ts` restent identiques : aucun ré-épinglage. Les positions moyennes des jonctions, les contraintes de profondeur et les mesures restent inchangées.

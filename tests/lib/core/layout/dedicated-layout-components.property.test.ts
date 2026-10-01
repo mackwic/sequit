@@ -291,6 +291,72 @@ function scaledSizes(
 }
 
 describe('dedicated layout components', () => {
+	it.each([
+		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+	] satisfies readonly LayoutConfiguration[])(
+		'orders root-group contexts documentarily, then the virtual root in $direction',
+		async (configuration) => {
+			for (const [first, second] of [
+				['b', 'a'],
+				['été', 'hiver'],
+				['~a', 'b'],
+			] as const) {
+				const document = generatedDocument(
+					configuration,
+					[
+						generatedNode('first-member', first),
+						generatedNode('second-member', second),
+						generatedNode('free'),
+					],
+					[],
+					[],
+					[
+						{ ...generatedGroup(first, 'First'), layoutOrder: orderKey('a0') },
+						{ ...generatedGroup(second, 'Second'), layoutOrder: orderKey('a1') },
+					],
+				);
+				const { layout } = await layoutDocument(document);
+				expectOrderedComponents(layout, configuration.direction, [
+					[first, 'first-member'],
+					[second, 'second-member'],
+					['free'],
+				]);
+			}
+		},
+	);
+
+	it.each([
+		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+		{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+	] satisfies readonly LayoutConfiguration[])(
+		'keeps empty root groups in documentary order after three free nodes in $direction',
+		async (configuration) => {
+			const document = generatedDocument(
+				configuration,
+				['free-a', 'free-b', 'free-c'].map((id) => generatedNode(id)),
+				[],
+				[],
+				[
+					{ ...generatedGroup('z-first', 'First'), layoutOrder: orderKey('a0') },
+					{ ...generatedGroup('a-second', 'Second'), layoutOrder: orderKey('a1') },
+				],
+			);
+			const { layout } = await layoutDocument(document);
+			expect(
+				crossPrecedes(
+					boundsFor(layout, 'z-first'),
+					boundsFor(layout, 'a-second'),
+					configuration.direction,
+				),
+			).toBe(true);
+		},
+	);
+
 	it('separates disconnected components with independently generated sizes', async () => {
 		await fc.assert(
 			fc.asyncProperty(multiComponentCaseArbitrary, async (generated) => {

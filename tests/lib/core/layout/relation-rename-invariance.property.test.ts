@@ -46,7 +46,7 @@ interface DocumentShape {
 	readonly documentary: readonly number[];
 	readonly memberships: readonly number[];
 	readonly pairs: readonly (readonly [number, number])[];
-	readonly configuration: (typeof CONFIGURATIONS)[number];
+	readonly configuration: readonly [LayoutDirection, LayoutBias];
 }
 
 /** Documentary keys in the given order. */
@@ -188,8 +188,8 @@ function bridgeSet(routes: readonly RoutedPath[], originalId: (id: string) => st
 }
 
 /**
- * The selected order and the geometry, every route named back to its original relation; a
- * document the engine cannot route names its failing relation back the same way.
+ * The selected order and the complete layout, every identifier named back to its original;
+ * a document the engine cannot route names its failing relation back the same way.
  */
 function outcome(document: LogicDocument, originalId: (id: string) => string) {
 	const created = createGraph(document);
@@ -201,13 +201,21 @@ function outcome(document: LogicDocument, originalId: (id: string) => string) {
 			layoutMeasurementsFor(document),
 		);
 		return {
-			order: witness.selectedOrder,
-			width: layout.width,
-			height: layout.height,
-			elements: layout.elements,
-			routes: Object.fromEntries(
-				layout.relations.map(({ id, from, to, points }) => [originalId(id), { from, to, points }]),
-			),
+			order: witness.selectedOrder.map((row) => row.map(originalId)),
+			layout: {
+				...layout,
+				elements: layout.elements
+					.map((element) => ({ ...element, id: originalId(element.id) }))
+					.toSorted((left, right) => compareCanonicalStrings(left.id, right.id)),
+				relations: layout.relations
+					.map((relation) => ({
+						...relation,
+						id: originalId(relation.id),
+						from: originalId(relation.from),
+						to: originalId(relation.to),
+					}))
+					.toSorted((left, right) => compareCanonicalStrings(left.id, right.id)),
+			},
 			bridges: bridgeSet(layout.relations, originalId),
 		};
 	} catch (error) {
@@ -216,7 +224,60 @@ function outcome(document: LogicDocument, originalId: (id: string) => string) {
 	}
 }
 
-describe('relation rename invariance', () => {
+/** Reverse the lexical order across all endpoint kinds and relations, without changing content. */
+function reverseIdentifiers(document: LogicDocument) {
+	const ids = [...document.nodes, ...document.junctions, ...document.groups, ...document.relations]
+		.map(({ id }) => id)
+		.toSorted(compareCanonicalStrings);
+	const renamedIds = new Map(
+		ids.map((id, index) => [id, `renamed-${String(ids.length - index).padStart(3, '0')}`]),
+	);
+	const originalIds = new Map([...renamedIds].map(([original, renamed]) => [renamed, original]));
+	const rename = (id: string) => defined(renamedIds.get(id));
+	const endpoint = <T extends { readonly id: string; readonly groupId?: string }>(entity: T): T => {
+		const renamed = { ...entity, id: rename(entity.id) };
+		if (entity.groupId === undefined) return renamed;
+		return { ...renamed, groupId: rename(entity.groupId) };
+	};
+	return {
+		document: {
+			...document,
+			nodes: document.nodes.map(endpoint),
+			junctions: document.junctions.map(endpoint),
+			groups: document.groups.map(endpoint),
+			relations: document.relations.map((relation) => ({
+				...relation,
+				id: rename(relation.id),
+				from: rename(relation.from),
+				to: rename(relation.to),
+			})),
+		},
+		originalId: (id: string) => defined(originalIds.get(id)),
+	};
+}
+
+function junctionWitness(configuration: DocumentShape['configuration']): LogicDocument {
+	const document = documentOf({
+		nodeCount: 4,
+		groupCount: 0,
+		junctionCount: 1,
+		dag: [0, 1, 2, 3],
+		documentary: [0, 1, 2, 3],
+		memberships: [0, 0, 0, 0],
+		pairs: [],
+		configuration,
+	});
+	return {
+		...document,
+		relations: [
+			{ id: 'r0', from: 'junction-0', to: 'node-3' },
+			{ id: 'r1', from: 'node-3', to: 'node-2' },
+			{ id: 'r2', from: 'junction-0', to: 'node-0' },
+			{ id: 'r3', from: 'node-1', to: 'node-2' },
+		],
+	};
+}
+describe('identifier rename invariance', () => {
 	it('keeps rank order, boxes, routes, and bridge carriers invariant to relation ids', () => {
 		fc.assert(
 			fc.property(renamedCase, ({ document, permutation }) => {
@@ -231,11 +292,97 @@ describe('relation rename invariance', () => {
 						id: defined(renamedIds[index]),
 					})),
 				};
-				expect(outcome(renamed, (id) => defined(originalIds.get(id)))).toEqual(
+				expect(outcome(renamed, (id) => originalIds.get(id) ?? id)).toEqual(
 					outcome(document, (id) => id),
 				);
 			}),
 			PROPERTY_PARAMETERS,
 		);
 	}, 20_000);
+
+	it.each(CONFIGURATIONS)(
+		'keeps complete layouts invariant when every identifier is lexically reversed in %s with %s bias',
+		(direction, bias) => {
+			fc.assert(
+				fc.property(
+					shapes.filter(({ groupCount, junctionCount }) => groupCount > 0 && junctionCount > 0),
+					(shape) => {
+						const document = documentOf({ ...shape, configuration: [direction, bias] });
+						fc.pre(createGraph(document).ok);
+						const renamed = reverseIdentifiers(document);
+						expect(outcome(renamed.document, renamed.originalId)).toEqual(
+							outcome(document, (id) => id),
+						);
+					},
+				),
+				PROPERTY_PARAMETERS,
+			);
+		},
+		60_000,
+	);
+
+	it.each(CONFIGURATIONS)(
+		'keeps a junction coinciding with a foreign group invariant in %s with %s bias',
+		(direction, bias) => {
+			const document = documentOf({
+				nodeCount: 8,
+				groupCount: 2,
+				junctionCount: 1,
+				dag: [2, 6, 1, 4, 0, 7, 3, 5],
+				documentary: [0, 2, 7, 1, 3, 6, 5, 4],
+				memberships: [1, 0, 0, 0, 0, 2, 0, 1],
+				pairs: [
+					[4, 5],
+					[4, 0],
+				],
+				configuration: [direction, bias],
+			});
+			const renamed = reverseIdentifiers(document);
+			const original = outcome(document, (id) => id);
+			expect(original).toHaveProperty('layout.relations', [
+				expect.objectContaining({ id: 'relation-0', from: 'junction-0', to: 'node-2' }),
+				expect.objectContaining({ id: 'relation-1', from: 'node-7', to: 'node-0' }),
+				expect.objectContaining({ id: 'relation-2', from: 'node-0', to: 'node-2' }),
+			]);
+			expect(outcome(renamed.document, renamed.originalId)).toEqual(original);
+		},
+	);
+
+	it.each(CONFIGURATIONS)(
+		'keeps the junction/anchor tie crossing-free in %s with %s bias',
+		(direction, bias) => {
+			const document = junctionWitness([direction, bias]);
+			const first = {
+				...document,
+				junctions: document.junctions.map((junction) => ({ ...junction, id: 'a0' })),
+				relations: document.relations.map((relation) => {
+					if (relation.from !== 'junction-0') return relation;
+					return { ...relation, from: 'a0' };
+				}),
+			};
+			const second = {
+				...first,
+				junctions: first.junctions.map((junction) => ({ ...junction, id: 'p0' })),
+				relations: first.relations.map((relation) => {
+					if (relation.from !== 'a0') return relation;
+					return { ...relation, from: 'p0' };
+				}),
+			};
+			const selected = outcome(first, (id) => {
+				if (id === 'a0') return 'junction-0';
+				return id;
+			});
+			expect(
+				outcome(second, (id) => {
+					if (id === 'p0') return 'junction-0';
+					return id;
+				}),
+			).toEqual(selected);
+			expect(selected).toHaveProperty('order', [
+				['node-2', 'node-0'],
+				['node-1', 'node-3'],
+			]);
+			expect(selected).toHaveProperty('bridges', []);
+		},
+	);
 });

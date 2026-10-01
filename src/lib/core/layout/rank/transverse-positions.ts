@@ -38,7 +38,10 @@ export function rowPosition(ordinal: number, rowLength: number): number {
 	return (ordinal + 1) / (rowLength + 1);
 }
 
-/** Normalized transverse positions by row ordinal. A junction takes the mean of its anchors. */
+/**
+ * Normalized transverse positions by row ordinal. A junction takes the mean of its anchors;
+ * the topology oracle keeps it after ordinary anchors when that mean coincides with one.
+ */
 export function transversePositions(
 	structure: LayoutStructure,
 	rows: readonly (readonly string[])[],
