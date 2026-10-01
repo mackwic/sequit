@@ -719,3 +719,9 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Commit `fix(layout): invariance dédiée — départages structurels des jonctions et contextes` : D-02 et D-08 corrigés à la source, sans changement de routage ni de recherche.
 - Le témoin D-02 conserve désormais l’ordre à zéro croisement dans les quatre directions ; les contextes des groupes peuplés suivent l’ordre documentaire avant la racine virtuelle. Les groupes vides de même profondeur et les frères de même origine transversale suivent aussi leurs clés d’ordre, sans départage lexical.
 - Les douze empreintes de `dedicated-layout-identity.test.ts` restent identiques : aucun ré-épinglage. Les positions moyennes des jonctions, les contraintes de profondeur et les mesures restent inchangées.
+
+### Suite de relecture — somme canonique des ancres
+
+- Commit `fix(layout): invariance dédiée — somme canonique des ancres de jonction` : la somme flottante des positions est précédée d’un tri numérique, pour retirer le résidu d’ordre lexical découvert en relecture R-01.
+- Le témoin minimal à trois ancres est rouge avant correction dans les huit configurations (0,4000000000000001 contre 0,39999999999999997) ; le générateur d’invariance est élargi aux groupes imbriqués, aux jonctions membres de groupes et à plusieurs jonctions.
+- Aucun SHA dédié ré-épinglé. Le départage structurel n’est pas une optimisation des routes : la relecture mesure un effet global neutre sur les croisements stricts (2185 → 2186, sur 2515 documents valides des deux côtés dans un corpus de 3000).

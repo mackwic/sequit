@@ -21,6 +21,11 @@ import type { RoutedPath } from '../../../../src/lib/core/layout/bridges/route-r
 import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import { GroupRouteFailure } from '../../../../src/lib/core/layout/layout-types';
 import {
+	topologyRows,
+	transversePositions,
+} from '../../../../src/lib/core/layout/rank/transverse-positions';
+import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
+import {
 	type EndpointSlot,
 	fractionalOrderKeySpace,
 } from '../../../../src/lib/core/ordering/order-key-space';
@@ -42,6 +47,8 @@ interface DocumentShape {
 	readonly nodeCount: number;
 	readonly groupCount: number;
 	readonly junctionCount: number;
+	readonly groupParents: readonly number[];
+	readonly junctionMemberships: readonly number[];
 	readonly dag: readonly number[];
 	readonly documentary: readonly number[];
 	readonly memberships: readonly number[];
@@ -62,6 +69,21 @@ function documentaryKeys(order: readonly string[]): ReadonlyMap<string, string> 
 	return keys;
 }
 
+/** Frames cannot relate to endpoints inside their own enclosure, including nested members. */
+function belongsToGroup(shape: DocumentShape, endpoint: number, ancestor: number): boolean {
+	let group: number;
+	if (endpoint < shape.nodeCount) group = defined(shape.memberships[defined(shape.dag[endpoint])]);
+	else if (endpoint < shape.nodeCount + shape.groupCount) group = endpoint - shape.nodeCount;
+	else group = defined(shape.junctionMemberships[endpoint - shape.nodeCount - shape.groupCount]);
+	while (group < shape.groupCount) {
+		if (group === ancestor) return true;
+		const parent = defined(shape.groupParents[group]);
+		if (parent >= group) return false;
+		group = parent;
+	}
+	return false;
+}
+
 /**
  * Node relations follow the DAG order; a group may be either end, never of its own member.
  * Cycles through groups are left to the graph, which refuses them.
@@ -71,7 +93,6 @@ function relationsOf(shape: DocumentShape, endpoints: readonly string[]): LogicR
 	const seen = new Set<string>();
 	const pairs = [...shape.pairs];
 	if (shape.junctionCount > 0) pairs.unshift([shape.nodeCount + shape.groupCount, 0]);
-	const groupOf = (index: number) => `group-${defined(shape.memberships[index])}`;
 	for (const [first, second] of pairs) {
 		let from = defined(endpoints[first]);
 		let to = defined(endpoints[second]);
@@ -80,8 +101,12 @@ function relationsOf(shape: DocumentShape, endpoints: readonly string[]): LogicR
 			to = defined(endpoints[Math.min(first, second)]);
 		}
 		const nested =
-			(first < shape.nodeCount && groupOf(defined(shape.dag[first])) === to) ||
-			(second < shape.nodeCount && groupOf(defined(shape.dag[second])) === from);
+			(first >= shape.nodeCount &&
+				first < shape.nodeCount + shape.groupCount &&
+				belongsToGroup(shape, second, first - shape.nodeCount)) ||
+			(second >= shape.nodeCount &&
+				second < shape.nodeCount + shape.groupCount &&
+				belongsToGroup(shape, first, second - shape.nodeCount));
 		const key = JSON.stringify([from, to]);
 		if (from === to || nested || seen.has(key)) continue;
 		seen.add(key);
@@ -109,18 +134,28 @@ function documentOf(shape: DocumentShape): LogicDocument {
 		title: 'Relation rename invariance',
 		layout: defined(layoutConfiguration(direction, bias)),
 		natures: [{ id: 'task', label: 'Task', color: '#456858' }],
-		groups: groupIds.map((id) => ({
-			id,
-			kind: EndpointKind.Group,
-			label: id,
-			layoutOrder: defined(keys.get(id)),
-		})),
-		junctions: junctionIds.map((id) => ({
-			kind: EndpointKind.Junction,
-			id,
-			operator: JunctionOperator.Xor,
-			layoutOrder: defined(keys.get(id)),
-		})),
+		groups: groupIds.map((id, index) => {
+			const group: LogicDocument['groups'][number] = {
+				id,
+				kind: EndpointKind.Group,
+				label: id,
+				layoutOrder: defined(keys.get(id)),
+			};
+			const parent = defined(shape.groupParents[index]);
+			if (parent >= index) return group;
+			return { ...group, groupId: defined(groupIds[parent]) };
+		}),
+		junctions: junctionIds.map((id, index) => {
+			const junction: LogicDocument['junctions'][number] = {
+				kind: EndpointKind.Junction,
+				id,
+				operator: JunctionOperator.Xor,
+				layoutOrder: defined(keys.get(id)),
+			};
+			const group = defined(shape.junctionMemberships[index]);
+			if (group >= shape.groupCount) return junction;
+			return { ...junction, groupId: defined(groupIds[group]) };
+		}),
 		nodes: Array.from({ length: shape.nodeCount }, (_, index) => {
 			const id = `node-${index}`;
 			const node: LogicNode = {
@@ -140,8 +175,8 @@ function documentOf(shape: DocumentShape): LogicDocument {
 const shapes = fc
 	.record({
 		nodeCount: fc.integer({ min: 3, max: 8 }),
-		groupCount: fc.integer({ min: 0, max: 2 }),
-		junctionCount: fc.integer({ min: 0, max: 1 }),
+		groupCount: fc.integer({ min: 0, max: 4 }),
+		junctionCount: fc.integer({ min: 0, max: 2 }),
 	})
 	.chain(({ nodeCount, groupCount, junctionCount }) => {
 		const indices = Array.from({ length: nodeCount }, (_, index) => index);
@@ -150,6 +185,14 @@ const shapes = fc
 			nodeCount: fc.constant(nodeCount),
 			groupCount: fc.constant(groupCount),
 			junctionCount: fc.constant(junctionCount),
+			groupParents: fc.array(fc.nat(groupCount + 2), {
+				minLength: groupCount,
+				maxLength: groupCount,
+			}),
+			junctionMemberships: fc.array(fc.nat(groupCount + 2), {
+				minLength: junctionCount,
+				maxLength: junctionCount,
+			}),
 			dag: fc.shuffledSubarray(indices, { minLength: nodeCount, maxLength: nodeCount }),
 			documentary: fc.shuffledSubarray(indices, { minLength: nodeCount, maxLength: nodeCount }),
 			memberships: fc.array(fc.nat(groupCount + 2), { minLength: nodeCount, maxLength: nodeCount }),
@@ -261,6 +304,8 @@ function junctionWitness(configuration: DocumentShape['configuration']): LogicDo
 		nodeCount: 4,
 		groupCount: 0,
 		junctionCount: 1,
+		groupParents: [],
+		junctionMemberships: [0],
 		dag: [0, 1, 2, 3],
 		documentary: [0, 1, 2, 3],
 		memberships: [0, 0, 0, 0],
@@ -278,6 +323,44 @@ function junctionWitness(configuration: DocumentShape['configuration']): LogicDo
 	};
 }
 describe('identifier rename invariance', () => {
+	it.each(CONFIGURATIONS)(
+		'keeps the mean of three junction anchors independent of identifier order in %s with %s bias',
+		(direction, bias) => {
+			const seed = documentOf({
+				nodeCount: 3,
+				groupCount: 0,
+				junctionCount: 1,
+				groupParents: [],
+				junctionMemberships: [0],
+				dag: [0, 1, 2],
+				documentary: [0, 1, 2],
+				memberships: [0, 0, 0],
+				pairs: [],
+				configuration: [direction, bias],
+			});
+			const document = {
+				...seed,
+				relations: seed.nodes.map(({ id }, index) => ({
+					id: `relation-${index}`,
+					from: 'junction-0',
+					to: id,
+				})),
+			};
+			const renamed = reverseIdentifiers(document);
+			const positions = [document, renamed.document].map((candidate) => {
+				const graph = createGraph(candidate);
+				if (!graph.ok) throw new Error('The three-anchor document must form a graph.');
+				const structure = prepareLayout(graph.value, topologicallyRank(graph.value));
+				return transversePositions(structure, topologyRows(structure));
+			});
+			const renamedJunction = defined(renamed.document.junctions[0]).id;
+			expect(defined(positions[1]).get(renamedJunction)).toBe(
+				defined(positions[0]).get('junction-0'),
+			);
+			expect(outcome(renamed.document, renamed.originalId)).toEqual(outcome(document, (id) => id));
+		},
+	);
+
 	it('keeps rank order, boxes, routes, and bridge carriers invariant to relation ids', () => {
 		fc.assert(
 			fc.property(renamedCase, ({ document, permutation }) => {
@@ -328,6 +411,8 @@ describe('identifier rename invariance', () => {
 				nodeCount: 8,
 				groupCount: 2,
 				junctionCount: 1,
+				groupParents: [0, 1],
+				junctionMemberships: [2],
 				dag: [2, 6, 1, 4, 0, 7, 3, 5],
 				documentary: [0, 2, 7, 1, 3, 6, 5, 4],
 				memberships: [1, 0, 0, 0, 0, 2, 0, 1],

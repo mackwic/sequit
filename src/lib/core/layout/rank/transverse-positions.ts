@@ -57,7 +57,11 @@ export function transversePositions(
 		if (!rowOf.has(id)) continue;
 		const anchors = junctionAnchors(structure, id, junction, rowOf);
 		if (anchors.length === 0) continue;
-		const sum = anchors.reduce((total, anchor) => total + defined(positions.get(anchor)), 0);
+		// Adjacency is identifier-sorted; canonicalize the additions to preserve exact ties.
+		const sum = anchors
+			.map((anchor) => defined(positions.get(anchor)))
+			.sort((left, right) => left - right)
+			.reduce((total, position) => total + position, 0);
 		positions.set(id, sum / anchors.length);
 	}
 	return positions;
