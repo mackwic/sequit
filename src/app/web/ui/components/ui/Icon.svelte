@@ -23,12 +23,7 @@
 		style:width={`${size}px`}
 		style:height={`${size}px`}
 	>
-		{#if url}<span class="screen" style:mask-image={`url("${url}")`}></span><img
-				src={url}
-				alt=""
-				width={size}
-				height={size}
-			/>
+		{#if url}<span class="screen" style:mask-image={`url("${url}")`}></span>
 		{:else if !isIconAvailable(name)}<span class="unavailable">?</span>{/if}
 	</span>
 {/if}
@@ -48,9 +43,6 @@
 		mask-repeat: no-repeat;
 		mask-position: center;
 	}
-	img {
-		display: none;
-	}
 	.unavailable {
 		width: 100%;
 		border: 1px dashed currentColor;
@@ -58,14 +50,6 @@
 		font-size: 10px;
 		text-align: center;
 		line-height: 1.4;
-	}
-	@media print {
-		.screen {
-			display: none;
-		}
-		img {
-			display: block;
-		}
 	}
 	@media (forced-colors: active) {
 		.screen {

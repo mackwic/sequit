@@ -7,7 +7,7 @@
 </script>
 
 <header
-	class="z-20 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--ui-border)] bg-[var(--ui-surface)] px-4"
+	class="z-50 flex h-14 shrink-0 items-center justify-between gap-4 border-b border-[var(--ui-border)] bg-[var(--ui-surface)] px-4 print:hidden"
 >
 	<div class="flex min-w-0 items-center gap-4">
 		<a

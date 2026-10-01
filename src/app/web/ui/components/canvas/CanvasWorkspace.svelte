@@ -408,7 +408,10 @@
 	}
 </script>
 
-<section class="relative min-h-0 flex-1 overflow-hidden" aria-label="Canvas logique">
+<section
+	class="relative min-h-0 flex-1 overflow-hidden print:overflow-visible"
+	aria-label="Canvas logique"
+>
 	{#if opened.ok && session}
 		<CanvasShortcut
 			shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Undo]}
@@ -547,7 +550,7 @@
 				onclose={closeNatures}
 			/>
 		{/if}
-		{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
+		{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40 print:hidden">
 				{error}
 			</p>{/if}
 		<CanvasViewportControls {session} viewportElement={canvasViewport} />
@@ -569,7 +572,7 @@
 	{/if}
 
 	{#if layout}
-		<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2">
+		<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2 print:hidden">
 			<LayoutChip
 				{layout}
 				{lanes}

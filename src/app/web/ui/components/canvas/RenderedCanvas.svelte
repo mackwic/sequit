@@ -18,6 +18,7 @@
 		activateEntityByPointer,
 	} from '../../canvas/canvas-entity-events';
 	import type { CanvasModel } from '../../canvas/canvas-model';
+	import { printStageFit } from '../../canvas/canvas-print';
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
 	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
@@ -60,6 +61,7 @@
 	let relations = $derived(canvas.relations);
 	let renderedRelations = $derived(renderRelationPaths(relations));
 	let extent = $derived(scaledStageExtent(canvas, zoom));
+	let printFit = $derived(printStageFit(canvas));
 	let stage = $state<HTMLDivElement>();
 	let entityIndex = $derived(createCanvasEntityIndex(canvas));
 	let tabOrder = $derived(canvasNodeTabOrder(canvas, entityIndex));
@@ -149,12 +151,14 @@
 		data-graph-stage
 		data-stage-width={canvas.width}
 		data-stage-height={canvas.height}
+		data-print-orientation={printFit.orientation}
 		style:width={`${canvas.width}px`}
 		style:height={`${canvas.height}px`}
 		style:left={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.width * zoom}px) / 2))`}
 		style:top={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.height * zoom}px) / 2))`}
 		style:transform={`scale(${zoom})`}
 		style:transform-origin="top left"
+		style:--print-scale={printFit.scale}
 		bind:this={stage}
 		onkeydown={handleKeyboardNavigation}
 		onfocusin={rememberFocus}
@@ -351,6 +355,37 @@
 		--canvas-motion-easing: cubic-bezier(0.22, 1, 0.36, 1);
 	}
 
+	/* An exported picture is read from computed styles at once: no motion, no selection.
+	   `data-exporting` is set by `canvas-image.ts`, outside the template: the selectors stay global. */
+	:global([data-graph-stage][data-exporting]) {
+		--canvas-motion-duration: 0ms;
+	}
+
+	/* Printing lays the stage at the sheet origin, unzoomed, on the sheet orientation that fits it best,
+	   with its colours: browsers otherwise drop backgrounds. The inline screen geometry has to be
+	   overridden; Safari ignores `size` and keeps the dialog's choice. */
+	@media print {
+		[data-canvas-sizing-wrapper] {
+			width: auto !important;
+			height: auto !important;
+			min-width: 0;
+			min-height: 0;
+		}
+		[data-graph-stage] {
+			left: 0 !important;
+			top: 0 !important;
+			transform: none !important;
+			zoom: var(--print-scale);
+			print-color-adjust: exact;
+		}
+		[data-graph-stage][data-print-orientation='portrait'] {
+			page: sheet-portrait;
+		}
+		[data-graph-stage][data-print-orientation='landscape'] {
+			page: sheet-landscape;
+		}
+	}
+
 	.canvas-group {
 		position: absolute;
 		display: block;
@@ -409,6 +444,11 @@
 	.canvas-group.selected,
 	.junction.selected {
 		outline-color: var(--ui-accent);
+	}
+
+	:global([data-exporting]) .canvas-group.selected,
+	:global([data-exporting]) .junction.selected {
+		outline-color: transparent;
 	}
 
 	.canvas-group:focus-visible,

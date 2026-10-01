@@ -129,25 +129,24 @@ test('nature presentation applies on a thousand-node performance fixture', async
 	await expect(page.locator('[data-node-id][data-content-color="#f97316"]')).toHaveCount(0);
 });
 
-test('content keeps dark readable labels and prints identifiable monochrome cards', async ({
+test('content keeps dark readable labels and prints the cards in their colours', async ({
 	page,
 }) => {
 	await openStyle(page);
 	await chooseColor(page, '#ffffff');
 	const node = page.locator('[data-node-id="comparer"]');
-	await expect(node.locator('.node-header')).toHaveCSS('color', 'rgb(41, 37, 36)');
-	const icon = node.locator('[data-icon="phosphor:lightning"]');
-	await expect(icon.locator('.screen')).toHaveCSS('mask-image', /lightning\.svg/);
+	const header = node.locator('.node-header');
+	await expect(header).toHaveCSS('color', 'rgb(41, 37, 36)');
+	const icon = node.locator('[data-icon="phosphor:lightning"] .screen');
+	await expect(icon).toHaveCSS('mask-image', /lightning\.svg/);
+	await chooseColor(page, '#b91c1c');
+	// 13 % of #b91c1c over white, once the header's colour transition has settled.
+	const tinted = 'color(srgb 0.964314 0.884275 0.884275)';
+	await expect(header).toHaveCSS('background-color', tinted);
 	await page.emulateMedia({ media: 'print' });
-	await expect(node.locator('.node-header')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-	await expect(node.locator('.node-header')).toHaveCSS('color', 'rgb(0, 0, 0)');
+	await expect(header).toHaveCSS('background-color', tinted);
+	await expect(header).toHaveCSS('color', 'rgb(41, 37, 36)');
+	await expect(page.locator('[data-graph-stage]')).toHaveCSS('print-color-adjust', 'exact');
 	await expect(node).toHaveCSS('outline-style', 'none');
-	await expect(icon.locator('img')).toBeVisible();
-	await expect
-		.poll(() =>
-			icon
-				.locator('img')
-				.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0),
-		)
-		.toBe(true);
+	await expect(icon).toBeVisible();
 });

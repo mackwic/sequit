@@ -48,7 +48,7 @@ Vérifications via `mise exec -- pnpm …` : `format:check`, `check:types` (0 er
 
 Le thème principal sépare les rôles UI des couleurs du content. Phosphor remplace les pictogrammes isolés des commandes ; les natures et les nœuds peuvent recevoir leurs propres couleurs et références d’icônes. L’inspecteur montre la portée d’une modification et le retour à l’héritage, propriété par propriété.
 
-Les tests couvrent les allers-retours TOML/Yjs, la fusion de changements indépendants de nature et de nœud, l’ajout via les commandes existantes, la duplication, les modifications de texte et l’historique. Les parcours navigateur vérifient l’héritage indépendant, l’export/import, le clavier à 390 px, l’application d’un style à 1 000 nœuds et les cartes monochromes à l’impression.
+Les tests couvrent les allers-retours TOML/Yjs, la fusion de changements indépendants de nature et de nœud, l’ajout via les commandes existantes, la duplication, les modifications de texte et l’historique. Les parcours navigateur vérifient l’héritage indépendant, l’export/import, le clavier à 390 px, l’application d’un style à 1 000 nœuds et la conservation des couleurs des cartes à l’impression.
 
 Le catalogue de recherche est chargé à l’ouverture du sélecteur : son index n’est plus dans le chargement commun. La compilation reste sous le seuil d’avertissement de taille de chaque chunk, sans modifier ce seuil. Les assets et leur licence MIT sont livrés avec l’application. Cette vérification ne constitue pas un benchmark de latence ni une validation de pagination imprimée.
 

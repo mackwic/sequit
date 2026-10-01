@@ -33,12 +33,4 @@
 		line-height: 1.45;
 		white-space: pre-wrap;
 	}
-
-	@media print {
-		.node-header {
-			background: white;
-			color: black;
-			border-color: #999;
-		}
-	}
 </style>

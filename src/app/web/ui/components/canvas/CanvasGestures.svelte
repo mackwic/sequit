@@ -354,6 +354,11 @@
 		position: absolute;
 		inset: 0;
 	}
+	@media print {
+		.gestures {
+			position: static;
+		}
+	}
 	.gestures :global([data-endpoint-id]) {
 		touch-action: none;
 		user-select: none;

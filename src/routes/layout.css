@@ -30,3 +30,16 @@
 		font: inherit;
 	}
 }
+
+/* The rendered stage picks the sheet orientation; `canvas-print.ts` fits it inside the same margins. */
+@page {
+	margin: 10mm;
+}
+
+@page sheet-portrait {
+	size: portrait;
+}
+
+@page sheet-landscape {
+	size: landscape;
+}

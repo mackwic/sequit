@@ -56,7 +56,12 @@ test('starting a session publishes the current document and shares its link', as
 	// The menu no longer offers local-only actions inside a session.
 	await page.keyboard.press('Escape');
 	await menuTrigger(page).click();
-	await expect(page.getByRole('menuitem')).toHaveText(['Exporter…', 'Imprimer…']);
+	await expect(page.getByRole('menuitem')).toHaveText([
+		'Renommer le document',
+		'Exporter…',
+		'Exporter l’image…',
+		'Imprimer…',
+	]);
 });
 
 test('a second participant joins through the link, and the name is shared', async ({ browser }) => {
@@ -107,6 +112,25 @@ async function joinFromLink(page: Page, link: string, name: string): Promise<voi
 	await connected(page);
 	await page.locator('[data-node-id]').first().waitFor();
 }
+
+test('renaming the shared document renames it for every participant', async ({ browser }) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.TwoBoxes);
+	const alice = await browser.newPage();
+	const bob = await browser.newPage();
+	await joinFromLink(alice, `/session/${room}`, 'Alice');
+	await joinFromLink(bob, `/session/${room}`, 'Bob');
+	await expect(menuTrigger(bob)).toContainText('Deux boîtes');
+
+	await menuTrigger(alice).click();
+	await alice.getByRole('menuitem', { name: 'Renommer le document' }).click();
+	await alice.getByRole('textbox', { name: 'Titre du document' }).fill('Plan partagé');
+	await alice.getByRole('textbox', { name: 'Titre du document' }).press('Enter');
+	await expect(menuTrigger(bob)).toContainText('Plan partagé');
+	await expect(bob).toHaveTitle('Plan partagé — Session Sequit');
+	await alice.close();
+	await bob.close();
+});
 
 function canvasViewport(page: Page) {
 	return page.getByRole('region', { name: 'Canvas viewport' });

@@ -148,6 +148,11 @@
 		outline-color: var(--ui-accent);
 	}
 
+	/* An exported picture shows no selection. */
+	:global([data-exporting]) .positioned.selected {
+		outline-color: transparent;
+	}
+
 	.positioned:focus-visible {
 		outline: 2px dashed var(--ui-accent);
 		outline-offset: 7px;
@@ -156,7 +161,6 @@
 	@media print {
 		.node-card {
 			box-shadow: none;
-			border-color: #666;
 		}
 		.positioned.selected,
 		.positioned:focus-visible {

@@ -8,12 +8,15 @@
 	let {
 		label,
 		disabled = false,
+		triggerElement = $bindable(),
 		trigger,
 		children,
 	}: {
 		label: string;
 		/** Keeps the trigger visible but inert, e.g. while a shared session is offline. */
 		disabled?: boolean;
+		/** The trigger button, for a caller that gives focus back to it. */
+		triggerElement?: HTMLButtonElement | undefined;
 		trigger: Snippet<[boolean]>;
 		children: Snippet;
 	} = $props();
@@ -23,7 +26,6 @@
 	const ENABLED_ITEM = '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled)';
 	let open = $state(false);
 	let ready = $state(false);
-	let triggerElement = $state<HTMLButtonElement>();
 	let menuElement = $state<HTMLDivElement>();
 
 	onMount(() => {

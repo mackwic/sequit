@@ -51,7 +51,7 @@ Dans le bilan, **Noter cet essai** ajoute le couple variante/document/taille à 
 
 - `src/app/web/ui/styles/main-theme.css` : thème principal, rôles `--ui-*` distincts des bases `--content-*`.
 - `src/app/web/ui/icons/phosphor.ts` : assets Phosphor Regular livrés avec l’application. Le sélecteur d’icône montre d’emblée une trentaine d’icônes suggérées ; `phosphor-catalogue.ts` est chargé à la première recherche ou sur « Afficher plus d’icônes » pour rechercher par noms, tags et catégories. Le rendu ne charge aucun SVG depuis une référence fournie par le document.
-- `src/app/web/ui/components/ui/Icon.svelte` : pictogramme décoratif partagé ; le contrôle parent porte son nom accessible. Les assets conservent leur rendu noir à l’impression.
+- `src/app/web/ui/components/ui/Icon.svelte` : pictogramme décoratif partagé ; le contrôle parent porte son nom accessible. Le pictogramme est un masque coloré par `currentColor`, à l’écran comme à l’impression et dans l’export d’image.
 - `src/app/web/ui/components/content/` : palette RGB, recherche d’icône, éditeur de propriétés héritées et inspecteur. Les contrôles sont réutilisés dans le gestionnaire de natures existant.
 - `src/lib/core/document/content-style.ts` : transformations pures, identité et logique conservées. L’adaptateur de l’atelier les applique au document courant avec validation et historique.
 - `NodeContent.svelte` : contenu commun à la mesure DOM et à la carte visible ; ajouter une icône ne crée pas deux calculs de taille divergents.

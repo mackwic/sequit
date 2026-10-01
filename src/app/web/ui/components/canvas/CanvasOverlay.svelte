@@ -149,7 +149,10 @@
 	});
 </script>
 
-<div class="pointer-events-none absolute inset-0 z-30 overflow-hidden" data-canvas-overlay>
+<div
+	class="pointer-events-none absolute inset-0 z-30 overflow-hidden print:hidden"
+	data-canvas-overlay
+>
 	{#if awareness && canvas && viewportElement}{@render awareness(canvas, viewportElement)}{/if}
 	{#if contextual && viewportElement && !hideToolbar}
 		<ContextualBar

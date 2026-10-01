@@ -43,7 +43,7 @@
 		openHelp(document.activeElement);
 	}}
 />
-<div class="absolute right-4 bottom-4 z-20 flex items-center gap-2">
+<div class="absolute right-4 bottom-4 z-20 flex items-center gap-2 print:hidden">
 	<div class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm">
 		<button
 			class="ui-action quiet"

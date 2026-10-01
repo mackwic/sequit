@@ -14,10 +14,12 @@
 	import { CollaborationStatus } from '../../../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { UNTITLED_DOCUMENT_TITLE } from '../../../../lib/infrastructure/document/document-creation';
+	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { parseSequitToml } from '../../../../lib/infrastructure/toml/parse-sequit-toml';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import { consumeCollaborationError } from '../../document/collaboration-rejection';
-	import { documentFilename } from '../document/document-filename';
+	import { canvasStageElement } from '../canvas/canvas-image';
+	import { documentFilename, documentFileStem } from '../document/document-filename';
 	import { downloadText } from '../document/download-text';
 	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import { RecentDocumentsStore } from '../document/recent-documents';
@@ -29,13 +31,16 @@
 	import ParticipantAvatars from './collaboration/ParticipantAvatars.svelte';
 	import ShareDialog from './collaboration/ShareDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import ExportImageDialog from './document/ExportImageDialog.svelte';
 	import Icon from './ui/Icon.svelte';
 
 	const UNTITLED = UNTITLED_DOCUMENT_TITLE;
 	let { room }: { room: string } = $props();
 	let name = $state('');
 	let session = $state<LiveSession>();
+	let main = $state<HTMLElement>();
 	let dialog = $state<'name' | 'share'>();
+	let imageExport = $state<{ stage: HTMLElement; stem: string }>();
 	let toast = $state<string>();
 	let link = $state('');
 	let path = $derived(resolve('/session/[room]', { room }));
@@ -53,6 +58,15 @@
 	let exportAction = $derived.by(() => {
 		if (!session?.model) return undefined;
 		return exportDocument;
+	});
+	let exportImageAction = $derived.by(() => {
+		if (!session?.model) return undefined;
+		return exportImage;
+	});
+	// A shared title is a text: it can only change while texts can be sent.
+	let renameAction = $derived.by(() => {
+		if (!session?.model || !session.textEditable) return undefined;
+		return renameDocument;
 	});
 
 	onMount(() => {
@@ -123,6 +137,20 @@
 		downloadText(serializeSequitToml(model), documentFilename(model.title, model.id));
 	}
 
+	function renameDocument(next: string): void {
+		const current = session;
+		const model = current?.model;
+		if (!current || !model) return;
+		current.client.updateText({ kind: SharedElementKind.Document, id: model.id }, 'title', next);
+	}
+
+	function exportImage(): void {
+		const model = session?.model;
+		const stage = main && canvasStageElement(main);
+		if (!model || !stage) return;
+		imageExport = { stage, stem: documentFileStem(model.title, model.id) };
+	}
+
 	/** Leaving keeps a local copy: the room lives on for the others. */
 	function leave(): void {
 		const model = session?.model;
@@ -148,10 +176,16 @@
 </svelte:head>
 
 <main
-	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)]"
+	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
+	bind:this={main}
 >
 	<AppHeader>
-		<DocumentMenu {title} onexport={exportAction} />
+		<DocumentMenu
+			{title}
+			onrename={renameAction}
+			onexport={exportAction}
+			onexportimage={exportImageAction}
+		/>
 		{#snippet actions()}
 			<p class="status m-0 flex items-center gap-2 text-xs text-[var(--ui-muted)]" role="status">
 				<span
@@ -183,7 +217,12 @@
 	</AppHeader>
 
 	{#if toast}
-		<div class="ui-notice error m-3 mb-0" role="status" aria-live="polite" aria-atomic="true">
+		<div
+			class="ui-notice error m-3 mb-0 print:hidden"
+			role="status"
+			aria-live="polite"
+			aria-atomic="true"
+		>
 			<Icon name="phosphor:warning-circle" />
 			<p class="m-0 flex-1">{toast}</p>
 			<button
@@ -232,6 +271,15 @@
 			onleave={leave}
 			onclose={() => {
 				dialog = undefined;
+			}}
+		/>
+	{/if}
+	{#if imageExport}
+		<ExportImageDialog
+			stage={imageExport.stage}
+			stem={imageExport.stem}
+			onclose={() => {
+				imageExport = undefined;
 			}}
 		/>
 	{/if}

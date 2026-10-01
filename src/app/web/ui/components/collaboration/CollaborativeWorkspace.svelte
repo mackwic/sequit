@@ -383,7 +383,7 @@
 		{#if !panel}
 			<CanvasViewportControls session={canvas} viewportElement={canvasViewport} />
 			<CanvasInteractionStatus session={canvas} />
-			<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2">
+			<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2 print:hidden">
 				<LayoutChip
 					layout={model.layout}
 					{lanes}
@@ -394,7 +394,7 @@
 					onlanes={openLanes}
 				/>
 			</div>
-			{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40">
+			{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40 print:hidden">
 					{error}
 				</p>{/if}
 		{/if}
@@ -807,6 +807,14 @@
 		aside {
 			border-left: 0;
 			border-top: 1px solid #ddd8d0;
+		}
+	}
+	@media print {
+		.workspace {
+			display: block;
+		}
+		aside {
+			display: none;
 		}
 	}
 </style>

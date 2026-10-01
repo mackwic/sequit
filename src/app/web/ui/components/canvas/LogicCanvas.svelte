@@ -393,7 +393,7 @@
 	<div
 		class:cursor-grab={spacePressed && !panning}
 		class:cursor-grabbing={panning}
-		class="canvas-grid absolute inset-0 overflow-auto overscroll-contain"
+		class="canvas-grid absolute inset-0 overflow-auto overscroll-contain print:static print:overflow-visible"
 		role="region"
 		aria-label="Canvas viewport"
 		data-canvas-viewport
@@ -557,5 +557,10 @@
 		background-color: #f5f5f4;
 		background-image: radial-gradient(#d6d3d1 0.8px, transparent 0.8px);
 		background-size: 20px 20px;
+	}
+	@media print {
+		.canvas-grid {
+			background: none;
+		}
 	}
 </style>

@@ -9,9 +9,11 @@
 		emptyDocument,
 		UNTITLED_DOCUMENT_TITLE,
 	} from '../../../../lib/infrastructure/document/document-creation';
+	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import type { OpenDocumentResult } from '../../projection/open-document';
-	import { documentFilename } from '../document/document-filename';
+	import { canvasStageElement } from '../canvas/canvas-image';
+	import { documentFilename, documentFileStem } from '../document/document-filename';
 	import { downloadText } from '../document/download-text';
 	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import {
@@ -24,6 +26,7 @@
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';
 	import CollaborationDialog from './collaboration/CollaborationDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import ExportImageDialog from './document/ExportImageDialog.svelte';
 	import NewDocumentDialog from './document/NewDocumentDialog.svelte';
 	import OpenDocumentDialog from './document/OpenDocumentDialog.svelte';
 	import RecentDocumentsDialog from './document/RecentDocumentsDialog.svelte';
@@ -34,9 +37,11 @@
 	const SAVE_DELAY_MS = 400;
 	let { source: initialSource }: { source: string } = $props();
 	let source = $state(untrack(() => initialSource));
+	let main = $state<HTMLElement>();
 	let opened = $state<OpenedDocument>();
 	let title = $state(UNTITLED);
 	let dialog = $state<'new' | 'open' | 'recent' | 'collaborate'>();
+	let imageExport = $state<{ stage: HTMLElement; stem: string }>();
 	// Each successful open is a new document, even when the bytes match the previous source.
 	let generation = $state(0);
 	let recent = $state<RecentDocuments>({ currentId: undefined, documents: [] });
@@ -51,6 +56,14 @@
 	let exportAction = $derived.by(() => {
 		if (!opened) return undefined;
 		return exportDocument;
+	});
+	let exportImageAction = $derived.by(() => {
+		if (!opened) return undefined;
+		return exportImage;
+	});
+	let renameAction = $derived.by(() => {
+		if (!opened) return undefined;
+		return renameDocument;
 	});
 	// The open dialog only promises retention when the current document is actually stored.
 	let currentRetained = $derived.by(() => {
@@ -132,6 +145,21 @@
 		unsaved = false;
 	}
 
+	function exportImage(): void {
+		const current = opened;
+		const stage = main && canvasStageElement(main);
+		if (!current || !stage) return;
+		const logic = current.read();
+		imageExport = { stage, stem: documentFileStem(logic.title, logic.id) };
+	}
+
+	function renameDocument(next: string): void {
+		const current = opened;
+		if (!current) return;
+		const target = { kind: SharedElementKind.Document, id: current.read().id } as const;
+		current.session.updateText(target, 'title', next);
+	}
+
 	function openSource(next: string): void {
 		persist();
 		dialog = undefined;
@@ -199,11 +227,13 @@
 </svelte:head>
 
 <main
-	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)]"
+	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
+	bind:this={main}
 >
 	<AppHeader>
 		<DocumentMenu
 			{title}
+			onrename={renameAction}
 			onnew={() => {
 				dialog = 'new';
 			}}
@@ -214,6 +244,7 @@
 				dialog = 'recent';
 			}}
 			onexport={exportAction}
+			onexportimage={exportImageAction}
 		/>
 		{#snippet actions()}
 			<button
@@ -267,6 +298,15 @@
 			onstart={startSession}
 			onclose={() => {
 				dialog = undefined;
+			}}
+		/>
+	{/if}
+	{#if imageExport}
+		<ExportImageDialog
+			stage={imageExport.stage}
+			stem={imageExport.stem}
+			onclose={() => {
+				imageExport = undefined;
 			}}
 		/>
 	{/if}

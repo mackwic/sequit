@@ -92,6 +92,107 @@ test('export downloads the current document with its edits', async ({ page }) =>
 	expect(exported).toContain('Contenu exporté');
 });
 
+function pngSize(png: Buffer): [number, number] {
+	expect(png.subarray(0, 8)).toEqual(Buffer.from('89504e470d0a1a0a', 'hex'));
+	// IHDR follows the signature: width and height are its first two big-endian words.
+	return [png.readUInt32BE(16), png.readUInt32BE(20)];
+}
+
+test('image export offers the whole stage or the selection, scaled, as PNG or SVG', async ({
+	page,
+}) => {
+	await page.goto('/');
+	const node = page.locator('[data-node-id="traceable-edits"]');
+	await node.click();
+	await expect(node).toHaveAttribute('aria-pressed', 'true');
+	await page.getByRole('button', { name: 'Zoom arrière' }).click();
+	const stage = page.locator('[data-graph-stage]');
+	await expect(stage).toHaveCSS('transform', /matrix\(0\.9/);
+	const stageSize = await stage.evaluate((element): [number, number] => [
+		element.clientWidth,
+		element.clientHeight,
+	]);
+
+	await openMenuItem(page, 'Exporter l’image…');
+	const dialog = page.getByRole('dialog', { name: 'Exporter l’image' });
+	const selectionOnly = dialog.getByRole('switch', { name: 'Uniquement la sélection' });
+	const size = dialog.locator('[data-export-size]');
+	await expect(selectionOnly).toBeChecked();
+	await expect(dialog.locator('[data-export-preview] img')).toBeVisible();
+	await selectionOnly.click();
+	// The whole stage is far wider than the box: the preview shrinks it instead of clipping it.
+	await expect
+		.poll(() =>
+			dialog.locator('[data-export-preview]').evaluate((box) => {
+				const picture = box.querySelector('img');
+				if (picture === null || picture.naturalWidth === 0) return 'not rendered';
+				const outer = box.getBoundingClientRect();
+				const inner = picture.getBoundingClientRect();
+				return inner.right <= outer.right && inner.bottom <= outer.bottom && inner.width > 200;
+			}),
+		)
+		.toBe(true);
+	await selectionOnly.click();
+	await dialog.getByRole('radio', { name: '3×' }).click();
+	const announced = (await size.textContent())?.trim();
+	let downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'PNG' }).click();
+	let download = await downloading;
+	expect(download.suggestedFilename()).toBe('ai-for-documentary-effort.png');
+	const [width, height] = pngSize(await readFile(await download.path()));
+	expect(`${width} × ${height} px`).toBe(announced);
+	expect(width).toBeLessThan(stageSize[0] * 3);
+
+	await selectionOnly.click();
+	await dialog.getByRole('radio', { name: '1×' }).click();
+	await dialog.getByLabel('Nom du fichier').fill('schema complet');
+	await expect(size).toHaveText(`${stageSize[0]} × ${stageSize[1]} px`);
+	downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'PNG' }).click();
+	download = await downloading;
+	expect(download.suggestedFilename()).toBe('schema complet.png');
+	expect(pngSize(await readFile(await download.path()))).toEqual(stageSize);
+
+	await dialog.getByRole('switch', { name: 'Fond' }).click();
+	downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'SVG' }).click();
+	download = await downloading;
+	expect(download.suggestedFilename()).toBe('schema complet.svg');
+	const svg = await readFile(await download.path(), 'utf8');
+	expect(svg).toMatch(new RegExp(`^<svg [^>]*width="${stageSize[0]}" height="${stageSize[1]}"`));
+	expect(svg).not.toContain('fill="#ffffff"');
+	expect(svg).toContain('data-node-id="traceable-edits"');
+
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await expect(stage).not.toHaveAttribute('data-exporting');
+	await expect(node).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('printing shows the stage alone, unzoomed, fitted on one sheet', async ({ page }) => {
+	await page.goto('/');
+	const stage = page.locator('[data-graph-stage]');
+	await expect(stage.locator('[data-node-id]')).toHaveCount(24);
+	await page.getByRole('button', { name: 'Zoom arrière' }).click();
+	await expect(stage).toHaveCSS('transform', /matrix\(0\.9/);
+	const scale = await stage.evaluate((element) =>
+		Number(element.style.getPropertyValue('--print-scale')),
+	);
+	expect(scale).toBeGreaterThan(0);
+	expect(scale).toBeLessThan(1);
+
+	await page.emulateMedia({ media: 'print' });
+	await expect(page.locator('header')).toBeHidden();
+	await expect(page.getByRole('navigation', { name: 'Actions du canvas' })).toBeHidden();
+	await expect(page.locator('[data-layout-chip]')).toBeHidden();
+	await expect(page.locator('[data-canvas-viewport]')).toHaveCSS('position', 'static');
+	await expect(stage).toHaveCSS('transform', 'none');
+	expect(await stage.evaluate((element) => Number(getComputedStyle(element).zoom))).toBeCloseTo(
+		scale,
+		4,
+	);
+});
+
 test('opening a file replaces the document, and an invalid file keeps it', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);

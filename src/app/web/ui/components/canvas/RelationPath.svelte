@@ -31,6 +31,7 @@
 		transition-duration: var(--canvas-motion-duration);
 		transition-timing-function: var(--canvas-motion-easing);
 	}
+	/* Stylesheet rules on SVG content are not part of an exported picture: the attributes are. */
 	.relation-visual.selected {
 		stroke: var(--ui-accent);
 		stroke-width: 4;
