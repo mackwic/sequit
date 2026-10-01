@@ -1,23 +1,23 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { RoutingEdge } from '../geometry/routing-edge';
-import { BASE_RANK_GAP, OUTER_MARGIN, RAIL_SPACING } from '../layout-settings';
+import { OUTER_MARGIN, RAIL_SPACING } from '../layout-settings';
 import type { Bounds, LayoutElement, Point } from '../layout-types';
 import { trackOffset } from '../resources/routing-resource-allocation';
+import {
+	bandCrossLayout,
+	bandPortAccess,
+	type LaneBands,
+	planLaneBands,
+	type PortAccess,
+} from './shared-lane-bands';
 import type { SharedLaneInput, SharedLanePlan } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
-import type { SharedLaneBounds } from './shared-lane-types';
+import type { LogicalBox, SharedLaneBounds } from './shared-lane-types';
 
 export const SHARED_LANE_CLEARANCE = 12;
 const LANE_INSET = 24;
 const MINIMUM_LANE_WIDTH = 144;
-
-export interface LogicalBox {
-	readonly cross: number;
-	readonly longitudinal: number;
-	readonly crossSize: number;
-	readonly longSize: number;
-}
 
 export interface SharedLaneFrame {
 	readonly laneStarts: readonly number[];
@@ -32,8 +32,8 @@ export interface SharedLaneFrame {
 	readonly topExteriorBase: number;
 	readonly exteriorBase: number;
 	readonly crossLanePlans: readonly SharedLanePlan[];
-	/** The port offsets the frame placed its elements with: what the routing reads a port again by. */
-	readonly portOffsetByIncidence: ReadonlyMap<string, number>;
+	/** How each port, keyed by incidence, leaves its face and reaches its lane gutter. */
+	readonly portAccessByIncidence: ReadonlyMap<string, PortAccess>;
 	/** The owner of the routing edges this frame publishes. */
 	readonly ownerId: string;
 	/** The gutter band beside the lanes: one track per plan, both sides of a lane reading the ordinal. */
@@ -98,35 +98,66 @@ export function physicalBounds(
 	return { x: long, y: logical.cross, width: logical.longSize, height: logical.crossSize };
 }
 
+/** Where an endpoint sits in its band: the band's cross width and its own offset inside it. */
+interface BandSlot {
+	readonly bandWidth: number;
+	readonly offset: number;
+}
+
+interface FrameSizes {
+	readonly rows: number[];
+	readonly widths: number[];
+	readonly slots: ReadonlyMap<string, BandSlot>;
+}
+
 function rowAndLaneSizes(
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
-): { readonly rows: number[]; readonly widths: number[] } {
+	lanes: LaneBands,
+): FrameSizes {
 	const rows: number[] = [];
 	const widths = input.laneIds.map(() => MINIMUM_LANE_WIDTH);
+	const slots = new Map<string, BandSlot>();
 	for (const item of input.endpoints.values()) {
 		const long = Math.max(item.longSize, ports.demandByEndpoint.get(item.id) ?? 0);
 		rows[item.row] = Math.max(rows[item.row] ?? 0, long);
-		const width = item.crossSize + 2 * LANE_INSET;
-		widths[item.laneIndex] = Math.max(defined(widths[item.laneIndex]), width);
+	}
+	for (const band of lanes.bands.values()) {
+		const layout = bandCrossLayout(lanes, band, ({ crossSize }) => crossSize);
+		const laneIndex = defined(band[0]).laneIndex;
+		widths[laneIndex] = Math.max(defined(widths[laneIndex]), layout.width + 2 * LANE_INSET);
+		for (const [slot, item] of band.entries())
+			slots.set(item.id, { bandWidth: layout.width, offset: defined(layout.offsets[slot]) });
 	}
 	for (let row = 0; row < rows.length; row += 1) rows[row] ??= 1;
-	return { rows, widths };
+	return { rows, widths, slots };
 }
 
+interface RowPositions {
+	readonly starts: number[];
+	/** Start of each row boundary: before row 0, between two rows, after the last row. */
+	readonly boundaryStarts: number[];
+	readonly contentStart: number;
+	readonly end: number;
+}
+
+/** Rows separated by their boundaries; the outer boundaries exist only for band detours. */
 function rowStarts(
 	rows: readonly number[],
+	boundaries: readonly number[],
 	topReserve: number,
-): { readonly starts: number[]; readonly end: number } {
+): RowPositions {
+	const contentStart = OUTER_MARGIN + topReserve;
 	const starts: number[] = [];
-	let cursor = OUTER_MARGIN + topReserve;
-	for (const size of rows) {
+	const boundaryStarts = [contentStart];
+	let cursor = contentStart + defined(boundaries[0]);
+	for (const [row, size] of rows.entries()) {
 		starts.push(cursor);
-		cursor += size + BASE_RANK_GAP;
+		cursor += size;
+		boundaryStarts.push(cursor);
+		cursor += defined(boundaries[row + 1]);
 	}
-	let end = cursor - BASE_RANK_GAP;
-	if (rows.length === 0) end = OUTER_MARGIN + topReserve;
-	return { starts, end };
+	return { starts, boundaryStarts, contentStart, end: cursor };
 }
 
 /** Cross-lane plans group by endpoint rows, preserving documentary order for row ties. */
@@ -165,9 +196,8 @@ function lanePositions(
 
 interface BoxPlacement {
 	readonly rowPositions: readonly number[];
-	readonly rowSizes: readonly number[];
+	readonly sizes: FrameSizes;
 	readonly laneStarts: readonly number[];
-	readonly laneWidths: readonly number[];
 	readonly longExtent: number;
 }
 
@@ -184,11 +214,13 @@ function endpointBoxes(
 	const ordered = [...input.endpoints.values()].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	for (const item of ordered) {
 		const longSize = Math.max(item.longSize, ports.demandByEndpoint.get(item.id) ?? 0);
-		const rowSize = defined(placement.rowSizes[item.row]);
-		const laneWidth = defined(placement.laneWidths[item.laneIndex]);
+		const rowSize = defined(placement.sizes.rows[item.row]);
+		const laneWidth = defined(placement.sizes.widths[item.laneIndex]);
 		const laneStart = defined(placement.laneStarts[item.laneIndex]);
 		const rowStart = defined(placement.rowPositions[item.row]);
-		const cross = laneStart + (laneWidth - item.crossSize) / 2;
+		const slot = defined(placement.sizes.slots.get(item.id));
+		const bandStart = laneStart + (laneWidth - slot.bandWidth) / 2;
+		const cross = bandStart + slot.offset;
 		const longitudinal = rowStart + (rowSize - longSize) / 2;
 		const logical = { cross, longitudinal, crossSize: item.crossSize, longSize };
 		boxes.set(item.id, logical);
@@ -222,12 +254,17 @@ function laneBounds(
 	}));
 }
 
+/**
+ * The parallel frame: rows across every lane, the endpoints of one lane row side by side in a band,
+ * and the gutters, rails and band corridors its routes run on.
+ */
 export function makeSharedLaneFrame(
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
 	reserveTopExterior = false,
 ): SharedLaneFrame {
-	const sizes = rowAndLaneSizes(input, ports);
+	const bands = planLaneBands(input);
+	const sizes = rowAndLaneSizes(input, ports, bands);
 	const ownerId = frameOwnerId(input);
 	const crossLanePlans = sortedCrossLanePlans(input);
 	const gutterEdge = frameGutterEdge(ownerId, input.plans.length);
@@ -235,7 +272,7 @@ export function makeSharedLaneFrame(
 	const topExteriorRailEdge = frameTopExteriorRailEdge(ownerId, input.plans.length);
 	let topReserve = 0;
 	if (reserveTopExterior) topReserve = frameEdgeBand(topExteriorRailEdge);
-	const rows = rowStarts(sizes.rows, topReserve);
+	const rows = rowStarts(sizes.rows, bands.boundaries, topReserve);
 	const positions = lanePositions(sizes.widths, gutterEdge);
 	const exteriorRailAnchor = rows.end + SHARED_LANE_CLEARANCE;
 	const exteriorBase = exteriorRailAnchor + trackOffset(exteriorRailEdge, 0);
@@ -244,9 +281,8 @@ export function makeSharedLaneFrame(
 	const longExtent = Math.max(rows.end + OUTER_MARGIN, lastTrack + OUTER_MARGIN);
 	const placed = endpointBoxes(input, ports, {
 		rowPositions: rows.starts,
-		rowSizes: sizes.rows,
+		sizes,
 		laneStarts: positions.starts,
-		laneWidths: sizes.widths,
 		longExtent,
 	});
 	return {
@@ -257,12 +293,16 @@ export function makeSharedLaneFrame(
 		lanes: laneBounds(input, positions.starts, sizes.widths, longExtent),
 		crossExtent: positions.extent,
 		longExtent,
-		contentLongStart: rows.starts[0] ?? OUTER_MARGIN + topReserve,
+		contentLongStart: rows.contentStart,
 		contentLongEnd: rows.end,
 		topExteriorBase: OUTER_MARGIN + trackOffset(topExteriorRailEdge, 0),
 		exteriorBase,
 		crossLanePlans,
-		portOffsetByIncidence: ports.offsetByIncidence,
+		portAccessByIncidence: bandPortAccess(input, bands, {
+			boxes: placed.boxes,
+			boundaryStarts: rows.boundaryStarts,
+			portOffsetByIncidence: ports.offsetByIncidence,
+		}),
 		ownerId,
 		gutterEdge,
 		exteriorRailEdge,

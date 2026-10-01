@@ -1849,31 +1849,21 @@ describe('shared lane layout', () => {
 			const third = defined(laneBoxes[2]);
 			const lane = defined(result.geometry.lanes.find(({ id }) => id === 'A'));
 			let centerCross = lane.bounds.x + lane.bounds.width / 2;
-			let centerLong = lane.bounds.y + lane.bounds.height / 2;
-			if (!vertical) {
-				centerCross = lane.bounds.y + lane.bounds.height / 2;
-				centerLong = lane.bounds.x + lane.bounds.width / 2;
-			}
-			const positioned = (element: (typeof laneBoxes)[number], longStart: number) => {
-				let crossStart = centerCross - element.bounds.width / 2;
-				let x = crossStart;
-				let y = longStart;
-				if (!vertical) {
-					crossStart = centerCross - element.bounds.height / 2;
-					x = longStart;
-					y = crossStart;
-				}
-				return { ...element, bounds: { ...element.bounds, x, y } };
+			if (!vertical) centerCross = lane.bounds.y + lane.bounds.height / 2;
+			// Every lane-A box is a root on row 0: they share one band, so overlaps are forced across it.
+			const positioned = (element: (typeof laneBoxes)[number], crossStart: number) => {
+				if (vertical) return { ...element, bounds: { ...element.bounds, x: crossStart } };
+				return { ...element, bounds: { ...element.bounds, y: crossStart } };
 			};
-			let firstLength = first.bounds.height;
-			if (!vertical) firstLength = first.bounds.width;
+			let firstWidth = first.bounds.width;
+			if (!vertical) firstWidth = first.bounds.height;
 			const overlapping = {
 				...result.geometry,
 				elements: result.geometry.elements.map((element) => {
-					if (element.id === first.id) return positioned(element, centerLong - firstLength / 2);
-					if (element.id === second.id) return positioned(element, centerLong + firstLength / 4);
+					if (element.id === first.id) return positioned(element, centerCross - firstWidth / 2);
+					if (element.id === second.id) return positioned(element, centerCross + firstWidth / 4);
 					if (element.id === third.id)
-						return positioned(element, centerLong - (firstLength * 3) / 4);
+						return positioned(element, centerCross - (firstWidth * 3) / 4);
 					return element;
 				}),
 			};
@@ -2111,9 +2101,10 @@ describe('shared lane layout', () => {
 	});
 
 	it('does not certify exhaustive replay when an accepted allocation has a capped incident search', () => {
+		// a2 is a1's child: the two incident sources sit on consecutive rows of lane A, not in one band.
 		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
 			{ id: 'a-to-b', from: 'a1', to: 'b1' },
-			{ id: 'a-to-c', from: 'a2', to: 'c1' },
+			{ id: 'a2-to-a1', from: 'a2', to: 'a1' },
 		]);
 		const prepared = prepareLayoutDocument(document);
 		const incidents: RegionIncidentContract[] = ['a1', 'a2'].map((endpointId, index) => ({

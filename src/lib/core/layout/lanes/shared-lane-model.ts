@@ -18,10 +18,14 @@ export interface SharedLaneEndpoint {
 	readonly kind: EndpointKind.Node | EndpointKind.Group;
 	readonly laneId: string;
 	readonly laneIndex: number;
-	readonly rank: number;
 	readonly layoutOrder: string;
 	readonly crossSize: number;
 	readonly longSize: number;
+	/**
+	 * The row of the endpoint across every lane: its logical rank on the whole graph. A parent is
+	 * always on an earlier row than its child and every root shares row 0; endpoints of one lane on
+	 * the same row form a band, side by side on the cross axis.
+	 */
 	readonly row: number;
 }
 
@@ -65,14 +69,18 @@ export function laneSide(sourceIndex: number, targetIndex: number, laneCount: nu
 	return 1;
 }
 
+/** Documentary order of lanes, and of the endpoints of one lane row: `layoutOrder`, then the id. */
+export function compareLayoutOrder(
+	a: { readonly layoutOrder: string; readonly id: string },
+	b: { readonly layoutOrder: string; readonly id: string },
+): number {
+	const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
+	if (order !== 0) return order;
+	return compareCanonicalStrings(a.id, b.id);
+}
+
 export function orderedLaneIds(document: LogicDocument): readonly string[] {
-	const lanes = [...defined(document.presentation).lanes];
-	lanes.sort((a, b) => {
-		const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
-		if (order !== 0) return order;
-		return compareCanonicalStrings(a.id, b.id);
-	});
-	return lanes.map(({ id }) => id);
+	return [...defined(document.presentation).lanes].sort(compareLayoutOrder).map(({ id }) => id);
 }
 
 function measuredSize(
@@ -115,32 +123,11 @@ function makeEndpoint(
 		kind: item.kind,
 		laneId: defined(environment.laneIds[laneIndex]),
 		laneIndex,
-		rank: environment.ranks.byEndpointId.get(item.id) ?? 0,
 		layoutOrder: item.layoutOrder,
 		crossSize,
 		longSize,
-		row: 0,
+		row: environment.ranks.byEndpointId.get(item.id) ?? 0,
 	};
-}
-
-function rankEndpoints(byLane: SharedLaneEndpoint[][]): Map<string, SharedLaneEndpoint> {
-	const endpoints = new Map<string, SharedLaneEndpoint>();
-	for (const lane of byLane) {
-		lane.sort((a, b) => {
-			const rank = a.rank - b.rank;
-			if (rank !== 0) return rank;
-			const order = compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
-			if (order !== 0) return order;
-			return compareCanonicalStrings(a.id, b.id);
-		});
-		let previousRow = -1;
-		for (const item of lane) {
-			const row = Math.max(item.rank, previousRow + 1);
-			endpoints.set(item.id, { ...item, row });
-			previousRow = row;
-		}
-	}
-	return endpoints;
 }
 
 function relationPlans(
@@ -210,14 +197,13 @@ export function prepareSharedLanes(
 	if (laneIds.length < 2 || laneIds.length > 3)
 		return { reason: 'The first shared layout policy supports two or three lanes.' };
 	const vertical = verticalDirection(document.layout.direction);
-	const byLane = laneIds.map(() => [] as SharedLaneEndpoint[]);
+	const endpoints = new Map<string, SharedLaneEndpoint>();
 	const environment = { laneIds, vertical, ranks, measurements };
 	for (const item of [...document.nodes, ...document.groups]) {
 		const endpoint = makeEndpoint(item, environment);
 		if (endpoint === undefined) return { reason: `Endpoint ${item.id} has no explicit lane.` };
-		defined(byLane[endpoint.laneIndex]).push(endpoint);
+		endpoints.set(endpoint.id, endpoint);
 	}
-	const endpoints = rankEndpoints(byLane);
 	const plans = relationPlans(
 		graph,
 		endpoints,

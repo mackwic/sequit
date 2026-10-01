@@ -405,9 +405,11 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 	it('returns unknown when an outer-lane node blocks the reserved corridor', () => {
 		const source = persistedNestedGridWithInnerLaneCrossingDocument();
 		const b2 = defined(source.nodes.find(({ id }) => id === 'b2'));
+		// b3 is b2's child, so it sits on b's row in the right lane, across b's crossing.
 		const document: LogicDocument = {
 			...source,
 			nodes: [...source.nodes, { ...b2, id: 'b3', markdown: 'B3\n', layoutOrder: orderKey('a7') }],
+			relations: [...source.relations, { id: 'inside-b3', from: 'b3', to: 'b2' }],
 		};
 		expect(validateLogicDocument(document)).toMatchObject({ ok: true });
 		const prepared = prepareLayoutDocument(document);
