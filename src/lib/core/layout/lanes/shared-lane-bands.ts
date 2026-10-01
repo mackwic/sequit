@@ -105,6 +105,16 @@ function groupBands(input: SharedLaneInput): {
 	return { bands, slots, rowCount };
 }
 
+/** Both ports of every plan: incidence key, endpoint and lateral face. */
+function portIncidences(
+	input: SharedLaneInput,
+): readonly { readonly key: string; readonly id: string; readonly side: LaneSide }[] {
+	return input.plans.flatMap((plan) => [
+		{ key: incidenceKey(plan.id, PortRole.Source), id: plan.from, side: plan.sourceSide },
+		{ key: incidenceKey(plan.id, PortRole.Target), id: plan.to, side: plan.targetSide },
+	]);
+}
+
 /**
  * A port blocked on its +1 face leaves before its row, one blocked on its -1 face after it: two
  * neighbours whose blocked ports face each other never share a row boundary, so their detours never
@@ -115,28 +125,16 @@ function bandDetours(
 	slots: ReadonlyMap<string, BandSlot>,
 ): readonly BandDetour[] {
 	const detours: BandDetour[] = [];
-	for (const plan of input.plans) {
-		const incidences = [
-			{ id: plan.from, side: plan.sourceSide, role: PortRole.Source },
-			{ id: plan.to, side: plan.targetSide, role: PortRole.Target },
-		];
-		for (const { id, side, role } of incidences) {
-			const { slot, last } = defined(slots.get(id));
-			const blockedAfter = side > 0 && slot < last;
-			const blockedBefore = side < 0 && slot > 0;
-			if (!blockedAfter && !blockedBefore) continue;
-			const endpoint = defined(input.endpoints.get(id));
-			let direction: BoundarySide = 1;
-			if (blockedAfter) direction = -1;
-			detours.push({
-				key: incidenceKey(plan.id, role),
-				endpoint,
-				side,
-				slot,
-				direction,
-				corridors: detourCorridors(endpoint, side, slot, direction),
-			});
-		}
+	for (const { key, id, side } of portIncidences(input)) {
+		const { slot, last } = defined(slots.get(id));
+		const blockedAfter = side > 0 && slot < last;
+		const blockedBefore = side < 0 && slot > 0;
+		if (!blockedAfter && !blockedBefore) continue;
+		const endpoint = defined(input.endpoints.get(id));
+		let direction: BoundarySide = 1;
+		if (blockedAfter) direction = -1;
+		const corridors = detourCorridors(endpoint, side, slot, direction);
+		detours.push({ key, endpoint, side, slot, direction, corridors });
 	}
 	return detours;
 }
@@ -283,20 +281,13 @@ export function bandPortAccess(
 	placement: BandPlacement,
 ): ReadonlyMap<string, PortAccess> {
 	const access = new Map<string, PortAccess>();
-	for (const plan of input.plans) {
-		const incidences = [
-			{ id: plan.from, side: plan.sourceSide, role: PortRole.Source },
-			{ id: plan.to, side: plan.targetSide, role: PortRole.Target },
-		];
-		for (const { id, side, role } of incidences) {
-			const key = incidenceKey(plan.id, role);
-			const box = defined(placement.boxes.get(id));
-			const center = box.longitudinal + box.longSize / 2;
-			const long = center + defined(placement.portOffsetByIncidence.get(key));
-			let face = box.cross;
-			if (side === 1) face += box.crossSize;
-			access.set(key, { points: [{ x: face, y: long }], reach: long });
-		}
+	for (const { key, id, side } of portIncidences(input)) {
+		const box = defined(placement.boxes.get(id));
+		const center = box.longitudinal + box.longSize / 2;
+		const long = center + defined(placement.portOffsetByIncidence.get(key));
+		let face = box.cross;
+		if (side === 1) face += box.crossSize;
+		access.set(key, { points: [{ x: face, y: long }], reach: long });
 	}
 	const placed = lanes.detours.map((detour) => {
 		const box = defined(placement.boxes.get(detour.endpoint.id));
