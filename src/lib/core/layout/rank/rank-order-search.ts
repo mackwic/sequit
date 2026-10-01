@@ -8,8 +8,10 @@ import {
 } from '../dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../dedicated-candidate-validation/validate';
 import {
+	type DedicatedCandidateFailure,
 	type DedicatedLayoutEvaluation,
 	GroupRouteFailure,
+	isDedicatedCandidateFailure,
 	type LayoutMeasurements,
 	type LayoutOptions,
 	type LayoutResult,
@@ -50,7 +52,9 @@ export interface RankOrderSearchInput {
 	readonly structure: LayoutStructure;
 	readonly domain: RankOrderDomain;
 	readonly measurements: LayoutMeasurements;
-	readonly baseline: DedicatedLayoutEvaluation | GroupRouteFailure;
+	readonly baseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
+	/** A rejection the caller already validated on the same document; the baseline is not judged again. */
+	readonly documentaryRejection?: RejectedDedicatedCandidate | undefined;
 	readonly evaluate: (order: RankOrder) => DedicatedLayoutEvaluation;
 	readonly admit?: ((layout: LayoutResult) => boolean) | undefined;
 	readonly limits: { readonly completePipelines: number; readonly uniqueProposals: number };
@@ -58,8 +62,18 @@ export interface RankOrderSearchInput {
 
 export interface RankOrderSearchResult {
 	readonly selected: ValidRankOrderCandidate | undefined;
-	readonly unchangedBaseline: DedicatedLayoutEvaluation | GroupRouteFailure;
+	readonly unchangedBaseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
 	readonly witness: RankOrderSearchWitness;
+}
+
+/** The typed verdict on a candidate whose geometry could not be built. */
+export function failureRejection(failure: DedicatedCandidateFailure): RejectedDedicatedCandidate {
+	if (failure instanceof GroupRouteFailure)
+		return rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, failure.relationId);
+	return {
+		...rejected(DedicatedCandidateRejectionCode.ElementOverlap, failure.from, failure.relationId),
+		otherEndpointId: failure.to,
+	};
 }
 
 function crossingFree(candidate: ValidRankOrderCandidate): boolean {
@@ -205,12 +219,9 @@ class RankOrderSearch {
 		return 0;
 	}
 
-	rejectGroupPassage(order: RankOrder, failure: GroupRouteFailure): void {
-		this.validations += 1;
-		this.rejected.push({
-			order,
-			reason: rejected(DedicatedCandidateRejectionCode.GroupPassage, undefined, failure.relationId),
-		});
+	/** A candidate that could not be built is rejected without any validation call. */
+	rejectFailure(order: RankOrder, failure: DedicatedCandidateFailure): void {
+		this.rejected.push({ order, reason: failureRejection(failure) });
 	}
 
 	/**
@@ -246,8 +257,8 @@ class RankOrderSearch {
 		try {
 			this.verify(order, this.input.evaluate(order));
 		} catch (error) {
-			if (!(error instanceof GroupRouteFailure)) throw error;
-			this.rejectGroupPassage(order, error);
+			if (!isDedicatedCandidateFailure(error)) throw error;
+			this.rejectFailure(order, error);
 		}
 		if (this.selected !== undefined && crossingFree(this.selected))
 			return this.end(RankSearchStop.CrossingFree);
@@ -318,9 +329,12 @@ class RankOrderSearch {
 /** Scores only complete, independently validated LayoutResults; the baseline is never rerun. */
 export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrderSearchResult {
 	const search = new RankOrderSearch(input);
-	if (input.baseline instanceof GroupRouteFailure)
-		search.rejectGroupPassage(input.domain.bands, input.baseline);
-	else search.verify(input.domain.bands, input.baseline, true);
+	const { baseline, documentaryRejection } = input;
+	if (documentaryRejection !== undefined)
+		search.rejected.push({ order: input.domain.bands, reason: documentaryRejection });
+	else if (isDedicatedCandidateFailure(baseline))
+		search.rejectFailure(input.domain.bands, baseline);
+	else search.verify(input.domain.bands, baseline, true);
 	const documentary = search.selected;
 	if (documentary !== undefined && documentaryNeedsNoSearch(documentary, search.topologyBound)) {
 		search.stop = RankSearchStop.OptimalBound;
