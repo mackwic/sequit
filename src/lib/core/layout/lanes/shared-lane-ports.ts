@@ -44,8 +44,11 @@ function faceExtent(bounds: Bounds, side: RegionPortalSide): number {
 interface PortIncidence {
 	readonly relationId: string;
 	readonly role: PortRole;
+	readonly sameLane: boolean;
+	readonly oppositeHalf: number;
+	readonly laneOrder: number;
 	readonly oppositeRow: number;
-	readonly oppositeId: string;
+	readonly oppositeLayoutOrder: string;
 }
 
 interface PortGroup {
@@ -112,9 +115,18 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 	group.incidences.push({
 		relationId: plan.id,
 		role,
+		sameLane: plan.sameLane,
+		oppositeHalf: incidenceHalf(endpoint, other),
+		laneOrder: -Math.abs(other.laneIndex - endpoint.laneIndex),
 		oppositeRow: other.row,
-		oppositeId: other.id,
+		oppositeLayoutOrder: other.layoutOrder,
 	});
+}
+
+function incidenceHalf(endpoint: SharedLaneEndpoint, other: SharedLaneEndpoint): number {
+	if (other.laneIndex === endpoint.laneIndex) return 2;
+	if (other.row > endpoint.row) return 1;
+	return -1;
 }
 
 function compareIncidences(
@@ -122,11 +134,23 @@ function compareIncidences(
 	b: PortIncidence,
 	relationOrder: ReadonlyMap<string, number>,
 ): number {
-	const row = a.oppositeRow - b.oppositeRow;
+	// Inter-lane passages on opposite halves of a face must not exchange their ports.
+	const half = a.oppositeHalf - b.oppositeHalf;
+	if (half !== 0) return half;
+	// Within one half the farther lane takes the exterior port first.
+	const lane = a.laneOrder - b.laneOrder;
+	if (lane !== 0) return lane;
+	// Same-lane U arcs nest; cross-lane routes preserve the opposite endpoints' along-lane order.
+	let direction = 1;
+	if (a.sameLane) direction = -1;
+	const row = direction * (a.oppositeRow - b.oppositeRow);
 	if (row !== 0) return row;
-	const other = compareCanonicalStrings(a.oppositeId, b.oppositeId);
+	const other = direction * compareCanonicalStrings(a.oppositeLayoutOrder, b.oppositeLayoutOrder);
 	if (other !== 0) return other;
-	return defined(relationOrder.get(a.relationId)) - defined(relationOrder.get(b.relationId));
+	const relation =
+		defined(relationOrder.get(a.relationId)) - defined(relationOrder.get(b.relationId));
+	if (relation !== 0) return relation;
+	return compareCanonicalStrings(a.relationId, b.relationId);
 }
 
 function reservePhysicalGroup(
@@ -243,7 +267,7 @@ export function planSharedLanePorts(
 			const center = (count - 1) / 2;
 			let offset = (index - center) * PORT_SPACING;
 			if (reserved > 0) {
-				const portIndex = index + 1;
+				const portIndex = count - index;
 				offset = -portIndex * PORT_SPACING;
 			}
 			offsetByIncidence.set(incidenceKey(incidence.relationId, incidence.role), offset);
