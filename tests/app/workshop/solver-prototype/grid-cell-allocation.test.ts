@@ -38,14 +38,16 @@ describe('grid crossing allocation workshop model', () => {
 		expect(basic.busOrder).toEqual([]);
 		expect(basic.tracks[0]?.routeTrackLabel).toBe('gouttière R1·0');
 		expect(horizontal.busOrder).toEqual(['a-b', 'a-c']);
+		// From the inside out: a-d leaves by the row gutter, a-b turns back in its column, a-c crosses
+		// over the top bus on the bus track nearest the grid.
 		expect(horizontal.tracks).toEqual([
-			{ relationId: 'a-b', color: '#bf4f36', routeTrackLabel: 'bus 0', railLabel: 'G1·2' },
-			{ relationId: 'a-c', color: '#287b65', routeTrackLabel: 'bus 1', railLabel: 'G1·0 / G3·0' },
+			{ relationId: 'a-b', color: '#bf4f36', routeTrackLabel: 'bus 0', railLabel: 'G1·1' },
+			{ relationId: 'a-c', color: '#287b65', routeTrackLabel: 'bus 2', railLabel: 'G1·2 / G3·1' },
 			{
 				relationId: 'a-d',
 				color: '#4c5fb5',
 				routeTrackLabel: 'gouttière R1·0',
-				railLabel: 'G1·1 / G3·1',
+				railLabel: 'G1·0 / G3·0',
 			},
 		]);
 	});

@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../canonical-string';
 import { defined } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import { relationIndexesInIdOrder } from '../graph/documentary-relations';
 import type { LayoutFrame } from './geometry/layout-frame';
 import { clearGroupEndpointRoutes } from './group-endpoint-routing';
 import { OUTER_MARGIN } from './layout-settings';
@@ -35,14 +36,6 @@ interface LayoutResultOrder {
 }
 
 const orderByGraph = new WeakMap<LogicGraph, LayoutResultOrder>();
-const relationIndexesByGraph = new WeakMap<LogicGraph, readonly number[]>();
-
-interface RelationIndexOrder {
-	readonly relationIds: readonly string[];
-	readonly indexes: readonly number[];
-}
-
-const relationOrderByDocument = new WeakMap<LogicGraph['document'], RelationIndexOrder>();
 
 function layoutResultOrder(graph: LogicGraph): LayoutResultOrder {
 	const cached = orderByGraph.get(graph);
@@ -52,37 +45,6 @@ function layoutResultOrder(graph: LogicGraph): LayoutResultOrder {
 	};
 	orderByGraph.set(graph, order);
 	return order;
-}
-
-function sameRelationIds(graph: LogicGraph, relationIds: readonly string[]): boolean {
-	if (graph.relations.length !== relationIds.length) return false;
-	for (const [index, { relation }] of graph.relations.entries())
-		if (relation.id !== defined(relationIds[index])) return false;
-	return true;
-}
-
-function relationIndexesById(graph: LogicGraph): readonly number[] {
-	const cached = relationIndexesByGraph.get(graph);
-	if (cached !== undefined) return cached;
-	const documentOrder = relationOrderByDocument.get(graph.document);
-	if (documentOrder !== undefined && sameRelationIds(graph, documentOrder.relationIds)) {
-		relationIndexesByGraph.set(graph, documentOrder.indexes);
-		return documentOrder.indexes;
-	}
-	const indexes = Array.from({ length: graph.relations.length }, (_, index) => index);
-	indexes.sort((left, right) =>
-		compareCanonicalStrings(
-			defined(graph.relations[left]).relation.id,
-			defined(graph.relations[right]).relation.id,
-		),
-	);
-	const order = {
-		relationIds: graph.relations.map(({ relation }) => relation.id),
-		indexes,
-	};
-	relationOrderByDocument.set(graph.document, order);
-	relationIndexesByGraph.set(graph, indexes);
-	return indexes;
 }
 
 function mergeRelationIds(previous: string[], additions: readonly string[]): void {
@@ -173,7 +135,8 @@ function sortRelationsById(relations: LayoutRelation[]): void {
 
 function orderResultRelations(input: ResultInput, relations: LayoutRelation[]): void {
 	if (input.channels === undefined) {
-		orderRoutesByIndexes(relations, relationIndexesById(input.graph));
+		const indexes = relationIndexesInIdOrder(input.graph.relations);
+		permuteRoutes(relations, (target) => defined(indexes[target]));
 		return;
 	}
 	const outputOrder = projectionRelationOrder(input.graph, input.channels);
@@ -181,14 +144,12 @@ function orderResultRelations(input: ResultInput, relations: LayoutRelation[]): 
 		sortRelationsById(relations);
 		return;
 	}
-	orderRoutesByIds(relations, outputOrder.ids, outputOrder.positions);
+	const { ids, positions } = outputOrder;
+	permuteRoutes(relations, (target) => defined(positions.get(defined(ids[target]))));
 }
 
-function orderRoutesByIds(
-	routes: LayoutRelation[],
-	relationIds: readonly string[],
-	positions: ReadonlyMap<string, number>,
-): void {
+/** Moves `routes[sourceOf(target)]` to `target` in place, one permutation cycle at a time. */
+function permuteRoutes(routes: LayoutRelation[], sourceOf: (target: number) => number): void {
 	const visited = new Uint8Array(routes.length);
 	for (let start = 0; start < routes.length; start += 1) {
 		if (defined(visited[start]) !== 0) continue;
@@ -196,24 +157,7 @@ function orderRoutesByIds(
 		const first = defined(routes[start]);
 		do {
 			visited[current] = 1;
-			const relationId = defined(relationIds[current]);
-			const source = defined(positions.get(relationId));
-			if (source === start) routes[current] = first;
-			else routes[current] = defined(routes[source]);
-			current = source;
-		} while (current !== start);
-	}
-}
-
-function orderRoutesByIndexes(routes: LayoutRelation[], indexes: readonly number[]): void {
-	const visited = new Uint8Array(routes.length);
-	for (let start = 0; start < routes.length; start += 1) {
-		if (defined(visited[start]) !== 0) continue;
-		let current = start;
-		const first = defined(routes[start]);
-		do {
-			visited[current] = 1;
-			const source = defined(indexes[current]);
+			const source = sourceOf(current);
 			if (source === start) routes[current] = first;
 			else routes[current] = defined(routes[source]);
 			current = source;
@@ -288,7 +232,8 @@ export function buildLayoutResult(input: ResultInput): LayoutResult {
 	}
 	if (input.bounds.size > elements.length)
 		for (const id of input.bounds.keys())
-			if (!input.graph.endpointsById.has(id)) defined(input.graph.endpointsById.get(id));
+			if (!input.graph.endpointsById.has(id))
+				throw new Error(`Layout bounds name an unknown endpoint: ${id}`);
 	for (const route of relations)
 		for (const point of route.points) {
 			width = Math.max(width, point.x + OUTER_MARGIN);

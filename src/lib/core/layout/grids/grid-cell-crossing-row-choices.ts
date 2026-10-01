@@ -23,6 +23,58 @@ interface RowChoiceContext {
 	readonly busRelevant: ReadonlySet<string>;
 	readonly chosenRowById: Map<string, number>;
 }
+/** Tracks reassigned by `rank`, each rank keeping its own order, on the slots already used. */
+function rankedTracks(
+	tracks: ReadonlyMap<string, number>,
+	rank: (id: string) => number,
+): ReadonlyMap<string, number> {
+	const ordered = [...tracks].sort(
+		(left, right) => rank(left[0]) - rank(right[0]) || left[1] - right[1],
+	);
+	const slots = [...tracks.values()].sort((left, right) => left - right);
+	return new Map(ordered.map(([id], index) => [id, defined(slots[index])]));
+}
+
+/**
+ * Tracks from the inside out. A relation that takes a row gutter leaves its column gutter inside
+ * the grid, one that stays in its column turns back along it, and one that crosses columns over
+ * the top bus climbs past both: they take column tracks from the innermost (track 0) outwards in
+ * that order. Only the last kind reaches the bus, where it takes the tracks nearest the grid
+ * (the highest ones).
+ */
+function rowRoutedInnermost(
+	allocation: GridCrossingAllocation,
+	chosenRowById: ReadonlyMap<string, number>,
+): GridCrossingAllocation {
+	const columns = new Map<string, number>();
+	for (const tracks of allocation.gutterTrackByRelationId)
+		for (const id of tracks.keys()) columns.set(id, (columns.get(id) ?? 0) + 1);
+	const outward = (id: string) => {
+		if (chosenRowById.has(id)) return 0;
+		return Math.min(2, columns.get(id) ?? 0);
+	};
+	return {
+		...allocation,
+		gutterTrackByRelationId: allocation.gutterTrackByRelationId.map((tracks) =>
+			rankedTracks(tracks, outward),
+		),
+		busTrackByRelationId: rankedTracks(allocation.busTrackByRelationId, (id) =>
+			Number(outward(id) === 2),
+		),
+	};
+}
+
+function* uniqueCandidates(
+	candidates: readonly GridCrossingAllocation[],
+	context: RowChoiceContext,
+): Generator<GridCrossingAllocation> {
+	for (const candidate of candidates) {
+		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
+		if (context.seen.has(key)) continue;
+		context.seen.add(key);
+		yield candidate;
+	}
+}
 
 function* choicesForCost(
 	allocation: GridCrossingAllocation,
@@ -34,10 +86,9 @@ function* choicesForCost(
 		if (remainingCost !== 0) return;
 		const rowTracks = chosenRowTracks(allocation, context.chosenRowById);
 		const candidate = { ...allocation, rowTrackByRelationId: rowTracks };
-		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
-		if (context.seen.has(key)) return;
-		context.seen.add(key);
-		yield candidate;
+		// The reordered tracks come first; the allocation as declared still follows.
+		const innermost = rowRoutedInnermost(candidate, context.chosenRowById);
+		yield* uniqueCandidates([innermost, candidate], context);
 		return;
 	}
 	const id = defined(context.eligible[index]);
