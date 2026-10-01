@@ -13,6 +13,7 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import {
 	leafDocument,
 	leafIncidentContracts,
+	policyFailure,
 	type RecursiveContext,
 } from '../../../../src/lib/core/layout/regions/composition/nested-region-recursive-model-adapter';
 import {
@@ -585,16 +586,27 @@ describe('recursive region model and row policy', () => {
 				relations: base.relations.filter(({ id }) => id === 'inside-a'),
 			};
 			const prepared = prepareLayoutDocument(document);
-			expect(
-				solveRecursiveNestedRegionLayout(
-					prepared.graph,
-					prepared.measurements,
-					nestedRegionInput(prepared.graph),
-				),
-			).toMatchObject({
-				status: RegionCompositionStatus.Unsupported,
-				reason: 'Grid cells with child regions are outside the bounded grid policy.',
+			const normalized = normalizeRegionCompositionModel(
+				prepared.graph,
+				nestedRegionInput(prepared.graph),
+			);
+			if (normalized.status !== RegionCompositionModelStatus.Ready)
+				throw new Error(normalized.diagnostic.message);
+			expect(policyFailure(prepared.graph, normalized.model)).toBeUndefined();
+			const empty = prepareLayoutDocument({
+				...document,
+				nodes: document.nodes.filter(({ id }) => id === 'outside'),
+				relations: [],
 			});
+			const emptyModel = normalizeRegionCompositionModel(
+				empty.graph,
+				nestedRegionInput(empty.graph),
+			);
+			if (emptyModel.status !== RegionCompositionModelStatus.Ready)
+				throw new Error(emptyModel.diagnostic.message);
+			expect(policyFailure(empty.graph, emptyModel.model)).toBe(
+				'An entirely empty grid is not supported; at least one cell must own an endpoint.',
+			);
 		},
 	);
 

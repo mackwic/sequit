@@ -66,20 +66,16 @@ export interface RecursiveContext {
 function regionPolicyFailure(
 	region: RegionCompositionNode,
 	model: RegionCompositionModel,
-	occupiedLeaves: ReadonlySet<string>,
+	occupiedRegions: ReadonlySet<string>,
 ): string | undefined {
 	const count = region.childIds.length;
 	if (count === 0) {
-		if (occupiedLeaves.has(region.id)) return undefined;
+		if (occupiedRegions.has(region.id)) return undefined;
 		const parent = model.regionsById.get(region.parentId ?? '');
 		if (parent?.definition.grid === undefined) return 'Each leaf region must own an endpoint.';
 	}
-	if (region.definition.grid !== undefined) {
-		if (region.childIds.some((id) => defined(model.regionsById.get(id)).childIds.length > 0))
-			return 'Grid cells with child regions are outside the bounded grid policy.';
-		if (!region.childIds.some((id) => occupiedLeaves.has(id)))
-			return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
-	}
+	if (region.definition.grid !== undefined && !occupiedRegions.has(region.id))
+		return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
 	return undefined;
 }
 
@@ -92,14 +88,20 @@ export function policyFailure(
 		return 'Lanes are outside the bounded nested-region envelope.';
 	const root = defined(model.regionsById.get(model.rootId));
 	if (root.childIds.length === 0) return 'A bounded composition requires a nonempty root region.';
-	const occupiedLeaves = new Set<string>();
+	const occupiedRegions = new Set<string>();
 	for (const leafId of model.leafByEndpointId.values()) {
 		work?.charge(RegionWorkPhase.Traversals, leafId);
-		occupiedLeaves.add(leafId);
+		occupiedRegions.add(leafId);
+		let parentId = defined(model.regionsById.get(leafId)).parentId;
+		while (parentId !== undefined && !occupiedRegions.has(parentId)) {
+			work?.charge(RegionWorkPhase.Traversals, parentId);
+			occupiedRegions.add(parentId);
+			parentId = defined(model.regionsById.get(parentId)).parentId;
+		}
 	}
 	for (const region of model.regionsById.values()) {
 		work?.charge(RegionWorkPhase.Traversals, region.id);
-		const failure = regionPolicyFailure(region, model, occupiedLeaves);
+		const failure = regionPolicyFailure(region, model, occupiedRegions);
 		if (failure !== undefined) return failure;
 	}
 	return undefined;
