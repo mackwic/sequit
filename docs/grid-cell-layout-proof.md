@@ -6,6 +6,8 @@ Chaque colonne et chaque rangée a une dimension minimale extensible. La dimensi
 
 Une cellule sans extrémité est admise sans calcul de sous-layout ni portail, reste opaque et prend le cadre de ses pistes extensibles (un voisin peut les agrandir) ; elle ne demande que leurs minima, avec un plancher de cellule vide de `2 × CELL_PADDING = 64 px` par axe pour garder un cadre positif même à minima nuls.
 
+Dans sa cellule, une traversée va du port de son extrémité au portail de la cellule par un tronçon routé (`grids/grid-cell-incident-route.ts`) : l'attache directe quand elle est libre, sinon un couloir du routeur de feuille à `CORRIDOR_CLEARANCE` qui contourne les autres boîtes de la cellule, ses routes locales et les tronçons déjà posés, dans l'ordre des ports. Un nœud masqué par un frère est donc joignable dans les quatre directions tant qu'une seule traversée doit le contourner. La pile de ports d'une extrémité se décale par pistes entières quand une relation locale de rôle opposé s'attache sur l'un de ses points. Trois limites restent, toutes en `unknown` : plusieurs traversées sur une extrémité masquée (le routeur de feuille n'offre qu'une voie par face, la seconde traversée ne trouve pas de couloir), un détour ne sort pas d'un groupe contenant (seule l'attache directe le quitte), et une extrémité logée dans une sous-région de sa cellule garde l'attache directe.
+
 Les témoins exécutables couvrent une liaison du rang local 4 dans A vers le rang local 1 dans D, les deux orientations de sortie latérale, la permutation des collections, les dimensions extensibles et des candidats géométriques falsifiés. Cette liaison n'impose aucune progression ni aucun rang commun entre A et D.
 
 Un onglet de `/atelier/solveur` exécute le même solveur et le même validateur, puis affiche les quatre cadres, les rangs locaux, le groupe, les pistes extensibles, les portails et la route extérieure. Le parcours navigateur Chromium vérifie ces éléments ; la capture `grid-cells-rank-4-to-1.png` dans le dossier de visualisations de la tâche montre ce témoin à une relation. Une propriété a parcouru 5 000 variantes de tailles fractionnaires et de minima de pistes avec trois relations inter-cellules, dont une source et une cible partagées, en inversant les collections et les `Map` de mesures sans divergence.
@@ -55,6 +57,8 @@ Une extrémité de traversée de grille qui est un **groupe imbriqué** ou un **
 - Les pistes ont des minima finis et positifs ou nuls. Les routes inter-cellules utilisent des gouttières verticales et, pour les traversées entre rangées, des gouttières horizontales allouées ou des bus supérieurs distincts ; une superposition entre routes ou un obstacle sur la sortie entraîne `unknown`. Les autres passages non prouvés restent hors de ce périmètre ; le témoin distingue le nombre exact des géométries d’une borne inférieure lorsqu’un budget de dénombrement coupe la recherche.
 
 Une entrée hors de ce périmètre renvoie `unsupported` avec une raison. Une entrée dans le périmètre dont la route ne passe pas la vérification géométrique renvoie `unknown` avec la violation observée. Seul un candidat vérifié devient `selected`.
+
+L'épuisement d'un budget de travail de composition sur une grille n'est pas une forme hors politique : la racine le publie comme `UnknownGridCellLayoutError` portant le code `ResourceLimit`.
 
 ## Extension restante
 

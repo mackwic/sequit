@@ -508,4 +508,23 @@ describe('grid-cell real-pipeline properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	}, 600_000);
+	it('lets a crossing target share the arrival point of its local family on a hidden endpoint', () => {
+		// Right to left: c0-0 receives c0-1 locally and c1-1 across the grid on the same face point.
+		const document = multiNodeGrid(
+			[2, 2],
+			[2, 2, 2, 1],
+			[
+				[1, 0],
+				[3, 0],
+				[4, 2],
+			],
+			defined(FLOWS[3]),
+		);
+		const prepared = prepareLayoutDocument(document);
+		const layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		const route = defined(layout.relations.find(({ id }) => id === 'r3-0'));
+		const sibling = defined(layout.elements.find(({ id }) => id === 'c0-1')).bounds;
+		for (const [index, end] of route.points.slice(1).entries())
+			expect(entersInterior(defined(route.points[index]), end, sibling)).toBe(false);
+	});
 });

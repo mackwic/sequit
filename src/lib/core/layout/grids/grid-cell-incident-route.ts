@@ -56,9 +56,10 @@ function cellObstacles(cell: GridCellPlacement): CellObstacles {
 	};
 }
 
+/** The piece as the contact oracle reads it: a target piece ends on its endpoint's port. */
 function incidentRoute(incident: GridCellIncident, points: readonly Point[]): EndpointRoute {
 	if (incident.source) return { id: incident.relationId, points, from: incident.endpointId };
-	return { id: incident.relationId, points, to: incident.endpointId };
+	return { id: incident.relationId, points: [...points].reverse(), to: incident.endpointId };
 }
 
 /**
