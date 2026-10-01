@@ -124,27 +124,32 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 }
 
 function incidenceHalf(endpoint: SharedLaneEndpoint, other: SharedLaneEndpoint): number {
-	if (other.laneIndex === endpoint.laneIndex) return 2;
 	if (other.row > endpoint.row) return 1;
-	return -1;
+	if (other.row < endpoint.row) return -1;
+	return 0;
 }
 
 function compareIncidences(
 	a: PortIncidence,
 	b: PortIncidence,
 	relationOrder: ReadonlyMap<string, number>,
+	localOnly: boolean,
 ): number {
-	// Inter-lane passages on opposite halves of a face must not exchange their ports.
+	// All arcs, including local U arcs, keep distinct before/equal/after parts of the face.
 	const half = a.oppositeHalf - b.oppositeHalf;
 	if (half !== 0) return half;
-	// Within one half the farther lane takes the exterior port first.
-	const lane = a.laneOrder - b.laneOrder;
-	if (lane !== 0) return lane;
-	// Same-lane U arcs nest; cross-lane routes preserve the opposite endpoints' along-lane order.
+	// Within each half only local U arcs reverse their order; inter-lane routes follow their rows.
 	let direction = 1;
-	if (a.sameLane) direction = -1;
+	if (localOnly) direction = -1;
 	const row = direction * (a.oppositeRow - b.oppositeRow);
 	if (row !== 0) return row;
+	if (a.sameLane !== b.sameLane) {
+		let localOrder = Number(b.sameLane) - Number(a.sameLane);
+		if (a.oppositeHalf > 0) localOrder = -localOrder;
+		return localOrder;
+	}
+	const lane = a.laneOrder - b.laneOrder;
+	if (lane !== 0) return lane;
 	const other = direction * compareCanonicalStrings(a.oppositeLayoutOrder, b.oppositeLayoutOrder);
 	if (other !== 0) return other;
 	const relation =
@@ -249,7 +254,8 @@ export function planSharedLanePorts(
 	const faces = incidentFaces(input, contracts, groups);
 	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
-		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder));
+		const localOnly = group.incidences.every(({ sameLane }) => sameLane);
+		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder, localOnly));
 		const count = group.incidences.length;
 		const side = physicalSide(input, group.side);
 		const reserved = faces.get(JSON.stringify([group.endpointId, side]))?.contracts.length ?? 0;

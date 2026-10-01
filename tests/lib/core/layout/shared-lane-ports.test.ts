@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { validateSharedLaneGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-geometry';
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
 import {
 	incidenceKey,
@@ -17,6 +18,66 @@ import {
 	orientations,
 	rename,
 } from './shared-lane-port-fixture';
+
+const regressionWitnesses = [
+	{
+		name: 'three-node local chain',
+		nodes: [
+			['x', 'L1'],
+			['y', 'L1'],
+			['z', 'L1'],
+		],
+		pairs: [
+			['z', 'y'],
+			['y', 'x'],
+		],
+	},
+	{
+		name: 'local chain with a fan',
+		nodes: [
+			['x', 'L1'],
+			['y', 'L1'],
+			['z', 'L1'],
+			['w', 'L1'],
+		],
+		pairs: [
+			['z', 'y'],
+			['w', 'y'],
+			['y', 'x'],
+		],
+	},
+	{
+		name: 'cross-lane fan with an equal-row endpoint',
+		nodes: [
+			['a1', 'A'],
+			['a2', 'A'],
+			['b1', 'B'],
+			['b2', 'B'],
+			['c1', 'C'],
+			['c2', 'C'],
+		],
+		pairs: [
+			['a1', 'b1'],
+			['a1', 'c1'],
+			['a1', 'c2'],
+		],
+	},
+	{
+		name: 'local arc sharing a face with a cross-lane passage',
+		nodes: [
+			['a1', 'A'],
+			['a2', 'A'],
+			['b1', 'B'],
+			['c1', 'C'],
+		],
+		pairs: [
+			['a1', 'a2'],
+			['a1', 'b1'],
+			['a2', 'c1'],
+			['b1', 'c1'],
+		],
+	},
+] as const;
 
 describe.each(orientations)('shared lane port nesting (%s)', (orientation) => {
 	it.each(configurations)('preserves L-02 geometry when c becomes z in $direction', (layout) => {
@@ -131,4 +192,18 @@ describe.each(orientations)('shared lane port nesting (%s)', (orientation) => {
 			);
 		},
 	);
+	for (const witness of regressionWitnesses) {
+		it.each(configurations)(`keeps ${witness.name} bridge-free in $direction`, (layout) => {
+			const document = documentFor(layout, orientation, witness.nodes, witness.pairs);
+			const result = geometry(document);
+			const prepared = prepareLayoutDocument(document);
+			expect(validateSharedLaneGeometry(prepared.graph, result)).toBeUndefined();
+			expect(routeBridgeAnalysis(result.relations).crossings).toHaveLength(0);
+			expect(routeBridgeAnalysis(result.relations).bridges).toHaveLength(0);
+			const ids = new Map(
+				document.nodes.map(({ id }, index) => [id, `renamed-${document.nodes.length - index}`]),
+			);
+			expect(normalized(rename(document, ids))).toEqual(normalized(document));
+		});
+	}
 });

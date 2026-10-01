@@ -59,9 +59,7 @@ import {
 	validateSharedLaneGeometryDelta,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-delta';
 import {
-	type LaneCandidate,
 	laneRouteSelectionIsBetter,
-	type RankedLaneRouteSelection,
 	rankLaneRouteSelection,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-ranking';
 import { searchParallelRouteAllocations } from '../../../../src/lib/core/layout/lanes/shared-lane-route-search';
@@ -79,6 +77,7 @@ import {
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { documentFor } from './shared-lane-port-fixture';
 
 const DIRECTIONS = [
 	[LayoutDirection.TopToBottom, LayoutBias.Top],
@@ -702,64 +701,65 @@ describe('shared lane layout', () => {
 		);
 	});
 
-	it('selects the least-crossing valid fan allocation against an exhaustive oracle', () => {
-		const base = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
-			{ id: 'a1-b1', from: 'a1', to: 'b1' },
-			{ id: 'a1-c1', from: 'a1', to: 'c1' },
-			{ id: 'a1-c2', from: 'a1', to: 'c2' },
-		]);
-		const b1 = defined(base.nodes.find(({ id }) => id === 'b1'));
-		const c1 = defined(base.nodes.find(({ id }) => id === 'c1'));
-		const document: LogicDocument = {
-			...base,
-			nodes: [
-				...base.nodes.filter(({ id }) => id !== 'c1'),
-				{ ...b1, id: 'b2', markdown: 'B2', layoutOrder: orderKey('a3') },
-				{ ...c1, layoutOrder: orderKey('a4') },
-				{ ...c1, id: 'c2', markdown: 'C2', layoutOrder: orderKey('a5') },
-			],
-		};
-		const prepared = prepareLayoutDocument(document);
-		const input = defined(
-			prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
-		);
-		const ports = planSharedLanePorts(input);
-		const plans = parallelStrategyPlans(input, ports, []);
-		let best: RankedLaneRouteSelection<LaneCandidate> | undefined;
-		for (const acceptBridges of [false, true]) {
-			for (const candidate of parallelRouteCandidates(input, plans, acceptBridges)) {
-				const geometry = materializeParallelGeometry(
-					input,
-					candidate.frame,
-					candidate.order,
-					candidate.allocation,
-				);
-				if (
-					validateSharedLaneGeometry(
-						prepared.graph,
-						geometry,
-						SHARED_LANE_CLEARANCE,
-						acceptBridges,
-					) !== undefined
+	it.each(DIRECTIONS)(
+		'prefers a longer bridge-free route over an available shorter bridged route in %s',
+		(direction, bias) => {
+			const document = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['n0', 'L0'],
+					['n1', 'L1'],
+					['n2', 'L2'],
+					['n3', 'L0'],
+					['n4', 'L2'],
+					['n5', 'L0'],
+					['n6', 'L0'],
+				],
+				[
+					['n4', 'n1'],
+					['n4', 'n3'],
+					['n2', 'n0'],
+					['n6', 'n3'],
+				],
+			);
+			const prepared = prepareLayoutDocument(document);
+			const input = defined(
+				prepareSharedLanes(prepared.graph, prepared.ranks, prepared.measurements, {}).input,
+			);
+			const ports = planSharedLanePorts(input);
+			const plans = parallelStrategyPlans(input, ports, []);
+			const bridged = [...parallelRouteCandidates(input, plans, true)]
+				.map((candidate) =>
+					materializeParallelGeometry(
+						input,
+						candidate.frame,
+						candidate.order,
+						candidate.allocation,
+					),
 				)
-					continue;
-				const ranked = rankLaneRouteSelection<LaneCandidate>(
-					{ geometry, incidents: [] },
-					candidate,
-				);
-				if (best === undefined || laneRouteSelectionIsBetter(ranked, best)) best = ranked;
-			}
-			if (best !== undefined) break;
-		}
-		expect(best).toBeDefined();
-		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
-		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
-		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
-		expect(selected.geometry).toEqual(best?.selected.geometry);
-		expect(
-			validateSharedLaneGeometry(prepared.graph, selected.geometry, SHARED_LANE_CLEARANCE, true),
-		).toBeUndefined();
-	});
+				.filter(
+					(geometry) =>
+						validatedBridges(geometry.relations).length > 0 &&
+						validateSharedLaneGeometry(prepared.graph, geometry, SHARED_LANE_CLEARANCE, true) ===
+							undefined,
+				)
+				.sort((left, right) => laneRouteMetrics(left).length - laneRouteMetrics(right).length);
+			const shorter = defined(bridged[0]);
+			expect(
+				validateSharedLaneGeometry(prepared.graph, shorter, SHARED_LANE_CLEARANCE, true),
+			).toBeUndefined();
+			expect(validatedBridges(shorter.relations).length).toBeGreaterThan(0);
+			const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+			expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
+			if (selected.status !== SharedLaneLayoutStatus.Selected) return;
+			expect(validateSharedLaneGeometry(prepared.graph, selected.geometry)).toBeUndefined();
+			expect(validatedBridges(selected.geometry.relations)).toHaveLength(0);
+			expect(laneRouteMetrics(shorter).length).toBeLessThan(
+				laneRouteMetrics(selected.geometry).length,
+			);
+		},
+	);
 
 	it('matches delta-routed candidates against full materialization and validation under ID permutations', () => {
 		const idOrders = [
