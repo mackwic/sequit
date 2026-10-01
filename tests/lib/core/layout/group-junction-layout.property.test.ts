@@ -375,6 +375,26 @@ it('keeps the group and junction disjoint when disconnected empty groups have ta
 	expect(overlaps(boundsFor(layout, 'group'), boundsFor(layout, 'junction'))).toBe(false);
 });
 
+it('retains disjoint group/junction bounds when structural topology opens an impossible alternative', async () => {
+	// Shrunk seed 1592915777, path 64:7:2:4:4:7:2:2:2:7:4:2:2:3:2:2:10:9:2:3:2:9:6:2:2:8:2:2:3:2:8:2:4.
+	const document = interleavedGroupJunctionFixture(
+		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Right },
+		false,
+		true,
+	);
+	const measurement = { minimumWidth: 321, minimumHeight: 100, headerHeight: 5, padding: 30 };
+	const { layout } = await layoutDocument(document, {
+		nodes: Object.fromEntries(document.nodes.map(({ id }) => [id, { width: 100, height: 50 }])),
+		groups: Object.fromEntries(document.groups.map(({ id }) => [id, measurement])),
+	});
+	expect(overlaps(boundsFor(layout, 'group'), boundsFor(layout, 'junction'))).toBe(false);
+	for (const group of document.groups)
+		for (const node of document.nodes) {
+			if (isDescendant(document, node, group.id)) continue;
+			expect(overlaps(boundsFor(layout, group.id), boundsFor(layout, node.id))).toBe(false);
+		}
+});
+
 it('keeps generated non-descendant nodes outside every group envelope', async () => {
 	await fc.assert(
 		fc.asyncProperty(
@@ -798,10 +818,11 @@ it('propagates a junction retreat through nested shells', () => {
 	expect(outerWindow.first).toBeLessThanOrEqual(innerWindow.first);
 	expect(outerWindow.last).toBeGreaterThanOrEqual(innerWindow.last);
 	const initial = structuredClone(bounds);
+	const orderById = new Map(['foreign', 'outer'].map((id, index) => [id, index]));
 	packGroupSiblings(
 		['foreign', 'outer'],
 		bounds,
-		{ groupIds: hierarchy.byId, pending: new Map(), windows },
+		{ groupIds: hierarchy.byId, pending: new Map(), windows, orderById },
 		false,
 	);
 	const outer = bounds.get('outer');
@@ -821,7 +842,7 @@ it('propagates a junction retreat through nested shells', () => {
 			packGroupSiblings(
 				['foreign', 'outer'],
 				boxes,
-				{ groupIds: hierarchy.byId, pending: new Map(), windows: reserved },
+				{ groupIds: hierarchy.byId, pending: new Map(), windows: reserved, orderById },
 				false,
 			);
 			const container = boxes.get('outer');

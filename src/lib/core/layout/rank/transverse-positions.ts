@@ -38,7 +38,10 @@ export function rowPosition(ordinal: number, rowLength: number): number {
 	return (ordinal + 1) / (rowLength + 1);
 }
 
-/** Normalized transverse positions by row ordinal. A junction takes the mean of its anchors. */
+/**
+ * Normalized transverse positions by row ordinal. A junction takes the mean of its anchors;
+ * the topology oracle keeps it after ordinary anchors when that mean coincides with one.
+ */
 export function transversePositions(
 	structure: LayoutStructure,
 	rows: readonly (readonly string[])[],
@@ -54,7 +57,11 @@ export function transversePositions(
 		if (!rowOf.has(id)) continue;
 		const anchors = junctionAnchors(structure, id, junction, rowOf);
 		if (anchors.length === 0) continue;
-		const sum = anchors.reduce((total, anchor) => total + defined(positions.get(anchor)), 0);
+		// Adjacency is identifier-sorted; canonicalize the additions to preserve exact ties.
+		const sum = anchors
+			.map((anchor) => defined(positions.get(anchor)))
+			.sort((left, right) => left - right)
+			.reduce((total, position) => total + position, 0);
 		positions.set(id, sum / anchors.length);
 	}
 	return positions;

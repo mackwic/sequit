@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { TopologicalRanks } from '../../graph/topological-ranks';
@@ -29,15 +28,26 @@ function componentContext(
 	graph: LogicGraph,
 	ids: readonly string[],
 	hierarchy: GroupHierarchy | undefined,
-): string {
-	const contexts = new Set<string>();
+	orderById: ReadonlyMap<string, number>,
+): readonly number[] {
+	const contexts = new Set<number>();
 	for (const id of ids) {
 		const groupId = graph.endpointsById.get(id)?.entity.groupId;
-		let context = '~root';
-		if (groupId !== undefined) context = defined(hierarchy?.rootById.get(groupId));
+		// The virtual root always follows all documentary root groups.
+		let context = orderById.size;
+		if (groupId !== undefined)
+			context = defined(orderById.get(defined(hierarchy?.rootById.get(groupId))));
 		contexts.add(context);
 	}
-	return [...contexts].sort(compareCanonicalStrings).join('|');
+	return [...contexts].sort((left, right) => left - right);
+}
+
+function compareContexts(left: readonly number[], right: readonly number[]): number {
+	for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+		const difference = defined(left[index]) - defined(right[index]);
+		if (difference !== 0) return difference;
+	}
+	return left.length - right.length;
 }
 
 function packingOrder(
@@ -74,7 +84,7 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	if (blocks.ids.size > 0) adjacency = rawAdjacency(graph);
 	const components = rankedComponents(graph, blocks).map((ids): RankedComponent => ({
 		ids,
-		context: componentContext(graph, ids, hierarchy),
+		context: componentContext(graph, ids, hierarchy, orderById),
 		effectiveOrder: Math.min(
 			...ids
 				.filter((id) => ranks.byEndpointId.get(id) === 0)
@@ -96,8 +106,7 @@ export function prepareLayout(graph: LogicGraph, ranks: TopologicalRanks): Layou
 	}));
 	components.sort(
 		(left, right) =>
-			compareCanonicalStrings(left.context, right.context) ||
-			left.effectiveOrder - right.effectiveOrder,
+			compareContexts(left.context, right.context) || left.effectiveOrder - right.effectiveOrder,
 	);
 
 	let containment: LayoutStructure['containment'];
