@@ -177,7 +177,7 @@ describe('grid model envelope', () => {
 		rejected(prepared.graph, value, reason);
 	});
 
-	it('rejects missing, unknown, and empty child assignments', () => {
+	it('rejects missing and unknown endpoint assignments without requiring occupied cells', () => {
 		const missing = new Map(input.cellByEndpointId);
 		missing.delete('a-top');
 		rejected(
@@ -192,12 +192,29 @@ describe('grid model envelope', () => {
 			{ ...input, cellByEndpointId: unknown },
 			'Every endpoint must be assigned to exactly one child cell.',
 		);
-		const empty = new Map(input.cellByEndpointId);
-		empty.set('c', 'd');
+		const withEmptyCell = new Map(input.cellByEndpointId);
+		withEmptyCell.set('c', 'd');
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, {
+			...input,
+			cellByEndpointId: withEmptyCell,
+		});
+		if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+		expect(result.cells.find(({ id }) => id === 'c')?.localLayout.elements).toEqual([]);
+		expect(
+			validateGridCellGeometry(result, prepared.graph, {
+				...input,
+				cellByEndpointId: withEmptyCell,
+			}),
+		).toBeUndefined();
+	});
+
+	it('refuses an entirely empty grid rather than publishing a placeholder layout', () => {
+		const base = gridDocument();
+		const document = { ...base, nodes: [], groups: [], relations: [] };
 		rejected(
-			prepared.graph,
-			{ ...input, cellByEndpointId: empty },
-			'Every child cell must contain at least one node.',
+			graphFor(document),
+			{ ...input, cellByEndpointId: new Map() },
+			'An entirely empty grid is not supported; at least one cell must own an endpoint.',
 		);
 	});
 

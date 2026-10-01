@@ -1,6 +1,7 @@
 import { defined, type LogicDocument, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { LayoutMeasurements } from '../layout-types';
+import type { RegionLocalLayout } from '../regions/model/region-local-cache';
 import type { GridCellDefinition, GridCellInput } from './grid-cell-types';
 
 export interface GridModel {
@@ -96,12 +97,8 @@ function ownershipFailure(
 		)
 	)
 		return 'Every endpoint must be assigned to exactly one child cell.';
-	if (
-		cells.some(
-			({ id }) => !document.nodes.some((node) => input.cellByEndpointId.get(node.id) === id),
-		)
-	)
-		return 'Every child cell must contain at least one node.';
+	if (endpointIds.length === 0)
+		return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
 	const crossesGroup = (id: string, groupId: string | undefined): boolean =>
 		groupId !== undefined && input.cellByEndpointId.get(id) !== input.cellByEndpointId.get(groupId);
 	if (document.nodes.some(({ id, groupId }) => crossesGroup(id, groupId)))
@@ -185,5 +182,17 @@ export function localMeasurements(
 		nodes,
 		groups,
 		junctions: new Map(),
+	};
+}
+
+/** Empty cells carry only an empty geometry inventory, never a computed child layout. */
+export function emptyGridCellLayout(document: LogicDocument): RegionLocalLayout | undefined {
+	if (document.nodes.length + document.groups.length + document.junctions.length > 0)
+		return undefined;
+	return {
+		layout: { width: 0, height: 0, elements: [], relations: [] },
+		ranks: { bands: [], byEndpointId: new Map() },
+		incidents: [],
+		witness: { attempted: 0, exhaustive: true, rejectedAlternatives: [] },
 	};
 }

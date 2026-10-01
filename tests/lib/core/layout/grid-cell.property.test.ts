@@ -2,8 +2,10 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
 	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 	type LogicNode,
@@ -150,6 +152,65 @@ function gridOwnedUnbridgedContact(
 }
 
 describe('grid-cell real-pipeline properties', () => {
+	it('keeps partially empty grids valid and invariant under permutations in every direction', () => {
+		fc.assert(
+			fc.property(
+				fc.integer({ min: 2, max: 3 }),
+				fc.integer({ min: 2, max: 3 }),
+				fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),
+				fc.integer({ min: 0, max: 600 }),
+				fc.integer({ min: 0, max: 600 }),
+				(rows, columns, occupied, minimumWidth, minimumHeight) => {
+					const shape = { rows, columns };
+					const base = gridDocument(shape);
+					const nodes = base.nodes.filter(
+						(_, index) =>
+							index < base.nodes.length - 1 && (index === 0 || occupied[index] === true),
+					);
+					const ids = new Set(nodes.map(({ id }) => id));
+					const baseInput = cellInput(
+						shape,
+						[minimumWidth, minimumWidth, minimumWidth],
+						[minimumHeight, minimumHeight, minimumHeight],
+					);
+					const input = {
+						...baseInput,
+						cellByEndpointId: new Map(
+							[...baseInput.cellByEndpointId].filter(([id]) => ids.has(id)),
+						),
+					};
+					for (const direction of Object.values(LayoutDirection)) {
+						const document = {
+							...base,
+							layout: defined(
+								layoutConfiguration(direction, LayoutBias.Top) ??
+									layoutConfiguration(direction, LayoutBias.Left),
+							),
+							nodes,
+							relations: [],
+						};
+						const prepared = prepareLayoutDocument(document);
+						const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+						if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+						expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+						for (const cell of result.cells) {
+							expect(cell.bounds.width).toBeGreaterThanOrEqual(Math.max(64, minimumWidth));
+							expect(cell.bounds.height).toBeGreaterThanOrEqual(Math.max(64, minimumHeight));
+						}
+						const reversed = prepareLayoutDocument({ ...document, nodes: [...nodes].reverse() });
+						expect(
+							solveGridCellLayout(reversed.graph, reversed.measurements, {
+								...input,
+								cells: [...input.cells].reverse(),
+								cellByEndpointId: new Map([...input.cellByEndpointId].reverse()),
+							}),
+						).toEqual(result);
+					}
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
 	it('selects valid geometry beyond either old cardinality guard under permutations and metric edits', () => {
 		fc.assert(
 			fc.property(

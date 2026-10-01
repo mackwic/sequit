@@ -65,13 +65,17 @@ export interface RecursiveContext {
 
 function regionPolicyFailure(
 	region: RegionCompositionNode,
+	model: RegionCompositionModel,
 	occupiedLeaves: ReadonlySet<string>,
 ): string | undefined {
 	const count = region.childIds.length;
 	if (count === 0) {
-		const occupied = occupiedLeaves.has(region.id);
-		if (!occupied) return 'Each leaf region must own an endpoint.';
+		if (occupiedLeaves.has(region.id)) return undefined;
+		const parent = model.regionsById.get(region.parentId ?? '');
+		if (parent?.definition.grid === undefined) return 'Each leaf region must own an endpoint.';
 	}
+	if (region.definition.grid !== undefined && !region.childIds.some((id) => occupiedLeaves.has(id)))
+		return 'An entirely empty grid is not supported; at least one cell must own an endpoint.';
 	return undefined;
 }
 
@@ -91,7 +95,7 @@ export function policyFailure(
 	}
 	for (const region of model.regionsById.values()) {
 		work?.charge(RegionWorkPhase.Traversals, region.id);
-		const failure = regionPolicyFailure(region, occupiedLeaves);
+		const failure = regionPolicyFailure(region, model, occupiedLeaves);
 		if (failure !== undefined) return failure;
 	}
 	return undefined;

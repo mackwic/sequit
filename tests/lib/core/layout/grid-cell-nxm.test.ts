@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { defined } from '../../../../src/lib/core/document/logic-document';
+import {
+	defined,
+	GRID_REGION_PRESENTATION_SCHEMA,
+	LayoutBias,
+	layoutConfiguration,
+	LayoutDirection,
+} from '../../../../src/lib/core/document/logic-document';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	crossingEndpointSide,
@@ -12,6 +18,7 @@ import { crossingAllocationCandidatesWithExtraTrack } from '../../../../src/lib/
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { crossingAllocationGeometryCount } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
+import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { occupiedGridGutterColumns } from '../../../../src/lib/core/layout/grids/grid-cell-inherited-incident';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
@@ -33,7 +40,7 @@ import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layou
 import { validateNestedRegionLeafIncidentsMessage as validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometryMessage as validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
 import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { layoutDocument, overlaps, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	nxmThreeByTwoDocument,
 	nxmThreeByTwoInput,
@@ -153,6 +160,74 @@ describe('grid bus allocation', () => {
 });
 
 describe('N by M grid composition', () => {
+	it.each(Object.values(LayoutDirection))(
+		'renders two empty cells in a three by two grid with a zero-minimum empty column in %s',
+		async (direction) => {
+			const base = persistedNxmGridDocument();
+			const document = {
+				...base,
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				nodes: base.nodes.filter(({ id }) => id !== 'b' && id !== 'e'),
+				relations: base.relations.filter(({ id }) => id !== 'a-b'),
+			};
+			const input = {
+				...nxmThreeByTwoInput(),
+				minimumColumnWidths: [700, 0, 700],
+				minimumRowHeights: [700, 800],
+				cellByEndpointId: new Map(
+					[...nxmThreeByTwoInput().cellByEndpointId].filter(([id]) => id !== 'b' && id !== 'e'),
+				),
+			};
+			const prepared = prepareLayoutDocument(document);
+			const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+			if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+			expect(result.columnWidths).toEqual([700, 64, 700]);
+			expect(result.rowHeights).toEqual([700, 800]);
+			for (const id of ['b', 'e']) {
+				const empty = defined(result.cells.find((cell) => cell.id === id));
+				expect(empty.bounds).toMatchObject({
+					width: 64,
+					height: input.minimumRowHeights[empty.row],
+				});
+				expect(empty.localLayout).toEqual({ width: 0, height: 0, elements: [], relations: [] });
+				expect(result.portals.some(({ cellId }) => cellId === id)).toBe(false);
+				for (const route of result.layout.relations)
+					for (let index = 1; index < route.points.length; index += 1)
+						expect(
+							entersInterior(
+								defined(route.points[index - 1]),
+								defined(route.points[index]),
+								empty.bounds,
+							),
+						).toBe(false);
+			}
+			for (const [index, cell] of result.cells.entries())
+				for (const other of result.cells.slice(index + 1))
+					expect(overlaps(cell.bounds, other.bounds)).toBe(false);
+			expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+			const presentation = defined(document.regionPresentation);
+			if (presentation.schemaVersion !== GRID_REGION_PRESENTATION_SCHEMA)
+				throw new Error('Expected root grid presentation');
+			const grid = defined(presentation.grid);
+			const rendered = await layoutDocument({
+				...document,
+				regionPresentation: {
+					...presentation,
+					grid: {
+						...grid,
+						minimumColumnWidths: input.minimumColumnWidths,
+						minimumRowHeights: input.minimumRowHeights,
+					},
+				},
+			});
+			expect(rendered.layout.regions).toEqual(
+				result.cells.map(({ id, bounds }) => ({ id, bounds })),
+			);
+		},
+	);
 	it.each(SHAPES)(
 		'places and routes the $name grid through the production composition and validators',
 		({ document, input, columns, rows }) => {

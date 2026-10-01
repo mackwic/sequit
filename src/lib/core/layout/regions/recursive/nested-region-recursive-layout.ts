@@ -1,6 +1,7 @@
 import { compareCanonicalStrings } from '../../../canonical-string';
 import { defined } from '../../../document/logic-document';
 import type { LogicGraph } from '../../../graph/create-graph';
+import { emptyGridCellLayout } from '../../grids/grid-cell-model';
 import type { LayoutMeasurements, LayoutResult } from '../../layout-types';
 import type {
 	RegionIncidentPath,
@@ -84,8 +85,22 @@ function solveLeaf(
 	const cached = selection?.solvedLeaves.get(regionId)?.get(index);
 	if (cached !== undefined) return cached;
 	const document = leafDocument(context, regionId);
+	const region = defined(context.model.regionsById.get(regionId));
+	const parent = context.model.regionsById.get(region.parentId ?? '');
+	if (parent?.definition.grid !== undefined) {
+		const empty = emptyGridCellLayout(document);
+		if (empty !== undefined)
+			return {
+				layout: empty.layout,
+				ranks: empty.ranks,
+				regions: [],
+				portals: [],
+				ownedRoutes: [],
+				incidentPaths: new Map(),
+			};
+	}
 	const measurements = nestedRegionLocalMeasurements(document, context.measurements);
-	const definition = defined(context.model.regionsById.get(regionId)).definition;
+	const definition = region.definition;
 	const input = {
 		document,
 		measurements,

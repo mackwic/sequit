@@ -6,6 +6,7 @@ import { gridRowGap } from './grid-cell-crossing-resources';
 import type { GridCellDefinition, GridCellInput, GridCellPlacement } from './grid-cell-types';
 
 const CELL_PADDING = 32;
+const EMPTY_CELL_MIN_SIZE = CELL_PADDING * 2;
 const TRACK_GAP = 96;
 
 export interface SolvedGridCell {
@@ -29,14 +30,20 @@ function columnExtent(
 ): number {
 	const demands = children
 		.filter(({ cell }) => cell.column === column)
-		.map(({ layout }) => layout.width + CELL_PADDING * 2);
+		.map(({ layout }) => {
+			if (layout.elements.length === 0) return EMPTY_CELL_MIN_SIZE;
+			return layout.width + CELL_PADDING * 2;
+		});
 	return Math.max(minimum, ...demands);
 }
 
 function rowExtent(children: readonly SolvedGridCell[], row: number, minimum: number): number {
 	const demands = children
 		.filter(({ cell }) => cell.row === row)
-		.map(({ layout }) => layout.height + CELL_PADDING * 2);
+		.map(({ layout }) => {
+			if (layout.elements.length === 0) return EMPTY_CELL_MIN_SIZE;
+			return layout.height + CELL_PADDING * 2;
+		});
 	return Math.max(minimum, ...demands);
 }
 

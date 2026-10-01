@@ -41,12 +41,14 @@ import {
 } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
 import { validateNestedRegionLeafIncidents } from '../../../../src/lib/core/layout/regions/validation/nested-region-leaf-incident-validation';
 import { validateRegionCompositionGeometry } from '../../../../src/lib/core/layout/regions/validation/region-composition-validation';
+import { nestedRegionInput } from '../../../../src/lib/core/layout/root-region';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	independentNodes,
 	rowOf,
 	shallowForestOf,
 } from '../../../support/performance/layout-resource-scenarios';
+import { persistedGridDocument } from './grid-cell-fixture';
 import { depthTwoRegionDocument, depthTwoRegionInput } from './nested-region-fixture';
 
 function solve(input: RegionInput) {
@@ -497,12 +499,54 @@ describe('recursive region model and row policy', () => {
 				regionByEndpointId: new Map([...input.regionByEndpointId, ['b', 'left']]),
 			}),
 		],
-	] as const)('reports an unendpointed leaf for %s', (_, change) => {
-		const attempt = solve(change(depthTwoRegionInput()));
-		expect(attempt.status).toBe(RegionCompositionStatus.Unsupported);
-		if (attempt.status !== RegionCompositionStatus.Unsupported) return;
-		expect(attempt.reason).toContain('leaf region must own an endpoint');
+	] as const)('keeps an unendpointed non-grid leaf outside the policy for %s', (_, change) => {
+		for (const direction of Object.values(LayoutDirection)) {
+			const document = depthTwoRegionDocument();
+			const prepared = prepareLayoutDocument({
+				...document,
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+			});
+			const attempt = solveRecursiveNestedRegionLayout(
+				prepared.graph,
+				prepared.measurements,
+				change(depthTwoRegionInput()),
+			);
+			expect(attempt).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				reason: 'Each leaf region must own an endpoint.',
+			});
+		}
 	});
+
+	it.each(Object.values(LayoutDirection))(
+		'honestly refuses an entirely empty grid in %s',
+		(direction) => {
+			const base = persistedGridDocument();
+			const document = {
+				...base,
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				nodes: [],
+				groups: [],
+				relations: [],
+			};
+			const prepared = prepareLayoutDocument(document);
+			const attempt = solveRecursiveNestedRegionLayout(
+				prepared.graph,
+				prepared.measurements,
+				nestedRegionInput(prepared.graph),
+			);
+			expect(attempt).toMatchObject({
+				status: RegionCompositionStatus.Unsupported,
+				reason: 'An entirely empty grid is not supported; at least one cell must own an endpoint.',
+			});
+		},
+	);
 
 	it('normalizes a third level without a depth limit', () => {
 		const prepared = prepareLayoutDocument(depthTwoRegionDocument());

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
+	GRID_REGION_PRESENTATION_SCHEMA,
 	LayoutBias,
 	type LayoutConfiguration,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -17,6 +20,7 @@ import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/gri
 import type { CrossingAllocationInput } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
+import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -25,7 +29,7 @@ import {
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { layoutDocument, overlaps, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	gridOf,
 	gridWithLocalRelations,
@@ -35,10 +39,72 @@ import {
 	gridInput,
 	nxmThreeByTwoDocument,
 	nxmThreeByTwoInput,
+	persistedGridDocument,
 	prepareGrid,
 } from './grid-cell-fixture';
 
 describe('bounded two by two grid composition', () => {
+	it.each(Object.values(LayoutDirection))(
+		'renders a two by two grid with an opaque empty cell in %s',
+		async (direction) => {
+			const base = persistedGridDocument();
+			const document = {
+				...base,
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				nodes: base.nodes.filter(({ id }) => id !== 'c' && id !== 'a-top'),
+				relations: base.relations.filter(({ id }) => id !== 'inside-a'),
+			};
+			const input = {
+				...gridInput(),
+				minimumColumnWidths: [700, 1000],
+				minimumRowHeights: [700, 800],
+				cellByEndpointId: new Map(
+					[...gridInput().cellByEndpointId].filter(([id]) => id !== 'c' && id !== 'a-top'),
+				),
+			};
+			const presentation = defined(document.regionPresentation);
+			if (presentation.schemaVersion !== GRID_REGION_PRESENTATION_SCHEMA)
+				throw new Error('Expected root grid presentation');
+			const grid = defined(presentation.grid);
+			const persisted = {
+				...document,
+				regionPresentation: {
+					...presentation,
+					grid: {
+						...grid,
+						minimumColumnWidths: input.minimumColumnWidths,
+						minimumRowHeights: input.minimumRowHeights,
+					},
+				},
+			};
+			const prepared = prepareLayoutDocument(document);
+			const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+			if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+			const empty = result.cells.find(({ id }) => id === 'c');
+			if (empty === undefined) throw new Error('Expected empty cell');
+			expect(empty.bounds).toMatchObject({ width: 700, height: 800 });
+			expect(empty.localLayout).toEqual({ width: 0, height: 0, elements: [], relations: [] });
+			expect(result.portals.some(({ cellId }) => cellId === 'c')).toBe(false);
+			for (const [index, cell] of result.cells.entries())
+				for (const other of result.cells.slice(index + 1))
+					expect(overlaps(cell.bounds, other.bounds)).toBe(false);
+			for (const route of result.layout.relations)
+				for (let index = 1; index < route.points.length; index += 1)
+					expect(
+						entersInterior(
+							defined(route.points[index - 1]),
+							defined(route.points[index]),
+							empty.bounds,
+						),
+					).toBe(false);
+			expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+			const rendered = await layoutDocument(persisted);
+			expect(rendered.layout.regions?.find(({ id }) => id === 'c')?.bounds).toEqual(empty.bounds);
+		},
+	);
 	it('selects a complete grid with 21 independent endpoints, beyond the old shape limit', () => {
 		const { document, input } = gridOf(3, 7);
 		const prepared = prepareLayoutDocument(document);
@@ -330,39 +396,56 @@ describe('bounded two by two grid composition', () => {
 		expect(validateGridCellGeometry(result, prepared.graph, configured)).toBeUndefined();
 	});
 
-	it('independently rejects a route that enters an opaque foreign cell', () => {
-		const prepared = prepareGrid();
-		const input = gridInput();
-		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
-		if (result.status !== GridCellLayoutStatus.Selected)
-			throw new Error('Expected selected fixture');
-		const route = result.layout.relations.find(({ id }) => id === 'across-grid');
-		const foreign = result.cells.find(({ id }) => id === 'b');
-		if (route === undefined || foreign === undefined)
-			throw new Error('Expected route and foreign cell');
-		const rail = route.points[route.points.length - 3];
-		if (rail === undefined) throw new Error('Expected right rail');
-		const y = foreign.bounds.y + foreign.bounds.height / 2;
-		const x = foreign.bounds.x + foreign.bounds.width / 2;
-		const points = [
-			...route.points.slice(0, -3),
-			{ x: rail.x, y },
-			{ x, y },
-			{ x: rail.x, y },
-			...route.points.slice(-3),
-		];
-		const damaged = {
-			...result,
-			layout: {
-				...result.layout,
-				relations: result.layout.relations.map((item) => {
-					if (item.id === route.id) return { ...item, points };
-					return item;
-				}),
-			},
-		};
-		expect(validateGridCellGeometry(damaged, prepared.graph, input)).toContain('opaque cell b');
-	});
+	it.each(['b', 'c'])(
+		'independently rejects a route that enters opaque foreign cell %s, even when empty',
+		(id) => {
+			const base = gridDocument();
+			const prepared = prepareGrid({
+				...base,
+				nodes: base.nodes.filter((node) => id !== 'c' || node.id !== 'c'),
+			});
+			const originalInput = gridInput();
+			const input = {
+				...originalInput,
+				cellByEndpointId: new Map(
+					[...originalInput.cellByEndpointId].filter(
+						([endpoint]) => id !== 'c' || endpoint !== 'c',
+					),
+				),
+			};
+			const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+			if (result.status !== GridCellLayoutStatus.Selected)
+				throw new Error('Expected selected fixture');
+			const route = result.layout.relations.find(({ id }) => id === 'across-grid');
+			const foreign = result.cells.find((cell) => cell.id === id);
+			if (route === undefined || foreign === undefined)
+				throw new Error('Expected route and foreign cell');
+			const rail = route.points[route.points.length - 3];
+			if (rail === undefined) throw new Error('Expected right rail');
+			const y = foreign.bounds.y + foreign.bounds.height / 2;
+			const x = foreign.bounds.x + foreign.bounds.width / 2;
+			const points = [
+				...route.points.slice(0, -3),
+				{ x: rail.x, y },
+				{ x, y },
+				{ x: rail.x, y },
+				...route.points.slice(-3),
+			];
+			const damaged = {
+				...result,
+				layout: {
+					...result.layout,
+					relations: result.layout.relations.map((item) => {
+						if (item.id === route.id) return { ...item, points };
+						return item;
+					}),
+				},
+			};
+			expect(validateGridCellGeometry(damaged, prepared.graph, input)).toContain(
+				`opaque cell ${id}`,
+			);
+		},
+	);
 
 	it.each([
 		{ id: 'group-outgoing', from: 'oversized', to: 'd', source: true },
