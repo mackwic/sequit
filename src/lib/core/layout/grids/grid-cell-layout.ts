@@ -44,6 +44,7 @@ import {
 	crossingPortalSpans,
 	crossingRoutes,
 	gridCrossingOwnedRoutes,
+	type GridCrossingRouting,
 	gridCrossingRouting,
 } from './grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from './grid-cell-crossing-search';
@@ -193,7 +194,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		(ids, row) => ids.length > 0 && edges.rowGutters[row] === undefined,
 	);
 
-	const routing = gridCrossingRouting({
+	const routingInput = {
 		rootId: input.rootId,
 		crossing,
 		columnCount,
@@ -207,7 +208,15 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 					model.leafByEndpointId.get(endpointId) !== input.cellByEndpointId.get(endpointId),
 			),
 		),
+	};
+	const routing = gridCrossingRouting(routingInput);
+	// Crossings between neighbouring cells first try the gap between them; an allocation whose gap
+	// routes do not validate keeps its gutter routes, so the gutter search order is unchanged.
+	let direct: GridCrossingRouting | undefined = gridCrossingRouting({
+		...routingInput,
+		direct: true,
 	});
+	if (direct.directByRelationId.size === 0) direct = undefined;
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,
@@ -224,11 +233,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			bounds: moveBounds(lane.bounds, cell.translation),
 		})),
 	);
-	const routed = (
+	const routeWith = (
+		chosen: GridCrossingRouting,
 		allocation: GridCrossingAllocation,
 		acceptBridges: boolean,
 	): RoutedGridCrossing => {
-		const routes = crossingRoutes(routing, allocation);
+		const routes = crossingRoutes(chosen, allocation);
 		const routesById = new Map(
 			[...localRoutes, ...routes.map(({ route }) => route)].map((route) => [route.id, route]),
 		);
@@ -260,6 +270,13 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		);
 		if (contact !== undefined) return { candidate, failure: contact };
 		return { candidate };
+	};
+	const routed = (allocation: GridCrossingAllocation, acceptBridges: boolean) => {
+		if (direct !== undefined) {
+			const attempt = routeWith(direct, allocation, acceptBridges);
+			if (attempt.failure === undefined) return attempt;
+		}
+		return routeWith(routing, allocation, acceptBridges);
 	};
 	const crossingIds = crossing.map(({ id }) => id);
 	const allocationInput: CrossingAllocationInput = {

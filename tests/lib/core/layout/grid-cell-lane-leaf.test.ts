@@ -269,7 +269,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 			selected.ownedRoutes
 				.filter(({ relationId }) => relationId === 'leaves-b')
 				.map(({ regionId }) => regionId),
-		).toEqual(['b', 'grid', 'd']);
+		).toEqual(['b', 'grid', 'c']);
 		expect(
 			layoutWithRootRegionForProjection(
 				prepared.graph,
@@ -659,8 +659,8 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				.filter(({ relationId }) => relationId === 'leaves-b')
 				.map(({ regionId, side }) => [regionId, side]),
 		).toEqual([
-			['b', RegionPortalSide.Right],
-			['d', RegionPortalSide.Right],
+			['b', RegionPortalSide.Bottom],
+			['d', RegionPortalSide.Top],
 		]);
 		expect(
 			selected.ownedRoutes
@@ -792,7 +792,7 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				if (portal.relationId !== 'leaves-b' || portal.regionId !== 'b') return portal;
 				return {
 					...portal,
-					localPoint: { ...portal.localPoint, x: portal.localPoint.x - 1 },
+					localPoint: { ...portal.localPoint, y: portal.localPoint.y - 1 },
 				};
 			}),
 		};
@@ -806,12 +806,12 @@ describe('a two-lane leaf in a recursive grid cell', () => {
 				const [anchor, ...rest] = piece.points;
 				return {
 					...piece,
-					points: [{ x: defined(anchor).x - 1, y: defined(anchor).y }, ...rest],
+					points: [{ x: defined(anchor).x, y: defined(anchor).y - 1 }, ...rest],
 				};
 			}),
 		};
 		expect(validateNestedRegionLeafIncidents(normalized.model, shiftedAttachment)).toBe(
-			'Relation leaves-b source incident in leaf b does not attach to node b2 on its right face.',
+			'Relation leaves-b source incident in leaf b does not attach to node b2 on its bottom face.',
 		);
 	});
 

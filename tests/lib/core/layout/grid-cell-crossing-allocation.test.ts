@@ -5,8 +5,6 @@ import { defined } from '../../../../src/lib/core/document/logic-document';
 import {
 	crossingBusY,
 	crossingFaceEdge,
-	crossingPortPositions,
-	crossingPortY,
 	crossingRailX,
 	gridMargin,
 	gridRoutingEdges,
@@ -23,6 +21,10 @@ import type {
 	CrossingPortal,
 	GridCrossingAllocation,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
+import {
+	crossingPortCoordinate,
+	crossingPortPositions,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-face';
 import {
 	crossingAllocationGeometryCount,
 	CrossingAllocationPhaseId,
@@ -179,13 +181,15 @@ describe('grid crossing allocation', () => {
 		}
 	});
 
-	it('centres the declared port tracks on the face', () => {
+	it('centres the declared port tracks along the face', () => {
 		const face = { x: 0, y: 100, width: 200, height: 60 };
-		expect(crossingPortPositions('grid', face, 1)).toEqual([130]);
-		expect(crossingPortPositions('grid', face, 2)).toEqual([118, 142]);
-		expect(crossingPortPositions('grid', face, 3)).toEqual([106, 130, 154]);
-		expect(crossingPortY(face, crossingFaceEdge('grid', 1), 0)).toBe(130);
-		expect(crossingPortY(face, crossingFaceEdge('grid', 2), 1)).toBe(142);
+		expect(crossingPortPositions(face, RegionPortalSide.Left, 1)).toEqual([130]);
+		expect(crossingPortPositions(face, RegionPortalSide.Right, 2)).toEqual([118, 142]);
+		expect(crossingPortPositions(face, RegionPortalSide.Left, 3)).toEqual([106, 130, 154]);
+		expect(crossingPortPositions(face, RegionPortalSide.Bottom, 2)).toEqual([88, 112]);
+		const edge = crossingFaceEdge('grid', 2);
+		expect(crossingPortCoordinate(face, RegionPortalSide.Right, edge, 1)).toBe(142);
+		expect(crossingPortCoordinate(face, RegionPortalSide.Top, edge, 1)).toBe(112);
 	});
 
 	it('saturates every phase without recursing through many adjacent-row relations', () => {

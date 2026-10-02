@@ -411,14 +411,17 @@ export function persistedNestedGridWithLaneCrossingDocument(): PersistedRegionDo
 	};
 }
 
-/** The left lane's source crosses its sibling lane before leaving the grid cell. */
+/**
+ * The left lane's source crosses its sibling lane before leaving the grid cell: its target lies in
+ * the diagonal cell c, so the crossing leaves by its column's gutter side, through the right lane.
+ */
 export function persistedNestedGridWithInnerLaneCrossingDocument(): PersistedRegionDocument {
 	const source = persistedNestedGridWithLaneCellDocument();
 	return {
 		...source,
 		relations: [
 			...source.relations.filter(({ id }) => id !== 'across-grid'),
-			{ id: 'leaves-b', from: 'b', to: 'd' },
+			{ id: 'leaves-b', from: 'b', to: 'c' },
 		],
 	};
 }

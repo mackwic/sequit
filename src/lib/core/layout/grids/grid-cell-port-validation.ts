@@ -5,8 +5,16 @@ import {
 	RegionGeometryDiagnosticCode,
 } from '../geometry/region-geometry-diagnostic';
 import type { Bounds, LayoutRelation, Point } from '../layout-types';
-import { RegionPortalSide } from '../regions/model/region-composition-types';
+import type { RegionPortalSide } from '../regions/model/region-composition-types';
 import { crossingEndpointSide, crossingIncidence } from './grid-cell-crossing';
+import {
+	acrossFace,
+	adjacentCellSide,
+	alongFace,
+	faceLine,
+	faceSpan,
+	leavesFace,
+} from './grid-cell-crossing-face';
 import { crossingPortOnFace, validCrossingPortStack } from './grid-cell-crossing-port-stack';
 import { equal, samePoint, within } from './grid-cell-geometry-primitives';
 import { type IncidentPieceEnds, incidentPieceEnds } from './grid-cell-incident-route';
@@ -18,16 +26,39 @@ interface CrossPortContext {
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
 }
 
-function outerPortX(bounds: Bounds, side: RegionPortalSide.Left | RegionPortalSide.Right): number {
-	if (side === RegionPortalSide.Left) return bounds.x;
-	return bounds.x + bounds.width;
+/**
+ * The side a crossing end declares by its published portal, when that portal lies on this side of
+ * its cell. Otherwise it is the column's gutter side, so the port is still checked and the portal
+ * check names the inconsistent portal.
+ */
+function declaredSide(
+	candidate: GridCellSelected,
+	relationId: string,
+	endpointId: string,
+	cell: GridCellPlacement,
+): RegionPortalSide {
+	const portal = candidate.portals.find(
+		(candidatePortal) =>
+			candidatePortal.relationId === relationId && candidatePortal.endpointId === endpointId,
+	);
+	const gutter = crossingEndpointSide(cell.column, candidate.columnWidths.length);
+	if (portal === undefined) return gutter;
+	if (!equal(acrossFace(portal.point, portal.side), faceLine(cell.bounds, portal.side)))
+		return gutter;
+	return portal.side;
 }
 
-function sideOf(
+/** A crossing end ports on its column's gutter side or on the side facing its neighbour cell. */
+function admissibleSide(
+	side: RegionPortalSide,
 	cell: GridCellPlacement,
+	other: GridCellPlacement,
 	columnCount: number,
-): RegionPortalSide.Left | RegionPortalSide.Right {
-	return crossingEndpointSide(cell.column, columnCount);
+): boolean {
+	return (
+		side === crossingEndpointSide(cell.column, columnCount) ||
+		side === adjacentCellSide(cell, other)
+	);
 }
 
 /** The face a crossing endpoint ports on is its own published element; a missing one is named. */
@@ -48,25 +79,27 @@ export function validateCrossPorts(
 			{ relationId: route.id, endpointId: missingId },
 		);
 	}
-	const source = sourceElement.bounds;
-	const target = targetElement.bounds;
-	const first = defined(route.points[0]);
-	const last = defined(route.points.at(-1));
-	const onFace = (point: Point, x: number, endpointId: string, bounds: Bounds): boolean =>
-		equal(point.x, x) &&
-		crossingPortOnFace(bounds, defined(context.incidence.get(endpointId)).length, point.y);
-	const columnCount = candidate.columnWidths.length;
+	const onFace = (point: Point, endpointId: string, bounds: Bounds, cell: GridCellPlacement) => {
+		const side = declaredSide(candidate, route.id, endpointId, cell);
+		const stack = defined(context.incidence.get(endpointId)).filter(
+			(relationId) => declaredSide(candidate, relationId, endpointId, cell) === side,
+		);
+		return (
+			equal(acrossFace(point, side), faceLine(bounds, side)) &&
+			crossingPortOnFace(bounds, side, stack.length, alongFace(point, side))
+		);
+	};
 	const sourceOnFace = onFace(
-		first,
-		outerPortX(source, sideOf(context.fromCell, columnCount)),
+		defined(route.points[0]),
 		route.from,
-		source,
+		sourceElement.bounds,
+		context.fromCell,
 	);
 	const targetOnFace = onFace(
-		last,
-		outerPortX(target, sideOf(context.toCell, columnCount)),
+		defined(route.points.at(-1)),
 		route.to,
-		target,
+		targetElement.bounds,
+		context.toCell,
 	);
 	if (!sourceOnFace || !targetOnFace)
 		return regionGeometryDiagnostic(
@@ -78,9 +111,9 @@ export function validateCrossPorts(
 }
 
 /**
- * A shared endpoint stacks one port per incident crossing on the declared face positions, moved
- * together by whole tracks at most. The allocation may permute which relation takes which
- * position, never the positions themselves.
+ * A shared endpoint stacks one port per incident crossing on the declared positions of each face
+ * it ports on, moved together by whole tracks at most. The allocation may permute which relation
+ * takes which position, never the positions themselves.
  */
 export function validateCrossPortStacking(
 	candidate: GridCellSelected,
@@ -88,36 +121,53 @@ export function validateCrossPortStacking(
 ): string | undefined {
 	const elements = new Map(candidate.layout.elements.map((element) => [element.id, element]));
 	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
+	const portals = new Map(
+		candidate.portals.map((portal) => [`${portal.relationId}\u0000${portal.endpointId}`, portal]),
+	);
 	for (const [endpointId, relations] of crossingIncidence(crossing)) {
 		if (relations.length < 2) continue;
 		const bounds = defined(elements.get(endpointId)).bounds;
-		const observed = relations
-			.map((relationId) => {
-				const route = defined(routes.get(relationId));
-				if (route.from === endpointId) return defined(route.points[0]).y;
-				return defined(route.points.at(-1)).y;
-			})
-			.sort((left, right) => left - right);
-		if (!validCrossingPortStack(bounds, observed))
+		const bySide = new Map<RegionPortalSide, number[]>();
+		for (const relationId of relations) {
+			const route = defined(routes.get(relationId));
+			let port = defined(route.points.at(-1));
+			if (route.from === endpointId) port = defined(route.points[0]);
+			const side = defined(portals.get(`${relationId}\u0000${endpointId}`)).side;
+			const coordinates = bySide.get(side) ?? [];
+			coordinates.push(alongFace(port, side));
+			bySide.set(side, coordinates);
+		}
+		const stacked = [...bySide].every(([side, coordinates]) =>
+			validCrossingPortStack(
+				bounds,
+				side,
+				coordinates.sort((left, right) => left - right),
+			),
+		);
+		if (!stacked)
 			return `Cross-cell relations do not stack their ports on shared endpoint ${endpointId}.`;
 	}
 	return undefined;
 }
 
-function checkPortal(portal: GridCellPortal, candidate: GridCellSelected): boolean {
-	const cell = candidate.cells.find(({ id }) => id === portal.cellId);
-	const knownCell = defined(cell);
-	if (portal.regionId !== knownCell.id) return false;
-	if (portal.side !== sideOf(knownCell, candidate.columnWidths.length)) return false;
-	let expectedLocalX = 0;
-	if (portal.side === RegionPortalSide.Right) expectedLocalX = knownCell.bounds.width;
-	if (!equal(portal.localPoint.x, expectedLocalX)) return false;
-	if (portal.localPoint.y < 0 || portal.localPoint.y > knownCell.bounds.height) return false;
+function checkPortal(
+	portal: GridCellPortal,
+	candidate: GridCellSelected,
+	other: GridCellPlacement,
+): boolean {
+	const cell = defined(candidate.cells.find(({ id }) => id === portal.cellId));
+	if (portal.regionId !== cell.id) return false;
+	if (!admissibleSide(portal.side, cell, other, candidate.columnWidths.length)) return false;
+	const local = { x: 0, y: 0, width: cell.bounds.width, height: cell.bounds.height };
+	if (!equal(acrossFace(portal.localPoint, portal.side), faceLine(local, portal.side)))
+		return false;
+	const along = alongFace(portal.localPoint, portal.side);
+	if (along < 0 || along > faceSpan(local, portal.side).length) return false;
 	return (
-		equal(portal.point.x, outerPortX(knownCell.bounds, portal.side)) &&
+		equal(acrossFace(portal.point, portal.side), faceLine(cell.bounds, portal.side)) &&
 		samePoint(portal.point, {
-			x: knownCell.bounds.x + portal.localPoint.x,
-			y: knownCell.bounds.y + portal.localPoint.y,
+			x: cell.bounds.x + portal.localPoint.x,
+			y: cell.bounds.y + portal.localPoint.y,
 		})
 	);
 }
@@ -130,8 +180,8 @@ interface CellPiece {
 }
 
 /**
- * The cell piece leaves its port horizontally through its portal-side face and stays in its cell;
- * the element checks then prove it avoids the cell's other boxes.
+ * The cell piece leaves its port straight out of its portal-side face and stays in its cell; the
+ * element checks then prove it avoids the cell's other boxes.
  */
 function checkEndpointContact(
 	points: readonly Point[],
@@ -143,10 +193,8 @@ function checkEndpointContact(
 	let nextIndex = end - 1;
 	if (portIndex === start) nextIndex = start + 1;
 	const next = defined(points[nextIndex]);
-	if (!equal(port.y, next.y)) return false;
-	let outward = next.x < port.x;
-	if (portal.side === RegionPortalSide.Right) outward = next.x > port.x;
-	if (!outward) return false;
+	if (!equal(alongFace(port, portal.side), alongFace(next, portal.side))) return false;
+	if (!leavesFace(port, next, portal.side)) return false;
 	let [left, top, right, bottom] = [Infinity, Infinity, -Infinity, -Infinity];
 	for (let index = start; index <= end; index += 1) {
 		const { x, y } = defined(points[index]);
@@ -187,7 +235,10 @@ function crossPortalEnds(
 	const owners = sourcePortal.cellId === fromCell.id && targetPortal.cellId === toCell.id;
 	const endpoints = sourcePortal.endpointId === route.from && targetPortal.endpointId === route.to;
 	if (!owners || !endpoints) return undefined;
-	if (!checkPortal(sourcePortal, candidate) || !checkPortal(targetPortal, candidate))
+	if (
+		!checkPortal(sourcePortal, candidate, toCell) ||
+		!checkPortal(targetPortal, candidate, fromCell)
+	)
 		return undefined;
 	const { points } = route;
 	const ends = incidentPieceEnds(points, sourcePortal.point, targetPortal.point);

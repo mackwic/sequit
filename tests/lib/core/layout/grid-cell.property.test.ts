@@ -439,6 +439,62 @@ describe('grid-cell real-pipeline properties', () => {
 			PROPERTY_PARAMETERS,
 		);
 	}, 600_000);
+	it('confines the single crossing of two neighbouring cells to the gap between them', () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					rows: fc.integer({ min: 2, max: 4 }),
+					columns: fc.integer({ min: 2, max: 4 }),
+					start: fc.nat(15),
+					lateral: fc.boolean(),
+					forward: fc.boolean(),
+					sizes: fc.array(fractionalSize, { minLength: 16, maxLength: 16 }),
+					flow: fc.constantFrom(...FLOWS),
+				}),
+				({ rows, columns, start, lateral, forward, sizes, flow }) => {
+					let row = Math.floor((start % (rows * columns)) / columns);
+					let column = start % columns;
+					let step = columns;
+					if (lateral) {
+						step = 1;
+						column = Math.min(column, columns - 2);
+					} else row = Math.min(row, rows - 2);
+					const first = row * columns + column;
+					const second = first + step;
+					let pair: [string, string] = [`n${first}`, `n${second}`];
+					if (!forward) pair = [`n${second}`, `n${first}`];
+					const cells = Array.from({ length: rows * columns }, (_, cell) => [`n${cell}`]);
+					const document = persistedCellGrid(columns, cells, [pair], flow);
+					const nodes = Object.fromEntries(
+						cells.map(([id], cell) => [defined(id), defined(sizes[cell])]),
+					);
+					const prepared = prepareLayoutDocument(document, { nodes });
+					const layout = layoutWithRootRegion(
+						prepared.graph,
+						prepared.ranks,
+						prepared.measurements,
+					);
+					const regions = new Map((layout.regions ?? []).map(({ id, bounds }) => [id, bounds]));
+					const low = defined(regions.get(`c${first}`));
+					const high = defined(regions.get(`c${second}`));
+					const route = defined(layout.relations[0]);
+					for (const { x, y } of route.points) {
+						expect(x).toBeGreaterThanOrEqual(low.x);
+						expect(x).toBeLessThanOrEqual(high.x + high.width);
+						expect(y).toBeGreaterThanOrEqual(low.y);
+						expect(y).toBeLessThanOrEqual(high.y + high.height);
+					}
+					let bends = 0;
+					for (const [index, point] of route.points.slice(2).entries()) {
+						const before = defined(route.points[index]).y === defined(route.points[index + 1]).y;
+						if (before !== (defined(route.points[index + 1]).y === point.y)) bends += 1;
+					}
+					expect(bends).toBeLessThanOrEqual(2);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	});
 	it('reaches multi-node cell endpoints in the four directions, unknown only for several crossings on a hidden endpoint', () => {
 		fc.assert(
 			fc.property(

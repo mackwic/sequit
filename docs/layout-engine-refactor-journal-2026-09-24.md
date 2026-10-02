@@ -737,3 +737,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Commit `fix(layout): invariance dédiée — somme canonique des ancres de jonction` : la somme flottante des positions est précédée d’un tri numérique, pour retirer le résidu d’ordre lexical découvert en relecture R-01.
 - Le témoin minimal à trois ancres est rouge avant correction dans les huit configurations (0,4000000000000001 contre 0,39999999999999997) ; le générateur d’invariance est élargi aux groupes imbriqués, aux jonctions membres de groupes et à plusieurs jonctions.
 - Aucun SHA dédié ré-épinglé. Le départage structurel n’est pas une optimisation des routes : la relecture mesure un effet global neutre sur les croisements stricts (2185 → 2186, sur 2515 documents valides des deux côtés dans un corpus de 3000).
+
+## Correctifs du 2 octobre 2026 — portails de grille (G-02)
+
+- Commit `fix(layout): grille — traversées entre cellules voisines par la gouttière qui les sépare` : G-02 corrigé. Deux cellules voisines d'une rangée ou d'une colonne sont reliées par leurs faces en regard (`Left/Right/Top/Bottom`), à travers l'interstice ; témoin 2 × 2 `n0→n1` : 1 564 px et 4 coudes → 240 px et 0 coude dans les quatre directions ; `c→a` traverse la gouttière de rangée au lieu du rail gauche.
+- La recherche d'allocation et ses budgets sont inchangés : pour chaque allocation, la forme par interstice est essayée puis, si elle ne valide pas, la forme par gouttières de la base ; aucun `selected` ne peut devenir `unknown` par ce changement à recherche égale.
+- Empreinte ré-épinglée : `grid-cell-layout-identity` `same-column` `6f21fc83…` → `6f882edf…` (route verticale dans la gouttière de rangée). `base`, `multiple-crossings`, `widened-group`, `expanded-tracks` inchangées.
+- Inchangé : dimensions des grilles, réservations des gouttières et du bus, ordres de bus (G-03).
