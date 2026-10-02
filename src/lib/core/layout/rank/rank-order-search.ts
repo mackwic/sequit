@@ -183,11 +183,8 @@ class RankOrderSearch {
 			return;
 		}
 		const routes = compareDedicatedRouteScores(candidate.routeScore, best.routeScore);
-		const topology = candidate.topologyCrossings - best.topologyCrossings;
-		const kendall = candidate.kendall - best.kendall;
-		const rank =
-			routes || topology || kendall || this.compareDocumentaryPositions(order, best.order);
-		if (rank < 0) this.selected = candidate;
+		const proxy = this.compareProxy(candidate.topologyCrossings, order, best);
+		if ((routes || proxy) < 0) this.selected = candidate;
 	}
 
 	/** The first budget reached names the stop; a later one cannot hide it. */
@@ -203,20 +200,24 @@ class RankOrderSearch {
 		return false;
 	}
 
+	/** Topological crossings, then documentary distance, then earlier documentary positions. */
+	private compareProxy(crossings: number, order: RankOrder, best: ValidRankOrderCandidate): number {
+		const topology = crossings - best.topologyCrossings;
+		const kendall = rankOrderKendallDistance(order, this.input.domain.bands) - best.kendall;
+		return topology || kendall || this.compareDocumentaryPositions(order, best.order);
+	}
+
 	/**
 	 * The proxy ranks this order behind the best one: its pipeline may wait, since a heuristic walk
-	 * can propose more orders than its budget routes.
+	 * can propose more orders than its budget routes. It is deferred, never discarded.
 	 */
-	private cannotBeatSelected(order: RankOrder): boolean {
+	private deferBehindSelected(order: RankOrder): boolean {
 		const best = this.selected;
 		if (best === undefined) return false;
 		const { structure, domain } = this.input;
 		const rows = applyRankOrder(structure, domain, order);
 		const crossings = this.topology.crossings(rows, best.topologyCrossings);
-		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
-		const kendall = rankOrderKendallDistance(order, domain.bands);
-		if (kendall !== best.kendall) return kendall > best.kendall;
-		return this.compareDocumentaryPositions(order, best.order) >= 0;
+		return this.compareProxy(crossings, order, best) >= 0;
 	}
 
 	/** Ties prefer earlier documentary positions, so renaming an endpoint cannot change them. */
@@ -264,7 +265,7 @@ class RankOrderSearch {
 		this.proposed += 1;
 		if (closed) return true;
 		this.frontier.push(order);
-		if (this.mode === RankSearchMode.Heuristic && this.cannotBeatSelected(order)) {
+		if (this.mode === RankSearchMode.Heuristic && this.deferBehindSelected(order)) {
 			this.deferred.push(order);
 			return true;
 		}

@@ -475,6 +475,7 @@ Les hachages de cette section figurent dans `git log 53e71866..9ef5035b --onelin
 - **Témoin.** `pruned` compte les propositions routables restées sans pipeline ; `exhaustive` n'est vrai que si toutes ont été notées sur routes réelles ; seul un documentaire sans croisement ni pont dispense de recherche (la borne topologique des blocs est retirée). Budget de 12 pipelines inchangé.
 - **Empreintes.** `group-endpoint-route` ré-épinglée (`7b98d8fb…` → `fb22e1d0…`) : 0 croisement avant et après, une inversion documentaire au lieu de deux. Les onze autres références dédiées, l'empreinte dense, les grilles et le bus imbriqué sont inchangés.
 - **Mesures.** 150 DAG × 4 directions : 1 656 → 1 224 croisements stricts, 142 layouts améliorés, aucun pire ; pipelines 1 844 → 3 798. Plafonds `subgroups/10` et `subgroups/19` relevés de 10 à 12 et de 10 à 20, délais de `node-routing` (corridors bipartis denses) et `layout-differential` (documents générés) portés de 5 à 12 s (décision utilisateur 2026-10-02 : correction avant performance) ; `test:incremental-performance` non mesuré en fenêtre calme.
+- **Tests réécrits.** `routing-obstacles.test.ts` : `keepsRowOrder` devient `keepsRowSpacing` et n'exige plus l'ordre documentaire des rangées (un échange y passe de 4 à 1 croisement strict) ; seul l'espacement de 36 px reste vérifié. Relecture A : `a79ec652` compte dans `pruned` les différés non routés après un arrêt `crossing-free`.
 
 ## Registre des hypothèses et dégradations — phases 2 et 3
 
