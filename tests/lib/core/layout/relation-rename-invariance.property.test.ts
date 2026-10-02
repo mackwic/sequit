@@ -381,7 +381,9 @@ describe('identifier rename invariance', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
-	}, 20_000);
+		// User decision 2026-10-02 (correction before performance): routing every tied rank order
+		// (D-04) and nesting same-family rails (D-05) take 15 s → 25 s alone on the shared machine.
+	}, 60_000);
 
 	it.each(CONFIGURATIONS)(
 		'keeps complete layouts invariant when every identifier is lexically reversed in %s with %s bias',
