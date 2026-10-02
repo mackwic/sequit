@@ -27,10 +27,8 @@ import {
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
-import {
-	materializeParallelGeometry,
-	parallelStrategyPlans,
-} from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
+import { parallelStrategyPlans } from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
+import { materializeParallelGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-route-frame';
 import type { ParallelRouteAllocation } from '../../../../src/lib/core/layout/lanes/shared-lane-routing';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';

@@ -34,9 +34,11 @@ export function validateSharedLaneRouteContacts(
 /** Contact participants for local main-face and mixed-face port-group rejection. */
 export function rejectedSharedLaneRouteContacts(
 	routes: readonly LayoutRelation[],
+	acceptBridges: boolean,
 ): ReadonlySet<string> {
 	const rejected = new Set<string>();
-	const bridges: readonly LayoutBridge[] = [];
+	let bridges: readonly LayoutBridge[] = [];
+	if (acceptBridges) bridges = validatedBridges(routes);
 	for (let first = 0; first < routes.length; first += 1) {
 		const a = defined(routes[first]);
 		for (let second = first + 1; second < routes.length; second += 1) {

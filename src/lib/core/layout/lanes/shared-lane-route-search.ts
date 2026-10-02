@@ -11,7 +11,7 @@ import { completedIncidentWitness, type IncidentSearchState } from './shared-lan
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import {
-	parallelCandidateTotal,
+	parallelCandidateCounts,
 	type ParallelRouteCandidate,
 	parallelRouteCandidates,
 	parallelStrategyPlans,
@@ -198,14 +198,13 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 ): ParallelRouteSearchResult<Selection> {
 	const { input: lanes, ports, contracts } = input;
 	const plans = parallelStrategyPlans(lanes, ports, contracts);
-	const total = parallelCandidateTotal(plans);
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
 	const workBudget = MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS;
 	let allocationTruncated = false;
 	let firstSelected: Selection | undefined;
 	for (const acceptBridges of [false, true]) {
 		const candidates = parallelRouteCandidates(lanes, plans, acceptBridges);
-		const baselineCount = plans.length;
+		const { baseline: baselineCount, total } = parallelCandidateCounts(plans, acceptBridges);
 		const attempted = baselineCount;
 		let baselineWork = 0;
 		const chargeBaseline: RouteWorkCharge = (units) => {

@@ -50,7 +50,6 @@ import {
 import { prepareSharedLanes } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
 import { planSharedLanePorts } from '../../../../src/lib/core/layout/lanes/shared-lane-ports';
 import {
-	materializeParallelGeometry,
 	parallelRouteCandidates,
 	parallelStrategyPlans,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-candidates';
@@ -59,6 +58,7 @@ import {
 	materializeParallelGeometryDelta,
 	validateSharedLaneGeometryDelta,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-route-delta';
+import { materializeParallelGeometry } from '../../../../src/lib/core/layout/lanes/shared-lane-route-frame';
 import {
 	laneRouteSelectionIsBetter,
 	rankLaneRouteSelection,
@@ -1455,6 +1455,43 @@ describe('shared lane layout', () => {
 				},
 			});
 			expect(validatedBridges(product.layout.relations).length).toBeLessThanOrEqual(5);
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'keeps bridgeable main-face routes available in the bridged pass in %s',
+		async (direction, bias) => {
+			const source = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['n0', 'L0'],
+					['n1', 'L1'],
+					['n2', 'L0'],
+					['n3', 'L1'],
+					['n4', 'L1'],
+					['n5', 'L0'],
+					['n6', 'L0'],
+					['n7', 'L1'],
+				],
+				[
+					['n7', 'n3'],
+					['n0', 'n3'],
+					['n4', 'n7'],
+					['n1', 'n0'],
+					['n5', 'n0'],
+					['n5', 'n7'],
+				],
+			);
+			const document = {
+				...source,
+				relations: source.relations.map((relation) => ({
+					...relation,
+					id: `${relation.from}-${relation.to}`,
+				})),
+			};
+			const product = await layoutDocument(document);
+			expect(validatedBridges(product.layout.relations).length).toBeLessThanOrEqual(1);
 		},
 	);
 
