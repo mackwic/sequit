@@ -1,0 +1,40 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"feedback_report_open": "Signaler un problème de mise en page",
+	"feedback_report_eyebrow": "Retour",
+	"feedback_report_title": "Signaler un problème de mise en page",
+	"feedback_report_description": "Dites ce qui ne va pas et pointez les zones du graphe concernées.",
+	"feedback_category_legend": "Ce qui ne va pas",
+	"feedback_category_overlap": "Chevauchement",
+	"feedback_category_crossing": "Croisement évitable",
+	"feedback_category_route": "Tracé de relation étrange",
+	"feedback_category_spacing": "Espacement",
+	"feedback_category_order": "Ordre des éléments",
+	"feedback_category_failure": "Mise en page impossible",
+	"feedback_category_other": "Autre",
+	"feedback_comment_label": "Commentaire",
+	"feedback_comment_placeholder": "Ce que vous voyez, ce que vous attendiez…",
+	"feedback_zones_label": "Zones pointées",
+	"feedback_zones_none": "Aucune zone pointée",
+	"feedback_zones_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} zone pointée",
+				"countPlural=other": "{count} zones pointées"
+			}
+		}
+	],
+	"feedback_point": "Pointer sur le graphe",
+	"feedback_zones_clear": "Effacer les zones",
+	"feedback_privacy": "Le document part anonymisé : chaque texte devient « xxx » et chaque identifiant est renommé. Votre commentaire part tel quel.",
+	"feedback_send": "Envoyer",
+	"feedback_sending": "Envoi…",
+	"feedback_sent": "Merci ! Rapport {id} enregistré.",
+	"feedback_failed": "L’envoi a échoué. Réessayez dans un instant.",
+	"feedback_pointing_aria": "Pointage sur le graphe",
+	"feedback_pointing_hint": "Tracez un rectangle ou cliquez sur un élément. Échap pour terminer.",
+	"feedback_pointing_done": "Terminer",
+	"feedback_zone_label": "Zone {index}"
+}

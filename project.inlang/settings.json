@@ -12,7 +12,8 @@
 			"./messages/{locale}/editing.json",
 			"./messages/{locale}/collaboration.json",
 			"./messages/{locale}/editor.json",
-			"./messages/{locale}/diagnostics.json"
+			"./messages/{locale}/diagnostics.json",
+			"./messages/{locale}/feedback.json"
 		]
 	}
 }

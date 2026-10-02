@@ -15,6 +15,16 @@
 			"service": "sequit-collaboration",
 		},
 	],
+	// Anonymized layout reports, written by `POST /layout-reports`; see src/routes/layout-reports.
+	"r2_buckets": [
+		{
+			"binding": "LAYOUT_REPORTS",
+			"bucket_name": "sequit-layout-reports",
+		},
+	],
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA",
+	},
 	"workers_dev": true,
 	"preview_urls": true,
 }

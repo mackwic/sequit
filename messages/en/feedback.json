@@ -1,0 +1,40 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"feedback_report_open": "Report a layout problem",
+	"feedback_report_eyebrow": "Feedback",
+	"feedback_report_title": "Report a layout problem",
+	"feedback_report_description": "Say what is wrong and point at the areas of the graph involved.",
+	"feedback_category_legend": "What is wrong",
+	"feedback_category_overlap": "Overlap",
+	"feedback_category_crossing": "Avoidable crossing",
+	"feedback_category_route": "Odd relation route",
+	"feedback_category_spacing": "Spacing",
+	"feedback_category_order": "Order of elements",
+	"feedback_category_failure": "Layout impossible",
+	"feedback_category_other": "Other",
+	"feedback_comment_label": "Comment",
+	"feedback_comment_placeholder": "What you see, what you expected…",
+	"feedback_zones_label": "Pointed areas",
+	"feedback_zones_none": "No area pointed",
+	"feedback_zones_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} area pointed",
+				"countPlural=other": "{count} areas pointed"
+			}
+		}
+	],
+	"feedback_point": "Point on the graph",
+	"feedback_zones_clear": "Clear areas",
+	"feedback_privacy": "The document leaves anonymized: every text becomes “xxx” and every identifier is renamed. Your comment leaves as written.",
+	"feedback_send": "Send",
+	"feedback_sending": "Sending…",
+	"feedback_sent": "Thank you! Report {id} saved.",
+	"feedback_failed": "Sending failed. Try again in a moment.",
+	"feedback_pointing_aria": "Pointing on the graph",
+	"feedback_pointing_hint": "Draw a rectangle or click an element. Escape to finish.",
+	"feedback_pointing_done": "Finish",
+	"feedback_zone_label": "Area {index}"
+}

@@ -30,6 +30,7 @@ src/
       document/       Contrats de commandes, publications et erreurs de session
       toml/           Encodage portable du document
       collaboration/  Yjs, session réseau, protocole et autorisation partagés
+      layout-report/  Contrat, validation et stockage des signalements de layout
   routes/             Points d'entrée SvelteKit fins
 ```
 
@@ -46,7 +47,7 @@ Ces directions, ainsi que les contraintes plus fines entre graphe, ordre, layout
 
 ## Traduction de l'interface
 
-L'interface est traduite avec Paraglide JS. Le projet inlang (`project.inlang/settings.json`) déclare le français comme langue de référence et l'anglais ; les messages vivent dans `messages/<langue>/<zone>.json`, une zone par domaine de l'interface (`common`, `document`, `content`, `canvas`, `editing`, `collaboration`, `editor`, `diagnostics`), avec des clés `snake_case` préfixées par leur zone. Un test vérifie que chaque message appartient à une seule zone et que chaque langue traduit toutes les clés avec les mêmes paramètres.
+L'interface est traduite avec Paraglide JS. Le projet inlang (`project.inlang/settings.json`) déclare le français comme langue de référence et l'anglais ; les messages vivent dans `messages/<langue>/<zone>.json`, une zone par domaine de l'interface (`common`, `document`, `content`, `canvas`, `editing`, `collaboration`, `editor`, `diagnostics`, `feedback`), avec des clés `snake_case` préfixées par leur zone. Un test vérifie que chaque message appartient à une seule zone et que chaque langue traduit toutes les clés avec les mêmes paramètres.
 
 Le code des messages est généré dans `src/app/web/i18n/paraglide/` par le plugin Vite, par `pnpm i18n:compile` (lancé à l'installation, par `quality:precommit` et par `check`) et par la configuration Vitest ; les options communes sont dans `config/paraglide.ts`. Seul `app/web`, et les routes, importent les messages : `lib` et les workers restent sans langue et produisent des codes ou des raisons typées, que l'interface traduit. Un message n'est jamais appelé au chargement d'un module, car la langue appartient à la requête : les tables statiques de libellés gardent la fonction de message et l'appellent à la lecture.
 
