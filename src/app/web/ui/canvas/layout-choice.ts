@@ -5,6 +5,7 @@ import {
 	layoutConfiguration,
 	LayoutDirection,
 } from '../../../../lib/core/document/logic-document';
+import { m } from '../../i18n/paraglide/messages';
 
 /**
  * The bias as the author reads it: the end of the main axis that slack boxes hug. Roots sit at
@@ -17,8 +18,12 @@ export enum LayoutSide {
 export const LAYOUT_SIDES = Object.values(LayoutSide);
 
 export const layoutSideLabels: Readonly<Record<LayoutSide, string>> = {
-	[LayoutSide.Root]: 'Serrer vers le but',
-	[LayoutSide.Leaves]: 'Aligner les points de départ',
+	get [LayoutSide.Root]() {
+		return m.canvas_side_root();
+	},
+	get [LayoutSide.Leaves]() {
+		return m.canvas_side_leaves();
+	},
 };
 
 /** The graph's arrows point at the root; the chip icon points the same way. */

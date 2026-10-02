@@ -49,7 +49,7 @@ export async function seedRoom(
 			if (message.type === SessionMessageKind.Reject) {
 				clearTimeout(timer);
 				socket.close();
-				reject(new Error(message.message));
+				reject(new Error(message.reason.code));
 			}
 		});
 		socket.addEventListener('error', () => {

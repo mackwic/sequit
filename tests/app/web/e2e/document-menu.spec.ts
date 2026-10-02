@@ -86,3 +86,49 @@ test('« Renommer le document » turns the title into a field', async ({ page })
 	await page.reload();
 	await expect(trigger).toHaveText('Plan 2027');
 });
+
+test('« Langue » reloads the interface in the chosen language and keeps the document', async ({
+	page,
+}) => {
+	await page.goto('/');
+	const trigger = page.locator('header button[aria-haspopup="menu"]');
+	await trigger.click();
+	await page.getByRole('menuitem', { name: 'Renommer le document' }).click();
+	await page.keyboard.type('Plan 2027');
+	await page.keyboard.press('Enter');
+
+	await trigger.click();
+	const french = page.getByRole('menuitemradio', { name: 'Français' });
+	await expect(french).toHaveAttribute('aria-checked', 'true');
+	await page.getByRole('menuitemradio', { name: 'English' }).click();
+
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await expect(page.getByRole('button', { name: 'Collaborate' })).toBeVisible();
+	await expect(trigger).toHaveText('Plan 2027');
+	await trigger.click();
+	const menu = page.getByRole('menu', { name: 'Document menu' });
+	await expect(menu.getByRole('menuitem', { name: 'Rename document' })).toBeVisible();
+	await expect(menu.getByRole('menuitemradio', { name: 'English' })).toHaveAttribute(
+		'aria-checked',
+		'true',
+	);
+
+	// The choice outlives the browser language and comes back to French the same way.
+	await page.reload();
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await trigger.click();
+	await page.getByRole('menuitemradio', { name: 'Français' }).click();
+	await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+	await expect(page.getByRole('button', { name: 'Collaborer' })).toBeVisible();
+});
+
+test('an English browser gets the English interface until a language is chosen', async ({
+	browser,
+}) => {
+	const context = await browser.newContext({ locale: 'en-US' });
+	const page = await context.newPage();
+	await page.goto('/');
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await expect(page.getByRole('button', { name: 'Collaborate' })).toBeVisible();
+	await context.close();
+});

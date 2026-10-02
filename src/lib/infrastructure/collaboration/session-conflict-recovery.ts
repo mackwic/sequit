@@ -3,12 +3,13 @@ import {
 	ProposalDecisionKind,
 } from './collaborative-document-session-types';
 import type { PendingCommandFrame } from './session-command-frame';
+import { type SessionNotice, SessionNoticeCode } from './session-reasons';
 import { type CommandConflictMessage, encodeSessionMessage } from './session-wire';
 
 interface CommandRecovery {
 	readonly sequence: number;
 	readonly decision: ProposalDecision;
-	readonly notice: string;
+	readonly notice: SessionNotice;
 }
 
 /** Preserve later proposal IDs while repairing sequence numbers from the durable receipt. */
@@ -30,8 +31,8 @@ export function recoverSessionCommandConflict(
 			type: ProposalDecisionKind.Refused,
 			proposalId: message.id,
 			code: message.code,
-			message: message.message,
+			reason: message.reason,
 		},
-		notice: `Action ${message.id} refusée : ${message.message}`,
+		notice: { code: SessionNoticeCode.ActionRefused, id: message.id, reason: message.reason },
 	};
 }

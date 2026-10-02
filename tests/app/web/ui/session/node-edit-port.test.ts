@@ -5,10 +5,18 @@ import {
 	attachLocalDocumentSession,
 	type LocalDocumentSession,
 } from '../../../../../src/app/web/document/local-document-session';
+import { unavailableCanvasCommands } from '../../../../../src/app/web/ui/session/canvas-edit-activity';
 import { createNodeEditPort } from '../../../../../src/app/web/ui/session/node-edit-port';
 import type { LogicDocument } from '../../../../../src/lib/core/document/logic-document';
+import {
+	CommandRefusalCode,
+	SessionNoticeCode,
+} from '../../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { importLogicDocument } from '../../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
-import { DocumentCommandOutcomeKind } from '../../../../../src/lib/infrastructure/document/document-command-contracts';
+import {
+	DocumentCommandDiagnosticCode,
+	DocumentCommandOutcomeKind,
+} from '../../../../../src/lib/infrastructure/document/document-command-contracts';
 import {
 	SharedCommandKind,
 	SharedElementKind,
@@ -156,11 +164,61 @@ describe('node edit port', () => {
 
 		expect(outcome).toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [{ code: 'command-refused' }],
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.CommandRefused,
+					reason: {
+						code: CommandRefusalCode.InvalidDocument,
+						details: ['Unknown nature: unknown-nature'],
+					},
+				},
+			],
 		});
 		expect(markdown.toJSON()).toBe('Markdown already applied');
 		expect(session.read().nodes.find(({ id }) => id === nodeId)?.markdown).toBe(
 			'Markdown already applied',
 		);
+	});
+
+	it('returns a typed reason when the node disappears before editing', async () => {
+		const { session, port } = await open();
+		const base = port.readNode(nodeId);
+		if (base === undefined) throw new Error('Expected the editable node');
+		await session.dispatch([{ op: SharedCommandKind.Delete, target }]);
+
+		const outcome = await port.saveNode(nodeId, base, { ...base, markdown: 'Attempted edit' });
+
+		expect(outcome).toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.NodeNotFound,
+					message: SessionNoticeCode.NodeNotFound,
+					path: ['nodes', nodeId],
+					reason: { code: SessionNoticeCode.NodeNotFound, nodeId },
+				},
+			],
+		});
+	});
+
+	it('returns a typed reason when node editing is unavailable', async () => {
+		const { port } = await open();
+		const base = port.readNode(nodeId);
+		if (base === undefined) throw new Error('Expected the editable node');
+
+		await expect(unavailableCanvasCommands.saveNode(nodeId, base, base)).resolves.toMatchObject({
+			kind: DocumentCommandOutcomeKind.Rejected,
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
+					message: SessionNoticeCode.NodeMarkdownUnavailable,
+					path: ['nodes', nodeId],
+					reason: {
+						code: SessionNoticeCode.NodeMarkdownUnavailable,
+						nodeId,
+					},
+				},
+			],
+		});
 	});
 });

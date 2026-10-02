@@ -1,0 +1,23 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"editor_bold": "Bold",
+	"editor_italic": "Italic",
+	"editor_underline": "Underline",
+	"editor_strike": "Strikethrough",
+	"editor_code": "Code",
+	"editor_blockquote": "Quote",
+	"editor_code_block": "Code block",
+	"editor_link": "Link",
+	"editor_clean": "Clear formatting",
+	"editor_source": "Source text",
+	"editor_ordered_list": "Numbered list",
+	"editor_bullet_list": "Bullet list",
+	"editor_heading_1": "Heading 1",
+	"editor_heading_2": "Heading 2",
+	"editor_heading_3": "Heading 3",
+	"editor_formatting": "Formatting",
+	"editor_heading_level": "Heading level",
+	"editor_normal_text": "Normal text",
+	"editor_node_markdown_placeholder": "What the box says, in one or two lines.",
+	"editor_node_description_placeholder": "Explanations, context, sources… (optional)"
+}

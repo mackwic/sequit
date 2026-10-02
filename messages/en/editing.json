@@ -1,0 +1,109 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"editing_nature_dialog_title_remove": "Delete nature",
+	"editing_nature_dialog_title_create": "New nature",
+	"editing_nature_dialog_title_edit": "Edit nature",
+	"editing_nature_usage_none": "No boxes",
+	"editing_nature_usage": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} box",
+				"countPlural=other": "{count} boxes"
+			}
+		}
+	],
+	"editing_nature_reassign": [
+		{
+			"declarations": ["input count", "input label", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} box uses “{label}”. Choose its new nature.",
+				"countPlural=other": "{count} boxes use “{label}”. Choose their new nature."
+			}
+		}
+	],
+	"editing_document_eyebrow": "Document",
+	"editing_document_natures_aria": "Document natures",
+	"editing_nature_empty_warning": "This document has no natures, which boxes need.",
+	"editing_nature_removal_free": "No boxes use “{label}”.",
+	"editing_nature_reassign_field": "Reassign to",
+	"editing_nature_removal_blocked": "Boxes use this nature and no other nature can replace it. Create another nature first.",
+	"editing_nature_preview_sample": "A box of this nature, as it appears on the canvas.",
+	"editing_preview_caption": "Preview",
+	"editing_label": "Label",
+	"editing_nature_create": "New nature",
+	"editing_back": "Back",
+	"editing_nature_delete_hint": "Affected boxes will change nature",
+	"editing_node_title_edit": "Edit box",
+	"editing_node_eyebrow": "Box",
+	"editing_color_and_icon": "Color and icon",
+	"editing_customized": "Customized",
+	"editing_inherited_nature": "Inherited from nature",
+	"editing_lanes_min_two": "At least two lanes are required",
+	"editing_lanes_max_reached": "The lane engine currently supports up to {max} lanes",
+	"editing_lanes_description": "Lanes arrange top-level boxes in fixed columns or bands, for example by team or role.",
+	"editing_lanes_unsupported_empty": "The lane engine does not yet support junctions or groups containing boxes: this document has them, so the canvas would show a diagnostic.",
+	"editing_lanes_empty": "This document has no lanes: all boxes share the same space.",
+	"editing_lanes_activate": "Enable lanes",
+	"editing_orientation": "Orientation",
+	"editing_lane_name_aria": "Lane name {index}",
+	"editing_lane_move_up_aria": "Move {label} up",
+	"editing_lane_move_down_aria": "Move {label} down",
+	"editing_lane_remove_aria": "Delete {label}",
+	"editing_lane_add": "Add a lane",
+	"editing_lanes_unsupported_list": "The lane engine does not yet support junctions or groups containing boxes: while any remain, the canvas shows a diagnostic instead of the layout.",
+	"editing_lane_transfer_label": "The {count} items from “{label}” move to",
+	"editing_lanes_disable_hint": "All boxes return to a single space",
+	"editing_lanes_disable": "Disable lanes",
+	"editing_junction_and": "AND",
+	"editing_junction_and_hint": "All sources are required.",
+	"editing_junction_symbol_and": "AND",
+	"editing_junction_or": "OR",
+	"editing_junction_or_hint": "At least one source is enough.",
+	"editing_junction_symbol_or": "OR",
+	"editing_junction_xor": "XOR",
+	"editing_junction_xor_hint": "Only one source, never more.",
+	"editing_junction_symbol_xor": "XOR",
+	"editing_junction_title": "Junction operator",
+	"editing_group_title_name": "Name group",
+	"editing_group_title_edit": "Edit group",
+	"editing_title": "Title",
+	"editing_group_lane_aria": "Group lane",
+	"editing_group_dissolve_hint": "Keeps members; removes the group and its relations",
+	"editing_context_actions_node": "Node actions",
+	"editing_context_actions_group": "Group actions",
+	"editing_context_actions_junction": "Junction actions",
+	"editing_context_actions_relation": "Relation actions",
+	"editing_context_delete_node": "Delete node",
+	"editing_context_delete_group": "Delete group",
+	"editing_context_delete_junction": "Delete junction",
+	"editing_context_delete_relation": "Delete relation",
+	"editing_context_create_child_aria": "Create a child of {id}",
+	"editing_context_fold_aria": "{label} group {id}",
+	"editing_context_dissolve_aria": "Ungroup {id}",
+	"editing_context_dissolve_hint": "Ungroup: keeps members",
+	"editing_context_split_aria": "Insert a junction on {id}",
+	"editing_context_delete_aria": "{label} {id}",
+	"editing_selection_actions": "Selection actions",
+	"editing_selection_group_aria": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Group {count} node",
+				"countPlural=other": "Group {count} nodes"
+			}
+		}
+	],
+	"editing_selection_delete_aria": "Delete {count} items",
+	"editing_canvas_actions": "Canvas actions",
+	"editing_canvas_manage_natures": "Manage document natures",
+	"editing_zoom_label": "Canvas zoom",
+	"editing_zoom_out": "Zoom out",
+	"editing_zoom_reset": "Reset zoom",
+	"editing_zoom_reset_hint": "Return to 100%",
+	"editing_zoom_value": "{percent}%",
+	"editing_zoom_in": "Zoom in"
+}

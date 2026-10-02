@@ -1,9 +1,18 @@
 import * as Y from 'yjs';
 
+import { TerminalSessionFailure } from './session-failure';
+import { SessionFailureCode } from './session-reasons';
 import type { TextTargetReference } from './session-wire';
 import { isEditableSharedTextField, sharedTextAt } from './shared-element';
 import { isSharedTextField } from './shared-text';
 import { YjsCollection } from './yjs-document-schema';
+
+function invalidDocument(detail: string): never {
+	throw new TerminalSessionFailure(SessionFailureCode.InvalidDocument, {
+		code: SessionFailureCode.InvalidDocument,
+		details: [detail],
+	});
+}
 
 function collectTexts(document: Y.Doc): ReadonlySet<Y.Text> {
 	const texts = new Set<Y.Text>();
@@ -42,28 +51,29 @@ export function assertSyntacticTextProposal(
 	update: DecodedTextProposal,
 ): void {
 	if (!isEditableSharedTextField(reference.target.kind, reference.field))
-		throw new Error('La proposition de texte est invalide.');
+		invalidDocument('Text proposal targets a non-editable field.');
 	if (update.structs.length === 0 && update.ds.clients.size === 0)
-		throw new Error('La proposition de texte est invalide.');
+		invalidDocument('Text proposal contains no changes.');
 	for (const struct of update.structs) {
 		if (!plainTextContent(struct))
-			throw new Error('La proposition contient une modification structurelle.');
+			invalidDocument('Text proposal contains a structural modification.');
 		if (struct.parentSub !== null)
-			throw new Error('La proposition contient une modification structurelle.');
+			invalidDocument('Text proposal contains a structural modification.');
 		if (typeof struct.parent === 'string')
-			throw new Error('La proposition contient une modification structurelle.');
+			invalidDocument('Text proposal contains a structural modification.');
 	}
 }
 
 function assertTextItem(item: Y.AbstractStruct, texts: ReadonlySet<Y.Text>): void {
-	if (!(item instanceof Y.Item)) throw new Error('Text update contains non-text data');
+	if (!(item instanceof Y.Item)) invalidDocument('Text update contains a non-text item.');
 	const plainText =
 		item.content instanceof Y.ContentString || item.content instanceof Y.ContentDeleted;
-	if (!plainText || item.parentSub !== null) throw new Error('Only plain text edits are allowed');
+	if (!plainText || item.parentSub !== null)
+		invalidDocument('Text update contains a non-text edit.');
 	if (!(item.parent instanceof Y.Text))
-		throw new Error('Use a command to change document properties');
+		invalidDocument('Text update attempts to change a document property.');
 	if (!texts.has(item.parent))
-		throw new Error('Text update targets an undeclared or live-inaccessible field');
+		invalidDocument('Text update targets an undeclared or inaccessible field.');
 }
 
 /** Run on an isolated candidate. Rejected structs never enter the room's document. */
@@ -80,8 +90,9 @@ export function applyTextUpdate(
 	const before = Y.decodeStateVector(Y.encodeStateVector(candidate));
 	const check = (transaction: Y.Transaction): void => {
 		for (const type of transaction.changed.keys()) {
-			if (!(type instanceof Y.Text)) throw new Error('Use a command to change document structure');
-			if (!texts.has(type)) throw new Error('Text update targets an undeclared field');
+			if (!(type instanceof Y.Text))
+				invalidDocument('Text update attempts to change document structure.');
+			if (!texts.has(type)) invalidDocument('Text update targets an undeclared field.');
 		}
 	};
 	candidate.on('afterTransaction', check);
@@ -91,7 +102,7 @@ export function applyTextUpdate(
 		candidate.off('afterTransaction', check);
 	}
 	if (candidate.store.pendingStructs !== null || candidate.store.pendingDs !== null)
-		throw new Error('Text update has unresolved dependencies');
+		invalidDocument('Text update has unresolved dependencies.');
 	for (const [client, structs] of candidate.store.clients) {
 		const clock = before.get(client) ?? 0;
 		for (const item of structs) {

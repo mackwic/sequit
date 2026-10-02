@@ -13,7 +13,7 @@
 - The structured document is the source of truth; text and canvas are projections.
 - Preserve stable identifiers and deterministic parsing, serialization, graph, and layout behavior.
 - Production code must not depend on tests, routes, or outward architectural layers.
-- Do not edit generated output under `.svelte-kit`, `.wrangler`, or `build`, or generated `worker-configuration.d.ts` files.
+- Do not edit generated output under `.svelte-kit`, `.wrangler`, `build` or `src/app/web/i18n/paraglide`, or generated `worker-configuration.d.ts` files. User-visible interface text lives in `messages/<locale>/<zone>.json`, never as literals in `src/app/web` or `src/routes`.
 
 ## Changes
 

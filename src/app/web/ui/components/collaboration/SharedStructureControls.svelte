@@ -11,6 +11,7 @@
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { m } from '../../../i18n/paraglide/messages';
 	let {
 		model,
 		connected,
@@ -35,7 +36,7 @@
 </script>
 
 <fieldset disabled={!connected}>
-	<legend>Structure</legend>
+	<legend>{m.collaboration_structure_legend()}</legend>
 	<button
 		type="button"
 		onclick={() => {
@@ -44,7 +45,7 @@
 				target: { kind: Kind.Junction, id: crypto.randomUUID() },
 				properties: { operator: JunctionOperator.Xor },
 			});
-		}}>Ajouter une jonction</button
+		}}>{m.collaboration_structure_add_junction()}</button
 	>
 	<button
 		type="button"
@@ -54,19 +55,21 @@
 				target: { kind: Kind.Node, id: crypto.randomUUID() },
 				properties: { natureId: model.natures[0]?.id ?? '', markdown: 'Nouvelle boîte' },
 			});
-		}}>Ajouter une boîte</button
+		}}>{m.collaboration_structure_add_node()}</button
 	>
 	<label
-		>De <select aria-label="Origine de la relation" bind:value={from}
-			><option value="">Choisir</option>{#each endpoints as endpoint (endpoint.id)}<option
-					value={endpoint.id}>{endpoint.id}</option
+		>{m.collaboration_structure_from()}
+		<select aria-label={m.collaboration_structure_from_aria()} bind:value={from}
+			><option value="">{m.collaboration_structure_choose()}</option
+			>{#each endpoints as endpoint (endpoint.id)}<option value={endpoint.id}>{endpoint.id}</option
 				>{/each}</select
 		></label
 	>
 	<label
-		>Vers <select aria-label="Destination de la relation" bind:value={to}
-			><option value="">Choisir</option>{#each endpoints as endpoint (endpoint.id)}<option
-					value={endpoint.id}>{endpoint.id}</option
+		>{m.collaboration_structure_to()}
+		<select aria-label={m.collaboration_structure_to_aria()} bind:value={to}
+			><option value="">{m.collaboration_structure_choose()}</option
+			>{#each endpoints as endpoint (endpoint.id)}<option value={endpoint.id}>{endpoint.id}</option
 				>{/each}</select
 		></label
 	>
@@ -79,13 +82,17 @@
 				target: { kind: Kind.Relation, id: crypto.randomUUID() },
 				properties: { from, to },
 			});
-		}}>Relier</button
+		}}>{m.collaboration_structure_link()}</button
 	>
-	<label>Nom du groupe <input aria-label="Nom du groupe" bind:value={groupName} /></label>
 	<label
-		>Éléments à regrouper <select
+		>{m.collaboration_structure_group_name_label()}
+		<input aria-label={m.collaboration_structure_group_name_aria()} bind:value={groupName} /></label
+	>
+	<label
+		>{m.collaboration_structure_group_members_label()}
+		<select
 			multiple
-			aria-label="Éléments à regrouper"
+			aria-label={m.collaboration_structure_group_members_aria()}
 			bind:value={groupMembers}
 			>{#each endpoints as endpoint (endpoint.id)}<option value={endpoint.id}>{endpoint.id}</option
 				>{/each}</select
@@ -96,11 +103,12 @@
 		disabled={groupMembers.length === 0}
 		onclick={() => {
 			dispatch({ op: Op.Group, id: crypto.randomUUID(), label: groupName, members: groupMembers });
-		}}>Regrouper</button
+		}}>{m.collaboration_structure_group()}</button
 	>
 	<label
-		>Disposition <select
-			aria-label="Disposition"
+		>{m.collaboration_structure_layout_label()}
+		<select
+			aria-label={m.collaboration_structure_layout_aria()}
 			value={`${model.layout.direction}/${model.layout.bias}`}
 			onchange={(event) => {
 				const [direction = '', bias = ''] = event.currentTarget.value.split('/');
@@ -112,7 +120,9 @@
 						>{/if}{/each}{/each}
 		</select></label
 	>
-	<output aria-label="Layout partagé">{model.layout.direction} / {model.layout.bias}</output>
+	<output aria-label={m.collaboration_structure_layout_output_aria()}
+		>{model.layout.direction} / {model.layout.bias}</output
+	>
 </fieldset>
 
 <style>

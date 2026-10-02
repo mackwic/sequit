@@ -23,6 +23,21 @@ export enum TopologyEditDiagnosticCode {
 	EndpointOrderMaterializationFailed = 'endpoint-order-materialization-failed',
 }
 
+interface DuplicateRelationIdReason {
+	readonly code: TopologyEditDiagnosticCode.DuplicateRelationId;
+	readonly relationId: string;
+}
+
+interface DuplicateRelationReason {
+	readonly code: TopologyEditDiagnosticCode.DuplicateRelation;
+	readonly from: string;
+	readonly to: string;
+	readonly relationId: string;
+}
+
+/** Why a topology edit was refused, for callers that explain it to a person. */
+export type TopologyEditReason = DuplicateRelationIdReason | DuplicateRelationReason;
+
 interface EndpointOrderChange {
 	readonly endpointKind: EndpointKind;
 	readonly endpointId: string;
@@ -47,6 +62,7 @@ interface TopologyEditDiagnostic {
 	readonly code: TopologyEditDiagnosticCode | SequitDiagnostic['code'];
 	readonly message: string;
 	readonly path: readonly string[];
+	readonly reason?: TopologyEditReason;
 	readonly expectedOrder?: readonly string[];
 	readonly materializedOrder?: readonly string[];
 	readonly expectedScore?: number;

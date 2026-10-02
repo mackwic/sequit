@@ -6,6 +6,7 @@ import {
 } from '../../../../lib/core/document/logic-document';
 import { isVerticalDirection } from '../../../../lib/core/layout/geometry/layout-frame';
 import { orderedLaneIds } from '../../../../lib/core/layout/lanes/shared-lane-model';
+import { m } from '../../i18n/paraglide/messages';
 
 /** The root lanes in reading order, as the engine orders them; empty without explicit lanes. */
 export function rootLanes(document: LogicDocument): readonly LayoutLane[] {
@@ -37,6 +38,6 @@ export function laneOrientationLabel(
 	direction: LayoutDirection,
 ): string {
 	const along = orientation === LaneOrientation.Parallel;
-	if (along === isVerticalDirection(direction)) return 'En colonnes';
-	return 'En bandes';
+	if (along === isVerticalDirection(direction)) return m.canvas_lane_columns();
+	return m.canvas_lane_bands();
 }

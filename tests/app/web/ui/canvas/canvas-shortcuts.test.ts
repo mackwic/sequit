@@ -77,14 +77,15 @@ describe('matchesShortcut', () => {
 		expect(press(CanvasShortcutId.Redo, { key: 'z', ctrlKey: true })).toBe(false);
 	});
 
-	it('confirms a dialog with Shift and Enter alone, never with Ctrl, Cmd or Alt', () => {
-		const chord = { key: 'Enter', shiftKey: true };
+	it('confirms a dialog with Ctrl or Cmd and Enter alone, never with Shift or Alt', () => {
+		const chord = { key: 'Enter', ctrlKey: true };
 		expect(press(CanvasShortcutId.Confirm, chord)).toBe(true);
+		expect(press(CanvasShortcutId.Confirm, { key: 'Enter', metaKey: true })).toBe(true);
 		expect(press(CanvasShortcutId.Confirm, { key: 'Enter' })).toBe(false);
-		expect(press(CanvasShortcutId.Confirm, { ...chord, ctrlKey: true })).toBe(false);
-		expect(press(CanvasShortcutId.Confirm, { ...chord, metaKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Confirm, { key: 'Enter', shiftKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Confirm, { ...chord, shiftKey: true })).toBe(false);
 		expect(press(CanvasShortcutId.Confirm, { ...chord, altKey: true })).toBe(false);
-		expect(press(CanvasShortcutId.Confirm, { key: 'e', shiftKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.Confirm, { key: 'e', ctrlKey: true })).toBe(false);
 	});
 
 	it('opens the help with ?, keeping the Shift a layout needs, never with Ctrl or Cmd', () => {
@@ -135,7 +136,7 @@ it.each([
 	[CanvasShortcutId.Delete, 'Suppr', '⌫', 'Delete Backspace'],
 	[CanvasShortcutId.Undo, 'Ctrl+Z', '⌘Z', 'Control+z Meta+z'],
 	[CanvasShortcutId.Redo, 'Ctrl+Maj+Z', '⇧⌘Z', 'Control+Shift+z Meta+Shift+z'],
-	[CanvasShortcutId.Confirm, 'Maj+Entrée', '⇧↵', 'Shift+Enter'],
+	[CanvasShortcutId.Confirm, 'Ctrl+Entrée', '⌘↵', 'Control+Enter Meta+Enter'],
 	[CanvasShortcutId.Help, '?', '?', '?'],
 	[CanvasShortcutId.Navigate, 'Flèches', 'Flèches', 'ArrowUp ArrowDown ArrowLeft ArrowRight'],
 	[CanvasShortcutId.Select, 'Espace', 'Espace', 'Space'],

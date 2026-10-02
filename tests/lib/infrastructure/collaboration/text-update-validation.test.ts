@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { compactRoomDocument } from '../../../../src/lib/infrastructure/collaboration/compact-room-document';
+import { SessionFailureCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	assertKnownTextDeletions,
@@ -19,6 +20,13 @@ import {
 	SharedElementKind as Kind,
 } from '../../../../src/lib/infrastructure/document/shared-document-command';
 import { validLogicDocument } from '../../../support/builders/logic-document';
+
+/** Protocol violations reject the document, with the violation as an untranslated detail. */
+function invalidDocument(detail: string): unknown {
+	return expect.objectContaining({
+		reason: { code: SessionFailureCode.InvalidDocument, details: [detail] },
+	});
+}
 
 function replicas() {
 	const server = new Y.Doc({ gc: false });
@@ -759,7 +767,7 @@ it('rejects a text delta whose preceding local edits are missing', () => {
 	const partial = Y.encodeStateAsUpdate(client, vector);
 	expect(() => {
 		applyTextUpdate(server, partial);
-	}).toThrow('unresolved dependencies');
+	}).toThrow(invalidDocument('Text update has unresolved dependencies.'));
 	client.destroy();
 	server.destroy();
 });
@@ -773,7 +781,7 @@ it('rejects a deletion for an insertion the room has never received', () => {
 	text.delete(0, 7);
 	expect(() => {
 		applyTextUpdate(server, Y.encodeStateAsUpdate(client, vector));
-	}).toThrow('unresolved dependencies');
+	}).toThrow(invalidDocument('Text update has unresolved dependencies.'));
 	client.destroy();
 	server.destroy();
 });
@@ -787,7 +795,7 @@ it('does not authorize edits to an undeclared text field', () => {
 	text.insert(0, 'Edited ');
 	expect(() => {
 		applyTextUpdate(server, Y.encodeStateAsUpdate(client));
-	}).toThrow('undeclared field');
+	}).toThrow(invalidDocument('Text update targets an undeclared field.'));
 	client.destroy();
 	server.destroy();
 });

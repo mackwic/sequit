@@ -29,7 +29,7 @@
 		onclose: () => void;
 		/** Escape, when it must differ from `onclose`. */
 		oncancel?: (() => void) | undefined;
-		/** Confirm (Shift+Enter) anywhere in the dialog, captured before the focused field. */
+		/** Confirm (Cmd/Ctrl+Enter) anywhere in the dialog, captured before the focused field. */
 		oncommit?: (() => void) | undefined;
 		children: Snippet;
 		footer?: Snippet;

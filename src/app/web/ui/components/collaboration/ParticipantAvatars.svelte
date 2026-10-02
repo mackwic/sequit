@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ParticipantPresence } from '../../../../../lib/infrastructure/collaboration/participant-presence';
+	import { m } from '../../../i18n/paraglide/messages';
 
 	const SHOWN = 5;
 
@@ -24,19 +25,20 @@
 
 	function initials(name: string): string {
 		const words = name.trim().split(/\s+/).filter(Boolean);
-		const first = words[0]?.[0] ?? '?';
+		const first = words[0]?.[0] ?? m.collaboration_avatars_initial_fallback();
 		let last = '';
 		if (words.length > 1) last = words.at(-1)?.[0] ?? '';
 		return `${first}${last}`.toUpperCase();
 	}
 
 	function followLabel(participant: ParticipantPresence): string {
-		if (participant.clientId === following) return `Ne plus suivre ${participant.name}`;
-		return `Suivre ${participant.name}`;
+		if (participant.clientId === following)
+			return m.collaboration_avatars_unfollow({ name: participant.name });
+		return m.collaboration_avatars_follow({ name: participant.name });
 	}
 </script>
 
-<ul class="avatars" aria-label="Participants">
+<ul class="avatars" aria-label={m.collaboration_avatars_list_aria()}>
 	{#each shown as participant (participant.clientId)}
 		<li aria-label={participant.name}>
 			{#if participant.clientId === selfId || onfollow === undefined}
@@ -65,9 +67,12 @@
 		<li
 			class="avatar more"
 			title={hidden.map(({ name }) => name).join(', ')}
-			aria-label={`${String(hidden.length)} autres participants : ${hidden.map(({ name }) => name).join(', ')}`}
+			aria-label={m.collaboration_avatars_hidden_aria({
+				count: hidden.length,
+				names: hidden.map(({ name }) => name).join(', '),
+			})}
 		>
-			<span aria-hidden="true">+{hidden.length}</span>
+			<span aria-hidden="true">{m.collaboration_avatars_overflow({ count: hidden.length })}</span>
 		</li>
 	{/if}
 </ul>

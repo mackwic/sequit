@@ -11,6 +11,7 @@
 	import { bindQuillMarkdown, type QuillMarkdownEditor } from '../../../document/quill-editor';
 	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { describeQuillField } from '../../../document/quill-field';
+	import { m } from '../../../i18n/paraglide/messages';
 	import { getCollaborationAwareness } from './collaboration-awareness.svelte';
 	import QuillPresence from './QuillPresence.svelte';
 
@@ -151,7 +152,7 @@
 		<span class="text-field-title">{title}</span>
 		{#if sourceMode && profile !== QuillEditorProfile.Plain}
 			<p class="text-field-note" role="status">
-				Édité en texte source pour conserver toutes ses mises en forme.
+				{m.collaboration_shared_text_source_mode_note()}
 			</p>
 		{/if}
 	</div>
@@ -164,6 +165,6 @@
 		{#if editor && text}<QuillPresence {editor} {text} />{/if}
 	</div>
 	{#if failure}<p class="ui-notice error" role="alert">
-			Impossible d’ouvrir l’éditeur : {failure}
+			{m.collaboration_shared_text_editor_open_failed({ failure })}
 		</p>{/if}
 </div>

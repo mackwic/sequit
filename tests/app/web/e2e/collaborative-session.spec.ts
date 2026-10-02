@@ -52,7 +52,7 @@ async function externalCommands(
 				if (!(event.data instanceof ArrayBuffer)) return;
 				const message = decodeSessionMessage(new Uint8Array(event.data));
 				if (message.type === Message.Commit && message.id === proposal) resolve();
-				if (message.type === Message.Reject) reject(new Error(message.message));
+				if (message.type === Message.Reject) reject(new Error(message.reason.code));
 			});
 			peer.addEventListener('error', () => {
 				reject(new Error('Peer WebSocket failed'));

@@ -8,6 +8,10 @@ import {
 	META_KEY,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
 import {
+	CommandRefusalCode,
+	SessionFailureCode,
+} from '../../../src/lib/infrastructure/collaboration/session-reasons';
+import {
 	decodeSessionMessage,
 	encodeSessionMessage,
 	LEGACY_SESSION_WIRE_VERSION,
@@ -37,6 +41,9 @@ import {
 	collaborativeFixture,
 } from '../../support/fixtures/collaborative-document';
 import { connectRoom, initializeRoom } from './room-client';
+
+/** The cycle refusal carries the graph diagnostic as an untranslated technical detail. */
+const cycleDetails: unknown = expect.arrayContaining([expect.stringContaining('Cycle detected:')]);
 
 describe('room authority', () => {
 	it('persists structural commands before broadcasting and deduplicates their IDs', async () => {
@@ -125,7 +132,13 @@ describe('room authority', () => {
 			const closed = new Promise<CloseEvent>((resolve) => {
 				alice.socket.addEventListener('close', resolve, { once: true });
 			});
-			expect((await alice.next(Message.Reject)).message).toBeTruthy();
+			expect(await alice.next(Message.Reject)).toMatchObject({
+				code: SessionFailureCode.InvalidDocument,
+				reason: {
+					code: SessionFailureCode.InvalidDocument,
+					details: ['Proposed update is not a decodable Yjs update'],
+				},
+			});
 			expect((await closed).code).toBe(1008);
 			expect(bobCommits).toHaveLength(0);
 			bob.send({ type: Message.Sync, payload: writeSyncRequest(bobDocument) });
@@ -239,16 +252,19 @@ describe('room authority', () => {
 			update,
 		} as const;
 		alice.send(obsolete);
-		expect(await alice.next(Message.Conflict)).toMatchObject({
+		expect(await alice.next(Message.Conflict)).toEqual({
+			type: Message.Conflict,
 			code: 'text-target-gone',
 			id: 'late-original-A',
 			target,
 		});
 		expect(alice.socket.readyState).toBe(WebSocket.OPEN);
 		alice.send({ ...obsolete, id: 'late-delete-A', update: deletion });
-		expect(await alice.next(Message.Conflict)).toMatchObject({
+		expect(await alice.next(Message.Conflict)).toEqual({
+			type: Message.Conflict,
 			code: 'text-target-gone',
 			id: 'late-delete-A',
+			target,
 		});
 		alice.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
 		expect((await alice.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
@@ -260,7 +276,10 @@ describe('room authority', () => {
 			expect((await alice.next(Message.Conflict)).id).toBe(obsolete.id);
 		}
 		alice.send(obsolete);
-		expect((await alice.next(Message.Reject)).code).toBe('repeated-command-refusal');
+		expect(await alice.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		});
 		bob.send({ type: Message.Sync, payload: writeSyncRequest(new Y.Doc()) });
 		expect((await bob.next(Message.Sync)).payload).toBeInstanceOf(Uint8Array);
 		bob.socket.close();
@@ -339,13 +358,28 @@ describe('room authority', () => {
 				update,
 			});
 			if (variant === 'invented-incarnation') {
-				expect(await alice.next(Message.Conflict)).toMatchObject({
+				expect(await alice.next(Message.Conflict)).toEqual({
+					type: Message.Conflict,
 					code: 'text-target-gone',
 					id: 'forged-A',
+					target: { kind: Kind.Node, id: 'A' },
 				});
 				expect(alice.socket.readyState).toBe(WebSocket.OPEN);
 			} else {
-				expect((await alice.next(Message.Reject)).code).toBe('invalid-document');
+				const expectedDetail = {
+					empty: 'Text proposal contains no changes.',
+					'unrelated-field': 'Text target ID does not match the referenced field.',
+					'invented-field': 'Text proposal targets a non-editable field.',
+					'structural-update': 'Text proposal contains a structural modification.',
+					'structural-deletion': 'Text deletion targets non-text content.',
+				}[variant];
+				expect(await alice.next(Message.Reject)).toMatchObject({
+					code: SessionFailureCode.InvalidDocument,
+					reason: {
+						code: SessionFailureCode.InvalidDocument,
+						details: [expectedDetail],
+					},
+				});
 				expect((await closed).code).toBe(1008);
 			}
 			await runInDurableObject(
@@ -384,6 +418,10 @@ describe('room authority', () => {
 		expect(await alice.next(Message.Conflict)).toMatchObject({
 			id: 'cycle',
 			code: 'invalid-command',
+			reason: {
+				code: CommandRefusalCode.InvalidDocument,
+				details: cycleDetails,
+			},
 			lastAcceptedSequence: 0,
 		});
 		expect(alice.socket.readyState).toBe(WebSocket.OPEN);
@@ -413,7 +451,13 @@ describe('room authority', () => {
 			id: 'cyclic-initialize',
 			update: Y.encodeStateAsUpdate(invalid),
 		});
-		expect((await invalidSender.next(Message.Reject)).message).toBeTruthy();
+		expect(await invalidSender.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.InvalidDocument,
+			reason: {
+				code: SessionFailureCode.InvalidDocument,
+				details: cycleDetails,
+			},
+		});
 		expect(commits).toHaveLength(0);
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
 			expect(await state.storage.get(META_KEY)).toBeUndefined();
@@ -457,7 +501,13 @@ describe('room authority', () => {
 		});
 		for (let attempt = 0; attempt < 6; attempt++) {
 			alice.send(refused);
-			expect(await alice.next(Message.Conflict)).toMatchObject({ lastAcceptedSequence: 0 });
+			expect(await alice.next(Message.Conflict)).toMatchObject({
+				lastAcceptedSequence: 0,
+				reason: {
+					code: CommandRefusalCode.InvalidDocument,
+					details: cycleDetails,
+				},
+			});
 			if (attempt === 0)
 				alice.send({
 					type: Message.Presence,
@@ -465,7 +515,10 @@ describe('room authority', () => {
 				});
 		}
 		alice.send(refused);
-		expect(await alice.next(Message.Reject)).toMatchObject({ code: 'repeated-command-refusal' });
+		expect(await alice.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		});
 		expect((await closed).code).toBe(1008);
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
 			expect(await state.storage.get('command-session:repeated-session')).toBeUndefined();
@@ -503,11 +556,20 @@ describe('room authority', () => {
 		for (let cycle = 0; cycle < 6; cycle++) {
 			for (const id of ['A', 'B']) {
 				alice.send(refused(id));
-				expect((await alice.next(Message.Conflict)).id).toBe(id);
+				expect(await alice.next(Message.Conflict)).toMatchObject({
+					id,
+					reason: {
+						code: CommandRefusalCode.InvalidDocument,
+						details: cycleDetails,
+					},
+				});
 			}
 		}
 		alice.send(refused('A'));
-		expect((await alice.next(Message.Reject)).code).toBe('repeated-command-refusal');
+		expect(await alice.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		});
 		await runInDurableObject(env.COLLABORATION_ROOMS.getByName(room), async (_instance, state) => {
 			expect(await state.storage.get('refusal-session:rotating-A')).toBeUndefined();
 			expect(await state.storage.get('refusal-session:rotating-B')).toBeUndefined();
@@ -537,7 +599,13 @@ describe('room authority', () => {
 			}) as const;
 		for (let attempt = 0; attempt < 24; attempt++) {
 			first.send(refused(`first-${attempt}`));
-			expect((await first.next(Message.Conflict)).id).toBe(`first-${attempt}`);
+			expect(await first.next(Message.Conflict)).toMatchObject({
+				id: `first-${attempt}`,
+				reason: {
+					code: CommandRefusalCode.InvalidDocument,
+					details: cycleDetails,
+				},
+			});
 		}
 		first.socket.close();
 		const sockets = [];
@@ -547,27 +615,33 @@ describe('room authority', () => {
 			for (let attempt = 0; attempt < 20; attempt++) {
 				const id = `peer-${peer}-${attempt}`;
 				connected.send(refused(id));
-				expect((await connected.next(Message.Conflict)).id).toBe(id);
+				expect(await connected.next(Message.Conflict)).toMatchObject({
+					id,
+					reason: {
+						code: CommandRefusalCode.InvalidDocument,
+						details: cycleDetails,
+					},
+				});
 			}
 		}
 		const rotated = await connectRoom(room);
 		rotated.send(refused('after-room-budget'));
-		expect((await rotated.next(Message.Reject)).code).toBe('repeated-command-refusal');
+		expect(await rotated.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		});
 		for (const peer of sockets) peer.socket.close();
 		rotated.socket.close();
 		vi.restoreAllMocks();
 		doc.destroy();
 	});
 
-	it('uses legacy v4 rejection for an old socket while preserving newer participants', async () => {
+	it('translates v5 command conflicts while preserving newer participants', async () => {
 		const name = 'mixed-protocol';
 		const legacy = await connectRoom(name);
 		const modern = await connectRoom(name);
 		const doc = await initializeRoom(name, modern, CollaborativeFixture.LinkedBoxes);
 		await legacy.next(Message.Commit);
-		const closed = new Promise<CloseEvent>((resolve) => {
-			legacy.socket.addEventListener('close', resolve, { once: true });
-		});
 		legacy.socket.send(
 			encodeSessionMessage(
 				{
@@ -586,8 +660,15 @@ describe('room authority', () => {
 				LEGACY_SESSION_WIRE_VERSION,
 			),
 		);
-		expect((await legacy.next(Message.Reject)).message).toBeTruthy();
-		expect((await closed).code).toBe(1008);
+		expect(await legacy.next(Message.Conflict)).toMatchObject({
+			code: 'invalid-command',
+			id: 'old-cycle',
+			reason: {
+				code: CommandRefusalCode.InvalidDocument,
+				details: cycleDetails,
+			},
+		});
+		expect(legacy.socket.readyState).toBe(WebSocket.OPEN);
 		modern.send({
 			type: Message.Change,
 			id: 'still-valid',
@@ -597,6 +678,7 @@ describe('room authority', () => {
 		});
 		expect((await modern.next(Message.Commit)).id).toBe('still-valid');
 		modern.socket.close();
+		legacy.socket.close();
 		doc.destroy();
 	});
 
@@ -656,12 +738,24 @@ it('requires initialization and rejects a snapshot for another room', async () =
 		sequence: 1,
 		commands: [{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }],
 	});
-	expect((await empty.next(Message.Reject)).message).toContain('Initialisez');
+	expect(await empty.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidDocument,
+		reason: {
+			code: SessionFailureCode.InvalidDocument,
+			details: ['Document must be initialized before commands.'],
+		},
+	});
 	const source = await connectRoom('snapshot-source');
 	const doc = await initializeRoom('snapshot-source', source);
 	const wrong = await connectRoom('snapshot-target');
 	wrong.send({ type: Message.Initialize, id: 'wrong-room', update: Y.encodeStateAsUpdate(doc) });
-	expect((await wrong.next(Message.Reject)).message).toContain('room');
+	expect(await wrong.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidDocument,
+		reason: {
+			code: SessionFailureCode.InvalidDocument,
+			details: ['Document ID does not match the room.'],
+		},
+	});
 	source.socket.close();
 	doc.destroy();
 });
@@ -707,6 +801,10 @@ it('keeps the rejected batch atomic and accepts the corrected next command', asy
 	});
 	expect(await client.next(Message.Conflict)).toMatchObject({
 		id: 'batch',
+		reason: {
+			code: CommandRefusalCode.ElementMissing,
+			target: { kind: Kind.Node, id: 'missing' },
+		},
 		lastAcceptedSequence: 0,
 	});
 	expect((await client.next(Message.Commit)).id).toBe('after-rejection');

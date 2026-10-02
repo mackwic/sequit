@@ -1,9 +1,11 @@
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import adapter from '@sveltejs/adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { mdsvex } from 'mdsvex';
 import { defineConfig } from 'vite';
 
+import { paraglideOptions } from './config/paraglide.ts';
 import { productionBoundaries } from './config/production-boundaries.ts';
 
 const collaborationPort = process.env['COLLABORATION_PORT'] ?? '8787';
@@ -28,6 +30,7 @@ export default defineConfig({
 	},
 	plugins: [
 		productionBoundaries(),
+		paraglideVitePlugin(paraglideOptions),
 		tailwindcss(),
 		sveltekit({
 			extensions: ['.svelte', '.svx'],

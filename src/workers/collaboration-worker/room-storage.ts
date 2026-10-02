@@ -13,10 +13,8 @@ import {
 	type PersistencePlan,
 	planPersistence,
 } from '../../lib/infrastructure/collaboration/room-persistence';
-import {
-	RetryableSessionFailure,
-	SessionFailureCode,
-} from '../../lib/infrastructure/collaboration/session-failure';
+import { RetryableSessionFailure } from '../../lib/infrastructure/collaboration/session-failure';
+import { SessionFailureCode } from '../../lib/infrastructure/collaboration/session-reasons';
 import { upgradeSharedTexts } from '../../lib/infrastructure/collaboration/upgrade-shared-texts';
 import { readLogicDocument } from '../../lib/infrastructure/collaboration/yjs-document-codec';
 import { commandReceiptKey } from './command-receipts';
@@ -158,9 +156,8 @@ export async function persistRoomState(
 			}
 		});
 	} catch {
-		throw new RetryableSessionFailure(
-			SessionFailureCode.StorageUnavailable,
-			'Le service est temporairement indisponible. Nouvelle tentative en cours.',
-		);
+		throw new RetryableSessionFailure(SessionFailureCode.StorageUnavailable, {
+			code: SessionFailureCode.StorageUnavailable,
+		});
 	}
 }

@@ -55,6 +55,11 @@
 		layoutUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import { m } from '../../../i18n/paraglide/messages';
+	import {
+		translateCommandDiagnostics,
+		translateSessionError,
+	} from '../../../i18n/session-messages';
 	import { createSharedCanvasProjection } from '../../../projection/open-document';
 	import {
 		deleteVisibleRelation,
@@ -190,7 +195,9 @@
 			visible = projection.visible;
 			error = projection.warning ?? '';
 		} catch (failure) {
-			error = `Ce repli ne peut pas être affiché. Dépliez le groupe. ${String(failure)}`;
+			error = m.collaboration_workspace_collapsed_projection_failed({
+				message: String(failure),
+			});
 		}
 	});
 	function dispatch(command: SharedDocumentCommand): void {
@@ -203,7 +210,7 @@
 		try {
 			decision = client.dispatch(commands);
 		} catch (failure) {
-			if (failure instanceof Error) error = failure.message;
+			error = translateSessionError(failure);
 			return false;
 		}
 		error = '';
@@ -212,8 +219,9 @@
 	}
 	function reportRefusal(outcome: DocumentCommandOutcome): void {
 		if (outcome.kind === DocumentCommandOutcomeKind.Rejected)
-			error = outcome.diagnostics.map(({ message }) => message).join('; ');
-		else if (outcome.kind === DocumentCommandOutcomeKind.Failed) error = String(outcome.error);
+			error = translateCommandDiagnostics(outcome.diagnostics);
+		else if (outcome.kind === DocumentCommandOutcomeKind.Failed)
+			error = translateSessionError(outcome.error);
 	}
 	function connect(from: string, to: string) {
 		if (!connected || !sourceValid) return;
@@ -221,7 +229,7 @@
 		// Refuse a cycle locally rather than after a round trip to the room.
 		const candidate = projectRelationAddition(model, relation, fractionalOrderKeySpace);
 		if (!candidate.ok) {
-			error = candidate.diagnostics.map(({ message }) => message).join('; ');
+			error = translateCommandDiagnostics(candidate.diagnostics);
 			return;
 		}
 		dispatch(relationCreation(relation));
@@ -259,7 +267,7 @@
 			lastNatureId,
 		});
 		if (plan === undefined) {
-			error = 'Ajoutez d’abord une nature au document.';
+			error = m.collaboration_workspace_nature_required();
 			return;
 		}
 		error = '';
@@ -440,7 +448,7 @@
 						session={canvas}
 						natures={model.natures}
 						{lanes}
-						description="Le contenu est partagé en direct."
+						description={m.collaboration_workspace_shared_node_description()}
 					>
 						{#snippet text()}
 							{#if node}
@@ -449,24 +457,28 @@
 										{node}
 										{client}
 										{textEditable}
-										label={`Texte de ${editing.nodeId}`}
+										label={m.collaboration_workspace_node_text_label({ id: editing.nodeId })}
 										autofocusMarkdown
 									/>
 								</div>
 							{:else}
 								<label class="ui-label"
-									>Contenu<textarea
+									>{m.collaboration_workspace_fallback_content_label()}<textarea
 										class="ui-field"
 										rows="5"
-										aria-label={`Texte de ${editing.nodeId}`}
+										aria-label={m.collaboration_workspace_fallback_content_aria({
+											id: editing.nodeId,
+										})}
 										value={editing.draft.markdown}
 										disabled></textarea></label
 								>
 								<label class="ui-label"
-									>Description<textarea
+									>{m.collaboration_workspace_fallback_description_label()}<textarea
 										class="ui-field"
 										rows="3"
-										aria-label={`Description de ${editing.nodeId}`}
+										aria-label={m.collaboration_workspace_fallback_description_aria({
+											id: editing.nodeId,
+										})}
 										value={editing.draft.description}
 										disabled></textarea></label
 								>
@@ -483,7 +495,7 @@
 				mode={editing.mode}
 				draft={editing.draft}
 				{lanes}
-				description="Le titre est partagé en direct ; la couleur part à l’enregistrement."
+				description={m.collaboration_workspace_shared_group_description()}
 				data={{ 'data-group-editor': editing.id }}
 				onchange={(patch: Partial<GroupFields>) => {
 					if (editingGroup !== undefined)
@@ -504,7 +516,7 @@
 							connected={textEditable}
 							{target}
 							field="label"
-							label="Titre du groupe"
+							label={m.collaboration_workspace_group_title_label()}
 							autofocus
 						/>
 					{/key}
@@ -557,7 +569,7 @@
 				natures={model.natures}
 				usage={natureUsage(model)}
 				editing={editedNature}
-				description="Le libellé d’une nature est partagé en direct ; couleur et icône partent à l’enregistrement."
+				description={m.collaboration_workspace_shared_nature_description()}
 				data={{ 'data-nature-manager': '' }}
 				onselect={selectNature}
 				oncreate={() => {
@@ -583,7 +595,7 @@
 								connected={textEditable}
 								{target}
 								field="label"
-								label="Libellé de la nature"
+								label={m.collaboration_workspace_nature_label_label()}
 								autofocus
 							/>
 						{/key}
@@ -592,45 +604,45 @@
 			</NatureDialog>
 		{/if}
 	</div>
-	{#if panel}<aside aria-label="Document partagé">
+	{#if panel}<aside aria-label={m.collaboration_workspace_panel_aria()}>
 			{#if !sourceValid}
-				<p>Le document courant ne peut pas être édité tant que sa source est invalide.</p>
+				<p>{m.collaboration_workspace_invalid_source_notice()}</p>
 			{:else}
-				<SharedElementCard label="Titre du document">
+				<SharedElementCard label={m.collaboration_workspace_document_title()}>
 					<SharedTextField
 						{client}
 						connected={textEditable}
 						target={{ kind: Kind.Document, id: model.id }}
 						field="title"
-						label="Titre du document"
+						label={m.collaboration_workspace_document_title()}
 					/>
 				</SharedElementCard>
 				<SharedStructureControls model={visible.document} {connected} {dispatch} />
 				{#if error}<p role="alert">{error}</p>{/if}
 				{#each visible.document.nodes as node (node.id)}
-					<section aria-label={`Boîte ${node.id}`}>
-						<SharedElementCard label={`Boîte ${node.id}`}>
+					<section aria-label={m.collaboration_workspace_node_section_aria({ id: node.id })}>
+						<SharedElementCard label={m.collaboration_workspace_node_card_label({ id: node.id })}>
 							<SharedNodeFields
 								{node}
 								{client}
 								{connected}
 								{textEditable}
 								{dispatch}
-								label={`Contenu ${node.id}`}
+								label={m.collaboration_workspace_node_content_label({ id: node.id })}
 							/>
 						</SharedElementCard>
 					</section>
 				{/each}
 				{#each visible.document.groups as group (group.id)}
-					<section aria-label={`Groupe ${group.id}`}>
-						<SharedElementCard label={`Groupe ${group.id}`}>
+					<section aria-label={m.collaboration_workspace_group_section_aria({ id: group.id })}>
+						<SharedElementCard label={m.collaboration_workspace_group_card_label({ id: group.id })}>
 							{#key client.text({ kind: Kind.Group, id: group.id }, 'label')}
 								<SharedTextField
 									{client}
 									connected={textEditable}
 									target={{ kind: Kind.Group, id: group.id }}
 									field="label"
-									label={`Libellé du groupe ${group.id}`}
+									label={m.collaboration_workspace_group_label_field({ id: group.id })}
 								/>
 							{/key}
 							<SharedPropertyFields
@@ -655,7 +667,7 @@
 										set: { state: GroupState.Closed },
 										unset: [],
 									});
-								}}>Replier {group.id}</button
+								}}>{m.collaboration_workspace_collapse_group({ id: group.id })}</button
 							>
 							<button
 								type="button"
@@ -667,9 +679,9 @@
 										set: { state: GroupState.Expanded },
 										unset: [],
 									});
-								}}>Déplier {group.id}</button
+								}}>{m.collaboration_workspace_expand_group({ id: group.id })}</button
 							>
-							<output aria-label={`État de ${group.id}`}
+							<output aria-label={m.collaboration_workspace_group_state_aria({ id: group.id })}
 								>{group.state ?? GroupState.Expanded}</output
 							>
 							<button
@@ -677,21 +689,23 @@
 								disabled={!connected}
 								onclick={() => {
 									dispatch({ op: Op.Ungroup, id: group.id });
-								}}>Dissoudre {group.id}</button
+								}}>{m.collaboration_workspace_dissolve_group({ id: group.id })}</button
 							>
 						</SharedElementCard>
 					</section>
 				{/each}
 				{#each model.natures as nature (nature.id)}
-					<section aria-label={`Nature ${nature.id}`}>
-						<SharedElementCard label={`Nature ${nature.id}`}>
+					<section aria-label={m.collaboration_workspace_nature_section_aria({ id: nature.id })}>
+						<SharedElementCard
+							label={m.collaboration_workspace_nature_card_label({ id: nature.id })}
+						>
 							{#key client.text({ kind: Kind.Nature, id: nature.id }, 'label')}
 								<SharedTextField
 									{client}
 									connected={textEditable}
 									target={{ kind: Kind.Nature, id: nature.id }}
 									field="label"
-									label={`Libellé de la nature ${nature.id}`}
+									label={m.collaboration_workspace_nature_label_field({ id: nature.id })}
 								/>
 							{/key}
 							<SharedPropertyFields
@@ -704,8 +718,12 @@
 					</section>
 				{/each}
 				{#each visible.document.junctions as junction (junction.id)}
-					<section aria-label={`Jonction ${junction.id}`}>
-						<SharedElementCard label={`Jonction ${junction.id}`}>
+					<section
+						aria-label={m.collaboration_workspace_junction_section_aria({ id: junction.id })}
+					>
+						<SharedElementCard
+							label={m.collaboration_workspace_junction_card_label({ id: junction.id })}
+						>
 							<strong>{junction.id}</strong>
 							<SharedPropertyFields
 								target={{ kind: Kind.Junction, id: junction.id }}
@@ -718,17 +736,18 @@
 								disabled={!connected}
 								onclick={() => {
 									dispatch({ op: Op.Delete, target: { kind: Kind.Junction, id: junction.id } });
-								}}>Supprimer la jonction {junction.id}</button
+								}}>{m.collaboration_workspace_delete_junction({ id: junction.id })}</button
 							>
 						</SharedElementCard>
 					</section>
 				{/each}
-				<ul aria-label="Relations">
+				<ul aria-label={m.collaboration_workspace_relations_list_aria()}>
 					{#each visible.document.relations as relation (relation.id)}
 						{@const provenance = defined(visible.relations.get(relation.id))}
 						<li>
 							{relation.from} → {relation.to}
-							<SharedElementCard label={`Relation ${relation.id}`}
+							<SharedElementCard
+								label={m.collaboration_workspace_relation_card_label({ id: relation.id })}
 								><SharedPropertyFields
 									target={{ kind: Kind.Relation, id: relation.id }}
 									properties={{ from: relation.from, to: relation.to }}
@@ -740,7 +759,7 @@
 									disabled={!connected}
 									onclick={() => {
 										dispatchMany(deleteVisibleRelation(provenance));
-									}}>Supprimer la relation {relation.id}</button
+									}}>{m.collaboration_workspace_delete_relation({ id: relation.id })}</button
 								>
 							</SharedElementCard>
 						</li>{/each}

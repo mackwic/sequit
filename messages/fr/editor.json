@@ -1,0 +1,23 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"editor_bold": "Gras",
+	"editor_italic": "Italique",
+	"editor_underline": "Souligné",
+	"editor_strike": "Barré",
+	"editor_code": "Code",
+	"editor_blockquote": "Citation",
+	"editor_code_block": "Bloc de code",
+	"editor_link": "Lien",
+	"editor_clean": "Effacer la mise en forme",
+	"editor_source": "Texte source",
+	"editor_ordered_list": "Liste numérotée",
+	"editor_bullet_list": "Liste à puces",
+	"editor_heading_1": "Titre 1",
+	"editor_heading_2": "Titre 2",
+	"editor_heading_3": "Titre 3",
+	"editor_formatting": "Mise en forme",
+	"editor_heading_level": "Niveau de titre",
+	"editor_normal_text": "Texte normal",
+	"editor_node_markdown_placeholder": "Ce que dit la boîte, en une ou deux lignes.",
+	"editor_node_description_placeholder": "Explications, contexte, sources… (facultatif)"
+}

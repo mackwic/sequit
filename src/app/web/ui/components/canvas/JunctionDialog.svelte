@@ -5,6 +5,7 @@
 		JUNCTION_OPERATORS,
 		type JunctionOperator,
 	} from '../../../../../lib/core/document/logic-document';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
@@ -34,10 +35,25 @@
 	} = $props();
 	const formId = $props.id();
 	const confirmShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Confirm];
-	const labels: Record<JunctionOperator, { readonly title: string; readonly hint: string }> = {
-		and: { title: 'ET', hint: 'Toutes les origines sont nécessaires.' },
-		or: { title: 'OU', hint: 'Au moins une origine suffit.' },
-		xor: { title: 'OU exclusif', hint: 'Une seule origine, jamais plusieurs.' },
+	const labels: Record<
+		JunctionOperator,
+		{ readonly title: () => string; readonly hint: () => string; readonly symbol: () => string }
+	> = {
+		and: {
+			title: () => m.editing_junction_and(),
+			hint: () => m.editing_junction_and_hint(),
+			symbol: () => m.editing_junction_symbol_and(),
+		},
+		or: {
+			title: () => m.editing_junction_or(),
+			hint: () => m.editing_junction_or_hint(),
+			symbol: () => m.editing_junction_symbol_or(),
+		},
+		xor: {
+			title: () => m.editing_junction_xor(),
+			hint: () => m.editing_junction_xor_hint(),
+			symbol: () => m.editing_junction_symbol_xor(),
+		},
 	};
 	let operators = $state<HTMLFieldSetElement>();
 	let subtitle = $derived.by((): { description: string } | Record<string, never> => {
@@ -57,8 +73,8 @@
 </script>
 
 <ModalDialog
-	eyebrow="Jonction"
-	title="Opérateur de la jonction"
+	eyebrow={m.common_junction()}
+	title={m.editing_junction_title()}
 	{...subtitle}
 	{data}
 	{onclose}
@@ -73,7 +89,7 @@
 		}}
 	>
 		<fieldset class="operators" disabled={busy} bind:this={operators}>
-			<legend class="ui-label">Opérateur</legend>
+			<legend class="ui-label">{m.common_operator()}</legend>
 			{#each JUNCTION_OPERATORS as candidate (candidate)}
 				{@const checked = candidate === operator}
 				<label class="operator" class:checked>
@@ -81,26 +97,26 @@
 						type="radio"
 						name={`junction-operator-${formId}`}
 						value={candidate}
-						aria-label={labels[candidate].title}
+						aria-label={labels[candidate].title()}
 						{checked}
 						onchange={() => {
 							onchange(candidate);
 						}}
 					/>
-					<span class="symbol">{candidate.toUpperCase()}</span>
+					<span class="symbol">{labels[candidate].symbol()}</span>
 					<span class="text">
-						<strong>{labels[candidate].title}</strong>
-						<span class="hint">{labels[candidate].hint}</span>
+						<strong>{labels[candidate].title()}</strong>
+						<span class="hint">{labels[candidate].hint()}</span>
 					</span>
 				</label>
 			{/each}
 		</fieldset>
-		{#if busy}<p role="status">Modification envoyée…</p>{/if}
+		{#if busy}<p role="status">{m.common_change_sent()}</p>{/if}
 	</form>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
 			<Icon name="phosphor:x" />
-			{#if busy}Fermer{:else}Annuler{/if}
+			{#if busy}{m.common_close()}{:else}{m.common_cancel()}{/if}
 		</button>
 		<button
 			class="ui-action primary"
@@ -110,7 +126,7 @@
 			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
 			<Icon name="phosphor:check" />
-			{#if busy}Enregistrement…{:else}Enregistrer{/if}
+			{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}
 			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}

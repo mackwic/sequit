@@ -1,12 +1,13 @@
 import type { LogicDocument } from '../../core/document/logic-document';
+import type { SessionReason } from '../collaboration/session-reasons';
 import type { DocumentCommandDiagnostic } from './document-command-contracts';
 
 export class DocumentSessionError extends Error {
 	constructor(
-		message: string,
+		readonly reason: SessionReason,
 		readonly diagnostics: readonly DocumentCommandDiagnostic[] = [],
 	) {
-		super(message);
+		super(reason.code);
 		this.name = 'DocumentSessionError';
 	}
 }

@@ -6,6 +6,7 @@
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { m } from '../../../i18n/paraglide/messages';
 	import SharedNodeText from './SharedNodeText.svelte';
 	import SharedPropertyFields from './SharedPropertyFields.svelte';
 	let {
@@ -33,7 +34,7 @@
 		disabled={!connected}
 		onclick={() => {
 			dispatch({ op: Op.Delete, target: { kind: Kind.Node, id: node.id } });
-		}}>Supprimer {node.id}</button
+		}}>{m.collaboration_shared_node_delete({ id: node.id })}</button
 	>
 </header>
 <SharedNodeText {node} {client} {textEditable} {label} {autofocusMarkdown} />

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import Icon from '../ui/Icon.svelte';
 
 	let {
@@ -50,7 +51,7 @@
 			bind:this={input}
 			bind:value={draft}
 			type="text"
-			aria-label="Titre du document"
+			aria-label={m.common_document_title()}
 			autocomplete="off"
 			enterkeyhint="done"
 			onblur={() => {

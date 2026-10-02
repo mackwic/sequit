@@ -7,6 +7,7 @@ import type {
 	OrderKey,
 } from '../../../../lib/core/document/logic-document';
 import { contentStyleFields, groupStateFields } from '../../../../lib/core/document/logic-document';
+import { m } from '../../i18n/paraglide/messages';
 import type { Bounds, LayoutResult, Point } from '../../projection/layout-graph';
 
 interface CanvasNature extends ContentStyle {
@@ -112,7 +113,7 @@ export function createCanvasMeasurementModel(document: LogicDocument): CanvasMea
 	return {
 		nodes: document.nodes.map((node) => {
 			const nature = natures.get(node.natureId);
-			if (!nature) throw new Error(`Missing nature: ${node.natureId}`);
+			if (!nature) throw new Error(m.canvas_missing_nature({ id: node.natureId }));
 			return {
 				id: node.id,
 				nature,

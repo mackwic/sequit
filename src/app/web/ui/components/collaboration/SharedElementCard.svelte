@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import SharedEditDialog from './SharedEditDialog.svelte';
+
 	let { label, children }: { label: string; children: Snippet } = $props();
 	let editing = $state(false);
 </script>
@@ -10,10 +12,10 @@
 	<strong>{label}</strong><button
 		class="ui-action"
 		type="button"
-		aria-label={`Modifier ${label}`}
+		aria-label={m.collaboration_element_edit_aria({ label })}
 		onclick={() => {
 			editing = true;
-		}}>Modifier</button
+		}}>{m.collaboration_element_edit()}</button
 	>
 </div>
 {#if editing}<SharedEditDialog

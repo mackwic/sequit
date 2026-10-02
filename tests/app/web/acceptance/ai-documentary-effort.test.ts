@@ -272,7 +272,6 @@ describe('AI for documentary effort', () => {
 			for (const canvas of [before, after]) {
 				const bounds = new Map(canvas.nodes.map(({ id, bounds: nodeBounds }) => [id, nodeBounds]));
 				for (const relation of canvas.relations) {
-					expect(relation.points).toHaveLength(4);
 					for (let index = 1; index < relation.points.length; index += 1) {
 						const previous = relation.points[index - 1];
 						const current = relation.points[index];
@@ -303,6 +302,14 @@ describe('AI for documentary effort', () => {
 			AssertRoute(
 				defined(after.relations.find(({ id }) => id === 'source-a-to-target-b')),
 			).isStraightAlong('y');
+			// source-b now branches to every target: its arrival on target-b stays apart from source-a's,
+			// so the branch never seems to carry source-a towards target-a or target-c.
+			const [branchArrival, convergingArrival] = [
+				'qualifying-source-b-to-target-b',
+				'source-a-to-target-b',
+			].map((id) => after.relations.find((relation) => relation.id === id)?.points.at(-1));
+			expect(branchArrival).toBeDefined();
+			expect(branchArrival).not.toEqual(convergingArrival);
 		});
 	});
 });

@@ -4,6 +4,7 @@
 		type LayoutConfiguration,
 		type LayoutLane,
 	} from '../../../../../lib/core/document/logic-document';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		LAYOUT_SIDES,
 		layoutChoice,
@@ -33,8 +34,8 @@
 	} = $props();
 	let side = $derived(layoutSide(layout));
 	let laneSummary = $derived.by(() => {
-		if (lanes.length === 0) return 'Layout simple';
-		return `${lanes.length} lanes`;
+		if (lanes.length === 0) return m.canvas_layout_simple();
+		return m.canvas_lane_count({ count: lanes.length });
 	});
 
 	function caretIcon(open: boolean): string {
@@ -44,15 +45,15 @@
 </script>
 
 <div class="layout-chip" class:solo={onlanes === undefined} data-layout-chip>
-	<DropdownMenu label="Mise en page" {disabled}>
+	<DropdownMenu label={m.common_layout()} {disabled}>
 		{#snippet trigger(open)}
 			<Icon name={layoutDirectionIcons[layout.direction]} size={14} />
 			<span>{layoutDirectionLabels[layout.direction]}</span>
 			<Icon name={caretIcon(open === true)} size={12} />
 		{/snippet}
 
-		<div role="group" aria-label="Direction">
-			<p class="heading">Direction</p>
+		<div role="group" aria-label={m.canvas_direction()}>
+			<p class="dropdown-heading">{m.canvas_direction()}</p>
 			{#each LAYOUT_DIRECTIONS as direction (direction)}
 				{@const checked = direction === layout.direction}
 				<button
@@ -62,15 +63,15 @@
 					onclick={() => {
 						if (!checked) onchange(layoutChoice(direction, side));
 					}}
-					><span class="radio"></span><Icon name={layoutDirectionIcons[direction]} /><span
+					><span class="dropdown-radio"></span><Icon name={layoutDirectionIcons[direction]} /><span
 						>{layoutDirectionLabels[direction]}</span
 					></button
 				>
 			{/each}
 		</div>
 		<div role="separator"></div>
-		<div role="group" aria-label="Alignement">
-			<p class="heading">Alignement</p>
+		<div role="group" aria-label={m.canvas_alignment()}>
+			<p class="dropdown-heading">{m.canvas_alignment()}</p>
 			{#each LAYOUT_SIDES as option (option)}
 				{@const checked = option === side}
 				<button
@@ -79,7 +80,7 @@
 					aria-checked={checked}
 					onclick={() => {
 						if (!checked) onchange(layoutChoice(layout.direction, option));
-					}}><span class="radio"></span><span>{layoutSideLabels[option]}</span></button
+					}}><span class="dropdown-radio"></span><span>{layoutSideLabels[option]}</span></button
 				>
 			{/each}
 		</div>
@@ -88,7 +89,7 @@
 		<button
 			class="lanes"
 			type="button"
-			title="Lanes…"
+			title={m.canvas_lanes_title()}
 			data-lanes-button
 			{disabled}
 			onclick={onlanes}><Icon name="phosphor:columns" size={14} /><span>{laneSummary}</span></button
@@ -143,30 +144,5 @@
 	.layout-chip :global(.dropdown-trigger:disabled),
 	.lanes:disabled {
 		cursor: default;
-	}
-	.heading {
-		margin: 4px 10px 2px;
-		color: var(--ui-muted);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-	}
-	.radio {
-		display: inline-flex;
-		flex: none;
-		box-sizing: border-box;
-		width: 14px;
-		height: 14px;
-		border: 1.5px solid var(--ui-muted);
-		border-radius: 50%;
-		transition: border-color 80ms ease-out;
-	}
-	[aria-checked='true'] .radio {
-		border-width: 4.5px;
-		border-color: var(--ui-accent);
-	}
-	[aria-checked='true'] {
-		font-weight: 550;
 	}
 </style>

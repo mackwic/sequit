@@ -4,6 +4,10 @@ import {
 	consumeCollaborationError,
 	refreshRejectedSession,
 } from '../../../../src/app/web/document/collaboration-rejection';
+import {
+	SessionFailureCode,
+	SessionNoticeCode,
+} from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 
 function memoryStorage(): Storage {
 	const entries = new Map<string, string>();
@@ -34,9 +38,9 @@ describe('terminal rejection refresh', () => {
 		const reload = vi.fn();
 		vi.stubGlobal('sessionStorage', memoryStorage());
 		vi.stubGlobal('window', { location: { reload } });
-		refreshRejectedSession('Refus : A & B');
+		refreshRejectedSession({ code: SessionFailureCode.InvalidDocument, details: ['A & B'] });
 		expect(reload).toHaveBeenCalledOnce();
-		expect(consumeCollaborationError()).toBe('Refus : A & B');
+		expect(consumeCollaborationError()).toBe('Document invalide. A & B');
 		expect(consumeCollaborationError()).toBeUndefined();
 	});
 	it('still reloads when storage refuses the message', () => {
@@ -50,7 +54,7 @@ describe('terminal rejection refresh', () => {
 			},
 		});
 		vi.stubGlobal('window', { location: { reload } });
-		refreshRejectedSession('Refus');
+		refreshRejectedSession({ code: SessionNoticeCode.InvalidMessage });
 		expect(reload).toHaveBeenCalledOnce();
 		expect(consumeCollaborationError()).toBeUndefined();
 	});

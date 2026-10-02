@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import { reconcileSharedDocument } from '../../../../src/lib/infrastructure/collaboration/reconcile-shared-document';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	importLogicDocument,
@@ -184,7 +185,11 @@ describe('Yjs lane presentation versions', () => {
 					members: ['target', 'isolated'],
 				},
 			]),
-		).toThrow('même voie');
+		).toThrow(
+			expect.objectContaining({
+				reason: { code: CommandRefusalCode.ElementsDifferentLane },
+			}),
+		);
 		document.destroy();
 	});
 });

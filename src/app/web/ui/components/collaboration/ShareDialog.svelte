@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		normalizeParticipantName,
 		PARTICIPANT_NAME_LIMIT,
@@ -67,12 +68,12 @@
 </script>
 
 <ModalDialog
-	title="Session collaborative"
-	description="Toute personne qui possède ce lien peut lire et modifier le document en direct."
+	title={m.collaboration_share_title()}
+	description={m.collaboration_share_description()}
 	{onclose}
 >
 	<div class="fields">
-		<label class="ui-label" for={`share-link-${id}`}>Lien de la session</label>
+		<label class="ui-label" for={`share-link-${id}`}>{m.collaboration_share_link_label()}</label>
 		<div class="link">
 			<input
 				class="ui-field"
@@ -86,16 +87,17 @@
 				}}
 			/>
 			<button class="ui-action primary" type="button" onclick={() => void copy()}>
-				{#if copied}<Icon name="phosphor:check" /> Lien copié{:else}<Icon name="phosphor:link" /> Copier
-					le lien{/if}
+				{#if copied}<Icon name="phosphor:check" /> {m.collaboration_share_copied()}{:else}<Icon
+						name="phosphor:link"
+					/>
+					{m.collaboration_share_copy_link()}{/if}
 			</button>
 		</div>
 		<p class="m-0 text-xs text-[var(--ui-muted)]" role="status" aria-live="polite">
-			{#if copied}Le lien est dans le presse-papiers.{:else if copyFailed}Copie refusée par le
-				navigateur : le lien est sélectionné, copie-le manuellement.{:else}Partage-le aux personnes
-				qui doivent participer.{/if}
+			{#if copied}{m.collaboration_share_copied_status()}{:else if copyFailed}
+				{m.collaboration_share_copy_failed_status()}{:else}{m.collaboration_share_share_hint()}{/if}
 		</p>
-		<label class="ui-label" for={`share-name-${id}`}>Ton nom</label>
+		<label class="ui-label" for={`share-name-${id}`}>{m.collaboration_share_name_label()}</label>
 		<input
 			class="ui-field"
 			id={`share-name-${id}`}
@@ -113,10 +115,12 @@
 	</div>
 	{#snippet footer()}
 		<button class="ui-action danger" type="button" onclick={onleave}>
-			<Icon name="phosphor:sign-out" /> Quitter la session
+			<Icon name="phosphor:sign-out" />
+			{m.collaboration_share_leave()}
 		</button>
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Fermer
+			<Icon name="phosphor:x" />
+			{m.collaboration_share_close()}
 		</button>
 	{/snippet}
 </ModalDialog>

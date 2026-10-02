@@ -3,6 +3,7 @@
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import { SharedElementKind as Kind } from '../../../../../lib/infrastructure/document/shared-document-command';
 	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
+	import { m } from '../../../i18n/paraglide/messages';
 	import SharedTextField from './SharedTextField.svelte';
 	let {
 		node,
@@ -27,7 +28,7 @@
 		{target}
 		field="markdown"
 		{label}
-		title="Contenu"
+		title={m.collaboration_shared_node_markdown_title()}
 		placeholder={NODE_TEXT_PLACEHOLDERS.markdown}
 		autofocus={autofocusMarkdown}
 	/>
@@ -38,8 +39,8 @@
 		connected={textEditable}
 		{target}
 		field="description"
-		label={`Description de ${node.id}`}
-		title="Description"
+		label={m.collaboration_shared_node_description_label({ id: node.id })}
+		title={m.collaboration_shared_node_description_title()}
 		placeholder={NODE_TEXT_PLACEHOLDERS.description}
 	/>
 {/key}

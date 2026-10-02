@@ -1,36 +1,38 @@
-export enum SessionFailureCode {
-	InvalidMessage = 'invalid-message',
-	InvalidDocument = 'invalid-document',
-	StorageUnavailable = 'storage-unavailable',
-	CommandGap = 'command-gap',
-	CorruptCommandReceipt = 'corrupt-command-receipt',
-	RepeatedCommandRefusal = 'repeated-command-refusal',
-}
+import type {
+	CommandRefusal,
+	SessionFailureCode,
+	SessionReason,
+	SessionRejection,
+} from './session-reasons';
 
-export class BusinessCommandRefusal extends Error {}
+export class BusinessCommandRefusal extends Error {
+	constructor(readonly reason: CommandRefusal) {
+		super(reason.code);
+	}
+}
 
 export class StaleSharedCommandError extends BusinessCommandRefusal {}
 
 export class RetryableSessionFailure extends Error {
 	constructor(
 		readonly code: SessionFailureCode,
-		message: string,
+		readonly reason: SessionRejection,
 	) {
-		super(message);
+		super(reason.code);
 	}
-}
-
-export enum ConflictCode {
-	CommandConflict = 'command-conflict',
-	InvalidCommand = 'invalid-command',
-	TextTargetGone = 'text-target-gone',
 }
 
 export class TerminalSessionFailure extends Error {
 	constructor(
 		readonly code: SessionFailureCode,
-		message: string,
+		readonly reason: SessionRejection,
 	) {
-		super(message);
+		super(reason.code);
+	}
+}
+
+export class SessionNoticeError extends Error {
+	constructor(readonly reason: SessionReason) {
+		super(reason.code);
 	}
 }

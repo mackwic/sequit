@@ -7,6 +7,8 @@ import {
 	REGION_PRESENTATION_SCHEMA,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { BusinessCommandRefusal } from '../../../../src/lib/infrastructure/collaboration/session-failure';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	dissolveDocumentGroup,
 	groupDocumentNodes,
@@ -18,6 +20,17 @@ import {
 } from '../../../support/builders/logic-document';
 import { regionLaneDocument } from '../../../support/builders/region-lane-document';
 import { persistedNestedGridDocument } from '../../core/layout/nested-region-fixture';
+
+function expectRefusal(action: () => unknown, reason: object): void {
+	let error: unknown;
+	try {
+		action();
+	} catch (caught) {
+		error = caught;
+	}
+	expect(error).toBeInstanceOf(BusinessCommandRefusal);
+	expect(error).toMatchObject({ reason });
+}
 
 describe('product node grouping', () => {
 	it('creates a root group around root siblings', () => {
@@ -60,13 +73,15 @@ describe('product node grouping', () => {
 	});
 
 	it('rejects grouping nodes from different lanes', () => {
-		expect(() =>
-			groupDocumentNodes(
-				explicitLaneLogicDocument(),
-				{ id: 'cross-lane', label: 'Cross lane' },
-				new Set(['target', 'isolated']),
-			),
-		).toThrow('même voie');
+		expectRefusal(
+			() =>
+				groupDocumentNodes(
+					explicitLaneLogicDocument(),
+					{ id: 'cross-lane', label: 'Cross lane' },
+					new Set(['target', 'isolated']),
+				),
+			{ code: CommandRefusalCode.NodesDifferentLane },
+		);
 	});
 
 	it('moves a node into a group and restores the group lane when it returns to the root', () => {
@@ -94,8 +109,12 @@ describe('product node grouping', () => {
 			groupId: 'inner',
 		});
 		expect(nested.nodes.find(({ id }) => id === 'target')).toMatchObject({ groupId: 'inner' });
-		expect(() => moveDocumentElements(nested, new Set(['outer']), 'inner')).toThrow('lui-même');
-		expect(() => moveDocumentElements(nested, new Set(['inner']), 'inner')).toThrow('lui-même');
+		expectRefusal(() => moveDocumentElements(nested, new Set(['outer']), 'inner'), {
+			code: CommandRefusalCode.GroupSelfContainment,
+		});
+		expectRefusal(() => moveDocumentElements(nested, new Set(['inner']), 'inner'), {
+			code: CommandRefusalCode.GroupSelfContainment,
+		});
 		const root = moveDocumentElements(nested, new Set(['inner', 'target']), undefined);
 		expect(root.groups.find(({ id }) => id === 'inner')).not.toHaveProperty('groupId');
 		expect(root.nodes.find(({ id }) => id === 'target')).not.toHaveProperty('groupId');
@@ -161,13 +180,15 @@ describe('product node grouping', () => {
 				return node;
 			}),
 		};
-		expect(() =>
-			groupDocumentNodes(
-				source,
-				{ id: 'cross-region', label: 'Cross region' },
-				new Set(['target', 'isolated']),
-			),
-		).toThrow('même région');
+		expectRefusal(
+			() =>
+				groupDocumentNodes(
+					source,
+					{ id: 'cross-region', label: 'Cross region' },
+					new Set(['target', 'isolated']),
+				),
+			{ code: CommandRefusalCode.NodesDifferentRegion },
+		);
 	});
 
 	it('transfers a leaf-local lane to a new group and restores it when membership ends', () => {
@@ -205,13 +226,15 @@ describe('product node grouping', () => {
 				},
 			],
 		};
-		expect(() =>
-			groupDocumentNodes(
-				withNeighbor,
-				{ id: 'cross-local-lane', label: 'Cross lane' },
-				new Set(['target', 'sales-neighbor']),
-			),
-		).toThrow('même voie');
+		expectRefusal(
+			() =>
+				groupDocumentNodes(
+					withNeighbor,
+					{ id: 'cross-local-lane', label: 'Cross lane' },
+					new Set(['target', 'sales-neighbor']),
+				),
+			{ code: CommandRefusalCode.NodesDifferentLane },
+		);
 	});
 
 	it('rejects cross-lane grouping through the lower-level document operation', () => {
@@ -230,23 +253,27 @@ describe('product node grouping', () => {
 				},
 			],
 		};
-		expect(() =>
-			groupDocumentNodes(
-				withNeighbor,
-				{ id: 'cross-local-lane', label: 'Cross lane' },
-				new Set(['target', 'sales-neighbor']),
-			),
-		).toThrow('même voie');
+		expectRefusal(
+			() =>
+				groupDocumentNodes(
+					withNeighbor,
+					{ id: 'cross-local-lane', label: 'Cross lane' },
+					new Set(['target', 'sales-neighbor']),
+				),
+			{ code: CommandRefusalCode.NodesDifferentLane },
+		);
 	});
 
 	it('rejects cross-cell grouping through the lower-level document operation', () => {
-		expect(() =>
-			groupDocumentNodes(
-				persistedNestedGridDocument(),
-				{ id: 'cross-cell', label: 'Cross cell' },
-				new Set(['a-source', 'b']),
-			),
-		).toThrow('même région');
+		expectRefusal(
+			() =>
+				groupDocumentNodes(
+					persistedNestedGridDocument(),
+					{ id: 'cross-cell', label: 'Cross cell' },
+					new Set(['a-source', 'b']),
+				),
+			{ code: CommandRefusalCode.NodesDifferentRegion },
+		);
 	});
 
 	it('rejects leaving a group when the region assignment is unconfigured', () => {
@@ -259,9 +286,9 @@ describe('product node grouping', () => {
 				return node;
 			}),
 		};
-		expect(() => moveDocumentElements(source, new Set(['target']), undefined)).toThrow(
-			'présentation des régions est invalide',
-		);
+		expectRefusal(() => moveDocumentElements(source, new Set(['target']), undefined), {
+			code: CommandRefusalCode.InvalidRegionPresentation,
+		});
 	});
 
 	it('keeps cell ownership while grouping and ungrouping nodes in format 7', () => {

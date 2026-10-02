@@ -8,6 +8,10 @@ import {
 } from '../../../../src/app/web/document/local-document-session';
 import type { LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import {
+	CommandRefusalCode,
+	SessionNoticeCode,
+} from '../../../../src/lib/infrastructure/collaboration/session-reasons';
+import {
 	type SourceDocumentState,
 	SourceDocumentStateKind,
 } from '../../../../src/lib/infrastructure/collaboration/source-document-state';
@@ -75,9 +79,14 @@ describe('local document session commands', () => {
 				if (relation === undefined) throw new Error('Expected a reference relation');
 				return relationCreation({ id: 'reverse', from: relation.to, to: relation.from });
 			},
+			{ code: CommandRefusalCode.InvalidDocument },
 		],
-		['a creation reusing an existing id', () => goal('traceable-edits')],
-	])('refuses %s without touching the document', async (_name, command) => {
+		[
+			'a creation reusing an existing id',
+			() => goal('traceable-edits'),
+			{ code: CommandRefusalCode.IdentifierExists },
+		],
+	])('refuses %s without touching the document', async (_name, command, reason) => {
 		const { session, ydoc } = await attached();
 		const accepted = session.read();
 		const subscriber = vi.fn();
@@ -90,7 +99,13 @@ describe('local document session commands', () => {
 
 		expect(outcome).toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [{ code: DocumentCommandDiagnosticCode.CommandRefused, path: [] }],
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.CommandRefused,
+					path: [],
+					reason,
+				},
+			],
 		});
 		expect(Y.encodeStateVector(ydoc)).toEqual(before);
 		expect(updates).not.toHaveBeenCalled();
@@ -353,7 +368,7 @@ describe('local document session lifecycle', () => {
 		await expect(pending).resolves.toEqual(sessionClosedOutcome());
 		expect(ydoc.getMap('sequit.nodes').has('pending')).toBe(false);
 		expect(() => session.dispatch([goal('late')])).toThrow(
-			new DocumentSessionError('Document session has been destroyed'),
+			new DocumentSessionError({ code: SessionNoticeCode.Destroyed }),
 		);
 		expect(() => session.read()).toThrow(DocumentSessionError);
 		expect(() => session.readSourceState()).toThrow(DocumentSessionError);
@@ -394,11 +409,17 @@ describe('local document session lifecycle', () => {
 	});
 
 	it('refuses invalid initial documents and releases the document it created', async () => {
+		/** Validation refusals keep the diagnostic as an untranslated technical detail. */
+		function invalidDocument(detail: string): unknown {
+			const details: unknown = expect.arrayContaining([expect.stringContaining(detail)]);
+			const reason: unknown = expect.objectContaining({ details });
+			return expect.objectContaining({ reason });
+		}
 		const document = await reference();
 		const destroy = vi.spyOn(Y.Doc.prototype, 'destroy');
 		try {
 			expect(() => createLocalDocumentSession({ ...document, natures: [] })).toThrow(
-				'Unknown nature',
+				invalidDocument('Unknown nature'),
 			);
 			expect(destroy).toHaveBeenCalledOnce();
 		} finally {
@@ -410,7 +431,7 @@ describe('local document session lifecycle', () => {
 			...document,
 			relations: [...document.relations, { id: 'back', from: relation.to, to: relation.from }],
 		};
-		expect(() => createLocalDocumentSession(cyclic)).toThrow('Cycle detected');
+		expect(() => createLocalDocumentSession(cyclic)).toThrow(invalidDocument('Cycle detected'));
 		expect(() => attachLocalDocumentSession(new Y.Doc())).toThrow(DocumentSessionError);
 	});
 

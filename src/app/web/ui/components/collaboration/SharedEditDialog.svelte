@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { onMount, type Snippet, tick } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import Icon from '../ui/Icon.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
 	let {
 		label,
-		description = 'Les modifications sont partagées en direct.',
+		description = m.collaboration_edit_dialog_default_description(),
 		onclose,
 		oncancel,
 		oncommitclose,
@@ -35,7 +36,8 @@
 	<div bind:this={body}>{@render children()}</div>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Fermer
+			<Icon name="phosphor:x" />
+			{m.collaboration_edit_dialog_close()}
 		</button>
 	{/snippet}
 </ModalDialog>

@@ -7,6 +7,8 @@ import {
 	DocumentCommandOutcomeKind,
 } from '../../../../lib/infrastructure/document/document-command-contracts';
 import type { NodeFields } from '../../../../lib/infrastructure/document/node-fields';
+import { m } from '../../i18n/paraglide/messages';
+import { translateCommandDiagnostics, translateSessionError } from '../../i18n/session-messages';
 import {
 	type CanvasEntityIndex,
 	type EntityKey,
@@ -23,7 +25,6 @@ import {
 import {
 	type CanvasActivity,
 	CanvasActivityKind,
-	canvasCommandDiagnostic,
 	type CanvasDocumentCommandPort,
 	CanvasEditAvailability,
 	type EditingCanvasActivity,
@@ -128,7 +129,7 @@ export class CanvasSession {
 		if (this.selectedEntities.size === 1 && this.selectedEntities.has(key)) return false;
 		this.selectedEntities.clear();
 		this.selectedEntities.set(key, ref);
-		this.announcement = `${ref.kind} ${ref.id} selected.`;
+		this.announcement = m.collaboration_announcement_selected({ kind: ref.kind, id: ref.id });
 		return true;
 	}
 
@@ -137,7 +138,7 @@ export class CanvasSession {
 		const key = entityKey(ref.kind, ref.id);
 		if (this.selectedEntities.has(key)) return false;
 		this.selectedEntities.set(key, ref);
-		this.announcement = `${ref.kind} ${ref.id} added to selection.`;
+		this.announcement = m.collaboration_announcement_added({ kind: ref.kind, id: ref.id });
 		return true;
 	}
 
@@ -146,7 +147,7 @@ export class CanvasSession {
 		const key = entityKey(ref.kind, ref.id);
 		if (!this.selectedEntities.has(key)) return this.addEntity(ref);
 		this.selectedEntities.delete(key);
-		this.announcement = `${ref.kind} ${ref.id} removed from selection.`;
+		this.announcement = m.collaboration_announcement_removed({ kind: ref.kind, id: ref.id });
 		return true;
 	}
 
@@ -155,7 +156,7 @@ export class CanvasSession {
 			return false;
 		}
 		this.selectedEntities.clear();
-		this.announcement = 'Selection cleared.';
+		this.announcement = m.collaboration_announcement_selection_cleared();
 		return true;
 	}
 
@@ -180,7 +181,7 @@ export class CanvasSession {
 			layoutRevision: this.layoutRevision,
 			saveId: undefined,
 		};
-		this.announcement = `Editing node ${node.id}.`;
+		this.announcement = m.collaboration_announcement_editing_node({ id: node.id });
 		return true;
 	}
 
@@ -228,7 +229,7 @@ export class CanvasSession {
 				afterLayoutRevision: editing.layoutRevision,
 				ready: this.layoutRevision > editing.layoutRevision,
 			};
-			this.announcement = `Node ${editing.nodeId} saved.`;
+			this.announcement = m.collaboration_announcement_node_saved({ id: editing.nodeId });
 			return outcome;
 		}
 		const targetDeleted =
@@ -236,14 +237,21 @@ export class CanvasSession {
 			outcome.diagnostics.some(({ code }) => code === NODE_NOT_FOUND_CODE);
 		let availability = current.availability;
 		if (targetDeleted) availability = CanvasEditAvailability.Deleted;
+		let diagnostic: string;
+		if (outcome.kind === DocumentCommandOutcomeKind.Failed)
+			diagnostic = translateSessionError(outcome.error);
+		else diagnostic = translateCommandDiagnostics(outcome.diagnostics);
 		this.activity = {
 			...current,
 			saving: false,
 			availability,
-			diagnostic: canvasCommandDiagnostic(outcome),
+			diagnostic,
 			saveId: undefined,
 		};
-		this.announcement = `Could not save node ${editing.nodeId}: ${canvasCommandDiagnostic(outcome)}`;
+		this.announcement = m.collaboration_announcement_node_save_failed({
+			id: editing.nodeId,
+			message: diagnostic,
+		});
 		return outcome;
 	}
 
@@ -257,8 +265,11 @@ export class CanvasSession {
 				ready: true,
 			};
 			if (editing.saving)
-				this.announcement = `Editor closed for node ${editing.nodeId}. Submitted change remains pending.`;
-			else this.announcement = `Editing node ${editing.nodeId} cancelled.`;
+				this.announcement = m.collaboration_announcement_editor_closed_pending({
+					id: editing.nodeId,
+				});
+			else
+				this.announcement = m.collaboration_announcement_editing_cancelled({ id: editing.nodeId });
 			return true;
 		}
 		return this.clearSelection();
@@ -276,9 +287,7 @@ export class CanvasSession {
 		}
 		if (removed > 0) {
 			changed = true;
-			let subject = 'entities are';
-			if (removed === 1) subject = 'entity is';
-			this.announcement = `${removed} selected ${subject} no longer available.`;
+			this.announcement = m.collaboration_announcement_selection_gone({ count: removed });
 		}
 		const focusRequest = this.focusRequest;
 		if (focusRequest !== undefined && this.layoutRevision > focusRequest.afterLayoutRevision) {
@@ -300,7 +309,7 @@ export class CanvasSession {
 		if (editing === undefined) return false;
 		const targetAvailable = index.has(editing.target);
 		if (editing.availability === CanvasEditAvailability.Deleted || targetAvailable) return false;
-		const diagnostic = `Node ${editing.nodeId} was removed. Your draft is preserved.`;
+		const diagnostic = m.collaboration_announcement_node_removed({ id: editing.nodeId });
 		this.activity = {
 			...editing,
 			availability: CanvasEditAvailability.Deleted,

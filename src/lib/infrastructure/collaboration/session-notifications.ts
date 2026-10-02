@@ -12,6 +12,7 @@ import {
 } from './collaborative-document-session-types';
 import { notifySubscribers, subscribeToSet } from './notify-subscribers';
 import type { PendingCommandFrame } from './session-command-frame';
+import type { SessionNotice, SessionRejection } from './session-reasons';
 
 function decisionOutcome(
 	decision: ProposalDecision,
@@ -21,7 +22,9 @@ function decisionOutcome(
 		return { kind: DocumentCommandOutcomeKind.Accepted, document: read() };
 	return {
 		kind: DocumentCommandOutcomeKind.Rejected,
-		diagnostics: [{ code: decision.code, message: decision.message, path: [] }],
+		diagnostics: [
+			{ code: decision.code, message: decision.reason.code, reason: decision.reason, path: [] },
+		],
 	};
 }
 
@@ -30,8 +33,10 @@ export abstract class SessionNotifications {
 	protected readonly subscribers = new Set<DocumentSessionSubscriber>();
 	protected readonly sourceStateListeners = new Set<(state: SourceDocumentState) => void>();
 	protected readonly decisionListeners = new Set<(decision: ProposalDecision) => void>();
-	protected readonly rejectionListeners = new Set<(message: string) => void>();
-	protected readonly conflictListeners = new Set<(message: string) => void>();
+	protected readonly rejectionListeners = new Set<
+		(reason: SessionRejection | SessionNotice) => void
+	>();
+	protected readonly conflictListeners = new Set<(notice: SessionNotice) => void>();
 	/** Structural proposals sent to the room and not yet decided, in sequence order. */
 	protected readonly pending = new Map<string, PendingCommandFrame>();
 	readonly #outcomes = new Map<string, (outcome: DocumentCommandOutcome) => void>();
@@ -50,11 +55,11 @@ export abstract class SessionNotifications {
 		return subscribeToSet(this.decisionListeners, listener);
 	}
 
-	subscribeToRejection(listener: (message: string) => void): () => void {
+	subscribeToRejection(listener: (reason: SessionRejection | SessionNotice) => void): () => void {
 		return subscribeToSet(this.rejectionListeners, listener);
 	}
 
-	subscribeToConflict(listener: (message: string) => void): () => void {
+	subscribeToConflict(listener: (notice: SessionNotice) => void): () => void {
 		return subscribeToSet(this.conflictListeners, listener);
 	}
 

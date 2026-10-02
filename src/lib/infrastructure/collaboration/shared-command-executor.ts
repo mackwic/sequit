@@ -21,6 +21,7 @@ import {
 } from '../document/shared-document-command';
 import { reconcileSharedDocument } from './reconcile-shared-document';
 import { BusinessCommandRefusal, StaleSharedCommandError } from './session-failure';
+import { CommandRefusalCode } from './session-reasons';
 import {
 	elementCollection,
 	initialElementProperties,
@@ -41,7 +42,8 @@ function createElement(
 			'description'
 		];
 	const collection = elementCollection(document, target.kind);
-	if (collection.has(target.id)) throw new BusinessCommandRefusal('Cet identifiant existe déjà.');
+	if (collection.has(target.id))
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.IdentifierExists });
 	if (
 		[SharedElementKind.Node, SharedElementKind.Group, SharedElementKind.Junction].includes(
 			target.kind,
@@ -62,7 +64,7 @@ function groupingMembers(document: Y.Doc, ids: readonly string[]): readonly Y.Ma
 			const member = elementCollection(document, kind).get(id);
 			if (member !== undefined) return member;
 		}
-		throw new StaleSharedCommandError('Un élément à regrouper est introuvable.');
+		throw new StaleSharedCommandError({ code: CommandRefusalCode.GroupMemberMissing });
 	});
 }
 
@@ -98,14 +100,14 @@ function rootGroupOwnership(
 	const regionFormat = typeof format === 'number' && regionFormats.includes(format);
 	const owner = regionOwner(first);
 	if (regionFormat && members.some((member) => regionOwner(member) !== owner))
-		throw new StaleSharedCommandError('Les éléments doivent appartenir à la même région.');
+		throw new StaleSharedCommandError({ code: CommandRefusalCode.ElementsDifferentRegion });
 	const regionLanes =
 		regionFormat &&
 		(meta.has('layoutPresentationSchema') || document.getMap(YjsCollection.RegionLanes).has(owner));
 	if (lanes || regionLanes) {
 		const laneId = members[0]?.get('laneId');
 		if (typeof laneId !== 'string' || members.some((member) => member.get('laneId') !== laneId))
-			throw new StaleSharedCommandError('Les éléments doivent appartenir à la même voie.');
+			throw new StaleSharedCommandError({ code: CommandRefusalCode.ElementsDifferentLane });
 		properties.laneId = laneId;
 	}
 	if (!regionFormat) return;
@@ -119,10 +121,10 @@ function groupProperties(
 ): GroupProperties {
 	const first = members[0];
 	if (first === undefined)
-		throw new BusinessCommandRefusal('Sélectionnez les éléments à regrouper.');
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.GroupSelectionRequired });
 	const parent = first.get('groupId');
 	if (members.some((member) => member.get('groupId') !== parent))
-		throw new StaleSharedCommandError('Les éléments doivent appartenir au même groupe.');
+		throw new StaleSharedCommandError({ code: CommandRefusalCode.ElementsDifferentGroup });
 	const properties: GroupProperties = { label };
 	if (typeof parent === 'string') {
 		properties.groupId = parent;
@@ -159,9 +161,9 @@ function replaceNature(
 	const affected = [...nodes.values()].filter((node) => node.get('natureId') === target.id);
 	if (affected.length > 0) {
 		if (command.replacementId === undefined)
-			throw new BusinessCommandRefusal('Choisissez une nature de remplacement.');
+			throw new BusinessCommandRefusal({ code: CommandRefusalCode.NatureReplacementRequired });
 		if (command.replacementId === target.id)
-			throw new BusinessCommandRefusal('Choisissez une autre nature.');
+			throw new BusinessCommandRefusal({ code: CommandRefusalCode.NatureReplacementDifferent });
 		sharedElement(document, { kind: SharedElementKind.Nature, id: command.replacementId });
 		for (const node of affected) node.set('natureId', command.replacementId);
 	}
@@ -213,13 +215,21 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 		case SharedCommandKind.Ungroup: {
 			sharedElement(document, { kind: SharedElementKind.Group, id: command.id });
 			const current = readLogicDocument(document);
-			if (!current.ok) throw new Error('Document invalide.');
+			if (!current.ok)
+				throw new BusinessCommandRefusal({
+					code: CommandRefusalCode.InvalidDocument,
+					details: current.diagnostics.map(({ message }) => message),
+				});
 			reconcileSharedDocument(document, dissolveDocumentGroup(current.value, command.id), command);
 			return;
 		}
 		case SharedCommandKind.Move: {
 			const current = readLogicDocument(document);
-			if (!current.ok) throw new Error('Document invalide.');
+			if (!current.ok)
+				throw new BusinessCommandRefusal({
+					code: CommandRefusalCode.InvalidDocument,
+					details: current.diagnostics.map(({ message }) => message),
+				});
 			reconcileSharedDocument(
 				document,
 				moveDocumentElements(current.value, new Set(command.ids), command.groupId),
@@ -233,7 +243,11 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 			return;
 		case SharedCommandKind.UpdateLanes: {
 			const current = readLogicDocument(document);
-			if (!current.ok) throw new Error('Document invalide.');
+			if (!current.ok)
+				throw new BusinessCommandRefusal({
+					code: CommandRefusalCode.InvalidDocument,
+					details: current.diagnostics.map(({ message }) => message),
+				});
 			reconcileSharedDocument(
 				document,
 				updateDocumentRootLanes(current.value, command.lanes, command.transfers),
@@ -242,7 +256,7 @@ function execute(document: Y.Doc, command: SharedDocumentCommand): void {
 			return;
 		}
 		default:
-			throw new Error('Unknown command');
+			throw new BusinessCommandRefusal({ code: CommandRefusalCode.UnknownCommand });
 	}
 }
 
@@ -267,6 +281,9 @@ export function executeSharedCommands(
 	}, commands);
 	const final = readLogicDocument(document);
 	if (!final.ok)
-		throw new BusinessCommandRefusal(final.diagnostics.map(({ message }) => message).join('; '));
+		throw new BusinessCommandRefusal({
+			code: CommandRefusalCode.InvalidDocument,
+			details: final.diagnostics.map(({ message }) => message),
+		});
 	return final.value;
 }

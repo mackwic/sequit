@@ -2,7 +2,7 @@ import type { Bounds } from '../../../../lib/core/layout/layout-types';
 import {
 	DocumentCommandDiagnosticCode,
 	type DocumentCommandOutcome,
-	DocumentCommandOutcomeKind,
+	nodeEditingUnavailableOutcome,
 } from '../../../../lib/infrastructure/document/document-command-contracts';
 import type { NodeFields } from '../../../../lib/infrastructure/document/node-fields';
 import type { EntityKey } from '../canvas/canvas-entity';
@@ -54,29 +54,8 @@ export const idleCanvasActivity = (): IdleCanvasActivity => ({ kind: CanvasActiv
 export const unavailableCanvasCommands: CanvasDocumentCommandPort = {
 	readNode: () => undefined,
 	saveNode: (nodeId) => {
-		return Promise.resolve({
-			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [
-				{
-					code: DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
-					message: `Node editing is unavailable: ${nodeId}`,
-					path: ['nodes', nodeId],
-				},
-			],
-		});
+		return Promise.resolve(
+			nodeEditingUnavailableOutcome(DocumentCommandDiagnosticCode.NodeMarkdownUnavailable, nodeId),
+		);
 	},
 };
-
-interface AcceptedCommandOutcome {
-	readonly kind: DocumentCommandOutcomeKind.Accepted;
-}
-
-export function canvasCommandDiagnostic(
-	outcome: Exclude<DocumentCommandOutcome, AcceptedCommandOutcome>,
-): string {
-	if (outcome.kind === DocumentCommandOutcomeKind.Failed) {
-		if (outcome.error instanceof Error) return outcome.error.message;
-		return String(outcome.error);
-	}
-	return outcome.diagnostics.map(({ message }) => message).join('; ');
-}

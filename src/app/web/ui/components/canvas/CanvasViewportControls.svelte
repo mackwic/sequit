@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
@@ -64,12 +65,12 @@
 	<div
 		class="flex items-center gap-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm"
 		role="group"
-		aria-label="Zoom du canvas"
+		aria-label={m.editing_zoom_label()}
 	>
 		<button
 			class="ui-action quiet"
 			type="button"
-			aria-label="Zoom arrière"
+			aria-label={m.editing_zoom_out()}
 			disabled={!session.canZoomOut}
 			onclick={() => session.zoomOut()}
 		>
@@ -78,16 +79,16 @@
 		<button
 			class="ui-action quiet min-w-12"
 			type="button"
-			aria-label="Réinitialiser le zoom"
-			title="Revenir à 100 %"
+			aria-label={m.editing_zoom_reset()}
+			title={m.editing_zoom_reset_hint()}
 			onclick={() => session.resetZoom()}
 		>
-			{session.zoomPercentage}%
+			{m.editing_zoom_value({ percent: session.zoomPercentage })}
 		</button>
 		<button
 			class="ui-action quiet"
 			type="button"
-			aria-label="Zoom avant"
+			aria-label={m.editing_zoom_in()}
 			disabled={!session.canZoomIn}
 			onclick={() => session.zoomIn()}
 		>

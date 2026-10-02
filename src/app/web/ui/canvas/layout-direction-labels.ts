@@ -1,9 +1,18 @@
 import { LayoutDirection } from '../../../../lib/core/document/logic-document';
+import { m } from '../../i18n/paraglide/messages';
 
 /** Where the root (the goal every arrow points at) sits on screen. */
 export const layoutDirectionLabels: Readonly<Record<LayoutDirection, string>> = {
-	[LayoutDirection.TopToBottom]: 'But en haut',
-	[LayoutDirection.BottomToTop]: 'But en bas',
-	[LayoutDirection.LeftToRight]: 'But à gauche',
-	[LayoutDirection.RightToLeft]: 'But à droite',
+	get [LayoutDirection.TopToBottom]() {
+		return m.canvas_direction_top();
+	},
+	get [LayoutDirection.BottomToTop]() {
+		return m.canvas_direction_bottom();
+	},
+	get [LayoutDirection.LeftToRight]() {
+		return m.canvas_direction_left();
+	},
+	get [LayoutDirection.RightToLeft]() {
+		return m.canvas_direction_right();
+	},
 };

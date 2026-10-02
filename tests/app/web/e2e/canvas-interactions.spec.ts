@@ -442,11 +442,11 @@ test.describe('accessible canvas selection', () => {
 		await expect(dialog).toHaveCount(0);
 		await expect(junction.locator('[data-junction-symbol="and"]')).toHaveCount(1);
 
-		// Double-clicking the junction edits it; Shift+Enter saves.
+		// Double-clicking the junction edits it; Ctrl/Cmd+Enter saves.
 		await junction.dblclick();
 		await expect(dialog).toBeVisible();
 		await dialog.getByRole('radio', { name: 'OU', exact: true }).check();
-		await page.keyboard.press('Shift+Enter');
+		await page.keyboard.press('ControlOrMeta+Enter');
 		await expect(dialog).toHaveCount(0);
 		await expect(junction.locator('[data-junction-symbol="or"]')).toHaveCount(1);
 	});
@@ -812,17 +812,17 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
 	});
 
-	test('saves and closes the editor with Shift+Enter', async ({ page }) => {
+	test('saves and closes the editor with Ctrl/Cmd+Enter', async ({ page }) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.dblclick();
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
-		await textarea.fill('Saved and closed from Shift+Enter');
+		await textarea.fill('Saved and closed from Ctrl/Cmd+Enter');
 
-		await page.keyboard.press('Shift+Enter');
+		await page.keyboard.press('ControlOrMeta+Enter');
 
 		await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toHaveCount(0);
-		await expect(node).toContainText('Saved and closed from Shift+Enter');
+		await expect(node).toContainText('Saved and closed from Ctrl/Cmd+Enter');
 		await expect(node).toBeFocused();
 	});
 	test('saves nature, description, and swatch color together', async ({ page }) => {
@@ -1168,7 +1168,7 @@ test('undoes and redoes accepted edits step by step, leaving a text field its ow
 	await page.keyboard.press('ControlOrMeta+z');
 	await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toBeVisible();
 	await textarea.fill('Seconde version');
-	await page.keyboard.press('Shift+Enter');
+	await page.keyboard.press('ControlOrMeta+Enter');
 	await expect(node).toContainText('Seconde version');
 
 	// A deletion with its incident relations is one step too.

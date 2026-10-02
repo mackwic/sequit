@@ -28,9 +28,31 @@ describe('topology edits', () => {
 		);
 		expect(result.ok).toBe(false);
 		if (result.ok) throw new Error('Expected the repeated relation to be rejected');
-		expect(result.diagnostics.map(({ code, path }) => ({ code, path }))).toEqual([
-			{ code: TopologyEditDiagnosticCode.DuplicateRelation, path: ['relations', 'a-again'] },
+		expect(result.diagnostics.map(({ code, path, reason }) => ({ code, path, reason }))).toEqual([
+			{
+				code: TopologyEditDiagnosticCode.DuplicateRelation,
+				path: ['relations', 'a-again'],
+				reason: {
+					code: TopologyEditDiagnosticCode.DuplicateRelation,
+					from: 'source-a',
+					to: 'target-a',
+					relationId: document.relations[0]?.id,
+				},
+			},
 		]);
+		const existingRelation = document.relations[0];
+		if (existingRelation === undefined) throw new Error('Expected a relation in the fixture');
+		const duplicateId = projectRelationAddition(
+			document,
+			{ ...existingRelation },
+			fractionalOrderKeySpace,
+		);
+		expect(duplicateId.ok).toBe(false);
+		if (duplicateId.ok) throw new Error('Expected a duplicate relation id to be rejected');
+		expect(duplicateId.diagnostics[0]?.reason).toEqual({
+			code: TopologyEditDiagnosticCode.DuplicateRelationId,
+			relationId: existingRelation.id,
+		});
 		expect(
 			projectRelationAddition(
 				document,

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ContentStyle, LogicNature, LogicNode } from '$lib/core/document/logic-document';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import Icon from '../ui/Icon.svelte';
 	import ContentStyleEditor from './ContentStyleEditor.svelte';
 	let {
@@ -21,44 +22,42 @@
 	let scope = $derived(initialScope);
 </script>
 
-<section class="inspector" aria-label="Présentation du content">
+<section class="inspector" aria-label={m.content_inspector_title()}>
 	<div class="title">
 		<Icon name="phosphor:paint-brush" />
-		<h2>Présentation du content</h2>
-		<span>Thème principal</span>
+		<h2>{m.content_inspector_title()}</h2>
+		<span>{m.content_inspector_theme()}</span>
 	</div>
-	<p class="node-title">{node.markdown || 'Boîte sans texte'}</p>
-	<div class="scope" role="group" aria-label="Portée du style">
+	<p class="node-title">{node.markdown || m.content_inspector_empty_node()}</p>
+	<div class="scope" role="group" aria-label={m.content_inspector_scope_aria()}>
 		<button
 			type="button"
 			aria-pressed={scope === 'node'}
 			onclick={() => {
 				scope = 'node';
-			}}><Icon name="phosphor:square" /> Ce nœud</button
+			}}><Icon name="phosphor:square" /> {m.content_inspector_scope_node()}</button
 		>
 		<button
 			type="button"
 			aria-pressed={scope === 'nature'}
 			onclick={() => {
 				scope = 'nature';
-			}}><Icon name="phosphor:stack" /> Sa nature</button
+			}}><Icon name="phosphor:stack" /> {m.content_inspector_scope_nature()}</button
 		>
 	</div>
 	{#if scope === 'nature'}
 		<p class="scope-note">
-			Nature « {nature.label} » · {affected} boîte(s). Les propriétés personnalisées sur un nœud sont
-			conservées.
+			{m.content_inspector_nature_scope_note({ nature: nature.label, affected })}
 		</p>
 		<ContentStyleEditor value={nature} onchange={onnaturechange} />
 	{:else}
 		<p class="scope-note">
-			Nature « {nature.label} ». Personnalise une propriété, ou conserve son héritage.
+			{m.content_inspector_node_scope_note({ nature: nature.label })}
 		</p>
 		<ContentStyleEditor value={node} inherited={nature} onchange={onnodechange} />
 	{/if}
 	<p class="hint">
-		Les couleurs du content suivent tes conventions. Le contour indigo indique la sélection dans
-		l’UI.
+		{m.content_inspector_hint()}
 	</p>
 </section>
 

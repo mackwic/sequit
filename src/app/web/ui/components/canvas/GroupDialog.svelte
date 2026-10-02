@@ -3,6 +3,7 @@
 
 	import type { LayoutLane } from '../../../../../lib/core/document/logic-document';
 	import type { GroupFields } from '../../../document/document-commands';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
@@ -52,8 +53,8 @@
 		return { description };
 	});
 	let title = $derived.by(() => {
-		if (mode === 'name') return 'Nommer le groupe';
-		return 'Modifier le groupe';
+		if (mode === 'name') return m.editing_group_title_name();
+		return m.editing_group_title_edit();
 	});
 
 	onMount(() => {
@@ -68,7 +69,7 @@
 	}
 </script>
 
-<ModalDialog eyebrow="Groupe" {title} {...subtitle} {data} {onclose} oncommit={submit}>
+<ModalDialog eyebrow={m.common_group()} {title} {...subtitle} {data} {onclose} oncommit={submit}>
 	<form
 		class="fields"
 		id={`group-dialog-${formId}`}
@@ -81,9 +82,9 @@
 			{@render text()}
 		{:else}
 			<label class="ui-label"
-				>Titre<input
+				>{m.editing_title()}<input
 					class="ui-field"
-					aria-label="Titre du groupe"
+					aria-label={m.common_group_title()}
 					value={draft.label}
 					disabled={busy}
 					bind:this={titleInput}
@@ -95,9 +96,9 @@
 		{/if}
 		{#if lanes.length > 0 && draft.laneId !== ''}
 			<label class="ui-label"
-				>Lane<select
+				>{m.common_lane()}<select
 					class="ui-field"
-					aria-label="Lane du groupe"
+					aria-label={m.editing_group_lane_aria()}
 					value={draft.laneId}
 					disabled={busy}
 					onchange={(event) => {
@@ -109,7 +110,7 @@
 			>
 		{/if}
 		<div class="color">
-			<span class="ui-label">Couleur</span>
+			<span class="ui-label">{m.common_color()}</span>
 			<ContentColorPicker
 				value={draft.color || '#78716c'}
 				onchange={(value: string) => {
@@ -117,21 +118,22 @@
 				}}
 			/>
 		</div>
-		{#if busy}<p role="status">Modification envoyée…</p>{/if}
+		{#if busy}<p role="status">{m.common_change_sent()}</p>{/if}
 	</form>
 	{#snippet footer()}
 		<button
 			class="ui-action quiet dissolve"
 			type="button"
 			disabled={busy}
-			title="Conserve les membres ; retire le groupe et ses relations"
+			title={m.editing_group_dissolve_hint()}
 			onclick={ondissolve}
 		>
-			<Icon name="phosphor:squares-four" /> Dissoudre
+			<Icon name="phosphor:squares-four" />
+			{m.common_dissolve()}
 		</button>
 		<button class="ui-action" type="button" onclick={onclose}>
 			<Icon name="phosphor:x" />
-			{#if busy}Fermer{:else}Annuler{/if}
+			{#if busy}{m.common_close()}{:else}{m.common_cancel()}{/if}
 		</button>
 		<button
 			class="ui-action primary"
@@ -141,7 +143,7 @@
 			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
 			<Icon name="phosphor:check" />
-			{#if busy}Enregistrement…{:else}Enregistrer{/if}
+			{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}
 			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}

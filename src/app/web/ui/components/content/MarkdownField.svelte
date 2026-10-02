@@ -7,6 +7,7 @@
 	import { QuillMarkdownEditor } from '../../../document/quill-editor';
 	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { describeQuillField } from '../../../document/quill-field';
+	import { m } from '../../../i18n/paraglide/messages';
 
 	let {
 		value,
@@ -95,9 +96,7 @@
 	<div class="text-field-heading">
 		<span class="text-field-title">{title}</span>
 		{#if sourceMode && profile !== QuillEditorProfile.Plain}
-			<p class="text-field-note" role="status">
-				Édité en texte source pour conserver toutes ses mises en forme.
-			</p>
+			<p class="text-field-note" role="status">{m.content_markdown_field_source_mode_note()}</p>
 		{/if}
 	</div>
 	<div
@@ -108,6 +107,6 @@
 		<div bind:this={host}></div>
 	</div>
 	{#if failure}<p class="ui-notice error" role="alert">
-			Impossible d’ouvrir l’éditeur : {failure}
+			{m.content_markdown_field_init_error({ failure })}
 		</p>{/if}
 </div>

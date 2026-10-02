@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import Icon from '../ui/Icon.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
 
@@ -15,21 +16,21 @@
 	let description = $derived(newDescription(retained));
 
 	function newDescription(kept: boolean): string {
-		if (kept) return 'Le document courant reste disponible dans « Documents récents… ».';
-		return 'Le document courant est remplacé sans être enregistré ; exporte-le d’abord si tu veux le conserver.';
+		if (kept) return m.document_new_retained_notice();
+		return m.document_new_replaced_notice();
 	}
 </script>
 
-<ModalDialog title="Nouveau document" {description} {onclose} oncommit={oncreate}>
-	<p class="m-0 text-sm text-[var(--ui-muted)]">
-		Le nouveau document est vide et reprend les natures et la disposition du document courant.
-	</p>
+<ModalDialog title={m.document_new_title()} {description} {onclose} oncommit={oncreate}>
+	<p class="m-0 text-sm text-[var(--ui-muted)]">{m.document_new_body()}</p>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Annuler
+			<Icon name="phosphor:x" />
+			{m.common_cancel()}
 		</button>
 		<button class="ui-action primary" type="button" onclick={oncreate}>
-			<Icon name="phosphor:file-plus" /> Créer
+			<Icon name="phosphor:file-plus" />
+			{m.common_create()}
 		</button>
 	{/snippet}
 </ModalDialog>

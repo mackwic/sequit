@@ -1,5 +1,8 @@
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
+
+import { paraglideOptions } from './paraglide.ts';
 
 let testTimeout = 5_000;
 if (process.env['SEQUIT_PROPERTY_MODE'] === 'fuzz') testTimeout = 60_000;
@@ -11,9 +14,10 @@ if (mutationWorker !== undefined) cacheDir = `node_modules/.vite/stryker-${mutat
 
 export default defineConfig({
 	cacheDir,
-	plugins: [svelte()],
+	plugins: [svelte(), paraglideVitePlugin(paraglideOptions)],
 	test: {
 		testTimeout,
+		setupFiles: ['tests/support/base-locale.ts'],
 		environment: 'node',
 		include: ['tests/**/*.test.ts'],
 		exclude: ['tests/**/e2e/**', 'tests/**/performance/**', 'tests/workers/**'],
@@ -27,7 +31,7 @@ export default defineConfig({
 				'tests/support/fixtures/{graph-fixtures,routing-fixtures}.ts',
 				'tests/support/harnesses/{box-geometry,layout-nodes,visual-layout,visual-directions}.ts',
 			],
-			exclude: ['src/workers/**', 'tests/**/*.test.ts'],
+			exclude: ['src/workers/**', 'src/app/web/i18n/paraglide/**', 'tests/**/*.test.ts'],
 			reportsDirectory: 'coverage/web',
 			reporter: ['text', 'html', 'json-summary'],
 			thresholds: {

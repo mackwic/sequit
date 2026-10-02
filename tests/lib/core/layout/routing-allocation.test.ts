@@ -511,6 +511,22 @@ describe('rail and port reservations', () => {
 		expect(family.wires[0]?.first?.start).toBe(0);
 		expect(family.wires[0]?.first?.end).toBe(96);
 	});
+	it('keeps a family on one traverse beside its straight trunk until a foreign wire reaches it', () => {
+		const family = [
+			{ id: 'trunk', source: 48, target: 48, sharedSource: 'common' },
+			{ id: 'left', source: 48, target: 0, sharedSource: 'common' },
+			{ id: 'right', source: 48, target: 96, sharedSource: 'common' },
+		];
+		const own = routeChannel(family);
+		expect(own.wires.filter(({ middle }) => middle !== undefined)).toEqual([]);
+		expect(own.wires[1]?.first).toBe(own.wires[2]?.first);
+		expect(own.railCount).toBe(1);
+		const foreign = routeChannel([...family, { id: 'foreign', source: 144, target: 48 }]);
+		expect(foreign.wires.filter(({ middle }) => middle !== undefined).map(({ id }) => id)).toEqual([
+			'left',
+			'right',
+		]);
+	});
 	it('breaks a column-constraint cycle while keeping direct wires straight', () => {
 		const input = [
 			{ id: 'left', source: 0, target: 0 },

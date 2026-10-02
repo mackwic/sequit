@@ -8,6 +8,7 @@ import {
 import { validateLogicDocument } from '../../../lib/core/document/validate-logic-document';
 import { createGraph } from '../../../lib/core/graph/create-graph';
 import { reconcileSharedDocument } from '../../../lib/infrastructure/collaboration/reconcile-shared-document';
+import { CommandRefusalCode } from '../../../lib/infrastructure/collaboration/session-reasons';
 import {
 	importLogicDocument,
 	readLogicDocument,
@@ -77,7 +78,10 @@ export class WorkshopDocument {
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return outcome.document;
 		if (outcome.kind === DocumentCommandOutcomeKind.Failed) throw outcome.error;
 		throw new DocumentSessionError(
-			outcome.diagnostics.map(({ message }) => message).join('; '),
+			{
+				code: CommandRefusalCode.InvalidDocument,
+				details: outcome.diagnostics.map(({ message }) => message),
+			},
 			outcome.diagnostics,
 		);
 	}

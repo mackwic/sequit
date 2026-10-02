@@ -46,6 +46,8 @@ if (files.length > 0)
 		'--write',
 		...files,
 	]);
+// Recompiling empties the generated messages, so it must not overlap the checks that read them.
+run('pnpm', ['run', 'i18n:compile']);
 const checks = [
 	['run', 'quality:unused'],
 	['run', 'quality:architecture'],

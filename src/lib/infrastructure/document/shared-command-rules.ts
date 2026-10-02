@@ -7,8 +7,14 @@ import {
 	nodeDescriptionFields,
 	parallelRelation,
 } from '../../core/document/logic-document';
+import {
+	TopologyEditDiagnosticCode,
+	type TopologyEditReason,
+} from '../../core/document/topology-edit-ordering';
 import { projectNodeAddition, projectRelationAddition } from '../../core/document/topology-edits';
 import { fractionalOrderKeySpace } from '../../core/ordering/order-key-space';
+import { BusinessCommandRefusal } from '../collaboration/session-failure';
+import { CommandRefusalCode } from '../collaboration/session-reasons';
 import {
 	SharedCommandKind,
 	type SharedDocumentCommand,
@@ -30,8 +36,36 @@ function finalizeUpdatedElement(
 	const relation = defined(document.relations.find(({ id }) => id === relationId));
 	const existing = parallelRelation(document.relations, relation);
 	if (existing !== undefined)
-		throw new Error(`Relation ${relation.from} → ${relation.to} already exists: ${existing.id}`);
+		throw new BusinessCommandRefusal({
+			code: CommandRefusalCode.DuplicateRelation,
+			from: relation.from,
+			to: relation.to,
+			relationId: existing.id,
+		});
 	return document;
+}
+
+/** The refusal a person can act on when a creation breaks the topology; validation stays a detail. */
+function topologyRefusal(
+	diagnostics: readonly { readonly message: string; readonly reason?: TopologyEditReason }[],
+): BusinessCommandRefusal {
+	const reason = diagnostics.find((diagnostic) => diagnostic.reason !== undefined)?.reason;
+	if (reason?.code === TopologyEditDiagnosticCode.DuplicateRelationId)
+		return new BusinessCommandRefusal({
+			code: CommandRefusalCode.DuplicateRelationId,
+			relationId: reason.relationId,
+		});
+	if (reason?.code === TopologyEditDiagnosticCode.DuplicateRelation)
+		return new BusinessCommandRefusal({
+			code: CommandRefusalCode.DuplicateRelation,
+			from: reason.from,
+			to: reason.to,
+			relationId: reason.relationId,
+		});
+	return new BusinessCommandRefusal({
+		code: CommandRefusalCode.InvalidDocument,
+		details: diagnostics.map(({ message }) => message),
+	});
 }
 
 function finalizedCommand(
@@ -65,7 +99,7 @@ function finalizedCommand(
 		result = projectRelationAddition(before, relation, fractionalOrderKeySpace);
 	}
 	if (result === undefined) return after;
-	if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+	if (!result.ok) throw topologyRefusal(result.diagnostics);
 	return result.value.document;
 }
 

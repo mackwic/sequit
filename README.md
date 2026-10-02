@@ -74,6 +74,7 @@ and both production builds to the writer and integration gates. Mutation testing
 | `pnpm test:coverage:collaboration` | Cloudflare Vitest suite with Istanbul coverage for `src/workers/collaboration-worker/**/*.ts`                                                                             |
 | `pnpm test:coverage`               | Both coverage suites in fail-fast order                                                                                                                                   |
 | `pnpm quality:duplicates`          | TypeScript and Svelte under `src`, excluding tests and generated output                                                                                                   |
+| `pnpm i18n:compile`                | Regenerate the Paraglide message modules in `src/app/web/i18n/paraglide` from `messages/` (also run by install, `quality:precommit`, and `check`)                         |
 | `pnpm quality:precommit`           | Format modified working-tree files, then lint, unused-code, architecture, and types checks                                                                                |
 | `pnpm quality:fast`                | Lint, unused-code, architecture, web coverage without properties, worker coverage, and duplication gate                                                                   |
 | `pnpm quality:integration`         | Property tests, Chromium E2E, and snapshot performance                                                                                                                    |

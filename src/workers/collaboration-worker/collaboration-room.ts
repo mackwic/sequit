@@ -6,8 +6,9 @@ import { compactRoomDocument } from '../../lib/infrastructure/collaboration/comp
 import { planPersistence } from '../../lib/infrastructure/collaboration/room-persistence';
 import {
 	RetryableSessionFailure,
-	SessionFailureCode,
+	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
+import { SessionFailureCode } from '../../lib/infrastructure/collaboration/session-reasons';
 import {
 	decodeSessionEnvelope,
 	type SessionMessage,
@@ -47,6 +48,13 @@ import {
 	storeSocketPresence,
 } from './room-sockets';
 import { persistRoomState } from './room-storage';
+
+function invalidMessage(detail: string): TerminalSessionFailure {
+	return new TerminalSessionFailure(SessionFailureCode.InvalidMessage, {
+		code: SessionFailureCode.InvalidMessage,
+		details: [detail],
+	});
+}
 
 /** One Durable Object serves a room on a single thread; beyond this the room is full. */
 export const MAX_ROOM_SOCKETS = 50;
@@ -123,15 +131,16 @@ export class CollaborationRoom extends DurableObject<Env> {
 	}
 
 	private control(socket: WebSocket, frame: string): void {
-		if (frame.length > 1_024) throw new Error('Message de contrôle trop volumineux.');
+		if (frame.length > 1_024)
+			throw invalidMessage('Control message exceeds the 1024-character limit.');
 		const value: unknown = JSON.parse(frame);
 		const objectValue = typeof value === 'object';
-		if (!objectValue || value === null) throw new Error('Message invalide.');
+		if (!objectValue || value === null) throw invalidMessage('Control message must be an object.');
 		if ('type' in value && value.type === 'ping') {
 			socket.send(JSON.stringify({ type: 'pong' }));
 			return;
 		}
-		throw new Error('Message invalide.');
+		throw invalidMessage('Control message type is unsupported.');
 	}
 
 	private async handle(socket: WebSocket, message: SessionMessage): Promise<void> {
@@ -173,7 +182,10 @@ export class CollaborationRoom extends DurableObject<Env> {
 			case SessionMessageKind.Retry:
 			case SessionMessageKind.Conflict:
 			default:
-				throw new Error('Message client invalide.');
+				throw new TerminalSessionFailure(SessionFailureCode.InvalidDocument, {
+					code: SessionFailureCode.InvalidDocument,
+					details: ['Client sent a server-only message.'],
+				});
 		}
 	}
 
@@ -212,10 +224,9 @@ export class CollaborationRoom extends DurableObject<Env> {
 			return;
 		}
 		if (message.sequence !== acceptedSequence + 1)
-			throw new RetryableSessionFailure(
-				SessionFailureCode.CommandGap,
-				'Une commande précédente manque. Synchronisation en cours.',
-			);
+			throw new RetryableSessionFailure(SessionFailureCode.CommandGap, {
+				code: SessionFailureCode.CommandGap,
+			});
 		const candidate = authorizeCommands(this.proposal(socket), message, acceptedSequence);
 		if (candidate === undefined) return;
 		try {
@@ -262,7 +273,7 @@ export class CollaborationRoom extends DurableObject<Env> {
 		const update = Y.encodeStateAsUpdate(candidate, Y.encodeStateVector(this.roomState.doc));
 		const commit = this.roomState.commit + 1;
 		const acceptedProposals = new Map(this.roomState.acceptedProposals);
-		// Legacy UUID receipts remain readable; protocol v4 stores durable session progress separately.
+		// Legacy UUID receipts remain readable; session-scoped receipts track command progress.
 		if (id !== undefined && command === undefined) acceptedProposals.set(id, commit);
 		const plan = planPersistence({
 			fullUpdate: Y.encodeStateAsUpdate(candidate),

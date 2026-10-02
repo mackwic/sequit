@@ -19,6 +19,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { reconcileSharedDocument } from '../../../../src/lib/infrastructure/collaboration/reconcile-shared-document';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { readSharedCommand } from '../../../../src/lib/infrastructure/collaboration/shared-command-codec';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
@@ -137,7 +138,11 @@ describe('Yjs region lane presentation', () => {
 					members: ['target', 'container'],
 				},
 			]),
-		).toThrow('même voie');
+		).toThrow(
+			expect.objectContaining({
+				reason: { code: CommandRefusalCode.ElementsDifferentLane },
+			}),
+		);
 		crossing.destroy();
 		document.destroy();
 	});

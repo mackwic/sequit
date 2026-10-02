@@ -1,25 +1,57 @@
 import type Quill from 'quill';
 
+import { m } from '../i18n/paraglide/messages';
+
 const CONTROL_LABELS: Readonly<Record<string, string>> = {
-	bold: 'Gras',
-	italic: 'Italique',
-	underline: 'Souligné',
-	strike: 'Barré',
-	code: 'Code',
-	blockquote: 'Citation',
-	'code-block': 'Bloc de code',
-	link: 'Lien',
-	clean: 'Effacer la mise en forme',
-	source: 'Texte source',
+	get bold() {
+		return m.editor_bold();
+	},
+	get italic() {
+		return m.editor_italic();
+	},
+	get underline() {
+		return m.editor_underline();
+	},
+	get strike() {
+		return m.editor_strike();
+	},
+	get code() {
+		return m.editor_code();
+	},
+	get blockquote() {
+		return m.editor_blockquote();
+	},
+	get 'code-block'() {
+		return m.editor_code_block();
+	},
+	get link() {
+		return m.editor_link();
+	},
+	get clean() {
+		return m.editor_clean();
+	},
+	get source() {
+		return m.editor_source();
+	},
 };
 const LIST_LABELS: Readonly<Record<string, string>> = {
-	ordered: 'Liste numérotée',
-	bullet: 'Liste à puces',
+	get ordered() {
+		return m.editor_ordered_list();
+	},
+	get bullet() {
+		return m.editor_bullet_list();
+	},
 };
 const HEADER_LABELS: Readonly<Record<string, string>> = {
-	'1': 'Titre 1',
-	'2': 'Titre 2',
-	'3': 'Titre 3',
+	get '1'() {
+		return m.editor_heading_1();
+	},
+	get '2'() {
+		return m.editor_heading_2();
+	},
+	get '3'() {
+		return m.editor_heading_3();
+	},
 };
 
 /** The toolbar's focusable controls, in reading order. */
@@ -69,7 +101,7 @@ function roveToolbar(toolbar: HTMLElement): () => void {
 }
 
 function labelToolbar(toolbar: HTMLElement): void {
-	toolbar.setAttribute('aria-label', 'Mise en forme');
+	toolbar.setAttribute('aria-label', m.editor_formatting());
 	for (const [format, title] of Object.entries(CONTROL_LABELS))
 		for (const button of toolbar.querySelectorAll(`button.ql-${format}`))
 			button.setAttribute('aria-label', title);
@@ -77,14 +109,17 @@ function labelToolbar(toolbar: HTMLElement): void {
 		toolbar.querySelector(`button.ql-list[value="${value}"]`)?.setAttribute('aria-label', title);
 	toolbar
 		.querySelector('.ql-header .ql-picker-label')
-		?.setAttribute('aria-label', 'Niveau de titre');
+		?.setAttribute('aria-label', m.editor_heading_level());
 	for (const item of toolbar.querySelectorAll<HTMLElement>('.ql-header .ql-picker-item'))
-		item.setAttribute('aria-label', HEADER_LABELS[item.dataset['value'] ?? ''] ?? 'Texte normal');
+		item.setAttribute(
+			'aria-label',
+			HEADER_LABELS[item.dataset['value'] ?? ''] ?? m.editor_normal_text(),
+		);
 	const source = toolbar.querySelector('button.ql-source');
-	if (source) source.textContent = 'Texte source';
+	if (source) source.textContent = m.editor_source();
 }
 
-/** Name the editable root and make the toolbar readable and keyboard-friendly in French. */
+/** Name the editable root and make the toolbar readable and keyboard-friendly. */
 export function describeQuillField(quill: Quill, label: string): () => void {
 	quill.root.setAttribute('aria-label', label);
 	quill.root.setAttribute('role', 'textbox');

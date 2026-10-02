@@ -17,6 +17,7 @@ import {
 	UnknownRegionLayoutError,
 	UnsupportedRegionLayoutError,
 } from '../../../lib/core/layout/root-region';
+import { m } from '../i18n/paraglide/messages';
 import {
 	type CanvasModel,
 	createCanvasMeasurementModel,
@@ -88,14 +89,14 @@ function readyPreview(
 
 function diagnosticPreview(attempt: RegionSubtreeFailure): FailedRegionPreview {
 	let code = RegionPreviewFailureCode.CalculationFailed;
-	let message = 'Le calcul local de cette région a échoué.';
+	let message = m.diagnostics_region_calculation_failed();
 	if (attempt.status === RegionCompositionStatus.Unknown) {
 		code = RegionPreviewFailureCode.Unknown;
-		message = 'La géométrie locale de cette région reste sans solution validée.';
+		message = m.diagnostics_region_unknown_geometry();
 	}
 	if (attempt.status === RegionCompositionStatus.Unsupported) {
 		code = RegionPreviewFailureCode.Unsupported;
-		message = 'La disposition locale de cette région n’est pas encore prise en charge.';
+		message = m.diagnostics_region_unsupported_layout();
 	}
 	return {
 		kind: RegionPreviewKind.Diagnostic,

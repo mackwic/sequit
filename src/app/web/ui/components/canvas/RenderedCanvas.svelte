@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { GroupState } from '../../../../../lib/core/document/logic-document';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		canvasEntityInDirection,
 		CanvasNavigationDirection,
@@ -21,7 +22,7 @@
 	import { printStageFit } from '../../canvas/canvas-print';
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
-	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
+	import { foldToggleShortcut } from '../../canvas/group-edit';
 	import { hostsJunction } from '../../canvas/junction-insertion';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
@@ -52,6 +53,11 @@
 		/** Inserts a junction on a double-clicked relation; absent for aggregates and read-only views. */
 		onRelationSplit?: ((relationId: string) => void) | undefined;
 	} = $props();
+	/** The fold button names its effect, never the current state. */
+	function foldGroupLabel(closed: boolean, label: string): string {
+		if (closed) return m.canvas_expand_group({ label });
+		return m.canvas_collapse_group({ label });
+	}
 	function splitAction(relationId: string): ((relationId: string) => void) | undefined {
 		const relation = canvas.relations.find(({ id }) => id === relationId);
 		if (relation === undefined || !hostsJunction(relation)) return undefined;
@@ -206,7 +212,7 @@
 				style:top={`${group.bounds.y}px`}
 				style:width={`${group.bounds.width}px`}
 				style:height={`${group.bounds.height}px`}
-				aria-label={`Group ${group.label}`}
+				aria-label={m.canvas_group_label({ label: group.label })}
 				aria-pressed={session.isSelected(ref)}
 				onclick={(event) => {
 					handleClick(event, ref);
@@ -222,14 +228,13 @@
 			</button>
 			{#if onGroupToggle}
 				{@const closed = group.state === GroupState.Closed}
-				{@const label = foldActionLabel(closed)}
 				<button
 					class="group-fold"
 					type="button"
 					tabindex="-1"
 					data-group-fold={group.id}
 					aria-expanded={!closed}
-					aria-label={`${label} le groupe ${group.label}`}
+					aria-label={foldGroupLabel(closed, group.label)}
 					title={shortcutTitle(foldToggleShortcut(closed))}
 					style:left={`${group.bounds.x + group.bounds.width - 30}px`}
 					style:top={`${group.bounds.y + 5}px`}
@@ -254,7 +259,7 @@
 			width={canvas.width}
 			height={canvas.height}
 			viewBox={`0 0 ${canvas.width} ${canvas.height}`}
-			aria-label="Canvas relations"
+			aria-label={m.canvas_relations()}
 		>
 			<RelationArrow id={markerId} />
 			{#each renderedRelations as relation (relation.id)}
@@ -286,8 +291,11 @@
 				style:top={`${junction.bounds.y}px`}
 				style:width={`${junction.bounds.width}px`}
 				style:height={`${junction.bounds.height}px`}
-				title={`Junction ${junction.operator.toUpperCase()}`}
-				aria-label={`Junction ${junction.operator.toUpperCase()} ${junction.id}`}
+				title={m.canvas_junction_title({ operator: junction.operator.toUpperCase() })}
+				aria-label={m.canvas_junction_label({
+					operator: junction.operator.toUpperCase(),
+					id: junction.id,
+				})}
 				aria-pressed={session.isSelected(ref)}
 				onclick={(event) => {
 					handleClick(event, ref);

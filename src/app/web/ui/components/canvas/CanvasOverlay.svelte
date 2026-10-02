@@ -6,6 +6,7 @@
 		type LayoutLane,
 		type LogicNature,
 	} from '../../../../../lib/core/document/logic-document';
+	import { m } from '../../../i18n/paraglide/messages';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { hostsJunction } from '../../canvas/junction-insertion';
@@ -98,7 +99,7 @@
 			actions = {
 				...actions,
 				edit: {
-					label: `Éditer le groupe ${entity.id}`,
+					label: m.canvas_edit_group({ id: entity.id }),
 					run: () => {
 						edit(entity.id);
 					},
@@ -123,7 +124,7 @@
 			return {
 				entity,
 				edit: {
-					label: `Éditer le nœud ${node.id}`,
+					label: m.canvas_edit_node({ id: node.id }),
 					run: () => session.beginNodeEdit(node),
 				},
 				...childAction(entity),
@@ -147,7 +148,7 @@
 				actions = {
 					...actions,
 					edit: {
-						label: `Éditer la jonction ${entity.id}`,
+						label: m.canvas_edit_junction({ id: entity.id }),
 						run: () => {
 							edit(entity.id);
 						},

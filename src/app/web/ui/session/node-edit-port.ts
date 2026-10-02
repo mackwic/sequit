@@ -3,6 +3,7 @@ import {
 	DocumentCommandDiagnosticCode,
 	type DocumentCommandOutcome,
 	DocumentCommandOutcomeKind,
+	nodeEditingUnavailableOutcome,
 } from '../../../../lib/infrastructure/document/document-command-contracts';
 import { nodeFields, nodeUpdate } from '../../../../lib/infrastructure/document/node-fields';
 import {
@@ -17,19 +18,6 @@ export interface NodeEditSession {
 	read(): LogicDocument;
 	updateText(target: SharedTarget, field: string, next: string): boolean;
 	dispatch(commands: readonly SharedDocumentCommand[]): Promise<DocumentCommandOutcome>;
-}
-
-function nodeGone(nodeId: string): DocumentCommandOutcome {
-	return {
-		kind: DocumentCommandOutcomeKind.Rejected,
-		diagnostics: [
-			{
-				code: DocumentCommandDiagnosticCode.NodeNotFound,
-				message: `Node no longer exists: ${nodeId}`,
-				path: ['nodes', nodeId],
-			},
-		],
-	};
 }
 
 /**
@@ -49,7 +37,9 @@ export function createNodeEditPort(session: NodeEditSession): CanvasDocumentComm
 			for (const field of ['markdown', 'description'] as const) {
 				if (draft[field] === base[field]) continue;
 				if (!session.updateText(target, field, draft[field]))
-					return Promise.resolve(nodeGone(nodeId));
+					return Promise.resolve(
+						nodeEditingUnavailableOutcome(DocumentCommandDiagnosticCode.NodeNotFound, nodeId),
+					);
 			}
 			const command = nodeUpdate(nodeId, base, draft);
 			if (command === undefined)

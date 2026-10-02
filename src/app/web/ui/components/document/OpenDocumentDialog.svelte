@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import Icon from '../ui/Icon.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
@@ -28,8 +29,8 @@
 	let description = $derived(openDescription(retained));
 
 	function openDescription(kept: boolean): string {
-		if (kept) return 'Le document courant reste disponible dans « Documents récents… ».';
-		return 'Le document courant est remplacé sans être enregistré ; exporte-le d’abord si tu veux le conserver.';
+		if (kept) return m.document_new_retained_notice();
+		return m.document_new_replaced_notice();
 	}
 
 	onMount(() => {
@@ -59,8 +60,8 @@
 	}
 </script>
 
-<ModalDialog title="Ouvrir un document" {description} {onclose}>
-	<label class="ui-label" for={inputId}>Fichier Sequit (.sequit.toml)</label>
+<ModalDialog title={m.document_open_title()} {description} {onclose}>
+	<label class="ui-label" for={inputId}>{m.document_open_file_label()}</label>
 	<input
 		class="ui-field"
 		id={inputId}
@@ -74,7 +75,8 @@
 	{/if}
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Annuler
+			<Icon name="phosphor:x" />
+			{m.common_cancel()}
 		</button>
 	{/snippet}
 </ModalDialog>

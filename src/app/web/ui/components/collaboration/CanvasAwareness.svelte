@@ -7,6 +7,7 @@
 		PresencePoint,
 	} from '../../../../../lib/infrastructure/collaboration/participant-presence';
 	import { SharedElementKind as Kind } from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import {
@@ -217,8 +218,8 @@
 					type="button"
 					data-remote-edge={peer.clientId}
 					data-participant={peer.name}
-					title={`Aller au curseur de ${peer.name}`}
-					aria-label={`Aller au curseur de ${peer.name}`}
+					title={m.collaboration_awareness_go_to_cursor({ name: peer.name })}
+					aria-label={m.collaboration_awareness_go_to_cursor({ name: peer.name })}
 					style:transform={`translate(${chip.x}px, ${chip.y}px) translate(-50%, -50%)`}
 					style:background={peer.color}
 					onclick={() => {

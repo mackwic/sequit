@@ -3,6 +3,8 @@
 
 	import { resolve } from '$app/paths';
 
+	import { m } from '../../i18n/paraglide/messages';
+
 	let { children, actions }: { children: Snippet; actions?: Snippet } = $props();
 </script>
 
@@ -13,7 +15,7 @@
 		<a
 			class="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[var(--ui-accent)]"
 			href={resolve('/')}
-			aria-label="Accueil Sequit"
+			aria-label={m.document_header_home()}
 		>
 			<span
 				class="grid size-7 place-items-center rounded-lg bg-[var(--ui-text)] text-sm font-bold text-[var(--ui-surface)]"

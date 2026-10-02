@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { VirtualElement } from '@floating-ui/dom';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import { entityKey, EntityKind } from '../../canvas/canvas-entity';
 	import { canvasSelectionBounds } from '../../canvas/canvas-entity-dom';
 	import {
@@ -57,7 +58,7 @@
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
-		label="Actions de la sélection"
+		label={m.editing_selection_actions()}
 		bind:element={floating}
 	>
 		{#if groupable}
@@ -65,7 +66,7 @@
 				class="ui-action quiet"
 				type="button"
 				disabled={onGroup === undefined}
-				aria-label={`Grouper ${selectedNodeIds.length} nœuds`}
+				aria-label={m.editing_selection_group_aria({ count: selectedNodeIds.length })}
 				aria-keyshortcuts={shortcutKeyshortcuts(groupShortcut)}
 				title={shortcutTitle(groupShortcut)}
 				onclick={() => onGroup?.()}
@@ -78,13 +79,13 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`Supprimer ${session.selectionCount} éléments`}
+				aria-label={m.editing_selection_delete_aria({ count: session.selectionCount })}
 				aria-keyshortcuts={shortcutKeyshortcuts(deleteShortcut)}
 				title={shortcutTitle(deleteShortcut)}
 				onclick={onDelete}
 			>
 				<Icon name="phosphor:trash" />
-				<span>Supprimer</span>
+				<span>{m.common_delete()}</span>
 			</button>
 		{/if}
 	</FloatingActions>

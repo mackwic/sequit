@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import { entityKey, EntityKind, entityRef } from '../../canvas/canvas-entity';
 	import {
 		activateEntityByKeyboard,
@@ -54,7 +55,7 @@
 	vector-effect="non-scaling-stroke"
 	role="button"
 	tabindex={tabIndex}
-	aria-label={`Relation ${relation.id} from ${relation.from} to ${relation.to}`}
+	aria-label={m.canvas_relation_label({ id: relation.id, from: relation.from, to: relation.to })}
 	aria-pressed={selected}
 	onclick={handleClick}
 	ondblclick={(event) => {

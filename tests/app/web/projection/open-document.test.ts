@@ -22,7 +22,11 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import type { DocumentSession } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
-import { DocumentCommandOutcomeKind } from '../../../../src/lib/infrastructure/document/document-command-contracts';
+import { SessionNoticeCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
+import {
+	DocumentCommandDiagnosticCode,
+	DocumentCommandOutcomeKind,
+} from '../../../../src/lib/infrastructure/document/document-command-contracts';
 import {
 	SharedCommandKind,
 	type SharedDocumentCommand,
@@ -445,7 +449,12 @@ describe('openDocument', () => {
 			result.value.saveNode('missing', base, { ...base, markdown: 'Ignored' }),
 		).resolves.toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [{ code: 'node-not-found' }],
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.NodeNotFound,
+					reason: { code: SessionNoticeCode.NodeNotFound, nodeId: 'missing' },
+				},
+			],
 		});
 		result.value.destroy();
 		await expect(
@@ -455,7 +464,12 @@ describe('openDocument', () => {
 			}),
 		).resolves.toMatchObject({
 			kind: DocumentCommandOutcomeKind.Rejected,
-			diagnostics: [{ code: 'document-session-closed' }],
+			diagnostics: [
+				{
+					code: DocumentCommandDiagnosticCode.SessionClosed,
+					reason: { code: SessionNoticeCode.Destroyed },
+				},
+			],
 		});
 		const inertUnsubscribe = result.value.subscribe(vi.fn());
 		expect(inertUnsubscribe).toBeTypeOf('function');

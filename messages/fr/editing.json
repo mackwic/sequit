@@ -1,0 +1,109 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"editing_nature_dialog_title_remove": "Supprimer la nature",
+	"editing_nature_dialog_title_create": "Nouvelle nature",
+	"editing_nature_dialog_title_edit": "Modifier la nature",
+	"editing_nature_usage_none": "Aucune boîte",
+	"editing_nature_usage": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} boîte",
+				"countPlural=other": "{count} boîtes"
+			}
+		}
+	],
+	"editing_nature_reassign": [
+		{
+			"declarations": ["input count", "input label", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} boîte utilise « {label} ». Choisissez sa nouvelle nature.",
+				"countPlural=other": "{count} boîtes utilisent « {label} ». Choisissez leur nouvelle nature."
+			}
+		}
+	],
+	"editing_document_eyebrow": "Document",
+	"editing_document_natures_aria": "Natures du document",
+	"editing_nature_empty_warning": "Ce document n’a aucune nature : les boîtes en ont besoin.",
+	"editing_nature_removal_free": "Aucune boîte n’utilise « {label} ».",
+	"editing_nature_reassign_field": "Réaffecter à",
+	"editing_nature_removal_blocked": "Des boîtes utilisent cette nature et aucune autre ne peut les accueillir. Créez d’abord une autre nature.",
+	"editing_nature_preview_sample": "Une boîte de cette nature, telle qu’elle apparaît sur le canvas.",
+	"editing_preview_caption": "Aperçu",
+	"editing_label": "Libellé",
+	"editing_nature_create": "Nouvelle nature",
+	"editing_back": "Retour",
+	"editing_nature_delete_hint": "Les boîtes concernées changent de nature",
+	"editing_node_title_edit": "Modifier la boîte",
+	"editing_node_eyebrow": "Boîte",
+	"editing_color_and_icon": "Couleur et icône",
+	"editing_customized": "Personnalisés",
+	"editing_inherited_nature": "Hérités de la nature",
+	"editing_lanes_min_two": "Il faut au moins deux lanes",
+	"editing_lanes_max_reached": "Le moteur prend en charge {max} lanes au plus pour l’instant",
+	"editing_lanes_description": "Les lanes répartissent les boîtes de premier niveau en colonnes ou en bandes fixes, par exemple par équipe ou par rôle.",
+	"editing_lanes_unsupported_empty": "Le moteur de lanes ne prend pas encore en charge les jonctions ni les groupes contenant des boîtes : ce document en a, le canvas afficherait un diagnostic.",
+	"editing_lanes_empty": "Ce document n’a pas de lanes : toutes les boîtes partagent le même espace.",
+	"editing_lanes_activate": "Activer les lanes",
+	"editing_orientation": "Orientation",
+	"editing_lane_name_aria": "Nom de la lane {index}",
+	"editing_lane_move_up_aria": "Monter {label}",
+	"editing_lane_move_down_aria": "Descendre {label}",
+	"editing_lane_remove_aria": "Supprimer {label}",
+	"editing_lane_add": "Ajouter une lane",
+	"editing_lanes_unsupported_list": "Le moteur de lanes ne prend pas encore en charge les jonctions ni les groupes contenant des boîtes : tant qu’il y en a, le canvas affiche un diagnostic à la place de la mise en page.",
+	"editing_lane_transfer_label": "Les {count} éléments de « {label} » rejoignent",
+	"editing_lanes_disable_hint": "Toutes les boîtes reviennent dans un espace unique",
+	"editing_lanes_disable": "Désactiver les lanes",
+	"editing_junction_and": "ET",
+	"editing_junction_and_hint": "Toutes les origines sont nécessaires.",
+	"editing_junction_symbol_and": "AND",
+	"editing_junction_or": "OU",
+	"editing_junction_or_hint": "Au moins une origine suffit.",
+	"editing_junction_symbol_or": "OR",
+	"editing_junction_xor": "OU exclusif",
+	"editing_junction_xor_hint": "Une seule origine, jamais plusieurs.",
+	"editing_junction_symbol_xor": "XOR",
+	"editing_junction_title": "Opérateur de la jonction",
+	"editing_group_title_name": "Nommer le groupe",
+	"editing_group_title_edit": "Modifier le groupe",
+	"editing_title": "Titre",
+	"editing_group_lane_aria": "Lane du groupe",
+	"editing_group_dissolve_hint": "Conserve les membres ; retire le groupe et ses relations",
+	"editing_context_actions_node": "Actions du nœud",
+	"editing_context_actions_group": "Actions du groupe",
+	"editing_context_actions_junction": "Actions de la jonction",
+	"editing_context_actions_relation": "Actions de la relation",
+	"editing_context_delete_node": "Supprimer le nœud",
+	"editing_context_delete_group": "Supprimer le groupe",
+	"editing_context_delete_junction": "Supprimer la jonction",
+	"editing_context_delete_relation": "Supprimer la relation",
+	"editing_context_create_child_aria": "Créer un enfant de {id}",
+	"editing_context_fold_aria": "{label} le groupe {id}",
+	"editing_context_dissolve_aria": "Dissoudre le groupe {id}",
+	"editing_context_dissolve_hint": "Dissoudre : conserve les membres",
+	"editing_context_split_aria": "Insérer une jonction sur {id}",
+	"editing_context_delete_aria": "{label} {id}",
+	"editing_selection_actions": "Actions de la sélection",
+	"editing_selection_group_aria": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Grouper {count} nœud",
+				"countPlural=other": "Grouper {count} nœuds"
+			}
+		}
+	],
+	"editing_selection_delete_aria": "Supprimer {count} éléments",
+	"editing_canvas_actions": "Actions du canvas",
+	"editing_canvas_manage_natures": "Gérer les natures du document",
+	"editing_zoom_label": "Zoom du canvas",
+	"editing_zoom_out": "Zoom arrière",
+	"editing_zoom_reset": "Réinitialiser le zoom",
+	"editing_zoom_reset_hint": "Revenir à 100 %",
+	"editing_zoom_value": "{percent}%",
+	"editing_zoom_in": "Zoom avant"
+}

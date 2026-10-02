@@ -18,6 +18,7 @@
 	import { parseSequitToml } from '../../../../lib/infrastructure/toml/parse-sequit-toml';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import { consumeCollaborationError } from '../../document/collaboration-rejection';
+	import { m } from '../../i18n/paraglide/messages';
 	import { canvasStageElement } from '../canvas/canvas-image';
 	import { documentFilename, documentFileStem } from '../document/document-filename';
 	import { downloadText } from '../document/download-text';
@@ -50,10 +51,13 @@
 		return current;
 	});
 	let statusLabel = $derived.by(() => {
-		if (session?.status === CollaborationStatus.Ready) return 'Connecté';
-		if (session?.status === CollaborationStatus.Disconnected) return 'Hors ligne';
-		if (session?.status === CollaborationStatus.Synchronizing) return 'Synchronisation…';
-		return 'Connexion…';
+		if (session?.status === CollaborationStatus.Ready)
+			return m.collaboration_session_status_ready();
+		if (session?.status === CollaborationStatus.Disconnected)
+			return m.collaboration_session_status_disconnected();
+		if (session?.status === CollaborationStatus.Synchronizing)
+			return m.collaboration_session_status_synchronizing();
+		return m.collaboration_session_status_connecting();
 	});
 	let exportAction = $derived.by(() => {
 		if (!session?.model) return undefined;
@@ -172,7 +176,7 @@
 </script>
 
 <svelte:head>
-	<title>{title} — Session Sequit</title>
+	<title>{m.collaboration_session_document_title({ title })}</title>
 </svelte:head>
 
 <main
@@ -211,7 +215,8 @@
 					dialog = 'share';
 				}}
 			>
-				<Icon name="phosphor:share-network" /> Partager
+				<Icon name="phosphor:share-network" />
+				{m.collaboration_session_share()}
 			</button>
 		{/snippet}
 	</AppHeader>
@@ -228,7 +233,7 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label="Fermer la notification"
+				aria-label={m.collaboration_session_dismiss_notification()}
 				onclick={() => {
 					toast = undefined;
 				}}><Icon name="phosphor:x" /></button

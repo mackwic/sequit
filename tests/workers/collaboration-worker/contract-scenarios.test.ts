@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
+import { SessionFailureCode } from '../../../src/lib/infrastructure/collaboration/session-reasons';
 import { SessionMessageKind as Message } from '../../../src/lib/infrastructure/collaboration/session-wire';
 import {
 	readSyncStep,
@@ -56,20 +57,40 @@ describe('CBOR session protocol contract', () => {
 				client.socket.addEventListener('close', resolve, { once: true });
 			});
 			client.socket.send(frame);
-			expect((await client.next(Message.Reject)).message).toBeTruthy();
+			expect(await client.next(Message.Reject)).toMatchObject({
+				code: SessionFailureCode.InvalidMessage,
+				reason: { code: SessionFailureCode.InvalidMessage },
+			});
 			expect((await closed).code).toBe(1008);
 		},
 	);
 });
 
-it.each(['null', '1', '{}', '{"type":"unknown"}', '{'])(
-	'rejects invalid text control %s',
-	async (value) => {
-		const client = await connectRoom(`control-${encodeURIComponent(value)}`);
-		client.socket.send(value);
-		expect((await client.next(Message.Reject)).message).toBeTruthy();
-	},
-);
+it.each([
+	['null', 'Control message must be an object.'],
+	['1', 'Control message must be an object.'],
+	['{}', 'Control message type is unsupported.'],
+	['{"type":"unknown"}', 'Control message type is unsupported.'],
+] as const)('rejects invalid text control %s', async (value, detail) => {
+	const client = await connectRoom(`control-${encodeURIComponent(value)}`);
+	client.socket.send(value);
+	expect(await client.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidMessage,
+		reason: {
+			code: SessionFailureCode.InvalidMessage,
+			details: [detail],
+		},
+	});
+});
+
+it('rejects malformed text control JSON', async () => {
+	const client = await connectRoom('control-malformed-json');
+	client.socket.send('{');
+	expect(await client.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidMessage,
+		reason: { code: SessionFailureCode.InvalidMessage },
+	});
+});
 
 it('answers a ping through the text control channel', async () => {
 	const client = await connectRoom('ping');
@@ -85,7 +106,18 @@ it('answers a ping through the text control channel', async () => {
 
 it.each([Message.Commit, Message.Reject])('rejects server-only %s messages', async (kind) => {
 	const client = await connectRoom(`server-only-${kind}`);
-	if (kind === Message.Reject) client.send({ type: Message.Reject, message: 'Forged' });
+	if (kind === Message.Reject)
+		client.send({
+			type: Message.Reject,
+			code: SessionFailureCode.InvalidDocument,
+			reason: { code: SessionFailureCode.InvalidDocument, details: ['Forged'] },
+		});
 	else client.send({ type: Message.Commit, commit: 1, update: new Uint8Array([0, 0]) });
-	expect((await client.next(Message.Reject)).message).toBe('Message client invalide.');
+	expect(await client.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidDocument,
+		reason: {
+			code: SessionFailureCode.InvalidDocument,
+			details: ['Client sent a server-only message.'],
+		},
+	});
 });

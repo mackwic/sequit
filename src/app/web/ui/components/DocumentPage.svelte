@@ -11,6 +11,7 @@
 	} from '../../../../lib/infrastructure/document/document-creation';
 	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
+	import { m } from '../../i18n/paraglide/messages';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { canvasStageElement } from '../canvas/canvas-image';
 	import { documentFilename, documentFileStem } from '../document/document-filename';
@@ -219,11 +220,8 @@
 </script>
 
 <svelte:head>
-	<title>Sequit — Canvas logique</title>
-	<meta
-		name="description"
-		content="Un canvas collaboratif pour structurer objectifs, préconditions et actions."
-	/>
+	<title>{m.document_page_title()}</title>
+	<meta name="description" content={m.document_page_description()} />
 </svelte:head>
 
 <main
@@ -255,7 +253,8 @@
 					dialog = 'collaborate';
 				}}
 			>
-				<Icon name="phosphor:users" /> Collaborer
+				<Icon name="phosphor:users" />
+				{m.document_collaborate()}
 			</button>
 		{/snippet}
 	</AppHeader>

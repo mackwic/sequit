@@ -5,12 +5,14 @@ import { portPolicy } from '../../../support/fixtures/routing-fixtures';
 import { layoutNodes } from '../../../support/harnesses/layout-nodes';
 import type { LayoutScenario } from '../scenario';
 
-/** Dense variants retain exactly the same relations; only the target document order changes. */
+/**
+ * Dense variants retain exactly the same relations; only the target document order changes. The
+ * sparse variant keeps A's branch towards E and D apart from the convergence on D.
+ */
 function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario {
-	let id = 'conditional-incoming-ports-shared';
-	let label = 'Quatre relations, E avant D : port partagé';
+	let id = 'conditional-incoming-ports-separated';
+	let label = 'Quatre relations, E avant D : trois ports';
 	let nodeIds = ['a', 'b', 'c', 'e', 'd'];
-	let incomingPorts = 1;
 	let predecessorTargets = ['d'];
 	if (crossed) {
 		id = 'conditional-incoming-ports-crossed';
@@ -19,7 +21,6 @@ function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario
 			id = 'conditional-incoming-ports-dense-reordered';
 			label = 'Six relations, E avant D : toujours trois ports';
 		} else nodeIds = ['a', 'b', 'c', 'd', 'e'];
-		incomingPorts = 3;
 		predecessorTargets = ['d', 'e'];
 	}
 	return {
@@ -46,14 +47,10 @@ function orderedTargets(crossed: boolean, reversedDense = false): LayoutScenario
 			if (crossed && !reversedDense)
 				check.node('e').isAfter('d', { direction: 'transverse-positive' });
 			else check.node('d').isAfter('e', { direction: 'transverse-positive' });
-			check
-				.ports('d', { role: 'incoming' })
-				.haveCount(incomingPorts)
-				.areCentered()
-				.haveClearance(portPolicy);
+			check.ports('d', { role: 'incoming' }).haveCount(3).areCentered().haveClearance(portPolicy);
 			check.node('d').hasSizeForPorts({
 				content: 80,
-				incoming: incomingPorts,
+				incoming: 3,
 				outgoing: 0,
 				...portPolicy,
 			});

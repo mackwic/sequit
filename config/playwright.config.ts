@@ -25,6 +25,8 @@ export default defineConfig({
 		baseURL: 'http://127.0.0.1:4174',
 		trace: 'retain-on-failure',
 		...devices['Desktop Chrome'],
+		// Scenarios read the French interface; a dedicated scenario covers English.
+		locale: 'fr-FR',
 	},
 	projects: [
 		{ name: 'chromium', testIgnore: '**/mobile-reading.spec.ts' },

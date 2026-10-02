@@ -1,7 +1,13 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import { contentPalette } from '../../content/content-palette';
 	let { value, onchange }: { value: string; onchange: (value: string) => void } = $props();
-	const shades = ['clair', 'moyen', 'intense'];
+	const shades = [
+		m.content_color_picker_shade_light(),
+		m.content_color_picker_shade_mid(),
+		m.content_color_picker_shade_intense(),
+	];
+	const shade = (index: number): string => shades[index] ?? '';
 	let hex = $derived.by(() => {
 		if (value.length === 4)
 			return value.replace(/^#([\da-f])([\da-f])([\da-f])$/i, '#$1$1$2$2$3$3');
@@ -12,22 +18,30 @@
 	let name = $derived.by(() => {
 		for (const family of contentPalette) {
 			const index = family.colors.findIndex((color) => color === current);
-			if (index !== -1) return `${family.label} ${shades[index]}`;
+			if (index !== -1)
+				return m.content_color_picker_color_name({ family: family.label, shade: shade(index) });
 		}
-		return 'Couleur personnalisée';
+		return m.content_color_picker_custom();
 	});
-	let custom = $derived(name === 'Couleur personnalisée');
+	let custom = $derived.by(() => !contentPalette.some((family) => family.colors.includes(current)));
 </script>
 
 <div class="color-control">
-	<div class="swatches" role="group" aria-label="Palette content">
+	<div class="swatches" role="group" aria-label={m.content_color_picker_palette_aria()}>
 		{#each contentPalette as family (family.label)}
 			{#each family.colors as color, index (color)}
 				<button
 					type="button"
 					class="swatch"
-					aria-label={`${family.label} ${shades[index]}`}
-					title={`${family.label} ${shades[index]} · ${color}`}
+					aria-label={m.content_color_picker_swatch_aria({
+						family: family.label,
+						shade: shade(index),
+					})}
+					title={m.content_color_picker_swatch_title({
+						family: family.label,
+						shade: shade(index),
+						color,
+					})}
 					aria-pressed={current === color}
 					style:--swatch={color}
 					onclick={() => {
@@ -36,10 +50,14 @@
 				></button>
 			{/each}
 		{/each}
-		<label class="swatch custom" class:pressed={custom} title="Couleur personnalisée · RGB libre">
+		<label
+			class="swatch custom"
+			class:pressed={custom}
+			title={m.content_color_picker_custom_title()}
+		>
 			<input
 				type="color"
-				aria-label="Couleur personnalisée"
+				aria-label={m.content_color_picker_custom_aria()}
 				value={hex}
 				oninput={(event) => {
 					onchange(event.currentTarget.value);
@@ -48,7 +66,8 @@
 		</label>
 	</div>
 	<p class="current">
-		<span class="dot" style:--swatch={value}></span>{name} · <code>{value.toUpperCase()}</code>
+		<span class="dot" style:--swatch={value}></span>{m.content_color_picker_current_value({ name })} ·
+		<code>{value.toUpperCase()}</code>
 	</p>
 </div>
 

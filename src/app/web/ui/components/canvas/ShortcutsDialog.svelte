@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import { CANVAS_SHORTCUT_SECTIONS, sectionShortcuts } from '../../canvas/canvas-shortcuts';
 	import Icon from '../ui/Icon.svelte';
 	import Kbd from '../ui/Kbd.svelte';
@@ -7,7 +8,7 @@
 	let { onclose }: { onclose: () => void } = $props();
 </script>
 
-<ModalDialog title="Raccourcis clavier" {onclose}>
+<ModalDialog title={m.common_keyboard_shortcuts()} {onclose}>
 	<div class="sections">
 		{#each CANVAS_SHORTCUT_SECTIONS as { section, title } (section)}
 			<section>
@@ -25,7 +26,8 @@
 	</div>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Fermer
+			<Icon name="phosphor:x" />
+			{m.common_close()}
 		</button>
 	{/snippet}
 </ModalDialog>

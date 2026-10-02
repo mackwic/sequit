@@ -3,9 +3,9 @@ import * as Y from 'yjs';
 import { authorizeProposal } from '../../lib/infrastructure/collaboration/authorize-proposal';
 import {
 	BusinessCommandRefusal,
-	SessionFailureCode,
 	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
+import { SessionFailureCode } from '../../lib/infrastructure/collaboration/session-reasons';
 import {
 	type IdentifiedTextMessage,
 	type SessionMessage,
@@ -27,6 +27,13 @@ import { commandConflictCode, refuseTextTarget } from './room-failures';
 import type { RoomRefusalBudget } from './room-refusal-budget';
 import { sendRoomMessage } from './room-sockets';
 import type { RoomState } from './room-storage';
+
+function invalidDocument(details: readonly string[]): TerminalSessionFailure {
+	return new TerminalSessionFailure(SessionFailureCode.InvalidDocument, {
+		code: SessionFailureCode.InvalidDocument,
+		details,
+	});
+}
 
 export type InitializeMessage = Extract<SessionMessage, { type: SessionMessageKind.Initialize }>;
 export type CommandsMessage = Extract<SessionMessage, { readonly commands: unknown }>;
@@ -55,10 +62,10 @@ export async function authorizeInitialization(
 		proposedUpdate: message.update,
 		guards: defaultUpdateGuards,
 	});
-	if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+	if (!result.ok) throw invalidDocument(result.diagnostics.map(({ message }) => message));
 	if (result.value.candidateDocument.id !== roomId) {
 		result.value.candidate.destroy();
-		throw new Error('Le document ne correspond pas à la room.');
+		throw invalidDocument(['Document ID does not match the room.']);
 	}
 	upgradeSharedTexts(result.value.candidate);
 	return result.value.candidate;
@@ -70,7 +77,7 @@ export function authorizeCommands(
 	message: CommandsMessage,
 	acceptedSequence: number,
 ): Y.Doc | undefined {
-	if (state.commit === 0) throw new Error('Initialisez le document avant les commandes.');
+	if (state.commit === 0) throw invalidDocument(['Document must be initialized before commands.']);
 	const candidate = new Y.Doc({ gc: false });
 	Y.applyUpdate(candidate, Y.encodeStateAsUpdate(state.doc));
 	try {
@@ -80,14 +87,13 @@ export function authorizeCommands(
 		candidate.destroy();
 		if (!(error instanceof BusinessCommandRefusal)) throw error;
 		if (!budget.allow(socket, message.id))
-			throw new TerminalSessionFailure(
-				SessionFailureCode.RepeatedCommandRefusal,
-				'Cette proposition a été refusée trop souvent.',
-			);
+			throw new TerminalSessionFailure(SessionFailureCode.RepeatedCommandRefusal, {
+				code: SessionFailureCode.RepeatedCommandRefusal,
+			});
 		sendRoomMessage(socket, {
 			type: SessionMessageKind.Conflict,
 			code: commandConflictCode(error),
-			message: error.message,
+			reason: error.reason,
 			id: message.id,
 			lastAcceptedSequence: acceptedSequence,
 		});
@@ -116,7 +122,7 @@ export async function authorizeTextUpdate(
 	}
 	if (empty) return undefined;
 	const accepted = readLogicDocument(state.doc);
-	if (!accepted.ok) throw new Error('Initialisez le document avec des commandes.');
+	if (!accepted.ok) throw invalidDocument(['Document must be initialized before text updates.']);
 	const result = await authorizeProposal({
 		authoritative: state.doc,
 		acceptedDocument: accepted.value,
@@ -125,6 +131,6 @@ export async function authorizeTextUpdate(
 		textOnly: true,
 		textTarget,
 	});
-	if (!result.ok) throw new Error(result.diagnostics.map(({ message }) => message).join('; '));
+	if (!result.ok) throw invalidDocument(result.diagnostics.map(({ message }) => message));
 	return result.value.candidate;
 }

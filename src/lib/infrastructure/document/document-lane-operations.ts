@@ -8,6 +8,7 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../core/document/logic-document';
 import { BusinessCommandRefusal } from '../collaboration/session-failure';
+import { CommandRefusalCode } from '../collaboration/session-reasons';
 import type { SharedRootLanes } from './shared-document-command';
 
 interface LaneOwner {
@@ -22,13 +23,17 @@ function withoutLane<T extends LaneOwner>(item: T): T {
 }
 
 function checkedLanes(lanes: SharedRootLanes): ReadonlySet<string> {
-	if (lanes.lanes.length < 2) throw new BusinessCommandRefusal('Il faut au moins deux lanes.');
+	if (lanes.lanes.length < 2)
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.MinimumLanes });
 	const ids = new Set<string>();
 	for (const lane of lanes.lanes) {
 		if (lane.id.trim() === '' || ids.has(lane.id))
-			throw new BusinessCommandRefusal(`Identifiant de lane vide ou en double : ${lane.id}`);
+			throw new BusinessCommandRefusal({
+				code: CommandRefusalCode.InvalidLaneId,
+				laneId: lane.id,
+			});
 		if (lane.label.trim() === '')
-			throw new BusinessCommandRefusal('Chaque lane doit avoir un nom.');
+			throw new BusinessCommandRefusal({ code: CommandRefusalCode.LaneNameRequired });
 		ids.add(lane.id);
 	}
 	return ids;
@@ -46,7 +51,7 @@ export function updateDocumentRootLanes(
 ): LogicDocument {
 	const format = document.persistenceFormat;
 	if (format !== PERSISTENCE_FORMAT && format !== LANE_PERSISTENCE_FORMAT)
-		throw new BusinessCommandRefusal('Les lanes de ce document se règlent par région.');
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.RegionalLanesRequired });
 	if (lanes === undefined) {
 		const result = {
 			...document,
@@ -61,13 +66,17 @@ export function updateDocumentRootLanes(
 	const ids = checkedLanes(lanes);
 	for (const target of Object.values(transfers))
 		if (!ids.has(target))
-			throw new BusinessCommandRefusal(`Lane de destination inconnue : ${target}`);
+			throw new BusinessCommandRefusal({
+				code: CommandRefusalCode.UnknownDestinationLane,
+				target,
+			});
 	const [first] = [...lanes.lanes].sort(
 		(left, right) =>
 			compareCanonicalStrings(left.layoutOrder, right.layoutOrder) ||
 			compareCanonicalStrings(left.id, right.id),
 	);
-	if (first === undefined) throw new BusinessCommandRefusal('Il faut au moins deux lanes.');
+	if (first === undefined)
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.MinimumLanes });
 	const assign = <T extends LaneOwner>(item: T): T => {
 		if (item.groupId !== undefined) return withoutLane(item);
 		if (item.laneId !== undefined && ids.has(item.laneId)) return item;

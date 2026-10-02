@@ -9,6 +9,7 @@ src/
       document/       Session applicative, exécution et assemblage Yjs
       projection/     Projection du document et déclenchement du layout
       ui/             Canvas, interactions, inspecteurs, thème et icônes
+      i18n/           Traduction de l'interface (code Paraglide généré, non versionné)
       examples/       Contenu d'exemple du produit
     workshop/
       runtime/        Commandes et adaptateurs expérimentaux
@@ -42,6 +43,14 @@ src/
 - Les routes assemblent les modules applicatifs et restent en dehors de leurs dépendances.
 
 Ces directions, ainsi que les contraintes plus fines entre graphe, ordre, layout et codecs, sont définies dans `config/dependency-cruiser.cjs`. La règle ESLint locale `allowed-import-directions` lit cette même politique : elle vérifie les imports statiquement résolubles, y compris les types, réexports et imports dynamiques littéraux, dans TypeScript et Svelte. Les chemins relatifs et l'alias `$lib` sont normalisés avant vérification. Dependency-cruiser complète ce contrôle sur le graphe, notamment pour les cycles. Les interdictions d'effets courants dans le core sont également contrôlées par ESLint. Les tests de propriétés couvrent déterminisme et invariants.
+
+## Traduction de l'interface
+
+L'interface est traduite avec Paraglide JS. Le projet inlang (`project.inlang/settings.json`) déclare le français comme langue de référence et l'anglais ; les messages vivent dans `messages/<langue>/<zone>.json`, une zone par domaine de l'interface (`common`, `document`, `content`, `canvas`, `editing`, `collaboration`, `editor`, `diagnostics`), avec des clés `snake_case` préfixées par leur zone. Un test vérifie que chaque message appartient à une seule zone et que chaque langue traduit toutes les clés avec les mêmes paramètres.
+
+Le code des messages est généré dans `src/app/web/i18n/paraglide/` par le plugin Vite, par `pnpm i18n:compile` (lancé à l'installation, par `quality:precommit` et par `check`) et par la configuration Vitest ; les options communes sont dans `config/paraglide.ts`. Seul `app/web`, et les routes, importent les messages : `lib` et les workers restent sans langue et produisent des codes ou des raisons typées, que l'interface traduit. Un message n'est jamais appelé au chargement d'un module, car la langue appartient à la requête : les tables statiques de libellés gardent la fonction de message et l'appellent à la lecture.
+
+Côté serveur, `src/hooks.server.ts` résout la langue de la requête (cookie, puis `Accept-Language`, puis français) et l'inscrit dans `<html lang>`. Les tests Vitest utilisent la langue de référence (`tests/support/base-locale.ts`), et l'E2E un navigateur français, sauf dans les scénarios qui choisissent l'anglais.
 
 ## Tests
 

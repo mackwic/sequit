@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { type ContentStyle, contentStyleFields } from '$lib/core/document/logic-document';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import Icon from '../ui/Icon.svelte';
 	import ContentColorPicker from './ContentColorPicker.svelte';
 	import ContentIconPicker from './ContentIconPicker.svelte';
@@ -15,10 +16,10 @@
 </script>
 
 <div class="style-editor">
-	<section aria-label="Style de couleur">
+	<section aria-label={m.content_style_editor_color_section_aria()}>
 		<div class="heading">
-			<strong class="ui-label">Couleur</strong>{#if inherited}<span
-					>{#if value.color === undefined}Hérité de la nature{:else}Personnalisé{/if}</span
+			<strong class="ui-label">{m.common_color()}</strong>{#if inherited}<span
+					>{#if value.color === undefined}{m.content_style_editor_inherited()}{:else}{m.content_style_editor_custom()}{/if}</span
 				>{/if}
 		</div>
 		<ContentColorPicker
@@ -32,13 +33,15 @@
 				class="ui-action reset"
 				onclick={() => {
 					onchange(contentStyleFields(undefined, value.icon));
-				}}><Icon name="phosphor:arrow-counter-clockwise" /> Hériter de la couleur</button
+				}}
+				><Icon name="phosphor:arrow-counter-clockwise" />
+				{m.content_style_editor_reset_color()}</button
 			>{/if}
 	</section>
-	<section aria-label="Style d’icône">
+	<section aria-label={m.content_style_editor_icon_section_aria()}>
 		<div class="heading">
-			<strong class="ui-label">Icône</strong>{#if inherited}<span
-					>{#if value.icon === undefined}Hérité de la nature{:else}Personnalisé{/if}</span
+			<strong class="ui-label">{m.common_icon()}</strong>{#if inherited}<span
+					>{#if value.icon === undefined}{m.content_style_editor_inherited()}{:else}{m.content_style_editor_custom()}{/if}</span
 				>{/if}
 		</div>
 		<ContentIconPicker
@@ -52,7 +55,9 @@
 				class="ui-action reset"
 				onclick={() => {
 					onchange(contentStyleFields(value.color, undefined));
-				}}><Icon name="phosphor:arrow-counter-clockwise" /> Hériter de l’icône</button
+				}}
+				><Icon name="phosphor:arrow-counter-clockwise" />
+				{m.content_style_editor_reset_icon()}</button
 			>{/if}
 	</section>
 </div>

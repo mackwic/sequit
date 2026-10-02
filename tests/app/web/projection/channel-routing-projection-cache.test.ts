@@ -30,8 +30,8 @@ import {
 } from '../../../support/harnesses/layout';
 import { defaultBiasFor } from '../../../support/harnesses/visual-directions';
 
-/** Its bottom-to-top corner corridor holds a shared-source family and a split wire. */
-function splitFamilyDocument(): LogicDocument {
+/** Its bottom-to-top corner corridor holds a shared-source family with a straight trunk. */
+function trunkFamilyDocument(): LogicDocument {
 	const direction = LayoutDirection.BottomToTop;
 	const relations = [
 		['r0', 'n0', 'n2'],
@@ -98,10 +98,10 @@ describe('projection-owned channel routing cache', () => {
 		60_000,
 	);
 
-	it('replays a corner channel with a split wire and a shared-source family equal to a cold layout', async () => {
+	it('replays a corner channel with a shared-source family and its straight trunk equal to a cold layout', async () => {
 		const channels = new RecordingChannelCache();
 		const caches = { regions: new RegionLocalLayoutCache(), channels };
-		const document = splitFamilyDocument();
+		const document = trunkFamilyDocument();
 		const resizes: readonly Readonly<Record<string, Size>>[] = [
 			{ n6: { width: 168, height: 116 } },
 			{ n6: { width: 168, height: 116 }, n7: { width: 171, height: 116 } },
@@ -115,17 +115,17 @@ describe('projection-owned channel routing cache', () => {
 			).toStrictEqual(await layoutGraph(graph, ranks, measurements));
 		}
 		expect(
-			channels.replayed.some(
-				({ wires }) =>
-					wires.some(({ middle }) => middle !== undefined) &&
-					wires.some(({ sharedSource }) => sharedSource !== undefined),
+			channels.replayed.some(({ wires }) =>
+				wires.some(
+					({ sharedSource, source, target }) => sharedSource !== undefined && source === target,
+				),
 			),
 		).toBe(true);
 	});
 
 	it('releases dedicated channel routings after two root layouts under another policy', async () => {
 		const caches = createProjectionLayoutCaches();
-		const dedicated = prepareLayoutDocument(splitFamilyDocument());
+		const dedicated = prepareLayoutDocument(trunkFamilyDocument());
 		const regions = prepareLayoutDocument(persistedRegionDocument());
 		const layout = ({ graph, ranks, measurements }: PreparedLayoutDocument) =>
 			layoutGraphForProjection(graph, ranks, measurements, caches);

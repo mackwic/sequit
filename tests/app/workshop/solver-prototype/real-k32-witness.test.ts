@@ -103,7 +103,7 @@ describe('real K3,2 pipeline witness', () => {
 			(['d-e', 'e-d'] as const).map((order) => ({ direction, order })),
 		),
 	)(
-		'fixed sparse $direction, $order changes the observed demand without a fabricated position',
+		'fixed sparse $direction, $order observes branch-meets-convergence separation without a fabricated position',
 		async ({ direction, order }: { direction: LayoutDirection; order: K32TargetOrder }) => {
 			const witness = await runRealK32Witness(
 				direction,
@@ -126,8 +126,8 @@ describe('real K3,2 pipeline witness', () => {
 				expect(witness.summary.conditionalConflicts?.requiredSeparations).toHaveLength(3);
 				expect(witness.summary.crossings.length).toBeGreaterThan(0);
 			} else {
-				expect(d?.incomingPorts).toHaveLength(1);
-				expect(d?.allocatedCrossSize).toBe(80);
+				expect(d?.incomingPorts).toHaveLength(3);
+				expect(d?.allocatedCrossSize).toBe(144);
 				expect(witness.summary.conditionalConflicts?.requiredSeparations).toHaveLength(0);
 				expect(witness.summary.crossings).toEqual([]);
 			}

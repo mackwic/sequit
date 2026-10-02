@@ -1,10 +1,31 @@
 # Résilience de la collaboration
 
-Le protocole CBOR v4 conserve les documents Yjs existants. Un client utilisant un
-ancien protocole doit recharger la page. Les descriptions absentes ou stockées
-comme chaînes sont migrées en `Y.Text` au chargement de la room, puis persistées
-avant son ouverture aux participants. Une description vide est absente de la
-projection portable ; son `Y.Text` vide garde son identité dans le document actif.
+Le protocole CBOR v6 conserve les documents Yjs existants et accepte encore les
+pairs v5. Une enveloppe `[6, message]` transporte `code` et `reason` pour `Reject`
+et `Retry` ; un conflit de commande porte sa raison métier, son identifiant et la
+dernière séquence acceptée. Le conflit `text-target-gone` porte uniquement son
+code, son identifiant et sa cible. Le codec valide les raisons à l'encodage comme
+au décodage : les codes inconnus, les paramètres invalides et les champs
+supplémentaires sont refusés.
+
+Les raisons métier, notices de session et rejets restent sans locale dans la
+bibliothèque et le worker. Le web les traduit avec Paraglide, y compris avant
+leur stockage temporaire dans `sessionStorage` lors d'un refus terminal. Les
+diagnostics TOML, graphe et Yjs restent des détails techniques anglais, présentés
+après une phrase traduite lorsqu'ils expliquent un refus.
+
+Pour un pair v5, le serveur synthétise le champ `message` requis à partir du code
+neutre, suivi des détails techniques encodés en JSON s'il y en a ; un reçu
+corrompu conserve aussi son identifiant de session. Aucun message français n'est
+produit pour cette conversion. Les textes reçus d'un ancien pair restent des
+détails opaques ; les conflits de commande v5 deviennent un refus générique
+avec ce détail, car leur ancien texte n'identifie pas une raison métier typée.
+Les versions antérieures à v5 doivent recharger la page.
+
+Les descriptions absentes ou stockées comme chaînes sont migrées en `Y.Text`
+au chargement de la room, puis persistées avant son ouverture aux participants.
+Une description vide est absente de la projection portable ; son `Y.Text` vide
+garde son identité dans le document actif.
 
 ## Commandes et reprise
 

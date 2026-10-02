@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 
 import type { PendingCommandFrame } from './session-command-frame';
+import { type SessionNotice, SessionNoticeCode, type SessionRejection } from './session-reasons';
 import { type SessionMessage, SessionMessageKind } from './session-wire';
 import { readSyncStep, SyncStepKind, writeSyncRequest, writeSyncResponse } from './sync-steps';
 import type { TextUpdateBuffer } from './text-update-buffer';
@@ -18,7 +19,7 @@ interface SyncHost {
 	readonly initialize: () => void;
 	readonly clearInitialization: () => void;
 	readonly setReady: (value: boolean) => void;
-	readonly terminal: (message: string) => void;
+	readonly terminal: (reason: SessionNotice) => void;
 	readonly presence: () => void;
 	readonly resumeText: (retry: boolean) => boolean;
 }
@@ -52,10 +53,10 @@ export class SessionSynchronizer {
 		this.host.presence();
 	}
 
-	retry(message: string): void {
+	retry(reason: SessionRejection): void {
 		this.#attempts++;
 		if (this.#attempts > MAX_RETRY_ATTEMPTS) {
-			this.host.terminal(`La synchronisation a échoué plusieurs fois : ${message}`);
+			this.host.terminal({ code: SessionNoticeCode.SynchronizationFailed, reason });
 			return;
 		}
 		this.host.setReady(false);

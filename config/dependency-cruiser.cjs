@@ -370,6 +370,7 @@ module.exports = {
 				path: '^src/',
 				pathNot: [
 					'^src/app/web/ui/canvas/',
+					'^src/app/web/i18n/',
 					'^src/app/web/projection/layout-graph[.]ts$',
 					'^src/lib/core/layout/',
 					'^src/lib/core/document/(logic-document|region-presentation|validate-logic-document|validate-region-document)[.]ts$',
@@ -384,6 +385,7 @@ module.exports = {
 				path: '^src/',
 				pathNot: [
 					'^src/app/web/ui/(session|canvas)/',
+					'^src/app/web/i18n/',
 					'^src/lib/infrastructure/document/',
 					'^src/lib/core/(document|graph|layout)/',
 				],

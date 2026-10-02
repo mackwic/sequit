@@ -113,7 +113,10 @@ function neighborInversion(links: readonly CorridorLink[]): boolean {
 	return false;
 }
 
-/** A link shared by a branch and a convergence cannot share both of its endpoint trunks. */
+/**
+ * A link shared by a branch and a convergence cannot share both of its endpoint trunks: the
+ * branch's bus would join the convergence's trunk and suggest relations that do not exist.
+ */
 const noPartialBipartiteTargets: ReadonlySet<string> = new Set();
 
 function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<string> {
@@ -123,11 +126,7 @@ function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<
 	const firstSourceByTarget = new Map<string, string>();
 	const branchingSources = new Set<string>();
 	const convergingTargets = new Set<string>();
-	const outgoingCounts = new Map<string, number>();
-	const incomingCounts = new Map<string, number>();
 	for (const { relation } of cluster) {
-		outgoingCounts.set(relation.from, (outgoingCounts.get(relation.from) ?? 0) + 1);
-		incomingCounts.set(relation.to, (incomingCounts.get(relation.to) ?? 0) + 1);
 		const firstTarget = firstTargetBySource.get(relation.from);
 		if (firstTarget === undefined) firstTargetBySource.set(relation.from, relation.to);
 		else if (firstTarget !== relation.to) branchingSources.add(relation.from);
@@ -135,11 +134,9 @@ function partialBipartiteTargets(cluster: readonly CorridorLink[]): ReadonlySet<
 		if (firstSource === undefined) firstSourceByTarget.set(relation.to, relation.from);
 		else if (firstSource !== relation.from) convergingTargets.add(relation.to);
 	}
-	for (const { relation } of cluster) {
-		const branch = branchingSources.has(relation.from) && outgoingCounts.get(relation.from) === 2;
-		const join = convergingTargets.has(relation.to) && incomingCounts.get(relation.to) === 2;
-		if (branch && join) targets.add(relation.to);
-	}
+	for (const { relation } of cluster)
+		if (branchingSources.has(relation.from) && convergingTargets.has(relation.to))
+			targets.add(relation.to);
 	return targets;
 }
 

@@ -13,6 +13,7 @@ const GENERATED_PATHS = [
 	'playwright-report',
 	'test-results',
 	'src/workers/collaboration-worker/.wrangler',
+	'src/app/web/i18n/paraglide',
 ];
 
 await Promise.all(

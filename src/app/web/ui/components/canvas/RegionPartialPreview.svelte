@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 
 	let { canvas }: { canvas: CanvasModel } = $props();
@@ -8,7 +9,7 @@
 	class="h-60 w-full rounded-md border border-stone-300 bg-white"
 	viewBox={`0 0 ${canvas.width} ${canvas.height}`}
 	role="img"
-	aria-label="Aperçu local de la région"
+	aria-label={m.canvas_region_preview()}
 	data-region-preview-geometry
 >
 	{#each canvas.lanes ?? [] as lane (lane.id)}

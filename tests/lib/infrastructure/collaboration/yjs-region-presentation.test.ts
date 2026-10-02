@@ -9,6 +9,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { reconcileSharedDocument } from '../../../../src/lib/infrastructure/collaboration/reconcile-shared-document';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import {
 	readSourceDocumentState,
@@ -271,7 +272,11 @@ describe('Yjs region presentation', () => {
 					members: ['target', 'isolated'],
 				},
 			]),
-		).toThrow('même région');
+		).toThrow(
+			expect.objectContaining({
+				reason: { code: CommandRefusalCode.ElementsDifferentRegion },
+			}),
+		);
 		crossing.destroy();
 	});
 });

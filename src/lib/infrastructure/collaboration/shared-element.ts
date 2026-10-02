@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 
 import { SharedElementKind, type SharedTarget } from '../document/shared-document-command';
 import { StaleSharedCommandError } from './session-failure';
+import { CommandRefusalCode } from './session-reasons';
 import { isSharedTextField, sharedFieldValue } from './shared-text';
 import { wireKeys } from './wire-values';
 import { YjsCollection } from './yjs-document-schema';
@@ -40,11 +41,13 @@ export function elementCollection(document: Y.Doc, kind: SharedElementKind): Y.M
 export function sharedElement(document: Y.Doc, target: SharedTarget): Y.Map<unknown> {
 	if (target.kind === SharedElementKind.Document) {
 		const meta = document.getMap(YjsCollection.Meta);
-		if (meta.get('id') !== target.id) throw new StaleSharedCommandError('Document introuvable.');
+		if (meta.get('id') !== target.id)
+			throw new StaleSharedCommandError({ code: CommandRefusalCode.DocumentMissing });
 		return meta;
 	}
 	const entity = elementCollection(document, target.kind).get(target.id);
-	if (entity === undefined) throw new StaleSharedCommandError('Élément introuvable.');
+	if (entity === undefined)
+		throw new StaleSharedCommandError({ code: CommandRefusalCode.ElementMissing, target });
 	return entity;
 }
 

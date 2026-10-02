@@ -1,11 +1,14 @@
 import { InvalidPresenceError } from '../../lib/infrastructure/collaboration/participant-presence';
 import {
-	ConflictCode,
 	RetryableSessionFailure,
-	SessionFailureCode,
 	StaleSharedCommandError,
 	TerminalSessionFailure,
 } from '../../lib/infrastructure/collaboration/session-failure';
+import {
+	ConflictCode,
+	SessionFailureCode,
+	type SessionRejection,
+} from '../../lib/infrastructure/collaboration/session-reasons';
 import {
 	type IdentifiedTextMessage,
 	SessionMessageKind,
@@ -18,34 +21,44 @@ enum RoomFailureKind {
 	Rejected = 'rejected',
 }
 
+function rejectionFor(
+	code: SessionFailureCode.InvalidMessage | SessionFailureCode.InvalidDocument,
+	details: readonly string[],
+): SessionRejection {
+	if (code === SessionFailureCode.InvalidMessage)
+		return { code: SessionFailureCode.InvalidMessage, details };
+	return { code: SessionFailureCode.InvalidDocument, details };
+}
+
 export interface RoomFailureOutcome {
 	readonly kind: RoomFailureKind;
 	readonly code: SessionFailureCode;
-	readonly message: string;
+	readonly reason: SessionRejection;
 }
 
 /** Answers the socket and reports what was sent; malformed presence is dropped silently. */
 export function handleRoomFailure(
 	socket: WebSocket,
 	error: unknown,
-	defaultCode: SessionFailureCode,
+	defaultCode: SessionFailureCode.InvalidMessage | SessionFailureCode.InvalidDocument,
 ): RoomFailureOutcome | undefined {
 	if (error instanceof InvalidPresenceError) return undefined;
 	if (error instanceof RetryableSessionFailure) {
 		sendRoomMessage(socket, {
 			type: SessionMessageKind.Retry,
 			code: error.code,
-			message: error.message,
+			reason: error.reason,
 		});
-		return { kind: RoomFailureKind.Retry, code: error.code, message: error.message };
+		return { kind: RoomFailureKind.Retry, code: error.code, reason: error.reason };
 	}
-	let code = defaultCode;
-	if (error instanceof TerminalSessionFailure) code = error.code;
-	let message = 'La modification a été refusée.';
-	if (error instanceof Error) message = error.message;
-	sendRoomMessage(socket, { type: SessionMessageKind.Reject, code, message });
+	let reason: SessionRejection;
+	if (error instanceof TerminalSessionFailure) reason = error.reason;
+	else if (error instanceof Error) reason = rejectionFor(defaultCode, [error.message]);
+	else reason = rejectionFor(defaultCode, ['Unknown session failure.']);
+	const code = reason.code;
+	sendRoomMessage(socket, { type: SessionMessageKind.Reject, code, reason });
 	socket.close(1008, 'Change rejected');
-	return { kind: RoomFailureKind.Rejected, code, message };
+	return { kind: RoomFailureKind.Rejected, code, reason };
 }
 
 export function commandConflictCode(
@@ -61,14 +74,12 @@ export function refuseTextTarget(
 	budget: RoomRefusalBudget,
 ): void {
 	if (!budget.allow(socket, message.id))
-		throw new TerminalSessionFailure(
-			SessionFailureCode.RepeatedCommandRefusal,
-			'Cette proposition a été refusée trop souvent.',
-		);
+		throw new TerminalSessionFailure(SessionFailureCode.RepeatedCommandRefusal, {
+			code: SessionFailureCode.RepeatedCommandRefusal,
+		});
 	sendRoomMessage(socket, {
 		type: SessionMessageKind.Conflict,
 		code: ConflictCode.TextTargetGone,
-		message: 'La cible de texte a été supprimée ou remplacée.',
 		id: message.id,
 		target: message.target,
 	});

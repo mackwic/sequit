@@ -9,6 +9,7 @@ import {
 	META_KEY,
 	planPersistence,
 } from '../../../src/lib/infrastructure/collaboration/room-persistence';
+import { SessionFailureCode } from '../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	encodeSessionMessage,
 	LEGACY_SESSION_WIRE_VERSION,
@@ -269,9 +270,9 @@ it('does not publish a migration when persistence fails', async () => {
 			chunkCount: 0,
 			acceptedProposals: new Map<string, number>(),
 		};
-		await expect(restoreRoomState(state.storage, empty, name)).rejects.toThrow(
-			'temporairement indisponible',
-		);
+		await expect(restoreRoomState(state.storage, empty, name)).rejects.toMatchObject({
+			reason: { code: SessionFailureCode.StorageUnavailable },
+		});
 		transaction.mockRestore();
 		source.destroy();
 	});
@@ -300,7 +301,14 @@ it.each([
 	['unversioned-record', { presence: new Uint8Array([2, 255]) }],
 	[
 		'wrong-message-kind',
-		{ version: 5, presence: encodeSessionMessage({ type: Message.Reject, message: 'obsolete' }) },
+		{
+			version: 5,
+			presence: encodeSessionMessage({
+				type: Message.Reject,
+				code: SessionFailureCode.InvalidMessage,
+				reason: { code: SessionFailureCode.InvalidMessage, details: ['obsolete'] },
+			}),
+		},
 	],
 ])('discards %s ephemeral presence after an attachment upgrade', async (suffix, attachment) => {
 	const name = `obsolete-awareness-${suffix}`;
@@ -317,7 +325,7 @@ it.each([
 	bob.socket.close();
 });
 
-it('shares version-four presence with a newly connected modern participant', async () => {
+it('shares version-five presence with a newly connected modern participant', async () => {
 	const name = 'legacy-presence';
 	const alice = await connectRoom(name);
 	await alice.next(Message.Presence);

@@ -4,6 +4,7 @@
 	import { compareCanonicalStrings } from '../../../../../lib/core/canonical-string';
 	import type { LayoutLane, LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { InvalidSourceDocumentState } from '../../../../../lib/infrastructure/collaboration/source-document-state';
+	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import {
 		type LayoutDiagnostic,
@@ -397,7 +398,7 @@
 		class:cursor-grabbing={panning}
 		class="canvas-grid absolute inset-0 overflow-auto overscroll-contain print:static print:overflow-visible"
 		role="region"
-		aria-label="Canvas viewport"
+		aria-label={m.canvas_viewport()}
 		data-canvas-viewport
 		data-canvas-revision={acceptedRevision}
 		tabindex="-1"
@@ -426,44 +427,54 @@
 				data-source-revision={display.state.revision}
 				class="m-8 max-w-xl rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900"
 			>
-				<h2 class="font-semibold">Document source invalide</h2>
-				<p>La vue du document courant ne peut pas être calculée.</p>
+				<h2 class="font-semibold">{m.canvas_source_invalid()}</h2>
+				<p>{m.canvas_source_invalid_body()}</p>
 				<p data-document-id={display.state.snapshot.id}>
-					{display.state.snapshot.title ?? 'Titre indisponible'} · {display.state.snapshot.id ??
-						'ID indisponible'}
-					· {display.state.snapshot.layoutDirection ?? 'Direction indisponible'}
+					{m.canvas_document_metadata({
+						title: display.state.snapshot.title ?? m.canvas_title_unavailable(),
+						id: display.state.snapshot.id ?? m.canvas_id_unavailable(),
+						direction: display.state.snapshot.layoutDirection ?? m.canvas_direction_unavailable(),
+					})}
 				</p>
 				<ul class="mt-2 list-inside list-disc">
 					<li>
-						Nœuds ({display.state.snapshot.nodeIds.length}) : {display.state.snapshot.nodeIds.join(
-							', ',
-						)}
+						{m.canvas_nodes_list({
+							count: display.state.snapshot.nodeIds.length,
+							ids: display.state.snapshot.nodeIds.join(', '),
+						})}
 					</li>
 					<li>
-						Groupes ({display.state.snapshot.groupIds.length}) : {display.state.snapshot.groupIds.join(
-							', ',
-						)}
+						{m.canvas_groups_list({
+							count: display.state.snapshot.groupIds.length,
+							ids: display.state.snapshot.groupIds.join(', '),
+						})}
 					</li>
 					<li>
-						Jonctions ({display.state.snapshot.junctionIds.length}) : {display.state.snapshot.junctionIds.join(
-							', ',
-						)}
+						{m.canvas_junctions_list({
+							count: display.state.snapshot.junctionIds.length,
+							ids: display.state.snapshot.junctionIds.join(', '),
+						})}
 					</li>
 					<li>
-						Relations ({display.state.snapshot.relationIds.length}) : {display.state.snapshot.relationIds.join(
-							', ',
-						)}
+						{m.canvas_relations_list({
+							count: display.state.snapshot.relationIds.length,
+							ids: display.state.snapshot.relationIds.join(', '),
+						})}
 					</li>
 					<li>
-						Lanes ({display.state.snapshot.laneIds.length}) : {display.state.snapshot.laneIds.join(
-							', ',
-						)}
+						{m.canvas_lanes_list({
+							count: display.state.snapshot.laneIds.length,
+							ids: display.state.snapshot.laneIds.join(', '),
+						})}
 					</li>
 				</ul>
-				<ul aria-label="Diagnostics du document" class="mt-2 list-inside list-disc">
+				<ul aria-label={m.canvas_document_diagnostics()} class="mt-2 list-inside list-disc">
 					{#each sortedSourceDiagnostics(display.state) as diagnostic, index (index)}
 						<li data-source-diagnostic-code={diagnostic.code}>
-							{diagnostic.code} · {diagnostic.path.join(' / ') || 'document'}
+							{m.canvas_source_diagnostic({
+								code: diagnostic.code,
+								path: diagnostic.path.join(' / ') || m.canvas_document_root(),
+							})}
 						</li>
 					{/each}
 				</ul>
@@ -474,8 +485,8 @@
 				data-layout-diagnostic
 				class="m-8 max-w-5xl rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900"
 			>
-				<h2 class="font-semibold">Échec du calcul de mise en page</h2>
-				<p>Le document courant est conservé. Sa géométrie complète ne peut pas être affichée.</p>
+				<h2 class="font-semibold">{m.canvas_layout_failure()}</h2>
+				<p>{m.canvas_layout_failure_body()}</p>
 				{#if display.diagnostic}
 					<p
 						data-layout-reason={display.diagnostic.reason.code}
@@ -484,32 +495,41 @@
 						{display.diagnostic.reason.message}
 					</p>
 					<p data-document-id={display.diagnostic.documentId}>
-						{display.diagnostic.title} · {display.diagnostic.documentId} · {display.diagnostic
-							.direction}
+						{m.canvas_document_metadata({
+							title: display.diagnostic.title,
+							id: display.diagnostic.documentId,
+							direction: display.diagnostic.direction,
+						})}
 					</p>
 					<ul class="mt-2 list-inside list-disc">
 						<li>
-							Nœuds ({display.diagnostic.nodeIds.length}) : {display.diagnostic.nodeIds.join(', ')}
+							{m.canvas_nodes_list({
+								count: display.diagnostic.nodeIds.length,
+								ids: display.diagnostic.nodeIds.join(', '),
+							})}
 						</li>
 						<li>
-							Groupes ({display.diagnostic.groupIds.length}) : {display.diagnostic.groupIds.join(
-								', ',
-							)}
+							{m.canvas_groups_list({
+								count: display.diagnostic.groupIds.length,
+								ids: display.diagnostic.groupIds.join(', '),
+							})}
 						</li>
 						<li>
-							Jonctions ({display.diagnostic.junctionIds.length}) : {display.diagnostic.junctionIds.join(
-								', ',
-							)}
+							{m.canvas_junctions_list({
+								count: display.diagnostic.junctionIds.length,
+								ids: display.diagnostic.junctionIds.join(', '),
+							})}
 						</li>
 						<li>
-							Relations ({display.diagnostic.relationIds.length}) : {display.diagnostic.relationIds.join(
-								', ',
-							)}
+							{m.canvas_relations_list({
+								count: display.diagnostic.relationIds.length,
+								ids: display.diagnostic.relationIds.join(', '),
+							})}
 						</li>
 					</ul>
 				{/if}
 				{#if display.kind === 'partial'}
-					<p class="mt-3">Aperçus locaux calculés avec le document et les mesures courants.</p>
+					<p class="mt-3">{m.canvas_partial_intro()}</p>
 					<div class="mt-3 grid gap-3 md:grid-cols-2" data-partial-regions>
 						{#each display.regions as region (region.regionId)}
 							<article
@@ -517,7 +537,7 @@
 								data-partial-region-id={region.regionId}
 								data-partial-region-status={region.kind}
 							>
-								<h3 class="font-semibold">Région {region.regionId}</h3>
+								<h3 class="font-semibold">{m.canvas_region_heading({ id: region.regionId })}</h3>
 								{#if region.kind === RegionPreviewKind.Ready}
 									<RegionPartialPreview canvas={region.canvas} />
 								{:else}
@@ -529,7 +549,7 @@
 				{/if}
 			</section>
 		{:else}
-			<p class="m-8 text-sm text-stone-500">Measuring document…</p>
+			<p class="m-8 text-sm text-stone-500">{m.canvas_measuring()}</p>
 		{/if}
 	</div>
 

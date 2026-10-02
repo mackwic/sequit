@@ -1,9 +1,11 @@
 import type { LogicDocument } from '../../core/document/logic-document';
+import { SessionNoticeCode, type SessionReason } from '../collaboration/session-reasons';
 
 export interface DocumentCommandDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly path: readonly string[];
+	readonly reason?: SessionReason;
 	readonly cycle?: readonly string[];
 	readonly expectedOrder?: readonly string[];
 	readonly materializedOrder?: readonly string[];
@@ -45,9 +47,25 @@ export function sessionClosedOutcome(): RejectedCommandOutcome {
 		diagnostics: [
 			{
 				code: DocumentCommandDiagnosticCode.SessionClosed,
-				message: 'Document session has been destroyed',
+				message: SessionNoticeCode.Destroyed,
 				path: [],
+				reason: { code: SessionNoticeCode.Destroyed },
 			},
 		],
+	};
+}
+
+export function nodeEditingUnavailableOutcome(
+	code:
+		| DocumentCommandDiagnosticCode.NodeNotFound
+		| DocumentCommandDiagnosticCode.NodeMarkdownUnavailable,
+	nodeId: string,
+): RejectedCommandOutcome {
+	let reason: SessionReason = { code: SessionNoticeCode.NodeMarkdownUnavailable, nodeId };
+	if (code === DocumentCommandDiagnosticCode.NodeNotFound)
+		reason = { code: SessionNoticeCode.NodeNotFound, nodeId };
+	return {
+		kind: DocumentCommandOutcomeKind.Rejected,
+		diagnostics: [{ code, message: reason.code, path: ['nodes', nodeId], reason }],
 	};
 }

@@ -16,6 +16,7 @@ import {
 import {
 	projectEligibleRelationAddition,
 	TopologyEditDiagnosticCode,
+	type TopologyEditReason,
 } from './topology-edit-ordering';
 import { validateLogicDocument } from './validate-logic-document';
 
@@ -23,6 +24,7 @@ interface TopologyEditDiagnostic {
 	readonly code: TopologyEditDiagnosticCode | GraphDiagnostic['code'] | SequitDiagnostic['code'];
 	readonly message: string;
 	readonly path: readonly string[];
+	readonly reason?: TopologyEditReason;
 	readonly cycle?: readonly string[];
 	readonly expectedOrder?: readonly string[];
 	readonly materializedOrder?: readonly string[];
@@ -193,8 +195,12 @@ export function projectRelationAddition(
 			diagnostics: [
 				{
 					code: TopologyEditDiagnosticCode.DuplicateRelationId,
-					message: `Relation id already exists: ${relation.id}`,
+					message: TopologyEditDiagnosticCode.DuplicateRelationId,
 					path: ['relations', relation.id],
+					reason: {
+						code: TopologyEditDiagnosticCode.DuplicateRelationId,
+						relationId: relation.id,
+					},
 				},
 			],
 		};
@@ -206,8 +212,14 @@ export function projectRelationAddition(
 			diagnostics: [
 				{
 					code: TopologyEditDiagnosticCode.DuplicateRelation,
-					message: `Relation ${relation.from} → ${relation.to} already exists: ${existing.id}`,
+					message: TopologyEditDiagnosticCode.DuplicateRelation,
 					path: ['relations', relation.id],
+					reason: {
+						code: TopologyEditDiagnosticCode.DuplicateRelation,
+						from: relation.from,
+						to: relation.to,
+						relationId: existing.id,
+					},
 				},
 			],
 		};

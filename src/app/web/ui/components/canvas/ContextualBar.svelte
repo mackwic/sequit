@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import { entityKey, EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import { canvasEntityElement } from '../../canvas/canvas-entity-dom';
 	import {
@@ -37,16 +38,16 @@
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	const actionsLabel = {
-		[EntityKind.Node]: 'Actions du nœud',
-		[EntityKind.Group]: 'Actions du groupe',
-		[EntityKind.Junction]: 'Actions de la jonction',
-		[EntityKind.Relation]: 'Actions de la relation',
+		[EntityKind.Node]: () => m.editing_context_actions_node(),
+		[EntityKind.Group]: () => m.editing_context_actions_group(),
+		[EntityKind.Junction]: () => m.editing_context_actions_junction(),
+		[EntityKind.Relation]: () => m.editing_context_actions_relation(),
 	};
 	const deleteLabel = {
-		[EntityKind.Node]: 'Supprimer le nœud',
-		[EntityKind.Group]: 'Supprimer le groupe',
-		[EntityKind.Junction]: 'Supprimer la jonction',
-		[EntityKind.Relation]: 'Supprimer la relation',
+		[EntityKind.Node]: () => m.editing_context_delete_node(),
+		[EntityKind.Group]: () => m.editing_context_delete_group(),
+		[EntityKind.Junction]: () => m.editing_context_delete_junction(),
+		[EntityKind.Relation]: () => m.editing_context_delete_relation(),
 	};
 	let floating = $state<HTMLDivElement>();
 	const editShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Edit];
@@ -102,7 +103,7 @@
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
-		label={actionsLabel[entity.kind]}
+		label={actionsLabel[entity.kind]()}
 		bind:element={floating}
 	>
 		{#if edit}
@@ -122,7 +123,7 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`Créer un enfant de ${entity.id}`}
+				aria-label={m.editing_context_create_child_aria({ id: entity.id })}
 				aria-keyshortcuts={shortcutKeyshortcuts(childShortcut)}
 				title={shortcutTitle(childShortcut)}
 				onclick={child}
@@ -137,7 +138,7 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`${label} le groupe ${entity.id}`}
+				aria-label={m.editing_context_fold_aria({ label, id: entity.id })}
 				aria-expanded={!ownFold.closed}
 				aria-keyshortcuts={shortcutKeyshortcuts(toggle)}
 				title={shortcutTitle(toggle)}
@@ -151,19 +152,19 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`Dissoudre le groupe ${entity.id}`}
-				title="Dissoudre : conserve les membres"
+				aria-label={m.editing_context_dissolve_aria({ id: entity.id })}
+				title={m.editing_context_dissolve_hint()}
 				onclick={dissolve}
 			>
 				<Icon name="phosphor:squares-four" />
-				<span>Dissoudre</span>
+				<span>{m.common_dissolve()}</span>
 			</button>
 		{/if}
 		{#if split}
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`Insérer une jonction sur ${entity.id}`}
+				aria-label={m.editing_context_split_aria({ id: entity.id })}
 				aria-keyshortcuts={shortcutKeyshortcuts(junctionShortcut)}
 				title={shortcutTitle(junctionShortcut)}
 				onclick={split}
@@ -176,13 +177,16 @@
 			<button
 				class="ui-action quiet"
 				type="button"
-				aria-label={`${deleteLabel[entity.kind]} ${entity.id}`}
+				aria-label={m.editing_context_delete_aria({
+					label: deleteLabel[entity.kind](),
+					id: entity.id,
+				})}
 				aria-keyshortcuts={shortcutKeyshortcuts(deleteShortcut)}
 				title={shortcutTitle(deleteShortcut)}
 				onclick={onDelete}
 			>
 				<Icon name="phosphor:trash" />
-				<span>Supprimer</span>
+				<span>{m.common_delete()}</span>
 			</button>
 		{/if}
 	</FloatingActions>

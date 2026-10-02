@@ -1,9 +1,15 @@
+import type {
+	SessionNotice,
+	SessionRejection,
+} from '../../../lib/infrastructure/collaboration/session-reasons';
+import { translateSessionReason } from '../i18n/session-messages';
+
 const ERROR_KEY = 'sequit:collaboration-error';
 
-/** A terminal rejection reloads the page; the message survives the reload for one display. */
-export function refreshRejectedSession(message: string): void {
+/** A terminal rejection reloads the page; its translated reason survives for one display. */
+export function refreshRejectedSession(reason: SessionRejection | SessionNotice): void {
 	try {
-		sessionStorage.setItem(ERROR_KEY, message);
+		sessionStorage.setItem(ERROR_KEY, translateSessionReason(reason));
 	} catch {
 		// Without storage the page still recovers; only the explanation is lost.
 	}

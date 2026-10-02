@@ -10,11 +10,13 @@ import {
 	SourceDocumentStateKind,
 } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session';
 import type { SourceDocumentState } from '../../../../src/lib/infrastructure/collaboration/collaborative-document-session-types';
+import { RetryableSessionFailure } from '../../../../src/lib/infrastructure/collaboration/session-failure';
 import {
+	CommandRefusalCode,
 	ConflictCode,
-	RetryableSessionFailure,
 	SessionFailureCode,
-} from '../../../../src/lib/infrastructure/collaboration/session-failure';
+	SessionNoticeCode,
+} from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	decodeSessionMessage,
 	encodeSessionMessage,
@@ -95,11 +97,13 @@ it('preserves command identity and local text edits during a retryable service f
 	void room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 	const original = room.sent[0];
 	const id = lastProposalId(room.sent);
-	const failure = new RetryableSessionFailure(SessionFailureCode.StorageUnavailable, 'Retry');
+	const failure = new RetryableSessionFailure(SessionFailureCode.StorageUnavailable, {
+		code: SessionFailureCode.StorageUnavailable,
+	});
 	room.receive({
 		type: Message.Retry,
 		code: failure.code,
-		message: failure.message,
+		reason: failure.reason,
 	});
 	expect(
 		room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Pendant la reprise'),
@@ -166,7 +170,7 @@ it('resends a queued text gesture before syncing after a transient retry', () =>
 	room.receive({
 		type: Message.Retry,
 		code: SessionFailureCode.StorageUnavailable,
-		message: 'Retry',
+		reason: { code: SessionFailureCode.StorageUnavailable },
 	});
 	vi.advanceTimersByTime(50);
 	expect(room.sent.some((frame) => frame.type === Message.Change && 'update' in frame)).toBe(false);
@@ -217,7 +221,7 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 			room.receive({
 				type: Message.Retry,
 				code: SessionFailureCode.StorageUnavailable,
-				message: 'Retry',
+				reason: { code: SessionFailureCode.StorageUnavailable },
 			});
 			vi.advanceTimersByTime(1_000);
 		} else {
@@ -226,7 +230,7 @@ it.each(['reconnect', 'retry', 'conflict'] as const)(
 			room.receive({
 				type: Message.Conflict,
 				code: ConflictCode.CommandConflict,
-				message: 'Concurrent command',
+				reason: { code: CommandRefusalCode.ElementsDifferentGroup },
 				id,
 				lastAcceptedSequence: 0,
 			});
@@ -304,7 +308,7 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	room.receive({
 		type: Message.Conflict,
 		code: ConflictCode.CommandConflict,
-		message: 'Élément déplacé',
+		reason: { code: CommandRefusalCode.ElementsDifferentGroup },
 		id: first,
 		lastAcceptedSequence: 0,
 	});
@@ -314,7 +318,14 @@ it('refuses only the stale command and renumbers the next gesture without closin
 	);
 	await expect(refusal).resolves.toEqual({
 		kind: DocumentCommandOutcomeKind.Rejected,
-		diagnostics: [{ code: ConflictCode.CommandConflict, message: 'Élément déplacé', path: [] }],
+		diagnostics: [
+			{
+				code: ConflictCode.CommandConflict,
+				message: CommandRefusalCode.ElementsDifferentGroup,
+				reason: { code: CommandRefusalCode.ElementsDifferentGroup },
+				path: [],
+			},
+		],
 	});
 	room.sync();
 	expect(
@@ -331,7 +342,12 @@ it.each(['destroy', 'terminal rejection'] as const)(
 		room.sync();
 		const pending = room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'B' } }]);
 		if (cause === 'destroy') room.client.destroy();
-		else room.receive({ type: Message.Reject, message: 'Room closed' });
+		else
+			room.receive({
+				type: Message.Reject,
+				code: SessionFailureCode.RepeatedCommandRefusal,
+				reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+			});
 		await expect(pending).resolves.toEqual(sessionClosedOutcome());
 		expect(() =>
 			room.client.dispatch([{ op: Op.Delete, target: { kind: Kind.Node, id: 'A' } }]),
@@ -372,18 +388,19 @@ it('flushes on target switch then resets a stale replica without replaying unack
 		code: ConflictCode.TextTargetGone,
 		id: stale.id,
 		target: stale.target,
-		message: 'Boîte supprimée',
 	});
 	expect(room.client.document).not.toBe(original);
 	expect(room.client.replica()).toBe(1);
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Synchronizing);
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+		nodeIds: ['B', 'A'],
+	});
 	room.receive({
 		type: Message.Conflict,
 		code: ConflictCode.TextTargetGone,
 		id: stale.id,
 		target: stale.target,
-		message: 'Late duplicate',
 	});
 	expect(notices).toHaveBeenCalledTimes(1);
 	expect(room.client.replica()).toBe(1);
@@ -424,9 +441,10 @@ it('names the document title when its sole pending edit is refused as stale', ()
 		code: ConflictCode.TextTargetGone,
 		id: stale.id,
 		target: stale.target,
-		message: 'Titre remplacé',
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('titre du document'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnacknowledgedTitleAbandoned,
+	});
 	room.sync();
 	expect(room.client.read().title).toBe('Deux boîtes');
 	room.destroy();
@@ -465,7 +483,10 @@ it('does not apply a stale Quill binding to a node recreated with the same ident
 		room.sent.filter((message) => message.type === Message.Change && 'update' in message),
 	).toEqual([]);
 	expect(room.client.read().nodes.find(({ id }) => id === 'A')?.markdown).toBe('Fresh incarnation');
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîte A'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnsentTextAbandoned,
+		target,
+	});
 	expect(room.client.updateText(target, 'markdown', 'New editor content', current)).toBe(true);
 	vi.advanceTimersByTime(50);
 	const proposal = room.sent.find(
@@ -530,9 +551,10 @@ it.each([
 	expect(
 		room.sent.filter((message) => message.type === Message.Change && 'update' in message),
 	).toEqual([]);
-	let label = 'nature';
-	if (kind === Kind.Group) label = 'groupe';
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining(`${label} ${id}`));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnsentTextAbandoned,
+		target,
+	});
 	const document = room.client.read();
 	if (kind === Kind.Group)
 		expect(document.groups.find((group) => group.id === id)?.label).toBe('Nouveau groupe');
@@ -565,9 +587,11 @@ it('discards an unsent document-title edit when an earlier box batch is refused'
 		code: ConflictCode.TextTargetGone,
 		id: first.id,
 		target: first.target,
-		message: 'Deleted',
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('boîtes B'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+		nodeIds: ['B'],
+	});
 	room.sync();
 	expect(room.client.read().title).toBe('Deux boîtes');
 	expect(room.client.read().nodes.map(({ id }) => id)).toEqual(['A']);
@@ -618,7 +642,6 @@ it('does not replay an acknowledged edit over a remote replacement after losing 
 		code: ConflictCode.TextTargetGone,
 		id: stale.id,
 		target: stale.target,
-		message: 'Deleted',
 	});
 	room.sync();
 	expect(room.client.read().nodes).toMatchObject([{ id: 'A', markdown: 'Remote replacement' }]);
@@ -638,7 +661,7 @@ it('ignores a delayed refusal for a proposal that is no longer pending', () => {
 		type: Message.Conflict,
 		id: 'obsolete-proposal',
 		code: ConflictCode.CommandConflict,
-		message: 'Rejected earlier',
+		reason: { code: CommandRefusalCode.ElementsDifferentGroup },
 		lastAcceptedSequence: 0,
 	});
 	expect(notices).not.toHaveBeenCalled();
@@ -685,9 +708,11 @@ it('keeps a newer same-field edit pending when an older receipt arrives', () => 
 		code: ConflictCode.TextTargetGone,
 		id: newer.id,
 		target: newer.target,
-		message: 'Deleted',
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('A'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+		nodeIds: ['A'],
+	});
 	room.destroy();
 });
 
@@ -712,9 +737,11 @@ it('announces one deleted box even when two of its text fields had pending edits
 		code: ConflictCode.TextTargetGone,
 		id: first.id,
 		target: first.target,
-		message: 'Deleted',
 	});
-	expect(notices).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B'));
+	expect(notices).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+		nodeIds: ['B'],
+	});
 	room.destroy();
 });
 
@@ -730,7 +757,7 @@ it('backs off with jitter and stops only after six failed resynchronizations', (
 		room.receive({
 			type: Message.Retry,
 			code: SessionFailureCode.StorageUnavailable,
-			message: 'Service unavailable',
+			reason: { code: SessionFailureCode.StorageUnavailable },
 		});
 		room.receive({
 			type: Message.Commit,
@@ -746,9 +773,12 @@ it('backs off with jitter and stops only after six failed resynchronizations', (
 	room.receive({
 		type: Message.Retry,
 		code: SessionFailureCode.StorageUnavailable,
-		message: 'Service unavailable',
+		reason: { code: SessionFailureCode.StorageUnavailable },
 	});
-	expect(rejected).toHaveBeenCalledOnce();
+	expect(rejected).toHaveBeenCalledExactlyOnceWith({
+		code: SessionNoticeCode.SynchronizationFailed,
+		reason: { code: SessionFailureCode.StorageUnavailable },
+	});
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Disconnected);
 	room.destroy();
 });
@@ -766,7 +796,7 @@ it('staggers two peers retrying the same transient outage', () => {
 		room.receive({
 			type: Message.Retry,
 			code: SessionFailureCode.StorageUnavailable,
-			message: 'Outage',
+			reason: { code: SessionFailureCode.StorageUnavailable },
 		});
 	vi.advanceTimersByTime(750);
 	expect(alice.sent.some((message) => message.type === Message.Sync)).toBe(true);
@@ -881,8 +911,12 @@ it('isolates failing document, presence, decision and rejection subscribers', ()
 	expect(room.client.connectionStatus()).toBe(CollaborationStatus.Ready);
 	expect(changed).toHaveBeenCalledOnce();
 	expect(decision).toHaveBeenCalledOnce();
-	room.receive({ type: Message.Reject, message: 'Domain rejection' });
-	expect(rejection).toHaveBeenCalledWith('Domain rejection');
+	room.receive({
+		type: Message.Reject,
+		code: SessionFailureCode.RepeatedCommandRefusal,
+		reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+	});
+	expect(rejection).toHaveBeenCalledWith({ code: SessionFailureCode.RepeatedCommandRefusal });
 	expect(presence).toHaveBeenCalled();
 	expect(reported).toHaveBeenCalled();
 	room.destroy();
@@ -1052,8 +1086,12 @@ describe('collaborative document session', () => {
 			expect(room.pair.client.status()).toBe(TransportStatus.Disconnected);
 		});
 		const stop = room.client.subscribeToRejection(rejected);
-		room.receive({ type: Message.Reject, message: 'Refus' });
-		expect(rejected).toHaveBeenCalledWith('Refus');
+		room.receive({
+			type: Message.Reject,
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		});
+		expect(rejected).toHaveBeenCalledWith({ code: SessionFailureCode.RepeatedCommandRefusal });
 		vi.advanceTimersByTime(500);
 		expect(room.sent).toEqual([]);
 		expect(room.client.updateText({ kind: Kind.Node, id: 'A' }, 'markdown', 'Later')).toBe(false);
@@ -1099,7 +1137,7 @@ describe('collaborative document session', () => {
 		const rejection = vi.fn();
 		room.client.subscribeToRejection(rejection);
 		room.pair.client.injectFrame(new Uint8Array([255]));
-		expect(rejection).toHaveBeenCalledOnce();
+		expect(rejection).toHaveBeenCalledExactlyOnceWith({ code: SessionNoticeCode.InvalidMessage });
 		room.destroy();
 		expect(() => room.client.read()).toThrow();
 		room.client.destroy();
@@ -1269,7 +1307,9 @@ it('ignores transport callbacks delivered late after destroy', () => {
 	const initial = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 	const client = createCollaborativeDocumentSession(initial, pair.client);
 	client.destroy();
-	expect(() => client.readSourceState()).toThrow('Document session has been destroyed');
+	expect(() => client.readSourceState()).toThrow(
+		expect.objectContaining({ reason: { code: SessionNoticeCode.Destroyed } }),
+	);
 	frame?.(new Uint8Array([255]));
 	status?.(TransportStatus.Connected);
 	expect(client.connectionStatus()).toBe(CollaborationStatus.Disconnected);

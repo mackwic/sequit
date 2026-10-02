@@ -4,7 +4,7 @@ import { env } from 'cloudflare:workers';
 import { expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { SessionFailureCode } from '../../../src/lib/infrastructure/collaboration/session-failure';
+import { SessionFailureCode } from '../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	encodeSessionMessage,
 	SESSION_WIRE_VERSION,
@@ -60,13 +60,21 @@ it('rejects command gaps recoverably and persists progress atomically with docum
 	const client = await connectRoom(name);
 	const doc = await initializeRoom(name, client);
 	client.send(color('session', 2, '#0000ff'));
-	expect((await client.next(Message.Retry)).code).toBe(SessionFailureCode.CommandGap);
+	const gap = await client.next(Message.Retry);
+	expect(gap).toMatchObject({
+		code: SessionFailureCode.CommandGap,
+		reason: { code: SessionFailureCode.CommandGap },
+	});
 	const stub = env.COLLABORATION_ROOMS.getByName(name);
 	await runInDurableObject(stub, (_room, state) => {
 		vi.spyOn(state.storage, 'transaction').mockRejectedValueOnce(new Error('Transient outage'));
 	});
 	client.send(color('session', 1, '#ff0000'));
-	expect((await client.next(Message.Retry)).code).toBe(SessionFailureCode.StorageUnavailable);
+	const storageRetry = await client.next(Message.Retry);
+	expect(storageRetry).toMatchObject({
+		code: SessionFailureCode.StorageUnavailable,
+		reason: { code: SessionFailureCode.StorageUnavailable },
+	});
 	await runInDurableObject(stub, async (_room, state) => {
 		expect(await state.storage.get('command-session:session')).toBeUndefined();
 		vi.restoreAllMocks();
@@ -174,7 +182,10 @@ it.each(['invalid', 0, 1.5])(
 			await state.storage.put('command-session:author', value);
 		});
 		client.send(color('author', 1, '#abcdef'));
-		expect((await client.next(Message.Reject)).code).toBe(SessionFailureCode.CorruptCommandReceipt);
+		expect(await client.next(Message.Reject)).toMatchObject({
+			code: SessionFailureCode.CorruptCommandReceipt,
+			reason: { code: SessionFailureCode.CorruptCommandReceipt, sessionId: 'author' },
+		});
 		await new Promise<void>((resolve) => {
 			client.socket.addEventListener(
 				'close',
@@ -196,5 +207,11 @@ it.each(['invalid', 0, 1.5])(
 it('bounds the control channel before JSON decoding', async () => {
 	const client = await connectRoom('large-control');
 	client.socket.send('x'.repeat(1025));
-	expect((await client.next(Message.Reject)).code).toBe(SessionFailureCode.InvalidMessage);
+	expect(await client.next(Message.Reject)).toMatchObject({
+		code: SessionFailureCode.InvalidMessage,
+		reason: {
+			code: SessionFailureCode.InvalidMessage,
+			details: ['Control message exceeds the 1024-character limit.'],
+		},
+	});
 });

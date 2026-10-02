@@ -16,6 +16,8 @@ import {
 	ROOT_LAYOUT_REGION_ID,
 } from '../../core/document/region-presentation';
 import { fractionalOrderKeySpace } from '../../core/ordering/order-key-space';
+import { BusinessCommandRefusal } from '../collaboration/session-failure';
+import { CommandRefusalCode } from '../collaboration/session-reasons';
 
 function hasRegionPresentation(document: LogicDocument): boolean {
 	const regionFormats: readonly number[] = [
@@ -49,7 +51,7 @@ export function groupDocumentNodes(
 		(member) => member.groupId === undefined && member.laneId !== laneId,
 	);
 	if (hasLanePresentation(document, regionId) && rootLaneMismatch)
-		throw new Error('Les nœuds doivent appartenir à la même voie.');
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.NodesDifferentLane });
 	const laneFields: { laneId?: string } = {};
 	if (hasLanePresentation(document, regionId) && laneId !== undefined) laneFields.laneId = laneId;
 	const rootMembers = members.filter((member) => member.groupId === undefined);
@@ -58,7 +60,7 @@ export function groupDocumentNodes(
 	);
 	const regionFormat = hasRegionPresentation(document);
 	if (regionFormat && rootRegionMismatch)
-		throw new Error('Les nœuds doivent appartenir à la même région.');
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.NodesDifferentRegion });
 	const regionFields: { regionId?: string } = {};
 	if (regionFormat && regionId !== ROOT_LAYOUT_REGION_ID) regionFields.regionId = regionId;
 	return placeJunctions({
@@ -107,7 +109,9 @@ function containerOwnership(
 			assignments,
 		);
 		if (normalized.status !== RegionPresentationStatus.Ready)
-			throw new Error('La présentation des régions est invalide.');
+			throw new BusinessCommandRefusal({
+				code: CommandRefusalCode.InvalidRegionPresentation,
+			});
 		const result: { laneId?: string; regionId?: string } = {};
 		const laneId = normalized.value.laneByEndpointId.get(groupId);
 		const regionId = normalized.value.regionByEndpointId.get(groupId);
@@ -133,13 +137,15 @@ export function moveDocumentElements(
 	groupId: string | undefined,
 ): LogicDocument {
 	if (groupId !== undefined) {
-		defined(
-			document.groups.find((group) => group.id === groupId),
-			'Groupe introuvable.',
-		);
+		if (document.groups.find((group) => group.id === groupId) === undefined)
+			throw new BusinessCommandRefusal({
+				code: CommandRefusalCode.GroupMissing,
+				groupId,
+			});
 		const visited = new Set<string>();
 		for (let ancestor: string | undefined = groupId; ancestor !== undefined;) {
-			if (ids.has(ancestor)) throw new Error('Un groupe ne peut pas entrer dans lui-même.');
+			if (ids.has(ancestor))
+				throw new BusinessCommandRefusal({ code: CommandRefusalCode.GroupSelfContainment });
 			if (visited.has(ancestor)) break;
 			visited.add(ancestor);
 			ancestor = document.groups.find((group) => group.id === ancestor)?.groupId;
@@ -169,10 +175,9 @@ export function moveDocumentElements(
 }
 
 export function dissolveDocumentGroup(document: LogicDocument, id: string): LogicDocument {
-	const group = defined(
-		document.groups.find((item) => item.id === id),
-		'Groupe introuvable.',
-	);
+	const group = document.groups.find((item) => item.id === id);
+	if (group === undefined)
+		throw new BusinessCommandRefusal({ code: CommandRefusalCode.GroupMissing, groupId: id });
 	const ungroup = <T extends { groupId?: string; laneId?: string; regionId?: string }>(
 		item: T,
 	): T => {

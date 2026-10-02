@@ -123,6 +123,30 @@ function orderDepartures(sorted: readonly ChannelWire[], wire: ChannelWire): voi
 	}
 }
 
+/**
+ * Shared endpoint families can turn independent column dependencies into a cycle: a departure
+ * leaves its column first, then joins the shared arrival traverse, unless the column is only
+ * reached by the straight trunk of its own departing family, which shares its port.
+ */
+function sharedEndpointBreaks(
+	wires: readonly ChannelWire[],
+	moving: readonly ChannelWire[],
+): Set<ChannelWire> {
+	// The departing family reaching each column, `undefined` for an unshared or mixed arrival.
+	const arrivals = new Map<number, string | undefined>();
+	for (const wire of wires) {
+		if (!arrivals.has(wire.target)) arrivals.set(wire.target, wire.sharedSource);
+		else if (arrivals.get(wire.target) !== wire.sharedSource) arrivals.set(wire.target, undefined);
+	}
+	return new Set(
+		moving.filter((wire) => {
+			if (!arrivals.has(wire.source)) return false;
+			const family = arrivals.get(wire.source);
+			return family === undefined || family !== wire.sharedSource;
+		}),
+	);
+}
+
 function makeRuns(
 	wires: readonly ChannelWire[],
 	sharedEndpoints: boolean,
@@ -131,12 +155,8 @@ function makeRuns(
 	let moving = wires;
 	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
 	let breaks: Set<ChannelWire>;
-	if (sharedEndpoints) {
-		// Shared endpoint families can turn independent column dependencies into a cycle.
-		// Leave coincident columns first, then join the shared arrival traverse.
-		const targets = new Set(wires.map((wire) => wire.target));
-		breaks = new Set(moving.filter((wire) => targets.has(wire.source)));
-	} else if (nonInverted) breaks = new Set();
+	if (sharedEndpoints) breaks = sharedEndpointBreaks(wires, moving);
+	else if (nonInverted) breaks = new Set();
 	else breaks = cycleBreaks(moving);
 	const distinct = new Set<number>();
 	if (breaks.size > 0)

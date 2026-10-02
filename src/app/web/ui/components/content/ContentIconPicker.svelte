@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import { isIconAvailable } from '../../icons/phosphor';
 	import type { PhosphorIconChoice } from '../../icons/phosphor-catalogue';
 	import Icon from '../ui/Icon.svelte';
@@ -75,13 +76,14 @@
 	let visible = $derived(matches.slice(0, limit));
 	let more = $derived(catalogue === undefined || matches.length > limit);
 	function count(total: number, qualifier: string): string {
-		if (total === 1) return `1 icône ${qualifier}`;
-		return `${total} icônes ${qualifier}`;
+		if (total === 1) return m.content_icon_picker_count_one({ qualifier });
+		return m.content_icon_picker_count_many({ total, qualifier });
 	}
 	let status = $derived.by(() => {
-		if (loading) return 'Chargement du catalogue…';
-		if (catalogue === undefined) return count(suggested.length, 'suggérées · noms en anglais');
-		return count(matches.length, '· noms du catalogue en anglais');
+		if (loading) return m.content_icon_picker_loading();
+		if (catalogue === undefined)
+			return count(suggested.length, m.content_icon_picker_suggested_qualifier());
+		return count(matches.length, m.content_icon_picker_catalogue_qualifier());
 	});
 	function showMore(): void {
 		if (catalogue === undefined) void loadCatalogue();
@@ -93,8 +95,8 @@
 	<label class="search"
 		><Icon name="phosphor:magnifying-glass" /><input
 			type="search"
-			aria-label="Rechercher une icône"
-			placeholder="Rechercher dans Phosphor : lightning, target, scales…"
+			aria-label={m.content_icon_picker_search_aria()}
+			placeholder={m.content_icon_picker_search_placeholder()}
 			bind:value={search}
 			onfocus={() => void loadCatalogue()}
 			oninput={() => {
@@ -102,12 +104,12 @@
 			}}
 		/></label
 	>
-	<div class="icons" role="group" aria-label="Icônes Phosphor">
+	<div class="icons" role="group" aria-label={m.content_icon_picker_group_aria()}>
 		<button
 			type="button"
 			class="none"
-			aria-label="Sans icône"
-			title="Sans icône"
+			aria-label={m.content_icon_picker_none()}
+			title={m.content_icon_picker_none()}
 			aria-pressed={value === 'none'}
 			onclick={() => {
 				onchange('none');
@@ -126,13 +128,13 @@
 		{/each}
 	</div>
 	<div class="foot">
-		{#if loadError}<p class="unavailable" role="alert">Le catalogue n’a pas pu être chargé.</p>
+		{#if loadError}<p class="unavailable" role="alert">{m.content_icon_picker_load_error()}</p>
 		{:else}<p role="status">{status}</p>{/if}
 		{#if value !== 'none' && !isIconAvailable(value)}<p class="unavailable">
-				Icône indisponible ici. Sa référence est conservée dans le document.
+				{m.content_icon_picker_unavailable()}
 			</p>{/if}
 		{#if more && !loadError}<button class="ui-action more" type="button" onclick={showMore}
-				>Afficher plus d’icônes</button
+				>{m.content_icon_picker_show_more()}</button
 			>{/if}
 	</div>
 </div>

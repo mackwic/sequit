@@ -1,5 +1,11 @@
+import { m } from '../i18n/paraglide/messages';
+
 /** Hints shown in the empty text fields of the box dialog, local or shared. */
 export const NODE_TEXT_PLACEHOLDERS = {
-	markdown: 'Ce que dit la boîte, en une ou deux lignes.',
-	description: 'Explications, contexte, sources… (facultatif)',
+	get markdown() {
+		return m.editor_node_markdown_placeholder();
+	},
+	get description() {
+		return m.editor_node_description_placeholder();
+	},
 } as const;

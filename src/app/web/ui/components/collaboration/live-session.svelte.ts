@@ -8,6 +8,7 @@ import {
 import type { ParticipantPresence } from '../../../../../lib/infrastructure/collaboration/participant-presence';
 import { textEditable } from '../../../../../lib/infrastructure/collaboration/session-connection-status';
 import { refreshRejectedSession } from '../../../document/collaboration-rejection';
+import { translateSessionReason } from '../../../i18n/session-messages';
 import { CollaborationAwareness } from './collaboration-awareness.svelte';
 
 /** One collaborative session and the reactive state a page needs to render it. */
@@ -20,7 +21,7 @@ export class LiveSession {
 	initialized = $state(false);
 	replica = $state(0);
 	participants = $state<readonly ParticipantPresence[]>([]);
-	/** The last conflict message, until the page dismisses it. */
+	/** The last translated conflict notice, until the page dismisses it. */
 	conflict = $state<string>();
 	readonly #stops: readonly (() => void)[];
 
@@ -45,8 +46,8 @@ export class LiveSession {
 				this.model = value;
 			}),
 			client.subscribeToRejection(refreshRejectedSession),
-			client.subscribeToConflict((message) => {
-				this.conflict = message;
+			client.subscribeToConflict((notice) => {
+				this.conflict = translateSessionReason(notice);
 				refresh();
 			}),
 			client.subscribeToSourceState(refresh),

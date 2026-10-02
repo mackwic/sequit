@@ -7,7 +7,12 @@ import type {
 	DocumentSessionSubscriber,
 } from '../document/document-session-contracts';
 import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
-import type { ConflictCode } from './session-failure';
+import type {
+	CommandRefusal,
+	ConflictCode,
+	SessionNotice,
+	SessionRejection,
+} from './session-reasons';
 import type { LocalPresence, ParticipantPresence } from './session-wire';
 import type { SourceDocumentState } from './source-document-state';
 
@@ -35,7 +40,7 @@ interface RefusedProposalDecision {
 	readonly type: ProposalDecisionKind.Refused;
 	readonly proposalId: string;
 	readonly code: ConflictCode;
-	readonly message: string;
+	readonly reason: CommandRefusal;
 }
 
 export type ProposalDecision = AcceptedProposalDecision | RefusedProposalDecision;
@@ -67,7 +72,7 @@ export interface DocumentSession {
 export interface CollaborativeDocumentSession extends DocumentSession {
 	readonly document: Y.Doc;
 	replica(): number;
-	subscribeToConflict(listener: (message: string) => void): () => void;
+	subscribeToConflict(listener: (notice: SessionNotice) => void): () => void;
 	applyLocalTextUpdate(
 		target: SharedTarget,
 		field: string,
@@ -76,7 +81,7 @@ export interface CollaborativeDocumentSession extends DocumentSession {
 	): void;
 	setPresence(presence: Partial<LocalPresence>): void;
 	subscribeToPresence(listener: (participants: readonly ParticipantPresence[]) => void): () => void;
-	subscribeToRejection(listener: (message: string) => void): () => void;
+	subscribeToRejection(listener: (reason: SessionRejection | SessionNotice) => void): () => void;
 	connectionStatus(): CollaborationStatus;
 	subscribeToDecisions(listener: (decision: ProposalDecision) => void): () => void;
 }

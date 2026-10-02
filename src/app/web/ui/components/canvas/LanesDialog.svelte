@@ -22,6 +22,7 @@
 		submittableLanes,
 		transferLane,
 	} from '../../../document/lanes-draft';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		laneOrientationLabel,
 		MAX_ROOT_LANES,
@@ -55,12 +56,12 @@
 	);
 
 	let removalHint = $derived.by((): string | undefined => {
-		if (draft.lanes.length <= 2) return 'Il faut au moins deux lanes';
+		if (draft.lanes.length <= 2) return m.editing_lanes_min_two();
 		return undefined;
 	});
 	let addHint = $derived.by((): string | undefined => {
 		if (draft.lanes.length >= MAX_ROOT_LANES)
-			return `Le moteur prend en charge ${MAX_ROOT_LANES} lanes au plus pour l’instant`;
+			return m.editing_lanes_max_reached({ max: MAX_ROOT_LANES });
 		return undefined;
 	});
 	let unsupportedContent = $derived(unsupportedByRootLanes(document));
@@ -73,9 +74,9 @@
 </script>
 
 <ModalDialog
-	eyebrow="Mise en page"
-	title="Lanes"
-	description="Les lanes répartissent les boîtes de premier niveau en colonnes ou en bandes fixes, par exemple par équipe ou par rôle."
+	eyebrow={m.common_layout()}
+	title={m.common_lanes()}
+	description={m.editing_lanes_description()}
 	data={{ 'data-lanes-dialog': '' }}
 	{onclose}
 	oncommit={submit}
@@ -91,12 +92,11 @@
 		{#if draft.lanes.length === 0}
 			{#if unsupportedContent}
 				<p class="ui-notice warning">
-					Le moteur de lanes ne prend pas encore en charge les jonctions ni les groupes contenant
-					des boîtes : ce document en a, le canvas afficherait un diagnostic.
+					{m.editing_lanes_unsupported_empty()}
 				</p>
 			{/if}
 			<p class="empty">
-				Ce document n’a pas de lanes : toutes les boîtes partagent le même espace.
+				{m.editing_lanes_empty()}
 			</p>
 			<button
 				class="ui-action primary activate"
@@ -104,11 +104,11 @@
 				disabled={busy}
 				onclick={() => {
 					draft = activateLanes(draft, laneId);
-				}}><Icon name="phosphor:columns" /> Activer les lanes</button
+				}}><Icon name="phosphor:columns" /> {m.editing_lanes_activate()}</button
 			>
 		{:else}
 			<fieldset class="orientation">
-				<legend class="ui-label">Orientation</legend>
+				<legend class="ui-label">{m.editing_orientation()}</legend>
 				{#each orientations as option (option.orientation)}
 					<label class="radio"
 						><input
@@ -124,12 +124,12 @@
 					>
 				{/each}
 			</fieldset>
-			<ol class="lanes" aria-label="Lanes">
+			<ol class="lanes" aria-label={m.common_lanes()}>
 				{#each draft.lanes as lane, index (lane.id)}
 					<li>
 						<input
 							class="ui-field"
-							aria-label={`Nom de la lane ${index + 1}`}
+							aria-label={m.editing_lane_name_aria({ index: index + 1 })}
 							value={lane.label}
 							disabled={busy}
 							oninput={(event) => {
@@ -139,7 +139,7 @@
 						<button
 							class="ui-action quiet"
 							type="button"
-							aria-label={`Monter ${lane.label}`}
+							aria-label={m.editing_lane_move_up_aria({ label: lane.label })}
 							disabled={busy || index === 0}
 							onclick={() => {
 								draft = moveLane(draft, lane.id, -1);
@@ -148,7 +148,7 @@
 						<button
 							class="ui-action quiet"
 							type="button"
-							aria-label={`Descendre ${lane.label}`}
+							aria-label={m.editing_lane_move_down_aria({ label: lane.label })}
 							disabled={busy || index === draft.lanes.length - 1}
 							onclick={() => {
 								draft = moveLane(draft, lane.id, 1);
@@ -157,7 +157,7 @@
 						<button
 							class="ui-action quiet"
 							type="button"
-							aria-label={`Supprimer ${lane.label}`}
+							aria-label={m.editing_lane_remove_aria({ label: lane.label })}
 							title={removalHint}
 							disabled={busy || draft.lanes.length <= 2}
 							onclick={() => {
@@ -174,18 +174,19 @@
 				disabled={busy || draft.lanes.length >= MAX_ROOT_LANES}
 				onclick={() => {
 					draft = addLane(draft, laneId());
-				}}><Icon name="phosphor:plus" /> Ajouter une lane</button
+				}}><Icon name="phosphor:plus" /> {m.editing_lane_add()}</button
 			>
 			{#if unsupportedContent}
 				<p class="ui-notice warning">
-					Le moteur de lanes ne prend pas encore en charge les jonctions ni les groupes contenant
-					des boîtes : tant qu’il y en a, le canvas affiche un diagnostic à la place de la mise en
-					page.
+					{m.editing_lanes_unsupported_list()}
 				</p>
 			{/if}
 			{#each transfers as transfer (transfer.lane.id)}
 				<label class="ui-label transfer"
-					>Les {transfer.lane.count} éléments de « {transfer.lane.label} » rejoignent<select
+					>{m.editing_lane_transfer_label({
+						count: transfer.lane.count,
+						label: transfer.lane.label,
+					})}<select
 						class="ui-field"
 						value={transfer.target}
 						disabled={busy}
@@ -198,7 +199,7 @@
 				>
 			{/each}
 		{/if}
-		{#if busy}<p role="status">Modification envoyée…</p>{/if}
+		{#if busy}<p role="status">{m.common_change_sent()}</p>{/if}
 	</form>
 	{#snippet footer()}
 		{#if draft.lanes.length > 0}
@@ -206,15 +207,15 @@
 				class="ui-action quiet disable"
 				type="button"
 				disabled={busy}
-				title="Toutes les boîtes reviennent dans un espace unique"
+				title={m.editing_lanes_disable_hint()}
 				onclick={() => {
 					draft = disableLanes(draft);
-				}}><Icon name="phosphor:rows" /> Désactiver les lanes</button
+				}}><Icon name="phosphor:rows" /> {m.editing_lanes_disable()}</button
 			>
 		{/if}
 		<button class="ui-action" type="button" onclick={onclose}>
 			<Icon name="phosphor:x" />
-			{#if busy}Fermer{:else}Annuler{/if}
+			{#if busy}{m.common_close()}{:else}{m.common_cancel()}{/if}
 		</button>
 		<button
 			class="ui-action primary"
@@ -223,7 +224,7 @@
 			disabled={!submittable}
 		>
 			<Icon name="phosphor:check" />
-			{#if busy}Enregistrement…{:else}Enregistrer{/if}
+			{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}
 		</button>
 	{/snippet}
 </ModalDialog>

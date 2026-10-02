@@ -45,6 +45,11 @@
 		layoutUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import { m } from '../../../i18n/paraglide/messages';
+	import {
+		translateCommandDiagnostics,
+		translateSessionError,
+	} from '../../../i18n/session-messages';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
@@ -125,8 +130,9 @@
 	});
 	function outcomeError(outcome: DocumentCommandOutcome): string | undefined {
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return undefined;
-		if (outcome.kind === DocumentCommandOutcomeKind.Failed) return String(outcome.error);
-		return outcome.diagnostics.map(({ message }) => message).join('; ');
+		if (outcome.kind === DocumentCommandOutcomeKind.Failed)
+			return translateSessionError(outcome.error);
+		return translateCommandDiagnostics(outcome.diagnostics);
 	}
 	async function execute(action: () => Promise<DocumentCommandOutcome>): Promise<boolean> {
 		busy = true;
@@ -139,7 +145,7 @@
 			error = '';
 			return true;
 		} catch (failure) {
-			error = failureMessage(failure);
+			error = translateSessionError(failure);
 			return false;
 		} finally {
 			busy = false;
@@ -154,7 +160,7 @@
 			lastNatureId,
 		});
 		if (plan === undefined) {
-			error = 'Ajoutez d’abord une nature au document.';
+			error = m.common_nature_required();
 			return;
 		}
 		error = '';
@@ -177,10 +183,6 @@
 		creation = undefined;
 		lastNatureId = pending.draft.natureId;
 		canvas.selectEntity({ kind: EntityKind.Node, id: pending.plan.node.id });
-	}
-	function failureMessage(failure: unknown): string {
-		if (failure instanceof Error) return failure.message;
-		return String(failure);
 	}
 	function connect(from: string, to: string) {
 		const current = opened;
@@ -210,7 +212,7 @@
 		const label = editing.draft.label.trim();
 		const saved = await execute(() => {
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
-				throw new Error(`Group no longer exists: ${editing.id}`);
+				throw new Error(m.canvas_group_gone({ id: editing.id }));
 			const style = groupStyleUpdate(editing.id, editing.base, editing.draft);
 			if (style === undefined)
 				return Promise.resolve({
@@ -346,7 +348,7 @@
 		const label = editing.draft.label.trim();
 		const saved = await execute(() => {
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
-				throw new Error(`Nature no longer exists: ${editing.id}`);
+				throw new Error(m.canvas_nature_gone({ id: editing.id }));
 			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
 			if (style === undefined)
 				return Promise.resolve({
@@ -410,7 +412,7 @@
 
 <section
 	class="relative min-h-0 flex-1 overflow-hidden print:overflow-visible"
-	aria-label="Canvas logique"
+	aria-label={m.canvas_workspace()}
 >
 	{#if opened.ok && session}
 		<CanvasShortcut

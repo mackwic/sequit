@@ -242,7 +242,9 @@ describe('dedicated engine LayoutResult identity', () => {
 
 		expect(hashes).toEqual({
 			'adjacent-2+2': '434436502a19e68bbaf5e254e6dd74a1d97387393caeadfc4f70099b2c091c19',
-			'adjacent-3+1': '064082e2065ad7f76e35849ee4e1c402e721cd164b5e4966e4d88d7868f9fd6d',
+			// Re-pinned: a branches to d and e while b and c also converge on d, so d takes one incoming
+			// port per arrival instead of a shared trunk suggesting b → e and c → e; one rail fewer.
+			'adjacent-3+1': '0b963f70beacbcad9c1d8fef5bb3b8d8cd9c7cdfd9ac3bce0b762ad8630d6779',
 			'ai-documentary-effort': '23810c7b50f523acaedd01c6574ef9bb95527d63cd8d902cb0b6c436d3a9e54f',
 			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
 			// The two relations towards sink now take the inner passages and both relations towards d

@@ -2,6 +2,7 @@ import type * as Y from 'yjs';
 
 import { SharedElementKind, type SharedTarget } from '../document/shared-document-command';
 import { notifySubscribers } from './notify-subscribers';
+import { type SessionNotice, SessionNoticeCode } from './session-reasons';
 import {
 	type IdentifiedTextMessage,
 	SessionMessageKind,
@@ -68,12 +69,8 @@ function sameTextTarget(
 	return previous.textId.clock === id.clock;
 }
 
-function abandonedTextNotice(target: SharedTarget): string {
-	let label: string = target.kind;
-	if (target.kind === SharedElementKind.Node) label = 'boîte';
-	else if (target.kind === SharedElementKind.Group) label = 'groupe';
-	else if (target.kind === SharedElementKind.Nature) label = 'nature';
-	return `La saisie non envoyée pour ${label} ${target.id} a été abandonnée : ce texte a été remplacé.`;
+function abandonedTextNotice(target: SharedTarget): SessionNotice {
+	return { code: SessionNoticeCode.UnsentTextAbandoned, target };
 }
 
 /** One proposal holds edits to exactly one integrated Y.Text; frames survive disconnects. */
@@ -82,7 +79,7 @@ export class SessionTextFlow {
 	readonly pending = new Map<string, IdentifiedTextMessage>();
 	readonly buffer: TextUpdateBuffer;
 	readonly #send: (message: IdentifiedTextMessage) => void;
-	readonly #abandoned: Iterable<(message: string) => void>;
+	readonly #abandoned: Iterable<(notice: SessionNotice) => void>;
 	readonly #reported = new WeakSet<Y.Text>();
 	#target: TextTargetReference | undefined;
 
@@ -90,7 +87,7 @@ export class SessionTextFlow {
 		sessionId: string,
 		ready: () => boolean,
 		send: (message: IdentifiedTextMessage) => void,
-		abandoned: Iterable<(message: string) => void>,
+		abandoned: Iterable<(notice: SessionNotice) => void>,
 	) {
 		this.#send = send;
 		this.#abandoned = abandoned;

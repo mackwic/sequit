@@ -12,6 +12,7 @@ import {
 	CanvasEditAvailability,
 	CanvasSession,
 } from '../../../../../src/app/web/ui/session/canvas-session.svelte';
+import { SessionNoticeCode } from '../../../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	type DocumentCommandOutcome,
 	DocumentCommandOutcomeKind,
@@ -369,7 +370,7 @@ describe('CanvasSession box editing intents', () => {
 			error: new Error('Gateway disconnected'),
 		});
 		expect(session.editing?.draft).toEqual({ ...fields, markdown: 'Offline draft' });
-		expect(session.editing?.diagnostic).toBe('Gateway disconnected');
+		expect(session.editing?.diagnostic).toBe('Une erreur est survenue : Gateway disconnected');
 	});
 
 	it('preserves an orphaned draft and selected key when the target is removed', async () => {
@@ -403,6 +404,7 @@ describe('CanvasSession box editing intents', () => {
 					code: 'node-not-found',
 					message: 'Node no longer exists: shared',
 					path: ['nodes', 'shared'],
+					reason: { code: SessionNoticeCode.NodeNotFound, nodeId: 'shared' },
 				},
 			],
 		});

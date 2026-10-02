@@ -3,6 +3,10 @@ import * as Y from 'yjs';
 import type { LogicDocument } from '../../../lib/core/document/logic-document';
 import type { DocumentSession } from '../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 import { BusinessCommandRefusal } from '../../../lib/infrastructure/collaboration/session-failure';
+import {
+	CommandRefusalCode,
+	SessionNoticeCode,
+} from '../../../lib/infrastructure/collaboration/session-reasons';
 import { executeSharedCommands } from '../../../lib/infrastructure/collaboration/shared-command-executor';
 import { sharedTextAt } from '../../../lib/infrastructure/collaboration/shared-element';
 import { spliceSharedText } from '../../../lib/infrastructure/collaboration/shared-text';
@@ -143,7 +147,12 @@ export class LocalDocumentSession implements DocumentSession {
 			return {
 				kind: DocumentCommandOutcomeKind.Rejected,
 				diagnostics: [
-					{ code: DocumentCommandDiagnosticCode.CommandRefused, message: error.message, path: [] },
+					{
+						code: DocumentCommandDiagnosticCode.CommandRefused,
+						message: error.message,
+						path: [],
+						reason: error.reason,
+					},
 				],
 			};
 		} finally {
@@ -234,7 +243,7 @@ export class LocalDocumentSession implements DocumentSession {
 	}
 
 	#assertActive(): void {
-		if (this.#destroyed) throw new DocumentSessionError('Document session has been destroyed');
+		if (this.#destroyed) throw new DocumentSessionError({ code: SessionNoticeCode.Destroyed });
 	}
 }
 
@@ -242,7 +251,10 @@ function decoded(document: Y.Doc): LogicDocument {
 	const result = readLogicDocument(document);
 	if (result.ok) return result.value;
 	throw new DocumentSessionError(
-		result.diagnostics.map(({ message }) => message).join('; '),
+		{
+			code: CommandRefusalCode.InvalidDocument,
+			details: result.diagnostics.map(({ message }) => message),
+		},
 		result.diagnostics,
 	);
 }

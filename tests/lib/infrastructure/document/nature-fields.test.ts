@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../../../src/lib/core/document/logic-document';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
 import { importLogicDocument } from '../../../../src/lib/infrastructure/collaboration/yjs-document-codec';
 import {
@@ -91,7 +92,9 @@ it('edits an explicitly hidden icon as no icon, and updates only the changed sty
 it('moves the boxes of a deleted nature to the replacement and refuses a used nature without one', () => {
 	const model = document();
 	expect(() => execute(model, [natureDeletion('N', undefined)])).toThrow(
-		'Choisissez une nature de remplacement.',
+		expect.objectContaining({
+			reason: { code: CommandRefusalCode.NatureReplacementRequired },
+		}),
 	);
 	const reassigned = execute(model, [natureDeletion('N', 'D')]);
 	expect(reassigned.natures.map(({ id }) => id)).toEqual(['D']);

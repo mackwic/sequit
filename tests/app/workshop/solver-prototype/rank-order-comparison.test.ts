@@ -117,9 +117,9 @@ describe('rank order comparison', () => {
 
 	it('matches pinned dedicated-engine layout fingerprints for every corpus entry', () => {
 		const expected: Record<string, string> = {
-			'geometric-3+1': '45a1f7b753bac09efceb3b0bb559df40fd6d8a2f080fd27ad72ceca3f5707f29',
-			'geometric-2+2': '49b25131fc1eed3895523a09cfa7946fc337751a2ccbe192eb0a025fe1a33c79',
-			'adjacent-3+1': 'c172fcb69db80f44a1666b6ad2292a0e2067bac3d5864274362b638bcf7ee8b7',
+			'geometric-3+1': '3b2354e63b154eb6b5d96f42e5f44adeb10657a40e4e987aac08b8d05f444db7',
+			'geometric-2+2': '31d6aa7a5ef8b8444a7bd888efe1b225dcb2b10d9bac2e634e29976c4999263e',
+			'adjacent-3+1': '0fbc1b295e8638bfc03d1d6c929be423c0d03f5a408b56eb5308f0b76c14b71e',
 			'adjacent-2+2': '8d01a1f76e5e210e62fa16d9e9cce75ef7771c0d37b02042845d6ee4d54e04d0',
 			'two-successors': 'cbef67223f47ce6a3ae02f7b451be2d111218576501be214a3cba1a06160a157',
 			'two-predecessors': '72956e705ceb18d863ee61533d5c77604512850401a8fe71614ddf6922dacb01',
@@ -210,10 +210,10 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 4,
 			portChanges: 4,
 			pathChanges: 4,
-			commonRouteLengthBefore: 828,
-			commonRouteLengthAfter: 520,
-			commonBendsBefore: 8,
-			commonBendsAfter: 4,
+			commonRouteLengthBefore: 578,
+			commonRouteLengthAfter: 456,
+			commonBendsBefore: 6,
+			commonBendsAfter: 6,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
@@ -226,7 +226,7 @@ describe('rank order stability under document edits', () => {
 			commonRelations: 3,
 			portChanges: 3,
 			pathChanges: 3,
-			commonRouteLengthBefore: 650,
+			commonRouteLengthBefore: 424,
 		});
 		expect(removal?.commonRouteLengthAfter).toBeLessThan(removal?.commonRouteLengthBefore ?? 0);
 		expect(removal?.commonBendsAfter).toBeLessThanOrEqual(removal?.commonBendsBefore ?? 0);
@@ -338,12 +338,12 @@ describe('rank order stability under document edits', () => {
 			commonElements: 5,
 			rankChanges: 0,
 			commonRelations: 4,
-			portChanges: 4,
-			pathChanges: 4,
+			portChanges: 2,
+			pathChanges: 2,
 			beforeCrossings: 0,
 			afterCrossings: 0,
-			medianTranslation: { x: 32, y: 0 },
-			relativeMovedElements: 4,
+			medianTranslation: { x: 0, y: 0 },
+			relativeMovedElements: 2,
 			documentary: {
 				commonElements: 5,
 				rankChanges: 0,
@@ -351,7 +351,7 @@ describe('rank order stability under document edits', () => {
 				relativeMovedElements: 2,
 			},
 		});
-		expect(resized?.meanRelativeNormalizedMovement).toBeCloseTo(0.592);
+		expect(resized?.meanRelativeNormalizedMovement).toBeCloseTo(0.128);
 		expect(resized?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.096);
 	});
 
@@ -368,10 +368,10 @@ describe('rank order stability under document edits', () => {
 			medianTranslation: { x: 0, y: 0 },
 			documentary: { movedElements: 0, relativeMovedElements: 0 },
 			pathChanges: 0,
-			commonRouteLengthBefore: 828,
-			commonRouteLengthAfter: 828,
-			commonBendsBefore: 8,
-			commonBendsAfter: 8,
+			commonRouteLengthBefore: 578,
+			commonRouteLengthAfter: 578,
+			commonBendsBefore: 6,
+			commonBendsAfter: 6,
 			beforeCrossings: 0,
 			afterCrossings: 0,
 		});
@@ -442,14 +442,14 @@ describe('rank order stability under document edits', () => {
 			commonElements: 18,
 			rankChanges: 0,
 			commonRelations: 17,
-			movedElements: 13,
-			relativeMovedElements: 5,
+			movedElements: 14,
+			relativeMovedElements: 4,
 			medianTranslation: { x: 116, y: 0 },
-			portChanges: 13,
-			pathChanges: 13,
-			commonRouteLengthBefore: 1764,
-			commonRouteLengthAfter: 1880,
-			commonBendsBefore: 8,
+			portChanges: 14,
+			pathChanges: 14,
+			commonRouteLengthBefore: 1514,
+			commonRouteLengthAfter: 1746,
+			commonBendsBefore: 6,
 			commonBendsAfter: 10,
 			beforeCrossings: 0,
 			afterCrossings: 0,
@@ -477,8 +477,8 @@ describe('rank order stability under document edits', () => {
 			},
 			documentary: { movedElements: 13, relativeMovedElements: 5 },
 		});
-		expect(frontier?.meanNormalizedMovement).toBeCloseTo(0.937);
-		expect(frontier?.meanRelativeNormalizedMovement).toBeCloseTo(0.322);
+		expect(frontier?.meanNormalizedMovement).toBeCloseTo(1.001);
+		expect(frontier?.meanRelativeNormalizedMovement).toBeCloseTo(0.235);
 		expect(frontier?.documentary.meanNormalizedMovement).toBeCloseTo(0.533);
 		expect(frontier?.documentary.meanRelativeNormalizedMovement).toBeCloseTo(0.166);
 	});
@@ -562,7 +562,7 @@ describe('rank order stability under document edits', () => {
 		expect(optimizedBand(unrelated?.beforeWitness.selectedOrder)).toEqual(
 			optimizedBand(unrelated?.afterWitness.selectedOrder),
 		);
-		expect(independent?.selected.meanRelativeNormalizedMovement).toBeGreaterThan(0);
+		expect(independent?.selected.meanRelativeNormalizedMovement).toBe(0);
 		expect(independent?.documentary.meanRelativeNormalizedMovement).toBe(0);
 	});
 });

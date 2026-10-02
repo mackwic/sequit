@@ -5,7 +5,10 @@ import {
 	CollaborationStatus,
 	createCollaborativeDocumentSession,
 } from '../../../src/lib/infrastructure/collaboration/collaborative-document-session';
-import { ConflictCode } from '../../../src/lib/infrastructure/collaboration/session-failure';
+import {
+	ConflictCode,
+	SessionNoticeCode,
+} from '../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	decodeSessionMessage,
 	SessionMessageKind as Message,
@@ -204,7 +207,10 @@ describe('real sessions through the Durable Object', () => {
 			socket.release();
 			await vi.waitFor(
 				() => {
-					expect(notice).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+					expect(notice).toHaveBeenCalledExactlyOnceWith({
+						code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+						nodeIds: ['B', 'A'],
+					});
 				},
 				{ timeout: 1000 },
 			);
@@ -269,7 +275,10 @@ describe('real sessions through the Durable Object', () => {
 			await vi.waitFor(
 				() => {
 					expect(socket).not.toBe(old);
-					expect(notice).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('B, A'));
+					expect(notice).toHaveBeenCalledExactlyOnceWith({
+						code: SessionNoticeCode.UnacknowledgedNodesAbandoned,
+						nodeIds: ['B', 'A'],
+					});
 					expect(alice.connectionStatus()).toBe(CollaborationStatus.Ready);
 				},
 				{ timeout: 4_000 },

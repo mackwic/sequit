@@ -10,9 +10,14 @@ import {
 	LayoutDirection,
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
-import { BusinessCommandRefusal } from '../../../../src/lib/infrastructure/collaboration/session-failure';
+import {
+	BusinessCommandRefusal,
+	StaleSharedCommandError,
+} from '../../../../src/lib/infrastructure/collaboration/session-failure';
+import { CommandRefusalCode } from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import { readSharedCommand } from '../../../../src/lib/infrastructure/collaboration/shared-command-codec';
 import { executeSharedCommands } from '../../../../src/lib/infrastructure/collaboration/shared-command-executor';
+import { sharedElement } from '../../../../src/lib/infrastructure/collaboration/shared-element';
 import {
 	importLogicDocument,
 	readLogicDocument,
@@ -38,6 +43,21 @@ function read(doc: Y.Doc) {
 	const result = readLogicDocument(doc);
 	if (!result.ok) throw new Error('Invalid result');
 	return result.value;
+}
+
+function expectRefusal(
+	action: () => unknown,
+	reason: object,
+	refusal: typeof BusinessCommandRefusal = BusinessCommandRefusal,
+): void {
+	let error: unknown;
+	try {
+		action();
+	} catch (caught) {
+		error = caught;
+	}
+	expect(error).toBeInstanceOf(refusal);
+	expect(error).toMatchObject({ reason });
 }
 
 describe('shared document commands', () => {
@@ -68,16 +88,20 @@ describe('shared document commands', () => {
 
 	it('Linked boxes: rejects a cyclic relation in the candidate', () => {
 		const doc = given(CollaborativeFixture.LinkedBoxes);
-		expect(() => {
-			executeSharedCommands(doc, [
-				{
-					op: Op.Create,
-					target: { kind: Kind.Relation, id: 'cycle' },
-					properties: { from: 'A', to: 'B' },
-				},
-			]);
-		}).toThrow();
-		doc.destroy();
+		expectRefusal(
+			() =>
+				executeSharedCommands(doc, [
+					{
+						op: Op.Create,
+						target: { kind: Kind.Relation, id: 'cycle' },
+						properties: { from: 'A', to: 'B' },
+					},
+				]),
+			{
+				code: CommandRefusalCode.InvalidDocument,
+				details: ['Cycle detected: A -> B -> A'],
+			},
+		);
 	});
 
 	it('Linked boxes: rejects repeating B → A by creation or by moving an endpoint', () => {
@@ -90,7 +114,16 @@ describe('shared document commands', () => {
 					properties: { from: 'B', to: 'A' },
 				},
 			]);
-		}).toThrow('already exists');
+		}).toThrow(
+			expect.objectContaining({
+				reason: {
+					code: CommandRefusalCode.DuplicateRelation,
+					from: 'B',
+					to: 'A',
+					relationId: 'R',
+				},
+			}),
+		);
 		executeSharedCommands(doc, [
 			{
 				op: Op.Create,
@@ -112,7 +145,35 @@ describe('shared document commands', () => {
 			executeSharedCommands(doc, [
 				{ op: Op.Update, target: { kind: Kind.Relation, id: 'JA' }, set: { from: 'B' }, unset: [] },
 			]);
-		}).toThrow('already exists');
+		}).toThrow(
+			expect.objectContaining({
+				reason: {
+					code: CommandRefusalCode.DuplicateRelation,
+					from: 'B',
+					to: 'A',
+					relationId: 'R',
+				},
+			}),
+		);
+		doc.destroy();
+	});
+
+	it('reports structured stale reasons for missing targets', () => {
+		const doc = given(CollaborativeFixture.TwoBoxes);
+		expectRefusal(
+			() =>
+				executeSharedCommands(doc, [{ op: Op.Delete, target: { kind: Kind.Node, id: 'missing' } }]),
+			{
+				code: CommandRefusalCode.ElementMissing,
+				target: { kind: Kind.Node, id: 'missing' },
+			},
+			StaleSharedCommandError,
+		);
+		expectRefusal(
+			() => sharedElement(doc, { kind: Kind.Document, id: 'other' }),
+			{ code: CommandRefusalCode.DocumentMissing },
+			StaleSharedCommandError,
+		);
 		doc.destroy();
 	});
 
@@ -152,11 +213,15 @@ describe('shared document commands', () => {
 		executeSharedCommands(doc, [{ op: Op.Move, ids: ['A'], groupId: 'G' }]);
 		expect(read(doc).nodes.every((node) => node.groupId === 'G')).toBe(true);
 		expect(() => executeSharedCommands(doc, [{ op: Op.Move, ids: ['G'], groupId: 'G' }])).toThrow(
-			'lui-même',
+			expect.objectContaining({ reason: { code: CommandRefusalCode.GroupSelfContainment } }),
 		);
 		expect(() =>
 			executeSharedCommands(doc, [{ op: Op.Move, ids: ['A'], groupId: 'nope' }]),
-		).toThrow('Groupe introuvable');
+		).toThrow(
+			expect.objectContaining({
+				reason: { code: CommandRefusalCode.GroupMissing, groupId: 'nope' },
+			}),
+		);
 		doc.destroy();
 	});
 
@@ -225,17 +290,23 @@ describe('shared document commands', () => {
 				},
 			]);
 			expect(read(doc).nodes.map(({ laneId }) => laneId)).toEqual(['early', 'early']);
-			expect(() =>
-				executeSharedCommands(doc, [
-					{
-						op: Op.UpdateLanes,
-						lanes: { ...lanes, lanes: lanes.lanes.slice(0, 1) },
-					},
-				]),
-			).toThrow(BusinessCommandRefusal);
+			expectRefusal(
+				() =>
+					executeSharedCommands(doc, [
+						{
+							op: Op.UpdateLanes,
+							lanes: { ...lanes, lanes: lanes.lanes.slice(0, 1) },
+						},
+					]),
+				{ code: CommandRefusalCode.MinimumLanes },
+			);
 			expect(() =>
 				executeSharedCommands(doc, [{ op: Op.UpdateLanes, lanes, transfers: { late: 'nowhere' } }]),
-			).toThrow('Lane de destination inconnue');
+			).toThrow(
+				expect.objectContaining({
+					reason: { code: CommandRefusalCode.UnknownDestinationLane, target: 'nowhere' },
+				}),
+			);
 			doc.destroy();
 		});
 	});
@@ -281,15 +352,38 @@ describe('whole-document edits', () => {
 		doc.destroy();
 	});
 
-	it.each([undefined, 'N', 'missing'])(
-		'rejects removal of a used nature with replacement %s',
-		(replacementId) => {
+	it.each([
+		{
+			replacementId: undefined,
+			reason: { code: CommandRefusalCode.NatureReplacementRequired },
+			refusal: BusinessCommandRefusal,
+		},
+		{
+			replacementId: 'N',
+			reason: { code: CommandRefusalCode.NatureReplacementDifferent },
+			refusal: BusinessCommandRefusal,
+		},
+		{
+			replacementId: 'missing',
+			reason: {
+				code: CommandRefusalCode.ElementMissing,
+				target: { kind: Kind.Nature, id: 'missing' },
+			},
+			refusal: StaleSharedCommandError,
+		},
+	])(
+		'rejects removal of a used nature with replacement $replacementId',
+		({ replacementId, reason, refusal }) => {
 			const doc = given(CollaborativeFixture.TwoBoxes);
 			const target = { kind: Kind.Nature, id: 'N' } as const;
-			expect(() => {
-				if (replacementId === undefined) executeSharedCommands(doc, [{ op: Op.Delete, target }]);
-				else executeSharedCommands(doc, [{ op: Op.Delete, target, replacementId }]);
-			}).toThrow();
+			expectRefusal(
+				() => {
+					if (replacementId === undefined) executeSharedCommands(doc, [{ op: Op.Delete, target }]);
+					else executeSharedCommands(doc, [{ op: Op.Delete, target, replacementId }]);
+				},
+				reason,
+				refusal,
+			);
 			doc.destroy();
 		},
 	);
@@ -331,12 +425,30 @@ describe('whole-document edits', () => {
 		const doc = given(CollaborativeFixture.OpenGroup);
 		executeSharedCommands(doc, [{ op: Op.Group, id: 'H', label: 'Sous-groupe', members: ['A'] }]);
 		expect(read(doc).groups.find((group) => group.id === 'H')?.groupId).toBe('G');
-		for (const members of [[], ['missing'], ['A', 'B']]) {
-			expect(() => {
-				executeSharedCommands(doc, [{ op: Op.Group, id: 'invalid', label: 'Invalid', members }]);
-			}).toThrow();
+		for (const { members, reason, refusal } of [
+			{
+				members: [],
+				reason: { code: CommandRefusalCode.GroupSelectionRequired },
+				refusal: BusinessCommandRefusal,
+			},
+			{
+				members: ['missing'],
+				reason: { code: CommandRefusalCode.GroupMemberMissing },
+				refusal: StaleSharedCommandError,
+			},
+			{
+				members: ['A', 'B'],
+				reason: { code: CommandRefusalCode.ElementsDifferentGroup },
+				refusal: BusinessCommandRefusal,
+			},
+		]) {
+			expectRefusal(
+				() =>
+					executeSharedCommands(doc, [{ op: Op.Group, id: 'invalid', label: 'Invalid', members }]),
+				reason,
+				refusal,
+			);
 		}
-		doc.destroy();
 	});
 
 	it('rejects malformed commands before changing the document', () => {

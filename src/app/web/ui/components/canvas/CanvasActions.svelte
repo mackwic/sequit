@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
@@ -19,13 +20,13 @@
 		onnatures: () => void;
 	} = $props();
 	const createShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Create];
-	const NATURES_LABEL = 'Natures';
+	const natureLabel = () => m.common_natures();
 	const createTip = shortcutTitle(createShortcut);
 </script>
 
 <nav
 	class="absolute top-1/2 left-4 z-20 flex -translate-y-1/2 flex-col gap-1 rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm print:hidden"
-	aria-label="Actions du canvas"
+	aria-label={m.editing_canvas_actions()}
 >
 	<span class="tool">
 		<button
@@ -44,13 +45,13 @@
 		<button
 			class="ui-action quiet"
 			type="button"
-			aria-label={NATURES_LABEL}
+			aria-label={natureLabel()}
 			disabled={!enabled}
 			onclick={onnatures}
 		>
 			<Icon name="phosphor:tag" />
 		</button>
-		<span class="tip" aria-hidden="true">Gérer les natures du document</span>
+		<span class="tip" aria-hidden="true">{m.editing_canvas_manage_natures()}</span>
 	</span>
 </nav>
 

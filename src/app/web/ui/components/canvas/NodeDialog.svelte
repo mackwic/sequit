@@ -10,6 +10,7 @@
 	import type { NodeFields } from '../../../../../lib/infrastructure/document/node-fields';
 	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
 	import { QuillEditorProfile } from '../../../document/quill-editor-config';
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
 		CanvasShortcutId,
@@ -81,8 +82,8 @@
 		return { description };
 	});
 	let title = $derived.by(() => {
-		if (mode === 'create') return 'Nouvelle boîte';
-		return 'Modifier la boîte';
+		if (mode === 'create') return m.common_new_box();
+		return m.editing_node_title_edit();
 	});
 
 	function submit(): void {
@@ -90,7 +91,15 @@
 	}
 </script>
 
-<ModalDialog eyebrow="Boîte" {title} {...subtitle} width="wide" {data} {onclose} oncommit={submit}>
+<ModalDialog
+	eyebrow={m.editing_node_eyebrow()}
+	{title}
+	{...subtitle}
+	width="wide"
+	{data}
+	{onclose}
+	oncommit={submit}
+>
 	<form
 		class="fields"
 		id={`node-dialog-${formId}`}
@@ -101,7 +110,7 @@
 	>
 		<div class="identity">
 			<label class="ui-label"
-				>Nature<span class="nature">
+				>{m.common_nature()}<span class="nature">
 					<span class="preview" style:--content-color={previewColor} aria-hidden="true"
 						><Icon name={previewIcon} size={18} /></span
 					><select
@@ -119,7 +128,7 @@
 			>
 			{#if lanes.length > 0 && draft.laneId !== ''}
 				<label class="ui-label"
-					>Lane<select
+					>{m.common_lane()}<select
 						class="ui-field"
 						value={draft.laneId}
 						disabled={busy}
@@ -133,7 +142,7 @@
 			{/if}
 		</div>
 		{#if natures.length === 0}<p class="ui-notice warning">
-				Ajoutez d’abord une nature au document.
+				{m.common_nature_required()}
 			</p>{/if}
 		{#if text}
 			{@render text()}
@@ -141,7 +150,7 @@
 			<MarkdownField
 				field="markdown"
 				profile={QuillEditorProfile.Body}
-				label="Contenu"
+				label={m.common_content()}
 				placeholder={NODE_TEXT_PLACEHOLDERS.markdown}
 				value={draft.markdown}
 				disabled={busy}
@@ -153,7 +162,7 @@
 			<MarkdownField
 				field="description"
 				profile={QuillEditorProfile.Description}
-				label="Description"
+				label={m.common_description()}
 				placeholder={NODE_TEXT_PLACEHOLDERS.description}
 				value={draft.description}
 				disabled={busy}
@@ -164,11 +173,11 @@
 		{/if}
 		<details class="style">
 			<summary>
-				<span class="ui-label">Couleur et icône</span>
+				<span class="ui-label">{m.editing_color_and_icon()}</span>
 				<span class="current">
 					<span class="dot" style:--swatch={previewColor}></span>
 					{#if previewIcon !== 'none'}<Icon name={previewIcon} size={14} />{/if}
-					{#if customized}Personnalisés{:else}Hérités de la nature{/if}
+					{#if customized}{m.editing_customized()}{:else}{m.editing_inherited_nature()}{/if}
 					<span class="chevron"><Icon name="phosphor:caret-down" size={14} /></span>
 				</span>
 			</summary>
@@ -182,13 +191,13 @@
 				/>
 			</div>
 		</details>
-		{#if busy}<p role="status">Modification envoyée…</p>{/if}
+		{#if busy}<p role="status">{m.common_change_sent()}</p>{/if}
 		{#if diagnostic}<p class="ui-notice error" role="alert">{diagnostic}</p>{/if}
 	</form>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
 			<Icon name="phosphor:x" />
-			{#if busy}Fermer{:else}Annuler{/if}
+			{#if busy}{m.common_close()}{:else}{m.common_cancel()}{/if}
 		</button>
 		<button
 			class="ui-action primary"
@@ -197,10 +206,10 @@
 			disabled={!submittable}
 			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
-			{#if mode === 'create'}<Icon name="phosphor:plus" /> Créer{:else}<Icon
+			{#if mode === 'create'}<Icon name="phosphor:plus" /> {m.common_create()}{:else}<Icon
 					name="phosphor:check"
 				/>
-				{#if busy}Enregistrement…{:else}Enregistrer{/if}{/if}
+				{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}{/if}
 			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}

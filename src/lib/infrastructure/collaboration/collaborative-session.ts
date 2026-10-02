@@ -14,7 +14,7 @@ import { notifySubscribers } from './notify-subscribers';
 import { prepareSessionCommand } from './session-command-frame';
 import { recoverSessionCommandConflict } from './session-conflict-recovery';
 import { connectionStatus } from './session-connection-status';
-import { ConflictCode } from './session-failure';
+import { SessionNoticeError } from './session-failure';
 import {
 	createInitializationMessage,
 	handleIncomingMessage,
@@ -23,6 +23,12 @@ import {
 } from './session-incoming';
 import { SessionNotifications } from './session-notifications';
 import { SessionPresence } from './session-presence';
+import {
+	ConflictCode,
+	type SessionNotice,
+	SessionNoticeCode,
+	type SessionRejection,
+} from './session-reasons';
 import { replaceReplicaAfterTextRefusal } from './session-replica-recovery';
 import { SessionSynchronizer } from './session-synchronizer';
 import { SessionTextFlow } from './session-text-edits';
@@ -121,14 +127,14 @@ export class CollaborativeSession
 	}
 
 	read(): LogicDocument {
-		if (this.#destroyed) throw new Error('Document session has been destroyed');
+		if (this.#destroyed) throw new SessionNoticeError({ code: SessionNoticeCode.Destroyed });
 		const result = readLogicDocument(this.document);
 		if (result.ok) return result.value;
 		return this.initialDocument;
 	}
 
 	readSourceState(): SourceDocumentState {
-		if (this.#destroyed) throw new Error('Document session has been destroyed');
+		if (this.#destroyed) throw new SessionNoticeError({ code: SessionNoticeCode.Destroyed });
 		return this.#sourceState;
 	}
 
@@ -149,7 +155,7 @@ export class CollaborativeSession
 
 	dispatch(commands: readonly SharedDocumentCommand[]): Promise<DocumentCommandOutcome> {
 		if (!this.#ready || this.#rejected || this.#destroyed)
-			throw new Error('La session doit être connectée.');
+			throw new SessionNoticeError({ code: SessionNoticeCode.ConnectionRequired });
 		const pending = prepareSessionCommand(commands, this.#sessionId, this.#sequence);
 		// Validate before consuming a sequence; flush text before deleting its target.
 		this.#textFlow.buffer.flush();
@@ -232,7 +238,7 @@ export class CollaborativeSession
 	readonly #receive = (frame: Uint8Array): void => {
 		if (this.#destroyed || this.#rejected) return;
 		if (!receiveSessionFrame(frame, this.#handle))
-			this.#reject('La session a reçu un message invalide.');
+			this.#reject({ code: SessionNoticeCode.InvalidMessage });
 	};
 
 	readonly #handle = (message: SessionMessage): void => {
@@ -330,7 +336,7 @@ export class CollaborativeSession
 		this.transport.send(encodeSessionMessage(message));
 	}
 
-	#reject(message: string): void {
+	#reject(message: SessionRejection | SessionNotice): void {
 		this.#rejected = true;
 		this.#textFlow.close();
 		this.#presence.destroy();

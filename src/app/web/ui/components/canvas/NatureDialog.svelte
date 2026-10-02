@@ -13,6 +13,7 @@
 		natureRemoval,
 		NatureRemovalKind,
 	} from '../../../../../lib/infrastructure/document/nature-fields';
+	import { m } from '../../../i18n/paraglide/messages';
 	import ContentStyleEditor from '../content/ContentStyleEditor.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import ModalDialog from '../ui/ModalDialog.svelte';
@@ -85,10 +86,10 @@
 		return { description };
 	});
 	let title = $derived.by(() => {
-		if (editing === undefined) return 'Natures';
-		if (removing) return 'Supprimer la nature';
-		if (editing.mode === NatureEditingMode.Create) return 'Nouvelle nature';
-		return 'Modifier la nature';
+		if (editing === undefined) return m.common_natures();
+		if (removing) return m.editing_nature_dialog_title_remove();
+		if (editing.mode === NatureEditingMode.Create) return m.editing_nature_dialog_title_create();
+		return m.editing_nature_dialog_title_edit();
 	});
 	/** Escape steps back inside the dialog; only the list closes it. */
 	let cancel = $derived.by((): (() => void) | undefined => {
@@ -116,14 +117,12 @@
 	}
 	function usageLabel(natureId: string): string {
 		const count = usage.get(natureId) ?? 0;
-		if (count === 0) return 'Aucune boîte';
-		if (count === 1) return '1 boîte';
-		return `${count} boîtes`;
+		if (count === 0) return m.editing_nature_usage_none();
+		return m.editing_nature_usage({ count });
 	}
 	function removalSentence(natureId: string, label: string): string {
 		const count = usage.get(natureId) ?? 0;
-		if (count === 1) return `1 boîte utilise « ${label} ». Choisissez sa nouvelle nature.`;
-		return `${count} boîtes utilisent « ${label} ». Choisissez leur nouvelle nature.`;
+		return m.editing_nature_reassign({ count, label });
 	}
 	function enterRemoval(): void {
 		replacementId = removalCandidates[0]?.id ?? '';
@@ -140,7 +139,7 @@
 </script>
 
 <ModalDialog
-	eyebrow="Document"
+	eyebrow={m.editing_document_eyebrow()}
 	{title}
 	{...subtitle}
 	{data}
@@ -150,7 +149,7 @@
 	oncommit={submit}
 >
 	{#if editing === undefined}
-		<ul class="natures" aria-label="Natures du document">
+		<ul class="natures" aria-label={m.editing_document_natures_aria()}>
 			{#each natures as nature (nature.id)}
 				<li>
 					<button
@@ -172,16 +171,19 @@
 			{/each}
 		</ul>
 		{#if natures.length === 0}<p class="ui-notice warning">
-				Ce document n’a aucune nature : les boîtes en ont besoin.
+				{m.editing_nature_empty_warning()}
 			</p>{/if}
 	{:else if removing}
 		<div class="removal">
 			{#if removal?.kind === NatureRemovalKind.Free}
-				<p>Aucune boîte n’utilise « {editing.draft.label} ».</p>
+				<p>{m.editing_nature_removal_free({ label: editing.draft.label })}</p>
 			{:else if removal?.kind === NatureRemovalKind.Reassign}
 				<p>{removalSentence(editing.id, editing.draft.label)}</p>
 				<label class="ui-label"
-					>Réaffecter à<select class="ui-field" bind:value={replacementId} disabled={busy}
+					>{m.editing_nature_reassign_field()}<select
+						class="ui-field"
+						bind:value={replacementId}
+						disabled={busy}
 						>{#each removalCandidates as candidate (candidate.id)}<option value={candidate.id}
 								>{candidate.label}</option
 							>{/each}</select
@@ -189,8 +191,7 @@
 				>
 			{:else}
 				<p class="ui-notice warning">
-					Des boîtes utilisent cette nature et aucune autre ne peut les accueillir. Créez d’abord
-					une autre nature.
+					{m.editing_nature_removal_blocked()}
 				</p>
 			{/if}
 		</div>
@@ -206,21 +207,21 @@
 			<div class="preview" aria-hidden="true">
 				<article class="node-card" style:--content-color={editing.draft.color}>
 					<NodeContent
-						label={editing.draft.label.trim() || 'Nature'}
-						markdown="Une boîte de cette nature, telle qu’elle apparaît sur le canvas."
+						label={editing.draft.label.trim() || m.common_nature()}
+						markdown={m.editing_nature_preview_sample()}
 						icon={editing.draft.icon || 'none'}
 					/>
 				</article>
-				<p>Aperçu</p>
+				<p>{m.editing_preview_caption()}</p>
 			</div>
 			<div class="controls">
 				{#if liveLabel && text}
 					{@render text()}
 				{:else}
 					<label class="ui-label"
-						>Libellé<input
+						>{m.editing_label()}<input
 							class="ui-field"
-							aria-label="Libellé de la nature"
+							aria-label={m.common_nature_label()}
 							value={editing.draft.label}
 							disabled={busy}
 							bind:this={labelInput}
@@ -238,24 +239,28 @@
 						onchange({ color: value.color ?? editing.draft.color, icon });
 					}}
 				/>
-				{#if busy}<p role="status">Modification envoyée…</p>{/if}
+				{#if busy}<p role="status">{m.common_change_sent()}</p>{/if}
 			</div>
 		</form>
 	{/if}
 	{#snippet footer()}
 		{#if editing === undefined}
 			<button class="ui-action create" type="button" disabled={busy} onclick={oncreate}>
-				<Icon name="phosphor:plus" /> Nouvelle nature
+				<Icon name="phosphor:plus" />
+				{m.editing_nature_create()}
 			</button>
 			<button class="ui-action" type="button" onclick={onclose}>
-				<Icon name="phosphor:x" /> Fermer
+				<Icon name="phosphor:x" />
+				{m.common_close()}
 			</button>
 		{:else if removing}
 			<button class="ui-action" type="button" onclick={leaveRemoval}>
-				<Icon name="phosphor:x" /> Annuler
+				<Icon name="phosphor:x" />
+				{m.common_cancel()}
 			</button>
 			<button class="ui-action danger" type="button" disabled={!removable} onclick={remove}>
-				<Icon name="phosphor:trash" /> Supprimer
+				<Icon name="phosphor:trash" />
+				{m.common_delete()}
 			</button>
 		{:else}
 			{#if editing.mode === NatureEditingMode.Edit}
@@ -263,15 +268,16 @@
 					class="ui-action quiet remove"
 					type="button"
 					disabled={busy}
-					title="Les boîtes concernées changent de nature"
+					title={m.editing_nature_delete_hint()}
 					onclick={enterRemoval}
 				>
-					<Icon name="phosphor:trash" /> Supprimer
+					<Icon name="phosphor:trash" />
+					{m.common_delete()}
 				</button>
 			{/if}
 			<button class="ui-action" type="button" onclick={onback}>
 				<Icon name="phosphor:arrow-left" />
-				{#if busy}Retour{:else}Annuler{/if}
+				{#if busy}{m.editing_back()}{:else}{m.common_cancel()}{/if}
 			</button>
 			<button
 				class="ui-action primary"
@@ -279,10 +285,9 @@
 				form={`nature-dialog-${formId}`}
 				disabled={!submittable}
 			>
-				{#if editing.mode === NatureEditingMode.Create}<Icon name="phosphor:plus" /> Créer{:else}<Icon
-						name="phosphor:check"
-					/>
-					{#if busy}Enregistrement…{:else}Enregistrer{/if}{/if}
+				{#if editing.mode === NatureEditingMode.Create}<Icon name="phosphor:plus" />
+					{m.common_create()}{:else}<Icon name="phosphor:check" />
+					{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}{/if}
 			</button>
 		{/if}
 	{/snippet}

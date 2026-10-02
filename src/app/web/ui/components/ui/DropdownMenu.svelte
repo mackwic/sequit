@@ -239,6 +239,31 @@
 		margin: 6px 8px;
 		background: var(--ui-border);
 	}
+	.dropdown-surface :global(.dropdown-heading) {
+		margin: 4px 10px 2px;
+		color: var(--ui-muted);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.dropdown-surface :global(.dropdown-radio) {
+		display: inline-flex;
+		flex: none;
+		box-sizing: border-box;
+		width: 14px;
+		height: 14px;
+		border: 1.5px solid var(--ui-muted);
+		border-radius: 50%;
+		transition: border-color 80ms ease-out;
+	}
+	.dropdown-surface :global([aria-checked='true'] .dropdown-radio) {
+		border-width: 4.5px;
+		border-color: var(--ui-accent);
+	}
+	.dropdown-surface :global([role='menuitemradio'][aria-checked='true']) {
+		font-weight: 550;
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.dropdown-trigger,
 		.dropdown-surface :global([role='menuitem']),

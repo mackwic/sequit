@@ -9,6 +9,7 @@ import {
 	UnsupportedLayoutPresentationError,
 	UnsupportedRegionLayoutError,
 } from '../../../lib/core/layout/root-region';
+import { m } from '../i18n/paraglide/messages';
 import { PartialRegionLayoutError, type RegionPreview } from './partial-region-layout';
 import { UnresolvedFoldedGroupLayoutError } from './unresolved-folded-group-error';
 
@@ -55,30 +56,30 @@ function typedFailureReason(cause: unknown): LayoutFailureReason | undefined {
 		return {
 			code: LayoutFailureReasonCode.GroupPassage,
 			relationId: cause.relationId,
-			message: `Aucun passage valide pour la relation « ${cause.relationId} ».`,
+			message: m.diagnostics_group_passage({ relationId: cause.relationId }),
 		};
 	if (cause instanceof UnsupportedGridCellLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedRegionLayout,
-			message: 'Cette configuration de grille n’est pas encore prise en charge.',
+			message: m.diagnostics_unsupported_grid_layout(),
 		};
 	}
 	if (cause instanceof UnknownGridCellLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnknownRegionLayout,
-			message: 'Le moteur n’a pas trouvé de géométrie validée pour cette grille.',
+			message: m.diagnostics_unknown_grid_layout(),
 		};
 	}
 	if (cause instanceof UnsupportedRegionLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedRegionLayout,
-			message: 'Cette configuration de régions n’est pas encore prise en charge.',
+			message: m.diagnostics_unsupported_region_layout(),
 		};
 	}
 	if (cause instanceof UnknownRegionLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnknownRegionLayout,
-			message: 'Le moteur n’a pas trouvé de géométrie validée pour ces régions.',
+			message: m.diagnostics_unknown_region_layout(),
 		};
 	}
 	return undefined;
@@ -90,19 +91,19 @@ function layoutFailureReason(document: LogicDocument, cause: unknown): LayoutFai
 	if (cause instanceof UnsupportedLayoutPresentationError) {
 		return {
 			code: LayoutFailureReasonCode.UnsupportedLaneLayout,
-			message: 'Cette configuration de lanes n’est pas encore prise en charge.',
+			message: m.diagnostics_unsupported_lane_layout(),
 		};
 	}
 	if (cause instanceof UnknownLayoutPresentationError) {
 		return {
 			code: LayoutFailureReasonCode.UnknownLaneLayout,
-			message: 'Le moteur n’a pas trouvé de géométrie validée pour ces lanes.',
+			message: m.diagnostics_unknown_lane_layout(),
 		};
 	}
 	if (cause instanceof UnresolvedFoldedGroupLayoutError) {
 		return {
 			code: LayoutFailureReasonCode.UnknownFoldedGroupLayout,
-			message: 'Le moteur n’a pas trouvé de géométrie validée pour ce groupe replié.',
+			message: m.diagnostics_unknown_folded_group_layout(),
 		};
 	}
 	if (cause instanceof Error) {
@@ -111,41 +112,41 @@ function layoutFailureReason(document: LogicDocument, cause: unknown): LayoutFai
 				prefix: 'Missing node measurement: ',
 				ids: document.nodes.map(({ id }) => id),
 				code: LayoutFailureReasonCode.MissingNodeMeasurement,
-				kind: 'le nœud',
+				message: m.diagnostics_missing_node_measurement,
 			},
 			{
 				prefix: 'Missing group measurement: ',
 				ids: document.groups.map(({ id }) => id),
 				code: LayoutFailureReasonCode.MissingGroupMeasurement,
-				kind: 'le groupe',
+				message: m.diagnostics_missing_group_measurement,
 			},
 			{
 				prefix: 'Missing junction measurement: ',
 				ids: document.junctions.map(({ id }) => id),
 				code: LayoutFailureReasonCode.MissingJunctionMeasurement,
-				kind: 'la jonction',
+				message: m.diagnostics_missing_junction_measurement,
 			},
 		];
-		for (const { prefix, ids, code, kind } of missing) {
+		for (const { prefix, ids, code, message } of missing) {
 			if (!cause.message.startsWith(prefix)) continue;
 			const elementId = cause.message.slice(prefix.length);
 			if (!ids.includes(elementId)) continue;
 			return {
 				code,
 				elementId,
-				message: `Mesure manquante pour ${kind} « ${elementId} ».`,
+				message: message({ elementId }),
 			};
 		}
 		if (cause.message === 'Unresolved channel routing constraint cycle') {
 			return {
 				code: LayoutFailureReasonCode.RoutingConstraintCycle,
-				message: 'Les contraintes de routage forment un cycle sans solution.',
+				message: m.diagnostics_routing_constraint_cycle(),
 			};
 		}
 	}
 	return {
 		code: LayoutFailureReasonCode.CalculationFailed,
-		message: 'Le moteur de mise en page n’a pas produit de géométrie valide.',
+		message: m.diagnostics_layout_calculation_failed(),
 	};
 }
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		normalizeParticipantName,
 		PARTICIPANT_NAME_LIMIT,
@@ -28,14 +29,13 @@
 	let action = $derived(actionFor(joining));
 
 	function descriptionFor(join: boolean): string {
-		if (join)
-			return 'Tu vas rejoindre une session partagée : ses participants voient tes modifications en direct.';
-		return 'Le document courant est publié dans une session partagée. Toute personne qui possède le lien peut le lire et le modifier en direct.';
+		if (join) return m.collaboration_start_join_description();
+		return m.collaboration_start_description();
 	}
 
 	function actionFor(join: boolean): string {
-		if (join) return 'Rejoindre la session';
-		return 'Démarrer la session';
+		if (join) return m.collaboration_start_join_action();
+		return m.collaboration_start_action();
 	}
 
 	onMount(() => {
@@ -48,7 +48,7 @@
 	}
 </script>
 
-<ModalDialog title="Session collaborative" {description} {onclose} oncommit={start}>
+<ModalDialog title={m.collaboration_start_title()} {description} {onclose} oncommit={start}>
 	<form
 		id={`collaboration-start-${inputId}`}
 		class="fields"
@@ -57,24 +57,25 @@
 			start();
 		}}
 	>
-		<label class="ui-label" for={inputId}>Ton nom</label>
+		<label class="ui-label" for={inputId}>{m.collaboration_start_name_label()}</label>
 		<input
 			class="ui-field"
 			id={inputId}
 			type="text"
 			autocomplete="nickname"
 			maxlength={PARTICIPANT_NAME_LIMIT}
-			placeholder="Tel que les autres participants le verront"
+			placeholder={m.collaboration_start_name_placeholder()}
 			bind:this={input}
 			bind:value={draft}
 		/>
 		<p class="m-0 text-xs text-[var(--ui-muted)]">
-			Le nom accompagne ton pointeur et tes sélections. Il reste modifiable pendant la session.
+			{m.collaboration_start_name_hint()}
 		</p>
 	</form>
 	{#snippet footer()}
 		<button class="ui-action" type="button" onclick={onclose}>
-			<Icon name="phosphor:x" /> Annuler
+			<Icon name="phosphor:x" />
+			{m.common_cancel()}
 		</button>
 		<button
 			class="ui-action primary"

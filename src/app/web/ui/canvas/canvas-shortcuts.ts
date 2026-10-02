@@ -1,3 +1,4 @@
+import { m } from '../../i18n/paraglide/messages';
 import {
 	isPlainKeyboardEvent,
 	isUnclaimedKeyboardEvent,
@@ -52,119 +53,147 @@ export interface CanvasShortcut {
 export const CANVAS_SHORTCUT_SECTIONS: readonly {
 	readonly section: CanvasShortcutSection;
 	readonly title: string;
-}[] = [
-	{ section: CanvasShortcutSection.Canvas, title: 'Canvas' },
-	{ section: CanvasShortcutSection.Selection, title: 'Sélection' },
-	{ section: CanvasShortcutSection.Group, title: 'Groupe' },
-	{ section: CanvasShortcutSection.Dialog, title: 'Modale' },
-];
+}[] = (
+	[
+		[CanvasShortcutSection.Canvas, m.canvas_section_canvas],
+		[CanvasShortcutSection.Selection, m.canvas_section_selection],
+		[CanvasShortcutSection.Group, m.common_group],
+		[CanvasShortcutSection.Dialog, m.canvas_section_dialog],
+	] as const
+).map(([section, title]) => ({
+	section,
+	get title(): string {
+		return title();
+	},
+}));
+
+/** A shortcut as declared: its texts are messages, read when shown in the request locale. */
+interface ShortcutDeclaration {
+	readonly id: CanvasShortcutId;
+	readonly section: CanvasShortcutSection;
+	readonly label: () => string;
+	readonly keys: CanvasShortcut['keys'];
+	readonly hint?: () => string;
+	readonly chord?: NonNullable<CanvasShortcut['chord']>;
+}
+
+function localized({ label, hint, ...shortcut }: ShortcutDeclaration): CanvasShortcut {
+	const labelled = {
+		...shortcut,
+		get label(): string {
+			return label();
+		},
+	};
+	if (hint === undefined) return labelled;
+	return Object.defineProperty(labelled, 'hint', { get: hint, enumerable: true });
+}
 
 /**
  * `Navigate`, `Select` and `Cancel` are listed for the panel only: their handlers keep
  * their own keyup and hover semantics and do not go through `matchesShortcut`.
  */
 export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>> = {
-	[CanvasShortcutId.Edit]: {
+	[CanvasShortcutId.Edit]: localized({
 		id: CanvasShortcutId.Edit,
 		section: CanvasShortcutSection.Selection,
-		label: 'Éditer',
+		label: m.canvas_shortcut_edit,
 		keys: ['e'],
-	},
-	[CanvasShortcutId.Fold]: {
+	}),
+	[CanvasShortcutId.Fold]: localized({
 		id: CanvasShortcutId.Fold,
 		section: CanvasShortcutSection.Group,
-		label: 'Replier',
+		label: m.canvas_shortcut_fold,
 		keys: ['['],
-	},
-	[CanvasShortcutId.Unfold]: {
+	}),
+	[CanvasShortcutId.Unfold]: localized({
 		id: CanvasShortcutId.Unfold,
 		section: CanvasShortcutSection.Group,
-		label: 'Déplier',
+		label: m.canvas_shortcut_unfold,
 		keys: [']'],
-	},
-	[CanvasShortcutId.Group]: {
+	}),
+	[CanvasShortcutId.Group]: localized({
 		id: CanvasShortcutId.Group,
 		section: CanvasShortcutSection.Selection,
-		label: 'Grouper',
+		label: m.canvas_shortcut_group,
 		keys: ['g'],
-	},
-	[CanvasShortcutId.Junction]: {
+	}),
+	[CanvasShortcutId.Junction]: localized({
 		id: CanvasShortcutId.Junction,
 		section: CanvasShortcutSection.Selection,
-		label: 'Jonction',
+		label: m.common_junction,
 		keys: ['j'],
-	},
-	[CanvasShortcutId.Create]: {
+	}),
+	[CanvasShortcutId.Create]: localized({
 		id: CanvasShortcutId.Create,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Nouvelle boîte',
+		label: m.common_new_box,
 		keys: ['n'],
-	},
-	[CanvasShortcutId.CreateChild]: {
+	}),
+	[CanvasShortcutId.CreateChild]: localized({
 		id: CanvasShortcutId.CreateChild,
 		section: CanvasShortcutSection.Selection,
-		label: 'Créer un enfant',
+		label: m.canvas_shortcut_create_child,
 		keys: ['c'],
-	},
-	[CanvasShortcutId.CreateSibling]: {
+	}),
+	[CanvasShortcutId.CreateSibling]: localized({
 		id: CanvasShortcutId.CreateSibling,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Nouvelle boîte sœur',
+		label: m.canvas_shortcut_create_sibling,
 		keys: ['Enter'],
 		chord: { primary: true, shift: true },
-	},
-	[CanvasShortcutId.Delete]: {
+	}),
+	[CanvasShortcutId.Delete]: localized({
 		id: CanvasShortcutId.Delete,
 		section: CanvasShortcutSection.Selection,
-		label: 'Supprimer',
+		label: m.common_delete,
 		keys: ['Delete', 'Backspace'],
-	},
-	[CanvasShortcutId.Undo]: {
+	}),
+	[CanvasShortcutId.Undo]: localized({
 		id: CanvasShortcutId.Undo,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Annuler',
+		label: m.canvas_shortcut_undo,
 		keys: ['z'],
 		chord: { primary: true },
-	},
-	[CanvasShortcutId.Redo]: {
+	}),
+	[CanvasShortcutId.Redo]: localized({
 		id: CanvasShortcutId.Redo,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Rétablir',
+		label: m.canvas_shortcut_redo,
 		keys: ['z'],
 		chord: { primary: true, shift: true },
-	},
-	[CanvasShortcutId.Confirm]: {
+	}),
+	[CanvasShortcutId.Confirm]: localized({
 		id: CanvasShortcutId.Confirm,
 		section: CanvasShortcutSection.Dialog,
-		label: 'Valider',
+		label: m.canvas_shortcut_confirm,
 		keys: ['Enter'],
-		chord: { shift: true },
-	},
-	[CanvasShortcutId.Help]: {
+		chord: { primary: true },
+	}),
+	[CanvasShortcutId.Help]: localized({
 		id: CanvasShortcutId.Help,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Raccourcis clavier',
+		label: m.common_keyboard_shortcuts,
 		keys: ['?'],
-	},
-	[CanvasShortcutId.Navigate]: {
+	}),
+	[CanvasShortcutId.Navigate]: localized({
 		id: CanvasShortcutId.Navigate,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Aller à l’élément voisin',
+		label: m.canvas_shortcut_navigate,
 		keys: ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'],
-		hint: 'Flèches',
-	},
-	[CanvasShortcutId.Select]: {
+		hint: m.canvas_key_arrows,
+	}),
+	[CanvasShortcutId.Select]: localized({
 		id: CanvasShortcutId.Select,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Sélectionner / étendre',
+		label: m.canvas_shortcut_select,
 		keys: [' '],
-	},
-	[CanvasShortcutId.Cancel]: {
+	}),
+	[CanvasShortcutId.Cancel]: localized({
 		id: CanvasShortcutId.Cancel,
 		section: CanvasShortcutSection.Canvas,
-		label: 'Annuler le geste, fermer',
+		label: m.canvas_shortcut_cancel,
 		keys: ['Escape'],
-	},
+	}),
 };
 
 /** The entries of one panel section, in catalogue order. */
@@ -196,35 +225,35 @@ const CURRENT_PLATFORM = detectShortcutPlatform(globalThis.navigator);
 
 type ChordModifier = keyof NonNullable<CanvasShortcut['chord']>;
 
-/** How a platform prints its keys: symbols on macOS, words elsewhere. */
+/** How a platform prints its keys: symbols on macOS, words elsewhere. Words are messages. */
 interface KeyCaps {
 	/** Modifiers in the order the platform writes them: ⇧⌘Z on macOS, Ctrl+Maj+Z elsewhere. */
-	readonly modifiers: readonly (readonly [ChordModifier, string])[];
+	readonly modifiers: readonly (readonly [ChordModifier, () => string])[];
 	/** Named keys; any other key is shown upper-cased. */
-	readonly keys: Readonly<Record<string, string>>;
+	readonly keys: Readonly<Record<string, () => string>>;
 	/** What joins the caps in one line of text. */
 	readonly joiner: string;
 }
 
-const WORD_KEYS: Readonly<Record<string, string>> = {
-	Delete: 'Suppr',
-	Enter: 'Entrée',
-	Escape: 'Échap',
-	' ': 'Espace',
+const WORD_KEYS: Readonly<Record<string, () => string>> = {
+	Delete: m.canvas_key_delete,
+	Enter: m.canvas_key_enter,
+	Escape: m.canvas_key_escape,
+	' ': m.canvas_key_space,
 };
 const KEY_CAPS: Readonly<Record<ShortcutPlatform, KeyCaps>> = {
 	[ShortcutPlatform.Mac]: {
 		modifiers: [
-			['shift', '⇧'],
-			['primary', '⌘'],
+			['shift', () => '⇧'],
+			['primary', () => '⌘'],
 		],
-		keys: { ...WORD_KEYS, Delete: '⌫', Enter: '↵' },
+		keys: { ...WORD_KEYS, Delete: () => '⌫', Enter: () => '↵' },
 		joiner: '',
 	},
 	[ShortcutPlatform.Other]: {
 		modifiers: [
-			['primary', 'Ctrl'],
-			['shift', 'Maj'],
+			['primary', m.canvas_key_ctrl],
+			['shift', m.canvas_key_shift],
 		],
 		keys: WORD_KEYS,
 		joiner: '+',
@@ -235,8 +264,8 @@ const KEY_WORDS: Readonly<Record<ShortcutPlatform, KeyCaps>> = {
 	[ShortcutPlatform.Mac]: {
 		...KEY_CAPS[ShortcutPlatform.Other],
 		modifiers: [
-			['primary', 'Cmd'],
-			['shift', 'Maj'],
+			['primary', m.canvas_key_cmd],
+			['shift', m.canvas_key_shift],
 		],
 	},
 	[ShortcutPlatform.Other]: KEY_CAPS[ShortcutPlatform.Other],
@@ -276,8 +305,8 @@ function caps(shortcut: CanvasShortcut, style: KeyCaps): readonly string[] {
 	const [key] = shortcut.keys;
 	const modifiers = style.modifiers
 		.filter(([modifier]) => shortcut.chord?.[modifier] === true)
-		.map(([, cap]) => cap);
-	return [...modifiers, style.keys[key] ?? key.toUpperCase()];
+		.map(([, cap]) => cap());
+	return [...modifiers, style.keys[key]?.() ?? key.toUpperCase()];
 }
 
 /** One cap per key, modifiers first: ['⇧', '⌘', '↵'] on macOS, ['Ctrl', 'Maj', 'Entrée'] elsewhere. */
@@ -300,7 +329,7 @@ export function shortcutWords(shortcut: CanvasShortcut, platform = CURRENT_PLATF
 
 /** `title` text of every action button: the label, a middle dot, then the hint. */
 export function shortcutTitle(shortcut: CanvasShortcut, platform = CURRENT_PLATFORM): string {
-	return `${shortcut.label} · ${shortcutHint(shortcut, platform)}`;
+	return m.canvas_shortcut_title({ label: shortcut.label, hint: shortcutHint(shortcut, platform) });
 }
 
 /** WAI-ARIA `aria-keyshortcuts`: alternatives separated by spaces, chords joined with `+`. */

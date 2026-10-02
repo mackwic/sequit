@@ -8,9 +8,10 @@ import {
 	LayoutDirection,
 } from '../../../../src/lib/core/document/logic-document';
 import {
+	CommandRefusalCode,
 	ConflictCode,
 	SessionFailureCode,
-} from '../../../../src/lib/infrastructure/collaboration/session-failure';
+} from '../../../../src/lib/infrastructure/collaboration/session-reasons';
 import {
 	decodeSessionEnvelope,
 	decodeSessionMessage,
@@ -77,17 +78,29 @@ const commandMessages: SessionMessage[] = [
 		],
 	},
 	{ type: SessionMessageKind.Commit, commit: 1, update: new Uint8Array([0, 0]) },
-	{ type: SessionMessageKind.Commit, commit: 1, id: 'gesture', update: new Uint8Array([0, 0]) },
-	{ type: SessionMessageKind.Reject, message: 'Cette relation créerait un cycle.' },
+	{ type: SessionMessageKind.Commit, id: 'gesture', commit: 1, update: new Uint8Array([0, 0]) },
 	{
 		type: SessionMessageKind.Reject,
 		code: SessionFailureCode.InvalidDocument,
-		message: 'Invalid document',
+		reason: { code: SessionFailureCode.InvalidDocument, details: ['Invalid document'] },
 	},
 	{
 		type: SessionMessageKind.Retry,
 		code: SessionFailureCode.StorageUnavailable,
-		message: 'Try again',
+		reason: { code: SessionFailureCode.StorageUnavailable },
+	},
+	{
+		type: SessionMessageKind.Conflict,
+		code: ConflictCode.CommandConflict,
+		reason: { code: CommandRefusalCode.IdentifierExists },
+		id: 'command',
+		lastAcceptedSequence: 3,
+	},
+	{
+		type: SessionMessageKind.Conflict,
+		code: ConflictCode.TextTargetGone,
+		id: 'text',
+		target: { kind: SharedElementKind.Node, id: 'A' },
 	},
 	{
 		type: SessionMessageKind.Presence,
@@ -101,9 +114,18 @@ const commandMessages: SessionMessage[] = [
 		],
 	},
 ];
+const v5CompatibleMessages = commandMessages.filter(
+	(message) =>
+		message.type !== SessionMessageKind.Reject &&
+		message.type !== SessionMessageKind.Retry &&
+		message.type !== SessionMessageKind.Conflict,
+);
 
 function frame(message: unknown): Uint8Array {
 	return encode([SESSION_WIRE_VERSION, message]);
+}
+function legacyFrame(message: unknown): Uint8Array {
+	return encode([LEGACY_SESSION_WIRE_VERSION, message]);
 }
 
 function invalidCommand(command: unknown): Uint8Array {
@@ -141,92 +163,359 @@ describe('CBOR session protocol', () => {
 			expect(decodeSessionMessage(bytes)).toEqual(message);
 		},
 	);
+	it.each(v5CompatibleMessages)(
+		'preserves v5 $type fields through compatibility encoding',
+		(message) => {
+			expect(
+				decodeSessionEnvelope(encodeSessionMessage(message, LEGACY_SESSION_WIRE_VERSION)),
+			).toEqual({ version: LEGACY_SESSION_WIRE_VERSION, message });
+		},
+	);
 
-	it('accepts versioned conflicts while preserving the v4 terminal contract', () => {
-		const refusal = {
+	it('converts v5 rejects and conflicts into structured v6 reasons', () => {
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({ type: SessionMessageKind.Reject, message: 'Legacy reject' }),
+			),
+		).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: {
+				type: SessionMessageKind.Reject,
+				code: SessionFailureCode.InvalidMessage,
+				reason: { code: SessionFailureCode.InvalidMessage, details: ['Legacy reject'] },
+			},
+		});
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Reject,
+					code: SessionFailureCode.InvalidDocument,
+					message: 'Legacy document failure',
+				}),
+			),
+		).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: {
+				type: SessionMessageKind.Reject,
+				code: SessionFailureCode.InvalidDocument,
+				reason: {
+					code: SessionFailureCode.InvalidDocument,
+					details: ['Legacy document failure'],
+				},
+			},
+		});
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Retry,
+					code: SessionFailureCode.StorageUnavailable,
+					message: 'Ancien message traduit',
+				}),
+			).message,
+		).toEqual({
+			type: SessionMessageKind.Retry,
+			code: SessionFailureCode.StorageUnavailable,
+			reason: { code: SessionFailureCode.StorageUnavailable },
+		});
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Reject,
+					code: SessionFailureCode.CorruptCommandReceipt,
+					message: 'Reçu de commande corrompu pour la session session-42.',
+				}),
+			).message,
+		).toEqual({
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.CorruptCommandReceipt,
+			reason: { code: SessionFailureCode.CorruptCommandReceipt, sessionId: 'session-42' },
+		});
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Conflict,
+					code: ConflictCode.CommandConflict,
+					message: 'Moved',
+					id: 'command',
+					lastAcceptedSequence: 3,
+				}),
+			).message,
+		).toEqual({
 			type: SessionMessageKind.Conflict,
-			id: 'command',
 			code: ConflictCode.CommandConflict,
-			message: 'Moved',
+			reason: {
+				code: CommandRefusalCode.InvalidDocument,
+				details: ['Moved'],
+			},
+			id: 'command',
 			lastAcceptedSequence: 3,
-		} as const;
-		const staleText = {
+		});
+		expect(
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Conflict,
+					code: ConflictCode.TextTargetGone,
+					message: 'Deleted box',
+					id: 'text',
+					target: { kind: SharedElementKind.Node, id: 'A' },
+				}),
+			).message,
+		).toEqual({
 			type: SessionMessageKind.Conflict,
 			code: ConflictCode.TextTargetGone,
 			id: 'text',
-			message: 'Deleted box',
 			target: { kind: SharedElementKind.Node, id: 'A' },
-		} as const;
-		expect(decodeSessionMessage(encodeSessionMessage(staleText))).toEqual(staleText);
-		expect(decodeSessionMessage(encodeSessionMessage(refusal))).toEqual(refusal);
-		expect(() => encodeSessionMessage(refusal, LEGACY_SESSION_WIRE_VERSION)).toThrow(
-			'Legacy clients',
-		);
-		const oldText = encodeSessionMessage(
-			{
-				type: SessionMessageKind.Change,
-				id: 'text',
-				sessionId: 'session',
-				update: new Uint8Array([0, 0]),
-				target: { kind: SharedElementKind.Node, id: 'A' },
-				field: 'markdown',
-				textId: { client: 7, clock: 42 },
-			},
-			LEGACY_SESSION_WIRE_VERSION,
-		);
-		expect(decodeSessionEnvelope(oldText)).toEqual({
-			version: LEGACY_SESSION_WIRE_VERSION,
-			message: { type: SessionMessageKind.Change, update: new Uint8Array([0, 0]) },
 		});
-		expect(() =>
-			decodeSessionMessage(frame({ type: 'conflict', code: 'unknown', message: 'Moved' })),
-		).toThrow('Unknown conflict code');
-		expect(() => decodeSessionEnvelope(encode([LEGACY_SESSION_WIRE_VERSION, refusal]))).toThrow(
-			'Unsupported legacy message',
-		);
-		const oldCommand = {
-			type: SessionMessageKind.Change,
-			id: 'legacy-command',
-			sessionId: 'legacy-session',
-			sequence: 1,
-			commands: [{ op: SharedCommandKind.Ungroup, id: 'G' }],
-		} as const;
-		expect(
-			decodeSessionEnvelope(encodeSessionMessage(oldCommand, LEGACY_SESSION_WIRE_VERSION)),
-		).toEqual({
-			version: LEGACY_SESSION_WIRE_VERSION,
-			message: oldCommand,
-		});
-		expect(() =>
-			decodeSessionEnvelope(
-				encode([
-					LEGACY_SESSION_WIRE_VERSION,
-					{
-						type: SessionMessageKind.Change,
-						id: 'not-a-legacy-text-id',
-						update: new Uint8Array([0, 0]),
-						sessionId: 'session',
-						target: { kind: SharedElementKind.Node, id: 'A' },
-						field: 'markdown',
-						textId: { client: 7, clock: 42 },
-					},
-				]),
-			),
-		).toThrow('Unsupported legacy message');
 	});
 
 	it.each([
-		{ code: ConflictCode.CommandConflict, message: 'Moved', lastAcceptedSequence: 0 },
-		{ code: ConflictCode.CommandConflict, message: 'Moved', id: 'command' },
+		{
+			code: SessionFailureCode.InvalidMessage,
+			message: 'Legacy invalid message',
+			reason: {
+				code: SessionFailureCode.InvalidMessage,
+				details: ['Legacy invalid message'],
+			},
+		},
+		{
+			code: SessionFailureCode.CommandGap,
+			message: 'Legacy retry',
+			reason: { code: SessionFailureCode.CommandGap },
+		},
+		{
+			code: SessionFailureCode.RepeatedCommandRefusal,
+			message: 'Legacy repeated refusal',
+			reason: { code: SessionFailureCode.RepeatedCommandRefusal },
+		},
+	])(
+		'maps v5 rejection codes with code-specific detail handling: $code',
+		({ code, message, reason }) => {
+			expect(
+				decodeSessionEnvelope(legacyFrame({ type: SessionMessageKind.Reject, code, message }))
+					.message,
+			).toEqual({ type: SessionMessageKind.Reject, code, reason });
+		},
+	);
+	it('serves v5 peers with neutral reasons and preserves v5 identified-text fields', () => {
+		const rejected = {
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.InvalidDocument,
+			reason: {
+				code: SessionFailureCode.InvalidDocument,
+				details: ['Stored document; is invalid', 'Secondary detail'],
+			},
+		} as const;
+		const legacyRejectionFrame = encodeSessionMessage(rejected, LEGACY_SESSION_WIRE_VERSION);
+		expect(decode(legacyRejectionFrame)).toEqual([
+			LEGACY_SESSION_WIRE_VERSION,
+			{
+				type: SessionMessageKind.Reject,
+				code: SessionFailureCode.InvalidDocument,
+				message: 'invalid-document: ["Stored document; is invalid","Secondary detail"]',
+			},
+		]);
+		expect(decodeSessionEnvelope(legacyRejectionFrame)).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: rejected,
+		});
+		const emptyRejection = {
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.InvalidDocument,
+			reason: { code: SessionFailureCode.InvalidDocument, details: [] },
+		} as const;
+		expect(
+			decodeSessionMessage(encodeSessionMessage(emptyRejection, LEGACY_SESSION_WIRE_VERSION)),
+		).toEqual(emptyRejection);
+
+		const commandConflict = {
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.InvalidCommand,
+			reason: { code: CommandRefusalCode.IdentifierExists },
+			id: 'command',
+			lastAcceptedSequence: 4,
+		} as const;
+		const legacyConflictFrame = encodeSessionMessage(commandConflict, LEGACY_SESSION_WIRE_VERSION);
+		expect(decode(legacyConflictFrame)).toEqual([
+			LEGACY_SESSION_WIRE_VERSION,
+			{
+				type: SessionMessageKind.Conflict,
+				code: ConflictCode.InvalidCommand,
+				message: 'identifier-exists',
+				id: 'command',
+				lastAcceptedSequence: 4,
+			},
+		]);
+		expect(decodeSessionEnvelope(legacyConflictFrame).message).toEqual({
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.InvalidCommand,
+			reason: { code: CommandRefusalCode.InvalidDocument, details: ['identifier-exists'] },
+			id: 'command',
+			lastAcceptedSequence: 4,
+		});
+
+		const receiptRejection = {
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.CorruptCommandReceipt,
+			reason: { code: SessionFailureCode.CorruptCommandReceipt, sessionId: 'session-42' },
+		} as const;
+		const legacyReceiptFrame = encodeSessionMessage(receiptRejection, LEGACY_SESSION_WIRE_VERSION);
+		expect(decode(legacyReceiptFrame)).toEqual([
+			LEGACY_SESSION_WIRE_VERSION,
+			{
+				type: SessionMessageKind.Reject,
+				code: SessionFailureCode.CorruptCommandReceipt,
+				message: 'corrupt-command-receipt:session-42',
+			},
+		]);
+		expect(decodeSessionEnvelope(legacyReceiptFrame).message).toEqual(receiptRejection);
+
+		const textConflict = {
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.TextTargetGone,
+			id: 'text',
+			target: { kind: SharedElementKind.Node, id: 'A' },
+		} as const;
+		const legacyTextConflictFrame = encodeSessionMessage(textConflict, LEGACY_SESSION_WIRE_VERSION);
+		expect(decode(legacyTextConflictFrame)).toEqual([
+			LEGACY_SESSION_WIRE_VERSION,
+			{
+				type: SessionMessageKind.Conflict,
+				code: ConflictCode.TextTargetGone,
+				message: ConflictCode.TextTargetGone,
+				id: 'text',
+				target: { kind: SharedElementKind.Node, id: 'A' },
+			},
+		]);
+		expect(decodeSessionEnvelope(legacyTextConflictFrame).message).toEqual(textConflict);
+
+		const identifiedText = {
+			type: SessionMessageKind.Change,
+			id: 'text',
+			sessionId: 'session',
+			update: new Uint8Array([0, 0]),
+			target: { kind: SharedElementKind.Node, id: 'A' },
+			field: 'markdown',
+			textId: { client: 7, clock: 42 },
+		} as const;
+		const legacyTextFrame = encodeSessionMessage(identifiedText, LEGACY_SESSION_WIRE_VERSION);
+		expect(decode(legacyTextFrame)).toEqual([LEGACY_SESSION_WIRE_VERSION, identifiedText]);
+		expect(decodeSessionEnvelope(legacyTextFrame)).toEqual({
+			version: LEGACY_SESSION_WIRE_VERSION,
+			message: identifiedText,
+		});
+		expect(() =>
+			decodeSessionEnvelope(encode([4, { type: SessionMessageKind.Sync, payload: [] }])),
+		).toThrow('Unsupported session version');
+	});
+	it('rejects v5 protocol values that are no longer accepted as legacy messages', () => {
+		expect(() =>
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Reject,
+					code: 'unknown-failure',
+					message: 'Legacy failure',
+				}),
+			),
+		).toThrow('Unknown session failure code');
+		expect(() =>
+			decodeSessionEnvelope(
+				legacyFrame({
+					type: SessionMessageKind.Retry,
+					code: SessionFailureCode.CommandGap,
+					message: 'Legacy retry',
+					extra: true,
+				}),
+			),
+		).toThrow('Unexpected message property');
+	});
+
+	const invalidStructuredMessages = [
+		{
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.InvalidMessage,
+			reason: { code: 'unknown-failure', details: [] },
+		},
+		{
+			type: SessionMessageKind.Reject,
+			code: 'unknown-failure',
+			reason: { code: SessionFailureCode.InvalidMessage, details: [] },
+		},
+		{
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.InvalidMessage,
+			reason: { code: SessionFailureCode.InvalidMessage, details: [], extra: true },
+		},
+		{
+			type: SessionMessageKind.Retry,
+			code: SessionFailureCode.InvalidDocument,
+			reason: { code: SessionFailureCode.InvalidMessage, details: [] },
+		},
+		{
+			type: SessionMessageKind.Conflict,
+			code: 'unknown-conflict',
+			reason: { code: CommandRefusalCode.IdentifierExists },
+			id: 'command',
+			lastAcceptedSequence: 3,
+		},
+		{
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.CommandConflict,
+			reason: { code: 'unknown-refusal' },
+			id: 'command',
+			lastAcceptedSequence: 3,
+		},
+		{
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.CommandConflict,
+			reason: { code: CommandRefusalCode.IdentifierExists, extra: true },
+			id: 'command',
+			lastAcceptedSequence: 3,
+		},
+		{
+			type: SessionMessageKind.Conflict,
+			code: ConflictCode.TextTargetGone,
+			message: 'Unexpected legacy text',
+			id: 'text',
+			target: { kind: SharedElementKind.Node, id: 'A' },
+		},
+	];
+
+	it.each(invalidStructuredMessages)(
+		'rejects invalid structured reasons on decode: %j',
+		(message) => {
+			expect(() => decodeSessionMessage(frame(message))).toThrow();
+		},
+	);
+
+	it.each(invalidStructuredMessages)(
+		'rejects invalid structured reasons on encode: %j',
+		(message) => {
+			expect(() => {
+				Reflect.apply(encodeSessionMessage, undefined, [message]);
+			}).toThrow();
+		},
+	);
+
+	it.each([
+		{
+			code: ConflictCode.CommandConflict,
+			reason: { code: CommandRefusalCode.IdentifierExists },
+			lastAcceptedSequence: 0,
+		},
+		{
+			code: ConflictCode.CommandConflict,
+			reason: { code: CommandRefusalCode.IdentifierExists },
+			id: 'command',
+		},
 		{
 			code: ConflictCode.InvalidCommand,
-			message: 'Cycle',
+			reason: { code: CommandRefusalCode.IdentifierExists },
 			id: 'command',
 			lastAcceptedSequence: -1,
 		},
 		{
 			code: ConflictCode.CommandConflict,
-			message: 'Moved',
+			reason: { code: CommandRefusalCode.IdentifierExists },
 			id: 'command',
 			lastAcceptedSequence: 0,
 			targetId: 'B',
@@ -256,8 +545,12 @@ describe('CBOR session protocol', () => {
 		{ type: 'sync', payload: 'base64' },
 		{ type: 'commit', commit: -1, update: new Uint8Array() },
 		{ type: 'commit', commit: 0.5, update: new Uint8Array() },
-		{ type: 'reject', message: 5 },
-		{ type: 'retry', message: 'Try again', code: 'unknown' },
+		{ type: 'reject', code: 'unknown', reason: { code: 'unknown', details: [] } },
+		{
+			type: 'retry',
+			code: SessionFailureCode.StorageUnavailable,
+			reason: { code: SessionFailureCode.StorageUnavailable, extra: true },
+		},
 		{ type: 'presence', participants: [{ clientId: 1, name: 'A', color: '#000', selected: 5 }] },
 		{ type: 'presence', participants: [{ clientId: 1, name: 'A', color: '#000', selected: [5] }] },
 	])('rejects malformed messages before dispatch: %j', (message) => {
@@ -296,7 +589,11 @@ describe('CBOR session protocol', () => {
 		).toThrow('too large');
 		expect(() => decodeSessionMessage(encode([999, {}]))).toThrow('Unsupported');
 		expect(() => decodeSessionMessage(encode({}))).toThrow('envelope');
-		const valid = frame({ type: 'reject', message: 'error' });
+		const valid = frame({
+			type: SessionMessageKind.Reject,
+			code: SessionFailureCode.InvalidMessage,
+			reason: { code: SessionFailureCode.InvalidMessage, details: ['error'] },
+		});
 		expect(() => decodeSessionMessage(new Uint8Array([...valid, 0]))).toThrow();
 		expect(() =>
 			decodeSessionMessage(

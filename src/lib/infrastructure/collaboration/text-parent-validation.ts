@@ -1,9 +1,18 @@
 import * as Y from 'yjs';
 
 import { SharedElementKind } from '../document/shared-document-command';
+import { TerminalSessionFailure } from './session-failure';
+import { SessionFailureCode } from './session-reasons';
 import type { TextTargetReference } from './session-wire';
 import { elementCollection } from './shared-element';
 import { YjsCollection } from './yjs-document-schema';
+
+function invalidDocument(detail: string): never {
+	throw new TerminalSessionFailure(SessionFailureCode.InvalidDocument, {
+		code: SessionFailureCode.InvalidDocument,
+		details: [detail],
+	});
+}
 
 interface TextDeletionRange {
 	readonly clock: number;
@@ -93,35 +102,36 @@ function declaredText(
 	parent: Parent,
 ): void {
 	if (parent === null) return; // GC erased the authoritative ancestor, not just its payload.
-	if (!(parent instanceof Y.Text)) throw new Error('Le texte vise un autre conteneur.');
+	if (!(parent instanceof Y.Text)) invalidDocument('Text update parent is not a Y.Text.');
 	const textItem = parent._item;
-	if (textItem === null) throw new Error('Le texte vise un champ non intégré.');
+	if (textItem === null) invalidDocument('Text target is not integrated.');
 	const stored = structAt(context, textItem.id);
 	if (compacted(context, stored)) return;
-	if (!(stored instanceof Y.Item)) throw new Error('Le texte vise un champ inconnu.');
+	if (!(stored instanceof Y.Item)) invalidDocument('Text target item is unknown.');
 	if (
 		textItem.id.client !== reference.textId.client ||
 		textItem.id.clock !== reference.textId.clock
 	)
-		throw new Error('Le texte vise un autre champ.');
-	if (textItem.parentSub !== reference.field) throw new Error('Le texte vise un autre champ.');
+		invalidDocument('Text target ID does not match the referenced field.');
+	if (textItem.parentSub !== reference.field)
+		invalidDocument('Text target field does not match the referenced field.');
 	const owner = textItem.parent;
-	if (!(owner instanceof Y.Map)) throw new Error('Le texte vise un conteneur non déclaré.');
+	if (!(owner instanceof Y.Map)) invalidDocument('Text target parent is not a declared Y.Map.');
 	if (reference.target.kind === SharedElementKind.Document) {
 		if (
 			owner !== context.document.getMap(YjsCollection.Meta) ||
 			owner.get('id') !== reference.target.id
 		)
-			throw new Error('Le titre vise un autre document.');
+			invalidDocument('Text title belongs to another document.');
 		return;
 	}
 	const ownerItem = owner._item;
-	if (ownerItem === null) throw new Error('Le texte vise une entité non intégrée.');
+	if (ownerItem === null) invalidDocument('Text target entity is not integrated.');
 	if (compacted(context, structAt(context, ownerItem.id))) return;
 	if (ownerItem.parentSub !== reference.target.id)
-		throw new Error('Le texte vise une autre entité.');
+		invalidDocument('Text target belongs to another entity.');
 	if (ownerItem.parent !== elementCollection(context.document, reference.target.kind))
-		throw new Error('Le texte vise une autre collection.');
+		invalidDocument('Text target belongs to another collection.');
 }
 
 function contextFor(document: Y.Doc, structs: readonly Y.AbstractStruct[]): ParentContext {
@@ -142,7 +152,7 @@ export function assertTextStructParents(
 ): void {
 	const context = contextFor(document, structs);
 	for (const struct of structs) {
-		if (!(struct instanceof Y.Item)) throw new Error('La proposition contient une structure.');
+		if (!(struct instanceof Y.Item)) invalidDocument('Text proposal contains a structural item.');
 		const parent = parentOf(context, struct, 0);
 		declaredText(context, reference, parent);
 		if (struct.parent !== null) continue;
@@ -162,12 +172,12 @@ function assertDeletionRange(
 		if (item.id.clock >= end) break;
 		if (item.id.clock + item.length <= range.clock) continue;
 		if (compacted(context, item)) continue;
-		if (!(item instanceof Y.Item)) throw new Error('La suppression vise une structure.');
+		if (!(item instanceof Y.Item)) invalidDocument('Text deletion targets a structural item.');
 		const textContent =
 			item.content instanceof Y.ContentString || item.content instanceof Y.ContentDeleted;
-		if (!textContent) throw new Error('La suppression vise une structure.');
+		if (!textContent) invalidDocument('Text deletion targets non-text content.');
 		if (!(item.parent instanceof Y.AbstractType))
-			throw new Error('La suppression vise un parent inconnu.');
+			invalidDocument('Text deletion parent is unknown.');
 		declaredText(context, reference, item.parent);
 	}
 }
@@ -181,7 +191,7 @@ export function assertKnownTextDeletions(
 	const context = contextFor(document, []);
 	for (const [client, ranges] of deletions) {
 		const structs = document.store.clients.get(client);
-		if (structs === undefined) throw new Error('La suppression vise un historique inconnu.');
+		if (structs === undefined) invalidDocument('Text deletion targets unknown history.');
 		for (const range of ranges) assertDeletionRange(context, reference, structs, range);
 	}
 }

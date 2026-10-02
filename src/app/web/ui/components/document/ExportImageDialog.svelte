@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
+	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		type CanvasImage,
 		canvasSelectedKeys,
@@ -44,7 +45,10 @@
 	});
 	let pixelSize = $derived.by(() => {
 		if (image === undefined) return undefined;
-		return `${image.size.width * scale} × ${image.size.height * scale} px`;
+		return m.document_export_pixel_size({
+			width: image.size.width * scale,
+			height: image.size.height * scale,
+		});
 	});
 	let name = $derived(filename.trim() || stem);
 
@@ -58,7 +62,7 @@
 				if (current === generation) image = rendered;
 			})
 			.catch(() => {
-				if (current === generation) announce('error', 'Le canvas n’a pas pu être rendu en image.');
+				if (current === generation) announce('error', m.document_export_render_error());
 			});
 	});
 
@@ -87,7 +91,7 @@
 			await action(image);
 			announce('done', done);
 		} catch {
-			announce('error', 'L’export a échoué.');
+			announce('error', m.document_export_failed());
 		} finally {
 			busy = false;
 		}
@@ -96,14 +100,14 @@
 	function downloadPng(): void {
 		void perform(async (picture) => {
 			downloadBlob(await rasterizeCanvasImage(picture, scale), `${name}.png`);
-		}, 'PNG téléchargé.');
+		}, m.document_export_png_downloaded());
 	}
 
 	function downloadSvg(): void {
 		void perform((picture) => {
 			downloadBlob(new Blob([picture.svg], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`);
 			return Promise.resolve();
-		}, 'SVG téléchargé.');
+		}, m.document_export_svg_downloaded());
 	}
 
 	function copy(): void {
@@ -113,13 +117,13 @@
 				navigator.clipboard.write([
 					new ClipboardItem({ 'image/png': rasterizeCanvasImage(picture, scale) }),
 				]),
-			'Image copiée dans le presse-papiers.',
+			m.document_export_copied(),
 		);
 	}
 </script>
 
 <ModalDialog
-	title="Exporter l’image"
+	title={m.document_export_title()}
 	width="wide"
 	data={{ 'data-export-image-dialog': '' }}
 	{onclose}
@@ -129,13 +133,13 @@
 		<div class="preview-column">
 			<div class="preview" class:transparent={!background} data-export-preview>
 				{#if previewUrl !== undefined}
-					<img src={previewUrl} alt="Aperçu de l’export" />
+					<img src={previewUrl} alt={m.document_export_preview_alt()} />
 				{:else}
-					<p class="m-0 text-sm text-[var(--ui-muted)]">Rendu de l’aperçu…</p>
+					<p class="m-0 text-sm text-[var(--ui-muted)]">{m.document_export_preview_loading()}</p>
 				{/if}
 			</div>
 			<label class="ui-label" for={`export-name-${id}`}
-				>Nom du fichier<input
+				>{m.document_export_filename()}<input
 					class="ui-field"
 					id={`export-name-${id}`}
 					type="text"
@@ -147,7 +151,7 @@
 		</div>
 		<div class="options">
 			<ToggleSwitch
-				label="Uniquement la sélection"
+				label={m.document_export_selection_only()}
 				checked={selectionOnly}
 				disabled={selection.size === 0}
 				onchange={(value: boolean) => {
@@ -155,14 +159,14 @@
 				}}
 			/>
 			<ToggleSwitch
-				label="Fond"
+				label={m.document_export_background()}
 				checked={background}
 				onchange={(value: boolean) => {
 					background = value;
 				}}
 			/>
 			<div class="scale">
-				<span class="label" id={`export-scale-${id}`}>Échelle</span>
+				<span class="label" id={`export-scale-${id}`}>{m.document_export_scale()}</span>
 				<div class="segments" role="radiogroup" aria-labelledby={`export-scale-${id}`}>
 					{#each EXPORT_SCALES as option (option)}
 						<button
@@ -171,7 +175,7 @@
 							aria-checked={scale === option}
 							onclick={() => {
 								scale = option;
-							}}>{option}×</button
+							}}>{m.document_export_scale_option({ option })}</button
 						>
 					{/each}
 				</div>
@@ -191,7 +195,8 @@
 			disabled={image === undefined || busy}
 			onclick={downloadPng}
 		>
-			<Icon name="phosphor:download-simple" /> PNG
+			<Icon name="phosphor:download-simple" />
+			{m.document_export_download_png()}
 		</button>
 		<button
 			class="ui-action primary"
@@ -199,7 +204,8 @@
 			disabled={image === undefined || busy}
 			onclick={downloadSvg}
 		>
-			<Icon name="phosphor:download-simple" /> SVG
+			<Icon name="phosphor:download-simple" />
+			{m.document_export_download_svg()}
 		</button>
 		{#if canCopy}
 			<button
@@ -208,7 +214,8 @@
 				disabled={image === undefined || busy}
 				onclick={copy}
 			>
-				<Icon name="phosphor:copy" /> Copier dans le presse-papiers
+				<Icon name="phosphor:copy" />
+				{m.document_export_copy()}
 			</button>
 		{/if}
 	{/snippet}
