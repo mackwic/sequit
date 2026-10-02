@@ -1,6 +1,13 @@
 import { defined } from '../../document/logic-document';
-import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
+import { RAIL_SPACING } from '../layout-settings';
 import type { Point } from '../layout-types';
+import {
+	boundaryKey,
+	boundaryTrack,
+	type BoundaryUse,
+	corridorTrack,
+	type PlacedBoundaries,
+} from './shared-lane-boundaries';
 import {
 	compareLayoutOrder,
 	type LaneSide,
@@ -45,8 +52,7 @@ export interface LaneBands {
 	readonly detours: readonly BandDetour[];
 	/** Cross width of the corridor after each slot of a band, keyed by `[lane, row, slot]`. */
 	readonly slotGaps: ReadonlyMap<string, number>;
-	/** Long size of each row boundary: before row 0, between two rows, after the last row. */
-	readonly boundaries: readonly number[];
+	readonly rowCount: number;
 }
 
 /** The way a port reaches its lane gutter: the points from its face, then the long it arrives at. */
@@ -71,7 +77,7 @@ function detourCorridors(
 	if (direction === 1) boundaryIndex = endpoint.row + 1;
 	return {
 		gap: slotGapKey(endpoint.laneIndex, endpoint.row, gapSlot),
-		boundary: JSON.stringify([endpoint.laneIndex, boundaryIndex]),
+		boundary: boundaryKey(endpoint.laneIndex, boundaryIndex),
 		boundaryIndex,
 	};
 }
@@ -105,14 +111,17 @@ function groupBands(input: SharedLaneInput): {
 	return { bands, slots, rowCount };
 }
 
-/** Both ports of every plan: incidence key, endpoint and lateral face. */
+/** Both lateral ports of every plan that leaves its lane: incidence key, endpoint and face. */
 function portIncidences(
 	input: SharedLaneInput,
 ): readonly { readonly key: string; readonly id: string; readonly side: LaneSide }[] {
-	return input.plans.flatMap((plan) => [
-		{ key: incidenceKey(plan.id, PortRole.Source), id: plan.from, side: plan.sourceSide },
-		{ key: incidenceKey(plan.id, PortRole.Target), id: plan.to, side: plan.targetSide },
-	]);
+	return input.plans.flatMap((plan) => {
+		if (plan.local) return [];
+		return [
+			{ key: incidenceKey(plan.id, PortRole.Source), id: plan.from, side: plan.sourceSide },
+			{ key: incidenceKey(plan.id, PortRole.Target), id: plan.to, side: plan.targetSide },
+		];
+	});
 }
 
 /**
@@ -145,19 +154,20 @@ function countBy(keys: readonly string[]): Map<string, number> {
 	return counts;
 }
 
-/** n tracks at rail spacing, centred: the outer ones keep half a spacing from each side. */
-function boundarySizes(rowCount: number, detours: readonly BandDetour[]): number[] {
-	const tracks = Array.from({ length: rowCount + 1 }, () => 0);
-	const counts = countBy(detours.map(({ corridors }) => corridors.boundary));
-	for (const { corridors } of detours) {
-		const index = corridors.boundaryIndex;
-		tracks[index] = Math.max(defined(tracks[index]), defined(counts.get(corridors.boundary)));
+/** What every lane boundary holds: its detours by the row they leave, and its local rails. */
+export function boundaryUses(
+	lanes: LaneBands,
+	rails: ReadonlyMap<string, number>,
+): ReadonlyMap<string, BoundaryUse> {
+	const uses = new Map<string, { earlier: number; rails: number; later: number }>();
+	for (const [key, count] of rails) uses.set(key, { earlier: 0, rails: count, later: 0 });
+	for (const { corridors, direction } of lanes.detours) {
+		const use = uses.get(corridors.boundary) ?? { earlier: 0, rails: 0, later: 0 };
+		if (direction === 1) use.earlier += 1;
+		else use.later += 1;
+		uses.set(corridors.boundary, use);
 	}
-	return tracks.map((count, boundary) => {
-		const size = count * RAIL_SPACING;
-		if (boundary === 0 || boundary === rowCount) return size;
-		return Math.max(BASE_RANK_GAP, size);
-	});
+	return uses;
 }
 
 export function planLaneBands(input: SharedLaneInput): LaneBands {
@@ -171,7 +181,7 @@ export function planLaneBands(input: SharedLaneInput): LaneBands {
 			const key = slotGapKey(endpoint.laneIndex, endpoint.row, slot);
 			slotGaps.set(key, Math.max(SLOT_GAP, (gapTracks.get(key) ?? 0) * RAIL_SPACING));
 		}
-	return { bands, detours, slotGaps, boundaries: boundarySizes(rowCount, detours) };
+	return { bands, detours, slotGaps, rowCount };
 }
 
 /** The cross width a band occupies, and the offset of each of its endpoints inside it. */
@@ -195,7 +205,7 @@ export function bandCrossLayout(
 
 export interface BandPlacement {
 	readonly boxes: ReadonlyMap<string, LogicalBox>;
-	readonly boundaryStarts: readonly number[];
+	readonly boundaries: PlacedBoundaries;
 	readonly portOffsetByIncidence: ReadonlyMap<string, number>;
 }
 
@@ -205,13 +215,6 @@ interface PlacedDetour {
 	readonly long: number;
 	/** The port's long coordinate read along its detour direction: larger runs farther out. */
 	readonly outward: number;
-}
-
-/** Centred tracks of one corridor, in the order the sorted detours read them. */
-function corridorTrack(start: number, size: number, count: number, index: number): number {
-	const spread = (count - 1) * RAIL_SPACING;
-	const first = start + (size - spread) / 2;
-	return first + index * RAIL_SPACING;
 }
 
 /**
@@ -307,10 +310,12 @@ export function bandPortAccess(
 	const ys = corridorTracks(placed, {
 		keyOf: ({ boundary }) => boundary,
 		compare: compareBoundaryDetours,
-		track: ({ detour }, count, index) => {
-			const boundary = detour.corridors.boundaryIndex;
-			const start = defined(placement.boundaryStarts[boundary]);
-			return corridorTrack(start, defined(lanes.boundaries[boundary]), count, index);
+		track: ({ detour }, _count, index) => {
+			const { boundary, boundaryIndex } = detour.corridors;
+			const use = defined(placement.boundaries.uses.get(boundary));
+			let slot = index;
+			if (index >= use.earlier) slot += use.rails;
+			return boundaryTrack(placement.boundaries, detour.endpoint.laneIndex, boundaryIndex, slot);
 		},
 	});
 	for (const { detour, long } of placed) {

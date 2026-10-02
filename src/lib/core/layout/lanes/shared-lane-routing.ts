@@ -56,14 +56,14 @@ export interface ParallelRouteTrackOverrides {
 }
 
 /**
- * The canonical parallel allocation: every plan owns its canonical gutter track — both gutters of a
- * plan share the ordinal, as the frame has always placed them — and every relation that crosses a
- * lane owns its declared rail track, the rank of its plan in the crossing order the frame publishes.
- * A rail demand declares the frame's whole content extent, so the declared ordinal orders it and no
- * interval containment can move it off the rank the placement reserved.
+ * The canonical parallel allocation: every plan that leaves its lane owns its canonical gutter
+ * track — both gutters of a plan share the ordinal, as the frame has always placed them — and every
+ * relation that crosses a lane owns its declared rail track, the rank of its plan in the crossing
+ * order the frame publishes. A rail demand declares the frame's whole content extent, so the
+ * declared ordinal orders it and no interval containment can move it off the rank the placement
+ * reserved. Local plans own no gutter: the frame routes them between its rows.
  */
 export function allocateParallelRoutes(
-	input: SharedLaneInput,
 	frame: SharedLaneFrame,
 	overrides?: ParallelRouteTrackOverrides,
 ): ParallelRouteAllocation {
@@ -77,7 +77,7 @@ export function allocateParallelRoutes(
 		overrides?.gutter ??
 		allocateNestedTracks(
 			frame.gutterEdge,
-			input.plans.map((plan, order) => ({
+			frame.gutterPlans.map((plan, order) => ({
 				key: plan.id,
 				start: frame.contentLongStart,
 				end: frame.contentLongEnd,
@@ -145,7 +145,7 @@ export function routeRailTrack(
 	order: ParallelRouteOrder,
 ): number | undefined {
 	if (allocation.passage !== undefined) return undefined;
-	if (plan.sameLane) return undefined;
+	if (plan.local) return undefined;
 	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
 	if (order === ParallelRouteOrder.LocalPassages && laneSpan === 1) return undefined;
 	const position = routePosition(frame, allocation, plan, order);
@@ -171,11 +171,6 @@ function gutterPoints(
 	const { gutterOffset } = position;
 	const sourceGutter = gutter(frame, plan.sourceLaneIndex, plan.sourceSide, gutterOffset);
 	const targetGutter = gutter(frame, plan.targetLaneIndex, plan.targetSide, gutterOffset);
-	if (plan.sameLane)
-		return [
-			{ x: sourceGutter, y: sourceLong },
-			{ x: sourceGutter, y: targetLong },
-		];
 	const laneSpan = Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex);
 	if (position.order === ParallelRouteOrder.LocalPassages && laneSpan === 1)
 		return adjacentPoints(sourceLong, targetLong, sourceGutter, targetGutter);
@@ -234,12 +229,9 @@ export function routeSharedLane({
 	order,
 	plan,
 }: SharedLaneRouteRequest): LayoutRelation {
-	const points = logicalPoints(
-		plan,
-		frame,
-		allocation,
-		routePosition(frame, allocation, plan, order),
-	);
+	const points =
+		frame.localRoutes.get(plan.id) ??
+		logicalPoints(plan, frame, allocation, routePosition(frame, allocation, plan, order));
 	return {
 		id: plan.id,
 		from: plan.from,

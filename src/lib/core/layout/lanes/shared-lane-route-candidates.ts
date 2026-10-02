@@ -117,13 +117,13 @@ function strategyPlan(
 	strategyRank: number,
 ): ParallelStrategyPlan {
 	const frame = parallelFrame(input, ports, order);
-	const allocation = allocateParallelRoutes(input, frame);
+	const allocation = allocateParallelRoutes(frame);
 	const domains: readonly TrackAssignmentDomain[] = [
 		{
 			id: 'gutter',
 			edge: allocation.gutter.edge,
 			trackCount: allocation.gutter.edge.capacity,
-			keys: input.plans.map(({ id }) => id),
+			keys: frame.gutterPlans.map(({ id }) => id),
 			baseline: allocation.gutter,
 		},
 		{
@@ -180,7 +180,6 @@ function baselineCandidate(
 }
 
 function allocationCandidate(
-	input: SharedLaneInput,
 	plan: ParallelStrategyPlan,
 	product: TrackAllocationProduct,
 	acceptBridges: boolean,
@@ -196,7 +195,7 @@ function allocationCandidate(
 		order: plan.order,
 		strategyRank: plan.strategyRank,
 		frame: plan.frame,
-		allocation: allocateParallelRoutes(input, plan.frame, overrides),
+		allocation: allocateParallelRoutes(plan.frame, overrides),
 		strategyId: id,
 		candidateId: `${id}/${product.key}`,
 		allocationKey: product.key,
@@ -205,7 +204,6 @@ function allocationCandidate(
 }
 
 export function* parallelRouteCandidates(
-	input: SharedLaneInput,
 	plans: readonly ParallelStrategyPlan[],
 	acceptBridges: boolean,
 ): Generator<ParallelRouteCandidate, undefined, void> {
@@ -225,7 +223,7 @@ export function* parallelRouteCandidates(
 				remaining -= 1;
 				continue;
 			}
-			yield allocationCandidate(input, defined(plans[index]), next.value, acceptBridges);
+			yield allocationCandidate(defined(plans[index]), next.value, acceptBridges);
 		}
 	}
 }

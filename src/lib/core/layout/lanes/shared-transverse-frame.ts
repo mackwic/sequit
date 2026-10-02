@@ -59,7 +59,7 @@ function orderedEndpoints(
 }
 
 function endpointCrossSize(item: SharedLaneEndpoint, ports: SharedLanePorts): number {
-	return Math.max(item.crossSize, ports.demandByEndpoint.get(item.id) ?? 0);
+	return Math.max(item.crossSize, ports.crossDemandByEndpoint.get(item.id) ?? 0);
 }
 
 function contentCrossSize(items: readonly SharedLaneEndpoint[], ports: SharedLanePorts): number {

@@ -257,6 +257,68 @@ test('a relation crosses the free space of a separating lane in both orientation
 	}
 });
 
+test('an intra-lane relation reaches its parent between their rows without leaving the lane', async ({
+	page,
+}, info) => {
+	await page.setViewportSize({ width: 1920, height: 1200 });
+	const room = `e2e-${crypto.randomUUID()}`;
+	const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, room);
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes, {
+		...source,
+		persistenceFormat: LANE_PERSISTENCE_FORMAT,
+		presentation: {
+			schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
+			policy: LayoutPolicy.Layered,
+			laneOrientation: LaneOrientation.Parallel,
+			growth: LaneGrowth.Auto,
+			lanes: [
+				{ id: 'left', label: 'Left', layoutOrder: orderKey('a0') },
+				{ id: 'right', label: 'Right', layoutOrder: orderKey('a1') },
+			],
+		},
+		nodes: source.nodes.map((node) => ({ ...node, laneId: 'left' })),
+	});
+	await page.goto(`/atelier/collaboration?room=${room}`);
+	await expect(page.locator('[data-graph-stage]')).toBeVisible();
+	await expect(page.locator('[data-lane-id]')).toHaveCount(2);
+	await expect(page.locator('[data-relation-id="R"]')).toHaveCount(1);
+	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
+	await page.locator('[data-graph-stage]').evaluate(async (stage) => {
+		await Promise.all(
+			stage
+				.getAnimations({ subtree: true })
+				.map((animation) => animation.finished.catch(() => undefined)),
+		);
+	});
+	const lane = await page.locator('[data-lane-id="left"]').boundingBox();
+	const parent = await page.locator('[data-node-id="A"]').boundingBox();
+	const child = await page.locator('[data-node-id="B"]').boundingBox();
+	if (lane === null || parent === null || child === null)
+		throw new Error('Expected visible lane and node bounds');
+	const samples = await page.locator('[data-relation-id="R"]').evaluate((route: SVGPathElement) => {
+		const matrix = route.getScreenCTM();
+		if (matrix === null) throw new Error('Missing route transform');
+		const length = route.getTotalLength();
+		return Array.from({ length: 65 }, (_, sample) => {
+			const point = route.getPointAtLength((length * sample) / 64);
+			const screen = new DOMPoint(point.x, point.y).matrixTransform(matrix);
+			return { x: screen.x, y: screen.y };
+		});
+	});
+	// One straight segment from the child's top face up to the parent's bottom face, inside the lane.
+	for (const point of samples) {
+		expect(point.x).toBeGreaterThan(Math.max(lane.x, parent.x, child.x));
+		expect(point.x).toBeLessThan(
+			Math.min(lane.x + lane.width, parent.x + parent.width, child.x + child.width),
+		);
+		expect(point.y).toBeGreaterThanOrEqual(parent.y + parent.height - 1);
+		expect(point.y).toBeLessThanOrEqual(child.y + 1);
+	}
+	const screenshot = info.outputPath('intra-lane-relation.png');
+	await page.screenshot({ path: screenshot });
+	await info.attach('intra-lane-relation', { path: screenshot, contentType: 'image/png' });
+});
+
 test('the four-message S | SD | C process renders through the shared lane policy', async ({
 	page,
 }, info) => {

@@ -49,16 +49,11 @@ function portDirection(start: Point, next: Point, vertical: boolean, side: LaneS
 	return cross(next, vertical) < cross(start, vertical);
 }
 
-function recordPort(
-	context: RouteContext,
-	endpointId: string,
-	side: LaneSide,
-	position: number,
-): void {
-	const key = JSON.stringify([endpointId, side]);
-	const positions = context.ports.get(key) ?? [];
+/** Records a port on one face, keyed by endpoint, face axis and side. */
+function recordPort(context: RouteContext, face: string, position: number): void {
+	const positions = context.ports.get(face) ?? [];
 	positions.push(position);
-	context.ports.set(key, positions);
+	context.ports.set(face, positions);
 }
 
 function attachedTransverse(
@@ -86,76 +81,114 @@ function transversePortDirection(
 	return longitudinal(next, vertical) < longitudinal(start, vertical);
 }
 
-function transverseRouteEndpoints(
+interface FaceEnds {
+	readonly from: string;
+	readonly to: string;
+	readonly source: LaneSide;
+	readonly target: LaneSide;
+}
+
+/** How the ports of one kind of face attach, leave and line up. */
+interface FaceRule {
+	readonly axis: string;
+	readonly attached: (point: Point, bounds: Bounds, vertical: boolean, side: LaneSide) => boolean;
+	readonly outward: (start: Point, next: Point, vertical: boolean, side: LaneSide) => boolean;
+	readonly position: (point: Point, vertical: boolean) => number;
+}
+
+/** Lateral faces, sides read on the logical cross axis. */
+const LATERAL_FACES: FaceRule = {
+	axis: 'cross',
+	attached,
+	outward: portDirection,
+	position: longitudinal,
+};
+
+/** Longitudinal faces, sides given physically. */
+const LONGITUDINAL_FACES: FaceRule = {
+	axis: 'long',
+	attached: attachedTransverse,
+	outward: transversePortDirection,
+	position: cross,
+};
+
+function faceRouteEndpoints(
 	route: LayoutRelation,
 	context: RouteContext,
-	from: string,
-	to: string,
+	ends: FaceEnds,
+	rule: FaceRule,
 ): string | undefined {
-	const source = defined(context.boxes.get(from));
-	const target = defined(context.boxes.get(to));
-	const sourceLane = context.geometry.lanes.findIndex((lane) => inside(source.bounds, lane.bounds));
-	const targetLane = context.geometry.lanes.findIndex((lane) => inside(target.bounds, lane.bounds));
-	const sides = transverseRouteSides({
-		sourceLane,
-		targetLane,
-		source: source.bounds,
-		target: target.bounds,
-		vertical: context.vertical,
-	});
-	const sourceSide = physicalTransverseSide(sides.source, context.reverse);
-	const targetSide = physicalTransverseSide(sides.target, context.reverse);
+	const source = defined(context.boxes.get(ends.from));
+	const target = defined(context.boxes.get(ends.to));
 	const first = route.points[0];
 	const second = route.points[1];
 	const last = route.points.at(-1);
 	const beforeLast = route.points.at(-2);
 	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
 	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
-	if (!attachedTransverse(first, source.bounds, context.vertical, sourceSide))
+	if (!rule.attached(first, source.bounds, context.vertical, ends.source))
 		return `Route ${route.id} leaves the wrong source face.`;
-	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))
+	if (!rule.attached(last, target.bounds, context.vertical, ends.target))
 		return `Route ${route.id} reaches the wrong target face.`;
-	if (!transversePortDirection(first, second, context.vertical, sourceSide))
+	if (!rule.outward(first, second, context.vertical, ends.source))
 		return `Route ${route.id} leaves the source inward.`;
-	if (!transversePortDirection(last, beforeLast, context.vertical, targetSide))
+	if (!rule.outward(last, beforeLast, context.vertical, ends.target))
 		return `Route ${route.id} reaches the target from inside.`;
-	recordPort(context, from, sourceSide, cross(first, context.vertical));
-	recordPort(context, to, targetSide, cross(last, context.vertical));
+	const sourceFace = JSON.stringify([ends.from, rule.axis, ends.source]);
+	const targetFace = JSON.stringify([ends.to, rule.axis, ends.target]);
+	recordPort(context, sourceFace, rule.position(first, context.vertical));
+	recordPort(context, targetFace, rule.position(last, context.vertical));
 	return undefined;
 }
 
+/**
+ * The faces a route must use, derived from the geometry alone. Transverse routes and parallel routes
+ * inside one lane use longitudinal faces: inside one lane the source leaves its face turned toward
+ * the earlier rows and the target is reached on its face turned toward the later rows. Parallel
+ * routes between lanes use the lateral faces turned toward each other.
+ */
 function routeEndpoints(
 	route: LayoutRelation,
 	context: RouteContext,
 	from: string,
 	to: string,
 ): string | undefined {
-	if (context.orientation === LaneOrientation.Transverse)
-		return transverseRouteEndpoints(route, context, from, to);
 	const source = defined(context.boxes.get(from));
 	const target = defined(context.boxes.get(to));
-	const laneIds = context.geometry.lanes.map(({ id }) => id);
 	const sourceLane = context.geometry.lanes.findIndex((lane) => inside(source.bounds, lane.bounds));
 	const targetLane = context.geometry.lanes.findIndex((lane) => inside(target.bounds, lane.bounds));
-	const sourceSide = laneSide(sourceLane, targetLane, laneIds.length);
-	const targetSide = laneSide(targetLane, sourceLane, laneIds.length);
-	const first = route.points[0];
-	const second = route.points[1];
-	const last = route.points.at(-1);
-	const beforeLast = route.points.at(-2);
-	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
-	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
-	if (!attached(first, source.bounds, context.vertical, sourceSide))
-		return `Route ${route.id} leaves the wrong source face.`;
-	if (!attached(last, target.bounds, context.vertical, targetSide))
-		return `Route ${route.id} reaches the wrong target face.`;
-	if (!portDirection(first, second, context.vertical, sourceSide))
-		return `Route ${route.id} leaves the source inward.`;
-	if (!portDirection(last, beforeLast, context.vertical, targetSide))
-		return `Route ${route.id} reaches the target from inside.`;
-	recordPort(context, from, sourceSide, longitudinal(first, context.vertical));
-	recordPort(context, to, targetSide, longitudinal(last, context.vertical));
-	return undefined;
+	if (context.orientation === LaneOrientation.Transverse) {
+		const sides = transverseRouteSides({
+			sourceLane,
+			targetLane,
+			source: source.bounds,
+			target: target.bounds,
+			vertical: context.vertical,
+		});
+		const ends = {
+			from,
+			to,
+			source: physicalTransverseSide(sides.source, context.reverse),
+			target: physicalTransverseSide(sides.target, context.reverse),
+		};
+		return faceRouteEndpoints(route, context, ends, LONGITUDINAL_FACES);
+	}
+	if (sourceLane === targetLane) {
+		const ends = {
+			from,
+			to,
+			source: physicalTransverseSide(-1, context.reverse),
+			target: physicalTransverseSide(1, context.reverse),
+		};
+		return faceRouteEndpoints(route, context, ends, LONGITUDINAL_FACES);
+	}
+	const ends = {
+		from,
+		to,
+		source: laneSide(sourceLane, targetLane),
+		target: laneSide(targetLane, sourceLane),
+	};
+	return faceRouteEndpoints(route, context, ends, LATERAL_FACES);
 }
 
 interface RouteSegment {

@@ -131,7 +131,7 @@ describe('interior passage through S | SD | C', () => {
 			height: frame.longExtent,
 			lanes: frame.lanes,
 			elements: frame.elements,
-			relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame)),
+			relations: routeSharedLanes(input, frame, allocateParallelRoutes(frame)),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, exterior)).toBeUndefined();
 		expect(validateSharedLaneInteriorPassage(prepared.graph, exterior, 'request')).toContain(

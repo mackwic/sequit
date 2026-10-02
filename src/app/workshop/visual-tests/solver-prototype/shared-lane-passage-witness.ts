@@ -207,7 +207,7 @@ export function compareSharedLanePassages(): SharedLanePassageComparison {
 		height: frame.longExtent,
 		lanes: frame.lanes,
 		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame)),
+		relations: routeSharedLanes(input, frame, allocateParallelRoutes(frame)),
 	};
 	const exteriorIssue = validateSharedLaneGeometry(graph, exterior, SHARED_LANE_CLEARANCE);
 	if (exteriorIssue !== undefined)

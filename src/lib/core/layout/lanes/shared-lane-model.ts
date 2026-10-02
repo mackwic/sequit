@@ -33,11 +33,21 @@ export interface SharedLanePlan {
 	readonly id: string;
 	readonly from: string;
 	readonly to: string;
+	/**
+	 * The face each port sits on. A lateral side (cross faces) for a route that leaves its lane; a
+	 * longitudinal side for a local route: the source leaves its start face (-1), turned toward its
+	 * parent's earlier row, and the target is reached on its end face (1).
+	 */
 	readonly sourceSide: LaneSide;
 	readonly targetSide: LaneSide;
 	readonly sourceLaneIndex: number;
 	readonly targetLaneIndex: number;
 	readonly sameLane: boolean;
+	/**
+	 * A parallel relation inside one lane: it never leaves its lane, crossing the row boundaries
+	 * between its endpoints like the dedicated engine crosses its rank gaps.
+	 */
+	readonly local: boolean;
 }
 
 export interface SharedLaneInput {
@@ -62,11 +72,9 @@ export function reverseDirection(direction: LayoutDirection): boolean {
 	return direction === LayoutDirection.BottomToTop || direction === LayoutDirection.RightToLeft;
 }
 
-export function laneSide(sourceIndex: number, targetIndex: number, laneCount: number): LaneSide {
+export function laneSide(sourceIndex: number, targetIndex: number): LaneSide {
 	if (sourceIndex < targetIndex) return 1;
-	if (sourceIndex > targetIndex) return -1;
-	if (sourceIndex === laneCount - 1) return -1;
-	return 1;
+	return -1;
 }
 
 /** Documentary order of lanes, and of the endpoints of one lane row: `layoutOrder`, then the id. */
@@ -133,14 +141,14 @@ function makeEndpoint(
 function relationPlans(
 	graph: LogicGraph,
 	endpoints: ReadonlyMap<string, SharedLaneEndpoint>,
-	laneCount: number,
 	orientation: LaneOrientation,
 ): readonly SharedLanePlan[] {
 	const plans: SharedLanePlan[] = [];
 	for (const { relation } of graph.relations) {
 		const source = defined(endpoints.get(relation.from));
 		const target = defined(endpoints.get(relation.to));
-		const sides = relationSides(source, target, laneCount, orientation);
+		const sides = relationSides(source, target, orientation);
+		const sameLane = source.laneIndex === target.laneIndex;
 		plans.push({
 			id: relation.id,
 			from: relation.from,
@@ -149,7 +157,8 @@ function relationPlans(
 			targetSide: sides.target,
 			sourceLaneIndex: source.laneIndex,
 			targetLaneIndex: target.laneIndex,
-			sameLane: source.laneIndex === target.laneIndex,
+			sameLane,
+			local: sameLane && orientation === LaneOrientation.Parallel,
 		});
 	}
 	return plans;
@@ -163,14 +172,15 @@ interface RelationSides {
 function relationSides(
 	source: SharedLaneEndpoint,
 	target: SharedLaneEndpoint,
-	laneCount: number,
 	orientation: LaneOrientation,
 ): RelationSides {
-	if (orientation === LaneOrientation.Parallel)
+	if (orientation === LaneOrientation.Parallel) {
+		if (source.laneIndex === target.laneIndex) return { source: -1, target: 1 };
 		return {
-			source: laneSide(source.laneIndex, target.laneIndex, laneCount),
-			target: laneSide(target.laneIndex, source.laneIndex, laneCount),
+			source: laneSide(source.laneIndex, target.laneIndex),
+			target: laneSide(target.laneIndex, source.laneIndex),
 		};
+	}
 	if (source.laneIndex < target.laneIndex) return { source: 1, target: -1 };
 	if (source.laneIndex > target.laneIndex) return { source: -1, target: 1 };
 	return { source: -1, target: -1 };
@@ -204,12 +214,7 @@ export function prepareSharedLanes(
 		if (endpoint === undefined) return { reason: `Endpoint ${item.id} has no explicit lane.` };
 		endpoints.set(endpoint.id, endpoint);
 	}
-	const plans = relationPlans(
-		graph,
-		endpoints,
-		laneIds.length,
-		document.presentation.laneOrientation,
-	);
+	const plans = relationPlans(graph, endpoints, document.presentation.laneOrientation);
 	return {
 		input: {
 			laneIds,

@@ -11,7 +11,8 @@ import {
 	RegionIncidentRejectionCode,
 	type RegionSolvedIncident,
 } from '../regions/model/region-incident-contract';
-import { facePortEdge, incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
+import { facePortEdge } from './shared-lane-face-ports';
+import { incidentFaceKey, type SharedLanePorts } from './shared-lane-ports';
 import type { SharedLaneGeometry } from './shared-lane-types';
 
 const INCIDENT_CLEARANCE = 12;

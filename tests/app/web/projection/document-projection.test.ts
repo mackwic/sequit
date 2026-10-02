@@ -492,7 +492,7 @@ describe('live document projection', () => {
 		expect(canvas.lanes?.map(({ id }) => id)).toEqual(['left', 'middle', 'right']);
 		expect(canvas.relations.map(({ id }) => id)).toEqual(['a-to-c', 'b-to-c']);
 	});
-	it('resolves the same-lane and inter-lane crossing through validated bridges from the real projection', async () => {
+	it('resolves crossing lane passages through validated bridges from the real projection', async () => {
 		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 		const first = defined(source.nodes[0]);
 		const document: LogicDocument = {
@@ -506,16 +506,19 @@ describe('live document projection', () => {
 				lanes: [
 					{ id: 'A', label: 'A', layoutOrder: orderKey('a0') },
 					{ id: 'B', label: 'B', layoutOrder: orderKey('a1') },
+					{ id: 'C', label: 'C', layoutOrder: orderKey('a2') },
 				],
 			},
 			nodes: [
 				...source.nodes.map((node) => ({ ...node, laneId: 'A' })),
 				{ ...first, id: 'C', laneId: 'B', layoutOrder: orderKey('a3') },
+				{ ...first, id: 'D', laneId: 'C', layoutOrder: orderKey('a4') },
 			],
+			// A → C leaves lane A toward B while D → B comes back from C across B: the passages meet.
 			relations: [
 				{ id: 'internal', from: 'A', to: 'B' },
 				{ id: 'first-cross', from: 'A', to: 'C' },
-				{ id: 'second-cross', from: 'B', to: 'C' },
+				{ id: 'second-cross', from: 'D', to: 'B' },
 			],
 		};
 		const projection = createSharedCanvasProjection(document);

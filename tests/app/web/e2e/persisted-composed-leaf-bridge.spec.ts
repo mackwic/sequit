@@ -110,10 +110,11 @@ function bridgeOnlyDocument(): LogicDocument {
 				laneId,
 			};
 		}),
+		// a → c leaves lane A toward B while d → b comes back from C across B: the crossing needs a bridge.
 		relations: [
 			{ id: 'within-a', from: 'a', to: 'b' },
 			{ id: 'a-to-c', from: 'a', to: 'c' },
-			{ id: 'b-to-c', from: 'b', to: 'c' },
+			{ id: 'd-to-b', from: 'd', to: 'b' },
 		],
 	};
 }

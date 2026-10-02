@@ -37,7 +37,7 @@ export function validatedInteriorParallelGeometry(
 		lanes: frame.lanes,
 		elements: frame.elements,
 		relations: routeSharedLanes(input, frame, {
-			...allocateParallelRoutes(input, frame),
+			...allocateParallelRoutes(frame),
 			passage,
 		}),
 	};

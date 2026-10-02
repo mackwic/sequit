@@ -1,10 +1,9 @@
 import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, LaneOrientation } from '../../document/logic-document';
-import type { RoutingEdge } from '../geometry/routing-edge';
-import { PORT_INSET, PORT_SPACING } from '../layout-settings';
-import type { Bounds } from '../layout-types';
+import { PORT_SPACING } from '../layout-settings';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import type { RegionIncidentContract } from '../regions/model/region-incident-contract';
+import { faceDemand, facePortOffset } from './shared-lane-face-ports';
 import {
 	compareLayoutOrder,
 	type LaneSide,
@@ -16,30 +15,6 @@ import {
 export enum PortRole {
 	Source = 'source',
 	Target = 'target',
-}
-
-/**
- * The port edge of one lane-leaf face: the face publishes one track per `PORT_SPACING` slot between
- * its two insets, and two ports closer than that spacing share a track. The size demand of the face
- * (`demandByEndpoint`) is what grows the face until it publishes the tracks its ports request.
- */
-export function facePortEdge(
-	endpointId: string,
-	side: RegionPortalSide,
-	bounds: Bounds,
-): RoutingEdge {
-	const extent = faceExtent(bounds, side);
-	const slots = (extent - 2 * PORT_INSET) / PORT_SPACING;
-	return {
-		ownerId: `${endpointId}/${side}`,
-		capacity: Math.floor(slots) + 1,
-		spacing: PORT_SPACING,
-	};
-}
-
-function faceExtent(bounds: Bounds, side: RegionPortalSide): number {
-	if (side === RegionPortalSide.Left || side === RegionPortalSide.Right) return bounds.height;
-	return bounds.width;
 }
 
 interface PortIncidence {
@@ -65,10 +40,31 @@ interface IncidentFaceGroup {
 	readonly contracts: RegionIncidentContract[];
 }
 
+/** One port of a local route on a longitudinal face, before the frame orders the face. */
+interface LocalPortIncidence {
+	readonly relationId: string;
+	readonly role: PortRole;
+}
+
+/** The ports a longitudinal face of a parallel endpoint holds for its local routes. */
+interface LocalPortFace {
+	readonly endpointId: string;
+	readonly side: LaneSide;
+	readonly incidences: readonly LocalPortIncidence[];
+	/** Incident ports reserved on the same physical face: the local ports keep clear of them. */
+	readonly reserved: number;
+}
+
 export interface SharedLanePorts {
+	/** Offset from the face centre of every port a lane frame orders before placement. */
 	readonly offsetByIncidence: ReadonlyMap<string, number>;
-	readonly demandByEndpoint: ReadonlyMap<string, number>;
+	/** Extent along the rank axis that the ports on an endpoint's cross faces demand. */
+	readonly longDemandByEndpoint: ReadonlyMap<string, number>;
+	/** Extent across the rank axis that the ports on an endpoint's longitudinal faces demand. */
+	readonly crossDemandByEndpoint: ReadonlyMap<string, number>;
 	readonly incidentOffsetByFace: ReadonlyMap<string, number>;
+	/** The longitudinal faces holding local ports; the frame orders their ports once placed. */
+	readonly localFaces: readonly LocalPortFace[];
 }
 
 export function incidenceKey(relationId: string, role: PortRole): string {
@@ -79,8 +75,9 @@ export function incidentFaceKey(contract: RegionIncidentContract, side: RegionPo
 	return JSON.stringify([contract.relation.id, contract.role, side]);
 }
 
-function physicalSide(input: SharedLaneInput, side: LaneSide): RegionPortalSide {
-	if (input.orientation === LaneOrientation.Parallel) {
+/** The physical face of a logical side: a cross face, or a longitudinal face when `along`. */
+function physicalSide(input: SharedLaneInput, side: LaneSide, along: boolean): RegionPortalSide {
+	if (!along) {
 		if (input.vertical) {
 			if (side === -1) return RegionPortalSide.Left;
 			return RegionPortalSide.Right;
@@ -171,7 +168,8 @@ function reservePhysicalGroup(
 	side: RegionPortalSide,
 ): void {
 	for (const laneSide of [-1, 1] as const) {
-		if (physicalSide(input, laneSide) !== side) continue;
+		if (physicalSide(input, laneSide, input.orientation !== LaneOrientation.Parallel) !== side)
+			continue;
 		const groupKey = JSON.stringify([endpointId, laneSide]);
 		if (groups.has(groupKey)) continue;
 		groups.set(groupKey, { endpointId, side: laneSide, incidences: [] });
@@ -253,6 +251,34 @@ function bandPositions(input: SharedLaneInput): ReadonlyMap<string, number> {
 	return positions;
 }
 
+/** The longitudinal faces of a parallel frame that hold local ports, with their reservations. */
+function localPortFaces(
+	input: SharedLaneInput,
+	incidents: ReadonlyMap<string, IncidentFaceGroup>,
+): readonly LocalPortFace[] {
+	const faces = new Map<string, LocalPortFace & { readonly incidences: LocalPortIncidence[] }>();
+	for (const plan of input.plans) {
+		if (!plan.local) continue;
+		const ends = [
+			{ endpointId: plan.from, side: plan.sourceSide, role: PortRole.Source },
+			{ endpointId: plan.to, side: plan.targetSide, role: PortRole.Target },
+		];
+		for (const { endpointId, side, role } of ends) {
+			const key = JSON.stringify([endpointId, side]);
+			let face = faces.get(key);
+			if (face === undefined) {
+				const physical = physicalSide(input, side, true);
+				const reserved =
+					incidents.get(JSON.stringify([endpointId, physical]))?.contracts.length ?? 0;
+				face = { endpointId, side, incidences: [], reserved };
+				faces.set(key, face);
+			}
+			face.incidences.push({ relationId: plan.id, role });
+		}
+	}
+	return [...faces.values()];
+}
+
 export function planSharedLanePorts(
 	input: SharedLaneInput,
 	contracts: readonly RegionIncidentContract[] = [],
@@ -261,6 +287,7 @@ export function planSharedLanePorts(
 	const positions = bandPositions(input);
 	const groups = new Map<string, PortGroup>();
 	for (const plan of input.plans) {
+		if (plan.local) continue;
 		const source = defined(input.endpoints.get(plan.from));
 		const target = defined(input.endpoints.get(plan.to));
 		addIncidence(groups, {
@@ -281,34 +308,40 @@ export function planSharedLanePorts(
 		});
 	}
 	const offsetByIncidence = new Map<string, number>();
-	const demandByEndpoint = new Map<string, number>();
+	const longDemandByEndpoint = new Map<string, number>();
+	const crossDemandByEndpoint = new Map<string, number>();
+	const groupFacesAlong = input.orientation !== LaneOrientation.Parallel;
+	let groupDemands = longDemandByEndpoint;
+	if (groupFacesAlong) groupDemands = crossDemandByEndpoint;
 	const faces = incidentFaces(input, contracts, groups);
 	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
 		const localOnly = group.incidences.every(({ sameLane }) => sameLane);
 		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder, localOnly));
 		const count = group.incidences.length;
-		const side = physicalSide(input, group.side);
+		const side = physicalSide(input, group.side, groupFacesAlong);
 		const reserved = faces.get(JSON.stringify([group.endpointId, side]))?.contracts.length ?? 0;
-		const spread = (count - 1) * PORT_SPACING;
-		let required = 2 * PORT_INSET + spread;
-		if (reserved > 0) {
-			const furthestPort = Math.max(count, reserved - 1) * PORT_SPACING;
-			required = 2 * (PORT_INSET + furthestPort);
-		}
-		demandByEndpoint.set(
-			group.endpointId,
-			Math.max(demandByEndpoint.get(group.endpointId) ?? 0, required),
-		);
-		for (const [index, incidence] of group.incidences.entries()) {
-			const center = (count - 1) / 2;
-			let offset = (index - center) * PORT_SPACING;
-			if (reserved > 0) {
-				const portIndex = count - index;
-				offset = -portIndex * PORT_SPACING;
-			}
-			offsetByIncidence.set(incidenceKey(incidence.relationId, incidence.role), offset);
-		}
+		const required = faceDemand(count, reserved);
+		groupDemands.set(group.endpointId, Math.max(groupDemands.get(group.endpointId) ?? 0, required));
+		for (const [index, incidence] of group.incidences.entries())
+			offsetByIncidence.set(
+				incidenceKey(incidence.relationId, incidence.role),
+				facePortOffset(index, count, reserved),
+			);
 	}
-	return { offsetByIncidence, demandByEndpoint, incidentOffsetByFace };
+	const localFaces = localPortFaces(input, faces);
+	for (const face of localFaces) {
+		const required = faceDemand(face.incidences.length, face.reserved);
+		crossDemandByEndpoint.set(
+			face.endpointId,
+			Math.max(crossDemandByEndpoint.get(face.endpointId) ?? 0, required),
+		);
+	}
+	return {
+		offsetByIncidence,
+		longDemandByEndpoint,
+		crossDemandByEndpoint,
+		incidentOffsetByFace,
+		localFaces,
+	};
 }

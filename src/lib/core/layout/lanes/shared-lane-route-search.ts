@@ -204,7 +204,7 @@ export function searchParallelRouteAllocations<Selection extends ParallelSelecti
 	let allocationTruncated = false;
 	let firstSelected: Selection | undefined;
 	for (const acceptBridges of [false, true]) {
-		const candidates = parallelRouteCandidates(lanes, plans, acceptBridges);
+		const candidates = parallelRouteCandidates(plans, acceptBridges);
 		const baselineCount = plans.length;
 		const attempted = baselineCount;
 		let baselineWork = 0;

@@ -277,11 +277,7 @@ describe('S | SD | C shared process', () => {
 			height: canonicalFrame.longExtent,
 			lanes: canonicalFrame.lanes,
 			elements: canonicalFrame.elements,
-			relations: routeSharedLanes(
-				input,
-				canonicalFrame,
-				allocateParallelRoutes(input, canonicalFrame),
-			),
+			relations: routeSharedLanes(input, canonicalFrame, allocateParallelRoutes(canonicalFrame)),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, canonical)).toContain(
 			'cross without a bridge',
@@ -295,7 +291,7 @@ describe('S | SD | C shared process', () => {
 			relations: routeSharedLanes(
 				input,
 				localFrame,
-				allocateParallelRoutes(input, localFrame),
+				allocateParallelRoutes(localFrame),
 				ParallelRouteOrder.LocalPassages,
 			),
 		};

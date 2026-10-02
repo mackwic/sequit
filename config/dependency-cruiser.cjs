@@ -52,6 +52,7 @@ const layoutImports = {
 		'resources',
 		'search',
 		'placement',
+		'routing',
 		'geometry',
 		'base',
 	],

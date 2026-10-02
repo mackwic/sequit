@@ -186,7 +186,7 @@ function parallelCandidate(document: LogicDocument, order: ParallelRouteOrder) {
 			...dimensions,
 			lanes: frame.lanes,
 			elements: frame.elements,
-			relations: routeSharedLanes(input, frame, allocateParallelRoutes(input, frame), order),
+			relations: routeSharedLanes(input, frame, allocateParallelRoutes(frame), order),
 		},
 	};
 }
@@ -487,8 +487,10 @@ describe('shared lane layout', () => {
 				cramped,
 				{
 					offsetByIncidence: new Map(),
-					demandByEndpoint: new Map(),
+					longDemandByEndpoint: new Map(),
+					crossDemandByEndpoint: new Map(),
 					incidentOffsetByFace: new Map(),
+					localFaces: [],
 				},
 				contract,
 				RegionPortalSide.Left,
@@ -708,19 +710,16 @@ describe('shared lane layout', () => {
 				defined(layoutConfiguration(direction, bias)),
 				LaneOrientation.Parallel,
 				[
-					['n0', 'L0'],
-					['n1', 'L1'],
+					['n0', 'L2'],
+					['n1', 'L0'],
 					['n2', 'L2'],
-					['n3', 'L0'],
-					['n4', 'L2'],
-					['n5', 'L0'],
-					['n6', 'L0'],
+					['n3', 'L2'],
+					['n4', 'L1'],
 				],
 				[
-					['n4', 'n1'],
+					['n4', 'n2'],
+					['n1', 'n0'],
 					['n4', 'n3'],
-					['n2', 'n0'],
-					['n6', 'n3'],
 				],
 			);
 			const prepared = prepareLayoutDocument(document);
@@ -729,7 +728,7 @@ describe('shared lane layout', () => {
 			);
 			const ports = planSharedLanePorts(input);
 			const plans = parallelStrategyPlans(input, ports, []);
-			const bridged = [...parallelRouteCandidates(input, plans, true)]
+			const bridged = [...parallelRouteCandidates(plans, true)]
 				.map((candidate) =>
 					materializeParallelGeometry(
 						input,
@@ -789,8 +788,9 @@ describe('shared lane layout', () => {
 			const ports = planSharedLanePorts(input);
 			const plans = parallelStrategyPlans(input, ports, []);
 			for (const acceptBridges of [false, true]) {
-				const candidates = [...parallelRouteCandidates(input, plans, acceptBridges)];
-				expect(candidates).toHaveLength(18);
+				const candidates = [...parallelRouteCandidates(plans, acceptBridges)];
+				// The local route owns no gutter: two gutter and rail orders (canonical), two gutter orders (local passages).
+				expect(candidates).toHaveLength(6);
 				const canonical = defined(candidates[0]);
 				const local = defined(candidates[1]);
 				const canonicalGeometry = materializeParallelGeometry(
@@ -930,7 +930,6 @@ describe('shared lane layout', () => {
 		);
 		const candidates = [
 			...parallelRouteCandidates(
-				input,
 				parallelStrategyPlans(input, planSharedLanePorts(input), []),
 				false,
 			),
@@ -985,19 +984,18 @@ describe('shared lane layout', () => {
 				acceptBridges: false,
 			}),
 		).toBe(validateSharedLaneGeometry(prepared.graph, malformedRoute));
-		const historicalRoute = defined(original.relations[0]);
 		const malformedHistorical = {
 			...original,
-			relations: [
-				{
-					...historicalRoute,
-					points: historicalRoute.points.map((point, index) => {
-						if (index === 2) return defined(historicalRoute.points[1]);
+			relations: original.relations.map((route) => {
+				if (route.id !== 'a1-to-b') return route;
+				return {
+					...route,
+					points: route.points.map((point, index) => {
+						if (index === 2) return defined(route.points[1]);
 						return point;
 					}),
-				},
-				...original.relations.slice(1),
-			],
+				};
+			}),
 		};
 		const invalidCertificate = certifySharedLaneRouteGeometry(prepared.graph, malformedHistorical);
 		expect(invalidCertificate.issue).toBeDefined();
@@ -1034,10 +1032,10 @@ describe('shared lane layout', () => {
 			];
 			const ports = planSharedLanePorts(input, contracts);
 			const plans = parallelStrategyPlans(input, ports, contracts);
-			const exhaustiveCandidateTotal = [...parallelRouteCandidates(input, plans, false)].length;
+			const exhaustiveCandidateTotal = [...parallelRouteCandidates(plans, false)].length;
 			let exhaustiveBest: ReturnType<typeof rankLaneRouteSelection> | undefined;
 			for (const acceptBridges of [false, true]) {
-				const exhaustiveCandidates = [...parallelRouteCandidates(input, plans, acceptBridges)];
+				const exhaustiveCandidates = [...parallelRouteCandidates(plans, acceptBridges)];
 				const oracleState = {
 					attempted: 0,
 					exhaustive: true,
@@ -1187,10 +1185,12 @@ describe('shared lane layout', () => {
 	);
 
 	it('selects a three-dependency crossing through validated bridges in the second pass', () => {
+		// a1 → b1 leaves lane A toward B while c1 → a2 comes back from C across B: whatever the gutter
+		// and rail order, the two crossings meet, so only the bridged pass can select a layout.
 		const document = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
 			{ id: 'within-a', from: 'a1', to: 'a2' },
 			{ id: 'a1-to-b', from: 'a1', to: 'b1' },
-			{ id: 'a2-to-b', from: 'a2', to: 'b1' },
+			{ id: 'c-to-a2', from: 'c1', to: 'a2' },
 		]);
 		const prepared = prepareLayoutDocument(document);
 		const baseline = parallelCandidate(document, ParallelRouteOrder.Canonical);
@@ -1198,7 +1198,6 @@ describe('shared lane layout', () => {
 		expect(
 			validateSharedLaneGeometry(baseline.graph, baseline.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
-		expect(baselineMetrics).toEqual({ bridges: 1, length: 2392, bends: 10 });
 		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(result.status, JSON.stringify(result)).toBe(SharedLaneLayoutStatus.Selected);
 		if (result.status !== SharedLaneLayoutStatus.Selected) return;
@@ -1209,31 +1208,17 @@ describe('shared lane layout', () => {
 		expect(
 			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
 		).toBeUndefined();
-		expect(result.allocationWitness?.passes).toMatchObject([
-			{
-				acceptBridges: false,
-				attempted: 18,
-				total: '18',
-				exhaustive: true,
-				truncated: false,
-				searchStarted: true,
-			},
-			{
-				acceptBridges: true,
-				attempted: 18,
-				total: '18',
-				exhaustive: true,
-				truncated: false,
-				searchStarted: true,
-			},
-		]);
+		const passes = defined(result.allocationWitness).passes;
+		expect(passes.map(({ acceptBridges }) => acceptBridges)).toEqual([false, true]);
+		for (const pass of passes) {
+			expect(pass).toMatchObject({ exhaustive: true, truncated: false, searchStarted: true });
+			expect(pass.attempted).toBe(Number(pass.total));
+		}
 		const bridges = validatedBridges(result.geometry.relations);
 		expect(bridges).toHaveLength(1);
 		const metrics = laneRouteMetrics(result.geometry);
 		expect(metrics.bridges).toBeLessThanOrEqual(baselineMetrics.bridges);
 		expect(metrics.length).toBeLessThanOrEqual(baselineMetrics.length);
-		expect(metrics.length).toBeLessThanOrEqual(2392);
-		expect(metrics.bends).toBeLessThanOrEqual(10);
 		expect(solve({ ...document, relations: [...document.relations].reverse() })).toEqual(result);
 		for (const [index, route] of result.geometry.relations.entries())
 			for (const other of result.geometry.relations.slice(index + 1))
@@ -1362,40 +1347,50 @@ describe('shared lane layout', () => {
 		expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
 	});
 
-	it('routes ordinary intra-lane dependencies through an adjacent gutter', () => {
-		const document = laneDocument(
-			LayoutDirection.TopToBottom,
-			LayoutBias.Top,
-			[{ id: 'a1-to-a2', from: 'a1', to: 'a2' }],
-			2,
-		);
-		const result = solve(document);
-		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
-		if (result.status !== SharedLaneLayoutStatus.Selected) return;
-		expect(result.layout.relations[0]?.points).toHaveLength(4);
-	});
-
-	it('routes a same-lane dependency on the rightmost lane from its inward face', () => {
-		const source = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
-			{ id: 'c1-to-c2', from: 'c1', to: 'c2' },
-		]);
-		const document: LogicDocument = {
-			...source,
-			nodes: [
-				...source.nodes,
-				{
-					kind: EndpointKind.Node,
-					id: 'c2',
-					natureId: 'task',
-					laneId: 'C',
-					markdown: 'C2',
-					layoutOrder: orderKey('a4'),
-				},
-			],
-		};
-		const result = solve(document);
-		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
-	});
+	it.each(DIRECTIONS)(
+		'routes intra-lane dependencies between their rows without leaving the lane in %s',
+		(direction, bias) => {
+			const source = laneDocument(direction, bias, [
+				{ id: 'a1-to-a2', from: 'a1', to: 'a2' },
+				{ id: 'c1-to-c2', from: 'c1', to: 'c2' },
+				{ id: 'b3-to-b2', from: 'b3', to: 'b2' },
+				{ id: 'b2-to-b1', from: 'b2', to: 'b1' },
+				{ id: 'b3-to-b1', from: 'b3', to: 'b1' },
+			]);
+			const extra = [
+				['b2', 'B'],
+				['b3', 'B'],
+				['c2', 'C'],
+			].map(([id, laneId], index) => ({
+				kind: EndpointKind.Node as const,
+				id: defined(id),
+				natureId: 'task',
+				laneId: defined(laneId),
+				markdown: defined(id).toUpperCase(),
+				layoutOrder: orderKey(`a${index + 4}`),
+			}));
+			const document: LogicDocument = { ...source, nodes: [...source.nodes, ...extra] };
+			const prepared = prepareLayoutDocument(document);
+			const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+			expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+			if (result.status !== SharedLaneLayoutStatus.Selected) return;
+			expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+			const laneOf = new Map(document.nodes.map(({ id, laneId }) => [id, laneId]));
+			for (const route of result.layout.relations) {
+				const lane = defined(
+					result.layout.lanes?.find(({ id }) => id === laneOf.get(route.from)),
+				).bounds;
+				for (const point of route.points) {
+					expect(point.x).toBeGreaterThanOrEqual(lane.x);
+					expect(point.x).toBeLessThanOrEqual(lane.x + lane.width);
+					expect(point.y).toBeGreaterThanOrEqual(lane.y);
+					expect(point.y).toBeLessThanOrEqual(lane.y + lane.height);
+				}
+			}
+			// A lone child right after its lone parent reaches it in one straight segment.
+			expect(result.layout.relations.find(({ id }) => id === 'a1-to-a2')?.points).toHaveLength(2);
+		},
+	);
 
 	it.each([
 		['forward', 'a1', 'c1'],
@@ -1667,7 +1662,7 @@ describe('shared lane layout', () => {
 		const input = defined(routing.input);
 		const ports = planSharedLanePorts(input);
 		const plans = parallelStrategyPlans(input, ports, []);
-		const candidates = [...parallelRouteCandidates(input, plans, false)];
+		const candidates = [...parallelRouteCandidates(plans, false)];
 		const baseline = defined(candidates[0]);
 		const baselineGeometry = materializeParallelGeometry(
 			input,
@@ -1710,7 +1705,7 @@ describe('shared lane layout', () => {
 		const input = defined(routing.input);
 		const ports = planSharedLanePorts(input);
 		const plans = parallelStrategyPlans(input, ports, []);
-		const candidates = [...parallelRouteCandidates(input, plans, false)];
+		const candidates = [...parallelRouteCandidates(plans, false)];
 		const baseline = defined(candidates[0]);
 		const baselineGeometry = materializeParallelGeometry(
 			input,
@@ -1750,8 +1745,8 @@ describe('shared lane layout', () => {
 		).toBeUndefined();
 		const corrupted = {
 			...geometry,
-			relations: geometry.relations.map((route, index) => {
-				if (index !== 0) return route;
+			relations: geometry.relations.map((route) => {
+				if (route.id !== 'a1-to-b') return route;
 				const start = defined(route.points[0]);
 				return {
 					...route,
@@ -1921,7 +1916,6 @@ describe('shared lane layout', () => {
 		);
 		const candidates = [
 			...parallelRouteCandidates(
-				input,
 				parallelStrategyPlans(input, planSharedLanePorts(input), []),
 				true,
 			),
