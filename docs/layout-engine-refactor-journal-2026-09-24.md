@@ -761,3 +761,25 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - La recherche d'allocation et ses budgets sont inchangés : pour chaque allocation, la forme par interstice est essayée puis, si elle ne valide pas, la forme par gouttières de la base ; aucun `selected` ne peut devenir `unknown` par ce changement à recherche égale.
 - Empreinte ré-épinglée : `grid-cell-layout-identity` `same-column` `6f21fc83…` → `6f882edf…` (route verticale dans la gouttière de rangée). `base`, `multiple-crossings`, `widened-group`, `expanded-tracks` inchangées.
 - Inchangé : dimensions des grilles, réservations des gouttières et du bus, ordres de bus (G-03).
+
+## Correctifs du 2 octobre 2026 — lanes parallèles
+
+- Commit `fcfee0fc`, `fix(layout): lanes parallèles — relier les rangées consécutives par les faces principales` : L-04 corrigé, droite de 72 px pour `a2→a1` et `b2→b1` dans les quatre directions.
+- La fourche de trois enfants conserve la dimension principale mesurée ; les ports s'ordonnent par l'extrémité opposée et les passages inter-rangées disposent de pistes distinctes.
+- Les attaches latérales restent des alternatives après validation pour les passages refusés ; les sauts de rangée, les lanes transverses et la recherche d'ordre sont inchangés.
+- L'espacement des ports et les limites de recherche restent inchangés ; aucun seuil n'est abaissé.
+- Aucun SHA des corpus d'identité n'est ré-épinglé. Le témoin réel de projection à trois relations est réécrit : attache interne droite et zéro pont, au lieu du pont imposé par l'ancienne forme en C.
+
+### Suite de relecture — repli local et trames immuables
+
+- Reprise `fix(layout): lanes parallèles — limiter le repli aux relations refusées` : le refus porte sur les segments principaux et les groupes de ports latéraux couplés à un contact. Une chaîne disjointe reste à deux points / 72 px / zéro pont dans les quatre directions, même dans la lane de l'appariement inversé.
+- Les pistes principales sont calculées une fois par trame, puis partagées entre affectations ; les tableaux temporaires d'extrema et les trois nouveaux `as const` de production/fixtures sont retirés. Aucun SHA ré-épinglé, aucune modification transverse ni recherche d'ordre.
+- Décision utilisateur 2026-10-02 : correction avant performance. Le plafond parallèle passe de 20 000 à 30 000 unités par passe : le témoin 10135 conserve zéro pont, mais sa longueur passe de 5136/6384 à 2780/2884 px (TB/LR). Aucun délai de test ni seuil de qualité relevé.
+- Corpus identique à la relecture A : 400 documents parallèles et 80 transverses, quatre directions, 1920 sélections valides et aucun document avec davantage de croisements qu'à la base. Un seul document (10107, LR/RL) supprime trois ponts au prix de 564 px (+8,9 %) ; les autres restent sous base +5 %, et les 320 géométries transverses sont identiques.
+
+### Suite de relecture A2 — ponts admis et alternatives locales
+
+- Reprise `fix(layout): lanes parallèles — préserver les candidats principaux pontables` : le collecteur de refus utilise les ponts validés dans la passe pontée, qui compare désormais le candidat principal et son repli local strict plutôt que d'éliminer le premier avant validation.
+- Témoin 10131 : 14 ponts avant, un pont et 2832 px après dans les quatre directions, par l'API réelle ; deux relations principales sont droites et la troisième utilise deux coudes. Les totaux et baselines comptent les deux politiques de la passe pontée ; la passe non pontée conserve son énumération.
+- Corpus exact contre `8eb1ac25` et `1d692e5d` : 1920 sélections valides, aucun document avec plus de croisements que le meilleur des deux ; TB/BT 570 → 213 → 202, LR/RL 566 → 215 → 200. Les 320 géométries transverses restent identiques.
+- Coût de génération hors forfait : la relecture A2 mesurait sur `f6cf9c6f` 0,088 ms par candidat contre 0,058 ms sur `1d692e5d` (+52 %), en plus du budget de 30 000. Ce coût est consigné, pas présenté comme couvert par le forfait `plans × 10` ; aucun seuil ni délai n'est abaissé ou relevé dans cette reprise.

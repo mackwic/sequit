@@ -7,11 +7,9 @@ import {
 	validateSharedLaneStaticGeometryWithCertificate,
 } from './shared-lane-geometry';
 import type { SharedLaneInput } from './shared-lane-model';
-import {
-	materializeParallelGeometry,
-	type ParallelRouteCandidate,
-} from './shared-lane-route-candidates';
+import type { ParallelRouteCandidate } from './shared-lane-route-candidates';
 import { validateSharedLaneRouteContacts } from './shared-lane-route-contact-validation';
+import { materializeParallelGeometry } from './shared-lane-route-frame';
 import {
 	validateChangedSharedLaneRoutes,
 	validateSharedLaneRouteShapes,

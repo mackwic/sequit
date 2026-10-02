@@ -426,6 +426,7 @@ Aucune décision n'est encore prise concernant :
 - `DocumentSession` est l’unique façade applicative vers le document Yjs live.
 - Les cycles sont rejetés avant le calcul des rangs.
 - Les relations ordinaires s’attachent aux faces perpendiculaires à l’axe principal, avec des segments de départ et d’arrivée dans cet axe. Le cas source valide `G = {A, B}`, `B → x → A`, lorsque G est replié, possède une politique bornée d’attaches latérales dérivées des membres masqués ; ces attaches conservent leur provenance et ne changent pas la règle des relations ordinaires.
+- Dans une lane parallèle, deux rangées logiques consécutives se relient par leurs faces principales : droite si les ports sont alignés, deux coudes dans l'inter-rangée sinon. Les ports suivent la position de l'extrémité opposée ; ils ne font grandir que la dimension de leur face. Les sauts de rangée et les passages principaux refusés par le validateur peuvent emprunter une gouttière latérale. Ce repli est local à chaque relation refusée : il ne détourne pas les chaînes indépendantes de la même lane ou d'une autre.
 - Une relation longue dont les deux extrémités appartiennent au même groupe emprunte un passage dans le padding de leur groupe commun le plus profond ; sa route ne sort pas de cette enveloppe.
 - Un groupe non vide occupe l’intervalle des rangs de son contenu ; un groupe vide endpoint est atomique.
 - ELK a été écarté après sa gate de compatibilité ; `layoutGraph(...)` utilise un moteur dédié déterministe.

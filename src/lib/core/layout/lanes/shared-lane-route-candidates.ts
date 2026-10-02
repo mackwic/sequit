@@ -7,15 +7,19 @@ import {
 	type TrackAssignmentDomain,
 } from './shared-lane-allocation-search';
 import { makeSharedLaneFrame, type SharedLaneFrame } from './shared-lane-frame';
-import type { SharedLaneGeometry } from './shared-lane-geometry';
 import type { SharedLaneInput } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import {
+	type ParallelFramePlan,
+	type ParallelLateralFaces,
+	type ParallelStrategyFrame,
+	type ParallelStrategyResources,
+	resolveParallelCandidateFrame,
+} from './shared-lane-route-frame';
+import {
 	allocateParallelRoutes,
-	type ParallelRouteAllocation,
 	ParallelRouteOrder,
 	type ParallelRouteTrackOverrides,
-	routeSharedLanes,
 } from './shared-lane-routing';
 
 interface SharedLaneAllocationPassWitness {
@@ -36,22 +40,30 @@ export interface SharedLaneAllocationSearchWitness {
 	readonly passes: readonly SharedLaneAllocationPassWitness[];
 }
 
-export interface ParallelRouteCandidate {
-	readonly order: ParallelRouteOrder;
-	readonly strategyRank: number;
-	readonly frame: SharedLaneFrame;
-	readonly allocation: ParallelRouteAllocation;
+export interface ParallelRouteCandidate extends ParallelStrategyFrame, StrategyDefinition {
 	readonly strategyId: string;
 	readonly candidateId: string;
 	readonly allocationKey: string;
 	readonly historicalRank: number | undefined;
 }
 
-interface ParallelStrategyPlan {
+interface StrategyDefinition {
 	readonly order: ParallelRouteOrder;
 	readonly strategyRank: number;
-	readonly frame: SharedLaneFrame;
-	readonly allocation: ParallelRouteAllocation;
+}
+
+enum ParallelContactPolicy {
+	Strict = 'strict',
+	Bridged = 'bridged',
+	BridgedLocalFallback = 'bridged-local-fallback',
+}
+
+interface ParallelCandidateCounts {
+	readonly baseline: number;
+	readonly total: string;
+}
+
+interface ParallelStrategyPlan extends ParallelFramePlan, StrategyDefinition {
 	readonly domains: readonly TrackAssignmentDomain[];
 	readonly baselineKey: string;
 	readonly total: bigint;
@@ -77,27 +89,6 @@ function parallelFrame(
 	return makeSharedLaneFrame(input, ports, order !== ParallelRouteOrder.Canonical);
 }
 
-export function materializeParallelGeometry(
-	input: SharedLaneInput,
-	frame: SharedLaneFrame,
-	order: ParallelRouteOrder,
-	allocation: ParallelRouteAllocation,
-): SharedLaneGeometry {
-	let width = frame.longExtent;
-	let height = frame.crossExtent;
-	if (input.vertical) {
-		width = frame.crossExtent;
-		height = frame.longExtent;
-	}
-	return {
-		width,
-		height,
-		lanes: frame.lanes,
-		elements: frame.elements,
-		relations: routeSharedLanes(input, frame, allocation, order),
-	};
-}
-
 function activeRailKeys(frame: SharedLaneFrame, order: ParallelRouteOrder): readonly string[] {
 	const ids: string[] = [];
 	for (const plan of frame.crossLanePlans) {
@@ -113,8 +104,8 @@ function activeRailKeys(frame: SharedLaneFrame, order: ParallelRouteOrder): read
 function strategyPlan(
 	input: SharedLaneInput,
 	ports: SharedLanePorts,
-	order: ParallelRouteOrder,
-	strategyRank: number,
+	{ contracts, lateralFaces }: ParallelStrategyResources,
+	{ order, strategyRank }: StrategyDefinition,
 ): ParallelStrategyPlan {
 	const frame = parallelFrame(input, ports, order);
 	const allocation = allocateParallelRoutes(input, frame);
@@ -144,6 +135,9 @@ function strategyPlan(
 		domains,
 		baselineKey: defined(first.value).key,
 		total: trackAllocationProductCount(domains),
+		contracts,
+		lateralFaces,
+		localFrames: new Map([['', { frame, allocation }]]),
 	};
 }
 
@@ -152,26 +146,45 @@ export function parallelStrategyPlans(
 	ports: SharedLanePorts,
 	contracts: readonly RegionIncidentContract[],
 ): readonly ParallelStrategyPlan[] {
+	const lateralFaces = new Map<string, ParallelLateralFaces>(
+		input.plans.map(({ id, from, to, sourceSide, targetSide }) => [
+			id,
+			{
+				source: JSON.stringify([from, sourceSide]),
+				target: JSON.stringify([to, targetSide]),
+			},
+		]),
+	);
+	const resources = { contracts, lateralFaces };
 	return parallelOrders(contracts).map((order, strategyRank) =>
-		strategyPlan(input, ports, order, strategyRank),
+		strategyPlan(input, ports, resources, { order, strategyRank }),
 	);
 }
 
-function strategyId(order: ParallelRouteOrder, acceptBridges: boolean): string {
-	if (acceptBridges) return `parallel/bridged/${order}`;
-	return `parallel/${order}`;
+function strategyId(plan: ParallelStrategyPlan, policy: ParallelContactPolicy): string {
+	if (policy === ParallelContactPolicy.Strict) return `parallel/${plan.order}`;
+	let suffix = '';
+	if (policy === ParallelContactPolicy.BridgedLocalFallback) suffix = '/local-fallback';
+	return `parallel/bridged/${plan.order}${suffix}`;
 }
 
 function baselineCandidate(
+	input: SharedLaneInput,
 	plan: ParallelStrategyPlan,
-	acceptBridges: boolean,
+	policy: ParallelContactPolicy,
 ): ParallelRouteCandidate {
-	const id = strategyId(plan.order, acceptBridges);
+	const id = strategyId(plan, policy);
+	const selected = resolveParallelCandidateFrame(
+		input,
+		plan,
+		policy === ParallelContactPolicy.Bridged,
+		undefined,
+	);
 	return {
 		order: plan.order,
 		strategyRank: plan.strategyRank,
-		frame: plan.frame,
-		allocation: plan.allocation,
+		frame: selected.frame,
+		allocation: selected.allocation,
 		strategyId: id,
 		candidateId: id,
 		allocationKey: plan.baselineKey,
@@ -183,7 +196,7 @@ function allocationCandidate(
 	input: SharedLaneInput,
 	plan: ParallelStrategyPlan,
 	product: TrackAllocationProduct,
-	acceptBridges: boolean,
+	policy: ParallelContactPolicy,
 ): ParallelRouteCandidate {
 	const gutter = defined(product.allocations[0]);
 	const rail = defined(product.allocations[1]);
@@ -191,12 +204,18 @@ function allocationCandidate(
 		gutter,
 		railTrackByKey: rail.trackByKey,
 	};
-	const id = strategyId(plan.order, acceptBridges);
+	const id = strategyId(plan, policy);
+	const selected = resolveParallelCandidateFrame(
+		input,
+		plan,
+		policy === ParallelContactPolicy.Bridged,
+		overrides,
+	);
 	return {
 		order: plan.order,
 		strategyRank: plan.strategyRank,
-		frame: plan.frame,
-		allocation: allocateParallelRoutes(input, plan.frame, overrides),
+		frame: selected.frame,
+		allocation: selected.allocation,
 		strategyId: id,
 		candidateId: `${id}/${product.key}`,
 		allocationKey: product.key,
@@ -204,12 +223,13 @@ function allocationCandidate(
 	};
 }
 
-export function* parallelRouteCandidates(
+function* allocationCandidates(
 	input: SharedLaneInput,
 	plans: readonly ParallelStrategyPlan[],
 	acceptBridges: boolean,
 ): Generator<ParallelRouteCandidate, undefined, void> {
-	for (const plan of plans) yield baselineCandidate(plan, acceptBridges);
+	let policy = ParallelContactPolicy.Strict;
+	if (acceptBridges) policy = ParallelContactPolicy.Bridged;
 	const alternatives: (Generator<TrackAllocationProduct> | undefined)[] = plans.map((plan) => {
 		const products = trackAllocationProducts(plan.domains);
 		products.next();
@@ -225,13 +245,44 @@ export function* parallelRouteCandidates(
 				remaining -= 1;
 				continue;
 			}
-			yield allocationCandidate(input, defined(plans[index]), next.value, acceptBridges);
+			const plan = defined(plans[index]);
+			yield allocationCandidate(input, plan, next.value, policy);
+			if (acceptBridges && plan.frame.mainFacePlanIds.size > 0)
+				yield allocationCandidate(
+					input,
+					plan,
+					next.value,
+					ParallelContactPolicy.BridgedLocalFallback,
+				);
 		}
 	}
 }
 
-export function parallelCandidateTotal(plans: readonly ParallelStrategyPlan[]): string {
+export function* parallelRouteCandidates(
+	input: SharedLaneInput,
+	plans: readonly ParallelStrategyPlan[],
+	acceptBridges: boolean,
+): Generator<ParallelRouteCandidate, undefined, void> {
+	let policy = ParallelContactPolicy.Strict;
+	if (acceptBridges) policy = ParallelContactPolicy.Bridged;
+	for (const plan of plans) yield baselineCandidate(input, plan, policy);
+	for (const plan of plans)
+		if (acceptBridges && plan.frame.mainFacePlanIds.size > 0)
+			yield baselineCandidate(input, plan, ParallelContactPolicy.BridgedLocalFallback);
+	yield* allocationCandidates(input, plans, acceptBridges);
+}
+
+export function parallelCandidateCounts(
+	plans: readonly ParallelStrategyPlan[],
+	acceptBridges: boolean,
+): ParallelCandidateCounts {
+	let baseline = 0;
 	let total = 0n;
-	for (const plan of plans) total += plan.total;
-	return total.toString();
+	for (const plan of plans) {
+		let count = 1;
+		if (acceptBridges && plan.frame.mainFacePlanIds.size > 0) count = 2;
+		baseline += count;
+		total += plan.total * BigInt(count);
+	}
+	return { baseline, total: total.toString() };
 }

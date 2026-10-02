@@ -103,6 +103,7 @@ function laneIncidentIssue(geometry: SharedLaneGeometry, contract: RegionInciden
 		{
 			offsetByIncidence: new Map(),
 			demandByEndpoint: new Map(),
+			crossDemandByEndpoint: new Map(),
 			incidentOffsetByFace: new Map(),
 		},
 		contract,

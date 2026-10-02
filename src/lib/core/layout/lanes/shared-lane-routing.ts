@@ -1,4 +1,5 @@
 import { defined } from '../../document/logic-document';
+import { RAIL_SPACING } from '../layout-settings';
 import type { LayoutRelation, Point } from '../layout-types';
 import {
 	allocateNestedTracks,
@@ -40,6 +41,7 @@ export interface ParallelRouteAllocation {
 	readonly gutter: RoutingTrackAllocation;
 	readonly exteriorRail: RoutingTrackAllocation;
 	readonly topExteriorRail: RoutingTrackAllocation;
+	readonly mainTrackByPlan: ReadonlyMap<string, number>;
 	/** The passage that replaces the rail of a route when the geometry declares one. */
 	readonly passage?: CenteredTrackAllocation;
 }
@@ -53,6 +55,45 @@ export enum ParallelRouteOrder {
 export interface ParallelRouteTrackOverrides {
 	readonly gutter?: RoutingTrackAllocation;
 	readonly railTrackByKey?: ReadonlyMap<string, number>;
+	/** Reuse the immutable main passages of this frame across gutter and rail assignments. */
+	readonly mainTrackByPlan?: ReadonlyMap<string, number>;
+}
+
+function mainPassageTracks(
+	input: SharedLaneInput,
+	frame: SharedLaneFrame,
+): ReadonlyMap<string, number> {
+	const groups = new Map<string, SharedLanePlan[]>();
+	for (const plan of input.plans) {
+		if (!frame.mainFacePlanIds.has(plan.id)) continue;
+		const row = defined(input.endpoints.get(plan.from)).row;
+		const key = JSON.stringify([plan.sourceLaneIndex, row]);
+		const group = groups.get(key) ?? [];
+		group.push(plan);
+		groups.set(key, group);
+	}
+	const tracks = new Map<string, number>();
+	for (const plans of groups.values()) {
+		const demands = plans
+			.map((plan, order) => {
+				const start = defined(portAccess(frame, plan.id, PortRole.Source).points[0]);
+				const end = defined(portAccess(frame, plan.id, PortRole.Target).points[0]);
+				return { plan, start, end, order, span: Math.abs(start.x - end.x) };
+			})
+			.sort((a, b) => a.span - b.span || a.order - b.order);
+		const first = defined(demands[0]);
+		const direction = Math.sign(first.end.y - first.start.y);
+		let anchor = first.start.y;
+		for (const { start } of demands) {
+			if (direction < 0) anchor = Math.min(anchor, start.y);
+			else anchor = Math.max(anchor, start.y);
+		}
+		for (const [index, { plan }] of demands.entries()) {
+			const offset = SHARED_LANE_CLEARANCE + index * RAIL_SPACING;
+			tracks.set(plan.id, anchor + direction * offset);
+		}
+	}
+	return tracks;
 }
 
 /**
@@ -67,12 +108,6 @@ export function allocateParallelRoutes(
 	frame: SharedLaneFrame,
 	overrides?: ParallelRouteTrackOverrides,
 ): ParallelRouteAllocation {
-	const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
-		key: plan.id,
-		start: frame.contentLongStart,
-		end: frame.contentLongEnd,
-		order,
-	}));
 	const gutter =
 		overrides?.gutter ??
 		allocateNestedTracks(
@@ -88,13 +123,24 @@ export function allocateParallelRoutes(
 	let exteriorRail: RoutingTrackAllocation;
 	let topExteriorRail: RoutingTrackAllocation;
 	if (railTracks === undefined) {
+		const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
+			key: plan.id,
+			start: frame.contentLongStart,
+			end: frame.contentLongEnd,
+			order,
+		}));
 		exteriorRail = allocateNestedTracks(frame.exteriorRailEdge, crossingDemands);
 		topExteriorRail = allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands);
 	} else {
 		exteriorRail = { edge: frame.exteriorRailEdge, trackByKey: railTracks };
 		topExteriorRail = { edge: frame.topExteriorRailEdge, trackByKey: railTracks };
 	}
-	return { gutter, exteriorRail, topExteriorRail };
+	return {
+		gutter,
+		exteriorRail,
+		topExteriorRail,
+		mainTrackByPlan: overrides?.mainTrackByPlan ?? mainPassageTracks(input, frame),
+	};
 }
 
 function adjacentPoints(
@@ -188,6 +234,14 @@ function gutterPoints(
 	];
 }
 
+/** Main-face ports meet in the free passage between consecutive rows, without a gutter. */
+function mainFacePoints(position: RoutePosition, middle: number): readonly Point[] {
+	const start = defined(position.source.points[0]);
+	const end = defined(position.target.points[0]);
+	if (start.x === end.x) return [start, end];
+	return [start, { x: start.x, y: middle }, { x: end.x, y: middle }, end];
+}
+
 /** A route leaves its source port, follows the gutters and enters its target port the same way. */
 function logicalPoints(
 	plan: SharedLanePlan,
@@ -234,12 +288,11 @@ export function routeSharedLane({
 	order,
 	plan,
 }: SharedLaneRouteRequest): LayoutRelation {
-	const points = logicalPoints(
-		plan,
-		frame,
-		allocation,
-		routePosition(frame, allocation, plan, order),
-	);
+	const position = routePosition(frame, allocation, plan, order);
+	let points: readonly Point[];
+	if (frame.mainFacePlanIds.has(plan.id))
+		points = mainFacePoints(position, defined(allocation.mainTrackByPlan.get(plan.id)));
+	else points = logicalPoints(plan, frame, allocation, position);
 	return {
 		id: plan.id,
 		from: plan.from,

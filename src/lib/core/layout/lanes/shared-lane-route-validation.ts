@@ -53,26 +53,12 @@ function recordPort(
 	context: RouteContext,
 	endpointId: string,
 	side: LaneSide,
-	position: number,
+	position: { readonly value: number; readonly mainFace?: boolean },
 ): void {
-	const key = JSON.stringify([endpointId, side]);
+	const key = JSON.stringify([endpointId, side, position.mainFace ?? false]);
 	const positions = context.ports.get(key) ?? [];
-	positions.push(position);
+	positions.push(position.value);
 	context.ports.set(key, positions);
-}
-
-function attachedTransverse(
-	point: Point,
-	bounds: Bounds,
-	vertical: boolean,
-	side: LaneSide,
-): boolean {
-	let expected = longStart(bounds, vertical);
-	if (side === 1) expected = longEnd(bounds, vertical);
-	const port = cross(point, vertical);
-	const afterStart = port >= crossStart(bounds, vertical) + PORT_INSET;
-	const beforeEnd = port <= crossEnd(bounds, vertical) - PORT_INSET;
-	return longitudinal(point, vertical) === expected && afterStart && beforeEnd;
 }
 
 function transversePortDirection(
@@ -103,27 +89,38 @@ function transverseRouteEndpoints(
 		target: target.bounds,
 		vertical: context.vertical,
 	});
-	const sourceSide = physicalTransverseSide(sides.source, context.reverse);
+	let sourceSide = physicalTransverseSide(sides.source, context.reverse);
 	let targetSide = physicalTransverseSide(sides.target, context.reverse);
+	if (context.orientation === LaneOrientation.Parallel) {
+		sourceSide = 1;
+		targetSide = -1;
+		if (longStart(target.bounds, context.vertical) < longStart(source.bounds, context.vertical)) {
+			sourceSide = -1;
+			targetSide = 1;
+		}
+	}
 	const first = route.points[0];
 	const second = route.points[1];
 	const last = route.points.at(-1);
 	const beforeLast = route.points.at(-2);
 	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
 	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
-	const arcTarget = sides.arcTarget ?? sides.target;
-	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))
-		targetSide = physicalTransverseSide(arcTarget, context.reverse);
-	if (!attachedTransverse(first, source.bounds, context.vertical, sourceSide))
+	if (context.orientation === LaneOrientation.Transverse) {
+		const arcTarget = sides.arcTarget ?? sides.target;
+		if (!attached(last, target.bounds, !context.vertical, targetSide))
+			targetSide = physicalTransverseSide(arcTarget, context.reverse);
+	}
+	if (!attached(first, source.bounds, !context.vertical, sourceSide))
 		return `Route ${route.id} leaves the wrong source face.`;
-	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))
+	if (!attached(last, target.bounds, !context.vertical, targetSide))
 		return `Route ${route.id} reaches the wrong target face.`;
 	if (!transversePortDirection(first, second, context.vertical, sourceSide))
 		return `Route ${route.id} leaves the source inward.`;
 	if (!transversePortDirection(last, beforeLast, context.vertical, targetSide))
 		return `Route ${route.id} reaches the target from inside.`;
-	recordPort(context, from, sourceSide, cross(first, context.vertical));
-	recordPort(context, to, targetSide, cross(last, context.vertical));
+	const mainFace = context.orientation === LaneOrientation.Parallel;
+	recordPort(context, from, sourceSide, { value: cross(first, context.vertical), mainFace });
+	recordPort(context, to, targetSide, { value: cross(last, context.vertical), mainFace });
 	return undefined;
 }
 
@@ -148,6 +145,11 @@ function routeEndpoints(
 	const beforeLast = route.points.at(-2);
 	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
 	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
+	const mainFace =
+		cross(first, context.vertical) > crossStart(source.bounds, context.vertical) &&
+		cross(first, context.vertical) < crossEnd(source.bounds, context.vertical);
+	if (sourceLane === targetLane && mainFace)
+		return transverseRouteEndpoints(route, context, from, to);
 	if (!attached(first, source.bounds, context.vertical, sourceSide))
 		return `Route ${route.id} leaves the wrong source face.`;
 	if (!attached(last, target.bounds, context.vertical, targetSide))
@@ -156,8 +158,8 @@ function routeEndpoints(
 		return `Route ${route.id} leaves the source inward.`;
 	if (!portDirection(last, beforeLast, context.vertical, targetSide))
 		return `Route ${route.id} reaches the target from inside.`;
-	recordPort(context, from, sourceSide, longitudinal(first, context.vertical));
-	recordPort(context, to, targetSide, longitudinal(last, context.vertical));
+	recordPort(context, from, sourceSide, { value: longitudinal(first, context.vertical) });
+	recordPort(context, to, targetSide, { value: longitudinal(last, context.vertical) });
 	return undefined;
 }
 
@@ -291,6 +293,25 @@ export function validateChangedSharedLaneRoutes(
 		}
 	}
 	return undefined;
+}
+
+/** Only failed main-face relations are eligible for the lateral routing alternative. */
+export function rejectedSharedLaneRouteShapes(
+	geometry: SharedLaneGeometry,
+	eligibleIds: ReadonlySet<string>,
+	clearance: number,
+): ReadonlySet<string> {
+	const rejected = new Set<string>();
+	const context: RouteGeometryContext = {
+		geometry,
+		boxes: new Map(geometry.elements.map((box) => [box.id, box])),
+		clearance,
+	};
+	for (const route of geometry.relations) {
+		if (eligibleIds.has(route.id) && routeSegments(route, context) !== undefined)
+			rejected.add(route.id);
+	}
+	return rejected;
 }
 
 export function validateSharedLaneRoutes(

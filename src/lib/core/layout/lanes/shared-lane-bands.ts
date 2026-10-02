@@ -4,6 +4,7 @@ import type { Point } from '../layout-types';
 import {
 	compareLayoutOrder,
 	type LaneSide,
+	mainLaneFaces,
 	type SharedLaneEndpoint,
 	type SharedLaneInput,
 } from './shared-lane-model';
@@ -106,13 +107,24 @@ function groupBands(input: SharedLaneInput): {
 }
 
 /** Both ports of every plan: incidence key, endpoint and lateral face. */
-function portIncidences(
-	input: SharedLaneInput,
-): readonly { readonly key: string; readonly id: string; readonly side: LaneSide }[] {
-	return input.plans.flatMap((plan) => [
-		{ key: incidenceKey(plan.id, PortRole.Source), id: plan.from, side: plan.sourceSide },
-		{ key: incidenceKey(plan.id, PortRole.Target), id: plan.to, side: plan.targetSide },
-	]);
+function portIncidences(input: SharedLaneInput): readonly {
+	readonly key: string;
+	readonly id: string;
+	readonly side: LaneSide;
+	readonly mainFace: boolean;
+}[] {
+	return input.plans.flatMap((plan) => {
+		const mainFace = mainLaneFaces(input, plan);
+		return [
+			{
+				key: incidenceKey(plan.id, PortRole.Source),
+				id: plan.from,
+				side: plan.sourceSide,
+				mainFace,
+			},
+			{ key: incidenceKey(plan.id, PortRole.Target), id: plan.to, side: plan.targetSide, mainFace },
+		];
+	});
 }
 
 /**
@@ -125,7 +137,8 @@ function bandDetours(
 	slots: ReadonlyMap<string, BandSlot>,
 ): readonly BandDetour[] {
 	const detours: BandDetour[] = [];
-	for (const { key, id, side } of portIncidences(input)) {
+	for (const { key, id, side, mainFace } of portIncidences(input)) {
+		if (mainFace) continue;
 		const { slot, last } = defined(slots.get(id));
 		const blockedAfter = side > 0 && slot < last;
 		const blockedBefore = side < 0 && slot > 0;
@@ -171,7 +184,20 @@ export function planLaneBands(input: SharedLaneInput): LaneBands {
 			const key = slotGapKey(endpoint.laneIndex, endpoint.row, slot);
 			slotGaps.set(key, Math.max(SLOT_GAP, (gapTracks.get(key) ?? 0) * RAIL_SPACING));
 		}
-	return { bands, detours, slotGaps, boundaries: boundarySizes(rowCount, detours) };
+	const boundaries = boundarySizes(rowCount, detours);
+	const mainCounts = new Map<string, number>();
+	for (const plan of input.plans) {
+		if (!mainLaneFaces(input, plan)) continue;
+		const row = Math.max(
+			defined(input.endpoints.get(plan.from)).row,
+			defined(input.endpoints.get(plan.to)).row,
+		);
+		const key = JSON.stringify([plan.sourceLaneIndex, row]);
+		const count = (mainCounts.get(key) ?? 0) + 1;
+		mainCounts.set(key, count);
+		boundaries[row] = Math.max(defined(boundaries[row]), count * RAIL_SPACING);
+	}
+	return { bands, detours, slotGaps, boundaries };
 }
 
 /** The cross width a band occupies, and the offset of each of its endpoints inside it. */
@@ -270,6 +296,20 @@ function corridorTracks(
 	return tracks;
 }
 
+/** Main-face access owns only its endpoint point; it does not allocate a lateral detour. */
+function mainPortAccess(
+	key: string,
+	id: string,
+	after: boolean,
+	placement: BandPlacement,
+): PortAccess {
+	const box = defined(placement.boxes.get(id));
+	const x = box.cross + box.crossSize / 2 + defined(placement.portOffsetByIncidence.get(key));
+	let y = box.longitudinal;
+	if (after) y += box.longSize;
+	return { points: [{ x, y }], reach: y };
+}
+
 /**
  * The access of every port of a parallel frame. A port whose face is free reaches its gutter
  * straight across its lane; a port facing a band neighbour enters the slot gap, runs to the row
@@ -281,7 +321,8 @@ export function bandPortAccess(
 	placement: BandPlacement,
 ): ReadonlyMap<string, PortAccess> {
 	const access = new Map<string, PortAccess>();
-	for (const { key, id, side } of portIncidences(input)) {
+	for (const { key, id, side, mainFace } of portIncidences(input)) {
+		if (mainFace) continue;
 		const box = defined(placement.boxes.get(id));
 		const center = box.longitudinal + box.longSize / 2;
 		const long = center + defined(placement.portOffsetByIncidence.get(key));
@@ -318,6 +359,15 @@ export function bandPortAccess(
 		const x = defined(xs.get(detour.key));
 		const y = defined(ys.get(detour.key));
 		access.set(detour.key, { points: [defined(port), { x, y: long }, { x, y }], reach: y });
+	}
+	for (const plan of input.plans) {
+		if (!mainLaneFaces(input, plan)) continue;
+		const source = defined(input.endpoints.get(plan.from));
+		const target = defined(input.endpoints.get(plan.to));
+		const sourceKey = incidenceKey(plan.id, PortRole.Source);
+		const targetKey = incidenceKey(plan.id, PortRole.Target);
+		access.set(sourceKey, mainPortAccess(sourceKey, source.id, target.row > source.row, placement));
+		access.set(targetKey, mainPortAccess(targetKey, target.id, source.row > target.row, placement));
 	}
 	return access;
 }

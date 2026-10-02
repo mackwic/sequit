@@ -8,6 +8,7 @@ import type { RegionIncidentContract } from '../regions/model/region-incident-co
 import {
 	compareLayoutOrder,
 	type LaneSide,
+	mainLaneFaces,
 	type SharedLaneEndpoint,
 	type SharedLaneInput,
 	type SharedLanePlan,
@@ -59,6 +60,7 @@ interface PortGroup {
 	readonly endpointId: string;
 	readonly side: LaneSide;
 	readonly incidences: PortIncidence[];
+	readonly mainFace: boolean;
 }
 
 interface IncidentFaceGroup {
@@ -70,6 +72,7 @@ interface IncidentFaceGroup {
 export interface SharedLanePorts {
 	readonly offsetByIncidence: ReadonlyMap<string, number>;
 	readonly demandByEndpoint: ReadonlyMap<string, number>;
+	readonly crossDemandByEndpoint: ReadonlyMap<string, number>;
 	readonly incidentOffsetByFace: ReadonlyMap<string, number>;
 }
 
@@ -81,8 +84,8 @@ export function incidentFaceKey(contract: RegionIncidentContract, side: RegionPo
 	return JSON.stringify([contract.relation.id, contract.role, side]);
 }
 
-function physicalSide(input: SharedLaneInput, side: LaneSide): RegionPortalSide {
-	if (input.orientation === LaneOrientation.Parallel) {
+function physicalSide(input: SharedLaneInput, side: LaneSide, mainFace = false): RegionPortalSide {
+	if (input.orientation === LaneOrientation.Parallel && !mainFace) {
 		if (input.vertical) {
 			if (side === -1) return RegionPortalSide.Left;
 			return RegionPortalSide.Right;
@@ -107,14 +110,20 @@ interface IncidenceInput {
 	readonly otherPosition: number;
 	readonly side: LaneSide;
 	readonly role: PortRole;
+	readonly mainFace: boolean;
 }
 
 function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): void {
-	const { plan, endpoint, other, otherPosition, side, role } = input;
-	const key = JSON.stringify([endpoint.id, side]);
+	const { plan, endpoint, other, otherPosition, role, mainFace } = input;
+	let side = input.side;
+	if (mainFace) {
+		side = -1;
+		if (other.row > endpoint.row) side = 1;
+	}
+	const key = JSON.stringify([endpoint.id, side, mainFace]);
 	let group = groups.get(key);
 	if (group === undefined) {
-		group = { endpointId: endpoint.id, side, incidences: [] };
+		group = { endpointId: endpoint.id, side, mainFace, incidences: [] };
 		groups.set(key, group);
 	}
 	group.incidences.push({
@@ -175,9 +184,9 @@ function reservePhysicalGroup(
 ): void {
 	for (const laneSide of [-1, 1] as const) {
 		if (physicalSide(input, laneSide) !== side) continue;
-		const groupKey = JSON.stringify([endpointId, laneSide]);
+		const groupKey = JSON.stringify([endpointId, laneSide, false]);
 		if (groups.has(groupKey)) continue;
-		groups.set(groupKey, { endpointId, side: laneSide, incidences: [] });
+		groups.set(groupKey, { endpointId, side: laneSide, mainFace: false, incidences: [] });
 	}
 }
 
@@ -266,6 +275,7 @@ export function planSharedLanePorts(
 	for (const plan of input.plans) {
 		const source = defined(input.endpoints.get(plan.from));
 		const target = defined(input.endpoints.get(plan.to));
+		const mainFace = mainLaneFaces(input, plan);
 		addIncidence(groups, {
 			plan,
 			endpoint: source,
@@ -273,6 +283,7 @@ export function planSharedLanePorts(
 			otherPosition: defined(positions.get(target.id)),
 			side: plan.sourceSide,
 			role: PortRole.Source,
+			mainFace,
 		});
 		addIncidence(groups, {
 			plan,
@@ -281,17 +292,19 @@ export function planSharedLanePorts(
 			otherPosition: defined(positions.get(source.id)),
 			side: plan.targetSide,
 			role: PortRole.Target,
+			mainFace,
 		});
 	}
 	const offsetByIncidence = new Map<string, number>();
 	const demandByEndpoint = new Map<string, number>();
+	const crossDemandByEndpoint = new Map<string, number>();
 	const faces = incidentFaces(input, contracts, groups);
 	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
-		const localOnly = group.incidences.every(({ localArc }) => localArc);
+		const localOnly = !group.mainFace && group.incidences.every(({ localArc }) => localArc);
 		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder, localOnly));
 		const count = group.incidences.length;
-		const side = physicalSide(input, group.side);
+		const side = physicalSide(input, group.side, group.mainFace);
 		const reserved = faces.get(JSON.stringify([group.endpointId, side]))?.contracts.length ?? 0;
 		const spread = (count - 1) * PORT_SPACING;
 		let required = 2 * PORT_INSET + spread;
@@ -299,10 +312,9 @@ export function planSharedLanePorts(
 			const furthestPort = Math.max(count, reserved - 1) * PORT_SPACING;
 			required = 2 * (PORT_INSET + furthestPort);
 		}
-		demandByEndpoint.set(
-			group.endpointId,
-			Math.max(demandByEndpoint.get(group.endpointId) ?? 0, required),
-		);
+		let demand = demandByEndpoint;
+		if (group.mainFace) demand = crossDemandByEndpoint;
+		demand.set(group.endpointId, Math.max(demand.get(group.endpointId) ?? 0, required));
 		for (const [index, incidence] of group.incidences.entries()) {
 			const center = (count - 1) / 2;
 			let offset = (index - center) * PORT_SPACING;
@@ -313,5 +325,5 @@ export function planSharedLanePorts(
 			offsetByIncidence.set(incidenceKey(incidence.relationId, incidence.role), offset);
 		}
 	}
-	return { offsetByIncidence, demandByEndpoint, incidentOffsetByFace };
+	return { offsetByIncidence, demandByEndpoint, crossDemandByEndpoint, incidentOffsetByFace };
 }

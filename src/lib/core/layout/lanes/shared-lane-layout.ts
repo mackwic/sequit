@@ -32,16 +32,16 @@ import {
 } from './shared-lane-layout-geometry';
 import { prepareSharedLanes, type SharedLaneInput } from './shared-lane-model';
 import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
-import {
-	materializeParallelGeometry,
-	type ParallelRouteCandidate,
-	type SharedLaneAllocationSearchWitness,
+import type {
+	ParallelRouteCandidate,
+	SharedLaneAllocationSearchWitness,
 } from './shared-lane-route-candidates';
 import type { SharedLaneRouteCertificate } from './shared-lane-route-delta';
 import {
 	certifySharedLaneRouteGeometry,
 	materializeParallelGeometryDelta,
 } from './shared-lane-route-delta';
+import { materializeParallelGeometry } from './shared-lane-route-frame';
 import {
 	type LaneCandidate,
 	type RankedLaneRouteSelection,
