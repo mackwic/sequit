@@ -285,7 +285,7 @@ function assignRails(
 	for (const layer of layers) {
 		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
-	untangleChannelRails(wires, ready, layers, trackByRunKey);
+	untangleChannelRails(wires, ready, layers);
 	count = compactChannelRails(ready, trackByRunKey);
 	edge.capacity = count;
 	return { edge, trackByRunKey, railCount: count };

@@ -315,9 +315,7 @@ export function untangleChannelRails(
 	wires: readonly ChannelWire[],
 	runs: readonly ChannelRun[],
 	layers: readonly (readonly ChannelRun[])[],
-	trackByRunKey: Map<number, number>,
 ): void {
 	const risers = runRisers(wires, runs);
 	for (const layer of layers) if (layer.length > 1) untangleLayer(layer, risers);
-	for (const run of runs) trackByRunKey.set(run.key, run.rail);
 }

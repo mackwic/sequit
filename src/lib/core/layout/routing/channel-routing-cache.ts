@@ -282,12 +282,14 @@ export class ChannelRoutingCache {
 		this.#currentWires += template.endpoints.id.length;
 	}
 
-	/** Owner, flag, length, first and last id and a fold of the coordinate bits; verified exactly. */
+	/** Owner, flag, relation bounds, coordinate bits and canonical families; verified exactly. */
 	#key(wires: readonly ChannelWire[], nonInverted: boolean, ownerId: string): string {
 		let hash = HASH_SEED;
-		for (const { source, target } of wires) {
+		for (const { source, target, sourceEndpoint, targetEndpoint } of wires) {
 			hash = this.#fold(hash, source);
 			hash = this.#fold(hash, target);
+			hash = this.#foldEndpoint(hash, sourceEndpoint);
+			hash = this.#foldEndpoint(hash, targetEndpoint);
 		}
 		const first = wires[0]?.id ?? '';
 		const last = wires.at(-1)?.id ?? '';
@@ -298,5 +300,18 @@ export class ChannelRoutingCache {
 		this.#bits[0] = value;
 		const low = Math.imul(hash ^ defined(this.#words[0]), HASH_PRIME);
 		return Math.imul(low ^ defined(this.#words[1]), HASH_PRIME);
+	}
+
+	#foldEndpoint(hash: number, endpoint: GraphEndpoint | undefined): number {
+		if (endpoint === undefined) return Math.imul(hash, HASH_PRIME);
+		const familyHash = this.#foldString(Math.imul(hash ^ 1, HASH_PRIME), endpoint.kind);
+		return this.#foldString(familyHash, endpoint.entity.id);
+	}
+
+	#foldString(hash: number, value: string): number {
+		let result = Math.imul(hash ^ value.length, HASH_PRIME);
+		for (let index = 0; index < value.length; index += 1)
+			result = Math.imul(result ^ value.charCodeAt(index), HASH_PRIME);
+		return result;
 	}
 }
