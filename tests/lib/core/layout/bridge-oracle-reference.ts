@@ -127,7 +127,7 @@ function recordReferencePair(scan: ReferenceScan, current: RouteRun, previous: R
 }
 
 /** Decode maximal straight runs from waypoints without using the indexed oracle's parser. */
-function referenceRuns(path: RoutedPath): RouteRun[] {
+export function referenceRuns(path: RoutedPath): RouteRun[] {
 	const runs: RouteRun[] = [];
 	for (let index = 1; index < path.points.length; index += 1) {
 		const start = path.points[index - 1];
@@ -207,7 +207,7 @@ export function referenceRouteBridgeAnalysis(paths: readonly RoutedPath[]): Rout
 export function referenceGroupShellViolations(
 	paths: readonly RoutedPath[],
 	frames: readonly BoxGeometry[],
-	clearance: number | ReadonlyMap<string, number>,
+	clearance: number,
 ): readonly { pathId: string; frameId: string; segment: number; distance: number }[] {
 	const violations: { pathId: string; frameId: string; segment: number; distance: number }[] = [];
 	for (const path of paths) {
@@ -217,11 +217,7 @@ export function referenceGroupShellViolations(
 			if (start === undefined || end === undefined) continue;
 			for (const frame of frames) {
 				const distance = parallelFrameDistance(start, end, frame.bounds);
-				let minimum: number | undefined;
-				if (typeof clearance === 'number') minimum = clearance;
-				else minimum = clearance.get(frame.id);
-				if (minimum === undefined) throw new Error(`Missing clearance for frame ${frame.id}`);
-				if (distance < minimum)
+				if (distance < clearance)
 					violations.push({ pathId: path.id, frameId: frame.id, segment, distance });
 			}
 		}

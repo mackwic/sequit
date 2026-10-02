@@ -751,3 +751,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Corpus exact du relecteur (600 graines × 4 directions, deux séries) : validité padding36 **2376 → 2400**, mixte **2360 → 2400** ; sorties du groupe **4 → 0** et **24 → 0** ; croisements stricts **1774 → 1632** et **1798 → 1638**. Aucun contact colinéaire ni traversée de cadre étranger après correction.
 - L’ordre des relations et la priorité aux faibles croisements restent inchangés ; aucun padding mesuré agrandi. En saturation, le confinement prime sur le pas de 24 unités entre pistes.
 - Aucun SHA ré-épinglé. Le contrat nommé `ChannelGeometry` reçoit désormais obligatoirement les cadres pour centrer aussi le décrochement intermédiaire ; sans cadre, ses points sont inchangés.
+
+### Seconde reprise de relecture — bandes partagées et repli historique
+
+- Commit `fix(layout): coques dédiées — partager les bandes sans perdre le rendu` : D-06/N01–N03 ; dégagements intérieur et extérieur distincts, répartition finale des bandes et pas minimal de 6 entre passages. Les montants de ports opposés restent dans le périmètre D-05.
+- Les 18 000 layouts profonds (paddings 12/24/36, quatre directions) n’ajoutent ni exception, ni invalidité, ni sortie de groupe à la base ; aucun pas de passage inférieur à 6. En saturation, le repli local historique remplace l’exception et le curseur extérieur reste monotone.
+- Corpus mixte exact : **2400/2400 valides**, sorties **24 → 2**, croisements stricts **1798 → 1624** ; les **424 segments extérieurs fautifs deviennent 0**. Padding36 : **2400/2400 valides**, sorties **4 → 0**, croisements **1774 → 1628**. Aucun contact colinéaire ni cadre étranger traversé.
+- Aucun SHA ré-épinglé, mesure de padding agrandie ou seuil relevé. Les oracles symétriques de la première reprise sont remplacés par les bandes réelles et la comparaison explicite au repli historique ; la priorité reste la correction, pas l’optimisation.

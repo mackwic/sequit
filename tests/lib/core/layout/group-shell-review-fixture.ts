@@ -11,7 +11,7 @@ import type { LayoutMeasurementOverrides } from '../../../support/builders/layou
 import { validLogicDocument } from '../../../support/builders/logic-document';
 
 /** Mulberry32 preserves the review corpus, including the order of measurement draws. */
-function random(seed: number): () => number {
+export function shellReviewRandom(seed: number): () => number {
 	let state = seed >>> 0;
 	return () => {
 		state = (state + 0x6d2b79f5) >>> 0;
@@ -42,7 +42,7 @@ export function reviewedShellSample(
 	direction: LayoutDirection,
 	padding?: number,
 ): { readonly document: LogicDocument; readonly overrides: LayoutMeasurementOverrides } {
-	const next = random(seed);
+	const next = shellReviewRandom(seed);
 	const draw = (low: number, high: number) => low + Math.floor(next() * (high - low + 1));
 	const count = draw(4, 9);
 	const ids = Array.from({ length: count }, (_, index) => `n${index}`);

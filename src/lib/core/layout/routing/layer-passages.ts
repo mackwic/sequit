@@ -1,7 +1,7 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
-import { type Bounds, GroupRouteFailure, type Point, type RoutingLayers } from '../layout-types';
+import { GROUP_SHELL_CLEARANCE, MIN_PASSAGE_SPACING, RAIL_SPACING } from '../layout-settings';
+import type { Bounds, Point, RoutingLayers } from '../layout-types';
 import {
 	componentExteriorCandidates,
 	type ExteriorCandidates,
@@ -12,17 +12,21 @@ import {
 	foreignGroupObstacles,
 	groupPaddingCandidates,
 	internalCorridorCandidates,
+	obstaclesAcross,
+	occupiedIntervals,
 	passageGroupPoints,
 } from './group-passages';
 import {
 	packedShellCandidates,
+	type ParallelShell,
 	parallelShellObstacles,
 	parallelShells,
 	shellPassageCandidates,
 } from './group-shells';
+import { finishPassageBands, readablePortPitch } from './passage-bands';
 import { freeColumnIndex, holdOuterColumn, passageEnds } from './passage-columns';
 import { byJogCrossings, type PassageReservation } from './passage-jogs';
-import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
+import { routeHitsObstacles, type RouteObstacles } from './route-obstacles';
 
 interface PassageInput {
 	readonly graph: LogicGraph;
@@ -42,7 +46,9 @@ interface PassageWorkspace extends PassageInput {
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
 	readonly shellObstacles: RouteObstacles;
 	readonly shellCandidates: readonly number[];
+	readonly shells: readonly ParallelShell[];
 	readonly sharedClearance: number;
+	readonly historical: boolean;
 	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
 }
 
@@ -68,72 +74,6 @@ function column(coordinate: number, box: Bounds, vertical: boolean): Point {
 	return { x: box.x + box.width / 2, y: coordinate };
 }
 
-function obstaclesAcross(
-	input: PassageWorkspace,
-	targetLayer: number,
-	sourceLayer: number,
-	clearance: number,
-): RouteObstacles | undefined {
-	const key = `${targetLayer}:${sourceLayer}:${clearance}`;
-	const { obstacles } = input;
-	if (obstacles.has(key)) return obstacles.get(key);
-	const boxes: Bounds[] = [];
-	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
-		for (const id of defined(input.layers.rows[layer])) {
-			if (input.graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
-			boxes.push(defined(input.bounds.get(id)));
-		}
-	let index: RouteObstacles | undefined;
-	if (boxes.length > 0) index = prepareRouteObstacles(boxes, clearance);
-	obstacles.set(key, index);
-	return index;
-}
-
-function transverseInterval(box: Bounds, vertical: boolean): Interval {
-	let origin = box.y;
-	let size = box.height;
-	if (vertical) {
-		origin = box.x;
-		size = box.width;
-	}
-	return { start: origin - RAIL_SPACING, end: origin + size + RAIL_SPACING };
-}
-
-function mergedIntervals(boxes: readonly Bounds[], vertical: boolean): readonly Interval[] {
-	const sorted = boxes
-		.map((box) => transverseInterval(box, vertical))
-		.sort((left, right) => left.start - right.start || left.end - right.end);
-	const merged: Interval[] = [];
-	for (const interval of sorted) {
-		const previous = merged.at(-1);
-		if (previous === undefined || interval.start >= previous.end) {
-			merged.push(interval);
-			continue;
-		}
-		if (interval.end > previous.end)
-			merged[merged.length - 1] = { start: previous.start, end: interval.end };
-	}
-	return merged;
-}
-
-function occupiedIntervals(
-	input: PassageWorkspace,
-	targetLayer: number,
-	sourceLayer: number,
-): readonly Interval[] {
-	const key = `${targetLayer}:${sourceLayer}`;
-	const cached = input.intervalCache.get(key);
-	if (cached !== undefined) return cached;
-	const boxes: Bounds[] = [];
-	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
-		for (const id of defined(input.layers.rows[layer]))
-			if (input.graph.endpointsById.get(id)?.kind !== EndpointKind.Group)
-				boxes.push(defined(input.bounds.get(id)));
-	const intervals = mergedIntervals(boxes, input.vertical);
-	input.intervalCache.set(key, intervals);
-	return intervals;
-}
-
 function candidateHitsObstacles(
 	selection: PassageSelection,
 	candidate: number,
@@ -145,11 +85,17 @@ function candidateHitsObstacles(
 		column(candidate, target, selection.workspace.vertical),
 	];
 	if (routeHitsObstacles(points, selection.workspace.shellObstacles)) return true;
+	if (
+		!selection.workspace.historical &&
+		!readablePortPitch(selection.workspace, selection.relation, candidate)
+	)
+		return true;
 	if (obstacleIndex !== undefined) {
 		if (routeHitsObstacles(points, obstacleIndex)) return true;
 	}
 	const foreignGroupObstacles = selection.foreignGroupObstacles;
 	if (foreignGroupObstacles !== undefined) {
+		if (selection.workspace.historical) return routeHitsObstacles(points, foreignGroupObstacles);
 		const jogs = passageGroupPoints(selection.workspace, selection.relation, {
 			source: selection.sourceCoordinate,
 			target: selection.targetCoordinate,
@@ -247,7 +193,9 @@ function reservePassage(
 	const source = defined(input.bounds.get(relation.from));
 	const target = defined(input.bounds.get(relation.to));
 	const group = commonGroupBounds(input, relation);
-	const foreignGroups = foreignGroupObstacles(input, relation, 0);
+	let frameClearance = 0;
+	if (input.historical) frameClearance = RAIL_SPACING;
+	const foreignGroups = foreignGroupObstacles(input, relation, frameClearance);
 	let occupied = occupiedIntervals(input, targetLayer, sourceLayer);
 	if (group !== undefined) {
 		const scoped: Interval[] = [];
@@ -290,6 +238,7 @@ function reservePassage(
 	if (spacing < RAIL_SPACING) appendPackedCandidates(selection);
 	selection.candidates.push(...fallback);
 	const passage = selectPassage(selection, RAIL_SPACING, spacing);
+	if (input.historical) return passage;
 	if (passage !== undefined || group === undefined) return passage;
 	// If no full-clearance column fits, share the padding between the node and its frame.
 	const shared = selectPassage(selection, input.sharedClearance, spacing);
@@ -304,14 +253,16 @@ function reserveOuterColumn(
 	start: number,
 ): number {
 	if (commonGroupBounds(input, relation) !== undefined) {
-		let spacing = RAIL_SPACING / (input.reservations.length + 1);
-		let passage = reservePassage(input, relation, spacing);
-		while (passage === undefined && spacing > Number.EPSILON) {
-			spacing /= 2;
-			passage = reservePassage(input, relation, spacing);
+		for (const maximum of [GROUP_SHELL_CLEARANCE, MIN_PASSAGE_SPACING, 0]) {
+			const shared = {
+				...input,
+				historical: maximum === 0,
+				shellObstacles: parallelShellObstacles(input.shells, input.vertical, maximum),
+				shellCandidates: shellPassageCandidates(input.shells, maximum),
+			};
+			const passage = reservePassage(shared, relation, MIN_PASSAGE_SPACING);
+			if (passage !== undefined) return passage;
 		}
-		if (passage === undefined) throw new GroupRouteFailure(relation.id);
-		return passage;
 	}
 	return holdOuterColumn(input.reservations, relation, passageEnds(input, relation), start);
 }
@@ -320,6 +271,9 @@ function reserveOuterColumn(
 export interface LayerPassageAllocator {
 	(relation: LogicRelation): number | undefined;
 	readonly outer: (relation: LogicRelation, start: number) => number;
+	readonly finish: (
+		passages: ReadonlyMap<LogicRelation, number>,
+	) => ReadonlyMap<LogicRelation, number>;
 }
 
 /** A new allocator belongs to one geometry phase; nothing survives the next placement. */
@@ -335,12 +289,16 @@ export function layerPassages(input: PassageInput): LayerPassageAllocator {
 		obstacles: new Map(),
 		reservations: [],
 		groupObstacleCache: new Map(),
+		shells,
 		shellObstacles: parallelShellObstacles(shells, input.vertical),
 		shellCandidates: shellPassageCandidates(shells),
 		sharedClearance,
+		historical: false,
 	};
 	return Object.assign((relation: LogicRelation) => reservePassage(workspace, relation), {
 		outer: (relation: LogicRelation, start: number) =>
 			reserveOuterColumn(workspace, relation, start),
+		finish: (passages: ReadonlyMap<LogicRelation, number>) =>
+			finishPassageBands(workspace, passages),
 	});
 }

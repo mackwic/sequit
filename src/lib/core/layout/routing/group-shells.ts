@@ -133,6 +133,8 @@ export interface ParallelShell {
 	readonly end: number;
 	readonly leading: number;
 	readonly trailing: number;
+	readonly outerLeading: number;
+	readonly outerTrailing: number;
 }
 
 /** Share narrow padding instead of expelling a passage from its containing group. */
@@ -158,14 +160,16 @@ export function parallelShells(
 			leading = Math.min(leading, Math.max(0, childStart - start) / 2);
 			trailing = Math.min(trailing, Math.max(0, end - childEnd) / 2);
 		}
+		let outerLeading = GROUP_SHELL_CLEARANCE;
+		let outerTrailing = GROUP_SHELL_CLEARANCE;
 		const parent = bounds.get(group.groupId ?? '');
 		if (parent !== undefined) {
 			const parentStart = transverseStart(parent, vertical);
 			const parentEnd = parentStart + transverseSize(parent, vertical);
-			leading = Math.min(leading, Math.max(0, start - parentStart) / 2);
-			trailing = Math.min(trailing, Math.max(0, parentEnd - end) / 2);
+			outerLeading = Math.min(outerLeading, Math.max(0, start - parentStart) / 2);
+			outerTrailing = Math.min(outerTrailing, Math.max(0, parentEnd - end) / 2);
 		}
-		shells.push({ bounds: box, start, end, leading, trailing });
+		shells.push({ bounds: box, start, end, leading, trailing, outerLeading, outerTrailing });
 	}
 	return shells;
 }
@@ -174,18 +178,24 @@ export function parallelShells(
 export function parallelShellObstacles(
 	shells: readonly ParallelShell[],
 	vertical: boolean,
+	maximum = GROUP_SHELL_CLEARANCE,
 ): RouteObstacles {
 	const sides: Bounds[] = [];
-	for (const { bounds: box, start, end, leading, trailing } of shells) {
+	for (const shell of shells) {
+		const { bounds: box, start, end } = shell;
+		const leading = Math.min(maximum, shell.leading);
+		const trailing = Math.min(maximum, shell.trailing);
+		const outerLeading = Math.min(maximum, shell.outerLeading);
+		const outerTrailing = Math.min(maximum, shell.outerTrailing);
 		if (vertical) {
 			sides.push(
-				{ ...box, x: start - leading, width: 2 * leading },
-				{ ...box, x: end - trailing, width: 2 * trailing },
+				{ ...box, x: start - outerLeading, width: outerLeading + leading },
+				{ ...box, x: end - trailing, width: trailing + outerTrailing },
 			);
 		} else {
 			sides.push(
-				{ ...box, y: start - leading, height: 2 * leading },
-				{ ...box, y: end - trailing, height: 2 * trailing },
+				{ ...box, y: start - outerLeading, height: outerLeading + leading },
+				{ ...box, y: end - trailing, height: trailing + outerTrailing },
 			);
 		}
 	}
@@ -193,11 +203,14 @@ export function parallelShellObstacles(
 }
 
 /** Both clear boundaries and corridor centres replace a column which used to touch a frame. */
-export function shellPassageCandidates(shells: readonly ParallelShell[]): readonly number[] {
+export function shellPassageCandidates(
+	shells: readonly ParallelShell[],
+	maximum = GROUP_SHELL_CLEARANCE,
+): readonly number[] {
 	const edges: number[] = [];
-	for (const { start, end, leading, trailing } of shells) {
-		edges.push(start - leading, start + leading);
-		edges.push(end - trailing, end + trailing);
+	for (const { start, end, leading, trailing, outerLeading, outerTrailing } of shells) {
+		edges.push(start - Math.min(maximum, outerLeading), start + Math.min(maximum, leading));
+		edges.push(end - Math.min(maximum, trailing), end + Math.min(maximum, outerTrailing));
 	}
 	edges.sort((left, right) => left - right);
 	const candidates = [...edges];

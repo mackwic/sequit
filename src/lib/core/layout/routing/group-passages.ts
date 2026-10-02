@@ -6,7 +6,7 @@ import type { Bounds, Point, RoutingLayers } from '../layout-types';
 import { freeOfGroupShells, type MainInterval } from './group-shells';
 import { prepareRouteObstacles, type RouteObstacles } from './route-obstacles';
 
-interface GroupPassageContext {
+export interface GroupPassageContext {
 	readonly graph: LogicGraph;
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly vertical: boolean;
@@ -17,6 +17,15 @@ interface GroupPassageContext {
 interface GroupInterval {
 	readonly start: number;
 	readonly end: number;
+}
+
+interface PassageObstacles {
+	readonly graph: LogicGraph;
+	readonly bounds: ReadonlyMap<string, Bounds>;
+	readonly layers: RoutingLayers;
+	readonly vertical: boolean;
+	readonly intervalCache: Map<string, readonly GroupInterval[]>;
+	readonly obstacles: Map<string, RouteObstacles | undefined>;
 }
 
 function groupAncestors(input: GroupPassageContext, endpointId: string): readonly string[] {
@@ -212,4 +221,70 @@ export function groupPaddingCandidates(
 		candidates = occupiedGroupPaddingCandidates(occupied, group, preferred, maximumTracks);
 	}
 	return sortByDistance(candidates, sourceCoordinate, targetCoordinate);
+}
+
+export function obstaclesAcross(
+	input: PassageObstacles,
+	targetLayer: number,
+	sourceLayer: number,
+	clearance: number,
+): RouteObstacles | undefined {
+	const key = `${targetLayer}:${sourceLayer}:${clearance}`;
+	const { obstacles } = input;
+	if (obstacles.has(key)) return obstacles.get(key);
+	const boxes: Bounds[] = [];
+	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
+		for (const id of defined(input.layers.rows[layer])) {
+			if (input.graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
+			boxes.push(defined(input.bounds.get(id)));
+		}
+	let index: RouteObstacles | undefined;
+	if (boxes.length > 0) index = prepareRouteObstacles(boxes, clearance);
+	obstacles.set(key, index);
+	return index;
+}
+
+function transverseInterval(box: Bounds, vertical: boolean): GroupInterval {
+	let origin = box.y;
+	let size = box.height;
+	if (vertical) {
+		origin = box.x;
+		size = box.width;
+	}
+	return { start: origin - RAIL_SPACING, end: origin + size + RAIL_SPACING };
+}
+
+function mergedIntervals(boxes: readonly Bounds[], vertical: boolean): readonly GroupInterval[] {
+	const sorted = boxes
+		.map((box) => transverseInterval(box, vertical))
+		.sort((left, right) => left.start - right.start || left.end - right.end);
+	const merged: GroupInterval[] = [];
+	for (const interval of sorted) {
+		const previous = merged.at(-1);
+		if (previous === undefined || interval.start >= previous.end) {
+			merged.push(interval);
+			continue;
+		}
+		if (interval.end > previous.end)
+			merged[merged.length - 1] = { start: previous.start, end: interval.end };
+	}
+	return merged;
+}
+
+export function occupiedIntervals(
+	input: PassageObstacles,
+	targetLayer: number,
+	sourceLayer: number,
+): readonly GroupInterval[] {
+	const key = `${targetLayer}:${sourceLayer}`;
+	const cached = input.intervalCache.get(key);
+	if (cached !== undefined) return cached;
+	const boxes: Bounds[] = [];
+	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
+		for (const id of defined(input.layers.rows[layer]))
+			if (input.graph.endpointsById.get(id)?.kind !== EndpointKind.Group)
+				boxes.push(defined(input.bounds.get(id)));
+	const intervals = mergedIntervals(boxes, input.vertical);
+	input.intervalCache.set(key, intervals);
+	return intervals;
 }
