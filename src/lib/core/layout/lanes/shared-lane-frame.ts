@@ -11,7 +11,7 @@ import {
 	planLaneBands,
 	type PortAccess,
 } from './shared-lane-bands';
-import type { SharedLaneInput, SharedLanePlan } from './shared-lane-model';
+import { mainLaneFaces, type SharedLaneInput, type SharedLanePlan } from './shared-lane-model';
 import type { SharedLanePorts } from './shared-lane-ports';
 import type { LogicalBox, SharedLaneBounds } from './shared-lane-types';
 
@@ -34,6 +34,7 @@ export interface SharedLaneFrame {
 	readonly crossLanePlans: readonly SharedLanePlan[];
 	/** How each port, keyed by incidence, leaves its face and reaches its lane gutter. */
 	readonly portAccessByIncidence: ReadonlyMap<string, PortAccess>;
+	readonly mainFacePlanIds: ReadonlySet<string>;
 	/** The owner of the routing edges this frame publishes. */
 	readonly ownerId: string;
 	/** The gutter band beside the lanes: one track per plan, both sides of a lane reading the ordinal. */
@@ -123,7 +124,9 @@ function rowAndLaneSizes(
 		rows[item.row] = Math.max(rows[item.row] ?? 0, long);
 	}
 	for (const band of lanes.bands.values()) {
-		const layout = bandCrossLayout(lanes, band, ({ crossSize }) => crossSize);
+		const layout = bandCrossLayout(lanes, band, (item) =>
+			Math.max(item.crossSize, ports.crossDemandByEndpoint.get(item.id) ?? 0),
+		);
 		const laneIndex = defined(band[0]).laneIndex;
 		widths[laneIndex] = Math.max(defined(widths[laneIndex]), layout.width + 2 * LANE_INSET);
 		for (const [slot, item] of band.entries())
@@ -214,6 +217,7 @@ function endpointBoxes(
 	const ordered = [...input.endpoints.values()].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	for (const item of ordered) {
 		const longSize = Math.max(item.longSize, ports.demandByEndpoint.get(item.id) ?? 0);
+		const crossSize = Math.max(item.crossSize, ports.crossDemandByEndpoint.get(item.id) ?? 0);
 		const rowSize = defined(placement.sizes.rows[item.row]);
 		const laneWidth = defined(placement.sizes.widths[item.laneIndex]);
 		const laneStart = defined(placement.laneStarts[item.laneIndex]);
@@ -222,7 +226,7 @@ function endpointBoxes(
 		const bandStart = laneStart + (laneWidth - slot.bandWidth) / 2;
 		const cross = bandStart + slot.offset;
 		const longitudinal = rowStart + (rowSize - longSize) / 2;
-		const logical = { cross, longitudinal, crossSize: item.crossSize, longSize };
+		const logical = { cross, longitudinal, crossSize, longSize };
 		boxes.set(item.id, logical);
 		elements.push({
 			id: item.id,
@@ -288,6 +292,9 @@ export function makeSharedLaneFrame(
 	return {
 		laneStarts: positions.starts,
 		laneWidths: sizes.widths,
+		mainFacePlanIds: new Set(
+			input.plans.filter((plan) => mainLaneFaces(input, plan)).map(({ id }) => id),
+		),
 		boxes: placed.boxes,
 		elements: placed.elements,
 		lanes: laneBounds(input, positions.starts, sizes.widths, longExtent),

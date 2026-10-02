@@ -9,7 +9,7 @@ import {
 import { makeSharedLaneFrame, type SharedLaneFrame } from './shared-lane-frame';
 import type { SharedLaneGeometry } from './shared-lane-geometry';
 import type { SharedLaneInput } from './shared-lane-model';
-import type { SharedLanePorts } from './shared-lane-ports';
+import { planSharedLanePorts, type SharedLanePorts } from './shared-lane-ports';
 import {
 	allocateParallelRoutes,
 	type ParallelRouteAllocation,
@@ -55,6 +55,7 @@ interface ParallelStrategyPlan {
 	readonly domains: readonly TrackAssignmentDomain[];
 	readonly baselineKey: string;
 	readonly total: bigint;
+	readonly lateralFallback: boolean;
 }
 
 function parallelOrders(
@@ -144,6 +145,7 @@ function strategyPlan(
 		domains,
 		baselineKey: defined(first.value).key,
 		total: trackAllocationProductCount(domains),
+		lateralFallback: false,
 	};
 }
 
@@ -152,21 +154,37 @@ export function parallelStrategyPlans(
 	ports: SharedLanePorts,
 	contracts: readonly RegionIncidentContract[],
 ): readonly ParallelStrategyPlan[] {
-	return parallelOrders(contracts).map((order, strategyRank) =>
+	const orders = parallelOrders(contracts);
+	const plans = orders.map((order, strategyRank) =>
 		strategyPlan(input, ports, order, strategyRank),
 	);
+	if (!input.plans.some(({ mainFaces }) => mainFaces)) return plans;
+	const lateralInput = {
+		...input,
+		plans: input.plans.map((plan) => ({ ...plan, mainFaces: false })),
+	};
+	const lateralPorts = planSharedLanePorts(lateralInput, contracts);
+	return [
+		...plans,
+		...orders.map((order, index) => ({
+			...strategyPlan(lateralInput, lateralPorts, order, orders.length + index),
+			lateralFallback: true,
+		})),
+	];
 }
 
-function strategyId(order: ParallelRouteOrder, acceptBridges: boolean): string {
-	if (acceptBridges) return `parallel/bridged/${order}`;
-	return `parallel/${order}`;
+function strategyId(plan: ParallelStrategyPlan, acceptBridges: boolean): string {
+	let lateral = '';
+	if (plan.lateralFallback) lateral = '/lateral-fallback';
+	if (acceptBridges) return `parallel/bridged${lateral}/${plan.order}`;
+	return `parallel${lateral}/${plan.order}`;
 }
 
 function baselineCandidate(
 	plan: ParallelStrategyPlan,
 	acceptBridges: boolean,
 ): ParallelRouteCandidate {
-	const id = strategyId(plan.order, acceptBridges);
+	const id = strategyId(plan, acceptBridges);
 	return {
 		order: plan.order,
 		strategyRank: plan.strategyRank,
@@ -191,7 +209,7 @@ function allocationCandidate(
 		gutter,
 		railTrackByKey: rail.trackByKey,
 	};
-	const id = strategyId(plan.order, acceptBridges);
+	const id = strategyId(plan, acceptBridges);
 	return {
 		order: plan.order,
 		strategyRank: plan.strategyRank,

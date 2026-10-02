@@ -737,3 +737,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Commit `fix(layout): invariance dédiée — somme canonique des ancres de jonction` : la somme flottante des positions est précédée d’un tri numérique, pour retirer le résidu d’ordre lexical découvert en relecture R-01.
 - Le témoin minimal à trois ancres est rouge avant correction dans les huit configurations (0,4000000000000001 contre 0,39999999999999997) ; le générateur d’invariance est élargi aux groupes imbriqués, aux jonctions membres de groupes et à plusieurs jonctions.
 - Aucun SHA dédié ré-épinglé. Le départage structurel n’est pas une optimisation des routes : la relecture mesure un effet global neutre sur les croisements stricts (2185 → 2186, sur 2515 documents valides des deux côtés dans un corpus de 3000).
+
+## Correctifs du 2 octobre 2026 — lanes parallèles
+
+- Commit `fix(layout): lanes parallèles — relier les rangées consécutives par les faces principales` : L-04 corrigé, droite de 72 px pour `a2→a1` et `b2→b1` dans les quatre directions.
+- La fourche de trois enfants conserve la dimension principale mesurée ; les ports s'ordonnent par l'extrémité opposée et les passages inter-rangées disposent de pistes distinctes.
+- Les attaches latérales restent des alternatives après validation pour les passages refusés ; les sauts de rangée, les lanes transverses et la recherche d'ordre sont inchangés.
+- L'espacement des ports et les limites de recherche restent inchangés ; aucun seuil n'est abaissé.

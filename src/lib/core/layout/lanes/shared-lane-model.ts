@@ -38,6 +38,7 @@ export interface SharedLanePlan {
 	readonly sourceLaneIndex: number;
 	readonly targetLaneIndex: number;
 	readonly sameLane: boolean;
+	readonly mainFaces: boolean;
 }
 
 export interface SharedLaneInput {
@@ -47,6 +48,16 @@ export interface SharedLaneInput {
 	readonly plans: readonly SharedLanePlan[];
 	readonly vertical: boolean;
 	readonly reverse: boolean;
+}
+
+/** Consecutive logical rows share an inter-row passage on the main axis. */
+export function mainLaneFaces(input: SharedLaneInput, plan: SharedLanePlan): boolean {
+	if (!plan.mainFaces) return false;
+	return (
+		Math.abs(
+			defined(input.endpoints.get(plan.from)).row - defined(input.endpoints.get(plan.to)).row,
+		) === 1
+	);
 }
 
 export interface PreparedSharedLanes {
@@ -141,6 +152,9 @@ function relationPlans(
 		const source = defined(endpoints.get(relation.from));
 		const target = defined(endpoints.get(relation.to));
 		const sides = relationSides(source, target, laneCount, orientation);
+		const sameLane = source.laneIndex === target.laneIndex;
+		const consecutive = Math.abs(source.row - target.row) === 1;
+		const mainFaces = orientation === LaneOrientation.Parallel && sameLane && consecutive;
 		plans.push({
 			id: relation.id,
 			from: relation.from,
@@ -149,7 +163,8 @@ function relationPlans(
 			targetSide: sides.target,
 			sourceLaneIndex: source.laneIndex,
 			targetLaneIndex: target.laneIndex,
-			sameLane: source.laneIndex === target.laneIndex,
+			sameLane,
+			mainFaces,
 		});
 	}
 	return plans;
