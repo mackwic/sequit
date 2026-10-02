@@ -1,11 +1,14 @@
 import { defined, EndpointKind } from '../document/logic-document';
 import type { LogicGraph } from '../graph/create-graph';
+import { unbridgesForeignCrossing } from './bridges/bridge-carrier-displacement';
 import { disallowedRouteContacts } from './bridges/bridge-contact';
+import { sharedAtEndpoint } from './bridges/bridge-contact-shared';
 import { routeBridgeAnalysis } from './bridges/bridge-oracle';
 import { validateSelfContacts } from './bridges/route-self-contacts';
 import { routePathBounds } from './geometry/box-geometry';
 import type { LayoutFrame } from './geometry/layout-frame';
-import { PORT_SPACING, RAIL_SPACING } from './layout-settings';
+import { samePoint } from './geometry/nested-region-geometry-primitives';
+import { JUNCTION_PORT_SPACING, PORT_SPACING, RAIL_SPACING } from './layout-settings';
 import { type Bounds, GroupRouteFailure, type LayoutRelation } from './layout-types';
 import {
 	aroundBoundaryPath,
@@ -13,32 +16,32 @@ import {
 	exteriorMainRails,
 	exteriorPath,
 	type FacePorts,
+	main,
 	sourceBoundaryEscapes,
 	transverse,
 } from './routing/group-exterior-path';
 import { foreignGroupObstacles } from './routing/group-passages';
 import {
+	attachmentReservedBy,
 	candidateFacePorts,
+	endpoint,
+	type ExteriorAttempt,
+	faceOffsets,
 	prepareRoutingContext,
+	releaseSharedPortFamilies,
 	respectsExternalFlow,
+	type RouteAttempt,
 	type RoutingContext,
+	sharedSourceEscapes,
 } from './routing/group-route-candidates';
 import { candidateTracks, prepareGroupTrackIndex } from './routing/group-track-index';
 import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
 import { routeHitsObstacles, type RouteObstacles } from './routing/route-obstacles';
 
 const HALF_RAIL = RAIL_SPACING / 2;
-const PORT_OFFSETS = [
-	0,
-	PORT_SPACING,
-	-PORT_SPACING,
-	RAIL_SPACING,
-	-RAIL_SPACING,
-	HALF_RAIL,
-	-HALF_RAIL,
-];
 const DOUBLE_RAIL = RAIL_SPACING * 2;
 const TRIPLE_RAIL = RAIL_SPACING * 3;
+const INWARD_TRIPLE_RAIL = -TRIPLE_RAIL;
 const CLEARANCE_PAIRS = [
 	[RAIL_SPACING, RAIL_SPACING],
 	[DOUBLE_RAIL, DOUBLE_RAIL],
@@ -49,27 +52,50 @@ const CLEARANCE_PAIRS = [
 	[HALF_RAIL, HALF_RAIL],
 ] as const;
 
-interface RouteAttempt {
-	readonly route: LayoutRelation;
-	readonly groups: RouteObstacles | undefined;
-}
-interface ExteriorAttempt extends RouteAttempt {
-	readonly ports: FacePorts;
-	readonly rails: readonly number[];
+/** Shared ports require a continuous trunk; distinct ports preserve the endpoint spacing. */
+function sharedPortsConflict(
+	candidate: LayoutRelation,
+	other: LayoutRelation,
+	context: RoutingContext,
+): boolean {
+	for (let face = 0; face < 2; face++) {
+		const source = face === 0;
+		const first = endpoint(candidate, source);
+		const second = endpoint(other, source);
+		if (first.id !== second.id) continue;
+		let spacing = PORT_SPACING;
+		if (defined(context.graph.endpointsById.get(first.id)).kind === EndpointKind.Junction)
+			spacing = JUNCTION_PORT_SPACING;
+		const distance = Math.abs(
+			transverse(first.port, context.vertical) - transverse(second.port, context.vertical),
+		);
+		if (distance > 0 && distance < spacing) return true;
+		if (
+			samePoint(first.port, second.port) &&
+			!sharedAtEndpoint(candidate, other, first.port, source)
+		)
+			return true;
+	}
+	return false;
 }
 function contactsAnotherRoute(candidate: LayoutRelation, context: RoutingContext): boolean {
 	if (!validateSelfContacts(candidate)) return true;
+	for (let index = 0; index < context.routes.length; index++) {
+		if (index === context.activeIndex || context.pending.has(index)) continue;
+		if (sharedPortsConflict(candidate, defined(context.routes[index]), context)) return true;
+	}
 	const envelope = routePathBounds(candidate);
 	routeEnvelopeNeighbors(context.contactIndex, envelope, context.activeIndex, context.neighbors);
 	if (context.neighbors.length === 0) return false;
 	const neighboringRoutes: LayoutRelation[] = [candidate];
-	for (const index of context.neighbors) neighboringRoutes.push(defined(context.routes[index]));
-	const bridges = routeBridgeAnalysis(neighboringRoutes).bridges;
+	for (const index of context.neighbors)
+		if (!context.pending.has(index)) neighboringRoutes.push(defined(context.routes[index]));
+	const analysis = routeBridgeAnalysis(neighboringRoutes);
 	for (let index = 1; index < neighboringRoutes.length; index++) {
 		const other = defined(neighboringRoutes[index]);
-		if (disallowedRouteContacts(candidate, other, bridges).length > 0) return true;
+		if (disallowedRouteContacts(candidate, other, analysis.bridges).length > 0) return true;
 	}
-	return false;
+	return unbridgesForeignCrossing(analysis, candidate, neighboringRoutes.slice(1));
 }
 
 function admissiblePath(
@@ -81,6 +107,7 @@ function admissiblePath(
 	if (!respectsExternalFlow(context, candidate)) return false;
 	if (routeHitsObstacles(candidate.points, context.nodes)) return false;
 	if (groups !== undefined && routeHitsObstacles(candidate.points, groups)) return false;
+	if (attachmentReservedBy(context, candidate, context.pending)) return false;
 	return !contactsAnotherRoute(candidate, context);
 }
 
@@ -155,7 +182,16 @@ function boundaryOnTrack(
 			sourceTrack: escape[1],
 			targetTrack,
 		};
-		for (const targetClearance of [RAIL_SPACING, DOUBLE_RAIL, TRIPLE_RAIL, HALF_RAIL]) {
+		for (const targetClearance of [
+			RAIL_SPACING,
+			DOUBLE_RAIL,
+			TRIPLE_RAIL,
+			HALF_RAIL,
+			-HALF_RAIL,
+			-RAIL_SPACING,
+			-DOUBLE_RAIL,
+			INWARD_TRIPLE_RAIL,
+		]) {
 			const points = aroundBoundaryPath(context.frame, attempt.ports, rails, targetClearance);
 			const candidate = { ...attempt.route, points };
 			if (admissiblePath(context, candidate, attempt.groups)) return candidate;
@@ -168,12 +204,23 @@ function boundaryForPorts(
 	context: RoutingContext,
 	attempt: ExteriorAttempt,
 ): LayoutRelation | undefined {
-	const escapes = sourceBoundaryEscapes(
-		context.bounds,
-		context.graph.document.groups,
-		attempt.ports.source,
-		context.frame,
-	);
+	const escapes = [
+		...sourceBoundaryEscapes(
+			context.bounds,
+			context.graph.document.groups,
+			attempt.ports.source,
+			context.frame,
+		),
+		...sharedSourceEscapes(context, attempt.route, attempt.ports.source),
+	];
+	// A node can block the source column on the way to the exterior main rail.
+	// Reserve a transverse escape first, instead of extending that column through it.
+	let outgoing = 1;
+	if (context.frame.forward) outgoing = -1;
+	const sourceMain = main(attempt.ports.source, context.vertical);
+	for (const clearance of [RAIL_SPACING, DOUBLE_RAIL, TRIPLE_RAIL, HALF_RAIL, 0])
+		for (const track of [context.outside + RAIL_SPACING, 0])
+			escapes.push([sourceMain + outgoing * clearance, track]);
 	const source = transverse(attempt.ports.source, context.vertical);
 	const target = transverse(attempt.ports.target, context.vertical);
 	for (const escape of escapes)
@@ -189,10 +236,11 @@ function aroundRoute(
 	context: RoutingContext,
 	route: LayoutRelation,
 	groups: RouteObstacles | undefined,
+	offsets: readonly number[],
 ): LayoutRelation | undefined {
 	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
 	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
-	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
+	for (const ports of candidateFacePorts(context, route, offsets)) {
 		const attempt = { route, groups, ports, rails };
 		const candidate = aroundForPorts(context, attempt) ?? boundaryForPorts(context, attempt);
 		if (candidate !== undefined) return candidate;
@@ -204,39 +252,20 @@ function alternateRoute(
 	context: RoutingContext,
 	route: LayoutRelation,
 	groups: RouteObstacles | undefined,
+	offsets: readonly number[],
 ): LayoutRelation | undefined {
 	const attempt = { route, groups };
-	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
+	for (const ports of candidateFacePorts(context, route, offsets)) {
 		const candidate = pathForPorts(context, attempt, ports);
 		if (candidate !== undefined) return candidate;
 	}
-	return undefined;
-}
-
-function exteriorForPorts(
-	context: RoutingContext,
-	attempt: RouteAttempt,
-	ports: FacePorts,
-): LayoutRelation | undefined {
-	for (let index = 1; index <= context.routes.length + 1; index += 1) {
-		const track = context.outside + index * RAIL_SPACING;
-		const candidate = pathOnTrack(context, attempt, ports, track);
-		if (candidate !== undefined) return candidate;
-	}
-	return undefined;
-}
-
-/** Beyond every current box and route, each next track is a genuinely free exterior rail. */
-function freshExterior(
-	context: RoutingContext,
-	route: LayoutRelation,
-	groups: RouteObstacles | undefined,
-): LayoutRelation | undefined {
-	const attempt = { route, groups };
-	for (const ports of candidateFacePorts(context, route, PORT_OFFSETS)) {
-		const candidate = exteriorForPorts(context, attempt, ports);
-		if (candidate !== undefined) return candidate;
-	}
+	// Beyond every current box and route, every next track is a fresh exterior rail.
+	for (const ports of candidateFacePorts(context, route, offsets))
+		for (let index = 1; index <= context.routes.length + 1; index += 1) {
+			const track = context.outside + index * RAIL_SPACING;
+			const candidate = pathOnTrack(context, attempt, ports, track);
+			if (candidate !== undefined) return candidate;
+		}
 	return undefined;
 }
 
@@ -247,7 +276,22 @@ function routeNeedsCorrection(
 ): boolean {
 	if (routeHitsObstacles(route.points, context.nodes)) return true;
 	if (groups !== undefined && routeHitsObstacles(route.points, groups)) return true;
+	if (attachmentReservedBy(context, route, context.routes.keys())) return true;
 	return contactsAnotherRoute(route, context);
+}
+
+function repairRoute(context: RoutingContext, route: LayoutRelation): LayoutRelation | undefined {
+	const offsets = faceOffsets(context, route);
+	// A target can sit only 24px beyond a foreign frame. Preserve physical
+	// disjointness when the preferred 24px envelope cannot fit at its face.
+	for (const clearance of [RAIL_SPACING, 0]) {
+		const groups = foreignGroupObstacles(context, route, clearance);
+		const replacement =
+			alternateRoute(context, route, groups, offsets) ??
+			aroundRoute(context, route, groups, offsets);
+		if (replacement !== undefined) return replacement;
+	}
+	return undefined;
 }
 
 /** Final bounds, rather than logical group ranks, determine which passages need correction. */
@@ -272,28 +316,33 @@ export function clearGroupEndpointRoutes(
 		[route.from, route.to].some((id) => graph.endpointsById.get(id)?.kind === EndpointKind.Group),
 	);
 	const order = [...routes.keys()].sort(
-		(left, right) => Number(groupRoutes[right]) - Number(groupRoutes[left]),
+		(left, right) => Number(groupRoutes[left]) - Number(groupRoutes[right]),
 	);
+	// A broken route cannot reserve a passage: release all routes needing repair together,
+	// then reserve each accepted replacement before repairing the next one.
+	const repairs: number[] = [];
 	for (const index of order) {
+		context.activeIndex = index;
+		const route = defined(routes[index]);
+		if (routeNeedsCorrection(route, context, foreignGroupObstacles(context, route, 0)))
+			repairs.push(index);
+	}
+	releaseSharedPortFamilies(context, repairs);
+	const deferred = new Set<number>();
+	for (const index of repairs) {
 		const route = defined(routes[index]);
 		context.activeIndex = index;
-		const groups = foreignGroupObstacles(context, route, 0);
-		if (!routeNeedsCorrection(route, context, groups)) continue;
-		const clearanceGroups = foreignGroupObstacles(context, route);
-		let replacement =
-			alternateRoute(context, route, clearanceGroups) ??
-			freshExterior(context, route, clearanceGroups) ??
-			aroundRoute(context, route, clearanceGroups);
+		context.pending.delete(index);
+		const replacement = repairRoute(context, route);
 		if (replacement === undefined) {
-			// A target can sit only 24px beyond a foreign frame. Preserve physical
-			// disjointness when the preferred 24px envelope cannot fit at its face.
-			const exactGroups = foreignGroupObstacles(context, route, 0);
-			replacement =
-				alternateRoute(context, route, exactGroups) ??
-				freshExterior(context, route, exactGroups) ??
-				aroundRoute(context, route, exactGroups);
+			// Pending routes reserve their attachments, yet group attachments may move during their
+			// own repair: retry a blocked route once, after them.
+			if (context.pending.size === 0 || deferred.has(index)) throw new GroupRouteFailure(route.id);
+			deferred.add(index);
+			context.pending.add(index);
+			repairs.push(index);
+			continue;
 		}
-		if (replacement === undefined) throw new GroupRouteFailure(route.id);
 		routes[index] = replacement;
 		replaceRouteEnvelope(context.contactIndex, index, routePathBounds(replacement));
 		for (const point of replacement.points)

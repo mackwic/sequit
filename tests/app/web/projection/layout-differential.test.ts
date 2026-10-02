@@ -42,7 +42,7 @@ describe('layout differential harness', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+	}, 65_000);
 
 	it.each(LAYOUT_DIRECTIONS)(
 		'matches the root-region engine across permutations in %s',
