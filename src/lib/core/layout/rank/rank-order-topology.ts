@@ -2,7 +2,7 @@ import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { BlockPassageRepair } from './block-passage-repair';
-import { type AdjacentRelation, adjacentRelations, forcedBlockCrossings } from './block-passages';
+import { adjacentRelations } from './block-passages';
 import { countRankOrderCrossings, type RankOrder, type RankOrderRelation } from './rank-order';
 import { applyRankOrder, type RankOrderDomain, repairBlockOrder } from './rank-ordering';
 import { topologyRows, transversePositions } from './transverse-positions';
@@ -92,10 +92,7 @@ export class RankTopologyOracle {
 	private readonly domain: RankOrderDomain;
 	private readonly relations: readonly LayeredRelation[];
 	private readonly segments: readonly RankOrderRelation[];
-	private readonly adjacent: readonly AdjacentRelation[];
-	/** Crossings every order keeps: block-forced pairs; zero without blocks. */
-	readonly lowerBound: number;
-	/** Reopens the passages a wall closes, with the same adjacent relations. */
+	/** Reopens the passages a wall closes. */
 	readonly passages: BlockPassageRepair;
 
 	constructor(structure: LayoutStructure, domain: RankOrderDomain) {
@@ -109,9 +106,7 @@ export class RankTopologyOracle {
 		this.domain = domain;
 		this.relations = relations;
 		this.segments = segments;
-		this.adjacent = adjacentRelations(structure);
-		this.lowerBound = forcedBlockCrossings(structure, this.adjacent);
-		this.passages = new BlockPassageRepair(structure, domain, this.adjacent);
+		this.passages = new BlockPassageRepair(structure, domain, adjacentRelations(structure));
 	}
 
 	/** Crossings of an order; an order closing a block's passage cannot be routed at all. */

@@ -25,6 +25,7 @@ interface SearchTally {
 	stop: RankSearchStop;
 	proposed: number;
 	evaluated: number;
+	pruned: number;
 	valid: number;
 	unverified: number;
 	validations: number;
@@ -41,6 +42,7 @@ function tallyLocal(local: LocalChoice): SearchTally {
 		stop: RankSearchStop.NoBand,
 		proposed: 0,
 		evaluated: 0,
+		pruned: 0,
 		valid: 0,
 		unverified: 0,
 		validations: 0,
@@ -53,6 +55,7 @@ function tallyLocal(local: LocalChoice): SearchTally {
 	for (const { witness } of local.evidence) {
 		tally.proposed += witness.proposed;
 		tally.evaluated += witness.evaluated;
+		tally.pruned += witness.pruned;
 		tally.valid += witness.valid;
 		tally.unverified += witness.unverified;
 		tally.validations += witness.work.validations;
@@ -71,6 +74,7 @@ function tallyLocal(local: LocalChoice): SearchTally {
 function tallyRepair(tally: SearchTally, repair: RankOrderSearchWitness): void {
 	tally.proposed += repair.proposed;
 	tally.evaluated += repair.evaluated;
+	tally.pruned += repair.pruned;
 	tally.valid += repair.valid;
 	tally.rejected.push(...repair.rejected);
 	tally.truncated ||= repair.truncated;
@@ -117,6 +121,7 @@ function selectionWitness(
 		stop: tally.stop,
 		proposed: Math.max(1, tally.proposed),
 		evaluated: Math.max(1, tally.evaluated),
+		pruned: tally.pruned,
 		valid: tally.valid,
 		rejected: tally.rejected,
 		unverified: tally.unverified,

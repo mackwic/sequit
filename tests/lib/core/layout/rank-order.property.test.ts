@@ -25,6 +25,7 @@ import {
 	routeBridgeAnalysis,
 } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { routeRuns } from '../../../../src/lib/core/layout/bridges/route-runs';
+import { compareDedicatedRouteScores } from '../../../../src/lib/core/layout/dedicated-candidate-validation/route-score';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import {
@@ -58,6 +59,7 @@ import { barycentricSweep } from '../../../../src/lib/core/layout/rank/rank-orde
 import { searchDedicatedRankOrders } from '../../../../src/lib/core/layout/rank/rank-order-search';
 import { selectDedicatedRankLayout } from '../../../../src/lib/core/layout/rank/rank-order-selection';
 import { RankTopologyOracle } from '../../../../src/lib/core/layout/rank/rank-order-topology';
+import { RankSearchStop } from '../../../../src/lib/core/layout/rank/rank-order-witness';
 import {
 	applyRankOrder,
 	collectRankOrderDomain,
@@ -799,11 +801,14 @@ function oracleInversions(order: RankOrder, documentary: RankOrder): number {
 	return inversions;
 }
 
+/** Real routes first, then the topological proxy, the documentary distance and the ids. */
 function compareOracleLayouts(
 	left: OracleLayout,
 	right: OracleLayout,
 	documentary: RankOrder,
 ): number {
+	const routes = left.crossings - right.crossings || left.bridges - right.bridges;
+	if (routes !== 0) return routes;
 	const crossing = left.topologicalCrossings - right.topologicalCrossings;
 	if (crossing !== 0) return crossing;
 	const inversions =
@@ -855,8 +860,8 @@ function admissibleOracleLayouts(
 
 /**
  * Met by increasing inversions, then in documentary enumeration order, a candidate replaces the
- * best one only if it ranks better by stable topological order; the first best one routed
- * without crossing or bridge ends the search.
+ * best one only if it ranks better by real routes, then by stable topological order; the first
+ * best one routed without crossing or bridge ends the search.
  */
 function searchedOracleLayout(
 	admissible: readonly OracleLayout[],
@@ -1074,8 +1079,9 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 	});
 
-	it('avoids complete pipelines for dominated orders around a physical junction', () => {
-		// K2,2 always crosses once: every exchange ties on crossings and loses on distance.
+	it('routes every exchange around a physical junction before keeping the documentary order', () => {
+		// K2,2 always crosses once: every exchange ties on topology and loses on distance, so only
+		// its real routes may justify it; none crosses less, and the documentary order stays.
 		const fixture = graphFixtures
 			.crossingRoutes(LayoutDirection.TopToBottom)
 			.nodes(['e'])
@@ -1117,9 +1123,103 @@ describe('dedicated bounded geometric rank search', () => {
 		);
 		expect(selected.layout).toEqual(documentary);
 		expect(selected.witness.proposed).toBeGreaterThan(1);
-		expect(selected.witness.work.localCompletePipelines).toBe(1);
+		expect(selected.witness).toMatchObject({ exhaustive: true, truncated: false, pruned: 0 });
+		expect(selected.witness.work.localCompletePipelines).toBe(selected.witness.proposed);
 		expect(selected.witness.work.globalCompletePipelines).toBe(1);
 	});
+
+	it('never calls a search exhaustive while a proposed order routes with a better real score', () => {
+		const layered = fc
+			.array(fc.integer({ min: 1, max: 5 }), { minLength: 2, maxLength: 3 })
+			.chain((sizes) => {
+				const layers = sizes.map((size, layer) =>
+					Array.from({ length: size }, (_, index) => `l${layer}n${index}`),
+				);
+				const pairs = layers
+					.slice(1)
+					.flatMap((upper, layer) =>
+						defined(layers[layer]).flatMap((from) => upper.map((to) => ({ from, to }))),
+					);
+				return fc.record({
+					ids: fc.constant(layers.flat()),
+					relations: fc.subarray(pairs, { minLength: 1 }),
+					layout: fc.constantFrom(
+						layoutConfiguration(LayoutDirection.TopToBottom, LayoutBias.Top),
+						layoutConfiguration(LayoutDirection.BottomToTop, LayoutBias.Bottom),
+						layoutConfiguration(LayoutDirection.LeftToRight, LayoutBias.Left),
+						layoutConfiguration(LayoutDirection.RightToLeft, LayoutBias.Right),
+					),
+				});
+			});
+		fc.assert(
+			fc.property(layered, ({ ids, relations, layout }) => {
+				const base = corpusDocument(
+					ids,
+					ids,
+					relations.map(({ from, to }) => ({ id: `${from}-${to}`, from, to })),
+				);
+				const document = { ...base, layout: defined(layout) };
+				const created = createGraph(document);
+				if (!created.ok) throw new Error('Invalid layered rank graph');
+				const graph = created.value;
+				const ranks = topologicallyRank(graph);
+				const structure = prepareLayout(graph, ranks);
+				const domain = collectRankOrderDomain(structure);
+				const measurements = {
+					nodes: new Map(ids.map((id) => [id, { width: 80, height: 60 }])),
+					groups: new Map(),
+					junctions: new Map(),
+				};
+				const routeOf = (order: RankOrder) =>
+					evaluateDedicatedLayout(applyRankOrder(structure, domain, order), measurements);
+				const routed: RankOrder[] = [];
+				const result = searchDedicatedRankOrders({
+					structure,
+					domain,
+					measurements,
+					baseline: evaluateDedicatedLayout(structure, measurements, undefined, true),
+					evaluate: (order) => {
+						routed.push(order);
+						return evaluateDedicatedLayout(
+							applyRankOrder(structure, domain, order),
+							measurements,
+							undefined,
+							true,
+						);
+					},
+					limits: { completePipelines: 12, uniqueProposals: 48 },
+				});
+				const { witness } = result;
+				expect(witness.evaluated).toBe(routed.length + 1);
+				if (witness.pruned > 0) expect(witness.truncated).toBe(true);
+				expect(witness.exhaustive).toBe(
+					!witness.truncated && witness.stop !== RankSearchStop.CrossingFree,
+				);
+				if (!witness.exhaustive) return;
+				expect(witness.pruned).toBe(0);
+				const selected = result.selected;
+				if (selected === undefined) throw new Error('Plain layered documents always route');
+				// Plain layers have no group wall: every permutation is proposed as it is, so an exact
+				// search proposes them all; a heuristic one proposes the orders it routed.
+				const size = boundedRankOrderEnumerationSize(domain, 12);
+				let proposed: readonly RankOrder[] = routed;
+				if (size !== undefined) proposed = enumerateRankOrders(domain, size);
+				for (const order of proposed) {
+					const validation = validateDedicatedCandidate({
+						graph,
+						ranks,
+						measurements,
+						layout: routeOf(order),
+					});
+					if (!validation.valid) continue;
+					expect(
+						compareDedicatedRouteScores(validation.score, selected.routeScore),
+					).toBeGreaterThanOrEqual(0);
+				}
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	}, 120_000);
 
 	it('leaves an ordinary graph without an exchange band unverified', () => {
 		const wide = corpusDocument(
