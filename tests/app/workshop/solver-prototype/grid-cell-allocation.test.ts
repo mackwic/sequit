@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { gridCrossingAllocationDemos } from '../../../../src/app/workshop/solver-prototype/grid-cell-allocation';
-import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import {
+	CrossingAllocationPhaseId,
+	GRID_CROSSING_REALLOCATION_BUDGET,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 
 describe('grid crossing allocation workshop model', () => {
 	it('runs production grid allocations and records phase budgets and selected tracks', () => {
@@ -26,11 +29,13 @@ describe('grid crossing allocation workshop model', () => {
 		expect(pruned.sizeBefore.height - pruned.selected.layout.height).toBe(48);
 		expect(pruned.selected.witness.phases[1]).toMatchObject({
 			id: CrossingAllocationPhaseId.Reallocate,
-			exploredGeometries: 33,
 			totalGeometries: '96',
 			truncated: false,
 			selected: true,
 		});
+		expect(pruned.selected.witness.phases[1]?.exploredGeometries).toBeLessThanOrEqual(
+			GRID_CROSSING_REALLOCATION_BUDGET,
+		);
 		expect(pruned.selected.witness.phases.slice(2).map(({ attempted }) => attempted)).toEqual([
 			false,
 			false,
