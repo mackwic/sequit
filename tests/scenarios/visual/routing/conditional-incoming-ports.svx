@@ -9,7 +9,7 @@
 
 Dans la topologie **dense**, A, B et C pointent tous vers D et E. Inverser l'ordre documentaire de D et E sans changer les six relations maintient **trois ports entrants sur D** dans les deux ordres, dans les quatre directions. Le moteur peut modifier les trajets, mais ce scénario ne prouve pas une différence de capacité imputable à l'ordre.
 
-Dans la topologie **clairsemée**, seules A → D, A → E, B → D et C → D demeurent. E précède D et les trois arrivées vers D partagent alors un port central ; sa dimension transversale est **80** au lieu de **144** pour les variantes denses. Le contraste entre un et trois ports tient donc aussi à la suppression de B → E et C → E, et non au seul ordre des cibles.
+Dans la topologie **clairsemée**, seules A → D, A → E, B → D et C → D demeurent, avec E avant D. Aucune relation ne croise, mais A se ramifie vers E et D tandis que B et C convergent sur D : un port central partagé raccorderait la traverse de A au tronc de B et C, et suggérerait B → E et C → E, qui n’existent pas. D reçoit donc aussi **trois ports entrants**, et sa dimension transversale est **144** comme dans les variantes denses.
 
 Les graphes, rangs, tailles, attaches et chemins proviennent du pipeline réel. Chaque variante vérifie les ports, les boîtes, les routes et, dans les cas denses, les ponts de croisement.
 
