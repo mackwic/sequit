@@ -225,6 +225,23 @@ describe('S | SD | C shared process', () => {
 			{ x: 464, y: 632 },
 			{ x: 464, y: 836 },
 		]);
+		// C↔S skip SD: both keep the nested outer corridor, on opposite sides of the frame.
+		expect(selectedPoints['request']).toEqual([
+			{ x: 574, y: 1476 },
+			{ x: 574, y: 1204 },
+			{ x: 792, y: 1204 },
+			{ x: 792, y: 584 },
+			{ x: 598, y: 584 },
+			{ x: 598, y: 500 },
+		]);
+		expect(selectedPoints['response']).toEqual([
+			{ x: 282, y: 312 },
+			{ x: 282, y: 560 },
+			{ x: 64, y: 560 },
+			{ x: 64, y: 1228 },
+			{ x: 306, y: 1228 },
+			{ x: 306, y: 1288 },
+		]);
 		expect(selectedPoints['completion']).toEqual([
 			{ x: 416, y: 836 },
 			{ x: 416, y: 728 },

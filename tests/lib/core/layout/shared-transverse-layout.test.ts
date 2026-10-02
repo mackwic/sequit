@@ -318,6 +318,28 @@ describe('transverse shared lane layout', () => {
 		}
 	});
 
+	it.each(DIRECTIONS)(
+		'keeps the bridge-free U arc when a facing local leg would cross a lane message in %s',
+		(direction) => {
+			// Review witness: the facing leg of n6→n2 would cross n5→n3; the historical arc does not.
+			const { layout } = selectedWitness(
+				direction,
+				['L0', 'L1'],
+				[
+					['n2', 'L0'],
+					['n3', 'L0'],
+					['n5', 'L1'],
+					['n6', 'L0'],
+				],
+				[
+					['n5', 'n3'],
+					['n6', 'n2'],
+				],
+			);
+			expect(routeBridgeAnalysis(layout.relations).crossings).toHaveLength(0);
+		},
+	);
+
 	it('routes linked dependencies in document lane order', () => {
 		const document = transverseDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
 			{ id: 'a-to-b', from: 'a1', to: 'b1' },
@@ -438,13 +460,16 @@ describe('transverse shared lane layout', () => {
 	});
 
 	it.each([
-		['a later', { x: 130, y: 100 }, { source: -1, target: 1 }],
-		['an earlier', { x: -110, y: -60 }, { source: 1, target: -1 }],
-	] as const)('validates a source on %s row of the lane on the facing faces', (_row, at, faces) => {
-		const target = { x: 10, y: 20, width: 80, height: 40 };
-		const source = { ...target, ...at };
-		expect(
-			transverseRouteSides({ sourceLane: 0, targetLane: 0, source, target, vertical: true }),
-		).toEqual(faces);
-	});
+		['a later', { x: 130, y: 100 }, { source: -1, target: 1, arcTarget: -1 }],
+		['an earlier', { x: -110, y: -60 }, { source: 1, target: -1, arcTarget: 1 }],
+	] as const)(
+		'validates a source on %s row on the facing faces or the U arc',
+		(_row, at, faces) => {
+			const target = { x: 10, y: 20, width: 80, height: 40 };
+			const source = { ...target, ...at };
+			expect(
+				transverseRouteSides({ sourceLane: 0, targetLane: 0, source, target, vertical: true }),
+			).toEqual(faces);
+		},
+	);
 });

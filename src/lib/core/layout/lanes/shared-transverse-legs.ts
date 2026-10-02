@@ -5,8 +5,29 @@ import { incidenceKey, PortRole } from './shared-lane-ports';
 import type { LogicalBox } from './shared-lane-types';
 
 /** A same-lane plan between two rows: it joins their facing faces across the rank axis. */
-export function facingLocalPlan(plan: SharedLanePlan): boolean {
+function facingLocalPlan(plan: SharedLanePlan): boolean {
 	return plan.sameLane && plan.sourceSide !== plan.targetSide;
+}
+
+/**
+ * A plan a direct order routes differently from the gutter orders: between two adjacent lanes, or
+ * between two rows of one lane.
+ */
+export function directPlan(plan: SharedLanePlan): boolean {
+	return Math.abs(plan.sourceLaneIndex - plan.targetLaneIndex) === 1 || facingLocalPlan(plan);
+}
+
+/**
+ * The same lanes with every local plan on a historical U arc: it leaves and enters by the earlier
+ * face of its endpoints. Returns the input itself when no plan joins facing faces.
+ */
+export function withLocalArcs(input: SharedLaneInput): SharedLaneInput {
+	if (!input.plans.some(facingLocalPlan)) return input;
+	const plans = input.plans.map((plan) => {
+		if (!facingLocalPlan(plan)) return plan;
+		return { ...plan, sourceSide: -1 as const, targetSide: -1 as const };
+	});
+	return { ...input, plans };
 }
 
 /** The endpoint of a facing local plan on the earlier row: the one leaving by its end face. */

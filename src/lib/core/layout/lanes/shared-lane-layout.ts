@@ -26,6 +26,7 @@ import {
 	unknownCode,
 } from './shared-lane-incident-search';
 import {
+	type PreparedTransverseVariant,
 	transverseGeometry,
 	validatedInteriorParallelGeometry,
 } from './shared-lane-layout-geometry';
@@ -257,25 +258,23 @@ export function transverseAttempt({
 		candidateId: '',
 		rejectedAlternatives: [],
 	};
-	const preparedByOrder = new Map<
-		TransverseRouteOrder,
-		{ readonly geometry: SharedLaneGeometry; readonly certificate: SharedLaneGeometryCertificate }
-	>();
+	const preparedByOrder = new Map<TransverseRouteOrder, PreparedTransverseVariant>();
 	const search = searchTransverseRouteOrders(input, {
 		collect: laneSelectionCollector(state, contracts, collect),
 		evaluate: (strategy) => {
 			state.strategyId = strategy.id;
 			state.candidateId = strategy.id;
+			state.budgetStart = state.attempted;
 			let prepared = preparedByOrder.get(strategy.order);
 			if (prepared === undefined) {
-				const geometry = transverseGeometry(input, ports, strategy.order);
-				prepared = { geometry, certificate: certifySharedLaneGeometry(graph, geometry) };
+				const variant = transverseGeometry(input, ports, strategy.order, contracts);
+				prepared = { ...variant, certificate: certifySharedLaneGeometry(graph, variant.geometry) };
 				preparedByOrder.set(strategy.order, prepared);
 			}
 			const selected = attemptSharedLaneGeometry({
 				graph,
 				geometry: prepared.geometry,
-				ports,
+				ports: prepared.ports,
 				contracts,
 				acceptBridges: strategy.acceptBridges,
 				state,

@@ -19,11 +19,14 @@ export interface TransverseSideInput {
  * The logical faces of one transverse route. Lanes and the rows of one lane both stack along the
  * rank axis, so endpoints on different lanes or rows join their facing faces; inside a lane the
  * cross column grows with the row, which the cross centres read without the direction's reversal.
- * Endpoints of one row both use the face on the side of the other's cross column.
+ * Endpoints of one row both use the face on the side of the other's cross column. Two rows of one
+ * lane may also keep the historical U arc, which enters the target by the source's face:
+ * `arcTarget` names that admissible alternative.
  */
 export function transverseRouteSides(input: TransverseSideInput): {
 	readonly source: LaneSide;
 	readonly target: LaneSide;
+	readonly arcTarget?: LaneSide;
 } {
 	if (input.sourceLane < input.targetLane) return { source: 1, target: -1 };
 	if (input.sourceLane > input.targetLane) return { source: -1, target: 1 };
@@ -38,8 +41,8 @@ export function transverseRouteSides(input: TransverseSideInput): {
 	const targetBeforeSource =
 		longEnd(input.target, input.vertical) <= longStart(input.source, input.vertical);
 	if (sourceBeforeTarget || targetBeforeSource) {
-		if (sourceCenter < targetCenter) return { source: 1, target: -1 };
-		return { source: -1, target: 1 };
+		if (sourceCenter < targetCenter) return { source: 1, target: -1, arcTarget: 1 };
+		return { source: -1, target: 1, arcTarget: -1 };
 	}
 	if (sourceCenter < targetCenter) return { source: 1, target: 1 };
 	return { source: -1, target: -1 };
