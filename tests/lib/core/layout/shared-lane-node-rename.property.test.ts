@@ -2,10 +2,12 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import { defined } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
 	configurations,
 	documentFor,
+	geometry,
 	normalized,
 	orientations,
 	rename,
@@ -46,6 +48,37 @@ describe.each(orientations)('lane node rename invariance (%s)', (orientation) =>
 							permutation.map((value, index) => [`n${index}`, `renamed-${value}`]),
 						);
 						expect(normalized(rename(document, ids))).toEqual(normalized(document));
+					}),
+					PROPERTY_PARAMETERS,
+				);
+			},
+		);
+		it.each(configurations)(
+			`preserves geometry under array permutations with duplicate keys in ${laneCount} lanes in $direction`,
+			(layout) => {
+				fc.assert(
+					fc.property(shapes, ({ count, pairs, permutation, lanes }) => {
+						const nodes = Array.from({ length: count }, (_, index): readonly [string, string] => {
+							let lane = index;
+							if (index >= laneCount) lane = defined(lanes[index]) % laneCount;
+							return [`n${index}`, `L${lane}`];
+						});
+						const original = documentFor(
+							layout,
+							orientation,
+							nodes,
+							pairs.map(([from, to]) => [`n${from}`, `n${to}`]),
+						);
+						const document = {
+							...original,
+							nodes: original.nodes.map((node) => ({ ...node, layoutOrder: orderKey('a0') })),
+						};
+						const permuted = {
+							...document,
+							nodes: permutation.map((index) => defined(document.nodes[index])),
+							relations: [...document.relations].reverse(),
+						};
+						expect(geometry(permuted)).toEqual(geometry(document));
 					}),
 					PROPERTY_PARAMETERS,
 				);

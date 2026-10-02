@@ -6,6 +6,7 @@ import {
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
+import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import {
 	type SharedLaneGeometry,
@@ -240,6 +241,52 @@ describe.each(orientations)('shared lane port nesting (%s)', (orientation) => {
 			expect(defined(original.get(incidenceKey('r0', PortRole.Source)))).toBeLessThan(
 				defined(original.get(incidenceKey('r1', PortRole.Source))),
 			);
+		},
+	);
+	it.each(configurations)(
+		'keeps equal documentary orders permutation-invariant and crossing-free in $direction',
+		(layout) => {
+			const original = documentFor(
+				layout,
+				orientation,
+				[
+					['s', 'L1'],
+					['p', 'L2'],
+					['q', 'L2'],
+					['u', 'L3'],
+				],
+				[
+					['s', 'p'],
+					['s', 'q'],
+					['s', 'u'],
+				],
+			);
+			const document = {
+				...original,
+				nodes: original.nodes.map((node) => {
+					if (node.id === 'p' || node.id === 'q') return { ...node, layoutOrder: orderKey('a5') };
+					return node;
+				}),
+			};
+			const result = geometry(document);
+			const reversed = {
+				...document,
+				nodes: [...document.nodes].reverse(),
+				relations: [...document.relations].reverse(),
+			};
+			const permuted = geometry(reversed);
+			expect(permuted).toEqual(result);
+			for (const [variant, candidate] of [
+				[document, result],
+				[reversed, permuted],
+			] as const) {
+				const prepared = prepareLayoutDocument(variant);
+				expect(validateSharedLaneGeometry(prepared.graph, candidate)).toBeUndefined();
+				expect(routeBridgeAnalysis(candidate.relations).crossings).toHaveLength(0);
+				expect(routeBridgeAnalysis(candidate.relations).bridges).toHaveLength(0);
+			}
+			if (orientation === LaneOrientation.Parallel)
+				expectParallelBand(result, ['p', 'q'], layout.direction);
 		},
 	);
 	for (const witness of regressionWitnesses) {

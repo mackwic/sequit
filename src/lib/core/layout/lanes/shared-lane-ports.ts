@@ -5,11 +5,12 @@ import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import type { RegionIncidentContract } from '../regions/model/region-incident-contract';
-import type {
-	LaneSide,
-	SharedLaneEndpoint,
-	SharedLaneInput,
-	SharedLanePlan,
+import {
+	compareLayoutOrder,
+	type LaneSide,
+	type SharedLaneEndpoint,
+	type SharedLaneInput,
+	type SharedLanePlan,
 } from './shared-lane-model';
 
 export enum PortRole {
@@ -236,7 +237,7 @@ function bandPositions(input: SharedLaneInput): ReadonlyMap<string, number> {
 		if (lane !== 0) return lane;
 		const row = a.row - b.row;
 		if (row !== 0) return row;
-		return compareCanonicalStrings(a.layoutOrder, b.layoutOrder);
+		return compareLayoutOrder(a, b);
 	});
 	const positions = new Map<string, number>();
 	let previousLane = -1;
