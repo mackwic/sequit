@@ -1,5 +1,5 @@
 import { compareCanonicalStrings } from '../../canonical-string';
-import { defined, type LogicRelation } from '../../document/logic-document';
+import { defined } from '../../document/logic-document';
 import { disallowedProvisionalRouteContacts, type EndpointRoute } from '../bridges/bridge-contact';
 import { inside, segmentEnters } from '../geometry/nested-region-geometry-primitives';
 import {
@@ -7,11 +7,11 @@ import {
 	regionGeometryDiagnostic,
 	RegionGeometryDiagnosticCode,
 } from '../geometry/region-geometry-diagnostic';
-import type { LayoutElement, Point } from '../layout-types';
+import type { LayoutElement, LayoutRelation, Point } from '../layout-types';
 import { routeCandidates } from '../regions/leaf/region-leaf-incident-geometry';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import { samePoint } from './grid-cell-geometry-primitives';
-import type { GridCellPlacement, GridCellSelected } from './grid-cell-types';
+import type { GridCellPlacement } from './grid-cell-types';
 
 /** One end of a crossing inside its own cell: from its port to the cell portal side. */
 export interface GridCellIncident {
@@ -233,43 +233,36 @@ function pieceFailure(
 	);
 }
 
+/** A crossing route whose portals the validator accepted, with its cells and piece bounds. */
+export interface GridCrossingPieces extends IncidentPieceEnds {
+	readonly route: LayoutRelation;
+	readonly sourceCell: GridCellPlacement;
+	readonly targetCell: GridCellPlacement;
+}
+
 /**
  * The in-cell pieces of the crossings, checked as the composition validator checks leaf incidents:
  * no overlap or T-contact with the cell's local routes or another piece in the same cell. Strict
  * crossings wait for the complete candidate's bridges.
  */
 export function gridIncidentPieceFailure(
-	candidate: GridCellSelected,
-	crossing: readonly LogicRelation[],
+	crossings: readonly GridCrossingPieces[],
 ): RegionGeometryDiagnostic | undefined {
-	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
-	const cellById = new Map(candidate.cells.map((cell) => [cell.id, cell]));
 	const earlierByCell = new Map<string, BoxedRoute[]>();
-	for (const relation of crossing) {
-		const { points } = defined(routes.get(relation.id));
-		const [source, target] = candidate.portals.filter(
-			({ relationId }) => relationId === relation.id,
-		);
-		const { sourceEnd, targetStart } = defined(
-			incidentPieceEnds(points, defined(source).point, defined(target).point),
-		);
-		const sourcePoints = points.slice(0, sourceEnd + 1);
-		const targetPoints = points.slice(targetStart);
-		const pieces = [
-			[
-				defined(source).cellId,
-				boxed({ id: relation.id, points: sourcePoints, from: relation.from }),
-			],
-			[defined(target).cellId, boxed({ id: relation.id, points: targetPoints, to: relation.to })],
-		] as const;
-		for (const [cellId, piece] of pieces) {
-			const earlier = earlierByCell.get(cellId) ?? [];
-			earlierByCell.set(cellId, earlier);
-			const obstacles = cellObstacles(defined(cellById.get(cellId)));
-			const failure = pieceFailure(piece, cellId, obstacles, earlier);
-			if (failure !== undefined) return failure;
-			earlier.push(piece);
-		}
+	const check = (cell: GridCellPlacement, piece: BoxedRoute) => {
+		const earlier = earlierByCell.get(cell.id) ?? [];
+		earlierByCell.set(cell.id, earlier);
+		const failure = pieceFailure(piece, cell.id, cellObstacles(cell), earlier);
+		earlier.push(piece);
+		return failure;
+	};
+	for (const { route, sourceCell, targetCell, sourceEnd, targetStart } of crossings) {
+		const { id, from, to, points } = route;
+		const source = boxed({ id, points: points.slice(0, sourceEnd + 1), from });
+		const failure =
+			check(sourceCell, source) ??
+			check(targetCell, boxed({ id, points: points.slice(targetStart), to }));
+		if (failure !== undefined) return failure;
 	}
 	return undefined;
 }

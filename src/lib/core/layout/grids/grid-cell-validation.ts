@@ -18,7 +18,11 @@ import {
 	within,
 } from './grid-cell-geometry-primitives';
 import { validateGridCellGroupContainment } from './grid-cell-group-validation';
-import { gridIncidentPieceFailure, type IncidentPieceEnds } from './grid-cell-incident-route';
+import {
+	type GridCrossingPieces,
+	gridIncidentPieceFailure,
+	type IncidentPieceEnds,
+} from './grid-cell-incident-route';
 import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
 import { gridRectangle } from './grid-cell-model';
 import {
@@ -33,6 +37,8 @@ interface CrossContext {
 	readonly fromCell: GridCellPlacement;
 	readonly toCell: GridCellPlacement;
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
+	/** The accepted crossings, in relation order, for the in-cell piece check. */
+	readonly pieces: GridCrossingPieces[];
 }
 
 function ancestorGroups(graph: LogicGraph, endpointId: string): ReadonlySet<string> {
@@ -207,14 +213,14 @@ function checkCrossRoute(
 ): RegionGeometryDiagnostic | undefined {
 	const portFailure = validateCrossPorts(candidate, route, context);
 	if (portFailure !== undefined) return portFailure;
-	const pieces = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
-	if (typeof pieces === 'string')
-		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPortal, pieces, {
+	const ends = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
+	if (typeof ends === 'string')
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPortal, ends, {
 			relationId: route.id,
 		});
 	const segmentContext = {
 		...context,
-		...pieces,
+		...ends,
 		sourceGroupIds: ancestorGroups(context.graph, route.from),
 		targetGroupIds: ancestorGroups(context.graph, route.to),
 	};
@@ -222,6 +228,7 @@ function checkCrossRoute(
 		const diagnostic = checkSegment(candidate, route, segmentContext, index);
 		if (diagnostic !== undefined) return diagnostic;
 	}
+	context.pieces.push({ route, sourceCell: context.fromCell, targetCell: context.toCell, ...ends });
 	return undefined;
 }
 
@@ -230,6 +237,7 @@ interface RelationCheckContext {
 	readonly graph: LogicGraph;
 	readonly input: GridCellInput;
 	readonly incidence: ReadonlyMap<string, readonly string[]>;
+	readonly pieces: GridCrossingPieces[];
 }
 
 function checkRelationGeometry(
@@ -250,7 +258,7 @@ function checkRelationGeometry(
 			`Relation ${relation.id} has an invalid path.`,
 			{ relationId: relation.id },
 		);
-	const { candidate, graph, input, incidence } = context;
+	const { candidate, graph, input, incidence, pieces } = context;
 	const fromCell = defined(
 		candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.from)),
 	);
@@ -258,7 +266,7 @@ function checkRelationGeometry(
 		candidate.cells.find(({ id }) => id === input.cellByEndpointId.get(relation.to)),
 	);
 	if (fromCell.id !== toCell.id)
-		return checkCrossRoute(candidate, route, { graph, fromCell, toCell, incidence });
+		return checkCrossRoute(candidate, route, { graph, fromCell, toCell, incidence, pieces });
 	const failure = checkLocalRoute(route, fromCell);
 	if (failure === undefined) return undefined;
 	return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridRelationGeometry, failure, {
@@ -281,7 +289,8 @@ function relationGeometry(
 	const crossing = graph.relations
 		.map(({ relation }) => relation)
 		.filter(({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to));
-	const context = { candidate, graph, input, incidence: crossingIncidence(crossing) };
+	const pieces: GridCrossingPieces[] = [];
+	const context = { candidate, graph, input, incidence: crossingIncidence(crossing), pieces };
 	for (const { relation } of graph.relations) {
 		const failure = checkRelationGeometry(context, relation, routes.get(relation.id));
 		if (failure !== undefined) return failure;
@@ -299,7 +308,7 @@ function relationGeometry(
 				relatedRelationId: overlap.secondId,
 			},
 		);
-	return gridIncidentPieceFailure(candidate, crossing);
+	return gridIncidentPieceFailure(pieces);
 }
 
 /** Separate typed geometric checker for every candidate selected by the grid composer. */

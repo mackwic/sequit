@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { defined, type LogicRelation } from '../../../../src/lib/core/document/logic-document';
+import { defined } from '../../../../src/lib/core/document/logic-document';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { crossingIncidence } from '../../../../src/lib/core/layout/grids/grid-cell-crossing';
 import {
 	entersInterior,
 	within,
 } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
-import { gridIncidentPieceFailure } from '../../../../src/lib/core/layout/grids/grid-cell-incident-route';
+import {
+	gridIncidentPieceFailure,
+	incidentPieceEnds,
+} from '../../../../src/lib/core/layout/grids/grid-cell-incident-route';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { validateCrossPorts } from '../../../../src/lib/core/layout/grids/grid-cell-port-validation';
 import {
@@ -25,7 +28,6 @@ import type {
 	LayoutRelation,
 } from '../../../../src/lib/core/layout/layout-types';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import type { PreparedLayoutDocument } from '../../../support/harnesses/layout';
 import { gridDocument, gridInput, prepareGrid } from './grid-cell-fixture';
 
 function fixture(): {
@@ -741,13 +743,6 @@ function shiftedSource(selected: GridCellSelected, dy: number): GridCellSelected
 	};
 }
 
-function crossingOf(prepared: PreparedLayoutDocument): readonly LogicRelation[] {
-	const input = gridInput();
-	return prepared.graph.relations
-		.map(({ relation }) => relation)
-		.filter(({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to));
-}
-
 describe('grid crossing ports and in-cell pieces', () => {
 	it('accepts a whole-track port shift inside the face and refuses half a track or a corner port', () => {
 		const { selected, prepared } = fixture();
@@ -786,7 +781,7 @@ describe('grid crossing ports and in-cell pieces', () => {
 				relations: [...current.localLayout.relations, along],
 			},
 		}));
-		expect(gridIncidentPieceFailure(forged, crossingOf(prepared))).toMatchObject({
+		expect(validateGridCellGeometryDiagnostic(forged, prepared.graph, gridInput())).toMatchObject({
 			code: RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
 			relatedRelationId: 'along-the-piece',
 			regionId: 'a',
@@ -794,21 +789,22 @@ describe('grid crossing ports and in-cell pieces', () => {
 	});
 
 	it('refuses two crossings of different sources sharing one cell piece', () => {
-		const { selected, prepared } = fixture();
+		const { selected } = fixture();
 		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
 		const twin = { ...route, id: 'twin', from: 'a-top' };
-		const forged: GridCellSelected = {
-			...selected,
-			layout: { ...selected.layout, relations: [...selected.layout.relations, twin] },
-			portals: [
-				...selected.portals,
-				...selected.portals
-					.filter(({ relationId }) => relationId === 'across-grid')
-					.map((portal) => ({ ...portal, relationId: 'twin' })),
-			],
-		};
-		const crossing = [...crossingOf(prepared), { id: 'twin', from: 'a-top', to: 'd' }];
-		expect(gridIncidentPieceFailure(forged, crossing)).toMatchObject({
+		const [source, target] = selected.portals.filter(
+			({ relationId }) => relationId === 'across-grid',
+		);
+		const ends = defined(
+			incidentPieceEnds(route.points, defined(source).point, defined(target).point),
+		);
+		const pieces = (crossing: LayoutRelation) => ({
+			route: crossing,
+			sourceCell: cellFor(selected, defined(source).cellId),
+			targetCell: cellFor(selected, defined(target).cellId),
+			...ends,
+		});
+		expect(gridIncidentPieceFailure([pieces(route), pieces(twin)])).toMatchObject({
 			code: RegionGeometryDiagnosticCode.IncidentTouchesIncident,
 			relationId: 'twin',
 			relatedRelationId: 'across-grid',

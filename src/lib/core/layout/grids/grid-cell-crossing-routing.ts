@@ -50,6 +50,11 @@ export interface GridCrossingRouting extends GridCrossingRoutingInput {
 	readonly frameByEndpointId: ReadonlyMap<string, CrossingEndpointFrame>;
 	/** In-cell pieces by the port ordinates of an allocation, filled during the search. */
 	readonly pieceCache: Map<string, readonly (readonly Point[])[]>;
+	/** The same pieces by port track table: allocations derived from one another share it. */
+	readonly piecesByPortTracks: WeakMap<
+		GridCrossingAllocation['portTrackByEndpointId'],
+		readonly (readonly Point[])[]
+	>;
 }
 
 /** Compute once, before the allocation search, the routing data every allocation shares. */
@@ -79,11 +84,12 @@ export function gridCrossingRouting(input: GridCrossingRoutingInput): GridCrossi
 			nested: input.nestedEndpointIds.has(endpointId),
 		});
 	}
-	return { ...input, frameByEndpointId, pieceCache: new Map() };
+	return { ...input, frameByEndpointId, pieceCache: new Map(), piecesByPortTracks: new WeakMap() };
 }
 
-/** The port, portal side and rail of one crossing endpoint, read from the allocated tracks. */
-interface CrossingEndpoint extends CrossingEndpointFrame {
+/** The port and rail of one crossing endpoint, read from the allocated tracks. */
+interface CrossingEndpoint {
+	readonly frame: CrossingEndpointFrame;
 	readonly endpointId: string;
 	readonly port: Point;
 	readonly railX: number;
@@ -107,7 +113,7 @@ function crossingEndpoint(
 	};
 	const edge = defined(routing.edges.gutters[cell.column]);
 	const track = defined(defined(allocation.gutterTrackByRelationId[cell.column]).get(relation.id));
-	return { ...frame, endpointId, port, railX: crossingRailX(edge, frame.portalX, side, track) };
+	return { frame, endpointId, port, railX: crossingRailX(edge, frame.portalX, side, track) };
 }
 
 function cellPortal(
@@ -115,14 +121,14 @@ function cellPortal(
 	endpoint: CrossingEndpoint,
 	piece: readonly Point[],
 ): GridCellPortal {
-	const { cell } = endpoint;
+	const { cell, side } = endpoint.frame;
 	const point = defined(piece.at(-1));
 	return {
 		relationId: relation.id,
 		endpointId: endpoint.endpointId,
 		cellId: cell.id,
 		regionId: cell.id,
-		side: endpoint.side,
+		side,
 		point,
 		localPoint: { x: point.x - cell.bounds.x, y: point.y - cell.bounds.y },
 	};
@@ -161,26 +167,31 @@ export interface GridCrossingRoute {
  */
 function cellPieces(
 	routing: GridCrossingRouting,
+	allocation: GridCrossingAllocation,
 	ends: readonly { readonly source: CrossingEndpoint; readonly target: CrossingEndpoint }[],
 ): readonly (readonly Point[])[] {
+	const tracks = allocation.portTrackByEndpointId;
+	const shared = routing.piecesByPortTracks.get(tracks);
+	if (shared !== undefined) return shared;
 	const key = ends.map(({ source, target }) => `${source.port.y};${target.port.y}`).join(';');
-	const cached = routing.pieceCache.get(key);
-	if (cached !== undefined) return cached;
-	const pieces = routeGridCellIncidents(
-		routing.crossing.flatMap((relation, index) => {
-			const { source, target } = defined(ends[index]);
-			return [source, target].map(({ endpointId, cell, side, port, nested }) => ({
-				relationId: relation.id,
-				endpointId,
-				source: endpointId === relation.from,
-				cell,
-				side,
-				port,
-				nested,
-			}));
-		}),
-	);
+	const pieces =
+		routing.pieceCache.get(key) ??
+		routeGridCellIncidents(
+			routing.crossing.flatMap((relation, index) => {
+				const { source, target } = defined(ends[index]);
+				return [source, target].map(({ endpointId, frame, port }) => ({
+					relationId: relation.id,
+					endpointId,
+					source: endpointId === relation.from,
+					cell: frame.cell,
+					side: frame.side,
+					port,
+					nested: frame.nested,
+				}));
+			}),
+		);
 	routing.pieceCache.set(key, pieces);
+	routing.piecesByPortTracks.set(tracks, pieces);
 	return pieces;
 }
 
@@ -196,7 +207,7 @@ export function crossingRoutes(
 		source: crossingEndpoint(routing, allocation, relation, relation.from),
 		target: crossingEndpoint(routing, allocation, relation, relation.to),
 	}));
-	const pieces = cellPieces(routing, ends);
+	const pieces = cellPieces(routing, allocation, ends);
 	return routing.crossing.map((relation, index) => {
 		const { source, target } = defined(ends[index]);
 		const sourcePiece = defined(pieces[2 * index]);

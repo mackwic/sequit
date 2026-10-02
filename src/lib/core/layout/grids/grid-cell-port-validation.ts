@@ -147,9 +147,57 @@ function checkEndpointContact(
 	let outward = next.x < port.x;
 	if (portal.side === RegionPortalSide.Right) outward = next.x > port.x;
 	if (!outward) return false;
-	for (let index = start; index <= end; index += 1)
-		if (!within(cell.bounds, { ...defined(points[index]), width: 0, height: 0 })) return false;
-	return true;
+	let [left, top, right, bottom] = [Infinity, Infinity, -Infinity, -Infinity];
+	for (let index = start; index <= end; index += 1) {
+		const { x, y } = defined(points[index]);
+		left = Math.min(left, x);
+		top = Math.min(top, y);
+		right = Math.max(right, x);
+		bottom = Math.max(bottom, y);
+	}
+	return within(cell.bounds, { x: left, y: top, width: right - left, height: bottom - top });
+}
+
+/** A crossing's two portals, source first, or undefined unless it has exactly two. */
+function portalPair(
+	portals: readonly GridCellPortal[],
+	relationId: string,
+): readonly [GridCellPortal, GridCellPortal] | undefined {
+	let source: GridCellPortal | undefined;
+	let target: GridCellPortal | undefined;
+	for (const portal of portals) {
+		if (portal.relationId !== relationId) continue;
+		if (target !== undefined) return undefined;
+		if (source === undefined) source = portal;
+		else target = portal;
+	}
+	if (source === undefined || target === undefined) return undefined;
+	return [source, target];
+}
+
+function crossPortalEnds(
+	candidate: GridCellSelected,
+	route: LayoutRelation,
+	fromCell: GridCellPlacement,
+	toCell: GridCellPlacement,
+): IncidentPieceEnds | undefined {
+	const pair = portalPair(candidate.portals, route.id);
+	if (pair === undefined) return undefined;
+	const [sourcePortal, targetPortal] = pair;
+	const owners = sourcePortal.cellId === fromCell.id && targetPortal.cellId === toCell.id;
+	const endpoints = sourcePortal.endpointId === route.from && targetPortal.endpointId === route.to;
+	if (!owners || !endpoints) return undefined;
+	if (!checkPortal(sourcePortal, candidate) || !checkPortal(targetPortal, candidate))
+		return undefined;
+	const { points } = route;
+	const ends = incidentPieceEnds(points, sourcePortal.point, targetPortal.point);
+	if (ends === undefined) return undefined;
+	const source = { start: 0, end: ends.sourceEnd, port: 0 };
+	if (!checkEndpointContact(points, sourcePortal, fromCell, source)) return undefined;
+	const last = points.length - 1;
+	const target = { start: ends.targetStart, end: last, port: last };
+	if (!checkEndpointContact(points, targetPortal, toCell, target)) return undefined;
+	return ends;
 }
 
 /** The piece ends of a crossing whose portals and cell pieces are valid, else the failure. */
@@ -159,23 +207,8 @@ export function validateCrossPortals(
 	fromCell: GridCellPlacement,
 	toCell: GridCellPlacement,
 ): IncidentPieceEnds | string {
-	const failure = `Cross-cell relation ${route.id} has invalid portals.`;
-	const portals = candidate.portals.filter(({ relationId }) => relationId === route.id);
-	if (portals.length !== 2) return failure;
-	const sourcePortal = defined(portals[0]);
-	const targetPortal = defined(portals[1]);
-	const owners = sourcePortal.cellId === fromCell.id && targetPortal.cellId === toCell.id;
-	const endpoints = sourcePortal.endpointId === route.from && targetPortal.endpointId === route.to;
-	if (!owners || !endpoints) return failure;
-	if (!checkPortal(sourcePortal, candidate) || !checkPortal(targetPortal, candidate))
-		return failure;
-	const { points } = route;
-	const ends = incidentPieceEnds(points, sourcePortal.point, targetPortal.point);
-	if (ends === undefined) return failure;
-	const source = { start: 0, end: ends.sourceEnd, port: 0 };
-	if (!checkEndpointContact(points, sourcePortal, fromCell, source)) return failure;
-	const last = points.length - 1;
-	const target = { start: ends.targetStart, end: last, port: last };
-	if (!checkEndpointContact(points, targetPortal, toCell, target)) return failure;
-	return ends;
+	return (
+		crossPortalEnds(candidate, route, fromCell, toCell) ??
+		`Cross-cell relation ${route.id} has invalid portals.`
+	);
 }
