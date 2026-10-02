@@ -20,6 +20,27 @@ interface DocumentArbitraryOptions {
 	readonly maxNodes?: number;
 	readonly minEdges?: number;
 	readonly maxEdges?: number;
+	/**
+	 * Draw node and junction memberships and let every group, node and junction be an endpoint.
+	 * `false` keeps the earlier corpus: only the third node is a member (of the deepest group), and
+	 * only root nodes, `junction-00` and empty root groups are endpoints.
+	 */
+	readonly drawnMembers?: boolean;
+}
+
+function earlierEndpointIds(document: Omit<LogicDocument, 'relations'>): string[] {
+	const containerIds = new Set(
+		[...document.groups, ...document.nodes, ...document.junctions]
+			.map(({ groupId }) => groupId)
+			.filter((id) => id !== undefined),
+	);
+	return [
+		...document.groups
+			.filter(({ id, groupId }) => groupId === undefined && !containerIds.has(id))
+			.map(({ id }) => id),
+		...document.nodes.filter(({ groupId }) => groupId === undefined).map(({ id }) => id),
+		...document.junctions.filter(({ id }) => id === junctionId(0)).map(({ id }) => id),
+	];
 }
 
 interface EdgeIndexes {
@@ -201,9 +222,11 @@ function generatedRelations(
 	options: DocumentArbitraryOptions,
 ): readonly LogicRelation[] {
 	const positionsByEndpoint = rankingPositionsByEndpoint(document, positionByEndpointId);
-	const endpointIds = [...document.groups, ...document.nodes, ...document.junctions]
-		.map(({ id }) => id)
-		.sort((left, right) => left.localeCompare(right));
+	let endpointIds = [...document.groups, ...document.nodes, ...document.junctions].map(
+		({ id }) => id,
+	);
+	if (options.drawnMembers === false) endpointIds = earlierEndpointIds(document);
+	endpointIds.sort((left, right) => left.localeCompare(right));
 	const candidates: RelationEndpoints[] = [];
 	for (const from of endpointIds) {
 		const fromPositions = positionsByEndpoint.get(from) ?? [];
@@ -375,7 +398,11 @@ function richDocumentArbitraryForCounts(
 						natureId: requiredAt(natures, requiredAt(natureIndexes, index, 'nature'), 'nature').id,
 						markdown: value,
 					};
-					const groupIndex = requiredAt(nodeGroupIndexes, index, 'node group');
+					let groupIndex = requiredAt(nodeGroupIndexes, index, 'node group');
+					if (options.drawnMembers === false) {
+						groupIndex = -1;
+						if (index === 2) groupIndex = hierarchyGroupIds.length - 1;
+					}
 					if (groupIndex >= 0)
 						node.groupId = requiredAt(hierarchyGroupIds, groupIndex, 'node group');
 					return node;
@@ -390,7 +417,7 @@ function richDocumentArbitraryForCounts(
 							operator: JunctionOperator.Xor,
 						};
 						const groupIndex = requiredAt(junctionGroupIndexes, index, 'junction group');
-						if (groupIndex >= 0)
+						if (groupIndex >= 0 && options.drawnMembers !== false)
 							junction.groupId = requiredAt(hierarchyGroupIds, groupIndex, 'junction group');
 						return junction;
 					},
@@ -401,7 +428,7 @@ function richDocumentArbitraryForCounts(
 					groupId(2),
 					groupId(3),
 					...emptyHierarchyGroupIds,
-					...hierarchyGroupIds,
+					...hierarchyGroupIds.filter(() => options.drawnMembers !== false),
 					...nodes.slice(2).map(({ id }) => id),
 					...junctions.slice(1).map(({ id }) => id),
 					nodeId(1),
