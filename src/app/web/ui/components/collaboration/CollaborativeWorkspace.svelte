@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 
 	import {
 		defined,
@@ -9,6 +9,7 @@
 		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
+	import type { NatureTemplate } from '../../../../../lib/core/document/nature-templates';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
 	import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
 	import {
@@ -20,6 +21,7 @@
 		DocumentCommandOutcomeKind,
 	} from '../../../../../lib/infrastructure/document/document-command-contracts';
 	import {
+		natureAfterRemoval,
 		natureCreation,
 		natureDeletion,
 		type NatureEditing,
@@ -27,21 +29,16 @@
 		NatureEditingMode,
 		type NatureFields,
 		natureStyleUpdate,
+		natureTemplateImport,
 		natureUsage,
 		newNatureEditing,
 	} from '../../../../../lib/infrastructure/document/nature-fields';
-	import {
-		newNodeFrom,
-		type NodeFields,
-		nodeFields,
-	} from '../../../../../lib/infrastructure/document/node-fields';
 	import {
 		SharedCommandKind as Op,
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import {
-		connectedNodeCreation,
 		containerMove,
 		deletion,
 		groupCreation,
@@ -55,6 +52,8 @@
 		layoutUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
+	import { QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		translateCommandDiagnostics,
@@ -66,15 +65,12 @@
 		hiddenRelationFields,
 	} from '../../../projection/visible-relation-commands';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
-	import type { CanvasModel } from '../../canvas/canvas-model';
+	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
-	import {
-		type NodeCreationPlan,
-		type NodeCreationRequest,
-		planNodeCreation,
-	} from '../../canvas/relative-node-creation';
+	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { rootLanes } from '../../canvas/root-lanes';
+	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import { CanvasSession, type EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import { createNodeEditPort } from '../../session/node-edit-port';
 	import CanvasActions from '../canvas/CanvasActions.svelte';
@@ -87,7 +83,7 @@
 	import LayoutChip from '../canvas/LayoutChip.svelte';
 	import LogicCanvas from '../canvas/LogicCanvas.svelte';
 	import NatureDialog from '../canvas/NatureDialog.svelte';
-	import NodeDialog from '../canvas/NodeDialog.svelte';
+	import { type MountTypedText, NodeTyping } from '../canvas/node-typing.svelte';
 	import NodeEditor from '../canvas/NodeEditor.svelte';
 	import { sharedSelection } from './canvas-awareness';
 	import CanvasAwareness from './CanvasAwareness.svelte';
@@ -95,6 +91,7 @@
 		type CollaborationAwareness,
 		setCollaborationAwareness,
 	} from './collaboration-awareness.svelte';
+	import { mountSharedText } from './shared-text-editor';
 	import SharedElementCard from './SharedElementCard.svelte';
 	import SharedNodeFields from './SharedNodeFields.svelte';
 	import SharedNodeText from './SharedNodeText.svelte';
@@ -125,7 +122,6 @@
 	let error = $state('');
 	/** The canvas viewport, where `?` opens the shortcuts panel. */
 	let canvasViewport = $state<HTMLDivElement>();
-	let creation = $state<{ plan: NodeCreationPlan; draft: NodeFields }>();
 	let editingGroup = $state<{
 		id: string;
 		mode: 'name' | 'edit';
@@ -139,13 +135,12 @@
 	/** As for groups, the dialog shows once the room has published the junction. */
 	let editedJunction = $derived(model.junctions.find(({ id }) => id === editingJunction?.id));
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
-	let lastNatureId = $state<string>();
 	let natureManager = $state(false);
 	let lanesDialog = $state(false);
 	let lanes = $derived(rootLanes(model));
 	let editingNature = $state<NatureEditing>();
 	/**
-	 * An edited nature that a peer removed falls back to the list. Its label is live shared text,
+	 * An edited nature that a peer removed leaves the form empty. Its label is live shared text,
 	 * so the preview follows the room rather than the snapshot taken when the form opened.
 	 */
 	let editedNature = $derived.by((): NatureEditing | undefined => {
@@ -171,7 +166,6 @@
 	let interactive = $derived(
 		connected &&
 			sourceValid &&
-			creation === undefined &&
 			editingGroup === undefined &&
 			editingJunction === undefined &&
 			!natureManager &&
@@ -223,6 +217,70 @@
 		else if (outcome.kind === DocumentCommandOutcomeKind.Failed)
 			error = translateSessionError(outcome.error);
 	}
+	/** Proposes a batch and resolves with its acceptance by the room. */
+	function propose(commands: readonly SharedDocumentCommand[]): Promise<boolean> {
+		if (!connected || !sourceValid) return Promise.resolve(false);
+		let decision: Promise<DocumentCommandOutcome>;
+		try {
+			decision = client.dispatch(commands);
+		} catch (failure) {
+			error = translateSessionError(failure);
+			return Promise.resolve(false);
+		}
+		error = '';
+		return decision.then((outcome) => {
+			reportRefusal(outcome);
+			return outcome.kind === DocumentCommandOutcomeKind.Accepted;
+		});
+	}
+	let canvasModel = $state.raw<CanvasModel>();
+	let layoutReport = $state<LayoutReportRequest>();
+	function openLayoutReport(opener: HTMLElement): void {
+		layoutReport = {
+			read: () => model,
+			close: () => {
+				layoutReport = undefined;
+				void tick().then(() => {
+					opener.focus();
+				});
+			},
+		};
+	}
+	/** A box typed in place shares its text as it is typed, as its dialog does. */
+	function sharedText(nodeId: string): MountTypedText {
+		return async (host, label) => {
+			const target = { kind: Kind.Node, id: nodeId } as const;
+			const text = client.text(target, 'markdown');
+			if (text === undefined) throw new Error(m.collaboration_diagnostic_node_gone({ id: nodeId }));
+			const shared = await mountSharedText(host, {
+				client,
+				awareness,
+				target,
+				field: 'markdown',
+				text,
+				profile: QuillEditorProfile.Inline,
+				label,
+				placeholder: NODE_TEXT_PLACEHOLDERS.inline,
+				enabled: textEditable,
+			});
+			return { quill: shared.quill, destroy: shared.destroy };
+		};
+	}
+	const typing = new NodeTyping({
+		read: () => model,
+		submit: propose,
+		session: canvas,
+		canvas: () => canvasModel,
+		sharedText,
+	});
+	$effect(() => {
+		const drafts = typing.drafts;
+		// The canvas hears the drafts at once; what it updates is no dependency of this effect.
+		untrack(() => projection.setDrafts(drafts));
+	});
+	$effect(() => {
+		typing.settle(model);
+	});
 	function connect(from: string, to: string) {
 		if (!connected || !sourceValid) return;
 		const relation = { id: crypto.randomUUID(), from, to };
@@ -259,29 +317,11 @@
 		const commands = deletion(model, endpointIds, relationIds, () => crypto.randomUUID());
 		return commands.length > 0 && dispatchMany(commands);
 	}
-	function openCreation(request: NodeCreationRequest): void {
+	/** Starts typing a box; only a document without nature refuses it with a notice. */
+	function openDraft(request: NodeCreationRequest): void {
 		if (!interactive) return;
-		const plan = planNodeCreation(model, request, {
-			nodeId: crypto.randomUUID(),
-			relationId: () => crypto.randomUUID(),
-			lastNatureId,
-		});
-		if (plan === undefined) {
-			error = m.collaboration_workspace_nature_required();
-			return;
-		}
-		error = '';
-		creation = { plan, draft: nodeFields(plan.node) };
-	}
-	function submitCreation(): void {
-		const current = creation;
-		if (current === undefined || !connected || !sourceValid) return;
-		const node = newNodeFrom(current.plan.node.id, current.draft, current.plan.node.groupId);
-		if (!dispatchMany(connectedNodeCreation(node, current.plan.relations))) return;
-		lastNatureId = current.draft.natureId;
-		creation = undefined;
-		canvas.clearSelection();
-		canvas.addEntity({ kind: EntityKind.Node, id: node.id });
+		if (typing.open(request)) error = '';
+		else if (model.natures.length === 0) error = m.collaboration_workspace_nature_required();
 	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const group = model.groups.find(({ id }) => id === groupId);
@@ -344,7 +384,8 @@
 	}
 	function openNatures(): void {
 		if (!interactive) return;
-		editingNature = undefined;
+		const first = model.natures[0];
+		editingNature = first && natureEditing(first);
 		natureManager = true;
 	}
 	function closeNatures(): void {
@@ -360,21 +401,24 @@
 		if (nature !== undefined) editingNature = natureEditing(nature);
 	}
 	/** The label of an existing nature is live shared text; only its style travels here. */
-	function saveNature(): void {
+	function saveNature(): boolean {
 		const editing = editingNature;
-		if (editing === undefined) return;
-		if (editing.mode === NatureEditingMode.Create) {
-			if (!dispatchMany([natureCreation(editing.id, editing.draft)])) return;
-		} else {
-			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
-			if (style !== undefined && !dispatchMany([style])) return;
-		}
-		editingNature = undefined;
+		if (editing === undefined) return false;
+		if (editing.mode === NatureEditingMode.Create)
+			return dispatchMany([natureCreation(editing.id, editing.draft)]);
+		const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
+		return style === undefined || dispatchMany([style]);
 	}
 	function deleteNature(replacementId: string | undefined): void {
 		const editing = editingNature;
 		if (editing === undefined) return;
-		if (dispatchMany([natureDeletion(editing.id, replacementId)])) editingNature = undefined;
+		const next = natureAfterRemoval(model.natures, editing.id, replacementId);
+		if (dispatchMany([natureDeletion(editing.id, replacementId)]))
+			editingNature = next && natureEditing(next);
+	}
+	function importNatures(template: NatureTemplate): void {
+		const commands = natureTemplateImport(model.natures, template);
+		if (commands.length > 0) dispatchMany(commands);
 	}
 
 	$effect(() => {
@@ -389,7 +433,11 @@
 <div class="workspace" class:solo={!panel}>
 	<div class="canvas">
 		{#if !panel}
-			<CanvasViewportControls session={canvas} viewportElement={canvasViewport} />
+			<CanvasViewportControls
+				session={canvas}
+				viewportElement={canvasViewport}
+				onreport={openLayoutReport}
+			/>
 			<CanvasInteractionStatus session={canvas} />
 			<div class="absolute top-7 left-1/2 z-20 -translate-x-1/2 print:hidden">
 				<LayoutChip
@@ -408,15 +456,20 @@
 		{/if}
 		<CanvasActions
 			enabled={interactive}
+			natures={model.natures}
+			nature={typing.nature(model.natures)}
 			oncreate={() => {
-				openCreation({ near: canvas.relativeNodeCreationTarget });
+				openDraft({ near: canvas.relativeNodeCreationTarget });
+			}}
+			onnature={(natureId: string) => {
+				typing.natureId = natureId;
 			}}
 			onnatures={openNatures}
 		/>
 		<CanvasGestures
 			session={canvas}
 			enabled={interactive}
-			oncreate={openCreation}
+			oncreate={openDraft}
 			onconnect={connect}
 			onmove={moveSelection}
 			ondelete={deleteSelection}
@@ -426,7 +479,12 @@
 				session={canvas}
 				natures={model.natures}
 				{lanes}
-				oncanvas={(_model: CanvasModel, element: HTMLDivElement) => {
+				draft={typing.controls}
+				onNodeType={(node: RenderedCanvasNode) => {
+					if (interactive) typing.typeInPlace(node);
+				}}
+				oncanvas={(next: CanvasModel, element: HTMLDivElement) => {
+					canvasModel = next;
 					canvasViewport = element;
 				}}
 				onGroup={groupAction}
@@ -437,8 +495,9 @@
 				onJunctionEdit={openJunctionEditor}
 				onRelationSplit={insertJunction}
 				onCreateChild={(target: EntityRef) => {
-					openCreation({ target });
+					openDraft({ target });
 				}}
+				report={layoutReport}
 			>
 				{#snippet awareness(model, viewport)}<CanvasAwareness canvas={model} {viewport} />{/snippet}
 				{#snippet editor(editing: EditingCanvasActivity)}
@@ -538,21 +597,6 @@
 				}}
 			/>
 		{/if}
-		{#if creation}<NodeDialog
-				mode="create"
-				natures={model.natures}
-				{lanes}
-				draft={creation.draft}
-				onchange={(patch: Partial<NodeFields>) => {
-					const current = creation;
-					if (current !== undefined)
-						creation = { ...current, draft: { ...current.draft, ...patch } };
-				}}
-				onsubmit={submitCreation}
-				onclose={() => {
-					creation = undefined;
-				}}
-			/>{/if}
 		{#if sourceValid && lanesDialog}
 			<LanesDialog
 				document={model}
@@ -579,11 +623,9 @@
 					if (editingNature !== undefined)
 						editingNature = { ...editingNature, draft: { ...editingNature.draft, ...patch } };
 				}}
-				onsubmit={saveNature}
-				onback={() => {
-					editingNature = undefined;
-				}}
+				onsave={saveNature}
 				ondelete={deleteNature}
+				onimport={importNatures}
 				onclose={closeNatures}
 			>
 				{#snippet text()}

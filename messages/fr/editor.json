@@ -19,5 +19,6 @@
 	"editor_heading_level": "Niveau de titre",
 	"editor_normal_text": "Texte normal",
 	"editor_node_markdown_placeholder": "Ce que dit la boîte, en une ou deux lignes.",
+	"editor_node_inline_placeholder": "Ce que dit la boîte…",
 	"editor_node_description_placeholder": "Explications, contexte, sources… (facultatif)"
 }

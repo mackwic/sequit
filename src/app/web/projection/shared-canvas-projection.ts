@@ -30,6 +30,7 @@ import type { CanvasProjection } from './canvas-projection';
 import { DocumentProjection } from './document-projection';
 import { LayoutProjectionError } from './layout-diagnostic';
 import type { LayoutMeasurements } from './layout-graph';
+import { type CanvasDrafts, NO_CANVAS_DRAFTS, withDrafts } from './node-draft';
 import { SourceDocumentProjectionError } from './source-document-diagnostic';
 import { UnresolvedFoldedGroupLayoutError } from './unresolved-folded-group-error';
 
@@ -87,9 +88,15 @@ function projectSharedSnapshot(
 
 export class SharedCanvasProjection implements CanvasProjection {
 	readonly #projection: DocumentProjection;
+	/** The shared snapshot, without the drafts. */
+	#source: LogicDocument;
+	/** What is projected: the shared snapshot and the drafts it can hold. */
 	#document: LogicDocument;
+	#drafts: CanvasDrafts = NO_CANVAS_DRAFTS;
 	#sourceState: SourceDocumentState | undefined;
 	#visible: ReturnType<typeof sharedDocument>;
+	/** The shared snapshot alone, as its readers see it while drafts are drawn. */
+	#sourceVisible: CollapsedDocumentProjection | undefined;
 	#foldedSource: SharedProjectionUpdate['foldedSource'];
 	#foldedMeasurementModel: CanvasMeasurementModel | undefined;
 	#warning: string | undefined;
@@ -97,6 +104,7 @@ export class SharedCanvasProjection implements CanvasProjection {
 	readonly #subscribers = new Set<() => void>();
 
 	constructor(document: LogicDocument) {
+		this.#source = document;
 		this.#document = document;
 		this.#projection = new DocumentProjection(document);
 		const result = projectSharedSnapshot(document, (visible, graph) =>
@@ -113,8 +121,11 @@ export class SharedCanvasProjection implements CanvasProjection {
 		return this.#foldedMeasurementModel ?? this.#projection.measurementModel;
 	}
 
-	get visible(): ReturnType<typeof sharedDocument> {
-		return this.#visible;
+	/** The shared snapshot as shown, folded groups applied; drafts are not part of it. */
+	get visible(): CollapsedDocumentProjection {
+		if (this.#document === this.#source) return this.#visible;
+		this.#sourceVisible ??= sharedDocument(this.#source);
+		return this.#sourceVisible;
 	}
 
 	get warning(): string | undefined {
@@ -131,8 +142,11 @@ export class SharedCanvasProjection implements CanvasProjection {
 		if (state.kind === SourceDocumentStateKind.Invalid) this.#notify();
 	}
 
-	update(document: LogicDocument, forcePublish = false): void {
+	update(source: LogicDocument, forcePublish = false): void {
 		if (this.#sourceState?.kind === SourceDocumentStateKind.Invalid) return;
+		this.#source = source;
+		this.#sourceVisible = undefined;
+		const document = withDrafts(source, this.#drafts);
 		const previouslyFolded = this.#foldedSource !== undefined;
 		const sourceChanged = JSON.stringify(document) !== JSON.stringify(this.#document);
 		const { visible, changed, warning, foldedSource } = projectSharedSnapshot(
@@ -155,6 +169,14 @@ export class SharedCanvasProjection implements CanvasProjection {
 		const shouldPublish = projectionChanged || provenanceChanged || retryLayout || forcePublish;
 		if (!shouldPublish) return;
 		this.#notify();
+	}
+
+	/** Shows boxes and texts still being typed, or not yet accepted, as if they were saved. */
+	setDrafts(drafts: CanvasDrafts): boolean {
+		if (drafts === this.#drafts) return false;
+		this.#drafts = drafts;
+		this.update(this.#source);
+		return true;
 	}
 
 	#notify(): void {

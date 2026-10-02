@@ -10,6 +10,7 @@
 		type LayoutDiagnostic,
 		LayoutProjectionError,
 	} from '../../../projection/layout-diagnostic';
+	import type { LayoutMeasurements } from '../../../projection/layout-graph';
 	import { type RegionPreview, RegionPreviewKind } from '../../../projection/partial-region-layout';
 	import { SourceDocumentProjectionError } from '../../../projection/source-document-diagnostic';
 	import { createCanvasEntityIndex, type EntityRef } from '../../canvas/canvas-entity';
@@ -18,7 +19,11 @@
 		isNativeControlTarget,
 		isUnmodifiedKeyboardEvent,
 	} from '../../canvas/canvas-event-guard';
-	import type { CanvasMeasurementModel, CanvasModel } from '../../canvas/canvas-model';
+	import type {
+		CanvasMeasurementModel,
+		CanvasModel,
+		RenderedCanvasNode,
+	} from '../../canvas/canvas-model';
 	import {
 		anchorPreservingScroll,
 		type CanvasPoint,
@@ -29,9 +34,12 @@
 		collectLayoutMeasurements,
 		layoutMeasurementSignature,
 	} from '../../canvas/measure-canvas';
+	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
+	import LayoutReport from '../report/LayoutReport.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
+	import type { NodeDraftControls } from './node-typing.svelte';
 	import RegionPartialPreview from './RegionPartialPreview.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
 
@@ -40,6 +48,8 @@
 		session,
 		natures,
 		lanes = [],
+		draft,
+		onNodeType,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -52,6 +62,7 @@
 		onJunctionEdit,
 		onRelationSplit,
 		onCreateChild,
+		report,
 	}: {
 		document: CanvasProjection;
 		session: CanvasSession;
@@ -59,6 +70,10 @@
 		natures: readonly LogicNature[];
 		/** Root lanes offered by the box dialog for a top-level box. */
 		lanes?: readonly LayoutLane[];
+		/** The box typed in place, new or existing, if any. */
+		draft?: NodeDraftControls | undefined;
+		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
+		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -71,6 +86,8 @@
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
+		/** While set, the layout report dialog is open over this canvas. */
+		report?: LayoutReportRequest | undefined;
 	} = $props();
 	let measurementModel = $state.raw<CanvasMeasurementModel>();
 	let measurementLayer = $state<HTMLDivElement>();
@@ -88,6 +105,13 @@
 		| { readonly kind: 'invalid-source'; readonly state: InvalidSourceDocumentState };
 	let display = $state.raw<CanvasDisplay>({ kind: 'measuring' });
 	let canvas = $derived(display.kind === 'ready' ? display.canvas : undefined);
+	/** The failure shown instead of a canvas, by its code. */
+	let layoutFailure = $derived.by(() => {
+		if (display.kind === 'invalid-source') return 'invalid-source';
+		if (display.kind === 'diagnostic' || display.kind === 'partial')
+			return display.diagnostic?.reason.code ?? 'layout-failed';
+		return undefined;
+	});
 	let spacePressed = $state(false);
 	let panning = $state(false);
 	let panMoved = false;
@@ -382,6 +406,12 @@
 	$effect(() => {
 		if (canvas && viewport) oncanvas?.(canvas, viewport);
 	});
+	/** The sizes the measurement layer gives now, which the shown canvas was laid out with. */
+	function currentMeasurements(): LayoutMeasurements {
+		if (measurementLayer === undefined)
+			return { nodes: new Map(), junctions: new Map(), groups: new Map() };
+		return collectLayoutMeasurements(measurementLayer);
+	}
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} onblur={finishPanning} />
@@ -415,6 +445,8 @@
 				canvas={display.canvas}
 				zoom={session.zoom}
 				{session}
+				{draft}
+				{onNodeType}
 				{onGroupEdit}
 				{onGroupToggle}
 				{onJunctionEdit}
@@ -560,6 +592,7 @@
 			{session}
 			{natures}
 			{lanes}
+			{draft}
 			{editor}
 			{awareness}
 			{hideToolbar}
@@ -571,6 +604,15 @@
 			{onRelationSplit}
 			{onCreateChild}
 			{onDelete}
+		/>
+	{/if}
+	{#if report}
+		<LayoutReport
+			request={report}
+			{canvas}
+			{viewport}
+			failure={layoutFailure}
+			measure={currentMeasurements}
 		/>
 	{/if}
 </div>

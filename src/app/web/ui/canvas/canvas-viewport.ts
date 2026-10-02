@@ -13,6 +13,14 @@ export interface CanvasScrollPosition {
 	readonly top: number;
 }
 
+/** A rectangle in client coordinates, as `getBoundingClientRect` gives it. */
+export interface CanvasRect {
+	readonly left: number;
+	readonly top: number;
+	readonly width: number;
+	readonly height: number;
+}
+
 export const DEFAULT_CANVAS_ZOOM = 1;
 export const MIN_CANVAS_ZOOM = 0.1;
 export const MAX_CANVAS_ZOOM = 2.5;
@@ -110,5 +118,45 @@ export function panScrollPosition({
 	return {
 		left: Math.min(maxScroll.left, Math.max(0, startScroll.left - (pointer.x - startPointer.x))),
 		top: Math.min(maxScroll.top, Math.max(0, startScroll.top - (pointer.y - startPointer.y))),
+	};
+}
+
+/** One axis of a rectangle: where it starts and how long it is. */
+interface CanvasSpan {
+	readonly start: number;
+	readonly size: number;
+}
+
+function revealAxis(target: CanvasSpan, view: CanvasSpan, margin: number): number {
+	const first = view.start + margin;
+	const last = view.start + view.size - margin;
+	const end = target.start + target.size;
+	if (target.start >= first && end <= last) return 0;
+	if (target.size > last - first) return target.start - first;
+	const targetCentre = (target.start + end) / 2;
+	const viewCentre = (first + last) / 2;
+	return targetCentre - viewCentre;
+}
+
+/**
+ * How far to scroll so that the target shows whole, `margin` inside the viewport: nothing along an
+ * axis where it already does, otherwise it is centred, or aligned on its start when too large.
+ */
+export function revealScrollDelta(
+	viewport: CanvasRect,
+	target: CanvasRect,
+	margin: number,
+): CanvasPoint {
+	return {
+		x: revealAxis(
+			{ start: target.left, size: target.width },
+			{ start: viewport.left, size: viewport.width },
+			margin,
+		),
+		y: revealAxis(
+			{ start: target.top, size: target.height },
+			{ start: viewport.top, size: viewport.height },
+			margin,
+		),
 	};
 }

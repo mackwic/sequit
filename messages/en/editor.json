@@ -19,5 +19,6 @@
 	"editor_heading_level": "Heading level",
 	"editor_normal_text": "Normal text",
 	"editor_node_markdown_placeholder": "What the box says, in one or two lines.",
+	"editor_node_inline_placeholder": "What the box says…",
 	"editor_node_description_placeholder": "Explanations, context, sources… (optional)"
 }

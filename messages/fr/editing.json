@@ -1,8 +1,6 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"editing_nature_dialog_title_remove": "Supprimer la nature",
-	"editing_nature_dialog_title_create": "Nouvelle nature",
-	"editing_nature_dialog_title_edit": "Modifier la nature",
 	"editing_nature_usage_none": "Aucune boîte",
 	"editing_nature_usage": [
 		{
@@ -31,12 +29,26 @@
 	"editing_nature_reassign_field": "Réaffecter à",
 	"editing_nature_removal_blocked": "Des boîtes utilisent cette nature et aucune autre ne peut les accueillir. Créez d’abord une autre nature.",
 	"editing_nature_preview_sample": "Une boîte de cette nature, telle qu’elle apparaît sur le canvas.",
-	"editing_preview_caption": "Aperçu",
 	"editing_label": "Libellé",
 	"editing_nature_create": "Nouvelle nature",
-	"editing_back": "Retour",
 	"editing_nature_delete_hint": "Les boîtes concernées changent de nature",
-	"editing_node_title_edit": "Modifier la boîte",
+	"editing_nature_none_selected": "Choisissez une nature à modifier, ou créez-en une.",
+	"editing_nature_templates": "Modèles",
+	"editing_nature_templates_menu": "Ajouter les natures d’un modèle",
+	"editing_nature_template_generic": "Générique",
+	"editing_nature_template_retro_kds": "Rétro Keep · Drop · Start",
+	"editing_nature_template_missing": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nature à ajouter",
+				"countPlural=other": "{count} natures à ajouter"
+			}
+		}
+	],
+	"editing_nature_template_present": "Déjà dans le document",
+	"editing_node_title_edit": "Propriétés de la boîte",
 	"editing_node_eyebrow": "Boîte",
 	"editing_color_and_icon": "Couleur et icône",
 	"editing_customized": "Personnalisés",
@@ -68,7 +80,7 @@
 	"editing_junction_symbol_xor": "XOR",
 	"editing_junction_title": "Opérateur de la jonction",
 	"editing_group_title_name": "Nommer le groupe",
-	"editing_group_title_edit": "Modifier le groupe",
+	"editing_group_title_edit": "Propriétés du groupe",
 	"editing_title": "Titre",
 	"editing_group_lane_aria": "Lane du groupe",
 	"editing_group_dissolve_hint": "Conserve les membres ; retire le groupe et ses relations",
@@ -100,6 +112,12 @@
 	"editing_selection_delete_aria": "Supprimer {count} éléments",
 	"editing_canvas_actions": "Actions du canvas",
 	"editing_canvas_manage_natures": "Gérer les natures du document",
+	"editing_canvas_next_nature": "Nature des nouvelles boîtes",
+	"editing_canvas_next_nature_tip": "Nouvelles boîtes : {label}",
+	"editing_draft_content": "Contenu de la nouvelle boîte",
+	"editing_draft_actions": "Actions de la saisie",
+	"editing_typed_box": "Boîte en cours de saisie",
+	"editing_typed_content": "Contenu de la boîte",
 	"editing_zoom_label": "Zoom du canvas",
 	"editing_zoom_out": "Zoom arrière",
 	"editing_zoom_reset": "Réinitialiser le zoom",

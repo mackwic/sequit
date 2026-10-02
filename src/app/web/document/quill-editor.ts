@@ -2,7 +2,8 @@ import type Quill from 'quill';
 import Delta from 'quill-delta';
 
 import { markdownDelta } from './markdown-delta';
-import { QuillEditorProfile } from './quill-editor-config';
+import { quillEditorOptions, QuillEditorProfile } from './quill-editor-config';
+import { describeQuillField } from './quill-field';
 import { quillMarkdown, quillPlainText, translateTextIndex } from './quill-markdown';
 import {
 	sharedTextarea,
@@ -89,6 +90,55 @@ export class QuillMarkdownEditor extends EventTarget implements SharedTextareaEl
 		const index = this.toEditor(start);
 		this.quill.setSelection(index, Math.max(0, this.toEditor(end) - index), 'silent');
 	}
+}
+
+interface QuillMarkdownFieldOptions {
+	readonly profile: QuillEditorProfile;
+	/** Accessible name of the text box. */
+	readonly label: string;
+	readonly placeholder?: string | undefined;
+	/** The Markdown it starts from. */
+	readonly value: string;
+	/** Hears every edit by the author, never the ones made through `value`. */
+	readonly onchange: (markdown: string) => void;
+}
+
+interface QuillMarkdownField {
+	readonly editor: QuillMarkdownEditor;
+	destroy(): void;
+}
+
+/** Loads Quill and turns `host` into a named Markdown text box filled with `value`. */
+export async function mountQuillMarkdown(
+	host: HTMLElement,
+	{ profile, label, placeholder, value, onchange }: QuillMarkdownFieldOptions,
+): Promise<QuillMarkdownField> {
+	// Quill touches the DOM as it loads, so it is fetched in the browser, never during rendering.
+	const { default: Editor } = await import('quill');
+	const quill = new Editor(
+		host,
+		quillEditorOptions(profile, {
+			placeholder,
+			showSource: () => {
+				markdown.showSource();
+			},
+		}),
+	);
+	const undescribe = describeQuillField(quill, label);
+	const markdown = new QuillMarkdownEditor(quill, profile);
+	markdown.value = value;
+	quill.history.clear();
+	const changed = (_delta: unknown, _previous: unknown, source: string): void => {
+		if (source === 'user') onchange(markdown.value);
+	};
+	quill.on('text-change', changed);
+	return {
+		editor: markdown,
+		destroy(): void {
+			quill.off('text-change', changed);
+			undescribe();
+		},
+	};
 }
 
 export function bindQuillMarkdown(

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	import { entityKey, EntityKind, entityRef } from '../../canvas/canvas-entity';
 	import {
 		activateEntityByKeyboard,
@@ -13,11 +15,22 @@
 		measuring = false,
 		session,
 		tabbable = false,
+		ontype,
+		body,
+		label = '',
+		element = $bindable(),
 	}: {
 		node: RenderedCanvasNode | UnpositionedCanvasNode;
 		measuring?: boolean;
 		session?: CanvasSession;
 		tabbable?: boolean;
+		/** Types the box in place on double-click or Enter; without it, they open its dialog. */
+		ontype?: ((node: RenderedCanvasNode) => void) | undefined;
+		/** A box being typed in place: its body is this editor. */
+		body?: Snippet | undefined;
+		/** Accessible name of a box being typed. */
+		label?: string;
+		element?: HTMLElement | undefined;
 	} = $props();
 	let color = $derived(node.color ?? node.nature.color);
 	let icon = $derived(node.icon ?? node.nature.icon ?? 'none');
@@ -25,6 +38,10 @@
 		if ('bounds' in node) return node.bounds;
 		return undefined;
 	});
+	function pixels(value: number | undefined): string | undefined {
+		if (value === undefined) return undefined;
+		return `${value}px`;
+	}
 	let nodeId = $derived.by(() => {
 		if (!measuring) return node.id;
 		return undefined;
@@ -56,10 +73,16 @@
 		activateEntityByPointer(session, ref, event);
 	}
 
+	/** Double-click and Enter type the box in place where the canvas allows it, else open its dialog. */
+	function edit(rendered: RenderedCanvasNode): void {
+		if (ontype !== undefined) ontype(rendered);
+		else session?.beginNodeEdit(rendered);
+	}
+
 	function handleKeyDown(event: KeyboardEvent) {
 		if (!session || !ref) return;
 		if (!activateEntityByKeyboard(session, ref, event)) return;
-		if (event.code === 'Enter' && 'bounds' in node) session.beginNodeEdit(node);
+		if (event.code === 'Enter' && 'bounds' in node) edit(node);
 	}
 
 	function handleDoubleClick(event: MouseEvent) {
@@ -67,11 +90,7 @@
 		event.preventDefault();
 		event.stopPropagation();
 		session.selectEntity(ref);
-		session.beginNodeEdit(node);
-	}
-	function pixels(value: number | undefined): string | undefined {
-		if (value === undefined) return undefined;
-		return `${value}px`;
+		edit(node);
 	}
 </script>
 
@@ -84,6 +103,21 @@
 	>
 		<NodeContent label={node.nature.label} markdown={node.markdown} {icon} />
 	</article>
+{:else if body}
+	<div
+		class="node-card positioned draft"
+		role="group"
+		aria-label={label}
+		data-node-draft={node.id}
+		style:--content-color={color}
+		style:width={pixels(bounds?.width)}
+		style:left={pixels(bounds?.x)}
+		style:top={pixels(bounds?.y)}
+		style:height={pixels(bounds?.height)}
+		bind:this={element}
+	>
+		<NodeContent label={node.nature.label} markdown="" {icon} {body} />
+	</div>
 {:else}
 	<button
 		class="node-card positioned"
@@ -124,9 +158,14 @@
 			0 8px 24px rgb(28 25 23 / 0.06);
 	}
 
+	/* The layout may make a box taller than its content (port room on a face): the header stays at
+	   the top, where a button would otherwise centre its content. */
 	.positioned {
 		position: absolute;
 		z-index: 20;
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-start;
 		overflow: hidden;
 		outline: 3px solid transparent;
 		outline-offset: 2px;
@@ -144,7 +183,8 @@
 		}
 	}
 
-	.positioned.selected {
+	.positioned.selected,
+	.positioned.draft {
 		outline-color: var(--ui-accent);
 	}
 

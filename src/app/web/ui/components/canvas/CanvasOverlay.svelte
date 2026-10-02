@@ -10,10 +10,16 @@
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { hostsJunction } from '../../canvas/junction-insertion';
-	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
+	import {
+		CanvasEditPresentation,
+		type CanvasSession,
+		type EditingCanvasActivity,
+	} from '../../session/canvas-session.svelte';
 	import ContextualBar from './ContextualBar.svelte';
+	import type { NodeDraftControls } from './node-typing.svelte';
 	import NodeEditor from './NodeEditor.svelte';
 	import SelectionBar from './SelectionBar.svelte';
+	import TypingBar from './TypingBar.svelte';
 
 	let {
 		canvas,
@@ -21,6 +27,7 @@
 		session,
 		natures,
 		lanes = [],
+		draft,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -40,13 +47,15 @@
 		/** Root lanes offered by the box dialog for a top-level box. */
 		lanes?: readonly LayoutLane[];
 		hideToolbar?: boolean;
+		/** The box typed in place, new or existing: its bar takes the place of the contextual one. */
+		draft?: NodeDraftControls | undefined;
 		onGroup?: (() => void) | undefined;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
 		onRelationSplit?: ((relationId: string) => void) | undefined;
-		/** Opens the box dialog for a child of the selected node or junction. */
+		/** Starts typing a child of the selected node or junction. */
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		onDelete?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
@@ -114,6 +123,12 @@
 			};
 		return actions;
 	}
+	/** A box typed in place is drawn on the canvas, not in the dialog. */
+	let dialogEditing = $derived.by((): EditingCanvasActivity | undefined => {
+		const editing = session.editing;
+		if (editing?.presentation !== CanvasEditPresentation.Dialog) return undefined;
+		return editing;
+	});
 	let contextual = $derived.by((): ContextualActions | undefined => {
 		const entity = session.contextualEntity;
 		if (entity === undefined || canvas === undefined || session.awaitingAcceptedLayout)
@@ -167,6 +182,13 @@
 			},
 		};
 	});
+	/** The bar waits for the box: a new one is only drawn once laid out. */
+	let typed = $derived.by((): NodeDraftControls | undefined => {
+		const current = draft;
+		if (current === undefined || canvas === undefined) return undefined;
+		if (!canvas.nodes.some(({ id }) => id === current.id)) return undefined;
+		return current;
+	});
 </script>
 
 <div
@@ -189,11 +211,14 @@
 	{#if viewportElement && !hideToolbar}
 		<SelectionBar {viewportElement} {session} {onGroup} {onDelete} />
 	{/if}
-	{#if session.editing}
+	{#if typed && viewportElement}
+		{#key typed.id}<TypingBar draft={typed} {viewportElement} />{/key}
+	{/if}
+	{#if dialogEditing}
 		{#if editor}
-			{@render editor(session.editing, viewportElement)}
+			{@render editor(dialogEditing, viewportElement)}
 		{:else}
-			<NodeEditor editing={session.editing} {session} {natures} {lanes} />
+			<NodeEditor editing={dialogEditing} {session} {natures} {lanes} />
 		{/if}
 	{/if}
 </div>

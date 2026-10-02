@@ -17,11 +17,12 @@ export enum CanvasShortcutId {
 	Junction = 'junction',
 	Create = 'create',
 	CreateChild = 'create-child',
-	CreateSibling = 'create-sibling',
 	Delete = 'delete',
 	Undo = 'undo',
 	Redo = 'redo',
 	Confirm = 'confirm',
+	DraftChild = 'draft-child',
+	DraftEdit = 'draft-edit',
 	Help = 'help',
 	Navigate = 'navigate',
 	Select = 'select',
@@ -39,7 +40,7 @@ export enum CanvasShortcutSection {
 export interface CanvasShortcut {
 	readonly id: CanvasShortcutId;
 	readonly section: CanvasShortcutSection;
-	/** Action verb as shown on its button: « Éditer », « Grouper », … */
+	/** Action as shown on its button: « Propriétés… », « Grouper », … */
 	readonly label: string;
 	/** `KeyboardEvent.key` values that trigger it; the first one is the one shown. */
 	readonly keys: readonly [string, ...string[]];
@@ -89,8 +90,9 @@ function localized({ label, hint, ...shortcut }: ShortcutDeclaration): CanvasSho
 }
 
 /**
- * `Navigate`, `Select` and `Cancel` are listed for the panel only: their handlers keep
- * their own keyup and hover semantics and do not go through `matchesShortcut`.
+ * `Navigate` and `Select` are listed for the panel only: their handlers keep their own keyup and
+ * hover semantics and do not go through `matchesShortcut`. `Cancel` does only in the box being
+ * typed. `Confirm`, `DraftChild` and `DraftEdit` are the keys of a dialog or of that box.
  */
 export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>> = {
 	[CanvasShortcutId.Edit]: localized({
@@ -135,13 +137,6 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 		label: m.canvas_shortcut_create_child,
 		keys: ['c'],
 	}),
-	[CanvasShortcutId.CreateSibling]: localized({
-		id: CanvasShortcutId.CreateSibling,
-		section: CanvasShortcutSection.Canvas,
-		label: m.canvas_shortcut_create_sibling,
-		keys: ['Enter'],
-		chord: { primary: true, shift: true },
-	}),
 	[CanvasShortcutId.Delete]: localized({
 		id: CanvasShortcutId.Delete,
 		section: CanvasShortcutSection.Selection,
@@ -167,6 +162,20 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 		section: CanvasShortcutSection.Dialog,
 		label: m.canvas_shortcut_confirm,
 		keys: ['Enter'],
+		chord: { primary: true },
+	}),
+	[CanvasShortcutId.DraftChild]: localized({
+		id: CanvasShortcutId.DraftChild,
+		section: CanvasShortcutSection.Dialog,
+		label: m.canvas_shortcut_draft_child,
+		keys: ['Enter'],
+		chord: { primary: true, shift: true },
+	}),
+	[CanvasShortcutId.DraftEdit]: localized({
+		id: CanvasShortcutId.DraftEdit,
+		section: CanvasShortcutSection.Dialog,
+		label: m.canvas_shortcut_draft_edit,
+		keys: ['e'],
 		chord: { primary: true },
 	}),
 	[CanvasShortcutId.Help]: localized({

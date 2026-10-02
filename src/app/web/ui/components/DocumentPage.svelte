@@ -83,7 +83,7 @@
 			title = current.read().title || UNTITLED;
 		};
 		readTitle();
-		return current.subscribe(() => {
+		return current.subscribeToDocument(() => {
 			readTitle();
 			changed();
 		});

@@ -52,16 +52,25 @@ describe('matchesShortcut', () => {
 		expect(press(CanvasShortcutId.Delete, { key: 'Backspace', [modifier]: true })).toBe(false);
 	});
 
-	it('creates a sibling with Ctrl or Cmd, plus Shift, plus Enter', () => {
+	it('creates a child of the typed box with Ctrl or Cmd, plus Shift, plus Enter', () => {
 		const chord = { key: 'Enter', shiftKey: true };
-		expect(press(CanvasShortcutId.CreateSibling, { ...chord, ctrlKey: true })).toBe(true);
-		expect(press(CanvasShortcutId.CreateSibling, { ...chord, metaKey: true })).toBe(true);
-		expect(press(CanvasShortcutId.CreateSibling, chord)).toBe(false);
-		expect(press(CanvasShortcutId.CreateSibling, { key: 'Enter', ctrlKey: true })).toBe(false);
-		expect(press(CanvasShortcutId.CreateSibling, { ...chord, ctrlKey: true, altKey: true })).toBe(
+		expect(press(CanvasShortcutId.DraftChild, { ...chord, ctrlKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.DraftChild, { ...chord, metaKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.DraftChild, chord)).toBe(false);
+		expect(press(CanvasShortcutId.DraftChild, { key: 'Enter', ctrlKey: true })).toBe(false);
+		expect(press(CanvasShortcutId.DraftChild, { ...chord, ctrlKey: true, altKey: true })).toBe(
 			false,
 		);
-		expect(press(CanvasShortcutId.CreateSibling, { key: 'n', shiftKey: true, ctrlKey: true })).toBe(
+		expect(press(CanvasShortcutId.DraftChild, { key: 'n', shiftKey: true, ctrlKey: true })).toBe(
+			false,
+		);
+	});
+
+	it('edits the typed box with Ctrl or Cmd and E, never with the bare letter typed in it', () => {
+		expect(press(CanvasShortcutId.DraftEdit, { key: 'e', ctrlKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.DraftEdit, { key: 'E', metaKey: true })).toBe(true);
+		expect(press(CanvasShortcutId.DraftEdit, { key: 'e' })).toBe(false);
+		expect(press(CanvasShortcutId.DraftEdit, { key: 'e', ctrlKey: true, shiftKey: true })).toBe(
 			false,
 		);
 	});
@@ -127,12 +136,8 @@ it.each([
 	[CanvasShortcutId.Junction, 'J', 'J', 'j'],
 	[CanvasShortcutId.Create, 'N', 'N', 'n'],
 	[CanvasShortcutId.CreateChild, 'C', 'C', 'c'],
-	[
-		CanvasShortcutId.CreateSibling,
-		'Ctrl+Maj+Entrée',
-		'⇧⌘↵',
-		'Control+Shift+Enter Meta+Shift+Enter',
-	],
+	[CanvasShortcutId.DraftChild, 'Ctrl+Maj+Entrée', '⇧⌘↵', 'Control+Shift+Enter Meta+Shift+Enter'],
+	[CanvasShortcutId.DraftEdit, 'Ctrl+E', '⌘E', 'Control+e Meta+e'],
 	[CanvasShortcutId.Delete, 'Suppr', '⌫', 'Delete Backspace'],
 	[CanvasShortcutId.Undo, 'Ctrl+Z', '⌘Z', 'Control+z Meta+z'],
 	[CanvasShortcutId.Redo, 'Ctrl+Maj+Z', '⇧⌘Z', 'Control+Shift+z Meta+Shift+z'],
@@ -159,9 +164,9 @@ it('splits a chord into one cap per key, modifiers in the platform order', () =>
 });
 
 it('speaks macOS symbols as words, naming the command key', () => {
-	const sibling = CANVAS_SHORTCUTS[CanvasShortcutId.CreateSibling];
-	expect(shortcutWords(sibling, ShortcutPlatform.Mac)).toBe('Cmd+Maj+Entrée');
-	expect(shortcutWords(sibling, ShortcutPlatform.Other)).toBe('Ctrl+Maj+Entrée');
+	const child = CANVAS_SHORTCUTS[CanvasShortcutId.DraftChild];
+	expect(shortcutWords(child, ShortcutPlatform.Mac)).toBe('Cmd+Maj+Entrée');
+	expect(shortcutWords(child, ShortcutPlatform.Other)).toBe('Ctrl+Maj+Entrée');
 	expect(shortcutWords(CANVAS_SHORTCUTS[CanvasShortcutId.Delete], ShortcutPlatform.Mac)).toBe(
 		'Suppr',
 	);

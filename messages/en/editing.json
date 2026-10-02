@@ -1,8 +1,6 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
 	"editing_nature_dialog_title_remove": "Delete nature",
-	"editing_nature_dialog_title_create": "New nature",
-	"editing_nature_dialog_title_edit": "Edit nature",
 	"editing_nature_usage_none": "No boxes",
 	"editing_nature_usage": [
 		{
@@ -31,12 +29,26 @@
 	"editing_nature_reassign_field": "Reassign to",
 	"editing_nature_removal_blocked": "Boxes use this nature and no other nature can replace it. Create another nature first.",
 	"editing_nature_preview_sample": "A box of this nature, as it appears on the canvas.",
-	"editing_preview_caption": "Preview",
 	"editing_label": "Label",
 	"editing_nature_create": "New nature",
-	"editing_back": "Back",
 	"editing_nature_delete_hint": "Affected boxes will change nature",
-	"editing_node_title_edit": "Edit box",
+	"editing_nature_none_selected": "Choose a nature to edit, or create one.",
+	"editing_nature_templates": "Templates",
+	"editing_nature_templates_menu": "Add natures from a template",
+	"editing_nature_template_generic": "Generic",
+	"editing_nature_template_retro_kds": "Retro Keep · Drop · Start",
+	"editing_nature_template_missing": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nature to add",
+				"countPlural=other": "{count} natures to add"
+			}
+		}
+	],
+	"editing_nature_template_present": "Already in the document",
+	"editing_node_title_edit": "Box properties",
 	"editing_node_eyebrow": "Box",
 	"editing_color_and_icon": "Color and icon",
 	"editing_customized": "Customized",
@@ -68,7 +80,7 @@
 	"editing_junction_symbol_xor": "XOR",
 	"editing_junction_title": "Junction operator",
 	"editing_group_title_name": "Name group",
-	"editing_group_title_edit": "Edit group",
+	"editing_group_title_edit": "Group properties",
 	"editing_title": "Title",
 	"editing_group_lane_aria": "Group lane",
 	"editing_group_dissolve_hint": "Keeps members; removes the group and its relations",
@@ -100,6 +112,12 @@
 	"editing_selection_delete_aria": "Delete {count} items",
 	"editing_canvas_actions": "Canvas actions",
 	"editing_canvas_manage_natures": "Manage document natures",
+	"editing_canvas_next_nature": "Nature of new boxes",
+	"editing_canvas_next_nature_tip": "New boxes: {label}",
+	"editing_draft_content": "New box content",
+	"editing_draft_actions": "Typing actions",
+	"editing_typed_box": "Box being typed",
+	"editing_typed_content": "Box content",
 	"editing_zoom_label": "Canvas zoom",
 	"editing_zoom_out": "Zoom out",
 	"editing_zoom_reset": "Reset zoom",

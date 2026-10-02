@@ -29,6 +29,12 @@ export enum CanvasEditAvailability {
 	Deleted = 'deleted',
 }
 
+/** Where a box is edited: typed in place on the canvas, or in its dialog. */
+export enum CanvasEditPresentation {
+	Dialog = 'dialog',
+	InPlace = 'in-place',
+}
+
 interface IdleCanvasActivity {
 	readonly kind: CanvasActivityKind.Idle;
 }
@@ -40,6 +46,7 @@ export interface EditingCanvasActivity {
 	readonly base: NodeFields;
 	readonly draft: NodeFields;
 	readonly frozenBounds: Bounds;
+	readonly presentation: CanvasEditPresentation;
 	readonly availability: CanvasEditAvailability;
 	readonly diagnostic: string | undefined;
 	readonly saving: boolean;

@@ -4,6 +4,7 @@ import { EntityKind } from '../../../../../src/app/web/ui/canvas/canvas-entity';
 import { planNodeCreation } from '../../../../../src/app/web/ui/canvas/relative-node-creation';
 import {
 	EndpointKind,
+	GroupState,
 	type LogicDocument,
 } from '../../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../../src/lib/core/document/order-key';
@@ -12,21 +13,21 @@ import {
 	validLogicDocument,
 } from '../../../../support/builders/logic-document';
 
-function ids(lastNatureId?: string) {
+function ids(natureId?: string) {
 	let relation = 0;
-	return { nodeId: 'new', relationId: () => `new-relation-${relation++}`, lastNatureId };
+	return { nodeId: 'new', relationId: () => `new-relation-${relation++}`, natureId };
 }
 
 describe('node creation planning', () => {
-	it('creates roots using the last available nature or the first fallback and requested group', () => {
+	it('creates roots with the chosen nature, else the first one, in the requested group', () => {
 		const document = validLogicDocument();
-		const lastNatureId = document.natures.at(-1)?.id;
-		if (lastNatureId === undefined) throw new Error('Expected document natures');
+		const chosen = document.natures.at(-1)?.id;
+		if (chosen === undefined) throw new Error('Expected document natures');
 
-		expect(planNodeCreation(document, { groupId: 'container' }, ids(lastNatureId))).toEqual({
+		expect(planNodeCreation(document, { groupId: 'container' }, ids(chosen))).toEqual({
 			node: {
 				id: 'new',
-				natureId: lastNatureId,
+				natureId: chosen,
 				markdown: '',
 				groupId: 'container',
 			},
@@ -67,7 +68,7 @@ describe('node creation planning', () => {
 		});
 	});
 
-	it('creates a child of a node with inherited nature, containment, and one relation', () => {
+	it('creates a child of a node with the chosen nature, its container, and one relation', () => {
 		const document: LogicDocument = {
 			...validLogicDocument(),
 			groups: [
@@ -80,13 +81,14 @@ describe('node creation planning', () => {
 			],
 			natures: [
 				{ id: 'first', label: 'First', color: '#111111' },
-				{ id: 'inherited', label: 'Inherited', color: '#222222' },
+				{ id: 'parent', label: 'Parent', color: '#222222' },
+				{ id: 'chosen', label: 'Chosen', color: '#333333' },
 			],
 			nodes: [
 				{
 					kind: EndpointKind.Node,
 					id: 'selected',
-					natureId: 'inherited',
+					natureId: 'parent',
 					groupId: 'container',
 					markdown: 'Selected',
 					layoutOrder: orderKey('a1'),
@@ -100,61 +102,58 @@ describe('node creation planning', () => {
 			planNodeCreation(
 				document,
 				{ target: { kind: EntityKind.Node, id: 'selected' } },
-				ids('first'),
+				ids('chosen'),
 			),
 		).toEqual({
-			node: { id: 'new', natureId: 'inherited', markdown: '', groupId: 'container' },
+			node: { id: 'new', natureId: 'chosen', markdown: '', groupId: 'container' },
 			relations: [{ id: 'new-relation-0', from: 'new', to: 'selected' }],
 		});
 	});
 
-	it('creates a sibling with each parent of the target and none for a root target', () => {
+	it('refuses a box in a folded group, or in a group a folded one contains', () => {
 		const base = validLogicDocument();
-		const document: LogicDocument = {
+		const document = (state: GroupState): LogicDocument => ({
 			...base,
+			groups: [
+				{
+					kind: EndpointKind.Group,
+					id: 'outer',
+					label: 'Outer',
+					state,
+					layoutOrder: orderKey('a0'),
+				},
+				{
+					kind: EndpointKind.Group,
+					id: 'inner',
+					label: 'Inner',
+					groupId: 'outer',
+					layoutOrder: orderKey('a1'),
+				},
+			],
 			nodes: [
-				...base.nodes,
 				{
 					kind: EndpointKind.Node,
-					id: 'selected',
+					id: 'member',
 					natureId: base.natures[0]?.id ?? '',
-					markdown: 'Selected',
+					groupId: 'inner',
+					markdown: 'Member',
 					layoutOrder: orderKey('a2'),
 				},
 			],
-			relations: [
-				{ id: 'first-parent', from: 'selected', to: 'target' },
-				{ id: 'second-parent', from: 'selected', to: 'endpoint-group' },
-			],
-		};
-
-		expect(
-			planNodeCreation(
-				document,
-				{
-					target: { kind: EntityKind.Node, id: 'selected' },
-					sibling: true,
-				},
-				ids('missing'),
-			),
-		).toMatchObject({
-			node: { natureId: base.natures[0]?.id },
-			relations: [
-				{ id: 'new-relation-0', from: 'new', to: 'target' },
-				{ id: 'new-relation-1', from: 'new', to: 'endpoint-group' },
-			],
+			junctions: [],
+			relations: [],
 		});
+		const target = { kind: EntityKind.Node, id: 'member' } as const;
 
-		expect(
-			planNodeCreation(
-				base,
-				{
-					target: { kind: EntityKind.Node, id: 'isolated' },
-					sibling: true,
-				},
-				ids(),
-			),
-		).toMatchObject({ relations: [] });
+		const folded = document(GroupState.Closed);
+		expect(planNodeCreation(folded, { groupId: 'inner' }, ids())).toBeUndefined();
+		expect(planNodeCreation(folded, { groupId: 'outer' }, ids())).toBeUndefined();
+		expect(planNodeCreation(folded, { target }, ids())).toBeUndefined();
+		const unfolded = document(GroupState.Expanded);
+		expect(planNodeCreation(unfolded, { groupId: 'inner' }, ids())?.node).toMatchObject({
+			groupId: 'inner',
+		});
+		expect(planNodeCreation(unfolded, { target }, ids())?.relations).toHaveLength(1);
 	});
 
 	it('preserves the container when the target is inside a group', () => {

@@ -23,7 +23,6 @@
 	import ModalDialog from '../ui/ModalDialog.svelte';
 
 	let {
-		mode,
 		natures,
 		lanes = [],
 		draft,
@@ -37,15 +36,14 @@
 		data = {},
 		text,
 	}: {
-		mode: 'create' | 'edit';
 		natures: readonly LogicNature[];
 		/** Root lanes in reading order; the selector shows for a top-level box only. */
 		lanes?: readonly LayoutLane[];
 		draft: NodeFields;
 		onchange: (patch: Partial<NodeFields>) => void;
-		/** Create or save; the caller decides what the fields become. */
+		/** Saves; the caller decides what the fields become. */
 		onsubmit: () => void;
-		/** Cancel: nothing is created, an edit keeps its last saved state. */
+		/** Cancel: the box keeps its last saved state. */
 		onclose: () => void;
 		busy?: boolean;
 		/** The edited node is gone; the draft stays readable, saving is impossible. */
@@ -81,10 +79,6 @@
 		if (description === undefined) return {};
 		return { description };
 	});
-	let title = $derived.by(() => {
-		if (mode === 'create') return m.common_new_box();
-		return m.editing_node_title_edit();
-	});
 
 	function submit(): void {
 		if (submittable) onsubmit();
@@ -93,7 +87,7 @@
 
 <ModalDialog
 	eyebrow={m.editing_node_eyebrow()}
-	{title}
+	title={m.editing_node_title_edit()}
 	{...subtitle}
 	width="wide"
 	{data}
@@ -206,10 +200,8 @@
 			disabled={!submittable}
 			aria-keyshortcuts={shortcutKeyshortcuts(confirmShortcut)}
 		>
-			{#if mode === 'create'}<Icon name="phosphor:plus" /> {m.common_create()}{:else}<Icon
-					name="phosphor:check"
-				/>
-				{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}{/if}
+			<Icon name="phosphor:check" />
+			{#if busy}{m.common_saving()}{:else}{m.common_save()}{/if}
 			<Kbd shortcut={confirmShortcut} />
 		</button>
 	{/snippet}

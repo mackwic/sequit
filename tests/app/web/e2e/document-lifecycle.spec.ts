@@ -279,15 +279,14 @@ test('lanes are activated from the chip, and a double-click on a lane creates a 
 	const client = page.locator('[data-lane-id]').nth(1);
 	await expect(client).toContainText('Client');
 	await client.dblclick({ position: { x: 40, y: 40 } });
-	const creator = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-	await expect(creator.getByRole('combobox', { name: 'Lane' })).toHaveValue(/lane-/);
-	await expect(
-		creator.getByRole('combobox', { name: 'Lane' }).locator('option:checked'),
-	).toHaveText('Client');
-	await creator.getByRole('textbox', { name: 'Contenu' }).fill('Dans la lane Client');
-	await creator.getByRole('button', { name: 'Créer' }).click();
-	await expect(creator).toHaveCount(0);
+	const draft = page.locator('[data-node-draft]');
+	const content = draft.getByRole('textbox', { name: 'Contenu de la nouvelle boîte' });
+	await expect(content).toBeFocused();
+	await content.fill('Dans la lane Client');
+	await page.keyboard.press('ControlOrMeta+Enter');
+	await expect(draft).toHaveCount(0);
 	const created = page.locator('[data-node-id]', { hasText: 'Dans la lane Client' });
+	await expect(created).toBeVisible();
 	const laneBox = await client.boundingBox();
 	const nodeBox = await created.boundingBox();
 	if (laneBox === null || nodeBox === null) throw new Error('Expected visible lane and node');

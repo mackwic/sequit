@@ -14,6 +14,7 @@ import type { CanvasDocumentCommandPort } from '../ui/session/canvas-edit-activi
 import { createNodeEditPort } from '../ui/session/node-edit-port';
 import type { CanvasProjection } from './canvas-projection';
 import type { LayoutMeasurements } from './layout-graph';
+import type { CanvasDrafts } from './node-draft';
 import {
 	createSharedCanvasProjection,
 	type SharedCanvasProjection,
@@ -33,6 +34,7 @@ class OpenedDocument implements CanvasProjection {
 	readonly #unsubscribe: () => void;
 	readonly #unsubscribeSource: () => void;
 	readonly #subscribers = new Set<() => void>();
+	readonly #documentSubscribers = new Set<() => void>();
 	#destroyed = false;
 
 	constructor(
@@ -43,24 +45,14 @@ class OpenedDocument implements CanvasProjection {
 		this.#editPort = createNodeEditPort(session);
 		this.#unsubscribe = this.session.subscribe((document) => {
 			this.#projection.update(document);
-			this.#notify();
+			notify(this.#documentSubscribers);
+			notify(this.#subscribers);
 		});
 		this.#unsubscribeSource = this.session.subscribeToSourceState((state) => {
 			this.#projection.updateSourceState(state);
-			if (state.kind === SourceDocumentStateKind.Invalid) this.#notify();
+			if (state.kind === SourceDocumentStateKind.Invalid) notify(this.#subscribers);
 		});
 		this.#projection.updateSourceState(session.readSourceState());
-	}
-
-	/** Subscribers hear every document change, not only projection changes: titles are documents too. */
-	#notify(): void {
-		for (const subscriber of [...this.#subscribers]) {
-			try {
-				subscriber();
-			} catch {
-				// Projection publication must reach every opened-document subscriber.
-			}
-		}
 	}
 
 	get measurementModel(): CanvasMeasurementModel {
@@ -87,10 +79,24 @@ class OpenedDocument implements CanvasProjection {
 		return this.#editPort.saveNode(nodeId, base, draft);
 	}
 
+	/** The canvas hears every document change, not only projection changes, and every draft. */
 	subscribe(subscriber: () => void): () => void {
 		if (this.#destroyed) return () => undefined;
 		this.#subscribers.add(subscriber);
 		return () => this.#subscribers.delete(subscriber);
+	}
+
+	/** Every change of the document itself, titles included; drafts are not changes. */
+	subscribeToDocument(subscriber: () => void): () => void {
+		if (this.#destroyed) return () => undefined;
+		this.#documentSubscribers.add(subscriber);
+		return () => this.#documentSubscribers.delete(subscriber);
+	}
+
+	/** Shows boxes and texts being typed, local to this view, as if they were saved. */
+	showDrafts(drafts: CanvasDrafts): void {
+		if (this.#destroyed) return;
+		if (this.#projection.setDrafts(drafts)) notify(this.#subscribers);
 	}
 
 	destroy(): void {
@@ -99,7 +105,18 @@ class OpenedDocument implements CanvasProjection {
 		this.#unsubscribe();
 		this.#unsubscribeSource();
 		this.#subscribers.clear();
+		this.#documentSubscribers.clear();
 		this.session.destroy();
+	}
+}
+
+function notify(subscribers: ReadonlySet<() => void>): void {
+	for (const subscriber of [...subscribers]) {
+		try {
+			subscriber();
+		} catch {
+			// Publication must reach every subscriber.
+		}
 	}
 }
 

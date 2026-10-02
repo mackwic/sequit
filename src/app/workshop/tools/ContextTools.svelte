@@ -121,7 +121,7 @@
 				menu = false;
 				if (node) session.beginNodeEdit(node);
 			}}
-			><Icon name="phosphor:pencil-simple" /><span>{editShortcut.label}</span
+			><Icon name="phosphor:sliders-horizontal" /><span>{editShortcut.label}</span
 			>{#if presentation === 'menu'}<Kbd shortcut={editShortcut} />{/if}</button
 		>
 		<button

@@ -23,10 +23,20 @@ async function closeEditor(page: Page, name?: string): Promise<void> {
 }
 
 async function edit(page: Page, label = 'Boîte A'): Promise<void> {
-	const canvasEditor = page.getByRole('dialog', { name: 'Modifier la boîte', exact: true });
-	if (await canvasEditor.count()) await closeEditor(page, 'Modifier la boîte');
+	const canvasEditor = page.getByRole('dialog', { name: 'Propriétés de la boîte', exact: true });
+	if (await canvasEditor.count()) await closeEditor(page, 'Propriétés de la boîte');
 	else if (await page.getByRole('dialog').count()) await closeEditor(page);
 	await page.getByRole('button', { name: `Modifier ${label}`, exact: true }).click();
+}
+
+/** The box being typed in place: it shows, has the focus, and gives the id the box will have. */
+async function typedBox(page: Page) {
+	const draft = page.locator('[data-node-draft]');
+	const content = draft.getByRole('textbox', { name: 'Contenu de la nouvelle boîte' });
+	await expect(content).toBeFocused();
+	const id = await draft.getAttribute('data-node-draft');
+	if (id === null || id === '') throw new Error('The box being typed has no id');
+	return { content, id };
 }
 
 async function externalCommands(
@@ -501,9 +511,9 @@ test('Group background creation shares membership with another browser', async (
 	const group = alice.locator('[data-group-id="G"]');
 	await expect(group).toBeVisible();
 	await group.dblclick({ position: { x: 8, y: 48 } });
-	const dialog = alice.getByRole('dialog', { name: 'Nouvelle boîte' });
-	await dialog.getByLabel('Contenu').fill('Membre partagé');
-	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+	const typed = await typedBox(alice);
+	await typed.content.fill('Membre partagé');
+	await alice.keyboard.press('ControlOrMeta+Enter');
 	const member = bob.locator('[data-node-id]').filter({ hasText: 'Membre partagé' });
 	await expect(member).toBeVisible();
 	await edit(alice, 'Groupe G');
@@ -549,7 +559,7 @@ test('Grouping from the canvas names the group live, folds and dissolves it acro
 	await expect(alice.locator('[data-node-id]')).toHaveCount(2);
 
 	await alice.locator('[data-group-header]').dblclick();
-	const editing = alice.getByRole('dialog', { name: 'Modifier le groupe' });
+	const editing = alice.getByRole('dialog', { name: 'Propriétés du groupe' });
 	await editing.getByRole('button', { name: 'Dissoudre', exact: true }).click();
 	await expect(editing).toHaveCount(0);
 	await expect(group).toHaveCount(0);
@@ -588,7 +598,7 @@ test('Inserting a junction with J replaces the relation for every collaborator',
 	await bob.close();
 });
 
-test('Keyboard child and sibling creation are proposed across collaborators', async ({
+test('Keyboard child and chained child creation are proposed across collaborators', async ({
 	browser,
 }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
@@ -603,71 +613,56 @@ test('Keyboard child and sibling creation are proposed across collaborators', as
 
 	await alice.locator('[data-node-id="A"]').click();
 	await alice.keyboard.press('c');
-	const childCreation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
-	await expect(childCreation).toBeVisible();
-	await childCreation
-		.getByRole('textbox', { name: 'Contenu', exact: true })
-		.fill('Premier enfant partagé');
-	await childCreation.getByRole('button', { name: 'Créer', exact: true }).click();
-	await expect(bob.locator('[data-node-id]')).toHaveCount(3);
-	await expect(alice.locator('[data-node-id]')).toHaveCount(3);
-	const firstRelation = bob.locator('[data-relation-id][data-edge-to="A"]');
-	await expect(firstRelation).toHaveCount(1);
-	await expect(alice.locator('[data-relation-id][data-edge-to="A"]')).toHaveCount(1);
-	const firstChildId = await firstRelation.getAttribute('data-edge-from');
-	if (firstChildId === null || firstChildId === '')
-		throw new Error('Collaborative child relation has no origin');
-	await expect(bob.locator(`[data-node-id="${firstChildId}"]`)).toContainText(
-		'Premier enfant partagé',
-	);
-
-	await alice.locator(`[data-node-id="${firstChildId}"]`).click();
-	await alice.keyboard.press('Control+Shift+Enter');
-	const siblingCreation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
-	await expect(siblingCreation).toBeVisible();
-	await siblingCreation
-		.getByRole('textbox', { name: 'Contenu', exact: true })
-		.fill('Sibling saved and closed');
-	await siblingCreation.getByRole('button', { name: 'Créer', exact: true }).click();
+	const child = await typedBox(alice);
+	await expect(bob.locator(`[data-node-id="${child.id}"]`)).toHaveCount(0);
+	await child.content.fill('Premier enfant partagé');
+	await alice.keyboard.press('ControlOrMeta+Shift+Enter');
+	const grandchild = await typedBox(alice);
+	await expect(bob.locator(`[data-node-id="${child.id}"]`)).toContainText('Premier enfant partagé');
+	await expect(
+		bob.locator(`[data-relation-id][data-edge-from="${child.id}"][data-edge-to="A"]`),
+	).toHaveCount(1);
+	await grandchild.content.fill('Petit-enfant partagé');
+	await alice.keyboard.press('ControlOrMeta+Enter');
 	await expect(bob.locator('[data-node-id]')).toHaveCount(4);
 	await expect(alice.locator('[data-node-id]')).toHaveCount(4);
-	await expect(bob.locator(`[data-node-id="${firstChildId}"]`)).toContainText(
-		'Premier enfant partagé',
+	await expect(alice.locator(`[data-node-id="${grandchild.id}"]`)).toBeFocused();
+	await expect(
+		bob.locator(
+			`[data-relation-id][data-edge-from="${grandchild.id}"][data-edge-to="${child.id}"]`,
+		),
+	).toHaveCount(1);
+	await expect(bob.locator(`[data-node-id="${grandchild.id}"]`)).toContainText(
+		'Petit-enfant partagé',
 	);
-	const siblingRelations = bob.locator('[data-relation-id][data-edge-to="A"]');
-	await expect(siblingRelations).toHaveCount(2);
-	await expect(alice.locator('[data-relation-id][data-edge-to="A"]')).toHaveCount(2);
-	const origins = await siblingRelations.evaluateAll((relations) =>
-		relations.map((relation) => relation.getAttribute('data-edge-from')),
-	);
-	const siblingId = origins.find((id) => id !== firstChildId);
-	if (siblingId === null || siblingId === undefined || siblingId === '')
-		throw new Error('Collaborative sibling relation has no distinct origin');
-	await expect(bob.locator(`[data-node-id="${siblingId}"]`)).toContainText(
-		'Sibling saved and closed',
-	);
-
-	await alice.locator(`[data-node-id="${siblingId}"]`).dblclick();
-	const editor = alice.getByRole('dialog', { name: 'Modifier la boîte', exact: true });
+	// Typed in place first, then Ctrl/Cmd+E opens the dialog for the description.
+	await alice.locator(`[data-node-id="${grandchild.id}"]`).dblclick();
+	await expect(
+		alice
+			.locator(`[data-node-draft="${grandchild.id}"]`)
+			.getByRole('textbox', { name: 'Contenu de la boîte' }),
+	).toBeFocused();
+	await alice.keyboard.press('ControlOrMeta+e');
+	const editor = alice.getByRole('dialog', { name: 'Propriétés de la boîte', exact: true });
 	await expect(editor).toBeVisible();
-	await expect(alice.getByRole('textbox', { name: `Texte de ${siblingId}` })).toBeFocused();
+	await expect(alice.getByRole('textbox', { name: `Texte de ${grandchild.id}` })).toBeFocused();
 	const description = editor.getByRole('textbox', {
-		name: `Description de ${siblingId}`,
+		name: `Description de ${grandchild.id}`,
 		exact: true,
 	});
 	await expect(description).toBeVisible();
 	await description.fill('Description partagée');
-	await bob.getByRole('button', { name: `Modifier Boîte ${siblingId}`, exact: true }).click();
+	await bob.getByRole('button', { name: `Modifier Boîte ${grandchild.id}`, exact: true }).click();
 	await expect(
-		bob.getByRole('textbox', { name: `Description de ${siblingId}`, exact: true }),
+		bob.getByRole('textbox', { name: `Description de ${grandchild.id}`, exact: true }),
 	).toHaveText('Description partagée');
 	await closeEditor(bob);
-	await closeEditor(alice, 'Modifier la boîte');
+	await closeEditor(alice, 'Propriétés de la boîte');
 	await alice.close();
 	await bob.close();
 });
 
-test('the canvas action button opens the shared creation dialog', async ({ browser }) => {
+test('the canvas action button types a shared root box', async ({ browser }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.TwoBoxes);
 	const alice = await browser.newPage();
@@ -679,10 +674,9 @@ test('the canvas action button opens the shared creation dialog', async ({ brows
 	);
 
 	await alice.getByRole('button', { name: 'Nouvelle boîte', exact: true }).click();
-	const creation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
-	await expect(creation).toBeVisible();
-	await creation.getByRole('textbox', { name: 'Contenu', exact: true }).fill('Racine partagée');
-	await creation.getByRole('button', { name: 'Créer', exact: true }).click();
+	const typed = await typedBox(alice);
+	await typed.content.fill('Racine partagée');
+	await alice.keyboard.press('ControlOrMeta+Enter');
 	await expect(alice.locator('[data-node-id]')).toHaveCount(3);
 	await expect(bob.locator('[data-node-id]')).toHaveCount(3);
 	await expect(alice.locator('[data-relation-id]')).toHaveCount(0);
@@ -692,13 +686,41 @@ test('the canvas action button opens the shared creation dialog', async ({ brows
 	await bob.close();
 });
 
+test('a box typed in place shares its text as it is typed', async ({ browser }) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.TwoBoxes);
+	const alice = await browser.newPage();
+	const bob = await browser.newPage();
+	await alice.goto(`/atelier/collaboration?room=${room}&name=Alice`);
+	await bob.goto(`/atelier/collaboration?room=${room}&name=Bob`);
+	await expect(alice.getByRole('status', { name: 'Connexion', exact: true })).toHaveText(
+		'Connecté',
+	);
+
+	await alice.locator('[data-node-id="A"]').dblclick();
+	const content = alice
+		.locator('[data-node-draft="A"]')
+		.getByRole('textbox', { name: 'Contenu de la boîte' });
+	await expect(content).toBeFocused();
+	await expect(alice.getByRole('dialog')).toHaveCount(0);
+	await content.fill('Alpha tapé en place');
+	// Bob reads it before Alice leaves the box, as with the dialog.
+	await expect(bob.locator('[data-node-id="A"]')).toContainText('Alpha tapé en place');
+	await alice.keyboard.press('ControlOrMeta+Enter');
+	await expect(alice.locator('[data-node-draft]')).toHaveCount(0);
+	await expect(alice.locator('[data-node-id="A"]')).toBeFocused();
+	await alice.close();
+	await bob.close();
+});
+
 test('the canvas box editor keeps its draft readable after remote deletion', async ({ page }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.TwoBoxes);
 	await page.goto(`/atelier/collaboration?room=${room}&name=Alice`);
 	const node = page.locator('[data-node-id="A"]');
-	await node.dblclick();
-	const dialog = page.getByRole('dialog', { name: 'Modifier la boîte', exact: true });
+	await node.click();
+	await page.keyboard.press('e');
+	const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte', exact: true });
 	await expect(dialog).toBeVisible();
 	await expect(dialog.getByRole('textbox', { name: 'Texte de A', exact: true })).toBeFocused();
 
@@ -708,7 +730,7 @@ test('the canvas box editor keeps its draft readable after remote deletion', asy
 	await expect(retainedContent).toHaveValue('Alpha');
 	await expect(retainedContent).toBeDisabled();
 	await expect(dialog.getByRole('button', { name: 'Enregistrer', exact: true })).toBeDisabled();
-	await closeEditor(page, 'Modifier la boîte');
+	await closeEditor(page, 'Propriétés de la boîte');
 });
 
 test('Escape cancels a keyboard creation without creating a shared node or relation', async ({
@@ -726,11 +748,10 @@ test('Escape cancels a keyboard creation without creating a shared node or relat
 
 	await alice.locator('[data-node-id="A"]').click();
 	await alice.keyboard.press('c');
-	const creation = alice.getByRole('dialog', { name: 'Nouvelle boîte', exact: true });
-	await expect(creation).toBeVisible();
-	await creation.getByRole('textbox', { name: 'Contenu', exact: true }).fill('Annulé');
+	const typed = await typedBox(alice);
+	await typed.content.fill('Annulé');
 	await alice.keyboard.press('Escape');
-	await expect(creation).toHaveCount(0);
+	await expect(alice.locator('[data-node-draft]')).toHaveCount(0);
 	await expect(alice.locator('[data-node-id]')).toHaveCount(2);
 	await expect(bob.locator('[data-node-id]')).toHaveCount(2);
 	await expect(alice.locator('[data-relation-id][data-edge-to="A"]')).toHaveCount(0);

@@ -5,6 +5,7 @@ import {
 	centeredStageOrigin,
 	clampCanvasZoom,
 	panScrollPosition,
+	revealScrollDelta,
 	scaledStageExtent,
 	stepCanvasZoom,
 } from '../../../../../src/app/web/ui/canvas/canvas-viewport';
@@ -70,5 +71,19 @@ describe('canvas viewport calculations', () => {
 				maxScroll: { left: 130, top: 100 },
 			}),
 		).toEqual({ left: 130, top: 30 });
+	});
+
+	it('scrolls to reveal a target only along an axis where it does not show whole', () => {
+		const viewport = { left: 0, top: 50, width: 1000, height: 600 };
+		const inside = { left: 100, top: 100, width: 200, height: 100 };
+		expect(revealScrollDelta(viewport, inside, 40)).toEqual({ x: 0, y: 0 });
+		// Within the margin counts as hidden: the target is centred along that axis only.
+		const lower = { left: 100, top: 600, width: 200, height: 100 };
+		expect(revealScrollDelta(viewport, lower, 40)).toEqual({ x: 0, y: 650 - 350 });
+		const leftward = { left: -500, top: 100, width: 200, height: 100 };
+		expect(revealScrollDelta(viewport, leftward, 40)).toEqual({ x: -400 - 500, y: 0 });
+		// Larger than the viewport: its start is shown, the margin kept.
+		const wide = { left: 1200, top: 100, width: 2000, height: 100 };
+		expect(revealScrollDelta(viewport, wide, 40)).toEqual({ x: 1160, y: 0 });
 	});
 });

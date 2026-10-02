@@ -1,10 +1,10 @@
-import type {
-	LogicDocument,
-	LogicEndpoint,
-	LogicRelation,
-	NewLogicNode,
+import {
+	GroupState,
+	type LogicDocument,
+	type LogicEndpoint,
+	type LogicRelation,
+	type NewLogicNode,
 } from '../../../../lib/core/document/logic-document';
-import { EndpointKind } from '../../../../lib/core/document/logic-document';
 import { EntityKind, type EntityRef } from './canvas-entity';
 import { rootLanes } from './root-lanes';
 
@@ -21,11 +21,9 @@ export interface NodeCreationRequest {
 	readonly target?: EntityRef | undefined;
 	/** The selection a root box stands beside: it only lends its lane; no relation, no group. */
 	readonly near?: EntityRef | undefined;
-	/** A sibling shares the target's parents instead of pointing to the target. */
-	readonly sibling?: boolean | undefined;
 }
 
-/** The defaults the dialog starts from and the relations created with the box. */
+/** The box as it starts out, and the relations created with it. */
 export interface NodeCreationPlan {
 	readonly node: NewLogicNode;
 	readonly relations: readonly LogicRelation[];
@@ -34,7 +32,8 @@ export interface NodeCreationPlan {
 interface NodeCreationOptions {
 	readonly nodeId: string;
 	readonly relationId: () => string;
-	readonly lastNatureId?: string | undefined;
+	/** The nature chosen for new boxes; the first one stands in when it is missing. */
+	readonly natureId?: string | undefined;
 }
 
 function selectedEndpoint(document: LogicDocument, target: EntityRef): LogicEndpoint | undefined {
@@ -45,14 +44,23 @@ function selectedEndpoint(document: LogicDocument, target: EntityRef): LogicEndp
 	return undefined;
 }
 
-function natureFor(
-	document: LogicDocument,
-	target: LogicEndpoint | undefined,
-	lastNatureId: string | undefined,
-): string | undefined {
-	if (target?.kind === EndpointKind.Node) return target.natureId;
-	if (document.natures.some(({ id }) => id === lastNatureId)) return lastNatureId;
+function natureFor(document: LogicDocument, natureId: string | undefined): string | undefined {
+	if (document.natures.some(({ id }) => id === natureId)) return natureId;
 	return document.natures[0]?.id;
+}
+
+/** Whether the group, or one of its containers, is folded: a box typed there would not show. */
+function folded(document: LogicDocument, groupId: string): boolean {
+	const visited: string[] = [];
+	let current: string | undefined = groupId;
+	while (current !== undefined && !visited.includes(current)) {
+		const id: string = current;
+		visited.push(id);
+		const group = document.groups.find((candidate) => candidate.id === id);
+		if (group?.state === GroupState.Closed) return true;
+		current = group?.groupId;
+	}
+	return false;
 }
 
 /** The lane an endpoint sits in: its own, or its outermost group's. */
@@ -93,7 +101,7 @@ function nearEndpoint(
 
 /**
  * Resolves graph parentage independently from group containment. Returns `undefined` when the
- * document has no nature or the target is gone.
+ * document has no nature, the target is gone, or the box would land in a folded group.
  */
 export function planNodeCreation(
 	document: LogicDocument,
@@ -105,10 +113,11 @@ export function planNodeCreation(
 		target = selectedEndpoint(document, request.target);
 		if (target === undefined) return undefined;
 	}
-	const natureId = natureFor(document, target, options.lastNatureId);
+	const natureId = natureFor(document, options.natureId);
 	if (natureId === undefined) return undefined;
 	const node: NewLogicNode = { id: options.nodeId, natureId, markdown: '' };
 	const groupId = target?.groupId ?? request.groupId;
+	if (groupId !== undefined && folded(document, groupId)) return undefined;
 	let containedNode = node;
 	if (groupId !== undefined) containedNode = { ...node, groupId };
 	else {
@@ -116,15 +125,8 @@ export function planNodeCreation(
 		if (laneId !== undefined) containedNode = { ...node, laneId };
 	}
 	if (target === undefined) return { node: containedNode, relations: [] };
-	let parents = [target.id];
-	if (request.sibling === true)
-		parents = document.relations.filter(({ from }) => from === target.id).map(({ to }) => to);
 	return {
 		node: containedNode,
-		relations: parents.map((parentId) => ({
-			id: options.relationId(),
-			from: options.nodeId,
-			to: parentId,
-		})),
+		relations: [{ id: options.relationId(), from: options.nodeId, to: target.id }],
 	};
 }

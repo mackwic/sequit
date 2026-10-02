@@ -1,11 +1,26 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	import Icon from '../ui/Icon.svelte';
 	import NodeBody from './NodeBody.svelte';
-	let { label, markdown, icon }: { label: string; markdown: string; icon: string } = $props();
+	let {
+		label,
+		markdown,
+		icon,
+		body,
+	}: {
+		label: string;
+		markdown: string;
+		icon: string;
+		/** Replaces the rendered Markdown, e.g. by the editor of a box being typed. */
+		body?: Snippet | undefined;
+	} = $props();
 </script>
 
 <span class="node-header"><Icon name={icon} size={15} /><span>{label}</span></span>
-<span class="node-body"><NodeBody {markdown} /></span>
+<span class="node-body"
+	>{#if body}{@render body()}{:else}<NodeBody {markdown} />{/if}</span
+>
 
 <style>
 	.node-header {

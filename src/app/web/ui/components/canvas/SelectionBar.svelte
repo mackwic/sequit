@@ -12,6 +12,7 @@
 	} from '../../canvas/canvas-shortcuts';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
+	import Kbd from '../ui/Kbd.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import FloatingActions from './FloatingActions.svelte';
 
@@ -73,6 +74,7 @@
 			>
 				<Icon name="phosphor:folder-plus" />
 				<span>{groupShortcut.label}</span>
+				<Kbd shortcut={groupShortcut} />
 			</button>
 		{/if}
 		{#if onDelete}
@@ -86,6 +88,7 @@
 			>
 				<Icon name="phosphor:trash" />
 				<span>{m.common_delete()}</span>
+				<Kbd shortcut={deleteShortcut} />
 			</button>
 		{/if}
 	</FloatingActions>

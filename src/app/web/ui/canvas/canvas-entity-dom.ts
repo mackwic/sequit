@@ -1,4 +1,5 @@
 import type { EntityKey } from './canvas-entity';
+import type { CanvasPoint } from './canvas-viewport';
 
 const ENTITY_SELECTOR = '[data-canvas-entity-key]';
 
@@ -19,6 +20,17 @@ export function focusCanvasEntity(root: Element, key: EntityKey): boolean {
 	if (element === undefined) return false;
 	element.focus();
 	return true;
+}
+
+/** Scrolls the viewport by `delta`, smoothly unless the reader asked for reduced motion. */
+export function scrollCanvasBy(viewport: Element, delta: CanvasPoint): void {
+	if (delta.x === 0 && delta.y === 0) return;
+	const reduced =
+		viewport.ownerDocument.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches ===
+		true;
+	let behavior: ScrollBehavior = 'smooth';
+	if (reduced) behavior = 'auto';
+	viewport.scrollBy({ left: delta.x, top: delta.y, behavior });
 }
 
 /** The box enclosing a selection, which is what a floating bar is anchored to. */

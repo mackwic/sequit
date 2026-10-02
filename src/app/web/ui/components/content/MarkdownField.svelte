@@ -4,9 +4,8 @@
 
 	import { onMount } from 'svelte';
 
-	import { QuillMarkdownEditor } from '../../../document/quill-editor';
-	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
-	import { describeQuillField } from '../../../document/quill-field';
+	import { mountQuillMarkdown, type QuillMarkdownEditor } from '../../../document/quill-editor';
+	import { QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { m } from '../../../i18n/paraglide/messages';
 
 	let {
@@ -48,38 +47,32 @@
 		let disposed = false;
 		let cleanup: (() => void) | undefined;
 		async function initialize(): Promise<void> {
-			const { default: Editor } = await import('quill');
-			if (disposed) return;
-			const quill = new Editor(
-				host,
-				quillEditorOptions(profile, {
-					placeholder,
-					showSource: () => {
-						editor?.showSource();
-					},
-				}),
-			);
-			const undescribe = describeQuillField(quill, label);
-			const markdown = new QuillMarkdownEditor(quill, profile);
+			const field = await mountQuillMarkdown(host, {
+				profile,
+				label,
+				placeholder,
+				value,
+				onchange: (markdown: string) => {
+					onchange(markdown);
+				},
+			});
+			if (disposed) {
+				field.destroy();
+				return;
+			}
+			const markdown = field.editor;
 			const updateMode = (): void => {
 				sourceMode = markdown.sourceMode;
 			};
 			markdown.addEventListener('modechange', updateMode);
-			markdown.value = value;
 			updateMode();
-			quill.history.clear();
-			const changed = (_delta: unknown, _previous: unknown, source: string): void => {
-				if (source === 'user') onchange(markdown.value);
-			};
-			quill.on('text-change', changed);
-			quill.enable(!disabled);
+			markdown.quill.enable(!disabled);
 			editor = markdown;
-			if (autofocus && !disabled) quill.focus();
+			if (autofocus && !disabled) markdown.quill.focus();
 			cleanup = (): void => {
 				editor = undefined;
-				quill.off('text-change', changed);
 				markdown.removeEventListener('modechange', updateMode);
-				undescribe();
+				field.destroy();
 			};
 		}
 		void initialize().catch((error: unknown) => {

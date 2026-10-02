@@ -27,6 +27,7 @@ import {
 	CanvasActivityKind,
 	type CanvasDocumentCommandPort,
 	CanvasEditAvailability,
+	CanvasEditPresentation,
 	type EditingCanvasActivity,
 	idleCanvasActivity,
 	unavailableCanvasCommands,
@@ -37,6 +38,7 @@ export {
 	CanvasActivityKind,
 	type CanvasDocumentCommandPort,
 	CanvasEditAvailability,
+	CanvasEditPresentation,
 	type EditingCanvasActivity,
 } from './canvas-edit-activity';
 
@@ -160,8 +162,26 @@ export class CanvasSession {
 		return true;
 	}
 
-	/** Opens the box dialog on the sole selected node; its fields come from the document. */
-	beginNodeEdit(node: { readonly id: string; readonly bounds: Bounds }): boolean {
+	/** Selects an element that just appeared and moves focus onto it once it is drawn. */
+	focusEntity(ref: EntityRef): boolean {
+		if (this.activity.kind !== CanvasActivityKind.Idle) return false;
+		this.selectEntity(ref);
+		this.focusRequest = {
+			target: entityKey(ref.kind, ref.id),
+			afterLayoutRevision: this.layoutRevision,
+			ready: true,
+		};
+		return true;
+	}
+
+	/**
+	 * Edits the sole selected node, in its dialog or typed in place; its fields come from the
+	 * document.
+	 */
+	beginNodeEdit(
+		node: { readonly id: string; readonly bounds: Bounds },
+		presentation = CanvasEditPresentation.Dialog,
+	): boolean {
 		if (this.activity.kind !== CanvasActivityKind.Idle) return false;
 		const target = entityKey(EntityKind.Node, node.id);
 		if (this.selectedEntities.size !== 1 || !this.selectedEntities.has(target)) return false;
@@ -175,6 +195,7 @@ export class CanvasSession {
 			base,
 			draft: base,
 			frozenBounds: { ...node.bounds },
+			presentation,
 			availability: CanvasEditAvailability.Available,
 			diagnostic: undefined,
 			saving: false,
@@ -202,7 +223,10 @@ export class CanvasSession {
 		return true;
 	}
 
-	async saveDraft(): Promise<DocumentCommandOutcome | undefined> {
+	/** Saves the draft; the box gets the focus back unless the author went elsewhere. */
+	async saveDraft({ restoreFocus = true }: { readonly restoreFocus?: boolean } = {}): Promise<
+		DocumentCommandOutcome | undefined
+	> {
 		const editing = this.editing;
 		if (editing === undefined) return undefined;
 		const unavailable = editing.saving || editing.availability === CanvasEditAvailability.Deleted;
@@ -224,11 +248,13 @@ export class CanvasSession {
 				return outcome;
 			}
 			this.activity = idleCanvasActivity();
-			this.focusRequest = {
-				target: editing.target,
-				afterLayoutRevision: editing.layoutRevision,
-				ready: this.layoutRevision > editing.layoutRevision,
-			};
+			this.focusRequest = undefined;
+			if (restoreFocus)
+				this.focusRequest = {
+					target: editing.target,
+					afterLayoutRevision: editing.layoutRevision,
+					ready: this.layoutRevision > editing.layoutRevision,
+				};
 			this.announcement = m.collaboration_announcement_node_saved({ id: editing.nodeId });
 			return outcome;
 		}
@@ -309,14 +335,19 @@ export class CanvasSession {
 		if (editing === undefined) return false;
 		const targetAvailable = index.has(editing.target);
 		if (editing.availability === CanvasEditAvailability.Deleted || targetAvailable) return false;
+		// A box typed in place goes with the box: nothing is left to type in.
+		if (editing.presentation === CanvasEditPresentation.InPlace) {
+			this.activity = idleCanvasActivity();
+			return true;
+		}
 		const diagnostic = m.collaboration_announcement_node_removed({ id: editing.nodeId });
+		this.announcement = diagnostic;
 		this.activity = {
 			...editing,
 			availability: CanvasEditAvailability.Deleted,
 			saving: false,
 			diagnostic,
 		};
-		this.announcement = diagnostic;
 		return true;
 	}
 

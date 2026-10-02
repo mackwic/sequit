@@ -1,16 +1,20 @@
 <script lang="ts">
+	import { tick, untrack } from 'svelte';
+
 	import {
 		type JunctionOperator,
 		JunctionOperator as Operator,
 		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
+	import type { NatureTemplate } from '../../../../../lib/core/document/nature-templates';
 	import {
 		type DocumentCommandOutcome,
 		DocumentCommandOutcomeKind,
 	} from '../../../../../lib/infrastructure/document/document-command-contracts';
 	import type { DocumentHistoryAvailability } from '../../../../../lib/infrastructure/document/document-session-contracts';
 	import {
+		natureAfterRemoval,
 		natureCreation,
 		natureDeletion,
 		type NatureEditing,
@@ -18,20 +22,15 @@
 		NatureEditingMode,
 		type NatureFields,
 		natureStyleUpdate,
+		natureTemplateImport,
 		natureUsage,
 		newNatureEditing,
 	} from '../../../../../lib/infrastructure/document/nature-fields';
-	import {
-		newNodeFrom,
-		type NodeFields,
-		nodeFields,
-	} from '../../../../../lib/infrastructure/document/node-fields';
 	import {
 		type SharedDocumentCommand,
 		SharedElementKind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
 	import {
-		connectedNodeCreation,
 		containerMove,
 		deletion,
 		groupCreation,
@@ -52,16 +51,13 @@
 	} from '../../../i18n/session-messages';
 	import { openDocument, type OpenDocumentResult } from '../../../projection/open-document';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
-	import type { CanvasModel } from '../../canvas/canvas-model';
+	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
 	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
-	import {
-		type NodeCreationPlan,
-		type NodeCreationRequest,
-		planNodeCreation,
-	} from '../../canvas/relative-node-creation';
+	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { rootLanes } from '../../canvas/root-lanes';
+	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import { CanvasSession } from '../../session/canvas-session.svelte';
 	import CanvasActions from './CanvasActions.svelte';
 	import CanvasGestures from './CanvasGestures.svelte';
@@ -74,7 +70,7 @@
 	import LayoutChip from './LayoutChip.svelte';
 	import LogicCanvas from './LogicCanvas.svelte';
 	import NatureDialog from './NatureDialog.svelte';
-	import NodeDialog from './NodeDialog.svelte';
+	import { NodeTyping } from './node-typing.svelte';
 
 	let {
 		source,
@@ -86,7 +82,6 @@
 	} = $props();
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	let opened = $derived(openDocument(source));
-	let creation = $state<{ plan: NodeCreationPlan; draft: NodeFields }>();
 	let editingGroup = $state<{
 		id: string;
 		mode: 'name' | 'edit';
@@ -98,7 +93,6 @@
 	let lanesDialog = $state(false);
 	let editingNature = $state<NatureEditing>();
 	let lastOperator = $state<JunctionOperator>(Operator.Xor);
-	let lastNatureId = $state<string>();
 	let busy = $state(false);
 	let error = $state('');
 	let model = $state.raw<LogicDocument>();
@@ -110,8 +104,7 @@
 		return rootLanes(model);
 	});
 	let interactive = $derived(
-		creation === undefined &&
-			editingGroup === undefined &&
+		editingGroup === undefined &&
 			editingJunction === undefined &&
 			!natureManager &&
 			!lanesDialog &&
@@ -151,38 +144,11 @@
 			busy = false;
 		}
 	}
-	function openCreation(request: NodeCreationRequest): void {
-		const current = opened;
-		if (!current.ok || busy) return;
-		const plan = planNodeCreation(current.value.read(), request, {
-			nodeId: crypto.randomUUID(),
-			relationId: () => crypto.randomUUID(),
-			lastNatureId,
-		});
-		if (plan === undefined) {
-			error = m.common_nature_required();
-			return;
-		}
-		error = '';
-		creation = { plan, draft: nodeFields(plan.node) };
-	}
-	async function createBox(): Promise<void> {
-		const current = opened;
-		const canvas = session;
-		const pending = creation;
-		if (!current.ok || canvas === undefined || pending === undefined || busy) return;
-		const saved = await execute(() =>
-			current.value.session.dispatch(
-				connectedNodeCreation(
-					newNodeFrom(pending.plan.node.id, pending.draft, pending.plan.node.groupId),
-					pending.plan.relations,
-				),
-			),
-		);
-		if (!saved) return;
-		creation = undefined;
-		lastNatureId = pending.draft.natureId;
-		canvas.selectEntity({ kind: EntityKind.Node, id: pending.plan.node.id });
+	/** Starts typing a box; only a document without nature refuses it with a notice. */
+	function openDraft(request: NodeCreationRequest): void {
+		if (busy || typing === undefined) return;
+		if (typing.open(request)) error = '';
+		else if (natures.length === 0) error = m.common_nature_required();
 	}
 	function connect(from: string, to: string) {
 		const current = opened;
@@ -312,7 +278,8 @@
 	}
 	function openNatures(): void {
 		if (!opened.ok || busy) return;
-		editingNature = undefined;
+		const first = model?.natures[0];
+		editingNature = first && natureEditing(first);
 		natureManager = true;
 	}
 	function closeNatures(): void {
@@ -333,20 +300,18 @@
 		const nature = model?.natures.find(({ id }) => id === natureId);
 		if (nature !== undefined) editingNature = natureEditing(nature);
 	}
-	async function saveNature(): Promise<void> {
+	/** Saves the form; the dialog then decides which nature it shows, or closes. */
+	async function saveNature(): Promise<boolean> {
 		const current = opened;
 		const editing = editingNature;
-		if (!current.ok || editing === undefined || busy) return;
-		if (editing.mode === NatureEditingMode.Create) {
-			const created = await execute(() =>
+		if (!current.ok || editing === undefined || busy) return false;
+		if (editing.mode === NatureEditingMode.Create)
+			return execute(() =>
 				current.value.session.dispatch([natureCreation(editing.id, editing.draft)]),
 			);
-			if (created) editingNature = undefined;
-			return;
-		}
 		const target = { kind: SharedElementKind.Nature, id: editing.id } as const;
 		const label = editing.draft.label.trim();
-		const saved = await execute(() => {
+		return execute(() => {
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
 				throw new Error(m.canvas_nature_gone({ id: editing.id }));
 			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
@@ -357,16 +322,22 @@
 				});
 			return current.value.session.dispatch([style]);
 		});
-		if (saved) editingNature = undefined;
 	}
 	async function deleteNature(replacementId: string | undefined): Promise<void> {
 		const current = opened;
 		const editing = editingNature;
 		if (!current.ok || editing === undefined || busy) return;
+		const next = natureAfterRemoval(natures, editing.id, replacementId);
 		const removed = await execute(() =>
 			current.value.session.dispatch([natureDeletion(editing.id, replacementId)]),
 		);
-		if (removed) editingNature = undefined;
+		if (removed) editingNature = next && natureEditing(next);
+	}
+	async function importNatures(template: NatureTemplate): Promise<void> {
+		const current = opened;
+		const commands = natureTemplateImport(natures, template);
+		if (!current.ok || commands.length === 0 || busy) return;
+		await execute(() => current.value.session.dispatch(commands));
 	}
 	let session = $derived.by(() => {
 		if (!opened.ok) return undefined;
@@ -374,6 +345,44 @@
 	});
 	/** The canvas viewport, where `?` opens the shortcuts panel. */
 	let canvasViewport = $state<HTMLDivElement>();
+	let canvasModel = $state.raw<CanvasModel>();
+	let layoutReport = $state<LayoutReportRequest>();
+	function openLayoutReport(opener: HTMLElement): void {
+		if (!opened.ok) return;
+		const current = opened.value;
+		layoutReport = {
+			read: () => current.read(),
+			close: () => {
+				layoutReport = undefined;
+				void tick().then(() => {
+					opener.focus();
+				});
+			},
+		};
+	}
+	let typing = $derived.by(() => {
+		const current = opened;
+		const canvas = session;
+		if (!current.ok || canvas === undefined) return undefined;
+		return new NodeTyping({
+			read: () => current.value.read(),
+			submit: (commands) => execute(() => current.value.session.dispatch(commands)),
+			session: canvas,
+			canvas: () => canvasModel,
+		});
+	});
+	$effect(() => {
+		const current = opened;
+		const drafts = typing?.drafts;
+		// The canvas hears the drafts at once; what it updates is no dependency of this effect.
+		if (current.ok && drafts !== undefined)
+			untrack(() => {
+				current.value.showDrafts(drafts);
+			});
+	});
+	$effect(() => {
+		if (model !== undefined) typing?.settle(model);
+	});
 
 	$effect(() => {
 		const current = opened;
@@ -385,7 +394,7 @@
 		}
 		onopened?.(current.value);
 		model = current.value.read();
-		const stop = current.value.subscribe(() => {
+		const stop = current.value.subscribeToDocument(() => {
 			model = current.value.read();
 		});
 		const sessionHistory = current.value.session.history;
@@ -428,7 +437,7 @@
 		<CanvasGestures
 			{session}
 			enabled={interactive}
-			oncreate={openCreation}
+			oncreate={openDraft}
 			onconnect={connect}
 			onmove={moveSelection}
 			ondelete={deleteSelection}
@@ -438,7 +447,12 @@
 				{natures}
 				{lanes}
 				{session}
-				oncanvas={(_canvas: CanvasModel, element: HTMLDivElement) => {
+				draft={typing?.controls}
+				onNodeType={(node: RenderedCanvasNode) => {
+					if (interactive) typing?.typeInPlace(node);
+				}}
+				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
+					canvasModel = canvas;
 					canvasViewport = element;
 				}}
 				onGroupEdit={openGroupEditor}
@@ -451,10 +465,11 @@
 					void insertJunction(relationId);
 				}}
 				onCreateChild={(target: EntityRef) => {
-					openCreation({ target });
+					openDraft({ target });
 				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}
+				report={layoutReport}
 			/>
 		</CanvasGestures>
 		{#if editingGroup}
@@ -498,24 +513,6 @@
 				}}
 			/>
 		{/if}
-		{#if creation}
-			<NodeDialog
-				mode="create"
-				{natures}
-				{lanes}
-				draft={creation.draft}
-				{busy}
-				data={{ 'data-node-creator': creation.plan.node.id }}
-				onchange={(patch: Partial<NodeFields>) => {
-					if (creation !== undefined)
-						creation = { ...creation, draft: { ...creation.draft, ...patch } };
-				}}
-				onclose={() => {
-					creation = undefined;
-				}}
-				onsubmit={createBox}
-			/>
-		{/if}
 		{#if lanesDialog && model}
 			<LanesDialog
 				document={model}
@@ -543,14 +540,12 @@
 					if (editingNature !== undefined)
 						editingNature = { ...editingNature, draft: { ...editingNature.draft, ...patch } };
 				}}
-				onsubmit={() => {
-					void saveNature();
-				}}
-				onback={() => {
-					editingNature = undefined;
-				}}
+				onsave={saveNature}
 				ondelete={(replacementId: string | undefined) => {
 					void deleteNature(replacementId);
+				}}
+				onimport={(template: NatureTemplate) => {
+					void importNatures(template);
 				}}
 				onclose={closeNatures}
 			/>
@@ -558,11 +553,20 @@
 		{#if error}<p role="alert" class="ui-notice error absolute top-16 left-4 z-40 print:hidden">
 				{error}
 			</p>{/if}
-		<CanvasViewportControls {session} viewportElement={canvasViewport} />
+		<CanvasViewportControls
+			{session}
+			viewportElement={canvasViewport}
+			onreport={openLayoutReport}
+		/>
 		<CanvasActions
 			enabled={interactive}
+			{natures}
+			nature={typing?.nature(natures)}
 			oncreate={() => {
-				openCreation({ near: session.relativeNodeCreationTarget });
+				openDraft({ near: session.relativeNodeCreationTarget });
+			}}
+			onnature={(natureId: string) => {
+				if (typing !== undefined) typing.natureId = natureId;
 			}}
 			onnatures={openNatures}
 		/>

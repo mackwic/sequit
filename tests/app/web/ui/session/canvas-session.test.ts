@@ -10,6 +10,7 @@ import {
 	CanvasActivityKind,
 	type CanvasDocumentCommandPort,
 	CanvasEditAvailability,
+	CanvasEditPresentation,
 	CanvasSession,
 } from '../../../../../src/app/web/ui/session/canvas-session.svelte';
 import { SessionNoticeCode } from '../../../../../src/lib/infrastructure/collaboration/session-reasons';
@@ -388,6 +389,30 @@ describe('CanvasSession box editing intents', () => {
 		expect(await session.saveDraft()).toBeUndefined();
 		expect(commands.saveNode).not.toHaveBeenCalled();
 		expect(session.cancel()).toBe(true);
+	});
+
+	it('ends a box typed in place when the box goes, since nothing is left to type in', () => {
+		const session = selectedSession(commandPort());
+		session.beginNodeEdit(editableNode, CanvasEditPresentation.InPlace);
+		session.updateDraft({ markdown: 'Typed in a vanished box' });
+
+		expect(session.reconcile(entityIndex())).toBe(true);
+		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
+		expect(session.selectionCount).toBe(0);
+	});
+
+	it('leaves the focus where the author went when a box typed in place is saved on leaving', async () => {
+		const session = selectedSession(commandPort());
+		session.beginNodeEdit(editableNode, CanvasEditPresentation.InPlace);
+		session.updateDraft({ markdown: 'Saved on leaving' });
+
+		expect(await session.saveDraft({ restoreFocus: false })).toMatchObject({
+			kind: DocumentCommandOutcomeKind.Accepted,
+		});
+		expect(session.activity.kind).toBe(CanvasActivityKind.Idle);
+		expect(session.awaitingAcceptedLayout).toBe(false);
+		expect(session.reconcile(entityIndex(entityRef(EntityKind.Node, editableNode.id)))).toBe(false);
+		expect(session.focusRestorationTarget).toBeUndefined();
 	});
 
 	it('marks a save/deletion race as deleted and keeps the attempted draft', async () => {

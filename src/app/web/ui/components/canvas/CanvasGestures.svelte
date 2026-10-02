@@ -31,7 +31,7 @@
 	}: {
 		session: CanvasSession;
 		enabled: boolean;
-		/** A new box: a root on the double-clicked background, or with N beside the selection. */
+		/** Starts typing a box: a root on the double-clicked background, or with N beside the selection. */
 		oncreate: (request: NodeCreationRequest) => void;
 		onconnect: (from: string, to: string) => void;
 		/** The dragged elements enter the group, or return to the root when it is `undefined`. */
@@ -293,30 +293,9 @@
 			oncreate({ near: session.relativeNodeCreationTarget });
 		}
 	}
-	/** The sibling chord stays while its future is undecided; a child is created with C. */
-	function siblingKeydown(event: KeyboardEvent) {
-		const target = session.relativeNodeCreationTarget;
-		if (
-			!enabled ||
-			!matchesShortcut(CANVAS_SHORTCUTS[CanvasShortcutId.CreateSibling], event) ||
-			!(event.target instanceof Node) ||
-			!surface.contains(event.target) ||
-			target === undefined
-		)
-			return;
-		event.preventDefault();
-		event.stopPropagation();
-		oncreate({ target, sibling: true });
-	}
 </script>
 
-<svelte:window
-	onpointermove={move}
-	onpointerup={up}
-	onpointercancel={clear}
-	onblur={clear}
-	onkeydowncapture={siblingKeydown}
-/>
+<svelte:window onpointermove={move} onpointerup={up} onpointercancel={clear} onblur={clear} />
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="gestures"

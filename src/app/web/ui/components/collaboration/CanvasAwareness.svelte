@@ -8,6 +8,7 @@
 	} from '../../../../../lib/infrastructure/collaboration/participant-presence';
 	import { SharedElementKind as Kind } from '../../../../../lib/infrastructure/document/shared-document-command';
 	import { m } from '../../../i18n/paraglide/messages';
+	import { scrollCanvasBy } from '../../canvas/canvas-entity-dom';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { renderRelationPaths } from '../../canvas/render-relations';
 	import {
@@ -71,10 +72,9 @@
 
 	/** Scrolls the viewport so that a viewport-space point sits at its centre. */
 	function centreOn(point: PresencePoint): void {
-		viewport.scrollBy({
-			left: point.x - viewport.clientWidth / 2,
-			top: point.y - viewport.clientHeight / 2,
-			behavior: 'smooth',
+		scrollCanvasBy(viewport, {
+			x: point.x - viewport.clientWidth / 2,
+			y: point.y - viewport.clientHeight / 2,
 		});
 	}
 

@@ -3,6 +3,8 @@ import type { QuillOptions } from 'quill';
 export enum QuillEditorProfile {
 	Plain = 'plain',
 	Body = 'body',
+	/** The body typed in place on the canvas: the same formats, by their keys, no toolbar. */
+	Inline = 'inline',
 	Description = 'description',
 }
 
@@ -35,6 +37,7 @@ export function quillEditorOptions(
 		formats = [];
 		toolbar = { toolbar: false };
 	}
+	if (profile === QuillEditorProfile.Inline) toolbar = { toolbar: false };
 	if (profile === QuillEditorProfile.Description) {
 		formats = [
 			...formats,

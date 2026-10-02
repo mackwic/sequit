@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 async function documentPointAt(page: Page, clientX: number, clientY: number) {
 	return page.locator('[data-graph-stage]').evaluate(
@@ -40,6 +40,22 @@ async function settleCanvasMotion(page: Page): Promise<void> {
 			stage.getAnimations({ subtree: true }).map((animation) => animation.finished),
 		);
 	});
+}
+
+/** A double-click types a box in place; its dialog opens from the selection with E. */
+async function openBoxDialog(page: Page, node: Locator): Promise<void> {
+	await node.click();
+	await page.keyboard.press('e');
+}
+
+/** The box being typed in place: it shows, has the focus, and gives the id the box will have. */
+async function typedBox(page: Page) {
+	const draft = page.locator('[data-node-draft]');
+	const content = draft.getByRole('textbox', { name: 'Contenu de la nouvelle boîte' });
+	await expect(content).toBeFocused();
+	const id = await draft.getAttribute('data-node-draft');
+	if (id === null || id === '') throw new Error('The box being typed has no id');
+	return { draft, content, id };
 }
 
 async function visibleRelationPoint(page: Page, selector: string) {
@@ -360,20 +376,22 @@ test.describe('accessible canvas selection', () => {
 		await node.click();
 		const nodeBar = page.getByRole('group', { name: 'Actions du nœud' });
 		await expect(nodeBar.getByRole('button')).toHaveText([
-			'Éditer',
-			'Créer un enfant',
-			'Supprimer',
+			/Créer un enfant/,
+			/Propriétés…/,
+			/Supprimer/,
 		]);
+		// Every action shows its key, as in a dialog.
+		await expect(nodeBar.locator('kbd')).toHaveText(['C', 'E', /^(⌫|Suppr)$/]);
 
 		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
 		const selectionBar = page.getByRole('group', { name: 'Actions de la sélection' });
-		await expect(selectionBar.getByRole('button')).toHaveText(['Supprimer']);
+		await expect(selectionBar.getByRole('button')).toHaveText([/Supprimer/]);
 		await expect(nodeBar).toHaveCount(0);
 
 		await group.click({ position: { x: 8, y: 8 }, force: true });
 		const groupBar = page.getByRole('group', { name: 'Actions du groupe' });
-		await groupBar.getByRole('button', { name: 'Éditer le groupe data-team' }).click();
-		const dialog = page.getByRole('dialog', { name: 'Modifier le groupe' });
+		await groupBar.getByRole('button', { name: 'Propriétés du groupe data-team' }).click();
+		const dialog = page.getByRole('dialog', { name: 'Propriétés du groupe' });
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press('Escape');
 		await expect(dialog).toHaveCount(0);
@@ -381,9 +399,9 @@ test.describe('accessible canvas selection', () => {
 		await junction.click();
 		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
 		await expect(junctionBar.getByRole('button')).toHaveText([
-			'Éditer',
-			'Créer un enfant',
-			'Supprimer',
+			/Créer un enfant/,
+			/Propriétés…/,
+			/Supprimer/,
 		]);
 		await junctionBar
 			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
@@ -412,7 +430,7 @@ test.describe('accessible canvas selection', () => {
 		const relationPoint = await visibleRelationPoint(page, relationSelector);
 		await page.mouse.click(relationPoint.x, relationPoint.y);
 		const relationBar = page.getByRole('group', { name: 'Actions de la relation' });
-		await expect(relationBar.getByRole('button')).toHaveText(['Jonction', 'Supprimer']);
+		await expect(relationBar.getByRole('button')).toHaveText([/Jonction/, /Supprimer/]);
 		await page.keyboard.press('j');
 
 		// The junction replaces the relation and opens its dialog with the default operator.
@@ -675,7 +693,7 @@ test.describe('accessible canvas selection', () => {
 		const panel = page.getByRole('dialog', { name: 'Raccourcis clavier' });
 		await help.click();
 		await expect(panel).toBeVisible();
-		await expect(panel).toContainText('Éditer');
+		await expect(panel).toContainText('Propriétés…');
 		await expect(panel).toContainText('Supprimer');
 		await page.keyboard.press('Escape');
 		await expect(panel).toHaveCount(0);
@@ -691,8 +709,8 @@ test.describe('accessible canvas selection', () => {
 
 		await node.dblclick();
 		const content = page
-			.getByRole('dialog', { name: 'Modifier la boîte' })
-			.getByRole('textbox', { name: 'Contenu' });
+			.locator('[data-node-draft="traceable-edits"]')
+			.getByRole('textbox', { name: 'Contenu de la boîte' });
 		await expect(content).toBeFocused();
 		await page.keyboard.press('?');
 		await expect(content).toHaveText(/\?/);
@@ -713,14 +731,14 @@ test.describe('box dialog editing and creation', () => {
 		const measured = page.locator('[data-measure-node="traceable-edits"]');
 		await node.click();
 		const edit = page.getByRole('button', {
-			name: 'Éditer le nœud traceable-edits',
+			name: 'Propriétés du nœud traceable-edits',
 		});
 		await expect(edit).toBeVisible();
 		const nodeBounds = await node.boundingBox();
 		if (!nodeBounds) throw new Error('Selected node has no bounds');
 
 		await edit.click();
-		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
 		await expect(dialog).toBeVisible();
 		await expect(dialog).toHaveAttribute('aria-modal', 'true');
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
@@ -762,7 +780,7 @@ test.describe('box dialog editing and creation', () => {
 		page,
 	}) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
-		await node.dblclick();
+		await openBoxDialog(page, node);
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(textarea).toBeFocused();
 		const replacement = [
@@ -777,7 +795,7 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toContainText('Saved through the typed document command.');
 		await expect(node).toBeFocused();
 		const edit = page.getByRole('button', {
-			name: 'Éditer le nœud traceable-edits',
+			name: 'Propriétés du nœud traceable-edits',
 		});
 		await expect(edit).toBeVisible();
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
@@ -805,38 +823,68 @@ test.describe('box dialog editing and creation', () => {
 			.toBeLessThanOrEqual(12);
 	});
 
-	test('starts from Enter and Escape preserves the unchanged document value', async ({ page }) => {
+	test('types an existing box in place from Enter, and Escape keeps its saved text', async ({
+		page,
+	}) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
 		await node.focus();
 		await page.keyboard.press('Enter');
-		const textarea = page.getByRole('textbox', { name: 'Contenu' });
-		await expect(textarea).toBeFocused();
-		await textarea.fill('Draft cancelled from Escape');
+		const content = page
+			.locator('[data-node-draft="traceable-edits"]')
+			.getByRole('textbox', { name: 'Contenu de la boîte' });
+		await expect(content).toBeFocused();
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		await content.fill('Draft cancelled from Escape');
 
 		await page.keyboard.press('Escape');
 
-		await expect(textarea).toHaveCount(0);
+		await expect(content).toHaveCount(0);
 		await expect(node).toBeFocused();
 		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
 	});
 
-	test('saves and closes the editor with Ctrl/Cmd+Enter', async ({ page }) => {
+	test('types an existing box in place from a double-click, measured as typed', async ({
+		page,
+	}) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
+		const before = required((await node.boundingBox()) ?? undefined, 'Box has no bounds');
 		await node.dblclick();
-		const textarea = page.getByRole('textbox', { name: 'Contenu' });
-		await expect(textarea).toBeFocused();
-		await textarea.fill('Saved and closed from Ctrl/Cmd+Enter');
+		const draft = page.locator('[data-node-draft="traceable-edits"]');
+		const content = draft.getByRole('textbox', { name: 'Contenu de la boîte' });
+		await expect(content).toBeFocused();
+		await content.fill('Saved in place.\nOn a second line.\nAnd a third one, typed in the box.');
+		await expect
+			.poll(async () => (await draft.boundingBox())?.height ?? 0)
+			.toBeGreaterThan(before.height);
 
 		await page.keyboard.press('ControlOrMeta+Enter');
 
-		await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toHaveCount(0);
-		await expect(node).toContainText('Saved and closed from Ctrl/Cmd+Enter');
+		await expect(draft).toHaveCount(0);
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		await expect(node).toContainText('And a third one, typed in the box.');
 		await expect(node).toBeFocused();
+	});
+
+	test('from a box typed in place, Ctrl/Cmd+E saves it and opens its dialog', async ({ page }) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.dblclick();
+		const content = page
+			.locator('[data-node-draft="traceable-edits"]')
+			.getByRole('textbox', { name: 'Contenu de la boîte' });
+		await content.fill('Saved before the dialog');
+		await page.keyboard.press('ControlOrMeta+e');
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('textbox', { name: 'Contenu' })).toHaveText(
+			'Saved before the dialog',
+		);
+		await page.keyboard.press('Escape');
+		await expect(node).toContainText('Saved before the dialog');
 	});
 	test('saves nature, description, and swatch color together', async ({ page }) => {
 		const node = page.locator('[data-node-id="traceable-edits"]');
-		await node.dblclick();
-		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
+		await openBoxDialog(page, node);
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
 		const nature = dialog.getByLabel('Nature');
 		const currentNatureId = await nature.inputValue();
 		const options = await nature
@@ -860,7 +908,7 @@ test.describe('box dialog editing and creation', () => {
 				getComputedStyle(element).getPropertyValue('--content-color'),
 			),
 		).toBe('#3b82f6');
-		await node.dblclick();
+		await openBoxDialog(page, node);
 		await expect(dialog.getByRole('textbox', { name: 'Description' })).toHaveText(
 			'Description enregistrée',
 		);
@@ -870,8 +918,8 @@ test.describe('box dialog editing and creation', () => {
 	test('contains keyboard focus and remains usable at a narrow viewport', async ({ page }) => {
 		await page.setViewportSize({ width: 360, height: 640 });
 		const node = page.locator('[data-node-id="traceable-edits"]');
-		await node.dblclick();
-		const dialog = page.getByRole('dialog', { name: 'Modifier la boîte' });
+		await openBoxDialog(page, node);
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(dialog).toBeVisible();
 		await expect(textarea).toBeFocused();
@@ -885,54 +933,39 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toBeFocused();
 	});
 
-	test('creates a connected child with C and keeps the sibling chord', async ({ page }) => {
+	test('types a child in place with C, then chains children with Ctrl/Cmd+Shift+Enter', async ({
+		page,
+	}) => {
 		const parent = page.locator('[data-node-id="ai-content-generation"]');
 		await parent.click();
 		await page.keyboard.press('c');
 
-		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
-		await expect(dialog).toBeVisible();
-		await expect(textarea).toBeFocused();
-		await expect(textarea).toHaveText('');
-		const childId = await dialog.getAttribute('data-node-creator');
-		if (childId === null || childId === '') throw new Error('Created child dialog has no node id');
-		await textarea.fill('First keyboard child');
-		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+		const first = await typedBox(page);
+		await expect(page.getByRole('dialog')).toHaveCount(0);
+		await expect(first.content).toHaveText('');
+		await first.content.fill('First keyboard child');
+		await page.keyboard.press('ControlOrMeta+Shift+Enter');
 
-		const child = page.locator(`[data-node-id="${childId}"]`);
-		await expect(child).toBeVisible();
-		await expect(child).toHaveAttribute('aria-pressed', 'true');
+		const second = await typedBox(page);
+		expect(second.id).not.toBe(first.id);
 		await expect(
 			page.locator(
-				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="ai-content-generation"]`,
+				`[data-relation-id][data-edge-from="${first.id}"][data-edge-to="ai-content-generation"]`,
 			),
 		).toHaveCount(1);
+		await second.content.fill('Grandchild');
+		await page.keyboard.press('ControlOrMeta+Enter');
 
-		await child.focus();
-		await page.keyboard.press('Control+Shift+Enter');
-		const siblingDialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		const siblingTextarea = siblingDialog.getByRole('textbox', { name: 'Contenu' });
-		await expect(siblingTextarea).toBeFocused();
-		await expect(siblingTextarea).toHaveText('');
-		const siblingId = await siblingDialog.getAttribute('data-node-creator');
-		if (siblingId === null || siblingId === '')
-			throw new Error('Created sibling dialog has no node id');
-		expect(siblingId).not.toBe(childId);
-		await siblingTextarea.fill('Keyboard sibling');
-		await siblingDialog.getByRole('button', { name: 'Créer', exact: true }).click();
-		await expect(page.locator(`[data-node-id="${siblingId}"]`)).toHaveAttribute(
-			'aria-pressed',
-			'true',
-		);
+		const grandchild = page.locator(`[data-node-id="${second.id}"]`);
+		await expect(grandchild).toBeFocused();
+		await expect(grandchild).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.locator('[data-node-draft]')).toHaveCount(0);
 		await expect(
-			page.locator(
-				`[data-relation-id][data-edge-from="${siblingId}"][data-edge-to="ai-content-generation"]`,
-			),
+			page.locator(`[data-relation-id][data-edge-from="${second.id}"][data-edge-to="${first.id}"]`),
 		).toHaveCount(1);
 	});
 
-	test('creates a root box with N when nothing is selected', async ({ page }) => {
+	test('types a root box with N when nothing is selected', async ({ page }) => {
 		await page.goto('/');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const focusedNode = page.locator('[data-node-id]').first();
@@ -940,40 +973,52 @@ test.describe('box dialog editing and creation', () => {
 		await expect(focusedNode).toHaveAttribute('aria-pressed', 'false');
 		await page.keyboard.press('n');
 
-		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		const textarea = dialog.getByRole('textbox', { name: 'Contenu' });
-		await expect(textarea).toBeFocused();
-		const rootId = await dialog.getAttribute('data-node-creator');
-		if (rootId === null || rootId === '') throw new Error('Created root dialog has no node id');
-		await textarea.fill('Root keyboard box');
-		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+		const { content, id } = await typedBox(page);
+		await content.fill('Root keyboard box');
+		await page.keyboard.press('ControlOrMeta+Enter');
 
-		const root = page.locator(`[data-node-id="${rootId}"]`);
+		const root = page.locator(`[data-node-id="${id}"]`);
 		await expect(root).toHaveAttribute('aria-pressed', 'true');
+		await expect(root).toContainText('Root keyboard box');
 		await expect(
 			page.locator(
-				`[data-relation-id][data-edge-from="${rootId}"], [data-relation-id][data-edge-to="${rootId}"]`,
+				`[data-relation-id][data-edge-from="${id}"], [data-relation-id][data-edge-to="${id}"]`,
 			),
 		).toHaveCount(0);
 	});
 
-	test('cancelling a new-box dialog with Escape creates nothing', async ({ page }) => {
+	test('Escape, or confirming an empty box, creates nothing', async ({ page }) => {
 		await page.goto('/');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
-		const count = await page.locator('[data-node-id]').count();
-		const focusedNode = page.locator('[data-node-id]').first();
-		await focusedNode.focus();
+		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
+		await viewport.focus();
 		await page.keyboard.press('n');
-		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Cancelled creation');
-		await expect(page.locator('[data-node-id]')).toHaveCount(count);
+		const { content } = await typedBox(page);
+		await content.fill('Cancelled creation');
 		await page.keyboard.press('Escape');
-		await expect(dialog).toHaveCount(0);
-		await expect(page.locator('[data-node-id]')).toHaveCount(count);
+		await expect(page.locator('[data-node-draft]')).toHaveCount(0);
+		await expect(viewport).toBeFocused();
+
+		await page.keyboard.press('n');
+		await typedBox(page);
+		await page.keyboard.press('ControlOrMeta+Enter');
+		await expect(page.locator('[data-node-draft]')).toHaveCount(0);
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		await expect(page.getByText('Cancelled creation')).toHaveCount(0);
 	});
 
-	test('N and the sidebar action create a root box, even with a selection', async ({ page }) => {
+	test('Escape on a child gives the selection and focus back to its parent', async ({ page }) => {
+		const parent = page.locator('[data-node-id="ai-content-generation"]');
+		await parent.click();
+		await page.keyboard.press('c');
+		await typedBox(page);
+		await expect(parent).toHaveAttribute('aria-pressed', 'false');
+		await page.keyboard.press('Escape');
+		await expect(parent).toBeFocused();
+		await expect(parent).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	test('N and the sidebar action type a root box, even with a selection', async ({ page }) => {
 		const triggers = [
 			() => page.keyboard.press('n'),
 			() => page.getByRole('button', { name: 'Nouvelle boîte', exact: true }).click(),
@@ -981,24 +1026,124 @@ test.describe('box dialog editing and creation', () => {
 		for (const [index, trigger] of triggers.entries()) {
 			await page.locator('[data-node-id="ai-content-generation"]').click();
 			await trigger();
-			const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-			const nodeId = await dialog.getAttribute('data-node-creator');
-			if (nodeId === null || nodeId === '') throw new Error('Created box dialog has no node id');
-			await dialog.getByRole('textbox', { name: 'Contenu' }).fill(`Root beside selection ${index}`);
-			await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
-			await expect(page.locator(`[data-node-id="${nodeId}"]`)).toHaveAttribute(
-				'aria-pressed',
-				'true',
-			);
+			const { content, id } = await typedBox(page);
+			await content.fill(`Root beside selection ${index}`);
+			await page.keyboard.press('ControlOrMeta+Enter');
+			await expect(page.locator(`[data-node-id="${id}"]`)).toHaveAttribute('aria-pressed', 'true');
 			await expect(
 				page.locator(
-					`[data-relation-id][data-edge-from="${nodeId}"], [data-relation-id][data-edge-to="${nodeId}"]`,
+					`[data-relation-id][data-edge-from="${id}"], [data-relation-id][data-edge-to="${id}"]`,
 				),
 			).toHaveCount(0);
 		}
 	});
 
-	test('creates a child of a junction from its contextual action', async ({ page }) => {
+	test('the bar of the selected box stays in place while it is typed, with the same actions', async ({
+		page,
+	}) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		const typed = page.locator('[data-node-draft="traceable-edits"]');
+		/** How far above its box a bar ends: the same in both states, and as the box grows. */
+		async function gapAbove(bar: Locator, box: Locator): Promise<number> {
+			await settleCanvasMotion(page);
+			const [barBounds, boxBounds] = await Promise.all([bar.boundingBox(), box.boundingBox()]);
+			if (!barBounds || !boxBounds) throw new Error('Bar or box has no bounds');
+			return boxBounds.y - (barBounds.y + barBounds.height);
+		}
+		await node.click();
+		const nodeBar = page.getByRole('group', { name: 'Actions du nœud' });
+		await expect(nodeBar).toBeVisible();
+		const selectedGap = await gapAbove(nodeBar, node);
+		await node.dblclick();
+		const actions = page.getByRole('group', { name: 'Actions de la saisie' });
+		await expect(nodeBar).toHaveCount(0);
+		await expect(actions.getByRole('button')).toHaveText([
+			/Valider/,
+			/Créer un enfant/,
+			/Propriétés…/,
+			/Annuler/,
+		]);
+		expect(selectedGap).toBeGreaterThan(0);
+		expect(await gapAbove(actions, typed)).toBeCloseTo(selectedGap, 0);
+		const content = typed.getByRole('textbox', { name: 'Contenu de la boîte' });
+		await expect(content).toBeFocused();
+		const before = await typed.boundingBox();
+		// The caret starts at the end of the text; the keyboard types as the author does.
+		await page.keyboard.type(' et encore quelques mots pour une ligne de plus');
+		await expect
+			.poll(async () => (await typed.boundingBox())?.height)
+			.toBeGreaterThan(before?.height ?? Infinity);
+		expect(await gapAbove(actions, typed)).toBeCloseTo(selectedGap, 0);
+		await page.keyboard.press('Escape');
+		await expect(actions).toHaveCount(0);
+	});
+
+	test('the actions of the typed box confirm it or open its properties', async ({ page }) => {
+		await page.getByRole('region', { name: 'Canvas viewport' }).focus();
+		await page.keyboard.press('n');
+		const typed = await typedBox(page);
+		const actions = page.getByRole('group', { name: 'Actions de la saisie' });
+		await expect(actions.getByRole('button', { name: /Propriétés…/ })).toHaveAttribute(
+			'aria-keyshortcuts',
+			'Control+e Meta+e',
+		);
+		await typed.content.fill('Boîte à détailler');
+		await page.keyboard.press('ControlOrMeta+e');
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.getByRole('textbox', { name: 'Contenu' })).toHaveText('Boîte à détailler');
+		await page.keyboard.press('Escape');
+		await expect(dialog).toHaveCount(0);
+
+		await page.getByRole('region', { name: 'Canvas viewport' }).focus();
+		await page.keyboard.press('n');
+		const next = await typedBox(page);
+		await next.content.fill('Validée à la souris');
+		await actions.getByRole('button', { name: /Valider/ }).click();
+		await expect(page.locator(`[data-node-id="${next.id}"]`)).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
+	});
+
+	test('clicking elsewhere creates the typed box and leaves it unselected', async ({ page }) => {
+		await page.getByRole('region', { name: 'Canvas viewport' }).focus();
+		await page.keyboard.press('n');
+		const { content, id } = await typedBox(page);
+		await content.fill('Laissée en cliquant ailleurs');
+		const other = page.locator('[data-node-id="ai-content-generation"]');
+		await other.click();
+		const created = page.locator(`[data-node-id="${id}"]`);
+		await expect(created).toContainText('Laissée en cliquant ailleurs');
+		await expect(created).toHaveAttribute('aria-pressed', 'false');
+		await expect(other).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	test('new boxes take the nature chosen in the sidebar, children included', async ({ page }) => {
+		const picker = page
+			.getByRole('navigation', { name: 'Actions du canvas' })
+			.getByRole('button', { name: /^Nouvelles boîtes :/ });
+		await picker.click();
+		const menu = page.getByRole('menu', { name: 'Nature des nouvelles boîtes' });
+		const items = menu.getByRole('menuitemradio');
+		const chosen = items.nth(1);
+		const label = (await chosen.textContent())?.trim() ?? '';
+		await expect(chosen).toHaveAttribute('aria-checked', 'false');
+		await chosen.click();
+		await expect(picker).toHaveAccessibleName(`Nouvelles boîtes : ${label}`);
+
+		await page.locator('[data-node-id="ai-content-generation"]').click();
+		await page.keyboard.press('c');
+		const { draft, content, id } = await typedBox(page);
+		await expect(draft).toContainText(label, { ignoreCase: true });
+		await content.fill('Enfant de la nature choisie');
+		await page.keyboard.press('ControlOrMeta+Enter');
+		await expect(page.locator(`[data-node-id="${id}"]`)).toContainText(label, {
+			ignoreCase: true,
+		});
+	});
+
+	test('types a child of a junction from its contextual action', async ({ page }) => {
 		const junction = page.locator('[data-junction-id="word-ui-options"]');
 		await junction.click();
 		const create = page
@@ -1006,16 +1151,11 @@ test.describe('box dialog editing and creation', () => {
 			.getByRole('button', { name: 'Créer un enfant de word-ui-options', exact: true });
 		await expect(create).toHaveAttribute('aria-keyshortcuts', 'c');
 		await create.click();
-		const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-		const childId = await dialog.getAttribute('data-node-creator');
-		if (childId === null || childId === '')
-			throw new Error('Created junction child dialog has no node id');
-		await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Junction child');
-		await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+		const { content, id } = await typedBox(page);
+		await content.fill('Junction child');
+		await page.keyboard.press('ControlOrMeta+Enter');
 		await expect(
-			page.locator(
-				`[data-relation-id][data-edge-from="${childId}"][data-edge-to="word-ui-options"]`,
-			),
+			page.locator(`[data-relation-id][data-edge-from="${id}"][data-edge-to="word-ui-options"]`),
 		).toHaveCount(1);
 	});
 });
@@ -1027,7 +1167,7 @@ test('double-clicking a group title edits its title and color', async ({ page })
 
 	await group.locator('[data-group-header]').dblclick();
 
-	const dialog = page.getByRole('dialog', { name: 'Modifier le groupe' });
+	const dialog = page.getByRole('dialog', { name: 'Propriétés du groupe' });
 	await expect(dialog).toBeVisible();
 	const title = page.getByRole('textbox', { name: 'Titre du groupe' });
 	await expect(title).toBeFocused();
@@ -1047,17 +1187,13 @@ test('a child of a selected node inside a group stays within that group', async 
 	await expect(target).toHaveAttribute('data-node-group-id', 'use-cases');
 	await target.click();
 	await page.keyboard.press('c');
-	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-	await expect(dialog).toBeVisible();
-	const childId = await dialog.getAttribute('data-node-creator');
-	if (childId === null || childId === '')
-		throw new Error('Created group child dialog has no node id');
-	await dialog.getByRole('textbox', { name: 'Contenu' }).fill('Group keyboard child');
-	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
+	const { content, id } = await typedBox(page);
+	await content.fill('Group keyboard child');
+	await page.keyboard.press('ControlOrMeta+Enter');
 	await expect(
-		page.locator(`[data-relation-id][data-edge-from="${childId}"][data-edge-to="traceable-edits"]`),
+		page.locator(`[data-relation-id][data-edge-from="${id}"][data-edge-to="traceable-edits"]`),
 	).toHaveCount(1);
-	const child = page.locator(`[data-node-id="${childId}"]`);
+	const child = page.locator(`[data-node-id="${id}"]`);
 	await expect(child).toHaveAttribute('aria-pressed', 'true');
 	await expect(child).toHaveAttribute('data-node-group-id', 'use-cases');
 	await settleCanvasMotion(page);
@@ -1072,22 +1208,21 @@ test('a child of a selected node inside a group stays within that group', async 
 	).toBe(true);
 });
 
-test('double-click creates through a modal; Backspace and the delete action remove nodes', async ({
+test('double-click types a box in place; Backspace and the delete action remove nodes', async ({
 	page,
 }) => {
 	await page.goto('/');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const point = await blankCanvasPoint(page);
 	await page.mouse.dblclick(point.x, point.y);
-	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-	await expect(dialog).toBeVisible();
-	await expect(dialog.getByLabel('Contenu')).toBeFocused();
-	await dialog.getByLabel('Contenu').fill('Nouvelle idée canvas');
-	await dialog.getByLabel('Contenu').press('Backspace');
+	const { content } = await typedBox(page);
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await content.fill('Nouvelle idée canvas');
+	await content.press('Backspace');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
-	await dialog.getByLabel('Contenu').fill('Nouvelle idée canvas');
-	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
-	await expect(dialog).toHaveCount(0);
+	await content.fill('Nouvelle idée canvas');
+	await page.keyboard.press('ControlOrMeta+Enter');
+	await expect(page.locator('[data-node-draft]')).toHaveCount(0);
 	const node = page.locator('[data-node-id]').filter({ hasText: 'Nouvelle idée canvas' });
 	await expect(node).toBeVisible();
 	await node.click();
@@ -1170,11 +1305,11 @@ test('undoes and redoes accepted edits step by step, leaving a text field its ow
 	await expect(page.locator('[data-node-id]')).toHaveCount(nodes);
 
 	// One text save is one step; inside the field, the chord stays native.
-	await node.dblclick();
+	await openBoxDialog(page, node);
 	const textarea = page.getByRole('textbox', { name: 'Contenu' });
 	await textarea.fill('Première version');
 	await page.keyboard.press('ControlOrMeta+z');
-	await expect(page.getByRole('dialog', { name: 'Modifier la boîte' })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Propriétés de la boîte' })).toBeVisible();
 	await textarea.fill('Seconde version');
 	await page.keyboard.press('ControlOrMeta+Enter');
 	await expect(node).toContainText('Seconde version');
@@ -1234,22 +1369,24 @@ test('double-click on group background creates a member; canvas background reset
 		throw new Error('No visible group background');
 	});
 	await page.mouse.dblclick(point.x, point.y);
-	const dialog = page.getByRole('dialog', { name: 'Nouvelle boîte' });
-	await dialog.getByLabel('Contenu').fill('Membre créé dans le groupe');
-	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
-	const member = page.locator('[data-node-id]').filter({ hasText: 'Membre créé dans le groupe' });
-	await expect(member).toBeVisible();
+	const member = await typedBox(page);
+	await member.content.fill('Membre créé dans le groupe');
+	await page.keyboard.press('ControlOrMeta+Enter');
+	const created = page.locator(`[data-node-id="${member.id}"]`);
+	await expect(created).toHaveAttribute('data-node-group-id', 'data-team');
 	await settleCanvasMotion(page);
 	const background = await blankCanvasPoint(page);
 	await page.mouse.dblclick(background.x, background.y);
-	await dialog.getByLabel('Contenu').fill('Boîte hors groupe');
-	await dialog.getByRole('button', { name: 'Créer', exact: true }).click();
-	const outside = page.locator('[data-node-id]').filter({ hasText: 'Boîte hors groupe' });
+	const root = await typedBox(page);
+	await root.content.fill('Boîte hors groupe');
+	await page.keyboard.press('ControlOrMeta+Enter');
+	const outside = page.locator(`[data-node-id="${root.id}"]`);
 	await expect(outside).toBeVisible();
+	await expect(outside).not.toHaveAttribute('data-node-group-id');
 	await group.focus();
 	await group.press('Enter');
 	await group.press('Delete');
 	await expect(group).toHaveCount(0);
-	await expect(member).toHaveCount(0);
+	await expect(created).toHaveCount(0);
 	await expect(outside).toBeVisible();
 });

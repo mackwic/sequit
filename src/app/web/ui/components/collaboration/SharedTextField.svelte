@@ -4,16 +4,15 @@
 
 	import type Quill from 'quill';
 	import { onMount } from 'svelte';
-	import * as Y from 'yjs';
 
 	import type { CollaborativeDocumentSession } from '../../../../../lib/infrastructure/collaboration/collaborative-document-session-types';
 	import type { SharedTarget } from '../../../../../lib/infrastructure/document/shared-document-command';
-	import { bindQuillMarkdown, type QuillMarkdownEditor } from '../../../document/quill-editor';
-	import { quillEditorOptions, QuillEditorProfile } from '../../../document/quill-editor-config';
-	import { describeQuillField } from '../../../document/quill-field';
+	import type { QuillMarkdownEditor } from '../../../document/quill-editor';
+	import { QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { m } from '../../../i18n/paraglide/messages';
 	import { getCollaborationAwareness } from './collaboration-awareness.svelte';
 	import QuillPresence from './QuillPresence.svelte';
+	import { mountSharedText } from './shared-text-editor';
 
 	let {
 		client,
@@ -37,7 +36,6 @@
 		autofocus?: boolean;
 	} = $props();
 	const awareness = getCollaborationAwareness();
-	const owner = Symbol('text editor');
 	const text = $derived(client.text(target, field));
 	let host: HTMLDivElement;
 	let editor = $state<QuillMarkdownEditor>();
@@ -57,84 +55,35 @@
 		let disposed = false;
 		let cleanup: (() => void) | undefined;
 		async function initialize(): Promise<void> {
-			const { default: Editor } = await import('quill');
-			if (disposed || text === undefined) return;
-			const quill = new Editor(
-				host,
-				quillEditorOptions(profile, {
-					placeholder,
-					showSource: () => {
-						editor?.showSource();
-					},
-				}),
-			);
-			const undescribe = describeQuillField(quill, label);
-			const binding = bindQuillMarkdown(
-				quill,
-				{
-					text,
-					edit: (markdown) => {
-						client.updateText(target, field, markdown, text);
-					},
-					merge: (update) => {
-						client.applyLocalTextUpdate(target, field, update, text);
-					},
-				},
+			if (text === undefined) return;
+			const shared = await mountSharedText(host, {
+				client,
+				awareness,
+				target,
+				field,
+				text,
 				profile,
-			);
-			editor = binding.editor;
+				label,
+				placeholder,
+				enabled: connected,
+			});
+			if (disposed) {
+				shared.destroy();
+				return;
+			}
+			const { quill } = shared;
+			editor = shared.editor;
 			const updateMode = (): void => {
-				sourceMode = binding.editor.sourceMode;
+				sourceMode = shared.editor.sourceMode;
 			};
 			updateMode();
-			binding.editor.addEventListener('modechange', updateMode);
-			const protectSource = (event: KeyboardEvent): void => {
-				if (!binding.editor.sourceMode || (!event.ctrlKey && !event.metaKey)) return;
-				if (!['b', 'i', 'u'].includes(event.key.toLowerCase())) return;
-				event.preventDefault();
-				event.stopImmediatePropagation();
-			};
-			quill.root.addEventListener('keydown', protectSource, true);
-			const publish = (): void => {
-				if (disposed) return;
-				if (!quill.hasFocus()) {
-					awareness.textSelection(owner, null);
-					return;
-				}
-				awareness.textSelection(owner, {
-					target,
-					field,
-					anchor: Y.encodeRelativePosition(
-						Y.createRelativePositionFromTypeIndex(text, binding.editor.selectionStart),
-					),
-					head: Y.encodeRelativePosition(
-						Y.createRelativePositionFromTypeIndex(text, binding.editor.selectionEnd),
-					),
-				});
-			};
-			const changed = (_name: string, ...args: unknown[]): void => {
-				if (args.at(-1) !== 'silent') queueMicrotask(publish);
-			};
-			quill.on('editor-change', changed);
-			const clear = (): void => {
-				awareness.textSelection(owner, null);
-			};
-			quill.root.addEventListener('blur', clear);
-			window.addEventListener('blur', clear);
-			quill.history.clear();
-			quill.enable(connected);
+			shared.editor.addEventListener('modechange', updateMode);
 			quillInstance = quill;
 			if (autofocus && connected) quill.focus();
 			cleanup = (): void => {
 				quillInstance = undefined;
-				binding.destroy();
-				binding.editor.removeEventListener('modechange', updateMode);
-				quill.root.removeEventListener('keydown', protectSource, true);
-				quill.off('editor-change', changed);
-				quill.root.removeEventListener('blur', clear);
-				window.removeEventListener('blur', clear);
-				undescribe();
-				clear();
+				shared.editor.removeEventListener('modechange', updateMode);
+				shared.destroy();
 			};
 		}
 		void initialize().catch((error: unknown) => {

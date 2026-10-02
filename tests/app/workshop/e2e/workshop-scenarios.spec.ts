@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 const scenarios: readonly [string, number][] = [
 	['SC-BOX-CREATE', 3],
 	['SC-NAV-EXPLORE', 2],
@@ -111,10 +111,10 @@ test('context menu changes actions for a multi-selection and duplicates the sour
 	await node(page, 'collecter').click({ button: 'right' });
 	const toolbar = page.getByRole('menu', { name: 'Actions de la sélection' });
 	await expect(toolbar).toBeVisible();
-	await expect(toolbar.getByRole('menuitem', { name: 'Éditer' })).toBeEnabled();
+	await expect(toolbar.getByRole('menuitem', { name: 'Propriétés…' })).toBeEnabled();
 	await node(page, 'explorer').click({ modifiers: ['ControlOrMeta'] });
 	await page.getByRole('button', { name: 'Ouvrir les actions' }).click();
-	await expect(toolbar.getByRole('menuitem', { name: 'Éditer' })).toBeDisabled();
+	await expect(toolbar.getByRole('menuitem', { name: 'Propriétés…' })).toBeDisabled();
 	await toolbar.getByRole('menuitem', { name: 'Dupliquer' }).click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(6);
 });
@@ -390,18 +390,25 @@ test('creation stays usable on a narrow screen and N focuses its form', async ({
 		.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
 		.toBe(true);
 });
+
+/** A double-click types the box in place; its dialog opens from the selection with E. */
+async function openProperties(session: Locator, id: string): Promise<void> {
+	await session.locator(`[data-node-id="${id}"]`).click();
+	await session.page().keyboard.press('e');
+}
+
 test('modal editors reopen the shared text and close with Escape', async ({ page }) => {
 	await open(page, 'SC-COL-WORK');
 	const alice = page.getByRole('region', { name: 'Session Alice' });
 	const bob = page.getByRole('region', { name: 'Session Bob' });
 	await expect(alice.locator('header').getByRole('status')).toHaveText('Connecté');
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
-	await alice.locator('[data-node-id="comparer"]').dblclick();
+	await openProperties(alice, 'comparer');
 	const a = alice.getByLabel('Texte de comparer', { exact: true });
 	await a.fill('Le texte commun');
 	await a.press('Escape');
 	await expect(page.getByRole('dialog')).toHaveCount(0);
-	await bob.locator('[data-node-id="comparer"]').dblclick();
+	await openProperties(bob, 'comparer');
 	const b = bob.getByLabel('Texte de comparer', { exact: true });
 	await expect(b).toHaveText('Le texte commun');
 	await b.fill('Le texte de Bob');
@@ -445,11 +452,11 @@ test('menu keyboard navigation returns focus, exits with Tab, and the trigger to
 	const trigger = page.getByRole('button', { name: 'Ouvrir les actions' });
 	const menu = page.getByRole('menu', { name: 'Actions de la sélection' });
 	await trigger.press('Enter');
-	await expect(menu.getByRole('menuitem', { name: 'Éditer' })).toBeFocused();
+	await expect(menu.getByRole('menuitem', { name: 'Propriétés…' })).toBeFocused();
 	await page.keyboard.press('ArrowDown');
 	await expect(menu.getByRole('menuitem', { name: 'Dupliquer' })).toBeFocused();
 	await page.keyboard.press('Home');
-	await expect(menu.getByRole('menuitem', { name: 'Éditer' })).toBeFocused();
+	await expect(menu.getByRole('menuitem', { name: 'Propriétés…' })).toBeFocused();
 	await page.keyboard.press('End');
 	await expect(menu.getByRole('menuitem', { name: 'Dupliquer' })).toBeFocused();
 	await page.keyboard.press('Escape');
@@ -554,15 +561,15 @@ test('closing an offline editor preserves text and permits editing another node'
 	const bob = page.getByRole('region', { name: 'Session Bob' });
 	await expect(bob.locator('header').getByRole('status')).toHaveText('Connecté');
 	await bob.getByRole('button', { name: 'Mettre hors ligne' }).click();
-	await bob.locator('[data-node-id="comparer"]').dblclick();
+	await openProperties(bob, 'comparer');
 	await bob.getByLabel('Texte de comparer', { exact: true }).fill('Envoi à conserver');
 	await bob.getByLabel('Texte de comparer', { exact: true }).press('Escape');
-	await bob.locator('[data-node-id="collecter"]').dblclick();
+	await openProperties(bob, 'collecter');
 	await bob.getByLabel('Texte de collecter', { exact: true }).fill('Deuxième texte');
 	await bob.getByLabel('Texte de collecter', { exact: true }).press('Escape');
 	await bob.getByRole('button', { name: 'Reconnecter' }).click();
 	await expect(alice.locator('[data-node-id="comparer"]')).toContainText('Envoi à conserver');
 	await expect(alice.locator('[data-node-id="collecter"]')).toContainText('Deuxième texte');
-	await bob.locator('[data-node-id="collecter"]').dblclick();
+	await openProperties(bob, 'collecter');
 	await expect(bob.getByLabel('Texte de collecter', { exact: true })).toHaveText('Deuxième texte');
 });

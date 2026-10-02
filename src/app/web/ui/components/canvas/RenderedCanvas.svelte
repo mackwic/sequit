@@ -18,7 +18,7 @@
 		activateEntityByKeyboard,
 		activateEntityByPointer,
 	} from '../../canvas/canvas-entity-events';
-	import type { CanvasModel } from '../../canvas/canvas-model';
+	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
 	import { printStageFit } from '../../canvas/canvas-print';
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
 	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
@@ -30,6 +30,8 @@
 	import CanvasRelation from './CanvasRelation.svelte';
 	import JunctionSymbol from './JunctionSymbol.svelte';
 	import LogicNode from './LogicNode.svelte';
+	import type { NodeDraftControls } from './node-typing.svelte';
+	import NodeDraftCard from './NodeDraftCard.svelte';
 	import RelationArrow from './RelationArrow.svelte';
 
 	const markerId = $props.id();
@@ -38,6 +40,8 @@
 		canvas,
 		zoom,
 		session,
+		draft,
+		onNodeType,
 		onGroupEdit,
 		onGroupToggle,
 		onJunctionEdit,
@@ -46,6 +50,10 @@
 		canvas: CanvasModel;
 		zoom: number;
 		session: CanvasSession;
+		/** The box typed in place, new or existing, drawn where it stands. */
+		draft?: NodeDraftControls | undefined;
+		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
+		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		/** Folds or unfolds a group; absent when the document is read-only. */
 		onGroupToggle?: ((groupId: string) => void) | undefined;
@@ -274,7 +282,16 @@
 		</svg>
 
 		{#each canvas.nodes as node (node.id)}
-			<LogicNode {node} {session} tabbable={entityKey(EntityKind.Node, node.id) === tabEntryKey} />
+			{#if node.id === draft?.id}
+				<NodeDraftCard {node} {draft} />
+			{:else}
+				<LogicNode
+					{node}
+					{session}
+					tabbable={entityKey(EntityKind.Node, node.id) === tabEntryKey}
+					ontype={onNodeType}
+				/>
+			{/if}
 		{/each}
 		{#each canvas.junctions as junction (junction.id)}
 			{@const ref = entityRef(EntityKind.Junction, junction.id)}

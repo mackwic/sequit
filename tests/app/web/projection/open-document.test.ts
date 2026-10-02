@@ -562,3 +562,68 @@ it('keeps a shared projection invalid until the physical source heals', async ()
 	expect(subscriber).toHaveBeenCalledOnce();
 	expect(await projection.createCanvasModel(measurements)).toEqual(before);
 });
+
+describe('boxes typed in place', () => {
+	const typed = {
+		node: { id: 'typed', natureId: 'goal', markdown: 'Typed child', groupId: 'use-cases' },
+		relations: [{ id: 'typed-parent', from: 'typed', to: 'traceable-edits' }],
+	};
+
+	it('draws a typed box where its accepted creation puts it, without changing the document', async () => {
+		const result = openDocument(await aiDocumentaryEffortScenario());
+		if (!result.ok) throw new Error('Expected the reference document to open');
+		const opened = result.value;
+		const documentChanges = vi.fn();
+		const canvasChanges = vi.fn();
+		opened.subscribeToDocument(documentChanges);
+		opened.subscribe(canvasChanges);
+
+		opened.showDrafts({ nodes: [typed], texts: [] });
+		expect(documentChanges).not.toHaveBeenCalled();
+		expect(canvasChanges).toHaveBeenCalledOnce();
+		expect(opened.read().nodes.map(({ id }) => id)).not.toContain('typed');
+		const drafted = await opened.createCanvasModel(
+			layoutMeasurementsForCanvas(opened.measurementModel),
+		);
+
+		await accept(opened, connectedNodeCreation(typed.node, typed.relations));
+		expect(documentChanges).toHaveBeenCalledOnce();
+		const created = await opened.createCanvasModel(
+			layoutMeasurementsForCanvas(opened.measurementModel),
+		);
+		// Same place, and the same order: the created box is neither moved nor redrawn elsewhere.
+		expect(created.nodes.map(({ id, bounds }) => [id, bounds])).toEqual(
+			drafted.nodes.map(({ id, bounds }) => [id, bounds]),
+		);
+		expect(created.relations.map(({ id, points }) => [id, points])).toEqual(
+			drafted.relations.map(({ id, points }) => [id, points]),
+		);
+	});
+
+	it('measures texts typed in place, leaves out orphan drafts, and keeps all of it out of the shared view', async () => {
+		const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'room');
+		const projection = createSharedCanvasProjection(source);
+		const natureId = source.natures[0]?.id ?? '';
+		const edited = source.nodes[0];
+		if (edited === undefined) throw new Error('Expected a node to type in place');
+		const root = { node: { id: 'typed-root', natureId, markdown: 'Root' }, relations: [] };
+		const orphan = {
+			node: { id: 'typed-orphan', natureId, markdown: 'Orphan' },
+			relations: [{ id: 'orphan-parent', from: 'typed-orphan', to: 'missing' }],
+		};
+		projection.setDrafts({
+			nodes: [root, orphan],
+			texts: [{ nodeId: edited.id, markdown: 'Typed in place' }],
+		});
+
+		const measured = projection.measurementModel.nodes;
+		expect(measured.map(({ id }) => id)).toContain('typed-root');
+		expect(measured.map(({ id }) => id)).not.toContain('typed-orphan');
+		expect(measured.find(({ id }) => id === edited.id)?.markdown).toBe('Typed in place');
+		expect(projection.visible.document.nodes).toEqual(source.nodes);
+		const canvas = await projection.createCanvasModel(
+			layoutMeasurementsForCanvas(projection.measurementModel),
+		);
+		expect(canvas.nodes.map(({ id }) => id)).toContain('typed-root');
+	});
+});

@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+	import {
+		autoUpdate,
+		computePosition,
+		flip,
+		offset,
+		type Placement,
+		shift,
+	} from '@floating-ui/dom';
 	import type { Snippet } from 'svelte';
 	import { onMount, tick } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
@@ -8,6 +15,7 @@
 	let {
 		label,
 		disabled = false,
+		placement = 'bottom-start',
 		triggerElement = $bindable(),
 		trigger,
 		children,
@@ -15,6 +23,8 @@
 		label: string;
 		/** Keeps the trigger visible but inert, e.g. while a shared session is offline. */
 		disabled?: boolean;
+		/** Where the menu opens from its trigger. */
+		placement?: Placement;
 		/** The trigger button, for a caller that gives focus back to it. */
 		triggerElement?: HTMLButtonElement | undefined;
 		trigger: Snippet<[boolean]>;
@@ -109,7 +119,7 @@
 		return autoUpdate(anchor, surface, () => {
 			void computePosition(anchor, surface, {
 				strategy: 'fixed',
-				placement: 'bottom-start',
+				placement,
 				middleware: [offset(6), flip(), shift({ padding: 12 })],
 			}).then(({ x, y }) => {
 				surface.style.left = `${x}px`;

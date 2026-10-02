@@ -30,7 +30,6 @@
 
 {#key editing.nodeId}
 	<NodeDialog
-		mode="edit"
 		{natures}
 		{lanes}
 		draft={editing.draft}

@@ -10,6 +10,7 @@
 	} from '../../canvas/canvas-shortcuts';
 	import { foldActionLabel, foldToggleShortcut } from '../../canvas/group-edit';
 	import Icon from '../ui/Icon.svelte';
+	import Kbd from '../ui/Kbd.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import FloatingActions from './FloatingActions.svelte';
 
@@ -33,7 +34,7 @@
 		dissolve?: (() => void) | undefined;
 		/** Relation only: inserts a junction between its endpoints. */
 		split?: (() => void) | undefined;
-		/** Node or junction only: opens the box dialog for a child attached to it. */
+		/** Node or junction only: starts typing a child attached to it. */
 		child?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
@@ -106,19 +107,6 @@
 		label={actionsLabel[entity.kind]()}
 		bind:element={floating}
 	>
-		{#if edit}
-			<button
-				class="ui-action quiet"
-				type="button"
-				aria-label={edit.label}
-				aria-keyshortcuts={shortcutKeyshortcuts(editShortcut)}
-				title={shortcutTitle(editShortcut)}
-				onclick={edit.run}
-			>
-				<Icon name="phosphor:pencil-simple" />
-				<span>{editShortcut.label}</span>
-			</button>
-		{/if}
 		{#if child}
 			<button
 				class="ui-action quiet"
@@ -130,6 +118,21 @@
 			>
 				<Icon name="phosphor:tree-structure" />
 				<span>{childShortcut.label}</span>
+				<Kbd shortcut={childShortcut} />
+			</button>
+		{/if}
+		{#if edit}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-label={edit.label}
+				aria-keyshortcuts={shortcutKeyshortcuts(editShortcut)}
+				title={shortcutTitle(editShortcut)}
+				onclick={edit.run}
+			>
+				<Icon name="phosphor:sliders-horizontal" />
+				<span>{editShortcut.label}</span>
+				<Kbd shortcut={editShortcut} />
 			</button>
 		{/if}
 		{#if ownFold}
@@ -146,6 +149,7 @@
 			>
 				<Icon name={foldIcon(ownFold.closed)} />
 				<span>{label}</span>
+				<Kbd shortcut={toggle} />
 			</button>
 		{/if}
 		{#if dissolve}
@@ -171,6 +175,7 @@
 			>
 				<Icon name="phosphor:git-merge" />
 				<span>{junctionShortcut.label}</span>
+				<Kbd shortcut={junctionShortcut} />
 			</button>
 		{/if}
 		{#if onDelete}
@@ -187,6 +192,7 @@
 			>
 				<Icon name="phosphor:trash" />
 				<span>{m.common_delete()}</span>
+				<Kbd shortcut={deleteShortcut} />
 			</button>
 		{/if}
 	</FloatingActions>
