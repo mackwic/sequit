@@ -34,6 +34,12 @@
 	function contain(event: Event): void {
 		event.stopPropagation();
 	}
+	/** As on any box, the header opens the properties: the typed text is kept first. */
+	function doubleClick(event: MouseEvent): void {
+		event.stopPropagation();
+		if (event.target instanceof Element && event.target.closest('[data-node-header]') !== null)
+			own.edit();
+	}
 	function reveal(): void {
 		const viewport = scope?.closest('[data-canvas-viewport]');
 		if (!viewport || !card) return;
@@ -83,7 +89,7 @@
 	bind:this={scope}
 	onpointerdown={contain}
 	onclick={contain}
-	ondblclick={contain}
+	ondblclick={doubleClick}
 >
 	<LogicNode {node} label={own.label} bind:element={card}>
 		{#snippet body()}<span class="draft-editor" bind:this={host}></span>{/snippet}

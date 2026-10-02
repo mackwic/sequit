@@ -17,7 +17,7 @@
 	} = $props();
 </script>
 
-<span class="node-header"><Icon name={icon} size={15} /><span>{label}</span></span>
+<span class="node-header" data-node-header><Icon name={icon} size={15} /><span>{label}</span></span>
 <span class="node-body"
 	>{#if body}{@render body()}{:else}<NodeBody {markdown} />{/if}</span
 >

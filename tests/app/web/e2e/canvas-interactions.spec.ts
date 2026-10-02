@@ -843,6 +843,33 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toContainText('ALCOA+: All edits needs to be tracable');
 	});
 
+	test('a double-click on the header, where the nature is, opens the properties', async ({
+		page,
+	}) => {
+		const node = page.locator('[data-node-id="traceable-edits"]');
+		await node.scrollIntoViewIfNeeded();
+		await node.locator('[data-node-header]').dblclick();
+		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
+		await expect(dialog).toBeVisible();
+		await expect(page.locator('[data-node-draft]')).toHaveCount(0);
+		// The content reads like the box, shorter than the description beside it.
+		const [content, description] = await Promise.all(
+			['markdown', 'description'].map((field) =>
+				dialog.locator(`[data-text-field="${field}"] .ql-editor`).boundingBox(),
+			),
+		);
+		expect(content?.height ?? Infinity).toBeLessThan(description?.height ?? 0);
+		await page.keyboard.press('Escape');
+		await expect(dialog).toHaveCount(0);
+
+		await node.dblclick();
+		const typed = page.locator('[data-node-draft="traceable-edits"]');
+		await expect(typed).toBeVisible();
+		await typed.locator('[data-node-header]').dblclick();
+		await expect(dialog).toBeVisible();
+		await expect(typed).toHaveCount(0);
+	});
+
 	test('types an existing box in place from a double-click, measured as typed', async ({
 		page,
 	}) => {

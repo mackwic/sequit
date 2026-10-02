@@ -85,12 +85,15 @@
 		if (event.code === 'Enter' && 'bounds' in node) edit(node);
 	}
 
+	/** On the header, where the nature is, a double-click opens the box's properties. */
 	function handleDoubleClick(event: MouseEvent) {
 		if (!session || !ref || !('bounds' in node)) return;
 		event.preventDefault();
 		event.stopPropagation();
 		session.selectEntity(ref);
-		edit(node);
+		if (event.target instanceof Element && event.target.closest('[data-node-header]') !== null)
+			session.beginNodeEdit(node);
+		else edit(node);
 	}
 </script>
 

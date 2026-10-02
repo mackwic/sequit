@@ -213,6 +213,13 @@
 		gap: 16px;
 		margin: 0;
 	}
+	/* The content says what the box says, in a few lines; the description has room to explain. */
+	.fields :global([data-text-field='markdown']) {
+		--text-field-height: 72px;
+	}
+	.fields :global([data-text-field='description']) {
+		--text-field-height: 120px;
+	}
 	.identity {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
