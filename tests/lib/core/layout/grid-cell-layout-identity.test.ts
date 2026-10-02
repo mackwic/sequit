@@ -66,12 +66,15 @@ describe('bounded grid LayoutResult identity', () => {
 				return [name, digest(result.layout)];
 			}),
 		);
-		// The first four keep main's layouts. In multiple crossings, row-routed across-grid takes the
+		// base, widened-group and expanded-tracks keep main's layouts. same-column now crosses the
+		// row gap straight from a-top's bottom face to c's top face (G-02). In multiple crossings, the
+		// gap route of second-crossing would cross third-crossing or across-grid without a bridge in
+		// every allocation tried, so the gutter allocation stays: row-routed across-grid takes the
 		// innermost left track and third-crossing, over the top bus, the outermost one and the bus
-		// track nearest the grid: main's tracks and length; only across-grid's row track differs.
+		// track nearest the grid.
 		expect(hashes).toEqual({
 			base: '56c8759cf1eb73dbe8f016cb610e37a4ff2e0f5ea1e437419789e7528ae473c4',
-			'same-column': '6f21fc83aee4537f1de1d6f421a3bce94b09a66ecf256af426792adec64d91b9',
+			'same-column': '6f882edf7465d0bf1552b0a04a220f24e9d634ab30d3755bace54408ccf49edb',
 			'multiple-crossings': 'c4a5f7d5dee356d5c21b785355a47f5099737a1a8385556813211d257e55ae2b',
 			'widened-group': 'e6f40b540c2a0b6d3e782039b2024263171a7023a1dd35ffbb41f3b42274b34d',
 			'expanded-tracks': '18d8b6c5333b15b1082fc3761ae01bb2830f11633f413af9521526cbb53afe48',

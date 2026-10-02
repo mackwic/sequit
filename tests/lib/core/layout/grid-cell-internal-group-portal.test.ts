@@ -22,6 +22,7 @@ import {
 	RegionCompositionStatus,
 	type RegionInput,
 	type RegionLayoutSelected,
+	RegionPortalSide,
 } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { solveRecursiveNestedRegionLayout } from '../../../../src/lib/core/layout/regions/recursive/nested-region-recursive-layout';
@@ -107,6 +108,7 @@ function deeplyGroupedDocument(
 }
 
 describe('direct group portals owned by an internal grid', () => {
+	// Cell b lies right above cell d: the crossing leaves b by its bottom and enters d by its top.
 	it.each([
 		{ from: 'cell-group', to: 'd', owners: ['b', 'grid', 'd'] },
 		{ from: 'd', to: 'cell-group', owners: ['d', 'grid', 'b'] },
@@ -129,22 +131,28 @@ describe('direct group portals owned by an internal grid', () => {
 		const route = defined(result.layout.relations.find(({ id }) => id === 'group-crossing'));
 		let port = defined(route.points[0]);
 		if (to === 'cell-group') port = defined(route.points.at(-1));
-		expect(port.x).toBe(group.bounds.x + group.bounds.width);
-		expect(port.y).toBeGreaterThan(group.bounds.y);
-		expect(port.y).toBeLessThan(group.bounds.y + group.bounds.height);
-		expect(member.bounds.x).toBeGreaterThan(group.bounds.x);
-		expect(member.bounds.x + member.bounds.width).toBeLessThan(group.bounds.x + group.bounds.width);
-		expect(group.bounds.x + group.bounds.width).toBeLessThan(cell.bounds.x + cell.bounds.width);
+		expect(port.y).toBe(group.bounds.y + group.bounds.height);
+		expect(port.x).toBeGreaterThan(group.bounds.x);
+		expect(port.x).toBeLessThan(group.bounds.x + group.bounds.width);
+		expect(member.bounds.y).toBeGreaterThan(group.bounds.y);
+		expect(member.bounds.y + member.bounds.height).toBeLessThan(
+			group.bounds.y + group.bounds.height,
+		);
+		expect(group.bounds.y + group.bounds.height).toBeLessThan(cell.bounds.y + cell.bounds.height);
 		expect(
 			result.ownedRoutes
 				.filter(({ relationId }) => relationId === 'group-crossing')
 				.map(({ regionId }) => regionId),
 		).toEqual(owners);
+		const sideByCell: Record<string, RegionPortalSide> = {
+			b: RegionPortalSide.Bottom,
+			d: RegionPortalSide.Top,
+		};
 		expect(
 			result.portals
 				.filter(({ relationId }) => relationId === 'group-crossing')
-				.map(({ regionId }) => regionId),
-		).toEqual(owners.filter((id) => id !== 'grid'));
+				.map(({ regionId, side }) => [regionId, side]),
+		).toEqual(owners.filter((id) => id !== 'grid').map((id) => [id, sideByCell[id]]));
 	});
 
 	it('reserves capacity for two group incidents and preserves cache = cold under edits and permutations', () => {
@@ -385,12 +393,12 @@ describe('direct group portals owned by an internal grid', () => {
 			const route = defined(result.layout.relations.find(({ id }) => id === 'group-crossing'));
 			let port = defined(route.points[0]);
 			if (to !== 'd') port = defined(route.points.at(-1));
-			expect(port.x).toBe(endpoint.bounds.x + endpoint.bounds.width);
-			expect(port.y).toBeGreaterThan(endpoint.bounds.y);
-			expect(port.y).toBeLessThan(endpoint.bounds.y + endpoint.bounds.height);
+			expect(port.y).toBe(endpoint.bounds.y + endpoint.bounds.height);
+			expect(port.x).toBeGreaterThan(endpoint.bounds.x);
+			expect(port.x).toBeLessThan(endpoint.bounds.x + endpoint.bounds.width);
 			// The endpoint's own face lies inside the outer group, so the route crosses that face.
-			expect(port.x).toBeLessThan(outer.bounds.x + outer.bounds.width);
-			expect(port.x).toBeGreaterThan(outer.bounds.x);
+			expect(port.y).toBeLessThan(outer.bounds.y + outer.bounds.height);
+			expect(port.y).toBeGreaterThan(outer.bounds.y);
 		},
 	);
 

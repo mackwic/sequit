@@ -109,20 +109,18 @@ test('the grid allocation workshop distinguishes exact counts from lower bounds'
 		await expect(phase).toHaveAttribute('data-truncated', 'false');
 	}
 
-	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
+	// Since G-02, a-b and c-f cross their neighbour gaps: the first row-gutter candidate is valid.
+	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Gouttières de rangée');
 	await expect(pruned.getByTestId('grid-allocation-dimensions')).toContainText(
 		'−96 px de largeur, −48 px de hauteur',
 	);
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('33 / 96');
-	await expect(pruned.getByTestId('grid-allocation-phase-extra-track')).toContainText('0 / ≥ 257');
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
-		'data-truncated',
-		'false',
-	);
-	for (const phaseId of ['extra-track', 'bridge'])
+	await expect(pruned.getByTestId('grid-allocation-phase-row-gutter')).toContainText('1 / 16');
+	for (const phaseId of ['reallocate', 'extra-track', 'bridge'])
 		await expect(pruned.getByTestId(`grid-allocation-phase-${phaseId}`)).toContainText(
 			'Non tentée',
 		);
+	await expect(pruned.getByTestId('grid-allocation-retained')).toContainText('Bus : a-c');
+	await expect(pruned.getByTestId('grid-allocation-track-a-b')).toContainText('interstice');
 
 	await expect(horizontal.getByTestId('grid-allocation-retained')).toContainText('Bus : a-b → a-c');
 	await expect(horizontal.getByTestId('grid-allocation-track-a-d')).toContainText('gouttière R1·0');
@@ -137,7 +135,15 @@ test('the grid allocation workshop distinguishes exact counts from lower bounds'
 			const track = card.getByTestId(`grid-allocation-track-${relationId}`);
 			const route = card.getByTestId(`grid-allocation-route-${relationId}`);
 			await expect(track).toBeVisible();
-			await expect(route).toBeVisible();
+			// A straight gap route (a-b, c-f) is a zero-height or zero-width polyline: Playwright
+			// reports it hidden, so its drawn extent is checked instead.
+			await expect(route).toBeAttached();
+			const extent = await route.evaluate((element) => {
+				if (!(element instanceof SVGGraphicsElement)) throw new Error('Expected an SVG route');
+				const box = element.getBBox();
+				return box.width + box.height;
+			});
+			expect(extent).toBeGreaterThan(0);
 			const legendColor = await track
 				.locator('.swatch')
 				.evaluate(

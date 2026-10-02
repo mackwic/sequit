@@ -9,6 +9,7 @@ import {
 } from '../../../lib/core/document/logic-document';
 import { orderKey } from '../../../lib/core/document/order-key';
 import { gridMargin } from '../../../lib/core/layout/grids/grid-cell-crossing';
+import { adjacentCellSide } from '../../../lib/core/layout/grids/grid-cell-crossing-face';
 import type { CrossingAllocationPhaseId } from '../../../lib/core/layout/grids/grid-cell-crossing-phases';
 import { gridCrossingResources } from '../../../lib/core/layout/grids/grid-cell-crossing-resources';
 import { solveGridCellLayout } from '../../../lib/core/layout/grids/grid-cell-layout';
@@ -16,6 +17,7 @@ import {
 	type GridCellAllocationSelected,
 	type GridCellInput,
 	GridCellLayoutStatus,
+	type GridCellPortal,
 } from '../../../lib/core/layout/grids/grid-cell-types';
 import type { LayoutMeasurements } from '../../../lib/core/layout/layout-types';
 import { requireDemoGraph, requireSelectedDemoResult } from './demo-result';
@@ -126,9 +128,9 @@ function threeByTwo(conflictsFirst: boolean): GridDefinition {
 	let description: string;
 	if (conflictsFirst) {
 		id = 'grid-allocation-3x2-conflicts-first';
-		title = 'Grille trois par deux · conflits d’abord';
+		title = 'Grille trois par deux · interstices et bus';
 		description =
-			'Les conflits guident les premiers essais avant le parcours complet : la réaffectation suffit sans pont. Nœuds d’atelier : 120 × 64 px ; témoin moteur : 220 × 116 px.';
+			'a-b et c-f relient des cellules voisines par l’interstice qui les sépare ; a-c saute une colonne et prend seul le bus. Le premier essai suffit, sans pont. Nœuds d’atelier : 120 × 64 px ; témoin moteur : 220 × 116 px.';
 		relations.push(
 			{ id: 'a-b', from: 'a', to: 'b' },
 			{ id: 'a-c', from: 'a', to: 'c' },
@@ -168,16 +170,41 @@ function threeByTwo(conflictsFirst: boolean): GridDefinition {
 	};
 }
 
+/** Crossings published on the faces of two neighbouring cells that look at each other. */
+function gapRelationIds(selected: GridCellAllocationSelected): ReadonlySet<string> {
+	const cellById = new Map(selected.cells.map((placed) => [placed.id, placed]));
+	const portalsByRelationId = new Map<string, GridCellPortal[]>();
+	for (const portal of selected.portals) {
+		const portals = portalsByRelationId.get(portal.relationId) ?? [];
+		portals.push(portal);
+		portalsByRelationId.set(portal.relationId, portals);
+	}
+	const ids = new Set<string>();
+	for (const [relationId, [source, target]] of portalsByRelationId) {
+		const from = defined(cellById.get(defined(source).cellId));
+		const to = defined(cellById.get(defined(target).cellId));
+		const facing =
+			defined(source).side === adjacentCellSide(from, to) &&
+			defined(target).side === adjacentCellSide(to, from);
+		if (facing) ids.add(relationId);
+	}
+	return ids;
+}
+
 function gridTracks(
 	definition: GridDefinition,
 	selected: GridCellAllocationSelected,
 	colorsByRelationId: ReadonlyMap<string, string>,
 ): readonly GridAllocationTrackView[] {
 	const relationById = new Map(definition.relations.map((relation) => [relation.id, relation]));
+	const gapIds = gapRelationIds(selected);
 	return [...selected.allocation.busTrackByRelationId]
 		.sort((left, right) => compareCanonicalStrings(left[0], right[0]))
 		.map(([relationId]) => {
 			const relation = defined(relationById.get(relationId));
+			const color = defined(colorsByRelationId.get(relationId));
+			if (gapIds.has(relationId))
+				return { relationId, color, routeTrackLabel: 'interstice', railLabel: 'aucun' };
 			let routeTrackLabel: string | undefined;
 			for (const [row, tracks] of (selected.allocation.rowTrackByRelationId ?? []).entries()) {
 				const track = tracks.get(relationId);
@@ -200,7 +227,7 @@ function gridTracks(
 				);
 			return {
 				relationId,
-				color: defined(colorsByRelationId.get(relationId)),
+				color,
 				routeTrackLabel,
 				railLabel: rails.join(' / '),
 			};
@@ -242,8 +269,9 @@ function solveDemo(definition: GridDefinition): GridAllocationDemo {
 	const horizontalIds = new Set(
 		(attempt.allocation.rowTrackByRelationId ?? []).flatMap((tracks) => [...tracks.keys()]),
 	);
+	const gapIds = gapRelationIds(attempt);
 	const busOrder = [...attempt.allocation.busTrackByRelationId]
-		.filter(([relationId]) => !horizontalIds.has(relationId))
+		.filter(([relationId]) => !horizontalIds.has(relationId) && !gapIds.has(relationId))
 		.sort((left, right) => left[1] - right[1])
 		.map(([relationId]) => relationId);
 	return {

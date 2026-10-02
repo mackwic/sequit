@@ -24,6 +24,7 @@ import { normalizeGridCellRegionModel } from '../../../../src/lib/core/layout/gr
 import { GridCellLayoutStatus } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import { RegionCompositionModelStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	gridDocument,
@@ -283,7 +284,7 @@ describe('horizontal grid row gutters', () => {
 		if (blockedBus.status === GridCellLayoutStatus.Unknown)
 			expect(blockedBus.code).toBe(RegionGeometryDiagnosticCode.GridRowGutterMissing);
 	});
-	it('does not charge the row gutter for a same-column relation', () => {
+	it('crosses the row gap straight for a same-column relation without charging the row gutter', () => {
 		const source = gridDocument();
 		const document = {
 			...source,
@@ -296,8 +297,18 @@ describe('horizontal grid row gutters', () => {
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, gridInput());
 		if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
 		expect(defined(result.allocation.rowTrackByRelationId)[0]?.has('across-grid')).toBe(false);
+		// Cell c lies right below cell a: the route leaves a-top by its bottom face, crosses the row
+		// gap inside column 0 and enters c by its top face, never reaching a rail outside the grid.
+		const column = defined(result.cells.find(({ id }) => id === 'a')).bounds;
+		const points = defined(result.layout.relations.find(({ id }) => id === 'across-grid')).points;
+		for (const { x } of points) {
+			expect(x).toBeGreaterThan(column.x);
+			expect(x).toBeLessThan(column.x + column.width);
+		}
 		expect(
-			defined(result.layout.relations.find(({ id }) => id === 'across-grid')).points,
-		).toHaveLength(6);
+			result.portals
+				.filter(({ relationId }) => relationId === 'across-grid')
+				.map(({ side }) => side),
+		).toEqual([RegionPortalSide.Bottom, RegionPortalSide.Top]);
 	});
 });

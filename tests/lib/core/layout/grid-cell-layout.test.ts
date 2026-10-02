@@ -472,14 +472,29 @@ describe('bounded two by two grid composition', () => {
 		},
 	);
 
+	// The group sits in cell b. a-bottom's cell a lies on its left, so the incoming crossing ports on
+	// the group face looking at it. d lies below, but the row gap there carries across-grid: going
+	// straight down would cross it without a bridge, so the outgoing one keeps its gutter face.
 	it.each([
-		{ id: 'group-outgoing', from: 'oversized', to: 'd', source: true },
-		{ id: 'group-incoming', from: 'a-bottom', to: 'oversized', source: false },
+		{
+			id: 'group-outgoing',
+			from: 'oversized',
+			to: 'd',
+			source: true,
+			side: RegionPortalSide.Right,
+		},
+		{
+			id: 'group-incoming',
+			from: 'a-bottom',
+			to: 'oversized',
+			source: false,
+			side: RegionPortalSide.Left,
+		},
 	])('attaches a direct cross-cell $id to the outside face of its indivisible group', (edge) => {
 		const document = gridDocument();
 		const prepared = prepareGrid({
 			...document,
-			relations: [...document.relations, edge],
+			relations: [...document.relations, { id: edge.id, from: edge.from, to: edge.to }],
 		});
 		const input = gridInput();
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
@@ -496,24 +511,26 @@ describe('bounded two by two grid composition', () => {
 			groupCell === undefined
 		)
 			throw new Error('Expected group, member, route and cell');
-		let port = route.points[0];
-		if (!edge.source) port = route.points.at(-1);
-		expect(port?.x).toBe(group.bounds.x + group.bounds.width);
-		expect(port?.y).toBeGreaterThan(group.bounds.y);
-		expect(port?.y).toBeLessThan(group.bounds.y + group.bounds.height);
+		let port = defined(route.points[0]);
+		if (!edge.source) port = defined(route.points.at(-1));
+		const { bounds } = group;
+		const cell = groupCell.bounds;
+		expect(port.y).toBeGreaterThan(bounds.y);
+		expect(port.y).toBeLessThan(bounds.y + bounds.height);
+		let portal = { x: cell.x + cell.width, y: port.y };
+		if (edge.side === RegionPortalSide.Right) expect(port.x).toBe(bounds.x + bounds.width);
+		else {
+			expect(port.x).toBe(bounds.x);
+			portal = { x: cell.x, y: port.y };
+		}
 		expect(result.portals.filter(({ relationId }) => relationId === edge.id)).toHaveLength(2);
 		expect(
 			result.portals.find(
 				({ relationId, endpointId }) => relationId === edge.id && endpointId === 'oversized',
 			),
-		).toMatchObject({
-			cellId: 'b',
-			regionId: 'b',
-			side: RegionPortalSide.Right,
-			point: { x: groupCell.bounds.x + groupCell.bounds.width, y: port?.y },
-		});
-		expect(member.bounds.x).toBeGreaterThan(group.bounds.x);
-		expect(member.bounds.x + member.bounds.width).toBeLessThan(group.bounds.x + group.bounds.width);
+		).toMatchObject({ cellId: 'b', regionId: 'b', side: edge.side, point: portal });
+		expect(member.bounds.x).toBeGreaterThan(bounds.x);
+		expect(member.bounds.x + member.bounds.width).toBeLessThan(bounds.x + bounds.width);
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
 	});
 
@@ -730,21 +747,36 @@ describe('bounded two by two grid composition', () => {
 describe('crossing ends inside their own cell', () => {
 	const rightToLeft = { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right };
 
-	it('renders M5-03 right to left by moving the crossing port off its local family', async () => {
-		const document = persistedCellGrid(
-			2,
-			[['c'], ['e'], ['f'], ['g', 'h', 'i'], ['j', 'k', 'l'], ['m', 'n']],
-			[
-				['h', 'g'],
-				['i', 'g'],
-				['k', 'j'],
-				['l', 'j'],
-				['j', 'f'],
-			],
-			rightToLeft,
-		);
+	const m503Cells = [['c'], ['e'], ['f'], ['g', 'h', 'i'], ['j', 'k', 'l'], ['m', 'n']];
+	const m503Locals: readonly (readonly [string, string])[] = [
+		['h', 'g'],
+		['i', 'g'],
+		['k', 'j'],
+		['l', 'j'],
+	];
+
+	it('renders M5-03 right to left through the row gap above j', async () => {
+		const document = persistedCellGrid(2, m503Cells, [...m503Locals, ['j', 'f']], rightToLeft);
 		const { layout } = await layoutDocument(document);
 		expect([layout.width, layout.height]).toEqual([1600, 1528]);
+		const routes = new Map(layout.relations.map((route) => [route.id, route]));
+		const face = defined(layout.elements.find(({ id }) => id === 'j')).bounds;
+		const target = defined(layout.elements.find(({ id }) => id === 'f')).bounds;
+		const points = defined(routes.get('r4')).points;
+		// f's cell lies right above j's: r4 leaves j by its top and enters f by its bottom.
+		expect(defined(points[0]).y).toBe(face.y);
+		expect(defined(points.at(-1)).y).toBe(target.y + target.height);
+		expect(points.every(({ x, y }) => y >= target.y + target.height && y <= face.y && x > 0)).toBe(
+			true,
+		);
+		for (const local of ['r2', 'r3'])
+			expect(defined(routes.get(local)).points.at(-1)).not.toEqual(points[0]);
+	});
+
+	it('moves a gutter crossing port off the arrivals of its local family', async () => {
+		// c is two rows above j in the same column: r4 keeps the column gutter and j's left face.
+		const document = persistedCellGrid(2, m503Cells, [...m503Locals, ['j', 'c']], rightToLeft);
+		const { layout } = await layoutDocument(document);
 		const routes = new Map(layout.relations.map((route) => [route.id, route]));
 		const face = defined(layout.elements.find(({ id }) => id === 'j')).bounds;
 		const port = defined(defined(routes.get('r4')).points[0]);
@@ -758,12 +790,13 @@ describe('crossing ends inside their own cell', () => {
 	});
 
 	it('lets a crossing target share the arrival point of its local family on a hidden endpoint', async () => {
+		// g is diagonal to a: the crossing reaches a by its column's gutter face, behind b.
 		const document = persistedCellGrid(
 			2,
 			[['a', 'b'], ['c', 'd'], ['e', 'f'], ['g']],
 			[
 				['b', 'a'],
-				['d', 'a'],
+				['g', 'a'],
 				['e', 'c'],
 			],
 			rightToLeft,
