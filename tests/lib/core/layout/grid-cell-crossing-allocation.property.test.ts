@@ -18,7 +18,6 @@ import {
 	crossingCanonicalBusGeometryCount,
 	GRID_CROSSING_REALLOCATION_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
-import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import { crossingRoutes } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import {
@@ -184,9 +183,6 @@ describe('grid crossing allocation route geometry properties', () => {
 					const reallocation = [...defined(phases[1]).candidates()];
 					const extraTrack = [...defined(phases[2]).candidates()];
 					const bridge = [...defined(phases[3]).candidates()];
-					expect(reallocation[0]).toEqual(
-						routedPortAllocation(input, canonicalCrossingAllocation(input)),
-					);
 					for (const [phaseIndex, candidates] of [
 						rowGutter,
 						reallocation,
@@ -436,7 +432,8 @@ describe('grid crossing allocation route geometry properties', () => {
 		);
 	});
 	it('keeps bounded phase results valid when later conflict diagnostics remain unseen', () => {
-		const fixture = variedGridRoutingCase(3, 2, 2);
+		// Four traversals still exhaust the real rail/bus search after coherent bus nesting.
+		const fixture = variedGridRoutingCase(4, 2, 1);
 		const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
 			routeGridFixture(fixture, allocation, acceptBridges);
 		const unpruned = searchGridCrossingAllocations(

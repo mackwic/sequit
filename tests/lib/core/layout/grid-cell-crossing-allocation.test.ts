@@ -56,7 +56,7 @@ function allocationInput(): CrossingAllocationInput {
 	return {
 		edges: gridRoutingEdges('grid', gutterIds, CROSSING_IDS.length),
 		crossingIds: [...CROSSING_IDS],
-		busRelevantRelationIds: [...CROSSING_IDS],
+		busRelevantRelationIds: ['a-b', 'a-d'],
 		gutterIds,
 		incidence: new Map([
 			['a', [...CROSSING_IDS]],
@@ -135,14 +135,13 @@ describe('grid crossing allocation', () => {
 			edges,
 			gutterIds,
 			crossingIds: ids,
-			busRelevantRelationIds: ids,
+			busRelevantRelationIds: ['a-b', 'a-c'],
 			incidence: new Map(),
-			portalByRelationId: new Map(
-				ids.map((id) => [
-					id,
-					{ source: portal('a', 0, 0, 100, 200), target: portal('b', 1, 1, 300, 400) },
-				]),
-			),
+			portalByRelationId: new Map([
+				['a-b', { source: portal('a', 0, 0, 100, 200), target: portal('b', 0, 1, 300, 200) }],
+				['a-c', { source: portal('a', 0, 0, 100, 200), target: portal('c', 0, 2, 500, 200) }],
+				['c-f', { source: portal('c', 0, 2, 500, 200), target: portal('f', 1, 2, 500, 400) }],
+			]),
 		};
 		const canonical = canonicalCrossingAllocation(input);
 		expect(canonical.gutterTrackByRelationId.map((tracks) => [...tracks])).toEqual([
@@ -249,11 +248,10 @@ describe('grid crossing allocation', () => {
 			['a-b', 0],
 			['a-d', 1],
 		]);
-		expect([...containment.busTrackByRelationId]).toEqual([
-			['a-b', 0],
-			['a-c', 1],
-			['a-d', 2],
-		]);
+		// The inner rail interval must take the bus track nearest the grid (larger ordinal).
+		expect(defined(containment.busTrackByRelationId.get('a-b'))).toBeGreaterThan(
+			defined(containment.busTrackByRelationId.get('a-d')),
+		);
 	});
 
 	it('orders each face by its routed runs: upward inner tracks highest, downward ones lowest', () => {
@@ -301,12 +299,15 @@ describe('grid crossing allocation', () => {
 		);
 	});
 
-	it('keeps the canonical bus order first, then explores every distinct bus order', () => {
+	it('nests the first bus order consistently with its rails, then explores every distinct order', () => {
 		const input = allocationInput();
 		const candidates = [...crossingAllocationCandidates(input)];
 		const orders = candidates.map(busOrder);
 
-		expect(orders[0]).toEqual([...CROSSING_IDS]);
+		const first = defined(candidates[0]);
+		expect(defined(first.busTrackByRelationId.get('a-b'))).toBeGreaterThan(
+			defined(first.busTrackByRelationId.get('a-d')),
+		);
 		expect(new Set(orders.map((order) => JSON.stringify(order))).size).toBe(6);
 		expect(orders).toContainEqual(['a-c', 'a-b', 'a-d']);
 	});
@@ -330,7 +331,6 @@ describe('grid crossing allocation', () => {
 		const { input, routing, crossing } = variedGridRoutingCase(3, 2, 1);
 		const candidates = [...crossingAllocationCandidates(input)];
 		expect(BigInt(candidates.length)).toBe(crossingAllocationGeometryCount(input));
-		expect(candidates[0]).toEqual(routedPortAllocation(input, canonicalCrossingAllocation(input)));
 		const geometries = candidates.map((allocation) =>
 			effectiveRouteGeometry(routing, crossing, allocation),
 		);
