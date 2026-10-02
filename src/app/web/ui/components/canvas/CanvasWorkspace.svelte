@@ -75,10 +75,15 @@
 	let {
 		source,
 		onopened,
+		onexport,
+		onexportimage,
 	}: {
 		source: string;
 		/** Receives the opened document, or `undefined` while the source is invalid. */
 		onopened?: ((document: OpenedDocument | undefined) => void) | undefined;
+		/** The page's exports, also offered by the background menu of the canvas. */
+		onexport?: (() => void) | undefined;
+		onexportimage?: (() => void) | undefined;
 	} = $props();
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	let opened = $derived(openDocument(source));
@@ -120,6 +125,11 @@
 		return () => {
 			void groupSelection();
 		};
+	});
+	/** « Gérer les natures du document » is offered while the canvas takes commands. */
+	let manageNaturesAction = $derived.by((): (() => void) | undefined => {
+		if (!interactive) return undefined;
+		return openNatures;
 	});
 	function outcomeError(outcome: DocumentCommandOutcome): string | undefined {
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return undefined;
@@ -469,6 +479,9 @@
 				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}
+				onManageNatures={manageNaturesAction}
+				onExport={onexport}
+				onExportImage={onexportimage}
 				report={layoutReport}
 			/>
 		</CanvasGestures>

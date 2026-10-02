@@ -20,6 +20,7 @@ export enum CanvasShortcutId {
 	Delete = 'delete',
 	Undo = 'undo',
 	Redo = 'redo',
+	SelectAll = 'select-all',
 	Confirm = 'confirm',
 	DraftChild = 'draft-child',
 	DraftEdit = 'draft-edit',
@@ -156,6 +157,13 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 		label: m.canvas_shortcut_redo,
 		keys: ['z'],
 		chord: { primary: true, shift: true },
+	}),
+	[CanvasShortcutId.SelectAll]: localized({
+		id: CanvasShortcutId.SelectAll,
+		section: CanvasShortcutSection.Canvas,
+		label: m.canvas_shortcut_select_all,
+		keys: ['a'],
+		chord: { primary: true },
 	}),
 	[CanvasShortcutId.Confirm]: localized({
 		id: CanvasShortcutId.Confirm,

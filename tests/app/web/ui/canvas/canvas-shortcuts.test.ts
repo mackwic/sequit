@@ -141,6 +141,7 @@ it.each([
 	[CanvasShortcutId.Delete, 'Suppr', '⌫', 'Delete Backspace'],
 	[CanvasShortcutId.Undo, 'Ctrl+Z', '⌘Z', 'Control+z Meta+z'],
 	[CanvasShortcutId.Redo, 'Ctrl+Maj+Z', '⇧⌘Z', 'Control+Shift+z Meta+Shift+z'],
+	[CanvasShortcutId.SelectAll, 'Ctrl+A', '⌘A', 'Control+a Meta+a'],
 	[CanvasShortcutId.Confirm, 'Ctrl+Entrée', '⌘↵', 'Control+Enter Meta+Enter'],
 	[CanvasShortcutId.Help, '?', '?', '?'],
 	[CanvasShortcutId.Navigate, 'Flèches', 'Flèches', 'ArrowUp ArrowDown ArrowLeft ArrowRight'],

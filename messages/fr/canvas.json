@@ -12,6 +12,8 @@
 	"canvas_shortcut_draft_edit": "Valider et ouvrir les propriétés",
 	"canvas_shortcut_undo": "Annuler",
 	"canvas_shortcut_redo": "Rétablir",
+	"canvas_shortcut_select_all": "Tout sélectionner",
+	"canvas_context_menu": "Menu du canvas",
 	"canvas_shortcut_confirm": "Valider",
 	"canvas_shortcut_navigate": "Aller à l’élément voisin",
 	"canvas_shortcut_select": "Sélectionner / étendre",

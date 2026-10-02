@@ -252,6 +252,8 @@
 					connected={session.connected}
 					textEditable={session.textEditable}
 					panel={false}
+					onexport={exportAction}
+					onexportimage={exportImageAction}
 				/>
 			{:else}
 				<p class="m-8 text-sm text-[var(--ui-muted)]">{statusLabel}</p>

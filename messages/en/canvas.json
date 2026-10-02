@@ -12,6 +12,8 @@
 	"canvas_shortcut_draft_edit": "Confirm and open properties",
 	"canvas_shortcut_undo": "Undo",
 	"canvas_shortcut_redo": "Redo",
+	"canvas_shortcut_select_all": "Select all",
+	"canvas_context_menu": "Canvas menu",
 	"canvas_shortcut_confirm": "Confirm",
 	"canvas_shortcut_navigate": "Go to the neighboring element",
 	"canvas_shortcut_select": "Select / extend",

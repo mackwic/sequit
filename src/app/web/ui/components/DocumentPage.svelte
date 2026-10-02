@@ -260,7 +260,12 @@
 	</AppHeader>
 
 	{#key generation}
-		<CanvasWorkspace {source} onopened={workspaceOpened} />
+		<CanvasWorkspace
+			{source}
+			onopened={workspaceOpened}
+			onexport={exportAction}
+			onexportimage={exportImageAction}
+		/>
 	{/key}
 	{#if dialog === 'new'}
 		<NewDocumentDialog

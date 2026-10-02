@@ -348,6 +348,80 @@ test.describe('accessible canvas selection', () => {
 		await expect(group).toHaveAttribute('aria-pressed', 'false');
 	});
 
+	test('a right-click selects its element, or opens the canvas menu on the background', async ({
+		page,
+	}) => {
+		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
+		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
+		const group = page.locator('[data-group-id="data-team"]');
+		const menu = page.getByRole('menu', { name: 'Menu du canvas' });
+
+		// An element is selected and focused; its bar shows, the browser's menu does not.
+		await node.click({ button: 'right' });
+		await expect(node).toHaveAttribute('aria-pressed', 'true');
+		await expect(node).toBeFocused();
+		await expect(page.getByRole('group', { name: 'Actions du nœud' })).toBeVisible();
+		await expect(menu).toHaveCount(0);
+
+		// An element already in the selection keeps the whole selection.
+		await group.click({ modifiers: ['Shift'], position: { x: 8, y: 8 }, force: true });
+		await node.click({ button: 'right' });
+		await expect(node).toHaveAttribute('aria-pressed', 'true');
+		await expect(group).toHaveAttribute('aria-pressed', 'true');
+
+		// The background opens the menu at the pointer and leaves the selection alone.
+		const blank = await blankCanvasPoint(page);
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await expect(menu).toBeVisible();
+		await expect(menu.getByRole('menuitem')).toHaveText([
+			/^Tout sélectionner/,
+			'Gérer les natures du document',
+			'Exporter…',
+			'Exporter l’image…',
+			'Zoom avant',
+			'Zoom arrière',
+		]);
+		const corner = await menu.boundingBox();
+		expect(Math.abs((corner?.x ?? 0) - blank.x)).toBeLessThan(16);
+		await expect(menu.getByRole('menuitem', { name: 'Tout sélectionner' })).toBeFocused();
+		await expect(group).toHaveAttribute('aria-pressed', 'true');
+
+		// Escape closes the menu only, and gives the canvas its focus back.
+		await page.keyboard.press('Escape');
+		await expect(menu).toHaveCount(0);
+		await expect(viewport).toBeFocused();
+		await expect(group).toHaveAttribute('aria-pressed', 'true');
+
+		// « Tout sélectionner » takes every node and junction, as an envelope would.
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await menu.getByRole('menuitem', { name: 'Tout sélectionner' }).click();
+		await expect(menu).toHaveCount(0);
+		await expect(page.locator('[data-node-id][aria-pressed="true"]')).toHaveCount(24);
+		await expect(page.locator('[data-junction-id][aria-pressed="false"]')).toHaveCount(0);
+		await expect(group).toHaveAttribute('aria-pressed', 'false');
+		await expect(viewport).toBeFocused();
+
+		// Its key does the same from the canvas.
+		await page.keyboard.press('Escape');
+		await expect(page.locator('[data-node-id][aria-pressed="true"]')).toHaveCount(0);
+		await page.keyboard.press('ControlOrMeta+a');
+		await expect(page.locator('[data-node-id][aria-pressed="true"]')).toHaveCount(24);
+
+		// View settings: zooming in offers the way back to 100 %.
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await menu.getByRole('menuitem', { name: 'Zoom avant' }).click();
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await menu.getByRole('menuitem', { name: 'Revenir à 100 %' }).click();
+		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('100%');
+
+		// Document actions open as from their own menus; zooming moved what lies under the pointer.
+		const background = await blankCanvasPoint(page);
+		await page.mouse.click(background.x, background.y, { button: 'right' });
+		await menu.getByRole('menuitem', { name: 'Gérer les natures du document' }).click();
+		await expect(page.locator('[data-nature-manager]')).toBeVisible();
+	});
+
 	test('toggles a relation with Shift, like every other entity kind', async ({ page }) => {
 		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
 		const relationSelector = '[data-relation-id="data-team-to-ai-content-generation"]';

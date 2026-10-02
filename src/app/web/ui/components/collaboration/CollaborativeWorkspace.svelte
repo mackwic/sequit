@@ -106,6 +106,8 @@
 		textEditable,
 		awareness,
 		panel = true,
+		onexport,
+		onexportimage,
 	}: {
 		client: CollaborativeDocumentSession;
 		model: LogicDocument;
@@ -116,6 +118,9 @@
 		awareness: CollaborationAwareness;
 		/** The shared-fields panel beside the canvas; the product shows the canvas alone. */
 		panel?: boolean;
+		/** The page's exports, also offered by the background menu of the canvas. */
+		onexport?: (() => void) | undefined;
+		onexportimage?: (() => void) | undefined;
 	} = $props();
 	const canvas = new CanvasSession(createNodeEditPort(untrack(() => client)));
 	setCollaborationAwareness(untrack(() => awareness));
@@ -172,6 +177,11 @@
 			!lanesDialog &&
 			canvas.editing === undefined,
 	);
+	/** « Gérer les natures du document » is offered while the room takes commands. */
+	let manageNaturesAction = $derived.by((): (() => void) | undefined => {
+		if (!interactive) return undefined;
+		return openNatures;
+	});
 	onMount(() => {
 		const stop = client.subscribeToSourceState((state) => {
 			sourceState = state;
@@ -489,6 +499,9 @@
 				}}
 				onGroup={groupAction}
 				onDelete={deleteSelection}
+				onManageNatures={manageNaturesAction}
+				onExport={onexport}
+				onExportImage={onexportimage}
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}
 				onGroupDissolve={dissolveGroup}

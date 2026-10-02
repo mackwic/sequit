@@ -13,9 +13,16 @@
 	import type { LayoutMeasurements } from '../../../projection/layout-graph';
 	import { type RegionPreview, RegionPreviewKind } from '../../../projection/partial-region-layout';
 	import { SourceDocumentProjectionError } from '../../../projection/source-document-diagnostic';
-	import { createCanvasEntityIndex, type EntityRef } from '../../canvas/canvas-entity';
+	import {
+		createCanvasEntityIndex,
+		EntityKind,
+		type EntityRef,
+		entityRef,
+		entityRefFromKey,
+	} from '../../canvas/canvas-entity';
 	import { focusCanvasEntity } from '../../canvas/canvas-entity-dom';
 	import {
+		isEditableTarget,
 		isNativeControlTarget,
 		isUnmodifiedKeyboardEvent,
 	} from '../../canvas/canvas-event-guard';
@@ -24,6 +31,7 @@
 		CanvasModel,
 		RenderedCanvasNode,
 	} from '../../canvas/canvas-model';
+	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import {
 		anchorPreservingScroll,
 		type CanvasPoint,
@@ -37,8 +45,10 @@
 	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
+	import CanvasContextMenu from './CanvasContextMenu.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
+	import CanvasShortcut from './CanvasShortcut.svelte';
 	import type { NodeDraftControls } from './node-typing.svelte';
 	import RegionPartialPreview from './RegionPartialPreview.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
@@ -62,6 +72,9 @@
 		onJunctionEdit,
 		onRelationSplit,
 		onCreateChild,
+		onManageNatures,
+		onExport,
+		onExportImage,
 		report,
 	}: {
 		document: CanvasProjection;
@@ -84,6 +97,10 @@
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
 		onRelationSplit?: ((relationId: string) => void) | undefined;
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
+		/** Offered by the background menu, each only when given. */
+		onManageNatures?: (() => void) | undefined;
+		onExport?: (() => void) | undefined;
+		onExportImage?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 		/** While set, the layout report dialog is open over this canvas. */
@@ -116,6 +133,8 @@
 	let panning = $state(false);
 	let panMoved = false;
 	let suppressBackgroundActivation = false;
+	/** Where the background menu was asked for, while it is open. */
+	let menuPoint = $state<CanvasPoint>();
 	let previousMeasurementSignature = '';
 	let projectionRevision = $state(0);
 	let acceptedRevision = $state(0);
@@ -335,6 +354,46 @@
 		if (isCanvasBackground(event.target)) session.clearSelection();
 	}
 
+	/** Every node and junction drawn, as an envelope over the whole canvas would take them. */
+	function selectAll() {
+		if (!canvas) return;
+		session.clearSelection();
+		for (const { id } of canvas.nodes) session.addEntity(entityRef(EntityKind.Node, id));
+		for (const { id } of canvas.junctions) session.addEntity(entityRef(EntityKind.Junction, id));
+	}
+
+	/** The pointer, or the corner of the canvas when the menu key asked from elsewhere. */
+	function menuPointOf(event: MouseEvent, area: HTMLElement): CanvasPoint {
+		const bounds = area.getBoundingClientRect();
+		const inside =
+			event.clientX >= bounds.left &&
+			event.clientX <= bounds.right &&
+			event.clientY >= bounds.top &&
+			event.clientY <= bounds.bottom;
+		if (inside) return { x: event.clientX, y: event.clientY };
+		return { x: bounds.left + 16, y: bounds.top + 16 };
+	}
+
+	/**
+	 * A right-click selects the element under it, unless it is already selected, so that its bar
+	 * shows; on the background it opens the canvas menu. Text fields keep the browser's menu.
+	 */
+	function handleContextMenu(event: MouseEvent) {
+		if (isEditableTarget(event.target)) return;
+		event.preventDefault();
+		if (session.editing || !(event.target instanceof Element) || !viewport) return;
+		const element = event.target.closest<HTMLElement | SVGElement>('[data-canvas-entity-key]');
+		const key = element?.getAttribute('data-canvas-entity-key') ?? '';
+		if (element && key !== '') {
+			const ref = entityRefFromKey(key);
+			if (!session.isSelected(ref)) session.selectEntity(ref);
+			element.focus({ preventScroll: true });
+			return;
+		}
+		if (isNativeControlTarget(event.target) || !canvas) return;
+		menuPoint = menuPointOf(event, viewport);
+	}
+
 	$effect(() => {
 		const target = session.focusRestorationTarget;
 		const currentViewport = viewport;
@@ -415,6 +474,12 @@
 </script>
 
 <svelte:window onkeydown={handleKeyDown} onkeyup={handleKeyUp} onblur={finishPanning} />
+<CanvasShortcut
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.SelectAll]}
+	scopes={[viewport]}
+	enabled={canvas !== undefined && session.editing === undefined}
+	onactivate={selectAll}
+/>
 
 <div class="contents" bind:this={scope}>
 	{#if measurementModel}
@@ -439,6 +504,7 @@
 		onpointerup={finishPanning}
 		onpointercancel={finishPanning}
 		onclick={handleBackgroundClick}
+		oncontextmenu={handleContextMenu}
 	>
 		{#if display.kind === 'ready'}
 			<RenderedCanvas
@@ -604,6 +670,20 @@
 			{onRelationSplit}
 			{onCreateChild}
 			{onDelete}
+		/>
+	{/if}
+	{#if viewport}
+		<CanvasContextMenu
+			point={canvas && menuPoint}
+			{viewport}
+			{session}
+			onselectall={selectAll}
+			{onManageNatures}
+			{onExport}
+			{onExportImage}
+			onclose={() => {
+				menuPoint = undefined;
+			}}
 		/>
 	{/if}
 	{#if report}
