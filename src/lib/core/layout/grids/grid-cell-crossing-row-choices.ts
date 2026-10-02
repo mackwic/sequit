@@ -68,18 +68,29 @@ function rowRoutedInnermost(
 	};
 }
 
-/** Each allocation with coherent bus/rail nesting and routed ports first, then as declared. */
-function* uniqueCandidates(
+/** Coherent bus/rail nesting and routed ports first, then the distinct declared allocations. */
+function* busAndPortChoices(
 	candidates: readonly GridCrossingAllocation[],
 	context: RowChoiceContext,
 ): Generator<GridCrossingAllocation> {
 	const nested = candidates.map((candidate) =>
 		railNestedBusAllocation(context.input, candidate, context.active),
 	);
-	const routed = [...nested, ...candidates].map((candidate) =>
-		routedPortAllocation(context.input, candidate, context.active),
-	);
-	for (const candidate of [...routed, ...nested, ...candidates]) {
+	for (const candidate of nested)
+		yield routedPortAllocation(context.input, candidate, context.active);
+	for (const [index, candidate] of candidates.entries())
+		if (nested[index] !== candidate)
+			yield routedPortAllocation(context.input, candidate, context.active);
+	yield* nested;
+	for (const [index, candidate] of candidates.entries())
+		if (nested[index] !== candidate) yield candidate;
+}
+
+function* uniqueCandidates(
+	candidates: readonly GridCrossingAllocation[],
+	context: RowChoiceContext,
+): Generator<GridCrossingAllocation> {
+	for (const candidate of busAndPortChoices(candidates, context)) {
 		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
 		if (context.seen.has(key)) continue;
 		context.seen.add(key);

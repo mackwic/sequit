@@ -9,10 +9,10 @@ import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { persistedCellGrid } from './grid-cell-fixture';
 
 const FLOWS = [
-	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
-	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
-	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top, multiNodeCrossings: 0 },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom, multiNodeCrossings: 1 },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left, multiNodeCrossings: 1 },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right, multiNodeCrossings: 0 },
 ] as const;
 
 function busWitness(
@@ -69,7 +69,10 @@ describe('coherent grid bus and rail nesting', () => {
 				],
 				flow,
 			);
-			expect(routeBridgeAnalysis(result.layout.relations).crossings.length).toBeLessThanOrEqual(1);
+			// Preserve zero in TB/RTL; equality at zero in BT/LTR requires the direct passages of G-02.
+			expect(routeBridgeAnalysis(result.layout.relations).crossings).toHaveLength(
+				flow.multiNodeCrossings,
+			);
 		},
 	);
 });

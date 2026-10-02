@@ -92,9 +92,10 @@ export function railNestedBusAllocation(
 	allocation: GridCrossingAllocation,
 	active?: ReadonlySet<string>,
 ): GridCrossingAllocation {
-	const rowRouted = new Set(
-		allocation.rowTrackByRelationId?.flatMap((tracks) => [...tracks.keys()]),
-	);
+	const rowRouted = new Set<string>();
+	if (allocation.rowTrackByRelationId !== undefined)
+		for (const tracks of allocation.rowTrackByRelationId)
+			for (const id of tracks.keys()) rowRouted.add(id);
 	const ids = input.busRelevantRelationIds.filter((id) => {
 		if (rowRouted.has(id)) return false;
 		return active === undefined || active.has(id);
