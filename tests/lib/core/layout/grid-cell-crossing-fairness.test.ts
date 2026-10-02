@@ -19,7 +19,8 @@ import { crossingAllocationPhases } from '../../../../src/lib/core/layout/grids/
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
-	crossingRoute,
+	crossingRoutes,
+	gridCrossingRouting,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-search';
 import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
@@ -72,7 +73,7 @@ function chargedGrid(pairs: readonly (readonly [number, number])[]) {
 	if (placed.status !== GridCellLayoutStatus.Selected) throw new Error(placed.reason);
 	const resources = gridCrossingResources(input, crossing);
 	const incidence = crossingIncidence(crossing);
-	const routing = {
+	const routing = gridCrossingRouting({
 		rootId: input.rootId,
 		crossing,
 		columnCount: 4,
@@ -80,7 +81,8 @@ function chargedGrid(pairs: readonly (readonly [number, number])[]) {
 		cellByEndpointId: input.cellByEndpointId,
 		edges: resources.edges,
 		incidence,
-	};
+		nestedEndpointIds: new Set<string>(),
+	});
 	const base = {
 		edges: resources.edges,
 		crossingIds: crossing.map(({ id }) => id),
@@ -120,7 +122,9 @@ function obstacleProbe(
 	obstacles: readonly Bounds[],
 ) {
 	return (allocation: GridCrossingAllocation) => {
-		const route = crossingRoute(routing, allocation, relation).route;
+		const route = defined(
+			crossingRoutes(routing, allocation).find((routed) => routed.route.id === relation.id),
+		).route;
 		if (obstacles.some((bounds) => hits(route, bounds)))
 			return {
 				candidate: allocation,

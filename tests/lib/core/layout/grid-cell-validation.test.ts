@@ -7,6 +7,10 @@ import {
 	entersInterior,
 	within,
 } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import {
+	gridIncidentPieceFailure,
+	incidentPieceEnds,
+} from '../../../../src/lib/core/layout/grids/grid-cell-incident-route';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import { validateCrossPorts } from '../../../../src/lib/core/layout/grids/grid-cell-port-validation';
 import {
@@ -711,5 +715,99 @@ describe('independent grid geometry validation', () => {
 				cell.bounds,
 			),
 		).toBe(true);
+	});
+});
+
+/** The across-grid route with its source port, portal and rail start moved together by `dy`. */
+function shiftedSource(selected: GridCellSelected, dy: number): GridCellSelected {
+	const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
+	const port = defined(route.points[0]);
+	const moved = (point: { readonly x: number; readonly y: number }) => {
+		if (point.y !== port.y) return point;
+		return { ...point, y: point.y + dy };
+	};
+	return {
+		...selected,
+		layout: {
+			...selected.layout,
+			relations: selected.layout.relations.map((relation) => {
+				if (relation.id !== 'across-grid') return relation;
+				return { ...relation, points: relation.points.map(moved) };
+			}),
+		},
+		portals: selected.portals.map((portal) => {
+			if (portal.relationId !== 'across-grid' || portal.endpointId !== 'a-bottom') return portal;
+			const localPoint = { ...portal.localPoint, y: portal.localPoint.y + dy };
+			return { ...portal, point: moved(portal.point), localPoint };
+		}),
+	};
+}
+
+describe('grid crossing ports and in-cell pieces', () => {
+	it('accepts a whole-track port shift inside the face and refuses half a track or a corner port', () => {
+		const { selected, prepared } = fixture();
+		const face = elementFor(selected, 'a-bottom').bounds;
+		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
+		expect(defined(route.points[0]).y).toBe(face.y + face.height / 2);
+		const whole = shiftedSource(selected, -24);
+		expect(validateGridCellGeometry(whole, prepared.graph, gridInput())).toBeUndefined();
+		for (const dy of [-12, -48])
+			expect(
+				validateGridCellGeometryDiagnostic(
+					shiftedSource(selected, dy),
+					prepared.graph,
+					gridInput(),
+				),
+			).toMatchObject({ code: RegionGeometryDiagnosticCode.GridCrossingPort });
+	});
+
+	it('refuses a cell piece that overlaps a local route of its cell', () => {
+		const { selected, prepared } = fixture();
+		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
+		const port = defined(route.points[0]);
+		const portal = defined(route.points[1]);
+		const cell = cellFor(selected, 'a');
+		const local = (x: number) => ({ x: x - cell.translation.x, y: port.y - cell.translation.y });
+		const along: LayoutRelation = {
+			id: 'along-the-piece',
+			from: 'a-top',
+			to: 'a-top',
+			points: [local((port.x + portal.x) / 2), local(portal.x)],
+		};
+		const forged = withCell(selected, 'a', (current) => ({
+			...current,
+			localLayout: {
+				...current.localLayout,
+				relations: [...current.localLayout.relations, along],
+			},
+		}));
+		expect(validateGridCellGeometryDiagnostic(forged, prepared.graph, gridInput())).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
+			relatedRelationId: 'along-the-piece',
+			regionId: 'a',
+		});
+	});
+
+	it('refuses two crossings of different sources sharing one cell piece', () => {
+		const { selected } = fixture();
+		const route = defined(selected.layout.relations.find(({ id }) => id === 'across-grid'));
+		const twin = { ...route, id: 'twin', from: 'a-top' };
+		const [source, target] = selected.portals.filter(
+			({ relationId }) => relationId === 'across-grid',
+		);
+		const ends = defined(
+			incidentPieceEnds(route.points, defined(source).point, defined(target).point),
+		);
+		const pieces = (crossing: LayoutRelation) => ({
+			route: crossing,
+			sourceCell: cellFor(selected, defined(source).cellId),
+			targetCell: cellFor(selected, defined(target).cellId),
+			...ends,
+		});
+		expect(gridIncidentPieceFailure([pieces(route), pieces(twin)])).toMatchObject({
+			code: RegionGeometryDiagnosticCode.IncidentTouchesIncident,
+			relationId: 'twin',
+			relatedRelationId: 'across-grid',
+		});
 	});
 });

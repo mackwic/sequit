@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import type { EffectiveSemanticRelation } from '../../graph/create-graph';
 import type { LayoutStructure } from '../structure/prepare-layout';
@@ -79,11 +78,13 @@ interface RowEntry {
 	readonly id: string;
 	readonly x: number;
 	readonly tie: number;
+	/** Structural order: ordinary anchors precede junctions; passages follow relation order. */
+	readonly ordinal: number;
 }
 
 function compareRowEntries(left: RowEntry, right: RowEntry): number {
 	const byPosition = left.x - right.x || left.tie - right.tie;
-	return byPosition || compareCanonicalStrings(left.id, right.id);
+	return byPosition || left.ordinal - right.ordinal;
 }
 
 /** Topology only: physical node widths, packing and rail coordinates never enter this oracle. */
@@ -124,14 +125,20 @@ export class RankTopologyOracle {
 		const rows = topologyRows(applied);
 		const positions = transversePositions(applied, rows);
 		const dummies = rows.map((): RowEntry[] => []);
-		for (const relation of this.relations) {
+		for (const [ordinal, relation] of this.relations.entries()) {
 			const sourceX = defined(positions.get(relation.from));
 			const targetX = defined(positions.get(relation.to));
 			const { x, tie } = passagePosition(sourceX, targetX, relation.intermediate.length);
-			for (const { rank, id } of relation.intermediate) defined(dummies[rank]).push({ id, x, tie });
+			for (const { rank, id } of relation.intermediate)
+				defined(dummies[rank]).push({ id, x, tie, ordinal });
 		}
 		const augmented = rows.map((row, rank) => {
-			const fixed = row.map((id) => ({ id, x: defined(positions.get(id)), tie: 0 }));
+			const fixed = row.map((id, ordinal) => ({
+				id,
+				x: defined(positions.get(id)),
+				tie: 0,
+				ordinal,
+			}));
 			return [...fixed, ...defined(dummies[rank])].sort(compareRowEntries).map(({ id }) => id);
 		});
 		return countRankOrderCrossings(augmented, this.segments, maximum);

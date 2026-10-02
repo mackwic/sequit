@@ -1,6 +1,8 @@
 import type { TopologicalRanks } from '../../graph/topological-ranks';
+import type { RejectedDedicatedCandidate } from '../dedicated-candidate-validation/types';
 import type {
-	GroupRouteFailure,
+	DedicatedCandidateFailure,
+	DedicatedLayoutEvaluation,
 	LayoutMeasurements,
 	LayoutOptions,
 	LayoutResult,
@@ -11,7 +13,11 @@ import {
 	MAX_UNIQUE_PROPOSALS,
 	type SearchBudgets,
 } from './rank-order-local';
-import { type DedicatedLayoutEvaluator, searchDedicatedRankOrders } from './rank-order-search';
+import {
+	type DedicatedLayoutEvaluator,
+	type RankOrderSearchResult,
+	searchDedicatedRankOrders,
+} from './rank-order-search';
 import type { RankOrderSearchWitness } from './rank-order-witness';
 import { applyRankOrder, type RankOrderDomain } from './rank-ordering';
 
@@ -28,15 +34,21 @@ export interface RecoveryInput {
 	readonly domain: RankOrderDomain;
 	readonly budgets: SearchBudgets;
 	readonly services: SelectionServices;
-	readonly failure: GroupRouteFailure;
+	/** The documentary layout, or why it could not be built. */
+	readonly baseline: DedicatedLayoutEvaluation | DedicatedCandidateFailure;
+	/** The caller's rejection of the documentary layout; it is never routed or validated again. */
+	readonly documentaryRejection?: RejectedDedicatedCandidate | undefined;
 }
 
-/** The documentary layout has no geometry to reuse; search complete global candidates directly. */
-export function recoverDocumentaryFailure(input: RecoveryInput): {
-	readonly layout: LayoutResult;
-	readonly witness: RankOrderSearchWitness;
+/**
+ * Search complete global candidates, each validated on the whole document, within the pipelines
+ * the local searches were granted together, capped at the budget of a single search.
+ */
+export function searchGlobalOrders(input: RecoveryInput): {
+	readonly search: RankOrderSearchResult;
+	readonly admissions: number;
 } {
-	const { structure, domain, measurements, budgets, services, ranks, failure } = input;
+	const { structure, domain, measurements, budgets, services, ranks } = input;
 	let completePipelines = 0;
 	for (const limit of budgets.limits.values()) completePipelines += limit;
 	let minimumPipelines = 1;
@@ -51,7 +63,8 @@ export function recoverDocumentaryFailure(input: RecoveryInput): {
 		structure,
 		domain,
 		measurements,
-		baseline: failure,
+		baseline: input.baseline,
+		documentaryRejection: input.documentaryRejection,
 		evaluate: (order) =>
 			services.evaluate(
 				applyRankOrder(structure, domain, order),
@@ -67,8 +80,19 @@ export function recoverDocumentaryFailure(input: RecoveryInput): {
 		}),
 		limits: { completePipelines, uniqueProposals: MAX_UNIQUE_PROPOSALS },
 	});
+	return { search, admissions };
+}
+
+/** The documentary layout has no geometry to reuse; search complete global candidates directly. */
+export function recoverDocumentaryFailure(
+	input: RecoveryInput & { readonly baseline: DedicatedCandidateFailure },
+): {
+	readonly layout: LayoutResult;
+	readonly witness: RankOrderSearchWitness;
+} {
+	const { search, admissions } = searchGlobalOrders(input);
 	const selected = search.selected;
-	if (selected === undefined) throw failure;
+	if (selected === undefined) throw input.baseline;
 	return {
 		layout: selected.evaluation.complete(),
 		witness: {

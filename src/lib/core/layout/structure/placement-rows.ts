@@ -14,7 +14,8 @@ export type PlacementRows = EndpointRows;
 
 export interface RankedComponent {
 	readonly ids: readonly string[];
-	readonly context: string;
+	/** Documentary root-group ordinals, with the virtual root last. */
+	readonly context: readonly number[];
 	readonly effectiveOrder: number;
 	readonly rows: PlacementRows;
 }

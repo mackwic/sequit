@@ -25,9 +25,10 @@ import type {
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingPortalSpans,
-	crossingRoute,
+	crossingRoutes,
 	gridCrossingOwnedRoutes,
 	type GridCrossingRouting,
+	gridCrossingRouting,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import type { GridCellPlacement } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import {
@@ -123,7 +124,7 @@ export function variedGridRoutingCase(
 		minimumRowHeights: Array<number>(rowCount).fill(300),
 	};
 	const { edges, gutterIds } = gridCrossingResources(gridInput, crossing);
-	const routing: GridCrossingRouting = {
+	const routing = gridCrossingRouting({
 		rootId: 'property-grid',
 		crossing,
 		columnCount,
@@ -131,7 +132,8 @@ export function variedGridRoutingCase(
 		cellByEndpointId,
 		edges,
 		incidence,
-	};
+		nestedEndpointIds: new Set(),
+	});
 	const allocationInput: CrossingAllocationInput = {
 		edges,
 		crossingIds: crossing.map(({ id }) => id),
@@ -179,12 +181,42 @@ export function variedGridRoutingCase(
 	};
 }
 
+/**
+ * The same case with one endpoint stretched over the full height of its cell: an endpoint on the
+ * other side of it has no in-cell corridor to its portal, whatever the allocation.
+ */
+export function walledGridRoutingCase(
+	fixture: VariedGridRoutingCase,
+	wallId: string,
+): VariedGridRoutingCase {
+	const cells = fixture.routing.cells.map((cell) => ({
+		...cell,
+		localLayout: {
+			...cell.localLayout,
+			elements: cell.localLayout.elements.map((element) => {
+				if (element.id !== wallId) return element;
+				return { ...element, bounds: { ...element.bounds, y: 0, height: cell.bounds.height } };
+			}),
+		},
+	}));
+	const routing = gridCrossingRouting({ ...fixture.routing, cells });
+	const canonical = canonicalCrossingAllocation(fixture.input);
+	return {
+		...fixture,
+		routing,
+		input: { ...fixture.input, portalByRelationId: crossingPortalSpans(routing, canonical) },
+	};
+}
+
 export function effectiveRouteGeometry(
 	routing: GridCrossingRouting,
 	crossing: readonly LogicRelation[],
 	allocation: GridCrossingAllocation,
 ): string {
-	return JSON.stringify(crossing.map((relation) => crossingRoute(routing, allocation, relation)));
+	const routes = new Map(
+		crossingRoutes(routing, allocation).map((routed) => [routed.route.id, routed]),
+	);
+	return JSON.stringify(crossing.map((relation) => routes.get(relation.id)));
 }
 
 /** Evaluate the generated candidate with the same grid geometry and route-contact oracles as production. */
@@ -197,7 +229,7 @@ export function routeGridFixture(
 	readonly failure?: ReturnType<typeof regionGeometryDiagnostic>;
 } {
 	const { routing, crossing, graph, gridInput } = fixture;
-	const routed = crossing.map((relation) => crossingRoute(routing, allocation, relation));
+	const routed = crossingRoutes(routing, allocation);
 	const cells = routing.cells;
 	const elements = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
@@ -227,12 +259,9 @@ export function routeGridFixture(
 	const failure = validateGridCellGeometryDiagnostic(candidate, graph, gridInput);
 	if (failure !== undefined) return { candidate, failure };
 	const byId = new Map(candidate.layout.relations.map((route) => [route.id, route]));
-	const owned = gridCrossingOwnedRoutes(
-		routing.rootId,
-		routing.cellByEndpointId,
-		crossing,
-		byId,
-	).filter(({ regionId }) => regionId === routing.rootId);
+	const owned = gridCrossingOwnedRoutes(routing.rootId, crossing, byId, candidate.portals).filter(
+		({ regionId }) => regionId === routing.rootId,
+	);
 	let bridges: ReturnType<typeof validatedBridges> = [];
 	if (acceptBridges) bridges = validatedBridges(candidate.layout.relations);
 	for (const [index, first] of owned.entries()) {

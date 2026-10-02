@@ -266,30 +266,19 @@ describe('interior passage through S | SD | C', () => {
 			interiorPassageTrack(transverse.input, transverse.frame, transverse.ports),
 		).toBeUndefined();
 
-		const beforeSource = (id: string, order: string): LogicDocument['nodes'][number] => ({
-			kind: EndpointKind.Node,
-			id,
-			natureId: 'task',
-			markdown: id,
-			laneId: 'C',
-			layoutOrder: orderKey(order),
-		});
-		const separated = plannedPassage({
-			...source,
-			nodes: [
-				beforeSource('c-earlier-1', 'a0'),
-				beforeSource('c-earlier-2', 'a1'),
-				...source.nodes.map((node) => {
-					if (node.id !== 'c-request') return node;
-					return { ...node, layoutOrder: orderKey('a2') };
-				}),
-			],
-		});
-		const plan = defined(separated.input.plans[0]);
-		const sourceRow = defined(separated.input.endpoints.get(plan.from)).row;
-		const targetRow = defined(separated.input.endpoints.get(plan.to)).row;
-		expect(sourceRow).toBeGreaterThan(targetRow + 1);
-		expect(interiorPassageTrack(separated.input, separated.frame, separated.ports)).toBeUndefined();
+		const planned = plannedPassage(source);
+		const plan = defined(planned.input.plans[0]);
+		const sourceEndpoint = defined(planned.input.endpoints.get(plan.from));
+		const targetRow = defined(planned.input.endpoints.get(plan.to)).row;
+		const separated = {
+			...planned.input,
+			endpoints: new Map(planned.input.endpoints).set(sourceEndpoint.id, {
+				...sourceEndpoint,
+				row: targetRow + 2,
+			}),
+		};
+		const frame = makeSharedLaneFrame(separated, planned.ports);
+		expect(interiorPassageTrack(separated, frame, planned.ports)).toBeUndefined();
 	});
 
 	it.each(['source', 'target'] as const)(

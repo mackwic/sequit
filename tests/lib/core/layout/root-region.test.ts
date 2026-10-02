@@ -12,6 +12,7 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
+import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
@@ -44,6 +45,7 @@ import {
 	normalizeRootRegion,
 	UnknownGridCellLayoutError,
 	UnsupportedGridCellLayoutError,
+	unsupportedGridOutcomeError,
 	UnsupportedLayoutPresentationError,
 	UnsupportedRegionLayoutError,
 } from '../../../../src/lib/core/layout/root-region';
@@ -57,7 +59,12 @@ import {
 } from '../../../support/builders/logic-document';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import { gridOf, persistedRowOf } from '../../../support/performance/layout-resource-scenarios';
-import { gridInput, persistedGridDocument, prepareGrid } from './grid-cell-fixture';
+import {
+	gridInput,
+	persistedCellGrid,
+	persistedGridDocument,
+	prepareGrid,
+} from './grid-cell-fixture';
 import {
 	persistedNestedGridDocument,
 	persistedNestedGridWithLaneCellDocument,
@@ -403,14 +410,17 @@ describe('implicit root layout region', () => {
 		expect(groupedPort.x).toBe(groupedMember.bounds.x + groupedMember.bounds.width);
 		expect(foreignCellEntry(groupedLayout, groupedRoute, ['a', 'c'])).toBeUndefined();
 
-		const blocked = prepareGrid({
+		// Left to right hides a-bottom behind a-top: the crossing now leaves through a cell corridor.
+		const hidden = prepareGrid({
 			...source,
 			layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
 			relations: [...source.relations, { id: 'group-crossing', from: 'oversized', to: 'd' }],
 		});
-		expect(() => layoutWithRootRegion(blocked.graph, blocked.ranks, blocked.measurements)).toThrow(
-			UnknownGridCellLayoutError,
-		);
+		const hiddenLayout = layoutWithRootRegion(hidden.graph, hidden.ranks, hidden.measurements);
+		const hiddenRoute = defined(hiddenLayout.relations.find(({ id }) => id === 'across-grid'));
+		expect(foreignCellEntry(hiddenLayout, hiddenRoute, ['b', 'c'])).toBeUndefined();
+		const top = defined(hiddenLayout.elements.find(({ id }) => id === 'a-top')).bounds;
+		expect(segmentEnters(hiddenRoute.points, top)).toBe(false);
 	});
 
 	it('keeps a row-routed crossing inside a same-column crossing on their shared face', () => {
@@ -585,5 +595,72 @@ describe('implicit root layout region', () => {
 		expect(() =>
 			layoutWithRootRegion(graph.value, topologicallyRank(graph.value), prepared.measurements),
 		).toThrow(UnsupportedRegionLayoutError);
+	});
+});
+
+describe('grid root outcome mapping', () => {
+	it('reports exhausted composition work as an unresolved grid carrying ResourceLimit', () => {
+		const message = 'Region traversals work exhausted at 4096 operations (owner c).';
+		const exhausted = unsupportedGridOutcomeError('witness', message, {
+			code: RegionCompositionDiagnosticCode.ResourceLimit,
+			message,
+			path: ['regions', 'c', RegionWorkPhase.Traversals],
+			phase: RegionWorkPhase.Traversals,
+			limit: 4096,
+			actual: 4097,
+			exhaustive: false,
+		});
+		expect(exhausted).toBeInstanceOf(UnknownGridCellLayoutError);
+		expect(exhausted).toMatchObject({
+			code: RegionCompositionDiagnosticCode.ResourceLimit,
+			regionId: 'c',
+			reason: message,
+		});
+		const shaped = unsupportedGridOutcomeError('witness', 'Junctions are outside this proof.', {
+			code: RegionCompositionDiagnosticCode.StackDepthLimit,
+			message: 'Too deep.',
+			path: ['regions'],
+		});
+		expect(shaped).toBeInstanceOf(UnsupportedGridCellLayoutError);
+		expect(unsupportedGridOutcomeError('witness', 'No diagnostic.')).toBeInstanceOf(
+			UnsupportedGridCellLayoutError,
+		);
+	});
+
+	it('publishes a grid that exhausts its traversal work as unknown ResourceLimit, not unsupported', () => {
+		// Reviewer A's random-11: one chain crossing out of a three-node cell, left to right.
+		const ids = Array.from({ length: 13 }, (_, index) => `n${index}`);
+		const document = persistedCellGrid(
+			2,
+			[
+				ids.slice(0, 1),
+				ids.slice(1, 2),
+				ids.slice(2, 5),
+				ids.slice(5, 8),
+				ids.slice(8, 11),
+				ids.slice(11),
+			],
+			[
+				['n7', 'n5'],
+				['n7', 'n6'],
+				['n5', 'n1'],
+				['n5', 'n4'],
+				['n6', 'n1'],
+			],
+			{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+		);
+		const prepared = prepareLayoutDocument(document);
+		let refused: unknown;
+		try {
+			layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+		} catch (error) {
+			refused = error;
+		}
+		expect(refused).toBeInstanceOf(UnknownGridCellLayoutError);
+		expect(refused).toMatchObject({
+			code: RegionCompositionDiagnosticCode.ResourceLimit,
+			regionId: 'c1',
+			reason: 'Region traversals work exhausted at 4096 operations (owner c1).',
+		});
 	});
 });

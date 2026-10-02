@@ -1,5 +1,6 @@
 import { defined } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
+import { orderEndpoints } from '../../ordering/endpoint-order';
 import {
 	biasedMainStart,
 	boundsOnAxes,
@@ -55,13 +56,20 @@ export function separateInterleavedGroupNodes(input: {
 }): void {
 	const { hierarchy, graph, measurements, bounds, frame, windows } = input;
 	const pending = new Map<string, number>();
+	const orderById = new Map(
+		orderEndpoints([
+			...graph.document.groups,
+			...graph.document.nodes,
+			...graph.document.junctions,
+		]).map((id, index) => [id, index]),
+	);
 	for (const group of hierarchy.deepestFirst) {
 		const children = hierarchy.membersById.get(group.id) ?? [];
 		if (children.length === 0) continue;
 		packGroupSiblings(
 			children,
 			bounds,
-			{ groupIds: hierarchy.byId, pending, windows },
+			{ groupIds: hierarchy.byId, pending, windows, orderById },
 			frame.vertical,
 		);
 		bounds.set(group.id, enclosure(defined(measurements.get(group.id)), children, bounds));
@@ -75,7 +83,12 @@ export function separateInterleavedGroupNodes(input: {
 			.filter((group) => group.groupId === undefined)
 			.map((group) => group.id),
 	];
-	packGroupSiblings(roots, bounds, { groupIds: hierarchy.byId, pending, windows }, frame.vertical);
+	packGroupSiblings(
+		roots,
+		bounds,
+		{ groupIds: hierarchy.byId, pending, windows, orderById },
+		frame.vertical,
+	);
 
 	// Parent translations have already moved the child frame, not its contents.
 	const queue = graph.document.groups

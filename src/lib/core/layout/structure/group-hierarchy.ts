@@ -1,5 +1,5 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined, type LogicDocument, type LogicGroup } from '../../document/logic-document';
+import { orderEndpoints } from '../../ordering/endpoint-order';
 
 export interface GroupHierarchy {
 	readonly byId: ReadonlyMap<string, LogicGroup>;
@@ -36,7 +36,10 @@ function indexAncestors(groups: ReadonlyMap<string, LogicGroup>): ReadonlyMap<st
 	return ancestors;
 }
 
-function indexGroupSubtrees(groups: ReadonlyMap<string, LogicGroup>): {
+function indexGroupSubtrees(
+	groups: ReadonlyMap<string, LogicGroup>,
+	orderById: ReadonlyMap<string, number>,
+): {
 	readonly preorderIndexById: ReadonlyMap<string, number>;
 	readonly subtreeEndById: ReadonlyMap<string, number>;
 } {
@@ -51,8 +54,10 @@ function indexGroupSubtrees(groups: ReadonlyMap<string, LogicGroup>): {
 		children.push(group.id);
 		childrenById.set(group.groupId, children);
 	}
-	roots.sort(compareCanonicalStrings);
-	for (const children of childrenById.values()) children.sort(compareCanonicalStrings);
+	const compareGroups = (left: string, right: string) =>
+		defined(orderById.get(left)) - defined(orderById.get(right));
+	roots.sort(compareGroups);
+	for (const children of childrenById.values()) children.sort(compareGroups);
 
 	const preorderIndexById = new Map<string, number>();
 	const subtreeEndById = new Map<string, number>();
@@ -79,6 +84,7 @@ function indexGroupSubtrees(groups: ReadonlyMap<string, LogicGroup>): {
 export function prepareGroupHierarchy(document: LogicDocument): GroupHierarchy | undefined {
 	if (document.groups.length === 0) return undefined;
 	const byId = new Map(document.groups.map((group) => [group.id, group]));
+	const orderById = new Map(orderEndpoints(document.groups).map((id, index) => [id, index]));
 	const membersById = new Map<string, string[]>();
 	// Match the existing containment traversal order; no descendant expansion is needed.
 	for (const member of [...document.nodes, ...document.junctions, ...document.groups]) {
@@ -88,10 +94,10 @@ export function prepareGroupHierarchy(document: LogicDocument): GroupHierarchy |
 		membersById.set(member.groupId, members);
 	}
 	const ancestors = indexAncestors(byId);
-	const subtreeIndices = indexGroupSubtrees(byId);
+	const subtreeIndices = indexGroupSubtrees(byId, orderById);
 	const deepestFirst = [...document.groups].sort((left, right) => {
 		const depth = defined(ancestors.get(right.id)).depth - defined(ancestors.get(left.id)).depth;
-		return depth || compareCanonicalStrings(left.id, right.id);
+		return depth || defined(orderById.get(left.id)) - defined(orderById.get(right.id));
 	});
 	return {
 		byId,

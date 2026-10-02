@@ -15,6 +15,7 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { segmentEnters } from '../../../../src/lib/core/layout/geometry/nested-region-geometry-primitives';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import { within } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
@@ -919,15 +920,16 @@ describe('a grid disposition inside the recursive region tree', () => {
 		);
 	});
 
-	it('reports an unresolved crossing when a local sibling blocks its cell exit', () => {
+	it('reaches a crossing endpoint its local sibling hides from the cell exit', () => {
 		const { document, input } = nestedGridFixture();
-		const blocked: LogicDocument = {
+		const hidden: LogicDocument = {
 			...document,
 			relations: [
 				{ id: 'inside-a', from: 'a-target', to: 'a-source' },
 				{ id: 'across-grid', from: 'a-target', to: 'd' },
 			],
 		};
+		// Left to right puts a-source between a-target and the left exit of cell a.
 		const nested: RegionInput = {
 			...input,
 			regions: input.regions.map((region) => {
@@ -938,11 +940,24 @@ describe('a grid disposition inside the recursive region tree', () => {
 				};
 			}),
 		};
-		const prepared = prepareLayoutDocument(blocked);
+		const prepared = prepareLayoutDocument(hidden);
 		const attempt = solveRecursiveNestedRegionLayout(prepared.graph, prepared.measurements, nested);
-		expect(attempt.status).toBe(RegionCompositionStatus.Unknown);
-		if (attempt.status === RegionCompositionStatus.Unknown)
-			expect(attempt.reason).toContain('enters element a-source');
+		if (attempt.status !== RegionCompositionStatus.Selected)
+			throw new Error(`Expected the hidden endpoint to be reached: ${attempt.reason}`);
+		const normalized = normalizeRegionCompositionModel(prepared.graph, nested);
+		if (normalized.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Expected a normalized grid');
+		expect(validateRegionCompositionGeometry(normalized.model, attempt)).toBeUndefined();
+		const piece = defined(
+			attempt.ownedRoutes.find(({ relationId, regionId }) => {
+				return relationId === 'across-grid' && regionId === 'a';
+			}),
+		).points;
+		const sibling = defined(attempt.layout.elements.find(({ id }) => id === 'a-source')).bounds;
+		const cell = defined(attempt.regions.find(({ id }) => id === 'a')).bounds;
+		expect(piece.length).toBeGreaterThan(2);
+		expect(segmentEnters(piece, sibling)).toBe(false);
+		for (const point of piece) expect(within(cell, { ...point, width: 0, height: 0 })).toBe(true);
 	});
 
 	it('reports a cell outside the grid subtree and invalid track minima', () => {

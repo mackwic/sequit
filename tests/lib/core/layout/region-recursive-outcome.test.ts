@@ -95,7 +95,8 @@ function actualIncidentFailure(): {
 } {
 	const source = depthTwoRegionDocument();
 	const node = defined(source.nodes.find(({ id }) => id === 'c'));
-	const sourceIds = ['a1', 'a2', 'b1', 'b2'];
+	// a0 is a2's child like a1 and documented before it: a0 sits left of a1 on a1's row of lane A.
+	const sourceIds = ['a0', 'a1', 'a2', 'b1', 'b2'];
 	const targetIds = ['t0', 't1'];
 	const endpointIds = [...sourceIds, ...targetIds, 'middle-node'];
 	const input: RegionInput = {
@@ -158,6 +159,7 @@ function actualIncidentFailure(): {
 		}),
 		relations: [
 			{ id: 'local', from: 'a1', to: 'a2' },
+			{ id: 'local-left', from: 'a0', to: 'a2' },
 			...targetIds.map((id, index) => ({ id: `cross-${index}`, from: 'a1', to: id })),
 		],
 	};

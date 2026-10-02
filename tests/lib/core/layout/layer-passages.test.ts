@@ -188,6 +188,42 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(secondRelation)).toBe(0);
 	});
 
+	it('steps an outer column past held passages and holds it against later ones', () => {
+		const boxes = {
+			target: box(0, 0),
+			'other-target': box(0, 0),
+			junction: box(300, 120, 28),
+			source: box(0, 240),
+			'other-source': box(0, 240),
+		};
+		const rows = [['target', 'other-target'], ['junction'], ['source', 'other-source']];
+		const local = layerPassages(input(rows, boxes));
+		expect(local(firstRelation)).toBe(0);
+		expect(local.outer(secondRelation, 0)).toBe(24);
+		const outer = layerPassages(input(rows, boxes));
+		expect(outer.outer(firstRelation, 0)).toBe(0);
+		expect(outer(secondRelation)).not.toBe(0);
+		expect(outer.outer(secondRelation, -24)).toBe(-24);
+	});
+
+	it('reuses an outer column held in a disjoint interval', () => {
+		const reserve = layerPassages(
+			input(
+				[['target'], ['junction'], ['source', 'other-target'], ['next-junction'], ['other-source']],
+				{
+					target: box(0, 0),
+					junction: box(300, 120, 28),
+					source: box(0, 240),
+					'other-target': box(0, 240),
+					'next-junction': box(300, 360, 28),
+					'other-source': box(0, 480),
+				},
+			),
+		);
+		expect(reserve.outer(firstRelation, 500)).toBe(500);
+		expect(reserve.outer(secondRelation, 500)).toBe(500);
+	});
+
 	it('keeps a second concurrent blocked long relation off the first passage', () => {
 		const reserve = layerPassages({
 			...input(

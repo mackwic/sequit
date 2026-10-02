@@ -1,4 +1,3 @@
-import { compareCanonicalStrings } from '../../canonical-string';
 import { defined } from '../../document/logic-document';
 import {
 	type MutableBounds,
@@ -117,10 +116,11 @@ export function packGroupSiblings(
 		readonly groupIds: ReadonlyMap<string, unknown>;
 		readonly pending: Map<string, number>;
 		readonly windows: ReadonlyMap<string, MainWindow>;
+		readonly orderById: ReadonlyMap<string, number>;
 	},
 	vertical: boolean,
 ): void {
-	const { groupIds, pending, windows } = packing;
+	const { groupIds, pending, windows, orderById } = packing;
 	const items: Item[] = children.map((id) => ({
 		id,
 		box: defined(bounds.get(id)),
@@ -130,7 +130,7 @@ export function packGroupSiblings(
 	items.sort(
 		(left, right) =>
 			transverseStart(left.box, vertical) - transverseStart(right.box, vertical) ||
-			compareCanonicalStrings(left.id, right.id),
+			defined(orderById.get(left.id)) - defined(orderById.get(right.id)),
 	);
 	for (let index = 0; index < items.length - 1; index += 1) {
 		const group = defined(items[index]);
