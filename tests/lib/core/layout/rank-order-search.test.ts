@@ -96,7 +96,8 @@ function searchedAgainstEveryOrder(document: LogicDocument) {
 describe('dedicated rank order search on real routes', () => {
 	it('routes every order a topological tie hides and keeps the one crossing least', () => {
 		// Exchanges tie on topological crossings and documentary distance; only routes tell
-		// them apart. Ranked on the topological proxy alone, the rows crossed three times.
+		// them apart. Ranked on the topological proxy alone, the rows crossed three times; with
+		// same-family rails nested (D-05) one crossing remains in every direction.
 		const relations = [
 			['k0', 'r1'],
 			['k0', 'r2'],
@@ -107,8 +108,8 @@ describe('dedicated rank order search on real routes', () => {
 		const expected = {
 			[LayoutDirection.TopToBottom]: 1,
 			[LayoutDirection.BottomToTop]: 1,
-			[LayoutDirection.LeftToRight]: 2,
-			[LayoutDirection.RightToLeft]: 2,
+			[LayoutDirection.LeftToRight]: 1,
+			[LayoutDirection.RightToLeft]: 1,
 		};
 		for (const [direction, bias] of DIRECTIONS) {
 			const searched = searchedAgainstEveryOrder(
