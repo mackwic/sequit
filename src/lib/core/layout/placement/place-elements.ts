@@ -1,7 +1,7 @@
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { encloseGroups } from './enclose-groups';
-import { insetJunctionChannels } from './group-junction-channels';
+import { insetJunctionChannels, railFrameInsets } from './group-junction-channels';
 import { junctionRails, railSpan } from './junction-rails';
 import { applyOuterMargin, packComponents, repackContainment } from './pack-components';
 import { type ComponentLayout, placeComponent } from './place-component';
@@ -33,14 +33,21 @@ export function mergeGapMaps(
 	return result;
 }
 
-/** Replace this call's placement, retaining its structure and reusable component list. */
-export function placeElements(
-	input: PlacementInput,
-	reservedGaps: ReadonlyMap<number, number>,
-	channelGaps?: ReadonlyMap<number, readonly number[]>,
-): Map<string, MutableBounds> {
+interface PlacementGaps {
+	readonly gaps: ReadonlyMap<number, number>;
+	readonly channels?: ReadonlyMap<number, readonly number[]> | undefined;
+}
+
+interface ReservedGaps extends PlacementGaps {
+	/** Clearance rail frames lacked by junction interval and slot, as last placed. */
+	readonly overflows: ReadonlyMap<number, readonly number[]>;
+}
+
+/** Rank and junction channel gaps of one placement, with every junction rail's reservations. */
+function junctionGaps(input: PlacementInput, reserved: ReservedGaps): PlacementGaps {
 	const { structure, measurements, frame, placement } = input;
-	const rankGaps = mergeGapMaps(reservedGaps, measurements.frameRankGaps);
+	const rankGaps = mergeGapMaps(reserved.gaps, measurements.frameRankGaps);
+	const channelGaps = reserved.channels;
 	let modifiedGaps: Map<number, number> | undefined;
 	let modifiedChannels: Map<number, readonly number[]> | undefined;
 	const junctionRows = new Map<number, string[]>();
@@ -59,7 +66,8 @@ export function placeElements(
 		});
 		const insets = placement.groupChannelInsets.get(rank);
 		const minimums = measurements.junctionShellGaps.get(rank);
-		if (insets !== undefined || minimums !== undefined) {
+		const overflows = reserved.overflows.get(rank);
+		if ((insets ?? minimums ?? overflows) !== undefined) {
 			modifiedChannels ??= new Map(channelGaps);
 			modifiedChannels.set(
 				rank,
@@ -67,7 +75,7 @@ export function placeElements(
 					rails,
 					Math.max(measurements.rankGap, modifiedGaps.get(rank) ?? 0),
 					modifiedChannels.get(rank),
-					{ insets, minimums },
+					{ insets, minimums, overflows },
 				),
 			);
 		}
@@ -79,8 +87,12 @@ export function placeElements(
 			),
 		);
 	}
-	const gaps = modifiedGaps ?? rankGaps;
-	const channels = modifiedChannels ?? channelGaps;
+	return { gaps: modifiedGaps ?? rankGaps, channels: modifiedChannels ?? channelGaps };
+}
+
+function placeOnce(input: PlacementInput, reserved: ReservedGaps): Map<string, MutableBounds> {
+	const { structure, measurements, frame, placement } = input;
+	const { gaps, channels } = junctionGaps(input, reserved);
 	const { graph } = structure;
 	const families = {
 		graph,
@@ -122,4 +134,21 @@ export function placeElements(
 		repackContainment(structure.containment, placement.bounds, frame.vertical);
 	applyOuterMargin(placement.bounds);
 	return placement.bounds;
+}
+
+/**
+ * Replace this call's placement, retaining its structure and reusable component list. A frame
+ * ending on a junction rail grows past it; when it reaches a foreign element it overlaps
+ * transversally, the placement is redone with the missing clearance in the rail's slot.
+ */
+export function placeElements(
+	input: PlacementInput,
+	reservedGaps: ReadonlyMap<number, number>,
+	channelGaps?: ReadonlyMap<number, readonly number[]>,
+): Map<string, MutableBounds> {
+	const reserved = { gaps: reservedGaps, channels: channelGaps, overflows: new Map() };
+	const bounds = placeOnce(input, reserved);
+	const overflows = railFrameInsets(input.structure, bounds, input.frame);
+	if (overflows.size === 0) return bounds;
+	return placeOnce(input, { ...reserved, overflows });
 }

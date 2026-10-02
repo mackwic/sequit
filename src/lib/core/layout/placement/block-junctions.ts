@@ -7,7 +7,7 @@ import {
 	transverseSize,
 	transverseStart,
 } from '../geometry/layout-frame';
-import { ITEM_GAP } from '../layout-settings';
+import { GROUP_FRAME_CLEARANCE, ITEM_GAP } from '../layout-settings';
 import { groupBlocks } from '../structure/group-blocks';
 import type { PlacementRows } from '../structure/placement-rows';
 import { type BlockPlan, blockPlan, type FamilyContext } from './block-plan';
@@ -32,20 +32,22 @@ function interval(box: MutableBounds, vertical: boolean): { start: number; end: 
 }
 
 /**
- * Whether a frame overlaps a junction along the flow: it spans the junction's gap, or its
- * shell, minimum size or own rails reach into the junction's rail.
+ * Whether a frame reaches a junction's rail along the flow: it spans the junction's gap, or its
+ * shell, minimum size or own rails come within half its clearance of the rail. A rail facing a
+ * frame runs at least that far from it, in the middle of the clearance.
  */
 function reaches(frame: MutableBounds, junction: MutableBounds, vertical: boolean): boolean {
 	const start = mainStart(junction, vertical);
 	const end = start + mainSize(junction, vertical);
-	const frameStart = mainStart(frame, vertical);
-	const frameEnd = frameStart + mainSize(frame, vertical);
+	const reach = GROUP_FRAME_CLEARANCE / 2;
+	const frameStart = mainStart(frame, vertical) - reach;
+	const frameEnd = frameStart + mainSize(frame, vertical) + GROUP_FRAME_CLEARANCE;
 	return start < frameEnd && frameStart < end;
 }
 
 /**
- * A junction stays out of every foreign frame overlapping its rail along the flow. It moves to
- * the nearer side, one item gap away.
+ * A junction stays out of every foreign frame reaching its rail along the flow. It moves to the
+ * nearer side, one item gap away.
  */
 function leaveForeignFrames(arrangement: PlacedFrames, id: string): void {
 	const { plan, bounds, vertical } = arrangement;

@@ -5,7 +5,10 @@ import {
 	type LogicDocument,
 } from '../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../src/lib/core/document/order-key';
-import type { DedicatedCandidateValidation } from '../../../src/lib/core/layout/dedicated-candidate-validation/types';
+import type {
+	DedicatedCandidateValidation,
+	DedicatedCandidateValidationInput,
+} from '../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { layoutWithDedicatedEngine } from '../../../src/lib/core/layout/layout-engine';
 import type { GroupMeasurement, Size } from '../../../src/lib/core/layout/layout-types';
@@ -37,8 +40,8 @@ function inGroup(groupId: string | undefined): { groupId?: string } {
 	return { groupId };
 }
 
-/** Lay the witness out with the dedicated engine and validate the published candidate. */
-export function layoutWitness(witness: LayoutWitness): DedicatedCandidateValidation {
+/** Lay the witness out with the dedicated engine, keeping what validation reads. */
+export function placeWitness(witness: LayoutWitness): DedicatedCandidateValidationInput {
 	const base = validLogicDocument();
 	let order = 0;
 	const nextKey = () => orderKey(`a${order++}`);
@@ -78,5 +81,10 @@ export function layoutWitness(witness: LayoutWitness): DedicatedCandidateValidat
 		groups: Object.fromEntries(witness.groups.map(([id, size]) => [id, size])),
 	});
 	const layout = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
-	return validateDedicatedCandidate({ ...prepared, layout });
+	return { ...prepared, layout };
+}
+
+/** Lay the witness out with the dedicated engine and validate the published candidate. */
+export function layoutWitness(witness: LayoutWitness): DedicatedCandidateValidation {
+	return validateDedicatedCandidate(placeWitness(witness));
 }

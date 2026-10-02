@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
-import { layoutWitness, measurement } from '../../../support/harnesses/layout-witness';
+import type { DedicatedCandidateValidationInput } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { GROUP_FRAME_CLEARANCE } from '../../../../src/lib/core/layout/layout-settings';
+import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
+import {
+	layoutWitness,
+	measurement,
+	placeWitness,
+} from '../../../support/harnesses/layout-witness';
 
 /** Shrunk counterexamples of the grouped document property; every size is a plain default. */
 const node = { width: 100, height: 60 };
@@ -262,5 +270,53 @@ describe('group frames around junction rails', () => {
 				],
 			}),
 		).toMatchObject({ valid: true });
+	});
+});
+
+/** Bounds of one placed element of a witness layout. */
+function boxOf(input: DedicatedCandidateValidationInput, id: string): Bounds {
+	const element = input.layout.elements.find((candidate) => candidate.id === id);
+	if (element === undefined) throw new Error(`Expected ${id} to be placed`);
+	return element.bounds;
+}
+
+describe('minimum size of a frame holding only a junction rail', () => {
+	it('keeps the next rank clear of the frame where they overlap transversally', () => {
+		// g0 grows to 200px below j0's rail; a, feeding j0, lies right under it.
+		const placed = placeWitness({
+			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+			nodes: [
+				['a', node],
+				['b', node],
+			],
+			junctions: [['j0', 'g0']],
+			groups: [['g0', measurement(100, 200, 8, 8)]],
+			relations: [
+				['a', 'j0'],
+				['j0', 'b'],
+			],
+		});
+		const frame = boxOf(placed, 'g0');
+		expect(boxOf(placed, 'a').y).toBeGreaterThanOrEqual(
+			frame.y + frame.height + GROUP_FRAME_CLEARANCE,
+		);
+		expect(validateDedicatedCandidate(placed)).toMatchObject({ valid: true });
+	});
+
+	it('does not space the ranks for a frame overlapping nothing transversally', () => {
+		// g2 grows down past j0's rail, beside n0 and n1: the rank stays where it would be.
+		const placed = placeWitness({
+			layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+			nodes: [
+				['n0', { width: 102, height: 157 }],
+				['n1', { width: 290, height: 141 }],
+			],
+			junctions: [['j0', 'g2']],
+			groups: [['g2', measurement(100, 156, 28, 26)]],
+			relations: [],
+		});
+		const frame = boxOf(placed, 'g2');
+		expect(boxOf(placed, 'n0').y).toBeLessThan(frame.y + frame.height);
+		expect(validateDedicatedCandidate(placed)).toMatchObject({ valid: true });
 	});
 });

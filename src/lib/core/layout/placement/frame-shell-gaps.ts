@@ -280,80 +280,39 @@ function frameBoundaryRankGaps(context: ShellContext, spans: GroupSpans): FrameR
 	return { rankGap, rankGaps };
 }
 
-/** Shells grown physically down or right by `extent`, when positive. */
-function growFar(frame: LayoutFrame, shells: Shells, extent: number): Shells {
-	if (extent <= 0) return shells;
-	if (frame.forward) return { ...shells, next: shells.next + extent };
-	return { ...shells, previous: shells.previous + extent };
-}
-
-interface RailFrame {
-	readonly shells: Shells;
-	readonly starting: boolean;
-	readonly ending: boolean;
-}
-
 /**
- * Adds one enclosing frame to the shells of a junction's rail, while the frames still begin or
- * end on it. A frame holding nothing but this rail holds its free groups from the content's
- * main start, then grows to its minimum main size, both physically down or right like a
- * one-rank frame.
+ * Shells of the enclosing frames beginning or ending on a junction's rail, inside its gap. What
+ * a frame holding only this rail adds past it, its free groups and its minimum main size, is
+ * reserved once placed, only before what it overlaps transversally: see `railFrameInsets`.
  */
-function railFrame(
-	context: ShellContext,
-	inner: RailFrame,
-	input: {
-		readonly spans: GroupSpans;
-		readonly groupId: string;
-		readonly rail: RailPosition;
-		readonly length: number;
-	},
-): RailFrame {
-	const { frame } = context;
-	const { spans, groupId, rail, length } = input;
-	const own = defined(spans.rails.get(groupId));
-	const ranks = spans.ranks.get(groupId);
-	const firstRank = ranks?.first ?? Number.POSITIVE_INFINITY;
-	const lastRank = ranks?.last ?? Number.NEGATIVE_INFINITY;
-	// Rank r lies before interval r's rails, rank r + 1 after them.
-	const startsHere = compareRails(own.first, rail) === 0 && firstRank > rail.interval;
-	const endsHere = compareRails(own.last, rail) === 0 && lastRank <= rail.interval;
-	const starting = inner.starting && startsHere;
-	const ending = inner.ending && endsHere;
-	const alone = starting && ending && ranks === undefined;
-	const { padding, headerHeight, minimumWidth, minimumHeight } = context.groups(groupId);
-	const header = headerShells(frame, headerHeight);
-	let { next, previous } = inner.shells;
-	if (alone) {
-		const free = context.freeLengths.get(groupId) ?? 0;
-		const held = previous + next + length;
-		({ next, previous } = growFar(frame, inner.shells, free - held));
-	}
-	if (starting) previous += padding + header.previous;
-	if (ending) next += padding + header.next;
-	const shells = { next, previous };
-	let minimum = minimumWidth;
-	if (frame.vertical) minimum = minimumHeight;
-	const content = previous + next + length;
-	if (alone) return { shells: growFar(frame, shells, minimum - content), starting, ending };
-	return { shells, starting, ending };
-}
-
-/** Shells of the enclosing frames beginning or ending on a junction's rail, inside its gap. */
 function junctionShells(
 	context: ShellContext,
 	spans: GroupSpans,
 	input: { readonly id: string; readonly rail: RailPosition },
 ): Shells {
-	const { structure, frame } = context;
-	const length = mainSize(defined(context.sizes.get(input.id)), frame.vertical);
-	let current: RailFrame = { shells: { next: 0, previous: 0 }, starting: true, ending: true };
+	const { structure, frame, groups } = context;
+	const { rail } = input;
+	let next = 0;
+	let previous = 0;
+	let ending = true;
+	let starting = true;
 	let groupId = structure.graph.endpointsById.get(input.id)?.entity.groupId;
-	while (groupId !== undefined && (current.starting || current.ending)) {
-		current = railFrame(context, current, { spans, groupId, rail: input.rail, length });
+	while (groupId !== undefined && (ending || starting)) {
+		const own = defined(spans.rails.get(groupId));
+		const firstRank = spans.ranks.get(groupId)?.first ?? Number.POSITIVE_INFINITY;
+		const lastRank = spans.ranks.get(groupId)?.last ?? Number.NEGATIVE_INFINITY;
+		const { padding, headerHeight } = groups(groupId);
+		const header = headerShells(frame, headerHeight);
+		// Rank r lies before interval r's rails, rank r + 1 after them.
+		const startsHere = compareRails(own.first, rail) === 0 && firstRank > rail.interval;
+		const endsHere = compareRails(own.last, rail) === 0 && lastRank <= rail.interval;
+		starting &&= startsHere;
+		ending &&= endsHere;
+		if (starting) previous += padding + header.previous;
+		if (ending) next += padding + header.next;
 		groupId = structure.hierarchy?.byId.get(groupId)?.groupId;
 	}
-	return current.shells;
+	return { next, previous };
 }
 
 /**
