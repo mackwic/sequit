@@ -359,7 +359,11 @@ test.describe('accessible canvas selection', () => {
 
 		await node.click();
 		const nodeBar = page.getByRole('group', { name: 'Actions du nœud' });
-		await expect(nodeBar.getByRole('button')).toHaveText(['Éditer', 'Supprimer']);
+		await expect(nodeBar.getByRole('button')).toHaveText([
+			'Éditer',
+			'Créer un enfant',
+			'Supprimer',
+		]);
 
 		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
 		const selectionBar = page.getByRole('group', { name: 'Actions de la sélection' });
@@ -376,7 +380,11 @@ test.describe('accessible canvas selection', () => {
 
 		await junction.click();
 		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
-		await expect(junctionBar.getByRole('button')).toHaveText(['Éditer', 'Supprimer']);
+		await expect(junctionBar.getByRole('button')).toHaveText([
+			'Éditer',
+			'Créer un enfant',
+			'Supprimer',
+		]);
 		await junctionBar
 			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
 			.click();

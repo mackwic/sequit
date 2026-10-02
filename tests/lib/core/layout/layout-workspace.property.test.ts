@@ -181,6 +181,8 @@ describe('layout workspace ownership', () => {
 		);
 	});
 
+	// Each run lays the same document out three times: 1.9 s alone, 2.9 s under coverage, and
+	// beyond the 5 s default when the whole property suite shares the CPU.
 	it('keeps enlarged ports, rails and nested enclosures local to the current calculation', () => {
 		fc.assert(
 			fc.property(
@@ -212,7 +214,7 @@ describe('layout workspace ownership', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+	}, 20_000);
 
 	it('adds inspection without changing geometry or retaining mutable state for the next call', () => {
 		const prepared = prepareLayoutDocument(validLogicDocument());
