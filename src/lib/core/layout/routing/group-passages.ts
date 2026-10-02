@@ -1,6 +1,6 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { RAIL_SPACING } from '../layout-settings';
+import { GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { prepareRouteObstacles, type RouteObstacles } from './route-obstacles';
 
@@ -40,8 +40,15 @@ export function commonGroupBounds(
 	const groupId = groupAncestors(input, relation.from).find((id) => targetGroups.has(id));
 	if (groupId === undefined) return undefined;
 	const bounds = defined(input.bounds.get(groupId));
-	if (input.vertical) return { start: bounds.x, end: bounds.x + bounds.width };
-	return { start: bounds.y, end: bounds.y + bounds.height };
+	if (input.vertical)
+		return {
+			start: bounds.x + GROUP_SHELL_CLEARANCE,
+			end: bounds.x + bounds.width - GROUP_SHELL_CLEARANCE,
+		};
+	return {
+		start: bounds.y + GROUP_SHELL_CLEARANCE,
+		end: bounds.y + bounds.height - GROUP_SHELL_CLEARANCE,
+	};
 }
 
 /** Ancestor frames belong to the route; all other group frames block it. */

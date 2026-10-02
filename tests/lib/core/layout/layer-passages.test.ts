@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
 	JunctionOperator,
 	LayoutDirection,
@@ -10,6 +11,10 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
+import {
+	GROUP_SHELL_CLEARANCE,
+	RAIL_SPACING,
+} from '../../../../src/lib/core/layout/layout-settings';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import { layerPassages } from '../../../../src/lib/core/layout/routing/layer-passages';
 import { validLogicDocument } from '../../../support/builders/logic-document';
@@ -464,47 +469,50 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 	});
 
 	it.each([
-		{ start: 0, end: 400, capacity: 17 },
-		{ start: 0, end: 350, capacity: 15 },
-		{ start: 50, end: 400, capacity: 15 },
-	])(
-		'reserves empty-row group tracks until frame $start..$end is full',
-		({ start, end, capacity }) => {
-			const shortcuts = Array.from({ length: capacity + 1 }, (_, index) => ({
-				id: `empty-${index}`,
-				from: 'source',
-				to: 'target',
-			}));
-			const groupedResult = createGraph({
-				...document,
-				nodes: document.nodes.map((node) => ({ ...node, groupId: 'group' })),
-				junctions: [],
-				relations: shortcuts,
-			});
-			if (!groupedResult.ok)
-				throw new Error('The isolated group fixture must have valid endpoints.');
-			let groupBounds: Bounds = { x: start, y: 0, width: end - start, height: 400 };
-			if (!frame.vertical) groupBounds = { x: 0, y: start, width: 400, height: end - start };
-			const reserve = layerPassages(
-				input(
-					[['target'], [], ['source']],
-					{ group: groupBounds, target: box(200, 0, 32), source: box(200, 240, 32) },
-					groupedResult.value,
-				),
-			);
-			const passages = shortcuts.map((relation) => reserve(relation));
-			expect(passages.slice(0, 3)).toEqual([200, 176, 224]);
-			const allocated: number[] = [];
-			for (const passage of passages.slice(0, -1)) {
-				if (passage === undefined) throw new Error('A free group track was not reserved');
-				expect(passage).toBeGreaterThanOrEqual(start);
-				expect(passage).toBeLessThanOrEqual(end);
-				for (const prior of allocated) expect(Math.abs(passage - prior)).toBeGreaterThanOrEqual(24);
-				allocated.push(passage);
-			}
-			expect(passages.at(-1)).toBeUndefined();
-		},
-	);
+		{ start: 0, end: 400 },
+		{ start: 0, end: 350 },
+		{ start: 50, end: 400 },
+	])('fills the clear part of a group frame without using its boundary', ({ start, end }) => {
+		const requests = Math.ceil((end - start) / RAIL_SPACING) + 2;
+		const shortcuts = Array.from({ length: requests }, (_, index) => ({
+			id: `empty-${index}`,
+			from: 'source',
+			to: 'target',
+		}));
+		const groupedResult = createGraph({
+			...document,
+			nodes: document.nodes.map((node) => ({ ...node, groupId: 'group' })),
+			junctions: [],
+			relations: shortcuts,
+		});
+		if (!groupedResult.ok) throw new Error('The isolated group fixture must have valid endpoints.');
+		let groupBounds: Bounds = { x: start, y: 0, width: end - start, height: 400 };
+		if (!frame.vertical) groupBounds = { x: 0, y: start, width: 400, height: end - start };
+		const reserve = layerPassages(
+			input(
+				[['target'], [], ['source']],
+				{ group: groupBounds, target: box(200, 0, 32), source: box(200, 240, 32) },
+				groupedResult.value,
+			),
+		);
+		const passages = shortcuts.map((relation) => reserve(relation));
+		expect(passages.slice(0, 3)).toEqual([200, 176, 224]);
+		const allocated: number[] = [];
+		for (const passage of passages) {
+			if (passage === undefined) continue;
+			expect(passage - start).toBeGreaterThanOrEqual(GROUP_SHELL_CLEARANCE);
+			expect(end - passage).toBeGreaterThanOrEqual(GROUP_SHELL_CLEARANCE);
+			for (const prior of allocated)
+				expect(Math.abs(passage - prior)).toBeGreaterThanOrEqual(RAIL_SPACING);
+			allocated.push(passage);
+		}
+		const sorted = allocated.toSorted((left, right) => left - right);
+		expect(defined(sorted[0]) - start - GROUP_SHELL_CLEARANCE).toBeLessThan(RAIL_SPACING);
+		expect(end - GROUP_SHELL_CLEARANCE - defined(sorted.at(-1))).toBeLessThan(RAIL_SPACING);
+		for (let index = 1; index < sorted.length; index += 1)
+			expect(defined(sorted[index]) - defined(sorted[index - 1])).toBeLessThan(2 * RAIL_SPACING);
+		expect(passages.at(-1)).toBeUndefined();
+	});
 
 	it('uses in-frame component exterior tracks after group candidates saturate', () => {
 		const shortcuts = ['a', 'b', 'c'].map((id) => ({
@@ -603,7 +611,9 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 			...grouped,
 			sourceOffsets: new Map([['first', 200]]),
 		});
-		expect(reserve(firstRelation)).toBe(100);
+		const passage = defined(reserve(firstRelation));
+		expect(Math.abs(passage)).toBeGreaterThanOrEqual(40 + RAIL_SPACING);
+		expect(Math.abs(passage)).toBeLessThanOrEqual(100 - GROUP_SHELL_CLEARANCE);
 	});
 
 	it.each([

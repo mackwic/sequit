@@ -1,6 +1,6 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { RAIL_SPACING } from '../layout-settings';
+import { GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point, RoutingLayers } from '../layout-types';
 import {
 	componentExteriorCandidates,
@@ -8,6 +8,7 @@ import {
 	exteriorFor,
 } from './component-passages';
 import { commonGroupBounds, foreignGroupObstacles } from './group-passages';
+import { parallelShellObstacles } from './group-shells';
 import { freeColumnIndex, holdOuterColumn, passageEnds } from './passage-columns';
 import { byJogCrossings, type PassageReservation } from './passage-jogs';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
@@ -28,6 +29,7 @@ interface PassageWorkspace extends PassageInput {
 	readonly obstacles: Map<string, RouteObstacles | undefined>;
 	readonly reservations: PassageReservation[];
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
+	readonly shellObstacles: RouteObstacles;
 	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
 }
 
@@ -57,8 +59,9 @@ function obstaclesAcross(
 	input: PassageWorkspace,
 	targetLayer: number,
 	sourceLayer: number,
+	clearance: number,
 ): RouteObstacles | undefined {
-	const key = `${targetLayer}:${sourceLayer}`;
+	const key = `${targetLayer}:${sourceLayer}:${clearance}`;
 	const { obstacles } = input;
 	if (obstacles.has(key)) return obstacles.get(key);
 	const boxes: Bounds[] = [];
@@ -68,7 +71,7 @@ function obstaclesAcross(
 			boxes.push(defined(input.bounds.get(id)));
 		}
 	let index: RouteObstacles | undefined;
-	if (boxes.length > 0) index = prepareRouteObstacles(boxes, RAIL_SPACING);
+	if (boxes.length > 0) index = prepareRouteObstacles(boxes, clearance);
 	obstacles.set(key, index);
 	return index;
 }
@@ -170,6 +173,8 @@ function groupPaddingCandidates(
 	} else {
 		candidates = occupiedGroupPaddingCandidates(occupied, group, preferred, maximumTracks);
 	}
+	// A nested shell can occupy the node-adjacent tracks; retain the parent padding too.
+	candidates.push(group.start, group.end);
 	return sortByDistance(candidates, sourceCoordinate, targetCoordinate);
 }
 
@@ -201,6 +206,7 @@ function candidateHitsObstacles(
 		column(candidate, source, selection.workspace.vertical),
 		column(candidate, target, selection.workspace.vertical),
 	];
+	if (routeHitsObstacles(points, selection.workspace.shellObstacles)) return true;
 	if (obstacleIndex !== undefined) {
 		if (routeHitsObstacles(points, obstacleIndex)) return true;
 	}
@@ -211,7 +217,7 @@ function candidateHitsObstacles(
 	return false;
 }
 
-function selectPassage(input: PassageSelection): number | undefined {
+function selectPassage(input: PassageSelection, clearance = RAIL_SPACING): number | undefined {
 	const { workspace } = input;
 	const [targetLayer, sourceLayer] = input.layerSpan;
 	let obstacleIndex: RouteObstacles | undefined;
@@ -224,7 +230,7 @@ function selectPassage(input: PassageSelection): number | undefined {
 		const index = freeColumnIndex(workspace.reservations, input.layerSpan, candidate);
 		if (index === undefined) continue;
 		if (!obstacleIndexReady) {
-			obstacleIndex = obstaclesAcross(workspace, targetLayer, sourceLayer);
+			obstacleIndex = obstaclesAcross(workspace, targetLayer, sourceLayer, clearance);
 			obstacleIndexReady = true;
 		}
 		if (candidateHitsObstacles(input, candidate, obstacleIndex)) continue;
@@ -288,7 +294,10 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	selection.candidates.push(...groupPaddingCandidates(selection, occupied));
 	if (group !== undefined) selection.candidates.push(...exterior.preferred);
 	selection.candidates.push(...fallback);
-	return selectPassage(selection);
+	const passage = selectPassage(selection);
+	if (passage !== undefined || group === undefined) return passage;
+	// If no full-clearance column fits, share the padding between the node and its frame.
+	return selectPassage(selection, GROUP_SHELL_CLEARANCE);
 }
 
 /** An outer column held like the other passages, so that no later passage runs along it. */
@@ -315,6 +324,14 @@ export function layerPassages(input: PassageInput): LayerPassageAllocator {
 		obstacles: new Map(),
 		reservations: [],
 		groupObstacleCache: new Map(),
+		shellObstacles: parallelShellObstacles(
+			input.graph.document.groups.flatMap(({ id }) => {
+				const box = input.bounds.get(id);
+				if (box === undefined) return [];
+				return [box];
+			}),
+			input.vertical,
+		),
 	};
 	return Object.assign((relation: LogicRelation) => reservePassage(workspace, relation), {
 		outer: (relation: LogicRelation, start: number) =>

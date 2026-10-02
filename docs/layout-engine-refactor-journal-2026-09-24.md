@@ -737,3 +737,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Commit `fix(layout): invariance dédiée — somme canonique des ancres de jonction` : la somme flottante des positions est précédée d’un tri numérique, pour retirer le résidu d’ordre lexical découvert en relecture R-01.
 - Le témoin minimal à trois ancres est rouge avant correction dans les huit configurations (0,4000000000000001 contre 0,39999999999999997) ; le générateur d’invariance est élargi aux groupes imbriqués, aux jonctions membres de groupes et à plusieurs jonctions.
 - Aucun SHA dédié ré-épinglé. Le départage structurel n’est pas une optimisation des routes : la relecture mesure un effet global neutre sur les croisements stricts (2185 → 2186, sur 2515 documents valides des deux côtés dans un corpus de 3000).
+
+## Correctifs du 2 octobre 2026 — dégagement des coques dédiées
+
+- Commit `fix(layout): coques dédiées — centrer les rails dans l’espace libre` : D-06 ; les canaux par couches excluent les coques avant de centrer les rails, et les passages longitudinaux réservent aussi les côtés des cadres propriétaires.
+- Les témoins à quatre et cinq nœuds passent de 0 à au moins 24 unités en TB ; le minimum commun exigé est 12 unités. Les quatre directions, les en-têtes 36/60/90, les paddings 24/36/48 et les groupes imbriqués sont couverts.
+- L’oracle indépendant refuse les segments parallèles à moins de 12 unités d’un cadre ; propriétés sur 400 tirages × 4 directions à un ou deux groupes et 1 200 layouts à un groupe, sans contact colinéaire.
+- Aucun SHA dédié ré-épinglé ; les documents de référence conservent leurs géométries sélectionnées. Les rangs, les ports et l’allocation des rails ne sont pas modifiés.

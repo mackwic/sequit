@@ -1,7 +1,8 @@
 import { defined } from '../../document/logic-document';
 import { mainSize } from '../geometry/layout-frame';
-import { GROUP_FRAME_CLEARANCE, RAIL_SPACING } from '../layout-settings';
+import { GROUP_FRAME_CLEARANCE, GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
+import { prepareRouteObstacles, type RouteObstacles } from './route-obstacles';
 
 /** An oriented interval on the main axis, with `start <= end`. */
 export interface MainInterval {
@@ -123,4 +124,23 @@ export function shellChannelGaps(input: {
 		result.set(rank, Math.max(gap, shells + GROUP_FRAME_CLEARANCE + rails));
 	}
 	return result;
+}
+
+/** Only parallel sides block a longitudinal passage; crossing a header is legitimate. */
+export function parallelShellObstacles(
+	frames: readonly Bounds[],
+	vertical: boolean,
+): RouteObstacles {
+	const sides = frames.flatMap((box) => {
+		if (vertical)
+			return [
+				{ ...box, width: 0 },
+				{ ...box, x: box.x + box.width, width: 0 },
+			];
+		return [
+			{ ...box, height: 0 },
+			{ ...box, y: box.y + box.height, height: 0 },
+		];
+	});
+	return prepareRouteObstacles(sides, GROUP_SHELL_CLEARANCE);
 }

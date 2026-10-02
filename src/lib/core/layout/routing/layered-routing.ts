@@ -2,13 +2,19 @@ import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import type { LayoutFrame } from '../geometry/layout-frame';
 import { mainSize, transverseSize, transverseStart } from '../geometry/layout-frame';
-import { BASE_RANK_GAP, JUNCTION_CHANNEL_GAP, RAIL_SPACING } from '../layout-settings';
+import {
+	BASE_RANK_GAP,
+	GROUP_FRAME_CLEARANCE,
+	JUNCTION_CHANNEL_GAP,
+	RAIL_SPACING,
+} from '../layout-settings';
 import type { Bounds, Point, RoutingLayers, Size } from '../layout-types';
 import { routeChannel } from './channel-routing';
-import type { ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
+import type { ChannelRouting, ChannelRun } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
 import { type PortAllocation, sharedSourcePorts, sharedTargetPorts } from './port-allocation';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
+import { type RoutingSpace, routingSpace } from './routing-space';
 
 interface LayerChannel extends ChannelRouting {
 	readonly layer: number;
@@ -16,6 +22,7 @@ interface LayerChannel extends ChannelRouting {
 }
 export interface LayerPlan {
 	readonly layers: RoutingLayers;
+	readonly enclosingGroups: ReadonlySet<string>;
 	readonly channels: readonly LayerChannel[];
 	readonly ports: PortAllocation;
 	readonly gaps: ReadonlyMap<number, number>;
@@ -162,95 +169,30 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 	return channels;
 }
 
-function intersectsGroupSide(from: number, to: number, start: number, end: number): boolean {
-	return Math.min(from, to) < end && Math.max(from, to) > start;
-}
-
-function foreignWireGap(
-	wire: ChannelWire,
-	side: { readonly start: number; readonly end: number },
-	base: number,
-	railStep: number,
-): number {
-	if (wire.first === undefined || wire.last === undefined) return 0;
-	let gap = 0;
-	const middle = wire.middle ?? wire.target;
-	if (intersectsGroupSide(wire.source, middle, side.start, side.end))
-		gap = Math.max(gap, base + railStep * wire.first.rail);
-	const lastStart = wire.middle ?? wire.source;
-	if (intersectsGroupSide(lastStart, wire.target, side.start, side.end))
-		gap = Math.max(gap, base + railStep * wire.last.rail);
-	return 2 * gap;
-}
-
-function groupShellGap(
-	input: LayerInput,
-	channel: LayerChannel,
-	groupId: string,
-	space: { readonly beforeEnd: number; readonly afterStart: number; readonly halfSpan: number },
-): number {
-	const box = defined(input.bounds.get(groupId));
-	let mainStart = box.x;
-	if (input.frame.vertical) mainStart = box.y;
-	const mainLength = mainSize(box, input.frame.vertical);
-	let start = mainStart;
-	if (!input.frame.forward) start = -mainStart - mainLength;
-	const end = start + mainLength;
-	let base: number;
-	let railStep: number;
-	const startsInGap = start > space.beforeEnd && start < space.afterStart;
-	const endsInGap = end > space.beforeEnd && end < space.afterStart;
-	if (startsInGap && end >= space.afterStart) {
-		base = space.afterStart - start + space.halfSpan;
-		railStep = -RAIL_SPACING;
-	} else if (endsInGap && start <= space.beforeEnd) {
-		base = end - space.beforeEnd - space.halfSpan;
-		railStep = RAIL_SPACING;
-	} else return 0;
-	const sideStart = transverseStart(box, input.frame.vertical);
-	const side = { start: sideStart, end: sideStart + transverseSize(box, input.frame.vertical) };
-	let gap = 0;
-	for (const [index, wire] of channel.wires.entries()) {
-		const relation = defined(channel.links[index]).relation;
-		if (ownsGroup(input.graph, relation.from, groupId)) continue;
-		if (ownsGroup(input.graph, relation.to, groupId)) continue;
-		gap = Math.max(gap, foreignWireGap(wire, side, base, railStep));
-	}
-	return gap;
-}
-
-/** Keep foreign channel rails outside the shell of a group anchored at either adjacent row. */
-function groupChannelGap(input: LayerInput, channel: LayerChannel): number {
-	if (input.graph.document.groups.length === 0) return 0;
+/** Reserve shell thickness as well as a free channel wide enough for every rail. */
+function groupChannelGap(input: LayerInput, channel: LayerChannel, space: RoutingSpace): number {
 	const before = layerExtent(defined(input.layers.rows[channel.layer]), input.bounds, input.frame);
 	const after = layerExtent(
 		defined(input.layers.rows[channel.layer + 1]),
 		input.bounds,
 		input.frame,
 	);
-	const space = {
-		beforeEnd: before.end,
-		afterStart: after.start,
-		halfSpan: ((channel.railCount - 1) * RAIL_SPACING) / 2,
-	};
-	let gap = 0;
-	for (const group of input.graph.document.groups)
-		gap = Math.max(gap, groupShellGap(input, channel, group.id, space));
-	return gap;
-}
-
-function ownsGroup(graph: LogicGraph, endpointId: string, groupId: string): boolean {
-	let parentId = graph.endpointsById.get(endpointId)?.entity.groupId;
-	while (parentId !== undefined) {
-		if (parentId === groupId) return true;
-		parentId = graph.endpointsById.get(parentId)?.entity.groupId;
-	}
-	return false;
+	if (!Number.isFinite(before.end) || !Number.isFinite(after.start)) return 0;
+	const freeBefore = defined(space.extents[channel.layer]);
+	const freeAfter = defined(space.extents[channel.layer + 1]);
+	const shells = freeBefore.end - before.end + after.start - freeAfter.start;
+	if (shells <= 0) return 0;
+	const rails = Math.max(0, channel.railCount - 1) * RAIL_SPACING;
+	return shells + GROUP_FRAME_CLEARANCE + rails;
 }
 
 export function planLayeredRouting(input: LayerInput, ports: PortAllocation): LayerPlan {
 	const { layers } = input;
 	const channels = channelsFor(input, ports);
+	const enclosingGroups = new Set<string>();
+	for (const { entity } of input.graph.endpointsById.values())
+		if (entity.groupId !== undefined) enclosingGroups.add(entity.groupId);
+	const space = routingSpace({ ...input, enclosingGroups });
 	const channelGaps = new Map<number, number[]>();
 	const gaps = new Map<number, number>();
 	for (const channel of channels) {
@@ -262,7 +204,7 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 		if (bordersJunction) base = JUNCTION_CHANNEL_GAP;
 		const gap = Math.max(
 			base + Math.max(0, channel.railCount - 1) * RAIL_SPACING,
-			groupChannelGap(input, channel),
+			groupChannelGap(input, channel, space),
 		);
 		const slots = channelGaps.get(interval) ?? [];
 		slots.push(gap);
@@ -277,7 +219,7 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 		const interval = defined(layers.intervals[layer]);
 		gaps.set(interval, (gaps.get(interval) ?? 0) + thickness);
 	}
-	return { layers, channels, ports, gaps, channelGaps };
+	return { layers, enclosingGroups, channels, ports, gaps, channelGaps };
 }
 
 export function materializeLayers(
@@ -285,7 +227,11 @@ export function materializeLayers(
 	plan: LayerPlan,
 ): ReadonlyMap<string, readonly Point[]> {
 	const { bounds, frame } = input;
-	const extents = plan.layers.rows.map((row) => layerExtent(row, bounds, frame));
+	const { extents } = routingSpace({
+		...input,
+		layers: plan.layers,
+		enclosingGroups: plan.enclosingGroups,
+	});
 	let sign = 1;
 	if (!frame.forward) sign = -1;
 	const paths = new Map<string, Point[]>();
