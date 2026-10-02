@@ -18,6 +18,7 @@ import {
 	directCrossings,
 	directJog,
 	directJogPoints,
+	trackRank,
 } from './grid-cell-crossing-direct';
 import { crossingPortCoordinate, faceLine, facePoint } from './grid-cell-crossing-face';
 import { crossingPortShift } from './grid-cell-crossing-port-stack';
@@ -147,7 +148,7 @@ function crossingEndpoint(
 	const face = defined(routing.faceByEndpointId.get(endpointId)?.get(relation.id));
 	const tracks = defined(allocation.portTrackByEndpointId.get(endpointId));
 	const own = defined(tracks.get(relation.id));
-	const track = face.relationIds.filter((id) => defined(tracks.get(id)) < own).length;
+	const track = trackRank(face.relationIds, tracks, own);
 	const edge = crossingFaceEdge(endpointId, face.relationIds.length);
 	const coordinate = crossingPortCoordinate(face.face, face.side, edge, track) + face.portShift;
 	return { face, endpointId, port: facePoint(face.face, face.side, coordinate) };

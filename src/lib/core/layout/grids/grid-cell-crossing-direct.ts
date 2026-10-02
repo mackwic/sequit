@@ -138,10 +138,10 @@ function withinFaces(
 	for (const relation of input.crossing) {
 		const direct = candidates.get(relation.id);
 		if (direct === undefined || direct.lateral) continue;
-		const ends = [
+		const ends: readonly (readonly [string, RegionPortalSide])[] = [
 			[relation.from, direct.sourceSide],
 			[relation.to, direct.targetSide],
-		] as const;
+		];
 		for (const [endpointId, side] of ends) {
 			const key = `${endpointId}\u0000${side}`;
 			const cell = defined(cellById.get(defined(input.cellByEndpointId.get(endpointId))));
@@ -210,7 +210,7 @@ export function directJog(
 		const edge = defined(edges.gutters[direct.gutterColumn]);
 		return crossingRailX(edge, direct.frameX, RegionPortalSide.Left, own);
 	}
-	const rank = direct.mates.filter((mate) => defined(tracks.get(mate)) < own).length;
+	const rank = trackRank(direct.mates, tracks, own);
 	return direct.gapStart + defined(direct.lanes[rank]);
 }
 
@@ -233,4 +233,15 @@ export function directJogPoints(
 		{ x: source.x, y: jog },
 		{ x: target.x, y: jog },
 	];
+}
+
+/** How many of `ids` hold a track below `own`: the rank of `own` among them. */
+export function trackRank(
+	ids: readonly string[],
+	tracks: ReadonlyMap<string, number>,
+	own: number,
+): number {
+	let rank = 0;
+	for (const id of ids) if (defined(tracks.get(id)) < own) rank += 1;
+	return rank;
 }

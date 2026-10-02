@@ -35,6 +35,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { cheaperRoute, cheaperSearch } from './grid-cell-crossing-cost';
 import {
 	type GridCrossingAllocationBudgets,
 	validatedGridCrossingAllocationBudgets,
@@ -210,13 +211,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		),
 	};
 	const routing = gridCrossingRouting(routingInput);
-	// Crossings between neighbouring cells first try the gap between them; an allocation whose gap
-	// routes do not validate keeps its gutter routes, so the gutter search order is unchanged.
-	let direct: GridCrossingRouting | undefined = gridCrossingRouting({
-		...routingInput,
-		direct: true,
-	});
-	if (direct.directByRelationId.size === 0) direct = undefined;
+	const direct = gridCrossingRouting({ ...routingInput, direct: true });
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,
@@ -271,13 +266,13 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		if (contact !== undefined) return { candidate, failure: contact };
 		return { candidate };
 	};
-	const routed = (allocation: GridCrossingAllocation, acceptBridges: boolean) => {
-		if (direct !== undefined) {
-			const attempt = routeWith(direct, allocation, acceptBridges);
-			if (attempt.failure === undefined) return attempt;
-		}
-		return routeWith(routing, allocation, acceptBridges);
-	};
+	const gutterOnly = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+		routeWith(routing, allocation, acceptBridges);
+	const routed = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+		cheaperRoute(
+			gutterOnly(allocation, acceptBridges),
+			routeWith(direct, allocation, acceptBridges),
+		);
 	const crossingIds = crossing.map(({ id }) => id);
 	const allocationInput: CrossingAllocationInput = {
 		edges,
@@ -308,7 +303,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		...allocationInput,
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
-	const search = searchGridCrossingAllocations(withSpans, routed, placed.allocationBudgets);
+	// The gutter-only search is the base result; the search that also tries the gap forms replaces
+	// it only when the base finds nothing, or with fewer crossings, then shorter, then fewer bends.
+	const budgets = placed.allocationBudgets;
+	let search = searchGridCrossingAllocations(withSpans, gutterOnly, budgets);
+	if (direct.directByRelationId.size > 0)
+		search = cheaperSearch(search, searchGridCrossingAllocations(withSpans, routed, budgets));
 	if ('selected' in search) {
 		const selected = search.selected;
 		return {

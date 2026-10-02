@@ -135,7 +135,15 @@ test('the grid allocation workshop distinguishes exact counts from lower bounds'
 			const track = card.getByTestId(`grid-allocation-track-${relationId}`);
 			const route = card.getByTestId(`grid-allocation-route-${relationId}`);
 			await expect(track).toBeVisible();
-			await expect(route).toBeVisible();
+			// A straight gap route (a-b, c-f) is a zero-height or zero-width polyline: Playwright
+			// reports it hidden, so its drawn extent is checked instead.
+			await expect(route).toBeAttached();
+			const extent = await route.evaluate((element) => {
+				if (!(element instanceof SVGGraphicsElement)) throw new Error('Expected an SVG route');
+				const box = element.getBBox();
+				return box.width + box.height;
+			});
+			expect(extent).toBeGreaterThan(0);
 			const legendColor = await track
 				.locator('.swatch')
 				.evaluate(

@@ -120,4 +120,22 @@ describe('crossings between neighbouring grid cells', () => {
 			expect(defined(jog[0]).x).toBe(defined(jog[1]).x);
 		},
 	);
+
+	it('never keeps a gap form longer than the gutter form of the same allocation', async () => {
+		// Corpus random-159, right to left: the gap form of n7→n1 that detours around n1's siblings
+		// took 1 692 px where the gutter form took 1 384 px; the shorter valid form must win.
+		const document = persistedCellGrid(
+			2,
+			[['n0'], ['n1', 'n2', 'n3'], ['n4', 'n5'], ['n6', 'n7']],
+			[
+				['n3', 'n1'],
+				['n7', 'n1'],
+			],
+			{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+		);
+		const { layout } = await layoutDocument(document);
+		const route = defined(layout.relations.find(({ id }) => id === 'r1'));
+		expect(routeLength(route)).toBeLessThanOrEqual(1384);
+		expect(routeCrossings(layout.relations)).toEqual([]);
+	});
 });
