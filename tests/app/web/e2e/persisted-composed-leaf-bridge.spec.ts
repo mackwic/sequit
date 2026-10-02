@@ -146,7 +146,9 @@ test('the persisted composed leaf uses its bridge-free portal route and reloads 
 	expect(await renderedComposition(page)).toEqual(before);
 });
 
-test('a persisted three-dependency lane crossing renders its necessary bridge', async ({
+// Before L-04 the intra-lane relation left `a` by its lateral face and crossed `a-to-c`; the
+// main-face route between rows removes that crossing, so no bridge may remain.
+test('a persisted three-dependency lane crossing renders without a bridge', async ({
 	page,
 }, info) => {
 	await page.setViewportSize({ width: 1920, height: 1200 });
@@ -161,10 +163,10 @@ test('a persisted three-dependency lane crossing renders its necessary bridge', 
 	const paths = await page
 		.locator('[data-relation-id]')
 		.evaluateAll((routes) => routes.map((route) => route.getAttribute('d') ?? ''));
-	expect(paths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
-	const screenshot = info.outputPath('persisted-lane-necessary-bridge.png');
+	for (const path of paths) expect(path).not.toMatch(/\bA 6 6 /);
+	const screenshot = info.outputPath('persisted-lane-crossing-free.png');
 	await page.screenshot({ path: screenshot });
-	await info.attach('persisted-lane-necessary-bridge', {
+	await info.attach('persisted-lane-crossing-free', {
 		path: screenshot,
 		contentType: 'image/png',
 	});

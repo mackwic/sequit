@@ -405,12 +405,19 @@ test('a persisted nested group crosses an internal grid to a foreign cell from i
 		if (matrix === null) throw new Error('Missing route transform');
 		const start = route.getPointAtLength(0);
 		const contact = new DOMPoint(start.x, start.y).matrixTransform(matrix);
-		if (
-			Math.abs(contact.x - innerBounds.right) > 2 ||
-			contact.y <= innerBounds.top ||
-			contact.y >= innerBounds.bottom
-		)
-			throw new Error('The route does not attach to the nested group own face');
+		// G-02: a group relation leaves by any of the group's four faces, not only the right one.
+		const onVerticalFace =
+			(Math.abs(contact.x - innerBounds.left) <= 2 ||
+				Math.abs(contact.x - innerBounds.right) <= 2) &&
+			contact.y > innerBounds.top &&
+			contact.y < innerBounds.bottom;
+		const onHorizontalFace =
+			(Math.abs(contact.y - innerBounds.top) <= 2 ||
+				Math.abs(contact.y - innerBounds.bottom) <= 2) &&
+			contact.x > innerBounds.left &&
+			contact.x < innerBounds.right;
+		const onFace = onVerticalFace || onHorizontalFace;
+		if (!onFace) throw new Error('The route does not attach to the nested group own face');
 	});
 	const screenshot = info.outputPath('persisted-internal-nested-group.png');
 	await page.screenshot({ path: screenshot });

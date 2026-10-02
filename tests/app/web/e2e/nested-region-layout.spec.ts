@@ -1121,12 +1121,19 @@ test('a persisted internal grid attaches a group crossing without leaving its ce
 		if (matrix === null) throw new Error('Missing route transform');
 		const start = route.getPointAtLength(0);
 		const contact = new DOMPoint(start.x, start.y).matrixTransform(matrix);
-		if (
-			Math.abs(contact.x - groupBounds.right) > 2 ||
-			contact.y <= groupBounds.top ||
-			contact.y >= groupBounds.bottom
-		)
-			throw new Error('The route does not attach to the group outside face');
+		// G-02: a group relation leaves by any of the group's four faces, not only the right one.
+		const onVerticalFace =
+			(Math.abs(contact.x - groupBounds.left) <= 2 ||
+				Math.abs(contact.x - groupBounds.right) <= 2) &&
+			contact.y > groupBounds.top &&
+			contact.y < groupBounds.bottom;
+		const onHorizontalFace =
+			(Math.abs(contact.y - groupBounds.top) <= 2 ||
+				Math.abs(contact.y - groupBounds.bottom) <= 2) &&
+			contact.x > groupBounds.left &&
+			contact.x < groupBounds.right;
+		const onFace = onVerticalFace || onHorizontalFace;
+		if (!onFace) throw new Error('The route does not attach to the group outside face');
 		const length = route.getTotalLength();
 		for (let sample = 0; sample <= 128; sample += 1) {
 			const point = route.getPointAtLength((length * sample) / 128);
@@ -1201,9 +1208,20 @@ test('a grouped member crosses its internal grid cell boundary', async ({ page }
 		const matrix = route.getScreenCTM();
 		if (matrix === null) throw new Error('Missing member route transform');
 		const start = route.getPointAtLength(0);
-		return new DOMPoint(start.x, start.y).matrixTransform(matrix).x;
+		const point = new DOMPoint(start.x, start.y).matrixTransform(matrix);
+		return { x: point.x, y: point.y };
 	});
-	expect(Math.abs(contact - (member.x + member.width))).toBeLessThanOrEqual(2);
+	// G-02: the member leaves by any of its four faces, not only the right one.
+	const onVerticalFace =
+		(Math.abs(contact.x - member.x) <= 2 || Math.abs(contact.x - (member.x + member.width)) <= 2) &&
+		contact.y > member.y &&
+		contact.y < member.y + member.height;
+	const onHorizontalFace =
+		(Math.abs(contact.y - member.y) <= 2 ||
+			Math.abs(contact.y - (member.y + member.height)) <= 2) &&
+		contact.x > member.x &&
+		contact.x < member.x + member.width;
+	expect(onVerticalFace || onHorizontalFace).toBe(true);
 	const screenshot = info.outputPath('persisted-internal-grid-group-member.png');
 	await page.screenshot({ path: screenshot });
 	await info.attach('persisted-internal-grid-group-member', {
