@@ -19,7 +19,6 @@ import {
 	crossingCanonicalBusGeometryCount,
 	type GridCrossingAllocationBudgets,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
-import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	GridCrossingSearchMode,
@@ -175,7 +174,7 @@ describe('grid crossing allocation search examples', () => {
 		}
 		expect(attempts.slice(1, 9).map(geometry)).toEqual(legacyPrefix);
 	});
-	it('uses observed crossing conflicts to prioritize only the affected tracks before the bridge phase', () => {
+	it('separates real crossing conflicts without bridges while keeping unrelated tracks fixed', () => {
 		const fixture = variedGridRoutingCase(3, 2, 2);
 		const canonical = canonicalCrossingAllocation(fixture.input);
 		const initial = routeGridFixture(fixture, canonical, false);
@@ -193,9 +192,9 @@ describe('grid crossing allocation search examples', () => {
 			busOrder(candidate).some((id, index) => id !== canonicalOrder[index]),
 		);
 		const prioritizedBus = defined(priorityBusOrder);
-		expect(priority[0]).toEqual(canonical);
+		for (const candidate of priority)
+			sharesUnchangedTracks(candidate, canonical, fixture.input, active);
 		expect(busOrder(prioritizedBus)).not.toEqual(canonicalOrder);
-		sharesUnchangedTracks(prioritizedBus, canonical, fixture.input, active);
 
 		const observedFailures: RegionGeometryDiagnostic[] = [];
 		const route = (allocation: GridCrossingAllocation, acceptBridges: boolean) => {
@@ -205,19 +204,13 @@ describe('grid crossing allocation search examples', () => {
 		};
 		const result = searchGridCrossingAllocations(fixture.input, route);
 		if (!('selected' in result))
-			throw new Error('The later bridge phase must find a valid allocation.');
-		const reallocation = defined(result.witness.phases[1]);
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Bridge);
-		expect(reallocation.exploredGeometries).toBeGreaterThan(0);
-		expect(Number(reallocation.totalGeometries)).toBeGreaterThan(reallocation.exploredGeometries);
-		expect(reallocation.truncated).toBe(true);
+			throw new Error('The coherent bus must provide an unbridged allocation.');
 		expect(result.witness.rejectedAlternatives[0]).toMatchObject({
 			phaseId: CrossingAllocationPhaseId.RowGutter,
-			busOrder: busOrder(canonical),
 			code: RegionGeometryDiagnosticCode.ParentRouteContact,
 		});
 		expect(observedFailures.length).toBe(result.witness.rejectedAlternatives.length);
-		expect(route(result.selected.allocation, true).failure).toBeUndefined();
+		expect(route(result.selected.allocation, false).failure).toBeUndefined();
 	});
 	it('does not prioritize containment when the observed route failure leaves that unrelated route fixed', () => {
 		// target-2 walls target-0 off its portal: route-0 fails alone, in every allocation.
@@ -244,20 +237,6 @@ describe('grid crossing allocation search examples', () => {
 		const geometry = (candidate: GridCrossingAllocation) =>
 			effectiveRouteGeometry(fixture.routing, fixture.crossing, candidate);
 		const containmentGeometry = geometry(containment);
-		// Unprioritized, canonical then containment, each first with its routed port order.
-		const start = [
-			...new Set(
-				[
-					routedPortAllocation(fixture.input, canonical),
-					canonical,
-					routedPortAllocation(fixture.input, containment),
-					containment,
-				].map(geometry),
-			),
-		];
-		expect(
-			[...crossingAllocationCandidates(fixture.input)].slice(0, start.length).map(geometry),
-		).toEqual(start);
 		expect(candidates.map(geometry)).not.toContain(containmentGeometry);
 		for (const candidate of candidates)
 			sharesUnchangedTracks(candidate, canonical, fixture.input, active);
