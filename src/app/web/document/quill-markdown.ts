@@ -1,87 +1,94 @@
 import diff from 'fast-diff';
 import type Delta from 'quill-delta';
 
-function escapeText(text: string): string {
-	return text.replace(/([\\`*_{}[\]()#+\-.!<>|~])/g, '\\$1');
+import { LineKind, separated } from './markdown-delta';
+import { backticks, inlineMarkdown } from './markdown-inline';
+
+const BLANK = /^[ \t]*$/;
+
+interface ListLevel {
+	readonly ordered: boolean;
+	readonly marker: string;
+	readonly count: number;
 }
 
-function inline(text: string, attributes: Readonly<Record<string, unknown>>): string {
-	const content = text.trim();
-	if (content.length === 0) return text;
-	const start = text.indexOf(content);
-	let result = escapeText(content);
-	if (attributes['code'] === true) {
-		const delimiter = backticks(text, 1);
-		return `${delimiter} ${text} ${delimiter}`;
+/** One Markdown line per Quill line, plus code fences and the blank lines `separated` asks for. */
+class BlockWriter {
+	readonly lines: string[] = [];
+	#levels: ListLevel[] = [];
+	#code = false;
+	/** Where the last non-blank line ended, and what it was. */
+	#content = { end: 0, kind: LineKind.Other };
+
+	constructor(readonly fence: string) {}
+
+	line(line: Delta, attributes: Readonly<Record<string, unknown>>): void {
+		const code = Boolean(attributes['code-block']);
+		if (code !== this.#code) {
+			this.lines.push(this.fence);
+			this.#code = code;
+		}
+		const heading: unknown = attributes['header'];
+		const list: unknown = attributes['list'];
+		if (code) {
+			this.#push(quillPlainText(line), LineKind.Other);
+			return;
+		}
+		const text = inlineMarkdown(line.ops);
+		if (typeof heading === 'number')
+			this.#push(`${'#'.repeat(Math.min(6, Math.max(1, heading)))} ${text}`, LineKind.Other);
+		else if (list === 'bullet' || list === 'ordered') {
+			let kind = LineKind.Item;
+			if (text === '') kind = LineKind.EmptyItem;
+			this.#push(this.#item(list === 'ordered', attributes['indent'], text), kind);
+		} else if (attributes['blockquote'] === true) this.#push(`> ${text}`, LineKind.Quote);
+		else if (BLANK.test(text)) this.lines.push(text);
+		// A lone `=` line under a paragraph would turn it into a heading.
+		else this.#push(text.replace(/^( {0,3})=/, '$1\\='), LineKind.Paragraph);
 	}
-	if (attributes['bold'] === true) result = `**${result}**`;
-	if (attributes['italic'] === true) result = `*${result}*`;
-	if (attributes['underline'] === true) result = `<u>${result}</u>`;
-	if (attributes['strike'] === true) result = `~~${result}~~`;
-	const link: unknown = attributes['link'];
-	if (typeof link === 'string') result = `[${result}](${link.replaceAll(')', '%29')})`;
-	return text.slice(0, start) + result + text.slice(start + content.length);
-}
 
-function block(
-	text: string,
-	plain: string,
-	attributes: Readonly<Record<string, unknown>>,
-	ordered: number,
-): string {
-	const heading: unknown = attributes['header'];
-	const indent: unknown = attributes['indent'];
-	let prefix = '';
-	if (typeof indent === 'number') prefix = '  '.repeat(Math.min(8, Math.max(0, indent)));
-	if (typeof heading === 'number')
-		return `${'#'.repeat(Math.min(6, Math.max(1, heading)))} ${text}`;
-	if (attributes['list'] === 'bullet') return `${prefix}- ${text}`;
-	if (attributes['list'] === 'ordered') return `${prefix}${ordered}. ${text}`;
-	if (attributes['blockquote'] === true) return `> ${text}`;
-	const codeBlock: unknown = attributes['code-block'];
-	if (typeof codeBlock === 'string') return plain;
-	if (codeBlock === true) return plain;
-	return text;
-}
+	finish(): string {
+		if (this.#code) this.lines.push(this.fence);
+		return this.lines.join('\n');
+	}
 
-function backticks(text: string, minimum: number): string {
-	const runs = text.match(/`+/g) ?? [];
-	return '`'.repeat(Math.max(minimum, ...runs.map((run) => run.length + 1)));
-}
+	#push(text: string, kind: LineKind): void {
+		if (kind !== LineKind.Item && kind !== LineKind.EmptyItem) this.#levels = [];
+		if (separated(this.#content.kind, kind)) this.lines.splice(this.#content.end, 0, '');
+		this.lines.push(text);
+		this.#content = { end: this.lines.length, kind };
+	}
 
-function formattedLine(line: Delta): string {
-	return line.ops
-		.map((op) => {
-			if (typeof op.insert === 'string') return inline(op.insert, op.attributes ?? {});
-			const image: unknown = op.insert?.['image'];
-			if (typeof image === 'string') {
-				let alt = '';
-				if (typeof op.attributes?.['alt'] === 'string') alt = escapeText(op.attributes['alt']);
-				return `![${alt}](${image.replaceAll(')', '%29')})`;
-			}
-			return '';
-		})
-		.join('');
+	/**
+	 * Nested items indent by their parents' marker width; numbering restarts per list. An empty
+	 * item drops the space after its marker, without which `- ` would read as a paragraph.
+	 */
+	#item(ordered: boolean, indent: unknown, text: string): string {
+		let depth = 0;
+		if (typeof indent === 'number') depth = Math.min(8, Math.max(0, indent));
+		const levels = this.#levels.slice(0, depth + 1);
+		let prefix = '';
+		for (let level = 0; level < depth; level += 1)
+			prefix += ' '.repeat(levels[level]?.marker.length ?? 2);
+		let count = 1;
+		const current = levels[depth];
+		if (current?.ordered === ordered) count = current.count + 1;
+		let marker = '- ';
+		if (ordered) marker = `${count}. `;
+		levels[depth] = { ordered, marker, count };
+		this.#levels = levels;
+		if (text === '') return prefix + marker.trimEnd();
+		return prefix + marker + text;
+	}
 }
 
 /** Markdown-compatible Quill formats only; the shared document continues to contain Markdown. */
 export function quillMarkdown(delta: Delta): string {
-	const lines: string[] = [];
-	let ordered = 0;
-	const state = { code: false };
-	const fence = backticks(quillPlainText(delta), 3);
+	const writer = new BlockWriter(backticks(quillPlainText(delta), 3));
 	delta.eachLine((line, attributes: Readonly<Record<string, unknown>>) => {
-		const nextCode = Boolean(attributes['code-block']);
-		if (nextCode !== state.code) {
-			lines.push(fence);
-			state.code = nextCode;
-		}
-		if (attributes['list'] === 'ordered') ordered += 1;
-		else ordered = 0;
-		lines.push(block(formattedLine(line), quillPlainText(line), attributes, ordered));
+		writer.line(line, attributes);
 	});
-	if (state.code) lines.push(fence);
-	return lines.join('\n');
+	return writer.finish();
 }
 
 export function quillPlainText(delta: Delta): string {

@@ -14,6 +14,15 @@ describe('compact Markdown body', () => {
 			{ underline: true, strong: true, text: 'too' },
 		]);
 	});
+	it('reads format tags, which the editor writes where `*` would stay literal', () => {
+		expect(bodyMarkdown('<em>Alpha.</em>bravo <strong>x<u>y</u></strong>')).toEqual([
+			{ emphasis: true, text: 'Alpha.' },
+			{ text: 'bravo ' },
+			{ strong: true, text: 'x' },
+			{ strong: true, underline: true, text: 'y' },
+		]);
+		expect(bodyMarkdown('<s>struck</s>')).toEqual([{ text: '<s>struck</s>' }]);
+	});
 	it('preserves line breaks, paragraph spacing, and escaped punctuation', () => {
 		expect(bodyMarkdown('One\nline\n\nSecond \\*literal\\*')).toEqual([
 			{ text: 'One\nline' },

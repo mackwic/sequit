@@ -122,7 +122,7 @@ it.each([
 	expect(view.quill.getText()).toBe(`${plain}\n`);
 });
 
-it('round trips adjacent formatting and multiline structures through the real clipboard conversion', () => {
+it('round trips adjacent formatting and multiline structures through a remote render', () => {
 	const view = setup();
 	const content = new Delta()
 		.insert('bold', { bold: true })
@@ -138,6 +138,38 @@ it('round trips adjacent formatting and multiline structures through the real cl
 	view.quill.setContents(content, 'user');
 	view.editor.value = view.text.toJSON();
 	expect(view.quill.getContents().diff(content).ops).toEqual([]);
+});
+
+it.each([
+	[
+		'box content',
+		QuillEditorProfile.Body,
+		new Delta()
+			.insert('Le client ')
+			.insert('valide', { italic: true })
+			.insert(' sa commande.\n\nPuis  il ')
+			.insert('paie', { bold: true, underline: true })
+			.insert('.\n'),
+	],
+	[
+		'description',
+		QuillEditorProfile.Description,
+		new Delta()
+			.insert('Étapes :\n')
+			.insert('commander', { italic: true })
+			.insert('\n', { list: 'bullet' })
+			.insert('\n', { list: 'bullet' })
+			.insert('Conclusion ')
+			.insert('importante.', { italic: true })
+			.insert('Fin\n'),
+	],
+])('reopens formatted %s as rich text after saving', (_name, profile, content) => {
+	const edited = setup('', profile);
+	edited.quill.setContents(content, 'user');
+	const reopened = setup(edited.text.toJSON(), profile);
+	expect(reopened.editor.sourceMode).toBe(false);
+	expect(reopened.quill.getContents().diff(content).ops).toEqual([]);
+	expect(reopened.text.toJSON()).toBe(edited.text.toJSON());
 });
 
 it.each([

@@ -43,8 +43,9 @@ describe('Markdown projection of Quill', () => {
 			.insert('end\n')
 			.insert({ image: 'https://example.com/a)' })
 			.insert('\n');
+		// A nested item indents by its parent's marker width, so it nests under `2. ` as well.
 		expect(quillMarkdown(delta)).toBe(
-			'## Title\n1. one\n2. two\n  - bullet\n> quote\n````\n```\n````\nend\n![](https://example.com/a%29)',
+			'## Title\n1. one\n2. two\n   - bullet\n> quote\n````\n```\n````\nend\n![](https://example.com/a%29)',
 		);
 		expect(quillMarkdown(new Delta().insert('code').insert('\n', { 'code-block': 'plain' }))).toBe(
 			'```\ncode\n```',

@@ -1,7 +1,7 @@
-import { marked } from 'marked';
 import type Quill from 'quill';
 import Delta from 'quill-delta';
 
+import { markdownDelta } from './markdown-delta';
 import { QuillEditorProfile } from './quill-editor-config';
 import { quillMarkdown, quillPlainText, translateTextIndex } from './quill-markdown';
 import {
@@ -14,6 +14,7 @@ import {
 export class QuillMarkdownEditor extends EventTarget implements SharedTextareaElement {
 	#markdown = '';
 	#sourceMode: boolean;
+	readonly #profile: QuillEditorProfile;
 	selectionDirection: SharedTextareaElement['selectionDirection'] = 'forward';
 
 	constructor(
@@ -21,6 +22,7 @@ export class QuillMarkdownEditor extends EventTarget implements SharedTextareaEl
 		profile = QuillEditorProfile.Description,
 	) {
 		super();
+		this.#profile = profile;
 		this.#sourceMode = profile === QuillEditorProfile.Plain;
 	}
 
@@ -43,12 +45,8 @@ export class QuillMarkdownEditor extends EventTarget implements SharedTextareaEl
 	/** Keep unsupported source intact, including when a peer introduces it during editing. */
 	private contents(markdown: string): Delta {
 		if (this.#sourceMode) return new Delta().insert(`${markdown}\n`);
-		const html = marked.parse(markdown, { async: false, breaks: true });
-		const next = this.quill.clipboard.convert({ html });
-		// Every Quill document ends in a newline, including an empty document.
-		if (!quillPlainText(next).endsWith('\n')) next.insert('\n');
-		const roundtrip = marked.parse(quillMarkdown(next), { async: false, breaks: true });
-		if (normalizedHtml(html) === normalizedHtml(roundtrip)) return next;
+		const next = markdownDelta(markdown, this.#profile);
+		if (next !== undefined) return next;
 		this.#sourceMode = true;
 		this.dispatchEvent(new Event('modechange'));
 		return new Delta().insert(`${markdown}\n`);
@@ -91,10 +89,6 @@ export class QuillMarkdownEditor extends EventTarget implements SharedTextareaEl
 		const index = this.toEditor(start);
 		this.quill.setSelection(index, Math.max(0, this.toEditor(end) - index), 'silent');
 	}
-}
-
-function normalizedHtml(html: string): string {
-	return new DOMParser().parseFromString(html, 'text/html').body.innerHTML.trim();
 }
 
 export function bindQuillMarkdown(
