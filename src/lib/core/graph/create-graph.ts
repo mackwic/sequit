@@ -27,7 +27,7 @@ interface GraphJunctionEndpoint {
 	readonly entity: LogicJunction;
 }
 
-type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
+export type GraphEndpoint = GraphNodeEndpoint | GraphGroupEndpoint | GraphJunctionEndpoint;
 
 interface GraphRelation {
 	readonly relation: LogicRelation;

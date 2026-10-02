@@ -75,6 +75,7 @@ export function reserveRouting(
 	if (routingStructure !== workspace.structure)
 		ports = scopePortAllocation(ports, routingStructure);
 	const routing = planNodeRouting({
+		graph,
 		corridors,
 		ports,
 		bounds: placement.bounds,
@@ -131,6 +132,7 @@ function materializeStandardRoutes(
 	let placedRouting = routing;
 	if (routing !== undefined && routing.corridors.length > 0)
 		placedRouting = planNodeRouting({
+			graph: structure.graph,
 			corridors: routing.corridors.map(({ corridor }) => corridor),
 			ports: routing.ports,
 			bounds: placement.bounds,

@@ -1,4 +1,5 @@
 import { defined } from '../../document/logic-document';
+import type { GraphEndpoint } from '../../graph/create-graph';
 import type { RoutingEdge } from '../geometry/routing-edge';
 import { routeOwnedChannel } from './channel-routing';
 import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
@@ -32,6 +33,16 @@ type EndpointColumns = {
 };
 type SameColumn = (columns: EndpointColumns, wires: readonly ChannelWire[]) => boolean;
 
+/** Graph creation renews handles; their canonical documentary identity survives an unrelated edit. */
+function sameEndpoint(
+	first: GraphEndpoint | undefined,
+	second: GraphEndpoint | undefined,
+): boolean {
+	const sameKind = first?.kind === second?.kind;
+	const sameId = first?.entity.id === second?.entity.id;
+	return sameKind && sameId;
+}
+
 /** Exact positional comparison; `Object.is` distinguishes -0 from 0. */
 const SAME_ENDPOINT_COLUMNS: readonly SameColumn[] = Object.values({
 	id: (columns, wires) => wires.every(({ id }, index) => columns.id[index] === id),
@@ -39,6 +50,14 @@ const SAME_ENDPOINT_COLUMNS: readonly SameColumn[] = Object.values({
 		wires.every(({ source }, index) => Object.is(columns.source[index], source)),
 	target: (columns, wires) =>
 		wires.every(({ target }, index) => Object.is(columns.target[index], target)),
+	sourceEndpoint: (columns, wires) =>
+		wires.every(({ sourceEndpoint }, index) =>
+			sameEndpoint(columns.sourceEndpoint[index], sourceEndpoint),
+		),
+	targetEndpoint: (columns, wires) =>
+		wires.every(({ targetEndpoint }, index) =>
+			sameEndpoint(columns.targetEndpoint[index], targetEndpoint),
+		),
 	sharedSource: (columns, wires) =>
 		wires.every(({ sharedSource }, index) => columns.sharedSource[index] === sharedSource),
 	sharedTarget: (columns, wires) =>
@@ -81,6 +100,8 @@ function endpointColumns(wires: readonly ChannelWire[]): EndpointColumns {
 		id: wires.map(({ id }) => id),
 		source: wires.map(({ source }) => source),
 		target: wires.map(({ target }) => target),
+		sourceEndpoint: wires.map(({ sourceEndpoint }) => sourceEndpoint),
+		targetEndpoint: wires.map(({ targetEndpoint }) => targetEndpoint),
 		sharedSource: wires.map(({ sharedSource }) => sharedSource),
 		sharedTarget: wires.map(({ sharedTarget }) => sharedTarget),
 	};
@@ -261,12 +282,14 @@ export class ChannelRoutingCache {
 		this.#currentWires += template.endpoints.id.length;
 	}
 
-	/** Owner, flag, length, first and last id and a fold of the coordinate bits; verified exactly. */
+	/** Owner, flag, relation bounds, coordinate bits and canonical families; verified exactly. */
 	#key(wires: readonly ChannelWire[], nonInverted: boolean, ownerId: string): string {
 		let hash = HASH_SEED;
-		for (const { source, target } of wires) {
+		for (const { source, target, sourceEndpoint, targetEndpoint } of wires) {
 			hash = this.#fold(hash, source);
 			hash = this.#fold(hash, target);
+			hash = this.#foldEndpoint(hash, sourceEndpoint);
+			hash = this.#foldEndpoint(hash, targetEndpoint);
 		}
 		const first = wires[0]?.id ?? '';
 		const last = wires.at(-1)?.id ?? '';
@@ -277,5 +300,18 @@ export class ChannelRoutingCache {
 		this.#bits[0] = value;
 		const low = Math.imul(hash ^ defined(this.#words[0]), HASH_PRIME);
 		return Math.imul(low ^ defined(this.#words[1]), HASH_PRIME);
+	}
+
+	#foldEndpoint(hash: number, endpoint: GraphEndpoint | undefined): number {
+		if (endpoint === undefined) return Math.imul(hash, HASH_PRIME);
+		const familyHash = this.#foldString(Math.imul(hash ^ 1, HASH_PRIME), endpoint.kind);
+		return this.#foldString(familyHash, endpoint.entity.id);
+	}
+
+	#foldString(hash: number, value: string): number {
+		let result = Math.imul(hash ^ value.length, HASH_PRIME);
+		for (let index = 0; index < value.length; index += 1)
+			result = Math.imul(result ^ value.charCodeAt(index), HASH_PRIME);
+		return result;
 	}
 }

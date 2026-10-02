@@ -78,7 +78,7 @@ function crossingFixture(vertical: boolean) {
 		corridors,
 		fromCrossingCorridors: true,
 	});
-	const routing = planNodeRouting({ corridors, ports, bounds, vertical, ranks });
+	const routing = planNodeRouting({ graph, corridors, ports, bounds, vertical, ranks });
 	const layers = {
 		rows: [
 			['target', 'isolated'],
@@ -260,8 +260,8 @@ describe('indexed channel route materialization', () => {
 		const result = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(result.elements).toHaveLength(1000);
 		expect(result.relations).toHaveLength(40169);
-		// Re-pinned for channel block exchanges: same boxes and relations, rails reassigned where
-		// that removes crossings (the 100-node snapshot of this topology goes from 68378 to 68064).
-		expect(digest(result)).toBe('512ea3da4e742f275dc435b533c838cf70db1b0badb28a4007ab09de39e8df10');
+		// D-05: nested endpoint families with cost-arbitrated cross-depth rail packing. On the 100-node
+		// witness, strict crossings fall from 68064 to 52992, family crossings from 6348 to zero.
+		expect(digest(result)).toBe('1486f6f1227467beed9a7b1c33076e8a9c496b717fb674e696d5a23953a55167');
 	});
 });

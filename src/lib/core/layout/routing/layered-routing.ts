@@ -143,6 +143,8 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 			if (input.junctionIds.has(link.relation.to)) sharedTarget = link.relation.to;
 			return {
 				id: link.relation.id,
+				sourceEndpoint: graph.endpointsById.get(link.relation.from),
+				targetEndpoint: graph.endpointsById.get(link.relation.to),
 				sharedTarget,
 				sharedSource,
 				source: linkCoordinate(link, true, layer + 1, {
