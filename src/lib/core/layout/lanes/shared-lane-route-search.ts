@@ -23,7 +23,7 @@ import {
 	rankLaneRouteSelection,
 } from './shared-lane-route-ranking';
 import { type LaneRouteStrategy, twoPassStrategies } from './shared-lane-route-strategies';
-import { TransverseRouteOrder } from './shared-transverse-routing';
+import { TransverseRouteOrder, transverseRouteOrders } from './shared-transverse-routing';
 
 /** Snapshot rejection provenance when an accepted geometry is ranked. */
 export function laneSelectionCollector<Selection>(
@@ -272,13 +272,12 @@ interface TransverseRouteSearchInput<Selection extends ParallelSelectionEvidence
 	readonly collect?: ((selection: RankedLaneRouteSelection<Selection>) => void) | undefined;
 }
 
+/** Evaluates the orders `transverseRouteOrders` declares for these lanes, in that order. */
 export function searchTransverseRouteOrders<Selection extends ParallelSelectionEvidence>(
+	lanes: SharedLaneInput,
 	input: TransverseRouteSearchInput<Selection>,
 ): TransverseRouteSearchResult<Selection> {
-	const strategies = twoPassStrategies('transverse', [
-		TransverseRouteOrder.Canonical,
-		TransverseRouteOrder.Nested,
-	]);
+	const strategies = twoPassStrategies('transverse', transverseRouteOrders(lanes));
 	const passes: SharedLaneAllocationSearchWitness['passes'][number][] = [];
 	let firstSelected: Selection | undefined;
 	for (const acceptBridges of [false, true]) {

@@ -104,13 +104,16 @@ function transverseRouteEndpoints(
 		vertical: context.vertical,
 	});
 	const sourceSide = physicalTransverseSide(sides.source, context.reverse);
-	const targetSide = physicalTransverseSide(sides.target, context.reverse);
+	let targetSide = physicalTransverseSide(sides.target, context.reverse);
 	const first = route.points[0];
 	const second = route.points[1];
 	const last = route.points.at(-1);
 	const beforeLast = route.points.at(-2);
 	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
 	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
+	const arcTarget = sides.arcTarget ?? sides.target;
+	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))
+		targetSide = physicalTransverseSide(arcTarget, context.reverse);
 	if (!attachedTransverse(first, source.bounds, context.vertical, sourceSide))
 		return `Route ${route.id} leaves the wrong source face.`;
 	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))

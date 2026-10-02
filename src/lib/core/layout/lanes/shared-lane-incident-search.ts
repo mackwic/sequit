@@ -25,6 +25,12 @@ export interface IncidentSearchState {
 	attempted: number;
 	exhaustive: boolean;
 	strategyId: string;
+	/**
+	 * Where the current strategy's incident budget starts. A transverse search gives each of its
+	 * declared orders its own budget, so the direct orders never truncate the historical ones;
+	 * `attempted` still counts every alternative of the search.
+	 */
+	budgetStart?: number;
 	candidateId: string;
 	readonly rejectedAlternatives: RegionIncidentRejectedAlternative[];
 }
@@ -101,7 +107,7 @@ export function* enumerateLaneIncidentPaths(
 	input: IncidentSearchInput,
 ): Generator<readonly RegionSolvedIncident[], void, void> {
 	const { geometry, ports, contracts, state } = input;
-	const budget = boundedCounter(MAX_INCIDENT_ALTERNATIVES, {
+	const budget = boundedCounter((state.budgetStart ?? 0) + MAX_INCIDENT_ALTERNATIVES, {
 		attempted: state.attempted,
 		exhausted: !state.exhaustive,
 	});

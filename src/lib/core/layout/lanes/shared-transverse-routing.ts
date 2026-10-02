@@ -7,19 +7,10 @@ import {
 } from '../resources/routing-resource-allocation';
 import { physicalPoint, SHARED_LANE_CLEARANCE } from './shared-lane-frame';
 import type { LaneSide, SharedLaneInput, SharedLanePlan } from './shared-lane-model';
-import { incidenceKey, PortRole } from './shared-lane-ports';
+import { PortRole } from './shared-lane-ports';
 import type { LogicalBox } from './shared-lane-types';
 import type { TransverseLaneFrame } from './shared-transverse-frame';
-
-function portCross(
-	box: LogicalBox,
-	relationId: string,
-	role: PortRole,
-	frame: TransverseLaneFrame,
-): number {
-	const offset = defined(frame.portOffsetByIncidence.get(incidenceKey(relationId, role)));
-	return box.cross + box.crossSize / 2 + offset;
-}
+import { directPlan, transversePortCross } from './shared-transverse-legs';
 
 function longitudinalFace(box: LogicalBox, side: LaneSide): number {
 	if (side === 1) return box.longitudinal + box.longSize;
@@ -47,9 +38,36 @@ interface RouteEnds {
 	readonly end: Point;
 }
 
+/**
+ * How a transverse candidate routes its plans. The two direct orders join adjacent lanes across
+ * the free interval between them; `Canonical` and `Nested` send every inter-lane plan through the
+ * outer gutter corridor, the fallback when the validator refuses a direct route. A plan between
+ * non-adjacent lanes always takes the corridor, on the tracks and side of the canonical or nested
+ * allocation that its order names.
+ */
 export enum TransverseRouteOrder {
+	Direct = 'direct',
+	DirectNested = 'direct-nested',
 	Canonical = 'canonical',
 	Nested = 'nested',
+}
+
+function nestedOrder(order: TransverseRouteOrder): boolean {
+	return order === TransverseRouteOrder.Nested || order === TransverseRouteOrder.DirectNested;
+}
+
+/**
+ * The orders a transverse search evaluates. The gutter orders come first and keep the historical
+ * routes (outer corridor, local U arcs), so the incident budget the candidates share never starves
+ * them; the direct orders follow when a plan joins adjacent lanes or two rows of one lane, and are
+ * otherwise not proposed, since each would route exactly like its gutter twin. The selection ranks
+ * every evaluated candidate by bridges, length and bends.
+ */
+export function transverseRouteOrders(input: SharedLaneInput): readonly TransverseRouteOrder[] {
+	const orders = [TransverseRouteOrder.Canonical, TransverseRouteOrder.Nested];
+	const direct = input.plans.some(directPlan);
+	if (direct) orders.push(TransverseRouteOrder.Direct, TransverseRouteOrder.DirectNested);
+	return orders;
 }
 
 /** The tracks one plan's route reads: the gutter corridor offset and the rail offset it was granted. */
@@ -88,11 +106,12 @@ function declaredOrdinals(
 	order: TransverseRouteOrder,
 ): ReadonlyMap<string, { readonly gutter: number; readonly rail: number }> {
 	let ranked: readonly SharedLanePlan[] = input.plans;
-	if (order === TransverseRouteOrder.Nested) ranked = [...input.plans].sort(compareLaneSpan);
+	const nested = nestedOrder(order);
+	if (nested) ranked = [...input.plans].sort(compareLaneSpan);
 	const ordinals = new Map<string, { readonly gutter: number; readonly rail: number }>();
 	for (const [index, plan] of ranked.entries()) {
 		let rail = index;
-		if (order === TransverseRouteOrder.Nested) rail = ranked.length - index - 1;
+		if (nested) rail = ranked.length - index - 1;
 		ordinals.set(plan.id, { gutter: index, rail });
 	}
 	return ordinals;
@@ -148,7 +167,25 @@ function sameLanePoints(
 	frame: TransverseLaneFrame,
 	offset: number,
 ): readonly Point[] {
-	const track = exteriorTrack(frame, plan.sourceLaneIndex, plan.sourceSide, offset);
+	// A facing local plan crosses its row gap on its own leg; a U arc runs on the lane's rail.
+	const track =
+		frame.localLegByPlan.get(plan.id) ??
+		exteriorTrack(frame, plan.sourceLaneIndex, plan.sourceSide, offset);
+	return [ends.start, { x: ends.start.x, y: track }, { x: ends.end.x, y: track }, ends.end];
+}
+
+/**
+ * Adjacent lanes face each other across the free interval between them: one segment when both
+ * ports are aligned, otherwise a leg on the plan's rail track beside the source lane.
+ */
+function directPoints(
+	ends: RouteEnds,
+	plan: SharedLanePlan,
+	frame: TransverseLaneFrame,
+	railOffset: number,
+): readonly Point[] {
+	if (ends.start.x === ends.end.x) return [ends.start, ends.end];
+	const track = exteriorTrack(frame, plan.sourceLaneIndex, plan.sourceSide, railOffset);
 	return [ends.start, { x: ends.start.x, y: track }, { x: ends.end.x, y: track }, ends.end];
 }
 
@@ -181,15 +218,23 @@ function crossLanePoints(
 	];
 }
 
+/**
+ * The corridor side nearer the middle of both ports. With facing local faces (direct orders),
+ * equally near sides are departed by the source port, so a passage leaves towards its own half of
+ * the frame; the historical gutter order and a centred source keep the declared side.
+ */
 function nearestCorridorSide(
 	ends: RouteEnds,
 	plan: SharedLanePlan,
 	frame: TransverseLaneFrame,
+	bySourcePort: boolean,
 ): LaneSide {
 	const center = frame.crossStart + frame.crossSize / 2;
 	const midpoint = (ends.start.x + ends.end.x) / 2;
 	if (midpoint < center) return -1;
 	if (midpoint > center) return 1;
+	if (bySourcePort && ends.start.x < center) return -1;
+	if (bySourcePort && ends.start.x > center) return 1;
 	return plan.sourceSide;
 }
 
@@ -201,17 +246,28 @@ function logicalRoute(
 	const source = defined(frame.boxes.get(plan.from));
 	const target = defined(frame.boxes.get(plan.to));
 	const start = {
-		x: portCross(source, plan.id, PortRole.Source, frame),
+		x: transversePortCross(source, frame.portOffsetByIncidence, plan.id, PortRole.Source),
 		y: longitudinalFace(source, plan.sourceSide),
 	};
 	const end = {
-		x: portCross(target, plan.id, PortRole.Target, frame),
+		x: transversePortCross(target, frame.portOffsetByIncidence, plan.id, PortRole.Target),
 		y: longitudinalFace(target, plan.targetSide),
 	};
 	const ends = { start, end };
 	if (plan.sameLane) return sameLanePoints(ends, plan, frame, choice.position.railOffset);
+	const direct =
+		choice.order === TransverseRouteOrder.Direct ||
+		choice.order === TransverseRouteOrder.DirectNested;
+	if (direct && directPlan(plan))
+		return directPoints(ends, plan, frame, choice.position.railOffset);
 	let side = plan.sourceSide;
-	if (choice.order === TransverseRouteOrder.Nested) side = nearestCorridorSide(ends, plan, frame);
+	if (nestedOrder(choice.order))
+		side = nearestCorridorSide(
+			ends,
+			plan,
+			frame,
+			choice.order === TransverseRouteOrder.DirectNested,
+		);
 	return crossLanePoints(ends, plan, frame, {
 		side,
 		gutterOffset: choice.position.gutterOffset,
