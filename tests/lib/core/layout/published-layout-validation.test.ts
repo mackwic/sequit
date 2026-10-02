@@ -153,9 +153,18 @@ const GENERATED_GROUPS: LogicDocument['groups'] = [
 	},
 ];
 
+interface GeneratedWitness {
+	readonly name: string;
+	readonly direction: LayoutDirection;
+	readonly groups?: LogicDocument['groups'];
+	readonly nodeGroups: readonly (string | undefined)[];
+	readonly junctions: number;
+	readonly edges: readonly (readonly string[])[];
+}
+
 // Reduced from the expanded generator; junctions are members of `group-00`.
 it.each(
-	Object.values(LayoutDirection).flatMap((direction) => [
+	Object.values(LayoutDirection).flatMap((direction): GeneratedWitness[] => [
 		{
 			// Two outgoing central ports diverged after repair.
 			name: 'keeps a shared junction stem beside nested frames',
@@ -198,8 +207,41 @@ it.each(
 				['node-02', 'junction-01'],
 			],
 		},
+		{
+			// Generator 8 nodes, seed 1592915777, sample 50: node-02→node-01 was repaired first and
+			// ran through the pending group-05→node-01 attachment, a distinct port of their target.
+			name: 'keeps a distinct port of a shared target free for its pending route',
+			direction,
+			groups: [
+				defined(GENERATED_GROUPS[0]),
+				{
+					kind: EndpointKind.Group,
+					id: 'group-05',
+					label: 'Nested group 3',
+					groupId: 'group-00',
+					layoutOrder: orderKey('aH00031'),
+				},
+				defined(GENERATED_GROUPS[2]),
+				{
+					kind: EndpointKind.Group,
+					id: 'empty-group-00',
+					label: 'Nested empty group 1',
+					layoutOrder: orderKey('aE00001'),
+				},
+			],
+			nodeGroups: ['group-05', 'group-00', 'group-05'],
+			junctions: 2,
+			edges: [
+				['node-00', 'junction-00'],
+				['junction-00', 'group-02'],
+				['group-02', 'node-01'],
+				['empty-group-00', 'node-01'],
+				['group-05', 'node-01'],
+				['node-02', 'node-01'],
+			],
+		},
 	]),
-)('$name ($direction)', async ({ direction, nodeGroups, junctions, edges }) => {
+)('$name ($direction)', async ({ direction, groups, nodeGroups, junctions, edges }) => {
 	const padded = (index: number): string => index.toString().padStart(2, '0');
 	const document: LogicDocument = {
 		...validLogicDocument(),
@@ -207,7 +249,7 @@ it.each(
 			layoutConfiguration(direction, LayoutBias.Top) ??
 				layoutConfiguration(direction, LayoutBias.Left),
 		),
-		groups: GENERATED_GROUPS,
+		groups: groups ?? GENERATED_GROUPS,
 		nodes: nodeGroups.map((groupId, index) => {
 			const node = {
 				kind: EndpointKind.Node,

@@ -26,7 +26,7 @@ import {
 	candidateFacePorts,
 	endpoint,
 	type ExteriorAttempt,
-	faceOffsets,
+	faceOffsetWindows,
 	prepareRoutingContext,
 	releaseSharedPortFamilies,
 	respectsExternalFlow,
@@ -281,16 +281,16 @@ function routeNeedsCorrection(
 }
 
 function repairRoute(context: RoutingContext, route: LayoutRelation): LayoutRelation | undefined {
-	const offsets = faceOffsets(context, route);
 	// A target can sit only 24px beyond a foreign frame. Preserve physical
 	// disjointness when the preferred 24px envelope cannot fit at its face.
-	for (const clearance of [RAIL_SPACING, 0]) {
-		const groups = foreignGroupObstacles(context, route, clearance);
-		const replacement =
-			alternateRoute(context, route, groups, offsets) ??
-			aroundRoute(context, route, groups, offsets);
-		if (replacement !== undefined) return replacement;
-	}
+	for (const offsets of faceOffsetWindows(context, route))
+		for (const clearance of [RAIL_SPACING, 0]) {
+			const groups = foreignGroupObstacles(context, route, clearance);
+			const replacement =
+				alternateRoute(context, route, groups, offsets) ??
+				aroundRoute(context, route, groups, offsets);
+			if (replacement !== undefined) return replacement;
+		}
 	return undefined;
 }
 

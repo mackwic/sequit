@@ -297,10 +297,14 @@ function scaledSizes(
 }
 
 describe('dedicated layout components', () => {
-	it('renders randomly grouped nodes and junctions in every direction without a passage failure', () => {
+	// Bounded by size: the 300-document census of 12-node documents in four directions is a
+	// workshop script, not a test (see the 2026-09-24 refactoring journal).
+	it('renders randomly grouped nodes and junctions without a passage failure', () => {
 		fc.assert(
-			fc.property(richAcyclicLogicDocumentArbitrary(), (document) => {
-				for (const direction of Object.values(LayoutDirection)) {
+			fc.property(
+				richAcyclicLogicDocumentArbitrary({ maxNodes: 8 }),
+				fc.constantFrom(...Object.values(LayoutDirection)),
+				(document, direction) => {
 					const prepared = prepareLayoutDocument({
 						...document,
 						layout: defined(
@@ -316,11 +320,11 @@ describe('dedicated layout components', () => {
 					// A rejected documentary layout may stay published only when witnessed unverified.
 					const validation = validateDedicatedCandidate({ ...prepared, layout });
 					if (!validation.valid) expect(witness.unverified, JSON.stringify(validation)).toBe(1);
-				}
-			}),
-			{ ...PROPERTY_PARAMETERS, numRuns: Math.max(300, PROPERTY_PARAMETERS.numRuns) },
+				},
+			),
+			PROPERTY_PARAMETERS,
 		);
-	}, 600_000);
+	}, 30_000);
 
 	it.each([
 		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },

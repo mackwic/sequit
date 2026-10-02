@@ -185,24 +185,28 @@ function attachmentConflict(
 	return false;
 }
 
-/** Keep each foreign attachment and its normal approach free, including during repair. */
+/**
+ * Keep each foreign attachment and its normal approach free, including during repair. A route
+ * may only run through an attachment it shares; a distinct port of a common endpoint stays free.
+ */
 function reservedAttachmentConflict(
 	candidate: LayoutRelation,
 	other: LayoutRelation,
 	frame: LayoutFrame,
 ): boolean {
-	for (let endpoint = 0; endpoint < 2; endpoint++) {
+	for (let side = 0; side < 2; side++) {
 		let id = other.from;
 		let port = defined(other.points[0]);
+		let own = endpoint(candidate, true);
 		let outward = 1;
 		if (frame.forward) outward = -1;
-		if (endpoint === 1) {
+		if (side === 1) {
 			id = other.to;
 			port = defined(other.points.at(-1));
+			own = endpoint(candidate, false);
 			outward = -outward;
 		}
-		if (endpoint === 0 && id === candidate.from) continue;
-		if (endpoint === 1 && id === candidate.to) continue;
+		if (id === own.id && samePoint(port, own.port)) continue;
 		if (attachmentConflict(candidate, port, frame, outward)) return true;
 	}
 	return false;
@@ -221,8 +225,16 @@ export function attachmentReservedBy(
 	}
 	return false;
 }
-/** A populated frame can be much wider than its member: search its whole attachment face. */
-export function faceOffsets(context: RoutingContext, route: LayoutRelation): readonly number[] {
+/**
+ * A populated frame can be much wider than its member: search its whole attachment face, by
+ * increasing offset. The ports within one port spacing of their current position are first
+ * searched at every clearance: an exhausted search of a wide face costs seconds, and most repairs
+ * keep a nearby port.
+ */
+export function faceOffsetWindows(
+	context: RoutingContext,
+	route: LayoutRelation,
+): readonly (readonly number[])[] {
 	const source = defined(context.bounds.get(route.from));
 	const target = defined(context.bounds.get(route.to));
 	let extent = Math.max(source.height, target.height);
@@ -231,7 +243,9 @@ export function faceOffsets(context: RoutingContext, route: LayoutRelation): rea
 	for (let offset = HALF_RAIL; offset < extent; offset += HALF_RAIL) {
 		offsets.push(offset, -offset);
 	}
-	return offsets;
+	const near = offsets.filter((offset) => Math.abs(offset) <= PORT_SPACING);
+	if (near.length === offsets.length) return [offsets];
+	return [near, offsets];
 }
 
 /** A shared source must be able to follow the escape of its already repaired sibling. */
