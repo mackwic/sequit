@@ -280,6 +280,60 @@ it.each(
 	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 });
 
+// Rich corpus, seed 1592915777, sample 183: `g0` holds only an empty subgroup, so it keeps a row
+// slot as an endpoint while its membership makes it a frame. Alone in its row, that row had no
+// atomic box and its rails were placed from an infinite extent before the group repair. Each
+// direction keeps the generator's bias, the one under which it failed.
+it.each([
+	[LayoutDirection.TopToBottom, LayoutBias.Top],
+	[LayoutDirection.BottomToTop, LayoutBias.Bottom],
+	[LayoutDirection.LeftToRight, LayoutBias.Left],
+	[LayoutDirection.RightToLeft, LayoutBias.Right],
+])(
+	'routes from a row holding only a frame around an empty subgroup (%s, %s bias)',
+	async (direction, bias) => {
+		const document: LogicDocument = {
+			...validLogicDocument(),
+			layout: defined(layoutConfiguration(direction, bias)),
+			groups: [
+				{ kind: EndpointKind.Group, id: 'g0', label: 'Frame', layoutOrder: orderKey('a0') },
+				{
+					kind: EndpointKind.Group,
+					id: 'g1',
+					label: 'Empty',
+					groupId: 'g0',
+					layoutOrder: orderKey('a1'),
+				},
+			],
+			nodes: ['n0', 'n1'].map((id, index) => ({
+				kind: EndpointKind.Node,
+				id,
+				natureId: 'goal',
+				markdown: id,
+				layoutOrder: orderKey(`a${index + 2}`),
+			})),
+			junctions: [
+				{
+					kind: EndpointKind.Junction,
+					id: 'j0',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('a4'),
+				},
+			],
+			relations: [
+				['j0', 'g0'],
+				['g0', 'n0'],
+				['g0', 'n1'],
+				['n1', 'n0'],
+			].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
+		};
+		const prepared = prepareLayoutDocument(document);
+		const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+		const validation = validateDedicatedCandidate({ ...prepared, layout });
+		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+	},
+);
+
 // D-07 corpus G2, seed 629: in bottom-to-top, n2→j1 needs the junction column that the pending
 // g0 routes reserve below their port; it succeeds once they have moved during their own repair.
 it.each(Object.values(LayoutDirection))(

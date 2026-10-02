@@ -78,7 +78,12 @@ export function routingSpace(input: RoutingSpaceInput, transverse?: MainInterval
 	const frames = [...enclosingGroups]
 		.filter((id) => bounds.has(id) && overlaps(id))
 		.map((id) => layerExtent([id], bounds, frame));
-	const extents = clearOfFrames(boxes, frames);
+	// A row holding only frames, such as a relation endpoint framing its empty subgroups, has no
+	// atomic box: its rails leave from those frames' faces rather than from an infinite extent.
+	const extents = clearOfFrames(boxes, frames).map((extent, index) => {
+		if (Number.isFinite(extent.start)) return extent;
+		return layerExtent(defined(layers.rows[index]), bounds, frame);
+	});
 	return { layers, enclosingGroups, extents, bounds, frame };
 }
 
