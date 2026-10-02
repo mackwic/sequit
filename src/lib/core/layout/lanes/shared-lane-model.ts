@@ -173,6 +173,9 @@ function relationSides(
 		};
 	if (source.laneIndex < target.laneIndex) return { source: 1, target: -1 };
 	if (source.laneIndex > target.laneIndex) return { source: -1, target: 1 };
+	// One transverse lane stacks its rows along the rank axis: two rows face each other there.
+	if (source.row < target.row) return { source: 1, target: -1 };
+	if (source.row > target.row) return { source: -1, target: 1 };
 	return { source: -1, target: -1 };
 }
 

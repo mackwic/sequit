@@ -198,33 +198,49 @@ describe('S | SD | C shared process', () => {
 				{ x: 306, y: 1288 },
 			],
 		});
-		const nested = {
+		const directNested = {
 			...base,
 			relations: routeTransverseLanes(
 				input,
 				frame,
-				allocateTransverseRoutes(input, frame, TransverseRouteOrder.Nested),
-				TransverseRouteOrder.Nested,
+				allocateTransverseRoutes(input, frame, TransverseRouteOrder.DirectNested),
+				TransverseRouteOrder.DirectNested,
 			),
 		};
 		expect(validateSharedLaneGeometry(prepared.graph, canonical)).toContain(
 			'cross without a bridge',
 		);
-		expect(validateSharedLaneGeometry(prepared.graph, nested)).toBeUndefined();
+		expect(validateSharedLaneGeometry(prepared.graph, directNested)).toBeUndefined();
 		const selected = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(selected.status).toBe(SharedLaneLayoutStatus.Selected);
 		if (selected.status !== SharedLaneLayoutStatus.Selected) return;
-		expect(selected.geometry.relations).toEqual(nested.relations);
+		expect(selected.geometry.relations).toEqual(directNested.relations);
+		// S↔SD are adjacent: both messages cross the free interval between the lanes, not the gutter.
+		const selectedPoints = Object.fromEntries(
+			selected.geometry.relations.map(({ id, points }) => [id, points] as const),
+		);
+		expect(selectedPoints['dispatch']).toEqual([
+			{ x: 550, y: 500 },
+			{ x: 550, y: 632 },
+			{ x: 464, y: 632 },
+			{ x: 464, y: 836 },
+		]);
+		expect(selectedPoints['completion']).toEqual([
+			{ x: 416, y: 836 },
+			{ x: 416, y: 728 },
+			{ x: 330, y: 728 },
+			{ x: 330, y: 312 },
+		]);
 		expect(selected.allocationWitness?.passes).toEqual([
 			{
 				acceptBridges: false,
-				attempted: 2,
-				total: '2',
+				attempted: 4,
+				total: '4',
 				exhaustive: true,
 				truncated: false,
 				searchStarted: true,
-				work: 2,
-				workBudget: 2,
+				work: 4,
+				workBudget: 4,
 			},
 		]);
 	});

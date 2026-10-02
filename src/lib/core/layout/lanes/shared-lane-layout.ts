@@ -261,7 +261,7 @@ export function transverseAttempt({
 		TransverseRouteOrder,
 		{ readonly geometry: SharedLaneGeometry; readonly certificate: SharedLaneGeometryCertificate }
 	>();
-	const search = searchTransverseRouteOrders({
+	const search = searchTransverseRouteOrders(input, {
 		collect: laneSelectionCollector(state, contracts, collect),
 		evaluate: (strategy) => {
 			state.strategyId = strategy.id;
