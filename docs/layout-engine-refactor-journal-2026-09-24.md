@@ -740,7 +740,8 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 
 ## Correctifs du 2 octobre 2026 — lanes parallèles
 
-- Commit `fix(layout): lanes parallèles — relier les rangées consécutives par les faces principales` : L-04 corrigé, droite de 72 px pour `a2→a1` et `b2→b1` dans les quatre directions.
+- Commit `fcfee0fc`, `fix(layout): lanes parallèles — relier les rangées consécutives par les faces principales` : L-04 corrigé, droite de 72 px pour `a2→a1` et `b2→b1` dans les quatre directions.
 - La fourche de trois enfants conserve la dimension principale mesurée ; les ports s'ordonnent par l'extrémité opposée et les passages inter-rangées disposent de pistes distinctes.
 - Les attaches latérales restent des alternatives après validation pour les passages refusés ; les sauts de rangée, les lanes transverses et la recherche d'ordre sont inchangés.
 - L'espacement des ports et les limites de recherche restent inchangés ; aucun seuil n'est abaissé.
+- Aucun SHA des corpus d'identité n'est ré-épinglé. Le témoin réel de projection à trois relations est réécrit : attache interne droite et zéro pont, au lieu du pont imposé par l'ancienne forme en C.

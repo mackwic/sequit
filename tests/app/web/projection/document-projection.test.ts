@@ -492,7 +492,7 @@ describe('live document projection', () => {
 		expect(canvas.lanes?.map(({ id }) => id)).toEqual(['left', 'middle', 'right']);
 		expect(canvas.relations.map(({ id }) => id)).toEqual(['a-to-c', 'b-to-c']);
 	});
-	it('resolves the same-lane and inter-lane crossing through validated bridges from the real projection', async () => {
+	it('avoids the same-lane and inter-lane crossing through main faces from the real projection', async () => {
 		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
 		const first = defined(source.nodes[0]);
 		const document: LogicDocument = {
@@ -527,9 +527,10 @@ describe('live document projection', () => {
 			'internal',
 			'second-cross',
 		]);
-		// The root lane solver accepts the crossing in its second pass, carried by a validated bridge.
+		// Consecutive same-lane rows now meet directly instead of crossing an inter-lane passage.
 		const bridges = validatedBridges(canvas.relations);
-		expect(bridges.length).toBeGreaterThan(0);
+		expect(bridges).toHaveLength(0);
+		expect(defined(canvas.relations.find(({ id }) => id === 'internal')).points).toHaveLength(2);
 		for (const [index, route] of canvas.relations.entries())
 			for (const other of canvas.relations.slice(index + 1))
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
