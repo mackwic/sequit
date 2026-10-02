@@ -55,6 +55,8 @@ export enum ParallelRouteOrder {
 export interface ParallelRouteTrackOverrides {
 	readonly gutter?: RoutingTrackAllocation;
 	readonly railTrackByKey?: ReadonlyMap<string, number>;
+	/** Reuse the immutable main passages of this frame across gutter and rail assignments. */
+	readonly mainTrackByPlan?: ReadonlyMap<string, number>;
 }
 
 function mainPassageTracks(
@@ -81,8 +83,11 @@ function mainPassageTracks(
 			.sort((a, b) => a.span - b.span || a.order - b.order);
 		const first = defined(demands[0]);
 		const direction = Math.sign(first.end.y - first.start.y);
-		let anchor = Math.min(...demands.map(({ start }) => start.y));
-		if (direction > 0) anchor = Math.max(...demands.map(({ start }) => start.y));
+		let anchor = first.start.y;
+		for (const { start } of demands) {
+			if (direction < 0) anchor = Math.min(anchor, start.y);
+			else anchor = Math.max(anchor, start.y);
+		}
 		for (const [index, { plan }] of demands.entries()) {
 			const offset = SHARED_LANE_CLEARANCE + index * RAIL_SPACING;
 			tracks.set(plan.id, anchor + direction * offset);
@@ -103,12 +108,6 @@ export function allocateParallelRoutes(
 	frame: SharedLaneFrame,
 	overrides?: ParallelRouteTrackOverrides,
 ): ParallelRouteAllocation {
-	const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
-		key: plan.id,
-		start: frame.contentLongStart,
-		end: frame.contentLongEnd,
-		order,
-	}));
 	const gutter =
 		overrides?.gutter ??
 		allocateNestedTracks(
@@ -124,6 +123,12 @@ export function allocateParallelRoutes(
 	let exteriorRail: RoutingTrackAllocation;
 	let topExteriorRail: RoutingTrackAllocation;
 	if (railTracks === undefined) {
+		const crossingDemands = frame.crossLanePlans.map((plan, order) => ({
+			key: plan.id,
+			start: frame.contentLongStart,
+			end: frame.contentLongEnd,
+			order,
+		}));
 		exteriorRail = allocateNestedTracks(frame.exteriorRailEdge, crossingDemands);
 		topExteriorRail = allocateNestedTracks(frame.topExteriorRailEdge, crossingDemands);
 	} else {
@@ -134,7 +139,7 @@ export function allocateParallelRoutes(
 		gutter,
 		exteriorRail,
 		topExteriorRail,
-		mainTrackByPlan: mainPassageTracks(input, frame),
+		mainTrackByPlan: overrides?.mainTrackByPlan ?? mainPassageTracks(input, frame),
 	};
 }
 

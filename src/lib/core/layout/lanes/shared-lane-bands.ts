@@ -296,6 +296,20 @@ function corridorTracks(
 	return tracks;
 }
 
+/** Main-face access owns only its endpoint point; it does not allocate a lateral detour. */
+function mainPortAccess(
+	key: string,
+	id: string,
+	after: boolean,
+	placement: BandPlacement,
+): PortAccess {
+	const box = defined(placement.boxes.get(id));
+	const x = box.cross + box.crossSize / 2 + defined(placement.portOffsetByIncidence.get(key));
+	let y = box.longitudinal;
+	if (after) y += box.longSize;
+	return { points: [{ x, y }], reach: y };
+}
+
 /**
  * The access of every port of a parallel frame. A port whose face is free reaches its gutter
  * straight across its lane; a port facing a band neighbour enters the slot gap, runs to the row
@@ -350,17 +364,10 @@ export function bandPortAccess(
 		if (!mainLaneFaces(input, plan)) continue;
 		const source = defined(input.endpoints.get(plan.from));
 		const target = defined(input.endpoints.get(plan.to));
-		for (const [id, role, after] of [
-			[plan.from, PortRole.Source, target.row > source.row],
-			[plan.to, PortRole.Target, source.row > target.row],
-		] as const) {
-			const key = incidenceKey(plan.id, role);
-			const box = defined(placement.boxes.get(id));
-			const x = box.cross + box.crossSize / 2 + defined(placement.portOffsetByIncidence.get(key));
-			let y = box.longitudinal;
-			if (after) y += box.longSize;
-			access.set(key, { points: [{ x, y }], reach: y });
-		}
+		const sourceKey = incidenceKey(plan.id, PortRole.Source);
+		const targetKey = incidenceKey(plan.id, PortRole.Target);
+		access.set(sourceKey, mainPortAccess(sourceKey, source.id, target.row > source.row, placement));
+		access.set(targetKey, mainPortAccess(targetKey, target.id, source.row > target.row, placement));
 	}
 	return access;
 }

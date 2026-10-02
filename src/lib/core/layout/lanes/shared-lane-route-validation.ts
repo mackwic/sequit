@@ -61,20 +61,6 @@ function recordPort(
 	context.ports.set(key, positions);
 }
 
-function attachedTransverse(
-	point: Point,
-	bounds: Bounds,
-	vertical: boolean,
-	side: LaneSide,
-): boolean {
-	let expected = longStart(bounds, vertical);
-	if (side === 1) expected = longEnd(bounds, vertical);
-	const port = cross(point, vertical);
-	const afterStart = port >= crossStart(bounds, vertical) + PORT_INSET;
-	const beforeEnd = port <= crossEnd(bounds, vertical) - PORT_INSET;
-	return longitudinal(point, vertical) === expected && afterStart && beforeEnd;
-}
-
 function transversePortDirection(
 	start: Point,
 	next: Point,
@@ -119,9 +105,9 @@ function transverseRouteEndpoints(
 	const beforeLast = route.points.at(-2);
 	if (first === undefined || second === undefined) return `Route ${route.id} is empty.`;
 	if (last === undefined || beforeLast === undefined) return `Route ${route.id} is empty.`;
-	if (!attachedTransverse(first, source.bounds, context.vertical, sourceSide))
+	if (!attached(first, source.bounds, !context.vertical, sourceSide))
 		return `Route ${route.id} leaves the wrong source face.`;
-	if (!attachedTransverse(last, target.bounds, context.vertical, targetSide))
+	if (!attached(last, target.bounds, !context.vertical, targetSide))
 		return `Route ${route.id} reaches the wrong target face.`;
 	if (!transversePortDirection(first, second, context.vertical, sourceSide))
 		return `Route ${route.id} leaves the source inward.`;
@@ -302,6 +288,25 @@ export function validateChangedSharedLaneRoutes(
 		}
 	}
 	return undefined;
+}
+
+/** Only failed main-face relations are eligible for the lateral routing alternative. */
+export function rejectedSharedLaneRouteShapes(
+	geometry: SharedLaneGeometry,
+	eligibleIds: ReadonlySet<string>,
+	clearance: number,
+): ReadonlySet<string> {
+	const rejected = new Set<string>();
+	const context: RouteGeometryContext = {
+		geometry,
+		boxes: new Map(geometry.elements.map((box) => [box.id, box])),
+		clearance,
+	};
+	for (const route of geometry.relations) {
+		if (eligibleIds.has(route.id) && routeSegments(route, context) !== undefined)
+			rejected.add(route.id);
+	}
+	return rejected;
 }
 
 export function validateSharedLaneRoutes(

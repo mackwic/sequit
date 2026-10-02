@@ -30,3 +30,21 @@ export function validateSharedLaneRouteContacts(
 	onBridgeCount?.(bridges?.length ?? 0);
 	return undefined;
 }
+
+/** Contact participants for local main-face and mixed-face port-group rejection. */
+export function rejectedSharedLaneRouteContacts(
+	routes: readonly LayoutRelation[],
+): ReadonlySet<string> {
+	const rejected = new Set<string>();
+	const bridges: readonly LayoutBridge[] = [];
+	for (let first = 0; first < routes.length; first += 1) {
+		const a = defined(routes[first]);
+		for (let second = first + 1; second < routes.length; second += 1) {
+			const b = defined(routes[second]);
+			if (disallowedRouteContacts(a, b, bridges, { sortedByPoint: true }).length === 0) continue;
+			rejected.add(a.id);
+			rejected.add(b.id);
+		}
+	}
+	return rejected;
+}

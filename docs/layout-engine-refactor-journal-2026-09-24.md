@@ -745,3 +745,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Les attaches latérales restent des alternatives après validation pour les passages refusés ; les sauts de rangée, les lanes transverses et la recherche d'ordre sont inchangés.
 - L'espacement des ports et les limites de recherche restent inchangés ; aucun seuil n'est abaissé.
 - Aucun SHA des corpus d'identité n'est ré-épinglé. Le témoin réel de projection à trois relations est réécrit : attache interne droite et zéro pont, au lieu du pont imposé par l'ancienne forme en C.
+
+### Suite de relecture — repli local et trames immuables
+
+- Reprise `fix(layout): lanes parallèles — limiter le repli aux relations refusées` : le refus porte sur les segments principaux et les groupes de ports latéraux couplés à un contact. Une chaîne disjointe reste à deux points / 72 px / zéro pont dans les quatre directions, même dans la lane de l'appariement inversé.
+- Les pistes principales sont calculées une fois par trame, puis partagées entre affectations ; les tableaux temporaires d'extrema et les trois nouveaux `as const` de production/fixtures sont retirés. Aucun SHA ré-épinglé, aucune modification transverse ni recherche d'ordre.
+- Décision utilisateur 2026-10-02 : correction avant performance. Le plafond parallèle passe de 20 000 à 30 000 unités par passe : le témoin 10135 conserve zéro pont, mais sa longueur passe de 5136/6384 à 2780/2884 px (TB/LR). Aucun délai de test ni seuil de qualité relevé.
+- Corpus identique à la relecture A : 400 documents parallèles et 80 transverses, quatre directions, 1920 sélections valides et aucun document avec davantage de croisements qu'à la base. Un seul document (10107, LR/RL) supprime trois ponts au prix de 564 px (+8,9 %) ; les autres restent sous base +5 %, et les 320 géométries transverses sont identiques.

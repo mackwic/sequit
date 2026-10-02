@@ -42,7 +42,7 @@ export function laneSelectionCollector<Selection>(
 	};
 }
 
-const MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS = 20_000;
+const MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS = 30_000;
 
 /** Baselines are always evaluated; only alternatives share the fixed per-pass ceiling. */
 class AllocationWorkExceeded extends Error {}

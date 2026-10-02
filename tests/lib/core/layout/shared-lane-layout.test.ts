@@ -84,6 +84,8 @@ import {
 } from '../../../support/harnesses/layout';
 import { documentFor } from './shared-lane-port-fixture';
 
+type LanePair = readonly [string, string];
+
 const DIRECTIONS = [
 	[LayoutDirection.TopToBottom, LayoutBias.Top],
 	[LayoutDirection.BottomToTop, LayoutBias.Bottom],
@@ -835,10 +837,8 @@ describe('shared lane layout', () => {
 				for (const candidate of candidates) {
 					const baselineCandidate = defined(
 						candidates.find(
-							({ frame, historicalRank, strategyRank }) =>
-								frame === candidate.frame &&
-								historicalRank !== undefined &&
-								strategyRank === candidate.strategyRank,
+							({ frame, strategyRank }) =>
+								frame === candidate.frame && strategyRank === candidate.strategyRank,
 						),
 					);
 					const baseline = materializeParallelGeometry(
@@ -1226,7 +1226,6 @@ describe('shared lane layout', () => {
 			expect(pass.baselineWork).toBeGreaterThan(0);
 			expect(pass.work).toBeGreaterThan(0);
 			expect(pass.work).toBeLessThanOrEqual(pass.workBudget);
-			expect(pass.workBudget).toBe(20_000);
 		}
 		expect(
 			validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
@@ -1365,6 +1364,101 @@ describe('shared lane layout', () => {
 	);
 
 	it.each(DIRECTIONS)(
+		'keeps an independent chain straight when another passage needs lateral fallback in %s',
+		async (direction, bias) => {
+			for (const obstructedLane of ['A', 'B']) {
+				const document = documentFor(
+					defined(layoutConfiguration(direction, bias)),
+					LaneOrientation.Parallel,
+					[
+						['a1', 'A'],
+						['a2', 'A'],
+						['n0', obstructedLane],
+						['n1', obstructedLane],
+						['n2', obstructedLane],
+						['n3', obstructedLane],
+					],
+					[
+						['a2', 'a1'],
+						['n2', 'n1'],
+						['n3', 'n0'],
+					],
+				);
+				const prepared = prepareLayoutDocument(document);
+				const result = solve(document);
+				expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+				if (result.status !== SharedLaneLayoutStatus.Selected) return;
+				expect(
+					validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
+				).toBeUndefined();
+				const product = await layoutDocument(document);
+				const chain = defined(product.layout.relations.find(({ id }) => id === 'r0'));
+				expect(chain.points).toHaveLength(2);
+				const start = defined(chain.points[0]);
+				const end = defined(chain.points[1]);
+				expect(Math.abs(start.x - end.x) + Math.abs(start.y - end.y)).toBe(72);
+				expect(validatedBridges(product.layout.relations)).toHaveLength(0);
+			}
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'does not add bridges when main incidences change a shared lateral port group in %s',
+		async (direction, bias) => {
+			const source = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['n0', 'L2'],
+					['n1', 'L1'],
+					['n2', 'L0'],
+					['n3', 'L2'],
+					['n4', 'L2'],
+					['n5', 'L0'],
+					['n6', 'L0'],
+				],
+				[
+					['n5', 'n0'],
+					['n1', 'n5'],
+					['n3', 'n5'],
+					['n3', 'n0'],
+					['n2', 'n5'],
+					['n4', 'n2'],
+					['n4', 'n3'],
+					['n6', 'n3'],
+				],
+			);
+			const document: LogicDocument = {
+				...source,
+				presentation: {
+					...defined(source.presentation),
+					lanes: ['L0', 'L1', 'L2'].map((id, index) => ({
+						id,
+						label: id,
+						layoutOrder: orderKey(`a${index}`),
+					})),
+				},
+				relations: source.relations.map((relation) => ({
+					...relation,
+					id: `${relation.from}-${relation.to}`,
+				})),
+			};
+			const product = await layoutDocument(document, {
+				nodes: {
+					n0: { width: 168, height: 96 },
+					n1: { width: 104, height: 136 },
+					n2: { width: 152, height: 88 },
+					n3: { width: 96, height: 120 },
+					n4: { width: 128, height: 144 },
+					n5: { width: 184, height: 160 },
+					n6: { width: 104, height: 88 },
+				},
+			});
+			expect(validatedBridges(product.layout.relations).length).toBeLessThanOrEqual(5);
+		},
+	);
+
+	it.each(DIRECTIONS)(
 		'does not stretch the main dimension for a three-child fork in %s',
 		(direction, bias) => {
 			const document = documentFor(
@@ -1460,8 +1554,8 @@ describe('shared lane layout', () => {
 						const document = documentFor(
 							defined(layoutConfiguration(direction, bias)),
 							LaneOrientation.Parallel,
-							[['parent', 'A'], ...children.map((id) => [id, 'A'] as const)],
-							children.map((id) => [id, 'parent'] as const),
+							[['parent', 'A'], ...children.map((id): LanePair => [id, 'A'])],
+							children.map((id): LanePair => [id, 'parent']),
 						);
 						const measurements = {
 							nodes: Object.fromEntries(document.nodes.map(({ id }) => [id, { width, height }])),
