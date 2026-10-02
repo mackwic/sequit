@@ -1191,7 +1191,8 @@ describe('dedicated bounded geometric rank search', () => {
 				});
 				const { witness } = result;
 				expect(witness.evaluated).toBe(routed.length + 1);
-				if (witness.pruned > 0) expect(witness.truncated).toBe(true);
+				// Without group walls every proposal is routable: each one is evaluated or pruned.
+				expect(witness.evaluated + witness.pruned).toBe(witness.proposed);
 				expect(witness.exhaustive).toBe(
 					!witness.truncated && witness.stop !== RankSearchStop.CrossingFree,
 				);

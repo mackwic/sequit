@@ -85,7 +85,7 @@ class RankOrderSearch {
 	stop = RankSearchStop.NoBand;
 	proposed = 1;
 	evaluated = 1;
-	/** Routable proposals met once the pipeline budget was spent: never scored on real routes. */
+	/** Routable proposals never scored on real routes: budget spent or routes already crossing-free. */
 	pruned = 0;
 	valid = 0;
 	unverified = 0;
@@ -330,12 +330,20 @@ class RankOrderSearch {
 		return this.admit(current, key);
 	}
 
-	/** The walk routes the orders the proxy promises first; the deferred ones take what is left. */
+	/**
+	 * The walk routes the orders the proxy promises first; the deferred ones take what is left.
+	 * Once routes cross nothing, the deferred orders still waiting are pruned, never scored.
+	 */
 	runHeuristic(): void {
 		this.mode = RankSearchMode.Heuristic;
 		this.walk();
-		if (this.stop === RankSearchStop.CrossingFree) return;
-		for (const order of this.deferred) if (!this.route(order)) return;
+		for (const [index, order] of this.deferred.entries()) {
+			if (this.stop === RankSearchStop.CrossingFree) {
+				this.pruned += this.deferred.length - index;
+				return;
+			}
+			this.route(order);
+		}
 	}
 
 	private walk(): void {
