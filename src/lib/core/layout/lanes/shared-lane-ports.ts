@@ -5,11 +5,12 @@ import { PORT_INSET, PORT_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
 import type { RegionIncidentContract } from '../regions/model/region-incident-contract';
-import type {
-	LaneSide,
-	SharedLaneEndpoint,
-	SharedLaneInput,
-	SharedLanePlan,
+import {
+	compareLayoutOrder,
+	type LaneSide,
+	type SharedLaneEndpoint,
+	type SharedLaneInput,
+	type SharedLanePlan,
 } from './shared-lane-model';
 
 export enum PortRole {
@@ -44,8 +45,12 @@ function faceExtent(bounds: Bounds, side: RegionPortalSide): number {
 interface PortIncidence {
 	readonly relationId: string;
 	readonly role: PortRole;
+	readonly sameLane: boolean;
+	readonly oppositeHalf: number;
+	readonly laneOrder: number;
 	readonly oppositeRow: number;
-	readonly oppositeId: string;
+	readonly oppositePosition: number;
+	readonly oppositeLayoutOrder: string;
 }
 
 interface PortGroup {
@@ -97,12 +102,13 @@ interface IncidenceInput {
 	readonly plan: SharedLanePlan;
 	readonly endpoint: SharedLaneEndpoint;
 	readonly other: SharedLaneEndpoint;
+	readonly otherPosition: number;
 	readonly side: LaneSide;
 	readonly role: PortRole;
 }
 
 function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): void {
-	const { plan, endpoint, other, side, role } = input;
+	const { plan, endpoint, other, otherPosition, side, role } = input;
 	const key = JSON.stringify([endpoint.id, side]);
 	let group = groups.get(key);
 	if (group === undefined) {
@@ -112,21 +118,50 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 	group.incidences.push({
 		relationId: plan.id,
 		role,
+		sameLane: plan.sameLane,
+		oppositeHalf: incidenceHalf(endpoint, other),
+		laneOrder: -Math.abs(other.laneIndex - endpoint.laneIndex),
 		oppositeRow: other.row,
-		oppositeId: other.id,
+		oppositePosition: otherPosition,
+		oppositeLayoutOrder: other.layoutOrder,
 	});
+}
+
+function incidenceHalf(endpoint: SharedLaneEndpoint, other: SharedLaneEndpoint): number {
+	if (other.row > endpoint.row) return 1;
+	if (other.row < endpoint.row) return -1;
+	return 0;
 }
 
 function compareIncidences(
 	a: PortIncidence,
 	b: PortIncidence,
 	relationOrder: ReadonlyMap<string, number>,
+	localOnly: boolean,
 ): number {
-	const row = a.oppositeRow - b.oppositeRow;
+	// All arcs, including local U arcs, keep distinct before/equal/after parts of the face.
+	const half = a.oppositeHalf - b.oppositeHalf;
+	if (half !== 0) return half;
+	// Within each half only local U arcs reverse their order; inter-lane routes follow their rows.
+	let direction = 1;
+	if (localOnly) direction = -1;
+	const row = direction * (a.oppositeRow - b.oppositeRow);
 	if (row !== 0) return row;
-	const other = compareCanonicalStrings(a.oppositeId, b.oppositeId);
+	if (a.sameLane !== b.sameLane) {
+		let localOrder = Number(b.sameLane) - Number(a.sameLane);
+		if (a.oppositeHalf > 0) localOrder = -localOrder;
+		return localOrder;
+	}
+	const position = direction * (a.oppositePosition - b.oppositePosition);
+	if (position !== 0) return position;
+	const lane = a.laneOrder - b.laneOrder;
+	if (lane !== 0) return lane;
+	const other = direction * compareCanonicalStrings(a.oppositeLayoutOrder, b.oppositeLayoutOrder);
 	if (other !== 0) return other;
-	return defined(relationOrder.get(a.relationId)) - defined(relationOrder.get(b.relationId));
+	const relation =
+		defined(relationOrder.get(a.relationId)) - defined(relationOrder.get(b.relationId));
+	if (relation !== 0) return relation;
+	return compareCanonicalStrings(a.relationId, b.relationId);
 }
 
 function reservePhysicalGroup(
@@ -196,11 +231,34 @@ function incidentOffsets(
 	return offsets;
 }
 
+function bandPositions(input: SharedLaneInput): ReadonlyMap<string, number> {
+	const ordered = [...input.endpoints.values()].sort((a, b) => {
+		const lane = a.laneIndex - b.laneIndex;
+		if (lane !== 0) return lane;
+		const row = a.row - b.row;
+		if (row !== 0) return row;
+		return compareLayoutOrder(a, b);
+	});
+	const positions = new Map<string, number>();
+	let previousLane = -1;
+	let previousRow = -1;
+	let position = 0;
+	for (const endpoint of ordered) {
+		if (endpoint.laneIndex !== previousLane || endpoint.row !== previousRow) position = 0;
+		positions.set(endpoint.id, position);
+		position += 1;
+		previousLane = endpoint.laneIndex;
+		previousRow = endpoint.row;
+	}
+	return positions;
+}
+
 export function planSharedLanePorts(
 	input: SharedLaneInput,
 	contracts: readonly RegionIncidentContract[] = [],
 ): SharedLanePorts {
 	const relationOrder = new Map(input.plans.map(({ id }, index) => [id, index]));
+	const positions = bandPositions(input);
 	const groups = new Map<string, PortGroup>();
 	for (const plan of input.plans) {
 		const source = defined(input.endpoints.get(plan.from));
@@ -209,6 +267,7 @@ export function planSharedLanePorts(
 			plan,
 			endpoint: source,
 			other: target,
+			otherPosition: defined(positions.get(target.id)),
 			side: plan.sourceSide,
 			role: PortRole.Source,
 		});
@@ -216,6 +275,7 @@ export function planSharedLanePorts(
 			plan,
 			endpoint: target,
 			other: source,
+			otherPosition: defined(positions.get(source.id)),
 			side: plan.targetSide,
 			role: PortRole.Target,
 		});
@@ -225,7 +285,8 @@ export function planSharedLanePorts(
 	const faces = incidentFaces(input, contracts, groups);
 	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
-		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder));
+		const localOnly = group.incidences.every(({ sameLane }) => sameLane);
+		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder, localOnly));
 		const count = group.incidences.length;
 		const side = physicalSide(input, group.side);
 		const reserved = faces.get(JSON.stringify([group.endpointId, side]))?.contracts.length ?? 0;
@@ -243,7 +304,7 @@ export function planSharedLanePorts(
 			const center = (count - 1) / 2;
 			let offset = (index - center) * PORT_SPACING;
 			if (reserved > 0) {
-				const portIndex = index + 1;
+				const portIndex = count - index;
 				offset = -portIndex * PORT_SPACING;
 			}
 			offsetByIncidence.set(incidenceKey(incidence.relationId, incidence.role), offset);
