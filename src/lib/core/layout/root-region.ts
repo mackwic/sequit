@@ -16,6 +16,7 @@ import {
 } from './layout-engine';
 import type { LayoutMeasurements, LayoutOptions, LayoutResult } from './layout-types';
 import {
+	RegionCompositionDiagnosticCode,
 	RegionCompositionWork,
 	regionCompositionWorkBudgets,
 	RegionWorkLimitExceeded,
@@ -105,6 +106,7 @@ export class UnknownGridCellLayoutError extends Error {
 		| RegionGeometryDiagnosticCode
 		| RegionIncidentUnknownCode
 		| RegionCompositionSearchCode
+		| RegionCompositionDiagnosticCode.ResourceLimit
 		| undefined;
 	readonly regionId: string | undefined;
 	readonly relationId: string | undefined;
@@ -114,7 +116,10 @@ export class UnknownGridCellLayoutError extends Error {
 		readonly reason: string,
 		diagnostic?: {
 			readonly code?:
-				RegionGeometryDiagnosticCode | RegionIncidentUnknownCode | RegionCompositionSearchCode;
+				| RegionGeometryDiagnosticCode
+				| RegionIncidentUnknownCode
+				| RegionCompositionSearchCode
+				| RegionCompositionDiagnosticCode.ResourceLimit;
 			readonly regionId?: string;
 			readonly relationId?: string;
 		},
@@ -213,6 +218,24 @@ export function nestedRegionInput(graph: LogicGraph, work?: RegionCompositionWor
 	return { regions, regionByEndpointId: normalized.value.regionByEndpointId };
 }
 
+/**
+ * The error of a grid root that the composer did not select as unsupported. Exhausted composition
+ * work proves nothing about the document's shape: it is an unresolved layout carrying
+ * `ResourceLimit` and the region that ran out, never an unsupported presentation.
+ */
+export function unsupportedGridOutcomeError(
+	documentId: string,
+	reason: string,
+	diagnostic?: RegionCompositionDiagnostic,
+): UnknownGridCellLayoutError | UnsupportedGridCellLayoutError {
+	if (diagnostic?.code !== RegionCompositionDiagnosticCode.ResourceLimit)
+		return new UnsupportedGridCellLayoutError(documentId, reason, diagnostic);
+	return new UnknownGridCellLayoutError(documentId, diagnostic.message, {
+		code: RegionCompositionDiagnosticCode.ResourceLimit,
+		regionId: defined(diagnostic.path[1], 'A work limit names the region that ran out.'),
+	});
+}
+
 function nestedRegionInputWithWork(
 	graph: LogicGraph,
 	work: RegionCompositionWork,
@@ -223,11 +246,7 @@ function nestedRegionInputWithWork(
 	} catch (error) {
 		if (error instanceof RegionWorkLimitExceeded) {
 			if (gridRoot)
-				throw new UnsupportedGridCellLayoutError(
-					graph.document.id,
-					error.message,
-					error.diagnostic,
-				);
+				throw unsupportedGridOutcomeError(graph.document.id, error.message, error.diagnostic);
 			throw new UnsupportedRegionLayoutError(graph.document.id, error.message, error.diagnostic);
 		}
 		if (gridRoot && error instanceof UnsupportedRegionLayoutError)
@@ -265,11 +284,7 @@ function layoutWithNestedRegions(
 		};
 	if (attempt.status === RegionCompositionStatus.Unsupported) {
 		if (gridRoot)
-			throw new UnsupportedGridCellLayoutError(
-				graph.document.id,
-				attempt.reason,
-				attempt.diagnostic,
-			);
+			throw unsupportedGridOutcomeError(graph.document.id, attempt.reason, attempt.diagnostic);
 		throw new UnsupportedRegionLayoutError(graph.document.id, attempt.reason, attempt.diagnostic);
 	}
 	if (gridRoot) throw new UnknownGridCellLayoutError(graph.document.id, attempt.reason, attempt);

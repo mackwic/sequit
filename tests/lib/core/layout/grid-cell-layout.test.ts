@@ -19,16 +19,28 @@ import {
 import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import type { CrossingAllocationInput } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
-import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
-import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
+import {
+	crossingRoutes,
+	gridCrossingRouting,
+} from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
+import {
+	entersInterior,
+	within,
+} from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import {
+	routePlacedGridCellDisposition,
+	solveGridCellLayout,
+} from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { normalize } from '../../../../src/lib/core/layout/grids/grid-cell-model';
+import { normalizeGridCellRegionModel } from '../../../../src/lib/core/layout/grids/grid-cell-region-model';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
+import { RegionCompositionModelStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { layoutDocument, overlaps, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	gridOf,
@@ -39,9 +51,24 @@ import {
 	gridInput,
 	nxmThreeByTwoDocument,
 	nxmThreeByTwoInput,
+	persistedCellGrid,
 	persistedGridDocument,
 	prepareGrid,
 } from './grid-cell-fixture';
+
+/** Left to right puts a-top between a-bottom and the left portal of cell a. */
+function hiddenEndpointInput(): GridCellInput {
+	const input = gridInput();
+	const hiddenFlow: LayoutConfiguration = {
+		direction: LayoutDirection.LeftToRight,
+		bias: LayoutBias.Left,
+	};
+	const cells = input.cells.map((cell) => {
+		if (cell.id !== 'a') return cell;
+		return { ...cell, layout: hiddenFlow };
+	});
+	return { ...input, cells };
+}
 
 describe('bounded two by two grid composition', () => {
 	it.each(Object.values(LayoutDirection))(
@@ -278,7 +305,7 @@ describe('bounded two by two grid composition', () => {
 			incidence,
 			portalByRelationId: new Map(),
 		};
-		const routing = {
+		const routing = gridCrossingRouting({
 			rootId: input.rootId,
 			crossing,
 			columnCount: 2,
@@ -286,13 +313,11 @@ describe('bounded two by two grid composition', () => {
 			cellByEndpointId: input.cellByEndpointId,
 			edges,
 			incidence,
-		};
+			nestedEndpointIds: new Set<string>(),
+		});
 		const canonical = canonicalCrossingAllocation(allocationInput);
 		const busless = { ...canonical, busTrackByRelationId: new Map<string, number>() };
-		for (const relation of crossing)
-			expect(crossingRoute(routing, busless, relation).route).toEqual(
-				crossingRoute(routing, canonical, relation).route,
-			);
+		expect(crossingRoutes(routing, busless)).toEqual(crossingRoutes(routing, canonical));
 	});
 
 	it('allocates distinct ports and exterior tracks to multiple crossing relations', () => {
@@ -592,27 +617,97 @@ describe('bounded two by two grid composition', () => {
 		},
 	);
 
-	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
+	it('reaches an endpoint its sibling hides from the portal through a corridor of its own cell', () => {
 		const prepared = prepareGrid();
-		const input = gridInput();
-		const blockedFlow: LayoutConfiguration = {
-			direction: LayoutDirection.LeftToRight,
-			bias: LayoutBias.Left,
-		};
-		const cells = input.cells.map((cell) => {
-			if (cell.id !== 'a') return cell;
-			return { ...cell, layout: blockedFlow };
-		});
-		const attempt = solveGridCellLayout(
-			prepared.graph,
-			prepared.measurements,
-			{ ...input, cells },
-			{ allocationBudgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 1 } },
+		const configured = hiddenEndpointInput();
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, configured);
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`Expected the hidden endpoint to be reached: ${result.reason}`);
+		expect(validateGridCellGeometry(result, prepared.graph, configured)).toBeUndefined();
+		const elements = new Map(result.layout.elements.map((element) => [element.id, element]));
+		const top = defined(elements.get('a-top')).bounds;
+		const bottom = defined(elements.get('a-bottom')).bounds;
+		expect(top.x + top.width).toBeLessThan(bottom.x);
+		const portal = defined(
+			result.portals.find(({ relationId, endpointId }) => {
+				return relationId === 'across-grid' && endpointId === 'a-bottom';
+			}),
 		);
+		const route = defined(result.layout.relations.find(({ id }) => id === 'across-grid'));
+		const end = route.points.findIndex(({ x, y }) => x === portal.point.x && y === portal.point.y);
+		const piece = route.points.slice(0, end + 1);
+		const cell = defined(result.cells.find(({ id }) => id === 'a')).bounds;
+		expect(piece.length).toBeGreaterThan(2);
+		for (const point of piece) expect(within(cell, { ...point, width: 0, height: 0 })).toBe(true);
+		for (const [index, point] of piece.slice(1).entries())
+			expect(entersInterior(defined(piece[index]), point, top)).toBe(false);
+
+		// The former straight attachment, from the same port to the portal and its rail.
+		const port = defined(piece[0]);
+		const direct = { x: portal.point.x, y: port.y };
+		const rail = { x: defined(route.points[end + 1]).x, y: port.y };
+		const forged = {
+			...result,
+			layout: {
+				...result.layout,
+				relations: result.layout.relations.map((relation) => {
+					if (relation.id !== 'across-grid') return relation;
+					return { ...relation, points: [port, direct, rail, ...route.points.slice(end + 2)] };
+				}),
+			},
+			portals: result.portals.map((candidate) => {
+				if (candidate !== portal) return candidate;
+				return { ...portal, point: direct, localPoint: { x: 0, y: direct.y - cell.y } };
+			}),
+		};
+		expect(validateGridCellGeometry(forged, prepared.graph, configured)).toBe(
+			'Cross-cell relation across-grid enters element a-top.',
+		);
+	});
+
+	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
+		// The selected disposition with a-top stretched over the full height of cell a: a-top then
+		// walls a-bottom off the left portal, so no allocation has an in-cell corridor for it.
+		const prepared = prepareGrid();
+		const input = hiddenEndpointInput();
+		const selected = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== GridCellLayoutStatus.Selected) throw new Error(selected.reason);
+		const normalized = normalize(prepared.graph, input);
+		if (typeof normalized === 'string') throw new Error(normalized);
+		const model = normalizeGridCellRegionModel(prepared.graph, input, normalized);
+		if (model.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Grid model not ready');
+		const cells = selected.cells.map((cell) => {
+			if (cell.id !== 'a') return cell;
+			const elements = cell.localLayout.elements.map((element) => {
+				if (element.id !== 'a-top') return element;
+				const y = cell.bounds.y - cell.translation.y;
+				return { ...element, bounds: { ...element.bounds, y, height: cell.bounds.height } };
+			});
+			return { ...cell, localLayout: { ...cell.localLayout, elements } };
+		});
+		const crossing = prepared.graph.relations
+			.map(({ relation }) => relation)
+			.filter(
+				({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to),
+			);
+		const attempt = routePlacedGridCellDisposition({
+			graph: prepared.graph,
+			input,
+			model: model.model,
+			disposition: {
+				cells,
+				columnWidths: selected.columnWidths,
+				rowHeights: selected.rowHeights,
+				gridRight: Math.max(...cells.map(({ bounds }) => bounds.x + bounds.width)),
+				gridBottom: Math.max(...cells.map(({ bounds }) => bounds.y + bounds.height)),
+			},
+			resources: gridCrossingResources(input, crossing),
+			allocationBudgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 1 },
+		});
 		if (attempt.status !== GridCellLayoutStatus.Unknown)
-			throw new Error('The blocked crossing should be reported as unknown.');
-		if (attempt.provenance !== RegionSearchProvenance.Grid)
-			throw new Error('Expected grid allocation evidence.');
+			throw new Error('The walled crossing should be reported as unknown.');
+		expect(attempt.reason).toBe('Cross-cell relation across-grid enters element a-top.');
 		const witness = attempt.witness;
 		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
 		expect(witness.attempted).toBe(4);
@@ -629,5 +724,55 @@ describe('bounded two by two grid composition', () => {
 			expect(phase.attempted).toBe(true);
 			expect(phase.exploredGeometries).toBe(1);
 		}
+	});
+});
+
+describe('crossing ends inside their own cell', () => {
+	const rightToLeft = { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right };
+
+	it('renders M5-03 right to left by moving the crossing port off its local family', async () => {
+		const document = persistedCellGrid(
+			2,
+			[['c'], ['e'], ['f'], ['g', 'h', 'i'], ['j', 'k', 'l'], ['m', 'n']],
+			[
+				['h', 'g'],
+				['i', 'g'],
+				['k', 'j'],
+				['l', 'j'],
+				['j', 'f'],
+			],
+			rightToLeft,
+		);
+		const { layout } = await layoutDocument(document);
+		expect([layout.width, layout.height]).toEqual([1600, 1528]);
+		const routes = new Map(layout.relations.map((route) => [route.id, route]));
+		const face = defined(layout.elements.find(({ id }) => id === 'j')).bounds;
+		const port = defined(defined(routes.get('r4')).points[0]);
+		const centre = face.y + face.height / 2;
+		expect(port.x).toBe(face.x);
+		const tracks = (port.y - centre) / 24;
+		expect(tracks).not.toBe(0);
+		expect(Number.isInteger(tracks)).toBe(true);
+		for (const local of ['r2', 'r3'])
+			expect(defined(routes.get(local)).points.at(-1)).not.toEqual(port);
+	});
+
+	it('lets a crossing target share the arrival point of its local family on a hidden endpoint', async () => {
+		const document = persistedCellGrid(
+			2,
+			[['a', 'b'], ['c', 'd'], ['e', 'f'], ['g']],
+			[
+				['b', 'a'],
+				['d', 'a'],
+				['e', 'c'],
+			],
+			rightToLeft,
+		);
+		const { layout } = await layoutDocument(document);
+		const route = defined(layout.relations.find(({ id }) => id === 'r1'));
+		const sibling = defined(layout.elements.find(({ id }) => id === 'b')).bounds;
+		expect(route.points.length).toBeGreaterThan(6);
+		for (const [index, end] of route.points.slice(1).entries())
+			expect(entersInterior(defined(route.points[index]), end, sibling)).toBe(false);
 	});
 });

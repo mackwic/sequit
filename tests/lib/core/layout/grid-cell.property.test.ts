@@ -14,13 +14,17 @@ import {
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
 import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	GRID_CROSSING_BRIDGE_BUDGET,
 	GRID_CROSSING_EXTRA_TRACK_BUDGET,
 	GRID_CROSSING_REALLOCATION_BUDGET,
 	GRID_CROSSING_ROW_GUTTER_BUDGET,
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
-import { entersInterior } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
+import {
+	entersInterior,
+	within,
+} from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
 import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
 import {
 	type GridCellInput,
@@ -28,12 +32,17 @@ import {
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
+import {
+	layoutWithRootRegion,
+	UnknownGridCellLayoutError,
+} from '../../../../src/lib/core/layout/root-region';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	gridOf,
 	gridWithLocalRelations,
 } from '../../../support/performance/layout-resource-scenarios';
+import { persistedCellGrid } from './grid-cell-fixture';
 
 const fractionalSize = fc.record({
 	width: fc.integer({ min: 80, max: 320 }).map((value) => value + 0.25),
@@ -129,6 +138,50 @@ function nodeOverrides(
 			if (size !== undefined) overrides[nodeId(row, column)] = size;
 		}
 	return overrides;
+}
+
+const FLOWS = [
+	{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
+	{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },
+	{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
+	{ direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+] as const;
+
+/** A persisted grid of one to three nodes per cell; each pair links a later node to an earlier one. */
+function multiNodeGrid(
+	[columns, rows]: readonly number[],
+	counts: readonly number[],
+	pairs: readonly (readonly [number, number])[],
+	flow: (typeof FLOWS)[number],
+): LogicDocument {
+	const cells = Array.from({ length: defined(columns) * defined(rows) }, (_, cell) =>
+		Array.from({ length: defined(counts[cell]) }, (_, member) => `c${cell}-${member}`),
+	);
+	const nodes = cells.flat();
+	const relations = new Map<string, [string, string]>();
+	for (const [first, second] of pairs) {
+		const from = first % nodes.length;
+		const to = second % nodes.length;
+		if (from > to) relations.set(`${from}-${to}`, [defined(nodes[from]), defined(nodes[to])]);
+	}
+	return persistedCellGrid(defined(columns), cells, [...relations.values()], flow);
+}
+
+/**
+ * The documented residual class of G-01: an endpoint with two or more crossings shares its cell
+ * with a sibling, so a second crossing may find the only corridor of its face taken.
+ */
+function hidesSeveralCrossings(document: LogicDocument): boolean {
+	const cellOf = new Map(document.nodes.map(({ id, regionId }) => [id, regionId]));
+	const crossingCount = new Map<string, number>();
+	for (const { from, to } of document.relations) {
+		if (cellOf.get(from) === cellOf.get(to)) continue;
+		for (const id of [from, to]) crossingCount.set(id, (crossingCount.get(id) ?? 0) + 1);
+	}
+	return [...crossingCount].some(([id, count]) => {
+		const siblings = document.nodes.filter(({ regionId }) => regionId === cellOf.get(id));
+		return count > 1 && siblings.length > 1;
+	});
 }
 
 /** The grid owns the middle piece of each crossing route: the contact oracle compares those. */
@@ -381,6 +434,57 @@ describe('grid-cell real-pipeline properties', () => {
 					expect(solveGridCellLayout(permuted.graph, reversedMeasurements, reversedInput)).toEqual(
 						solved,
 					);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	}, 600_000);
+	it('reaches multi-node cell endpoints in the four directions, unknown only for several crossings on a hidden endpoint', () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					shape: fc.constantFrom([2, 2], [3, 2], [2, 3]),
+					counts: fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 6, maxLength: 6 }),
+					pairs: fc.array(fc.tuple(fc.nat(17), fc.nat(17)), { maxLength: 6 }),
+					flow: fc.constantFrom(...FLOWS),
+				}),
+				({ shape, counts, pairs, flow }) => {
+					const document = multiNodeGrid(shape, counts, pairs, flow);
+					const prepared = prepareLayoutDocument(document);
+					let layout: LayoutResult;
+					try {
+						layout = layoutWithRootRegion(prepared.graph, prepared.ranks, prepared.measurements);
+					} catch (error) {
+						// An unresolved grid stays a typed unknown: never unsupported, never a partial layout.
+						expect(error).toBeInstanceOf(UnknownGridCellLayoutError);
+						if (
+							error instanceof UnknownGridCellLayoutError &&
+							error.code === RegionGeometryDiagnosticCode.GridCrossingEntersElement
+						)
+							expect(hidesSeveralCrossings(document)).toBe(true);
+						return;
+					}
+					const cellOf = new Map(document.nodes.map(({ id, regionId }) => [id, defined(regionId)]));
+					const cells = new Map((layout.regions ?? []).map(({ id, bounds }) => [id, bounds]));
+					for (const element of layout.elements)
+						expect(
+							within(defined(cells.get(defined(cellOf.get(element.id)))), element.bounds),
+						).toBe(true);
+					for (const route of layout.relations) {
+						const own = new Set([cellOf.get(route.from), cellOf.get(route.to)]);
+						const last = route.points.length - 2;
+						for (const [index, end] of route.points.slice(1).entries()) {
+							const start = defined(route.points[index]);
+							for (const element of layout.elements) {
+								const attached =
+									(index === 0 && element.id === route.from) ||
+									(index === last && element.id === route.to);
+								if (!attached) expect(entersInterior(start, end, element.bounds)).toBe(false);
+							}
+							for (const [cellId, bounds] of cells)
+								if (!own.has(cellId)) expect(entersInterior(start, end, bounds)).toBe(false);
+						}
+					}
 				},
 			),
 			PROPERTY_PARAMETERS,

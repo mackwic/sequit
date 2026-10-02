@@ -20,7 +20,7 @@ import {
 } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
 import { routedPortAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-port-order';
 import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
-import { crossingRoute } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
+import { crossingRoutes } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-routing';
 import {
 	GridCrossingSearchMode,
 	searchGridCrossingAllocations,
@@ -241,7 +241,7 @@ describe('grid crossing allocation route geometry properties', () => {
 		}
 		const oneRoute = variedGridRoutingCase(1, 2, 0, true);
 		const allocation = canonicalCrossingAllocation(oneRoute.input);
-		const path = crossingRoute(oneRoute.routing, allocation, defined(oneRoute.crossing[0])).route;
+		const path = defined(crossingRoutes(oneRoute.routing, allocation)[0]).route;
 		// Source and target remain in the first column; the path stays on its left rail.
 		expect(path.points).toEqual([
 			{ x: 180, y: 188 },
@@ -388,7 +388,7 @@ describe('grid crossing allocation route geometry properties', () => {
 	it('keeps an exhaustively blocked gutter unknown when every track crosses an obstacle', () => {
 		fc.assert(
 			fc.property(fc.integer({ min: 12, max: 50 }), (obstacleWidth) => {
-				const { input, routing, crossing } = variedGridRoutingCase(1, 2, 0);
+				const { input, routing } = variedGridRoutingCase(1, 2, 0);
 				const sourceCell = defined(routing.cells.find(({ id }) => id === 'cell-0-0'));
 				const obstacle = {
 					x: sourceCell.bounds.x + 20,
@@ -397,7 +397,7 @@ describe('grid crossing allocation route geometry properties', () => {
 					height: sourceCell.bounds.height,
 				};
 				const route = (allocation: GridCrossingAllocation) => {
-					const path = crossingRoute(routing, allocation, defined(crossing[0])).route;
+					const path = defined(crossingRoutes(routing, allocation)[0]).route;
 					const blocked = entersInterior(
 						defined(path.points[0]),
 						defined(path.points[1]),
