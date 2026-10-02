@@ -79,10 +79,7 @@ function evaluateRetainedLayout(
 		workspace.placement.bounds,
 		frame,
 	);
-	if (workspace.placement.groupChannelInsets.size > 0) {
-		delete workspace.placement.groupWindows;
-		placeElements(workspace, baseGaps);
-	}
+	if (workspace.placement.groupChannelInsets.size > 0) placeElements(workspace, baseGaps);
 	const layers = routingLayers(structure);
 	const layered = layeredRoutingComponents(structure);
 	const layeredComponents = structure.components.filter((component) => layered.has(component));

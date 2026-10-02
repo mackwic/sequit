@@ -1,115 +1,37 @@
 import { defined } from '../../document/logic-document';
-import type { LogicGraph } from '../../graph/create-graph';
-import { orderEndpoints } from '../../ordering/endpoint-order';
 import {
 	biasedMainStart,
 	boundsOnAxes,
 	type LayoutFrame,
 	mainSize,
+	mainStart,
 	type MutableBounds,
-	translateTransversely,
 	transverseSize,
+	transverseStart,
 } from '../geometry/layout-frame';
 import { COMPONENT_GAP, OUTER_MARGIN } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
+import {
+	freeGroups,
+	freeHolders,
+	freeMembers,
+	heldFreeGroups,
+	placeFreeBeside,
+	placeFreeGroup,
+} from './free-groups';
 import { enclosure } from './group-enclosure';
 import type { PackingCursor } from './pack-components';
-import { type MainWindow, packGroupSiblings } from './pack-group-siblings';
-
-/** Capture minimum-gap spans; a junction may retreat as its adjacent channels grow. */
-export function groupSeparationWindows(
-	bounds: ReadonlyMap<string, MutableBounds>,
-	vertical: boolean,
-	junctionSlack: ReadonlyMap<string, number>,
-	hierarchy: GroupHierarchy,
-): ReadonlyMap<string, MainWindow> {
-	const windows = new Map<string, MainWindow>();
-	const excursions = new Map(junctionSlack);
-	for (const group of hierarchy.deepestFirst) {
-		let maximum = 0;
-		for (const memberId of hierarchy.membersById.get(group.id) ?? [])
-			maximum = Math.max(maximum, excursions.get(memberId) ?? 0);
-		excursions.set(group.id, maximum);
-	}
-	for (const [id, box] of bounds) {
-		let first = box.x;
-		if (vertical) first = box.y;
-		const slack = excursions.get(id) ?? 0;
-		windows.set(id, { first: first - slack, last: first + mainSize(box, vertical) + slack });
-	}
-	return windows;
-}
 
 /**
- * Pack disjoint sibling intervals bottom-up; translate their contents top-down once.
- * Every ancestor sees the effective measured bounds of each child, including tall
- * empty groups. Minimum-gap intervals are fixed before routing grows gaps.
+ * Frame every group around its members. A related group holding only free groups places them
+ * in its own row slot; any other group not free places its free members beside its content.
+ * Free groups holding nothing placed stand after the packed components.
  */
-export function separateInterleavedGroupNodes(input: {
-	readonly hierarchy: GroupHierarchy;
-	readonly graph: LogicGraph;
-	readonly measurements: ReadonlyMap<string, GroupMeasurement>;
-	readonly bounds: Map<string, MutableBounds>;
-	readonly frame: LayoutFrame;
-	readonly windows: ReadonlyMap<string, MainWindow>;
-}): void {
-	const { hierarchy, graph, measurements, bounds, frame, windows } = input;
-	const pending = new Map<string, number>();
-	const orderById = new Map(
-		orderEndpoints([
-			...graph.document.groups,
-			...graph.document.nodes,
-			...graph.document.junctions,
-		]).map((id, index) => [id, index]),
-	);
-	for (const group of hierarchy.deepestFirst) {
-		const children = hierarchy.membersById.get(group.id) ?? [];
-		if (children.length === 0) continue;
-		packGroupSiblings(
-			children,
-			bounds,
-			{ groupIds: hierarchy.byId, pending, windows, orderById },
-			frame.vertical,
-		);
-		bounds.set(group.id, enclosure(defined(measurements.get(group.id)), children, bounds));
-	}
-	const roots = [
-		...graph.document.nodes.filter((node) => node.groupId === undefined).map((node) => node.id),
-		...graph.document.junctions
-			.filter((junction) => junction.groupId === undefined)
-			.map((junction) => junction.id),
-		...graph.document.groups
-			.filter((group) => group.groupId === undefined)
-			.map((group) => group.id),
-	];
-	packGroupSiblings(
-		roots,
-		bounds,
-		{ groupIds: hierarchy.byId, pending, windows, orderById },
-		frame.vertical,
-	);
-
-	// Parent translations have already moved the child frame, not its contents.
-	const queue = graph.document.groups
-		.filter((group) => group.groupId === undefined)
-		.map((group) => ({ id: group.id, inherited: 0 }));
-	for (const { id, inherited } of queue) {
-		const childShift = inherited + (pending.get(id) ?? 0);
-		if (inherited !== 0) translateTransversely(defined(bounds.get(id)), inherited, frame.vertical);
-		for (const memberId of hierarchy.membersById.get(id) ?? []) {
-			if (hierarchy.byId.has(memberId)) {
-				queue.push({ id: memberId, inherited: childShift });
-			} else if (childShift !== 0) {
-				translateTransversely(defined(bounds.get(memberId)), childShift, frame.vertical);
-			}
-		}
-	}
-}
-
 export function encloseGroups(
 	input: {
 		readonly hierarchy: GroupHierarchy;
+		readonly ranks: ReadonlyMap<string, number>;
 		readonly measurements: ReadonlyMap<string, GroupMeasurement>;
 		readonly bounds: Map<string, MutableBounds>;
 		readonly frame: LayoutFrame;
@@ -117,19 +39,38 @@ export function encloseGroups(
 	cursor: PackingCursor,
 ): void {
 	const { hierarchy, measurements, bounds, frame } = input;
+	const { vertical } = frame;
+	const placement = {
+		hierarchy,
+		groups: (id: string) => defined(measurements.get(id)),
+		bounds,
+		vertical,
+	};
+	for (const id of freeHolders(hierarchy, input.ranks)) {
+		const slot = defined(bounds.get(id));
+		placeFreeGroup(placement, id, {
+			cross: transverseStart(slot, vertical),
+			main: mainStart(slot, vertical),
+		});
+	}
+	const free = freeGroups(hierarchy, input.ranks);
+	const held = heldFreeGroups(hierarchy, free);
 	for (const group of hierarchy.deepestFirst) {
+		if (held.has(group.id)) continue;
 		const measurement = defined(measurements.get(group.id));
 		const members = hierarchy.membersById.get(group.id) ?? [];
 		if (members.length > 0) {
+			const loose = freeMembers(hierarchy, held, group.id).filter((id) => !bounds.has(id));
+			const content = members.filter((id) => !free.has(id));
+			if (loose.length > 0) placeFreeBeside(placement, loose, content);
 			bounds.set(group.id, enclosure(measurement, members, bounds));
 			continue;
 		}
 		if (bounds.has(group.id)) continue;
 		const size = { width: measurement.minimumWidth, height: measurement.minimumHeight };
 		const main =
-			OUTER_MARGIN +
-			biasedMainStart(mainSize(size, frame.vertical), cursor.maximumPrimaryLength, frame);
-		bounds.set(group.id, boundsOnAxes(cursor.cross, main, size, frame.vertical));
-		cursor.cross += transverseSize(size, frame.vertical) + COMPONENT_GAP;
+			OUTER_MARGIN + biasedMainStart(mainSize(size, vertical), cursor.maximumPrimaryLength, frame);
+		bounds.set(group.id, boundsOnAxes(cursor.cross, main, size, vertical));
+		cursor.cross += transverseSize(size, vertical) + COMPONENT_GAP;
 	}
 }

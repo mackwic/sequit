@@ -22,16 +22,33 @@ function groupOf(graph: LogicGraph, id: string): string | undefined {
 	return graph.endpointsById.get(id)?.entity.groupId;
 }
 
-/**
- * Only a node makes a group a block. A group holding nothing but empty groups expands to no
- * endpoint, so its relations end on the group itself and it keeps an ordinary row slot.
- */
-function blockIds(graph: LogicGraph): ReadonlySet<string> {
+/** Groups enclosing a node or a junction: relations to them end on those members. */
+function populatedGroups(graph: LogicGraph): ReadonlySet<string> {
 	const ids = new Set<string>();
 	for (const id of graph.rankableEndpointIds) {
-		if (graph.endpointsById.get(id)?.kind !== EndpointKind.Node) continue;
+		if (graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
 		for (let group = groupOf(graph, id); group !== undefined; group = groupOf(graph, group)) {
 			if (ids.has(group)) break;
+			ids.add(group);
+		}
+	}
+	return ids;
+}
+
+/**
+ * A node or a related group makes its enclosing groups blocks: both stand in rows. A related
+ * group holding no node or junction expands to no endpoint, so its relations end on the group
+ * itself: it keeps an ordinary row slot, whatever groups it holds.
+ */
+function blockIds(graph: LogicGraph): ReadonlySet<string> {
+	const populated = populatedGroups(graph);
+	const related = new Set(graph.rankableEndpointIds);
+	const ids = new Set<string>();
+	for (const id of graph.rankableEndpointIds) {
+		if (graph.endpointsById.get(id)?.kind === EndpointKind.Junction) continue;
+		for (let group = groupOf(graph, id); group !== undefined; group = groupOf(graph, group)) {
+			if (ids.has(group)) break;
+			if (related.has(group) && !populated.has(group)) continue;
 			ids.add(group);
 		}
 	}
@@ -90,11 +107,7 @@ function blockParents(graph: LogicGraph, ids: ReadonlySet<string>): ReadonlyMap<
 	return parents;
 }
 
-/** Blocks and their nesting for a graph; rows, rank orders and placement share one instance. */
-export function groupBlocks(graph: LogicGraph): GroupBlocks {
-	const cached = cache.get(graph);
-	if (cached !== undefined) return cached;
-	const ids = blockIds(graph);
+function buildGroupBlocks(graph: LogicGraph, ids: ReadonlySet<string>): GroupBlocks {
 	const parents = blockParents(graph, ids);
 	const parentOf = (id: string): string | undefined => parents.get(id);
 	const blocks: GroupBlocks = {
@@ -116,6 +129,20 @@ export function groupBlocks(graph: LogicGraph): GroupBlocks {
 	};
 	cache.set(graph, blocks);
 	return blocks;
+}
+
+/** Blocks and their nesting for a graph; rows, rank orders and placement share one instance. */
+export function groupBlocks(graph: LogicGraph): GroupBlocks {
+	return cache.get(graph) ?? buildGroupBlocks(graph, blockIds(graph));
+}
+
+/**
+ * A local part of a document keeps the document's blocks: whether a group is a block depends on
+ * relations the part may not hold, and its rows must match the document's.
+ */
+export function inheritGroupBlocks(part: LogicGraph, document: LogicGraph): void {
+	const ids = [...groupBlocks(document).ids].filter((id) => part.endpointsById.has(id));
+	buildGroupBlocks(part, new Set(ids));
 }
 
 /** The innermost container holding two endpoints, and the item standing for each there. */

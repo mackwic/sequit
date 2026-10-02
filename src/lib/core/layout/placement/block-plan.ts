@@ -4,6 +4,7 @@ import { COMPONENT_GAP, ITEM_GAP } from '../layout-settings';
 import type { GroupMeasurement } from '../layout-types';
 import { commonContainer, type GroupBlocks, groupBlocks } from '../structure/group-blocks';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
+import type { JunctionPlacement } from '../structure/junction-structure';
 import { relationComponentIndex } from '../structure/layout-components';
 import type { PlacementRows } from '../structure/placement-rows';
 import { rawAdjacency, throughJunctions } from '../structure/relation-adjacency';
@@ -16,6 +17,7 @@ import {
 	type RankSpan,
 	type RelatedAbove,
 } from './container-rows';
+import { freeGroups, freeMembers } from './free-groups';
 
 /** The graph and group measurements families and blocks follow, independent of any one row. */
 export interface FamilyContext {
@@ -24,6 +26,7 @@ export interface FamilyContext {
 	readonly hierarchy: GroupHierarchy | undefined;
 	readonly groups: ReadonlyMap<string, GroupMeasurement>;
 	readonly junctionIds: ReadonlySet<string>;
+	readonly junctions: ReadonlyMap<string, JunctionPlacement>;
 }
 
 /** The root, or one block, laid out as rows of its direct items; links follow its rows. */
@@ -37,14 +40,16 @@ export interface BlockPlan {
 	/** Innermost containers first: a block is complete before its container places it. */
 	readonly containers: readonly ContainerPlan[];
 	readonly spans: ReadonlyMap<string, RankSpan>;
-	/** Direct row items and nested blocks a block carries when it moves. */
+	/** Direct row items, nested blocks and free groups a block carries when it moves. */
 	readonly children: ReadonlyMap<string, readonly string[]>;
+	/** Free groups standing beside each block's content, in documentary order. */
+	readonly free: ReadonlyMap<string, readonly string[]>;
 	/** Relation-connected clusters an item belongs to; disjoint neighbors keep the component gap. */
 	readonly clusters: ReadonlyMap<string, readonly number[]>;
 }
 
 const plans = new WeakMap<PlacementRows, BlockPlan>();
-const NO_BLOCKS: BlockSpans = { spans: new Map(), innermostFirst: [] };
+const NO_BLOCKS: BlockSpans = { spans: new Map(), occupied: new Map(), innermostFirst: [] };
 
 interface MutableLinks {
 	readonly down: Map<string, string[]>[];
@@ -174,6 +179,7 @@ function childrenOf(
 	rows: PlacementRows,
 	blocks: GroupBlocks,
 	spans: ReadonlyMap<string, RankSpan>,
+	free: ReadonlyMap<string, readonly string[]>,
 ): ReadonlyMap<string, readonly string[]> {
 	const children = new Map<string, string[]>();
 	for (const block of spans.keys()) children.set(block, []);
@@ -181,7 +187,29 @@ function childrenOf(
 		const block = blocks.parentOf(id);
 		if (block !== undefined) defined(children.get(block)).push(id);
 	}
+	for (const [block, groups] of free) defined(children.get(block)).push(...groups);
 	return children;
+}
+
+/** Free groups of each block, nested ones included: a block carries them all when it moves. */
+function freeOf(
+	hierarchy: GroupHierarchy | undefined,
+	ranks: ReadonlyMap<string, number>,
+	spans: ReadonlyMap<string, RankSpan>,
+): { readonly direct: Map<string, readonly string[]>; readonly carried: Map<string, string[]> } {
+	const direct = new Map<string, readonly string[]>();
+	const carried = new Map<string, string[]>();
+	if (hierarchy === undefined) return { direct, carried };
+	const free = freeGroups(hierarchy, ranks);
+	for (const block of spans.keys()) {
+		const members = freeMembers(hierarchy, free, block);
+		if (members.length === 0) continue;
+		direct.set(block, members);
+		const subtree = [...members];
+		for (const id of subtree) subtree.push(...(hierarchy.membersById.get(id) ?? []));
+		carried.set(block, subtree);
+	}
+	return { direct, carried };
 }
 
 /**
@@ -230,7 +258,7 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 	if (cached !== undefined) return cached;
 	const blocks = groupBlocks(context.graph);
 	let blockOrder: BlockSpans = NO_BLOCKS;
-	if (blocks.ids.size > 0) blockOrder = blockSpans(rows, blocks);
+	if (blocks.ids.size > 0) blockOrder = blockSpans(rows, blocks, context.junctions);
 	const { spans, innermostFirst } = blockOrder;
 	let plan: BlockPlan;
 	if (spans.size === 0) {
@@ -248,6 +276,7 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 			],
 			spans,
 			children: new Map(),
+			free: new Map(),
 			clusters: new Map(),
 		};
 	} else {
@@ -258,12 +287,13 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 			...defined(containerRows.get(id)),
 			links: links.get(id) ?? NO_LINKS,
 		}));
-		const children = childrenOf(rows, blocks, spans);
+		const free = freeOf(context.hierarchy, context.ranks, spans);
+		const children = childrenOf(rows, blocks, spans, free.carried);
 		const clusters = clustersOf(context.graph, children, {
 			ids: [...rows.ordinary.flat(), ...spans.keys()],
 			innermostFirst,
 		});
-		plan = { blocks, containers, spans, children, clusters };
+		plan = { blocks, containers, spans, children, free: free.direct, clusters };
 	}
 	plans.set(rows, plan);
 	return plan;

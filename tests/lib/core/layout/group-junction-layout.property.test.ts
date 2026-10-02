@@ -14,14 +14,11 @@ import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedi
 import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
 import { layoutWithDedicatedEngine } from '../../../../src/lib/core/layout/layout-engine';
 import { GROUP_FRAME_CLEARANCE, ITEM_GAP } from '../../../../src/lib/core/layout/layout-settings';
-import { groupSeparationWindows } from '../../../../src/lib/core/layout/placement/enclose-groups';
-import { packGroupSiblings } from '../../../../src/lib/core/layout/placement/pack-group-siblings';
 import {
 	placeElements,
 	type PlacementState,
 } from '../../../../src/lib/core/layout/placement/place-elements';
 import { prepareMeasurements } from '../../../../src/lib/core/layout/placement/prepare-measurements';
-import { prepareGroupHierarchy } from '../../../../src/lib/core/layout/structure/group-hierarchy';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import { LAYOUT_CONFIGURATIONS } from '../../../support/builders/layout-bias-scenario';
@@ -785,76 +782,6 @@ it('moves a junction back as trailing clearance grows without overlapping its gr
 	expect(overlaps(finalGroup, finalJunction)).toBe(false);
 });
 
-it('propagates a junction retreat through nested shells', () => {
-	const bounds = new Map([
-		['foreign', { x: 0, y: 40, width: 100, height: 140 }],
-		['junction', { x: 160, y: 100, width: 20, height: 20 }],
-		['inner', { x: 105, y: 45, width: 130, height: 130 }],
-		['outer', { x: 100, y: 40, width: 140, height: 140 }],
-	]);
-	const seed = groupJunctionFixture(
-		{ direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
-		false,
-		false,
-	);
-	const group = seed.groups[0];
-	const junction = seed.junctions[0];
-	if (group === undefined || junction === undefined) throw new Error('Expected group and junction');
-	const hierarchy = prepareGroupHierarchy({
-		...seed,
-		nodes: [],
-		groups: [
-			{ ...group, id: 'inner', groupId: 'outer' },
-			{ ...group, id: 'outer' },
-		],
-		junctions: [{ ...junction, groupId: 'inner' }],
-	});
-	if (hierarchy === undefined) throw new Error('Expected nested groups');
-	const windows = groupSeparationWindows(bounds, false, new Map([['junction', 12]]), hierarchy);
-	const innerWindow = windows.get('inner');
-	const outerWindow = windows.get('outer');
-	if (innerWindow === undefined || outerWindow === undefined)
-		throw new Error('Nested shells must both have separation windows');
-	expect(outerWindow.first).toBeLessThanOrEqual(innerWindow.first);
-	expect(outerWindow.last).toBeGreaterThanOrEqual(innerWindow.last);
-	const initial = structuredClone(bounds);
-	const orderById = new Map(['foreign', 'outer'].map((id, index) => [id, index]));
-	packGroupSiblings(
-		['foreign', 'outer'],
-		bounds,
-		{ groupIds: hierarchy.byId, pending: new Map(), windows, orderById },
-		false,
-	);
-	const outer = bounds.get('outer');
-	const foreign = bounds.get('foreign');
-	if (outer === undefined || foreign === undefined) throw new Error('Expected both boxes');
-	outer.x -= 12;
-	expect(overlaps(outer, foreign)).toBe(false);
-	fc.assert(
-		fc.property(fc.integer({ min: 0, max: 40 }), (retreat) => {
-			const boxes = structuredClone(initial);
-			const reserved = groupSeparationWindows(
-				boxes,
-				false,
-				new Map([['junction', retreat]]),
-				hierarchy,
-			);
-			packGroupSiblings(
-				['foreign', 'outer'],
-				boxes,
-				{ groupIds: hierarchy.byId, pending: new Map(), windows: reserved, orderById },
-				false,
-			);
-			const container = boxes.get('outer');
-			const outsider = boxes.get('foreign');
-			if (container === undefined || outsider === undefined)
-				throw new Error('Expected both packed boxes');
-			container.x -= retreat;
-			expect(overlaps(container, outsider)).toBe(false);
-		}),
-		PROPERTY_PARAMETERS,
-	);
-});
 
 it.each(LAYOUT_CONFIGURATIONS)(
 	'validates junction-only nested shells under asymmetric channel growth (%s)',

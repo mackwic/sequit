@@ -20,6 +20,7 @@ import {
 	gapBetween,
 } from './block-plan';
 import { fitRowAnchors } from './fit-row-anchors';
+import { placeFreeBeside } from './free-groups';
 import { enclosure } from './group-enclosure';
 
 interface Arrangement {
@@ -187,14 +188,35 @@ function arrangeContainer(arrangement: Arrangement, container: ContainerPlan): v
 	encloseContainer(arrangement, container);
 }
 
+/** Free groups stand beside the block's content: the frame holds them before its container places it. */
+function placeFreeMembers(
+	arrangement: Arrangement,
+	block: string,
+	content: readonly string[],
+): void {
+	const { bounds, context, plan, vertical } = arrangement;
+	const free = plan.free.get(block);
+	if (free === undefined || context.hierarchy === undefined) return;
+	const groups = (id: string) => defined(context.groups.get(id));
+	placeFreeBeside({ hierarchy: context.hierarchy, groups, bounds, vertical }, free, content);
+}
+
 /** The frame of a block around its members, as they now stand. */
 function encloseContainer(arrangement: Arrangement, container: ContainerPlan): void {
-	const { bounds, context } = arrangement;
+	const { bounds, context, plan } = arrangement;
 	if (container.id === undefined) return;
-	const members = (context.hierarchy?.membersById.get(container.id) ?? []).filter((id) =>
-		bounds.has(id),
+	const members = context.hierarchy?.membersById.get(container.id) ?? [];
+	const free = new Set(plan.free.get(container.id));
+	const content = members.filter((id) => bounds.has(id) && !free.has(id));
+	placeFreeMembers(arrangement, container.id, content);
+	bounds.set(
+		container.id,
+		enclosure(
+			defined(context.groups.get(container.id)),
+			members.filter((id) => bounds.has(id)),
+			bounds,
+		),
 	);
-	bounds.set(container.id, enclosure(defined(context.groups.get(container.id)), members, bounds));
 }
 
 /**

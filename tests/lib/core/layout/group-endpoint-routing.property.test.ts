@@ -134,10 +134,7 @@ function initialLayerPortReservation(
 		workspace.placement.bounds,
 		frame,
 	);
-	if (workspace.placement.groupChannelInsets.size > 0) {
-		delete workspace.placement.groupWindows;
-		placeElements(workspace, new Map());
-	}
+	if (workspace.placement.groupChannelInsets.size > 0) placeElements(workspace, new Map());
 	const layers = routingLayers(structure);
 	const bounds = new Map(workspace.placement.bounds);
 	for (const id of ignoredFrames) bounds.delete(id);

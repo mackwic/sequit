@@ -39,6 +39,11 @@ export function transverseSize(size: Size, vertical: boolean): number {
 	return size.height;
 }
 
+export function mainStart(box: Bounds, vertical: boolean): number {
+	if (vertical) return box.y;
+	return box.x;
+}
+
 export function transverseStart(box: Bounds, vertical: boolean): number {
 	if (vertical) return box.x;
 	return box.y;

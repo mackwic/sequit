@@ -5,6 +5,7 @@ import { BASE_RANK_GAP, PORT_INSET } from '../layout-settings';
 import type { GroupMeasurement, LayoutMeasurements, Size } from '../layout-types';
 import type { LayoutStructure } from '../structure/prepare-layout';
 import { frameShellGaps } from './frame-shell-gaps';
+import { freeContentLengths, freeHolders, placeFreeGroup } from './free-groups';
 import { validateGroupMeasurement, validateSize } from './validate-measurements';
 
 export interface PreparedMeasurements {
@@ -134,8 +135,18 @@ export function prepareMeasurements(
 ): PreparedMeasurements {
 	const sizes = new Map<string, Size>();
 	const groups = groupReader(content);
+	const holders = freeHolders(structure.hierarchy, structure.ranks.byEndpointId);
 	for (const id of structure.graph.rankableEndpointIds) {
-		const size = endpointSize(structure, content, groups, id);
+		let size = endpointSize(structure, content, groups, id);
+		if (holders.has(id)) {
+			const placement = { hierarchy: defined(structure.hierarchy), groups: groups.get };
+			const { width, height } = placeFreeGroup(
+				{ ...placement, bounds: new Map(), vertical: frame.vertical },
+				id,
+				{ cross: 0, main: 0 },
+			);
+			size = { width, height };
+		}
 		if (!needsNodePortInset(structure, frame, id, size)) sizes.set(id, size);
 		else if (frame.vertical) sizes.set(id, { ...size, width: 2 * PORT_INSET });
 		else sizes.set(id, { ...size, height: 2 * PORT_INSET });
@@ -144,7 +155,7 @@ export function prepareMeasurements(
 	for (const [id, size] of sizes) {
 		if (structure.junctionIds.has(id)) continue;
 		// A populated group endpoint is drawn as its members' frame, not as a box in one band.
-		if (structure.hierarchy?.membersById.has(id) === true) continue;
+		if (structure.hierarchy?.membersById.has(id) === true && !holders.has(id)) continue;
 		const rank = defined(structure.ranks.byEndpointId.get(id));
 		primaryBandSizes[rank] = Math.max(
 			defined(primaryBandSizes[rank]),
@@ -152,6 +163,12 @@ export function prepareMeasurements(
 		);
 	}
 	const relationGap = relationGroupRankGap(structure, frame, groups);
+	let freeLengths: ReadonlyMap<string, number> = new Map();
+	if (structure.hierarchy !== undefined)
+		freeLengths = freeContentLengths(
+			{ hierarchy: structure.hierarchy, groups: groups.get, vertical: frame.vertical },
+			structure.ranks.byEndpointId,
+		);
 	const shells = frameShellGaps({
 		structure,
 		frame,
@@ -159,6 +176,7 @@ export function prepareMeasurements(
 		sizes,
 		bandSizes: primaryBandSizes,
 		minimumGap: relationGap,
+		freeLengths,
 	});
 	for (const group of structure.hierarchy?.deepestFirst ?? []) groups.get(group.id);
 	return {

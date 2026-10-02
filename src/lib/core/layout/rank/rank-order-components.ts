@@ -8,6 +8,7 @@ import {
 import { createGraph, type LogicGraph } from '../../graph/create-graph';
 import { topologicallyRank, type TopologicalRanks } from '../../graph/topological-ranks';
 import type { LayoutMeasurements } from '../layout-types';
+import { inheritGroupBlocks } from '../structure/group-blocks';
 import type { LayoutStructure } from '../structure/prepare-layout';
 
 export interface RankSearchComponent {
@@ -151,6 +152,7 @@ export function rankSearchComponents(
 		const created = createGraph(document);
 		if (!created.ok) throw new Error('A weak component of a valid graph must remain valid');
 		const local = created.value;
+		inheritGroupBlocks(local, graph);
 		return {
 			index,
 			ids: part.ids,
