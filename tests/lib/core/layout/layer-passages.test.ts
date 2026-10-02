@@ -362,6 +362,18 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 		expect(reserve(firstRelation)).toBe(200);
 	});
 
+	it('keeps a passage out of an empty endpoint group which alone fills the intermediate row', () => {
+		const reserve = layerPassages(
+			input([['target'], ['group'], ['source']], {
+				target: box(0, 0),
+				group: box(0, 120),
+				source: box(0, 240),
+			}),
+		);
+		const passage = defined(reserve(firstRelation));
+		expect(Math.abs(passage) - 40).toBeGreaterThanOrEqual(GROUP_SHELL_CLEARANCE);
+	});
+
 	it('uses a clear endpoint column across ordinary intermediate boxes', () => {
 		const reserve = layerPassages(
 			input([['target'], ['junction', 'ordinary'], ['source']], {

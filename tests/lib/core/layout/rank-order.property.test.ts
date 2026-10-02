@@ -2214,70 +2214,77 @@ describe('dedicated bounded geometric rank search', () => {
 		expect(blockedPassages).toEqual([]);
 	});
 
-	it('recovers from a documentary group passage the large group frame closes with a valid alternate order', () => {
-		const base = validLogicDocument();
-		const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
-		const document: LogicDocument = {
-			...base,
-			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-			groups: [{ kind: EndpointKind.Group, id: 'G', label: 'G', layoutOrder: orderKey('a0') }],
-			junctions: [],
-			nodes: ids.map((id, index) => {
-				const node: LogicNode = {
+	// D-07 corpus G2, seed 199: the documentary order leaves no group passage for n4→n2 (r0) in
+	// every direction, while another order of the same ranks routes every relation.
+	it.each(Object.values(LayoutDirection))(
+		'recovers from a documentary group passage the group frames close with a valid alternate order (%s)',
+		(direction) => {
+			const members: Readonly<Record<string, string>> = {
+				n1: 'g1',
+				n5: 'g1',
+				n6: 'g0',
+				j0: 'g0',
+			};
+			let order = 0;
+			const entity = (id: string) => {
+				const layoutOrder = orderKey(`a${(order++).toString().padStart(3, '0')}1`);
+				const groupId = members[id];
+				if (groupId === undefined) return { id, layoutOrder };
+				return { id, layoutOrder, groupId };
+			};
+			const document: LogicDocument = {
+				...validLogicDocument(),
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				groups: ['g0', 'g1'].map((id) => ({ kind: EndpointKind.Group, label: id, ...entity(id) })),
+				nodes: ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6'].map((id) => ({
 					kind: EndpointKind.Node,
-					id,
-					natureId: defined(base.nodes[0]).natureId,
+					natureId: 'goal',
 					markdown: id,
-					layoutOrder: orderKey(`a${index + 1}`),
-				};
-				if (id === 'b' || id === 'd') return { ...node, groupId: 'G' };
-				return node;
-			}),
-			relations: [
-				{ id: 'b-c', from: 'b', to: 'c' },
-				{ id: 'b-d', from: 'b', to: 'd' },
-				{ id: 'b-f', from: 'b', to: 'f' },
-				{ id: 'e-G', from: 'e', to: 'G' },
-			],
-		};
-		const created = createGraph(document);
-		if (!created.ok) throw new Error('Invalid group passage recovery graph');
-		const graph = created.value;
-		const ranks = topologicallyRank(graph);
-		const sizes = [
-			{ width: 124, height: 200 },
-			{ width: 21, height: 24 },
-			{ width: 24, height: 20 },
-			{ width: 38, height: 191 },
-			{ width: 24, height: 27 },
-			{ width: 63, height: 60 },
-		];
-		const measurements = layoutMeasurementsFor(document, {
-			nodes: Object.fromEntries(ids.map((id, index) => [id, defined(sizes[index])])),
-			groups: { G: { minimumWidth: 564, minimumHeight: 592, headerHeight: 51, padding: 28 } },
-		});
-		const structure = prepareLayout(graph, ranks);
-		let documentaryFailure: unknown;
-		try {
-			evaluateDedicatedLayout(structure, measurements, undefined, true);
-		} catch (error) {
-			documentaryFailure = error;
-		}
-		if (!(documentaryFailure instanceof GroupRouteFailure))
-			throw new Error('The documentary order must close a group passage');
-		expect(documentaryFailure).toMatchObject({ code: 'group-route-no-valid-passage' });
-		const { relationId } = documentaryFailure;
-		const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
-		expect(
-			validateDedicatedCandidate({ graph, ranks, measurements, layout: selected.layout }),
-		).toMatchObject({ valid: true });
-		const originalOrder = collectRankOrderDomain(structure).bands;
-		expect(selected.witness.selectedOrder).not.toEqual(originalOrder);
-		expect(selected.witness.rejected).toContainEqual({
-			order: originalOrder,
-			reason: { valid: false, code: DedicatedCandidateRejectionCode.GroupPassage, relationId },
-		});
-	});
+					...entity(id),
+				})),
+				junctions: [
+					{ kind: EndpointKind.Junction, operator: JunctionOperator.Xor, ...entity('j0') },
+				],
+				relations: [
+					['n4', 'n2'],
+					['n4', 'j0'],
+					['g0', 'g1'],
+					['n5', 'n2'],
+					['n6', 'n5'],
+					['j0', 'n1'],
+					['n4', 'n5'],
+					['n6', 'n1'],
+					['n0', 'n3'],
+					['g0', 'n2'],
+				].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
+			};
+			const { graph, ranks, measurements } = prepareLayoutDocument(document);
+			const structure = prepareLayout(graph, ranks);
+			let documentaryFailure: unknown;
+			try {
+				evaluateDedicatedLayout(structure, measurements, undefined, true);
+			} catch (error) {
+				documentaryFailure = error;
+			}
+			if (!(documentaryFailure instanceof GroupRouteFailure))
+				throw new Error('The documentary order must close a group passage');
+			expect(documentaryFailure).toMatchObject({ code: 'group-route-no-valid-passage' });
+			const { relationId } = documentaryFailure;
+			const selected = layoutWithDedicatedEngineAndRankOrderWitness(graph, ranks, measurements);
+			expect(
+				validateDedicatedCandidate({ graph, ranks, measurements, layout: selected.layout }),
+			).toMatchObject({ valid: true });
+			const originalOrder = collectRankOrderDomain(structure).bands;
+			expect(selected.witness.selectedOrder).not.toEqual(originalOrder);
+			expect(selected.witness.rejected).toContainEqual({
+				order: originalOrder,
+				reason: { valid: false, code: DedicatedCandidateRejectionCode.GroupPassage, relationId },
+			});
+		},
+	);
 
 	it('selects a valid order when a routed documentary baseline fails independent validation', () => {
 		const entry = defined(rankOrderComparisonCorpus().find(({ id }) => id === 'geometric-2+2'));

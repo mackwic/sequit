@@ -91,6 +91,35 @@ function physicalMain(box: Bounds, vertical: boolean): MainInterval {
 	return { start, end: start + mainSize(box, vertical) };
 }
 
+/**
+ * Main extent of a row's atomic boxes or, given the span between two endpoints, of its group
+ * boxes lying wholly within that span.
+ */
+function rowExtent(
+	input: GroupPassageContext,
+	row: readonly string[],
+	between?: MainInterval,
+): MainInterval | undefined {
+	let extent: MainInterval | undefined;
+	for (const id of row) {
+		const group = input.graph.endpointsById.get(id)?.kind === EndpointKind.Group;
+		if (group !== (between !== undefined)) continue;
+		const next = physicalMain(defined(input.bounds.get(id)), input.vertical);
+		if (between !== undefined) {
+			if (next.start < between.start || next.end > between.end) continue;
+		}
+		if (extent === undefined) extent = next;
+		else
+			extent = { start: Math.min(extent.start, next.start), end: Math.max(extent.end, next.end) };
+	}
+	return extent;
+}
+
+/**
+ * The jog runs in the channel between its endpoint and the adjacent row. A row holding only group
+ * boxes, such as an empty endpoint group, is bounded by those lying between the two endpoints;
+ * otherwise the channel would reach the other endpoint and the passage would skip that row.
+ */
 function jogRail(
 	input: GroupPassageContext & { readonly layers: RoutingLayers },
 	endpoint: Bounds,
@@ -98,18 +127,10 @@ function jogRail(
 	corridor: JogCorridor,
 ): number {
 	const own = physicalMain(endpoint, input.vertical);
-	let neighbour: MainInterval | undefined;
-	for (const id of corridor.row) {
-		if (input.graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
-		const next = physicalMain(defined(input.bounds.get(id)), input.vertical);
-		if (neighbour === undefined) neighbour = next;
-		else
-			neighbour = {
-				start: Math.min(neighbour.start, next.start),
-				end: Math.max(neighbour.end, next.end),
-			};
-	}
-	neighbour ??= physicalMain(other, input.vertical);
+	const far = physicalMain(other, input.vertical);
+	const between = { start: Math.min(own.end, far.end), end: Math.max(own.start, far.start) };
+	const neighbour =
+		rowExtent(input, corridor.row) ?? rowExtent(input, corridor.row, between) ?? far;
 	let gap = { start: neighbour.end, end: own.start };
 	if (own.start < neighbour.start) gap = { start: own.end, end: neighbour.start };
 	const frames: MainInterval[] = [];
