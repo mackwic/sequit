@@ -18,7 +18,7 @@ function pathsFor(input: readonly ChannelEndpoint[], vertical: boolean) {
 		id: wire.id,
 		from: wire.sharedSource ?? wire.id,
 		to: wire.sharedTarget ?? wire.id,
-		points: channelPoints(wire, 0, end, { vertical, railStart: 48, railStep: 48 }),
+		points: channelPoints(wire, 0, end, { vertical, railStart: 48, railStep: 48, frames: [] }),
 	}));
 	return paths;
 }

@@ -3,13 +3,14 @@ import { mainSize, pointOnAxes } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point } from '../layout-types';
 import type { ChannelWire } from './channel-types';
-import { freeOfGroupShells, type MainInterval } from './group-shells';
+import { clearShellDogleg, freeOfGroupShells, type MainInterval } from './group-shells';
 import type { NodeRouting } from './reserve-node-routing';
 
 interface ChannelGeometry {
 	readonly vertical: boolean;
 	readonly railStart: number;
 	readonly railStep: number;
+	readonly frames: readonly Bounds[];
 }
 
 export function channelPoints(
@@ -31,11 +32,20 @@ export function channelPoints(
 			pointOnAxes(wire.target, last, vertical),
 			end,
 		];
+	const middle = clearShellDogleg({
+		middle: wire.middle,
+		source: wire.source,
+		target: wire.target,
+		first,
+		last,
+		vertical,
+		frames: geometry.frames,
+	});
 	return [
 		start,
 		pointOnAxes(wire.source, first, vertical),
-		pointOnAxes(wire.middle, first, vertical),
-		pointOnAxes(wire.middle, last, vertical),
+		pointOnAxes(middle, first, vertical),
+		pointOnAxes(middle, last, vertical),
 		pointOnAxes(wire.target, last, vertical),
 		end,
 	];
@@ -152,6 +162,7 @@ export function applyNodeRouting(input: {
 			vertical,
 			railStart: center - sign * halfSpan,
 			railStep: sign * RAIL_SPACING,
+			frames: input.frames,
 		};
 		for (let index = 0; index < channel.wires.length; index += 1) {
 			const wire = defined(channel.wires[index]);

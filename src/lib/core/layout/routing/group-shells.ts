@@ -1,7 +1,9 @@
 import { defined } from '../../document/logic-document';
-import { mainSize } from '../geometry/layout-frame';
-import { GROUP_FRAME_CLEARANCE, RAIL_SPACING } from '../layout-settings';
+import type { LogicGraph } from '../../graph/create-graph';
+import { mainSize, transverseSize, transverseStart } from '../geometry/layout-frame';
+import { GROUP_FRAME_CLEARANCE, GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
+import { prepareRouteObstacles, type RouteObstacles } from './route-obstacles';
 
 /** An oriented interval on the main axis, with `start <= end`. */
 export interface MainInterval {
@@ -93,11 +95,11 @@ export function shellChannelGaps(input: {
 	readonly vertical: boolean;
 }): ReadonlyMap<number, number> {
 	const { bounds, vertical } = input;
-	const frames = [...input.frameIds].flatMap((id) => {
+	const frames: MainInterval[] = [];
+	for (const id of input.frameIds) {
 		const box = bounds.get(id);
-		if (box === undefined) return [];
-		return [mainInterval(box, vertical)];
-	});
+		if (box !== undefined) frames.push(mainInterval(box, vertical));
+	}
 	if (frames.length === 0) return input.gaps;
 	const rows = rowIntervals(input.ranks, bounds, input);
 	const channels: { rank: number; gap: number; span: MainInterval }[] = [];
@@ -123,4 +125,145 @@ export function shellChannelGaps(input: {
 		result.set(rank, Math.max(gap, shells + GROUP_FRAME_CLEARANCE + rails));
 	}
 	return result;
+}
+
+export interface ParallelShell {
+	readonly bounds: Bounds;
+	readonly start: number;
+	readonly end: number;
+	readonly leading: number;
+	readonly trailing: number;
+	readonly outerLeading: number;
+	readonly outerTrailing: number;
+}
+
+/** Share narrow padding instead of expelling a passage from its containing group. */
+export function parallelShells(
+	graph: LogicGraph,
+	bounds: ReadonlyMap<string, Bounds>,
+	vertical: boolean,
+): readonly ParallelShell[] {
+	const shells: ParallelShell[] = [];
+	for (const group of graph.document.groups) {
+		const box = bounds.get(group.id);
+		if (box === undefined) continue;
+		const start = transverseStart(box, vertical);
+		const end = start + transverseSize(box, vertical);
+		let leading = GROUP_SHELL_CLEARANCE;
+		let trailing = GROUP_SHELL_CLEARANCE;
+		for (const { entity } of graph.endpointsById.values()) {
+			if (entity.groupId !== group.id) continue;
+			const child = bounds.get(entity.id);
+			if (child === undefined) continue;
+			const childStart = transverseStart(child, vertical);
+			const childEnd = childStart + transverseSize(child, vertical);
+			leading = Math.min(leading, Math.max(0, childStart - start) / 2);
+			trailing = Math.min(trailing, Math.max(0, end - childEnd) / 2);
+		}
+		let outerLeading = GROUP_SHELL_CLEARANCE;
+		let outerTrailing = GROUP_SHELL_CLEARANCE;
+		const parent = bounds.get(group.groupId ?? '');
+		if (parent !== undefined) {
+			const parentStart = transverseStart(parent, vertical);
+			const parentEnd = parentStart + transverseSize(parent, vertical);
+			outerLeading = Math.min(outerLeading, Math.max(0, start - parentStart) / 2);
+			outerTrailing = Math.min(outerTrailing, Math.max(0, parentEnd - end) / 2);
+		}
+		shells.push({ bounds: box, start, end, leading, trailing, outerLeading, outerTrailing });
+	}
+	return shells;
+}
+
+/** Only parallel sides block a longitudinal passage; crossing a header is legitimate. */
+export function parallelShellObstacles(
+	shells: readonly ParallelShell[],
+	vertical: boolean,
+	maximum = GROUP_SHELL_CLEARANCE,
+): RouteObstacles {
+	const sides: Bounds[] = [];
+	for (const shell of shells) {
+		const { bounds: box, start, end } = shell;
+		const leading = Math.min(maximum, shell.leading);
+		const trailing = Math.min(maximum, shell.trailing);
+		const outerLeading = Math.min(maximum, shell.outerLeading);
+		const outerTrailing = Math.min(maximum, shell.outerTrailing);
+		if (vertical) {
+			sides.push(
+				{ ...box, x: start - outerLeading, width: outerLeading + leading },
+				{ ...box, x: end - trailing, width: trailing + outerTrailing },
+			);
+		} else {
+			sides.push(
+				{ ...box, y: start - outerLeading, height: outerLeading + leading },
+				{ ...box, y: end - trailing, height: trailing + outerTrailing },
+			);
+		}
+	}
+	return prepareRouteObstacles(sides, 0);
+}
+
+/** Both clear boundaries and corridor centres replace a column which used to touch a frame. */
+export function shellPassageCandidates(
+	shells: readonly ParallelShell[],
+	maximum = GROUP_SHELL_CLEARANCE,
+): readonly number[] {
+	const edges: number[] = [];
+	for (const { start, end, leading, trailing, outerLeading, outerTrailing } of shells) {
+		edges.push(start - Math.min(maximum, outerLeading), start + Math.min(maximum, leading));
+		edges.push(end - Math.min(maximum, trailing), end + Math.min(maximum, outerTrailing));
+	}
+	edges.sort((left, right) => left - right);
+	const candidates = [...edges];
+	for (let index = 1; index < edges.length; index += 1)
+		candidates.push((defined(edges[index - 1]) + defined(edges[index])) / 2);
+	return candidates;
+}
+
+/** A saturated containing group uses the interiors of the remaining geometric intervals. */
+export function packedShellCandidates(
+	boxes: readonly Bounds[],
+	vertical: boolean,
+	edges: number[],
+): readonly number[] {
+	for (const box of boxes) {
+		const start = transverseStart(box, vertical);
+		edges.push(start, start + transverseSize(box, vertical));
+	}
+	edges.sort((left, right) => left - right);
+	const candidates: number[] = [];
+	for (let index = 1; index < edges.length; index += 1)
+		candidates.push((defined(edges[index - 1]) + defined(edges[index])) / 2);
+	return candidates;
+}
+
+/** A dogleg parallel to a frame uses the same genuinely free interval as a channel rail. */
+export function clearShellDogleg(input: {
+	readonly middle: number;
+	readonly source: number;
+	readonly target: number;
+	readonly first: number;
+	readonly last: number;
+	readonly vertical: boolean;
+	readonly frames: readonly Bounds[];
+}): number {
+	const near = Math.min(input.first, input.last);
+	const far = Math.max(input.first, input.last);
+	const frames: MainInterval[] = [];
+	let touches = false;
+	for (const box of input.frames) {
+		const main = mainInterval(box, input.vertical);
+		if (main.end <= near || main.start >= far) continue;
+		const start = transverseStart(box, input.vertical);
+		const end = start + transverseSize(box, input.vertical);
+		frames.push({ start, end });
+		const distance = Math.min(Math.abs(input.middle - start), Math.abs(input.middle - end));
+		if (distance < GROUP_SHELL_CLEARANCE) touches = true;
+	}
+	if (!touches) return input.middle;
+	const gap = {
+		start: Math.min(input.source, input.target),
+		end: Math.max(input.source, input.target),
+	};
+	const free = defined(freeOfGroupShells([gap], frames)[0]);
+	return (free.start + free.end) / 2;
 }

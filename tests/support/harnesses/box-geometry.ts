@@ -1,5 +1,5 @@
 import { LayoutDirection } from '../../../src/lib/core/document/logic-document';
-import type { Bounds } from '../../../src/lib/core/layout/layout-types';
+import type { Bounds, Point } from '../../../src/lib/core/layout/layout-types';
 
 export interface BoxIdentity {
 	readonly kind: 'box' | 'envelope' | 'frame';
@@ -57,4 +57,19 @@ export function gapAfter(
 		[LayoutDirection.LeftToRight]: b.x - (a.x + a.width),
 		[LayoutDirection.RightToLeft]: a.x - (b.x + b.width),
 	}[direction];
+}
+
+/** Distance to a parallel frame side over a positive-length overlap; crossings are not rails. */
+export function parallelFrameDistance(start: Point, end: Point, frame: Bounds): number {
+	if (start.y === end.y && start.x !== end.x) {
+		if (Math.max(start.x, end.x) <= frame.x || Math.min(start.x, end.x) >= frame.x + frame.width)
+			return Number.POSITIVE_INFINITY;
+		return Math.min(Math.abs(start.y - frame.y), Math.abs(start.y - frame.y - frame.height));
+	}
+	if (start.x === end.x && start.y !== end.y) {
+		if (Math.max(start.y, end.y) <= frame.y || Math.min(start.y, end.y) >= frame.y + frame.height)
+			return Number.POSITIVE_INFINITY;
+		return Math.min(Math.abs(start.x - frame.x), Math.abs(start.x - frame.x - frame.width));
+	}
+	return Number.POSITIVE_INFINITY;
 }

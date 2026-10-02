@@ -807,3 +807,37 @@ La hausse de surface dense vient des rails nécessaires à l’emboîtement, pas
 - Performance : **décision utilisateur 2026-10-02 : correction avant performance**. Trois répétitions sérialisées sous charge donnent, pour le snapshot dense à 1 000 nœuds, **2 459,304 / 1 301,880 / 508,665 ms**, et pour le p95 incrémental 100–999 **1 581,896 / 2 302,099 / 388,869 ms**. **Plafonds non modifiés ; mesure sous charge inexploitable ; à calibrer à l’intégration**. La décision finale du coordinateur réserve toute modification des tables de budgets à une mesure en fenêtre calme sur la branche d’intégration.
 - Point ouvert transféré D-06 → D-05 : la graine **424**, TB, du générateur `shell-review-deep.ts` produit `g0 ⊃ g1 ⊃ g2` et le frère `h`, padding 36 ; `n1→n0` et `n5→n0` ont des risers opposés rapprochés. Le coordinateur rapporte les colonnes **261,75** (y 247..628) et **259** (y 142..271), avec un recouvrement de 24 unités. L’espacement des colonnes de ports opposés n’est pas corrigé dans cette reprise de l’emboîtement ; le document complet est conservé au rapport.
 - Interaction d’intégration D-06 : son contrat obligatoire `ChannelGeometry.frames` pourra déplacer un middle près d’une coque à la matérialisation. Le prix D-05 porte actuellement sur `wire.middle`, la colonne planifiée ; cette différence doit être prise en compte lors de l’intégration. Sans coque, la géométrie pure doit rester inchangée.
+
+## Correctifs du 2 octobre 2026 — dégagement des coques dédiées
+
+- Commit `fix(layout): coques dédiées — centrer les rails dans l’espace libre` : D-06 ; les canaux par couches excluent les coques avant de centrer les rails, et les passages longitudinaux réservent aussi les côtés des cadres propriétaires.
+- Les témoins à quatre et cinq nœuds passent de 0 à au moins 24 unités en TB ; le minimum commun exigé est 12 unités. Les quatre directions, les en-têtes 36/60/90, les paddings 24/36/48 et les groupes imbriqués sont couverts.
+- L’oracle indépendant refuse les segments parallèles à moins de 12 unités d’un cadre ; propriétés sur 400 tirages × 4 directions à un ou deux groupes et 1 200 layouts à un groupe, sans contact colinéaire.
+- Aucun SHA dédié ré-épinglé ; les documents de référence conservent leurs géométries sélectionnées. Les rangs, les ports et l’allocation des rails ne sont pas modifiés.
+
+### Reprise de relecture — confinement et padding étroit
+
+- Commit `fix(layout): coques dédiées — contenir les passages et vérifier leurs traverses` : reprise D-06/R01–R04 ; vérification des deux traverses, dégagement proportionnel au padding réel, pistes internes resserrées en saturation et décrochement centré hors des coques.
+- Corpus exact du relecteur (600 graines × 4 directions, deux séries) : validité padding36 **2376 → 2400**, mixte **2360 → 2400** ; sorties du groupe **4 → 0** et **24 → 0** ; croisements stricts **1774 → 1632** et **1798 → 1638**. Aucun contact colinéaire ni traversée de cadre étranger après correction.
+- L’ordre des relations et la priorité aux faibles croisements restent inchangés ; aucun padding mesuré agrandi. En saturation, le confinement prime sur le pas de 24 unités entre pistes.
+- Aucun SHA ré-épinglé. Le contrat nommé `ChannelGeometry` reçoit désormais obligatoirement les cadres pour centrer aussi le décrochement intermédiaire ; sans cadre, ses points sont inchangés.
+
+### Seconde reprise de relecture — bandes partagées et repli historique
+
+- Commit `fix(layout): coques dédiées — partager les bandes sans perdre le rendu` : D-06/N01–N03 ; dégagements intérieur et extérieur distincts, répartition finale des bandes et pas minimal de 6 entre passages. Les montants de ports opposés restent dans le périmètre D-05.
+- Les 18 000 layouts profonds (paddings 12/24/36, quatre directions) n’ajoutent ni exception, ni invalidité, ni sortie de groupe à la base ; aucun pas de passage inférieur à 6. En saturation, le repli local historique remplace l’exception et le curseur extérieur reste monotone.
+- Corpus mixte exact : **2400/2400 valides**, sorties **24 → 2**, croisements stricts **1798 → 1624** ; les **424 segments extérieurs fautifs deviennent 0**. Padding36 : **2400/2400 valides**, sorties **4 → 0**, croisements **1774 → 1628**. Aucun contact colinéaire ni cadre étranger traversé.
+- Aucun SHA ré-épinglé, mesure de padding agrandie ou seuil relevé. Les oracles symétriques de la première reprise sont remplacés par les bandes réelles et la comparaison explicite au repli historique ; la priorité reste la correction, pas l’optimisation.
+
+### Troisième reprise de relecture — fenêtres locales et identité des sorties
+
+- Commit `fix(layout): coques dédiées — limiter les fenêtres aux composantes voisines` : R-01 à R-03 ; fenêtres de rails locales, communes aux couloirs qui se chevauchent, et traverses limitées aux cadres de leur trajet, sans modifier l’allocation globale des ports/canaux.
+- Non-interférence, corpus exact de 300 graines dans les quatre directions : identité géométrique **553/775 en base → 695/781 (89,0 %)**, contre 133/766 avant reprise ; la graine 3 est couverte par un test permanent. `chain7-dense + H`, déjà non invariant en base, reste hors tranche (rails partagés entre composantes).
+- La graine 1264 padding12 garde désormais `n6-n2` dans ses trois ancêtres ; sur 18 000 layouts, aucune nouvelle identité de route sortante, aucune nouvelle invalidité et aucune exception. Sorties p12 **1172 → 16** ; les deux autres séries restent à zéro.
+- Coûts explicites : colinéaires p12 **21056 → 300**, avec hausse dans 16 layouts en échange du confinement ; croisements profonds p24 **8570 → 8950 (+4,4 %)**, concentrés sur les défauts préexistants. Aucun SHA, seuil ou délai ré-épinglé ; aucun changement de tarification D-05.
+
+### Suite de la tranche — groupe vide dans une rangée intermédiaire
+
+- Commit `fix(layout): coques dédiées — borner les traverses par les groupes vides intermédiaires` : la suite de propriétés, non lancée par les reprises, révélait 19 nouveaux `GroupRouteFailure` sur 10 000 documents riches (dont la graine 1592915777, n° 170). Quand la rangée voisine d’une extrémité ne contenait qu’un groupe vide, les deux traverses estimées tombaient du même côté de ce groupe et le passage le coupait sans être vu.
+- Une telle rangée est désormais bornée par ses boîtes de groupe situées entre les deux extrémités : **19 → 0** échecs (base : 0), 10 000/10 000 layouts valides. Le corpus profond (18 000 layouts), les corpus initiaux et l’oracle extérieur sont strictement identiques à la reprise précédente : sorties p24/p36 **0**, aucun segment extérieur fautif.
+- Le témoin `rank-order` dont l’ordre documentaire est devenu routable et valide grâce à D-06 est remplacé par la fixture G2 graine 199 de D-07, partagée avec la tranche `dedicated-groups` ; elle ferme un passage en base et en tête dans les quatre directions. Aucun SHA, seuil ou délai ré-épinglé.

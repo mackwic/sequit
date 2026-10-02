@@ -11,6 +11,7 @@ import {
 } from '../../../../src/lib/core/layout/bridges/route-runs';
 import { BRIDGE_CLEARANCE, BRIDGE_RADIUS } from '../../../../src/lib/core/layout/layout-settings';
 import type { Point } from '../../../../src/lib/core/layout/layout-types';
+import { type BoxGeometry, parallelFrameDistance } from '../../../support/harnesses/box-geometry';
 
 interface ReferenceScan {
 	readonly runs: readonly RouteRun[];
@@ -126,7 +127,7 @@ function recordReferencePair(scan: ReferenceScan, current: RouteRun, previous: R
 }
 
 /** Decode maximal straight runs from waypoints without using the indexed oracle's parser. */
-function referenceRuns(path: RoutedPath): RouteRun[] {
+export function referenceRuns(path: RoutedPath): RouteRun[] {
 	const runs: RouteRun[] = [];
 	for (let index = 1; index < path.points.length; index += 1) {
 		const start = path.points[index - 1];
@@ -200,4 +201,26 @@ export function referenceRouteBridgeAnalysis(paths: readonly RoutedPath[]): Rout
 		return compareCanonicalStrings(firstKey, secondKey);
 	});
 	return { crossings, bridges, inspectedRuns: scan.runs.length };
+}
+
+/** Inspect all route/frame pairs independently of production routing and bridge validation. */
+export function referenceGroupShellViolations(
+	paths: readonly RoutedPath[],
+	frames: readonly BoxGeometry[],
+	clearance: number,
+): readonly { pathId: string; frameId: string; segment: number; distance: number }[] {
+	const violations: { pathId: string; frameId: string; segment: number; distance: number }[] = [];
+	for (const path of paths) {
+		for (let segment = 1; segment < path.points.length; segment += 1) {
+			const start = path.points[segment - 1];
+			const end = path.points[segment];
+			if (start === undefined || end === undefined) continue;
+			for (const frame of frames) {
+				const distance = parallelFrameDistance(start, end, frame.bounds);
+				if (distance < clearance)
+					violations.push({ pathId: path.id, frameId: frame.id, segment, distance });
+			}
+		}
+	}
+	return violations;
 }
