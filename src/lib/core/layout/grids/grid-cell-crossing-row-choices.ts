@@ -3,6 +3,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { railNestedBusAllocation } from './grid-cell-crossing-bus-orders';
 import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
 import { routedPortAllocation } from './grid-cell-crossing-port-order';
 
@@ -67,15 +68,18 @@ function rowRoutedInnermost(
 	};
 }
 
-/** Each allocation with its ports ordered by the routed runs first, then as declared. */
+/** Each allocation with coherent bus/rail nesting and routed ports first, then as declared. */
 function* uniqueCandidates(
 	candidates: readonly GridCrossingAllocation[],
 	context: RowChoiceContext,
 ): Generator<GridCrossingAllocation> {
-	const routed = candidates.map((candidate) =>
+	const nested = candidates.map((candidate) =>
+		railNestedBusAllocation(context.input, candidate, context.active),
+	);
+	const routed = [...nested, ...candidates].map((candidate) =>
 		routedPortAllocation(context.input, candidate, context.active),
 	);
-	for (const candidate of [...routed, ...candidates]) {
+	for (const candidate of [...routed, ...nested, ...candidates]) {
 		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
 		if (context.seen.has(key)) continue;
 		context.seen.add(key);

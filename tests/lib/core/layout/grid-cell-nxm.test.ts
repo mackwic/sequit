@@ -94,7 +94,7 @@ describe('grid bus allocation', () => {
 		expect(reversed.edges).toEqual(resources.edges);
 		expect(reversed.gutterIds).toEqual([['a-c', 'a-b'], ['a-b'], ['c-f', 'a-c']]);
 	});
-	it('selects a noncanonical bus after every canonical order fails without row alternatives', () => {
+	it('finds an unbridged noncanonical bus within the bounded allocation search', () => {
 		const source = {
 			...nxmThreeByTwoDocument(),
 			relations: [
@@ -136,12 +136,6 @@ describe('grid bus allocation', () => {
 		});
 		expect(phase?.exploredGeometries).toBeLessThan(256);
 		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		expect(
-			result.witness.rejectedAlternatives.filter(
-				({ phaseId, busOrder }) =>
-					phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === 'r0,r1,r2',
-			),
-		).toHaveLength(64);
 		expect(validatedBridges(result.layout.relations)).toEqual([]);
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
 		const permuted = prepareLayoutDocument({

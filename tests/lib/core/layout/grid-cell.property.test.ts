@@ -13,7 +13,10 @@ import {
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { unbridgedContacts } from '../../../../src/lib/core/layout/bridges/bridge-contact';
-import { validatedBridges } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import {
+	routeBridgeAnalysis,
+	validatedBridges,
+} from '../../../../src/lib/core/layout/bridges/bridge-oracle';
 import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	GRID_CROSSING_BRIDGE_BUDGET,
@@ -206,6 +209,50 @@ function gridOwnedUnbridgedContact(
 }
 
 describe('grid-cell real-pipeline properties', () => {
+	it('crosses disjoint traversals at most once and preserves crossing counts between TB and BT', () => {
+		const shapes = fc
+			.record({
+				rows: fc.integer({ min: 2, max: 3 }),
+				columns: fc.integer({ min: 2, max: 3 }),
+				minimumWidth: fc.integer({ min: 0, max: 400 }),
+				minimumHeight: fc.integer({ min: 0, max: 400 }),
+			})
+			.chain((shape) =>
+				fc.record({
+					shape: fc.constant(shape),
+					endpoints: fc.shuffledSubarray(
+						Array.from({ length: shape.rows * shape.columns }, (_, index) => index),
+						{ minLength: 4, maxLength: 4 },
+					),
+				}),
+			);
+		fc.assert(
+			fc.property(shapes, ({ shape, endpoints }) => {
+				const base = gridDocument(shape);
+				const id = (index: number) => defined(base.nodes[defined(endpoints[index])]).id;
+				const relations = [
+					{ id: 'first', from: id(0), to: id(1) },
+					{ id: 'second', from: id(2), to: id(3) },
+				];
+				const input = cellInput(
+					shape,
+					Array.from({ length: shape.columns }, () => shape.minimumWidth),
+					Array.from({ length: shape.rows }, () => shape.minimumHeight),
+				);
+				const counts = FLOWS.map((flow) => {
+					const prepared = prepareLayoutDocument({ ...base, relations, layout: flow });
+					const result = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+					if (result.status !== GridCellLayoutStatus.Selected) throw new Error(result.reason);
+					expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+					const count = routeBridgeAnalysis(result.layout.relations).crossings.length;
+					expect(count).toBeLessThanOrEqual(1);
+					return count;
+				});
+				expect(counts[0]).toBe(counts[1]);
+			}),
+			PROPERTY_PARAMETERS,
+		);
+	});
 	it('keeps partially empty grids valid and invariant under permutations in every direction', () => {
 		fc.assert(
 			fc.property(
