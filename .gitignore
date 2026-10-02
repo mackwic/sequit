@@ -12,6 +12,9 @@ node_modules
 /test-results
 /.stryker-tmp
 
+# Layout reports pulled from R2 (`pnpm reports:pull`)
+/layout-reports
+
 # OS
 .DS_Store
 Thumbs.db

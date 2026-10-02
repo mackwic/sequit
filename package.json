@@ -16,6 +16,7 @@
 		"preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --config config/wrangler.jsonc --port 4173",
 		"deploy:collaboration": "wrangler deploy --config src/workers/collaboration-worker/wrangler.jsonc",
 		"deploy:web": "pnpm run build:web && wrangler deploy --config config/wrangler.jsonc",
+		"reports:pull": "node scripts/layout-reports-pull.mjs",
 		"format": "prettier --config config/prettier.config.js --ignore-path config/prettier.ignore --write .",
 		"format:check": "prettier --config config/prettier.config.js --ignore-path config/prettier.ignore --check .",
 		"lint": "eslint . --max-warnings 0",

@@ -14,7 +14,7 @@ export interface LayoutReportBucket {
 }
 
 /** The deployed Worker version that received the report. */
-interface LayoutReportBuild {
+export interface LayoutReportBuild {
 	readonly id: string;
 	readonly tag: string;
 	readonly timestamp: string;
