@@ -91,7 +91,7 @@ const familyCases = [
 ] as const;
 
 describe.each(Object.values(LayoutDirection))('nested endpoint families in %s', (direction) => {
-	it('keeps a column-cycle family soft when nesting would add two foreign crossings', () => {
+	it('keeps a column-cycle family soft when nesting would add two strict crossings', () => {
 		const endpoints = Array.from({ length: 10 }, (_, index): GraphEndpoint => ({
 			kind: EndpointKind.Node,
 			entity: {
@@ -205,6 +205,50 @@ describe.each(Object.values(LayoutDirection))('nested endpoint families in %s', 
 				).toEqual([]);
 			}
 		}
+	});
+
+	it('orders crossed non-neighbours even when both neighbouring family pairs are indifferent', () => {
+		const configuration = LAYOUT_CONFIGURATIONS.find(
+			(candidate) => candidate.direction === direction,
+		);
+		if (configuration === undefined) throw new Error('Missing layout direction configuration');
+		const ids = ['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6'];
+		const pairs = [
+			['n0', 'n2'],
+			['n0', 'n4'],
+			['n0', 'n5'],
+			['n1', 'n2'],
+			['n1', 'n5'],
+			['n2', 'n4'],
+			['n2', 'n5'],
+			['n2', 'n6'],
+			['n3', 'n5'],
+			['n4', 'n6'],
+			['n5', 'n6'],
+		] as const;
+		const document: LogicDocument = {
+			...multirankOne,
+			id: 'plain-130',
+			title: 'plain-130',
+			groups: [],
+			junctions: [],
+			layout: configuration,
+			nodes: ids.map((id, index) => ({
+				kind: EndpointKind.Node,
+				id,
+				natureId: 'goal',
+				markdown: id,
+				layoutOrder: orderKey(`a${(index + 1).toString(36)}`),
+			})),
+			relations: pairs.map(([from, to]) => ({ id: `${from}-to-${to}`, from, to })),
+		};
+		const routes = visibleRoutes(document);
+		const paths = ['n2-to-n4', 'n2-to-n5'].map((id) => {
+			const points = routes.get(id);
+			if (points === undefined) throw new Error(`Missing witness route ${id}`);
+			return { id, points };
+		});
+		expect(referenceRouteBridgeAnalysis(paths).crossings).toEqual([]);
 	});
 
 	it.each(familyCases)('removes every family bridge in $id', ({ id, ids, pairs, crossings }) => {

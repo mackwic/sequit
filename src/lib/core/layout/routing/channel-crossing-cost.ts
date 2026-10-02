@@ -1,10 +1,10 @@
 import { defined } from '../../document/logic-document';
-import type { ChannelWire } from './channel-types';
+import type { ChannelRun, ChannelWire } from './channel-types';
 
 interface ChannelTraverse {
 	readonly start: number;
 	readonly end: number;
-	readonly rail: number;
+	readonly run: ChannelRun;
 }
 
 /** Price each owner's actual span, not the union reserved by a shared run. */
@@ -13,30 +13,30 @@ function channelTraverses(wires: readonly ChannelWire[]): ChannelTraverse[] {
 	for (const wire of wires) {
 		if (wire.first === undefined) continue;
 		const middle = wire.middle ?? wire.target;
-		if (wire.first.rail === defined(wire.last).rail) {
+		if (wire.first === wire.last) {
 			const start = Math.min(wire.source, middle, wire.target);
 			const end = Math.max(wire.source, middle, wire.target);
-			if (start !== end) traverses.push({ start, end, rail: wire.first.rail });
+			if (start !== end) traverses.push({ start, end, run: wire.first });
 			continue;
 		}
 		if (wire.source !== middle)
 			traverses.push({
 				start: Math.min(wire.source, middle),
 				end: Math.max(wire.source, middle),
-				rail: wire.first.rail,
+				run: wire.first,
 			});
 		if (middle !== wire.target)
 			traverses.push({
 				start: Math.min(middle, wire.target),
 				end: Math.max(middle, wire.target),
-				rail: defined(wire.last).rail,
+				run: defined(wire.last),
 			});
 	}
 	return traverses;
 }
 
 /** Three column streams share one sweep and a Fenwick tree of active traverses by rail. */
-class ChannelCrossingSweep {
+export class PreparedChannelCrossings {
 	readonly #starts: readonly ChannelTraverse[];
 	readonly #ends: readonly ChannelTraverse[];
 	readonly #tree: Int32Array;
@@ -64,6 +64,12 @@ class ChannelCrossingSweep {
 	}
 
 	count(): number {
+		this.#tree.fill(0);
+		this.#start = 0;
+		this.#end = 0;
+		this.#source = 0;
+		this.#target = 0;
+		this.#middle = 0;
 		let count = 0;
 		while (this.#hasRisers()) {
 			const column = this.#nextColumn();
@@ -103,13 +109,13 @@ class ChannelCrossingSweep {
 		while (this.#start < this.#starts.length) {
 			const run = defined(this.#starts[this.#start]);
 			if (run.start >= column) break;
-			this.#addRail(run.rail, 1);
+			this.#addRail(run.run.rail, 1);
 			this.#start += 1;
 		}
 		while (this.#end < this.#ends.length) {
 			const run = defined(this.#ends[this.#end]);
 			if (run.end > column) break;
-			this.#addRail(run.rail, -1);
+			this.#addRail(run.run.rail, -1);
 			this.#end += 1;
 		}
 	}
@@ -139,5 +145,5 @@ class ChannelCrossingSweep {
 
 /** Count all strict channel crossings, including shared traverses, straight wires and split risers. */
 export function countChannelCrossings(wires: readonly ChannelWire[], railCount: number): number {
-	return new ChannelCrossingSweep(wires, railCount).count();
+	return new PreparedChannelCrossings(wires, railCount).count();
 }

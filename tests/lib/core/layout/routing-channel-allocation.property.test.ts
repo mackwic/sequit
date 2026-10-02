@@ -208,9 +208,12 @@ it('never increases sparse channel crossings for endpoint nesting or input permu
 					const paths = channelPaths(channel, direction);
 					const baselinePaths = channelPaths(baseline, direction);
 					const crossings = referenceRouteBridgeAnalysis(paths).crossings.length;
-					expect(crossings).toBeLessThanOrEqual(
-						referenceRouteBridgeAnalysis(baselinePaths).crossings.length,
-					);
+					const baselineCrossings = referenceRouteBridgeAnalysis(baselinePaths).crossings.length;
+					expect(crossings).toBeLessThanOrEqual(baselineCrossings);
+					if (crossings === baselineCrossings)
+						expect(paths.map(({ id, points }) => ({ id, points }))).toEqual(
+							baselinePaths.map(({ id, points }) => ({ id, points })),
+						);
 					expect(countChannelCrossings(channel.wires, channel.railCount)).toBe(crossings);
 					for (const field of ['sourceEndpoint', 'targetEndpoint'] as const) {
 						for (const endpoint of endpoints) {

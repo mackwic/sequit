@@ -1,20 +1,11 @@
 import { defined } from '../../document/logic-document';
-import { RAIL_SPACING } from '../layout-settings';
 import { countChannelCrossings } from './channel-crossing-cost';
-import { untangleChannelRails } from './channel-crossings';
-import { allocateChannelIntervals } from './channel-interval-allocation';
-import type {
-	ChannelEndpoint,
-	ChannelRailAllocation,
-	ChannelRouting,
-	ChannelRun,
-	ChannelWire,
-} from './channel-types';
+import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
 import {
+	assignChannelRails,
 	hasCrossedChannelFamilies,
 	hasSharedEndpoint,
 	nestChannelEndpointRuns,
-	packChannelRails,
 	preserveChannelRunBindings,
 } from './rail-packing';
 
@@ -35,11 +26,6 @@ interface CycleSearch {
 	readonly arrivals: ReadonlyMap<number, readonly number[]>;
 	readonly state: Uint8Array;
 	readonly breaks: Set<ChannelWire>;
-}
-
-interface AssignedChannelRails {
-	readonly allocation: ChannelRailAllocation;
-	readonly crossings: number | undefined;
 }
 
 /** Explore the wires following `start`, breaking each wire that closes a cycle on the path. */
@@ -268,45 +254,6 @@ function mergeRuns(
 	return retained;
 }
 
-function assignRails(
-	runs: readonly ChannelRun[],
-	wires: readonly ChannelWire[],
-	ownerId: string,
-	compact: boolean,
-): AssignedChannelRails | undefined {
-	const ready = runs.filter((segment) => segment.remaining === 0);
-	let nextRunKey = 0;
-	const layers: ChannelRun[][] = [];
-	for (const segment of ready) {
-		segment.key = nextRunKey++;
-		const layer = layers[segment.depth] ?? [];
-		layer.push(segment);
-		layers[segment.depth] = layer;
-		for (const next of segment.next) {
-			next.depth = Math.max(next.depth, segment.depth + 1);
-			next.remaining -= 1;
-			if (next.remaining === 0) ready.push(next);
-		}
-	}
-	if (ready.length !== runs.length) return undefined;
-	let count = 0;
-	const edge = { ownerId, capacity: runs.length, spacing: RAIL_SPACING };
-	const trackByRunKey = new Map<number, number>();
-	for (const layer of layers) {
-		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
-	}
-	untangleChannelRails(wires, ready, layers);
-	let crossings: number | undefined;
-	if (compact) {
-		const packed = packChannelRails(ready, wires);
-		count = packed.railCount;
-		crossings = packed.crossings;
-	}
-	for (const run of ready) trackByRunKey.set(run.key, run.rail);
-	edge.capacity = count;
-	return { allocation: { edge, trackByRunKey, railCount: count }, crossings };
-}
-
 function channelRuns(
 	moving: readonly ChannelWire[],
 	sharedEndpoints: boolean,
@@ -341,7 +288,7 @@ export function routeOwnedChannel(
 		// Wires at the same coordinates keep the caller's documentary order, never their ids.
 		.sort((a, b) => a.source - b.source || a.target - b.target);
 	const baselineRuns = channelRuns(moving, sharedEndpoints, nonInverted);
-	const assignedBaseline = assignRails(baselineRuns, wires, ownerId, false);
+	const assignedBaseline = assignChannelRails(baselineRuns, wires, ownerId, false);
 	if (assignedBaseline === undefined) throw new Error('Unresolved channel column constraint cycle');
 	const baseline = assignedBaseline.allocation;
 	if (!hasCrossedChannelFamilies(moving)) return { wires, ...baseline };
@@ -351,15 +298,14 @@ export function routeOwnedChannel(
 	for (;;) {
 		const runs = channelRuns(moving, sharedEndpoints, nonInverted, familyBreaks);
 		nestChannelEndpointRuns(moving);
-		const assigned = assignRails(runs, wires, ownerId, true);
+		const assigned = assignChannelRails(runs, wires, ownerId, true);
 		if (assigned !== undefined) {
-			if (defined(assigned.crossings) <= baselineCost) return { wires, ...assigned.allocation };
-			// Endpoint nesting is a soft constraint: never trade it for more total crossings.
+			// Equal crossing cost does not justify geometry churn or extra corridor capacity.
+			if (defined(assigned.crossings) < baselineCost) return { wires, ...assigned.allocation };
 			restoreBindings();
 			return { wires, ...baseline };
 		}
-		// Family nesting can close a column dependency cycle absent from the original wires.
-		// Split an unresolved departure, rather than dropping its endpoint-family precedence.
+		// Split an unresolved departure rather than dropping its endpoint-family precedence.
 		const divided = moving.find((wire) => {
 			if (wire.middle !== undefined || wire.source === wire.target) return false;
 			return defined(wire.last).remaining > 0;
