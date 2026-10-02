@@ -42,7 +42,9 @@ describe('layout differential harness', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+		// D-04 routes every rank order on real routes (user decision 2026-10-02: correction before
+		// performance): 5.3 s → 7.0-8.4 s on the shared writer machine.
+	}, 12_000);
 
 	it.each(LAYOUT_DIRECTIONS)(
 		'matches the root-region engine across permutations in %s',
