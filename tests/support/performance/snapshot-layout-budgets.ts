@@ -20,7 +20,9 @@ const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'binary-tree': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	unbalanced: { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'unbalanced-random': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
-	subgroups: { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
+	// 10 and 19 raised for D-04 (user decision 2026-10-02: correction before performance): every
+	// routable rank order is scored on real routes, up to twelve pipelines instead of one or two.
+	subgroups: { 10: 12, 19: 20, 50: 30, 100: 50, 1000: 100 },
 	'nested-subgroups': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 205 },
 	'wide-bipartite-layers': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 138 },
 	'repeated-diamonds': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },

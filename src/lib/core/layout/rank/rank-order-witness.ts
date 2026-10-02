@@ -28,6 +28,12 @@ export interface RankOrderSearchWitness {
 	readonly stop: RankSearchStop;
 	readonly proposed: number;
 	readonly evaluated: number;
+	/**
+	 * Routable proposals never scored on real routes, because the pipeline budget was spent or a
+	 * crossing-free order ended the search first: evaluated and pruned orders together are every
+	 * routable proposal. An order closing a group passage cannot be routed and is neither.
+	 */
+	readonly pruned: number;
 	readonly valid: number;
 	readonly rejected: readonly {
 		readonly order: RankOrder;
@@ -56,6 +62,7 @@ export interface RankOrderSearchWitness {
 		readonly globalValidations?: number;
 		readonly incidentAdmissions?: number;
 	};
+	/** Every routable proposal was scored on real routes: none was pruned or left unproposed. */
 	readonly exhaustive: boolean;
 	readonly truncated: boolean;
 }

@@ -246,7 +246,10 @@ describe('dedicated engine LayoutResult identity', () => {
 			// port per arrival instead of a shared trunk suggesting b → e and c → e; one rail fewer.
 			'adjacent-3+1': '0b963f70beacbcad9c1d8fef5bb3b8d8cd9c7cdfd9ac3bce0b762ad8630d6779',
 			'ai-documentary-effort': '23810c7b50f523acaedd01c6574ef9bb95527d63cd8d902cb0b6c436d3a9e54f',
-			'group-endpoint-route': '7b98d8fbdad2470412e90f91c2383223d3c170e92f5111ecc8cf64bcc2b011ea',
+			// Re-pinned (D-04): routed instead of pruned on the topological proxy, the exchange of e
+			// and f alone already routes without crossing or bridge, one inversion from the
+			// documentary rows instead of the two of the former choice.
+			'group-endpoint-route': 'fb22e1d07b6471ef568ac64d64c4e17529908c10c8080ae64d4e371f8cba0d24',
 			// The two relations towards sink now take the inner passages and both relations towards d
 			// the outer ones (they used to follow the ids): 8 crossings and 2 bridges instead of 10 and 4.
 			'junction-network-layout': '912296d92876579a4889ffeeeff55261a79f3cb0e12eb1b0421be4968523db76',

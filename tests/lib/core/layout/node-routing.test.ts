@@ -132,7 +132,9 @@ it('keeps varied, dense bipartite corridors orthogonal, monotone, separated and 
 		),
 		PROPERTY_PARAMETERS,
 	);
-});
+	// D-04 routes every rank order on real routes (user decision 2026-10-02: correction before
+	// performance): 2.7 s → 5.7-8.5 s on the shared writer machine.
+}, 12_000);
 
 it('reserves ports for every relation incident to a crossing face, including parallel edges and rank skips', async () => {
 	const direction = LayoutDirection.TopToBottom;
