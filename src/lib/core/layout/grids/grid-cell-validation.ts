@@ -18,11 +18,7 @@ import {
 	within,
 } from './grid-cell-geometry-primitives';
 import { validateGridCellGroupContainment } from './grid-cell-group-validation';
-import {
-	gridIncidentPieceFailure,
-	type IncidentPieceEnds,
-	incidentPieceEnds,
-} from './grid-cell-incident-route';
+import { gridIncidentPieceFailure, type IncidentPieceEnds } from './grid-cell-incident-route';
 import { validateGridCellLaneGeometry } from './grid-cell-lane-validation';
 import { gridRectangle } from './grid-cell-model';
 import {
@@ -158,18 +154,26 @@ function checkLocalRoute(route: LayoutRelation, cell: GridCellPlacement): string
 	return undefined;
 }
 
+/** The groups a crossing's first and last segments may cross: those containing its endpoints. */
+interface CrossSegmentContext extends CrossContext, IncidentPieceEnds {
+	readonly sourceGroupIds: ReadonlySet<string>;
+	readonly targetGroupIds: ReadonlySet<string>;
+}
+
+const NO_GROUPS: ReadonlySet<string> = new Set();
+
 function checkSegment(
 	candidate: GridCellSelected,
 	route: LayoutRelation,
-	context: CrossContext & IncidentPieceEnds,
+	context: CrossSegmentContext,
 	index: number,
 ): RegionGeometryDiagnostic | undefined {
 	const start = defined(route.points[index]);
 	const end = defined(route.points[index + 1]);
 	const last = route.points.length - 2;
-	let allowedGroupIds: ReadonlySet<string> = new Set();
-	if (index === 0) allowedGroupIds = ancestorGroups(context.graph, route.from);
-	if (index === last) allowedGroupIds = ancestorGroups(context.graph, route.to);
+	let allowedGroupIds = NO_GROUPS;
+	if (index === 0) allowedGroupIds = context.sourceGroupIds;
+	if (index === last) allowedGroupIds = context.targetGroupIds;
 	const crossedCell = candidate.cells.find((cell) => {
 		if (index < context.sourceEnd && cell.id === context.fromCell.id) return false;
 		if (index >= context.targetStart && cell.id === context.toCell.id) return false;
@@ -203,25 +207,19 @@ function checkCrossRoute(
 ): RegionGeometryDiagnostic | undefined {
 	const portFailure = validateCrossPorts(candidate, route, context);
 	if (portFailure !== undefined) return portFailure;
-	const portalFailure = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
-	if (portalFailure !== undefined)
-		return regionGeometryDiagnostic(
-			RegionGeometryDiagnosticCode.GridCrossingPortal,
-			portalFailure,
-			{
-				relationId: route.id,
-			},
-		);
-	const [sourcePortal, targetPortal] = candidate.portals.filter(
-		({ relationId }) => relationId === route.id,
-	);
-	const pieces = incidentPieceEnds(
-		route.points,
-		defined(sourcePortal).point,
-		defined(targetPortal).point,
-	);
+	const pieces = validateCrossPortals(candidate, route, context.fromCell, context.toCell);
+	if (typeof pieces === 'string')
+		return regionGeometryDiagnostic(RegionGeometryDiagnosticCode.GridCrossingPortal, pieces, {
+			relationId: route.id,
+		});
+	const segmentContext = {
+		...context,
+		...pieces,
+		sourceGroupIds: ancestorGroups(context.graph, route.from),
+		targetGroupIds: ancestorGroups(context.graph, route.to),
+	};
 	for (let index = 0; index < route.points.length - 1; index += 1) {
-		const diagnostic = checkSegment(candidate, route, { ...context, ...defined(pieces) }, index);
+		const diagnostic = checkSegment(candidate, route, segmentContext, index);
 		if (diagnostic !== undefined) return diagnostic;
 	}
 	return undefined;

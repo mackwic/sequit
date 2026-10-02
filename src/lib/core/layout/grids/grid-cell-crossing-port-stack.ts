@@ -1,7 +1,12 @@
 import { defined } from '../../document/logic-document';
 import type { Bounds } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
-import { CROSSING_SPACING, crossingPortPositions } from './grid-cell-crossing';
+import {
+	CROSSING_SPACING,
+	crossingFaceEdge,
+	crossingPortPositions,
+	crossingPortY,
+} from './grid-cell-crossing';
 import { equal } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement } from './grid-cell-types';
 
@@ -59,11 +64,12 @@ export function crossingPortShift(
 
 /** One crossing port: a declared face position, or one moved by whole tracks inside the face. */
 export function crossingPortOnFace(face: Bounds, incidenceCount: number, y: number): boolean {
-	return crossingPortPositions('', face, incidenceCount).some((position) => {
-		const tracks = (y - position) / CROSSING_SPACING;
-		if (!equal(tracks, Math.round(tracks))) return false;
-		return equal(y, position) || stackInsideFace([y], face);
-	});
+	const edge = crossingFaceEdge('', incidenceCount);
+	const tracks = (y - crossingPortY(face, edge, 0)) / CROSSING_SPACING;
+	if (!equal(tracks, Math.round(tracks))) return false;
+	for (let track = 0; track < incidenceCount; track += 1)
+		if (equal(y, crossingPortY(face, edge, track))) return true;
+	return stackInsideFace([y], face);
 }
 
 /**

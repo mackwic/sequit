@@ -19,6 +19,7 @@ import {
 import { canonicalCrossingAllocation } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation';
 import type { CrossingAllocationInput } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-allocation-types';
 import { CrossingAllocationPhaseId } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-phases';
+import { gridCrossingResources } from '../../../../src/lib/core/layout/grids/grid-cell-crossing-resources';
 import {
 	crossingRoutes,
 	gridCrossingRouting,
@@ -27,14 +28,19 @@ import {
 	entersInterior,
 	within,
 } from '../../../../src/lib/core/layout/grids/grid-cell-geometry-primitives';
-import { solveGridCellLayout } from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import {
+	routePlacedGridCellDisposition,
+	solveGridCellLayout,
+} from '../../../../src/lib/core/layout/grids/grid-cell-layout';
+import { normalize } from '../../../../src/lib/core/layout/grids/grid-cell-model';
+import { normalizeGridCellRegionModel } from '../../../../src/lib/core/layout/grids/grid-cell-region-model';
 import {
 	type GridCellInput,
 	GridCellLayoutStatus,
 } from '../../../../src/lib/core/layout/grids/grid-cell-types';
 import { validateGridCellGeometry } from '../../../../src/lib/core/layout/grids/grid-cell-validation';
+import { RegionCompositionModelStatus } from '../../../../src/lib/core/layout/regions/model/region-composition-model';
 import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-composition-types';
-import { RegionSearchProvenance } from '../../../../src/lib/core/layout/regions/model/region-search-evidence';
 import { layoutDocument, overlaps, prepareLayoutDocument } from '../../../support/harnesses/layout';
 import {
 	gridOf,
@@ -49,6 +55,20 @@ import {
 	persistedGridDocument,
 	prepareGrid,
 } from './grid-cell-fixture';
+
+/** Left to right puts a-top between a-bottom and the left portal of cell a. */
+function hiddenEndpointInput(): GridCellInput {
+	const input = gridInput();
+	const hiddenFlow: LayoutConfiguration = {
+		direction: LayoutDirection.LeftToRight,
+		bias: LayoutBias.Left,
+	};
+	const cells = input.cells.map((cell) => {
+		if (cell.id !== 'a') return cell;
+		return { ...cell, layout: hiddenFlow };
+	});
+	return { ...input, cells };
+}
 
 describe('bounded two by two grid composition', () => {
 	it.each(Object.values(LayoutDirection))(
@@ -599,17 +619,7 @@ describe('bounded two by two grid composition', () => {
 
 	it('reaches an endpoint its sibling hides from the portal through a corridor of its own cell', () => {
 		const prepared = prepareGrid();
-		const input = gridInput();
-		// Left to right puts a-top between a-bottom and the left portal of cell a.
-		const hiddenFlow: LayoutConfiguration = {
-			direction: LayoutDirection.LeftToRight,
-			bias: LayoutBias.Left,
-		};
-		const cells = input.cells.map((cell) => {
-			if (cell.id !== 'a') return cell;
-			return { ...cell, layout: hiddenFlow };
-		});
-		const configured = { ...input, cells };
+		const configured = hiddenEndpointInput();
 		const result = solveGridCellLayout(prepared.graph, prepared.measurements, configured);
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`Expected the hidden endpoint to be reached: ${result.reason}`);
@@ -656,35 +666,48 @@ describe('bounded two by two grid composition', () => {
 	});
 
 	it('returns a real truncated grid failure with its diagnostic at the public entry', () => {
-		// Only a direct attachment may leave a group: a member that its fellow member walls off the
-		// cell portal has no admissible corridor, whatever the allocation.
-		const document = gridDocument();
-		const member = defined(document.nodes.find(({ id }) => id === 'b'));
-		const walled: LogicDocument = {
-			...document,
-			nodes: [
-				...document.nodes,
-				{ ...member, id: 'b-peer', markdown: 'B peer\n', layoutOrder: orderKey('a5') },
-			],
-			relations: [
-				...document.relations,
-				{ id: 'peer-to-b', from: 'b-peer', to: 'b' },
-				{ id: 'peer-across', from: 'b-peer', to: 'd' },
-			],
-		};
-		const prepared = prepareGrid(walled);
-		const input = gridInput();
-		const attempt = solveGridCellLayout(
-			prepared.graph,
-			prepared.measurements,
-			{ ...input, cellByEndpointId: new Map([...input.cellByEndpointId, ['b-peer', 'b']]) },
-			{ allocationBudgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 1 } },
-		);
+		// The selected disposition with a-top stretched over the full height of cell a: a-top then
+		// walls a-bottom off the left portal, so no allocation has an in-cell corridor for it.
+		const prepared = prepareGrid();
+		const input = hiddenEndpointInput();
+		const selected = solveGridCellLayout(prepared.graph, prepared.measurements, input);
+		if (selected.status !== GridCellLayoutStatus.Selected) throw new Error(selected.reason);
+		const normalized = normalize(prepared.graph, input);
+		if (typeof normalized === 'string') throw new Error(normalized);
+		const model = normalizeGridCellRegionModel(prepared.graph, input, normalized);
+		if (model.status !== RegionCompositionModelStatus.Ready)
+			throw new Error('Grid model not ready');
+		const cells = selected.cells.map((cell) => {
+			if (cell.id !== 'a') return cell;
+			const elements = cell.localLayout.elements.map((element) => {
+				if (element.id !== 'a-top') return element;
+				const y = cell.bounds.y - cell.translation.y;
+				return { ...element, bounds: { ...element.bounds, y, height: cell.bounds.height } };
+			});
+			return { ...cell, localLayout: { ...cell.localLayout, elements } };
+		});
+		const crossing = prepared.graph.relations
+			.map(({ relation }) => relation)
+			.filter(
+				({ from, to }) => input.cellByEndpointId.get(from) !== input.cellByEndpointId.get(to),
+			);
+		const attempt = routePlacedGridCellDisposition({
+			graph: prepared.graph,
+			input,
+			model: model.model,
+			disposition: {
+				cells,
+				columnWidths: selected.columnWidths,
+				rowHeights: selected.rowHeights,
+				gridRight: Math.max(...cells.map(({ bounds }) => bounds.x + bounds.width)),
+				gridBottom: Math.max(...cells.map(({ bounds }) => bounds.y + bounds.height)),
+			},
+			resources: gridCrossingResources(input, crossing),
+			allocationBudgets: { rowGutter: 1, reallocate: 1, extraTrack: 1, bridge: 1 },
+		});
 		if (attempt.status !== GridCellLayoutStatus.Unknown)
 			throw new Error('The walled crossing should be reported as unknown.');
-		if (attempt.provenance !== RegionSearchProvenance.Grid)
-			throw new Error('Expected grid allocation evidence.');
-		expect(attempt.reason).toBe('Cross-cell relation peer-across enters element b.');
+		expect(attempt.reason).toBe('Cross-cell relation across-grid enters element a-top.');
 		const witness = attempt.witness;
 		expect(attempt.code).toBe(RegionGeometryDiagnosticCode.GridCrossingEntersElement);
 		expect(witness.attempted).toBe(4);

@@ -9,7 +9,7 @@ import { RegionPortalSide } from '../regions/model/region-composition-types';
 import { crossingEndpointSide, crossingIncidence } from './grid-cell-crossing';
 import { crossingPortOnFace, validCrossingPortStack } from './grid-cell-crossing-port-stack';
 import { equal, samePoint, within } from './grid-cell-geometry-primitives';
-import { incidentPieceEnds } from './grid-cell-incident-route';
+import { type IncidentPieceEnds, incidentPieceEnds } from './grid-cell-incident-route';
 import type { GridCellPlacement, GridCellPortal, GridCellSelected } from './grid-cell-types';
 
 interface CrossPortContext {
@@ -36,9 +36,9 @@ export function validateCrossPorts(
 	route: LayoutRelation,
 	context: CrossPortContext,
 ): RegionGeometryDiagnostic | undefined {
-	const elements = new Map(candidate.layout.elements.map((element) => [element.id, element]));
-	const sourceElement = elements.get(route.from);
-	const targetElement = elements.get(route.to);
+	const { elements } = candidate.layout;
+	const sourceElement = elements.find(({ id }) => id === route.from);
+	const targetElement = elements.find(({ id }) => id === route.to);
 	if (sourceElement === undefined || targetElement === undefined) {
 		let missingId = route.to;
 		if (sourceElement === undefined) missingId = route.from;
@@ -122,48 +122,60 @@ function checkPortal(portal: GridCellPortal, candidate: GridCellSelected): boole
 	);
 }
 
-/**
- * The cell piece leaves the port horizontally through its portal-side face and reaches the portal
- * without leaving its cell; the element checks then prove it avoids the cell's other boxes.
- */
-function checkEndpointContact(
-	route: LayoutRelation,
-	portal: GridCellPortal,
-	cell: GridCellPlacement,
-	isSource: boolean,
-): boolean {
-	let points = route.points;
-	if (!isSource) points = [...route.points].reverse();
-	const end = points.findIndex((point, index) => index > 0 && samePoint(point, portal.point));
-	const [port, next] = points;
-	if (port === undefined || next === undefined) return false;
-	if (end < 1 || !equal(port.y, next.y)) return false;
-	let outward = next.x < port.x;
-	if (portal.side === RegionPortalSide.Right) outward = next.x > port.x;
-	const piece = points.slice(0, end + 1);
-	return outward && piece.every((point) => within(cell.bounds, { ...point, width: 0, height: 0 }));
+/** A cell piece, `points[start..end]`, and the index of its port at one of those ends. */
+interface CellPiece {
+	readonly start: number;
+	readonly end: number;
+	readonly port: number;
 }
 
+/**
+ * The cell piece leaves its port horizontally through its portal-side face and stays in its cell;
+ * the element checks then prove it avoids the cell's other boxes.
+ */
+function checkEndpointContact(
+	points: readonly Point[],
+	portal: GridCellPortal,
+	cell: GridCellPlacement,
+	{ start, end, port: portIndex }: CellPiece,
+): boolean {
+	const port = defined(points[portIndex]);
+	let nextIndex = end - 1;
+	if (portIndex === start) nextIndex = start + 1;
+	const next = defined(points[nextIndex]);
+	if (!equal(port.y, next.y)) return false;
+	let outward = next.x < port.x;
+	if (portal.side === RegionPortalSide.Right) outward = next.x > port.x;
+	if (!outward) return false;
+	for (let index = start; index <= end; index += 1)
+		if (!within(cell.bounds, { ...defined(points[index]), width: 0, height: 0 })) return false;
+	return true;
+}
+
+/** The piece ends of a crossing whose portals and cell pieces are valid, else the failure. */
 export function validateCrossPortals(
 	candidate: GridCellSelected,
 	route: LayoutRelation,
 	fromCell: GridCellPlacement,
 	toCell: GridCellPlacement,
-): string | undefined {
+): IncidentPieceEnds | string {
+	const failure = `Cross-cell relation ${route.id} has invalid portals.`;
 	const portals = candidate.portals.filter(({ relationId }) => relationId === route.id);
-	if (portals.length !== 2) return `Cross-cell relation ${route.id} has invalid portals.`;
+	if (portals.length !== 2) return failure;
 	const sourcePortal = defined(portals[0]);
 	const targetPortal = defined(portals[1]);
 	const owners = sourcePortal.cellId === fromCell.id && targetPortal.cellId === toCell.id;
 	const endpoints = sourcePortal.endpointId === route.from && targetPortal.endpointId === route.to;
-	if (!owners || !endpoints) return `Cross-cell relation ${route.id} has invalid portals.`;
+	if (!owners || !endpoints) return failure;
 	if (!checkPortal(sourcePortal, candidate) || !checkPortal(targetPortal, candidate))
-		return `Cross-cell relation ${route.id} has invalid portals.`;
-	if (!checkEndpointContact(route, sourcePortal, fromCell, true))
-		return `Cross-cell relation ${route.id} has invalid portals.`;
-	if (!checkEndpointContact(route, targetPortal, toCell, false))
-		return `Cross-cell relation ${route.id} has invalid portals.`;
-	if (incidentPieceEnds(route.points, sourcePortal.point, targetPortal.point) === undefined)
-		return `Cross-cell relation ${route.id} has invalid portals.`;
-	return undefined;
+		return failure;
+	const { points } = route;
+	const ends = incidentPieceEnds(points, sourcePortal.point, targetPortal.point);
+	if (ends === undefined) return failure;
+	const source = { start: 0, end: ends.sourceEnd, port: 0 };
+	if (!checkEndpointContact(points, sourcePortal, fromCell, source)) return failure;
+	const last = points.length - 1;
+	const target = { start: ends.targetStart, end: last, port: last };
+	if (!checkEndpointContact(points, targetPortal, toCell, target)) return failure;
+	return ends;
 }

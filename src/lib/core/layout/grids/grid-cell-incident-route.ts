@@ -29,28 +29,56 @@ export interface GridCellIncident {
 	readonly nested: boolean;
 }
 
+/** A route with its closed point box: routes whose boxes neither meet nor touch cannot contact. */
+interface BoxedRoute {
+	readonly route: EndpointRoute;
+	readonly low: Point;
+	readonly high: Point;
+}
+
+function boxed(route: EndpointRoute): BoxedRoute {
+	const low = { x: Infinity, y: Infinity };
+	const high = { x: -Infinity, y: -Infinity };
+	for (const { x, y } of route.points) {
+		low.x = Math.min(low.x, x);
+		low.y = Math.min(low.y, y);
+		high.x = Math.max(high.x, x);
+		high.y = Math.max(high.y, y);
+	}
+	return { route, low, high };
+}
+
 /** A cell's boxes and local routes in grid coordinates: what its crossing pieces must avoid. */
-export interface CellObstacles {
+interface CellObstacles {
 	readonly elements: readonly LayoutElement[];
-	readonly relations: readonly EndpointRoute[];
+	readonly relations: readonly BoxedRoute[];
 }
 
 function translated(point: Point, delta: Point): Point {
 	return { x: point.x + delta.x, y: point.y + delta.y };
 }
 
-export function cellObstacles(cell: GridCellPlacement): CellObstacles {
+/** Placed cells never change: their obstacles are translated once for every allocation. */
+const obstaclesByCell = new WeakMap<GridCellPlacement, CellObstacles>();
+
+function cellObstacles(cell: GridCellPlacement): CellObstacles {
+	const cached = obstaclesByCell.get(cell);
+	if (cached !== undefined) return cached;
 	const { translation } = cell;
-	return {
+	const obstacles = {
 		elements: cell.localLayout.elements.map((element) => ({
 			...element,
 			bounds: { ...element.bounds, ...translated(element.bounds, translation) },
 		})),
-		relations: cell.localLayout.relations.map((relation) => ({
-			...relation,
-			points: relation.points.map((point) => translated(point, translation)),
-		})),
+		relations: cell.localLayout.relations.map((relation) =>
+			boxed({
+				...relation,
+				points: relation.points.map((point) => translated(point, translation)),
+			}),
+		),
 	};
+	obstaclesByCell.set(cell, obstacles);
+	return obstacles;
 }
 
 /** The piece as the contact oracle reads it: a target piece ends on its endpoint's port. */
@@ -77,40 +105,30 @@ function entersElement(
 	});
 }
 
-/** Closed point spans: routes whose spans neither meet nor touch cannot contact each other. */
-function spansMeet(first: readonly Point[], second: readonly Point[]): boolean {
-	const [left, right] = [first, second].map((points) => ({
-		low: { x: Math.min(...points.map(({ x }) => x)), y: Math.min(...points.map(({ y }) => y)) },
-		high: { x: Math.max(...points.map(({ x }) => x)), y: Math.max(...points.map(({ y }) => y)) },
-	}));
-	const { low, high } = defined(left);
-	const other = defined(right);
-	if (low.x > other.high.x || other.low.x > high.x) return false;
-	return low.y <= other.high.y && other.low.y <= high.y;
+function spansMeet(first: BoxedRoute, second: BoxedRoute): boolean {
+	if (first.low.x > second.high.x || second.low.x > first.high.x) return false;
+	return first.low.y <= second.high.y && second.low.y <= first.high.y;
 }
 
 /** The first route a piece overlaps or T-touches; strict crossings wait for the bridges. */
-function firstContact(
-	route: EndpointRoute,
-	others: readonly EndpointRoute[],
-): EndpointRoute | undefined {
+function firstContact(piece: BoxedRoute, others: readonly BoxedRoute[]): EndpointRoute | undefined {
 	return others.find(
 		(other) =>
-			spansMeet(route.points, other.points) &&
-			disallowedProvisionalRouteContacts(route, other).length > 0,
-	);
+			spansMeet(piece, other) &&
+			disallowedProvisionalRouteContacts(piece.route, other.route).length > 0,
+	)?.route;
 }
 
 function clear(
 	incident: GridCellIncident,
 	points: readonly Point[],
 	obstacles: CellObstacles,
-	earlier: readonly EndpointRoute[],
+	earlier: readonly BoxedRoute[],
 ): boolean {
 	if (entersElement(incident, points, obstacles)) return false;
-	const route = incidentRoute(incident, points);
-	if (firstContact(route, obstacles.relations) !== undefined) return false;
-	return firstContact(route, earlier) === undefined;
+	const piece = boxed(incidentRoute(incident, points));
+	if (firstContact(piece, obstacles.relations) !== undefined) return false;
+	return firstContact(piece, earlier) === undefined;
 }
 
 /**
@@ -121,7 +139,7 @@ function clear(
 function routeIncident(
 	incident: GridCellIncident,
 	obstacles: CellObstacles,
-	earlier: readonly EndpointRoute[],
+	earlier: readonly BoxedRoute[],
 ): readonly Point[] {
 	const { bounds } = incident.cell;
 	let portalX = bounds.x;
@@ -150,10 +168,9 @@ function compareIncidents(left: GridCellIncident, right: GridCellIncident): numb
  * routed there. Returns the pieces, port first, in the order of `incidents`.
  */
 export function routeGridCellIncidents(
-	obstaclesByCellId: ReadonlyMap<string, CellObstacles>,
 	incidents: readonly GridCellIncident[],
 ): readonly (readonly Point[])[] {
-	const earlierByCell = new Map<string, EndpointRoute[]>();
+	const earlierByCell = new Map<string, BoxedRoute[]>();
 	const pieces: (readonly Point[])[] = [];
 	const order = incidents.map((_, index) => index);
 	order.sort((left, right) =>
@@ -161,12 +178,10 @@ export function routeGridCellIncidents(
 	);
 	for (const index of order) {
 		const incident = defined(incidents[index]);
-		const cellId = incident.cell.id;
-		const obstacles = defined(obstaclesByCellId.get(cellId));
-		const earlier = earlierByCell.get(cellId) ?? [];
-		earlierByCell.set(cellId, earlier);
-		const piece = routeIncident(incident, obstacles, earlier);
-		earlier.push(incidentRoute(incident, piece));
+		const earlier = earlierByCell.get(incident.cell.id) ?? [];
+		earlierByCell.set(incident.cell.id, earlier);
+		const piece = routeIncident(incident, cellObstacles(incident.cell), earlier);
+		earlier.push(boxed(incidentRoute(incident, piece)));
 		pieces[index] = piece;
 	}
 	return pieces;
@@ -187,35 +202,34 @@ export function incidentPieceEnds(
 	sourcePortal: Point,
 	targetPortal: Point,
 ): IncidentPieceEnds | undefined {
-	const first = (path: readonly Point[], portal: Point) =>
-		path.findIndex((point, index) => index > 0 && samePoint(point, portal));
-	const sourceEnd = first(points, sourcePortal);
-	const fromEnd = first([...points].reverse(), targetPortal);
-	const targetStart = points.length - 1 - fromEnd;
-	if (sourceEnd < 0 || fromEnd < 0) return undefined;
-	if (targetStart < sourceEnd) return undefined;
+	const sourceEnd = points.findIndex((point, index) => index > 0 && samePoint(point, sourcePortal));
+	let targetStart = points.length - 2;
+	while (targetStart >= 0 && !samePoint(defined(points[targetStart]), targetPortal))
+		targetStart -= 1;
+	if (sourceEnd < 0 || targetStart < sourceEnd) return undefined;
 	return { sourceEnd, targetStart };
 }
 
 function pieceFailure(
-	route: EndpointRoute,
+	piece: BoxedRoute,
 	cellId: string,
 	obstacles: CellObstacles,
-	earlier: readonly EndpointRoute[],
+	earlier: readonly BoxedRoute[],
 ): RegionGeometryDiagnostic | undefined {
-	const local = firstContact(route, obstacles.relations);
+	const { id } = piece.route;
+	const local = firstContact(piece, obstacles.relations);
 	if (local !== undefined)
 		return regionGeometryDiagnostic(
 			RegionGeometryDiagnosticCode.IncidentTouchesLocalRelation,
-			`Cross-cell relation ${route.id} touches local relation ${local.id} in cell ${cellId}.`,
-			{ relationId: route.id, regionId: cellId, relatedRelationId: local.id },
+			`Cross-cell relation ${id} touches local relation ${local.id} in cell ${cellId}.`,
+			{ relationId: id, regionId: cellId, relatedRelationId: local.id },
 		);
-	const other = firstContact(route, earlier);
+	const other = firstContact(piece, earlier);
 	if (other === undefined) return undefined;
 	return regionGeometryDiagnostic(
 		RegionGeometryDiagnosticCode.IncidentTouchesIncident,
-		`Cross-cell relation ${route.id} touches crossing ${other.id} in cell ${cellId}.`,
-		{ relationId: route.id, regionId: cellId, relatedRelationId: other.id },
+		`Cross-cell relation ${id} touches crossing ${other.id} in cell ${cellId}.`,
+		{ relationId: id, regionId: cellId, relatedRelationId: other.id },
 	);
 }
 
@@ -230,8 +244,7 @@ export function gridIncidentPieceFailure(
 ): RegionGeometryDiagnostic | undefined {
 	const routes = new Map(candidate.layout.relations.map((route) => [route.id, route]));
 	const cellById = new Map(candidate.cells.map((cell) => [cell.id, cell]));
-	const obstaclesByCell = new Map<string, CellObstacles>();
-	const earlierByCell = new Map<string, EndpointRoute[]>();
+	const earlierByCell = new Map<string, BoxedRoute[]>();
 	for (const relation of crossing) {
 		const { points } = defined(routes.get(relation.id));
 		const [source, target] = candidate.portals.filter(
@@ -240,23 +253,22 @@ export function gridIncidentPieceFailure(
 		const { sourceEnd, targetStart } = defined(
 			incidentPieceEnds(points, defined(source).point, defined(target).point),
 		);
+		const sourcePoints = points.slice(0, sourceEnd + 1);
+		const targetPoints = points.slice(targetStart);
 		const pieces = [
-			{
-				cellId: defined(source).cellId,
-				points: points.slice(0, sourceEnd + 1),
-				from: relation.from,
-			},
-			{ cellId: defined(target).cellId, points: points.slice(targetStart), to: relation.to },
-		];
-		for (const { cellId, ...piece } of pieces) {
-			const route = { id: relation.id, ...piece };
+			[
+				defined(source).cellId,
+				boxed({ id: relation.id, points: sourcePoints, from: relation.from }),
+			],
+			[defined(target).cellId, boxed({ id: relation.id, points: targetPoints, to: relation.to })],
+		] as const;
+		for (const [cellId, piece] of pieces) {
 			const earlier = earlierByCell.get(cellId) ?? [];
 			earlierByCell.set(cellId, earlier);
-			const obstacles = obstaclesByCell.get(cellId) ?? cellObstacles(defined(cellById.get(cellId)));
-			obstaclesByCell.set(cellId, obstacles);
-			const failure = pieceFailure(route, cellId, obstacles, earlier);
+			const obstacles = cellObstacles(defined(cellById.get(cellId)));
+			const failure = pieceFailure(piece, cellId, obstacles, earlier);
 			if (failure !== undefined) return failure;
-			earlier.push(route);
+			earlier.push(piece);
 		}
 	}
 	return undefined;

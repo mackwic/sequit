@@ -1,5 +1,5 @@
 import { defined, type LogicRelation } from '../../document/logic-document';
-import type { LayoutRelation, Point } from '../layout-types';
+import type { Bounds, LayoutRelation, Point } from '../layout-types';
 import { type RegionOwnedRoute, RegionPortalSide } from '../regions/model/region-composition-types';
 import {
 	crossingBusY,
@@ -16,12 +16,7 @@ import type {
 } from './grid-cell-crossing-allocation-types';
 import { crossingPortShift } from './grid-cell-crossing-port-stack';
 import { crossingRowY } from './grid-cell-crossing-resources';
-import {
-	type CellObstacles,
-	cellObstacles,
-	incidentPieceEnds,
-	routeGridCellIncidents,
-} from './grid-cell-incident-route';
+import { incidentPieceEnds, routeGridCellIncidents } from './grid-cell-incident-route';
 import type { GridCellInput, GridCellPlacement, GridCellPortal } from './grid-cell-types';
 
 /** The placed cells and the declared tracks a grid region routes its crossings with. */
@@ -37,35 +32,61 @@ export interface GridCrossingRoutingInput {
 	readonly nestedEndpointIds: ReadonlySet<string>;
 }
 
-/** The routing input with what no allocation changes: port stack shifts and cell obstacles. */
+/** What no allocation changes about a crossing endpoint: its cell, face and portal abscissa. */
+interface CrossingEndpointFrame {
+	readonly cell: GridCellPlacement;
+	readonly side: RegionPortalSide.Left | RegionPortalSide.Right;
+	/** The endpoint box in grid coordinates. */
+	readonly face: Bounds;
+	readonly portX: number;
+	readonly portalX: number;
+	/** Whole-track shift of the endpoint's port stack off its local families. */
+	readonly portShift: number;
+	readonly nested: boolean;
+}
+
+/** The routing input with what no allocation changes, and the pieces routed so far. */
 export interface GridCrossingRouting extends GridCrossingRoutingInput {
-	readonly portShiftByEndpointId: ReadonlyMap<string, number>;
-	readonly obstaclesByCellId: ReadonlyMap<string, CellObstacles>;
+	readonly frameByEndpointId: ReadonlyMap<string, CrossingEndpointFrame>;
+	/** In-cell pieces by the port ordinates of an allocation, filled during the search. */
+	readonly pieceCache: Map<string, readonly (readonly Point[])[]>;
 }
 
 /** Compute once, before the allocation search, the routing data every allocation shares. */
 export function gridCrossingRouting(input: GridCrossingRoutingInput): GridCrossingRouting {
 	const cellById = new Map(input.cells.map((cell) => [cell.id, cell]));
 	const fromById = new Map(input.crossing.map(({ id, from }) => [id, from]));
-	const portShiftByEndpointId = new Map<string, number>();
-	const obstaclesByCellId = new Map<string, CellObstacles>();
+	const frameByEndpointId = new Map<string, CrossingEndpointFrame>();
 	for (const [endpointId, relationIds] of input.incidence) {
 		const cell = defined(cellById.get(defined(input.cellByEndpointId.get(endpointId))));
+		const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId)).bounds;
+		const face = { ...local, x: local.x + cell.translation.x, y: local.y + cell.translation.y };
 		const side = crossingEndpointSide(cell.column, input.columnCount);
+		let portX = face.x;
+		let portalX = cell.bounds.x;
+		if (side === RegionPortalSide.Right) {
+			portX += face.width;
+			portalX += cell.bounds.width;
+		}
 		const sources = relationIds.map((id) => fromById.get(id) === endpointId);
-		portShiftByEndpointId.set(endpointId, crossingPortShift(cell, endpointId, side, sources));
-		if (!obstaclesByCellId.has(cell.id)) obstaclesByCellId.set(cell.id, cellObstacles(cell));
+		frameByEndpointId.set(endpointId, {
+			cell,
+			side,
+			face,
+			portX,
+			portalX,
+			portShift: crossingPortShift(cell, endpointId, side, sources),
+			nested: input.nestedEndpointIds.has(endpointId),
+		});
 	}
-	return { ...input, portShiftByEndpointId, obstaclesByCellId };
+	return { ...input, frameByEndpointId, pieceCache: new Map() };
 }
 
 /** The port, portal side and rail of one crossing endpoint, read from the allocated tracks. */
-interface CrossingEndpoint {
+interface CrossingEndpoint extends CrossingEndpointFrame {
 	readonly endpointId: string;
 	readonly port: Point;
-	readonly side: RegionPortalSide.Left | RegionPortalSide.Right;
 	readonly railX: number;
-	readonly cell: GridCellPlacement;
 }
 
 function crossingEndpoint(
@@ -74,34 +95,19 @@ function crossingEndpoint(
 	relation: LogicRelation,
 	endpointId: string,
 ): CrossingEndpoint {
-	const { incidence, edges, columnCount, cellByEndpointId } = routing;
-	const cellId = defined(cellByEndpointId.get(endpointId));
-	const cell = defined(routing.cells.find(({ id }) => id === cellId));
-	const local = defined(cell.localLayout.elements.find(({ id }) => id === endpointId));
-	const side = crossingEndpointSide(cell.column, columnCount);
-	let portX = cell.translation.x + local.bounds.x;
-	let portalX = cell.bounds.x;
-	if (side === RegionPortalSide.Right) {
-		portX += local.bounds.width;
-		portalX += cell.bounds.width;
-	}
-	const incident = defined(incidence.get(endpointId));
+	const frame = defined(routing.frameByEndpointId.get(endpointId));
+	const { cell, face, side } = frame;
+	const incidentCount = defined(routing.incidence.get(endpointId)).length;
+	const portTrack = defined(allocation.portTrackByEndpointId.get(endpointId)).get(relation.id);
 	const port = {
-		x: portX,
+		x: frame.portX,
 		y:
-			crossingPortY(
-				{
-					...local.bounds,
-					x: local.bounds.x + cell.translation.x,
-					y: local.bounds.y + cell.translation.y,
-				},
-				crossingFaceEdge(endpointId, incident.length),
-				defined(defined(allocation.portTrackByEndpointId.get(endpointId)).get(relation.id)),
-			) + defined(routing.portShiftByEndpointId.get(endpointId)),
+			crossingPortY(face, crossingFaceEdge(endpointId, incidentCount), defined(portTrack)) +
+			frame.portShift,
 	};
-	const edge = defined(edges.gutters[cell.column]);
+	const edge = defined(routing.edges.gutters[cell.column]);
 	const track = defined(defined(allocation.gutterTrackByRelationId[cell.column]).get(relation.id));
-	return { endpointId, port, side, railX: crossingRailX(edge, portalX, side, track), cell };
+	return { ...frame, endpointId, port, railX: crossingRailX(edge, frame.portalX, side, track) };
 }
 
 function cellPortal(
@@ -149,6 +155,36 @@ export interface GridCrossingRoute {
 }
 
 /**
+ * The in-cell pieces of an allocation. They depend on the allocation only through the port
+ * ordinates: cells, faces, portal sides and the incident order are fixed for the routing, so the
+ * pieces routed for one sequence of port ordinates serve every allocation that repeats it.
+ */
+function cellPieces(
+	routing: GridCrossingRouting,
+	ends: readonly { readonly source: CrossingEndpoint; readonly target: CrossingEndpoint }[],
+): readonly (readonly Point[])[] {
+	const key = ends.map(({ source, target }) => `${source.port.y};${target.port.y}`).join(';');
+	const cached = routing.pieceCache.get(key);
+	if (cached !== undefined) return cached;
+	const pieces = routeGridCellIncidents(
+		routing.crossing.flatMap((relation, index) => {
+			const { source, target } = defined(ends[index]);
+			return [source, target].map(({ endpointId, cell, side, port, nested }) => ({
+				relationId: relation.id,
+				endpointId,
+				source: endpointId === relation.from,
+				cell,
+				side,
+				port,
+				nested,
+			}));
+		}),
+	);
+	routing.pieceCache.set(key, pieces);
+	return pieces;
+}
+
+/**
  * Every crossing route of one allocation, in `routing.crossing` order: the in-cell pieces from each
  * port to its cell portal, the column rails at the portal heights and the bus or row gutter.
  */
@@ -157,39 +193,26 @@ export function crossingRoutes(
 	allocation: GridCrossingAllocation,
 ): readonly GridCrossingRoute[] {
 	const ends = routing.crossing.map((relation) => ({
-		relation,
 		source: crossingEndpoint(routing, allocation, relation, relation.from),
 		target: crossingEndpoint(routing, allocation, relation, relation.to),
 	}));
-	const pieces = routeGridCellIncidents(
-		routing.obstaclesByCellId,
-		ends.flatMap(({ relation, source, target }) =>
-			[source, target].map(({ endpointId, cell, side, port }) => ({
-				relationId: relation.id,
-				endpointId,
-				source: endpointId === relation.from,
-				cell,
-				side,
-				port,
-				nested: routing.nestedEndpointIds.has(endpointId),
-			})),
-		),
-	);
-	return ends.map(({ relation, source, target }, index) => {
+	const pieces = cellPieces(routing, ends);
+	return routing.crossing.map((relation, index) => {
+		const { source, target } = defined(ends[index]);
 		const sourcePiece = defined(pieces[2 * index]);
 		const targetPiece = defined(pieces[2 * index + 1]);
-		const portals = [
-			cellPortal(relation, source, sourcePiece),
-			cellPortal(relation, target, targetPiece),
-		] as const;
-		const [sourceY, targetY] = portals.map(({ point }) => point.y);
-		const points: Point[] = [...sourcePiece, { x: source.railX, y: defined(sourceY) }];
+		const sourcePortal = cellPortal(relation, source, sourcePiece);
+		const targetPortal = cellPortal(relation, target, targetPiece);
+		const points: Point[] = [...sourcePiece, { x: source.railX, y: sourcePortal.point.y }];
 		if (source.railX !== target.railX) {
 			const busY = crossingRunY(routing, allocation, relation);
 			points.push({ x: source.railX, y: busY }, { x: target.railX, y: busY });
 		}
-		points.push({ x: target.railX, y: defined(targetY) }, ...[...targetPiece].reverse());
-		return { route: { id: relation.id, from: relation.from, to: relation.to, points }, portals };
+		points.push({ x: target.railX, y: targetPortal.point.y });
+		for (let point = targetPiece.length - 1; point >= 0; point -= 1)
+			points.push(defined(targetPiece[point]));
+		const route = { id: relation.id, from: relation.from, to: relation.to, points };
+		return { route, portals: [sourcePortal, targetPortal] as const };
 	});
 }
 
