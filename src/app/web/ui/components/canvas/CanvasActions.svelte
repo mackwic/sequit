@@ -60,6 +60,7 @@
 	.tool {
 		position: relative;
 		display: flex;
+		justify-content: center;
 	}
 	.tip {
 		position: absolute;
