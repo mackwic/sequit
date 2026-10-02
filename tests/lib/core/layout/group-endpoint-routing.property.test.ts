@@ -561,4 +561,6 @@ it('publishes only valid group and junction routes in the rich corpus', () => {
 		expect(contactFailure(layout.relations, routeBridgeAnalysis(layout.relations))).toBeUndefined();
 		expect(validateDedicatedCandidate({ ...prepared, layout })).toMatchObject({ valid: true });
 	}
-});
+	// Measured alone: 0.6 s on 8eb1ac25 with the former generator, which grouped a single node;
+	// 8.1 s with the T-04 generator, which 8eb1ac25 rejects with a GroupRouteFailure.
+}, 15_000);
