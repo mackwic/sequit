@@ -48,6 +48,18 @@ describe('grid crossing allocation workshop model', () => {
 			['c-f', RegionPortalSide.Bottom],
 			['c-f', RegionPortalSide.Top],
 		]);
+		expect(pruned.busOrder).toEqual(['a-c']);
+		expect(
+			pruned.tracks.map(({ relationId, routeTrackLabel, railLabel }) => [
+				relationId,
+				routeTrackLabel,
+				railLabel,
+			]),
+		).toEqual([
+			['a-b', 'interstice', 'aucun'],
+			['a-c', 'bus 1', 'G1·1 / G3·0'],
+			['c-f', 'interstice', 'aucun'],
+		]);
 		expect(basic.busOrder).toEqual([]);
 		expect(basic.tracks[0]?.routeTrackLabel).toBe('gouttière R1·0');
 		expect(horizontal.busOrder).toEqual(['a-b', 'a-c']);

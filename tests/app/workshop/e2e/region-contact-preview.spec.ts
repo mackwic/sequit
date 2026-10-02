@@ -109,20 +109,18 @@ test('the grid allocation workshop distinguishes exact counts from lower bounds'
 		await expect(phase).toHaveAttribute('data-truncated', 'false');
 	}
 
-	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Réaffectation');
+	// Since G-02, a-b and c-f cross their neighbour gaps: the first row-gutter candidate is valid.
+	await expect(pruned.getByTestId('grid-allocation-winner')).toContainText('Gouttières de rangée');
 	await expect(pruned.getByTestId('grid-allocation-dimensions')).toContainText(
 		'−96 px de largeur, −48 px de hauteur',
 	);
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toContainText('33 / 96');
-	await expect(pruned.getByTestId('grid-allocation-phase-extra-track')).toContainText('0 / ≥ 257');
-	await expect(pruned.getByTestId('grid-allocation-phase-reallocate')).toHaveAttribute(
-		'data-truncated',
-		'false',
-	);
-	for (const phaseId of ['extra-track', 'bridge'])
+	await expect(pruned.getByTestId('grid-allocation-phase-row-gutter')).toContainText('1 / 16');
+	for (const phaseId of ['reallocate', 'extra-track', 'bridge'])
 		await expect(pruned.getByTestId(`grid-allocation-phase-${phaseId}`)).toContainText(
 			'Non tentée',
 		);
+	await expect(pruned.getByTestId('grid-allocation-retained')).toContainText('Bus : a-c');
+	await expect(pruned.getByTestId('grid-allocation-track-a-b')).toContainText('interstice');
 
 	await expect(horizontal.getByTestId('grid-allocation-retained')).toContainText('Bus : a-b → a-c');
 	await expect(horizontal.getByTestId('grid-allocation-track-a-d')).toContainText('gouttière R1·0');
