@@ -1,7 +1,12 @@
 import { defined } from '../../document/logic-document';
 import type { GraphEndpoint } from '../../graph/create-graph';
 import { RAIL_SPACING } from '../layout-settings';
-import type { ChannelRun, ChannelWire } from './channel-types';
+import { countChannelCrossings } from './channel-crossing-cost';
+import type { ChannelEndpoint, ChannelRun, ChannelWire } from './channel-types';
+
+export function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
+	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
+}
 
 enum FamilyField {
 	Source = 'sourceEndpoint',
@@ -33,7 +38,7 @@ function endpointFamilies(
 	return families.values();
 }
 
-function nestFamily(family: ChannelWire[], field: FamilyField): void {
+function orderFamily(family: ChannelWire[], field: FamilyField): void {
 	family.sort((a, b) => {
 		const direction = Math.sign(a.target - a.source) - Math.sign(b.target - b.source);
 		if (direction !== 0) return direction;
@@ -51,24 +56,54 @@ function nestFamily(family: ChannelWire[], field: FamilyField): void {
 		family[count++] = wire;
 	}
 	family.length = count;
+}
+
+function improvesFamilyOrder(previous: ChannelWire, wire: ChannelWire): boolean {
+	if (Math.sign(previous.target - previous.source) !== Math.sign(wire.target - wire.source))
+		return false;
+	const first = defined(previous.last);
+	const last = defined(wire.last);
+	const departure = previous.middle ?? previous.source;
+	const targetCrosses = first.start < wire.target && wire.target < first.end;
+	const sourceCrosses = last.start < departure && departure < last.end;
+	const wireDeparture = wire.middle ?? wire.source;
+	const forwardTargetCrosses = last.start < previous.target && previous.target < last.end;
+	const forwardSourceCrosses = first.start < wireDeparture && wireDeparture < first.end;
+	const reverseCost = Number(targetCrosses) + Number(sourceCrosses);
+	const forwardCost = Number(forwardTargetCrosses) + Number(forwardSourceCrosses);
+	return reverseCost > forwardCost;
+}
+
+function familyIsCrossed(family: ChannelWire[], field: FamilyField): boolean {
+	orderFamily(family, field);
 	for (let index = 1; index < family.length; index += 1) {
 		const previous = defined(family[index - 1]);
 		const wire = defined(family[index]);
-		if (Math.sign(previous.target - previous.source) !== Math.sign(wire.target - wire.source))
-			continue;
+		if (
+			defined(previous.last).rail > defined(wire.last).rail &&
+			improvesFamilyOrder(previous, wire)
+		)
+			return true;
+	}
+	return false;
+}
+
+/** Do not disturb a channel whose existing endpoint families already pass without crossings. */
+export function hasCrossedChannelFamilies(wires: readonly ChannelWire[]): boolean {
+	for (const field of FAMILY_FIELDS)
+		for (const family of endpointFamilies(wires, field))
+			if (familyIsCrossed(family, field)) return true;
+	return false;
+}
+
+function nestFamily(family: ChannelWire[], field: FamilyField): void {
+	orderFamily(family, field);
+	for (let index = 1; index < family.length; index += 1) {
+		const previous = defined(family[index - 1]);
+		const wire = defined(family[index]);
+		if (!improvesFamilyOrder(previous, wire)) continue;
 		const first = defined(previous.last);
 		const last = defined(wire.last);
-		if (first === last) continue;
-		const departure = previous.middle ?? previous.source;
-		const targetCrosses = first.start < wire.target && wire.target < first.end;
-		const sourceCrosses = last.start < departure && departure < last.end;
-		const wireDeparture = wire.middle ?? wire.source;
-		const forwardTargetCrosses = last.start < previous.target && previous.target < last.end;
-		const forwardSourceCrosses = first.start < wireDeparture && wireDeparture < first.end;
-		const reverseCost = Number(targetCrosses) + Number(sourceCrosses);
-		const forwardCost = Number(forwardTargetCrosses) + Number(forwardSourceCrosses);
-		// Nested spans caused by passage ports cross once in either order; precedence cannot help.
-		if (reverseCost <= forwardCost) continue;
 		first.next.push(last);
 		last.remaining += 1;
 	}
@@ -112,15 +147,53 @@ function placeRun(rails: ChannelRun[][], run: ChannelRun, minimum: number): numb
 	}
 }
 
-/** Sort the owned visitation queue after untangling, reusing disjoint rails without reversing precedence. */
-export function compactChannelRails(runs: ChannelRun[], tracks: Map<number, number>): number {
+/** Reuse disjoint rails in topological visitation order, without reversing precedence. */
+function compactChannelRails(runs: readonly ChannelRun[]): number {
 	const minimum = new Int32Array(runs.length);
 	const rails: ChannelRun[][] = [];
-	for (const run of runs.sort((a, b) => a.rail - b.rail || a.start - b.start)) {
+	for (const run of runs) {
 		const rail = placeRun(rails, run, defined(minimum[run.key]));
 		run.rail = rail;
-		tracks.set(run.key, rail);
 		for (const next of run.next) minimum[next.key] = Math.max(defined(minimum[next.key]), rail + 1);
 	}
 	return rails.length;
+}
+
+interface PackedChannelRails {
+	readonly railCount: number;
+	readonly crossings: number;
+}
+
+/** Price both bounded packings: crossings first, then corridor capacity; retain the untangled tie. */
+export function packChannelRails(
+	runs: readonly ChannelRun[],
+	wires: readonly ChannelWire[],
+): PackedChannelRails {
+	const ordered = [...runs].sort((a, b) => a.rail - b.rail || a.start - b.start);
+	const orderedCount = compactChannelRails(ordered);
+	const orderedCost = countChannelCrossings(wires, orderedCount);
+	const orderedRails = new Int32Array(runs.length);
+	for (const run of runs) orderedRails[run.key] = run.rail;
+	const topologicalCount = compactChannelRails(runs);
+	const topologicalCost = countChannelCrossings(wires, topologicalCount);
+	let preferTopological = topologicalCost < orderedCost;
+	if (topologicalCost === orderedCost) preferTopological = topologicalCount < orderedCount;
+	if (preferTopological) return { railCount: topologicalCount, crossings: topologicalCost };
+	for (const run of runs) run.rail = defined(orderedRails[run.key]);
+	return { railCount: orderedCount, crossings: orderedCost };
+}
+
+/** Capture only the owned bindings needed to restore a rejected nested plan. */
+export function preserveChannelRunBindings(wires: readonly ChannelWire[]): () => void {
+	const first = wires.map((wire) => wire.first);
+	const last = wires.map((wire) => wire.last);
+	const middle = wires.map((wire) => wire.middle);
+	return () => {
+		for (let index = 0; index < wires.length; index += 1) {
+			const wire = defined(wires[index]);
+			wire.first = first[index];
+			wire.last = last[index];
+			wire.middle = middle[index];
+		}
+	};
 }

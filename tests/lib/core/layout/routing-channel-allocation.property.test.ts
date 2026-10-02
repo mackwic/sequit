@@ -4,6 +4,7 @@ import { expect, it } from 'vitest';
 import { EndpointKind, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import type { GraphEndpoint } from '../../../../src/lib/core/graph/create-graph';
+import { countChannelCrossings } from '../../../../src/lib/core/layout/routing/channel-crossing-cost';
 import { allocateChannelIntervals } from '../../../../src/lib/core/layout/routing/channel-interval-allocation';
 import { routeChannel } from '../../../../src/lib/core/layout/routing/channel-routing';
 import type {
@@ -18,6 +19,22 @@ function retainedRuns(channel: ChannelRouting): Set<ChannelRun> {
 	return new Set(
 		channel.wires.flatMap(({ first, last }) => [first, last]).filter((run) => run !== undefined),
 	);
+}
+
+function channelPaths(channel: ChannelRouting, direction: LayoutDirection) {
+	const vertical =
+		direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+	let sign = -1;
+	if (direction === LayoutDirection.TopToBottom || direction === LayoutDirection.LeftToRight)
+		sign = 1;
+	return channel.wires.map((wire) => ({
+		...wire,
+		points: channelPoints(wire, 0, sign * (channel.railCount + 2) * 24, {
+			vertical,
+			railStart: sign * 24,
+			railStep: sign * 24,
+		}),
+	}));
 }
 
 it('keeps run occurrences unique and precedence intact across split and merged families', () => {
@@ -152,7 +169,7 @@ it('nests both endpoint families in every direction with the minimum clique capa
 	);
 });
 
-it('keeps sparse channel source and target families crossing-free under input permutation', () => {
+it('never increases sparse channel crossings for endpoint nesting or input permutation', () => {
 	const endpoints = Array.from({ length: 10 }, (_, index): GraphEndpoint => ({
 		kind: EndpointKind.Node,
 		entity: {
@@ -179,30 +196,35 @@ it('keeps sparse channel source and target families crossing-free under input pe
 					targetEndpoint: endpoints[target + 5],
 				}));
 				const channel = routeChannel(inputs);
+				const baseline = routeChannel(
+					inputs.map((wire) => ({
+						...wire,
+						sourceEndpoint: undefined,
+						targetEndpoint: undefined,
+					})),
+				);
 				const reverse = routeChannel(inputs.toReversed());
 				for (const direction of Object.values(LayoutDirection)) {
-					const vertical =
-						direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
-					let sign = -1;
-					if (
-						direction === LayoutDirection.TopToBottom ||
-						direction === LayoutDirection.LeftToRight
-					)
-						sign = 1;
-					const paths = channel.wires.map((wire) => ({
-						...wire,
-						points: channelPoints(wire, 0, sign * (channel.railCount + 2) * 24, {
-							vertical,
-							railStart: sign * 24,
-							railStep: sign * 24,
-						}),
-					}));
+					const paths = channelPaths(channel, direction);
+					const baselinePaths = channelPaths(baseline, direction);
+					const crossings = referenceRouteBridgeAnalysis(paths).crossings.length;
+					expect(crossings).toBeLessThanOrEqual(
+						referenceRouteBridgeAnalysis(baselinePaths).crossings.length,
+					);
+					expect(countChannelCrossings(channel.wires, channel.railCount)).toBe(crossings);
 					for (const field of ['sourceEndpoint', 'targetEndpoint'] as const) {
 						for (const endpoint of endpoints) {
+							const ids = new Set(
+								inputs.filter((wire) => wire[field] === endpoint).map((wire) => wire.id),
+							);
+							if (ids.size < 2) continue;
 							expect(
-								referenceRouteBridgeAnalysis(paths.filter((path) => path[field] === endpoint))
-									.crossings,
-							).toEqual([]);
+								referenceRouteBridgeAnalysis(paths.filter((path) => ids.has(path.id))).crossings
+									.length,
+							).toBeLessThanOrEqual(
+								referenceRouteBridgeAnalysis(baselinePaths.filter((path) => ids.has(path.id)))
+									.crossings.length,
+							);
 						}
 					}
 				}
@@ -214,6 +236,40 @@ it('keeps sparse channel source and target families crossing-free under input pe
 						wire.last?.rail,
 						wire.middle,
 					]);
+				}
+			},
+		),
+		PROPERTY_PARAMETERS,
+	);
+});
+
+it('prices shared traverses, column-cycle detours and straight wires by their strict crossings', () => {
+	fc.assert(
+		fc.property(
+			fc.array(fc.tuple(fc.integer({ min: -4, max: 4 }), fc.integer({ min: -4, max: 4 })), {
+				minLength: 1,
+				maxLength: 16,
+			}),
+			(pairs) => {
+				const channel = routeChannel(
+					pairs.map(([source, target], index) => {
+						let sharedSource: string | undefined;
+						let sharedTarget: string | undefined;
+						if (source % 2 === 0) sharedSource = `source:${source}`;
+						if (target % 2 === 0) sharedTarget = `target:${target}`;
+						return {
+							id: String(index),
+							source: source * 48,
+							target: target * 48,
+							sharedSource,
+							sharedTarget,
+						};
+					}),
+				);
+				for (const direction of Object.values(LayoutDirection)) {
+					expect(countChannelCrossings(channel.wires, channel.railCount)).toBe(
+						referenceRouteBridgeAnalysis(channelPaths(channel, direction)).crossings.length,
+					);
 				}
 			},
 		),

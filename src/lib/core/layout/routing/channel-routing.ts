@@ -1,5 +1,6 @@
 import { defined } from '../../document/logic-document';
 import { RAIL_SPACING } from '../layout-settings';
+import { countChannelCrossings } from './channel-crossing-cost';
 import { untangleChannelRails } from './channel-crossings';
 import { allocateChannelIntervals } from './channel-interval-allocation';
 import type {
@@ -9,15 +10,17 @@ import type {
 	ChannelRun,
 	ChannelWire,
 } from './channel-types';
-import { compactChannelRails, nestChannelEndpointRuns } from './rail-packing';
+import {
+	hasCrossedChannelFamilies,
+	hasSharedEndpoint,
+	nestChannelEndpointRuns,
+	packChannelRails,
+	preserveChannelRunBindings,
+} from './rail-packing';
 
 enum RunSide {
 	First = 'first',
 	Last = 'last',
-}
-
-function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
-	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
 }
 
 const UNVISITED = 0;
@@ -32,6 +35,11 @@ interface CycleSearch {
 	readonly arrivals: ReadonlyMap<number, readonly number[]>;
 	readonly state: Uint8Array;
 	readonly breaks: Set<ChannelWire>;
+}
+
+interface AssignedChannelRails {
+	readonly allocation: ChannelRailAllocation;
+	readonly crossings: number | undefined;
 }
 
 /** Explore the wires following `start`, breaking each wire that closes a cycle on the path. */
@@ -184,6 +192,7 @@ function makeRuns(
 			runs.push(wire.first, wire.last);
 		} else {
 			wire.first = run(wire.source, wire.target);
+			wire.middle = undefined;
 			wire.last = wire.first;
 			runs.push(wire.first);
 		}
@@ -263,7 +272,8 @@ function assignRails(
 	runs: readonly ChannelRun[],
 	wires: readonly ChannelWire[],
 	ownerId: string,
-): ChannelRailAllocation | undefined {
+	compact: boolean,
+): AssignedChannelRails | undefined {
 	const ready = runs.filter((segment) => segment.remaining === 0);
 	let nextRunKey = 0;
 	const layers: ChannelRun[][] = [];
@@ -286,9 +296,33 @@ function assignRails(
 		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
 	}
 	untangleChannelRails(wires, ready, layers);
-	count = compactChannelRails(ready, trackByRunKey);
+	let crossings: number | undefined;
+	if (compact) {
+		const packed = packChannelRails(ready, wires);
+		count = packed.railCount;
+		crossings = packed.crossings;
+	}
+	for (const run of ready) trackByRunKey.set(run.key, run.rail);
 	edge.capacity = count;
-	return { edge, trackByRunKey, railCount: count };
+	return { allocation: { edge, trackByRunKey, railCount: count }, crossings };
+}
+
+function channelRuns(
+	moving: readonly ChannelWire[],
+	sharedEndpoints: boolean,
+	nonInverted: boolean,
+	familyBreaks?: ReadonlySet<ChannelWire>,
+): ChannelRun[] {
+	const arrivals = mergeRuns(
+		moving,
+		makeRuns(moving, sharedEndpoints, nonInverted, familyBreaks),
+		RunSide.Last,
+		sharedEndpoints,
+	);
+	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
+	// Straight wires keep their column and impose no traverse order.
+	for (const wire of moving) if (wire.source !== wire.target) orderDepartures(moving, wire);
+	return runs;
 }
 
 /** The caller owns these fresh wires; routing fills in their run references in place. */
@@ -306,22 +340,24 @@ export function routeOwnedChannel(
 		})
 		// Wires at the same coordinates keep the caller's documentary order, never their ids.
 		.sort((a, b) => a.source - b.source || a.target - b.target);
+	const baselineRuns = channelRuns(moving, sharedEndpoints, nonInverted);
+	const assignedBaseline = assignRails(baselineRuns, wires, ownerId, false);
+	if (assignedBaseline === undefined) throw new Error('Unresolved channel column constraint cycle');
+	const baseline = assignedBaseline.allocation;
+	if (!hasCrossedChannelFamilies(moving)) return { wires, ...baseline };
+	const baselineCost = countChannelCrossings(wires, baseline.railCount);
+	const restoreBindings = preserveChannelRunBindings(moving);
 	let familyBreaks: Set<ChannelWire> | undefined;
 	for (;;) {
-		const arrivals = mergeRuns(
-			moving,
-			makeRuns(moving, sharedEndpoints, nonInverted, familyBreaks),
-			RunSide.Last,
-			sharedEndpoints,
-		);
-		const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
-		for (const wire of moving) {
-			// Straight wires keep their column and impose no traverse order.
-			if (wire.source !== wire.target) orderDepartures(moving, wire);
-		}
+		const runs = channelRuns(moving, sharedEndpoints, nonInverted, familyBreaks);
 		nestChannelEndpointRuns(moving);
-		const allocation = assignRails(runs, moving, ownerId);
-		if (allocation !== undefined) return { wires, ...allocation };
+		const assigned = assignRails(runs, wires, ownerId, true);
+		if (assigned !== undefined) {
+			if (defined(assigned.crossings) <= baselineCost) return { wires, ...assigned.allocation };
+			// Endpoint nesting is a soft constraint: never trade it for more total crossings.
+			restoreBindings();
+			return { wires, ...baseline };
+		}
 		// Family nesting can close a column dependency cycle absent from the original wires.
 		// Split an unresolved departure, rather than dropping its endpoint-family precedence.
 		const divided = moving.find((wire) => {

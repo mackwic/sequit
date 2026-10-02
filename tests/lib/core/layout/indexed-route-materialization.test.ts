@@ -260,8 +260,8 @@ describe('indexed channel route materialization', () => {
 		const result = layoutWithDedicatedEngine(prepared.graph, prepared.ranks, prepared.measurements);
 		expect(result.elements).toHaveLength(1000);
 		expect(result.relations).toHaveLength(40169);
-		// D-05: nested source/target families and cross-depth rail reuse. On the 100-node
+		// D-05: nested endpoint families with cost-arbitrated cross-depth rail packing. On the 100-node
 		// witness, strict crossings fall from 68064 to 52992, family crossings from 6348 to zero.
-		expect(digest(result)).toBe('db5736cd918e763d9d45c588bd1317da09d35e3dda69909bfb79188dec943e24');
+		expect(digest(result)).toBe('1486f6f1227467beed9a7b1c33076e8a9c496b717fb674e696d5a23953a55167');
 	});
 });
