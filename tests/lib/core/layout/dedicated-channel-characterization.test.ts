@@ -131,6 +131,7 @@ describe.each(Object.values(LayoutDirection))('nested endpoint families in %s', 
 				vertical,
 				railStart: sign * 24,
 				railStep: sign * 24,
+				frames: [],
 			}),
 		}));
 		expect(referenceRouteBridgeAnalysis(paths).crossings.length).toBeLessThanOrEqual(4);

@@ -33,6 +33,7 @@ function channelPaths(channel: ChannelRouting, direction: LayoutDirection) {
 			vertical,
 			railStart: sign * 24,
 			railStep: sign * 24,
+			frames: [],
 		}),
 	}));
 }
@@ -158,6 +159,7 @@ it('nests both endpoint families in every direction with the minimum clique capa
 									vertical,
 									railStart: sign * spacing,
 									railStep: sign * 24,
+									frames: [],
 								}),
 							}));
 							expect(referenceRouteBridgeAnalysis(paths).crossings).toEqual([]);
