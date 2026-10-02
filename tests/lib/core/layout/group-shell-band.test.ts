@@ -157,3 +157,38 @@ it.each(Object.values(LayoutDirection))(
 		}
 	},
 );
+
+it.each(Object.values(LayoutDirection))(
+	'keeps the historically confined route inside every ancestor in %s',
+	async (direction) => {
+		const { document, overrides } = deepShellSample(1264, direction, 12);
+		const prepared = await layoutDocument(document, overrides);
+		const route = prepared.layout.relations.find(({ id }) => id === 'n6-n2');
+		if (route === undefined) throw new Error('Missing nested route');
+		for (const id of ['g0', 'g1', 'g2']) {
+			const frame = boundsFor(prepared.layout, id);
+			expect(
+				route.points.filter(
+					({ x, y }) =>
+						x < frame.x || x > frame.x + frame.width || y < frame.y || y > frame.y + frame.height,
+				),
+				id,
+			).toEqual([]);
+		}
+		expect(validateDedicatedCandidate(prepared).valid).toBe(true);
+	},
+);
+
+it.each(Object.values(LayoutDirection))(
+	'preserves rail separation when component corridors overlap in %s',
+	async (direction) => {
+		for (const padding of [12, 24, 36]) {
+			const { document, overrides } = deepShellSample(36, direction, padding);
+			const prepared = await layoutDocument(document, overrides);
+			const vertical =
+				direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+			expect(validateDedicatedCandidate(prepared).valid).toBe(true);
+			expect(referencePassagePitch(prepared.layout.relations, !vertical)).toBeGreaterThanOrEqual(6);
+		}
+	},
+);

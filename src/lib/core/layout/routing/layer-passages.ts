@@ -238,7 +238,6 @@ function reservePassage(
 	if (spacing < RAIL_SPACING) appendPackedCandidates(selection);
 	selection.candidates.push(...fallback);
 	const passage = selectPassage(selection, RAIL_SPACING, spacing);
-	if (input.historical) return passage;
 	if (passage !== undefined || group === undefined) return passage;
 	// If no full-clearance column fits, share the padding between the node and its frame.
 	const shared = selectPassage(selection, input.sharedClearance, spacing);

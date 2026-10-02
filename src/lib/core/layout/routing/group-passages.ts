@@ -1,6 +1,6 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { mainSize } from '../geometry/layout-frame';
+import { mainSize, transverseSize, transverseStart } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, Point, RoutingLayers } from '../layout-types';
 import { freeOfGroupShells, type MainInterval } from './group-shells';
@@ -17,6 +17,10 @@ export interface GroupPassageContext {
 interface GroupInterval {
 	readonly start: number;
 	readonly end: number;
+}
+
+interface JogCorridor extends GroupInterval {
+	readonly row: readonly string[];
 }
 
 interface PassageObstacles {
@@ -91,11 +95,11 @@ function jogRail(
 	input: GroupPassageContext & { readonly layers: RoutingLayers },
 	endpoint: Bounds,
 	other: Bounds,
-	row: readonly string[],
+	corridor: JogCorridor,
 ): number {
 	const own = physicalMain(endpoint, input.vertical);
 	let neighbour: MainInterval | undefined;
-	for (const id of row) {
+	for (const id of corridor.row) {
 		if (input.graph.endpointsById.get(id)?.kind === EndpointKind.Group) continue;
 		const next = physicalMain(defined(input.bounds.get(id)), input.vertical);
 		if (neighbour === undefined) neighbour = next;
@@ -111,7 +115,11 @@ function jogRail(
 	const frames: MainInterval[] = [];
 	for (const { id } of input.graph.document.groups) {
 		const box = input.bounds.get(id);
-		if (box !== undefined) frames.push(physicalMain(box, input.vertical));
+		if (box === undefined) continue;
+		const start = transverseStart(box, input.vertical);
+		const end = start + transverseSize(box, input.vertical);
+		if (start > corridor.end || end < corridor.start) continue;
+		frames.push(physicalMain(box, input.vertical));
 	}
 	const free = defined(freeOfGroupShells([gap], frames)[0]);
 	return (free.start + free.end) / 2;
@@ -127,8 +135,18 @@ export function passageGroupPoints(
 	const target = defined(input.bounds.get(relation.to));
 	const sourceLayer = defined(input.layers.byId.get(relation.from));
 	const targetLayer = defined(input.layers.byId.get(relation.to));
-	const sourceRail = jogRail(input, source, target, defined(input.layers.rows[sourceLayer - 1]));
-	const targetRail = jogRail(input, target, source, defined(input.layers.rows[targetLayer + 1]));
+	const sourceCorridor = {
+		start: Math.min(coordinates.source, coordinates.passage),
+		end: Math.max(coordinates.source, coordinates.passage),
+		row: defined(input.layers.rows[sourceLayer - 1]),
+	};
+	const targetCorridor = {
+		start: Math.min(coordinates.target, coordinates.passage),
+		end: Math.max(coordinates.target, coordinates.passage),
+		row: defined(input.layers.rows[targetLayer + 1]),
+	};
+	const sourceRail = jogRail(input, source, target, sourceCorridor);
+	const targetRail = jogRail(input, target, source, targetCorridor);
 	if (input.vertical)
 		return [
 			{ x: coordinates.source, y: sourceRail },

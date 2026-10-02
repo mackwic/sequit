@@ -758,3 +758,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Les 18 000 layouts profonds (paddings 12/24/36, quatre directions) n’ajoutent ni exception, ni invalidité, ni sortie de groupe à la base ; aucun pas de passage inférieur à 6. En saturation, le repli local historique remplace l’exception et le curseur extérieur reste monotone.
 - Corpus mixte exact : **2400/2400 valides**, sorties **24 → 2**, croisements stricts **1798 → 1624** ; les **424 segments extérieurs fautifs deviennent 0**. Padding36 : **2400/2400 valides**, sorties **4 → 0**, croisements **1774 → 1628**. Aucun contact colinéaire ni cadre étranger traversé.
 - Aucun SHA ré-épinglé, mesure de padding agrandie ou seuil relevé. Les oracles symétriques de la première reprise sont remplacés par les bandes réelles et la comparaison explicite au repli historique ; la priorité reste la correction, pas l’optimisation.
+
+### Troisième reprise de relecture — fenêtres locales et identité des sorties
+
+- Commit `fix(layout): coques dédiées — limiter les fenêtres aux composantes voisines` : R-01 à R-03 ; fenêtres de rails locales, communes aux couloirs qui se chevauchent, et traverses limitées aux cadres de leur trajet, sans modifier l’allocation globale des ports/canaux.
+- Non-interférence, corpus exact de 300 graines dans les quatre directions : identité géométrique **553/775 en base → 695/781 (89,0 %)**, contre 133/766 avant reprise ; la graine 3 est couverte par un test permanent. `chain7-dense + H`, déjà non invariant en base, reste hors tranche (rails partagés entre composantes).
+- La graine 1264 padding12 garde désormais `n6-n2` dans ses trois ancêtres ; sur 18 000 layouts, aucune nouvelle identité de route sortante, aucune nouvelle invalidité et aucune exception. Sorties p12 **1172 → 16** ; les deux autres séries restent à zéro.
+- Coûts explicites : colinéaires p12 **21056 → 300**, avec hausse dans 16 layouts en échange du confinement ; croisements profonds p24 **8570 → 8950 (+4,4 %)**, concentrés sur les défauts préexistants. Aucun SHA, seuil ou délai ré-épinglé ; aucun changement de tarification D-05.

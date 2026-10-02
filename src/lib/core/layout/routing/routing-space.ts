@@ -1,5 +1,5 @@
 import { defined } from '../../document/logic-document';
-import type { LayoutFrame } from '../geometry/layout-frame';
+import { type LayoutFrame, transverseSize, transverseStart } from '../geometry/layout-frame';
 import { RAIL_SPACING } from '../layout-settings';
 import type { Bounds, RoutingLayers } from '../layout-types';
 import { routePoints } from './endpoint-routes';
@@ -24,6 +24,11 @@ interface RoutingSpaceInput {
 	readonly bounds: ReadonlyMap<string, Bounds>;
 	readonly frame: LayoutFrame;
 	readonly enclosingGroups: ReadonlySet<string>;
+}
+
+interface ComponentInterval {
+	start: number;
+	end: number;
 }
 
 /**
@@ -53,21 +58,68 @@ function clearOfFrames(
 }
 
 /** A common rail stays outside every atomic box and group shell bordering its gap. */
-export function routingSpace(input: RoutingSpaceInput): RoutingSpace {
+export function routingSpace(input: RoutingSpaceInput, transverse?: MainInterval): RoutingSpace {
 	const { layers, bounds, frame, enclosingGroups } = input;
-	// A populated group is an envelope spanning its members, not a box on one physical layer.
-	const boxes = layers.rows.map((row) =>
-		layerExtent(
-			row.filter((id) => !enclosingGroups.has(id)),
-			bounds,
-			frame,
-		),
-	);
+	const overlaps = (id: string): boolean => {
+		if (transverse === undefined) return true;
+		const box = defined(bounds.get(id));
+		const start = transverseStart(box, frame.vertical);
+		const end = start + transverseSize(box, frame.vertical);
+		return start <= transverse.end && end >= transverse.start;
+	};
+	// Empty local rows are only waypoints of straight passages through another component's layer.
+	const boxes = layers.rows.map((row) => {
+		const atomic = row.filter((id) => !enclosingGroups.has(id));
+		if (transverse === undefined) return layerExtent(atomic, bounds, frame);
+		const local = atomic.filter(overlaps);
+		if (local.length === 0) return layerExtent(atomic, bounds, frame);
+		return layerExtent(local, bounds, frame);
+	});
 	const frames = [...enclosingGroups]
-		.filter((id) => bounds.has(id))
+		.filter((id) => bounds.has(id) && overlaps(id))
 		.map((id) => layerExtent([id], bounds, frame));
 	const extents = clearOfFrames(boxes, frames);
 	return { layers, enclosingGroups, extents, bounds, frame };
+}
+
+/** Each connected component shares a rail window, without borrowing a distant frame's shell. */
+export function componentRoutingSpaces(
+	input: RoutingSpaceInput,
+	owners: ReadonlyMap<string, number>,
+): ReadonlyMap<number, RoutingSpace> {
+	const intervals = new Map<number, ComponentInterval>();
+	for (const [id, box] of input.bounds) {
+		const owner = owners.get(id);
+		if (owner === undefined) continue;
+		const start = transverseStart(box, input.frame.vertical);
+		const end = start + transverseSize(box, input.frame.vertical);
+		const interval = intervals.get(owner);
+		if (interval === undefined) intervals.set(owner, { start, end });
+		else {
+			interval.start = Math.min(interval.start, start);
+			interval.end = Math.max(interval.end, end);
+		}
+	}
+	// Components whose transverse corridors overlap must still use the same physical rail window.
+	let shared: ComponentInterval | undefined;
+	for (const [owner, interval] of [...intervals].sort(
+		(left, right) => left[1].start - right[1].start,
+	)) {
+		if (shared === undefined || interval.start > shared.end) shared = interval;
+		else shared.end = Math.max(shared.end, interval.end);
+		intervals.set(owner, shared);
+	}
+	const spaces = new Map<number, RoutingSpace>();
+	const byInterval = new Map<MainInterval, RoutingSpace>();
+	for (const [owner, interval] of intervals) {
+		let space = byInterval.get(interval);
+		if (space === undefined) {
+			space = routingSpace(input, interval);
+			byInterval.set(interval, space);
+		}
+		spaces.set(owner, space);
+	}
+	return spaces;
 }
 
 /** Intermediate-layer obstacle indexes are needed only when choosing direct passages. */

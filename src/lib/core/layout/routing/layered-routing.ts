@@ -14,7 +14,7 @@ import type { ChannelRouting, ChannelRun } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
 import { type PortAllocation, sharedSourcePorts, sharedTargetPorts } from './port-allocation';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
-import { type RoutingSpace, routingSpace } from './routing-space';
+import { componentRoutingSpaces, type RoutingSpace } from './routing-space';
 
 interface LayerChannel extends ChannelRouting {
 	readonly layer: number;
@@ -27,6 +27,7 @@ export interface LayerPlan {
 	readonly ports: PortAllocation;
 	readonly gaps: ReadonlyMap<number, number>;
 	readonly channelGaps: ReadonlyMap<number, readonly number[]>;
+	readonly componentByEndpointId: ReadonlyMap<string, number>;
 }
 
 interface LayerGeometry {
@@ -170,7 +171,11 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 }
 
 /** Reserve shell thickness as well as a free channel wide enough for every rail. */
-function groupChannelGap(input: LayerInput, channel: LayerChannel, space: RoutingSpace): number {
+function groupChannelGap(
+	input: LayerInput,
+	channel: LayerChannel,
+	spaces: ReadonlyMap<number, RoutingSpace>,
+): number {
 	const before = layerExtent(defined(input.layers.rows[channel.layer]), input.bounds, input.frame);
 	const after = layerExtent(
 		defined(input.layers.rows[channel.layer + 1]),
@@ -178,9 +183,15 @@ function groupChannelGap(input: LayerInput, channel: LayerChannel, space: Routin
 		input.frame,
 	);
 	if (!Number.isFinite(before.end) || !Number.isFinite(after.start)) return 0;
-	const freeBefore = defined(space.extents[channel.layer]);
-	const freeAfter = defined(space.extents[channel.layer + 1]);
-	const shells = freeBefore.end - before.end + after.start - freeAfter.start;
+	let shells = 0;
+	for (const { relation } of channel.links) {
+		const owner = defined(input.componentByEndpointId.get(relation.from));
+		const { extents } = defined(spaces.get(owner));
+		const freeBefore = defined(extents[channel.layer]);
+		const freeAfter = defined(extents[channel.layer + 1]);
+		const shiftedAfter = freeBefore.end - before.end + after.start;
+		shells = Math.max(shells, shiftedAfter - freeAfter.start);
+	}
 	if (shells <= 0) return 0;
 	const rails = Math.max(0, channel.railCount - 1) * RAIL_SPACING;
 	return shells + GROUP_FRAME_CLEARANCE + rails;
@@ -192,7 +203,7 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 	const enclosingGroups = new Set<string>();
 	for (const { entity } of input.graph.endpointsById.values())
 		if (entity.groupId !== undefined) enclosingGroups.add(entity.groupId);
-	const space = routingSpace({ ...input, enclosingGroups });
+	const spaces = componentRoutingSpaces({ ...input, enclosingGroups }, input.componentByEndpointId);
 	const channelGaps = new Map<number, number[]>();
 	const gaps = new Map<number, number>();
 	for (const channel of channels) {
@@ -204,7 +215,7 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 		if (bordersJunction) base = JUNCTION_CHANNEL_GAP;
 		const gap = Math.max(
 			base + Math.max(0, channel.railCount - 1) * RAIL_SPACING,
-			groupChannelGap(input, channel, space),
+			groupChannelGap(input, channel, spaces),
 		);
 		const slots = channelGaps.get(interval) ?? [];
 		slots.push(gap);
@@ -219,7 +230,15 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 		const interval = defined(layers.intervals[layer]);
 		gaps.set(interval, (gaps.get(interval) ?? 0) + thickness);
 	}
-	return { layers, enclosingGroups, channels, ports, gaps, channelGaps };
+	return {
+		layers,
+		enclosingGroups,
+		channels,
+		ports,
+		gaps,
+		channelGaps,
+		componentByEndpointId: input.componentByEndpointId,
+	};
 }
 
 export function materializeLayers(
@@ -227,11 +246,14 @@ export function materializeLayers(
 	plan: LayerPlan,
 ): ReadonlyMap<string, readonly Point[]> {
 	const { bounds, frame } = input;
-	const { extents } = routingSpace({
-		...input,
-		layers: plan.layers,
-		enclosingGroups: plan.enclosingGroups,
-	});
+	const spaces = componentRoutingSpaces(
+		{
+			...input,
+			layers: plan.layers,
+			enclosingGroups: plan.enclosingGroups,
+		},
+		plan.componentByEndpointId,
+	);
 	const frames: Bounds[] = [];
 	for (const id of plan.enclosingGroups) {
 		const box = bounds.get(id);
@@ -241,18 +263,21 @@ export function materializeLayers(
 	if (!frame.forward) sign = -1;
 	const paths = new Map<string, Point[]>();
 	for (const channel of plan.channels.toReversed()) {
-		const before = defined(extents[channel.layer]);
-		const after = defined(extents[channel.layer + 1]);
-		const center = (before.end + after.start) / 2;
-		const halfSpan = ((channel.railCount - 1) * RAIL_SPACING) / 2;
-		const geometry = {
-			vertical: frame.vertical,
-			railStart: (center + halfSpan) * sign,
-			railStep: -sign * RAIL_SPACING,
-			frames,
-		};
 		for (const [index, wire] of channel.wires.entries()) {
 			const link = defined(channel.links[index]);
+			const { extents } = defined(
+				spaces.get(defined(plan.componentByEndpointId.get(link.relation.from))),
+			);
+			const before = defined(extents[channel.layer]);
+			const after = defined(extents[channel.layer + 1]);
+			const center = (before.end + after.start) / 2;
+			const halfSpan = ((channel.railCount - 1) * RAIL_SPACING) / 2;
+			const geometry = {
+				vertical: frame.vertical,
+				railStart: (center + halfSpan) * sign,
+				railStep: -sign * RAIL_SPACING,
+				frames,
+			};
 			let departure = after.start;
 			let arrival = before.end;
 			if (link.sourceLayer === channel.layer + 1)
