@@ -49,6 +49,7 @@ export enum SharedProperty {
 	Operator = 'operator',
 	From = 'from',
 	To = 'to',
+	Family = 'family',
 }
 
 /** Text fields may be initialized here; subsequent text edits use their stable Y.Text. */
@@ -75,7 +76,7 @@ interface SharedCreateProperties {
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,
-		SharedProperty.Label | SharedProperty.Color | SharedProperty.Icon
+		SharedProperty.Label | SharedProperty.Color | SharedProperty.Icon | SharedProperty.Family
 	>;
 	readonly [SharedElementKind.Junction]: Pick<
 		LogicJunction,
@@ -110,7 +111,7 @@ interface SharedUpdateProperties {
 	>;
 	readonly [SharedElementKind.Nature]: Pick<
 		LogicNature,
-		SharedProperty.Color | SharedProperty.Icon
+		SharedProperty.Color | SharedProperty.Icon | SharedProperty.Family
 	>;
 	readonly [SharedElementKind.Junction]: Pick<
 		LogicJunction,

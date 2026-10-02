@@ -137,7 +137,7 @@ export function readElementUpdate(
 				op,
 				target: { ...target, kind: Kind.Nature },
 				set,
-				unset: optionalKeys(unset, [SharedProperty.Icon]),
+				unset: optionalKeys(unset, [SharedProperty.Icon, SharedProperty.Family]),
 			};
 		case Kind.Junction:
 			return {

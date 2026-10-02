@@ -7,7 +7,7 @@
 		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
-	import type { NatureTemplate } from '../../../../../lib/core/document/nature-templates';
+	import { firstNature, type NatureFamily } from '../../../../../lib/core/document/nature-families';
 	import {
 		type DocumentCommandOutcome,
 		DocumentCommandOutcomeKind,
@@ -20,9 +20,9 @@
 		type NatureEditing,
 		natureEditing,
 		NatureEditingMode,
+		natureFamilyImport,
 		type NatureFields,
-		natureStyleUpdate,
-		natureTemplateImport,
+		natureUpdate,
 		natureUsage,
 		newNatureEditing,
 	} from '../../../../../lib/infrastructure/document/nature-fields';
@@ -278,7 +278,7 @@
 	}
 	function openNatures(): void {
 		if (!opened.ok || busy) return;
-		const first = model?.natures[0];
+		const first = model && firstNature(model.natures);
 		editingNature = first && natureEditing(first);
 		natureManager = true;
 	}
@@ -314,13 +314,13 @@
 		return execute(() => {
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
 				throw new Error(m.canvas_nature_gone({ id: editing.id }));
-			const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
-			if (style === undefined)
+			const update = natureUpdate(editing.id, editing.base, editing.draft);
+			if (update === undefined)
 				return Promise.resolve({
 					kind: DocumentCommandOutcomeKind.Accepted,
 					document: current.value.read(),
 				});
-			return current.value.session.dispatch([style]);
+			return current.value.session.dispatch([update]);
 		});
 	}
 	async function deleteNature(replacementId: string | undefined): Promise<void> {
@@ -333,9 +333,9 @@
 		);
 		if (removed) editingNature = next && natureEditing(next);
 	}
-	async function importNatures(template: NatureTemplate): Promise<void> {
+	async function importNatures(family: NatureFamily): Promise<void> {
 		const current = opened;
-		const commands = natureTemplateImport(natures, template);
+		const commands = natureFamilyImport(natures, family);
 		if (!current.ok || commands.length === 0 || busy) return;
 		await execute(() => current.value.session.dispatch(commands));
 	}
@@ -533,8 +533,8 @@
 				{busy}
 				data={{ 'data-nature-manager': '' }}
 				onselect={selectNature}
-				oncreate={() => {
-					editingNature = newNatureEditing(crypto.randomUUID());
+				oncreate={(family: string) => {
+					editingNature = newNatureEditing(crypto.randomUUID(), family);
 				}}
 				onchange={(patch: Partial<NatureFields>) => {
 					if (editingNature !== undefined)
@@ -544,8 +544,8 @@
 				ondelete={(replacementId: string | undefined) => {
 					void deleteNature(replacementId);
 				}}
-				onimport={(template: NatureTemplate) => {
-					void importNatures(template);
+				onimport={(family: NatureFamily) => {
+					void importNatures(family);
 				}}
 				onclose={closeNatures}
 			/>

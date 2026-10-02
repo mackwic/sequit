@@ -12,36 +12,43 @@ bias = "top"
 icon = "phosphor:flag"
 label = "Need"
 color = "#f4c400"
+family = "goal-tree"
 
 [natures.want]
 icon = "phosphor:heart"
 label = "Want"
 color = "#ed58c7"
+family = "goal-tree"
 
 [natures.solution]
 icon = "phosphor:lightbulb"
 label = "Solution"
 color = "#6f70e8"
+family = "goal-tree"
 
 [natures.goal]
 icon = "phosphor:target"
 label = "Goal"
 color = "#12c930"
+family = "goal-tree"
 
 [natures.precondition]
 icon = "phosphor:key"
 label = "Precondition"
 color = "#8981ec"
+family = "goal-tree"
 
 [natures.desirable-effect]
 icon = "phosphor:sparkle"
 label = "Desirable Effect"
 color = "#62c985"
+family = "goal-tree"
 
 [natures.note]
 icon = "phosphor:note"
 label = "Note"
 color = "#f2ea20"
+family = "goal-tree"
 
 [groups.use-cases]
 label = "Use cases"

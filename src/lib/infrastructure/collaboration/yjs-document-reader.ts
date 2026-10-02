@@ -13,6 +13,7 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	natureFamilyField,
 	nodeDescriptionFields,
 	PERSISTENCE_FORMAT,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
@@ -73,8 +74,9 @@ function readNature(
 	const label = readText(entity.get('label'), ['natures', id, 'label'], context);
 	const color = readString(entity.get('color'), ['natures', id, 'color'], context);
 	const style = readContentStyle(entity, ['natures', id], context);
+	const family = readOptionalString(entity.get('family'), ['natures', id, 'family'], context);
 	if (label === undefined || color === undefined) return undefined;
-	return { id, label, ...style, color };
+	return { id, label, ...style, color, ...natureFamilyField(family) };
 }
 
 function readGroup(

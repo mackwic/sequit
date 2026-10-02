@@ -2,7 +2,13 @@ import {
 	contentStyleFields,
 	type LogicDocument,
 	type LogicNature,
+	natureFamilyField,
 } from '../../core/document/logic-document';
+import {
+	adoptableFamilyNatures,
+	missingFamilyNatures,
+	type NatureFamily,
+} from '../../core/document/nature-families';
 import {
 	SharedCommandKind,
 	type SharedDocumentCommand,
@@ -10,18 +16,19 @@ import {
 	SharedProperty,
 } from './shared-document-command';
 
-/** What an author edits in the nature dialog; `''` for icon means no icon. */
+/** What an author edits in the nature dialog; `''` means no icon, or no family. */
 export interface NatureFields {
 	readonly label: string;
 	readonly color: string;
 	readonly icon: string;
+	readonly family: string;
 }
 
 /** A nature without an icon and one that hides it explicitly both edit as no icon. */
 export function natureFields(nature: LogicNature): NatureFields {
 	let icon = nature.icon ?? '';
 	if (icon === 'none') icon = '';
-	return { label: nature.label, color: nature.color, icon };
+	return { label: nature.label, color: nature.color, icon, family: nature.family ?? '' };
 }
 
 export function natureCreation(id: string, fields: NatureFields): SharedDocumentCommand {
@@ -32,23 +39,51 @@ export function natureCreation(id: string, fields: NatureFields): SharedDocument
 			label: fields.label.trim(),
 			color: fields.color,
 			...contentStyleFields(undefined, fields.icon || undefined),
+			...natureFamilyField(fields.family || undefined),
 		},
 	};
 }
 
-/** The label is a text: callers splice it through `updateText`; colour and icon travel here. */
-export function natureStyleUpdate(
+/**
+ * One batch adding the family's natures the library lacks and filing in the family those it
+ * already holds without one, such as an older copy of the same library; empty when nothing changes.
+ */
+export function natureFamilyImport(
+	library: readonly LogicNature[],
+	family: NatureFamily,
+): readonly SharedDocumentCommand[] {
+	const created = missingFamilyNatures(library, family).map((nature) =>
+		natureCreation(nature.id, natureFields(nature)),
+	);
+	const filed = adoptableFamilyNatures(library, family).map(({ id }): SharedDocumentCommand => ({
+		op: SharedCommandKind.Update,
+		target: { kind: SharedElementKind.Nature, id },
+		set: { family: family.id },
+		unset: [],
+	}));
+	return [...created, ...filed];
+}
+
+/** Properties a nature may lack; an empty field removes them. */
+const OPTIONAL_PROPERTIES = [SharedProperty.Icon, SharedProperty.Family] as const;
+
+/** The label is a text: callers splice it through `updateText`; the other fields travel here. */
+export function natureUpdate(
 	natureId: string,
 	before: NatureFields,
 	after: NatureFields,
 ): SharedDocumentCommand | undefined {
-	if (before.color === after.color && before.icon === after.icon) return undefined;
-	const target = { kind: SharedElementKind.Nature, id: natureId } as const;
-	const set: { color?: string; icon?: string } = {};
+	const set: { color?: string; icon?: string; family?: string } = {};
+	const unset: (typeof OPTIONAL_PROPERTIES)[number][] = [];
 	if (before.color !== after.color) set.color = after.color;
-	if (before.icon !== after.icon && after.icon !== '') set.icon = after.icon;
-	const unset: SharedProperty.Icon[] = [];
-	if (before.icon !== after.icon && after.icon === '') unset.push(SharedProperty.Icon);
+	for (const property of OPTIONAL_PROPERTIES) {
+		const value = after[property];
+		if (value === before[property]) continue;
+		if (value === '') unset.push(property);
+		else set[property] = value;
+	}
+	if (unset.length === 0 && Object.keys(set).length === 0) return undefined;
+	const target = { kind: SharedElementKind.Nature, id: natureId } as const;
 	return { op: SharedCommandKind.Update, target, set, unset };
 }
 
@@ -60,6 +95,16 @@ export function natureDeletion(
 	const target = { kind: SharedElementKind.Nature, id: natureId } as const;
 	if (replacementId === undefined) return { op: SharedCommandKind.Delete, target };
 	return { op: SharedCommandKind.Delete, target, replacementId };
+}
+
+/** The nature shown once one is removed: its replacement, otherwise the first one left. */
+export function natureAfterRemoval(
+	natures: readonly LogicNature[],
+	removedId: string,
+	replacementId: string | undefined,
+): LogicNature | undefined {
+	const left = natures.filter(({ id }) => id !== removedId);
+	return left.find(({ id }) => id === replacementId) ?? left[0];
 }
 
 export enum NatureEditingMode {
@@ -76,15 +121,24 @@ export interface NatureEditing {
 	readonly draft: NatureFields;
 }
 
-const NEW_NATURE: NatureFields = { label: '', color: '#6f70e8', icon: '' };
+const NEW_NATURE: NatureFields = { label: '', color: '#6f70e8', icon: '', family: '' };
 
-export function newNatureEditing(id: string): NatureEditing {
-	return { id, mode: NatureEditingMode.Create, base: NEW_NATURE, draft: NEW_NATURE };
+/** A blank nature, in the given family when there is one. */
+export function newNatureEditing(id: string, family = ''): NatureEditing {
+	const fields = { ...NEW_NATURE, family };
+	return { id, mode: NatureEditingMode.Create, base: fields, draft: fields };
 }
 
 export function natureEditing(nature: LogicNature): NatureEditing {
 	const fields = natureFields(nature);
 	return { id: nature.id, mode: NatureEditingMode.Edit, base: fields, draft: fields };
+}
+
+/** Whether saving the form would change anything; a label differing only by spaces does not. */
+export function natureDraftChanged({ base, draft }: NatureEditing): boolean {
+	if (draft.label.trim() !== base.label) return true;
+	if (draft.color !== base.color) return true;
+	return draft.icon !== base.icon || draft.family !== base.family;
 }
 
 /** Boxes per nature, including zero for unused natures. */

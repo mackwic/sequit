@@ -29,7 +29,7 @@ const FIELDS: Readonly<Record<SharedElementKind, readonly string[]>> = {
 		'icon',
 	],
 	[SharedElementKind.Group]: ['label', 'color', 'groupId', 'laneId', 'regionId', 'state'],
-	[SharedElementKind.Nature]: ['label', 'color', 'icon'],
+	[SharedElementKind.Nature]: ['label', 'color', 'icon', 'family'],
 	[SharedElementKind.Junction]: ['operator', 'groupId', 'laneId', 'regionId'],
 	[SharedElementKind.Relation]: ['from', 'to'],
 };

@@ -85,7 +85,7 @@
 	"collaboration_workspace_fallback_description_aria": "Description of {id}",
 	"collaboration_workspace_shared_group_description": "The title is shared live; the color is saved.",
 	"collaboration_workspace_group_title_label": "Group title",
-	"collaboration_workspace_shared_nature_description": "A nature’s label is shared live; its color and icon are saved.",
+	"collaboration_workspace_shared_nature_description": "A nature’s label is shared live; its color, icon and family are saved.",
 	"collaboration_workspace_nature_label_label": "Nature label",
 	"collaboration_workspace_panel_aria": "Shared document",
 	"collaboration_workspace_invalid_source_notice": "The current document can’t be edited while its source is invalid.",

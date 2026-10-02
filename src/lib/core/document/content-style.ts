@@ -4,6 +4,7 @@ import {
 	defined,
 	type LogicDocument,
 	type LogicNode,
+	natureFamilyField,
 } from './logic-document';
 
 /** Replace only presentation properties; omitted values restore inheritance. */
@@ -47,6 +48,7 @@ export function styleDocumentNature(
 				label: nature.label,
 				color: style.color ?? nature.color,
 				...contentStyleFields(undefined, style.icon),
+				...natureFamilyField(nature.family),
 			};
 		}),
 	};

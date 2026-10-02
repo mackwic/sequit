@@ -7,6 +7,7 @@ import {
 	LANE_PERSISTENCE_FORMAT,
 	type LayoutRegionDefinition,
 	type LogicDocument,
+	natureFamilyField,
 	REGION_COMPOSITION_PERSISTENCE_FORMAT,
 	REGION_LANE_PERSISTENCE_FORMAT,
 	REGION_PERSISTENCE_FORMAT,
@@ -204,9 +205,10 @@ export function importLogicDocument(
 		replaceEntityCollection(
 			ydoc.getMap(YjsCollection.Natures),
 			document.natures,
-			({ label, color, icon }) => ({
+			({ label, color, icon, family }) => ({
 				label,
 				...contentStyleFields(color, icon),
+				...natureFamilyField(family),
 			}),
 		);
 		replaceEntityCollection(

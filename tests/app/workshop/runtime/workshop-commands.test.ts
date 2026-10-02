@@ -5,6 +5,7 @@ import type * as Y from 'yjs';
 import source from '../../../../src/app/workshop/branching.toml?raw';
 import { WorkshopDocument } from '../../../../src/app/workshop/runtime/workshop-document';
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { defaultNatures } from '../../../../src/lib/core/document/nature-families';
 import { YjsCollection } from '../../../../src/lib/infrastructure/collaboration/yjs-document-schema';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 
@@ -166,14 +167,14 @@ it('rewires a convergence in one step, preserves other relations and rejects rep
 	expect(store.history.canUndo()).toBe(false);
 });
 
-it('arranges in either axis and creates an undoable empty document retaining its natures', () => {
+it('arranges in either axis and creates an undoable empty document with the default natures', () => {
 	const store = open();
 	store.commands.arrange(LayoutDirection.LeftToRight);
 	expect(store.read().layout).toEqual({ direction: 'left-to-right', bias: 'left' });
 	store.commands.arrange(LayoutDirection.BottomToTop);
 	expect(store.read().layout).toEqual({ direction: 'bottom-to-top', bias: 'top' });
 	const before = store.text();
-	const natures = store.read().natures;
+	const byId = (left: { id: string }, right: { id: string }) => left.id.localeCompare(right.id);
 	store.commands.newDocument('new-id');
 	expect(store.read()).toMatchObject({
 		id: 'new-id',
@@ -182,8 +183,8 @@ it('arranges in either axis and creates an undoable empty document retaining its
 		groups: [],
 		relations: [],
 		junctions: [],
-		natures,
 	});
+	expect([...store.read().natures].sort(byId)).toEqual([...defaultNatures()].sort(byId));
 	store.history.undo();
 	expect(store.text()).toBe(before);
 });

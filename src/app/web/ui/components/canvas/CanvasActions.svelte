@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { LogicNature } from '../../../../../lib/core/document/logic-document';
+	import { natureFamilyGroups } from '../../../../../lib/core/document/nature-families';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		CANVAS_SHORTCUTS,
@@ -7,6 +8,7 @@
 		shortcutKeyshortcuts,
 		shortcutTitle,
 	} from '../../canvas/canvas-shortcuts';
+	import { natureFamilyName } from '../../content/nature-families';
 	import DropdownMenu from '../ui/DropdownMenu.svelte';
 	import Icon from '../ui/Icon.svelte';
 
@@ -35,6 +37,7 @@
 		if (nature === undefined) return m.common_natures();
 		return m.editing_canvas_next_nature_tip({ label: nature.label });
 	});
+	let groups = $derived(natureFamilyGroups(natures));
 </script>
 
 <nav
@@ -65,25 +68,28 @@
 					><Icon name={nature?.icon ?? 'phosphor:tag'} size={16} /></span
 				><span class="sr-only">{natureTip}</span>
 			{/snippet}
-			<div role="group" aria-label={m.editing_canvas_next_nature()}>
-				<p class="dropdown-heading">{m.editing_canvas_next_nature()}</p>
-				{#each natures as candidate (candidate.id)}
-					{@const checked = candidate.id === nature?.id}
-					<button
-						role="menuitemradio"
-						type="button"
-						aria-checked={checked}
-						onclick={() => {
-							onnature(candidate.id);
-						}}
-						><span class="dropdown-radio"></span><span
-							class="swatch"
-							style:--content-color={candidate.color}
-							aria-hidden="true"><Icon name={candidate.icon ?? 'none'} size={14} /></span
-						><span>{candidate.label}</span></button
-					>
-				{/each}
-			</div>
+			{#each groups as group (group.family?.id ?? '')}
+				{@const name = natureFamilyName(group.family)}
+				<div role="group" aria-label={name}>
+					<p class="dropdown-heading" aria-hidden="true">{name}</p>
+					{#each group.natures as candidate (candidate.id)}
+						{@const checked = candidate.id === nature?.id}
+						<button
+							role="menuitemradio"
+							type="button"
+							aria-checked={checked}
+							onclick={() => {
+								onnature(candidate.id);
+							}}
+							><span class="dropdown-radio"></span><span
+								class="swatch"
+								style:--content-color={candidate.color}
+								aria-hidden="true"><Icon name={candidate.icon ?? 'none'} size={14} /></span
+							><span>{candidate.label}</span></button
+						>
+					{/each}
+				</div>
+			{/each}
 			<div role="separator"></div>
 			<button role="menuitem" type="button" onclick={onnatures}
 				><Icon name="phosphor:tag" /><span>{m.editing_canvas_manage_natures()}</span></button

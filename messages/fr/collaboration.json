@@ -85,7 +85,7 @@
 	"collaboration_workspace_fallback_description_aria": "Description de {id}",
 	"collaboration_workspace_shared_group_description": "Le titre est partagé en direct ; la couleur part à l’enregistrement.",
 	"collaboration_workspace_group_title_label": "Titre du groupe",
-	"collaboration_workspace_shared_nature_description": "Le libellé d’une nature est partagé en direct ; couleur et icône partent à l’enregistrement.",
+	"collaboration_workspace_shared_nature_description": "Le libellé d’une nature est partagé en direct ; couleur, icône et famille partent à l’enregistrement.",
 	"collaboration_workspace_nature_label_label": "Libellé de la nature",
 	"collaboration_workspace_panel_aria": "Document partagé",
 	"collaboration_workspace_invalid_source_notice": "Le document courant ne peut pas être édité tant que sa source est invalide.",

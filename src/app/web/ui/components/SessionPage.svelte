@@ -4,13 +4,13 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
-	import { defaultNatures } from '../../../../lib/core/document/default-natures';
 	import {
 		LayoutBias,
 		LayoutDirection,
 		type LogicDocument,
 		PERSISTENCE_FORMAT,
 	} from '../../../../lib/core/document/logic-document';
+	import { defaultNatures } from '../../../../lib/core/document/nature-families';
 	import { CollaborationStatus } from '../../../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../../../lib/infrastructure/collaboration/websocket-collaboration-transport';
 	import { UNTITLED_DOCUMENT_TITLE } from '../../../../lib/infrastructure/document/document-creation';

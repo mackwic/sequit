@@ -33,11 +33,14 @@
 	"editing_nature_create": "New nature",
 	"editing_nature_delete_hint": "Affected boxes will change nature",
 	"editing_nature_none_selected": "Choose a nature to edit, or create one.",
-	"editing_nature_templates": "Templates",
-	"editing_nature_templates_menu": "Add natures from a template",
-	"editing_nature_template_generic": "Generic",
-	"editing_nature_template_retro_kds": "Retro Keep · Drop · Start",
-	"editing_nature_template_missing": [
+	"editing_nature_family": "Family",
+	"editing_nature_families": "Families",
+	"editing_nature_families_menu": "Add a family of natures",
+	"editing_nature_family_generic": "Generic",
+	"editing_nature_family_goal_tree": "Goal Tree",
+	"editing_nature_family_retro_kds": "Retro Keep · Drop · Start",
+	"editing_nature_family_none": "No family",
+	"editing_nature_family_missing": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
@@ -47,7 +50,17 @@
 			}
 		}
 	],
-	"editing_nature_template_present": "Already in the document",
+	"editing_nature_family_adoptable": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} nature to file in the family",
+				"countPlural=other": "{count} natures to file in the family"
+			}
+		}
+	],
+	"editing_nature_family_present": "Already in the document",
 	"editing_node_title_edit": "Box properties",
 	"editing_node_eyebrow": "Box",
 	"editing_color_and_icon": "Color and icon",

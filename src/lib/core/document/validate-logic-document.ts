@@ -2,6 +2,7 @@ import type {
 	ContentStyle,
 	DocumentResult,
 	LogicDocument,
+	LogicNature,
 	SequitDiagnostic,
 } from './logic-document';
 import { defined, duplicateRelationIds, groupStateFields } from './logic-document';
@@ -129,6 +130,18 @@ function validateContentStyle(
 	});
 }
 
+/** A family is an identifier, so a document from a newer catalogue keeps its unknown families. */
+function validateNatureFamily(nature: LogicNature, diagnostics: SequitDiagnostic[]): void {
+	const { family } = nature;
+	if (family === undefined) return;
+	if (family.length <= 64 && /^[a-z][a-z0-9-]*$/.test(family)) return;
+	diagnostics.push({
+		code: SequitDiagnosticCode.InvalidValue,
+		message: 'Nature family must be an identifier of lowercase letters, digits and hyphens',
+		path: ['natures', nature.id, 'family'],
+	});
+}
+
 function validateContent(document: LogicDocument, diagnostics: SequitDiagnostic[]): void {
 	for (const group of document.groups) {
 		try {
@@ -142,8 +155,10 @@ function validateContent(document: LogicDocument, diagnostics: SequitDiagnostic[
 		}
 	}
 
-	for (const nature of document.natures)
+	for (const nature of document.natures) {
 		validateContentStyle(nature, ['natures', nature.id], diagnostics);
+		validateNatureFamily(nature, diagnostics);
+	}
 	for (const node of document.nodes) validateContentStyle(node, ['nodes', node.id], diagnostics);
 }
 

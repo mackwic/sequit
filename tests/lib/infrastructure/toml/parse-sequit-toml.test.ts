@@ -5,6 +5,7 @@ import type {
 	LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
 import { parseSequitToml } from '../../../../src/lib/infrastructure/toml/parse-sequit-toml';
+import { serializeSequitToml } from '../../../../src/lib/infrastructure/toml/serialize-sequit-toml';
 import { tomlSyntaxFailure } from '../../../../src/lib/infrastructure/toml/toml-syntax';
 import {
 	withDuplicateEndpoint,
@@ -59,6 +60,19 @@ describe('parseSequitToml', () => {
 
 		expect(expectFailure(parseSequitToml(invalid))).toContainEqual(
 			expect.objectContaining({ code: 'missing-field', path: ['document', 'title'] }),
+		);
+	});
+
+	it('keeps nature families through a round trip and rejects a malformed one at its path', async () => {
+		const text = await source();
+		const document = expectSuccess(parseSequitToml(text));
+		expect(document.natures.find(({ id }) => id === 'goal')?.family).toBe('goal-tree');
+		const reparsed = expectSuccess(parseSequitToml(serializeSequitToml(document)));
+		expect(reparsed.natures).toEqual(document.natures);
+
+		const invalid = text.replace('family = "goal-tree"', 'family = "Goal Tree"');
+		expect(expectFailure(parseSequitToml(invalid))).toContainEqual(
+			expect.objectContaining({ code: 'invalid-value', path: ['natures', 'need', 'family'] }),
 		);
 	});
 

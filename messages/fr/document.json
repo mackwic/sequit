@@ -33,7 +33,7 @@
 	"document_new_retained_notice": "Le document courant reste disponible dans « Documents récents… ».",
 	"document_new_replaced_notice": "Le document courant est remplacé sans être enregistré ; exporte-le d’abord si tu veux le conserver.",
 	"document_new_title": "Nouveau document",
-	"document_new_body": "Le nouveau document est vide et reprend les natures et la disposition du document courant.",
+	"document_new_body": "Le nouveau document est vide, démarre avec la famille de natures Générique et reprend la disposition du document courant.",
 	"document_diagnostics_line": "ligne {line}",
 	"document_diagnostics_invalid": "{name} n’est pas un document Sequit valide.",
 	"document_open_title": "Ouvrir un document",

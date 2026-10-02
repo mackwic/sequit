@@ -33,7 +33,7 @@
 	"document_new_retained_notice": "The current document remains available in “Recent documents…”.",
 	"document_new_replaced_notice": "The current document will be replaced without being saved; export it first if you want to keep it.",
 	"document_new_title": "New document",
-	"document_new_body": "The new document is empty and keeps the natures and layout of the current document.",
+	"document_new_body": "The new document is empty, starts with the Generic family of natures and keeps the layout of the current document.",
 	"document_diagnostics_line": "line {line}",
 	"document_diagnostics_invalid": "{name} is not a valid Sequit document.",
 	"document_open_title": "Open a document",

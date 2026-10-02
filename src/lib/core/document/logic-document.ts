@@ -210,6 +210,14 @@ export interface LogicNature extends ContentStyle {
 	readonly id: string;
 	readonly label: string;
 	readonly color: string;
+	/** The family it belongs to, such as `generic`; absent for a nature of no family. */
+	readonly family?: string;
+}
+
+/** Copies a nature's optional family, leaving it absent rather than undefined. */
+export function natureFamilyField(family: string | undefined): { readonly family?: string } {
+	if (family === undefined) return {};
+	return { family };
 }
 
 export enum GroupState {

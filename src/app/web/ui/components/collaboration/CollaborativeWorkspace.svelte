@@ -9,7 +9,7 @@
 		type LayoutConfiguration,
 		type LogicDocument,
 	} from '../../../../../lib/core/document/logic-document';
-	import type { NatureTemplate } from '../../../../../lib/core/document/nature-templates';
+	import { firstNature, type NatureFamily } from '../../../../../lib/core/document/nature-families';
 	import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
 	import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
 	import {
@@ -27,9 +27,9 @@
 		type NatureEditing,
 		natureEditing,
 		NatureEditingMode,
+		natureFamilyImport,
 		type NatureFields,
-		natureStyleUpdate,
-		natureTemplateImport,
+		natureUpdate,
 		natureUsage,
 		newNatureEditing,
 	} from '../../../../../lib/infrastructure/document/nature-fields';
@@ -384,7 +384,7 @@
 	}
 	function openNatures(): void {
 		if (!interactive) return;
-		const first = model.natures[0];
+		const first = firstNature(model.natures);
 		editingNature = first && natureEditing(first);
 		natureManager = true;
 	}
@@ -400,14 +400,14 @@
 		const nature = model.natures.find(({ id }) => id === natureId);
 		if (nature !== undefined) editingNature = natureEditing(nature);
 	}
-	/** The label of an existing nature is live shared text; only its style travels here. */
+	/** The label of an existing nature is live shared text; its other fields travel here. */
 	function saveNature(): boolean {
 		const editing = editingNature;
 		if (editing === undefined) return false;
 		if (editing.mode === NatureEditingMode.Create)
 			return dispatchMany([natureCreation(editing.id, editing.draft)]);
-		const style = natureStyleUpdate(editing.id, editing.base, editing.draft);
-		return style === undefined || dispatchMany([style]);
+		const update = natureUpdate(editing.id, editing.base, editing.draft);
+		return update === undefined || dispatchMany([update]);
 	}
 	function deleteNature(replacementId: string | undefined): void {
 		const editing = editingNature;
@@ -416,8 +416,8 @@
 		if (dispatchMany([natureDeletion(editing.id, replacementId)]))
 			editingNature = next && natureEditing(next);
 	}
-	function importNatures(template: NatureTemplate): void {
-		const commands = natureTemplateImport(model.natures, template);
+	function importNatures(family: NatureFamily): void {
+		const commands = natureFamilyImport(model.natures, family);
 		if (commands.length > 0) dispatchMany(commands);
 	}
 
@@ -616,8 +616,8 @@
 				description={m.collaboration_workspace_shared_nature_description()}
 				data={{ 'data-nature-manager': '' }}
 				onselect={selectNature}
-				oncreate={() => {
-					editingNature = newNatureEditing(crypto.randomUUID());
+				oncreate={(family: string) => {
+					editingNature = newNatureEditing(crypto.randomUUID(), family);
 				}}
 				onchange={(patch: Partial<NatureFields>) => {
 					if (editingNature !== undefined)

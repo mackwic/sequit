@@ -2,6 +2,7 @@ import type Quill from 'quill';
 import { untrack } from 'svelte';
 
 import type { LogicDocument, LogicNature } from '../../../../../lib/core/document/logic-document';
+import { firstNature } from '../../../../../lib/core/document/nature-families';
 import type { Bounds } from '../../../../../lib/core/layout/layout-types';
 import { DocumentCommandOutcomeKind } from '../../../../../lib/infrastructure/document/document-command-contracts';
 import type { SharedDocumentCommand } from '../../../../../lib/infrastructure/document/shared-document-command';
@@ -158,7 +159,7 @@ export class NodeTyping {
 
 	/** The nature of the next box. */
 	nature(natures: readonly LogicNature[]): LogicNature | undefined {
-		return natures.find(({ id }) => id === this.natureId) ?? natures[0];
+		return natures.find(({ id }) => id === this.natureId) ?? firstNature(natures);
 	}
 
 	/** Starts typing a new box; `false` without nature, without target, or while a box is edited. */
@@ -168,7 +169,7 @@ export class NodeTyping {
 		const plan = planNodeCreation(document, request, {
 			nodeId: crypto.randomUUID(),
 			relationId: () => crypto.randomUUID(),
-			natureId: this.natureId,
+			natureId: this.nature(document.natures)?.id,
 		});
 		if (plan === undefined) return false;
 		this.#typing = { draft: plan, markdown: '', origin: request.target ?? request.near };

@@ -6,6 +6,7 @@ import {
 	type GridLayoutPresentation,
 	type LayoutRegionDefinition,
 	type LogicDocument,
+	natureFamilyField,
 	nodeDescriptionFields,
 } from '../../core/document/logic-document';
 
@@ -86,9 +87,10 @@ export function serializeSequitToml(document: LogicDocument): string {
 		layout: { direction: document.layout.direction, bias: document.layout.bias },
 		...presentationTable,
 		...regionPresentationTable,
-		natures: entityTable(document.natures, ({ label, color, icon }) => ({
+		natures: entityTable(document.natures, ({ label, color, icon, family }) => ({
 			label,
 			...contentStyleFields(color, icon),
+			...natureFamilyField(family),
 		})),
 		groups: entityTable(
 			document.groups,

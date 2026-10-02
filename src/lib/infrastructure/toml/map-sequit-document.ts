@@ -14,6 +14,7 @@ import {
 	type LogicNature,
 	type LogicNode,
 	type LogicRelation,
+	natureFamilyField,
 	nodeDescriptionFields,
 	type RegionLayoutPresentation,
 	type RootLayoutPresentation,
@@ -152,8 +153,9 @@ export function mapSequitDocument(rootValue: unknown): DocumentResult<LogicDocum
 			const label = string(entity['label'], [...path, 'label'], context);
 			const color = string(entity['color'], [...path, 'color'], context);
 			const style = mapContentStyle(entity, path, context);
+			const family = optionalString(entity['family'], [...path, 'family'], context);
 			if (label !== undefined && color !== undefined)
-				natures.push({ id: natureId, label, ...style, color });
+				natures.push({ id: natureId, label, ...style, color, ...natureFamilyField(family) });
 		}
 	}
 
