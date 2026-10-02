@@ -178,6 +178,7 @@ export function channelMaterializedRelations(input: {
 		vertical: true,
 		railStart: (sourceTop + targetBottom) / 2 + halfSpan,
 		railStep: -RAIL_SPACING,
+		frames: [],
 	};
 	const pointsByRelation = new Map(
 		channel.wires.map((wire) => [

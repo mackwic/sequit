@@ -232,6 +232,11 @@ export function materializeLayers(
 		layers: plan.layers,
 		enclosingGroups: plan.enclosingGroups,
 	});
+	const frames: Bounds[] = [];
+	for (const id of plan.enclosingGroups) {
+		const box = bounds.get(id);
+		if (box !== undefined) frames.push(box);
+	}
 	let sign = 1;
 	if (!frame.forward) sign = -1;
 	const paths = new Map<string, Point[]>();
@@ -244,6 +249,7 @@ export function materializeLayers(
 			vertical: frame.vertical,
 			railStart: (center + halfSpan) * sign,
 			railStep: -sign * RAIL_SPACING,
+			frames,
 		};
 		for (const [index, wire] of channel.wires.entries()) {
 			const link = defined(channel.links[index]);

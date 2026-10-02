@@ -1,14 +1,25 @@
 import { defined, EndpointKind, type LogicRelation } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 import { GROUP_SHELL_CLEARANCE, RAIL_SPACING } from '../layout-settings';
-import type { Bounds, Point, RoutingLayers } from '../layout-types';
+import { type Bounds, GroupRouteFailure, type Point, type RoutingLayers } from '../layout-types';
 import {
 	componentExteriorCandidates,
 	type ExteriorCandidates,
 	exteriorFor,
 } from './component-passages';
-import { commonGroupBounds, foreignGroupObstacles } from './group-passages';
-import { parallelShellObstacles } from './group-shells';
+import {
+	commonGroupBounds,
+	foreignGroupObstacles,
+	groupPaddingCandidates,
+	internalCorridorCandidates,
+	passageGroupPoints,
+} from './group-passages';
+import {
+	packedShellCandidates,
+	parallelShellObstacles,
+	parallelShells,
+	shellPassageCandidates,
+} from './group-shells';
 import { freeColumnIndex, holdOuterColumn, passageEnds } from './passage-columns';
 import { byJogCrossings, type PassageReservation } from './passage-jogs';
 import { prepareRouteObstacles, routeHitsObstacles, type RouteObstacles } from './route-obstacles';
@@ -30,6 +41,8 @@ interface PassageWorkspace extends PassageInput {
 	readonly reservations: PassageReservation[];
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
 	readonly shellObstacles: RouteObstacles;
+	readonly shellCandidates: readonly number[];
+	readonly sharedClearance: number;
 	exteriorCandidates?: ReadonlyMap<number, ExteriorCandidates>;
 }
 
@@ -103,81 +116,6 @@ function mergedIntervals(boxes: readonly Bounds[], vertical: boolean): readonly 
 	return merged;
 }
 
-function sortByDistance(candidates: number[], source: number, target: number): readonly number[] {
-	return candidates.sort((left, right) => {
-		const leftCost = Math.abs(left - source) + Math.abs(left - target);
-		const rightCost = Math.abs(right - source) + Math.abs(right - target);
-		return leftCost - rightCost || left - right;
-	});
-}
-
-/** Free transverse gaps between obstacle clusters, nearest to the two endpoint ports first. */
-function internalCorridorCandidates(
-	occupied: readonly Interval[],
-	source: number,
-	target: number,
-): readonly number[] {
-	const preferred = (source + target) / 2;
-	const candidates: number[] = [];
-	for (let index = 1; index < occupied.length; index += 1) {
-		const before = defined(occupied[index - 1]);
-		const after = defined(occupied[index]);
-		candidates.push(Math.max(before.end, Math.min(preferred, after.start)));
-	}
-	return sortByDistance(candidates, source, target);
-}
-
-function occupiedGroupPaddingCandidates(
-	occupied: readonly Interval[],
-	group: Interval,
-	preferred: number,
-	maximumTracks: number,
-): number[] {
-	const first = defined(occupied[0]);
-	const last = defined(occupied.at(-1));
-	const leading = Math.max(group.start, Math.min(preferred, first.start));
-	const trailing = Math.max(last.end, Math.min(preferred, group.end));
-	const candidates = [leading, trailing];
-	for (let track = 1; track < maximumTracks; track += 1) {
-		const candidate = leading - track * RAIL_SPACING;
-		if (candidate < group.start) break;
-		candidates.push(candidate);
-	}
-	for (let track = 1; track < maximumTracks; track += 1) {
-		const candidate = trailing + track * RAIL_SPACING;
-		if (candidate > group.end) break;
-		candidates.push(candidate);
-	}
-	return candidates;
-}
-
-/** Reuse 24px-spaced free tracks in the containing frame after internal gaps. */
-function groupPaddingCandidates(
-	selection: PassageSelection,
-	occupied: readonly Interval[],
-): readonly number[] {
-	const { group, sourceCoordinate, targetCoordinate, workspace } = selection;
-	if (group === undefined) return [];
-	const preferred = (sourceCoordinate + targetCoordinate) / 2;
-	const maximumTracks = workspace.reservations.length + 1;
-	let candidates: number[];
-	if (occupied.length === 0) {
-		candidates = [];
-		for (let track = 1; track <= maximumTracks; track += 1) {
-			const leading = preferred - track * RAIL_SPACING;
-			const trailing = preferred + track * RAIL_SPACING;
-			if (leading < group.start && trailing > group.end) break;
-			if (leading >= group.start) candidates.push(leading);
-			if (trailing <= group.end) candidates.push(trailing);
-		}
-	} else {
-		candidates = occupiedGroupPaddingCandidates(occupied, group, preferred, maximumTracks);
-	}
-	// A nested shell can occupy the node-adjacent tracks; retain the parent padding too.
-	candidates.push(group.start, group.end);
-	return sortByDistance(candidates, sourceCoordinate, targetCoordinate);
-}
-
 function occupiedIntervals(
 	input: PassageWorkspace,
 	targetLayer: number,
@@ -212,22 +150,57 @@ function candidateHitsObstacles(
 	}
 	const foreignGroupObstacles = selection.foreignGroupObstacles;
 	if (foreignGroupObstacles !== undefined) {
-		if (routeHitsObstacles(points, foreignGroupObstacles)) return true;
+		const jogs = passageGroupPoints(selection.workspace, selection.relation, {
+			source: selection.sourceCoordinate,
+			target: selection.targetCoordinate,
+			passage: candidate,
+		});
+		if (routeHitsObstacles(jogs, foreignGroupObstacles)) return true;
 	}
 	return false;
 }
 
-function selectPassage(input: PassageSelection, clearance = RAIL_SPACING): number | undefined {
+/** Keep the former admissible column as a geometric tie-break, without relaxing shell checks. */
+function previousPassage(input: PassageSelection, ordered: readonly number[]): number | undefined {
+	const { workspace, group } = input;
+	const [targetLayer, sourceLayer] = input.layerSpan;
+	const ordinary = obstaclesAcross(workspace, targetLayer, sourceLayer, RAIL_SPACING);
+	const foreign = foreignGroupObstacles(workspace, input.relation);
+	for (const candidate of ordered) {
+		if (group !== undefined) {
+			if (candidate < group.start || candidate > group.end) continue;
+		}
+		if (freeColumnIndex(workspace.reservations, input.layerSpan, candidate) === undefined) continue;
+		const points = input.endpoints.map((box) => column(candidate, box, workspace.vertical));
+		if (ordinary !== undefined && routeHitsObstacles(points, ordinary)) continue;
+		if (foreign !== undefined && routeHitsObstacles(points, foreign)) continue;
+		return candidate;
+	}
+	return undefined;
+}
+
+function selectPassage(
+	input: PassageSelection,
+	clearance = RAIL_SPACING,
+	spacing = RAIL_SPACING,
+): number | undefined {
 	const { workspace } = input;
 	const [targetLayer, sourceLayer] = input.layerSpan;
 	let obstacleIndex: RouteObstacles | undefined;
 	let obstacleIndexReady = false;
-	for (const candidate of byJogCrossings(workspace, input)) {
+	const ordered = byJogCrossings(workspace, input);
+	const preferred = previousPassage(input, ordered);
+	const candidates = [...ordered, ...workspace.shellCandidates];
+	if (preferred !== undefined) {
+		const anchor = preferred;
+		candidates.sort((left, right) => Math.abs(left - anchor) - Math.abs(right - anchor));
+	}
+	for (const candidate of byJogCrossings(workspace, { ...input, candidates })) {
 		const { group } = input;
 		if (group !== undefined) {
 			if (candidate < group.start || candidate > group.end) continue;
 		}
-		const index = freeColumnIndex(workspace.reservations, input.layerSpan, candidate);
+		const index = freeColumnIndex(workspace.reservations, input.layerSpan, candidate, spacing);
 		if (index === undefined) continue;
 		if (!obstacleIndexReady) {
 			obstacleIndex = obstaclesAcross(workspace, targetLayer, sourceLayer, clearance);
@@ -248,14 +221,33 @@ function selectPassage(input: PassageSelection, clearance = RAIL_SPACING): numbe
 	return undefined;
 }
 
-function reservePassage(input: PassageWorkspace, relation: LogicRelation): number | undefined {
+function appendPackedCandidates(selection: PassageSelection): void {
+	const { workspace: input } = selection;
+	const [targetLayer, sourceLayer] = selection.layerSpan;
+	const boxes: Bounds[] = [];
+	for (let layer = targetLayer + 1; layer < sourceLayer; layer += 1)
+		for (const id of defined(input.layers.rows[layer]))
+			if (input.graph.endpointsById.get(id)?.kind !== EndpointKind.Group)
+				boxes.push(defined(input.bounds.get(id)));
+	const edges = [
+		...input.shellCandidates,
+		...input.reservations.map(({ coordinate }) => coordinate),
+	];
+	selection.candidates.push(...packedShellCandidates(boxes, input.vertical, edges));
+}
+
+function reservePassage(
+	input: PassageWorkspace,
+	relation: LogicRelation,
+	spacing = RAIL_SPACING,
+): number | undefined {
 	const { layerSpan, sourceCoordinate, targetCoordinate } = passageEnds(input, relation);
 	const [targetLayer, sourceLayer] = layerSpan;
 	if (sourceLayer <= targetLayer + 1) return undefined;
 	const source = defined(input.bounds.get(relation.from));
 	const target = defined(input.bounds.get(relation.to));
 	const group = commonGroupBounds(input, relation);
-	const foreignGroups = foreignGroupObstacles(input, relation);
+	const foreignGroups = foreignGroupObstacles(input, relation, 0);
 	let occupied = occupiedIntervals(input, targetLayer, sourceLayer);
 	if (group !== undefined) {
 		const scoped: Interval[] = [];
@@ -291,13 +283,18 @@ function reservePassage(input: PassageWorkspace, relation: LogicRelation): numbe
 	selection.candidates.push(
 		...internalCorridorCandidates(occupied, sourceCoordinate, targetCoordinate),
 	);
-	selection.candidates.push(...groupPaddingCandidates(selection, occupied));
+	selection.candidates.push(
+		...groupPaddingCandidates(selection, occupied, input.reservations.length + 1),
+	);
 	if (group !== undefined) selection.candidates.push(...exterior.preferred);
+	if (spacing < RAIL_SPACING) appendPackedCandidates(selection);
 	selection.candidates.push(...fallback);
-	const passage = selectPassage(selection);
+	const passage = selectPassage(selection, RAIL_SPACING, spacing);
 	if (passage !== undefined || group === undefined) return passage;
 	// If no full-clearance column fits, share the padding between the node and its frame.
-	return selectPassage(selection, GROUP_SHELL_CLEARANCE);
+	const shared = selectPassage(selection, input.sharedClearance, spacing);
+	if (shared !== undefined || spacing === RAIL_SPACING) return shared;
+	return selectPassage(selection, 0, spacing);
 }
 
 /** An outer column held like the other passages, so that no later passage runs along it. */
@@ -306,6 +303,16 @@ function reserveOuterColumn(
 	relation: LogicRelation,
 	start: number,
 ): number {
+	if (commonGroupBounds(input, relation) !== undefined) {
+		let spacing = RAIL_SPACING / (input.reservations.length + 1);
+		let passage = reservePassage(input, relation, spacing);
+		while (passage === undefined && spacing > Number.EPSILON) {
+			spacing /= 2;
+			passage = reservePassage(input, relation, spacing);
+		}
+		if (passage === undefined) throw new GroupRouteFailure(relation.id);
+		return passage;
+	}
 	return holdOuterColumn(input.reservations, relation, passageEnds(input, relation), start);
 }
 
@@ -317,6 +324,10 @@ export interface LayerPassageAllocator {
 
 /** A new allocator belongs to one geometry phase; nothing survives the next placement. */
 export function layerPassages(input: PassageInput): LayerPassageAllocator {
+	const shells = parallelShells(input.graph, input.bounds, input.vertical);
+	let sharedClearance = GROUP_SHELL_CLEARANCE;
+	for (const { leading, trailing } of shells)
+		sharedClearance = Math.min(sharedClearance, leading, trailing);
 	const workspace: PassageWorkspace = {
 		...input,
 		ancestorCache: new Map(),
@@ -324,14 +335,9 @@ export function layerPassages(input: PassageInput): LayerPassageAllocator {
 		obstacles: new Map(),
 		reservations: [],
 		groupObstacleCache: new Map(),
-		shellObstacles: parallelShellObstacles(
-			input.graph.document.groups.flatMap(({ id }) => {
-				const box = input.bounds.get(id);
-				if (box === undefined) return [];
-				return [box];
-			}),
-			input.vertical,
-		),
+		shellObstacles: parallelShellObstacles(shells, input.vertical),
+		shellCandidates: shellPassageCandidates(shells),
+		sharedClearance,
 	};
 	return Object.assign((relation: LogicRelation) => reservePassage(workspace, relation), {
 		outer: (relation: LogicRelation, start: number) =>

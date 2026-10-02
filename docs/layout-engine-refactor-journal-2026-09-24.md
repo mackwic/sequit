@@ -744,3 +744,10 @@ L'onglet « Contacts de régions » de `/atelier/solveur` compare maintenant deu
 - Les témoins à quatre et cinq nœuds passent de 0 à au moins 24 unités en TB ; le minimum commun exigé est 12 unités. Les quatre directions, les en-têtes 36/60/90, les paddings 24/36/48 et les groupes imbriqués sont couverts.
 - L’oracle indépendant refuse les segments parallèles à moins de 12 unités d’un cadre ; propriétés sur 400 tirages × 4 directions à un ou deux groupes et 1 200 layouts à un groupe, sans contact colinéaire.
 - Aucun SHA dédié ré-épinglé ; les documents de référence conservent leurs géométries sélectionnées. Les rangs, les ports et l’allocation des rails ne sont pas modifiés.
+
+### Reprise de relecture — confinement et padding étroit
+
+- Commit `fix(layout): coques dédiées — contenir les passages et vérifier leurs traverses` : reprise D-06/R01–R04 ; vérification des deux traverses, dégagement proportionnel au padding réel, pistes internes resserrées en saturation et décrochement centré hors des coques.
+- Corpus exact du relecteur (600 graines × 4 directions, deux séries) : validité padding36 **2376 → 2400**, mixte **2360 → 2400** ; sorties du groupe **4 → 0** et **24 → 0** ; croisements stricts **1774 → 1632** et **1798 → 1638**. Aucun contact colinéaire ni traversée de cadre étranger après correction.
+- L’ordre des relations et la priorité aux faibles croisements restent inchangés ; aucun padding mesuré agrandi. En saturation, le confinement prime sur le pas de 24 unités entre pistes.
+- Aucun SHA ré-épinglé. Le contrat nommé `ChannelGeometry` reçoit désormais obligatoirement les cadres pour centrer aussi le décrochement intermédiaire ; sans cadre, ses points sont inchangés.

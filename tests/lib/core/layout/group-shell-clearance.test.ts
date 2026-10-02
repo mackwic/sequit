@@ -1,10 +1,15 @@
 import { expect, it } from 'vitest';
 
 import { LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { RAIL_SPACING } from '../../../../src/lib/core/layout/layout-settings';
 import { boundsFor, layoutDocument } from '../../../support/harnesses/layout';
-import { referenceGroupShellViolations } from './bridge-oracle-reference';
+import {
+	referenceGroupShellViolations,
+	referenceRouteBridgeAnalysis,
+} from './bridge-oracle-reference';
 import { shellDocument } from './group-shell-fixture';
+import { reviewedShellSample } from './group-shell-review-fixture';
 
 it.each(Object.values(LayoutDirection))(
 	'keeps bypass rails away from group shells in %s',
@@ -115,3 +120,78 @@ it('rejects collinear and near-frame runs on all four sides, but permits perpend
 		{ pathId: 'right', frameId: 'g', segment: 1, distance: 0 },
 	]);
 });
+
+it.each(Object.values(LayoutDirection))(
+	'checks both jogs against foreign frames in %s',
+	async (direction) => {
+		const { document, overrides } = reviewedShellSample(508, direction, 36);
+		const prepared = await layoutDocument(document, overrides);
+		expect(validateDedicatedCandidate(prepared).valid).toBe(true);
+		expect(
+			referenceGroupShellViolations(
+				prepared.layout.relations,
+				document.groups.map(({ id }) => ({ id, bounds: boundsFor(prepared.layout, id) })),
+				12,
+			),
+		).toEqual([]);
+	},
+);
+
+it.each(Object.values(LayoutDirection))(
+	'packs saturated bypasses inside their group in %s',
+	async (direction) => {
+		for (const padding of [24, 36]) {
+			const document = shellDocument(
+				{
+					count: 7,
+					groups: 1,
+					nested: false,
+					edges: [
+						[5, 1],
+						[4, 0],
+						[2, 0],
+						[5, 2],
+						[4, 1],
+						[5, 3],
+					],
+				},
+				direction,
+			);
+			const { layout } = await layoutDocument(document, {
+				groups: { g0: { minimumWidth: 160, minimumHeight: 72, headerHeight: 36, padding } },
+			});
+			const frame = boundsFor(layout, 'g0');
+			const members = new Set(
+				document.nodes.filter(({ groupId }) => groupId === 'g0').map(({ id }) => id),
+			);
+			const escaped = layout.relations.filter(
+				({ from, to, points }) =>
+					members.has(from) &&
+					members.has(to) &&
+					points.some(
+						({ x, y }) =>
+							x < frame.x || x > frame.x + frame.width || y < frame.y || y > frame.y + frame.height,
+					),
+			);
+			expect(escaped.map(({ id }) => id)).toEqual([]);
+			expect(
+				referenceGroupShellViolations(layout.relations, [{ id: 'g0', bounds: frame }], 12),
+			).toEqual([]);
+		}
+	},
+);
+
+it.each(Object.values(LayoutDirection))(
+	'keeps the crossing cost of the near-frame witness in %s',
+	async (direction) => {
+		const { document, overrides } = reviewedShellSample(71, direction, 36);
+		const prepared = await layoutDocument(document, overrides);
+		let maximum = 5;
+		if (direction === LayoutDirection.LeftToRight || direction === LayoutDirection.RightToLeft)
+			maximum = 3;
+		expect(validateDedicatedCandidate(prepared).valid).toBe(true);
+		expect(
+			referenceRouteBridgeAnalysis(prepared.layout.relations).crossings.length,
+		).toBeLessThanOrEqual(maximum);
+	},
+);

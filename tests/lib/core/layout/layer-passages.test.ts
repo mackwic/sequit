@@ -486,8 +486,10 @@ describe.each(Object.values(LayoutDirection))('local layer passages in %s', (dir
 			relations: shortcuts,
 		});
 		if (!groupedResult.ok) throw new Error('The isolated group fixture must have valid endpoints.');
-		let groupBounds: Bounds = { x: start, y: 0, width: end - start, height: 400 };
-		if (!frame.vertical) groupBounds = { x: 0, y: start, width: 400, height: end - start };
+		let primary = 0;
+		if (!frame.forward) primary = -400;
+		let groupBounds: Bounds = { x: start, y: primary, width: end - start, height: 400 };
+		if (!frame.vertical) groupBounds = { x: primary, y: start, width: 400, height: end - start };
 		const reserve = layerPassages(
 			input(
 				[['target'], [], ['source']],
