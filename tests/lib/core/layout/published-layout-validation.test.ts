@@ -8,6 +8,7 @@ import {
 	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 } from '../../../../src/lib/core/document/logic-document';
@@ -49,6 +50,293 @@ it('publishes only independently valid layouts for rich acyclic documents', asyn
 		).toMatchObject({ valid: true });
 	}
 }, 120_000);
+
+it.each(Object.values(LayoutDirection))(
+	'validates shared group/member targets (%s)',
+	async (direction) => {
+		for (const withJunction of [true, false]) {
+			let edges = [
+				['n0', 'g0'],
+				['n2', 'n1'],
+				['n0', 'n1'],
+				['n3', 'g0'],
+				['n0', 'n2'],
+				['n3', 'n1'],
+			];
+			let nodeCount = 4;
+			let memberIndex = 1;
+			const junctions: LogicDocument['junctions'][number][] = [];
+			if (withJunction) {
+				edges = [
+					['n1', 'j0'],
+					['n0', 'n1'],
+					['n0', 'n2'],
+					['j0', 'n2'],
+					['g0', 'n2'],
+				];
+				nodeCount = 3;
+				memberIndex = 0;
+				junctions.push({
+					kind: EndpointKind.Junction,
+					id: 'j0',
+					operator: JunctionOperator.Xor,
+					layoutOrder: orderKey('a0'),
+				});
+			}
+			const document: LogicDocument = {
+				...validLogicDocument(),
+				layout: defined(
+					layoutConfiguration(direction, LayoutBias.Top) ??
+						layoutConfiguration(direction, LayoutBias.Left),
+				),
+				groups: [
+					{ kind: EndpointKind.Group, id: 'g0', label: 'Group', layoutOrder: orderKey('a0') },
+				],
+				nodes: Array.from({ length: nodeCount }, (_, index) => {
+					const node = {
+						kind: EndpointKind.Node,
+						id: `n${index}`,
+						markdown: '',
+						natureId: 'goal',
+						layoutOrder: orderKey(`a${index}`),
+					} as const;
+					if (index === memberIndex) return { ...node, groupId: 'g0' };
+					return node;
+				}),
+				junctions,
+				relations: edges.map(([from, to], index) => ({
+					id: `r${index}-${from}-${to}`,
+					from: defined(from),
+					to: defined(to),
+				})),
+			};
+			const prepared = prepareLayoutDocument(document);
+			const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+			const validation = validateDedicatedCandidate({ ...prepared, layout });
+			expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+		}
+	},
+);
+
+const GENERATED_GROUPS: LogicDocument['groups'] = [
+	{
+		kind: EndpointKind.Group,
+		id: 'group-00',
+		label: 'Root group',
+		layoutOrder: orderKey('aH00001'),
+	},
+	{
+		kind: EndpointKind.Group,
+		id: 'group-01',
+		label: 'Nested group 1',
+		groupId: 'group-00',
+		layoutOrder: orderKey('aH00011'),
+	},
+	{
+		kind: EndpointKind.Group,
+		id: 'group-02',
+		label: 'Empty endpoint group',
+		layoutOrder: orderKey('aG00021'),
+	},
+	{
+		kind: EndpointKind.Group,
+		id: 'group-03',
+		label: 'Empty group root',
+		layoutOrder: orderKey('aG00031'),
+	},
+	{
+		kind: EndpointKind.Group,
+		id: 'empty-group-00',
+		label: 'Nested empty group 1',
+		groupId: 'group-03',
+		layoutOrder: orderKey('aE00001'),
+	},
+];
+
+interface GeneratedWitness {
+	readonly name: string;
+	readonly direction: LayoutDirection;
+	readonly groups?: LogicDocument['groups'];
+	readonly nodeGroups: readonly (string | undefined)[];
+	readonly junctions: number;
+	readonly edges: readonly (readonly string[])[];
+}
+
+// Reduced from the expanded generator; junctions are members of `group-00`.
+it.each(
+	Object.values(LayoutDirection).flatMap((direction): GeneratedWitness[] => [
+		{
+			// Two outgoing central ports diverged after repair.
+			name: 'keeps a shared junction stem beside nested frames',
+			direction,
+			nodeGroups: [
+				'group-00',
+				undefined,
+				'group-01',
+				undefined,
+				'group-00',
+				'group-00',
+				'group-00',
+				'group-00',
+				'group-00',
+				'group-01',
+			],
+			junctions: 3,
+			edges: [
+				['node-00', 'junction-00'],
+				['junction-00', 'group-02'],
+				['junction-00', 'node-09'],
+				['group-02', 'node-01'],
+				['group-00', 'node-01'],
+			],
+		},
+		{
+			// The last repaired route took the bridge carrier of a crossing between two others.
+			name: 'keeps the bridges of crossings between other repaired routes',
+			direction,
+			nodeGroups: ['group-00', 'group-00', 'group-01'],
+			junctions: 2,
+			edges: [
+				['node-00', 'group-02'],
+				['node-00', 'junction-00'],
+				['junction-00', 'group-02'],
+				['group-02', 'group-03'],
+				['group-02', 'node-01'],
+				['empty-group-00', 'group-01'],
+				['empty-group-00', 'junction-01'],
+				['node-02', 'junction-01'],
+			],
+		},
+		{
+			// Generator 8 nodes, seed 1592915777, sample 50: node-02→node-01 was repaired first and
+			// ran through the pending group-05→node-01 attachment, a distinct port of their target.
+			name: 'keeps a distinct port of a shared target free for its pending route',
+			direction,
+			groups: [
+				defined(GENERATED_GROUPS[0]),
+				{
+					kind: EndpointKind.Group,
+					id: 'group-05',
+					label: 'Nested group 3',
+					groupId: 'group-00',
+					layoutOrder: orderKey('aH00031'),
+				},
+				defined(GENERATED_GROUPS[2]),
+				{
+					kind: EndpointKind.Group,
+					id: 'empty-group-00',
+					label: 'Nested empty group 1',
+					layoutOrder: orderKey('aE00001'),
+				},
+			],
+			nodeGroups: ['group-05', 'group-00', 'group-05'],
+			junctions: 2,
+			edges: [
+				['node-00', 'junction-00'],
+				['junction-00', 'group-02'],
+				['group-02', 'node-01'],
+				['empty-group-00', 'node-01'],
+				['group-05', 'node-01'],
+				['node-02', 'node-01'],
+			],
+		},
+	]),
+)('$name ($direction)', async ({ direction, groups, nodeGroups, junctions, edges }) => {
+	const padded = (index: number): string => index.toString().padStart(2, '0');
+	const document: LogicDocument = {
+		...validLogicDocument(),
+		layout: defined(
+			layoutConfiguration(direction, LayoutBias.Top) ??
+				layoutConfiguration(direction, LayoutBias.Left),
+		),
+		groups: groups ?? GENERATED_GROUPS,
+		nodes: nodeGroups.map((groupId, index) => {
+			const node = {
+				kind: EndpointKind.Node,
+				id: `node-${padded(index)}`,
+				natureId: 'goal',
+				markdown: '',
+				layoutOrder: orderKey(`aN${index.toString().padStart(4, '0')}1`),
+			} as const;
+			if (groupId === undefined) return node;
+			return { ...node, groupId };
+		}),
+		junctions: Array.from({ length: junctions }, (_, index) => ({
+			kind: EndpointKind.Junction,
+			id: `junction-${padded(index)}`,
+			groupId: 'group-00',
+			operator: JunctionOperator.Xor,
+			layoutOrder: orderKey(`aJ${index.toString().padStart(4, '0')}1`),
+		})),
+		relations: edges.map(([from, to], index) => ({
+			id: `relation-${index.toString().padStart(3, '0')}`,
+			from: defined(from),
+			to: defined(to),
+		})),
+	};
+	const prepared = prepareLayoutDocument(document);
+	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+	const validation = validateDedicatedCandidate({ ...prepared, layout });
+	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+});
+
+// D-07 corpus G2, seed 629: in bottom-to-top, n2→j1 needs the junction column that the pending
+// g0 routes reserve below their port; it succeeds once they have moved during their own repair.
+it.each(Object.values(LayoutDirection))(
+	'retries a route blocked by a pending group attachment (%s)',
+	async (direction) => {
+		const members: Readonly<Record<string, string>> = { n2: 'g0', j0: 'g0' };
+		const endpoint = (id: string) => {
+			const groupId = members[id];
+			if (groupId === undefined) return { id };
+			return { id, groupId };
+		};
+		let order = 0;
+		const key = () => orderKey(`a${(order++).toString().padStart(3, '0')}1`);
+		const groups = ['g0', 'g1'].map((id): LogicDocument['groups'][number] => ({
+			kind: EndpointKind.Group,
+			label: id,
+			layoutOrder: key(),
+			...endpoint(id),
+		}));
+		const nodes = ['n0', 'n1', 'n2'].map((id): LogicDocument['nodes'][number] => ({
+			kind: EndpointKind.Node,
+			natureId: 'goal',
+			markdown: id,
+			layoutOrder: key(),
+			...endpoint(id),
+		}));
+		const junctions = ['j0', 'j1'].map((id): LogicDocument['junctions'][number] => ({
+			kind: EndpointKind.Junction,
+			operator: JunctionOperator.Xor,
+			layoutOrder: key(),
+			...endpoint(id),
+		}));
+		const document: LogicDocument = {
+			...validLogicDocument(),
+			layout: defined(
+				layoutConfiguration(direction, LayoutBias.Top) ??
+					layoutConfiguration(direction, LayoutBias.Left),
+			),
+			groups,
+			nodes,
+			junctions,
+			relations: [
+				['g0', 'g1'],
+				['j0', 'n1'],
+				['n1', 'g1'],
+				['n2', 'n0'],
+				['n2', 'j1'],
+				['g0', 'n0'],
+				['j0', 'g1'],
+			].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
+		};
+		const prepared = prepareLayoutDocument(document);
+		const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+		const validation = validateDedicatedCandidate({ ...prepared, layout });
+		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+	},
+);
 
 // Reduced from 11 nodes, five groups and six routes: junction→node-01 touches node-04→node-10.
 it('publishes only validated routes beside an independent junction-group branch', async () => {

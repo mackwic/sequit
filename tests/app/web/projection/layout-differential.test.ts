@@ -42,9 +42,10 @@ describe('layout differential harness', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-		// D-04 routes every rank order on real routes (user decision 2026-10-02: correction before
-		// performance): 5.3 s → 7.0-8.4 s on the shared writer machine.
-	}, 12_000);
+		// User decision 2026-10-02 (correction before performance): D-04 routes every rank order on
+		// real routes, and the T-04 generator now draws group members and group endpoints, which
+		// made the 100 generated documents about eleven times heavier (52 s measured under load).
+	}, 65_000);
 
 	it.each(LAYOUT_DIRECTIONS)(
 		'matches the root-region engine across permutations in %s',
