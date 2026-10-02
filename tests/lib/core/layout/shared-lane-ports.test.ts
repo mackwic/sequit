@@ -111,6 +111,37 @@ const regressionWitnesses = [
 	},
 ] as const;
 
+const portTrackLimits = [
+	{
+		name: 'K53-noparallel',
+		nodes: [
+			['m3', 'L0'],
+			['m1', 'L1'],
+			['m2', 'L2'],
+			['m0', 'L2'],
+		],
+		pairs: [
+			['m2', 'm1'],
+			['m0', 'm3'],
+			['m2', 'm3'],
+		],
+	},
+	{
+		name: 'K51-noisolated',
+		nodes: [
+			['m1', 'L0'],
+			['m2', 'L0'],
+			['m3', 'L1'],
+			['m4', 'L2'],
+		],
+		pairs: [
+			['m2', 'm3'],
+			['m2', 'm4'],
+			['m2', 'm1'],
+		],
+	},
+] as const;
+
 function expectParallelBand(
 	result: SharedLaneGeometry,
 	ids: readonly string[],
@@ -289,6 +320,34 @@ describe.each(orientations)('shared lane port nesting (%s)', (orientation) => {
 				expectParallelBand(result, ['p', 'q'], layout.direction);
 		},
 	);
+	// L-05 limitation: ports are ordered before tracks. A single-face reversal cannot make both
+	// witnesses crossing-free in every direction; joint port/track search is a separate workstream.
+	for (const witness of portTrackLimits) {
+		it.each(configurations)(
+			`bounds the L-05 ${witness.name} limitation in $direction`,
+			(layout) => {
+				const original = documentFor(layout, orientation, witness.nodes, witness.pairs);
+				const document = {
+					...original,
+					nodes: original.nodes.map((node) => ({
+						...node,
+						layoutOrder: orderKey(`a${node.id.slice(1)}`),
+					})),
+				};
+				const result = geometry(document);
+				const prepared = prepareLayoutDocument(document);
+				expect(validateSharedLaneGeometry(prepared.graph, result, undefined, true)).toBeUndefined();
+				expect(routeBridgeAnalysis(result.relations).crossings.length).toBeLessThanOrEqual(1);
+				expect(
+					geometry({
+						...document,
+						nodes: [...document.nodes].reverse(),
+						relations: [...document.relations].reverse(),
+					}),
+				).toEqual(result);
+			},
+		);
+	}
 	for (const witness of regressionWitnesses) {
 		it.each(configurations)(`keeps ${witness.name} bridge-free in $direction`, (layout) => {
 			const document = documentFor(layout, orientation, witness.nodes, witness.pairs);
