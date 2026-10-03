@@ -14,7 +14,7 @@ import type { ChannelRouting, ChannelRun } from './channel-types';
 import { channelPoints } from './materialize-node-routes';
 import { type PortAllocation, sharedSourcePorts, sharedTargetPorts } from './port-allocation';
 import { layerExtent, type LayerLink, layerLinks, linkCoordinate } from './routing-layers';
-import { componentRoutingSpaces, type RoutingSpace } from './routing-space';
+import { atomicRowExtent, componentRoutingSpaces, type RoutingSpace } from './routing-space';
 
 interface LayerChannel extends ChannelRouting {
 	readonly layer: number;
@@ -172,18 +172,20 @@ function channelsFor(input: LayerInput, ports: PortAllocation): readonly LayerCh
 	return channels;
 }
 
-/** Reserve shell thickness as well as a free channel wide enough for every rail. */
+/**
+ * Reserve shell thickness as well as a free channel wide enough for every rail. Both rows are
+ * measured on the same atomic boxes as the free space: a frame placed around its own members is
+ * a shell, not the edge of its row.
+ */
 function groupChannelGap(
 	input: LayerInput,
 	channel: LayerChannel,
 	spaces: ReadonlyMap<number, RoutingSpace>,
+	enclosingGroups: ReadonlySet<string>,
 ): number {
-	const before = layerExtent(defined(input.layers.rows[channel.layer]), input.bounds, input.frame);
-	const after = layerExtent(
-		defined(input.layers.rows[channel.layer + 1]),
-		input.bounds,
-		input.frame,
-	);
+	const measured = { ...input, enclosingGroups };
+	const before = atomicRowExtent(defined(input.layers.rows[channel.layer]), measured);
+	const after = atomicRowExtent(defined(input.layers.rows[channel.layer + 1]), measured);
 	if (!Number.isFinite(before.end) || !Number.isFinite(after.start)) return 0;
 	let shells = 0;
 	for (const { relation } of channel.links) {
@@ -217,7 +219,7 @@ export function planLayeredRouting(input: LayerInput, ports: PortAllocation): La
 		if (bordersJunction) base = JUNCTION_CHANNEL_GAP;
 		const gap = Math.max(
 			base + Math.max(0, channel.railCount - 1) * RAIL_SPACING,
-			groupChannelGap(input, channel, spaces),
+			groupChannelGap(input, channel, spaces, enclosingGroups),
 		);
 		const slots = channelGaps.get(interval) ?? [];
 		slots.push(gap);

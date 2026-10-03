@@ -334,6 +334,122 @@ it.each([
 	},
 );
 
+interface FrameRowWitness {
+	readonly name: string;
+	/** Identifier, documentary order, label and optional parent group. */
+	readonly groups: readonly (readonly [string, string, string, string?])[];
+	readonly nodes: readonly (readonly [string, string, string?])[];
+	readonly junctions: readonly (readonly [string, string, string?])[];
+	readonly relations: readonly (readonly [string, string, string])[];
+}
+
+// Group-passage census (seed 1592915777, 300 documents), draws 282 and 229. A group holding only
+// an empty subgroup keeps a row slot, yet its frame lies around that subgroup, far from the row.
+// Measured as the row's edge, it hid the shell of a sibling frame opening beside a junction rail:
+// that frame overlapped the junction and its route had no passage.
+it.each(
+	Object.values(LayoutDirection).flatMap((direction) =>
+		(
+			[
+				{
+					name: 'reserves the shell of a sibling frame beside a junction rail',
+					groups: [
+						['group-04', 'aH00021', 'Nested group 2'],
+						['group-05', 'aH00031', 'Nested group 3', 'group-04'],
+						['group-02', 'aG00021', 'Empty endpoint group'],
+						['group-03', 'aG00031', 'Empty group root'],
+						['empty-group-02', 'aE00021', 'Nested empty group 3', 'group-03'],
+					],
+					nodes: [
+						['node-00', 'aN00001'],
+						['node-05', 'aN00051', 'group-05'],
+						['node-10', 'aN00101'],
+					],
+					junctions: [
+						['junction-00', 'aJ00001', 'group-04'],
+						['junction-01', 'aJ00011'],
+					],
+					relations: [
+						['relation-000', 'node-00', 'junction-00'],
+						['relation-001', 'junction-00', 'group-02'],
+						['relation-003', 'group-02', 'node-10'],
+						['relation-005', 'group-03', 'junction-01'],
+						['relation-008', 'node-05', 'junction-01'],
+					],
+				},
+				{
+					name: 'reserves the shells of nested frames beside a member junction rail',
+					groups: [
+						['group-00', 'aH00001', 'Root group'],
+						['group-01', 'aH00011', 'Nested group 1', 'group-00'],
+						['group-04', 'aH00021', 'Nested group 2', 'group-01'],
+						['group-05', 'aH00031', 'Nested group 3', 'group-04'],
+						['group-06', 'aH00041', 'Nested group 4', 'group-05'],
+						['group-02', 'aG00021', 'Empty endpoint group'],
+						['empty-group-00', 'aE00001', 'Nested empty group 1'],
+						['empty-group-03', 'aE00031', 'Nested empty group 4', 'empty-group-00'],
+					],
+					nodes: [
+						['node-00', 'aN00001'],
+						['node-06', 'aN00061', 'group-06'],
+						['node-07', 'aN00071'],
+						['node-09', 'aN00091'],
+						['node-10', 'aN00101', 'group-04'],
+					],
+					junctions: [['junction-00', 'aJ00001', 'group-01']],
+					relations: [
+						['relation-000', 'node-00', 'junction-00'],
+						['relation-001', 'junction-00', 'group-02'],
+						['relation-002', 'junction-00', 'node-09'],
+						['relation-005', 'group-02', 'node-07'],
+						['relation-007', 'empty-group-00', 'node-09'],
+						['relation-010', 'node-06', 'node-10'],
+					],
+				},
+			] satisfies FrameRowWitness[]
+		).map((witness) => ({ ...witness, direction })),
+	),
+)('$name ($direction)', async ({ direction, groups, nodes, junctions, relations }) => {
+	const parent = (groupId: string | undefined) => {
+		if (groupId === undefined) return {};
+		return { groupId };
+	};
+	const document: LogicDocument = {
+		...validLogicDocument(),
+		layout: defined(
+			layoutConfiguration(direction, LayoutBias.Top) ??
+				layoutConfiguration(direction, LayoutBias.Left),
+		),
+		groups: groups.map(([id, order, label, groupId]) => ({
+			kind: EndpointKind.Group,
+			id,
+			label,
+			layoutOrder: orderKey(order),
+			...parent(groupId),
+		})),
+		nodes: nodes.map(([id, order, groupId]) => ({
+			kind: EndpointKind.Node,
+			id,
+			natureId: 'goal',
+			markdown: '',
+			layoutOrder: orderKey(order),
+			...parent(groupId),
+		})),
+		junctions: junctions.map(([id, order, groupId]) => ({
+			kind: EndpointKind.Junction,
+			id,
+			operator: JunctionOperator.Xor,
+			layoutOrder: orderKey(order),
+			...parent(groupId),
+		})),
+		relations: relations.map(([id, from, to]) => ({ id, from, to })),
+	};
+	const prepared = prepareLayoutDocument(document);
+	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+	const validation = validateDedicatedCandidate({ ...prepared, layout });
+	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+});
+
 // D-07 corpus G2, seed 629: in bottom-to-top, n2→j1 needs the junction column that the pending
 // g0 routes reserve below their port; it succeeds once they have moved during their own repair.
 it.each(Object.values(LayoutDirection))(
