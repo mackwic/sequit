@@ -42,10 +42,15 @@ describe('layout differential harness', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-		// User decision 2026-10-02 (correction before performance): D-04 routes every rank order on
-		// real routes, and the T-04 generator now draws group members and group endpoints, which
-		// made the 100 generated documents about eleven times heavier (52 s measured under load).
-	}, 65_000);
+		// User decision 2026-10-02 (correction before performance): the timeout is measured, not guessed.
+		// Alone on this test, three runs under coverage (the `test:coverage:web:fast` flags) took
+		// 61.5, 82.1 (machine load about 13) and 58.9 s, three runs without coverage 27.3, 26.0 and
+		// 26.8 s; the timeout is ceil(82.1 x 1.5 / 5) x 5 = 125 s. The integration branch alone takes
+		// 14.2 s (30.9 s under coverage). The slowdown comes from the raw merge 679ab190: the
+		// rank-order candidates that the merged placement leaves invalid (group-passage,
+		// element-overlap) each cost a full group-route repair (repairRoute -> boundaryOnTrack).
+		// Attribution and profiles: merge report, section "Suite AttributeMergeSlowdown".
+	}, 125_000);
 
 	it.each(LAYOUT_DIRECTIONS)(
 		'matches the root-region engine across permutations in %s',
