@@ -139,28 +139,6 @@
 		report?: LayoutReportRequest | undefined;
 	} = $props();
 	let measurementModel = $state.raw<CanvasMeasurementModel>();
-	/** The box whose nature menu is open, under its header. */
-	let natureMenu = $state.raw<{ readonly nodeId: string; readonly header: HTMLElement }>();
-	/** The menu lasts while its box stays alone in the selection and nothing is being typed. */
-	let natureMenuNode = $derived.by(() => {
-		const menu = natureMenu;
-		const entity = session.contextualEntity;
-		if (menu === undefined || onNodeNature === undefined || canvas === undefined) return undefined;
-		if (entity?.kind !== EntityKind.Node || entity.id !== menu.nodeId) return undefined;
-		const node = canvas.nodes.find(({ id }) => id === menu.nodeId);
-		if (node === undefined) return undefined;
-		return { id: node.id, natureId: node.nature.id, header: menu.header };
-	});
-	/** A second click on the header closes the menu it opened. */
-	function toggleNatureMenu(nodeId: string, header: HTMLElement): void {
-		if (natureMenuNode?.id === nodeId) natureMenu = undefined;
-		else natureMenu = { nodeId, header };
-	}
-	function closeNatureMenu(restoreFocus: boolean): void {
-		const header = natureMenu?.header;
-		natureMenu = undefined;
-		if (restoreFocus) header?.closest<HTMLElement>('[data-node-id]')?.focus();
-	}
 	let measurementLayer = $state<HTMLDivElement>();
 	/** While the report dialog is open, the entities folded groups hide are measured for it too. */
 	let unshownMeasurementLayer = $state<HTMLDivElement>();
@@ -200,30 +178,111 @@
 			canvas.groups.length === 0 &&
 			canvas.junctions.length === 0,
 	);
-	/** The header of the invitation whose nature menu is open. */
-	let startMenu = $state.raw<HTMLElement>();
-	/** The menu lasts while its invitation shows; a header removed meanwhile never anchors it again. */
-	let startMenuHeader = $derived.by(() => {
-		if (!inviting || startMenu?.isConnected !== true) return undefined;
-		return startMenu;
+	/**
+	 * The header whose nature menu is open: a box's, or the new box being typed's, by `nodeId`; the
+	 * invitation's without.
+	 */
+	let natureMenu = $state.raw<{
+		readonly header: HTMLElement;
+		readonly nodeId: string | undefined;
+	}>();
+	interface OpenNatureMenu {
+		readonly header: HTMLElement;
+		readonly label: string;
+		readonly checkedId: string | undefined;
+		readonly select: (natureId: string) => void;
+		/** Where the focus goes back once a nature is chosen, or on Escape. */
+		readonly focus: () => void;
+		/** The new box being typed, which stays typed while its menu is used. */
+		readonly typedId: string | undefined;
+	}
+	/** The invitation's menu chooses the nature of new boxes while the canvas stays empty. */
+	function invitationMenu(header: HTMLElement): OpenNatureMenu | undefined {
+		if (!inviting || onNextNature === undefined) return undefined;
+		return {
+			header,
+			label: m.editing_canvas_next_nature(),
+			checkedId: nextNature?.id,
+			select: onNextNature,
+			focus: () => {
+				header.focus();
+			},
+			typedId: undefined,
+		};
+	}
+	/** The menu of the new box being typed lasts while it is typed, and gives the focus back to its text. */
+	function typedMenu(
+		typed: NodeDraftControls,
+		header: HTMLElement,
+		checkedId: string,
+	): OpenNatureMenu | undefined {
+		if (typed.changeNature === undefined || typed.parked) return undefined;
+		return {
+			header,
+			label: m.canvas_nature_menu(),
+			checkedId,
+			select: typed.changeNature,
+			focus: () => {
+				header
+					.closest('[data-node-draft]')
+					?.querySelector<HTMLElement>('[contenteditable="true"]')
+					?.focus();
+			},
+			typedId: typed.id,
+		};
+	}
+	/** A box's menu lasts while it stays alone in the selection; a choice is one command. */
+	function boxMenu(
+		nodeId: string,
+		header: HTMLElement,
+		checkedId: string,
+	): OpenNatureMenu | undefined {
+		const entity = session.contextualEntity;
+		const change = onNodeNature;
+		if (change === undefined || entity?.kind !== EntityKind.Node || entity.id !== nodeId)
+			return undefined;
+		return {
+			header,
+			label: m.canvas_nature_menu(),
+			checkedId,
+			select: (natureId) => {
+				if (natureId !== checkedId) change(nodeId, natureId);
+			},
+			focus: () => {
+				header.closest<HTMLElement>('[data-node-id]')?.focus();
+			},
+			typedId: undefined,
+		};
+	}
+	/** A header removed meanwhile never anchors the menu again. */
+	let openNatureMenu = $derived.by((): OpenNatureMenu | undefined => {
+		const menu = natureMenu;
+		if (menu === undefined || canvas === undefined || !menu.header.isConnected) return undefined;
+		const { header, nodeId } = menu;
+		if (nodeId === undefined) return invitationMenu(header);
+		const node = canvas.nodes.find(({ id }) => id === nodeId);
+		if (node === undefined) return undefined;
+		if (draft?.id === nodeId) return typedMenu(draft, header, node.nature.id);
+		return boxMenu(nodeId, header, node.nature.id);
 	});
 	let invitation = $derived.by(() => {
 		if (!inviting || onStart === undefined) return undefined;
 		return {
 			nature: nextNature,
-			choosing: startMenuHeader !== undefined,
+			choosing: openNatureMenu !== undefined && natureMenu?.nodeId === undefined,
 			onstart: onStart,
-			onchoose: toggleStartMenu,
+			onchoose: toggleNatureMenu,
 		};
 	});
-	function toggleStartMenu(header: HTMLElement): void {
-		if (startMenuHeader === undefined) startMenu = header;
-		else startMenu = undefined;
+	/** A second click on the header closes the menu it opened. */
+	function toggleNatureMenu(header: HTMLElement, nodeId?: string): void {
+		if (openNatureMenu?.header === header) natureMenu = undefined;
+		else natureMenu = { header, nodeId };
 	}
-	function closeStartMenu(restoreFocus: boolean): void {
-		const header = startMenu;
-		startMenu = undefined;
-		if (restoreFocus) header?.focus();
+	function closeNatureMenu(restoreFocus: boolean): void {
+		const open = openNatureMenu;
+		natureMenu = undefined;
+		if (restoreFocus) open?.focus();
 	}
 	let spacePressed = $state(false);
 	let panning = $state(false);
@@ -663,7 +722,10 @@
 				{session}
 				{draft}
 				{onNodeType}
-				onNatureMenu={onNodeNature && toggleNatureMenu}
+				onNatureMenu={onNodeNature &&
+					((nodeId: string, header: HTMLElement) => {
+						toggleNatureMenu(header, nodeId);
+					})}
 				{invitation}
 				{onGroupEdit}
 				{onGroupToggle}
@@ -857,46 +919,27 @@
 			/>
 		{/if}
 	{/if}
-	{#if natureMenuNode && onNodeNature}
-		{@const menu = natureMenuNode}
-		{@const change = onNodeNature}
-		<MenuSurface
-			open
-			label={m.canvas_nature_menu()}
-			anchor={menu.header}
-			owner={menu.header}
-			placement="bottom-start"
-			restoreFocusOnSelect
-			onclose={closeNatureMenu}
-		>
-			<NatureMenuItems
-				{natures}
-				checkedId={menu.natureId}
-				onselect={(natureId: string) => {
-					if (natureId !== menu.natureId) change(menu.id, natureId);
-				}}
-				onmanage={onManageNatures}
-			/>
-		</MenuSurface>
-	{/if}
-	{#if startMenuHeader && onNextNature}
-		{@const header = startMenuHeader}
-		<MenuSurface
-			open
-			label={m.editing_canvas_next_nature()}
-			anchor={header}
-			owner={header}
-			placement="bottom-start"
-			restoreFocusOnSelect
-			onclose={closeStartMenu}
-		>
-			<NatureMenuItems
-				{natures}
-				checkedId={nextNature?.id}
-				onselect={onNextNature}
-				onmanage={onManageNatures}
-			/>
-		</MenuSurface>
+	{#if openNatureMenu}
+		{@const menu = openNatureMenu}
+		<!-- The menu of the box being typed belongs to it: pressing it does not leave the box. -->
+		<div class="contents" data-node-draft-menu={menu.typedId}>
+			<MenuSurface
+				open
+				label={menu.label}
+				anchor={menu.header}
+				owner={menu.header}
+				placement="bottom-start"
+				restoreFocusOnSelect
+				onclose={closeNatureMenu}
+			>
+				<NatureMenuItems
+					{natures}
+					checkedId={menu.checkedId}
+					onselect={menu.select}
+					onmanage={onManageNatures}
+				/>
+			</MenuSurface>
+		</div>
 	{/if}
 	{#if report}
 		<LayoutReport

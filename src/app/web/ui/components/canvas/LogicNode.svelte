@@ -20,6 +20,8 @@
 		body,
 		label = '',
 		parked = false,
+		provisional = false,
+		typedNatureMenu = false,
 		element = $bindable(),
 	}: {
 		node: RenderedCanvasNode | UnpositionedCanvasNode;
@@ -36,6 +38,10 @@
 		label?: string;
 		/** A new box left empty: it waits, drawn without the accent of the box being typed. */
 		parked?: boolean;
+		/** A new box being typed, not created yet: drawn as a draft. */
+		provisional?: boolean;
+		/** A new box being typed whose header opens its nature menu, drawn like a selected box's. */
+		typedNatureMenu?: boolean;
 		element?: HTMLElement | undefined;
 	} = $props();
 	let color = $derived(node.color ?? node.nature.color);
@@ -74,8 +80,12 @@
 		return -1;
 	});
 
-	/** Present on the box alone in the selection: its header then opens its nature menu. */
+	/** Present on the box alone in the selection, or typed in place: its header opens its nature menu. */
 	let natureMenu = $derived.by((): '' | undefined => {
+		if (body !== undefined) {
+			if (!typedNatureMenu) return undefined;
+			return '';
+		}
 		if (onnature === undefined || !selected || measuring) return undefined;
 		if (session?.selectionCount !== 1) return undefined;
 		return '';
@@ -131,6 +141,7 @@
 	<div
 		class="node-card positioned draft"
 		class:parked
+		class:provisional
 		role="group"
 		aria-label={label}
 		data-node-draft={node.id}
@@ -140,6 +151,7 @@
 		style:top={pixels(bounds?.y)}
 		style:height={pixels(bounds?.height)}
 		bind:this={element}
+		data-nature-menu={natureMenu}
 	>
 		<NodeContent label={node.nature.label} markdown="" {icon} {body} />
 	</div>
@@ -230,6 +242,24 @@
 	}
 	.positioned[data-nature-menu] :global([data-node-header]:hover) {
 		background: color-mix(in srgb, var(--content-color) 22%, white);
+	}
+
+	/* A new box, not created yet, reads as a draft: dashed and see-through, without depth, even its
+	   accent ring while typed. The border keeps its measured width. */
+	.positioned.provisional {
+		border-style: dashed;
+		border-color: color-mix(in srgb, var(--content-color) 60%, #a8a29e);
+		outline-style: dashed;
+		outline-width: 2px;
+		background: color-mix(in srgb, var(--content-surface) 50%, transparent);
+		box-shadow: none;
+	}
+	.positioned.provisional :global([data-node-header]) {
+		border-bottom-style: dashed;
+		background: color-mix(in srgb, var(--content-color) 8%, transparent);
+	}
+	.positioned.provisional[data-nature-menu] :global([data-node-header]:hover) {
+		background: color-mix(in srgb, var(--content-color) 18%, transparent);
 	}
 
 	@media print {

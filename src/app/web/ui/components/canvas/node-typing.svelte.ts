@@ -56,8 +56,14 @@ export interface NodeDraftControls {
 	 * not dropped: it waits, parked, until it is typed again or another box takes its place.
 	 */
 	readonly leave: () => void;
+	/** Gives the new box another nature before it is created; absent for an existing box. */
+	readonly changeNature: ((natureId: string) => void) | undefined;
 	/** Left empty, the new box waits without focus nor bar. An existing box never waits. */
 	readonly parked: boolean;
+	/** A new box, not in the document yet: drawn as a draft, unlike an existing box typed in place. */
+	readonly provisional: boolean;
+	/** A new box without any text: erasing it cancels it, there being nothing else to erase. */
+	readonly erasable: boolean;
 	/** Types the parked box again. */
 	readonly resume: () => void;
 	readonly cancel: () => void;
@@ -244,8 +250,18 @@ export class NodeTyping {
 			leave: () => {
 				create(AfterCreation.Nothing);
 			},
+			changeNature: (natureId) => {
+				const typing = typed();
+				if (typing === undefined || typing.draft.node.natureId === natureId) return;
+				const node = { ...typing.draft.node, natureId };
+				this.#typing = { ...typing, draft: { ...typing.draft, node } };
+			},
 			get parked() {
 				return parked() === id;
+			},
+			provisional: true,
+			get erasable() {
+				return typed()?.markdown === '';
 			},
 			resume: () => {
 				if (this.#parkedId === id) this.#parkedId = undefined;
@@ -303,7 +319,10 @@ export class NodeTyping {
 			cancel: () => {
 				if (editing() !== undefined) session.cancel();
 			},
+			changeNature: undefined,
 			parked: false,
+			provisional: false,
+			erasable: false,
 			resume: () => undefined,
 		};
 	}

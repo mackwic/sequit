@@ -56,7 +56,10 @@
 		draft?: NodeDraftControls | undefined;
 		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
-		/** Opens the nature menu of the selected box under its header; absent when read-only. */
+		/**
+		 * Opens the nature menu under the header of the selected box, or of the new box being typed;
+		 * absent when read-only.
+		 */
 		onNatureMenu?: ((nodeId: string, header: HTMLElement) => void) | undefined;
 		/** The invitation to type the first box; given only while the canvas is empty. */
 		invitation?:
@@ -320,7 +323,7 @@
 
 		{#each canvas.nodes as node (node.id)}
 			{#if node.id === draft?.id}
-				<NodeDraftCard {node} {draft} />
+				<NodeDraftCard {node} {draft} onnature={onNatureMenu} />
 			{:else}
 				<LogicNode
 					{node}

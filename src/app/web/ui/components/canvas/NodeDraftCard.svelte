@@ -14,11 +14,14 @@
 	let {
 		node,
 		draft,
+		onnature,
 	}: {
 		/** Where the layout puts the box once created. */
 		node: RenderedCanvasNode;
 		/** The box this card was opened for; the card never acts on a later one. */
 		draft: NodeDraftControls;
+		/** Opens or closes the nature menu under the header, as on a selected box. */
+		onnature?: ((nodeId: string, header: HTMLElement) => void) | undefined;
 	} = $props();
 	// The prop follows the box being typed, which changes as soon as this one is done with.
 	const own = untrack(() => draft);
@@ -35,6 +38,25 @@
 	/** The canvas neither selects, drags nor creates from inside the box being typed. */
 	function contain(event: Event): void {
 		event.stopPropagation();
+	}
+	/** The header of a new box being typed opens its nature menu, as on a selected box. */
+	let natureMenu = $derived(
+		onnature !== undefined && own.changeNature !== undefined && !own.parked,
+	);
+	function natureHeader(event: MouseEvent): HTMLElement | undefined {
+		if (!natureMenu) return undefined;
+		if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return undefined;
+		if (!(event.target instanceof Element)) return undefined;
+		return event.target.closest<HTMLElement>('[data-node-header]') ?? undefined;
+	}
+	/** The text keeps the focus, and the box stays typed, while the header is pressed. */
+	function keepFocus(event: MouseEvent): void {
+		if (natureHeader(event) !== undefined) event.preventDefault();
+	}
+	function click(event: MouseEvent): void {
+		contain(event);
+		const header = natureHeader(event);
+		if (header !== undefined) onnature?.(own.id, header);
 	}
 	/** As on any box, the header opens the properties: the typed text is kept first. */
 	function doubleClick(event: MouseEvent): void {
@@ -100,11 +122,19 @@
 	class="contents"
 	bind:this={scope}
 	onpointerdown={contain}
-	onclick={contain}
+	onmousedown={keepFocus}
+	onclick={click}
 	ondblclick={doubleClick}
 	onfocusin={resume}
 >
-	<LogicNode {node} label={own.label} parked={own.parked} bind:element={card}>
+	<LogicNode
+		{node}
+		label={own.label}
+		parked={own.parked}
+		provisional={own.provisional}
+		typedNatureMenu={natureMenu}
+		bind:element={card}
+	>
 		{#snippet body()}<span class="draft-editor" bind:this={host}></span>{/snippet}
 	</LogicNode>
 	{#if own.diagnostic !== undefined || failure !== ''}

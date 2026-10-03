@@ -1520,6 +1520,56 @@ test.describe('box dialog editing and creation', () => {
 		await expect(page.locator('[data-nature-manager]')).toBeVisible();
 	});
 
+	test('the header of the new box being typed changes its nature and keeps it typed', async ({
+		page,
+	}) => {
+		await page.getByRole('region', { name: 'Canvas viewport' }).focus();
+		await page.keyboard.press('n');
+		const { draft, content, id } = await typedBox(page);
+		await content.fill('Typée');
+		const header = draft.locator('[data-node-header]');
+		const menu = page.getByRole('menu', { name: 'Nature de la boîte' });
+		// Unlike a box, which a first click only selects, the box being typed opens it at once.
+		await header.click();
+		await expect(menu).toBeVisible();
+		await expect(menu.getByRole('menuitem', { name: 'Gérer les natures du document' })).toHaveCount(
+			1,
+		);
+		const other = menu.getByRole('menuitemradio', { checked: false }).first();
+		const label = (await other.textContent())?.trim() ?? '';
+		await other.click();
+		await expect(menu).toHaveCount(0);
+		await expect(header).toHaveText(label, { ignoreCase: true });
+		// Still typed: the text has the focus back and goes on where it was.
+		await expect(content).toBeFocused();
+		await page.keyboard.type(' encore');
+		await page.keyboard.press('ControlOrMeta+Enter');
+		const created = page.locator(`[data-node-id="${id}"]`);
+		await expect(created).toContainText('Typée encore');
+		await expect(created.locator('[data-node-header]')).toHaveText(label, { ignoreCase: true });
+		// One step: undoing removes the box, nature included.
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(created).toHaveCount(0);
+	});
+
+	test('erasing an empty new box cancels it, once its text is erased', async ({ page }) => {
+		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
+		const boxes = await page.locator('[data-node-id]').count();
+		await viewport.focus();
+		await page.keyboard.press('n');
+		const { draft, content } = await typedBox(page);
+		await page.keyboard.type('ab');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.press('Backspace');
+		// Erasing the text keeps the box; erasing the empty box takes it away, as Cancel does.
+		await expect(draft).toHaveCount(1);
+		await expect(content).toBeFocused();
+		await page.keyboard.press('Backspace');
+		await expect(draft).toHaveCount(0);
+		await expect(viewport).toBeFocused();
+		await expect(page.locator('[data-node-id]')).toHaveCount(boxes);
+	});
+
 	test('dragging a box names what releasing does, and refuses a cycle before letting go', async ({
 		page,
 	}) => {

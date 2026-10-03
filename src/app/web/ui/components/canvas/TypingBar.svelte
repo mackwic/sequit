@@ -36,6 +36,12 @@
 		readonly primary?: true;
 	}
 	let floating = $state<HTMLDivElement>();
+	const cancel: TypingAction = {
+		shortcut: CANVAS_SHORTCUTS[CanvasShortcutId.Cancel],
+		label: m.common_cancel(),
+		icon: 'phosphor:x',
+		run: own.cancel,
+	};
 	const actions: readonly TypingAction[] = [
 		{
 			shortcut: CANVAS_SHORTCUTS[CanvasShortcutId.Confirm],
@@ -56,13 +62,9 @@
 			icon: 'phosphor:sliders-horizontal',
 			run: own.edit,
 		},
-		{
-			shortcut: CANVAS_SHORTCUTS[CanvasShortcutId.Cancel],
-			label: m.common_cancel(),
-			icon: 'phosphor:x',
-			run: own.cancel,
-		},
+		cancel,
 	];
+	const erase = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 
 	function card(): Element | null {
 		return viewport.querySelector(`[data-node-draft="${CSS.escape(own.id)}"]`);
@@ -84,17 +86,32 @@
 		action.run();
 		viewport.focus({ preventScroll: true });
 	}
+	/** A new box with nothing left to erase cannot be deleted either: erasing cancels it. */
+	function actionFor(event: KeyboardEvent): TypingAction | undefined {
+		const action = actions.find(({ shortcut }) => matchesShortcut(shortcut, event));
+		if (action !== undefined) return action;
+		if (own.erasable && !event.isComposing && matchesShortcut(erase, event)) return cancel;
+		return undefined;
+	}
 	/** Captured before the editor and the canvas: these keys belong to the box being typed. */
 	function keydown(event: KeyboardEvent): void {
 		if (!inside(event.target)) return;
-		const action = actions.find(({ shortcut }) => matchesShortcut(shortcut, event));
+		const action = actionFor(event);
 		if (action === undefined) return;
 		event.preventDefault();
 		event.stopPropagation();
 		perform(action);
 	}
+	/** The box's nature menu belongs to it, yet its keys stay the menu's own: only leaving checks it. */
+	function inNatureMenu(target: EventTarget | null): boolean {
+		let element: Element | null = null;
+		if (target instanceof Element) element = target;
+		else if (target instanceof Node) element = target.parentElement;
+		const menu = element?.closest('[data-node-draft-menu]');
+		return menu?.getAttribute('data-node-draft-menu') === own.id;
+	}
 	function leaveFrom(event: Event): void {
-		if (!inside(event.target)) own.leave();
+		if (!inside(event.target) && !inNatureMenu(event.target)) own.leave();
 	}
 </script>
 
