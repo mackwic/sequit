@@ -57,6 +57,16 @@ function clearOfFrames(
 	return result;
 }
 
+/**
+ * A row's own boxes, without the frames that enclose other items. A row holding only frames, such
+ * as a relation endpoint framing its empty subgroups, is measured on those frames' faces.
+ */
+export function atomicRowExtent(row: readonly string[], input: RoutingSpaceInput): MainInterval {
+	const atomic = row.filter((id) => !input.enclosingGroups.has(id));
+	if (atomic.length === 0) return layerExtent(row, input.bounds, input.frame);
+	return layerExtent(atomic, input.bounds, input.frame);
+}
+
 /** A common rail stays outside every atomic box and group shell bordering its gap. */
 export function routingSpace(input: RoutingSpaceInput, transverse?: MainInterval): RoutingSpace {
 	const { layers, bounds, frame, enclosingGroups } = input;
@@ -78,11 +88,10 @@ export function routingSpace(input: RoutingSpaceInput, transverse?: MainInterval
 	const frames = [...enclosingGroups]
 		.filter((id) => bounds.has(id) && overlaps(id))
 		.map((id) => layerExtent([id], bounds, frame));
-	// A row holding only frames, such as a relation endpoint framing its empty subgroups, has no
-	// atomic box: its rails leave from those frames' faces rather than from an infinite extent.
+	// A frame-only row has no atomic box: its rails leave from its frames' faces, not from infinity.
 	const extents = clearOfFrames(boxes, frames).map((extent, index) => {
 		if (Number.isFinite(extent.start)) return extent;
-		return layerExtent(defined(layers.rows[index]), bounds, frame);
+		return atomicRowExtent(defined(layers.rows[index]), input);
 	});
 	return { layers, enclosingGroups, extents, bounds, frame };
 }

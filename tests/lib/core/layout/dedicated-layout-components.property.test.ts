@@ -296,35 +296,43 @@ function scaledSizes(
 	);
 }
 
+// Measured alone: 9.6–9.8 s for the 200 default runs, about 50 ms each. The 5,000 fuzz runs of the
+// same seed sum to 286 s under load (one draw takes 90 s): the ceiling follows the run count.
+const PASSAGE_PROPERTY_TIMEOUT = PROPERTY_PARAMETERS.numRuns * 150;
+
 describe('dedicated layout components', () => {
-	// Bounded by size: the 300-document census of 12-node documents in four directions is a
-	// workshop script, not a test (see the 2026-09-24 refactoring journal).
-	it('renders randomly grouped nodes and junctions without a passage failure', () => {
-		fc.assert(
-			fc.property(
-				richAcyclicLogicDocumentArbitrary({ maxNodes: 8 }),
-				fc.constantFrom(...Object.values(LayoutDirection)),
-				(document, direction) => {
-					const prepared = prepareLayoutDocument({
-						...document,
-						layout: defined(
-							layoutConfiguration(direction, LayoutBias.Top) ??
-								layoutConfiguration(direction, LayoutBias.Left),
-						),
-					});
-					const { layout, witness } = layoutWithDedicatedEngineAndRankOrderWitness(
-						prepared.graph,
-						prepared.ranks,
-						prepared.measurements,
-					);
-					// A rejected documentary layout may stay published only when witnessed unverified.
-					const validation = validateDedicatedCandidate({ ...prepared, layout });
-					if (!validation.valid) expect(witness.unverified, JSON.stringify(validation)).toBe(1);
-				},
-			),
-			PROPERTY_PARAMETERS,
-		);
-	}, 30_000);
+	// Bounded by size: the census of 300 twelve-node documents in four directions is the opt-in
+	// profile performance/dedicated-group-routing-profile.test.ts (see the 2026-09-24 journal).
+	it(
+		'renders randomly grouped nodes and junctions without a passage failure',
+		() => {
+			fc.assert(
+				fc.property(
+					richAcyclicLogicDocumentArbitrary({ maxNodes: 8 }),
+					fc.constantFrom(...Object.values(LayoutDirection)),
+					(document, direction) => {
+						const prepared = prepareLayoutDocument({
+							...document,
+							layout: defined(
+								layoutConfiguration(direction, LayoutBias.Top) ??
+									layoutConfiguration(direction, LayoutBias.Left),
+							),
+						});
+						const { layout, witness } = layoutWithDedicatedEngineAndRankOrderWitness(
+							prepared.graph,
+							prepared.ranks,
+							prepared.measurements,
+						);
+						// A rejected documentary layout may stay published only when witnessed unverified.
+						const validation = validateDedicatedCandidate({ ...prepared, layout });
+						if (!validation.valid) expect(witness.unverified, JSON.stringify(validation)).toBe(1);
+					},
+				),
+				PROPERTY_PARAMETERS,
+			);
+		},
+		PASSAGE_PROPERTY_TIMEOUT,
+	);
 
 	it.each([
 		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
