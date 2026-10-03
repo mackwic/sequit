@@ -18,7 +18,8 @@ export function transverse(point: Point, vertical: boolean): number {
 	return point.y;
 }
 
-function faceClearances(
+/** Main coordinates of the source and target clearances of an exterior path. */
+export function faceClearances(
 	frame: LayoutFrame,
 	ports: FacePorts,
 	clearances: readonly [number, number],

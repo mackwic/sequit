@@ -29,9 +29,11 @@ import {
 	exteriorTrackSearch,
 	pathForPorts,
 	pathOnTrack,
+	type TrackAttempt,
 } from './routing/group-track-routes';
 import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
-import { routeHitsObstacles, type RouteObstacles } from './routing/route-obstacles';
+import { routeHitsObstacles } from './routing/route-obstacles';
+import { transverseSegments } from './routing/route-segment-filter';
 
 /** Shared ports require a continuous trunk; distinct ports preserve the endpoint spacing. */
 function sharedPortsConflict(
@@ -97,17 +99,16 @@ function reservationsAdmit(context: RoutingContext, candidate: LayoutRelation): 
 /** Use a second exterior axis only after every simpler passage has failed. */
 function aroundRoute(
 	context: RoutingContext,
-	route: LayoutRelation,
-	groups: RouteObstacles | undefined,
+	attempt: TrackAttempt,
 	offsets: readonly number[],
 ): LayoutRelation | undefined {
 	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
 	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
 	const admits = (path: LayoutRelation): boolean => reservationsAdmit(context, path);
-	for (const ports of candidateFacePorts(context, route, offsets)) {
-		const attempt = { route, groups, ports, rails };
+	for (const ports of candidateFacePorts(context, attempt.route, offsets)) {
+		const exterior = { ...attempt, ports, rails };
 		const candidate =
-			aroundForPorts(context, attempt, admits) ?? boundaryForPorts(context, attempt, admits);
+			aroundForPorts(context, exterior, admits) ?? boundaryForPorts(context, exterior, admits);
 		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
@@ -115,18 +116,16 @@ function aroundRoute(
 
 function alternateRoute(
 	context: RoutingContext,
-	route: LayoutRelation,
-	groups: RouteObstacles | undefined,
+	attempt: TrackAttempt,
 	offsets: readonly number[],
 ): LayoutRelation | undefined {
-	const attempt = { route, groups };
 	const admits = (path: LayoutRelation): boolean => reservationsAdmit(context, path);
-	for (const ports of candidateFacePorts(context, route, offsets)) {
+	for (const ports of candidateFacePorts(context, attempt.route, offsets)) {
 		const candidate = pathForPorts(exteriorTrackSearch(context, attempt, ports, admits));
 		if (candidate !== undefined) return candidate;
 	}
 	// Beyond every current box and route, every next track is a fresh exterior rail.
-	for (const ports of candidateFacePorts(context, route, offsets)) {
+	for (const ports of candidateFacePorts(context, attempt.route, offsets)) {
 		const search = exteriorTrackSearch(context, attempt, ports, admits);
 		for (let index = 1; index <= context.routes.length + 1; index += 1) {
 			const candidate = pathOnTrack(search, context.outside + index * RAIL_SPACING);
@@ -146,15 +145,17 @@ function routeBrokenAlone(route: LayoutRelation, context: RoutingContext): boole
 }
 
 function repairRoute(context: RoutingContext, route: LayoutRelation): LayoutRelation | undefined {
+	context.refusedPaths.clear();
 	// A target can sit only 24px beyond a foreign frame. Preserve physical
 	// disjointness when the preferred 24px envelope cannot fit at its face.
-	context.refusedPaths.clear();
+	const attempts = [RAIL_SPACING, 0].map((clearance): TrackAttempt => {
+		const groups = foreignGroupObstacles(context, route, clearance);
+		return { route, groups, segments: transverseSegments(context, groups) };
+	});
 	for (const offsets of faceOffsetWindows(context, route))
-		for (const clearance of [RAIL_SPACING, 0]) {
-			const groups = foreignGroupObstacles(context, route, clearance);
+		for (const attempt of attempts) {
 			const replacement =
-				alternateRoute(context, route, groups, offsets) ??
-				aroundRoute(context, route, groups, offsets);
+				alternateRoute(context, attempt, offsets) ?? aroundRoute(context, attempt, offsets);
 			if (replacement !== undefined) return replacement;
 		}
 	return undefined;

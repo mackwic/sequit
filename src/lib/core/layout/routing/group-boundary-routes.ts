@@ -4,6 +4,7 @@ import type { LayoutRelation } from '../layout-types';
 import { aroundBoundaryPath, main, sourceBoundaryEscapes, transverse } from './group-exterior-path';
 import {
 	type ExteriorAttempt,
+	externalFlowSign,
 	type RoutingContext,
 	sharedSourceEscapes,
 } from './group-route-candidates';
@@ -138,7 +139,11 @@ export function boundaryForPorts(
 	const search = {
 		context,
 		attempt,
-		clear: segmentFilter(context, attempt, attempt.ports),
+		clear: segmentFilter(
+			context,
+			attempt.groups,
+			externalFlowSign(context, attempt.route, attempt.ports),
+		),
 		admits,
 		tails: new Map<number, Map<number, readonly number[]>>(),
 	};
