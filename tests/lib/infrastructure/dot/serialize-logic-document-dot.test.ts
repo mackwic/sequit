@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -12,19 +13,58 @@ import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { serializeLogicDocumentDot } from '../../../../src/lib/infrastructure/dot/serialize-logic-document-dot';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 
+function cardTable(dot: string, id: string): HTMLTableElement {
+	const line = dot
+		.split('\n')
+		.find((candidate) => candidate.trimStart().startsWith(`${JSON.stringify(id)} [`));
+	const label = /label=<(.*)>/.exec(line ?? '')?.[1];
+	if (label === undefined) throw new Error(`Missing HTML card for ${id}`);
+	const template = document.createElement('template');
+	template.innerHTML = label;
+	const table = template.content.querySelector('table');
+	if (table === null) throw new Error(`Missing table for ${id}`);
+	return table;
+}
+
 describe('DOT export', () => {
+	it('renders a custom document nature without treating its label as markup', () => {
+		const nature = { id: 'custom', label: 'Sur mesure & <test>', color: '#123456' };
+		const base = validLogicDocument();
+		const dot = serializeLogicDocumentDot({
+			...base,
+			natures: [nature],
+			nodes: base.nodes.map((node) => ({ ...node, natureId: nature.id })),
+		});
+		const table = cardTable(dot, 'source-a');
+		expect(table.rows[0]?.textContent).toBe(nature.label);
+		expect(table.rows[1]?.textContent).toBe('Source A');
+	});
+
+	it('uses a node color override for both its pastel header and border', () => {
+		const base = validLogicDocument();
+		const dot = serializeLogicDocumentDot({
+			...base,
+			nodes: base.nodes.map((node) => ({ ...node, color: '#123456' })),
+		});
+		const table = cardTable(dot, 'source-a');
+		expect(table.rows[0]?.cells[0]?.getAttribute('bgcolor')).toBe('#e0e5e9');
+		expect(table.getAttribute('color')).toBe('#919ba6');
+		expect(table.rows[0]?.textContent).toBe('Goal');
+	});
+
 	it('emits every logical endpoint and relation with their stable identities and direction', () => {
 		const dot = serializeLogicDocumentDot(validLogicDocument());
 
 		expect(dot).toContain('digraph "valid-document" {');
-		expect(dot).toContain('graph [label="Valid document", rankdir=TB];');
+		expect(dot).toContain('label="Valid document"');
 		expect(dot).toContain('subgraph "cluster_container" {');
-		expect(dot).toContain('"container" [label="Container", shape=folder];');
-		expect(dot).toContain('"source-a" [label="Source A\\n", color="#00aa44"];');
+		expect(cardTable(dot, 'source-a').rows[1]?.textContent).toBe('Source A');
 		expect(dot).toContain('"choice" [label="XOR", shape=circle];');
-		expect(dot).toContain('"isolated" [label="Isolated\\n", color="#00aa44"];');
+		expect(cardTable(dot, 'isolated').rows[1]?.textContent).toBe('Isolated');
 		expect(dot).toContain('"source-a" -> "choice" [id="a-to-choice"];');
-		expect(dot).toContain('"endpoint-group" -> "target" [id="group-to-target"];');
+		expect(dot).toContain(
+			'"endpoint-group" -> "target" [id="group-to-target", ltail="cluster_endpoint-group"];',
+		);
 		expect(dot).not.toContain('"choice" -> "source-a"');
 	});
 
@@ -53,9 +93,10 @@ describe('DOT export', () => {
 		};
 		const dot = serializeLogicDocumentDot(document);
 
-		expect(dot).toContain('  subgraph "cluster_container" {\n    label="";\n    color="#abc";');
+		expect(dot).toContain('label="Container"');
+		expect(dot).toContain('color="#abc"');
 		expect(dot).toContain('    subgraph "cluster_nested" {');
-		expect(dot).toContain('      "source-a" [label="Source A\\n", color="#123456"];');
+		expect(cardTable(dot, 'source-a').rows[1]?.textContent).toBe('Source A');
 		expect(dot).toContain('"source-a" -> "choice" [id="a-to-choice"];');
 	});
 
@@ -98,9 +139,51 @@ describe('DOT export', () => {
 
 		expect(dot).toContain('digraph "a\\" -> \\"b" {');
 		expect(dot).toContain('label="Title\\";\\n\\"forged\\" -> \\"target"');
-		expect(dot).toContain('"source\\"a" [label="One \\"quote\\"\\nTwo \\\\N"');
+		expect(cardTable(dot, 'source"a').rows[1]?.textContent).toBe('One "quote"Two \\\\N');
+		expect(cardTable(dot, 'source"a').querySelectorAll('br')).toHaveLength(1);
 		expect(dot).toContain('"source\\"a" -> "choice"');
 		expect(dot).not.toContain('\n"forged" -> "target');
+	});
+
+	it('projects supported Markdown and escaped punctuation into readable multiline text', () => {
+		const base = validLogicDocument();
+		const dot = serializeLogicDocumentDot({
+			...base,
+			nodes: base.nodes.map((node) => ({
+				...node,
+				markdown: 'idea \\! **bold** *italic* <u>underlined</u>\n\nsecond',
+			})),
+		});
+		const body = cardTable(dot, 'source-a').rows[1];
+		expect(body?.textContent).toBe('idea ! bold italic underlinedsecond');
+		expect(body?.querySelectorAll('br')).toHaveLength(2);
+	});
+
+	it('keeps unsupported HTML as literal text, not Graphviz label structure', () => {
+		const base = validLogicDocument();
+		const markdown = '<TABLE><TR><TD>forged & "quoted"</TD></TR></TABLE>';
+		const dot = serializeLogicDocumentDot({
+			...base,
+			nodes: base.nodes.map((node) => ({ ...node, markdown })),
+		});
+		const body = cardTable(dot, 'source-a').rows[1];
+		expect(body?.textContent).toBe(markdown);
+		expect(body?.querySelector('table')).toBeNull();
+	});
+
+	it('clips group relations to the frame only when the opposite endpoint is outside it', () => {
+		const base = validLogicDocument();
+		const dot = serializeLogicDocumentDot({
+			...base,
+			relations: [
+				{ id: 'incoming', from: 'target', to: 'container' },
+				{ id: 'internal', from: 'container', to: 'source-a' },
+				{ id: 'outgoing', from: 'container', to: 'target' },
+			],
+		});
+		expect(dot).toContain('"target" -> "container" [id="incoming", lhead="cluster_container"];');
+		expect(dot).toContain('"container" -> "source-a" [id="internal"];');
+		expect(dot).toContain('"container" -> "target" [id="outgoing", ltail="cluster_container"];');
 	});
 
 	it('rejects duplicate relation identities', () => {

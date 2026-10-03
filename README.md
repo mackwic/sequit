@@ -33,6 +33,27 @@ Run `mise run clean` (or `pnpm clean`) to remove generated builds, framework cac
 browser-test output, and mutation-test sandboxes. Installed dependencies and local environment files
 are preserved.
 
+## Document exports
+
+The document menu exports TOML (`.sequit.toml`), Graphviz DOT (`.dot`), or an editable
+Excalidraw scene (`.excalidraw`). TOML remains the complete Sequit document format.
+
+DOT renders square cards with pastel headers using each document nature's label and color,
+including custom natures. A node's own color overrides its nature's color. Card text uses
+the same compact Markdown projection as the canvas: supported inline formatting and
+escaped punctuation become readable text; unsupported markup remains literal.
+Groups are labeled frames, and relations to external endpoints attach to their boundaries.
+Identifiers and relation directions are preserved, but Graphviz calculates its own placement
+and orthogonal routes rather than reproducing the Sequit canvas geometry.
+
+With Graphviz installed, render an exported document as a vector image:
+
+```bash
+dot -Tsvg document.dot -o document.svg
+```
+
+Excalidraw instead retains the current canvas shapes and routes.
+
 ## Deployment
 
 Authenticate once, then deploy both Workers:

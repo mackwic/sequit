@@ -1,7 +1,10 @@
 import type { MarkedToken, Token, Tokens } from 'marked';
 import Delta, { type Op } from 'quill-delta';
 
-import { markdownInlineTokens, markdownTokens } from '../ui/content/body-markdown';
+import {
+	markdownInlineTokens,
+	markdownTokens,
+} from '../../../lib/infrastructure/content/body-markdown';
 import { QuillEditorProfile } from './quill-editor-config';
 
 const BLANK = /^[ \t]*$/;

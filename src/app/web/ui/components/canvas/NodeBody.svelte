@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { bodyMarkdown } from '../../content/body-markdown';
+	import { bodyMarkdown } from '../../../../../lib/infrastructure/content/body-markdown';
 	let { markdown }: { markdown: string } = $props();
 	const spans = $derived(bodyMarkdown(markdown));
 </script>

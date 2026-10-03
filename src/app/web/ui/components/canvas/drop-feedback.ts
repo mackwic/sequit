@@ -3,9 +3,9 @@ import { TopologyEditDiagnosticCode } from '../../../../../lib/core/document/top
 import { projectRelationAddition } from '../../../../../lib/core/document/topology-edits';
 import { GraphDiagnosticCode } from '../../../../../lib/core/graph/create-graph';
 import { fractionalOrderKeySpace } from '../../../../../lib/core/ordering/order-key-space';
+import { bodyMarkdown } from '../../../../../lib/infrastructure/content/body-markdown';
 import { m } from '../../../i18n/paraglide/messages';
 import { DropKind, type DropPlan, DropRefusal } from '../../canvas/drag-drop';
-import { bodyMarkdown } from '../../content/body-markdown';
 
 /** Long box texts are cut so that the label stays beside the pointer. */
 const NAME_LENGTH = 32;

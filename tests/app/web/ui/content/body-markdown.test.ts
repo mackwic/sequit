@@ -2,7 +2,7 @@ import { render } from 'svelte/server';
 import { describe, expect, it } from 'vitest';
 
 import NodeBody from '../../../../../src/app/web/ui/components/canvas/NodeBody.svelte';
-import { bodyMarkdown } from '../../../../../src/app/web/ui/content/body-markdown';
+import { bodyMarkdown } from '../../../../../src/lib/infrastructure/content/body-markdown';
 
 describe('compact Markdown body', () => {
 	it('projects nested emphasis and underline without producing HTML', () => {
