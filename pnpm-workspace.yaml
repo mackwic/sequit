@@ -3,6 +3,8 @@ allowBuilds:
   workerd: true
   sharp: true
   esbuild: true
+  # Its postinstall only advertises funding; no runtime assets need building.
+  core-js: false
 
 overrides:
   # SvelteKit still requires cookie ^0.6.0 (GHSA-pxg6-pf52-xh8x).

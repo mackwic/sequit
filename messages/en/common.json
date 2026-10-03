@@ -30,5 +30,12 @@
 	"common_document_title": "Document title",
 	"common_group_title": "Group title",
 	"common_nature_label": "Nature label",
-	"common_keyboard_shortcuts": "Keyboard shortcuts"
+	"common_keyboard_shortcuts": "Keyboard shortcuts",
+	"common_analytics_privacy": "Privacy",
+	"common_analytics_title": "Audience measurement",
+	"common_analytics_description": "Anonymous audience measurement is always active. With your consent, PostHog stores a pseudonymous identifier in this browser to recognize repeat visits. The contents of your graphs are never sent to PostHog.",
+	"common_analytics_choice_accepted": "Your current choice: recognition of repeat visits accepted.",
+	"common_analytics_choice_refused": "Your current choice: recognition of repeat visits refused.",
+	"common_analytics_accept": "Accept",
+	"common_analytics_refuse": "Refuse"
 }

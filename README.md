@@ -54,6 +54,31 @@ dot -Tsvg document.dot -o document.svg
 
 Excalidraw instead retains the current canvas shapes and routes.
 
+## Analytics and privacy
+
+PostHog EU is enabled in production and disabled in local development by default. The public
+project token defaults to Sequit's project; `.env.example` documents `PUBLIC_POSTHOG_KEY` and
+`PUBLIC_POSTHOG_ENABLED`. Set the latter to `true` to exercise analytics locally, or `false`
+to disable it. These are public configuration values, not personal API credentials.
+
+The browser sends pageviews through the same-origin SvelteKit route `/ingest`. The proxy uses
+fixed PostHog EU API and asset hosts, strips credentials, cookies, referrers and visitor IP
+headers, and does not follow upstream redirects. Pageviews contain the SvelteKit route template,
+never document identifiers, query parameters, fragments or graph content. The workshop is excluded.
+
+Before consent, and after refusal or withdrawal, visits use PostHog's cookieless mode without
+analytics browser storage. Accepting allows a pseudonymous identifier in local storage to
+recognize repeat visits; the **Privacy / Confidentialité** control changes this choice at any
+time. The consent choice itself is stored separately. Browser DNT/GPC signals prevent persisted
+tracking. Session replay, DOM autocapture, person profiles, error capture and surveys are disabled.
+Existing layout reports keep their document text and identifier anonymization and are not sent
+to PostHog.
+
+**Enable cookieless tracking in the PostHog project's settings before deployment.** PostHog
+otherwise ignores cookieless events even when ingestion answers HTTP 200. Without forwarding
+visitor IPs, treat cookieless measurements as visit counts, not reliable unique-visitor counts
+or geolocation. Cookieless mode alone is not a legal guarantee of a consent exemption.
+
 ## Deployment
 
 Authenticate once, then deploy both Workers:

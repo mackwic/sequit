@@ -30,5 +30,12 @@
 	"common_document_title": "Titre du document",
 	"common_group_title": "Titre du groupe",
 	"common_nature_label": "Libellé de la nature",
-	"common_keyboard_shortcuts": "Raccourcis clavier"
+	"common_keyboard_shortcuts": "Raccourcis clavier",
+	"common_analytics_privacy": "Confidentialité",
+	"common_analytics_title": "Mesure d’audience",
+	"common_analytics_description": "La mesure d’audience anonyme est toujours active. Avec votre accord, PostHog enregistre un identifiant pseudonyme dans ce navigateur pour reconnaître vos visites répétées. Le contenu de vos graphes n’est jamais envoyé à PostHog.",
+	"common_analytics_choice_accepted": "Votre choix actuel : reconnaissance des visites répétées acceptée.",
+	"common_analytics_choice_refused": "Votre choix actuel : reconnaissance des visites répétées refusée.",
+	"common_analytics_accept": "Accepter",
+	"common_analytics_refuse": "Refuser"
 }
