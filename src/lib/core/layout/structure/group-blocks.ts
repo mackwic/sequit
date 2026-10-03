@@ -2,9 +2,10 @@ import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
 
 /**
- * Groups enclosing a node. In layout each one is a rigid block: in every
- * row it spans, it occupies one contiguous slot of its container at one transverse position.
- * Nesting is exposed through parent links only, so deep hierarchies stay linear.
+ * Groups enclosing a node, a related group or several junctions. In layout each one is a rigid
+ * block: in every row it spans, it occupies one contiguous slot of its container at one
+ * transverse position. Nesting is exposed through parent links only, so deep hierarchies stay
+ * linear.
  */
 export interface GroupBlocks {
 	readonly ids: ReadonlySet<string>;
@@ -36,9 +37,29 @@ function populatedGroups(graph: LogicGraph): ReadonlySet<string> {
 }
 
 /**
+ * Groups holding at least two junctions, directly or in subgroups. Their frame holds a run of
+ * junctions, possibly from several components: it is a block, which unites them. A single
+ * junction still stands for its group.
+ */
+function junctionBlockIds(graph: LogicGraph): ReadonlySet<string> {
+	const counts = new Map<string, number>();
+	const ids = new Set<string>();
+	for (const id of graph.rankableEndpointIds) {
+		if (graph.endpointsById.get(id)?.kind !== EndpointKind.Junction) continue;
+		for (let group = groupOf(graph, id); group !== undefined; group = groupOf(graph, group)) {
+			const count = (counts.get(group) ?? 0) + 1;
+			counts.set(group, count);
+			if (count > 1) ids.add(group);
+		}
+	}
+	return ids;
+}
+
+/**
  * A node or a related group makes its enclosing groups blocks: both stand in rows. A related
  * group holding no node or junction expands to no endpoint, so its relations end on the group
- * itself: it keeps an ordinary row slot, whatever groups it holds.
+ * itself: it keeps an ordinary row slot, whatever groups it holds. A group holding several
+ * junctions is a block too.
  */
 function blockIds(graph: LogicGraph): ReadonlySet<string> {
 	const populated = populatedGroups(graph);
@@ -52,6 +73,7 @@ function blockIds(graph: LogicGraph): ReadonlySet<string> {
 			ids.add(group);
 		}
 	}
+	for (const id of junctionBlockIds(graph)) ids.add(id);
 	return ids;
 }
 

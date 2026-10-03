@@ -40,11 +40,14 @@ function inGroup(groupId: string | undefined): { groupId?: string } {
 	return { groupId };
 }
 
+/** Digits of one-digit fractional keys, in sort order: a witness holds up to 62 items. */
+const KEY_DIGITS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
 /** Lay the witness out with the dedicated engine, keeping what validation reads. */
 export function placeWitness(witness: LayoutWitness): DedicatedCandidateValidationInput {
 	const base = validLogicDocument();
 	let order = 0;
-	const nextKey = () => orderKey(`a${order++}`);
+	const nextKey = () => orderKey(`a${KEY_DIGITS.charAt(order++)}`);
 	const document: LogicDocument = {
 		...base,
 		layout: witness.layout,

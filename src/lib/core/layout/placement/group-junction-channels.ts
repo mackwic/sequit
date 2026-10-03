@@ -10,7 +10,7 @@ import { GROUP_FRAME_CLEARANCE, JUNCTION_CLEARANCE } from '../layout-settings';
 import type { Bounds } from '../layout-types';
 import type { GroupHierarchy } from '../structure/group-hierarchy';
 import type { LayoutStructure } from '../structure/prepare-layout';
-import { groupSpans } from './group-spans';
+import { type GroupSpans, groupSpans } from './group-spans';
 import { type JunctionRail, railSpan } from './junction-rails';
 
 function extent(box: Bounds, frame: LayoutFrame): { start: number; end: number } {
@@ -83,11 +83,91 @@ function farClearance(
 	return missing;
 }
 
+/** Whether a group encloses an endpoint, at any depth. */
+function holds(structure: LayoutStructure, groupId: string, id: string): boolean {
+	let group = structure.graph.endpointsById.get(id)?.entity.groupId;
+	while (group !== undefined && group !== groupId)
+		group = structure.hierarchy?.byId.get(group)?.groupId;
+	return group === groupId;
+}
+
+/** Where a frame lies along the flow, counting rank r as 2r and interval r's rails as 2r + 1. */
+interface FlowRange {
+	readonly low: number;
+	readonly high: number;
+}
+
+/** The flow range of a group's frame; undefined for a group holding nothing ranked or railed. */
+function flowRange(spans: GroupSpans, groupId: string): FlowRange | undefined {
+	const ranks = spans.ranks.get(groupId);
+	const rails = spans.rails.get(groupId);
+	let low = Number.POSITIVE_INFINITY;
+	let high = Number.NEGATIVE_INFINITY;
+	if (ranks !== undefined) {
+		low = 2 * ranks.first;
+		high = 2 * ranks.last;
+	}
+	if (rails !== undefined) {
+		low = Math.min(low, 2 * rails.first.interval + 1);
+		high = Math.max(high, 2 * rails.last.interval + 1);
+	}
+	if (low > high) return undefined;
+	return { low, high };
+}
+
+function overlapsAcross(left: Bounds, right: Bounds, vertical: boolean): boolean {
+	const leftStart = transverseStart(left, vertical);
+	const rightStart = transverseStart(right, vertical);
+	const leftEnd = leftStart + transverseSize(left, vertical);
+	const rightEnd = rightStart + transverseSize(right, vertical);
+	return leftStart < rightEnd && rightStart < leftEnd;
+}
+
+/**
+ * A foreign frame lying wholly before or after a junction's rail keeps a junction clearance
+ * from it where they overlap transversally, its shells included: the rail's slot on that side
+ * widens by what is missing, as placed. A frame across the rail is a transverse matter.
+ */
+function facingFrameClearances(
+	structure: LayoutStructure,
+	input: { readonly bounds: ReadonlyMap<string, Bounds>; readonly frame: LayoutFrame },
+	spans: GroupSpans,
+	result: Map<number, number[]>,
+): void {
+	const { bounds, frame } = input;
+	for (const [id, rail] of structure.junctions) {
+		const junction = defined(bounds.get(id));
+		const own = extent(junction, frame);
+		const position = 2 * rail.interval + 1;
+		for (const group of structure.hierarchy?.deepestFirst ?? []) {
+			const box = bounds.get(group.id);
+			const range = flowRange(spans, group.id);
+			if (box === undefined || range === undefined) continue;
+			if (holds(structure, group.id, id) || !overlapsAcross(box, junction, frame.vertical))
+				continue;
+			const facing = extent(box, frame);
+			if (range.low > position)
+				reserve(
+					result,
+					{ interval: rail.interval, index: rail.depth + 1 },
+					JUNCTION_CLEARANCE - (facing.start - own.end),
+				);
+			else if (range.high < position)
+				reserve(
+					result,
+					{ interval: rail.interval, index: rail.depth },
+					JUNCTION_CLEARANCE - (own.start - facing.end),
+				);
+		}
+	}
+}
+
 /**
  * A frame ending physically down or right on a junction rail grows past it by its shell, by the
  * free groups and minimum main size of a frame holding only that rail, and by its nested frames.
  * The rail's slot on that side widens by the clearance the frame lacks, as placed, before what
- * it overlaps transversally: that growth is reserved only where it meets something.
+ * it overlaps transversally: that growth is reserved only where it meets something. Every
+ * junction also keeps its clearance from the foreign frames facing it.
  */
 export function railFrameInsets(
 	structure: LayoutStructure,
@@ -112,6 +192,7 @@ export function railFrameInsets(
 		const missing = farClearance(structure, bounds, { groupId, vertical: frame.vertical });
 		reserve(result, { interval: rail.interval, index }, missing);
 	}
+	facingFrameClearances(structure, { bounds, frame }, spans, result);
 	return result;
 }
 

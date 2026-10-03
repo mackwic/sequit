@@ -180,6 +180,71 @@ function fillWallHoles(
 	}
 }
 
+/** The row of a container at a rank, inserted in rank order when the container has none. */
+function rowAt(known: MutableContainerRows, rank: number): string[] {
+	const index = known.indexOf.get(rank);
+	if (index !== undefined) return defined(known.rows[index]);
+	let at = known.ranks.findIndex((other) => other > rank);
+	if (at < 0) at = known.ranks.length;
+	const row: string[] = [];
+	known.ranks.splice(at, 0, rank);
+	known.rows.splice(at, 0, row);
+	known.indexOf.clear();
+	for (const [position, other] of known.ranks.entries()) known.indexOf.set(other, position);
+	return row;
+}
+
+/** Whether a block holds an endpoint or block, at any depth. */
+export function encloses(blocks: GroupBlocks, block: string, id: string): boolean {
+	let parent = blocks.parentOf(id);
+	while (parent !== undefined && parent !== block) parent = blocks.parentOf(parent);
+	return parent === block;
+}
+
+/** Beside the median item its junctions relate to; without any, in the middle of the row. */
+function seatIndex(
+	row: readonly string[],
+	junctions: readonly string[],
+	related: (item: string) => readonly string[],
+): number {
+	const indices = junctions
+		.flatMap(related)
+		.map((item) => row.indexOf(item))
+		.filter((index) => index >= 0)
+		.sort((left, right) => left - right);
+	if (indices.length === 0) return Math.round(row.length / 2);
+	return defined(indices[Math.floor((indices.length - 1) / 2)]) + 1;
+}
+
+/**
+ * A block holding junctions alone stands in no row. When its rails lie on both sides of a
+ * rank, its frame crosses that rank: it takes a slot in its container's first row there,
+ * beside the items its junctions relate to, and walls the next ones. Innermost first, so a
+ * block holding such a block alone is seated in turn.
+ */
+function seatJunctionBlocks(
+	result: Map<string | undefined, MutableContainerRows>,
+	input: {
+		readonly junctions: readonly string[];
+		readonly blocks: GroupBlocks;
+		readonly order: BlockSpans;
+		readonly related: RelatedAbove;
+	},
+): void {
+	const { blocks, order } = input;
+	for (const block of order.innermostFirst) {
+		const span = defined(order.spans.get(block));
+		if (order.occupied.has(block) || span.first > span.last) continue;
+		const container = blocks.parentOf(block);
+		const known = result.get(container) ?? { ranks: [], rows: [], indexOf: new Map() };
+		result.set(container, known);
+		const row = rowAt(known, span.first);
+		const junctions = input.junctions.filter((id) => encloses(blocks, block, id));
+		const related = (item: string) => input.related(item, span.first, container);
+		row.splice(seatIndex(row, junctions, related), 0, block);
+	}
+}
+
 /**
  * Rows of every container: each endpoint stands for itself in its innermost block and for the
  * block enclosing it in every outer container. A container gets a row where it holds something
@@ -189,9 +254,10 @@ function fillWallHoles(
 export function containerRowsOf(
 	rows: PlacementRows,
 	blocks: GroupBlocks,
-	{ spans, occupied }: BlockSpans,
+	order: BlockSpans,
 	related: RelatedAbove,
 ): ReadonlyMap<string | undefined, ContainerRows> {
+	const { spans, occupied } = order;
 	const result = new Map<string | undefined, MutableContainerRows>();
 	const add = (container: string | undefined, rank: number, items: string[]): void => {
 		let known = result.get(container);
@@ -215,6 +281,10 @@ export function containerRowsOf(
 		for (const [container, items] of rowContainers(row, blocks).slots) add(container, rank, items);
 		for (const block of bounding.get(rank) ?? []) add(blocks.parentOf(block), rank, [block]);
 	}
+	seatJunctionBlocks(result, { junctions: rows.junction.flat(), blocks, order, related });
 	fillWallHoles(result, spans, related);
+	// A block of junctions on one rail has no row: its frame is drawn around them there.
+	for (const block of spans.keys())
+		if (!result.has(block)) result.set(block, { ranks: [], rows: [], indexOf: new Map() });
 	return result;
 }

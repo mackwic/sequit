@@ -46,6 +46,8 @@ export interface BlockPlan {
 	readonly free: ReadonlyMap<string, readonly string[]>;
 	/** Relation-connected clusters an item belongs to; disjoint neighbors keep the component gap. */
 	readonly clusters: ReadonlyMap<string, readonly number[]>;
+	/** Blocks holding junctions alone, without any row of their own. */
+	readonly memberless: ReadonlySet<string>;
 }
 
 const plans = new WeakMap<PlacementRows, BlockPlan>();
@@ -86,8 +88,10 @@ function spans(context: LinkContext, item: string, rank: number): boolean {
 	return span.first <= rank && rank <= span.last;
 }
 
+/** A block standing on one rail alone, between two ranks, has no rank range. */
 function rangeOf(context: LinkContext, id: string): RankSpan | undefined {
 	const span = context.spans.get(id);
+	if (span !== undefined && span.first > span.last) return undefined;
 	if (span !== undefined) return span;
 	const rank = context.ranks.get(id);
 	if (rank === undefined) return undefined;
@@ -278,6 +282,7 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 			children: new Map(),
 			free: new Map(),
 			clusters: new Map(),
+			memberless: new Set(),
 		};
 	} else {
 		const containerRows = containerRowsOf(rows, blocks, blockOrder, relatedItems(context, blocks));
@@ -293,7 +298,10 @@ export function blockPlan(rows: PlacementRows, context: FamilyContext): BlockPla
 			ids: [...rows.ordinary.flat(), ...spans.keys()],
 			innermostFirst,
 		});
-		plan = { blocks, containers, spans, children, free: free.direct, clusters };
+		const memberless = new Set(
+			innermostFirst.filter((id) => defined(containerRows.get(id)).rows.length === 0),
+		);
+		plan = { blocks, containers, spans, children, free: free.direct, clusters, memberless };
 	}
 	plans.set(rows, plan);
 	return plan;

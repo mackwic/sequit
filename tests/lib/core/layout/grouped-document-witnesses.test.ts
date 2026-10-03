@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/logic-document';
+import {
+	defined,
+	LayoutBias,
+	layoutConfiguration,
+	LayoutDirection,
+} from '../../../../src/lib/core/document/logic-document';
 import type { DedicatedCandidateValidationInput } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
 import { GROUP_FRAME_CLEARANCE } from '../../../../src/lib/core/layout/layout-settings';
 import type { Bounds } from '../../../../src/lib/core/layout/layout-types';
 import {
+	type LayoutWitness,
 	layoutWitness,
 	measurement,
 	placeWitness,
@@ -318,5 +324,255 @@ describe('minimum size of a frame holding only a junction rail', () => {
 		const frame = boxOf(placed, 'g2');
 		expect(boxOf(placed, 'n0').y).toBeLessThan(frame.y + frame.height);
 		expect(validateDedicatedCandidate(placed)).toMatchObject({ valid: true });
+	});
+});
+
+const plain = { width: 220, height: 116 };
+const framed = measurement(160, 72, 36, 24);
+
+/** Reduced documents of the rich generated corpus (seed 1592915777), at default sizes. */
+const richWitnesses: readonly {
+	readonly name: string;
+	readonly witness: Omit<LayoutWitness, 'layout'>;
+}[] = [
+	{
+		name: 'reserves the frame of a related group holding a related empty group in its slot (rich/101)',
+		witness: {
+			nodes: [['n02', plain, 'g00']],
+			junctions: [['j00', 'g00']],
+			groups: [
+				['e00', framed, 'g03'],
+				['g03', framed],
+				['g00', framed],
+			],
+			relations: [
+				['j00', 'g03'],
+				['e00', 'n02'],
+				['g03', 'n02'],
+			],
+		},
+	},
+	{
+		name: 'reserves the frames of related empty groups nested in each other (rich/68)',
+		witness: {
+			nodes: [
+				['n01', plain],
+				['n02', plain],
+			],
+			groups: [
+				['e00', framed],
+				['e01', framed, 'e00'],
+				['e02', framed, 'e01'],
+				['g02', framed],
+			],
+			relations: [
+				['g02', 'n01'],
+				['e01', 'n01'],
+				['e02', 'n02'],
+			],
+		},
+	},
+	{
+		name: 'draws the frame of a single junction in a block around the rows it holds (rich/7)',
+		witness: {
+			nodes: [
+				['n01', plain, 'g01'],
+				['n02', plain],
+				['n03', plain, 'g01'],
+				['n04', plain],
+				['n05', plain, 'g00'],
+			],
+			junctions: [['j00', 'g04']],
+			groups: [
+				['e00', framed],
+				['g02', framed],
+				['g00', framed],
+				['g01', framed, 'g00'],
+				['g04', framed, 'g01'],
+			],
+			relations: [
+				['j00', 'g02'],
+				['g02', 'e00'],
+				['e00', 'n02'],
+				['n03', 'n04'],
+			],
+		},
+	},
+	{
+		name: 'keeps room in a block for its junction past a nested frame crossing its rail (rich/155)',
+		witness: {
+			nodes: [['n05', plain, 'g00']],
+			junctions: [
+				['j00', 'g00'],
+				['j01', 'g04'],
+			],
+			groups: [
+				['g02', framed],
+				['g00', framed],
+				['g04', framed, 'g00'],
+				['g05', framed, 'g04'],
+				['g06', framed, 'g05'],
+			],
+			relations: [['j00', 'g02']],
+		},
+	},
+	{
+		name: 'moves the junctions of a block on one rail together out of foreign frames (rich/164)',
+		witness: {
+			nodes: [
+				['n00', plain, 'g01'],
+				['n01', plain],
+				['n02', plain, 'g01'],
+				['n03', plain, 'g01'],
+				['n04', plain],
+				['n05', plain],
+			],
+			junctions: [
+				['j01', 'g00'],
+				['j02', 'g00'],
+			],
+			groups: [
+				['e00', framed],
+				['g00', framed],
+				['g01', framed, 'g00'],
+			],
+			relations: [
+				['e00', 'n02'],
+				['n03', 'n01'],
+				['n04', 'j01'],
+				['n05', 'j01'],
+			],
+		},
+	},
+	{
+		name: 'keeps a foreign junction out of a block of junctions on one rail (rich/191)',
+		witness: {
+			nodes: [
+				['n00', plain],
+				['n05', plain, 'g00'],
+			],
+			junctions: [
+				['j00', 'g01'],
+				['j01', 'g00'],
+				['j02', 'g01'],
+			],
+			groups: [
+				['g00', framed],
+				['g01', framed, 'g00'],
+			],
+			relations: [['n00', 'j01']],
+		},
+	},
+	{
+		name: 'grows an inner block around its junction before an outer junction leaves it (rich/95)',
+		witness: {
+			nodes: [
+				['n06', plain, 'g05'],
+				['n07', plain, 'g06'],
+				['n08', plain, 'g05'],
+				['n10', plain, 'g05'],
+			],
+			junctions: [
+				['j01', 'g01'],
+				['j02', 'g00'],
+			],
+			groups: [
+				['g00', framed],
+				['g01', framed, 'g00'],
+				['g05', framed, 'g01'],
+				['g06', framed, 'g05'],
+			],
+			relations: [],
+		},
+	},
+	{
+		name: 'keeps the junctions of a block clear of frames outside it through its own room (rich/36)',
+		witness: {
+			nodes: [
+				['n00', plain],
+				['n01', plain, 'g04'],
+				['n02', plain, 'g00'],
+				['n03', plain, 'g04'],
+			],
+			junctions: [
+				['j00', 'g05'],
+				['j01', 'g01'],
+				['j02', 'g01'],
+			],
+			groups: [
+				['e00', framed, 'g03'],
+				['e01', framed, 'e00'],
+				['e02', framed, 'e01'],
+				['g02', framed],
+				['g03', framed],
+				['g00', framed],
+				['g01', framed, 'g00'],
+				['g04', framed, 'g01'],
+				['g05', framed, 'g04'],
+			],
+			relations: [
+				['n00', 'j00'],
+				['n00', 'n02'],
+				['g05', 'g03'],
+				['j00', 'g02'],
+				['g02', 'e02'],
+				['g02', 'n01'],
+				['e01', 'j01'],
+			],
+		},
+	},
+	{
+		name: 'unites the components of a group holding two junctions in one block (rich/129)',
+		witness: {
+			nodes: [
+				['n04', plain],
+				['n05', plain],
+			],
+			junctions: [
+				['j00', 'g06'],
+				['j01', 'g06'],
+			],
+			groups: [
+				['g02', framed],
+				['g06', framed],
+			],
+			relations: [
+				['j00', 'g02'],
+				['g02', 'n05'],
+				['n04', 'j01'],
+			],
+		},
+	},
+	{
+		// Counterexample of the generated rich property (seed 1592915777), reduced.
+		name: 'keeps a junction outside every frame clear of the nested frames facing its rail',
+		witness: {
+			nodes: [],
+			junctions: [['j01']],
+			groups: [
+				['e00', framed, 'g03'],
+				['e01', framed, 'e00'],
+				['g03', framed],
+				['g01', framed],
+				['g04', framed],
+			],
+			relations: [
+				['e00', 'g04'],
+				['e01', 'j01'],
+				['g03', 'g01'],
+				['j01', 'g01'],
+			],
+		},
+	},
+];
+
+describe.each(richWitnesses)('rigid blocks: $name', ({ witness }) => {
+	it.each(Object.values(LayoutDirection))('lays the witness out validly in %s', (direction) => {
+		const layout = defined(
+			layoutConfiguration(direction, LayoutBias.Top) ??
+				layoutConfiguration(direction, LayoutBias.Left),
+		);
+		const validation = layoutWitness({ ...witness, layout });
+		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 	});
 });

@@ -80,7 +80,10 @@ function settlePending(arrangement: Arrangement): void {
 		const shift = pending.get(container.id) ?? 0;
 		if (shift === 0) continue;
 		for (const id of plan.children.get(container.id) ?? []) {
-			translateTransversely(defined(bounds.get(id)), shift, vertical);
+			// A block on one rail alone has no frame before its junctions are placed.
+			const box = bounds.get(id);
+			if (box === undefined) continue;
+			translateTransversely(box, shift, vertical);
 			if (plan.spans.has(id)) pending.set(id, (pending.get(id) ?? 0) + shift);
 		}
 	}
@@ -204,6 +207,21 @@ function placeFreeMembers(
 }
 
 /**
+ * A block holding junctions alone has nothing placed before its rails. Across ranks, its seat
+ * is its minimum frame, with the room its junctions lacked; on one rail, it has no seat.
+ */
+function seatFrame(arrangement: Arrangement, id: string): void {
+	const { bounds, context, plan, vertical } = arrangement;
+	const span = defined(plan.spans.get(id));
+	if (bounds.has(id) || span.first > span.last) return;
+	const { minimumWidth: width, minimumHeight: height } = defined(context.groups.get(id));
+	const frame = { x: 0, y: 0, width, height };
+	const reserve = arrangement.reserves?.get(id);
+	if (reserve !== undefined) reserveFrame(frame, reserve, vertical);
+	bounds.set(id, frame);
+}
+
+/**
  * The frame of a block around its members and the row items it holds, as they now stand: a
  * group inside the block that is no block itself is drawn around items of the block's rows.
  * Its slot keeps the room its junctions need and the frames drawn around the block itself.
@@ -211,6 +229,10 @@ function placeFreeMembers(
 function encloseContainer(arrangement: Arrangement, container: ContainerPlan): void {
 	const { bounds, context, plan, vertical } = arrangement;
 	if (container.id === undefined) return;
+	if (container.rows.length === 0) {
+		seatFrame(arrangement, container.id);
+		return;
+	}
 	const members = context.hierarchy?.membersById.get(container.id) ?? [];
 	const free = new Set(plan.free.get(container.id));
 	const content = members.filter((id) => bounds.has(id) && !free.has(id));
@@ -275,5 +297,6 @@ export function arrangeFamilies(input: {
 		rebuildFrames: () => {
 			for (const container of plan.containers) encloseContainer(arrangement, container);
 		},
+		seats: [...plan.memberless],
 	});
 }

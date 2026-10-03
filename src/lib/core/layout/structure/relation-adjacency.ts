@@ -11,7 +11,7 @@ const adjacencies = new WeakMap<LogicGraph, RawAdjacency>();
 
 /**
  * Relations as documented: a relation to a block reaches its frame, not its members. A group
- * that is no block has no slot of its own when it holds junctions: they stand for it.
+ * that is no block has no slot of its own when it holds a junction: the junction stands for it.
  */
 export function rawAdjacency(graph: LogicGraph): RawAdjacency {
 	const cached = adjacencies.get(graph);

@@ -30,7 +30,7 @@ const chainCache = new WeakMap<LogicGraph, ReadonlyMap<string, readonly string[]
 /**
  * Groups that are neither blocks nor row slots holding their members are drawn around what
  * they hold. Around a single placed item (a row item, a junction or a block), they are that
- * item's frames: a junction standing for a junction-only group, a related group or a block
+ * item's frames: a junction standing for the group holding it alone, a related group or a block
  * inside related groups. Innermost first, by the item that carries them.
  */
 export function carriedChains(context: CarryContext): ReadonlyMap<string, readonly string[]> {
