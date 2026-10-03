@@ -11,7 +11,7 @@ import { GROUP_FRAME_CLEARANCE, ITEM_GAP } from '../layout-settings';
 import { groupBlocks } from '../structure/group-blocks';
 import type { PlacementRows } from '../structure/placement-rows';
 import { type BlockPlan, blockPlan, type FamilyContext } from './block-plan';
-import { enclosure } from './group-enclosure';
+import { enclosure, type FrameReserve } from './group-enclosure';
 
 function encloses(plan: BlockPlan, block: string, id: string): boolean {
 	let parent = plan.blocks.parentOf(id);
@@ -46,26 +46,33 @@ function reaches(frame: MutableBounds, junction: MutableBounds, vertical: boolea
 }
 
 /**
- * A junction stays out of every foreign frame reaching its rail along the flow. It moves to the
- * nearer side, one item gap away.
+ * Junctions stay out of every foreign frame reaching their rail along the flow. They move to
+ * the nearer side, one item gap away; a block's junctions on one rail move together, so none
+ * closes on another.
  */
-function leaveForeignFrames(arrangement: PlacedFrames, id: string): void {
+function leaveForeignFrames(arrangement: PlacedFrames, run: readonly string[]): void {
 	const { plan, bounds, vertical } = arrangement;
-	const box = defined(bounds.get(id));
+	const boxes = run.map((id) => defined(bounds.get(id)));
+	const [first] = run;
+	const [box] = boxes;
+	if (first === undefined || box === undefined) return;
 	const walls = [...plan.spans.keys()]
-		.filter((block) => !encloses(plan, block, id))
+		.filter((block) => !encloses(plan, block, first))
 		.map((block) => defined(bounds.get(block)))
 		.filter((frame) => reaches(frame, box, vertical))
 		.map((frame) => interval(frame, vertical));
 	for (let remaining = walls.length; remaining > 0; remaining -= 1) {
-		const own = interval(box, vertical);
+		const own = {
+			start: Math.min(...boxes.map((member) => interval(member, vertical).start)),
+			end: Math.max(...boxes.map((member) => interval(member, vertical).end)),
+		};
 		const wall = walls.find(({ start, end }) => own.start < end && start < own.end);
 		if (wall === undefined) return;
 		const before = wall.start - ITEM_GAP - own.end;
 		const after = wall.end + ITEM_GAP - own.start;
 		let shift = after;
 		if (-before < after) shift = before;
-		translateTransversely(box, shift, vertical);
+		for (const member of boxes) translateTransversely(member, shift, vertical);
 	}
 }
 
@@ -94,14 +101,13 @@ function junctionRuns(
  * on one rail move together, so none closes on another.
  */
 function clampMembers(input: {
-	readonly plan: BlockPlan;
-	readonly junctions: readonly string[];
+	readonly runs: ReadonlyMap<string, ReadonlyMap<string, readonly string[]>>;
 	readonly context: FamilyContext;
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
 }): void {
-	const { plan, junctions, context, bounds, vertical } = input;
-	for (const [block, rails] of junctionRuns(plan, junctions, context)) {
+	const { runs, context, bounds, vertical } = input;
+	for (const [block, rails] of runs) {
 		const frame = defined(bounds.get(block));
 		const { padding, headerHeight } = defined(context.groups.get(block));
 		let low = transverseStart(frame, vertical) + padding;
@@ -119,28 +125,78 @@ function clampMembers(input: {
 	}
 }
 
+/** Frames of the blocks around their members, row items and junctions as they now stand. */
+function encloseBlocks(
+	plan: BlockPlan,
+	context: FamilyContext,
+	junctions: readonly string[],
+	bounds: Map<string, MutableBounds>,
+): void {
+	for (const { id } of plan.containers) {
+		if (id === undefined) continue;
+		const held = new Set([
+			...(context.hierarchy?.membersById.get(id) ?? []),
+			...(plan.children.get(id) ?? []),
+			...junctions.filter((junction) => plan.blocks.parentOf(junction) === id),
+		]);
+		bounds.set(
+			id,
+			enclosure(
+				defined(context.groups.get(id)),
+				[...held].filter((member) => bounds.has(member)),
+				bounds,
+			),
+		);
+	}
+}
+
+/** How far each block's frame now reaches beyond the frame its rows were arranged with. */
+function overflows(
+	arranged: ReadonlyMap<string, MutableBounds>,
+	bounds: ReadonlyMap<string, MutableBounds>,
+	vertical: boolean,
+): ReadonlyMap<string, FrameReserve> {
+	const result = new Map<string, FrameReserve>();
+	for (const [id, before] of arranged) {
+		const after = interval(defined(bounds.get(id)), vertical);
+		const { start, end } = interval(before, vertical);
+		const reserve = {
+			before: Math.max(0, start - after.start),
+			after: Math.max(0, after.end - end),
+		};
+		if (reserve.before > 1e-9 || reserve.after > 1e-9) result.set(id, reserve);
+	}
+	return result;
+}
+
 /**
  * Junction members of a block stay within its padding. Every frame then holds its junction
- * rails along the flow, and a foreign junction leaves each frame reaching its rail.
+ * rails along the flow, and a foreign junction leaves each frame reaching its rail. Returns the
+ * room each block lacked for its junctions, where its frame outgrew the arranged one.
  */
 export function clampBlockJunctions(input: {
 	readonly rows: PlacementRows;
 	readonly context: FamilyContext;
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
-}): void {
+}): ReadonlyMap<string, FrameReserve> {
 	const { rows, context, bounds, vertical } = input;
-	if (groupBlocks(context.graph).ids.size === 0) return;
+	if (groupBlocks(context.graph).ids.size === 0) return new Map();
 	const plan = blockPlan(rows, context);
-	if (plan.spans.size === 0) return;
+	if (plan.spans.size === 0) return new Map();
 	const junctions = rows.junction.flat();
-	clampMembers({ plan, junctions, context, bounds, vertical });
-	for (const { id } of plan.containers) {
-		if (id === undefined) continue;
-		const members = (context.hierarchy?.membersById.get(id) ?? []).filter((member) =>
-			bounds.has(member),
-		);
-		bounds.set(id, enclosure(defined(context.groups.get(id)), members, bounds));
-	}
-	for (const id of junctions) leaveForeignFrames({ plan, bounds, vertical }, id);
+	const arranged = new Map(
+		[...plan.spans.keys()].map((id) => [id, { ...defined(bounds.get(id)) }] as const),
+	);
+	const runs = junctionRuns(plan, junctions, context);
+	clampMembers({ runs, context, bounds, vertical });
+	encloseBlocks(plan, context, junctions, bounds);
+	for (const rails of runs.values())
+		for (const run of rails.values()) leaveForeignFrames({ plan, bounds, vertical }, run);
+	encloseBlocks(plan, context, junctions, bounds);
+	// Junctions outside every block leave the frames as their own junctions finally hold them.
+	for (const id of junctions)
+		if (plan.blocks.parentOf(id) === undefined)
+			leaveForeignFrames({ plan, bounds, vertical }, [id]);
+	return overflows(arranged, bounds, vertical);
 }

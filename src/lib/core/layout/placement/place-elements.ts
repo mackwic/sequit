@@ -1,5 +1,6 @@
 import type { LayoutFrame, MutableBounds } from '../geometry/layout-frame';
 import type { LayoutStructure } from '../structure/prepare-layout';
+import { carriedSizes, seatCarriedItems } from './carried-frames';
 import { encloseGroups } from './enclose-groups';
 import { insetJunctionChannels, railFrameInsets } from './group-junction-channels';
 import { junctionRails, railSpan } from './junction-rails';
@@ -93,19 +94,23 @@ function junctionGaps(input: PlacementInput, reserved: ReservedGaps): PlacementG
 function placeOnce(input: PlacementInput, reserved: ReservedGaps): Map<string, MutableBounds> {
 	const { structure, measurements, frame, placement } = input;
 	const { gaps, channels } = junctionGaps(input, reserved);
-	const { graph } = structure;
 	const families = {
-		graph,
+		graph: structure.graph,
 		ranks: structure.ranks.byEndpointId,
 		hierarchy: structure.hierarchy,
 		groups: measurements.groups,
 		junctionIds: structure.junctionIds,
 		junctions: structure.junctions,
 	};
+	const carried = carriedSizes(families, {
+		groups: measurements.groups,
+		sizes: measurements.sizes,
+		vertical: frame.vertical,
+	});
 	for (const [index, component] of structure.components.entries()) {
 		placement.components[index] = placeComponent({
 			rows: component.rows,
-			sizes: measurements.sizes,
+			sizes: carried.sizes,
 			frame,
 			primaryBandSizes: measurements.primaryBandSizes,
 			rankGap: measurements.rankGap,
@@ -119,6 +124,7 @@ function placeOnce(input: PlacementInput, reserved: ReservedGaps): Map<string, M
 	}
 	placement.bounds.clear();
 	const cursor = packComponents(placement.components, placement.bounds, frame);
+	seatCarriedItems(placement.bounds, carried.slots, frame.vertical);
 	if (structure.hierarchy !== undefined)
 		encloseGroups(
 			{

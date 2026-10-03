@@ -17,6 +17,7 @@ import type { BranchAlignment } from './align-families';
 import { clampBlockJunctions } from './block-junctions';
 import { arrangeFamilies } from './block-placement';
 import type { FamilyContext } from './block-plan';
+import type { FrameReserve } from './group-enclosure';
 import { junctionCrossPositions, railSpan } from './junction-rails';
 import { measureRows, type RowMetrics } from './row-metrics';
 
@@ -122,14 +123,23 @@ function normalizeTransversely(bounds: Map<string, MutableBounds>, vertical: boo
 	return total.end - total.start;
 }
 
-export function placeComponent(input: ComponentPlacementInput): ComponentLayout {
+/**
+ * Place rows, arrange blocks and place junction rails. A block whose junctions stood beyond the
+ * frame its rows were arranged with is arranged once more, keeping that room in its frame.
+ */
+function arrangeComponent(
+	input: ComponentPlacementInput,
+	metrics: RowMetrics,
+	reserves?: ReadonlyMap<string, FrameReserve>,
+): {
+	readonly bounds: Map<string, MutableBounds>;
+	readonly lacking: ReadonlyMap<string, FrameReserve>;
+} {
 	const { vertical } = input.frame;
-	const metrics = measureRows(input);
 	const bounds = new Map<string, MutableBounds>();
 	const placement = { input, metrics, bounds };
 	placeOrdinaryRows(placement);
-	const { families } = input;
-	const rows = input.rows;
+	const { families, rows } = input;
 	if (families !== undefined)
 		arrangeFamilies({
 			rows,
@@ -137,13 +147,23 @@ export function placeComponent(input: ComponentPlacementInput): ComponentLayout 
 			bounds,
 			vertical,
 			alignment: input.branchAlignment,
+			reserves,
 		});
 	placeJunctionRows(placement);
+	let lacking: ReadonlyMap<string, FrameReserve> = new Map();
+	if (families !== undefined)
+		lacking = clampBlockJunctions({ rows, context: families, bounds, vertical });
+	return { bounds, lacking };
+}
+
+export function placeComponent(input: ComponentPlacementInput): ComponentLayout {
+	const { vertical } = input.frame;
+	const metrics = measureRows(input);
+	const first = arrangeComponent(input, metrics);
+	let { bounds } = first;
+	if (first.lacking.size > 0) ({ bounds } = arrangeComponent(input, metrics, first.lacking));
 	let crossLength = metrics.crossLength;
-	if (families !== undefined) {
-		clampBlockJunctions({ rows, context: families, bounds, vertical });
-		crossLength = normalizeTransversely(bounds, vertical);
-	}
+	if (input.families !== undefined) crossLength = normalizeTransversely(bounds, vertical);
 	if (input.transverseCenters !== undefined)
 		crossLength = alignComponentCenters(bounds, input.transverseCenters, vertical, crossLength);
 	if (vertical) return { boundsById: bounds, width: crossLength, height: metrics.primaryLength };

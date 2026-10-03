@@ -7,6 +7,7 @@ import {
 } from '../geometry/layout-frame';
 import type { PlacementRows } from '../structure/placement-rows';
 import type { BranchAlignment } from './align-families';
+import type { FrameReserve } from './group-enclosure';
 
 /** Transverse inputs and outcome of one arrangement of some rows. */
 interface Arranged {
@@ -15,7 +16,8 @@ interface Arranged {
 	readonly starts: ReadonlyMap<string, number>;
 }
 
-const arranged = new WeakMap<PlacementRows, Arranged>();
+/** Arrangements of some rows by the frame room their blocks reserve. */
+const arranged = new WeakMap<PlacementRows, Map<string, Arranged>>();
 
 function sameEntries(
 	left: ReadonlyMap<string, number> | undefined,
@@ -32,12 +34,13 @@ export interface ReusableArrangement {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
+	readonly reserves?: ReadonlyMap<string, FrameReserve> | undefined;
 }
 
 /**
- * A block arrangement only depends on its rows, the transverse sizes of their endpoints and the
- * branch offsets: a later placement pass with the same inputs takes the same transverse starts
- * back, then rebuilds the frames, instead of arranging again.
+ * A block arrangement only depends on its rows, the transverse sizes of their endpoints, the
+ * branch offsets and the room its blocks reserve: a later placement pass with the same inputs
+ * takes the same transverse starts back, then rebuilds the frames, instead of arranging again.
  */
 export function arrangeOnce(
 	input: ReusableArrangement,
@@ -47,7 +50,10 @@ export function arrangeOnce(
 	const ids = rows.ordinary.flat();
 	const sizes = new Map(ids.map((id) => [id, transverseSize(defined(bounds.get(id)), vertical)]));
 	const offsets = input.alignment?.offsets;
-	const previous = arranged.get(rows);
+	const byReserves = arranged.get(rows) ?? new Map<string, Arranged>();
+	arranged.set(rows, byReserves);
+	const reserves = JSON.stringify([...(input.reserves ?? [])]);
+	const previous = byReserves.get(reserves);
 	if (
 		previous !== undefined &&
 		sameEntries(previous.sizes, sizes) &&
@@ -64,5 +70,5 @@ export function arrangeOnce(
 	const starts = new Map(ids.map((id) => [id, transverseStart(defined(bounds.get(id)), vertical)]));
 	let copied: ReadonlyMap<string, number> | undefined;
 	if (offsets !== undefined) copied = new Map(offsets);
-	arranged.set(rows, { sizes, offsets: copied, starts });
+	byReserves.set(reserves, { sizes, offsets: copied, starts });
 }

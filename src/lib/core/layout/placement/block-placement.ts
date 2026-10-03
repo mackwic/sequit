@@ -19,9 +19,10 @@ import {
 	flatLinks,
 	gapBetween,
 } from './block-plan';
+import { carriedChains, carriedRoom } from './carried-frames';
 import { fitRowAnchors } from './fit-row-anchors';
 import { placeFreeBeside } from './free-groups';
-import { enclosure } from './group-enclosure';
+import { enclosure, type FrameReserve, reserveFrame } from './group-enclosure';
 
 interface Arrangement {
 	readonly plan: BlockPlan;
@@ -29,6 +30,7 @@ interface Arrangement {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
+	readonly reserves?: ReadonlyMap<string, FrameReserve> | undefined;
 	/** Shifts a moved block still owes its content; settled once every container is arranged. */
 	readonly pending: Map<string, number>;
 	/** The one box shifted reads are written to: envelopes read each box before the next. */
@@ -201,22 +203,33 @@ function placeFreeMembers(
 	placeFreeBeside({ hierarchy: context.hierarchy, groups, bounds, vertical }, free, content);
 }
 
-/** The frame of a block around its members, as they now stand. */
+/**
+ * The frame of a block around its members and the row items it holds, as they now stand: a
+ * group inside the block that is no block itself is drawn around items of the block's rows.
+ * Its slot keeps the room its junctions need and the frames drawn around the block itself.
+ */
 function encloseContainer(arrangement: Arrangement, container: ContainerPlan): void {
-	const { bounds, context, plan } = arrangement;
+	const { bounds, context, plan, vertical } = arrangement;
 	if (container.id === undefined) return;
 	const members = context.hierarchy?.membersById.get(container.id) ?? [];
 	const free = new Set(plan.free.get(container.id));
 	const content = members.filter((id) => bounds.has(id) && !free.has(id));
 	placeFreeMembers(arrangement, container.id, content);
-	bounds.set(
-		container.id,
-		enclosure(
-			defined(context.groups.get(container.id)),
-			members.filter((id) => bounds.has(id)),
-			bounds,
-		),
+	const held = new Set([...members, ...(plan.children.get(container.id) ?? [])]);
+	const groups = (id: string) => defined(context.groups.get(id));
+	const frame = enclosure(
+		groups(container.id),
+		[...held].filter((id) => bounds.has(id)),
+		bounds,
 	);
+	const reserve = arrangement.reserves?.get(container.id);
+	if (reserve !== undefined) reserveFrame(frame, reserve, vertical);
+	const chain = carriedChains(context).get(container.id);
+	if (chain !== undefined && context.hierarchy !== undefined) {
+		const placement = { hierarchy: context.hierarchy, ranks: context.ranks, groups, vertical };
+		reserveFrame(frame, carriedRoom(placement, { id: container.id, box: frame, chain }), vertical);
+	}
+	bounds.set(container.id, frame);
 }
 
 /**
@@ -230,6 +243,8 @@ export function arrangeFamilies(input: {
 	readonly bounds: Map<string, MutableBounds>;
 	readonly vertical: boolean;
 	readonly alignment?: BranchAlignment | undefined;
+	/** Room each block keeps beside its members for the junctions it holds. */
+	readonly reserves?: ReadonlyMap<string, FrameReserve> | undefined;
 }): void {
 	// Without any block, rows are flat: no plan, containers or frames to build.
 	if (groupBlocks(input.context.graph).ids.size === 0) {
