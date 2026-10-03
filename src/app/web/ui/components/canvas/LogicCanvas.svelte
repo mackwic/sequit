@@ -45,7 +45,11 @@
 		collectLayoutMeasurements,
 		layoutMeasurementSignature,
 	} from '../../canvas/measure-canvas';
-	import type { LayoutReportRequest } from '../../report/capture-layout-report';
+	import {
+		type LayoutReportRequest,
+		unshownMeasurementModel,
+		withUnshownMeasurements,
+	} from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
 	import MenuSurface from '../ui/MenuSurface.svelte';
@@ -155,6 +159,12 @@
 		if (restoreFocus) header?.closest<HTMLElement>('[data-node-id]')?.focus();
 	}
 	let measurementLayer = $state<HTMLDivElement>();
+	/** While the report dialog is open, the entities folded groups hide are measured for it too. */
+	let unshownMeasurementLayer = $state<HTMLDivElement>();
+	let unshownModel = $derived.by(() => {
+		if (report === undefined || measurementModel === undefined) return undefined;
+		return unshownMeasurementModel(report.read(), measurementModel);
+	});
 	let viewport = $state<HTMLDivElement>();
 	let menuDestination = $state<NodePasteDestination>({});
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
@@ -580,11 +590,16 @@
 	$effect(() => {
 		if (canvas && viewport) oncanvas?.(canvas, viewport);
 	});
-	/** The sizes the measurement layer gives now, which the shown canvas was laid out with. */
+	/**
+	 * The sizes the measurement layer gives now, which the shown canvas was laid out with, and
+	 * those of the entities it does not show.
+	 */
 	function currentMeasurements(): LayoutMeasurements {
 		if (measurementLayer === undefined)
 			return { nodes: new Map(), junctions: new Map(), groups: new Map() };
-		return collectLayoutMeasurements(measurementLayer);
+		const shown = collectLayoutMeasurements(measurementLayer);
+		if (unshownMeasurementLayer === undefined) return shown;
+		return withUnshownMeasurements(shown, collectLayoutMeasurements(unshownMeasurementLayer));
 	}
 </script>
 
@@ -599,6 +614,9 @@
 <div class="contents" bind:this={scope}>
 	{#if measurementModel}
 		<CanvasMeasurementLayer model={measurementModel} bind:element={measurementLayer} />
+	{/if}
+	{#if unshownModel}
+		<CanvasMeasurementLayer model={unshownModel} bind:element={unshownMeasurementLayer} />
 	{/if}
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->

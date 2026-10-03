@@ -14,7 +14,11 @@ import { serializeSequitToml } from '../../../../lib/infrastructure/toml/seriali
 import type { LayoutMeasurements } from '../../projection/layout-graph';
 import { createSharedCanvasProjection } from '../../projection/shared-canvas-projection';
 import { EntityKind } from '../canvas/canvas-entity';
-import type { CanvasModel } from '../canvas/canvas-model';
+import {
+	type CanvasMeasurementModel,
+	type CanvasModel,
+	createCanvasMeasurementModel,
+} from '../canvas/canvas-model';
 import {
 	createRename,
 	readRenderedLayout,
@@ -29,6 +33,42 @@ export interface LayoutReportRequest {
 	/** The complete source document, with its original texts and identifiers. */
 	readonly read: () => LogicDocument;
 	readonly close: () => void;
+}
+
+function unshown<T extends { readonly id: string }>(
+	items: readonly T[],
+	shown: readonly { readonly id: string }[],
+): readonly T[] {
+	const ids = new Set(shown.map(({ id }) => id));
+	return items.filter(({ id }) => !ids.has(id));
+}
+
+/**
+ * What the source document holds that the shown canvas does not measure: the members of folded
+ * groups. A report measures them too, so that its document replays unfolded as well as folded.
+ */
+export function unshownMeasurementModel(
+	document: LogicDocument,
+	shown: CanvasMeasurementModel,
+): CanvasMeasurementModel {
+	const source = createCanvasMeasurementModel(document);
+	return {
+		nodes: unshown(source.nodes, shown.nodes),
+		groups: unshown(source.groups, shown.groups),
+		junctions: unshown(source.junctions, shown.junctions),
+	};
+}
+
+/** The measurements the canvas was laid out with, completed with those it does not show. */
+export function withUnshownMeasurements(
+	shown: LayoutMeasurements,
+	unshownMeasurements: LayoutMeasurements,
+): LayoutMeasurements {
+	return {
+		nodes: new Map([...unshownMeasurements.nodes, ...shown.nodes]),
+		junctions: new Map([...unshownMeasurements.junctions, ...shown.junctions]),
+		groups: new Map([...unshownMeasurements.groups, ...shown.groups]),
+	};
 }
 
 /** What the page holds when the reporter sends: original identifiers and texts. */

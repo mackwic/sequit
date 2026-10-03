@@ -9,9 +9,14 @@ import type { CanvasModel } from '../../../../../src/app/web/ui/canvas/canvas-mo
 import {
 	captureLayoutReport,
 	type LayoutReportCapture,
+	unshownMeasurementModel,
+	withUnshownMeasurements,
 } from '../../../../../src/app/web/ui/report/capture-layout-report';
 import { anonymizeDocument } from '../../../../../src/lib/core/document/anonymize-document';
-import type { LogicDocument } from '../../../../../src/lib/core/document/logic-document';
+import {
+	GroupState,
+	type LogicDocument,
+} from '../../../../../src/lib/core/document/logic-document';
 import {
 	LayoutReportCategory,
 	ReportedEntityKind,
@@ -19,7 +24,10 @@ import {
 import { parseLayoutReport } from '../../../../../src/lib/infrastructure/layout-report/parse-layout-report';
 import { parseSequitToml } from '../../../../../src/lib/infrastructure/toml/parse-sequit-toml';
 import { persistedNestedGridWithLaneCellDocument } from '../../../../lib/core/layout/nested-region-fixture';
-import { layoutMeasurementsFor } from '../../../../support/builders/layout-measurements';
+import {
+	layoutMeasurementsFor,
+	layoutMeasurementsForCanvas,
+} from '../../../../support/builders/layout-measurements';
 
 const ENVIRONMENT = {
 	userAgent: 'test',
@@ -145,5 +153,43 @@ describe('layout report capture', () => {
 		expect(report.layout).toBeUndefined();
 		expect(report.checks).toEqual({ anonymizationDiverged: false, projectionDiverged: false });
 		expect(parseLayoutReport(JSON.parse(JSON.stringify(report)))).toEqual(report);
+	});
+
+	it('measures what folded groups hide, so that the report also replays unfolded', async () => {
+		const source = exampleDocument();
+		const folded: LogicDocument = {
+			...source,
+			groups: source.groups.map((group) => ({ ...group, state: GroupState.Closed })),
+		};
+		const shownModel = createSharedCanvasProjection(folded).measurementModel;
+		const unshownModel = unshownMeasurementModel(folded, shownModel);
+		expect(unshownModel.nodes.map(({ id }) => id).sort()).toEqual(
+			source.nodes
+				.filter(({ groupId }) => groupId !== undefined)
+				.map(({ id }) => id)
+				.sort(),
+		);
+		const shown = layoutMeasurementsForCanvas(shownModel);
+		const canvas = await shownCanvas(folded, shown);
+		const report = await captureLayoutReport(
+			capture({
+				document: folded,
+				measurements: withUnshownMeasurements(shown, layoutMeasurementsForCanvas(unshownModel)),
+				canvas,
+			}),
+		);
+		expect(report.checks).toEqual({ anonymizationDiverged: false, projectionDiverged: false });
+		const reported = parseSequitToml(report.document);
+		if (!reported.ok) throw new Error('The reported document must parse');
+		const unfolded = {
+			...reported.value,
+			groups: reported.value.groups.map((group) => ({ ...group, state: GroupState.Expanded })),
+		};
+		const replayed = await shownCanvas(unfolded, {
+			nodes: new Map(report.measurements.nodes),
+			junctions: new Map(report.measurements.junctions),
+			groups: new Map(report.measurements.groups),
+		});
+		expect(replayed.nodes).toHaveLength(source.nodes.length);
 	});
 });
