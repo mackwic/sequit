@@ -27,9 +27,10 @@ const TARGET_CLEARANCES = [
 	INWARD_TRIPLE_RAIL,
 ];
 // Segments of a boundary path: the first two depend on the escape alone, the third on the escape
-// and the main rail, the fourth also on the target track; only the last three on the clearance.
+// and the main rail, the fourth also on the target track. The last three depend on the target
+// track, the main rail and the clearance, never on the escape.
 const RAIL_SEGMENT = 2;
-const TRACK_SEGMENT = 3;
+const TAIL_SEGMENT = 4;
 const CLEAR = -1;
 
 type SegmentFilter = (from: Point, to: Point) => boolean;
@@ -40,6 +41,8 @@ interface BoundarySearch {
 	readonly clear: SegmentFilter;
 	/** The checks of an admissible path that do not split into segments. */
 	readonly admits: (candidate: LayoutRelation) => boolean;
+	/** Clearances whose tail segments are clear, by target track then main rail. */
+	readonly tails: Map<number, Map<number, readonly number[]>>;
 }
 
 interface BoundaryRails {
@@ -64,10 +67,34 @@ function exteriorSegmentFilter(context: RoutingContext, attempt: ExteriorAttempt
 	};
 }
 
-function firstBlockedSegment(points: readonly Point[], clear: SegmentFilter): number {
-	for (let index = 1; index < points.length; index += 1)
-		if (!clear(defined(points[index - 1]), defined(points[index]))) return index - 1;
+/** The first blocked segment among those from `first` to the one before `end`. */
+function firstBlockedSegment(
+	points: readonly Point[],
+	clear: SegmentFilter,
+	first: number,
+	end: number,
+): number {
+	for (let index = first; index < end; index += 1)
+		if (!clear(defined(points[index]), defined(points[index + 1]))) return index;
 	return CLEAR;
+}
+
+function tailClearances(search: BoundarySearch, rails: BoundaryRails): readonly number[] {
+	let byRail = search.tails.get(rails.targetTrack);
+	if (byRail === undefined) {
+		byRail = new Map();
+		search.tails.set(rails.targetTrack, byRail);
+	}
+	let clearances = byRail.get(rails.main);
+	if (clearances === undefined) {
+		clearances = TARGET_CLEARANCES.filter((targetClearance) => {
+			const { frame } = search.context;
+			const points = aroundBoundaryPath(frame, search.attempt.ports, rails, targetClearance);
+			return firstBlockedSegment(points, search.clear, TAIL_SEGMENT, points.length - 1) === CLEAR;
+		});
+		byRail.set(rails.main, clearances);
+	}
+	return clearances;
 }
 
 /** The candidate of the first admissible clearance, or the blocked segment shared by all. */
@@ -75,16 +102,15 @@ function boundaryOnRail(
 	search: BoundarySearch,
 	rails: BoundaryRails,
 ): LayoutRelation | number | undefined {
-	for (const targetClearance of TARGET_CLEARANCES) {
+	for (const targetClearance of tailClearances(search, rails)) {
 		const points = aroundBoundaryPath(
 			search.context.frame,
 			search.attempt.ports,
 			rails,
 			targetClearance,
 		);
-		const blocked = firstBlockedSegment(points, search.clear);
-		if (blocked !== CLEAR && blocked <= TRACK_SEGMENT) return blocked;
-		if (blocked !== CLEAR) continue;
+		const blocked = firstBlockedSegment(points, search.clear, 0, TAIL_SEGMENT);
+		if (blocked !== CLEAR) return blocked;
 		const candidate = { ...search.attempt.route, points };
 		if (search.admits(candidate)) return candidate;
 	}
@@ -135,7 +161,13 @@ export function boundaryForPorts(
 	for (const clearance of ESCAPE_CLEARANCES)
 		for (const track of [context.outside + RAIL_SPACING, 0])
 			escapes.push([sourceMain + outgoing * clearance, track]);
-	const search = { context, attempt, clear: exteriorSegmentFilter(context, attempt), admits };
+	const search = {
+		context,
+		attempt,
+		clear: exteriorSegmentFilter(context, attempt),
+		admits,
+		tails: new Map<number, Map<number, readonly number[]>>(),
+	};
 	for (const escape of escapes) {
 		const candidate = boundaryOnEscape(search, escape);
 		if (candidate !== undefined) return candidate;
