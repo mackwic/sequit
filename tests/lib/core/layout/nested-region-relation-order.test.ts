@@ -80,7 +80,7 @@ function normalizeGeometry(
 describe('nested region relation order', () => {
 	it('keeps leaf ports and routes fixed when ids are permuted across local and crossing links', () => {
 		const source = persistedRegionDocument();
-		const document = {
+		const document: LogicDocument = {
 			...source,
 			layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
 			relations: [
@@ -99,7 +99,7 @@ describe('nested region relation order', () => {
 			['inside-first', 'across-tree'],
 			['across-tree-extra', 'across-tree-extra'],
 		]);
-		const renamed = {
+		const renamed: LogicDocument = {
 			...document,
 			relations: document.relations.map((relation) => ({
 				...relation,

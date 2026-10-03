@@ -4,6 +4,7 @@ import {
 	defined,
 	EndpointKind,
 	type LogicDocument,
+	type LogicNode,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph, type LogicGraph } from '../../../../src/lib/core/graph/create-graph';
@@ -42,7 +43,7 @@ const SIZES: ReadonlyMap<string, Size> = new Map(
 	),
 );
 
-function node(id: string, order: string) {
+function node(id: string, order: string): LogicNode {
 	return {
 		kind: EndpointKind.Node,
 		id,

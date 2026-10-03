@@ -44,7 +44,7 @@ function renamedFixture(
 		crossingIds: fixture.input.crossingIds.map(remap),
 		busRelevantRelationIds: fixture.input.busRelevantRelationIds.map(remap),
 		gutterIds: fixture.input.gutterIds.map((ids) => ids.map(remap)),
-		rowGutterIds: fixture.input.rowGutterIds?.map((ids) => ids.map(remap)),
+		rowGutterIds: (fixture.input.rowGutterIds ?? []).map((ids) => ids.map(remap)),
 		incidence,
 		portalByRelationId: new Map(
 			[...fixture.input.portalByRelationId].map(([id, span]) => [remap(id), span]),
