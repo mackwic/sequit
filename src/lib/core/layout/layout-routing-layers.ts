@@ -41,6 +41,42 @@ function reservedPlan(
 	return plan;
 }
 
+/** Re-plans allowed after a placement moved what the previous plan routed between. */
+const MAX_SETTLING_PLANS = 4;
+
+function reservationKey({ gaps, channelGaps }: RoutingReservation): string {
+	const byInterval = <Value>(map: ReadonlyMap<number, Value> | undefined) =>
+		[...(map ?? [])].sort(([left], [right]) => left - right);
+	return JSON.stringify([byInterval(gaps), byInterval(channelGaps)]);
+}
+
+/**
+ * Places with the reservation of a channel plan, then plans the channels again on that placement
+ * until it asks for the reservation it was placed with. Reserving rank gaps may move a junction or a
+ * frame across the rank axis (a frame that no longer covers a junction rail keeps the junction
+ * inside it), and the channels are materialized on the last placement, never on an earlier one.
+ */
+function settledPlan(
+	workspace: LayoutRoutingWorkspace,
+	structure: LayoutStructure,
+	{
+		input,
+		ports,
+	}: { readonly input: Parameters<typeof planLayeredRouting>[0]; readonly ports: PortAllocation },
+	base: RoutingReservation,
+): { readonly plan: LayerPlan; readonly reservation: RoutingReservation } {
+	const scoped = workspace.structure !== structure;
+	let reservation = reservedPlan(planLayeredRouting(input, ports), base, scoped);
+	for (let plans = 1; ; plans += 1) {
+		placeWithRoutingPorts(workspace, ports, structure, reservation);
+		const plan = planLayeredRouting(input, ports);
+		const next = reservedPlan(plan, base, scoped);
+		if (plans === MAX_SETTLING_PLANS || reservationKey(next) === reservationKey(reservation))
+			return { plan, reservation };
+		reservation = next;
+	}
+}
+
 function alignLayeredJunctions(
 	workspace: LayoutRoutingWorkspace,
 	structure: LayoutStructure,
@@ -62,9 +98,7 @@ function alignLayeredJunctions(
 		ports: state.ports,
 	});
 	if (scoped) ports = scopePortAllocation(ports, structure);
-	const plan = planLayeredRouting(input, ports);
-	const reservation = reservedPlan(plan, state.base, scoped);
-	placeWithRoutingPorts(workspace, ports, structure, reservation);
+	const { plan, reservation } = settledPlan(workspace, structure, { input, ports }, state.base);
 	const fits = [...ports.sizes].every(([id, size]) => {
 		const placed = proposal.sizes.get(id);
 		return placed?.width === size.width && placed.height === size.height;
@@ -137,9 +171,7 @@ export function reserveLayeredRouting(
 	let initialReservation: RoutingReservation = baseReservation;
 	if (!scoped) initialReservation = { gaps: new Map<number, number>() };
 	placeWithRoutingPorts(workspace, ports, structure, initialReservation);
-	let plan = planLayeredRouting(input, ports);
-	let reservation = reservedPlan(plan, baseReservation, scoped);
-	placeWithRoutingPorts(workspace, ports, structure, reservation);
+	let { plan, reservation } = settledPlan(workspace, structure, { input, ports }, baseReservation);
 	if (structure.junctionIds.size > 0) {
 		({ ports, plan, reservation } = alignLayeredJunctions(workspace, structure, input, {
 			ports,
