@@ -15,8 +15,12 @@ it('keeps a relation to a populated group at its frame in row adjacency', () => 
 	const bounds = new Map(layout.elements.map(({ id, bounds }) => [id, bounds]));
 	const frame = defined(bounds.get('group'));
 	const target = defined(bounds.get('e'));
-	// Member-expanded edges shift this target from the frame's 24-unit offset to 18.
-	expect(target.x - frame.x).toBe(24);
+	// The target centers on its related items, the frame and c, in any rank order. Member-expanded
+	// edges center it on a, b, d and c instead, 6 units aside.
+	const c = defined(bounds.get('c'));
+	const start = Math.min(frame.x, c.x);
+	const end = Math.max(frame.x + frame.width, c.x + c.width);
+	expect(target.x + target.width / 2).toBe((start + end) / 2);
 
 	const adjacency = rawAdjacency(prepared.graph);
 	const parents = defined(adjacency.children.get('e'));
