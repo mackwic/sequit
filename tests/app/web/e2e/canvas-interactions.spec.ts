@@ -441,9 +441,14 @@ test.describe('accessible canvas selection', () => {
 		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 		const original = page.locator('[data-node-id="traceable-edits"]');
 		await original.click();
-		await page.keyboard.press('ControlOrMeta+c');
-		expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^sequit:nodes:1\n/);
+		await expect(
+			page.locator('[data-canvas-overlay]').getByRole('button', { name: 'Copier' }),
+		).toHaveCount(0);
+		await original.click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Copier' }).click();
+		expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^sequit:nodes:2\n/);
 		const relations = await page.locator('[data-relation-id]').count();
+		const groups = await page.locator('[data-group-id]').count();
 
 		const group = page.locator('[data-group-id="data-team"]');
 		await group.click({ position: { x: 8, y: 8 }, force: true });
@@ -455,14 +460,25 @@ test.describe('accessible canvas selection', () => {
 		let copy = page.locator('[data-node-id][aria-pressed="true"]');
 		await expect(copy).toHaveCount(1);
 		expect(await copy.getAttribute('data-node-id')).not.toBe('traceable-edits');
-		await expect(copy).toHaveAttribute('data-node-group-id', 'data-team');
+		const copiedGroupId = await copy.getAttribute('data-node-group-id');
+		expect(copiedGroupId).toBeTruthy();
+		expect(copiedGroupId).not.toBe('data-team');
+		await expect(page.locator(`[data-group-id="${copiedGroupId}"]`)).toHaveAttribute(
+			'data-group-parent-id',
+			'data-team',
+		);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups + 1);
 		await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
 
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups);
 		await page.keyboard.press('ControlOrMeta+Shift+z');
 		await expect(page.locator('[data-node-id]')).toHaveCount(25);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups + 1);
 
+		for (let index = 0; index < 5; index += 1)
+			await page.getByRole('button', { name: 'Zoom arrière' }).click();
 		await settleCanvasMotion(page);
 		const blank = await blankCanvasPoint(page);
 		await page.mouse.click(blank.x, blank.y, { button: 'right' });
@@ -470,12 +486,62 @@ test.describe('accessible canvas selection', () => {
 		await expect(page.locator('[data-node-id]')).toHaveCount(26);
 		copy = page.locator('[data-node-id][aria-pressed="true"]');
 		await expect(copy).toHaveCount(1);
-		await expect(copy).not.toHaveAttribute('data-node-group-id', 'data-team');
+		const rootGroupId = await copy.getAttribute('data-node-group-id');
+		expect(rootGroupId).toBeTruthy();
+		await expect(page.locator(`[data-group-id="${rootGroupId}"]`)).not.toHaveAttribute(
+			'data-group-parent-id',
+			'data-team',
+		);
 		await copy.focus();
 		await page.keyboard.press('ControlOrMeta+v');
 		await expect(page.locator('[data-node-id]')).toHaveCount(27);
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect(page.locator('[data-node-id]')).toHaveCount(26);
+	});
+
+	test('copies two boxes with their relation and group in one local undo step', async ({
+		page,
+		context,
+		browserName,
+	}) => {
+		test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		const nodesBefore = await page.locator('[data-node-id]').count();
+		const groupsBefore = await page.locator('[data-group-id]').count();
+		const relationsBefore = await page.locator('[data-relation-id]').count();
+		const relationIdsBefore = await page
+			.locator('[data-relation-id]')
+			.evaluateAll((relations) =>
+				relations.map((relation) => relation.getAttribute('data-relation-id')),
+			);
+		await page.locator('[data-node-id="word-alcoa-question"]').click();
+		await page.locator('[data-node-id="traceable-edits"]').click({ modifiers: ['Shift'] });
+		await page.keyboard.press('ControlOrMeta+c');
+		await page.keyboard.press('ControlOrMeta+v');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodesBefore + 2);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groupsBefore + 1);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relationsBefore + 1);
+		const copiedIds = await page
+			.locator('[data-node-id][aria-pressed="true"]')
+			.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-node-id')));
+		expect(copiedIds).toHaveLength(2);
+		const copiedEdges = await page.locator('[data-relation-id]').evaluateAll(
+			(relations, previousIds) =>
+				relations
+					.filter((relation) => !previousIds.includes(relation.getAttribute('data-relation-id')))
+					.map((relation) => ({
+						from: relation.getAttribute('data-edge-from'),
+						to: relation.getAttribute('data-edge-to'),
+					})),
+			relationIdsBefore,
+		);
+		expect(copiedEdges).toHaveLength(1);
+		expect(copiedIds).toContain(copiedEdges[0]?.from);
+		expect(copiedIds).toContain(copiedEdges[0]?.to);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodesBefore);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groupsBefore);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relationsBefore);
 	});
 
 	test('toggles a relation with Shift, like every other entity kind', async ({ page }) => {

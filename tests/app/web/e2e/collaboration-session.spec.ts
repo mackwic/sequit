@@ -141,6 +141,34 @@ test('copies and pastes a box within one shared document', async ({
 	await expect(page.locator('[data-node-id]')).toHaveCount(2);
 });
 
+test('copies a selected pair with its relation in one shared undo step', async ({
+	page,
+	context,
+	browserName,
+}) => {
+	test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await page.locator('[data-node-id="A"]').click();
+	await page.locator('[data-node-id="B"]').click({ modifiers: ['Shift'] });
+	await page.keyboard.press('ControlOrMeta+c');
+	await page.keyboard.press('ControlOrMeta+v');
+	await expect(page.locator('[data-node-id]')).toHaveCount(4);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(2);
+	const copiedIds = await page
+		.locator('[data-node-id][aria-pressed="true"]')
+		.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-node-id')));
+	expect(copiedIds).toHaveLength(2);
+	const copiedRelation = page.locator('[data-relation-id]:not([data-relation-id="R"])');
+	expect(copiedIds).toContain(await copiedRelation.getAttribute('data-edge-from'));
+	expect(copiedIds).toContain(await copiedRelation.getAttribute('data-edge-to'));
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(2);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(1);
+});
+
 test('a second participant joins through the link, and the name is shared', async ({ browser }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.TwoBoxes);

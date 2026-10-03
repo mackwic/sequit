@@ -23,7 +23,6 @@
 		split,
 		child,
 		sibling,
-		copy,
 		paste,
 		onDelete,
 	}: {
@@ -41,7 +40,6 @@
 		child?: (() => void) | undefined;
 		/** Node only: starts typing a sibling, reached by `S` and by its handle. */
 		sibling?: (() => void) | undefined;
-		copy?: (() => void) | undefined;
 		paste?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
@@ -62,7 +60,6 @@
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
 	const childShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.CreateChild];
-	const copyShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Copy];
 	const pasteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Paste];
 
 	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
@@ -115,7 +112,7 @@
 	enabled={sibling !== undefined}
 	onactivate={() => sibling?.()}
 />
-{#if edit ?? child ?? ownFold ?? dissolve ?? split ?? copy ?? paste ?? onDelete}
+{#if edit ?? child ?? ownFold ?? dissolve ?? split ?? paste ?? onDelete}
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
@@ -177,19 +174,6 @@
 			>
 				<Icon name="phosphor:squares-four" />
 				<span>{m.common_dissolve()}</span>
-			</button>
-		{/if}
-		{#if copy}
-			<button
-				class="ui-action quiet"
-				type="button"
-				aria-keyshortcuts={shortcutKeyshortcuts(copyShortcut)}
-				title={shortcutTitle(copyShortcut)}
-				onclick={copy}
-			>
-				<Icon name="phosphor:copy" /><span>{copyShortcut.label}</span><Kbd
-					shortcut={copyShortcut}
-				/>
 			</button>
 		{/if}
 		{#if paste}

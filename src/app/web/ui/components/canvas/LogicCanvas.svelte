@@ -55,6 +55,7 @@
 	import MenuSurface from '../ui/MenuSurface.svelte';
 	import CanvasContextMenu from './CanvasContextMenu.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
+	import CanvasNodeContextMenu from './CanvasNodeContextMenu.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import NatureMenuItems from './NatureMenuItems.svelte';
@@ -226,6 +227,7 @@
 	let suppressBackgroundActivation = false;
 	/** Where the background menu was asked for, while it is open. */
 	let menuPoint = $state<CanvasPoint>();
+	let copyMenuPoint = $state<CanvasPoint>();
 	let previousMeasurementSignature = '';
 	let projectionRevision = $state(0);
 	let acceptedRevision = $state(0);
@@ -491,20 +493,25 @@
 		return { x: bounds.left + 16, y: bounds.top + 16 };
 	}
 
-	/**
-	 * A right-click selects the element under it, unless it is already selected, so that its bar
-	 * shows; on the background it opens the canvas menu. Text fields keep the browser's menu.
-	 */
+	/** A right-click preserves an existing selection and offers Copy for node-only selections. */
 	function handleContextMenu(event: MouseEvent) {
 		if (isEditableTarget(event.target)) return;
 		event.preventDefault();
 		if (session.editing || !(event.target instanceof Element) || !viewport) return;
+		copyMenuPoint = undefined;
+		menuPoint = undefined;
 		const element = event.target.closest<HTMLElement | SVGElement>('[data-canvas-entity-key]');
 		const key = element?.getAttribute('data-canvas-entity-key') ?? '';
 		if (element && key !== '') {
 			const ref = entityRefFromKey(key);
 			if (!session.isSelected(ref)) session.selectEntity(ref);
 			element.focus({ preventScroll: true });
+			if (
+				ref.kind === EntityKind.Node &&
+				onCopyNodes &&
+				[...session.selection.values()].every(({ kind }) => kind === EntityKind.Node)
+			)
+				copyMenuPoint = menuPointOf(event, viewport);
 			return;
 		}
 		if (isNativeControlTarget(event.target) || !canvas) return;
@@ -807,7 +814,6 @@
 			{onCreateChild}
 			{onCreateSibling}
 			{onDelete}
-			{onCopyNodes}
 			onPasteInGroup={onPasteAt &&
 				((groupId: string) => {
 					onPasteAt({ groupId });
@@ -831,6 +837,16 @@
 				menuPoint = undefined;
 			}}
 		/>
+		{#if onCopyNodes}
+			<CanvasNodeContextMenu
+				point={copyMenuPoint}
+				{viewport}
+				oncopy={onCopyNodes}
+				onclose={() => {
+					copyMenuPoint = undefined;
+				}}
+			/>
+		{/if}
 	{/if}
 	{#if natureMenuNode && onNodeNature}
 		{@const menu = natureMenuNode}
