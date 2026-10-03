@@ -1,6 +1,6 @@
 import { defined, EndpointKind } from '../../document/logic-document';
 import type { LogicGraph } from '../../graph/create-graph';
-import { RAIL_SPACING } from '../layout-settings';
+import { OUTER_MARGIN, RAIL_SPACING } from '../layout-settings';
 import type { Bounds, RoutingLayers } from '../layout-types';
 
 interface ComponentEnvelope {
@@ -16,6 +16,13 @@ export interface ExteriorCandidates {
 }
 
 const NO_EXTERIOR: ExteriorCandidates = { preferred: [], fallback: [] };
+
+/**
+ * The closest a leading rail comes to the canvas edge: where the first rail around an envelope
+ * standing at the outer margin lies. A group frame stands at the margin too, so a rail farther
+ * out would sit on the edge or beyond the 2 px stroke the image export clips.
+ */
+const EDGE_CLEARANCE = OUTER_MARGIN - RAIL_SPACING;
 
 interface ComponentPassageInput {
 	readonly graph: LogicGraph;
@@ -146,7 +153,7 @@ export function componentExteriorCandidates(
 		const leading = Array.from(
 			{ length: count },
 			(_, index) => interval.start - (index + 1) * RAIL_SPACING,
-		).filter((coordinate) => coordinate >= 0);
+		).filter((coordinate) => coordinate >= EDGE_CLEARANCE);
 		const trailing = Array.from(
 			{ length: count },
 			(_, index) => interval.end + (index + 1) * RAIL_SPACING,
@@ -157,7 +164,6 @@ export function componentExteriorCandidates(
 		let leadingHasRoom = false;
 		if (lastLeading !== undefined && fitsAll) leadingHasRoom = lastLeading >= RAIL_SPACING;
 		// Neighbors constrain a side only when their primary bands overlap.
-		// The preferred side must fit every concurrent rail plus a rail of neighbor clearance.
 		const clearances = neighborClearances(owner, interval, intervals, leading.length > 0);
 		candidates.set(owner, preferClearerSide(leading, trailing, clearances, leadingHasRoom));
 	}
