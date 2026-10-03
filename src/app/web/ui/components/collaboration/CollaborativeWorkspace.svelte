@@ -53,6 +53,13 @@
 		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import {
+		type NodePasteDestination,
+		parseNodeClipboard,
+		planNodePaste,
+		selectionPasteDestination,
+		serializeSelectedNodes,
+	} from '../../../document/node-clipboard';
 	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
 	import { QuillEditorProfile } from '../../../document/quill-editor-config';
 	import { m } from '../../../i18n/paraglide/messages';
@@ -343,6 +350,45 @@
 		)
 			canvas.clearSelection();
 	}
+	function copyNodes(): string | undefined {
+		if (!interactive) return undefined;
+		const value = serializeSelectedNodes(model, canvas.selection.values());
+		if (value !== undefined)
+			canvas.announcement = m.canvas_nodes_copied({ count: canvas.selectionCount });
+		return value;
+	}
+	async function copyNodesToClipboard(): Promise<void> {
+		const value = copyNodes();
+		if (value === undefined) return;
+		try {
+			await navigator.clipboard.writeText(value);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+			canvas.announcement = error;
+		}
+	}
+	async function pasteNodes(text: string, destination?: NodePasteDestination): Promise<void> {
+		if (!interactive) return;
+		const clipboard = parseNodeClipboard(text, model.id);
+		const target = destination ?? selectionPasteDestination(model, canvas.selection.values());
+		const plan = clipboard && planNodePaste(model, clipboard, target, () => crypto.randomUUID());
+		if (plan === undefined) {
+			error = m.canvas_clipboard_invalid();
+			return;
+		}
+		if (!(await propose(plan.commands))) return;
+		canvas.clearSelection();
+		for (const id of plan.ids) canvas.addEntity({ kind: EntityKind.Node, id });
+		canvas.announcement = m.canvas_nodes_pasted({ count: plan.ids.length });
+	}
+	async function pasteNodesFromClipboard(destination: NodePasteDestination): Promise<void> {
+		try {
+			const text = await navigator.clipboard.readText();
+			await pasteNodes(text, destination);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+		}
+	}
 	function dispatchDeletion(
 		endpointIds: readonly string[],
 		relationIds: readonly string[],
@@ -517,6 +563,10 @@
 			onconnect={connect}
 			onmove={moveSelection}
 			ondelete={deleteSelection}
+			onCopyNodes={copyNodes}
+			onPasteNodes={(text: string) => {
+				void pasteNodes(text);
+			}}
 		>
 			<LogicCanvas
 				document={projection}
@@ -536,6 +586,12 @@
 				}}
 				onGroup={groupAction}
 				onDelete={deleteSelection}
+				onCopyNodes={() => {
+					void copyNodesToClipboard();
+				}}
+				onPasteAt={(destination: NodePasteDestination) => {
+					void pasteNodesFromClipboard(destination);
+				}}
 				onManageNatures={manageNaturesAction}
 				onExport={onexport}
 				onExportImage={onexportimage}

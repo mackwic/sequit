@@ -119,6 +119,28 @@ test('a collaborative session exports its graph as DOT and Excalidraw', async ({
 	);
 });
 
+test('copies and pastes a box within one shared document', async ({
+	page,
+	context,
+	browserName,
+}) => {
+	test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await page.locator('[data-node-id="A"]').click();
+	await page.keyboard.press('ControlOrMeta+c');
+	await page.locator('[data-node-id="B"]').click();
+	await page.keyboard.press('ControlOrMeta+v');
+	await expect(page.locator('[data-node-id]')).toHaveCount(3);
+	const copied = page.locator('[data-node-id][aria-pressed="true"]');
+	await expect(copied).toContainText('Alpha');
+	await expect(page.locator('[data-relation-id]')).toHaveCount(1);
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(2);
+});
+
 test('a second participant joins through the link, and the name is shared', async ({ browser }) => {
 	const room = `e2e-${crypto.randomUUID()}`;
 	await seedRoom(room, CollaborativeFixture.TwoBoxes);

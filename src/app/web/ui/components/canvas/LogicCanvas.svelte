@@ -4,6 +4,7 @@
 	import { compareCanonicalStrings } from '../../../../../lib/core/canonical-string';
 	import type { LayoutLane, LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { InvalidSourceDocumentState } from '../../../../../lib/infrastructure/collaboration/source-document-state';
+	import type { NodePasteDestination } from '../../../document/node-clipboard';
 	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import {
@@ -82,6 +83,8 @@
 		onManageNatures,
 		onExport,
 		onExportImage,
+		onCopyNodes,
+		onPasteAt,
 		report,
 	}: {
 		document: CanvasProjection;
@@ -115,6 +118,8 @@
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
 		onExportImage?: (() => void) | undefined;
+		onCopyNodes?: (() => void) | undefined;
+		onPasteAt?: ((destination: NodePasteDestination) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 		/** While set, the layout report dialog is open over this canvas. */
@@ -145,6 +150,7 @@
 	}
 	let measurementLayer = $state<HTMLDivElement>();
 	let viewport = $state<HTMLDivElement>();
+	let menuDestination = $state<NodePasteDestination>({});
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
 	type CanvasDisplay =
 		| { readonly kind: 'measuring' }
@@ -454,6 +460,14 @@
 		}
 		if (isNativeControlTarget(event.target) || !canvas) return;
 		menuPoint = menuPointOf(event, viewport);
+		const lane = event.target.closest<HTMLElement>('[data-lane-id]');
+		const region = event.target.closest<HTMLElement>('[data-region-id]');
+		const laneId = lane?.dataset['laneId'];
+		const regionId = lane?.dataset['laneRegionId'] ?? region?.dataset['regionId'];
+		menuDestination = {
+			...(laneId !== undefined && { laneId }),
+			...(regionId !== undefined && { regionId }),
+		};
 	}
 
 	$effect(() => {
@@ -736,6 +750,11 @@
 			{onCreateChild}
 			{onCreateSibling}
 			{onDelete}
+			{onCopyNodes}
+			onPasteInGroup={onPasteAt &&
+				((groupId: string) => {
+					onPasteAt({ groupId });
+				})}
 		/>
 	{/if}
 	{#if viewport}
@@ -744,6 +763,10 @@
 			{viewport}
 			{session}
 			onselectall={selectAll}
+			onPaste={onPasteAt &&
+				(() => {
+					onPasteAt(menuDestination);
+				})}
 			{onManageNatures}
 			{onExport}
 			{onExportImage}

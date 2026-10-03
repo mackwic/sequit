@@ -22,6 +22,7 @@
 		onGroup,
 		onJunction,
 		onDelete,
+		onCopyNodes,
 	}: {
 		viewportElement: HTMLDivElement;
 		session: CanvasSession;
@@ -29,11 +30,13 @@
 		/** Offered when the selection is made of plain relations only: they converge on a junction. */
 		onJunction?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
+		onCopyNodes?: (() => void) | undefined;
 	} = $props();
 	let floating = $state<HTMLDivElement>();
 	const groupShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Group];
 	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
+	const copyShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Copy];
 	let selectedNodeIds = $derived(
 		[...session.selection.values()]
 			.filter(({ kind }) => kind === EntityKind.Node)
@@ -73,6 +76,19 @@
 		label={m.editing_selection_actions()}
 		bind:element={floating}
 	>
+		{#if groupable && onCopyNodes}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-keyshortcuts={shortcutKeyshortcuts(copyShortcut)}
+				title={shortcutTitle(copyShortcut)}
+				onclick={onCopyNodes}
+			>
+				<Icon name="phosphor:copy" /><span>{copyShortcut.label}</span><Kbd
+					shortcut={copyShortcut}
+				/>
+			</button>
+		{/if}
 		{#if groupable}
 			<button
 				class="ui-action quiet"

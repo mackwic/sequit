@@ -23,6 +23,8 @@
 		split,
 		child,
 		sibling,
+		copy,
+		paste,
 		onDelete,
 	}: {
 		entity: EntityRef;
@@ -39,6 +41,8 @@
 		child?: (() => void) | undefined;
 		/** Node only: starts typing a sibling, reached by `S` and by its handle. */
 		sibling?: (() => void) | undefined;
+		copy?: (() => void) | undefined;
+		paste?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	const actionsLabel = {
@@ -58,6 +62,8 @@
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
 	const childShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.CreateChild];
+	const copyShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Copy];
+	const pasteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Paste];
 
 	let anchor = $derived(canvasEntityElement(viewportElement, entityKey(entity.kind, entity.id)));
 	function foldIcon(closed: boolean): string {
@@ -109,7 +115,7 @@
 	enabled={sibling !== undefined}
 	onactivate={() => sibling?.()}
 />
-{#if edit ?? child ?? ownFold ?? dissolve ?? split ?? onDelete}
+{#if edit ?? child ?? ownFold ?? dissolve ?? split ?? copy ?? paste ?? onDelete}
 	<FloatingActions
 		{anchor}
 		boundary={viewportElement}
@@ -171,6 +177,32 @@
 			>
 				<Icon name="phosphor:squares-four" />
 				<span>{m.common_dissolve()}</span>
+			</button>
+		{/if}
+		{#if copy}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-keyshortcuts={shortcutKeyshortcuts(copyShortcut)}
+				title={shortcutTitle(copyShortcut)}
+				onclick={copy}
+			>
+				<Icon name="phosphor:copy" /><span>{copyShortcut.label}</span><Kbd
+					shortcut={copyShortcut}
+				/>
+			</button>
+		{/if}
+		{#if paste}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-keyshortcuts={shortcutKeyshortcuts(pasteShortcut)}
+				title={shortcutTitle(pasteShortcut)}
+				onclick={paste}
+			>
+				<Icon name="phosphor:clipboard-text" /><span>{m.canvas_paste_here()}</span><Kbd
+					shortcut={pasteShortcut}
+				/>
 			</button>
 		{/if}
 		{#if split}

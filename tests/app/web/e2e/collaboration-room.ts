@@ -28,7 +28,8 @@ export async function seedRoom(
 		update: Y.encodeStateAsUpdate(document),
 	});
 	document.destroy();
-	const socket = new WebSocket(`ws://127.0.0.1:8788/collab/${room}`);
+	const port = process.env['SEQUIT_E2E_COLLABORATION_PORT'] ?? '8788';
+	const socket = new WebSocket(`ws://127.0.0.1:${port}/collab/${room}`);
 	socket.binaryType = 'arraybuffer';
 	await new Promise<void>((resolve, reject) => {
 		const timer = setTimeout(() => {

@@ -43,6 +43,8 @@
 		onCreateChild,
 		onCreateSibling,
 		onDelete,
+		onCopyNodes,
+		onPasteInGroup,
 	}: {
 		canvas: CanvasModel | undefined;
 		viewportElement: HTMLDivElement | undefined;
@@ -65,6 +67,8 @@
 		/** Starts typing a sibling of the selected node: same parents, group and lane. */
 		onCreateSibling?: ((target: EntityRef) => void) | undefined;
 		onDelete?: (() => void) | undefined;
+		onCopyNodes?: (() => void) | undefined;
+		onPasteInGroup?: ((groupId: string) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 	} = $props();
@@ -85,6 +89,8 @@
 		readonly child?: () => void;
 		/** Creates a sibling of the selected node. */
 		readonly sibling?: () => void;
+		readonly copy?: () => void;
+		readonly paste?: () => void;
 	}
 	function foldAction(groupId: string | undefined): { fold: FoldAction } | Record<string, never> {
 		const toggle = onGroupToggle;
@@ -122,6 +128,13 @@
 	function groupActions(entity: EntityRef): ContextualActions {
 		const [edit, dissolve] = [onGroupEdit, onGroupDissolve];
 		let actions: ContextualActions = { entity, ...foldAction(entity.id) };
+		if (onPasteInGroup)
+			actions = {
+				...actions,
+				paste: () => {
+					onPasteInGroup(entity.id);
+				},
+			};
 		if (edit)
 			actions = {
 				...actions,
@@ -162,6 +175,7 @@
 				},
 				...childAction(entity),
 				...siblingAction(entity),
+				...(onCopyNodes && { copy: onCopyNodes }),
 				...foldAction(node.navigation?.groupId),
 			};
 		}
@@ -257,6 +271,8 @@
 			split={contextual.split}
 			child={contextual.child}
 			sibling={contextual.sibling}
+			copy={contextual.copy}
+			paste={contextual.paste}
 			{viewportElement}
 			{onDelete}
 		/>
@@ -265,7 +281,14 @@
 		<NodeHandles {...handles} />
 	{/if}
 	{#if viewportElement && !hideToolbar}
-		<SelectionBar {viewportElement} {session} {onGroup} onJunction={selectionJunction} {onDelete} />
+		<SelectionBar
+			{viewportElement}
+			{session}
+			{onGroup}
+			onJunction={selectionJunction}
+			{onDelete}
+			{onCopyNodes}
+		/>
 	{/if}
 	{#if typed && viewportElement}
 		{#key typed.id}<TypingBar draft={typed} {viewportElement} />{/key}

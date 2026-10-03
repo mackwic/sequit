@@ -18,6 +18,7 @@
 		viewport,
 		session,
 		onselectall,
+		onPaste,
 		onManageNatures,
 		onExport,
 		onExportImage,
@@ -29,6 +30,7 @@
 		viewport: HTMLElement;
 		session: CanvasSession;
 		onselectall: () => void;
+		onPaste?: (() => void) | undefined;
 		/** Each action below is offered only when its owner provides it. */
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
@@ -36,6 +38,7 @@
 		onclose: () => void;
 	} = $props();
 	const selectAll = CANVAS_SHORTCUTS[CanvasShortcutId.SelectAll];
+	const paste = CANVAS_SHORTCUTS[CanvasShortcutId.Paste];
 	let anchor = $derived.by((): VirtualElement | undefined => {
 		if (point === undefined) return undefined;
 		const { x, y } = point;
@@ -67,6 +70,17 @@
 			shortcut={selectAll}
 		/></button
 	>
+	{#if onPaste}
+		<button
+			role="menuitem"
+			type="button"
+			aria-keyshortcuts={shortcutKeyshortcuts(paste)}
+			onclick={onPaste}
+			><Icon name="phosphor:clipboard-text" /><span>{m.canvas_paste_here()}</span><Kbd
+				shortcut={paste}
+			/></button
+		>
+	{/if}
 	{#if onManageNatures}
 		<div role="separator"></div>
 		<button role="menuitem" type="button" onclick={onManageNatures}

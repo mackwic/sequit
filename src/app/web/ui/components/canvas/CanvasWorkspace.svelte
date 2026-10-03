@@ -45,6 +45,13 @@
 		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import {
+		type NodePasteDestination,
+		parseNodeClipboard,
+		planNodePaste,
+		selectionPasteDestination,
+		serializeSelectedNodes,
+	} from '../../../document/node-clipboard';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		translateCommandDiagnostics,
@@ -251,6 +258,49 @@
 				),
 			),
 		);
+	}
+	function copyNodes(): string | undefined {
+		const current = opened;
+		if (!current.ok || !session || !interactive) return undefined;
+		const value = serializeSelectedNodes(current.value.read(), session.selection.values());
+		if (value !== undefined)
+			session.announcement = m.canvas_nodes_copied({ count: session.selectionCount });
+		return value;
+	}
+	async function copyNodesToClipboard(): Promise<void> {
+		const value = copyNodes();
+		if (value === undefined) return;
+		try {
+			await navigator.clipboard.writeText(value);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+			if (session) session.announcement = error;
+		}
+	}
+	async function pasteNodes(text: string, destination?: NodePasteDestination): Promise<void> {
+		const current = opened;
+		if (!current.ok || !session || !interactive) return;
+		const document = current.value.read();
+		const clipboard = parseNodeClipboard(text, document.id);
+		const target = destination ?? selectionPasteDestination(document, session.selection.values());
+		const plan = clipboard && planNodePaste(document, clipboard, target, () => crypto.randomUUID());
+		if (plan === undefined) {
+			error = m.canvas_clipboard_invalid();
+			return;
+		}
+		const accepted = await execute(() => current.value.session.dispatch(plan.commands));
+		if (!accepted) return;
+		session.clearSelection();
+		for (const id of plan.ids) session.addEntity({ kind: EntityKind.Node, id });
+		session.announcement = m.canvas_nodes_pasted({ count: plan.ids.length });
+	}
+	async function pasteNodesFromClipboard(destination: NodePasteDestination): Promise<void> {
+		try {
+			const text = await navigator.clipboard.readText();
+			await pasteNodes(text, destination);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+		}
 	}
 	/** Creates the group, selects it, then opens its dialog so the author names it. */
 	async function groupSelection(): Promise<void> {
@@ -469,6 +519,10 @@
 			onconnect={connect}
 			onmove={moveSelection}
 			ondelete={deleteSelection}
+			onCopyNodes={copyNodes}
+			onPasteNodes={(text: string) => {
+				void pasteNodes(text);
+			}}
 		>
 			<LogicCanvas
 				document={opened.value}
@@ -502,6 +556,12 @@
 					openDraft({ sibling });
 				}}
 				onDelete={deleteSelection}
+				onCopyNodes={() => {
+					void copyNodesToClipboard();
+				}}
+				onPasteAt={(destination: NodePasteDestination) => {
+					void pasteNodesFromClipboard(destination);
+				}}
 				onGroup={groupAction}
 				onManageNatures={manageNaturesAction}
 				onExport={onexport}

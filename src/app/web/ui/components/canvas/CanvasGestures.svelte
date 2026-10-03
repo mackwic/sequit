@@ -2,6 +2,7 @@
 	import { onDestroy, type Snippet } from 'svelte';
 
 	import type { LogicDocument } from '../../../../../lib/core/document/logic-document';
+	import { isNodeClipboardText } from '../../../document/node-clipboard';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import { isEditableTarget } from '../../canvas/canvas-event-guard';
 	import {
@@ -30,6 +31,8 @@
 		onconnect,
 		onmove,
 		ondelete,
+		onCopyNodes,
+		onPasteNodes,
 		children,
 	}: {
 		session: CanvasSession;
@@ -42,6 +45,8 @@
 		/** The dragged elements enter the group, or return to the root when it is `undefined`. */
 		onmove: (ids: readonly string[], groupId: string | undefined) => void;
 		ondelete: () => void;
+		onCopyNodes?: (() => string | undefined) | undefined;
+		onPasteNodes?: ((text: string) => void) | undefined;
 		children: Snippet;
 	} = $props();
 	let surface: HTMLDivElement;
@@ -314,9 +319,34 @@
 			oncreate({ near: session.relativeNodeCreationTarget });
 		}
 	}
+	function copy(event: ClipboardEvent): void {
+		if (!enabled || session.editing || !(event.target instanceof Node)) return;
+		if (!surface.contains(event.target)) return;
+		if (isEditableTarget(event.target)) return;
+		const value = onCopyNodes?.();
+		if (value === undefined || event.clipboardData === null) return;
+		event.clipboardData.setData('text/plain', value);
+		event.preventDefault();
+	}
+	function paste(event: ClipboardEvent): void {
+		if (!enabled || session.editing || !(event.target instanceof Node)) return;
+		if (!surface.contains(event.target)) return;
+		if (isEditableTarget(event.target)) return;
+		const value = event.clipboardData?.getData('text/plain') ?? '';
+		if (!isNodeClipboardText(value) || onPasteNodes === undefined) return;
+		event.preventDefault();
+		onPasteNodes(value);
+	}
 </script>
 
-<svelte:window onpointermove={move} onpointerup={up} onpointercancel={clear} onblur={clear} />
+<svelte:window
+	onpointermove={move}
+	onpointerup={up}
+	onpointercancel={clear}
+	onblur={clear}
+	oncopy={copy}
+	onpaste={paste}
+/>
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="gestures"

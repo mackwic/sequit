@@ -378,6 +378,7 @@ test.describe('accessible canvas selection', () => {
 		await expect(menu).toBeVisible();
 		await expect(menu.getByRole('menuitem')).toHaveText([
 			/^Tout sélectionner/,
+			/^Coller ici/,
 			'Gérer les natures du document',
 			'Exporter…',
 			'Exporter l’image…',
@@ -423,6 +424,52 @@ test.describe('accessible canvas selection', () => {
 		await page.mouse.click(background.x, background.y, { button: 'right' });
 		await menu.getByRole('menuitem', { name: 'Gérer les natures du document' }).click();
 		await expect(page.locator('[data-nature-manager]')).toBeVisible();
+	});
+
+	test('copies a box and pastes it into a group or on the canvas as one undoable step', async ({
+		page,
+		context,
+		browserName,
+	}) => {
+		test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		const original = page.locator('[data-node-id="traceable-edits"]');
+		await original.click();
+		await page.keyboard.press('ControlOrMeta+c');
+		expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^sequit:nodes:1\n/);
+		const relations = await page.locator('[data-relation-id]').count();
+
+		const group = page.locator('[data-group-id="data-team"]');
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		await page
+			.getByRole('group', { name: 'Actions du groupe' })
+			.getByRole('button', { name: 'Coller ici' })
+			.click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(25);
+		let copy = page.locator('[data-node-id][aria-pressed="true"]');
+		await expect(copy).toHaveCount(1);
+		expect(await copy.getAttribute('data-node-id')).not.toBe('traceable-edits');
+		await expect(copy).toHaveAttribute('data-node-group-id', 'data-team');
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
+
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(25);
+
+		await settleCanvasMotion(page);
+		const blank = await blankCanvasPoint(page);
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await page.getByRole('menuitem', { name: 'Coller ici' }).click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(26);
+		copy = page.locator('[data-node-id][aria-pressed="true"]');
+		await expect(copy).toHaveCount(1);
+		await expect(copy).not.toHaveAttribute('data-node-group-id', 'data-team');
+		await copy.focus();
+		await page.keyboard.press('ControlOrMeta+v');
+		await expect(page.locator('[data-node-id]')).toHaveCount(27);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(26);
 	});
 
 	test('toggles a relation with Shift, like every other entity kind', async ({ page }) => {
