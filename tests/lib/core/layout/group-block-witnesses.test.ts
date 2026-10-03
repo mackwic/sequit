@@ -116,9 +116,45 @@ describe('frames around junction-only groups', () => {
 			.group('g0')
 			.isClearOfForeignBoxes({ along: GROUP_FRAME_CLEARANCE, across: ITEM_GAP });
 	});
+
+	it('keeps a frame overflow out of the slot of the rail the frame holds', () => {
+		// g0's minimum size overflows n0's rank, yet g0 goes on to j0's rail: it faces no slot there.
+		const layout = visualWitness({
+			layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+			nodes: [['n0', small, 'g0']],
+			junctions: [['j0', 'g1']],
+			groups: [
+				['g0', thin],
+				['g1', thin, 'g0'],
+				['g2', thin],
+			],
+			relations: [['g0', 'g2']],
+		});
+		const member = layout.getById('n0').bounds;
+		const frame = layout.getById('g1').bounds;
+		expect(frame.x - member.x - member.width).toBe(GROUP_FRAME_CLEARANCE);
+	});
 });
 
-describe('related groups holding only free groups', () => {
+describe('free groups', () => {
+	it('reserves the rank gap a free group beside a block content outgrows it by', () => {
+		// The empty g2 stands beside n0 in g1 and is longer: g1's frame stops a clearance before n1.
+		expect(
+			layoutWitness({
+				layout: { direction: LayoutDirection.BottomToTop, bias: LayoutBias.Top },
+				nodes: [
+					['n0', small, 'g1'],
+					['n1', small],
+				],
+				groups: [
+					['g1', thin],
+					['g2', measurement(104, 115, 30, 21), 'g1'],
+				],
+				relations: [['n0', 'n1']],
+			}),
+		).toMatchObject({ valid: true });
+	});
+
 	it('sizes the row slot of a related group around the free groups it holds', () => {
 		// g0 holds only the empty g2: its slot, sized as its frame, keeps n0 out of it.
 		expect(
