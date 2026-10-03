@@ -2,7 +2,7 @@
 
 Relecture en lecture seule des trois cas de layout de premier niveau — racine dédiée (« simple »), lanes explicites à la racine, grille racine 2 × 2 et N × M — sur les trois préoccupations : tracé des flèches, ordonnancement, placement. Les régions imbriquées et grilles internes (formats 6-7), le repli de groupes, la collaboration et l'interface sont hors périmètre.
 
-Ce document est un backlog de constats, pas un plan : aucune correction n'a été appliquée. Les défauts déjà inscrits dans [la passation de la phase 4](layout-engine-refactor-phase-4.md) (§5-6 : D1, B1/n° 43, B3, n° 58, n° 66) ne sont repris que lorsqu'un relecteur y apporte un élément nouveau.
+Ce document est un backlog de constats, pas un plan : à sa rédaction, aucune correction n'avait été appliquée ; leur état est suivi dans la section « Suivi des corrections ». Les défauts déjà inscrits dans [la passation de la phase 4](layout-engine-refactor-phase-4.md) (§5-6 : D1, B1/n° 43, B3, n° 58, n° 66) ne sont repris que lorsqu'un relecteur y apporte un élément nouveau.
 
 ## Dispositif
 
@@ -51,6 +51,49 @@ Le coordinateur a re-exécuté trois constats (L-01, L-02, G-01) sur un script j
 | T-02 | transversal    | tracé          | faces d'attache et pas de ports différents selon la politique ; `design.md:423` trop générale                   | basse   | 2 relecteurs          |
 | T-03 | transversal    | —              | documentation en retard : D1, `layout-routing.md:16,80`, résumé de la règle de sélection                        | basse   | 3 relecteurs          |
 | T-04 | transversal    | —              | tests verts aveugles sur les cas fautifs (générateurs tronqués, `unknown` épinglés comme nominaux)              | basse   | 3 relecteurs          |
+
+## Suivi des corrections (état au 3 octobre 2026)
+
+Les constats ont été corrigés par vagues. Chaque tranche partait d'une base commune, sur sa propre branche et dans son propre worktree, et a reçu deux relectures croisées avant intégration : l'une sur les témoins et la correction réelle, l'autre sur les relâchements et les conventions. Critère dur de chaque tranche : aucun `GroupRouteFailure` nouveau par rapport à la base. Décision utilisateur du 2 octobre 2026 : la correction prime sur la performance ; tout plafond relevé a été mesuré au calme et consigné. Exigence utilisateur du 3 octobre 2026 : chaque correction a au moins un test permanent rouge avant elle et vert après. Un audit l'a vérifié correction par correction et les témoins manquants ont été ajoutés. Le détail par tranche est dans le [journal](layout-engine-refactor-journal-2026-09-24.md).
+
+| ID                                                   | État                 | Vague | Résultat mesuré                                                                                                                          |
+| ---------------------------------------------------- | -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| G-01, G-04, G-05                                     | corrigé              | 1     |                                                                                                                                          |
+| L-01, L-02                                           | corrigé              | 1     |                                                                                                                                          |
+| L-05                                                 | ports corrigés       | 1     | recherche d'ordre dans une lane non traitée                                                                                              |
+| D-01, D-02, D-08                                     | corrigé              | 1     |                                                                                                                                          |
+| L-03                                                 | corrigé              | 2     | ponts 4 032 → 2 508 ; après fusion, 763 ponts sur le corpus transverse contre 1 490 sur `main`                                           |
+| L-04                                                 | corrigé par `main`   | 2     | la conception de `bafd4a8f` a été retenue à la fusion ; les mécanismes propres à L-04 ont été retirés (deux cas plus pontés, ci-dessous) |
+| G-02                                                 | corrigé              | 2     | croisements 493 → 166                                                                                                                    |
+| G-03                                                 | corrigé              | 2     | croisements 3 150 → 1 938 ; G-03b (≥ 3 traversées) ouvert                                                                                |
+| D-03                                                 | corrigé, cas ouverts | 2     | exceptions sur 300 × 4 documents : 47/39/49/37 → 0 ; cas préexistants ci-dessous                                                         |
+| D-04                                                 | corrigé              | 2     | croisements 1 656 → 1 224                                                                                                                |
+| D-05                                                 | corrigé              | 2     | croisements stricts 3 622 → 3 200 ; familles croisées 92 → 12 ; `wide-bipartite-layers/1000` × 2,9                                       |
+| D-06                                                 | corrigé              | 2     | sorties de coque p24 232 → 0, p36 294 → 0                                                                                                |
+| D-07                                                 | instruit             | 2     | propriété de symétrie                                                                                                                    |
+| T-04                                                 | corrigé (générateur) | 2     | appartenances tirées ; a révélé 41 `GroupRouteFailure` et 11 layouts invalides du placement en blocs de `main`, corrigés à la fusion     |
+| L-06                                                 | à faire              | —     |                                                                                                                                          |
+| L-07, L-08, D-09, D-10, D-11, G-06, T-01, T-02, T-03 | à faire              | 3     |                                                                                                                                          |
+
+Décision utilisateur du 3 octobre 2026 prise à la fusion : un groupe d'au moins deux jonctions devient un bloc rigide qui réunit ses composantes ; « la jonction tient lieu du groupe » ne vaut plus que pour un groupe d'une seule jonction.
+
+### Points ouverts
+
+- D-03 : relation-003 (une jonction racine collée au cadre étranger `group-05`) et la famille 151/172 (couloir minimal entre une face et un cadre étranger) sont préexistantes ; en mode fuzz, la propriété bornée de `dedicated-layout-components` reste rouge sur ces cas, qui échouent aussi sur la base.
+- Coûts : le tirage 2753 prend 90 s contre 30 ms sur la base (l'ordre documentaire est perdu par l'ordre de réparation) et le tirage 198 en BT 7 s ; après fusion avec `main`, le profil opt-in des groupes double (165 s contre 78 s), dans la réparation des routes de groupes.
+- Lanes, conséquences du choix de la conception de `main` à la place de L-04 : une paire inversée dans une lane garde 1 pont au lieu de 0 ; le document 10163 a 10 ponts en LR/RL au lieu de 5.
+- Trois contre-exemples T-04 de `layout-graph.property` (coordonnée de route négative ; `group-01` ne précède pas son enfant vide), non vérifiés sur la base.
+- Placement : un groupe extrémité qui ne contient que des groupes vides est dessiné loin de sa rangée, déjà sur la base.
+- Autres constats relevés pendant les corrections : groupes sans nœud qui perdent leur emplacement de rangée (`enclose-groups.ts`) ; composante isolée refusée par `validateRankRows` en RL ; asymétrie d'en-tête de groupe ; rails partagés entre composantes en LR ; montants opposés d'un même canal qui se recouvrent (D-05).
+- Outillage : le rapport de relâchement ne détecte ni les plafonds de `tests/support/performance/*-budgets.ts` ni les délais de test relevés.
+- Échecs de portes déjà présents sur `main` : `format:check` signale les fichiers générés sous `src/app/web/i18n/paraglide/` et `project.inlang/`, bien qu'ils figurent dans `config/prettier.ignore`, ainsi que `group-junction-layout.property.test.ts`, non formaté sur `main` ; E2E Firefox/WebKit de `canvas-interactions.spec.ts` (sélection par enveloppes, double-clic sur l'en-tête) ; E2E Chromium `workshop-scenarios` « multiple mode, neighbors and rectangle… », instable (1 échec sur 3 répétitions sur `main`).
+
+### Plafonds et délais relevés (décision du 2 octobre 2026)
+
+- Snapshot : `wide-bipartite-layers/1000` 138 → 610 ms (D-05) ; `subgroups/19` 10 → 20 ms (D-04). Détail et mesures : `tests/support/performance/README.md`.
+- Incrémental : `wide-bipartite-layers/50-99` 6 → 45 ms (D-05) ; `wide-bipartite-layers/1-9` 5 → 20 ms (fusion avec `main`).
+- Délais de test : `relation-rename-invariance` 20 → 60 s (relations) et 60 → 85 s (identifiants inversés) ; corpus riche de `group-endpoint-routing` 5 → 60 s ; `layout-differential` 65 → 125 s.
+- Lanes : `MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS` est revenu à 20 000 à la fusion.
 
 ## Lanes
 
