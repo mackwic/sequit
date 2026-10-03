@@ -78,6 +78,7 @@
 		onopened,
 		onexport,
 		onexportimage,
+		oncanvas,
 	}: {
 		source: string;
 		/** Receives the opened document, or `undefined` while the source is invalid. */
@@ -85,6 +86,8 @@
 		/** The page's exports, also offered by the background menu of the canvas. */
 		onexport?: (() => void) | undefined;
 		onexportimage?: (() => void) | undefined;
+		/** Supplies the current laid-out canvas for editable scene exports. */
+		oncanvas?: ((canvas: CanvasModel) => void) | undefined;
 	} = $props();
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	let opened = $derived(openDocument(source));
@@ -481,6 +484,7 @@
 				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = canvas;
 					canvasViewport = element;
+					oncanvas?.(canvas);
 				}}
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}

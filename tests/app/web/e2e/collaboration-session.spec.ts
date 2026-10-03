@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { expect, type Page, test } from '@playwright/test';
 
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
@@ -62,6 +64,59 @@ test('starting a session publishes the current document and shares its link', as
 		'Exporter l’image…',
 		'Imprimer…',
 	]);
+});
+
+test('a collaborative session exports its graph as DOT and Excalidraw', async ({ page }) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await expect(page.locator('[data-node-id="A"]')).toContainText('Alpha');
+	await expect(page.locator('[data-node-id="B"]')).toContainText('Bravo');
+
+	await menuTrigger(page).click();
+	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	let dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	await expect(dialog).toBeVisible();
+	const dotDownloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'Graphviz (DOT)' }).click();
+	const dotDownload = await dotDownloading;
+	expect(dotDownload.suggestedFilename()).toBe('deux-boites.dot');
+	const dot = await readFile(await dotDownload.path(), 'utf8');
+	expect(dot).toMatch(/^digraph\b/);
+	expect(dot).toContain('"A" [label="Alpha"');
+	expect(dot).toContain('"B" [label="Bravo"');
+	expect(dot).toMatch(/"B"\s*->\s*"A"/);
+
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await menuTrigger(page).click();
+	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	const excalidrawButton = dialog.getByRole('button', { name: 'Excalidraw' });
+	await expect(excalidrawButton).toBeEnabled();
+	const excalidrawDownloading = page.waitForEvent('download');
+	await excalidrawButton.click();
+	const excalidrawDownload = await excalidrawDownloading;
+	expect(excalidrawDownload.suggestedFilename()).toBe('deux-boites.excalidraw');
+	const excalidraw: unknown = JSON.parse(await readFile(await excalidrawDownload.path(), 'utf8'));
+	expect(excalidraw).toEqual(
+		expect.objectContaining({
+			type: 'excalidraw',
+			version: expect.any(Number),
+			elements: expect.any(Array),
+		}),
+	);
+	if (typeof excalidraw !== 'object' || excalidraw === null || !('elements' in excalidraw)) {
+		throw new Error('Expected Excalidraw elements');
+	}
+	expect(excalidraw.elements).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ type: 'rectangle' }),
+			expect.objectContaining({ type: 'arrow' }),
+			expect.objectContaining({ type: 'text', text: 'Alpha' }),
+			expect.objectContaining({ type: 'text', text: 'Bravo' }),
+		]),
+	);
 });
 
 test('a second participant joins through the link, and the name is shared', async ({ browser }) => {

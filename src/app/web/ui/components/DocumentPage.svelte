@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
+	import type { LogicDocument } from '../../../../lib/core/document/logic-document';
 	import { newRoomId } from '../../../../lib/infrastructure/collaboration/room-id';
 	import {
 		emptyDocument,
@@ -14,8 +15,8 @@
 	import { m } from '../../i18n/paraglide/messages';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { canvasStageElement } from '../canvas/canvas-image';
-	import { documentFilename, documentFileStem } from '../document/document-filename';
-	import { downloadText } from '../document/download-text';
+	import type { CanvasModel } from '../canvas/canvas-model';
+	import { documentFileStem } from '../document/document-filename';
 	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import {
 		type RecentDocument,
@@ -27,6 +28,7 @@
 	import CanvasWorkspace from './canvas/CanvasWorkspace.svelte';
 	import CollaborationDialog from './collaboration/CollaborationDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import ExportDocumentDialog from './document/ExportDocumentDialog.svelte';
 	import ExportImageDialog from './document/ExportImageDialog.svelte';
 	import NewDocumentDialog from './document/NewDocumentDialog.svelte';
 	import OpenDocumentDialog from './document/OpenDocumentDialog.svelte';
@@ -42,6 +44,8 @@
 	let opened = $state<OpenedDocument>();
 	let title = $state(UNTITLED);
 	let dialog = $state<'new' | 'open' | 'recent' | 'collaborate'>();
+	let documentExport = $state<{ document: LogicDocument; canvas: CanvasModel | undefined }>();
+	let renderedExport = $state<{ document: LogicDocument; canvas: CanvasModel }>();
 	let imageExport = $state<{ stage: HTMLElement; stem: string }>();
 	// Each successful open is a new document, even when the bytes match the previous source.
 	let generation = $state(0);
@@ -56,7 +60,7 @@
 	let rememberOnOpen = false;
 	let exportAction = $derived.by(() => {
 		if (!opened) return undefined;
-		return exportDocument;
+		return openExport;
 	});
 	let exportImageAction = $derived.by(() => {
 		if (!opened) return undefined;
@@ -138,11 +142,22 @@
 		}
 	}
 
-	function exportDocument(): void {
+	function openExport(): void {
 		const current = opened;
 		if (!current) return;
 		const logic = current.read();
-		downloadText(serializeSequitToml(logic), documentFilename(logic.title, logic.id));
+		let canvas: CanvasModel | undefined;
+		if (
+			main &&
+			canvasStageElement(main) &&
+			renderedExport &&
+			serializeSequitToml(renderedExport.document) === serializeSequitToml(logic)
+		)
+			canvas = renderedExport.canvas;
+		documentExport = { document: logic, canvas };
+	}
+
+	function tomlDownloaded(): void {
 		persist();
 		unsaved = false;
 	}
@@ -165,6 +180,8 @@
 	function openSource(next: string): void {
 		persist();
 		dialog = undefined;
+		documentExport = undefined;
+		renderedExport = undefined;
 		opened = undefined;
 		unsaved = false;
 		source = next;
@@ -264,6 +281,10 @@
 		<CanvasWorkspace
 			{source}
 			onopened={workspaceOpened}
+			oncanvas={(canvas: CanvasModel) => {
+				const current = opened;
+				if (current) renderedExport = { document: current.read(), canvas };
+			}}
 			onexport={exportAction}
 			onexportimage={exportImageAction}
 		/>
@@ -303,6 +324,16 @@
 			onstart={startSession}
 			onclose={() => {
 				dialog = undefined;
+			}}
+		/>
+	{/if}
+	{#if documentExport}
+		<ExportDocumentDialog
+			document={documentExport.document}
+			canvas={documentExport.canvas}
+			onTomlDownloaded={tomlDownloaded}
+			onclose={() => {
+				documentExport = undefined;
 			}}
 		/>
 	{/if}

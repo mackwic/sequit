@@ -17,8 +17,8 @@
 	import { consumeCollaborationError } from '../../document/collaboration-rejection';
 	import { m } from '../../i18n/paraglide/messages';
 	import { canvasStageElement } from '../canvas/canvas-image';
-	import { documentFilename, documentFileStem } from '../document/document-filename';
-	import { downloadText } from '../document/download-text';
+	import type { CanvasModel } from '../canvas/canvas-model';
+	import { documentFileStem } from '../document/document-filename';
 	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import { RecentDocumentsStore } from '../document/recent-documents';
 	import { takeRoomSeed } from '../document/room-seed';
@@ -29,6 +29,7 @@
 	import ParticipantAvatars from './collaboration/ParticipantAvatars.svelte';
 	import ShareDialog from './collaboration/ShareDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import ExportDocumentDialog from './document/ExportDocumentDialog.svelte';
 	import ExportImageDialog from './document/ExportImageDialog.svelte';
 	import Icon from './ui/Icon.svelte';
 
@@ -38,6 +39,8 @@
 	let session = $state<LiveSession>();
 	let main = $state<HTMLElement>();
 	let dialog = $state<'name' | 'share'>();
+	let documentExport = $state<{ document: LogicDocument; canvas: CanvasModel | undefined }>();
+	let renderedExport = $state<{ document: LogicDocument; canvas: CanvasModel }>();
 	let imageExport = $state<{ stage: HTMLElement; stem: string }>();
 	let toast = $state<string>();
 	let link = $state('');
@@ -58,7 +61,7 @@
 	});
 	let exportAction = $derived.by(() => {
 		if (!session?.model) return undefined;
-		return exportDocument;
+		return openExport;
 	});
 	let exportImageAction = $derived.by(() => {
 		if (!session?.model) return undefined;
@@ -97,6 +100,8 @@
 	}
 
 	function connect(): void {
+		documentExport = undefined;
+		renderedExport = undefined;
 		session = new LiveSession(
 			initialDocument(),
 			createWebSocketCollaborationTransport(room, window.location.origin),
@@ -115,10 +120,18 @@
 		writeParticipantName(next);
 	}
 
-	function exportDocument(): void {
+	function openExport(): void {
 		const model = session?.model;
 		if (!model) return;
-		downloadText(serializeSequitToml(model), documentFilename(model.title, model.id));
+		let canvas: CanvasModel | undefined;
+		if (
+			main &&
+			canvasStageElement(main) &&
+			renderedExport &&
+			serializeSequitToml(renderedExport.document) === serializeSequitToml(model)
+		)
+			canvas = renderedExport.canvas;
+		documentExport = { document: model, canvas };
 	}
 
 	function renameDocument(next: string): void {
@@ -232,6 +245,10 @@
 					connected={session.connected}
 					textEditable={session.textEditable}
 					panel={false}
+					oncanvas={(canvas: CanvasModel) => {
+						const current = session?.model;
+						if (current) renderedExport = { document: current, canvas };
+					}}
 					onexport={exportAction}
 					onexportimage={exportImageAction}
 				/>
@@ -258,6 +275,15 @@
 			onleave={leave}
 			onclose={() => {
 				dialog = undefined;
+			}}
+		/>
+	{/if}
+	{#if documentExport}
+		<ExportDocumentDialog
+			document={documentExport.document}
+			canvas={documentExport.canvas}
+			onclose={() => {
+				documentExport = undefined;
 			}}
 		/>
 	{/if}

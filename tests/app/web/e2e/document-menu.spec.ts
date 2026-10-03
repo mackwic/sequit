@@ -76,9 +76,12 @@ test('« Renommer le document » turns the title into a field', async ({ page })
 	await expect(field).toHaveCount(0);
 	await expect(trigger).toHaveText('Plan 2027');
 
-	const downloading = page.waitForEvent('download');
 	await trigger.click();
 	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	await expect(dialog).toBeVisible();
+	const downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'Sequit (TOML)' }).click();
 	const download = await downloading;
 	expect(download.suggestedFilename()).toBe('plan-2027.sequit.toml');
 	expect(await readFile(await download.path(), 'utf8')).toContain('title = "Plan 2027"');

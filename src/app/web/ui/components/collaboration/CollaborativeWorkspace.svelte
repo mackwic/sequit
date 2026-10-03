@@ -111,6 +111,7 @@
 		panel = true,
 		onexport,
 		onexportimage,
+		oncanvas,
 	}: {
 		client: CollaborativeDocumentSession;
 		model: LogicDocument;
@@ -124,6 +125,8 @@
 		/** The page's exports, also offered by the background menu of the canvas. */
 		onexport?: (() => void) | undefined;
 		onexportimage?: (() => void) | undefined;
+		/** Supplies the current laid-out canvas for editable scene exports. */
+		oncanvas?: ((canvas: CanvasModel) => void) | undefined;
 	} = $props();
 	const canvas = new CanvasSession(createNodeEditPort(untrack(() => client)));
 	setCollaborationAwareness(untrack(() => awareness));
@@ -529,6 +532,7 @@
 				oncanvas={(next: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = next;
 					canvasViewport = element;
+					oncanvas?.(next);
 				}}
 				onGroup={groupAction}
 				onDelete={deleteSelection}
