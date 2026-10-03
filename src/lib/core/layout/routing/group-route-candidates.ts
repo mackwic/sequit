@@ -263,6 +263,36 @@ export function* sharedSourceEscapes(
 	}
 }
 
+/**
+ * A broken route cannot reserve a passage, nor take one from another route. The routes broken on
+ * their own are released first; then the group routes contacting a route still in place, and only
+ * then the planned routes: group routes have no reserved rail, so a planned route touching
+ * released group routes alone keeps its rail. Planned routes come first in the repair order.
+ */
+export function releasedRoutes(
+	context: RoutingContext,
+	broken: (route: LayoutRelation) => boolean,
+	contacts: (route: LayoutRelation) => boolean,
+): number[] {
+	const { graph, routes, pending } = context;
+	const groupRoutes = routes.map((route) =>
+		[route.from, route.to].some((id) => graph.endpointsById.get(id)?.kind === EndpointKind.Group),
+	);
+	const order = [...routes.keys()].sort(
+		(left, right) => Number(groupRoutes[left]) - Number(groupRoutes[right]),
+	);
+	const fails = (index: number, check: (route: LayoutRelation) => boolean): boolean => {
+		context.activeIndex = index;
+		return check(defined(routes[index]));
+	};
+	for (const index of order) if (fails(index, broken)) pending.add(index);
+	for (const yields of [true, false]) {
+		const tier = order.filter((index) => groupRoutes[index] === yields && !pending.has(index));
+		for (const index of tier.filter((member) => fails(member, contacts))) pending.add(index);
+	}
+	return order.filter((index) => pending.has(index));
+}
+
 /** Repair a common-port family together, starting with the route that exposed the obstruction. */
 export function releaseSharedPortFamilies(context: RoutingContext, repairs: number[]): void {
 	for (const index of repairs) context.pending.add(index);

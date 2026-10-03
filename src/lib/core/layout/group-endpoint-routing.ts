@@ -28,6 +28,7 @@ import {
 	type ExteriorAttempt,
 	faceOffsetWindows,
 	prepareRoutingContext,
+	releasedRoutes,
 	releaseSharedPortFamilies,
 	respectsExternalFlow,
 	type RouteAttempt,
@@ -269,15 +270,13 @@ function alternateRoute(
 	return undefined;
 }
 
-function routeNeedsCorrection(
-	route: LayoutRelation,
-	context: RoutingContext,
-	groups: RouteObstacles | undefined,
-): boolean {
+/** Obstacles, reserved attachments and self contacts break a route whatever the others do. */
+function routeBrokenAlone(route: LayoutRelation, context: RoutingContext): boolean {
 	if (routeHitsObstacles(route.points, context.nodes)) return true;
+	const groups = foreignGroupObstacles(context, route, 0);
 	if (groups !== undefined && routeHitsObstacles(route.points, groups)) return true;
 	if (attachmentReservedBy(context, route, context.routes.keys())) return true;
-	return contactsAnotherRoute(route, context);
+	return !validateSelfContacts(route);
 }
 
 function repairRoute(context: RoutingContext, route: LayoutRelation): LayoutRelation | undefined {
@@ -311,22 +310,13 @@ export function clearGroupEndpointRoutes(
 	)
 		return;
 	const context = prepareRoutingContext(graph, bounds, frame, routes);
-	// Group routes have no reserved rail: they yield to planned routes sharing their gap.
-	const groupRoutes = routes.map((route) =>
-		[route.from, route.to].some((id) => graph.endpointsById.get(id)?.kind === EndpointKind.Group),
+	// Release the routes needing repair together, then reserve each accepted replacement before
+	// repairing the next one.
+	const repairs = releasedRoutes(
+		context,
+		(route) => routeBrokenAlone(route, context),
+		(route) => contactsAnotherRoute(route, context),
 	);
-	const order = [...routes.keys()].sort(
-		(left, right) => Number(groupRoutes[left]) - Number(groupRoutes[right]),
-	);
-	// A broken route cannot reserve a passage: release all routes needing repair together,
-	// then reserve each accepted replacement before repairing the next one.
-	const repairs: number[] = [];
-	for (const index of order) {
-		context.activeIndex = index;
-		const route = defined(routes[index]);
-		if (routeNeedsCorrection(route, context, foreignGroupObstacles(context, route, 0)))
-			repairs.push(index);
-	}
 	releaseSharedPortFamilies(context, repairs);
 	const deferred = new Set<number>();
 	for (const index of repairs) {
