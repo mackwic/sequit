@@ -6,6 +6,7 @@ import {
 	LayoutBias,
 	LayoutDirection,
 	type LogicDocument,
+	type LogicNode,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { barycentricSweep } from '../../../../src/lib/core/layout/rank/rank-order-heuristic';
@@ -35,7 +36,7 @@ describe('group block barycentres', () => {
 				['a', 'a3', 'g'],
 				['x', 'a4'],
 			].map(([id, key, groupId]) => {
-				const node = {
+				const node: LogicNode = {
 					kind: EndpointKind.Node,
 					id: defined(id),
 					natureId: defined(base.natures[0]).id,

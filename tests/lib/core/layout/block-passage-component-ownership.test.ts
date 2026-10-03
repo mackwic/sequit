@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 
 import {
 	EndpointKind,
+	JunctionOperator,
 	LayoutBias,
 	LayoutDirection,
 	type LogicDocument,
@@ -94,7 +95,7 @@ it('keeps passage ports valid when a block contains disconnected relation compon
 			{
 				kind: EndpointKind.Junction,
 				id: 'j0',
-				operator: 'xor',
+				operator: JunctionOperator.Xor,
 				layoutOrder: orderKey('a0101'),
 				groupId: 'g2',
 			},

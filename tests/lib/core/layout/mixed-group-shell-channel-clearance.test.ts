@@ -4,6 +4,8 @@ import {
 	EndpointKind,
 	LayoutBias,
 	LayoutDirection,
+	type LogicDocument,
+	type LogicNode,
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
@@ -13,7 +15,7 @@ import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
 it('keeps a crossing rail clear of an intervening group frame shell', () => {
 	const ids = ['a', 'b', 'c', 'd'];
-	const document = {
+	const document: LogicDocument = {
 		persistenceFormat: PERSISTENCE_FORMAT,
 		id: 'group-shell-channel-clearance',
 		title: 'group-shell-channel-clearance',
@@ -29,7 +31,7 @@ it('keeps a crossing rail clear of an intervening group frame shell', () => {
 		],
 		junctions: [],
 		nodes: ids.map((id, index) => {
-			const node = {
+			const node: LogicNode = {
 				id,
 				kind: EndpointKind.Node,
 				natureId: 'task',
