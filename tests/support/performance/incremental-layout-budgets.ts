@@ -31,8 +31,10 @@ const INCREMENTAL_LAYOUT_BUDGETS_MS = {
 	'nested-subgroups': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 200 },
 	// 50-99 raised for D-05 (user decision 2026-10-02: correction before performance): worst
 	// p95 29.278 ms in two calm passes on 2026-10-03, against a 6 ms ceiling calibrated at 3.520 ms.
+	// 1-9 raised when wave 2 met main (same decision): worst p95 11.220 ms in three passes against
+	// 2.520 ms on main 6e992f3d.
 	'wide-bipartite-layers': {
-		'1-9': 5,
+		'1-9': 20,
 		'10-19': 9,
 		'20-49': 5,
 		'50-99': 45,

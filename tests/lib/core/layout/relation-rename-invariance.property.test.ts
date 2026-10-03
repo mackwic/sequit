@@ -403,7 +403,10 @@ describe('identifier rename invariance', () => {
 				PROPERTY_PARAMETERS,
 			);
 		},
-		60_000,
+		// User decision 2026-10-02 (correction before performance): under coverage, alone, bottom-to-top
+		// takes 47.9-55.8 s after the wave-2 merge against 30.0-32.4 s on main 6e992f3d (18.6-19.1 s
+		// against 16.9-18.2 s without coverage); ceil(55.8 * 1.5 / 5) * 5 = 85 s.
+		85_000,
 	);
 
 	it.each(CONFIGURATIONS)(

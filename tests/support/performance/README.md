@@ -195,7 +195,7 @@ The opt-in gate compares total computational p95 in each growth bucket with the 
 | `unbalanced-random`       |   5 |     7 |     7 |     5 |      12 |
 | `subgroups`               |   5 |     5 |     5 |     5 |      19 |
 | `nested-subgroups`        |   5 |     5 |     5 |     5 |     200 |
-| `wide-bipartite-layers`   |   5 |     9 |     5 |    45 |     195 |
+| `wide-bipartite-layers`   |  20 |     9 |     5 |    45 |     195 |
 | `repeated-diamonds`       |   5 |     5 |     5 |     5 |      10 |
 | `disconnected-components` |   5 |     5 |     5 |     5 |       7 |
 | `junction-heavy`          |   5 |     5 |     5 |     5 |      19 |
@@ -250,6 +250,7 @@ By explicit user decision (2026-10-02, correction before performance), the wave-
 - Snapshot `wide-bipartite-layers/1000`: worst median 406.46 ms (398.41, 399.93, 406.46), ceiling 138 → 610 ms. The same filtered gate measured 137.10 ms on the wave base `8eb1ac25`, 136.43 ms with D-04 alone, 136.45 ms with D-06 alone, 142.24 ms with D-03 alone and 401.19 ms with D-05 alone: the cost comes from D-05 rail untangling, which scores every pair of runs sharing a channel.
 - Snapshot `subgroups/19`: worst median 11.359 ms, the 20 ms ceiling raised for D-04 is kept; `subgroups/10` (worst median 6.245 ms) returns from 12 to its historical 10 ms.
 - Incremental `wide-bipartite-layers/50-99`: worst total p95 29.278 ms (29.209, 29.278), ceiling 6 → 45 ms. Attribution to D-05 is inferred from the snapshot cell of the same topology, not measured per slice.
+- Incremental `wide-bipartite-layers/1-9`, measured after merging wave 2 into `main` `6e992f3d`: worst total p95 11.220 ms (11.220, 10.730, 10.684) against 2.520 ms on `main` alone, ceiling 5 → 20 ms. The same merge measured 50-99 at 31.349 ms worst, within its 45 ms ceiling.
 
 No other cell failed or was changed. The 50 ms UX goal remains unchanged.
 
