@@ -4,6 +4,7 @@ import { LayoutBias, LayoutDirection } from '../../../../src/lib/core/document/l
 import { GROUP_FRAME_CLEARANCE, ITEM_GAP } from '../../../../src/lib/core/layout/layout-settings';
 import { AssertLayout } from '../../../support/assertions/assert-layout';
 import {
+	type LayoutWitness,
 	layoutWitness,
 	measurement,
 	placeWitness,
@@ -14,6 +15,18 @@ import { VisualLayout } from '../../../support/harnesses/visual-layout';
 const small = { width: 80, height: 40 };
 const thin = measurement(100, 60, 8, 8);
 const top = { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top } as const;
+
+/** The witness as laid out, with the ranks and document its visual assertions read. */
+function visualWitness(witness: LayoutWitness): VisualLayout {
+	const placed = placeWitness(witness);
+	return new VisualLayout(
+		placed.layout,
+		placed.ranks.byEndpointId,
+		witness.layout.direction,
+		undefined,
+		placed.graph.document,
+	);
+}
 
 describe('foreign junctions around block frames', () => {
 	it('moves a junction out of a frame its rail runs within half a clearance of', () => {
@@ -77,7 +90,7 @@ describe('block walls', () => {
 describe('frames around junction-only groups', () => {
 	it('reserves the clearance before a frame whose only ranked member holds a junction', () => {
 		// g2 is related but holds only j0: g0 starts on j0's rail, a clearance after g1's rank.
-		const placed = placeWitness({
+		const layout = visualWitness({
 			layout: top,
 			nodes: [
 				['n0', small, 'g0'],
@@ -99,13 +112,6 @@ describe('frames around junction-only groups', () => {
 				['j1', 'g2'],
 			],
 		});
-		const layout = new VisualLayout(
-			placed.layout,
-			placed.ranks.byEndpointId,
-			LayoutDirection.TopToBottom,
-			undefined,
-			placed.graph.document,
-		);
 		AssertLayout(layout)
 			.group('g0')
 			.isClearOfForeignBoxes({ along: GROUP_FRAME_CLEARANCE, across: ITEM_GAP });
@@ -126,5 +132,23 @@ describe('related groups holding only free groups', () => {
 				relations: [['n0', 'g0']],
 			}),
 		).toMatchObject({ valid: true });
+	});
+});
+
+describe('families beside a junction-only group', () => {
+	it('keeps a parent centred on its only child once the frames are placed', () => {
+		// g1 holds only j0 and outgrows its rail beside n1 and n3: no later pass moves them.
+		const layout = visualWitness({
+			layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Left },
+			nodes: ['n0', 'n1', 'n2', 'n3'].map((id) => [id, small] as const),
+			junctions: [['j0', 'g1']],
+			groups: [['g1', thin]],
+			relations: [
+				['n0', 'n1'],
+				['n2', 'n3'],
+				['n2', 'g1'],
+			],
+		});
+		AssertLayout(layout).envelope(['n0']).isCenteredOn('n1', { axis: 'transverse' });
 	});
 });
