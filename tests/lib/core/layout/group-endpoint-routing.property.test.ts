@@ -563,6 +563,7 @@ it('publishes only valid group and junction routes in the rich corpus', () => {
 	// Wave-2 integration (D-03 + D-04 + D-05 + D-06), 2026-10-02: 14.6 s alone and above 15 s
 	// under `test:property` with four workers; 8eb1ac25 spends 153 s laying out the same 200
 	// documents. Correctness before performance (user decision 2026-10-02). After the merge into
-	// main: 59.5-71.6 s under the full coverage gate (four workers, three passes);
-	// ceil(71.6 * 1.5 / 5) * 5 = 110 s.
-}, 110_000);
+	// main: 59.5-71.6 s under the full coverage gate (four workers, three passes), hence 110 s.
+	// After the group-repair performance slice (2026-10-03), the same gate takes 12.9-15.4 s:
+	// ceil(15.35 * 1.5 / 5) * 5 = 25 s.
+}, 25_000);

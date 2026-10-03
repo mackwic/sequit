@@ -25,6 +25,11 @@ export interface RoutingContext {
 	activeIndex: number;
 	readonly ancestorCache: Map<string, readonly string[]>;
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
+	/**
+	 * Paths of the route under repair that its reservations refused. Cleared before each repair:
+	 * routes, pending set and active index stay fixed during one, so a path's verdict does too.
+	 */
+	readonly refusedPaths: Set<string>;
 	tracks: GroupTrackIndex | undefined;
 	outside: number;
 }
@@ -101,24 +106,27 @@ export function* candidateFacePorts(
 	}
 }
 
-export function respectsExternalFlow(context: RoutingContext, candidate: LayoutRelation): boolean {
-	const sourceEndpoint = defined(context.graph.endpointsById.get(candidate.from));
-	const targetEndpoint = defined(context.graph.endpointsById.get(candidate.to));
+/**
+ * A route between two ungrouped nodes whose target lies downstream must progress along the main
+ * axis: every segment times the returned sign stays non-negative. Zero exempts the route.
+ */
+export function externalFlowSign(
+	context: RoutingContext,
+	route: LayoutRelation,
+	ports: FacePorts,
+): number {
+	const sourceEndpoint = defined(context.graph.endpointsById.get(route.from));
+	const targetEndpoint = defined(context.graph.endpointsById.get(route.to));
 	if (sourceEndpoint.kind !== EndpointKind.Node || targetEndpoint.kind !== EndpointKind.Node)
-		return true;
-	if (sourceEndpoint.entity.groupId !== undefined) return true;
-	if (targetEndpoint.entity.groupId !== undefined) return true;
+		return 0;
+	if (sourceEndpoint.entity.groupId !== undefined) return 0;
+	if (targetEndpoint.entity.groupId !== undefined) return 0;
 	let sign = 1;
 	if (context.frame.forward) sign = -1;
-	const source = main(defined(candidate.points[0]), context.vertical);
-	const target = main(defined(candidate.points.at(-1)), context.vertical);
-	if ((target - source) * sign < 0) return true;
-	for (let index = 1; index < candidate.points.length; index += 1) {
-		const current = main(defined(candidate.points[index]), context.vertical);
-		const previous = main(defined(candidate.points[index - 1]), context.vertical);
-		if ((current - previous) * sign < 0) return false;
-	}
-	return true;
+	const source = main(ports.source, context.vertical);
+	const target = main(ports.target, context.vertical);
+	if ((target - source) * sign < 0) return 0;
+	return sign;
 }
 
 export function prepareRoutingContext(
@@ -154,6 +162,7 @@ export function prepareRoutingContext(
 		activeIndex: 0,
 		ancestorCache: new Map<string, readonly string[]>(),
 		groupObstacleCache: new Map<string, RouteObstacles | undefined>(),
+		refusedPaths: new Set<string>(),
 		tracks: undefined,
 		outside,
 	};

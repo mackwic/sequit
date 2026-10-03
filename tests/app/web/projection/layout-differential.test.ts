@@ -49,8 +49,10 @@ describe('layout differential harness', () => {
 		// 14.2 s (30.9 s under coverage). The slowdown comes from the raw merge 679ab190: the
 		// rank-order candidates that the merged placement leaves invalid (group-passage,
 		// element-overlap) each cost a full group-route repair (repairRoute -> boundaryOnTrack).
-		// Attribution and profiles: merge report, section "Suite AttributeMergeSlowdown".
-	}, 125_000);
+		// Attribution and profiles: merge report, section "Suite AttributeMergeSlowdown". After the
+		// group-repair performance slice (2026-10-03), the full coverage gate (four workers, three
+		// passes) takes 21.0-23.2 s: ceil(23.2 x 1.5 / 5) x 5 = 35 s.
+	}, 35_000);
 
 	it.each(LAYOUT_DIRECTIONS)(
 		'matches the root-region engine across permutations in %s',

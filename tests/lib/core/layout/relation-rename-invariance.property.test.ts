@@ -381,9 +381,10 @@ describe('identifier rename invariance', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
-		// User decision 2026-10-02 (correction before performance): routing every tied rank order
-		// (D-04) and nesting same-family rails (D-05) take 15 s → 25 s alone on the shared machine.
-	}, 60_000);
+		// Raised to 60 s on 2026-10-02 (user decision, correction before performance). After the
+		// group-repair performance slice (2026-10-03), the full coverage gate (four workers, three
+		// passes) takes 3.29-3.86 s: ceil(3.86 * 1.5 / 5) * 5 = 10 s.
+	}, 10_000);
 
 	it.each(CONFIGURATIONS)(
 		'keeps complete layouts invariant when every identifier is lexically reversed in %s with %s bias',
@@ -403,11 +404,11 @@ describe('identifier rename invariance', () => {
 				PROPERTY_PARAMETERS,
 			);
 		},
-		// User decision 2026-10-02 (correction before performance): under coverage, alone, bottom-to-top
-		// takes 47.9-55.8 s after the wave-2 merge against 30.0-32.4 s on main 6e992f3d (18.6-19.1 s
-		// against 16.9-18.2 s without coverage). Under the full coverage gate (four workers, three
-		// passes) the slowest configuration takes 107.5-115.3 s; ceil(115.3 * 1.5 / 5) * 5 = 175 s.
-		175_000,
+		// Raised to 175 s on 2026-10-02 (user decision, correction before performance): 107.5-115.3 s
+		// for the slowest configuration under the full coverage gate after the wave-2 merge. After the
+		// group-repair performance slice (2026-10-03), the same gate (four workers, three passes) takes
+		// at most 4.92 s (top-to-bottom, bottom bias): ceil(4.92 * 1.5 / 5) * 5 = 10 s.
+		10_000,
 	);
 
 	it.each(CONFIGURATIONS)(
