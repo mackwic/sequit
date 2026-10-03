@@ -42,6 +42,7 @@
 >
 	<h2 id="analytics-consent-title">{m.common_analytics_title()}</h2>
 	<p>{m.common_analytics_description()}</p>
+	<p>{m.common_analytics_diagnostics()}</p>
 	{#if choice !== undefined}
 		<p class="current-choice">
 			{#if choice}

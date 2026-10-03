@@ -6,6 +6,7 @@
 	import { env } from '$env/dynamic/public';
 
 	import { captureAnalyticsPageview, initializeAnalytics } from '../app/web/analytics/analytics';
+	import { initializeDiagnostics } from '../app/web/analytics/diagnostics';
 	import favicon from '../app/web/ui/assets/favicon.svg';
 	import AnalyticsConsent from '../app/web/ui/components/ui/AnalyticsConsent.svelte';
 	import type { LayoutProps } from './$types';
@@ -17,12 +18,16 @@
 
 	$effect(() => {
 		// Track pathname changes even when two documents share the same route template.
-		if (!analyticsEnabled || page.url.pathname.startsWith('/atelier')) return;
-		initializeAnalytics({
+		if (!analyticsEnabled) return;
+		let routeId = page.route.id;
+		if (page.url.pathname.startsWith('/atelier')) routeId = null;
+		const config = {
 			key: env['PUBLIC_POSTHOG_KEY'] ?? 'phc_mHLtB92hBfRFdG2FAQTDLTz2SPdeBwZX5utdu5kjmV3D',
 			host: '/ingest',
-		});
-		captureAnalyticsPageview(page.route.id);
+		};
+		initializeAnalytics(config);
+		initializeDiagnostics(config, routeId);
+		captureAnalyticsPageview(routeId);
 	});
 </script>
 

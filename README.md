@@ -58,10 +58,10 @@ Excalidraw instead retains the current canvas shapes and routes.
 
 PostHog EU is enabled in production and disabled in local development by default. The public
 project token defaults to Sequit's project; `.env.example` documents `PUBLIC_POSTHOG_KEY` and
-`PUBLIC_POSTHOG_ENABLED`. Set the latter to `true` to exercise analytics locally, or `false`
+`PUBLIC_POSTHOG_ENABLED`. Set the latter to `true` to exercise the integration locally, or `false`
 to disable it. These are public configuration values, not personal API credentials.
 
-The browser sends pageviews through the same-origin SvelteKit route `/ingest`. The proxy uses
+The browser sends pageviews and technical diagnostics through the same-origin SvelteKit route `/ingest`. The proxy uses
 fixed PostHog EU API and asset hosts, strips credentials, cookies, referrers and visitor IP
 headers, and does not follow upstream redirects. Pageviews contain the SvelteKit route template,
 never document identifiers, query parameters, fragments or graph content. The workshop is excluded.
@@ -70,14 +70,36 @@ Before consent, and after refusal or withdrawal, visits use PostHog's cookieless
 analytics browser storage. Accepting allows a pseudonymous identifier in local storage to
 recognize repeat visits; the **Privacy / Confidentialité** control changes this choice at any
 time. The consent choice itself is stored separately. Browser DNT/GPC signals prevent persisted
-tracking. Session replay, DOM autocapture, person profiles, error capture and surveys are disabled.
-Existing layout reports keep their document text and identifier anonymization and are not sent
-to PostHog.
+tracking. This consent controls repeat-visit analytics only, not technical diagnostics.
 
-**Enable cookieless tracking in the PostHog project's settings before deployment.** PostHog
-otherwise ignores cookieless events even when ingestion answers HTTP 200. Without forwarding
-visitor IPs, treat cookieless measurements as visit counts, not reliable unique-visitor counts
-or geolocation. Cookieless mode alone is not a legal guarantee of a consent exemption.
+A separate `sequitDiagnostics` SDK instance captures session replay, console logs and unhandled
+errors/rejections before consent and after refusal. Its randomly generated identity and session
+exist only in memory and reset on reload; they are never linked to the persisted analytics identity.
+Person profiles, DOM autocapture events, surveys, feature-flag evaluation and visitor geolocation
+are disabled. Diagnostics are pseudonymous, not a guarantee of anonymous data.
+
+Replay masks all text and inputs, blocks editable fields, images, media, embedded content and
+canvas pixels, and removes document/participant identifiers and arbitrary DOM attributes.
+Only approved HTML/SVG geometry, static application stylesheet links, interaction coordinates,
+viewport metadata and safe route templates survive the final payload filter. The SDK's URL-only
+navigation masking callback preserves this metadata without keeping document URLs. Arbitrary
+styles, network headers and bodies, JSON-LD, plugin/custom events and opaque packed snapshots
+do not pass this filter.
+Per-event replay compression is disabled so the filter can inspect every event; transport
+compression remains available.
+
+All free-form console log bodies and error messages become `[redacted]`. Logs retain severity,
+timing, ephemeral correlation and the safe route, not caller-supplied attributes. Exceptions
+retain approved error types and application stack-file paths with line/column positions, but
+not function names, source contexts, custom fields or raw browser URLs. Existing layout reports
+keep their document text and identifier anonymization and are not sent to PostHog.
+
+**Enable cookieless tracking and Session Replay in the PostHog project settings before deployment.**
+Cookieless ingestion can answer HTTP 200 while the project discards those events; replay requires
+the project's real remote configuration. Without forwarding visitor IPs, treat cookieless
+measurements as visit counts, not reliable unique-visitor counts or geolocation. Separating
+technical diagnostics from analytics consent is a product policy, not a legal guarantee of
+consent exemption or legitimate interest.
 
 ## Deployment
 

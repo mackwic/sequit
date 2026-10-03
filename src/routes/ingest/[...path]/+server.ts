@@ -5,7 +5,7 @@ export const trailingSlash = 'ignore';
 
 const API_HOST = 'https://eu.i.posthog.com';
 const ASSET_HOST = 'https://eu-assets.i.posthog.com';
-const API_PATH = /^\/(?:e|i\/v0\/e|batch|flags)\/?$/;
+const API_PATH = /^\/(?:e|s|i\/v0\/e|i\/v1\/logs|batch|flags)\/?$/;
 const ASSET_PATH = /^\/(?:static|array)\/[\w./-]+$/;
 
 /** Fixed EU destinations, never a caller-selected URL or an authenticated upstream request. */

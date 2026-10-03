@@ -53,14 +53,18 @@ describe('same-origin PostHog proxy', () => {
 		});
 		await invoke('/e/?target=https://attacker.test', 'POST');
 		await invoke('/static/1.435.7/array.js');
+		await invoke('/s/', 'POST');
+		await invoke('/i/v1/logs?token=public-project-key', 'POST');
 		expect(destinations).toEqual([
 			'https://eu.i.posthog.com/e/?target=https://attacker.test',
 			'https://eu-assets.i.posthog.com/static/1.435.7/array.js',
+			'https://eu.i.posthog.com/s/',
+			'https://eu.i.posthog.com/i/v1/logs?token=public-project-key',
 		]);
 		expect((await invoke('/api/projects/')).status).toBe(404);
 		expect((await invoke('//attacker.test/e/')).status).toBe(404);
 		expect((await invoke('/%2f%2fattacker.test/e/')).status).toBe(404);
-		expect(destinations).toHaveLength(2);
+		expect(destinations).toHaveLength(4);
 	});
 
 	it('does not follow redirects or expose a cross-domain location to the browser', async () => {
