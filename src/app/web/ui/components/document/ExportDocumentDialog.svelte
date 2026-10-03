@@ -2,6 +2,7 @@
 	import type { LogicDocument } from '../../../../../lib/core/document/logic-document';
 	import { serializeLogicDocumentDot } from '../../../../../lib/infrastructure/dot/serialize-logic-document-dot';
 	import { serializeSequitToml } from '../../../../../lib/infrastructure/toml/serialize-sequit-toml';
+	import { captureDocumentExport } from '../../../analytics/analytics';
 	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { documentFilename, documentFileStem } from '../../document/document-filename';
@@ -37,26 +38,32 @@
 
 	function downloadToml(): void {
 		download(() => {
-			downloadText(serializeSequitToml(document), documentFilename(document.title, document.id));
+			const filename = documentFilename(document.title, document.id);
+			downloadText(serializeSequitToml(document), filename);
+			captureDocumentExport(filename);
 			onTomlDownloaded?.();
 		});
 	}
 
 	function downloadDot(): void {
 		download(() => {
-			downloadText(serializeLogicDocumentDot(document), `${stem}.dot`);
+			const filename = `${stem}.dot`;
+			downloadText(serializeLogicDocumentDot(document), filename);
+			captureDocumentExport(filename);
 		});
 	}
 
 	function downloadExcalidraw(): void {
 		if (canvas === undefined) return;
 		download(() => {
+			const filename = `${stem}.excalidraw`;
 			downloadBlob(
 				new Blob([serializeExcalidraw(document, canvas)], {
 					type: 'application/json;charset=utf-8',
 				}),
-				`${stem}.excalidraw`,
+				filename,
 			);
+			captureDocumentExport(filename);
 		});
 	}
 </script>

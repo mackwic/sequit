@@ -12,6 +12,11 @@
 	} from '../../../../lib/infrastructure/document/document-creation';
 	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
+	import {
+		captureCollaborationStart,
+		captureDocumentCreation,
+		captureDocumentImport,
+	} from '../../analytics/analytics';
 	import { m } from '../../i18n/paraglide/messages';
 	import type { OpenDocumentResult } from '../../projection/open-document';
 	import { canvasStageElement } from '../canvas/canvas-image';
@@ -200,6 +205,12 @@
 		openChosen(
 			serializeSequitToml(emptyDocument(current.read(), `document-${crypto.randomUUID()}`)),
 		);
+		captureDocumentCreation();
+	}
+
+	function importDocument(next: string): void {
+		openChosen(next);
+		captureDocumentImport();
 	}
 
 	// Called from the workspace's effect: reading page state here would make that effect re-run
@@ -233,6 +244,7 @@
 		const room = newRoomId();
 		stashRoomSeed(room, serializeSequitToml({ ...current.read(), id: room }));
 		dialog = undefined;
+		captureCollaborationStart();
 		void goto(resolve('/session/[room]', { room }));
 	}
 </script>
@@ -300,7 +312,7 @@
 	{:else if dialog === 'open'}
 		<OpenDocumentDialog
 			retained={currentRetained}
-			onopen={openChosen}
+			onopen={importDocument}
 			onclose={() => {
 				dialog = undefined;
 			}}

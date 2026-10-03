@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 
+	import { captureDocumentExport, captureImageCopy } from '../../../analytics/analytics';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		type CanvasImage,
@@ -99,13 +100,17 @@
 
 	function downloadPng(): void {
 		void perform(async (picture) => {
-			downloadBlob(await rasterizeCanvasImage(picture, scale), `${name}.png`);
+			const file = `${name}.png`;
+			downloadBlob(await rasterizeCanvasImage(picture, scale), file);
+			captureDocumentExport(file);
 		}, m.document_export_png_downloaded());
 	}
 
 	function downloadSvg(): void {
 		void perform((picture) => {
-			downloadBlob(new Blob([picture.svg], { type: 'image/svg+xml;charset=utf-8' }), `${name}.svg`);
+			const file = `${name}.svg`;
+			downloadBlob(new Blob([picture.svg], { type: 'image/svg+xml;charset=utf-8' }), file);
+			captureDocumentExport(file);
 			return Promise.resolve();
 		}, m.document_export_svg_downloaded());
 	}
@@ -114,9 +119,9 @@
 		// Safari only honours a clipboard write started in the gesture: the item carries the pending PNG.
 		void perform(
 			(picture) =>
-				navigator.clipboard.write([
-					new ClipboardItem({ 'image/png': rasterizeCanvasImage(picture, scale) }),
-				]),
+				navigator.clipboard
+					.write([new ClipboardItem({ 'image/png': rasterizeCanvasImage(picture, scale) })])
+					.then(captureImageCopy),
 			m.document_export_copied(),
 		);
 	}

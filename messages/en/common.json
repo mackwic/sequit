@@ -31,7 +31,6 @@
 	"common_group_title": "Group title",
 	"common_nature_label": "Nature label",
 	"common_keyboard_shortcuts": "Keyboard shortcuts",
-	"common_analytics_privacy": "Privacy",
 	"common_analytics_title": "Analytics",
 	"common_analytics_intro": "Sequit uses PostHog to understand how the editor is used and to fix bugs. The content of your documents (text, titles, inputs) is never sent.",
 	"common_analytics_consent_heading": "What we ask you",

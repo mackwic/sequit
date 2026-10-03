@@ -75,12 +75,18 @@ when typed from an existing box), `nodes_pasted` (several boxes), `nodes_linked`
 `nature_edited`, `nature_deleted`, `natures_imported`, `layout_changed` and `lanes_edited`.
 Undo and redo replay history and are not counted. A group or nature label is shared text: the
 single-user editor counts its rename when the dialog saves it, while live label edits in a
-collaborative session send no command and are not counted. The only properties are an element
-`count` and the `linked` flag; labels, text, colours and identifiers are never sent.
+collaborative session send no command and are not counted.
+
+The document page also counts `document_created` (a blank document from the menu),
+`document_imported` (a file opened), `collaboration_started` (a room created; joining one is not
+counted) and `document_exported` with its `format`: `sequit`, `dot`, `excalidraw`, `png`, `svg`
+or `clipboard`. The only properties are an element `count`, the `linked` flag and the export
+`format`; labels, text, colours, file names and identifiers are never sent.
 
 Before consent, and after refusal or withdrawal, visits use PostHog's cookieless mode without
 analytics browser storage. Accepting allows a pseudonymous identifier in local storage to
-recognize repeat visits; the **Privacy / Confidentialité** control changes this choice at any
+recognize repeat visits. The consent panel shows until a choice is made, then hides; the
+**Consent / Consentement** entry of the document menu brings it back to change the choice at any
 time. The consent choice itself is stored separately. Browser DNT/GPC signals prevent persisted
 tracking. This consent controls repeat-visit analytics only, not technical diagnostics.
 

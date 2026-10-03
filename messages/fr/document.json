@@ -19,6 +19,7 @@
 	"document_export_format_excalidraw_description": "Formes et flèches éditables, placées comme sur le canvas.",
 	"document_export_excalidraw_requires_layout": "Excalidraw sera disponible quand le canvas aura terminé sa mise en page.",
 	"document_menu_print": "Imprimer…",
+	"document_menu_consent": "Consentement",
 	"document_menu_language": "Langue",
 	"document_language_name": "Français",
 	"document_export_pixel_size": "{width} × {height} px",

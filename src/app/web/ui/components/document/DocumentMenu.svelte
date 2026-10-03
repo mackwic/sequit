@@ -3,6 +3,7 @@
 
 	import { m } from '../../../i18n/paraglide/messages';
 	import { getLocale, locales, setLocale } from '../../../i18n/paraglide/runtime';
+	import { consentPanel } from '../ui/consent-panel.svelte';
 	import DropdownMenu from '../ui/DropdownMenu.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import DocumentTitle from './DocumentTitle.svelte';
@@ -103,6 +104,15 @@
 			<button role="menuitem" type="button" onclick={printDocument}
 				><Icon name="phosphor:printer" />{m.document_menu_print()}</button
 			>
+			{#if consentPanel.available}
+				<button
+					role="menuitem"
+					type="button"
+					onclick={() => {
+						consentPanel.show(menuTrigger);
+					}}><Icon name="phosphor:shield-check" />{m.document_menu_consent()}</button
+				>
+			{/if}
 			<div role="separator"></div>
 			<div role="group" aria-label={m.document_menu_language()}>
 				<p class="dropdown-heading">{m.document_menu_language()}</p>

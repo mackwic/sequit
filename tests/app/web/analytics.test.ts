@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	captureAnalyticsPageview,
+	captureDocumentExport,
 	captureProductEvent,
 	initializeAnalytics,
 	ProductEvent,
@@ -99,6 +100,9 @@ describe('analytics privacy boundary', () => {
 			count: 4,
 			$set: { email: 'private-email@example.test' },
 		});
+		captureDocumentExport('Private-Export-Title.sequit.toml');
+		captureDocumentExport('private-export-title.exe');
+		posthog.capture(ProductEvent.DocumentExported, { format: 'private-format' });
 		const route = {
 			token: 'phc_test-public-key',
 			distinct_id: expect.any(String) as unknown,
@@ -111,6 +115,8 @@ describe('analytics privacy boundary', () => {
 			{ event: 'node_created', properties: { ...route, linked: true } },
 			{ event: 'nodes_pasted', properties: route },
 			{ event: 'selection_deleted', properties: { ...route, count: 4 } },
+			{ event: 'document_exported', properties: { ...route, format: 'sequit' } },
+			{ event: 'document_exported', properties: route },
 		]);
 
 		const serialized = JSON.stringify(events);
@@ -125,6 +131,8 @@ describe('analytics privacy boundary', () => {
 			'private-custom-event-data',
 			'private-node-label',
 			'private-email@example.test',
+			'Private-Export-Title',
+			'private-format',
 		])
 			expect(serialized).not.toContain(secret);
 

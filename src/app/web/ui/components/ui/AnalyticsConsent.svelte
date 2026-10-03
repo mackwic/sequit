@@ -1,44 +1,51 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 
 	import { readAnalyticsConsent, setAnalyticsConsent } from '../../../analytics/analytics';
 	import { m } from '../../../i18n/paraglide/messages';
+	import { consentPanel } from './consent-panel.svelte';
 
 	let choice = $state<boolean | undefined>(undefined);
-	let open = $state(false);
-	let privacyControl = $state<HTMLButtonElement>();
+	let panel = $state<HTMLElement>();
 
 	onMount(() => {
 		choice = readAnalyticsConsent();
-		open = choice === undefined;
+		consentPanel.available = true;
+		if (choice === undefined) consentPanel.show();
+		return () => {
+			consentPanel.available = false;
+			consentPanel.open = false;
+		};
+	});
+
+	// Reopened from the document menu, the panel takes the focus that menu leaves behind.
+	$effect(() => {
+		if (consentPanel.open && consentPanel.opener !== undefined)
+			void tick().then(() => panel?.focus());
 	});
 
 	function saveChoice(allow: boolean): void {
 		setAnalyticsConsent(allow);
 		choice = allow;
-		open = false;
-		privacyControl?.focus();
+		consentPanel.close();
+	}
+
+	/** A choice already made can be kept as is from inside the panel; a pending one must be made. */
+	function dismiss(event: KeyboardEvent): void {
+		if (event.key !== 'Escape' || choice === undefined) return;
+		if (consentPanel.open && panel?.contains(document.activeElement) === true) consentPanel.close();
 	}
 </script>
 
-<button
-	bind:this={privacyControl}
-	class="ui-action quiet privacy-control print:hidden"
-	type="button"
-	aria-expanded={open}
-	aria-controls="analytics-consent-panel"
-	onclick={() => {
-		open = !open;
-	}}
->
-	{m.common_analytics_privacy()}
-</button>
+<svelte:window onkeydown={dismiss} />
 
 <section
+	bind:this={panel}
 	id="analytics-consent-panel"
-	hidden={!open}
+	hidden={!consentPanel.open}
 	class="panel print:hidden"
 	aria-labelledby="analytics-consent-title"
+	tabindex="-1"
 >
 	<h2 id="analytics-consent-title">{m.common_analytics_title()}</h2>
 	<p>{m.common_analytics_intro()}</p>
@@ -81,10 +88,10 @@
 	.panel {
 		position: fixed;
 		z-index: 50;
-		bottom: 4.25rem;
+		bottom: 1rem;
 		left: 1rem;
 		width: min(22rem, calc(100vw - 2rem));
-		max-height: calc(100dvh - 5.25rem);
+		max-height: calc(100dvh - 2rem);
 		overflow-y: auto;
 		border: 1px solid var(--ui-border);
 		border-radius: 0.75rem;
@@ -123,12 +130,5 @@
 	.choices :global(.ui-action) {
 		flex: 1;
 		justify-content: center;
-	}
-	.privacy-control {
-		position: fixed;
-		z-index: 50;
-		bottom: 1rem;
-		left: 1rem;
-		box-shadow: var(--ui-shadow);
 	}
 </style>

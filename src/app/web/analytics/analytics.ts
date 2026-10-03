@@ -12,7 +12,7 @@ interface SafeRoute {
 	currentUrl: string;
 }
 
-/** Editor actions, counted to understand usage; they never carry document content or identifiers. */
+/** Product actions, counted to understand usage; they never carry document content or identifiers. */
 export enum ProductEvent {
 	NodeCreated = 'node_created',
 	NodesLinked = 'nodes_linked',
@@ -32,17 +32,40 @@ export enum ProductEvent {
 	NaturesImported = 'natures_imported',
 	LayoutChanged = 'layout_changed',
 	LanesEdited = 'lanes_edited',
+	DocumentCreated = 'document_created',
+	DocumentImported = 'document_imported',
+	DocumentExported = 'document_exported',
+	CollaborationStarted = 'collaboration_started',
 }
 
-/** The only properties an editor action may carry: shapes of the action, never its content. */
+/** Where an export went: a file of this kind, or the clipboard. */
+enum ExportFormat {
+	Sequit = 'sequit',
+	Dot = 'dot',
+	Excalidraw = 'excalidraw',
+	Png = 'png',
+	Svg = 'svg',
+	Clipboard = 'clipboard',
+}
+
+/** The only properties a product action may carry: shapes of the action, never its content. */
 export interface ProductEventProperties {
 	/** How many elements the action created, moved or removed. */
 	readonly count?: number;
 	/** Whether a new box was linked to an existing one as it was created. */
 	readonly linked?: boolean;
+	/** The destination of an export. */
+	readonly format?: ExportFormat;
 }
 
 const PRODUCT_EVENTS = new Set<string>(Object.values(ProductEvent));
+const FILE_FORMATS: readonly (readonly [string, ExportFormat])[] = [
+	['.sequit.toml', ExportFormat.Sequit],
+	['.dot', ExportFormat.Dot],
+	['.excalidraw', ExportFormat.Excalidraw],
+	['.png', ExportFormat.Png],
+	['.svg', ExportFormat.Svg],
+];
 const MAX_PRODUCT_COUNT = 10_000;
 
 let initialized = false;
@@ -78,10 +101,12 @@ function localStorageOrUndefined(): Storage | undefined {
 function productProperties(properties: CaptureResult['properties']): ProductEventProperties {
 	const count: unknown = properties['count'];
 	const linked: unknown = properties['linked'];
-	const safe: { count?: number; linked?: boolean } = {};
+	const format = Object.values(ExportFormat).find((value) => value === properties['format']);
+	const safe: { count?: number; linked?: boolean; format?: ExportFormat } = {};
 	const countable = Number.isSafeInteger(count) && Number(count) >= 0;
 	if (countable && Number(count) <= MAX_PRODUCT_COUNT) safe.count = Number(count);
 	if (typeof linked === 'boolean') safe.linked = linked;
+	if (format !== undefined) safe.format = format;
 	return safe;
 }
 
@@ -195,13 +220,39 @@ export function captureAnalyticsPageview(routeId: string | null): void {
 	});
 }
 
-/** Counts an accepted editor action on the current safe route; the workshop is never measured. */
+/** Counts a product action on the current safe route; the workshop is never measured. */
 export function captureProductEvent(
 	event: ProductEvent,
 	properties: ProductEventProperties = {},
 ): void {
 	if (!initialized || activeRoute === undefined) return;
 	posthog.capture(event, { ...properties, $geoip_disable: true });
+}
+
+/** Counts a downloaded export by the format its file name ends with, never by the name itself. */
+export function captureDocumentExport(filename: string): void {
+	const name = filename.toLowerCase();
+	const format = FILE_FORMATS.find(([extension]) => name.endsWith(extension))?.[1];
+	if (format !== undefined) captureProductEvent(ProductEvent.DocumentExported, { format });
+}
+
+export function captureImageCopy(): void {
+	captureProductEvent(ProductEvent.DocumentExported, { format: ExportFormat.Clipboard });
+}
+
+/** A blank document, created from the document menu. */
+export function captureDocumentCreation(): void {
+	captureProductEvent(ProductEvent.DocumentCreated);
+}
+
+/** A document opened from a file. */
+export function captureDocumentImport(): void {
+	captureProductEvent(ProductEvent.DocumentImported);
+}
+
+/** A collaboration room created from the current document; joining one is not counted. */
+export function captureCollaborationStart(): void {
+	captureProductEvent(ProductEvent.CollaborationStarted);
 }
 
 /** Returns a saved analytics choice, or undefined while consent is pending/unavailable. */

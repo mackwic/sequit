@@ -19,6 +19,7 @@
 	"document_export_format_excalidraw_description": "Editable shapes and arrows placed like the canvas.",
 	"document_export_excalidraw_requires_layout": "Excalidraw will be available when the canvas has finished its layout.",
 	"document_menu_print": "Print…",
+	"document_menu_consent": "Consent",
 	"document_menu_language": "Language",
 	"document_language_name": "English",
 	"document_export_pixel_size": "{width} × {height} px",
