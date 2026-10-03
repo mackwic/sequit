@@ -173,7 +173,7 @@
 </svelte:head>
 
 <main
-	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
+	class="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
 	bind:this={main}
 >
 	<AppHeader>
@@ -191,7 +191,7 @@
 					class:offline={session?.status === CollaborationStatus.Disconnected}
 					aria-hidden="true"
 				></span>
-				{statusLabel}
+				<span class="max-sm:sr-only">{statusLabel}</span>
 			</p>
 			{#if session}<ParticipantAvatars
 					participants={session.participants}
@@ -209,7 +209,7 @@
 				}}
 			>
 				<Icon name="phosphor:share-network" />
-				{m.collaboration_session_share()}
+				<span class="max-sm:sr-only">{m.collaboration_session_share()}</span>
 			</button>
 		{/snippet}
 	</AppHeader>

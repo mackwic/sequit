@@ -52,6 +52,8 @@ const NODE_NOT_FOUND_CODE: string = DocumentCommandDiagnosticCode.NodeNotFound;
 
 export class CanvasSession {
 	zoom = $state(DEFAULT_CANVAS_ZOOM);
+	/** Where the zoom starts and resets to; smaller on a phone-sized canvas. */
+	homeZoom = $state(DEFAULT_CANVAS_ZOOM);
 	private readonly selectedEntities = new SvelteMap<EntityKey, EntityRef>();
 	activity = $state<CanvasActivity>(idleCanvasActivity());
 	announcement = $state('');
@@ -118,7 +120,14 @@ export class CanvasSession {
 	}
 
 	resetZoom(): boolean {
-		return this.updateZoom(DEFAULT_CANVAS_ZOOM);
+		return this.updateZoom(this.homeZoom);
+	}
+
+	/** Takes the home zoom of the canvas as shown; a zoom left at home follows it. */
+	adoptHomeZoom(zoom: number): void {
+		if (zoom === this.homeZoom) return;
+		if (this.zoom === this.homeZoom) this.zoom = zoom;
+		this.homeZoom = zoom;
 	}
 
 	isSelected(ref: EntityRef): boolean {

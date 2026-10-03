@@ -109,6 +109,7 @@
 		color: var(--ui-muted);
 		font-size: 12px;
 		font-weight: 500;
+		white-space: nowrap;
 	}
 	.layout-chip :global(.dropdown-trigger),
 	.lanes {

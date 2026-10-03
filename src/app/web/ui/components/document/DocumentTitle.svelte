@@ -104,4 +104,11 @@
 		color: var(--ui-text);
 		outline: none;
 	}
+	/* iOS Safari zooms the page into a field whose text is under 16px when it gets focus. */
+	@media (hover: none) {
+		.sizer::after,
+		input {
+			font-size: 16px;
+		}
+	}
 </style>

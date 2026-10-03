@@ -136,7 +136,7 @@
 	"editing_zoom_label": "Zoom du canvas",
 	"editing_zoom_out": "Zoom arrière",
 	"editing_zoom_reset": "Réinitialiser le zoom",
-	"editing_zoom_reset_hint": "Revenir à 100 %",
+	"editing_zoom_reset_hint": "Revenir au zoom de départ",
 	"editing_zoom_value": "{percent}%",
 	"editing_zoom_in": "Zoom avant"
 }

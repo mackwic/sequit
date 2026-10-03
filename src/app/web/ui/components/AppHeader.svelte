@@ -21,7 +21,7 @@
 				class="grid size-7 place-items-center rounded-lg bg-[var(--ui-text)] text-sm font-bold text-[var(--ui-surface)]"
 				>S</span
 			>
-			<span>Sequit</span>
+			<span class="max-sm:hidden">Sequit</span>
 		</a>
 		<div class="h-5 w-px bg-[var(--ui-border)]"></div>
 		{@render children()}

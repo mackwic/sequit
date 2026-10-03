@@ -243,7 +243,7 @@
 </svelte:head>
 
 <main
-	class="flex h-screen min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
+	class="flex h-dvh min-h-[36rem] flex-col overflow-hidden bg-[var(--ui-bg)] text-[var(--ui-text)] print:h-auto print:min-h-0 print:overflow-visible print:bg-transparent"
 	bind:this={main}
 >
 	<AppHeader>
@@ -272,7 +272,7 @@
 				}}
 			>
 				<Icon name="phosphor:users" />
-				{m.document_collaborate()}
+				<span class="max-sm:sr-only">{m.document_collaborate()}</span>
 			</button>
 		{/snippet}
 	</AppHeader>

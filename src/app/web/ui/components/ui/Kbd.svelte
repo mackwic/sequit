@@ -51,4 +51,10 @@
 		background: color-mix(in srgb, currentColor 12%, transparent);
 		color: inherit;
 	}
+	/* Nothing to press on a touch screen; `aria-keyshortcuts` still tells a keyboard. */
+	@media (hover: none) {
+		.caps {
+			display: none;
+		}
+	}
 </style>
