@@ -29,11 +29,13 @@ const INCREMENTAL_LAYOUT_BUDGETS_MS = {
 	'unbalanced-random': { '1-9': 5, '10-19': 7, '20-49': 7, '50-99': 5, '100-999': 12 },
 	subgroups: { '1-9': 5, '10-19': 7, '20-49': 13, '50-99': 5, '100-999': 25 },
 	'nested-subgroups': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 200 },
+	// 50-99 raised for D-05 (user decision 2026-10-02: correction before performance): worst
+	// p95 29.278 ms in two calm passes on 2026-10-03, against a 6 ms ceiling calibrated at 3.520 ms.
 	'wide-bipartite-layers': {
 		'1-9': 5,
 		'10-19': 9,
 		'20-49': 5,
-		'50-99': 6,
+		'50-99': 45,
 		'100-999': 195,
 	},
 	'repeated-diamonds': { '1-9': 5, '10-19': 5, '20-49': 5, '50-99': 5, '100-999': 10 },

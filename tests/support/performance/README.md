@@ -92,9 +92,9 @@ The gate warms each prepared case three times, records 11 independent public-API
 | `binary-tree`             | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `unbalanced`              | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `unbalanced-random`       | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
-| `subgroups`               | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
+| `subgroups`               | <10 ms | <20 ms | <30 ms | <50 ms | <100 ms |
 | `nested-subgroups`        | <10 ms | <10 ms | <30 ms | <50 ms | <205 ms |
-| `wide-bipartite-layers`   | <10 ms | <10 ms | <30 ms | <50 ms | <138 ms |
+| `wide-bipartite-layers`   | <10 ms | <10 ms | <30 ms | <50 ms | <610 ms |
 | `repeated-diamonds`       | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `disconnected-components` | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
 | `junction-heavy`          | <10 ms | <10 ms | <30 ms | <50 ms | <100 ms |
@@ -195,7 +195,7 @@ The opt-in gate compares total computational p95 in each growth bucket with the 
 | `unbalanced-random`       |   5 |     7 |     7 |     5 |      12 |
 | `subgroups`               |   5 |     5 |     5 |     5 |      19 |
 | `nested-subgroups`        |   5 |     5 |     5 |     5 |     200 |
-| `wide-bipartite-layers`   |   5 |     9 |     5 |     6 |     195 |
+| `wide-bipartite-layers`   |   5 |     9 |     5 |    45 |     195 |
 | `repeated-diamonds`       |   5 |     5 |     5 |     5 |      10 |
 | `disconnected-components` |   5 |     5 |     5 |     5 |       7 |
 | `junction-heavy`          |   5 |     5 |     5 |     5 |      19 |
@@ -242,6 +242,16 @@ The values below are the worst total p95 in milliseconds from the three runs. Th
 `unbalanced-random/10-19` was then raised from 5 to 7 ms by explicit user decision (margin for borderline cells): its calm median is 4.497 ms after the fixes (3.560 ms on the base), so `ceil(1.5 × median)` = 7 ms, and one calm pass had failed at 5.001 ms.
 
 The temporary 2026-09-26 relaxation was re-measured on `34d023c9` with two complete `performance:record` passes of each suite (pinned Node `v24.20.0`, pnpm `12.3.4`, Apple M1 Max, AC power, no other validation run). Each relaxed ceiling became its historical value when `1.5 × median of the two passes` fell below it, otherwise `ceil(1.5 × median)` ms, never above the temporary value. The snapshot `wide-bipartite-layers/1000` median was 91.806 ms (ceiling 150 → 138 ms). Incremental medians in the `100-999` bucket: `group-relations` 6.226 ms (17 → 10 ms, after the group-relation rank-component fix), `wide-bipartite-layers` 129.787 ms (242 → 195 ms), `unbalanced-random/20-49` 4.553 ms (10 → 7 ms), `wide-bipartite-layers/50-99` 3.520 ms (7 → 6 ms). `binary-tree` (6.234 ms) and `junction-heavy` (14.141 ms) would need more than their temporary ceilings under this rule; they keep 9 and 19 ms rather than being raised. The other relaxed cells keep values equal to `ceil(1.5 × median)`. No historical cell is restored: every relaxed workload still costs more than two thirds of its original ceiling.
+
+### Layout-review wave 2 recalibration (2026-10-03)
+
+By explicit user decision (2026-10-02, correction before performance), the wave-2 fixes of the layout review (`docs/layout-review-2026-10-01.md`) may raise ceilings, provided each raise is measured in a calm window and recorded. Measurements ran on the integration head `b9b88496` with the pinned runtime, Apple M1 Max, AC power and no other validation or agent work: three complete `pnpm test:performance` passes and two complete `pnpm test:incremental-performance` passes (the third incremental pass was interrupted by its shell timeout). Ceilings follow `ceil(worst * 1.5 / 5) * 5`.
+
+- Snapshot `wide-bipartite-layers/1000`: worst median 406.46 ms (398.41, 399.93, 406.46), ceiling 138 → 610 ms. The same filtered gate measured 137.10 ms on the wave base `8eb1ac25`, 136.43 ms with D-04 alone, 136.45 ms with D-06 alone, 142.24 ms with D-03 alone and 401.19 ms with D-05 alone: the cost comes from D-05 rail untangling, which scores every pair of runs sharing a channel.
+- Snapshot `subgroups/19`: worst median 11.359 ms, the 20 ms ceiling raised for D-04 is kept; `subgroups/10` (worst median 6.245 ms) returns from 12 to its historical 10 ms.
+- Incremental `wide-bipartite-layers/50-99`: worst total p95 29.278 ms (29.209, 29.278), ceiling 6 → 45 ms. Attribution to D-05 is inferred from the snapshot cell of the same topology, not measured per slice.
+
+No other cell failed or was changed. The 50 ms UX goal remains unchanged.
 
 ### Lane-profile incremental calibration (2026-09-26)
 

@@ -20,11 +20,14 @@ const SNAPSHOT_LAYOUT_BUDGETS_MS = {
 	'binary-tree': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	unbalanced: { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'unbalanced-random': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
-	// 10 and 19 raised for D-04 (user decision 2026-10-02: correction before performance): every
-	// routable rank order is scored on real routes, up to twelve pipelines instead of one or two.
-	subgroups: { 10: 12, 19: 20, 50: 30, 100: 50, 1000: 100 },
+	// 19 raised for D-04 (user decision 2026-10-02: correction before performance): every routable
+	// rank order is scored on real routes, up to twelve pipelines instead of one or two. Calm
+	// recalibration on 2026-10-03 (worst median 11.359 ms) keeps 20 ms and returns 10 to 10 ms.
+	subgroups: { 10: 10, 19: 20, 50: 30, 100: 50, 1000: 100 },
 	'nested-subgroups': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 205 },
-	'wide-bipartite-layers': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 138 },
+	// 1000 raised for D-05 (same user decision): rail untangling scores every pair of runs in a
+	// channel; calm worst median 406.46 ms on 2026-10-03 against 137 ms on the wave base.
+	'wide-bipartite-layers': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 610 },
 	'repeated-diamonds': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'disconnected-components': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
 	'junction-heavy': { 10: 10, 19: 10, 50: 30, 100: 50, 1000: 100 },
