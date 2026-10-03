@@ -6,6 +6,7 @@ import {
 	EntityKind,
 	entityRef,
 } from '../../../../../src/app/web/ui/canvas/canvas-entity';
+import { homeCanvasZoom } from '../../../../../src/app/web/ui/canvas/canvas-viewport';
 import {
 	CanvasActivityKind,
 	type CanvasDocumentCommandPort,
@@ -74,6 +75,19 @@ describe('CanvasSession viewport intents', () => {
 		session.zoomOut();
 		expect(session.resetZoom()).toBe(true);
 		expect(session.zoom).toBe(1);
+	});
+
+	it('starts a phone-sized canvas smaller and keeps a zoom the person chose', () => {
+		const session = new CanvasSession();
+		session.adoptHomeZoom(homeCanvasZoom(390));
+		expect(session.zoom).toBe(0.7);
+		session.zoomIn();
+		session.adoptHomeZoom(homeCanvasZoom(1024));
+		expect(session.zoom).toBe(0.8);
+		expect(session.resetZoom()).toBe(true);
+		expect(session.zoom).toBe(1);
+		session.adoptHomeZoom(homeCanvasZoom(390));
+		expect(session.zoom).toBe(0.7);
 	});
 
 	it('stays bounded and reports boundary intents as no-ops', () => {

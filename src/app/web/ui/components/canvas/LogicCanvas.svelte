@@ -38,6 +38,7 @@
 		canvasPanOffset,
 		type CanvasPoint,
 		type CanvasViewportGeometry,
+		homeCanvasZoom,
 		pannedScroll,
 		panScrollPosition,
 	} from '../../canvas/canvas-viewport';
@@ -254,6 +255,7 @@
 	function followGeometry(): void {
 		const current = viewport;
 		const stage = canvas;
+		if (current) session.adoptHomeZoom(homeCanvasZoom(current.clientWidth));
 		const zoom = session.zoom;
 		if (!current || !stage) {
 			shownGeometry = undefined;

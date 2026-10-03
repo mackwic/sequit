@@ -67,7 +67,10 @@
 			</button>
 		</div>
 	{/if}
-	<div class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm">
+	<!-- A touch screen has no keys to list. -->
+	<div
+		class="rounded-lg border border-[var(--ui-border)] bg-[var(--ui-surface)] p-1 shadow-sm [@media(hover:none)]:hidden"
+	>
 		<button
 			class="ui-action quiet"
 			type="button"

@@ -171,6 +171,12 @@
 	.search input:focus {
 		outline: none;
 	}
+	/* iOS Safari zooms the page into a field whose text is under 16px when it gets focus. */
+	@media (hover: none) {
+		.search input {
+			font-size: 16px;
+		}
+	}
 	.icons {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));

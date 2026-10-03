@@ -6,6 +6,7 @@ import {
 	canvasStageMargin,
 	centeredStageOrigin,
 	clampCanvasZoom,
+	homeCanvasZoom,
 	pannedScroll,
 	panScrollPosition,
 	revealScrollDelta,
@@ -27,6 +28,11 @@ describe('canvas viewport calculations', () => {
 		expect(stepCanvasZoom(1.1, -1)).toBe(1);
 		expect(stepCanvasZoom(0.1, -1)).toBe(0.1);
 		expect(stepCanvasZoom(2.5, 1)).toBe(2.5);
+	});
+
+	it('starts canvases narrower than the small-screen breakpoint smaller', () => {
+		expect(homeCanvasZoom(639)).toBe(0.7);
+		expect(homeCanvasZoom(640)).toBe(1);
 	});
 
 	it('includes unscaled stage margins in fractional zoom extents', () => {

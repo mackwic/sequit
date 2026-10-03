@@ -135,4 +135,15 @@
 		align-items: stretch;
 		min-width: 150px;
 	}
+	/* On a phone a bar keeps its icons; each label stays the button's accessible name. */
+	@media (max-width: 640px) {
+		.floating-actions[role='group'] :global(.ui-action > span:not([data-icon])) {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+			white-space: nowrap;
+		}
+	}
 </style>

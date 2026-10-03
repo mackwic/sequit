@@ -25,6 +25,10 @@ export const DEFAULT_CANVAS_ZOOM = 1;
 export const MIN_CANVAS_ZOOM = 0.1;
 export const MAX_CANVAS_ZOOM = 2.5;
 const CANVAS_ZOOM_STEP = 0.1;
+/** Below this canvas width, the interface's small-screen breakpoint, the canvas starts smaller. */
+const COMPACT_CANVAS_WIDTH = 640;
+/** A phone-sized canvas starts here, so that a few boxes fit across it. */
+const COMPACT_CANVAS_ZOOM = 0.7;
 export const CANVAS_STAGE_PADDING = 64;
 const DEFAULT_STAGE_MARGIN: CanvasPoint = { x: CANVAS_STAGE_PADDING, y: CANVAS_STAGE_PADDING };
 
@@ -55,6 +59,12 @@ export function stepCanvasZoom(zoom: number, direction: -1 | 1): number {
 	const scaled = (zoom + delta) * 10;
 	const stepped = Math.round(scaled) / 10;
 	return clampCanvasZoom(stepped);
+}
+
+/** The zoom a canvas of this width starts at and resets to. */
+export function homeCanvasZoom(viewportWidth: number): number {
+	if (viewportWidth < COMPACT_CANVAS_WIDTH) return COMPACT_CANVAS_ZOOM;
+	return DEFAULT_CANVAS_ZOOM;
 }
 
 export function scaledStageExtent(

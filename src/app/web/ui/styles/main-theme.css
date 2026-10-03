@@ -30,6 +30,7 @@
 	--content-default-color: #6366f1;
 	--content-header-ink: #292524;
 }
+
 .ui-action {
 	display: inline-flex;
 	align-items: center;
@@ -45,30 +46,37 @@
 	font-weight: 550;
 	cursor: pointer;
 }
+
 .ui-action:hover:not(:disabled) {
 	background: var(--ui-hover);
 }
+
 .ui-action.primary {
 	background: var(--ui-accent);
 	color: var(--ui-on-accent);
 	border-color: var(--ui-accent);
 }
+
 .ui-action.danger {
 	color: var(--ui-danger);
 	background: var(--ui-danger-soft);
 }
+
 .ui-action.quiet {
 	border-color: transparent;
 	background: transparent;
 }
+
 .ui-action:disabled {
 	opacity: 0.45;
 	cursor: default;
 }
+
 .ui-action:focus-visible {
 	outline: 2px solid var(--ui-accent);
 	outline-offset: 3px;
 }
+
 .ui-notice {
 	display: flex;
 	align-items: start;
@@ -78,14 +86,17 @@
 	color: var(--ui-success);
 	background: var(--ui-success-soft);
 }
+
 .ui-notice.error {
 	color: var(--ui-danger);
 	background: var(--ui-danger-soft);
 }
+
 .ui-notice.warning {
 	color: var(--ui-warning);
 	background: var(--ui-warning-soft);
 }
+
 .ui-label {
 	display: grid;
 	gap: 6px;
@@ -93,6 +104,7 @@
 	font-size: 13px;
 	font-weight: 600;
 }
+
 .ui-field {
 	width: 100%;
 	min-height: 36px;
@@ -105,16 +117,26 @@
 	font-size: 14px;
 	font-weight: 400;
 }
+
 textarea.ui-field {
 	resize: vertical;
 	line-height: 1.5;
 }
+
 .ui-field:focus {
 	border-color: var(--ui-accent);
 	outline: 2px solid color-mix(in srgb, var(--ui-accent) 28%, transparent);
 	outline-offset: 0;
 }
+
 .ui-field:disabled {
 	background: var(--ui-subtle);
 	color: var(--ui-muted);
+}
+
+/* iOS Safari zooms the page into a field whose text is under 16px when it gets focus. */
+@media (hover: none) {
+	.ui-field {
+		font-size: 16px;
+	}
 }

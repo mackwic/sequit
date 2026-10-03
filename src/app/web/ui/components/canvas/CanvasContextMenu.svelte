@@ -7,7 +7,7 @@
 		CanvasShortcutId,
 		shortcutKeyshortcuts,
 	} from '../../canvas/canvas-shortcuts';
-	import { type CanvasPoint, DEFAULT_CANVAS_ZOOM } from '../../canvas/canvas-viewport';
+	import type { CanvasPoint } from '../../canvas/canvas-viewport';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
 	import Icon from '../ui/Icon.svelte';
 	import Kbd from '../ui/Kbd.svelte';
@@ -45,7 +45,7 @@
 		return { contextElement: viewport, getBoundingClientRect: () => new DOMRect(x, y, 0, 0) };
 	});
 	let exports = $derived(onExport !== undefined || onExportImage !== undefined);
-	let resettable = $derived(session.zoom !== DEFAULT_CANVAS_ZOOM);
+	let resettable = $derived(session.zoom !== session.homeZoom);
 
 	function close(restoreFocus: boolean): void {
 		onclose();

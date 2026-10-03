@@ -211,11 +211,27 @@
 		overflow: auto;
 		padding: 20px 24px;
 	}
+	/* A phone gives the whole screen to the dialog: its footer keeps Cancel and Close in reach. */
 	@media (max-width: 640px) {
+		dialog,
+		dialog.wide {
+			width: 100%;
+			height: 100dvh;
+			max-height: none;
+			margin: 0;
+			border: 0;
+			border-radius: 0;
+		}
 		header,
 		.body,
 		footer {
 			padding-inline: 16px;
+		}
+		header {
+			padding-block: 14px;
+		}
+		h2 {
+			font-size: 18px;
 		}
 	}
 </style>

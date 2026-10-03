@@ -417,12 +417,12 @@ test.describe('accessible canvas selection', () => {
 		await page.keyboard.press('ControlOrMeta+a');
 		await expect(page.locator('[data-node-id][aria-pressed="true"]')).toHaveCount(24);
 
-		// View settings: zooming in offers the way back to 100 %.
+		// View settings: zooming in offers the way back to the starting zoom.
 		await page.mouse.click(blank.x, blank.y, { button: 'right' });
 		await menu.getByRole('menuitem', { name: 'Zoom avant' }).click();
 		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
 		await page.mouse.click(blank.x, blank.y, { button: 'right' });
-		await menu.getByRole('menuitem', { name: 'Revenir à 100 %' }).click();
+		await menu.getByRole('menuitem', { name: 'Revenir au zoom de départ' }).click();
 		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('100%');
 
 		// Document actions open as from their own menus; zooming moved what lies under the pointer.
@@ -1165,10 +1165,8 @@ test.describe('box dialog editing and creation', () => {
 		const textarea = page.getByRole('textbox', { name: 'Contenu' });
 		await expect(dialog).toBeVisible();
 		await expect(textarea).toBeFocused();
-		const bounds = await dialog.boundingBox();
-		if (!bounds) throw new Error('Narrow box dialog has no bounds');
-		expect(bounds.x).toBeGreaterThanOrEqual(15);
-		expect(bounds.x + bounds.width).toBeLessThanOrEqual(345);
+		// A narrow screen gives the whole of it to the dialog.
+		expect(await dialog.boundingBox()).toEqual({ x: 0, y: 0, width: 360, height: 640 });
 
 		await page.keyboard.press('Escape');
 		await expect(dialog).toHaveCount(0);
