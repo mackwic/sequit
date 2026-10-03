@@ -4,6 +4,7 @@
 	import { compareCanonicalStrings } from '../../../../../lib/core/canonical-string';
 	import type { LayoutLane, LogicNature } from '../../../../../lib/core/document/logic-document';
 	import type { InvalidSourceDocumentState } from '../../../../../lib/infrastructure/collaboration/source-document-state';
+	import type { NodePasteDestination } from '../../../document/node-clipboard';
 	import { m } from '../../../i18n/paraglide/messages';
 	import type { CanvasProjection } from '../../../projection/canvas-projection';
 	import {
@@ -44,12 +45,17 @@
 		collectLayoutMeasurements,
 		layoutMeasurementSignature,
 	} from '../../canvas/measure-canvas';
-	import type { LayoutReportRequest } from '../../report/capture-layout-report';
+	import {
+		type LayoutReportRequest,
+		unshownMeasurementModel,
+		withUnshownMeasurements,
+	} from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
 	import MenuSurface from '../ui/MenuSurface.svelte';
 	import CanvasContextMenu from './CanvasContextMenu.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
+	import CanvasNodeContextMenu from './CanvasNodeContextMenu.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
 	import NatureMenuItems from './NatureMenuItems.svelte';
@@ -66,6 +72,8 @@
 		onNodeType,
 		onNodeNature,
 		onStart,
+		nextNature,
+		onNextNature,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -82,6 +90,8 @@
 		onManageNatures,
 		onExport,
 		onExportImage,
+		onCopyNodes,
+		onPasteAt,
 		report,
 	}: {
 		document: CanvasProjection;
@@ -96,8 +106,12 @@
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
 		/** Gives a box another nature; without it, the header of the selected box opens no menu. */
 		onNodeNature?: ((nodeId: string, natureId: string) => void) | undefined;
-		/** Starts typing the first box; without it, an empty canvas invites nothing. */
+		/** Starts typing the first box; with `onNextNature`, an empty canvas then invites it. */
 		onStart?: (() => void) | undefined;
+		/** The nature new boxes take, previewed by the invitation of an empty canvas. */
+		nextNature?: LogicNature | undefined;
+		/** Chooses the nature of new boxes from the invitation's header. */
+		onNextNature?: ((natureId: string) => void) | undefined;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -111,10 +125,12 @@
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		/** Starts typing a sibling of the selected node; its handle and `S` need it. */
 		onCreateSibling?: ((target: EntityRef) => void) | undefined;
-		/** Offered by the background menu, each only when given. */
+		/** Offered by the background menu and the nature menus, each only when given. */
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
 		onExportImage?: (() => void) | undefined;
+		onCopyNodes?: (() => void) | undefined;
+		onPasteAt?: ((destination: NodePasteDestination) => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
 		/** While set, the layout report dialog is open over this canvas. */
@@ -144,7 +160,14 @@
 		if (restoreFocus) header?.closest<HTMLElement>('[data-node-id]')?.focus();
 	}
 	let measurementLayer = $state<HTMLDivElement>();
+	/** While the report dialog is open, the entities folded groups hide are measured for it too. */
+	let unshownMeasurementLayer = $state<HTMLDivElement>();
+	let unshownModel = $derived.by(() => {
+		if (report === undefined || measurementModel === undefined) return undefined;
+		return unshownMeasurementModel(report.read(), measurementModel);
+	});
 	let viewport = $state<HTMLDivElement>();
+	let menuDestination = $state<NodePasteDestination>({});
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
 	type CanvasDisplay =
 		| { readonly kind: 'measuring' }
@@ -165,12 +188,46 @@
 			return display.diagnostic?.reason.code ?? 'layout-failed';
 		return undefined;
 	});
+	/** An empty canvas invites its first box where it will stand, and lets choose its nature. */
+	let inviting = $derived(
+		onStart !== undefined &&
+			onNextNature !== undefined &&
+			canvas?.nodes.length === 0 &&
+			canvas.groups.length === 0 &&
+			canvas.junctions.length === 0,
+	);
+	/** The header of the invitation whose nature menu is open. */
+	let startMenu = $state.raw<HTMLElement>();
+	/** The menu lasts while its invitation shows; a header removed meanwhile never anchors it again. */
+	let startMenuHeader = $derived.by(() => {
+		if (!inviting || startMenu?.isConnected !== true) return undefined;
+		return startMenu;
+	});
+	let invitation = $derived.by(() => {
+		if (!inviting || onStart === undefined) return undefined;
+		return {
+			nature: nextNature,
+			choosing: startMenuHeader !== undefined,
+			onstart: onStart,
+			onchoose: toggleStartMenu,
+		};
+	});
+	function toggleStartMenu(header: HTMLElement): void {
+		if (startMenuHeader === undefined) startMenu = header;
+		else startMenu = undefined;
+	}
+	function closeStartMenu(restoreFocus: boolean): void {
+		const header = startMenu;
+		startMenu = undefined;
+		if (restoreFocus) header?.focus();
+	}
 	let spacePressed = $state(false);
 	let panning = $state(false);
 	let panMoved = false;
 	let suppressBackgroundActivation = false;
 	/** Where the background menu was asked for, while it is open. */
 	let menuPoint = $state<CanvasPoint>();
+	let copyMenuPoint = $state<CanvasPoint>();
 	let previousMeasurementSignature = '';
 	let projectionRevision = $state(0);
 	let acceptedRevision = $state(0);
@@ -436,24 +493,37 @@
 		return { x: bounds.left + 16, y: bounds.top + 16 };
 	}
 
-	/**
-	 * A right-click selects the element under it, unless it is already selected, so that its bar
-	 * shows; on the background it opens the canvas menu. Text fields keep the browser's menu.
-	 */
+	/** A right-click preserves an existing selection and offers Copy for node-only selections. */
 	function handleContextMenu(event: MouseEvent) {
 		if (isEditableTarget(event.target)) return;
 		event.preventDefault();
 		if (session.editing || !(event.target instanceof Element) || !viewport) return;
+		copyMenuPoint = undefined;
+		menuPoint = undefined;
 		const element = event.target.closest<HTMLElement | SVGElement>('[data-canvas-entity-key]');
 		const key = element?.getAttribute('data-canvas-entity-key') ?? '';
 		if (element && key !== '') {
 			const ref = entityRefFromKey(key);
 			if (!session.isSelected(ref)) session.selectEntity(ref);
 			element.focus({ preventScroll: true });
+			if (
+				ref.kind === EntityKind.Node &&
+				onCopyNodes &&
+				[...session.selection.values()].every(({ kind }) => kind === EntityKind.Node)
+			)
+				copyMenuPoint = menuPointOf(event, viewport);
 			return;
 		}
 		if (isNativeControlTarget(event.target) || !canvas) return;
 		menuPoint = menuPointOf(event, viewport);
+		const lane = event.target.closest<HTMLElement>('[data-lane-id]');
+		const region = event.target.closest<HTMLElement>('[data-region-id]');
+		const laneId = lane?.dataset['laneId'];
+		const regionId = lane?.dataset['laneRegionId'] ?? region?.dataset['regionId'];
+		menuDestination = {
+			...(laneId !== undefined && { laneId }),
+			...(regionId !== undefined && { regionId }),
+		};
 	}
 
 	$effect(() => {
@@ -527,11 +597,16 @@
 	$effect(() => {
 		if (canvas && viewport) oncanvas?.(canvas, viewport);
 	});
-	/** The sizes the measurement layer gives now, which the shown canvas was laid out with. */
+	/**
+	 * The sizes the measurement layer gives now, which the shown canvas was laid out with, and
+	 * those of the entities it does not show.
+	 */
 	function currentMeasurements(): LayoutMeasurements {
 		if (measurementLayer === undefined)
 			return { nodes: new Map(), junctions: new Map(), groups: new Map() };
-		return collectLayoutMeasurements(measurementLayer);
+		const shown = collectLayoutMeasurements(measurementLayer);
+		if (unshownMeasurementLayer === undefined) return shown;
+		return withUnshownMeasurements(shown, collectLayoutMeasurements(unshownMeasurementLayer));
 	}
 </script>
 
@@ -546,6 +621,9 @@
 <div class="contents" bind:this={scope}>
 	{#if measurementModel}
 		<CanvasMeasurementLayer model={measurementModel} bind:element={measurementLayer} />
+	{/if}
+	{#if unshownModel}
+		<CanvasMeasurementLayer model={unshownModel} bind:element={unshownMeasurementLayer} />
 	{/if}
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -577,7 +655,7 @@
 				{draft}
 				{onNodeType}
 				onNatureMenu={onNodeNature && toggleNatureMenu}
-				{onStart}
+				{invitation}
 				{onGroupEdit}
 				{onGroupToggle}
 				{onJunctionEdit}
@@ -736,6 +814,10 @@
 			{onCreateChild}
 			{onCreateSibling}
 			{onDelete}
+			onPasteInGroup={onPasteAt &&
+				((groupId: string) => {
+					onPasteAt({ groupId });
+				})}
 		/>
 	{/if}
 	{#if viewport}
@@ -744,6 +826,10 @@
 			{viewport}
 			{session}
 			onselectall={selectAll}
+			onPaste={onPasteAt &&
+				(() => {
+					onPasteAt(menuDestination);
+				})}
 			{onManageNatures}
 			{onExport}
 			{onExportImage}
@@ -751,6 +837,16 @@
 				menuPoint = undefined;
 			}}
 		/>
+		{#if onCopyNodes}
+			<CanvasNodeContextMenu
+				point={copyMenuPoint}
+				{viewport}
+				oncopy={onCopyNodes}
+				onclose={() => {
+					copyMenuPoint = undefined;
+				}}
+			/>
+		{/if}
 	{/if}
 	{#if natureMenuNode && onNodeNature}
 		{@const menu = natureMenuNode}
@@ -770,6 +866,26 @@
 				onselect={(natureId: string) => {
 					if (natureId !== menu.natureId) change(menu.id, natureId);
 				}}
+				onmanage={onManageNatures}
+			/>
+		</MenuSurface>
+	{/if}
+	{#if startMenuHeader && onNextNature}
+		{@const header = startMenuHeader}
+		<MenuSurface
+			open
+			label={m.editing_canvas_next_nature()}
+			anchor={header}
+			owner={header}
+			placement="bottom-start"
+			restoreFocusOnSelect
+			onclose={closeStartMenu}
+		>
+			<NatureMenuItems
+				{natures}
+				checkedId={nextNature?.id}
+				onselect={onNextNature}
+				onmanage={onManageNatures}
 			/>
 		</MenuSurface>
 	{/if}

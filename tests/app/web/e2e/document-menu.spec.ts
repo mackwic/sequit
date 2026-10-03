@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 test('document menu is responsive, animated, and keyboard accessible', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 
 	const trigger = page.getByRole('button', { name: /AI for documentary effort/ });
 	const menu = page.getByRole('menu', { name: 'Menu du document' });
@@ -36,7 +36,7 @@ test('document menu is responsive, animated, and keyboard accessible', async ({ 
 });
 
 test('« Renommer le document » turns the title into a field', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const trigger = page.locator('header button[aria-haspopup="menu"]');
 	const field = page.getByRole('textbox', { name: 'Titre du document' });
 	const rename = async (): Promise<void> => {
@@ -76,9 +76,12 @@ test('« Renommer le document » turns the title into a field', async ({ page })
 	await expect(field).toHaveCount(0);
 	await expect(trigger).toHaveText('Plan 2027');
 
-	const downloading = page.waitForEvent('download');
 	await trigger.click();
 	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	await expect(dialog).toBeVisible();
+	const downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'Sequit (TOML)' }).click();
 	const download = await downloading;
 	expect(download.suggestedFilename()).toBe('plan-2027.sequit.toml');
 	expect(await readFile(await download.path(), 'utf8')).toContain('title = "Plan 2027"');

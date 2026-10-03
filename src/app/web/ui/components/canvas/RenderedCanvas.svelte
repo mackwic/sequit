@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GroupState } from '../../../../../lib/core/document/logic-document';
+	import { GroupState, type LogicNature } from '../../../../../lib/core/document/logic-document';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		canvasEntityInDirection,
@@ -43,7 +43,7 @@
 		draft,
 		onNodeType,
 		onNatureMenu,
-		onStart,
+		invitation,
 		onGroupEdit,
 		onGroupToggle,
 		onJunctionEdit,
@@ -58,8 +58,18 @@
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
 		/** Opens the nature menu of the selected box under its header; absent when read-only. */
 		onNatureMenu?: ((nodeId: string, header: HTMLElement) => void) | undefined;
-		/** Starts typing the first box of an empty canvas; absent when nothing can be created. */
-		onStart?: (() => void) | undefined;
+		/** The invitation to type the first box; given only while the canvas is empty. */
+		invitation?:
+			| {
+					/** The nature the first box will take, previewed by the header. */
+					readonly nature: LogicNature | undefined;
+					/** Whether the nature menu is open under the header. */
+					readonly choosing: boolean;
+					readonly onstart: () => void;
+					/** Opens or closes the nature menu under the header. */
+					readonly onchoose: (header: HTMLElement) => void;
+			  }
+			| undefined;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		/** Folds or unfolds a group; absent when the document is read-only. */
 		onGroupToggle?: ((groupId: string) => void) | undefined;
@@ -72,6 +82,17 @@
 		if (closed) return m.canvas_expand_group({ label });
 		return m.canvas_collapse_group({ label });
 	}
+	let invitationNatureTip = $derived.by(() => {
+		const nature = invitation?.nature;
+		if (nature === undefined) return m.common_natures();
+		return m.editing_canvas_next_nature_tip({ label: nature.label });
+	});
+	/** Like the box to come: the nature's icon, if any; a plus while the document has no nature. */
+	let invitationIcon = $derived.by(() => {
+		const nature = invitation?.nature;
+		if (nature === undefined) return 'phosphor:plus';
+		return nature.icon ?? 'none';
+	});
 	/** Aggregates stand for several source relations and host no junction. */
 	function splitAction(relationId: string): ((relationId: string) => void) | undefined {
 		const relation = canvas.relations.find(({ id }) => id === relationId);
@@ -353,17 +374,35 @@
 			</button>
 		{/each}
 	</div>
-	{#if onStart && canvas.nodes.length === 0 && canvas.groups.length === 0 && canvas.junctions.length === 0}
+	{#if invitation}
+		{@const { nature, choosing, onstart, onchoose } = invitation}
 		<!-- Where the first box will stand: the layout centres a lone box in the viewport. -->
-		<button class="empty-prompt" type="button" data-empty-prompt onclick={onStart}>
-			<span class="empty-prompt-header"><Icon name="phosphor:plus" size={15} /></span>
-			<span class="empty-prompt-body">{m.canvas_empty_prompt()}</span>
-		</button>
+		<div class="empty-prompt" data-empty-prompt style:--content-color={nature?.color}>
+			<button
+				class="empty-prompt-header"
+				type="button"
+				aria-haspopup="menu"
+				aria-expanded={choosing}
+				aria-label={invitationNatureTip}
+				data-empty-prompt-nature
+				onclick={(event) => {
+					onchoose(event.currentTarget);
+				}}
+				><Icon name={invitationIcon} size={15} /><span class="empty-prompt-nature"
+					>{nature?.label}</span
+				><Icon name="phosphor:caret-down" size={12} /></button
+			>
+			<button class="empty-prompt-body" type="button" onclick={onstart}
+				>{m.canvas_empty_prompt()}</button
+			>
+		</div>
 	{/if}
 </div>
 
 <style>
+	/* The invitation previews the first box: the header of its nature, ghosted, then its text. */
 	.empty-prompt {
+		--prompt-color: var(--content-color, var(--ui-accent));
 		position: absolute;
 		top: 50%;
 		left: 50%;
@@ -372,14 +411,11 @@
 		width: 220px;
 		flex-direction: column;
 		box-sizing: border-box;
-		border: 1.5px dashed color-mix(in srgb, var(--ui-accent) 45%, #d6d3d1);
+		border: 1.5px dashed color-mix(in srgb, var(--prompt-color) 45%, #d6d3d1);
 		border-radius: 0.75rem;
-		padding: 0;
 		overflow: hidden;
 		background: color-mix(in srgb, var(--ui-surface) 55%, transparent);
 		color: var(--ui-muted);
-		text-align: left;
-		cursor: text;
 		transform: translate(-50%, -50%);
 		transition:
 			border-color 120ms ease-out,
@@ -387,26 +423,57 @@
 			color 120ms ease-out;
 	}
 	.empty-prompt:hover,
-	.empty-prompt:focus-visible {
-		border-color: var(--ui-accent);
+	.empty-prompt:focus-within {
+		border-color: var(--prompt-color);
 		background: var(--ui-surface);
 		color: var(--ui-text);
 	}
-	.empty-prompt:focus-visible {
-		outline: 2px solid var(--ui-accent);
-		outline-offset: 3px;
+	.empty-prompt-header,
+	.empty-prompt-body {
+		box-sizing: border-box;
+		width: 100%;
+		border: 0;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
 	}
 	.empty-prompt-header {
 		display: flex;
 		align-items: center;
-		border-bottom: 1px dashed color-mix(in srgb, var(--ui-accent) 30%, #d6d3d1);
+		gap: 7px;
+		border-bottom: 1px dashed color-mix(in srgb, var(--prompt-color) 30%, #d6d3d1);
+		background: color-mix(in srgb, var(--prompt-color) 13%, transparent);
 		padding: 0.55rem 0.75rem;
-		color: var(--ui-accent);
+		color: var(--content-header-ink);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		cursor: pointer;
+		transition: background-color 120ms ease-out;
+	}
+	.empty-prompt-header:hover,
+	.empty-prompt-header[aria-expanded='true'] {
+		background: color-mix(in srgb, var(--prompt-color) 22%, transparent);
+	}
+	.empty-prompt-nature {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.empty-prompt-body {
 		padding: 0.9rem 0.75rem 1rem;
 		font-size: 0.875rem;
 		line-height: 1.45;
+		cursor: text;
+	}
+	.empty-prompt-header:focus-visible,
+	.empty-prompt-body:focus-visible {
+		outline: 2px solid var(--ui-accent);
+		outline-offset: -2px;
 	}
 	@media print {
 		.empty-prompt {
@@ -414,7 +481,8 @@
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.empty-prompt {
+		.empty-prompt,
+		.empty-prompt-header {
 			transition: none;
 		}
 	}

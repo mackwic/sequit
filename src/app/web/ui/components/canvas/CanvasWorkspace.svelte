@@ -45,6 +45,13 @@
 		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
+	import {
+		type NodePasteDestination,
+		parseNodeClipboard,
+		planNodePaste,
+		selectionPasteDestination,
+		serializeSelectedNodes,
+	} from '../../../document/node-clipboard';
 	import { m } from '../../../i18n/paraglide/messages';
 	import {
 		translateCommandDiagnostics,
@@ -78,6 +85,7 @@
 		onopened,
 		onexport,
 		onexportimage,
+		oncanvas,
 	}: {
 		source: string;
 		/** Receives the opened document, or `undefined` while the source is invalid. */
@@ -85,6 +93,8 @@
 		/** The page's exports, also offered by the background menu of the canvas. */
 		onexport?: (() => void) | undefined;
 		onexportimage?: (() => void) | undefined;
+		/** Supplies the current laid-out canvas for editable scene exports. */
+		oncanvas?: ((canvas: CanvasModel) => void) | undefined;
 	} = $props();
 	type OpenedDocument = Extract<OpenDocumentResult, { ok: true }>['value'];
 	let opened = $derived(openDocument(source));
@@ -185,6 +195,10 @@
 		if (current.ok && interactive)
 			void execute(() => current.value.session.dispatch([nodeNatureUpdate(nodeId, natureId)]));
 	}
+	/** The nature new boxes take in this view, chosen from the side bar or the empty canvas. */
+	function chooseNextNature(natureId: string): void {
+		if (typing !== undefined) typing.natureId = natureId;
+	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const current = opened;
 		if (!current.ok) return;
@@ -248,6 +262,49 @@
 				),
 			),
 		);
+	}
+	function copyNodes(): string | undefined {
+		const current = opened;
+		if (!current.ok || !session || !interactive) return undefined;
+		const value = serializeSelectedNodes(current.value.read(), session.selection.values());
+		if (value !== undefined)
+			session.announcement = m.canvas_nodes_copied({ count: session.selectionCount });
+		return value;
+	}
+	async function copyNodesToClipboard(): Promise<void> {
+		const value = copyNodes();
+		if (value === undefined) return;
+		try {
+			await navigator.clipboard.writeText(value);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+			if (session) session.announcement = error;
+		}
+	}
+	async function pasteNodes(text: string, destination?: NodePasteDestination): Promise<void> {
+		const current = opened;
+		if (!current.ok || !session || !interactive) return;
+		const document = current.value.read();
+		const clipboard = parseNodeClipboard(text, document.id);
+		const target = destination ?? selectionPasteDestination(document, session.selection.values());
+		const plan = clipboard && planNodePaste(document, clipboard, target, () => crypto.randomUUID());
+		if (plan === undefined) {
+			error = m.canvas_clipboard_invalid();
+			return;
+		}
+		const accepted = await execute(() => current.value.session.dispatch(plan.commands));
+		if (!accepted) return;
+		session.clearSelection();
+		for (const id of plan.ids) session.addEntity({ kind: EntityKind.Node, id });
+		session.announcement = m.canvas_nodes_pasted({ count: plan.ids.length });
+	}
+	async function pasteNodesFromClipboard(destination: NodePasteDestination): Promise<void> {
+		try {
+			const text = await navigator.clipboard.readText();
+			await pasteNodes(text, destination);
+		} catch {
+			error = m.canvas_clipboard_unavailable();
+		}
 	}
 	/** Creates the group, selects it, then opens its dialog so the author names it. */
 	async function groupSelection(): Promise<void> {
@@ -466,6 +523,10 @@
 			onconnect={connect}
 			onmove={moveSelection}
 			ondelete={deleteSelection}
+			onCopyNodes={copyNodes}
+			onPasteNodes={(text: string) => {
+				void pasteNodes(text);
+			}}
 		>
 			<LogicCanvas
 				document={opened.value}
@@ -478,9 +539,12 @@
 				}}
 				onNodeNature={changeNature}
 				onStart={startAction}
+				nextNature={typing?.nature(natures)}
+				onNextNature={chooseNextNature}
 				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = canvas;
 					canvasViewport = element;
+					oncanvas?.(canvas);
 				}}
 				onGroupEdit={openGroupEditor}
 				onGroupToggle={toggleGroup}
@@ -498,6 +562,12 @@
 					openDraft({ sibling });
 				}}
 				onDelete={deleteSelection}
+				onCopyNodes={() => {
+					void copyNodesToClipboard();
+				}}
+				onPasteAt={(destination: NodePasteDestination) => {
+					void pasteNodesFromClipboard(destination);
+				}}
 				onGroup={groupAction}
 				onManageNatures={manageNaturesAction}
 				onExport={onexport}
@@ -598,9 +668,7 @@
 			oncreate={() => {
 				openDraft({ near: session.relativeNodeCreationTarget });
 			}}
-			onnature={(natureId: string) => {
-				if (typing !== undefined) typing.natureId = natureId;
-			}}
+			onnature={chooseNextNature}
 			onnatures={openNatures}
 		/>
 		<CanvasInteractionStatus {session} />

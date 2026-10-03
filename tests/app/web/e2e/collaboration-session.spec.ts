@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { expect, type Page, test } from '@playwright/test';
 
 import { CollaborativeFixture } from '../../../support/fixtures/collaborative-document';
@@ -23,7 +25,7 @@ test('starting a session publishes the current document and shares its link', as
 	context,
 }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -62,6 +64,109 @@ test('starting a session publishes the current document and shares its link', as
 		'Exporter l’image…',
 		'Imprimer…',
 	]);
+});
+
+test('a collaborative session exports its graph as DOT and Excalidraw', async ({ page }) => {
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await expect(page.locator('[data-node-id="A"]')).toContainText('Alpha');
+	await expect(page.locator('[data-node-id="B"]')).toContainText('Bravo');
+
+	await menuTrigger(page).click();
+	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	let dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	await expect(dialog).toBeVisible();
+	const dotDownloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: 'Graphviz (DOT)' }).click();
+	const dotDownload = await dotDownloading;
+	expect(dotDownload.suggestedFilename()).toBe('deux-boites.dot');
+	const dot = await readFile(await dotDownload.path(), 'utf8');
+	expect(dot).toMatch(/^digraph\b/);
+	expect(dot).toContain('"A" [label="Alpha"');
+	expect(dot).toContain('"B" [label="Bravo"');
+	expect(dot).toMatch(/"B"\s*->\s*"A"/);
+
+	await page.keyboard.press('Escape');
+	await expect(dialog).toHaveCount(0);
+	await menuTrigger(page).click();
+	await page.getByRole('menuitem', { name: 'Exporter…' }).click();
+	dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	const excalidrawButton = dialog.getByRole('button', { name: 'Excalidraw' });
+	await expect(excalidrawButton).toBeEnabled();
+	const excalidrawDownloading = page.waitForEvent('download');
+	await excalidrawButton.click();
+	const excalidrawDownload = await excalidrawDownloading;
+	expect(excalidrawDownload.suggestedFilename()).toBe('deux-boites.excalidraw');
+	const excalidraw: unknown = JSON.parse(await readFile(await excalidrawDownload.path(), 'utf8'));
+	expect(excalidraw).toEqual(
+		expect.objectContaining({
+			type: 'excalidraw',
+			version: expect.any(Number),
+			elements: expect.any(Array),
+		}),
+	);
+	if (typeof excalidraw !== 'object' || excalidraw === null || !('elements' in excalidraw)) {
+		throw new Error('Expected Excalidraw elements');
+	}
+	expect(excalidraw.elements).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ type: 'rectangle' }),
+			expect.objectContaining({ type: 'arrow' }),
+			expect.objectContaining({ type: 'text', text: 'Alpha' }),
+			expect.objectContaining({ type: 'text', text: 'Bravo' }),
+		]),
+	);
+});
+
+test('copies and pastes a box within one shared document', async ({
+	page,
+	context,
+	browserName,
+}) => {
+	test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await page.locator('[data-node-id="A"]').click();
+	await page.keyboard.press('ControlOrMeta+c');
+	await page.locator('[data-node-id="B"]').click();
+	await page.keyboard.press('ControlOrMeta+v');
+	await expect(page.locator('[data-node-id]')).toHaveCount(3);
+	const copied = page.locator('[data-node-id][aria-pressed="true"]');
+	await expect(copied).toContainText('Alpha');
+	await expect(page.locator('[data-relation-id]')).toHaveCount(1);
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(2);
+});
+
+test('copies a selected pair with its relation in one shared undo step', async ({
+	page,
+	context,
+	browserName,
+}) => {
+	test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	const room = `e2e-${crypto.randomUUID()}`;
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes);
+	await joinFromLink(page, `/session/${room}`, 'Alice');
+	await page.locator('[data-node-id="A"]').click();
+	await page.locator('[data-node-id="B"]').click({ modifiers: ['Shift'] });
+	await page.keyboard.press('ControlOrMeta+c');
+	await page.keyboard.press('ControlOrMeta+v');
+	await expect(page.locator('[data-node-id]')).toHaveCount(4);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(2);
+	const copiedIds = await page
+		.locator('[data-node-id][aria-pressed="true"]')
+		.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-node-id')));
+	expect(copiedIds).toHaveLength(2);
+	const copiedRelation = page.locator('[data-relation-id]:not([data-relation-id="R"])');
+	expect(copiedIds).toContain(await copiedRelation.getAttribute('data-edge-from'));
+	expect(copiedIds).toContain(await copiedRelation.getAttribute('data-edge-to'));
+	await page.keyboard.press('ControlOrMeta+z');
+	await expect(page.locator('[data-node-id]')).toHaveCount(2);
+	await expect(page.locator('[data-relation-id]')).toHaveCount(1);
 });
 
 test('a second participant joins through the link, and the name is shared', async ({ browser }) => {
@@ -140,7 +245,7 @@ test('cursors stay after a blur, off-screen cursors get an edge chip, and avatar
 	browser,
 }) => {
 	const alice = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-	await alice.goto('/');
+	await alice.goto('/examples/ai-documentary-effort');
 	await alice.locator('[data-node-id]').first().waitFor();
 	await alice.getByRole('button', { name: 'Collaborer' }).click();
 	await alice.getByLabel('Ton nom').fill('Alice');

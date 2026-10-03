@@ -4,24 +4,21 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
-	import {
-		LayoutBias,
-		LayoutDirection,
-		type LogicDocument,
-		PERSISTENCE_FORMAT,
-	} from '../../../../lib/core/document/logic-document';
-	import { defaultNatures } from '../../../../lib/core/document/nature-families';
+	import type { LogicDocument } from '../../../../lib/core/document/logic-document';
 	import { CollaborationStatus } from '../../../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../../../lib/infrastructure/collaboration/websocket-collaboration-transport';
-	import { UNTITLED_DOCUMENT_TITLE } from '../../../../lib/infrastructure/document/document-creation';
+	import {
+		blankDocument,
+		UNTITLED_DOCUMENT_TITLE,
+	} from '../../../../lib/infrastructure/document/document-creation';
 	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { parseSequitToml } from '../../../../lib/infrastructure/toml/parse-sequit-toml';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
 	import { consumeCollaborationError } from '../../document/collaboration-rejection';
 	import { m } from '../../i18n/paraglide/messages';
 	import { canvasStageElement } from '../canvas/canvas-image';
-	import { documentFilename, documentFileStem } from '../document/document-filename';
-	import { downloadText } from '../document/download-text';
+	import type { CanvasModel } from '../canvas/canvas-model';
+	import { documentFileStem } from '../document/document-filename';
 	import { readParticipantName, writeParticipantName } from '../document/participant-name';
 	import { RecentDocumentsStore } from '../document/recent-documents';
 	import { takeRoomSeed } from '../document/room-seed';
@@ -32,6 +29,7 @@
 	import ParticipantAvatars from './collaboration/ParticipantAvatars.svelte';
 	import ShareDialog from './collaboration/ShareDialog.svelte';
 	import DocumentMenu from './document/DocumentMenu.svelte';
+	import ExportDocumentDialog from './document/ExportDocumentDialog.svelte';
 	import ExportImageDialog from './document/ExportImageDialog.svelte';
 	import Icon from './ui/Icon.svelte';
 
@@ -41,6 +39,8 @@
 	let session = $state<LiveSession>();
 	let main = $state<HTMLElement>();
 	let dialog = $state<'name' | 'share'>();
+	let documentExport = $state<{ document: LogicDocument; canvas: CanvasModel | undefined }>();
+	let renderedExport = $state<{ document: LogicDocument; canvas: CanvasModel }>();
 	let imageExport = $state<{ stage: HTMLElement; stem: string }>();
 	let toast = $state<string>();
 	let link = $state('');
@@ -61,7 +61,7 @@
 	});
 	let exportAction = $derived.by(() => {
 		if (!session?.model) return undefined;
-		return exportDocument;
+		return openExport;
 	});
 	let exportImageAction = $derived.by(() => {
 		if (!session?.model) return undefined;
@@ -90,33 +90,18 @@
 		toast = conflict;
 	});
 
-	/**
-	 * A joiner proposes nothing: the server keeps the room's state and ignores this document. A
-	 * room opened without a seed starts from it, so it carries the default natures.
-	 */
-	function emptyDocument(): LogicDocument {
-		return {
-			persistenceFormat: PERSISTENCE_FORMAT,
-			id: room,
-			title: UNTITLED,
-			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-			natures: defaultNatures(),
-			groups: [],
-			nodes: [],
-			junctions: [],
-			relations: [],
-		};
-	}
-
+	/** A joiner proposes nothing; the server keeps the room's state and ignores this document. */
 	function initialDocument(): LogicDocument {
 		const seed = takeRoomSeed(room);
-		if (seed === undefined) return emptyDocument();
+		if (seed === undefined) return blankDocument(room);
 		const parsed = parseSequitToml(seed);
-		if (!parsed.ok) return emptyDocument();
+		if (!parsed.ok) return blankDocument(room);
 		return { ...parsed.value, id: room };
 	}
 
 	function connect(): void {
+		documentExport = undefined;
+		renderedExport = undefined;
 		session = new LiveSession(
 			initialDocument(),
 			createWebSocketCollaborationTransport(room, window.location.origin),
@@ -135,10 +120,18 @@
 		writeParticipantName(next);
 	}
 
-	function exportDocument(): void {
+	function openExport(): void {
 		const model = session?.model;
 		if (!model) return;
-		downloadText(serializeSequitToml(model), documentFilename(model.title, model.id));
+		let canvas: CanvasModel | undefined;
+		if (
+			main &&
+			canvasStageElement(main) &&
+			renderedExport &&
+			serializeSequitToml(renderedExport.document) === serializeSequitToml(model)
+		)
+			canvas = renderedExport.canvas;
+		documentExport = { document: model, canvas };
 	}
 
 	function renameDocument(next: string): void {
@@ -252,6 +245,10 @@
 					connected={session.connected}
 					textEditable={session.textEditable}
 					panel={false}
+					oncanvas={(canvas: CanvasModel) => {
+						const current = session?.model;
+						if (current) renderedExport = { document: current, canvas };
+					}}
 					onexport={exportAction}
 					onexportimage={exportImageAction}
 				/>
@@ -278,6 +275,15 @@
 			onleave={leave}
 			onclose={() => {
 				dialog = undefined;
+			}}
+		/>
+	{/if}
+	{#if documentExport}
+		<ExportDocumentDialog
+			document={documentExport.document}
+			canvas={documentExport.canvas}
+			onclose={() => {
+				documentExport = undefined;
 			}}
 		/>
 	{/if}

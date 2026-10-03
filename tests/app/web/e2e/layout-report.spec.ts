@@ -8,7 +8,7 @@ test('« Signaler un problème de mise en page » sends an anonymized report wit
 		sent = route.request().postDataJSON();
 		await route.fulfill({ status: 201, json: { id: 'rapport-1' } });
 	});
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const box = page.locator('[data-node-id="ai-generation-orchestration"]');
 	await box.scrollIntoViewIfNeeded();
 
@@ -44,4 +44,28 @@ test('« Signaler un problème de mise en page » sends an anonymized report wit
 
 	await dialog.getByRole('button', { name: 'Fermer' }).click();
 	await expect(open).toBeFocused();
+});
+
+test('a report over a folded group still measures the boxes it hides', async ({ page }) => {
+	let sent: unknown;
+	await page.route('**/layout-reports', async (route) => {
+		sent = route.request().postDataJSON();
+		await route.fulfill({ status: 201, json: { id: 'rapport-2' } });
+	});
+	await page.goto('/examples/ai-documentary-effort');
+	const boxes = page.locator('[data-node-id]');
+	await expect(boxes).not.toHaveCount(0);
+	const total = await boxes.count();
+	await page.getByRole('button', { name: 'Replier le groupe Use cases' }).click();
+	await expect(boxes).not.toHaveCount(total);
+	const shown = await boxes.count();
+
+	await page.getByRole('button', { name: 'Signaler un problème de mise en page' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Signaler un problème de mise en page' });
+	await dialog.getByRole('radio', { name: 'Ordre des éléments' }).check();
+	await dialog.getByRole('button', { name: /Envoyer/ }).click();
+	await expect(dialog.getByRole('status')).toHaveText('Merci ! Rapport rapport-2 enregistré.');
+
+	expect(sent).toHaveProperty('layout.nodes.length', shown);
+	expect(sent).toHaveProperty('measurements.nodes.length', total);
 });

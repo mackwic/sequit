@@ -53,7 +53,9 @@ async function openBoxDialog(page: Page, node: Locator): Promise<void> {
 /** The box being typed in place: it shows, has the focus, and gives the id the box will have. */
 async function typedBox(page: Page) {
 	const draft = page.locator('[data-node-draft]');
-	const content = draft.getByRole('textbox', { name: 'Contenu de la nouvelle boîte' });
+	const content = draft.getByRole('textbox', {
+		name: 'Contenu de la nouvelle boîte',
+	});
 	await expect(content).toBeFocused();
 	const id = await draft.getAttribute('data-node-draft');
 	if (id === null || id === '') throw new Error('The box being typed has no id');
@@ -185,12 +187,13 @@ async function keyboardTransitions(page: Page): Promise<readonly KeyboardTransit
 }
 
 test.describe('canvas viewport interactions', () => {
-	test('hydrates the root route and renders the graph', async ({ page }) => {
+	test('hydrates the root route and renders a blank document', async ({ page }) => {
 		await page.goto('/');
 
 		await expect(page.getByText('Measuring document…')).toHaveCount(0);
 		await expect(page.locator('[data-graph-stage]')).toBeVisible();
-		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		await expect(page.locator('[data-node-id]')).toHaveCount(0);
+		await expect(page.locator('header button[aria-haspopup="menu"]')).toContainText('Sans titre');
 
 		await page.getByRole('button', { name: 'Zoom avant' }).click();
 		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
@@ -366,7 +369,11 @@ test.describe('accessible canvas selection', () => {
 		await expect(menu).toHaveCount(0);
 
 		// An element already in the selection keeps the whole selection.
-		await group.click({ modifiers: ['Shift'], position: { x: 8, y: 8 }, force: true });
+		await group.click({
+			modifiers: ['Shift'],
+			position: { x: 8, y: 8 },
+			force: true,
+		});
 		await node.click({ button: 'right' });
 		await expect(node).toHaveAttribute('aria-pressed', 'true');
 		await expect(group).toHaveAttribute('aria-pressed', 'true');
@@ -377,6 +384,7 @@ test.describe('accessible canvas selection', () => {
 		await expect(menu).toBeVisible();
 		await expect(menu.getByRole('menuitem')).toHaveText([
 			/^Tout sélectionner/,
+			/^Coller ici/,
 			'Gérer les natures du document',
 			'Exporter…',
 			'Exporter l’image…',
@@ -424,6 +432,118 @@ test.describe('accessible canvas selection', () => {
 		await expect(page.locator('[data-nature-manager]')).toBeVisible();
 	});
 
+	test('copies a box and pastes it into a group or on the canvas as one undoable step', async ({
+		page,
+		context,
+		browserName,
+	}) => {
+		test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		const original = page.locator('[data-node-id="traceable-edits"]');
+		await original.click();
+		await expect(
+			page.locator('[data-canvas-overlay]').getByRole('button', { name: 'Copier' }),
+		).toHaveCount(0);
+		await original.click({ button: 'right' });
+		await page.getByRole('menuitem', { name: 'Copier' }).click();
+		expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^sequit:nodes:2\n/);
+		const relations = await page.locator('[data-relation-id]').count();
+		const groups = await page.locator('[data-group-id]').count();
+
+		const group = page.locator('[data-group-id="data-team"]');
+		await group.click({ position: { x: 8, y: 8 }, force: true });
+		await page
+			.getByRole('group', { name: 'Actions du groupe' })
+			.getByRole('button', { name: 'Coller ici' })
+			.click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(25);
+		let copy = page.locator('[data-node-id][aria-pressed="true"]');
+		await expect(copy).toHaveCount(1);
+		expect(await copy.getAttribute('data-node-id')).not.toBe('traceable-edits');
+		const copiedGroupId = await copy.getAttribute('data-node-group-id');
+		expect(copiedGroupId).toBeTruthy();
+		expect(copiedGroupId).not.toBe('data-team');
+		await expect(page.locator(`[data-group-id="${copiedGroupId}"]`)).toHaveAttribute(
+			'data-group-parent-id',
+			'data-team',
+		);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups + 1);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
+
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups);
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(25);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groups + 1);
+
+		for (let index = 0; index < 5; index += 1)
+			await page.getByRole('button', { name: 'Zoom arrière' }).click();
+		await settleCanvasMotion(page);
+		const blank = await blankCanvasPoint(page);
+		await page.mouse.click(blank.x, blank.y, { button: 'right' });
+		await page.getByRole('menuitem', { name: 'Coller ici' }).click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(26);
+		copy = page.locator('[data-node-id][aria-pressed="true"]');
+		await expect(copy).toHaveCount(1);
+		const rootGroupId = await copy.getAttribute('data-node-group-id');
+		expect(rootGroupId).toBeTruthy();
+		await expect(page.locator(`[data-group-id="${rootGroupId}"]`)).not.toHaveAttribute(
+			'data-group-parent-id',
+			'data-team',
+		);
+		await copy.focus();
+		await page.keyboard.press('ControlOrMeta+v');
+		await expect(page.locator('[data-node-id]')).toHaveCount(27);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(26);
+	});
+
+	test('copies two boxes with their relation and group in one local undo step', async ({
+		page,
+		context,
+		browserName,
+	}) => {
+		test.skip(browserName !== 'chromium', 'Clipboard permissions are exercised in Chromium');
+		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+		const nodesBefore = await page.locator('[data-node-id]').count();
+		const groupsBefore = await page.locator('[data-group-id]').count();
+		const relationsBefore = await page.locator('[data-relation-id]').count();
+		const relationIdsBefore = await page
+			.locator('[data-relation-id]')
+			.evaluateAll((relations) =>
+				relations.map((relation) => relation.getAttribute('data-relation-id')),
+			);
+		await page.locator('[data-node-id="word-alcoa-question"]').click();
+		await page.locator('[data-node-id="traceable-edits"]').click({ modifiers: ['Shift'] });
+		await page.keyboard.press('ControlOrMeta+c');
+		await page.keyboard.press('ControlOrMeta+v');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodesBefore + 2);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groupsBefore + 1);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relationsBefore + 1);
+		const copiedIds = await page
+			.locator('[data-node-id][aria-pressed="true"]')
+			.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-node-id')));
+		expect(copiedIds).toHaveLength(2);
+		const copiedEdges = await page.locator('[data-relation-id]').evaluateAll(
+			(relations, previousIds) =>
+				relations
+					.filter((relation) => !previousIds.includes(relation.getAttribute('data-relation-id')))
+					.map((relation) => ({
+						from: relation.getAttribute('data-edge-from'),
+						to: relation.getAttribute('data-edge-to'),
+					})),
+			relationIdsBefore,
+		);
+		expect(copiedEdges).toHaveLength(1);
+		expect(copiedIds).toContain(copiedEdges[0]?.from);
+		expect(copiedIds).toContain(copiedEdges[0]?.to);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(page.locator('[data-node-id]')).toHaveCount(nodesBefore);
+		await expect(page.locator('[data-group-id]')).toHaveCount(groupsBefore);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relationsBefore);
+	});
+
 	test('toggles a relation with Shift, like every other entity kind', async ({ page }) => {
 		const node = page.locator('[data-node-id="reduce-documentary-effort"]');
 		const relationSelector = '[data-relation-id="data-team-to-ai-content-generation"]';
@@ -459,8 +579,14 @@ test.describe('accessible canvas selection', () => {
 		// Every action shows its key, as in a dialog.
 		await expect(nodeBar.locator('kbd')).toHaveText(['C', 'E', /^(⌫|Suppr)$/]);
 
-		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
-		const selectionBar = page.getByRole('group', { name: 'Actions de la sélection' });
+		await group.click({
+			modifiers: ['Meta'],
+			position: { x: 8, y: 8 },
+			force: true,
+		});
+		const selectionBar = page.getByRole('group', {
+			name: 'Actions de la sélection',
+		});
 		await expect(selectionBar.getByRole('button')).toHaveText([/Supprimer/]);
 		await expect(nodeBar).toHaveCount(0);
 
@@ -473,14 +599,19 @@ test.describe('accessible canvas selection', () => {
 		await expect(dialog).toHaveCount(0);
 
 		await junction.click();
-		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
+		const junctionBar = page.getByRole('group', {
+			name: 'Actions de la jonction',
+		});
 		await expect(junctionBar.getByRole('button')).toHaveText([
 			/Créer un enfant/,
 			/Propriétés…/,
 			/Supprimer/,
 		]);
 		await junctionBar
-			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
+			.getByRole('button', {
+				name: 'Supprimer la jonction word-ui-options',
+				exact: true,
+			})
 			.click();
 		await expect(junction).toHaveCount(0);
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
@@ -505,12 +636,16 @@ test.describe('accessible canvas selection', () => {
 		const relationCount = await page.locator('[data-relation-id]').count();
 		const relationPoint = await visibleRelationPoint(page, relationSelector);
 		await page.mouse.click(relationPoint.x, relationPoint.y);
-		const relationBar = page.getByRole('group', { name: 'Actions de la relation' });
+		const relationBar = page.getByRole('group', {
+			name: 'Actions de la relation',
+		});
 		await expect(relationBar.getByRole('button')).toHaveText([/Jonction/, /Supprimer/]);
 		await page.keyboard.press('j');
 
 		// The junction replaces the relation and opens its dialog with the default operator.
-		const dialog = page.getByRole('dialog', { name: 'Opérateur de la jonction' });
+		const dialog = page.getByRole('dialog', {
+			name: 'Opérateur de la jonction',
+		});
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeChecked();
 		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeFocused();
@@ -765,7 +900,10 @@ test.describe('accessible canvas selection', () => {
 	test('opens the keyboard shortcuts panel from its button or ?, never from a text field', async ({
 		page,
 	}) => {
-		const help = page.getByRole('button', { name: 'Raccourcis clavier', exact: true });
+		const help = page.getByRole('button', {
+			name: 'Raccourcis clavier',
+			exact: true,
+		});
 		const panel = page.getByRole('dialog', { name: 'Raccourcis clavier' });
 		await help.click();
 		await expect(panel).toBeVisible();
@@ -990,11 +1128,12 @@ test.describe('box dialog editing and creation', () => {
 		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
 		const nature = dialog.getByLabel('Nature');
 		const currentNatureId = await nature.inputValue();
-		const options = await nature
-			.locator('option')
-			.evaluateAll((elements: HTMLOptionElement[]) =>
-				elements.map((element) => ({ id: element.value, label: element.textContent })),
-			);
+		const options = await nature.locator('option').evaluateAll((elements: HTMLOptionElement[]) =>
+			elements.map((element) => ({
+				id: element.value,
+				label: element.textContent,
+			})),
+		);
 		const nextNature = required(
 			options.find(({ id }) => id !== currentNatureId),
 			'Expected another nature to select',
@@ -1069,7 +1208,7 @@ test.describe('box dialog editing and creation', () => {
 	});
 
 	test('types a root box with N when nothing is selected', async ({ page }) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const focusedNode = page.locator('[data-node-id]').first();
 		await focusedNode.focus();
@@ -1091,7 +1230,7 @@ test.describe('box dialog editing and creation', () => {
 	});
 
 	test('Escape, or confirming an empty box, creates nothing', async ({ page }) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
 		await viewport.focus();
@@ -1268,7 +1407,9 @@ test.describe('box dialog editing and creation', () => {
 			.getByRole('navigation', { name: 'Actions du canvas' })
 			.getByRole('button', { name: /^Nouvelles boîtes :/ });
 		await picker.click();
-		const menu = page.getByRole('menu', { name: 'Nature des nouvelles boîtes' });
+		const menu = page.getByRole('menu', {
+			name: 'Nature des nouvelles boîtes',
+		});
 		const items = menu.getByRole('menuitemradio');
 		const chosen = items.nth(1);
 		const label = (await chosen.textContent())?.trim() ?? '';
@@ -1290,9 +1431,10 @@ test.describe('box dialog editing and creation', () => {
 	test('types a child of a junction from its contextual action', async ({ page }) => {
 		const junction = page.locator('[data-junction-id="word-ui-options"]');
 		await junction.click();
-		const create = page
-			.getByRole('group', { name: 'Actions de la jonction' })
-			.getByRole('button', { name: 'Créer un enfant de word-ui-options', exact: true });
+		const create = page.getByRole('group', { name: 'Actions de la jonction' }).getByRole('button', {
+			name: 'Créer un enfant de word-ui-options',
+			exact: true,
+		});
 		await expect(create).toHaveAttribute('aria-keyshortcuts', 'c');
 		await create.click();
 		const { content, id } = await typedBox(page);
@@ -1316,7 +1458,11 @@ test.describe('box dialog editing and creation', () => {
 		// With the goal at the top, children grow below the box and siblings line up on its right.
 		const centreOf = async (locator: Locator) => {
 			const bounds = required((await locator.boundingBox()) ?? undefined, 'Missing geometry');
-			return { ...bounds, cx: bounds.x + bounds.width / 2, cy: bounds.y + bounds.height / 2 };
+			return {
+				...bounds,
+				cx: bounds.x + bounds.width / 2,
+				cy: bounds.y + bounds.height / 2,
+			};
 		};
 		const box = await centreOf(node);
 		const child = await centreOf(childHandle);
@@ -1368,6 +1514,12 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toBeFocused();
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect(header).not.toHaveText(label, { ignoreCase: true });
+
+		// The menu ends with the document's nature library.
+		await header.click();
+		await menu.getByRole('menuitem', { name: 'Gérer les natures du document' }).click();
+		await expect(menu).toHaveCount(0);
+		await expect(page.locator('[data-nature-manager]')).toBeVisible();
 	});
 
 	test('dragging a box names what releasing does, and refuses a cycle before letting go', async ({
@@ -1427,8 +1579,27 @@ test.describe('box dialog editing and creation', () => {
 		const prompt = page.getByRole('button', { name: 'À quoi pensez-vous ?' });
 		await expect(prompt).toBeVisible();
 		const invited = required((await prompt.boundingBox()) ?? undefined, 'Missing prompt');
+		// Its header previews the nature of the first box, and changes it like the side bar does.
+		const nature = page.locator('[data-empty-prompt-nature]');
+		const menu = page.getByRole('menu', {
+			name: 'Nature des nouvelles boîtes',
+		});
+		await nature.click();
+		await expect(nature).toHaveAttribute('aria-expanded', 'true');
+		await expect(menu.getByRole('menuitem', { name: 'Gérer les natures du document' })).toHaveCount(
+			1,
+		);
+		const other = menu.getByRole('menuitemradio', { checked: false }).first();
+		const label = (await other.textContent())?.trim() ?? '';
+		await other.click();
+		await expect(menu).toHaveCount(0);
+		await expect(nature).toBeFocused();
+		await expect(nature).toHaveText(label, { ignoreCase: true });
 		await prompt.click();
 		const { draft, content } = await typedBox(page);
+		await expect(draft.locator('[data-node-header]')).toHaveText(label, {
+			ignoreCase: true,
+		});
 		await expect(prompt).toHaveCount(0);
 		const typed = required((await draft.boundingBox()) ?? undefined, 'Missing draft');
 		expect(Math.abs(typed.x - invited.x)).toBeLessThan(2);
@@ -1490,7 +1661,7 @@ test('a child of a selected node inside a group stays within that group', async 
 test('double-click types a box in place; Backspace and the delete action remove nodes', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const point = await blankCanvasPoint(page);
 	await page.mouse.dblclick(point.x, point.y);
@@ -1512,12 +1683,21 @@ test('double-click types a box in place; Backspace and the delete action remove 
 	await existing.click();
 	const existingId = await existing.getAttribute('data-node-id');
 	await expect(page.getByRole('button', { name: 'Supprimer', exact: true })).toHaveCount(0);
-	await page.getByRole('button', { name: `Supprimer le nœud ${existingId}`, exact: true }).click();
+	await page
+		.getByRole('button', {
+			name: `Supprimer le nœud ${existingId}`,
+			exact: true,
+		})
+		.click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(23);
 });
 
 for (const { kind, selector, membership } of [
-	{ kind: 'node', selector: '[data-node-id="traceable-edits"]', membership: 'data-node-group-id' },
+	{
+		kind: 'node',
+		selector: '[data-node-id="traceable-edits"]',
+		membership: 'data-node-group-id',
+	},
 	{
 		kind: 'junction',
 		selector: '[data-junction-id="word-ui-options"]',
@@ -1527,7 +1707,7 @@ for (const { kind, selector, membership } of [
 	test(`dropping a member ${kind} on its enclosing group background is a no-op`, async ({
 		page,
 	}) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const relations = await page.locator('[data-relation-id]').count();
 		const member = page.locator(selector);
@@ -1537,7 +1717,10 @@ for (const { kind, selector, membership } of [
 		const origin = await member.boundingBox();
 		const header = await group.locator('[data-group-header]').boundingBox();
 		if (!origin || !header) throw new Error('Missing geometry');
-		const drop = { x: origin.x + origin.width / 2, y: header.y + header.height / 2 };
+		const drop = {
+			x: origin.x + origin.width / 2,
+			y: header.y + header.height / 2,
+		};
 		expect(
 			await page.evaluate(
 				({ x, y }) =>
@@ -1558,7 +1741,7 @@ for (const { kind, selector, membership } of [
 }
 
 test('deleting a selected relation preserves its endpoints', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const before = await page.locator('[data-relation-id]').count();
 	const firstId = await page.locator('[data-relation-id]').first().getAttribute('data-relation-id');
@@ -1572,7 +1755,7 @@ test('deleting a selected relation preserves its endpoints', async ({ page }) =>
 test('undoes and redoes accepted edits step by step, leaving a text field its own history', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await expect(node).toContainText('ALCOA+');
 	const nodes = await page.locator('[data-node-id]').count();
@@ -1626,7 +1809,7 @@ test('undoes and redoes accepted edits step by step, leaving a text field its ow
 test('double-click on group background creates a member; canvas background resets the parent', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const group = page.locator('[data-group-id="data-team"]');
 	await group.scrollIntoViewIfNeeded();
 	await settleCanvasMotion(page);

@@ -69,12 +69,36 @@ async function openMenuItem(page: Page, name: string): Promise<void> {
 	await page.getByRole('menuitem', { name }).click();
 }
 
+async function downloadDocument(page: Page, format: string) {
+	await openMenuItem(page, 'Exporter…');
+	const dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	await expect(dialog).toBeVisible();
+	const downloading = page.waitForEvent('download');
+	await dialog.getByRole('button', { name: format }).click();
+	return downloading;
+}
+
 function layoutChip(page: Page) {
 	return page.locator('[data-layout-chip] button[aria-haspopup="menu"]');
 }
 
-test('export downloads the current document with its edits', async ({ page }) => {
+test('the home page starts blank and reopens the recent local document', async ({ page }) => {
 	await page.goto('/');
+	await expect(menuTrigger(page)).toContainText('Sans titre');
+	await expect(page.locator('[data-node-id]')).toHaveCount(0);
+	await expect(layoutChip(page)).toHaveText('But en haut');
+	expect(await page.evaluate(() => localStorage.getItem('sequit:recent-documents'))).toBeNull();
+
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await page.goto('/');
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await expect(page.locator('[data-node-id="seul"]')).toContainText('Une seule boîte');
+});
+
+test('export downloads the current document with its edits', async ({ page }) => {
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -83,13 +107,69 @@ test('export downloads the current document with its edits', async ({ page }) =>
 	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
 	await expect(node).toContainText('Contenu exporté');
 
-	const downloading = page.waitForEvent('download');
-	await openMenuItem(page, 'Exporter…');
-	const download = await downloading;
+	const download = await downloadDocument(page, 'Sequit (TOML)');
 	expect(download.suggestedFilename()).toBe('ai-for-documentary-effort.sequit.toml');
 	const exported = await readFile(await download.path(), 'utf8');
 	expect(exported).toContain('title = "AI for documentary effort"');
 	expect(exported).toContain('Contenu exporté');
+});
+
+test('DOT and Excalidraw exports contain the edited example graph', async ({ page }) => {
+	await page.goto('/examples/ai-documentary-effort');
+	const node = page.locator('[data-node-id="traceable-edits"]');
+	await expect(node).toBeVisible();
+	await node.click();
+	await node.press('e');
+	await page.getByRole('textbox', { name: 'Contenu' }).fill('Contenu exporté');
+	await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+	await expect(node).toContainText('Contenu exporté');
+
+	const dotDownload = await downloadDocument(page, 'Graphviz (DOT)');
+	expect(dotDownload.suggestedFilename()).toBe('ai-for-documentary-effort.dot');
+	const dot = await readFile(await dotDownload.path(), 'utf8');
+	expect(dot).toMatch(/^digraph\b/);
+	expect(dot).toContain('"traceable-edits"');
+	expect(dot).toMatch(/"word-alcoa-question"\s*->\s*"traceable-edits"/);
+	expect(dot).toContain('Contenu exporté');
+
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('dialog', { name: 'Exporter le document' })).toHaveCount(0);
+	await openMenuItem(page, 'Exporter…');
+	const dialog = page.getByRole('dialog', { name: 'Exporter le document' });
+	const excalidrawButton = dialog.getByRole('button', { name: 'Excalidraw' });
+	await expect(excalidrawButton).toBeEnabled();
+	const downloading = page.waitForEvent('download');
+	await excalidrawButton.click();
+	const excalidrawDownload = await downloading;
+	expect(excalidrawDownload.suggestedFilename()).toBe('ai-for-documentary-effort.excalidraw');
+	const excalidraw: unknown = JSON.parse(await readFile(await excalidrawDownload.path(), 'utf8'));
+	expect(excalidraw).toEqual(
+		expect.objectContaining({
+			type: 'excalidraw',
+			version: expect.any(Number),
+			elements: expect.any(Array),
+		}),
+	);
+	if (typeof excalidraw !== 'object' || excalidraw === null || !('elements' in excalidraw)) {
+		throw new Error('Expected Excalidraw elements');
+	}
+	expect(excalidraw.elements).toEqual(
+		expect.arrayContaining([
+			// The example's `need` nature is #f4c400; the canvas tints its border and header.
+			expect.objectContaining({
+				id: 'sequit:["endpoint","traceable-edits"]',
+				type: 'rectangle',
+				strokeColor: '#e1ce88',
+				roundness: { type: 3 },
+			}),
+			expect.objectContaining({
+				id: 'sequit:["node-header","traceable-edits"]',
+				backgroundColor: '#fef7de',
+			}),
+			expect.objectContaining({ type: 'arrow' }),
+			expect.objectContaining({ type: 'text', text: expect.stringContaining('Contenu exporté') }),
+		]),
+	);
 });
 
 function pngSize(png: Buffer): [number, number] {
@@ -101,7 +181,7 @@ function pngSize(png: Buffer): [number, number] {
 test('image export offers the whole stage or the selection, scaled, as PNG or SVG', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await expect(node).toHaveAttribute('aria-pressed', 'true');
@@ -170,7 +250,7 @@ test('image export offers the whole stage or the selection, scaled, as PNG or SV
 });
 
 test('printing shows the stage alone, unzoomed, fitted on one sheet', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const stage = page.locator('[data-graph-stage]');
 	await expect(stage.locator('[data-node-id]')).toHaveCount(24);
 	await page.getByRole('button', { name: 'Zoom arrière' }).click();
@@ -195,7 +275,7 @@ test('printing shows the stage alone, unzoomed, fitted on one sheet', async ({ p
 
 test('opening a file replaces the document, and an invalid file keeps it', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	await expect(page.locator('[data-node-id]')).toHaveCount(0);
 
 	await openMenuItem(page, 'Ouvrir…');
 	const dialog = page.getByRole('dialog', { name: 'Ouvrir un document' });
@@ -247,9 +327,8 @@ test('the layout chip changes the direction and keeps the chosen side', async ({
 	).toHaveAttribute('aria-checked', 'true');
 	await page.keyboard.press('Escape');
 
-	const downloading = page.waitForEvent('download');
-	await openMenuItem(page, 'Exporter…');
-	const exported = await readFile(await (await downloading).path(), 'utf8');
+	const download = await downloadDocument(page, 'Sequit (TOML)');
+	const exported = await readFile(await download.path(), 'utf8');
 	expect(exported).toContain('direction = "top-to-bottom"');
 	expect(exported).toContain('bias = "bottom"');
 });
@@ -293,16 +372,15 @@ test('lanes are activated from the chip, and a double-click on a lane creates a 
 	expect(nodeBox.y).toBeGreaterThan(laneBox.y);
 	expect(nodeBox.y + nodeBox.height).toBeLessThan(laneBox.y + laneBox.height);
 
-	const downloading = page.waitForEvent('download');
-	await openMenuItem(page, 'Exporter…');
-	const exported = await readFile(await (await downloading).path(), 'utf8');
+	const download = await downloadDocument(page, 'Sequit (TOML)');
+	const exported = await readFile(await download.path(), 'utf8');
 	expect(exported).toContain('persistenceFormat = 3');
 	expect(exported).toContain('laneOrientation = "parallel"');
 	expect(exported).toMatch(/label = "Client"/);
 });
 
 test('a file the canvas refuses keeps the edited document and its export', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -320,9 +398,8 @@ test('a file the canvas refuses keeps the edited document and its export', async
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	await expect(node).toContainText('Édition conservée');
 
-	const downloading = page.waitForEvent('download');
-	await openMenuItem(page, 'Exporter…');
-	const exported = await readFile(await (await downloading).path(), 'utf8');
+	const download = await downloadDocument(page, 'Sequit (TOML)');
+	const exported = await readFile(await download.path(), 'utf8');
 	expect(exported).toContain('Édition conservée');
 });
 
@@ -345,7 +422,7 @@ test('reopening the same file after an edit restores its content', async ({ page
 });
 
 test('edits and opened files survive a reload', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -402,7 +479,7 @@ test('leaving with edits the browser cannot keep asks for confirmation', async (
 			throw new Error('quota exceeded');
 		};
 	});
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
