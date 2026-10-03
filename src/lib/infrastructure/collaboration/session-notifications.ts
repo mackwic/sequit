@@ -1,3 +1,5 @@
+import type * as Y from 'yjs';
+
 import type { LogicDocument } from '../../core/document/logic-document';
 import {
 	type DocumentCommandOutcome,
@@ -5,6 +7,7 @@ import {
 	sessionClosedOutcome,
 } from '../document/document-command-contracts';
 import type { DocumentSessionSubscriber } from '../document/document-session-contracts';
+import type { SharedDocumentCommand, SharedTarget } from '../document/shared-document-command';
 import {
 	type ProposalDecision,
 	ProposalDecisionKind,
@@ -12,6 +15,7 @@ import {
 } from './collaborative-document-session-types';
 import { notifySubscribers, subscribeToSet } from './notify-subscribers';
 import type { PendingCommandFrame } from './session-command-frame';
+import { SessionHistory } from './session-history';
 import type { SessionNotice, SessionRejection } from './session-reasons';
 
 function decisionOutcome(
@@ -28,7 +32,10 @@ function decisionOutcome(
 	};
 }
 
-/** Keeps listeners and undecided proposals alive across an in-place replica replacement. */
+/**
+ * Keeps listeners, undecided proposals and the participant's own history alive across an in-place
+ * replica replacement.
+ */
 export abstract class SessionNotifications {
 	protected readonly subscribers = new Set<DocumentSessionSubscriber>();
 	protected readonly sourceStateListeners = new Set<(state: SourceDocumentState) => void>();
@@ -40,8 +47,13 @@ export abstract class SessionNotifications {
 	/** Structural proposals sent to the room and not yet decided, in sequence order. */
 	protected readonly pending = new Map<string, PendingCommandFrame>();
 	readonly #outcomes = new Map<string, (outcome: DocumentCommandOutcome) => void>();
+	readonly history: SessionHistory = new SessionHistory(this);
 
 	abstract read(): LogicDocument;
+	abstract readSourceState(): SourceDocumentState;
+	abstract dispatch(commands: readonly SharedDocumentCommand[]): Promise<DocumentCommandOutcome>;
+	abstract text(target: SharedTarget, field: string): Y.Text | undefined;
+	abstract updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean;
 
 	subscribe(listener: (document: LogicDocument) => void): () => void {
 		return subscribeToSet(this.subscribers, listener);
@@ -91,8 +103,12 @@ export abstract class SessionNotifications {
 		settle(outcome);
 	}
 
-	/** A closed session never decides its pending proposals: their dispatches must not hang. */
+	/**
+	 * A closed session never decides its pending proposals: their dispatches must not hang, and
+	 * its history has nothing left to undo.
+	 */
 	protected closeProposals(): void {
+		this.history.clear();
 		this.pending.clear();
 		const unsettled = [...this.#outcomes.values()];
 		this.#outcomes.clear();

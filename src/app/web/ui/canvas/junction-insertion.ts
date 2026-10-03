@@ -15,10 +15,12 @@ export function hostsJunction(relation: {
 /** The junction to create and the relations that thread it between the former endpoints. */
 export interface JunctionInsertionPlan {
 	readonly junction: { readonly id: string; readonly operator: JunctionOperator };
-	readonly incoming: LogicRelation;
-	readonly outgoing: LogicRelation;
-	/** The relation the junction replaces; removed last so no junction ever stands unanchored. */
-	readonly replacedRelationId: string;
+	/** One relation into the junction from each distinct origin of the replaced relations. */
+	readonly incoming: readonly LogicRelation[];
+	/** One relation from the junction to each distinct destination of the replaced relations. */
+	readonly outgoing: readonly LogicRelation[];
+	/** The relations the junction replaces; removed last so no junction ever stands unanchored. */
+	readonly replacedRelationIds: readonly string[];
 }
 
 interface JunctionInsertionOptions {
@@ -27,22 +29,40 @@ interface JunctionInsertionOptions {
 	readonly operator: JunctionOperator;
 }
 
-/** Returns `undefined` when the relation or an endpoint is gone; the caller keeps aggregates out of reach. */
+/**
+ * The relations converge on one junction, which points to every one of their destinations, in the
+ * order the relations are given. Returns `undefined` without relations, or when a relation or an
+ * endpoint is gone; the caller keeps aggregates out of reach.
+ */
 export function planJunctionInsertion(
 	document: LogicDocument,
-	relationId: string,
+	relationIds: readonly string[],
 	options: JunctionInsertionOptions,
 ): JunctionInsertionPlan | undefined {
-	const relation = document.relations.find(({ id }) => id === relationId);
-	if (relation === undefined) return undefined;
 	const endpointIds = new Set(
 		[...document.nodes, ...document.groups, ...document.junctions].map(({ id }) => id),
 	);
-	if (!endpointIds.has(relation.from) || !endpointIds.has(relation.to)) return undefined;
+	const replaced: LogicRelation[] = [];
+	for (const relationId of new Set(relationIds)) {
+		const relation = document.relations.find(({ id }) => id === relationId);
+		if (relation === undefined) return undefined;
+		if (!endpointIds.has(relation.from) || !endpointIds.has(relation.to)) return undefined;
+		replaced.push(relation);
+	}
+	if (replaced.length === 0) return undefined;
+	const junctionId = options.junctionId;
 	return {
-		junction: { id: options.junctionId, operator: options.operator },
-		incoming: { id: options.relationId(), from: relation.from, to: options.junctionId },
-		outgoing: { id: options.relationId(), from: options.junctionId, to: relation.to },
-		replacedRelationId: relation.id,
+		junction: { id: junctionId, operator: options.operator },
+		incoming: [...new Set(replaced.map(({ from }) => from))].map((from) => ({
+			id: options.relationId(),
+			from,
+			to: junctionId,
+		})),
+		outgoing: [...new Set(replaced.map(({ to }) => to))].map((to) => ({
+			id: options.relationId(),
+			from: junctionId,
+			to,
+		})),
+		replacedRelationIds: replaced.map(({ id }) => id),
 	};
 }

@@ -21,7 +21,7 @@
 	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
 	import { printStageFit } from '../../canvas/canvas-print';
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
-	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
+	import { CANVAS_STAGE_PADDING } from '../../canvas/canvas-viewport';
 	import { foldToggleShortcut } from '../../canvas/group-edit';
 	import { hostsJunction } from '../../canvas/junction-insertion';
 	import { renderRelationPaths } from '../../canvas/render-relations';
@@ -47,7 +47,7 @@
 		onGroupEdit,
 		onGroupToggle,
 		onJunctionEdit,
-		onRelationSplit,
+		onJunctionInsert,
 	}: {
 		canvas: CanvasModel;
 		zoom: number;
@@ -64,23 +64,33 @@
 		/** Folds or unfolds a group; absent when the document is read-only. */
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
-		/** Inserts a junction on a double-clicked relation; absent for aggregates and read-only views. */
-		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Inserts a junction on relations, here one double-clicked; absent for read-only views. */
+		onJunctionInsert?: ((relationIds: readonly string[]) => void) | undefined;
 	} = $props();
 	/** The fold button names its effect, never the current state. */
 	function foldGroupLabel(closed: boolean, label: string): string {
 		if (closed) return m.canvas_expand_group({ label });
 		return m.canvas_collapse_group({ label });
 	}
+	/** Aggregates stand for several source relations and host no junction. */
 	function splitAction(relationId: string): ((relationId: string) => void) | undefined {
 		const relation = canvas.relations.find(({ id }) => id === relationId);
-		if (relation === undefined || !hostsJunction(relation)) return undefined;
-		return onRelationSplit;
+		const insert = onJunctionInsert;
+		if (relation === undefined || !hostsJunction(relation) || insert === undefined)
+			return undefined;
+		return (id) => {
+			insert([id]);
+		};
 	}
 
 	let relations = $derived(canvas.relations);
 	let renderedRelations = $derived(renderRelationPaths(relations));
-	let extent = $derived(scaledStageExtent(canvas, zoom));
+	/**
+	 * The pan margin, `canvasStageMargin` in `cqw`/`cqh` of the viewport container: the layout follows
+	 * a resize by itself, and the scroll position follows it in `LogicCanvas`.
+	 */
+	const marginX = `max(${CANVAS_STAGE_PADDING}px, 100cqw - ${CANVAS_STAGE_PADDING}px)`;
+	const marginY = `max(${CANVAS_STAGE_PADDING}px, 100cqh - ${CANVAS_STAGE_PADDING}px)`;
 	let printFit = $derived(printStageFit(canvas));
 	let stage = $state<HTMLDivElement>();
 	let entityIndex = $derived(createCanvasEntityIndex(canvas));
@@ -162,8 +172,8 @@
 <div
 	class="relative min-h-full min-w-full"
 	data-canvas-sizing-wrapper
-	style:width={`${extent.width}px`}
-	style:height={`${extent.height}px`}
+	style:width={`calc(${canvas.width * zoom}px + 2 * ${marginX})`}
+	style:height={`calc(${canvas.height * zoom}px + 2 * ${marginY})`}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -174,8 +184,8 @@
 		data-print-orientation={printFit.orientation}
 		style:width={`${canvas.width}px`}
 		style:height={`${canvas.height}px`}
-		style:left={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.width * zoom}px) / 2))`}
-		style:top={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.height * zoom}px) / 2))`}
+		style:left={`max(${marginX}, calc((100% - ${canvas.width * zoom}px) / 2))`}
+		style:top={`max(${marginY}, calc((100% - ${canvas.height * zoom}px) / 2))`}
 		style:transform={`scale(${zoom})`}
 		style:transform-origin="top left"
 		style:--print-scale={printFit.scale}

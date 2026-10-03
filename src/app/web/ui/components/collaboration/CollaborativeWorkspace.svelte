@@ -67,6 +67,7 @@
 	} from '../../../projection/visible-relation-commands';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
+	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import { groupableNodeIds } from '../../canvas/group-edit';
 	import { planJunctionInsertion } from '../../canvas/junction-insertion';
 	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
@@ -77,6 +78,7 @@
 	import CanvasActions from '../canvas/CanvasActions.svelte';
 	import CanvasGestures from '../canvas/CanvasGestures.svelte';
 	import CanvasInteractionStatus from '../canvas/CanvasInteractionStatus.svelte';
+	import CanvasShortcut from '../canvas/CanvasShortcut.svelte';
 	import CanvasViewportControls from '../canvas/CanvasViewportControls.svelte';
 	import GroupDialog from '../canvas/GroupDialog.svelte';
 	import JunctionDialog from '../canvas/JunctionDialog.svelte';
@@ -200,6 +202,13 @@
 		projection.updateSourceState(initial);
 		return stop;
 	});
+	/** This participant's own steps; the room decides each undo and redo like any batch. */
+	let history = $state(untrack(() => client.history.availability()));
+	onMount(() =>
+		client.history.subscribe((availability) => {
+			history = availability;
+		}),
+	);
 	let visible = $state.raw(projection.visible);
 	$effect(() => {
 		try {
@@ -391,10 +400,10 @@
 		lastOperator = editing.draft;
 		editingJunction = undefined;
 	}
-	/** Proposes the junction on the relation, selects it, then asks for its operator. */
-	function insertJunction(relationId: string): void {
+	/** Proposes the junction on the relations, selects it, then asks for its operator. */
+	function insertJunction(relationIds: readonly string[]): void {
 		if (!interactive) return;
-		const plan = planJunctionInsertion(model, relationId, {
+		const plan = planJunctionInsertion(model, relationIds, {
 			junctionId: crypto.randomUUID(),
 			relationId: () => crypto.randomUUID(),
 			operator: lastOperator,
@@ -451,6 +460,16 @@
 	});
 </script>
 
+<CanvasShortcut
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Undo]}
+	enabled={interactive && history.undo}
+	onactivate={() => client.history.undo()}
+/>
+<CanvasShortcut
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Redo]}
+	enabled={interactive && history.redo}
+	onactivate={() => client.history.redo()}
+/>
 <div class="workspace" class:solo={!panel}>
 	<div class="canvas">
 		{#if !panel}
@@ -520,7 +539,7 @@
 				onGroupToggle={toggleGroup}
 				onGroupDissolve={dissolveGroup}
 				onJunctionEdit={openJunctionEditor}
-				onRelationSplit={insertJunction}
+				onJunctionInsert={insertJunction}
 				onCreateChild={(target: EntityRef) => {
 					openDraft({ target });
 				}}

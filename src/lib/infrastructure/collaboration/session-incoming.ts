@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 
 import type { LogicDocument } from '../../core/document/logic-document';
+import type { SharedDocumentCommand } from '../document/shared-document-command';
 import { InvalidPresenceError } from './participant-presence';
 import type { PendingCommandFrame } from './session-command-frame';
 import type { SessionRejection } from './session-reasons';
@@ -84,6 +85,8 @@ export interface CommitReceipt {
 	readonly acknowledged: boolean;
 	readonly decision: boolean;
 	readonly initialization: boolean;
+	/** The batch this session proposed, when the commit accepts one. */
+	readonly commands?: readonly SharedDocumentCommand[];
 }
 
 interface TextReceiptAcknowledgments {
@@ -99,13 +102,13 @@ export function resolveCommitReceipt(
 	if (id === undefined) return { acknowledged: false, decision: false, initialization: false };
 	if (textEdits.acknowledge(id))
 		return { acknowledged: true, decision: false, initialization: false };
-	const command = pending.delete(id);
+	const proposal = pending.get(id);
+	pending.delete(id);
 	const initialization = initializationId === id;
-	return {
-		acknowledged: command || initialization,
-		decision: command || initialization,
-		initialization,
-	};
+	const decided = proposal !== undefined || initialization;
+	const receipt = { acknowledged: decided, decision: decided, initialization };
+	if (proposal === undefined) return receipt;
+	return { ...receipt, commands: proposal.message.commands };
 }
 
 export function clearSessionTimer(timer: ReturnType<typeof setTimeout> | null): null {

@@ -3,6 +3,7 @@ import type { LayoutRelation } from '../../../src/lib/core/layout/layout-types';
 import { assertAllowedRouteSharing } from './allowed-route-sharing';
 import { VisualAssertionError } from './assertion-error';
 import { routeCrossings, routeSegments } from './route-geometry';
+import { phantomRelations } from './route-networks';
 
 interface RoutesAssertions {
 	haveOnlyAllowedSharedTrunks(
@@ -15,6 +16,7 @@ interface RoutesAssertions {
 	haveCrossing(): RoutesAssertions;
 	haveNoOverlapWith(other: readonly LayoutRelation[]): RoutesAssertions;
 	haveNoCrossingWith(other: readonly LayoutRelation[]): RoutesAssertions;
+	haveNoPhantomRelation(): RoutesAssertions;
 }
 
 function noOverlap(routes: readonly LayoutRelation[], other: readonly LayoutRelation[]): void {
@@ -129,6 +131,23 @@ export function AssertRoutes(routes: readonly LayoutRelation[]): RoutesAssertion
 					{
 						code: 'routes.crossing',
 						message: 'Expected no crossing between the route collections.',
+					},
+				);
+			return assertions;
+		},
+		haveNoPhantomRelation() {
+			const phantoms = phantomRelations(routes);
+			if (phantoms.length > 0)
+				throw new VisualAssertionError(
+					'Relations suggérées par des traits partagés',
+					'aucune',
+					phantoms.map(({ from, to }) => `${from} → ${to}`).join(', '),
+					{ routes: [...new Set(phantoms.flatMap(({ network }) => network))] },
+					{
+						code: 'routes.phantom-relation',
+						message: `Shared ink suggests relations that are not drawn: ${phantoms
+							.map(({ from, to }) => `${from} -> ${to}`)
+							.join(', ')}.`,
 					},
 				);
 			return assertions;

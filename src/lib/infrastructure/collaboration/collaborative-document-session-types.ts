@@ -64,8 +64,8 @@ export interface DocumentSession {
 	text(target: SharedTarget, field: string): Y.Text | undefined;
 	/** Returns false when the target is gone or text is not editable right now. */
 	updateText(target: SharedTarget, field: string, next: string, bound?: Y.Text): boolean;
-	/** Local sessions keep a history of their own edits; a collaborative session has none yet. */
-	readonly history?: DocumentHistory;
+	/** The history of this session's own edits, which `Cmd/Ctrl+Z` walks in either session. */
+	readonly history: DocumentHistory;
 	destroy(): void;
 }
 

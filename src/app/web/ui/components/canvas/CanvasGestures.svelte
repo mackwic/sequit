@@ -154,15 +154,12 @@
 	function updateMarqueeSelection(toX: number, toY: number) {
 		const current = marquee;
 		if (current === undefined) return;
-		const candidates = [
-			...surface.querySelectorAll<HTMLElement>('[data-node-id], [data-junction-id]'),
-		].map((element) => {
-			const nodeId = element.dataset['nodeId'];
-			let ref: EntityRef;
-			if (nodeId !== undefined) ref = { kind: EntityKind.Node, id: nodeId };
-			else ref = { kind: EntityKind.Junction, id: element.dataset['junctionId'] ?? '' };
-			return { ref, bounds: element.getBoundingClientRect() };
-		});
+		const candidates = [...surface.querySelectorAll<HTMLElement>('[data-node-id]')].map(
+			(element) => ({
+				ref: { kind: EntityKind.Node, id: element.dataset['nodeId'] ?? '' },
+				bounds: element.getBoundingClientRect(),
+			}),
+		);
 		applySelection(
 			selectionInsideEnvelope(current.initial, candidates, {
 				from: { x: current.x, y: current.y },

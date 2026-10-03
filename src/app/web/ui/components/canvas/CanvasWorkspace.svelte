@@ -282,11 +282,11 @@
 		lastOperator = editing.draft;
 		editingJunction = undefined;
 	}
-	/** Threads a junction through the relation, selects it, then asks for its operator. */
-	async function insertJunction(relationId: string): Promise<void> {
+	/** Converges the relations on a junction, selects it, then asks for its operator. */
+	async function insertJunction(relationIds: readonly string[]): Promise<void> {
 		const current = opened;
 		if (!current.ok || !session || busy) return;
-		const plan = planJunctionInsertion(current.value.read(), relationId, {
+		const plan = planJunctionInsertion(current.value.read(), relationIds, {
 			junctionId: crypto.randomUUID(),
 			relationId: () => crypto.randomUUID(),
 			operator: lastOperator,
@@ -421,24 +421,24 @@
 			model = current.value.read();
 		});
 		const sessionHistory = current.value.session.history;
-		history = sessionHistory?.availability() ?? { undo: false, redo: false };
-		const stopHistory = sessionHistory?.subscribe((availability) => {
+		history = sessionHistory.availability();
+		const stopHistory = sessionHistory.subscribe((availability) => {
 			history = availability;
 		});
 		return () => {
 			stop();
-			stopHistory?.();
+			stopHistory();
 			current.value.destroy();
 		};
 	});
 	/** History steps publish like any change; nothing else to refresh. */
 	function undo(): void {
 		if (!opened.ok || !interactive) return;
-		opened.value.session.history?.undo();
+		opened.value.session.history.undo();
 	}
 	function redo(): void {
 		if (!opened.ok || !interactive) return;
-		opened.value.session.history?.redo();
+		opened.value.session.history.redo();
 	}
 </script>
 
@@ -488,8 +488,8 @@
 					void dissolveGroup(groupId);
 				}}
 				onJunctionEdit={openJunctionEditor}
-				onRelationSplit={(relationId: string) => {
-					void insertJunction(relationId);
+				onJunctionInsert={(relationIds: readonly string[]) => {
+					void insertJunction(relationIds);
 				}}
 				onCreateChild={(target: EntityRef) => {
 					openDraft({ target });

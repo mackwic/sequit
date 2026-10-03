@@ -20,15 +20,19 @@
 		viewportElement,
 		session,
 		onGroup,
+		onJunction,
 		onDelete,
 	}: {
 		viewportElement: HTMLDivElement;
 		session: CanvasSession;
 		onGroup?: (() => void) | undefined;
+		/** Offered when the selection is made of plain relations only: they converge on a junction. */
+		onJunction?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	let floating = $state<HTMLDivElement>();
 	const groupShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Group];
+	const junctionShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Junction];
 	const deleteShortcut = CANVAS_SHORTCUTS[CanvasShortcutId.Delete];
 	let selectedNodeIds = $derived(
 		[...session.selection.values()]
@@ -37,7 +41,8 @@
 	);
 	let groupable = $derived(selectedNodeIds.length === session.selectionCount);
 	let anchor = $derived.by((): VirtualElement | undefined => {
-		if (session.selectionCount < 2 || (!groupable && onDelete === undefined)) return undefined;
+		if (session.selectionCount < 2) return undefined;
+		if (!groupable && onJunction === undefined && onDelete === undefined) return undefined;
 		const selected = new Set<string>(
 			[...session.selection.values()].map(({ kind, id }) => entityKey(kind, id)),
 		);
@@ -55,6 +60,12 @@
 		scopes={[viewportElement, floating]}
 		enabled={groupable && onGroup !== undefined}
 		onactivate={() => onGroup?.()}
+	/>
+	<CanvasShortcut
+		shortcut={junctionShortcut}
+		scopes={[viewportElement, floating]}
+		enabled={onJunction !== undefined}
+		onactivate={() => onJunction?.()}
 	/>
 	<FloatingActions
 		{anchor}
@@ -75,6 +86,20 @@
 				<Icon name="phosphor:folder-plus" />
 				<span>{groupShortcut.label}</span>
 				<Kbd shortcut={groupShortcut} />
+			</button>
+		{/if}
+		{#if onJunction}
+			<button
+				class="ui-action quiet"
+				type="button"
+				aria-label={m.editing_selection_junction_aria({ count: session.selectionCount })}
+				aria-keyshortcuts={shortcutKeyshortcuts(junctionShortcut)}
+				title={shortcutTitle(junctionShortcut)}
+				onclick={onJunction}
+			>
+				<Icon name="phosphor:git-merge" />
+				<span>{junctionShortcut.label}</span>
+				<Kbd shortcut={junctionShortcut} />
 			</button>
 		{/if}
 		{#if onDelete}

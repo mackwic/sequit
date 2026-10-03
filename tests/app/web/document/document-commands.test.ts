@@ -341,9 +341,9 @@ it('inserts a junction on a relation in one batch, then changes its operator', (
 	const inserted = execute(model, [
 		...junctionInsertion(model, {
 			junction: { id: 'J', operator: JunctionOperator.Xor },
-			incoming: { id: 'BJ', from: 'B', to: 'J' },
-			outgoing: { id: 'JA', from: 'J', to: 'A' },
-			replacedRelationId: 'R',
+			incoming: [{ id: 'BJ', from: 'B', to: 'J' }],
+			outgoing: [{ id: 'JA', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R'],
 		}),
 	]);
 	expect(inserted.junctions).toMatchObject([
@@ -363,22 +363,56 @@ it('keeps a junction that feeds the replaced relation anchored through the new o
 	const withJunction = execute(model, [
 		...junctionInsertion(model, {
 			junction: { id: 'J', operator: JunctionOperator.Xor },
-			incoming: { id: 'BJ', from: 'B', to: 'J' },
-			outgoing: { id: 'JA', from: 'J', to: 'A' },
-			replacedRelationId: 'R',
+			incoming: [{ id: 'BJ', from: 'B', to: 'J' }],
+			outgoing: [{ id: 'JA', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R'],
 		}),
 	]);
 	// Splitting J → A: J keeps an outgoing relation at every step, so it is never collected.
 	const twice = execute(withJunction, [
 		...junctionInsertion(withJunction, {
 			junction: { id: 'K', operator: JunctionOperator.Or },
-			incoming: { id: 'JK', from: 'J', to: 'K' },
-			outgoing: { id: 'KA', from: 'K', to: 'A' },
-			replacedRelationId: 'JA',
+			incoming: [{ id: 'JK', from: 'J', to: 'K' }],
+			outgoing: [{ id: 'KA', from: 'K', to: 'A' }],
+			replacedRelationIds: ['JA'],
 		}),
 	]);
 	expect(twice.junctions.map(({ id }) => id)).toEqual(['J', 'K']);
 	expect(twice.relations.map(({ id }) => id)).toEqual(['BJ', 'JK', 'KA']);
+});
+
+it('converges several relations on one junction in a batch, pointing at each destination', () => {
+	const model = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'commands');
+	const charlie = {
+		kind: EndpointKind.Node,
+		id: 'C',
+		natureId: 'N',
+		markdown: 'Charlie',
+		layoutOrder: orderKey('a5'),
+	} as const;
+	const three: LogicDocument = {
+		...model,
+		nodes: [...model.nodes, charlie],
+		relations: [...model.relations, { id: 'CA', from: 'C', to: 'A' }],
+	};
+	const converged = execute(
+		three,
+		junctionInsertion(three, {
+			junction: { id: 'J', operator: JunctionOperator.And },
+			incoming: [
+				{ id: 'BJ', from: 'B', to: 'J' },
+				{ id: 'CJ', from: 'C', to: 'J' },
+			],
+			outgoing: [{ id: 'JA', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R', 'CA'],
+		}),
+	);
+	expect(converged.junctions.map(({ id }) => id)).toEqual(['J']);
+	expect(converged.relations.map(({ from, to }) => `${from}→${to}`).sort()).toEqual([
+		'B→J',
+		'C→J',
+		'J→A',
+	]);
 });
 
 it('creates the junction in its destination’s group, even when the origin is outside it', () => {
@@ -398,9 +432,9 @@ it('creates the junction in its destination’s group, even when the origin is o
 	};
 	const commands = junctionInsertion(outside, {
 		junction: { id: 'J', operator: JunctionOperator.Xor },
-		incoming: { id: 'BJ', from: 'B', to: 'J' },
-		outgoing: { id: 'JA', from: 'J', to: 'A' },
-		replacedRelationId: 'R',
+		incoming: [{ id: 'BJ', from: 'B', to: 'J' }],
+		outgoing: [{ id: 'JA', from: 'J', to: 'A' }],
+		replacedRelationIds: ['R'],
 	});
 	expect(commands[0]).toEqual({
 		op: Op.Create,
@@ -416,9 +450,9 @@ it('keeps a junction with its target through grouping and moves, never moving it
 		model,
 		junctionInsertion(model, {
 			junction: { id: 'J', operator: JunctionOperator.Xor },
-			incoming: { id: 'BJ', from: 'B', to: 'J' },
-			outgoing: { id: 'JA', from: 'J', to: 'A' },
-			replacedRelationId: 'R',
+			incoming: [{ id: 'BJ', from: 'B', to: 'J' }],
+			outgoing: [{ id: 'JA', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R'],
 		}),
 	);
 	expect(inserted.junctions[0]).not.toHaveProperty('groupId');

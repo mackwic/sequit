@@ -123,6 +123,7 @@
 			}
 		}
 	],
+	"editing_selection_junction_aria": "Converge {count} relations into a junction",
 	"editing_selection_delete_aria": "Delete {count} items",
 	"editing_canvas_actions": "Canvas actions",
 	"editing_canvas_manage_natures": "Manage document natures",

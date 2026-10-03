@@ -15,6 +15,19 @@ interface EditedTarget {
 	readonly version: number;
 }
 
+/** Receives each local text edit with the text it replaced. */
+export interface TextEditRecorder {
+	textEdited(target: SharedTarget, field: string, before: string, after: string): void;
+}
+
+/** The edit about to be applied to a field, as it stood before. */
+interface PreparedTextEdit {
+	readonly target: SharedTarget;
+	readonly field: string;
+	readonly text: Y.Text;
+	readonly before: string;
+}
+
 /** Tracks pending user gestures, never replays text or rewrites Yjs history. */
 class SessionTextEdits {
 	readonly #active = new Map<string, EditedTarget>();
@@ -82,6 +95,7 @@ export class SessionTextFlow {
 	readonly #abandoned: Iterable<(notice: SessionNotice) => void>;
 	readonly #reported = new WeakSet<Y.Text>();
 	#target: TextTargetReference | undefined;
+	#prepared: PreparedTextEdit | undefined;
 
 	constructor(
 		sessionId: string,
@@ -128,6 +142,17 @@ export class SessionTextFlow {
 		if (previous !== undefined && !sameTextTarget(previous, target, field, id)) this.buffer.flush();
 		this.#target = { target, field, textId: { client: id.client, clock: id.clock } };
 		this.edits.record(target, field);
+		this.#prepared = { target, field, text, before: text.toJSON() };
+	}
+
+	/** Buffers a local edit for the room and reports it, against the prepared text, to `recorder`. */
+	push(update: Uint8Array, recorder: TextEditRecorder): void {
+		this.buffer.push(update);
+		const prepared = this.#prepared;
+		this.#prepared = undefined;
+		if (prepared === undefined) return;
+		const { target, field, text, before } = prepared;
+		recorder.textEdited(target, field, before, text.toJSON());
 	}
 
 	resume(): boolean {

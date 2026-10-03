@@ -39,7 +39,7 @@
 		onGroupToggle,
 		onGroupDissolve,
 		onJunctionEdit,
-		onRelationSplit,
+		onJunctionInsert,
 		onCreateChild,
 		onCreateSibling,
 		onDelete,
@@ -58,7 +58,8 @@
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
-		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Converges relations on a new junction: one from its bar, several from the selection bar. */
+		onJunctionInsert?: ((relationIds: readonly string[]) => void) | undefined;
 		/** Starts typing a child of the selected node or junction. */
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		/** Starts typing a sibling of the selected node: same parents, group and lane. */
@@ -191,19 +192,37 @@
 		}
 		const relation = canvas.relations.find(({ id }) => id === entity.id);
 		if (relation === undefined) return undefined;
-		const split = onRelationSplit;
-		if (split === undefined || !hostsJunction(relation)) return { entity };
+		const insert = onJunctionInsert;
+		if (insert === undefined || !hostsJunction(relation)) return { entity };
 		return {
 			entity,
 			split: () => {
-				split(entity.id);
+				insert([entity.id]);
 			},
 		};
 	});
-	/** The bar waits for the box: a new one is only drawn once laid out. */
+	/** Several relations, all plain, converge on one junction from the selection bar. */
+	let selectionJunction = $derived.by((): (() => void) | undefined => {
+		const insert = onJunctionInsert;
+		const current = canvas;
+		const selected = [...session.selection.values()];
+		if (insert === undefined || current === undefined || selected.length < 2) return undefined;
+		const plain = selected.every((entity) => {
+			const relation = current.relations.find(({ id }) => id === entity.id);
+			return (
+				entity.kind === EntityKind.Relation && relation !== undefined && hostsJunction(relation)
+			);
+		});
+		if (!plain) return undefined;
+		const relationIds = selected.map(({ id }) => id);
+		return () => {
+			insert(relationIds);
+		};
+	});
+	/** The bar waits for the box: a new one is only drawn once laid out, and a parked one has none. */
 	let typed = $derived.by((): NodeDraftControls | undefined => {
 		const current = draft;
-		if (current === undefined || canvas === undefined) return undefined;
+		if (current === undefined || canvas === undefined || current.parked) return undefined;
 		if (!canvas.nodes.some(({ id }) => id === current.id)) return undefined;
 		return current;
 	});
@@ -246,7 +265,7 @@
 		<NodeHandles {...handles} />
 	{/if}
 	{#if viewportElement && !hideToolbar}
-		<SelectionBar {viewportElement} {session} {onGroup} {onDelete} />
+		<SelectionBar {viewportElement} {session} {onGroup} onJunction={selectionJunction} {onDelete} />
 	{/if}
 	{#if typed && viewportElement}
 		{#key typed.id}<TypingBar draft={typed} {viewportElement} />{/key}

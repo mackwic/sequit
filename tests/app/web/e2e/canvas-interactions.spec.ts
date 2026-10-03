@@ -392,7 +392,7 @@ test.describe('accessible canvas selection', () => {
 		await expect(viewport).toBeFocused();
 		await expect(group).toHaveAttribute('aria-pressed', 'true');
 
-		// « Tout sélectionner » takes every node and junction, as an envelope would.
+		// « Tout sélectionner » takes every node and junction, unlike an envelope.
 		await page.mouse.click(blank.x, blank.y, { button: 'right' });
 		await menu.getByRole('menuitem', { name: 'Tout sélectionner' }).click();
 		await expect(menu).toHaveCount(0);
