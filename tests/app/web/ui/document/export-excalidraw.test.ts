@@ -24,6 +24,9 @@ interface ExportedElement {
 	readonly y: number;
 	readonly width: number;
 	readonly height: number;
+	readonly strokeColor: string;
+	readonly backgroundColor: string;
+	readonly roundness: null | { readonly type: number };
 	readonly text?: string;
 	readonly points?: readonly (readonly [number, number])[];
 	readonly groupIds: readonly string[];
@@ -93,6 +96,12 @@ describe('Excalidraw export', () => {
 			expect(element(scene, 'endpoint', node.id)).toMatchObject({
 				type: 'rectangle',
 				...node.bounds,
+				roundness: { type: 3 },
+				strokeColor: '#8bc5a0',
+			});
+			expect(element(scene, 'node-header', node.id)).toMatchObject({
+				type: 'rectangle',
+				backgroundColor: '#def4e7',
 			});
 			expect(element(scene, 'node-body', node.id).text).toBe(node.markdown);
 		}
@@ -133,6 +142,7 @@ describe('Excalidraw export', () => {
 					id: 'from',
 					natureId: nature.id,
 					groupId: 'inner',
+					color: '#369',
 					markdown: 'Hello **world**\nagain',
 					layoutOrder: orderKey('a2'),
 				},
@@ -175,6 +185,7 @@ describe('Excalidraw export', () => {
 				{
 					id: 'from',
 					nature,
+					color: '#369',
 					markdown: 'Hello **world**\nagain',
 					bounds: { x: 100, y: 100, width: 120, height: 80 },
 				},
@@ -207,6 +218,13 @@ describe('Excalidraw export', () => {
 			],
 		};
 		const scene = sceneFor(document, canvas);
+		expect(element(scene, 'endpoint', 'from')).toMatchObject({
+			strokeColor: '#9dadbd',
+			roundness: { type: 3 },
+		});
+		expect(element(scene, 'node-header', 'from').backgroundColor).toBe('#e4ebf2');
+		expect(element(scene, 'node-header-bottom', 'from').roundness).toBeNull();
+		expect(element(scene, 'node-header', 'to').backgroundColor).toBe('#def4e7');
 		expect(element(scene, 'node-body', 'from').text).toBe('Hello world\nagain');
 		expect(element(scene, 'endpoint', 'from').groupIds).toEqual([
 			elementId('node-group', 'from'),

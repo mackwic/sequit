@@ -36,6 +36,10 @@ export interface BoundElement {
 	readonly type: ElementType.Arrow;
 }
 
+interface AdaptiveRoundness {
+	readonly type: 3;
+}
+
 interface ElementBase extends Bounds {
 	readonly id: string;
 	readonly angle: number;
@@ -46,7 +50,7 @@ interface ElementBase extends Bounds {
 	readonly strokeStyle: StrokeStyle;
 	readonly roughness: number;
 	readonly opacity: number;
-	readonly roundness: null;
+	readonly roundness: null | AdaptiveRoundness;
 	readonly seed: number;
 	readonly version: number;
 	readonly versionNonce: number;
@@ -101,6 +105,7 @@ interface ElementStyle {
 	readonly backgroundColor?: string;
 	readonly strokeWidth?: number;
 	readonly strokeStyle?: StrokeStyle;
+	readonly rounded?: boolean;
 }
 
 export const INK = '#292524';
@@ -167,7 +172,10 @@ function base({
 }
 
 export function shape(type: ShapeElement['type'], options: ElementOptions): ShapeElement {
-	return { ...base(options), type };
+	const element = base(options);
+	if (type === ElementType.Rectangle && options.style?.rounded !== false)
+		return { ...element, type, roundness: { type: 3 } };
+	return { ...element, type };
 }
 
 interface TextOptions extends ElementOptions {

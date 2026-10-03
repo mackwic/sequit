@@ -155,7 +155,17 @@ test('DOT and Excalidraw exports contain the edited example graph', async ({ pag
 	}
 	expect(excalidraw.elements).toEqual(
 		expect.arrayContaining([
-			expect.objectContaining({ type: 'rectangle' }),
+			// The example's `need` nature is #f4c400; the canvas tints its border and header.
+			expect.objectContaining({
+				id: 'sequit:["endpoint","traceable-edits"]',
+				type: 'rectangle',
+				strokeColor: '#e1ce88',
+				roundness: { type: 3 },
+			}),
+			expect.objectContaining({
+				id: 'sequit:["node-header","traceable-edits"]',
+				backgroundColor: '#fef7de',
+			}),
 			expect.objectContaining({ type: 'arrow' }),
 			expect.objectContaining({ type: 'text', text: expect.stringContaining('Contenu exporté') }),
 		]),

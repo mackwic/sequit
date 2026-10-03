@@ -1,6 +1,6 @@
 import type { LogicDocument } from '../../../../lib/core/document/logic-document';
 import type { Bounds } from '../../projection/layout-graph';
-import type { CanvasModel } from '../canvas/canvas-model';
+import type { CanvasModel, RenderedCanvasNode } from '../canvas/canvas-model';
 import { bodyMarkdown } from '../content/body-markdown';
 import {
 	arrow,
@@ -35,6 +35,100 @@ function boundArrowsFor(
 		}
 	}
 	return boundArrows;
+}
+
+function hexChannels(color: string): readonly [number, number, number] | undefined {
+	const match = /^#([\da-f]{3}|[\da-f]{6})$/i.exec(color);
+	let digits = match?.[1];
+	if (digits === undefined) return undefined;
+	if (digits.length === 3) digits = digits.replace(/./g, (digit) => digit.repeat(2));
+	return [
+		Number.parseInt(digits.slice(0, 2), 16),
+		Number.parseInt(digits.slice(2, 4), 16),
+		Number.parseInt(digits.slice(4, 6), 16),
+	];
+}
+
+function mixChannel(foreground: number, background: number, ratio: number): string {
+	const inverse = 1 - ratio;
+	const mixed = Math.round(foreground * ratio + background * inverse);
+	return mixed.toString(16).padStart(2, '0');
+}
+
+/** The canvas uses the same sRGB mix for its colored border and header. */
+function mixedColor(color: string, background: string, ratio: number): string {
+	const foreground = hexChannels(color);
+	const base = hexChannels(background);
+	if (foreground === undefined || base === undefined) return color;
+	const [red, green, blue] = foreground;
+	const [baseRed, baseGreen, baseBlue] = base;
+	return `#${mixChannel(red, baseRed, ratio)}${mixChannel(green, baseGreen, ratio)}${mixChannel(blue, baseBlue, ratio)}`;
+}
+
+function nodeElements(
+	node: RenderedCanvasNode,
+	parentGroups: readonly string[],
+	boundElements: readonly BoundElement[] | undefined,
+): readonly ExcalidrawElement[] {
+	const groupIds = [elementId('node-group', node.id), ...parentGroups];
+	const color = node.color ?? node.nature.color;
+	const headerColor = mixedColor(color, '#ffffff', 0.13);
+	const borderColor = mixedColor(color, '#d6d3d1', 0.35);
+	const headerBounds = {
+		x: node.bounds.x + 1,
+		y: node.bounds.y + 1,
+		width: Math.max(1, node.bounds.width - 2),
+		height: Math.min(32, Math.max(1, node.bounds.height - 2)),
+	};
+	const headerBottom = {
+		...headerBounds,
+		y: headerBounds.y + headerBounds.height / 2,
+		height: headerBounds.height / 2,
+	};
+	const elements: ExcalidrawElement[] = [
+		shape(ElementType.Rectangle, {
+			id: elementId('endpoint', node.id),
+			bounds: node.bounds,
+			groupIds,
+			style: { strokeColor: borderColor, backgroundColor: '#ffffff' },
+			boundElements,
+		}),
+		shape(ElementType.Rectangle, {
+			id: elementId('node-header', node.id),
+			bounds: headerBounds,
+			groupIds,
+			style: { strokeColor: 'transparent', backgroundColor: headerColor },
+		}),
+		shape(ElementType.Rectangle, {
+			id: elementId('node-header-bottom', node.id),
+			bounds: headerBottom,
+			groupIds,
+			style: { strokeColor: 'transparent', backgroundColor: headerColor, rounded: false },
+		}),
+		textElement({
+			id: elementId('node-nature', node.id),
+			value: node.nature.label,
+			bounds: labelBounds(node.bounds, { left: 12, top: 7, right: 12, height: 15 }),
+			groupIds,
+			fontSize: 11,
+			color: INK,
+		}),
+	];
+	const body = bodyMarkdown(node.markdown)
+		.map(({ text }) => text)
+		.join('');
+	if (body.length > 0)
+		elements.push(
+			textElement({
+				id: elementId('node-body', node.id),
+				value: body,
+				bounds: inset(node.bounds, { left: 12, top: 38, right: 12, bottom: 12 }),
+				groupIds,
+				fontSize: 14,
+				color: INK,
+			}),
+		);
+	return elements;
 }
 
 /** A native editable Excalidraw scene using the current projected Sequit geometry. */
@@ -118,49 +212,14 @@ export function serializeExcalidraw(document: LogicDocument, canvas: CanvasModel
 	}
 	for (const relation of canvas.relations)
 		elements.push(arrow(relation, endpointBounds, endpointGroups));
-	for (const node of canvas.nodes) {
-		const ids = [
-			elementId('node-group', node.id),
-			...groupIdsFor(nodeParents.get(node.id), parents),
-		];
-		const color = node.color ?? node.nature.color;
+	for (const node of canvas.nodes)
 		elements.push(
-			shape(ElementType.Rectangle, {
-				id: elementId('endpoint', node.id),
-				bounds: node.bounds,
-				groupIds: ids,
-				style: { strokeColor: color, backgroundColor: '#ffffff' },
-				boundElements: boundArrows.get(node.id),
-			}),
-			textElement({
-				id: elementId('node-nature', node.id),
-				value: node.nature.label,
-				bounds: inset(node.bounds, {
-					left: 12,
-					top: 7,
-					right: 12,
-					bottom: node.bounds.height - 22,
-				}),
-				groupIds: ids,
-				fontSize: 11,
-				color: INK,
-			}),
+			...nodeElements(
+				node,
+				groupIdsFor(nodeParents.get(node.id), parents),
+				boundArrows.get(node.id),
+			),
 		);
-		const body = bodyMarkdown(node.markdown)
-			.map(({ text }) => text)
-			.join('');
-		if (body.length > 0)
-			elements.push(
-				textElement({
-					id: elementId('node-body', node.id),
-					value: body,
-					bounds: inset(node.bounds, { left: 12, top: 38, right: 12, bottom: 12 }),
-					groupIds: ids,
-					fontSize: 14,
-					color: INK,
-				}),
-			);
-	}
 	for (const junction of canvas.junctions) {
 		const ids = [
 			elementId('junction-group', junction.id),
