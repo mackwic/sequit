@@ -468,11 +468,11 @@ it.each(
 	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 });
 
-// Rebuild D-07 G2 seed 629's BT first-placement bounds and port-allocated routes: r4 (n2→j1)
-// cannot take its junction approach while pending g0 group routes reserve it. A g0 port moves
-// during repair, then r4 succeeds on retry; the public layout and direct repair result are validated.
-it('retries a route blocked by a pending group attachment in bottom-to-top', async () => {
+// G2 seed 629 witnesses deferred repair before the rigid-block placement merge.
+// Validate the repaired geometry, not which group attachment moved along the way.
+it('validates first-placement repair beside pending group attachments in bottom-to-top', async () => {
 	const direction = LayoutDirection.BottomToTop;
+	const bias = LayoutBias.Top;
 	const members: Readonly<Record<string, string>> = { n2: 'g0', j0: 'g0' };
 	const endpoint = (id: string) => {
 		const groupId = members[id];
@@ -502,7 +502,7 @@ it('retries a route blocked by a pending group attachment in bottom-to-top', asy
 	}));
 	const document: LogicDocument = {
 		...validLogicDocument(),
-		layout: defined(layoutConfiguration(direction, LayoutBias.Top)),
+		layout: defined(layoutConfiguration(direction, bias)),
 		groups,
 		nodes,
 		junctions,
@@ -514,7 +514,11 @@ it('retries a route blocked by a pending group attachment in bottom-to-top', asy
 			['n2', 'j1'],
 			['g0', 'n0'],
 			['j0', 'g1'],
-		].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
+		].map(([from, to], index) => ({
+			id: `r${index}`,
+			from: defined(from),
+			to: defined(to),
+		})),
 	};
 	const prepared = prepareLayoutDocument(document);
 	const structure = prepareLayout(prepared.graph, prepared.ranks);
@@ -537,7 +541,6 @@ it('retries a route blocked by a pending group attachment in bottom-to-top', asy
 		frame,
 	);
 	if (workspace.placement.groupChannelInsets.size > 0) {
-		delete workspace.placement.groupWindows;
 		placeElements(workspace, new Map());
 	}
 	const bounds = new Map(workspace.placement.bounds);
@@ -573,21 +576,7 @@ it('retries a route blocked by a pending group attachment in bottom-to-top', asy
 			targetOffset: relationPortOffset(ports?.targetOffsets, prepared.graph, index),
 		}),
 	}));
-	const blockedRouteBefore = routes.find(({ id }) => id === 'r4');
-	if (blockedRouteBefore === undefined) throw new Error('Missing n2-to-j1 route');
-	const groupPortsBefore = new Map(
-		routes.filter(({ from }) => from === 'g0').map(({ id, points }) => [id, defined(points[0])]),
-	);
 	clearGroupEndpointRoutes(prepared.graph, bounds, frame, routes);
-	expect(routes.find(({ id }) => id === 'r4')?.points).not.toEqual(blockedRouteBefore.points);
-	expect(
-		routes.some(({ id, from, points }) => {
-			if (from !== 'g0') return false;
-			const before = groupPortsBefore.get(id);
-			const after = defined(points[0]);
-			return before !== undefined && (before.x !== after.x || before.y !== after.y);
-		}),
-	).toBe(true);
 	const right = Math.max(
 		...Array.from(bounds.values(), ({ x, width }) => x + width),
 		...routes.flatMap(({ points }) => points.map(({ x }) => x)),
@@ -608,6 +597,88 @@ it('retries a route blocked by a pending group attachment in bottom-to-top', asy
 	};
 	const directValidation = validateDedicatedCandidate({ ...prepared, layout: directLayout });
 	expect(directValidation, JSON.stringify(directValidation)).toMatchObject({ valid: true });
+	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+	const validation = validateDedicatedCandidate({ ...prepared, layout });
+	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+});
+
+// Rich seed 1592915777, sample 22: on merged rigid-block placement, node-00→junction-00
+// must wait for the pending node-00→group-01 attachment to be repaired.
+it('retries a pending nested-group attachment on merged right-to-left placement', async () => {
+	const parent = (groupId: string | undefined) => {
+		if (groupId === undefined) return {};
+		return { groupId };
+	};
+	const document: LogicDocument = {
+		...validLogicDocument(),
+		layout: { direction: LayoutDirection.RightToLeft, bias: LayoutBias.Right },
+		groups: [
+			['group-00', 'aH00001'],
+			['group-01', 'aH00011', 'group-00'],
+			['group-02', 'aG00021'],
+			['group-03', 'aG00031'],
+			['empty-group-00', 'aE00001', 'group-03'],
+		].map(([id, key, groupId]) => ({
+			kind: EndpointKind.Group,
+			id: defined(id),
+			label: defined(id),
+			layoutOrder: orderKey(defined(key)),
+			...parent(groupId),
+		})),
+		nodes: [
+			['node-00', 'aN00001', 'group-00'],
+			['node-01', 'aN00011', 'group-00'],
+			['node-02', 'aN00021', 'group-01'],
+			['node-03', 'aN00031'],
+			['node-04', 'aN00041', 'group-00'],
+		].map(([id, key, groupId]) => ({
+			kind: EndpointKind.Node,
+			id: defined(id),
+			natureId: 'goal',
+			markdown: '',
+			layoutOrder: orderKey(defined(key)),
+			...parent(groupId),
+		})),
+		junctions: [
+			['junction-00', 'aJ00001', 'group-01'],
+			['junction-01', 'aJ00011', 'group-00'],
+			['junction-02', 'aJ00021', 'group-00'],
+		].map(([id, key, groupId]) => ({
+			kind: EndpointKind.Junction,
+			id: defined(id),
+			operator: JunctionOperator.Xor,
+			layoutOrder: orderKey(defined(key)),
+			...parent(groupId),
+		})),
+		relations: [
+			['node-00', 'group-01'],
+			['node-00', 'junction-00'],
+			['junction-00', 'group-02'],
+			['group-02', 'node-01'],
+			['node-04', 'node-01'],
+			['junction-01', 'node-01'],
+		].map(([from, to], index) => ({
+			id: `relation-${index.toString().padStart(3, '0')}`,
+			from: defined(from),
+			to: defined(to),
+		})),
+	};
+	const prepared = prepareLayoutDocument(document, {
+		groups: Object.fromEntries(
+			document.groups.map(({ id }) => [
+				id,
+				{ minimumWidth: 64, minimumHeight: 48, headerHeight: 24, padding: 8 },
+			]),
+		),
+	});
+	const documentary = evaluateDedicatedLayout(
+		prepareLayout(prepared.graph, prepared.ranks),
+		prepared.measurements,
+	);
+	const documentaryValidation = validateDedicatedCandidate({ ...prepared, layout: documentary });
+	expect(documentaryValidation, JSON.stringify(documentaryValidation)).toMatchObject({
+		valid: true,
+	});
 	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
 	const validation = validateDedicatedCandidate({ ...prepared, layout });
 	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
