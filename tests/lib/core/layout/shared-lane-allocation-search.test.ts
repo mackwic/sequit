@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { defined } from '../../../../src/lib/core/document/logic-document';
 import type { RoutingEdge } from '../../../../src/lib/core/layout/geometry/routing-edge';
 import {
 	trackAllocationProductCount,
@@ -20,6 +21,15 @@ function domain(
 		trackByKey: new Map(baselineTracks),
 	};
 	return { id, edge, trackCount, keys, baseline };
+}
+
+function assignmentVectors(keys: readonly string[]): readonly (readonly number[])[] {
+	const baselineTracks = keys.map((key, index) => [key, index] as const);
+	const products = trackAllocationProducts([domain('gutter', keys, baselineTracks, keys.length)]);
+	return [...products].map(({ allocations }) => {
+		const allocation = defined(allocations[0]);
+		return keys.map((key) => defined(allocation.trackByKey.get(key)));
+	});
 }
 
 describe('shared lane allocation search', () => {
@@ -86,6 +96,19 @@ describe('shared lane allocation search', () => {
 		expect([...trackAllocationProducts([renamed])].map(({ key }) => key)).toEqual(
 			[...trackAllocationProducts([original])].map(({ key }) => key),
 		);
+	});
+
+	it('enumerates track assignments by documentary key position after ID permutations', () => {
+		const expected = [
+			[0, 1, 2],
+			[0, 2, 1],
+			[1, 0, 2],
+			[1, 2, 0],
+			[2, 0, 1],
+			[2, 1, 0],
+		];
+		expect(assignmentVectors(['z-route', 'a-route', 'm-route'])).toEqual(expected);
+		expect(assignmentVectors(['a-route', 'm-route', 'z-route'])).toEqual(expected);
 	});
 
 	it('enumerates deep route bands without recursive stack growth', () => {
