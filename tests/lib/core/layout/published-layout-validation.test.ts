@@ -17,21 +17,39 @@ import { createGraph } from '../../../../src/lib/core/graph/create-graph';
 import { topologicallyRank } from '../../../../src/lib/core/graph/topological-ranks';
 import { DedicatedCandidateRejectionCode } from '../../../../src/lib/core/layout/dedicated-candidate-validation/types';
 import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { createLayoutFrame } from '../../../../src/lib/core/layout/geometry/layout-frame';
+import { clearGroupEndpointRoutes } from '../../../../src/lib/core/layout/group-endpoint-routing';
 import {
 	evaluateDedicatedLayout,
 	layoutWithDedicatedEngineAndRankOrderWitness,
 } from '../../../../src/lib/core/layout/layout-engine';
+import { OUTER_MARGIN } from '../../../../src/lib/core/layout/layout-settings';
 import {
 	type DedicatedLayoutEvaluation,
 	GroupRouteFailure,
 	type LayoutResult,
 	RelationBoundsOverlap,
 } from '../../../../src/lib/core/layout/layout-types';
+import { groupJunctionInsets } from '../../../../src/lib/core/layout/placement/group-junction-channels';
+import {
+	placeElements,
+	type PlacementInput,
+} from '../../../../src/lib/core/layout/placement/place-elements';
+import { prepareMeasurements } from '../../../../src/lib/core/layout/placement/prepare-measurements';
 import type { DedicatedLayoutEvaluator } from '../../../../src/lib/core/layout/rank/rank-order-search';
 import { selectDedicatedRankLayout } from '../../../../src/lib/core/layout/rank/rank-order-selection';
 import type { RankOrderSearchWitness } from '../../../../src/lib/core/layout/rank/rank-order-witness';
 import { collectRankOrderDomain } from '../../../../src/lib/core/layout/rank/rank-ordering';
+import { routePoints } from '../../../../src/lib/core/layout/routing/endpoint-routes';
+import { allocateLayerPorts } from '../../../../src/lib/core/layout/routing/layered-port-reservation';
+import { relationPortOffset } from '../../../../src/lib/core/layout/routing/relation-port-offsets';
+import {
+	directRouteRail,
+	directRoutingSpace,
+} from '../../../../src/lib/core/layout/routing/routing-space';
+import { relationComponentIndex } from '../../../../src/lib/core/layout/structure/layout-components';
 import { prepareLayout } from '../../../../src/lib/core/layout/structure/prepare-layout';
+import { routingLayers } from '../../../../src/lib/core/layout/structure/routing-layers';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { richAcyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
 import { junctionObstacle } from '../../../support/fixtures/routing-obstacles';
@@ -450,63 +468,150 @@ it.each(
 	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
 });
 
-// D-07 corpus G2, seed 629: in bottom-to-top, n2→j1 needs the junction column that the pending
-// g0 routes reserve below their port; it succeeds once they have moved during their own repair.
-it.each(Object.values(LayoutDirection))(
-	'retries a route blocked by a pending group attachment (%s)',
-	async (direction) => {
-		const members: Readonly<Record<string, string>> = { n2: 'g0', j0: 'g0' };
-		const endpoint = (id: string) => {
-			const groupId = members[id];
-			if (groupId === undefined) return { id };
-			return { id, groupId };
-		};
-		let order = 0;
-		const key = () => orderKey(`a${(order++).toString().padStart(3, '0')}1`);
-		const groups = ['g0', 'g1'].map((id): LogicDocument['groups'][number] => ({
-			kind: EndpointKind.Group,
-			label: id,
-			layoutOrder: key(),
-			...endpoint(id),
-		}));
-		const nodes = ['n0', 'n1', 'n2'].map((id): LogicDocument['nodes'][number] => ({
-			kind: EndpointKind.Node,
-			natureId: 'goal',
-			markdown: id,
-			layoutOrder: key(),
-			...endpoint(id),
-		}));
-		const junctions = ['j0', 'j1'].map((id): LogicDocument['junctions'][number] => ({
-			kind: EndpointKind.Junction,
-			operator: JunctionOperator.Xor,
-			layoutOrder: key(),
-			...endpoint(id),
-		}));
-		const document: LogicDocument = {
-			...validLogicDocument(),
-			layout: defined(
-				layoutConfiguration(direction, LayoutBias.Top) ??
-					layoutConfiguration(direction, LayoutBias.Left),
-			),
-			groups,
-			nodes,
-			junctions,
-			relations: [
-				['g0', 'g1'],
-				['j0', 'n1'],
-				['n1', 'g1'],
-				['n2', 'n0'],
-				['n2', 'j1'],
-				['g0', 'n0'],
-				['j0', 'g1'],
-			].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
-		};
-		const prepared = prepareLayoutDocument(document);
-		const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
-		const validation = validateDedicatedCandidate({ ...prepared, layout });
-		expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
-	},
-);
+// Rebuild D-07 G2 seed 629's BT first-placement bounds and port-allocated routes: r4 (n2→j1)
+// cannot take its junction approach while pending g0 group routes reserve it. A g0 port moves
+// during repair, then r4 succeeds on retry; the public layout and direct repair result are validated.
+it('retries a route blocked by a pending group attachment in bottom-to-top', async () => {
+	const direction = LayoutDirection.BottomToTop;
+	const members: Readonly<Record<string, string>> = { n2: 'g0', j0: 'g0' };
+	const endpoint = (id: string) => {
+		const groupId = members[id];
+		if (groupId === undefined) return { id };
+		return { id, groupId };
+	};
+	let order = 0;
+	const key = () => orderKey(`a${(order++).toString().padStart(3, '0')}1`);
+	const groups = ['g0', 'g1'].map((id): LogicDocument['groups'][number] => ({
+		kind: EndpointKind.Group,
+		label: id,
+		layoutOrder: key(),
+		...endpoint(id),
+	}));
+	const nodes = ['n0', 'n1', 'n2'].map((id): LogicDocument['nodes'][number] => ({
+		kind: EndpointKind.Node,
+		natureId: 'goal',
+		markdown: id,
+		layoutOrder: key(),
+		...endpoint(id),
+	}));
+	const junctions = ['j0', 'j1'].map((id): LogicDocument['junctions'][number] => ({
+		kind: EndpointKind.Junction,
+		operator: JunctionOperator.Xor,
+		layoutOrder: key(),
+		...endpoint(id),
+	}));
+	const document: LogicDocument = {
+		...validLogicDocument(),
+		layout: defined(layoutConfiguration(direction, LayoutBias.Top)),
+		groups,
+		nodes,
+		junctions,
+		relations: [
+			['g0', 'g1'],
+			['j0', 'n1'],
+			['n1', 'g1'],
+			['n2', 'n0'],
+			['n2', 'j1'],
+			['g0', 'n0'],
+			['j0', 'g1'],
+		].map(([from, to], index) => ({ id: `r${index}`, from: defined(from), to: defined(to) })),
+	};
+	const prepared = prepareLayoutDocument(document);
+	const structure = prepareLayout(prepared.graph, prepared.ranks);
+	const frame = createLayoutFrame(direction, document.layout.bias);
+	const measurements = prepareMeasurements(structure, prepared.measurements, frame);
+	const workspace: PlacementInput = {
+		structure,
+		measurements,
+		frame,
+		placement: {
+			bounds: new Map(),
+			components: [],
+			groupChannelInsets: new Map(),
+		},
+	};
+	placeElements(workspace, new Map());
+	workspace.placement.groupChannelInsets = groupJunctionInsets(
+		structure,
+		workspace.placement.bounds,
+		frame,
+	);
+	if (workspace.placement.groupChannelInsets.size > 0) {
+		delete workspace.placement.groupWindows;
+		placeElements(workspace, new Map());
+	}
+	const bounds = new Map(workspace.placement.bounds);
+	const layers = routingLayers(structure);
+	const space = directRoutingSpace({
+		layers,
+		bounds,
+		frame,
+		junctionIds: structure.junctionIds,
+		enclosingGroups: new Set(structure.hierarchy?.membersById.keys()),
+	});
+	const ports = allocateLayerPorts({
+		graph: prepared.graph,
+		layers,
+		bounds,
+		frame,
+		junctionIds: structure.junctionIds,
+		ranks: prepared.ranks.byEndpointId,
+		sizes: measurements.sizes,
+		componentByEndpointId: relationComponentIndex(prepared.graph),
+		space,
+	});
+	const routes = prepared.graph.relations.map(({ relation }, index) => ({
+		id: relation.id,
+		from: relation.from,
+		to: relation.to,
+		points: routePoints({
+			source: defined(bounds.get(relation.from)),
+			target: defined(bounds.get(relation.to)),
+			direction,
+			rail: directRouteRail(space, relation.from, relation.to),
+			sourceOffset: relationPortOffset(ports?.sourceOffsets, prepared.graph, index),
+			targetOffset: relationPortOffset(ports?.targetOffsets, prepared.graph, index),
+		}),
+	}));
+	const blockedRouteBefore = routes.find(({ id }) => id === 'r4');
+	if (blockedRouteBefore === undefined) throw new Error('Missing n2-to-j1 route');
+	const groupPortsBefore = new Map(
+		routes.filter(({ from }) => from === 'g0').map(({ id, points }) => [id, defined(points[0])]),
+	);
+	clearGroupEndpointRoutes(prepared.graph, bounds, frame, routes);
+	expect(routes.find(({ id }) => id === 'r4')?.points).not.toEqual(blockedRouteBefore.points);
+	expect(
+		routes.some(({ id, from, points }) => {
+			if (from !== 'g0') return false;
+			const before = groupPortsBefore.get(id);
+			const after = defined(points[0]);
+			return before !== undefined && (before.x !== after.x || before.y !== after.y);
+		}),
+	).toBe(true);
+	const right = Math.max(
+		...Array.from(bounds.values(), ({ x, width }) => x + width),
+		...routes.flatMap(({ points }) => points.map(({ x }) => x)),
+	);
+	const bottom = Math.max(
+		...Array.from(bounds.values(), ({ y, height }) => y + height),
+		...routes.flatMap(({ points }) => points.map(({ y }) => y)),
+	);
+	const directLayout: LayoutResult = {
+		width: right + OUTER_MARGIN,
+		height: bottom + OUTER_MARGIN,
+		elements: [...bounds].map(([id, elementBounds]) => ({
+			id,
+			kind: defined(prepared.graph.endpointsById.get(id)).kind,
+			bounds: elementBounds,
+		})),
+		relations: routes,
+	};
+	const directValidation = validateDedicatedCandidate({ ...prepared, layout: directLayout });
+	expect(directValidation, JSON.stringify(directValidation)).toMatchObject({ valid: true });
+	const layout = await layoutGraph(prepared.graph, prepared.ranks, prepared.measurements);
+	const validation = validateDedicatedCandidate({ ...prepared, layout });
+	expect(validation, JSON.stringify(validation)).toMatchObject({ valid: true });
+});
 
 // Reduced from 11 nodes, five groups and six routes: junction→node-01 touches node-04→node-10.
 it('publishes only validated routes beside an independent junction-group branch', async () => {

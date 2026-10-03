@@ -36,6 +36,13 @@ import {
 	routeTransverseLanes,
 	TransverseRouteOrder,
 } from '../../../../src/lib/core/layout/lanes/shared-transverse-routing';
+import {
+	type RegionIncidentContract,
+	RegionIncidentRejectionCode,
+	RegionIncidentRole,
+	RegionIncidentUnknownCode,
+} from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
+import { RegionPortalSide } from '../../../../src/lib/core/layout/regions/model/region-portal-side';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
 
 const DIRECTIONS = [
@@ -398,4 +405,30 @@ describe('S | SD | C shared process', () => {
 			}
 		},
 	);
+	it('resets the incident-alternative budget for every transverse strategy', () => {
+		const prepared = prepareLayoutDocument(
+			processDocument(LayoutDirection.TopToBottom, LayoutBias.Top),
+		);
+		const incidents = Array.from({ length: 3 }, (_, index): RegionIncidentContract => ({
+			relation: { id: `outer-${index}`, from: 'c-request', to: `external-${index}` },
+			endpointId: 'c-request',
+			role: RegionIncidentRole.Source,
+			allowedSides: [RegionPortalSide.Top],
+		}));
+		const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements, {
+			incidents,
+		});
+		expect(result).toMatchObject({
+			status: SharedLaneLayoutStatus.Unknown,
+			code: RegionIncidentUnknownCode.NoValidAlternative,
+			witness: { exhaustive: true },
+		});
+		if (result.status !== SharedLaneLayoutStatus.Unknown) return;
+		expect(result.witness.attempted).toBeGreaterThan(256);
+		expect(
+			result.witness.rejectedAlternatives.some(
+				({ code }) => code === RegionIncidentRejectionCode.RouteObstructed,
+			),
+		).toBe(true);
+	});
 });
