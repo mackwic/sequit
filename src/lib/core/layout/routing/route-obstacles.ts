@@ -117,11 +117,15 @@ function hitsTree(segment: Segment, node: ObstacleNode | undefined): boolean {
 }
 
 /** Contact with an expanded rectangle boundary is allowed; entering its interior is not. */
+export function segmentHitsObstacles(from: Point, to: Point, obstacles: RouteObstacles): boolean {
+	return hitsTree(segmentBetween(from, to), obstacles.root);
+}
+
 export function routeHitsObstacles(points: readonly Point[], obstacles: RouteObstacles): boolean {
 	for (let index = 1; index < points.length; index += 1) {
 		const from = defined(points[index - 1]);
 		const to = defined(points[index]);
-		if (hitsTree(segmentBetween(from, to), obstacles.root)) return true;
+		if (segmentHitsObstacles(from, to, obstacles)) return true;
 	}
 	return false;
 }

@@ -10,14 +10,12 @@ import type { LayoutFrame } from './geometry/layout-frame';
 import { samePoint } from './geometry/nested-region-geometry-primitives';
 import { JUNCTION_PORT_SPACING, PORT_SPACING, RAIL_SPACING } from './layout-settings';
 import { type Bounds, GroupRouteFailure, type LayoutRelation } from './layout-types';
+import { boundaryForPorts } from './routing/group-boundary-routes';
 import {
-	aroundBoundaryPath,
 	aroundPath,
 	exteriorMainRails,
 	exteriorPath,
 	type FacePorts,
-	main,
-	sourceBoundaryEscapes,
 	transverse,
 } from './routing/group-exterior-path';
 import { foreignGroupObstacles } from './routing/group-passages';
@@ -33,7 +31,6 @@ import {
 	respectsExternalFlow,
 	type RouteAttempt,
 	type RoutingContext,
-	sharedSourceEscapes,
 } from './routing/group-route-candidates';
 import { candidateTracks, prepareGroupTrackIndex } from './routing/group-track-index';
 import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
@@ -42,7 +39,6 @@ import { routeHitsObstacles, type RouteObstacles } from './routing/route-obstacl
 const HALF_RAIL = RAIL_SPACING / 2;
 const DOUBLE_RAIL = RAIL_SPACING * 2;
 const TRIPLE_RAIL = RAIL_SPACING * 3;
-const INWARD_TRIPLE_RAIL = -TRIPLE_RAIL;
 const CLEARANCE_PAIRS = [
 	[RAIL_SPACING, RAIL_SPACING],
 	[DOUBLE_RAIL, DOUBLE_RAIL],
@@ -99,6 +95,12 @@ function contactsAnotherRoute(candidate: LayoutRelation, context: RoutingContext
 	return unbridgesForeignCrossing(analysis, candidate, neighboringRoutes.slice(1));
 }
 
+/** The checks of an admissible path that the route reservations decide. */
+function reservationsAdmit(context: RoutingContext, candidate: LayoutRelation): boolean {
+	if (attachmentReservedBy(context, candidate, context.pending)) return false;
+	return !contactsAnotherRoute(candidate, context);
+}
+
 function admissiblePath(
 	context: RoutingContext,
 	candidate: LayoutRelation,
@@ -108,8 +110,7 @@ function admissiblePath(
 	if (!respectsExternalFlow(context, candidate)) return false;
 	if (routeHitsObstacles(candidate.points, context.nodes)) return false;
 	if (groups !== undefined && routeHitsObstacles(candidate.points, groups)) return false;
-	if (attachmentReservedBy(context, candidate, context.pending)) return false;
-	return !contactsAnotherRoute(candidate, context);
+	return reservationsAdmit(context, candidate);
 }
 
 function pathOnTrack(
@@ -170,68 +171,6 @@ function aroundForPorts(
 	return undefined;
 }
 
-function boundaryOnTrack(
-	context: RoutingContext,
-	attempt: ExteriorAttempt,
-	escape: readonly [number, number],
-	targetTrack: number,
-): LayoutRelation | undefined {
-	for (const mainRail of attempt.rails) {
-		const rails = {
-			main: mainRail,
-			sourceMain: escape[0],
-			sourceTrack: escape[1],
-			targetTrack,
-		};
-		for (const targetClearance of [
-			RAIL_SPACING,
-			DOUBLE_RAIL,
-			TRIPLE_RAIL,
-			HALF_RAIL,
-			-HALF_RAIL,
-			-RAIL_SPACING,
-			-DOUBLE_RAIL,
-			INWARD_TRIPLE_RAIL,
-		]) {
-			const points = aroundBoundaryPath(context.frame, attempt.ports, rails, targetClearance);
-			const candidate = { ...attempt.route, points };
-			if (admissiblePath(context, candidate, attempt.groups)) return candidate;
-		}
-	}
-	return undefined;
-}
-
-function boundaryForPorts(
-	context: RoutingContext,
-	attempt: ExteriorAttempt,
-): LayoutRelation | undefined {
-	const escapes = [
-		...sourceBoundaryEscapes(
-			context.bounds,
-			context.graph.document.groups,
-			attempt.ports.source,
-			context.frame,
-		),
-		...sharedSourceEscapes(context, attempt.route, attempt.ports.source),
-	];
-	// A node can block the source column on the way to the exterior main rail.
-	// Reserve a transverse escape first, instead of extending that column through it.
-	let outgoing = 1;
-	if (context.frame.forward) outgoing = -1;
-	const sourceMain = main(attempt.ports.source, context.vertical);
-	for (const clearance of [RAIL_SPACING, DOUBLE_RAIL, TRIPLE_RAIL, HALF_RAIL, 0])
-		for (const track of [context.outside + RAIL_SPACING, 0])
-			escapes.push([sourceMain + outgoing * clearance, track]);
-	const source = transverse(attempt.ports.source, context.vertical);
-	const target = transverse(attempt.ports.target, context.vertical);
-	for (const escape of escapes)
-		for (const targetTrack of candidateTracks(defined(context.tracks), source, target)) {
-			const candidate = boundaryOnTrack(context, attempt, escape, targetTrack);
-			if (candidate !== undefined) return candidate;
-		}
-	return undefined;
-}
-
 /** Use a second exterior axis only after every simpler passage has failed. */
 function aroundRoute(
 	context: RoutingContext,
@@ -243,7 +182,9 @@ function aroundRoute(
 	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
 	for (const ports of candidateFacePorts(context, route, offsets)) {
 		const attempt = { route, groups, ports, rails };
-		const candidate = aroundForPorts(context, attempt) ?? boundaryForPorts(context, attempt);
+		const candidate =
+			aroundForPorts(context, attempt) ??
+			boundaryForPorts(context, attempt, (path) => reservationsAdmit(context, path));
 		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
