@@ -19,6 +19,7 @@
 		onnature,
 		body,
 		label = '',
+		parked = false,
 		element = $bindable(),
 	}: {
 		node: RenderedCanvasNode | UnpositionedCanvasNode;
@@ -33,6 +34,8 @@
 		body?: Snippet | undefined;
 		/** Accessible name of a box being typed. */
 		label?: string;
+		/** A new box left empty: it waits, drawn without the accent of the box being typed. */
+		parked?: boolean;
 		element?: HTMLElement | undefined;
 	} = $props();
 	let color = $derived(node.color ?? node.nature.color);
@@ -127,6 +130,7 @@
 {:else if body}
 	<div
 		class="node-card positioned draft"
+		class:parked
 		role="group"
 		aria-label={label}
 		data-node-draft={node.id}
@@ -206,7 +210,7 @@
 	}
 
 	.positioned.selected,
-	.positioned.draft {
+	.positioned.draft:not(.parked) {
 		outline-color: var(--ui-accent);
 	}
 

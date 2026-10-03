@@ -25,7 +25,9 @@ async function blankCanvasPoint(page: Page) {
 				if (
 					target &&
 					element.contains(target) &&
-					!target.closest('[data-node-id], [data-group-id], [data-junction-id], [data-relation-id]')
+					!target.closest(
+						'[data-node-id], [data-node-draft], [data-group-id], [data-junction-id], [data-relation-id]',
+					)
 				)
 					return { x, y };
 			}
@@ -1218,6 +1220,47 @@ test.describe('box dialog editing and creation', () => {
 		await expect(created).toContainText('Laissée en cliquant ailleurs');
 		await expect(created).toHaveAttribute('aria-pressed', 'false');
 		await expect(other).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	test('an empty box left behind waits, is typed again from a click, and moves to the next box', async ({
+		page,
+	}) => {
+		const parent = page.locator('[data-node-id="ai-content-generation"]');
+		const bar = page.getByLabel('Actions de la saisie');
+		await parent.click();
+		await page.keyboard.press('c');
+		const child = await typedBox(page);
+		const background = await blankCanvasPoint(page);
+		await page.mouse.click(background.x, background.y);
+		await expect(child.draft).toHaveAttribute('data-node-draft', child.id);
+		await expect(child.content).not.toBeFocused();
+		await expect(bar).toHaveCount(0);
+		await expect(page.locator(`[data-node-id="${child.id}"]`)).toHaveCount(0);
+
+		await child.content.click();
+		await expect(child.content).toBeFocused();
+		await expect(bar).toBeVisible();
+		await page.mouse.click(background.x, background.y);
+		await expect(bar).toHaveCount(0);
+
+		await page.mouse.dblclick(background.x, background.y);
+		const root = await typedBox(page);
+		expect(root.id).not.toBe(child.id);
+		await expect(page.locator('[data-node-draft]')).toHaveCount(1);
+		await expect(root.draft).toBeInViewport();
+		await expect(bar).toBeVisible();
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${root.id}"], [data-relation-id][data-edge-to="${root.id}"]`,
+			),
+		).toHaveCount(0);
+
+		const elsewhere = await blankCanvasPoint(page);
+		await page.mouse.click(elsewhere.x, elsewhere.y);
+		await expect(root.content).not.toBeFocused();
+		await page.locator('[data-node-id="traceable-edits"]').dblclick();
+		await expect(page.locator(`[data-node-draft="${root.id}"]`)).toHaveCount(0);
+		await expect(page.locator('[data-node-draft="traceable-edits"]')).toBeVisible();
 	});
 
 	test('new boxes take the nature chosen in the sidebar, children included', async ({ page }) => {

@@ -51,8 +51,15 @@ export interface NodeDraftControls {
 	readonly child: () => void;
 	/** Saves or creates the box, then opens its dialog. */
 	readonly edit: () => void;
-	/** The author went elsewhere: the box is saved or created, and left alone. */
+	/**
+	 * The author went elsewhere: the box is saved or created, and left alone. An empty new box is
+	 * not dropped: it waits, parked, until it is typed again or another box takes its place.
+	 */
 	readonly leave: () => void;
+	/** Left empty, the new box waits without focus nor bar. An existing box never waits. */
+	readonly parked: boolean;
+	/** Types the parked box again. */
+	readonly resume: () => void;
 	readonly cancel: () => void;
 }
 
@@ -115,6 +122,8 @@ export class NodeTyping {
 	#typing = $state.raw<TypedDraft>();
 	/** Proposed boxes that the document does not hold yet; they stay drawn meanwhile. */
 	#pending = $state.raw<readonly NodeDraft[]>([]);
+	/** The empty new box left for later; it stays drawn where it will be created. */
+	#parkedId = $state<string>();
 	readonly #host: NodeTypingHost;
 	readonly #typingId = $derived(this.#typing?.draft.node.id);
 	readonly #editedId = $derived.by(() => {
@@ -162,7 +171,10 @@ export class NodeTyping {
 		return natures.find(({ id }) => id === this.natureId) ?? firstNature(natures);
 	}
 
-	/** Starts typing a new box; `false` without nature, without target, or while a box is edited. */
+	/**
+	 * Starts typing a new box; `false` without nature, without target, or while a box is edited. A
+	 * parked box gives way: the new one takes its place where it is asked for.
+	 */
 	open(request: NodeCreationRequest): boolean {
 		if (this.#host.session.editing !== undefined) return false;
 		const document = withNodeDrafts(this.#host.read(), this.#pending);
@@ -174,15 +186,19 @@ export class NodeTyping {
 		if (plan === undefined) return false;
 		const origin = request.target ?? request.near ?? request.sibling;
 		this.#typing = { draft: plan, markdown: '', origin };
+		this.#parkedId = undefined;
 		this.#host.session.clearSelection();
 		return true;
 	}
 
-	/** Types an existing box in place, as a double-click or Enter on it does. */
+	/** Types an existing box in place, as a double-click or Enter on it does; a parked box goes. */
 	typeInPlace(node: { readonly id: string; readonly bounds: Bounds }): boolean {
 		const { session } = this.#host;
 		session.selectEntity({ kind: EntityKind.Node, id: node.id });
-		return session.beginNodeEdit(node, CanvasEditPresentation.InPlace);
+		if (!session.beginNodeEdit(node, CanvasEditPresentation.InPlace)) return false;
+		if (this.#parkedId !== undefined && this.#parkedId === this.#typingId) this.#typing = undefined;
+		this.#parkedId = undefined;
+		return true;
 	}
 
 	/** Forgets proposed boxes once the document holds them. */
@@ -204,6 +220,7 @@ export class NodeTyping {
 			if (typing !== undefined) void this.#create(typing, after);
 		};
 		const markdown = untrack(() => this.#typing?.markdown ?? '');
+		const parked = (): string | undefined => this.#parkedId;
 		return {
 			id,
 			label: m.common_new_box(),
@@ -226,6 +243,12 @@ export class NodeTyping {
 			},
 			leave: () => {
 				create(AfterCreation.Nothing);
+			},
+			get parked() {
+				return parked() === id;
+			},
+			resume: () => {
+				if (this.#parkedId === id) this.#parkedId = undefined;
 			},
 			cancel: () => {
 				const typing = typed();
@@ -280,6 +303,8 @@ export class NodeTyping {
 			cancel: () => {
 				if (editing() !== undefined) session.cancel();
 			},
+			parked: false,
+			resume: () => undefined,
 		};
 	}
 
@@ -300,11 +325,11 @@ export class NodeTyping {
 		this.open({ target: { kind: EntityKind.Node, id: parent.draft.node.id } });
 	}
 
-	/** An empty box is not created: confirming it cancels it, leaving it drops it. */
+	/** An empty box is not created: confirming it cancels it, leaving it parks it. */
 	async #create(typing: TypedDraft, after: AfterCreation): Promise<void> {
 		const markdown = typing.markdown.trim();
 		if (markdown === '') {
-			if (after === AfterCreation.Nothing) this.#typing = undefined;
+			if (after === AfterCreation.Nothing) this.#parkedId = typing.draft.node.id;
 			else this.#cancel(typing);
 			return;
 		}
