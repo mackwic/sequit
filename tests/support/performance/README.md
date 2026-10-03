@@ -254,6 +254,8 @@ By explicit user decision (2026-10-02, correction before performance), the wave-
 
 No other cell failed or was changed. The 50 ms UX goal remains unchanged.
 
+Group-repair performance slice (2026-10-03, user decision; layouts identical on 3,082 hashed cases): the slice prunes group-route repair only, so these ceilings were re-measured but none could come down. Three `pnpm test:performance` passes on `7562ecce` give `wide-bipartite-layers/1000` 403.38, 400.66 and 425.05 ms (`ceil(425.05 * 1.5 / 5) * 5` = 640 ms, above the 610 ms ceiling, kept) and `subgroups/19` 10.46, 10.16 and 10.48 ms (20 ms kept). Incremental `wide-bipartite-layers` measured 11.17 and 13.21 ms (1-9) and 29.09 and 34.37 ms (50-99) in two passes: both ceilings kept. Those incremental passes ran under machine load from other work (load average 14 to 27) and each failed different, unrelated cells (`subgroups/1-9` and `10-19`, then `wide-bipartite-layers/100-999` and `shallow-groups/20-49`, `50-99`); no ceiling was raised. The D-05 cost (rail untangling, endpoint-family nesting and rail packing in `routeOwnedChannel`) remains to optimize.
+
 ### Lane-profile incremental calibration (2026-09-26)
 
 Three consecutive filtered incremental-gate runs used the same pinned runtime and Apple M1 Max on AC power as the lane snapshot calibration above. The command was `mise exec -- pnpm exec vitest run --config config/vitest.performance.config.ts tests/lib/core/layout/performance/incremental-layout-performance.test.ts -t 'lane-allocations($|-)'`. The **worst total p95** in milliseconds for each growth bucket was:
