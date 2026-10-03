@@ -92,6 +92,16 @@ export function junctionOperatorUpdate(
 	};
 }
 
+/** The nature alone changes; a colour or icon of the box's own stays above the new nature's. */
+export function nodeNatureUpdate(nodeId: string, natureId: string): SharedDocumentCommand {
+	return {
+		op: SharedCommandKind.Update,
+		target: { kind: SharedElementKind.Node, id: nodeId },
+		set: { natureId },
+		unset: [],
+	};
+}
+
 /** The executor derives the container from the members and refuses mixed containers. */
 export function groupCreation(id: string, members: readonly string[]): SharedDocumentCommand {
 	return { op: SharedCommandKind.Group, id, label: 'Groupe', members };

@@ -17,6 +17,7 @@ export enum CanvasShortcutId {
 	Junction = 'junction',
 	Create = 'create',
 	CreateChild = 'create-child',
+	CreateSibling = 'create-sibling',
 	Delete = 'delete',
 	Undo = 'undo',
 	Redo = 'redo',
@@ -137,6 +138,12 @@ export const CANVAS_SHORTCUTS: Readonly<Record<CanvasShortcutId, CanvasShortcut>
 		section: CanvasShortcutSection.Selection,
 		label: m.canvas_shortcut_create_child,
 		keys: ['c'],
+	}),
+	[CanvasShortcutId.CreateSibling]: localized({
+		id: CanvasShortcutId.CreateSibling,
+		section: CanvasShortcutSection.Selection,
+		label: m.canvas_shortcut_create_sibling,
+		keys: ['s'],
 	}),
 	[CanvasShortcutId.Delete]: localized({
 		id: CanvasShortcutId.Delete,

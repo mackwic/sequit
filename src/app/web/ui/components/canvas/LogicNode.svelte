@@ -16,6 +16,7 @@
 		session,
 		tabbable = false,
 		ontype,
+		onnature,
 		body,
 		label = '',
 		element = $bindable(),
@@ -26,6 +27,8 @@
 		tabbable?: boolean;
 		/** Types the box in place on double-click or Enter; without it, they open its dialog. */
 		ontype?: ((node: RenderedCanvasNode) => void) | undefined;
+		/** Opens the nature menu under the header of the box, already alone in the selection. */
+		onnature?: ((nodeId: string, header: HTMLElement) => void) | undefined;
 		/** A box being typed in place: its body is this editor. */
 		body?: Snippet | undefined;
 		/** Accessible name of a box being typed. */
@@ -68,9 +71,24 @@
 		return -1;
 	});
 
+	/** Present on the box alone in the selection: its header then opens its nature menu. */
+	let natureMenu = $derived.by((): '' | undefined => {
+		if (onnature === undefined || !selected || measuring) return undefined;
+		if (session?.selectionCount !== 1) return undefined;
+		return '';
+	});
+	function natureHeader(event: MouseEvent): HTMLElement | undefined {
+		if (natureMenu === undefined) return undefined;
+		if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return undefined;
+		if (!(event.target instanceof Element)) return undefined;
+		return event.target.closest<HTMLElement>('[data-node-header]') ?? undefined;
+	}
+
 	function handleClick(event: MouseEvent) {
 		if (!session || !ref) return;
+		const header = natureHeader(event);
 		activateEntityByPointer(session, ref, event);
+		if (header !== undefined) onnature?.(node.id, header);
 	}
 
 	/** Double-click and Enter type the box in place where the canvas allows it, else open its dialog. */
@@ -139,6 +157,7 @@
 		style:top={pixels(bounds?.y)}
 		style:height={pixels(bounds?.height)}
 		aria-pressed={selected}
+		data-nature-menu={natureMenu}
 		onclick={handleClick}
 		ondblclick={handleDoubleClick}
 		onkeydown={handleKeyDown}
@@ -199,6 +218,14 @@
 	.positioned:focus-visible {
 		outline: 2px dashed var(--ui-accent);
 		outline-offset: 7px;
+	}
+
+	/* The header of the selected box opens its nature menu. */
+	.positioned[data-nature-menu] :global([data-node-header]) {
+		cursor: pointer;
+	}
+	.positioned[data-nature-menu] :global([data-node-header]:hover) {
+		background: color-mix(in srgb, var(--content-color) 22%, white);
 	}
 
 	@media print {

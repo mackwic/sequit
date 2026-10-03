@@ -1259,6 +1259,141 @@ test.describe('box dialog editing and creation', () => {
 			page.locator(`[data-relation-id][data-edge-from="${id}"][data-edge-to="word-ui-options"]`),
 		).toHaveCount(1);
 	});
+
+	test('the handles of the selected box type a child below it and a sibling beside it', async ({
+		page,
+	}) => {
+		const node = page.locator('[data-node-id="ai-content-generation"]');
+		await node.click();
+		await settleCanvasMotion(page);
+		const childHandle = page.locator('[data-node-handle="child"]');
+		const siblingHandle = page.locator('[data-node-handle="sibling"]');
+		await expect(childHandle).toHaveAccessibleName('Créer un enfant de ai-content-generation');
+		await expect(siblingHandle).toHaveAttribute('aria-keyshortcuts', 's');
+		// With the goal at the top, children grow below the box and siblings line up on its right.
+		const centreOf = async (locator: Locator) => {
+			const bounds = required((await locator.boundingBox()) ?? undefined, 'Missing geometry');
+			return { ...bounds, cx: bounds.x + bounds.width / 2, cy: bounds.y + bounds.height / 2 };
+		};
+		const box = await centreOf(node);
+		const child = await centreOf(childHandle);
+		const sibling = await centreOf(siblingHandle);
+		expect(Math.abs(child.cx - box.cx)).toBeLessThan(2);
+		expect(child.cy).toBeGreaterThan(box.y + box.height);
+		expect(sibling.cx).toBeGreaterThan(box.x + box.width);
+		expect(Math.abs(sibling.cy - box.cy)).toBeLessThan(2);
+
+		await childHandle.click();
+		const typedChild = await typedBox(page);
+		await typedChild.content.fill('Child from its handle');
+		await page.keyboard.press('ControlOrMeta+Enter');
+		await expect(
+			page.locator(
+				`[data-relation-id][data-edge-from="${typedChild.id}"][data-edge-to="ai-content-generation"]`,
+			),
+		).toHaveCount(1);
+
+		await node.click();
+		await page.keyboard.press('s');
+		const typedSibling = await typedBox(page);
+		await typedSibling.content.fill('Sibling from S');
+		await page.keyboard.press('ControlOrMeta+Enter');
+		const siblingRelations = page.locator(
+			`[data-relation-id][data-edge-from="${typedSibling.id}"]`,
+		);
+		await expect(siblingRelations).toHaveCount(1);
+		await expect(siblingRelations).toHaveAttribute('data-edge-to', 'reduce-documentary-effort');
+	});
+
+	test('the header of the selected box opens a menu that changes its nature', async ({ page }) => {
+		const node = page.locator('[data-node-id="ai-content-generation"]');
+		const header = node.locator('[data-node-header]');
+		const menu = page.getByRole('menu', { name: 'Nature de la boîte' });
+		// The first click only selects; the header of the selected box opens the menu.
+		await header.click();
+		await expect(node).toHaveAttribute('aria-pressed', 'true');
+		await expect(menu).toHaveCount(0);
+		await header.click();
+		await expect(menu).toBeVisible();
+		const checked = menu.getByRole('menuitemradio', { checked: true });
+		await expect(checked).toHaveCount(1);
+		const other = menu.getByRole('menuitemradio', { checked: false }).first();
+		const label = (await other.textContent())?.trim() ?? '';
+		await other.click();
+		await expect(menu).toHaveCount(0);
+		await expect(header).toHaveText(label, { ignoreCase: true });
+		await expect(node).toBeFocused();
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(header).not.toHaveText(label, { ignoreCase: true });
+	});
+
+	test('dragging a box names what releasing does, and refuses a cycle before letting go', async ({
+		page,
+	}) => {
+		/** Both boxes are neighbours: centring the origin brings the target into view too. */
+		async function dragOnto(from: string, to: string): Promise<Locator> {
+			const source = page.locator(`[data-node-id="${from}"]`);
+			await source.evaluate((element) => {
+				element.scrollIntoView({ block: 'center', inline: 'center' });
+			});
+			await settleCanvasMotion(page);
+			const origin = required((await source.boundingBox()) ?? undefined, 'Missing origin');
+			const target = page.locator(`[data-node-id="${to}"]`);
+			const destination = required((await target.boundingBox()) ?? undefined, 'Missing target');
+			await page.mouse.move(origin.x + origin.width / 2, origin.y + origin.height / 2);
+			await page.mouse.down();
+			await page.mouse.move(
+				destination.x + destination.width / 2,
+				destination.y + destination.height / 2,
+				{ steps: 8 },
+			);
+			return target;
+		}
+		const label = page.locator('[data-drop-label]');
+		const relations = await page.locator('[data-relation-id]').count();
+
+		const goal = await dragOnto('ai-content-generation', 'reduce-documentary-effort');
+		await expect(goal).toHaveAttribute('data-refused-target', 'true');
+		await expect(label).toHaveText('Déjà relié');
+		await page.mouse.up();
+
+		const child = await dragOnto('reduce-documentary-effort', 'ai-content-generation');
+		await expect(child).toHaveAttribute('data-refused-target', 'true');
+		await expect(label).toHaveText('Relation impossible : elle créerait un cycle');
+		await page.mouse.up();
+		await expect(label).toHaveCount(0);
+		await expect(page.getByRole('alert')).toHaveCount(0);
+		await expect(page.locator('[data-relation-id]')).toHaveCount(relations);
+
+		const sibling = await dragOnto('ai-content-generation', 'minimal-workflow-disruption');
+		await expect(sibling).toHaveAttribute('data-connection-target', 'true');
+		await expect(label).toHaveText(/^Relier à « .+ »$/);
+		await page.keyboard.press('Escape');
+		await page.mouse.up();
+		await expect(label).toHaveCount(0);
+	});
+
+	test('an empty canvas invites its first box where it will stand', async ({ page }) => {
+		await page.locator('header button[aria-haspopup="menu"]').click();
+		await page.getByRole('menuitem', { name: 'Nouveau document' }).click();
+		await page
+			.getByRole('dialog', { name: 'Nouveau document' })
+			.getByRole('button', { name: 'Créer', exact: true })
+			.click();
+		await expect(page.locator('[data-node-id]')).toHaveCount(0);
+		const prompt = page.getByRole('button', { name: 'À quoi pensez-vous ?' });
+		await expect(prompt).toBeVisible();
+		const invited = required((await prompt.boundingBox()) ?? undefined, 'Missing prompt');
+		await prompt.click();
+		const { draft, content } = await typedBox(page);
+		await expect(prompt).toHaveCount(0);
+		const typed = required((await draft.boundingBox()) ?? undefined, 'Missing draft');
+		expect(Math.abs(typed.x - invited.x)).toBeLessThan(2);
+		await content.fill('Première idée');
+		await page.keyboard.press('ControlOrMeta+Enter');
+		await expect(page.locator('[data-node-id]')).toHaveCount(1);
+		await expect(prompt).toHaveCount(0);
+	});
 });
 
 test('double-clicking a group title edits its title and color', async ({ page }) => {

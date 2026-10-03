@@ -172,7 +172,8 @@ export class NodeTyping {
 			natureId: this.nature(document.natures)?.id,
 		});
 		if (plan === undefined) return false;
-		this.#typing = { draft: plan, markdown: '', origin: request.target ?? request.near };
+		const origin = request.target ?? request.near ?? request.sibling;
+		this.#typing = { draft: plan, markdown: '', origin };
 		this.#host.session.clearSelection();
 		return true;
 	}

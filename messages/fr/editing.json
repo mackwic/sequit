@@ -106,6 +106,7 @@
 	"editing_context_delete_junction": "Supprimer la jonction",
 	"editing_context_delete_relation": "Supprimer la relation",
 	"editing_context_create_child_aria": "Créer un enfant de {id}",
+	"editing_context_create_sibling_aria": "Créer un frère de {id}",
 	"editing_context_fold_aria": "{label} le groupe {id}",
 	"editing_context_dissolve_aria": "Dissoudre le groupe {id}",
 	"editing_context_dissolve_hint": "Dissoudre : conserve les membres",

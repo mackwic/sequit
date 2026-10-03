@@ -7,9 +7,11 @@
 		type LogicNature,
 	} from '../../../../../lib/core/document/logic-document';
 	import { m } from '../../../i18n/paraglide/messages';
-	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { entityKey, EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { canvasEntityElement } from '../../canvas/canvas-entity-dom';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { hostsJunction } from '../../canvas/junction-insertion';
+	import { handleSides } from '../../canvas/node-handles';
 	import {
 		CanvasEditPresentation,
 		type CanvasSession,
@@ -18,6 +20,7 @@
 	import ContextualBar from './ContextualBar.svelte';
 	import type { NodeDraftControls } from './node-typing.svelte';
 	import NodeEditor from './NodeEditor.svelte';
+	import NodeHandles from './NodeHandles.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import TypingBar from './TypingBar.svelte';
 
@@ -38,6 +41,7 @@
 		onJunctionEdit,
 		onRelationSplit,
 		onCreateChild,
+		onCreateSibling,
 		onDelete,
 	}: {
 		canvas: CanvasModel | undefined;
@@ -57,6 +61,8 @@
 		onRelationSplit?: ((relationId: string) => void) | undefined;
 		/** Starts typing a child of the selected node or junction. */
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
+		/** Starts typing a sibling of the selected node: same parents, group and lane. */
+		onCreateSibling?: ((target: EntityRef) => void) | undefined;
 		onDelete?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
@@ -76,6 +82,8 @@
 		readonly split?: () => void;
 		/** Creates a child of the selected node or junction. */
 		readonly child?: () => void;
+		/** Creates a sibling of the selected node. */
+		readonly sibling?: () => void;
 	}
 	function foldAction(groupId: string | undefined): { fold: FoldAction } | Record<string, never> {
 		const toggle = onGroupToggle;
@@ -97,6 +105,15 @@
 		if (create === undefined) return {};
 		return {
 			child: () => {
+				create(entity);
+			},
+		};
+	}
+	function siblingAction(entity: EntityRef): { sibling: () => void } | Record<string, never> {
+		const create = onCreateSibling;
+		if (create === undefined) return {};
+		return {
+			sibling: () => {
 				create(entity);
 			},
 		};
@@ -143,6 +160,7 @@
 					run: () => session.beginNodeEdit(node),
 				},
 				...childAction(entity),
+				...siblingAction(entity),
 				...foldAction(node.navigation?.groupId),
 			};
 		}
@@ -189,6 +207,21 @@
 		if (!canvas.nodes.some(({ id }) => id === current.id)) return undefined;
 		return current;
 	});
+	/** The « + » handles of the selected box: a child away from the goal, a sibling beside it. */
+	let handles = $derived.by(() => {
+		const actions = contextual;
+		const direction = canvas?.direction;
+		if (actions?.entity.kind !== EntityKind.Node || direction === undefined) return undefined;
+		if (viewportElement === undefined || hideToolbar) return undefined;
+		const { child, sibling } = actions;
+		if (child === undefined || sibling === undefined) return undefined;
+		const anchor = canvasEntityElement(
+			viewportElement,
+			entityKey(EntityKind.Node, actions.entity.id),
+		);
+		if (!(anchor instanceof HTMLElement)) return undefined;
+		return { anchor, nodeId: actions.entity.id, sides: handleSides(direction), child, sibling };
+	});
 </script>
 
 <div
@@ -204,9 +237,13 @@
 			dissolve={contextual.dissolve}
 			split={contextual.split}
 			child={contextual.child}
+			sibling={contextual.sibling}
 			{viewportElement}
 			{onDelete}
 		/>
+	{/if}
+	{#if handles}
+		<NodeHandles {...handles} />
 	{/if}
 	{#if viewportElement && !hideToolbar}
 		<SelectionBar {viewportElement} {session} {onGroup} {onDelete} />

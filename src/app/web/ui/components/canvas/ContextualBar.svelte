@@ -22,6 +22,7 @@
 		dissolve,
 		split,
 		child,
+		sibling,
 		onDelete,
 	}: {
 		entity: EntityRef;
@@ -36,6 +37,8 @@
 		split?: (() => void) | undefined;
 		/** Node or junction only: starts typing a child attached to it. */
 		child?: (() => void) | undefined;
+		/** Node only: starts typing a sibling, reached by `S` and by its handle. */
+		sibling?: (() => void) | undefined;
 		onDelete?: (() => void) | undefined;
 	} = $props();
 	const actionsLabel = {
@@ -99,6 +102,12 @@
 	scopes={[viewportElement, floating]}
 	enabled={child !== undefined}
 	onactivate={() => child?.()}
+/>
+<CanvasShortcut
+	shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.CreateSibling]}
+	scopes={[viewportElement, floating]}
+	enabled={sibling !== undefined}
+	onactivate={() => sibling?.()}
 />
 {#if edit ?? child ?? ownFold ?? dissolve ?? split ?? onDelete}
 	<FloatingActions

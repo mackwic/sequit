@@ -4,6 +4,7 @@ import {
 	CONNECTION_BAND,
 	type DropContext,
 	DropKind,
+	DropRefusal,
 	insideConnectionBand,
 	planDrop,
 } from '../../../../../src/app/web/ui/canvas/drag-drop';
@@ -14,8 +15,17 @@ const CONTAINERS: Record<string, string | undefined> = {
 	inner: 'outer',
 	c: 'outer',
 };
+/** The document refuses `b → other`, as if `other` already reached `b`. */
 function context(from: string, selected: readonly string[] = []): DropContext {
-	return { from, selected, containerOf: (id) => CONTAINERS[id] };
+	return {
+		from,
+		selected,
+		containerOf: (id) => CONTAINERS[id],
+		refuseConnection: (source, to) => {
+			if (source === 'b' && to === 'other') return DropRefusal.Cycle;
+			return undefined;
+		},
+	};
 }
 
 describe('planDrop', () => {
@@ -26,6 +36,18 @@ describe('planDrop', () => {
 		});
 		expect(planDrop(context('a'), { id: 'a', group: false, band: false })).toBeUndefined();
 		expect(planDrop(context('a'), { id: 'outer', group: true, band: true })).toBeUndefined();
+	});
+
+	it('names the refusal of a relation the document would not accept', () => {
+		expect(planDrop(context('b'), { id: 'other', group: false, band: false })).toEqual({
+			kind: DropKind.Refused,
+			reason: DropRefusal.Cycle,
+			to: 'other',
+		});
+		expect(planDrop(context('other'), { id: 'b', group: false, band: false })).toEqual({
+			kind: DropKind.Connect,
+			to: 'b',
+		});
 	});
 
 	it('connects on a group band and moves on its interior', () => {
@@ -57,8 +79,12 @@ describe('planDrop', () => {
 		expect(planDrop(context('b'), undefined)).toBeUndefined();
 	});
 
-	it('never lets a group enter itself or a descendant', () => {
-		expect(planDrop(context('outer'), { id: 'inner', group: true, band: false })).toBeUndefined();
+	it('never lets a group enter itself or a descendant, saying so for a descendant', () => {
+		expect(planDrop(context('outer'), { id: 'inner', group: true, band: false })).toEqual({
+			kind: DropKind.Refused,
+			reason: DropRefusal.Descendant,
+			to: 'inner',
+		});
 		expect(planDrop(context('inner'), { id: 'inner', group: true, band: false })).toBeUndefined();
 		expect(
 			planDrop(context('inner', ['inner', 'b']), { id: 'inner', group: true, band: false }),

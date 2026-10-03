@@ -42,6 +42,7 @@
 		junctionInsertion,
 		junctionOperatorUpdate,
 		layoutUpdate,
+		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { m } from '../../../i18n/paraglide/messages';
@@ -131,6 +132,13 @@
 		if (!interactive) return undefined;
 		return openNatures;
 	});
+	/** An empty canvas invites its first box while the canvas takes commands. */
+	let startAction = $derived.by((): (() => void) | undefined => {
+		if (!interactive) return undefined;
+		return () => {
+			openDraft({});
+		};
+	});
 	function outcomeError(outcome: DocumentCommandOutcome): string | undefined {
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return undefined;
 		if (outcome.kind === DocumentCommandOutcomeKind.Failed)
@@ -171,6 +179,11 @@
 		const current = opened;
 		if (current.ok)
 			void execute(() => current.value.session.dispatch([containerMove(ids, groupId)]));
+	}
+	function changeNature(nodeId: string, natureId: string): void {
+		const current = opened;
+		if (current.ok && interactive)
+			void execute(() => current.value.session.dispatch([nodeNatureUpdate(nodeId, natureId)]));
 	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const current = opened;
@@ -434,6 +447,7 @@
 	aria-label={m.canvas_workspace()}
 >
 	{#if opened.ok && session}
+		{@const current = opened.value}
 		<CanvasShortcut
 			shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Undo]}
 			enabled={interactive && history.undo}
@@ -447,6 +461,7 @@
 		<CanvasGestures
 			{session}
 			enabled={interactive}
+			read={() => current.read()}
 			oncreate={openDraft}
 			onconnect={connect}
 			onmove={moveSelection}
@@ -461,6 +476,8 @@
 				onNodeType={(node: RenderedCanvasNode) => {
 					if (interactive) typing?.typeInPlace(node);
 				}}
+				onNodeNature={changeNature}
+				onStart={startAction}
 				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = canvas;
 					canvasViewport = element;
@@ -476,6 +493,9 @@
 				}}
 				onCreateChild={(target: EntityRef) => {
 					openDraft({ target });
+				}}
+				onCreateSibling={(sibling: EntityRef) => {
+					openDraft({ sibling });
 				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}

@@ -474,6 +474,7 @@ test('Canvas gestures: ghost connection, cancellation, cycle rejection and delet
 	await drag('B', 'A');
 	await expect(alice.locator('.ghost')).toBeVisible();
 	await expect(a).toHaveAttribute('data-connection-target', 'true');
+	await expect(alice.locator('[data-drop-label]')).toContainText('Relier à « ');
 	await alice.keyboard.press('Escape');
 	await alice.mouse.up();
 	await expect(alice.locator('.ghost')).toHaveCount(0);
@@ -484,9 +485,14 @@ test('Canvas gestures: ghost connection, cancellation, cycle rejection and delet
 	await expect(alice.locator('[data-relation-id]')).toHaveCount(1);
 	await drag('A', 'B');
 	await expect(alice.locator('.ghost')).toBeVisible();
-	await expect(b).toHaveAttribute('data-connection-target', 'true');
+	// The cycle is named before letting go; releasing proposes nothing.
+	await expect(b).toHaveAttribute('data-refused-target', 'true');
+	await expect(alice.locator('[data-drop-label]')).toHaveText(
+		'Relation impossible : elle créerait un cycle',
+	);
 	await alice.mouse.up();
-	await expect(alice.getByRole('alert')).toBeVisible();
+	await expect(alice.locator('[data-drop-label]')).toHaveCount(0);
+	await expect(alice.getByRole('alert')).toHaveCount(0);
 	await expect(alice.locator('[data-relation-id]')).toHaveCount(1);
 	await b.click();
 	const relation = alice.locator('[data-relation-id]');

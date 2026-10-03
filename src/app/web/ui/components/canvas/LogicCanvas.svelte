@@ -45,10 +45,12 @@
 	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
+	import MenuSurface from '../ui/MenuSurface.svelte';
 	import CanvasContextMenu from './CanvasContextMenu.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
+	import NatureMenuItems from './NatureMenuItems.svelte';
 	import type { NodeDraftControls } from './node-typing.svelte';
 	import RegionPartialPreview from './RegionPartialPreview.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
@@ -60,6 +62,8 @@
 		lanes = [],
 		draft,
 		onNodeType,
+		onNodeNature,
+		onStart,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -72,6 +76,7 @@
 		onJunctionEdit,
 		onRelationSplit,
 		onCreateChild,
+		onCreateSibling,
 		onManageNatures,
 		onExport,
 		onExportImage,
@@ -87,6 +92,10 @@
 		draft?: NodeDraftControls | undefined;
 		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
+		/** Gives a box another nature; without it, the header of the selected box opens no menu. */
+		onNodeNature?: ((nodeId: string, natureId: string) => void) | undefined;
+		/** Starts typing the first box; without it, an empty canvas invites nothing. */
+		onStart?: (() => void) | undefined;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -97,6 +106,8 @@
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
 		onRelationSplit?: ((relationId: string) => void) | undefined;
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
+		/** Starts typing a sibling of the selected node; its handle and `S` need it. */
+		onCreateSibling?: ((target: EntityRef) => void) | undefined;
 		/** Offered by the background menu, each only when given. */
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
@@ -107,6 +118,28 @@
 		report?: LayoutReportRequest | undefined;
 	} = $props();
 	let measurementModel = $state.raw<CanvasMeasurementModel>();
+	/** The box whose nature menu is open, under its header. */
+	let natureMenu = $state.raw<{ readonly nodeId: string; readonly header: HTMLElement }>();
+	/** The menu lasts while its box stays alone in the selection and nothing is being typed. */
+	let natureMenuNode = $derived.by(() => {
+		const menu = natureMenu;
+		const entity = session.contextualEntity;
+		if (menu === undefined || onNodeNature === undefined || canvas === undefined) return undefined;
+		if (entity?.kind !== EntityKind.Node || entity.id !== menu.nodeId) return undefined;
+		const node = canvas.nodes.find(({ id }) => id === menu.nodeId);
+		if (node === undefined) return undefined;
+		return { id: node.id, natureId: node.nature.id, header: menu.header };
+	});
+	/** A second click on the header closes the menu it opened. */
+	function toggleNatureMenu(nodeId: string, header: HTMLElement): void {
+		if (natureMenuNode?.id === nodeId) natureMenu = undefined;
+		else natureMenu = { nodeId, header };
+	}
+	function closeNatureMenu(restoreFocus: boolean): void {
+		const header = natureMenu?.header;
+		natureMenu = undefined;
+		if (restoreFocus) header?.closest<HTMLElement>('[data-node-id]')?.focus();
+	}
 	let measurementLayer = $state<HTMLDivElement>();
 	let viewport = $state<HTMLDivElement>();
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
@@ -513,6 +546,8 @@
 				{session}
 				{draft}
 				{onNodeType}
+				onNatureMenu={onNodeNature && toggleNatureMenu}
+				{onStart}
 				{onGroupEdit}
 				{onGroupToggle}
 				{onJunctionEdit}
@@ -669,6 +704,7 @@
 			{onJunctionEdit}
 			{onRelationSplit}
 			{onCreateChild}
+			{onCreateSibling}
 			{onDelete}
 		/>
 	{/if}
@@ -685,6 +721,27 @@
 				menuPoint = undefined;
 			}}
 		/>
+	{/if}
+	{#if natureMenuNode && onNodeNature}
+		{@const menu = natureMenuNode}
+		{@const change = onNodeNature}
+		<MenuSurface
+			open
+			label={m.canvas_nature_menu()}
+			anchor={menu.header}
+			owner={menu.header}
+			placement="bottom-start"
+			restoreFocusOnSelect
+			onclose={closeNatureMenu}
+		>
+			<NatureMenuItems
+				{natures}
+				checkedId={menu.natureId}
+				onselect={(natureId: string) => {
+					if (natureId !== menu.natureId) change(menu.id, natureId);
+				}}
+			/>
+		</MenuSurface>
 	{/if}
 	{#if report}
 		<LayoutReport

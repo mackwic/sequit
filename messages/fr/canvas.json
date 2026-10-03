@@ -8,6 +8,7 @@
 	"canvas_shortcut_unfold": "Déplier",
 	"canvas_shortcut_group": "Grouper",
 	"canvas_shortcut_create_child": "Créer un enfant",
+	"canvas_shortcut_create_sibling": "Créer un frère",
 	"canvas_shortcut_draft_child": "Valider et créer un enfant",
 	"canvas_shortcut_draft_edit": "Valider et ouvrir les propriétés",
 	"canvas_shortcut_undo": "Annuler",
@@ -74,5 +75,18 @@
 	"canvas_lanes_title": "Lanes…",
 	"canvas_region_preview": "Aperçu local de la région",
 	"canvas_relation_label": "Relation {id} from {from} to {to}",
-	"canvas_missing_nature": "Missing nature: {id}"
+	"canvas_missing_nature": "Missing nature: {id}",
+	"canvas_drop_connect": "Relier à « {name} »",
+	"canvas_drop_connect_group": "Relier au groupe « {name} »",
+	"canvas_drop_connect_junction": "Relier à la jonction",
+	"canvas_drop_move": "Déplacer dans « {name} »",
+	"canvas_drop_move_selection": "Déplacer la sélection dans « {name} »",
+	"canvas_drop_root": "Sortir du groupe",
+	"canvas_drop_root_selection": "Sortir la sélection des groupes",
+	"canvas_drop_refused": "Relation impossible",
+	"canvas_drop_refused_cycle": "Relation impossible : elle créerait un cycle",
+	"canvas_drop_refused_duplicate": "Déjà relié",
+	"canvas_drop_refused_descendant": "Un groupe n’entre pas dans un de ses sous-groupes",
+	"canvas_empty_prompt": "À quoi pensez-vous ?",
+	"canvas_nature_menu": "Nature de la boîte"
 }

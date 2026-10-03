@@ -50,6 +50,7 @@
 		junctionInsertion,
 		junctionOperatorUpdate,
 		layoutUpdate,
+		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { NODE_TEXT_PLACEHOLDERS } from '../../../document/node-text';
@@ -182,6 +183,13 @@
 		if (!interactive) return undefined;
 		return openNatures;
 	});
+	/** An empty canvas invites its first box while the room takes commands. */
+	let startAction = $derived.by((): (() => void) | undefined => {
+		if (!interactive) return undefined;
+		return () => {
+			openDraft({});
+		};
+	});
 	onMount(() => {
 		const stop = client.subscribeToSourceState((state) => {
 			sourceState = state;
@@ -305,6 +313,9 @@
 	function moveSelection(ids: readonly string[], groupId: string | undefined) {
 		if (!connected || !sourceValid) return;
 		dispatch(containerMove(ids, groupId));
+	}
+	function changeNature(nodeId: string, natureId: string) {
+		if (interactive) dispatch(nodeNatureUpdate(nodeId, natureId));
 	}
 	function deleteSelection() {
 		if (!interactive || canvas.editing) return;
@@ -479,6 +490,7 @@
 		<CanvasGestures
 			session={canvas}
 			enabled={interactive}
+			read={() => model}
 			oncreate={openDraft}
 			onconnect={connect}
 			onmove={moveSelection}
@@ -493,6 +505,8 @@
 				onNodeType={(node: RenderedCanvasNode) => {
 					if (interactive) typing.typeInPlace(node);
 				}}
+				onNodeNature={changeNature}
+				onStart={startAction}
 				oncanvas={(next: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = next;
 					canvasViewport = element;
@@ -509,6 +523,9 @@
 				onRelationSplit={insertJunction}
 				onCreateChild={(target: EntityRef) => {
 					openDraft({ target });
+				}}
+				onCreateSibling={(sibling: EntityRef) => {
+					openDraft({ sibling });
 				}}
 				report={layoutReport}
 			>
