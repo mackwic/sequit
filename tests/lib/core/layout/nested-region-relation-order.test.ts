@@ -14,7 +14,7 @@ import {
 import { RegionLocalLayoutCache } from '../../../../src/lib/core/layout/regions/model/region-local-cache';
 import { solveNestedRegionLayoutForProjection } from '../../../../src/lib/core/layout/regions/recursive/nested-region-layout';
 import { prepareLayoutDocument } from '../../../support/harnesses/layout';
-import { nestedRegionInput, regionDocument } from './nested-region-fixture';
+import { nestedRegionInput, persistedRegionDocument } from './nested-region-fixture';
 
 function geometry(document: LogicDocument, originalIdByCurrent: ReadonlyMap<string, string>) {
 	const sizesByNode = Object.fromEntries(
@@ -79,7 +79,7 @@ function normalizeGeometry(
 
 describe('nested region relation order', () => {
 	it('keeps leaf ports and routes fixed when ids are permuted across local and crossing links', () => {
-		const source = regionDocument();
+		const source = persistedRegionDocument();
 		const document = {
 			...source,
 			layout: { direction: LayoutDirection.LeftToRight, bias: LayoutBias.Left },
