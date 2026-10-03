@@ -383,6 +383,7 @@ function richDocumentArbitraryForCounts(
 					},
 					...emptyHierarchyGroups,
 				];
+				const drawnMembers = options.drawnMembers !== false;
 				const nodes: readonly LogicNode[] = markdown.map((value, index) => {
 					const node: {
 						kind: EndpointKind.Node;
@@ -399,7 +400,7 @@ function richDocumentArbitraryForCounts(
 						markdown: value,
 					};
 					let groupIndex = requiredAt(nodeGroupIndexes, index, 'node group');
-					if (options.drawnMembers === false) {
+					if (!drawnMembers) {
 						groupIndex = -1;
 						if (index === 2) groupIndex = hierarchyGroupIds.length - 1;
 					}
@@ -417,18 +418,21 @@ function richDocumentArbitraryForCounts(
 							operator: JunctionOperator.Xor,
 						};
 						const groupIndex = requiredAt(junctionGroupIndexes, index, 'junction group');
-						if (groupIndex >= 0 && options.drawnMembers !== false)
+						if (groupIndex >= 0 && drawnMembers)
 							junction.groupId = requiredAt(hierarchyGroupIds, groupIndex, 'junction group');
 						return junction;
 					},
 				);
+				// The earlier corpus ranked its endpoints without the populated groups.
+				let populatedGroupEndpointIds: readonly string[] = [];
+				if (drawnMembers) populatedGroupEndpointIds = hierarchyGroupIds;
 				const orderedEndpointIds = [
 					nodeId(0),
 					junctionId(0),
 					groupId(2),
 					groupId(3),
 					...emptyHierarchyGroupIds,
-					...hierarchyGroupIds.filter(() => options.drawnMembers !== false),
+					...populatedGroupEndpointIds,
 					...nodes.slice(2).map(({ id }) => id),
 					...junctions.slice(1).map(({ id }) => id),
 					nodeId(1),
