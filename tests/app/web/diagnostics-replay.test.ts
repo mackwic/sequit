@@ -201,6 +201,56 @@ describe('diagnostic replay privacy boundary', () => {
 		expect(serialized).not.toContain('background');
 	});
 
+	it('keeps exactly the class names the static application stylesheets select', () => {
+		window.history.replaceState(null, '', '/notes/private-note');
+		const rules = (css: string): CSSRuleList => {
+			const style = document.createElement('style');
+			style.textContent = css;
+			document.head.appendChild(style);
+			const sheet = style.sheet;
+			style.remove();
+			if (sheet === null) throw new Error('Expected a parsed stylesheet');
+			return sheet.cssRules;
+		};
+		Object.defineProperty(document, 'styleSheets', {
+			configurable: true,
+			value: [
+				{
+					href: `${window.location.origin}/_app/immutable/assets/app-CVC123.css`,
+					cssRules: rules(String.raw`
+						.node-card.svelte-19wynar, .canvas-lane > .flex { color: red }
+						@media (width < 40rem) { .max-sm\:hidden { display: none } }
+						@supports (color: red) { .bg-\[var\(--ui-bg\)\]:hover, .w-1\.5 { color: red } }
+					`),
+				},
+				// Neither inline nor foreign stylesheets are public application build output.
+				{ href: null, cssRules: rules('.peer-private-name { color: red }') },
+				{
+					href: 'https://secret.example/_app/immutable/assets/app.css',
+					cssRules: rules('.private-class-secret { color: red }'),
+				},
+			],
+		});
+		try {
+			const safe = sanitizeReplayEvent(snapshotEvent(), readRoute);
+			const serialized = JSON.stringify(safe?.properties['$snapshot_data']);
+			expect(serialized).toContain('"class":"node-card"');
+			expect(serialized).toContain('"class":"canvas-lane"');
+			expect(serialized).not.toContain('peer-private-name');
+			expect(serialized).not.toContain('private-class-secret');
+
+			const element = document.createElement('div');
+			const masked = createReplayOptions(readRoute).maskAttributeFn?.(
+				'class',
+				'flex peer-private-name max-sm:hidden bg-[var(--ui-bg)] w-1.5 svelte-19wynar',
+				element,
+			);
+			expect(masked).toBe('flex max-sm:hidden bg-[var(--ui-bg)] w-1.5 svelte-19wynar');
+		} finally {
+			Reflect.deleteProperty(document, 'styleSheets');
+		}
+	});
+
 	it('redacts initial network metadata and rejects network content and untemplated routes', () => {
 		const options = createReplayOptions(readRoute);
 		const maskRequest = options.maskCapturedNetworkRequestFn;

@@ -1,27 +1,5 @@
 import { safeRoute } from './diagnostics-data';
 
-const CLASS_NAMES: Record<string, true> = {
-	absolute: true,
-	'canvas-group': true,
-	'canvas-lane': true,
-	'canvas-lane-label': true,
-	'canvas-region': true,
-	'canvas-region-label': true,
-	contents: true,
-	draft: true,
-	'group-fold': true,
-	'group-header': true,
-	junction: true,
-	'min-h-full': true,
-	'min-w-full': true,
-	'node-card': true,
-	'pointer-events-none': true,
-	positioned: true,
-	relative: true,
-	selected: true,
-	'shrink-0': true,
-	'z-10': true,
-};
 export function number(value: unknown): number | undefined {
 	if (typeof value !== 'number') return undefined;
 	if (!Number.isFinite(value)) return undefined;
@@ -64,12 +42,6 @@ function safeStyleValue(property: string, value: string): boolean {
 			value,
 		);
 	return false;
-}
-export function safeClass(value: string): string {
-	return value
-		.split(/\s+/)
-		.filter((name) => CLASS_NAMES[name] === true || /^svelte-[a-zA-Z0-9]+$/.test(name))
-		.join(' ');
 }
 export function staticCss(value: string, tag: string, rel: unknown): boolean {
 	if (tag !== 'LINK' || rel !== 'stylesheet') return false;

@@ -98,11 +98,11 @@ are disabled. Diagnostics are pseudonymous, not a guarantee of anonymous data.
 
 Replay masks all text and inputs, blocks editable fields, images, media, embedded content and
 canvas pixels, and removes document/participant identifiers and arbitrary DOM attributes.
-Only approved HTML/SVG geometry, static application stylesheet links, interaction coordinates,
-viewport metadata and safe route templates survive the final payload filter. The SDK's URL-only
-navigation masking callback preserves this metadata without keeping document URLs. Arbitrary
-styles, network headers and bodies, JSON-LD, plugin/custom events and opaque packed snapshots
-do not pass this filter.
+Only approved HTML/SVG geometry, static application stylesheet links, the class names those
+stylesheets select, interaction coordinates, viewport metadata and safe route templates survive
+the final payload filter. The SDK's URL-only navigation masking callback preserves this metadata
+without keeping document URLs. Arbitrary styles, network headers and bodies, JSON-LD,
+plugin/custom events and opaque packed snapshots do not pass this filter.
 Per-event replay compression is disabled so the filter can inspect every event; transport
 compression remains available.
 

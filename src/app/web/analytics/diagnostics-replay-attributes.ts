@@ -1,9 +1,9 @@
 import { plainRecord } from './diagnostics-data';
+import { safeClass } from './diagnostics-replay-classes';
 import {
 	cleanStyle,
 	mask,
 	number,
-	safeClass,
 	safeColor,
 	safeLength,
 	staticCss,
