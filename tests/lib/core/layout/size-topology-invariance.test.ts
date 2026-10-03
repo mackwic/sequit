@@ -39,9 +39,10 @@ describe('topology independent of node sizes', () => {
 		expect(after).toEqual(before);
 	});
 
-	// Known defect: the complete 2 × 2 bipartite graph needs one crossing. Once d grows, the
-	// arrivals of a and b on d run on columns 2 units apart and cross each other twice.
-	it.fails('keeps one crossing in a complete 2 × 2 graph when a target grows', async () => {
+	// The complete 2 × 2 bipartite graph needs one crossing. Once d grows, the arrivals of a and b
+	// on d run on columns 2 units apart; their rails used to be colored in the wrong order and
+	// crossed each other twice, until rails of one family were nested (D-05).
+	it('keeps one crossing in a complete 2 × 2 graph when a target grows', async () => {
 		const [before, after] = await topologies({
 			nodes: {
 				a: { width: 200, height: 60 },
