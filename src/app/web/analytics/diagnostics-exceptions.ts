@@ -20,26 +20,45 @@ const SAFE_LEVELS: Record<string, true> = {
 	info: true,
 	debug: true,
 };
+// Application error classes carry code names, never user data.
+const ERROR_CLASS_NAME = /^[A-Z][\w$]{0,63}(Error|Exception)$/u;
+// Minified or source function names, e.g. `Object.foo`, `new Bar` or `<anonymous>`.
+const FUNCTION_NAME = /^[\w$.<> -]{1,200}$/u;
+const UNKNOWN_FUNCTION = '?';
+
 function safeErrorType(value: unknown): string {
 	if (typeof value !== 'string') return 'Error';
-	if (!Object.hasOwn(SAFE_ERROR_TYPES, value)) return 'Error';
+	if (Object.hasOwn(SAFE_ERROR_TYPES, value)) return value;
+	if (ERROR_CLASS_NAME.test(value)) return value;
+	return 'Error';
+}
+
+function safeFunctionName(value: unknown): string {
+	if (typeof value !== 'string') return UNKNOWN_FUNCTION;
+	if (!FUNCTION_NAME.test(value)) return UNKNOWN_FUNCTION;
 	return value;
 }
 
+/**
+ * Keeps the absolute script URL of application chunks: PostHog only resolves source maps for
+ * `http(s)` frames, and these are public build assets, never document URLs.
+ */
 function safeFramePath(value: unknown): string | undefined {
 	if (typeof value !== 'string') return undefined;
 	if (value.length > 512) return undefined;
 	if (value.includes('?') || value.includes('#')) return undefined;
+	let origin = '';
 	let path = value;
 	if (/^https?:\/\//iu.test(value)) {
 		const url = new URL(value);
+		origin = url.origin;
 		path = url.pathname;
 	}
 	if (path.split('/').some((segment) => segment === '.' || segment === '..')) return undefined;
 	const buildPath = /^\/_app\/immutable\/(assets|chunks|entry|nodes|start)\/[\w./-]+\.js$/u;
 	const sourcePath = /^\/src\/(app\/web|lib)\/[\w./-]+\.(js|ts|svelte)$/u;
 	if (!buildPath.test(path) && !sourcePath.test(path)) return undefined;
-	return path;
+	return `${origin}${path}`;
 }
 
 function safePosition(value: unknown, allowZero = false): number | undefined {
@@ -57,6 +76,7 @@ function sanitizeFrame(value: unknown): Record<string, unknown> | null | undefin
 	const frame: Record<string, unknown> = {
 		filename: path,
 		abs_path: path,
+		function: safeFunctionName(ownValue(value, 'function')),
 		platform: 'web:javascript',
 		in_app: true,
 	};

@@ -38,6 +38,7 @@
 		type SharedDocumentCommand,
 		SharedElementKind as Kind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { dispatchEditorAction } from '../../../analytics/editor-actions';
 	import {
 		containerMove,
 		deletion,
@@ -239,7 +240,7 @@
 		if (!sourceValid) return false;
 		let decision: Promise<DocumentCommandOutcome>;
 		try {
-			decision = client.dispatch(commands);
+			decision = dispatchEditorAction(client, commands);
 		} catch (failure) {
 			error = translateSessionError(failure);
 			return false;
@@ -259,7 +260,7 @@
 		if (!connected || !sourceValid) return Promise.resolve(false);
 		let decision: Promise<DocumentCommandOutcome>;
 		try {
-			decision = client.dispatch(commands);
+			decision = dispatchEditorAction(client, commands);
 		} catch (failure) {
 			error = translateSessionError(failure);
 			return Promise.resolve(false);

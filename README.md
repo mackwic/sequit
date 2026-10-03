@@ -61,10 +61,22 @@ project token defaults to Sequit's project; `.env.example` documents `PUBLIC_POS
 `PUBLIC_POSTHOG_ENABLED`. Set the latter to `true` to exercise the integration locally, or `false`
 to disable it. These are public configuration values, not personal API credentials.
 
-The browser sends pageviews and technical diagnostics through the same-origin SvelteKit route `/ingest`. The proxy uses
+The browser sends pageviews, editor actions and technical diagnostics through the same-origin SvelteKit route `/ingest`. The proxy uses
 fixed PostHog EU API and asset hosts, strips credentials, cookies, referrers and visitor IP
 headers, and does not follow upstream redirects. Pageviews contain the SvelteKit route template,
 never document identifiers, query parameters, fragments or graph content. The workshop is excluded.
+
+Both workspaces send their editor batches through `dispatchEditorAction`
+(`src/app/web/analytics/editor-actions.ts`), which names each accepted batch from its commands and
+counts it with the same identity and route template as pageviews: `node_created` (with `linked`
+when typed from an existing box), `nodes_pasted` (several boxes), `nodes_linked`,
+`node_nature_changed`, `selection_deleted`, `elements_moved`, `group_created`, `group_edited`,
+`group_dissolved`, `group_toggled`, `junction_inserted`, `junction_edited`, `nature_created`,
+`nature_edited`, `nature_deleted`, `natures_imported`, `layout_changed` and `lanes_edited`.
+Undo and redo replay history and are not counted. A group or nature label is shared text: the
+single-user editor counts its rename when the dialog saves it, while live label edits in a
+collaborative session send no command and are not counted. The only properties are an element
+`count` and the `linked` flag; labels, text, colours and identifiers are never sent.
 
 Before consent, and after refusal or withdrawal, visits use PostHog's cookieless mode without
 analytics browser storage. Accepting allows a pseudonymous identifier in local storage to
@@ -90,9 +102,12 @@ compression remains available.
 
 All free-form console log bodies and error messages become `[redacted]`. Logs retain severity,
 timing, ephemeral correlation and the safe route, not caller-supplied attributes. Exceptions
-retain approved error types and application stack-file paths with line/column positions, but
-not function names, source contexts, custom fields or raw browser URLs. Existing layout reports
-keep their document text and identifier anonymization and are not sent to PostHog.
+retain approved error types, application error class names, and application frames: their
+script URL, line/column position and code function name, but not source contexts, custom fields
+or raw browser URLs. Production builds publish source maps next to their chunks, so PostHog
+resolves these frames to the original source; the repository is public, so the maps disclose
+nothing new. Existing layout reports keep their document text and identifier anonymization and
+are not sent to PostHog.
 
 **Enable cookieless tracking and Session Replay in the PostHog project settings before deployment.**
 Cookieless ingestion can answer HTTP 200 while the project discards those events; replay requires

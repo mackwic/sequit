@@ -30,6 +30,8 @@
 		type SharedDocumentCommand,
 		SharedElementKind,
 	} from '../../../../../lib/infrastructure/document/shared-document-command';
+	import { captureProductEvent, ProductEvent } from '../../../analytics/analytics';
+	import { dispatchEditorAction } from '../../../analytics/editor-actions';
 	import {
 		containerMove,
 		deletion,
@@ -182,18 +184,24 @@
 		const current = opened;
 		if (current.ok)
 			void execute(() =>
-				current.value.session.dispatch([relationCreation({ id: crypto.randomUUID(), from, to })]),
+				dispatchEditorAction(current.value.session, [
+					relationCreation({ id: crypto.randomUUID(), from, to }),
+				]),
 			);
 	}
 	function moveSelection(ids: readonly string[], groupId: string | undefined) {
 		const current = opened;
 		if (current.ok)
-			void execute(() => current.value.session.dispatch([containerMove(ids, groupId)]));
+			void execute(() =>
+				dispatchEditorAction(current.value.session, [containerMove(ids, groupId)]),
+			);
 	}
 	function changeNature(nodeId: string, natureId: string): void {
 		const current = opened;
 		if (current.ok && interactive)
-			void execute(() => current.value.session.dispatch([nodeNatureUpdate(nodeId, natureId)]));
+			void execute(() =>
+				dispatchEditorAction(current.value.session, [nodeNatureUpdate(nodeId, natureId)]),
+			);
 	}
 	/** The nature new boxes take in this view, chosen from the side bar or the empty canvas. */
 	function chooseNextNature(natureId: string): void {
@@ -217,12 +225,15 @@
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
 				throw new Error(m.canvas_group_gone({ id: editing.id }));
 			const style = groupStyleUpdate(editing.id, editing.base, editing.draft);
-			if (style === undefined)
+			if (style === undefined) {
+				// A label is shared text, saved without a command: count its rename here.
+				if (label !== editing.base.label) captureProductEvent(ProductEvent.GroupEdited);
 				return Promise.resolve({
 					kind: DocumentCommandOutcomeKind.Accepted,
 					document: current.value.read(),
 				});
-			return current.value.session.dispatch([style]);
+			}
+			return dispatchEditorAction(current.value.session, [style]);
 		});
 		if (saved) editingGroup = undefined;
 	}
@@ -230,7 +241,7 @@
 		const current = opened;
 		if (!current.ok || !session || busy) return;
 		const dissolved = await execute(() =>
-			current.value.session.dispatch([groupDissolution(groupId)]),
+			dispatchEditorAction(current.value.session, [groupDissolution(groupId)]),
 		);
 		if (!dissolved) return;
 		editingGroup = undefined;
@@ -241,19 +252,20 @@
 		if (!current.ok || busy) return;
 		const group = current.value.read().groups.find(({ id }) => id === groupId);
 		if (group === undefined) return;
-		void execute(() => current.value.session.dispatch([groupFoldToggle(group)]));
+		void execute(() => dispatchEditorAction(current.value.session, [groupFoldToggle(group)]));
 	}
 	function changeLayout(next: LayoutConfiguration): void {
 		const current = opened;
 		if (!current.ok || busy) return;
-		void execute(() => current.value.session.dispatch([layoutUpdate(next)]));
+		void execute(() => dispatchEditorAction(current.value.session, [layoutUpdate(next)]));
 	}
 	function deleteSelection() {
 		const current = opened;
 		if (!current.ok || !session || !interactive) return;
 		const selected = [...session.selection.values()];
 		void execute(() =>
-			current.value.session.dispatch(
+			dispatchEditorAction(
+				current.value.session,
 				deletion(
 					current.value.read(),
 					selected.filter(({ kind }) => kind !== EntityKind.Relation).map(({ id }) => id),
@@ -292,7 +304,9 @@
 			error = m.canvas_clipboard_invalid();
 			return;
 		}
-		const accepted = await execute(() => current.value.session.dispatch(plan.commands));
+		const accepted = await execute(() =>
+			dispatchEditorAction(current.value.session, plan.commands),
+		);
 		if (!accepted) return;
 		session.clearSelection();
 		for (const id of plan.ids) session.addEntity({ kind: EntityKind.Node, id });
@@ -313,7 +327,7 @@
 		if (!current.ok || !session || members === undefined || busy) return;
 		const groupId = crypto.randomUUID();
 		const grouped = await execute(() =>
-			current.value.session.dispatch([groupCreation(groupId, members)]),
+			dispatchEditorAction(current.value.session, [groupCreation(groupId, members)]),
 		);
 		if (!grouped) return;
 		session.selectEntity({ kind: EntityKind.Group, id: groupId });
@@ -332,7 +346,9 @@
 		if (!current.ok || editing === undefined || busy) return;
 		if (editing.draft !== editing.base) {
 			const saved = await execute(() =>
-				current.value.session.dispatch([junctionOperatorUpdate(editing.id, editing.draft)]),
+				dispatchEditorAction(current.value.session, [
+					junctionOperatorUpdate(editing.id, editing.draft),
+				]),
 			);
 			if (!saved) return;
 		}
@@ -350,7 +366,7 @@
 		});
 		if (plan === undefined) return;
 		const inserted = await execute(() =>
-			current.value.session.dispatch(junctionInsertion(current.value.read(), plan)),
+			dispatchEditorAction(current.value.session, junctionInsertion(current.value.read(), plan)),
 		);
 		if (!inserted) return;
 		session.selectEntity({ kind: EntityKind.Junction, id: plan.junction.id });
@@ -373,7 +389,7 @@
 	async function saveLanes(command: SharedDocumentCommand): Promise<void> {
 		const current = opened;
 		if (!current.ok || busy) return;
-		const saved = await execute(() => current.value.session.dispatch([command]));
+		const saved = await execute(() => dispatchEditorAction(current.value.session, [command]));
 		if (saved) lanesDialog = false;
 	}
 	function selectNature(natureId: string): void {
@@ -387,7 +403,7 @@
 		if (!current.ok || editing === undefined || busy) return false;
 		if (editing.mode === NatureEditingMode.Create)
 			return execute(() =>
-				current.value.session.dispatch([natureCreation(editing.id, editing.draft)]),
+				dispatchEditorAction(current.value.session, [natureCreation(editing.id, editing.draft)]),
 			);
 		const target = { kind: SharedElementKind.Nature, id: editing.id } as const;
 		const label = editing.draft.label.trim();
@@ -395,12 +411,14 @@
 			if (label !== editing.base.label && !current.value.session.updateText(target, 'label', label))
 				throw new Error(m.canvas_nature_gone({ id: editing.id }));
 			const update = natureUpdate(editing.id, editing.base, editing.draft);
-			if (update === undefined)
+			if (update === undefined) {
+				if (label !== editing.base.label) captureProductEvent(ProductEvent.NatureEdited);
 				return Promise.resolve({
 					kind: DocumentCommandOutcomeKind.Accepted,
 					document: current.value.read(),
 				});
-			return current.value.session.dispatch([update]);
+			}
+			return dispatchEditorAction(current.value.session, [update]);
 		});
 	}
 	async function deleteNature(replacementId: string | undefined): Promise<void> {
@@ -409,7 +427,7 @@
 		if (!current.ok || editing === undefined || busy) return;
 		const next = natureAfterRemoval(natures, editing.id, replacementId);
 		const removed = await execute(() =>
-			current.value.session.dispatch([natureDeletion(editing.id, replacementId)]),
+			dispatchEditorAction(current.value.session, [natureDeletion(editing.id, replacementId)]),
 		);
 		if (removed) editingNature = next && natureEditing(next);
 	}
@@ -417,7 +435,7 @@
 		const current = opened;
 		const commands = natureFamilyImport(natures, family);
 		if (!current.ok || commands.length === 0 || busy) return;
-		await execute(() => current.value.session.dispatch(commands));
+		await execute(() => dispatchEditorAction(current.value.session, commands));
 	}
 	let session = $derived.by(() => {
 		if (!opened.ok) return undefined;
@@ -446,7 +464,7 @@
 		if (!current.ok || canvas === undefined) return undefined;
 		return new NodeTyping({
 			read: () => current.value.read(),
-			submit: (commands) => execute(() => current.value.session.dispatch(commands)),
+			submit: (commands) => execute(() => dispatchEditorAction(current.value.session, commands)),
 			session: canvas,
 			canvas: () => canvasModel,
 		});

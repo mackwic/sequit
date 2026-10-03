@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	captureAnalyticsPageview,
+	captureProductEvent,
 	initializeAnalytics,
+	ProductEvent,
 	readAnalyticsConsent,
 	setAnalyticsConsent,
 } from '../../../src/app/web/analytics/analytics';
@@ -16,7 +18,7 @@ afterEach(async () => {
 });
 
 describe('analytics privacy boundary', () => {
-	it('sends only anonymized route-template pageviews through consent transitions', () => {
+	it('sends only anonymized route-template pageviews and editor actions through consent transitions', () => {
 		window.history.replaceState(null, '', '/notes/private-note?query-secret#fragment-secret');
 		Object.defineProperty(document, 'referrer', {
 			configurable: true,
@@ -76,6 +78,7 @@ describe('analytics privacy boundary', () => {
 		captureAnalyticsPageview('/atelier/reports');
 		captureAnalyticsPageview(null);
 		posthog.capture('private-custom-event', { private_data: 'private-custom-event-data' });
+		captureProductEvent(ProductEvent.GroupCreated, { count: 2 });
 		expect(events).toHaveLength(2);
 
 		setAnalyticsConsent(false);
@@ -85,6 +88,30 @@ describe('analytics privacy boundary', () => {
 		expect(events).toHaveLength(3);
 		expect(events[2]?.properties['$cookieless_mode']).toBe(true);
 		expect(events[2]?.properties['distinct_id']).not.toBe(events[1]?.properties['distinct_id']);
+
+		captureProductEvent(ProductEvent.NodeCreated, { linked: true });
+		posthog.capture(ProductEvent.NodesPasted, {
+			count: 3.5,
+			linked: 'yes',
+			label: 'private-node-label',
+		});
+		posthog.capture(ProductEvent.SelectionDeleted, {
+			count: 4,
+			$set: { email: 'private-email@example.test' },
+		});
+		const route = {
+			token: 'phc_test-public-key',
+			distinct_id: expect.any(String) as unknown,
+			$geoip_disable: true,
+			$current_url: expectedUrl,
+			$pathname: '/notes/[noteId]',
+			$cookieless_mode: true,
+		};
+		expect(events.slice(3).map(({ event, properties }) => ({ event, properties }))).toEqual([
+			{ event: 'node_created', properties: { ...route, linked: true } },
+			{ event: 'nodes_pasted', properties: route },
+			{ event: 'selection_deleted', properties: { ...route, count: 4 } },
+		]);
 
 		const serialized = JSON.stringify(events);
 		for (const secret of [
@@ -96,6 +123,8 @@ describe('analytics privacy boundary', () => {
 			'private-document-title',
 			'private-custom-property',
 			'private-custom-event-data',
+			'private-node-label',
+			'private-email@example.test',
 		])
 			expect(serialized).not.toContain(secret);
 

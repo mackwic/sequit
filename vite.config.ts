@@ -28,6 +28,8 @@ export default defineConfig({
 			'fast-diff',
 		],
 	},
+	// Public maps let PostHog resolve minified error frames; the AGPL source is public anyway.
+	build: { sourcemap: true },
 	plugins: [
 		productionBoundaries(),
 		paraglideVitePlugin(paraglideOptions),

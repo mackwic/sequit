@@ -12,6 +12,39 @@ interface SafeRoute {
 	currentUrl: string;
 }
 
+/** Editor actions, counted to understand usage; they never carry document content or identifiers. */
+export enum ProductEvent {
+	NodeCreated = 'node_created',
+	NodesLinked = 'nodes_linked',
+	NodesPasted = 'nodes_pasted',
+	NodeNatureChanged = 'node_nature_changed',
+	SelectionDeleted = 'selection_deleted',
+	ElementsMoved = 'elements_moved',
+	GroupCreated = 'group_created',
+	GroupEdited = 'group_edited',
+	GroupDissolved = 'group_dissolved',
+	GroupToggled = 'group_toggled',
+	JunctionInserted = 'junction_inserted',
+	JunctionEdited = 'junction_edited',
+	NatureCreated = 'nature_created',
+	NatureEdited = 'nature_edited',
+	NatureDeleted = 'nature_deleted',
+	NaturesImported = 'natures_imported',
+	LayoutChanged = 'layout_changed',
+	LanesEdited = 'lanes_edited',
+}
+
+/** The only properties an editor action may carry: shapes of the action, never its content. */
+export interface ProductEventProperties {
+	/** How many elements the action created, moved or removed. */
+	readonly count?: number;
+	/** Whether a new box was linked to an existing one as it was created. */
+	readonly linked?: boolean;
+}
+
+const PRODUCT_EVENTS = new Set<string>(Object.values(ProductEvent));
+const MAX_PRODUCT_COUNT = 10_000;
+
 let initialized = false;
 let activeRoute: SafeRoute | undefined;
 
@@ -42,10 +75,21 @@ function localStorageOrUndefined(): Storage | undefined {
 	}
 }
 
+function productProperties(properties: CaptureResult['properties']): ProductEventProperties {
+	const count: unknown = properties['count'];
+	const linked: unknown = properties['linked'];
+	const safe: { count?: number; linked?: boolean } = {};
+	const countable = Number.isSafeInteger(count) && Number(count) >= 0;
+	if (countable && Number(count) <= MAX_PRODUCT_COUNT) safe.count = Number(count);
+	if (typeof linked === 'boolean') safe.linked = linked;
+	return safe;
+}
+
 function beforeSend(event: CaptureResult | null): CaptureResult | null {
 	const route = activeRoute;
-	if (event?.event !== '$pageview') return null;
-	if (route === undefined) return null;
+	if (event === null || route === undefined) return null;
+	const pageview = event.event === '$pageview';
+	if (!pageview && !PRODUCT_EVENTS.has(event.event)) return null;
 
 	const token: unknown = event.properties['token'];
 	const distinctId: unknown = event.properties['distinct_id'];
@@ -61,8 +105,9 @@ function beforeSend(event: CaptureResult | null): CaptureResult | null {
 		$current_url: route.currentUrl,
 		$pathname: route.pathname,
 	};
+	if (!pageview) Object.assign(properties, productProperties(event.properties));
 	if (event.properties['$cookieless_mode'] === true) properties['$cookieless_mode'] = true;
-	const sanitized: CaptureResult = { event: '$pageview', uuid: event.uuid, properties };
+	const sanitized: CaptureResult = { event: event.event, uuid: event.uuid, properties };
 	if (event.timestamp !== undefined) sanitized.timestamp = event.timestamp;
 	return sanitized;
 }
@@ -87,7 +132,7 @@ function safeRoute(routeId: string | null): SafeRoute | undefined {
 	};
 }
 
-/** Initializes the pageview-only analytics client once, in the browser. */
+/** Initializes the pageview and editor-action analytics client once, in the browser. */
 export function initializeAnalytics(config: AnalyticsConfig): void {
 	if (initialized) return;
 	if (typeof window === 'undefined') return;
@@ -148,6 +193,15 @@ export function captureAnalyticsPageview(routeId: string | null): void {
 		$pathname: activeRoute.pathname,
 		$geoip_disable: true,
 	});
+}
+
+/** Counts an accepted editor action on the current safe route; the workshop is never measured. */
+export function captureProductEvent(
+	event: ProductEvent,
+	properties: ProductEventProperties = {},
+): void {
+	if (!initialized || activeRoute === undefined) return;
+	posthog.capture(event, { ...properties, $geoip_disable: true });
 }
 
 /** Returns a saved analytics choice, or undefined while consent is pending/unavailable. */

@@ -38,7 +38,7 @@ describe('diagnostic privacy boundary', () => {
 		expect(JSON.stringify(sanitized)).not.toContain('secret-123');
 	});
 
-	it('keeps only safe exception types, app frames, positions, ephemeral ids and a route template', () => {
+	it('keeps resolvable app frames, code names, positions, ephemeral ids and a route template', () => {
 		const event: CaptureResult = {
 			event: '$exception',
 			uuid: EVENT_ID,
@@ -79,13 +79,18 @@ describe('diagnostic privacy boundary', () => {
 									filename: '/src/app/web/app.ts',
 									lineno: 12,
 									colno: 4,
+									function: 'alice@example.com',
 								},
 							],
 						},
 					},
 					{
-						type: 'UnhandledRejection',
+						type: 'LayoutMeasurementError',
 						value: 'Rejected promise included private details',
+					},
+					{
+						type: 'alice@example.com',
+						value: 'Private type',
 					},
 				],
 				$sentry_exception: { message: 'private nested exception' },
@@ -104,8 +109,9 @@ describe('diagnostic privacy boundary', () => {
 						type: 'raw',
 						frames: [
 							{
-								filename: '/_app/immutable/nodes/3.C2x.js',
-								abs_path: '/_app/immutable/nodes/3.C2x.js',
+								filename: 'https://app.example/_app/immutable/nodes/3.C2x.js',
+								abs_path: 'https://app.example/_app/immutable/nodes/3.C2x.js',
+								function: 'savePrivateDocument',
 								platform: 'web:javascript',
 								in_app: true,
 								lineno: 41,
@@ -114,6 +120,7 @@ describe('diagnostic privacy boundary', () => {
 							{
 								filename: '/src/app/web/app.ts',
 								abs_path: '/src/app/web/app.ts',
+								function: '?',
 								platform: 'web:javascript',
 								in_app: true,
 								lineno: 12,
@@ -122,7 +129,8 @@ describe('diagnostic privacy boundary', () => {
 						],
 					},
 				},
-				{ type: 'UnhandledRejection', value: '[redacted]' },
+				{ type: 'LayoutMeasurementError', value: '[redacted]' },
+				{ type: 'Error', value: '[redacted]' },
 			],
 			$exception_type: 'TypeError',
 			$exception_message: '[redacted]',

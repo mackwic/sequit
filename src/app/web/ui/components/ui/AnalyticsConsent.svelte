@@ -41,8 +41,11 @@
 	aria-labelledby="analytics-consent-title"
 >
 	<h2 id="analytics-consent-title">{m.common_analytics_title()}</h2>
-	<p>{m.common_analytics_description()}</p>
-	<p>{m.common_analytics_diagnostics()}</p>
+	<p>{m.common_analytics_intro()}</p>
+	<h3>{m.common_analytics_consent_heading()}</h3>
+	<p>{m.common_analytics_consent()}</p>
+	<h3>{m.common_analytics_always_heading()}</h3>
+	<p>{m.common_analytics_always()}</p>
 	{#if choice !== undefined}
 		<p class="current-choice">
 			{#if choice}
@@ -95,6 +98,14 @@
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
+	}
+	.panel h3 {
+		margin: 0.75rem 0 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+	.panel h3 + p {
+		margin-top: 0.25rem;
 	}
 	.panel p {
 		margin: 0.5rem 0 0;
