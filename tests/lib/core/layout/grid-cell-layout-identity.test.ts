@@ -118,4 +118,30 @@ describe('bounded grid LayoutResult identity', () => {
 		const identity = new Map(relations.map(({ id }) => [id, id]));
 		expect(solve(renamedDocument, originalIdByRenamed)).toEqual(solve(originalDocument, identity));
 	});
+
+	it('returns selected relation routes and portals sorted by relation id', () => {
+		const source = gridDocument();
+		const relations = [
+			...source.relations,
+			{ id: 'second-crossing', from: 'a-bottom', to: 'c' },
+			{ id: 'third-crossing', from: 'a-top', to: 'd' },
+		];
+		const prepared = prepareGrid({ ...source, relations });
+		const result = solveGridCellLayout(prepared.graph, prepared.measurements, gridInput());
+		if (result.status !== GridCellLayoutStatus.Selected)
+			throw new Error(`Expected a selected grid: ${result.reason}`);
+		expect(result.layout.relations.map(({ id }) => id)).toEqual(
+			relations.map(({ id }) => id).toSorted(compareCanonicalStrings),
+		);
+		expect(result.portals.map(({ relationId }) => relationId)).toEqual(
+			[
+				'across-grid',
+				'across-grid',
+				'second-crossing',
+				'second-crossing',
+				'third-crossing',
+				'third-crossing',
+			].toSorted(compareCanonicalStrings),
+		);
+	});
 });
