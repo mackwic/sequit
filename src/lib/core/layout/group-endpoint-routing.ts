@@ -97,8 +97,17 @@ function contactsAnotherRoute(candidate: LayoutRelation, context: RoutingContext
 
 /** The checks of an admissible path that the route reservations decide. */
 function reservationsAdmit(context: RoutingContext, candidate: LayoutRelation): boolean {
-	if (attachmentReservedBy(context, candidate, context.pending)) return false;
-	return !contactsAnotherRoute(candidate, context);
+	let key = '';
+	for (const { x, y } of candidate.points) key += `${x},${y};`;
+	if (context.refusedPaths.has(key)) return false;
+	if (
+		attachmentReservedBy(context, candidate, context.pending) ||
+		contactsAnotherRoute(candidate, context)
+	) {
+		context.refusedPaths.add(key);
+		return false;
+	}
+	return true;
 }
 
 function admissiblePath(
@@ -223,6 +232,7 @@ function routeBrokenAlone(route: LayoutRelation, context: RoutingContext): boole
 function repairRoute(context: RoutingContext, route: LayoutRelation): LayoutRelation | undefined {
 	// A target can sit only 24px beyond a foreign frame. Preserve physical
 	// disjointness when the preferred 24px envelope cannot fit at its face.
+	context.refusedPaths.clear();
 	for (const offsets of faceOffsetWindows(context, route))
 		for (const clearance of [RAIL_SPACING, 0]) {
 			const groups = foreignGroupObstacles(context, route, clearance);

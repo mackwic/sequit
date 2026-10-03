@@ -25,6 +25,11 @@ export interface RoutingContext {
 	activeIndex: number;
 	readonly ancestorCache: Map<string, readonly string[]>;
 	readonly groupObstacleCache: Map<string, RouteObstacles | undefined>;
+	/**
+	 * Paths of the route under repair that its reservations refused. Cleared before each repair:
+	 * routes, pending set and active index stay fixed during one, so a path's verdict does too.
+	 */
+	readonly refusedPaths: Set<string>;
 	tracks: GroupTrackIndex | undefined;
 	outside: number;
 }
@@ -171,6 +176,7 @@ export function prepareRoutingContext(
 		activeIndex: 0,
 		ancestorCache: new Map<string, readonly string[]>(),
 		groupObstacleCache: new Map<string, RouteObstacles | undefined>(),
+		refusedPaths: new Set<string>(),
 		tracks: undefined,
 		outside,
 	};
