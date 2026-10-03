@@ -73,8 +73,23 @@ function layoutChip(page: Page) {
 	return page.locator('[data-layout-chip] button[aria-haspopup="menu"]');
 }
 
-test('export downloads the current document with its edits', async ({ page }) => {
+test('the home page starts blank and reopens the recent local document', async ({ page }) => {
 	await page.goto('/');
+	await expect(menuTrigger(page)).toContainText('Sans titre');
+	await expect(page.locator('[data-node-id]')).toHaveCount(0);
+	await expect(layoutChip(page)).toHaveText('But en haut');
+	expect(await page.evaluate(() => localStorage.getItem('sequit:recent-documents'))).toBeNull();
+
+	await openMenuItem(page, 'Ouvrir…');
+	await chooseFile(page, 'petit.sequit.toml', SMALL_DOCUMENT);
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await page.goto('/');
+	await expect(menuTrigger(page)).toContainText('Petit document');
+	await expect(page.locator('[data-node-id="seul"]')).toContainText('Une seule boîte');
+});
+
+test('export downloads the current document with its edits', async ({ page }) => {
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -101,7 +116,7 @@ function pngSize(png: Buffer): [number, number] {
 test('image export offers the whole stage or the selection, scaled, as PNG or SVG', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await expect(node).toHaveAttribute('aria-pressed', 'true');
@@ -170,7 +185,7 @@ test('image export offers the whole stage or the selection, scaled, as PNG or SV
 });
 
 test('printing shows the stage alone, unzoomed, fitted on one sheet', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const stage = page.locator('[data-graph-stage]');
 	await expect(stage.locator('[data-node-id]')).toHaveCount(24);
 	await page.getByRole('button', { name: 'Zoom arrière' }).click();
@@ -195,7 +210,7 @@ test('printing shows the stage alone, unzoomed, fitted on one sheet', async ({ p
 
 test('opening a file replaces the document, and an invalid file keeps it', async ({ page }) => {
 	await page.goto('/');
-	await expect(page.locator('[data-node-id]')).toHaveCount(24);
+	await expect(page.locator('[data-node-id]')).toHaveCount(0);
 
 	await openMenuItem(page, 'Ouvrir…');
 	const dialog = page.getByRole('dialog', { name: 'Ouvrir un document' });
@@ -302,7 +317,7 @@ test('lanes are activated from the chip, and a double-click on a lane creates a 
 });
 
 test('a file the canvas refuses keeps the edited document and its export', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -345,7 +360,7 @@ test('reopening the same file after an edit restores its content', async ({ page
 });
 
 test('edits and opened files survive a reload', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -402,7 +417,7 @@ test('leaving with edits the browser cannot keep asks for confirmation', async (
 			throw new Error('quota exceeded');
 		};
 	});
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');

@@ -8,7 +8,7 @@ test('« Signaler un problème de mise en page » sends an anonymized report wit
 		sent = route.request().postDataJSON();
 		await route.fulfill({ status: 201, json: { id: 'rapport-1' } });
 	});
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const box = page.locator('[data-node-id="ai-generation-orchestration"]');
 	await box.scrollIntoViewIfNeeded();
 

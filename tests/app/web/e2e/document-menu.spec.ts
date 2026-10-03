@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 test('document menu is responsive, animated, and keyboard accessible', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 
 	const trigger = page.getByRole('button', { name: /AI for documentary effort/ });
 	const menu = page.getByRole('menu', { name: 'Menu du document' });
@@ -36,7 +36,7 @@ test('document menu is responsive, animated, and keyboard accessible', async ({ 
 });
 
 test('« Renommer le document » turns the title into a field', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const trigger = page.locator('header button[aria-haspopup="menu"]');
 	const field = page.getByRole('textbox', { name: 'Titre du document' });
 	const rename = async (): Promise<void> => {

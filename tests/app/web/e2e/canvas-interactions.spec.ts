@@ -185,12 +185,13 @@ async function keyboardTransitions(page: Page): Promise<readonly KeyboardTransit
 }
 
 test.describe('canvas viewport interactions', () => {
-	test('hydrates the root route and renders the graph', async ({ page }) => {
+	test('hydrates the root route and renders a blank document', async ({ page }) => {
 		await page.goto('/');
 
 		await expect(page.getByText('Measuring document…')).toHaveCount(0);
 		await expect(page.locator('[data-graph-stage]')).toBeVisible();
-		await expect(page.locator('[data-node-id]')).toHaveCount(24);
+		await expect(page.locator('[data-node-id]')).toHaveCount(0);
+		await expect(page.locator('header button[aria-haspopup="menu"]')).toContainText('Sans titre');
 
 		await page.getByRole('button', { name: 'Zoom avant' }).click();
 		await expect(page.getByRole('button', { name: 'Réinitialiser le zoom' })).toHaveText('110%');
@@ -1069,7 +1070,7 @@ test.describe('box dialog editing and creation', () => {
 	});
 
 	test('types a root box with N when nothing is selected', async ({ page }) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const focusedNode = page.locator('[data-node-id]').first();
 		await focusedNode.focus();
@@ -1091,7 +1092,7 @@ test.describe('box dialog editing and creation', () => {
 	});
 
 	test('Escape, or confirming an empty box, creates nothing', async ({ page }) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const viewport = page.getByRole('region', { name: 'Canvas viewport' });
 		await viewport.focus();
@@ -1490,7 +1491,7 @@ test('a child of a selected node inside a group stays within that group', async 
 test('double-click types a box in place; Backspace and the delete action remove nodes', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const point = await blankCanvasPoint(page);
 	await page.mouse.dblclick(point.x, point.y);
@@ -1527,7 +1528,7 @@ for (const { kind, selector, membership } of [
 	test(`dropping a member ${kind} on its enclosing group background is a no-op`, async ({
 		page,
 	}) => {
-		await page.goto('/');
+		await page.goto('/examples/ai-documentary-effort');
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
 		const relations = await page.locator('[data-relation-id]').count();
 		const member = page.locator(selector);
@@ -1558,7 +1559,7 @@ for (const { kind, selector, membership } of [
 }
 
 test('deleting a selected relation preserves its endpoints', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	await expect(page.locator('[data-node-id]')).toHaveCount(24);
 	const before = await page.locator('[data-relation-id]').count();
 	const firstId = await page.locator('[data-relation-id]').first().getAttribute('data-relation-id');
@@ -1572,7 +1573,7 @@ test('deleting a selected relation preserves its endpoints', async ({ page }) =>
 test('undoes and redoes accepted edits step by step, leaving a text field its own history', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await expect(node).toContainText('ALCOA+');
 	const nodes = await page.locator('[data-node-id]').count();
@@ -1626,7 +1627,7 @@ test('undoes and redoes accepted edits step by step, leaving a text field its ow
 test('double-click on group background creates a member; canvas background resets the parent', async ({
 	page,
 }) => {
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const group = page.locator('[data-group-id="data-team"]');
 	await group.scrollIntoViewIfNeeded();
 	await settleCanvasMotion(page);

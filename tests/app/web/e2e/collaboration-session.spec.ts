@@ -23,7 +23,7 @@ test('starting a session publishes the current document and shares its link', as
 	context,
 }) => {
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-	await page.goto('/');
+	await page.goto('/examples/ai-documentary-effort');
 	const node = page.locator('[data-node-id="traceable-edits"]');
 	await node.click();
 	await node.press('e');
@@ -140,7 +140,7 @@ test('cursors stay after a blur, off-screen cursors get an edge chip, and avatar
 	browser,
 }) => {
 	const alice = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-	await alice.goto('/');
+	await alice.goto('/examples/ai-documentary-effort');
 	await alice.locator('[data-node-id]').first().waitFor();
 	await alice.getByRole('button', { name: 'Collaborer' }).click();
 	await alice.getByLabel('Ton nom').fill('Alice');

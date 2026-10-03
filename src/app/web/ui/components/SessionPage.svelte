@@ -4,16 +4,13 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 
-	import {
-		LayoutBias,
-		LayoutDirection,
-		type LogicDocument,
-		PERSISTENCE_FORMAT,
-	} from '../../../../lib/core/document/logic-document';
-	import { defaultNatures } from '../../../../lib/core/document/nature-families';
+	import type { LogicDocument } from '../../../../lib/core/document/logic-document';
 	import { CollaborationStatus } from '../../../../lib/infrastructure/collaboration/collaborative-document-session';
 	import { createWebSocketCollaborationTransport } from '../../../../lib/infrastructure/collaboration/websocket-collaboration-transport';
-	import { UNTITLED_DOCUMENT_TITLE } from '../../../../lib/infrastructure/document/document-creation';
+	import {
+		blankDocument,
+		UNTITLED_DOCUMENT_TITLE,
+	} from '../../../../lib/infrastructure/document/document-creation';
 	import { SharedElementKind } from '../../../../lib/infrastructure/document/shared-document-command';
 	import { parseSequitToml } from '../../../../lib/infrastructure/toml/parse-sequit-toml';
 	import { serializeSequitToml } from '../../../../lib/infrastructure/toml/serialize-sequit-toml';
@@ -90,29 +87,12 @@
 		toast = conflict;
 	});
 
-	/**
-	 * A joiner proposes nothing: the server keeps the room's state and ignores this document. A
-	 * room opened without a seed starts from it, so it carries the default natures.
-	 */
-	function emptyDocument(): LogicDocument {
-		return {
-			persistenceFormat: PERSISTENCE_FORMAT,
-			id: room,
-			title: UNTITLED,
-			layout: { direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
-			natures: defaultNatures(),
-			groups: [],
-			nodes: [],
-			junctions: [],
-			relations: [],
-		};
-	}
-
+	/** A joiner proposes nothing; the server keeps the room's state and ignores this document. */
 	function initialDocument(): LogicDocument {
 		const seed = takeRoomSeed(room);
-		if (seed === undefined) return emptyDocument();
+		if (seed === undefined) return blankDocument(room);
 		const parsed = parseSequitToml(seed);
-		if (!parsed.ok) return emptyDocument();
+		if (!parsed.ok) return blankDocument(room);
 		return { ...parsed.value, id: room };
 	}
 

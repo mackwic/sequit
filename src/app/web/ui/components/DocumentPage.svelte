@@ -96,7 +96,8 @@
 		} catch {
 			retained = false;
 		}
-		const current = recent.documents.find((document) => document.id === recent.currentId);
+		const current =
+			recent.documents.find((document) => document.id === recent.currentId) ?? recent.documents[0];
 		if (current) openSource(current.source);
 		const guard = (event: BeforeUnloadEvent): void => {
 			persist();
