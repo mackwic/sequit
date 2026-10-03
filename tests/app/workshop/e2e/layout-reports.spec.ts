@@ -35,7 +35,7 @@ test('replays pulled layout reports with their pointed zones', async ({ page }) 
 	);
 	await page.goto('/atelier/reports');
 
-	const reports = page.getByRole('navigation', { name: 'Signalements' }).getByRole('button');
+	const reports = page.getByRole('navigation', { name: 'Signalements' }).getByRole('link');
 	// The page loads the layout engine on demand: a cold development server compiles it first.
 	await expect(reports).toHaveCount(2, { timeout: 20000 });
 	await expect(reports.first()).toHaveAttribute('aria-current', 'true');
@@ -43,6 +43,7 @@ test('replays pulled layout reports with their pointed zones', async ({ page }) 
 	// The fixture's measurements cover one box only: the engine fails as the report showed.
 	await expect(page.locator('[data-replay]')).toHaveAttribute('data-replay', 'true');
 	await expect(page.locator('[data-replay]')).toContainText('missing-node-measurement');
+	await expect(page.locator('[data-replay-causes]')).toContainText('Missing node measurement');
 
 	await reports.last().click();
 	await expect(page).toHaveURL(/#older$/);
@@ -54,4 +55,16 @@ test('replays pulled layout reports with their pointed zones', async ({ page }) 
 	await page.getByRole('checkbox', { name: 'Dessiné à l’écran' }).check();
 	await expect(canvas.locator('[data-layer="rendered"] path')).toHaveCount(1);
 	await expect(page.getByRole('checkbox', { name: 'Rejoué ici' })).toBeDisabled();
+	await expect(canvas.locator('[data-layer="visible"]')).toHaveCount(1);
+
+	await page.getByRole('checkbox', { name: 'Layout précédent' }).check();
+	await expect(canvas.locator('[data-layer="previous"] rect')).toHaveCount(2);
+	await expect(page.locator('[data-previous-differences]')).toContainText(
+		'boîte e10 : changement de position ou de taille',
+	);
+
+	const folding = page.locator('[data-report-groups]').getByRole('checkbox').first();
+	await expect(folding).not.toBeChecked();
+	await folding.check();
+	await expect(page.locator('[data-replay-variant]')).toBeVisible();
 });

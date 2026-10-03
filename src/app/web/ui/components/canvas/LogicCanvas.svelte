@@ -51,6 +51,7 @@
 		unshownMeasurementModel,
 		withUnshownMeasurements,
 	} from '../../report/capture-layout-report';
+	import { sameCanvasGeometry } from '../../report/report-geometry';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
 	import MenuSurface from '../ui/MenuSurface.svelte';
@@ -167,6 +168,8 @@
 		if (report === undefined || measurementModel === undefined) return undefined;
 		return unshownMeasurementModel(report.read(), measurementModel);
 	});
+	/** The last canvas shown before the current one with another geometry, for layout reports. */
+	let previousCanvas = $state.raw<CanvasModel>();
 	let viewport = $state<HTMLDivElement>();
 	let menuDestination = $state<NodePasteDestination>({});
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
@@ -305,6 +308,7 @@
 		measurementModel = current.measurementModel;
 		untrack(() => {
 			projectionRevision += 1;
+			previousCanvas = undefined;
 		});
 		return current.subscribe(() => {
 			measurementModel = current.measurementModel;
@@ -331,6 +335,7 @@
 				revision === projectionRevision &&
 				current === openedDocument
 			) {
+				const shownBefore = canvas;
 				display = { kind: 'ready', canvas: result };
 				acceptedRevision += 1;
 				session.reconcile(createCanvasEntityIndex(result));
@@ -339,6 +344,8 @@
 					start,
 					end: performance.now(),
 				});
+				if (shownBefore !== undefined && !sameCanvasGeometry(shownBefore, result))
+					previousCanvas = shownBefore;
 			}
 		} catch (cause) {
 			if (
@@ -895,6 +902,7 @@
 		<LayoutReport
 			request={report}
 			{canvas}
+			previous={previousCanvas}
 			{viewport}
 			failure={layoutFailure}
 			measure={currentMeasurements}

@@ -1,11 +1,12 @@
 import { compareCanonicalStrings } from '../../../../lib/core/canonical-string';
 import type {
 	RenderedLayout,
+	ReportedBounds,
 	ReportedBox,
 	ReportedLayout,
 	ReportedMeasurements,
 } from '../../../../lib/infrastructure/layout-report/layout-report';
-import type { Bounds, LayoutMeasurements } from '../../projection/layout-graph';
+import type { Bounds, LayoutMeasurements, Point, Size } from '../../projection/layout-graph';
 import type { CanvasModel } from '../canvas/canvas-model';
 
 export type Rename = (id: string) => string;
@@ -71,6 +72,41 @@ export function reportedLayout(canvas: CanvasModel, rename: Rename): ReportedLay
 	};
 }
 
+function sameBoxes(
+	left: readonly { readonly id: string; readonly bounds: Bounds }[],
+	right: readonly { readonly id: string; readonly bounds: Bounds }[],
+): boolean {
+	if (left.length !== right.length) return false;
+	return left.every((box, index) => {
+		const other = right[index];
+		if (other?.id !== box.id) return false;
+		const { x, y, width, height } = other.bounds;
+		const placed = box.bounds.x === x && box.bounds.y === y;
+		const sized = box.bounds.width === width && box.bounds.height === height;
+		return placed && sized;
+	});
+}
+
+function samePoints(left: readonly Point[], right: readonly Point[]): boolean {
+	if (left.length !== right.length) return false;
+	return left.every(({ x, y }, index) => right[index]?.x === x && right[index].y === y);
+}
+
+/**
+ * Whether two canvases place the same entities identically and route the same relations along
+ * the same points. Compared in place: it runs on every accepted layout.
+ */
+export function sameCanvasGeometry(left: CanvasModel, right: CanvasModel): boolean {
+	if (left.width !== right.width || left.height !== right.height) return false;
+	if (!sameBoxes(left.nodes, right.nodes) || !sameBoxes(left.groups, right.groups)) return false;
+	if (!sameBoxes(left.junctions, right.junctions)) return false;
+	if (left.relations.length !== right.relations.length) return false;
+	return left.relations.every((relation, index) => {
+		const other = right.relations[index];
+		return other?.id === relation.id && samePoints(relation.points, other.points);
+	});
+}
+
 interface StageFrame {
 	readonly left: number;
 	readonly top: number;
@@ -95,6 +131,16 @@ function renderedBoxes(
 		};
 		return [{ id: rename(id), bounds }];
 	});
+}
+
+/** The part of the canvas inside the viewport, in canvas coordinates. */
+function visibleArea(viewport: HTMLElement, frame: StageFrame, extent: Size): ReportedBounds {
+	const shown = viewport.getBoundingClientRect();
+	const left = Math.max(0, (shown.left - frame.left) / frame.zoom);
+	const top = Math.max(0, (shown.top - frame.top) / frame.zoom);
+	const right = Math.min(extent.width, (shown.right - frame.left) / frame.zoom);
+	const bottom = Math.min(extent.height, (shown.bottom - frame.top) / frame.zoom);
+	return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }
 
 /**
@@ -124,5 +170,6 @@ export function readRenderedLayout(
 			id: rename(path.getAttribute('data-rendered-relation-id') ?? ''),
 			path: path.getAttribute('d') ?? '',
 		})),
+		visible: visibleArea(viewport, frame, { width, height }),
 	};
 }

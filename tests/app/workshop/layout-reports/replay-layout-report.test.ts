@@ -7,7 +7,9 @@ import { captureLayoutReport } from '../../../../src/app/web/ui/report/capture-l
 import {
 	LayoutReplayKind,
 	replayLayoutReport,
+	reportedGroups,
 } from '../../../../src/app/workshop/layout-reports/replay-layout-report';
+import { GroupState } from '../../../../src/lib/core/document/logic-document';
 import {
 	type LayoutReport,
 	LayoutReportCategory,
@@ -63,17 +65,53 @@ describe('layout report replay', () => {
 		expect(replay).toMatchObject({ kind: LayoutReplayKind.Laid, reproduced: false });
 	});
 
-	it('names the failure and whether the report showed the same one', async () => {
+	it('names the failure, its causes, and whether the report showed the same one', async () => {
 		const report = await capturedReport();
 		const unmeasured = { ...report, measurements: { nodes: [], junctions: [], groups: [] } };
-		expect(
-			await replayLayoutReport({ ...unmeasured, failure: 'missing-node-measurement' }),
-		).toEqual({
+		const replay = await replayLayoutReport({ ...unmeasured, failure: 'missing-node-measurement' });
+		expect(replay).toMatchObject({
 			kind: LayoutReplayKind.Failed,
 			failure: 'missing-node-measurement',
 			reproduced: true,
+			causes: [
+				expect.stringMatching(/^LayoutProjectionError: Missing node measurement: e\d+$/),
+				expect.stringMatching(/^Error: Missing node measurement: e\d+$/),
+			],
 		});
+		if (replay.kind !== LayoutReplayKind.Failed) throw new Error('The replay must fail');
+		expect(replay.stack?.startsWith(replay.causes.at(-1) ?? '')).toBe(true);
 		expect(await replayLayoutReport(unmeasured)).toMatchObject({ reproduced: false });
+	});
+
+	it('replays the other side of a folding when the report measured the hidden boxes', async () => {
+		const report = await capturedReport();
+		const groups = reportedGroups(report);
+		expect(groups.every(({ state }) => state !== GroupState.Closed)).toBe(true);
+		const flipped = new Set(groups.map(({ id }) => id));
+		const folded = await replayLayoutReport(report, flipped);
+		if (folded.kind !== LayoutReplayKind.Laid) throw new Error('The folded replay must lay out');
+		expect(folded.reproduced).toBe(false);
+		expect(folded.layout.nodes.length).toBeLessThan(report.layout?.nodes.length ?? 0);
+
+		const hidden = new Set(
+			report.layout?.nodes
+				.map(({ id }) => id)
+				.filter((id) => !folded.layout.nodes.some((node) => node.id === id)),
+		);
+		const unmeasured = {
+			...report,
+			measurements: {
+				...report.measurements,
+				nodes: report.measurements.nodes.filter(([id]) => !hidden.has(id)),
+			},
+		};
+		expect(await replayLayoutReport(unmeasured, flipped)).toMatchObject({
+			kind: LayoutReplayKind.Laid,
+		});
+		expect(await replayLayoutReport(unmeasured)).toMatchObject({
+			kind: LayoutReplayKind.Failed,
+			failure: 'missing-node-measurement',
+		});
 	});
 
 	it('refuses a document this version cannot read', async () => {

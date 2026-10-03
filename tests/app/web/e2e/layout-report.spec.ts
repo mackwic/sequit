@@ -68,4 +68,7 @@ test('a report over a folded group still measures the boxes it hides', async ({ 
 
 	expect(sent).toHaveProperty('layout.nodes.length', shown);
 	expect(sent).toHaveProperty('measurements.nodes.length', total);
+	// The canvas before folding, and the part of the canvas the window showed.
+	expect(sent).toHaveProperty('previous.nodes.length', total);
+	expect(sent).toHaveProperty('rendered.visible.width', expect.any(Number));
 });

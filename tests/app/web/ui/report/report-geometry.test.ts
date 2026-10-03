@@ -23,9 +23,9 @@ function placed<T extends Element>(
 	return element;
 }
 
-/** A stage drawn at zoom 2, 100 px from the viewport origin. */
+/** A stage drawn at zoom 2, 100 px from the viewport origin, in a viewport showing half of it. */
 function viewport(): HTMLElement {
-	const root = document.createElement('div');
+	const root = placed(document.createElement('div'), { x: 0, y: 0, width: 500, height: 350 });
 	const stage = placed(document.createElement('div'), { x: 100, y: 50, width: 800, height: 600 });
 	stage.dataset['graphStage'] = '';
 	stage.dataset['stageWidth'] = '400';
@@ -62,6 +62,7 @@ describe('rendered layout read-back', () => {
 			groups: [{ id: 'x0', bounds: { x: 0, y: 0, width: 200, height: 200 } }],
 			junctions: [],
 			relations: [{ id: 'x1', path: 'M 10 20 L 10 80' }],
+			visible: { x: 0, y: 0, width: 200, height: 150 },
 		});
 	});
 

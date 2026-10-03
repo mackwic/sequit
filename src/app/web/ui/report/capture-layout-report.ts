@@ -79,6 +79,8 @@ export interface LayoutReportCapture {
 	readonly canvas?: CanvasModel | undefined;
 	/** The failure shown instead of a canvas. */
 	readonly failure?: string | undefined;
+	/** The last canvas shown before the current one with another geometry. */
+	readonly previous?: CanvasModel | undefined;
 	/** Where the canvas is drawn, to read back what the page displayed. */
 	readonly viewport?: HTMLElement | undefined;
 	readonly zones: readonly ReportZone[];
@@ -145,6 +147,12 @@ function shown(capture: LayoutReportCapture, rename: Rename): LayoutReportDispla
 	return { layout, rendered };
 }
 
+/** The canvas shown before, renamed after the shown one so that its `x…` names come last. */
+function previous(capture: LayoutReportCapture, rename: Rename): LayoutReportDisplay {
+	if (capture.previous === undefined) return {};
+	return { previous: reportedLayout(capture.previous, rename) };
+}
+
 /**
  * Anonymizes the document and every identifier, then lays both documents out from scratch with
  * the same measurements. Different geometries mean the anonymization changed the layout; a
@@ -170,6 +178,7 @@ export async function captureLayoutReport(capture: LayoutReportCapture): Promise
 		document: serializeSequitToml(anonymized.document),
 		measurements: reportedMeasurements(capture.measurements, rename),
 		...shown(capture, rename),
+		...previous(capture, rename),
 		zones: zones(capture, rename),
 		checks: { anonymizationDiverged, projectionDiverged },
 		environment: capture.environment,

@@ -79,6 +79,8 @@ export interface RenderedLayout {
 	readonly groups: readonly ReportedBox[];
 	readonly junctions: readonly ReportedBox[];
 	readonly relations: readonly RenderedRelation[];
+	/** The part of the canvas the viewport showed; absent from reports sent before it was read. */
+	readonly visible?: ReportedBounds;
 }
 
 export interface ReportedEntity {
@@ -120,6 +122,11 @@ export interface LayoutReportDisplay {
 	/** The failure shown instead of a canvas. */
 	readonly failure?: string;
 	readonly rendered?: RenderedLayout;
+	/**
+	 * The last canvas shown before this one with another geometry, under the same identifiers:
+	 * what the last change moved. Entities since deleted are named `x…`.
+	 */
+	readonly previous?: ReportedLayout;
 }
 
 export interface LayoutReportContent {

@@ -1,10 +1,14 @@
-/** What the report canvas draws over each other. */
+/** What the report canvas draws over each other; the page switches them. */
 export interface ReportLayers {
 	/** The geometry the reporter's layout computed. */
-	readonly layout: boolean;
+	layout: boolean;
 	/** What the reporter's page drew, read back from its DOM. */
-	readonly rendered: boolean;
+	rendered: boolean;
+	/** The part of the canvas the reporter's viewport showed. */
+	visible: boolean;
+	/** The geometry the reporter's page showed before its last change. */
+	previous: boolean;
 	/** The geometry the current engine computes for the same document and measurements. */
-	readonly replayed: boolean;
-	readonly zones: boolean;
+	replayed: boolean;
+	zones: boolean;
 }

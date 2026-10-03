@@ -93,10 +93,13 @@ function rendered(value: unknown): RenderedLayout | undefined {
 		boxes(fields?.[key]),
 	);
 	const relations = list(renderedRelation)(fields?.['relations']);
+	const visible = optional(bounds, fields?.['visible']);
 	if (frame === undefined || relations === undefined) return undefined;
 	if (nodes === undefined || groups === undefined) return undefined;
-	if (junctions === undefined) return undefined;
-	return { ...frame, nodes, groups, junctions, relations };
+	if (junctions === undefined || visible === null) return undefined;
+	const drawn = { ...frame, nodes, groups, junctions, relations };
+	if (visible === undefined) return drawn;
+	return { ...drawn, visible };
 }
 
 function entity(value: unknown): ReportedEntity | undefined {
@@ -147,17 +150,21 @@ function optional<T>(parse: Parse<T>, value: unknown): T | undefined | null {
 	return parse(value) ?? null;
 }
 
+type DisplayParts = { -readonly [Key in keyof LayoutReportDisplay]: LayoutReportDisplay[Key] };
+
 /** The parts of the display, each absent or well formed. */
 function display(fields: Readonly<Record<string, unknown>>): LayoutReportDisplay | undefined {
-	const parts: { layout?: ReportedLayout; failure?: string; rendered?: RenderedLayout } = {};
+	const parts: DisplayParts = {};
 	const reportedLayout = optional(layout, fields['layout']);
 	const reportedFailure = optional(failure, fields['failure']);
 	const reportedRendering = optional(rendered, fields['rendered']);
+	const previousLayout = optional(layout, fields['previous']);
 	if (reportedLayout === null || reportedFailure === null) return undefined;
-	if (reportedRendering === null) return undefined;
+	if (reportedRendering === null || previousLayout === null) return undefined;
 	if (reportedLayout !== undefined) parts.layout = reportedLayout;
 	if (reportedFailure !== undefined) parts.failure = reportedFailure;
 	if (reportedRendering !== undefined) parts.rendered = reportedRendering;
+	if (previousLayout !== undefined) parts.previous = previousLayout;
 	return parts;
 }
 

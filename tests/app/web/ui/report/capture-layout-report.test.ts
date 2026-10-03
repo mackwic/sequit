@@ -12,6 +12,7 @@ import {
 	unshownMeasurementModel,
 	withUnshownMeasurements,
 } from '../../../../../src/app/web/ui/report/capture-layout-report';
+import { sameCanvasGeometry } from '../../../../../src/app/web/ui/report/report-geometry';
 import { anonymizeDocument } from '../../../../../src/lib/core/document/anonymize-document';
 import {
 	GroupState,
@@ -191,5 +192,37 @@ describe('layout report capture', () => {
 			groups: new Map(report.measurements.groups),
 		});
 		expect(replayed.nodes).toHaveLength(source.nodes.length);
+	});
+
+	it('sends the canvas shown before, renamed like the current one, after it', async () => {
+		const document = exampleDocument();
+		const measurements = variedMeasurements(document);
+		const canvas = await shownCanvas(document, measurements);
+		const [first, ...others] = canvas.nodes;
+		if (first === undefined) throw new Error('The example shows nodes');
+		const deleted = { ...first, id: 'deleted-box', bounds: { ...first.bounds, x: 0, y: 0 } };
+		const previous = { ...canvas, nodes: [...others, deleted] };
+		const report = await captureLayoutReport(capture({ document, measurements, canvas, previous }));
+		const tokens = anonymizeDocument(document).identifiers;
+		expect(report.previous?.nodes).toEqual([
+			...others.map(({ id, bounds }) => ({ id: tokens.get(id), bounds })),
+			{ id: 'x0', bounds: deleted.bounds },
+		]);
+		expect(parseLayoutReport(JSON.parse(JSON.stringify(report)))).toEqual(report);
+	});
+
+	it('tells canvases apart by geometry only', async () => {
+		const document = exampleDocument();
+		const measurements = variedMeasurements(document);
+		const canvas = await shownCanvas(document, measurements);
+		expect(sameCanvasGeometry(canvas, await shownCanvas(document, measurements))).toBe(true);
+		const [first, ...others] = canvas.nodes;
+		if (first === undefined) throw new Error('The example shows nodes');
+		const moved = { ...first, bounds: { ...first.bounds, y: first.bounds.y + 1 } };
+		expect(sameCanvasGeometry(canvas, { ...canvas, nodes: [moved, ...others] })).toBe(false);
+		const [route, ...routes] = canvas.relations;
+		if (route === undefined) throw new Error('The example shows relations');
+		const rerouted = { ...route, points: route.points.slice(1) };
+		expect(sameCanvasGeometry(canvas, { ...canvas, relations: [rerouted, ...routes] })).toBe(false);
 	});
 });

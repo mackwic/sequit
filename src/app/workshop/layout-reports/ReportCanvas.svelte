@@ -14,12 +14,14 @@
 	let {
 		layout,
 		rendered,
+		previous,
 		replayed,
 		zones,
 		layers,
 	}: {
 		layout?: ReportedLayout | undefined;
 		rendered?: RenderedLayout | undefined;
+		previous?: ReportedLayout | undefined;
 		replayed?: ReportedLayout | undefined;
 		zones: readonly LayoutReportZone[];
 		layers: ReportLayers;
@@ -30,7 +32,7 @@
 		new Set(zones.flatMap(({ entities }) => entities.map(({ kind, id }) => `${kind}:${id}`))),
 	);
 	let frame = $derived.by(() => {
-		const extents = [layout, rendered, replayed].filter((item) => item !== undefined);
+		const extents = [layout, rendered, previous, replayed].filter((item) => item !== undefined);
 		const corners = zones.map(({ bounds }) => ({
 			width: bounds.x + bounds.width,
 			height: bounds.y + bounds.height,
@@ -105,6 +107,19 @@
 			{/each}
 		</g>
 	{/if}
+	{#if previous && layers.previous}
+		<g data-layer="previous">
+			{#each boxes(previous) as box (box.id)}
+				<rect class="previous" {...box.bounds} rx="4" />
+			{/each}
+			{#each previous.relations as relation (relation.id)}
+				<polyline class="previous" points={polyline(relation.points)} />
+			{/each}
+		</g>
+	{/if}
+	{#if rendered?.visible && layers.visible}
+		<rect class="visible" data-layer="visible" {...rendered.visible} />
+	{/if}
 	{#if replayed && layers.replayed}
 		<g data-layer="replayed">
 			{#each boxes(replayed) as box (box.id)}
@@ -170,6 +185,7 @@
 		stroke-width: 4;
 	}
 	.rendered,
+	.previous,
 	.replayed {
 		fill: none;
 		stroke-width: 2;
@@ -179,8 +195,18 @@
 	.rendered {
 		stroke: #c2410c;
 	}
+	.previous {
+		stroke: #7c3aed;
+	}
 	.replayed {
 		stroke: #175cd3;
+	}
+	.visible {
+		fill: none;
+		stroke: #0f766e;
+		stroke-width: 3;
+		stroke-dasharray: 12 6;
+		vector-effect: non-scaling-stroke;
 	}
 	.zone {
 		fill: rgb(180 35 24 / 10%);

@@ -25,6 +25,7 @@
 	let {
 		request,
 		canvas,
+		previous,
 		viewport,
 		failure,
 		measure,
@@ -32,6 +33,8 @@
 		request: LayoutReportRequest;
 		/** The canvas shown, if any; pointing needs it. */
 		canvas: CanvasModel | undefined;
+		/** The last canvas shown before it with another geometry. */
+		previous: CanvasModel | undefined;
 		viewport: HTMLDivElement | undefined;
 		/** The failure shown instead of a canvas. */
 		failure: string | undefined;
@@ -69,6 +72,7 @@
 				document: request.read(),
 				measurements: measure(),
 				canvas,
+				previous,
 				failure,
 				viewport,
 				zones,

@@ -37,6 +37,15 @@ describe('layout report parsing', () => {
 		expect(parseLayoutReport(failed)).toEqual(failed);
 	});
 
+	it('still reads reports sent before the visible area and the previous layout', () => {
+		const report = validLayoutReport();
+		if (report.rendered === undefined) throw new Error('The fixture reports a rendering');
+		const { width, height, zoom, nodes, groups, junctions, relations } = report.rendered;
+		const drawn = { width, height, zoom, nodes, groups, junctions, relations };
+		const older = { ...report, previous: undefined, rendered: drawn };
+		expect(parseLayoutReport(older)).toEqual(older);
+	});
+
 	it('refuses a document that still carries original texts or identifiers', () => {
 		const document = validLayoutReport().document;
 		expect(parseLayoutReport(withField(['document'], document.replace('"xxx"', '"Secret"')))).toBe(
@@ -59,6 +68,8 @@ describe('layout report parsing', () => {
 		['an unknown entity kind', ['zones', 0, 'entities', 0, 'kind'], 'lane'],
 		['a free-text failure', ['failure'], 'The layout failed on « Secret »'],
 		['a malformed rendering', ['rendered', 'relations', 0, 'path'], 42],
+		['a malformed visible area', ['rendered', 'visible', 'width'], 'wide'],
+		['a named identifier in the previous layout', ['previous', 'nodes', 0, 'id'], 'secret-node'],
 		['a missing check', ['checks', 'projectionDiverged'], 'yes'],
 		['a missing environment', ['environment', 'viewport'], undefined],
 		['an overlong comment', ['comment'], 'x'.repeat(5_000)],
