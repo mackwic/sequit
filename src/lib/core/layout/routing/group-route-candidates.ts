@@ -129,20 +129,6 @@ export function externalFlowSign(
 	return sign;
 }
 
-export function respectsExternalFlow(context: RoutingContext, candidate: LayoutRelation): boolean {
-	const sign = externalFlowSign(context, candidate, {
-		source: defined(candidate.points[0]),
-		target: defined(candidate.points.at(-1)),
-	});
-	if (sign === 0) return true;
-	for (let index = 1; index < candidate.points.length; index += 1) {
-		const current = main(defined(candidate.points[index]), context.vertical);
-		const previous = main(defined(candidate.points[index - 1]), context.vertical);
-		if ((current - previous) * sign < 0) return false;
-	}
-	return true;
-}
-
 export function prepareRoutingContext(
 	graph: LogicGraph,
 	bounds: ReadonlyMap<string, Bounds>,

@@ -1,15 +1,19 @@
 import { defined } from '../../document/logic-document';
 import { RAIL_SPACING } from '../layout-settings';
-import type { LayoutRelation, Point } from '../layout-types';
+import type { LayoutRelation } from '../layout-types';
 import { aroundBoundaryPath, main, sourceBoundaryEscapes, transverse } from './group-exterior-path';
 import {
 	type ExteriorAttempt,
-	externalFlowSign,
 	type RoutingContext,
 	sharedSourceEscapes,
 } from './group-route-candidates';
 import { candidateTracks } from './group-track-index';
-import { segmentHitsObstacles } from './route-obstacles';
+import {
+	CLEAR,
+	firstBlockedSegment,
+	type SegmentFilter,
+	segmentFilter,
+} from './route-segment-filter';
 
 const HALF_RAIL = RAIL_SPACING / 2;
 const DOUBLE_RAIL = RAIL_SPACING * 2;
@@ -31,9 +35,6 @@ const TARGET_CLEARANCES = [
 // track, the main rail and the clearance, never on the escape.
 const RAIL_SEGMENT = 2;
 const TAIL_SEGMENT = 4;
-const CLEAR = -1;
-
-type SegmentFilter = (from: Point, to: Point) => boolean;
 
 interface BoundarySearch {
 	readonly context: RoutingContext;
@@ -50,33 +51,6 @@ interface BoundaryRails {
 	readonly sourceMain: number;
 	readonly sourceTrack: number;
 	readonly targetTrack: number;
-}
-
-/**
- * The geometric checks of an admissible path hold for a path exactly when they hold for each of
- * its segments: coordinates, external flow, nodes and foreign frames.
- */
-function exteriorSegmentFilter(context: RoutingContext, attempt: ExteriorAttempt): SegmentFilter {
-	const sign = externalFlowSign(context, attempt.route, attempt.ports);
-	const { groups } = attempt;
-	return (from, to) => {
-		if (Math.min(from.x, from.y, to.x, to.y) < 0) return false;
-		if ((main(to, context.vertical) - main(from, context.vertical)) * sign < 0) return false;
-		if (segmentHitsObstacles(from, to, context.nodes)) return false;
-		return groups === undefined || !segmentHitsObstacles(from, to, groups);
-	};
-}
-
-/** The first blocked segment among those from `first` to the one before `end`. */
-function firstBlockedSegment(
-	points: readonly Point[],
-	clear: SegmentFilter,
-	first: number,
-	end: number,
-): number {
-	for (let index = first; index < end; index += 1)
-		if (!clear(defined(points[index]), defined(points[index + 1]))) return index;
-	return CLEAR;
 }
 
 function tailClearances(search: BoundarySearch, rails: BoundaryRails): readonly number[] {
@@ -164,7 +138,7 @@ export function boundaryForPorts(
 	const search = {
 		context,
 		attempt,
-		clear: exteriorSegmentFilter(context, attempt),
+		clear: segmentFilter(context, attempt, attempt.ports),
 		admits,
 		tails: new Map<number, Map<number, readonly number[]>>(),
 	};

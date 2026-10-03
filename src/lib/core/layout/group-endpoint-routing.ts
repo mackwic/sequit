@@ -11,43 +11,27 @@ import { samePoint } from './geometry/nested-region-geometry-primitives';
 import { JUNCTION_PORT_SPACING, PORT_SPACING, RAIL_SPACING } from './layout-settings';
 import { type Bounds, GroupRouteFailure, type LayoutRelation } from './layout-types';
 import { boundaryForPorts } from './routing/group-boundary-routes';
-import {
-	aroundPath,
-	exteriorMainRails,
-	exteriorPath,
-	type FacePorts,
-	transverse,
-} from './routing/group-exterior-path';
+import { exteriorMainRails, transverse } from './routing/group-exterior-path';
 import { foreignGroupObstacles } from './routing/group-passages';
 import {
 	attachmentReservedBy,
 	candidateFacePorts,
 	endpoint,
-	type ExteriorAttempt,
 	faceOffsetWindows,
 	prepareRoutingContext,
 	releasedRoutes,
 	releaseSharedPortFamilies,
-	respectsExternalFlow,
-	type RouteAttempt,
 	type RoutingContext,
 } from './routing/group-route-candidates';
-import { candidateTracks, prepareGroupTrackIndex } from './routing/group-track-index';
+import { prepareGroupTrackIndex } from './routing/group-track-index';
+import {
+	aroundForPorts,
+	exteriorTrackSearch,
+	pathForPorts,
+	pathOnTrack,
+} from './routing/group-track-routes';
 import { replaceRouteEnvelope, routeEnvelopeNeighbors } from './routing/route-envelope-index';
 import { routeHitsObstacles, type RouteObstacles } from './routing/route-obstacles';
-
-const HALF_RAIL = RAIL_SPACING / 2;
-const DOUBLE_RAIL = RAIL_SPACING * 2;
-const TRIPLE_RAIL = RAIL_SPACING * 3;
-const CLEARANCE_PAIRS = [
-	[RAIL_SPACING, RAIL_SPACING],
-	[DOUBLE_RAIL, DOUBLE_RAIL],
-	[TRIPLE_RAIL, TRIPLE_RAIL],
-	[RAIL_SPACING, HALF_RAIL],
-	[DOUBLE_RAIL, HALF_RAIL],
-	[TRIPLE_RAIL, HALF_RAIL],
-	[HALF_RAIL, HALF_RAIL],
-] as const;
 
 /** Shared ports require a continuous trunk; distinct ports preserve the endpoint spacing. */
 function sharedPortsConflict(
@@ -110,76 +94,6 @@ function reservationsAdmit(context: RoutingContext, candidate: LayoutRelation): 
 	return true;
 }
 
-function admissiblePath(
-	context: RoutingContext,
-	candidate: LayoutRelation,
-	groups: RouteObstacles | undefined,
-): boolean {
-	if (candidate.points.some(({ x, y }) => x < 0 || y < 0)) return false;
-	if (!respectsExternalFlow(context, candidate)) return false;
-	if (routeHitsObstacles(candidate.points, context.nodes)) return false;
-	if (groups !== undefined && routeHitsObstacles(candidate.points, groups)) return false;
-	return reservationsAdmit(context, candidate);
-}
-
-function pathOnTrack(
-	context: RoutingContext,
-	attempt: RouteAttempt,
-	ports: FacePorts,
-	track: number,
-): LayoutRelation | undefined {
-	for (const clearances of CLEARANCE_PAIRS) {
-		const points = exteriorPath(context.frame, track, ports, clearances);
-		const candidate = { ...attempt.route, points };
-		if (admissiblePath(context, candidate, attempt.groups)) return candidate;
-	}
-	return undefined;
-}
-
-function pathForPorts(
-	context: RoutingContext,
-	attempt: RouteAttempt,
-	ports: FacePorts,
-): LayoutRelation | undefined {
-	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
-	const source = transverse(ports.source, context.vertical);
-	const target = transverse(ports.target, context.vertical);
-	for (const track of candidateTracks(context.tracks, source, target)) {
-		const candidate = pathOnTrack(context, attempt, ports, track);
-		if (candidate !== undefined) return candidate;
-	}
-	return undefined;
-}
-
-function aroundOnTrack(
-	context: RoutingContext,
-	attempt: ExteriorAttempt,
-	targetTrack: number,
-): LayoutRelation | undefined {
-	for (const mainRail of attempt.rails) {
-		const rails = { main: mainRail, target: targetTrack };
-		for (const clearances of CLEARANCE_PAIRS) {
-			const points = aroundPath(context.frame, attempt.ports, rails, clearances);
-			const candidate = { ...attempt.route, points };
-			if (admissiblePath(context, candidate, attempt.groups)) return candidate;
-		}
-	}
-	return undefined;
-}
-
-function aroundForPorts(
-	context: RoutingContext,
-	attempt: ExteriorAttempt,
-): LayoutRelation | undefined {
-	const source = transverse(attempt.ports.source, context.vertical);
-	const target = transverse(attempt.ports.target, context.vertical);
-	for (const targetTrack of candidateTracks(defined(context.tracks), source, target)) {
-		const candidate = aroundOnTrack(context, attempt, targetTrack);
-		if (candidate !== undefined) return candidate;
-	}
-	return undefined;
-}
-
 /** Use a second exterior axis only after every simpler passage has failed. */
 function aroundRoute(
 	context: RoutingContext,
@@ -189,11 +103,11 @@ function aroundRoute(
 ): LayoutRelation | undefined {
 	context.tracks ??= prepareGroupTrackIndex(context.bounds, context.vertical);
 	const rails = exteriorMainRails(context.bounds, context.routes, context.vertical);
+	const admits = (path: LayoutRelation): boolean => reservationsAdmit(context, path);
 	for (const ports of candidateFacePorts(context, route, offsets)) {
 		const attempt = { route, groups, ports, rails };
 		const candidate =
-			aroundForPorts(context, attempt) ??
-			boundaryForPorts(context, attempt, (path) => reservationsAdmit(context, path));
+			aroundForPorts(context, attempt, admits) ?? boundaryForPorts(context, attempt, admits);
 		if (candidate !== undefined) return candidate;
 	}
 	return undefined;
@@ -206,17 +120,19 @@ function alternateRoute(
 	offsets: readonly number[],
 ): LayoutRelation | undefined {
 	const attempt = { route, groups };
+	const admits = (path: LayoutRelation): boolean => reservationsAdmit(context, path);
 	for (const ports of candidateFacePorts(context, route, offsets)) {
-		const candidate = pathForPorts(context, attempt, ports);
+		const candidate = pathForPorts(exteriorTrackSearch(context, attempt, ports, admits));
 		if (candidate !== undefined) return candidate;
 	}
 	// Beyond every current box and route, every next track is a fresh exterior rail.
-	for (const ports of candidateFacePorts(context, route, offsets))
+	for (const ports of candidateFacePorts(context, route, offsets)) {
+		const search = exteriorTrackSearch(context, attempt, ports, admits);
 		for (let index = 1; index <= context.routes.length + 1; index += 1) {
-			const track = context.outside + index * RAIL_SPACING;
-			const candidate = pathOnTrack(context, attempt, ports, track);
+			const candidate = pathOnTrack(search, context.outside + index * RAIL_SPACING);
 			if (candidate !== undefined) return candidate;
 		}
+	}
 	return undefined;
 }
 
